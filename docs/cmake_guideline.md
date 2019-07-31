@@ -8,21 +8,11 @@ If you want to change some setting, please try to scope down the impact to be lo
 - Prefer target\_compile\_options to add\_compile\_options
 - Don't touch the global flags like CMAKE\_CXX\_FLAGS
 
-For example, to add a macro definition to one vc project, you should use target\_compile\_definitions, not the add\_definitions.
+For example, to add a macro definition to one VC project, you should use target\_compile\_definitions, not the add\_definitions.
 
-# Don't omit the PRIVATE/PUBLIC/INTERFACE keyword
-The PRIVATE keyword in the following line of code is optional:
-```
-target_link_libraries(your_exe PRIVATE lib1)
-```
-If you remove it, the code may still work. But, please don't omit it.
-
-Use PRIVATE if you don't know which to use. If you don't understand why it's is needed, or what's the differece between the three, that's fine. Just always put PRIVATE there.
-
-This rule also applies to "target\_include\_directories".
 
 # Static library order matters
-First, you should know, when you link static libraries to an executable(or share library) target, the order matters a lot.
+First, you should know, when you link static libraries to an executable(or shared library) target, the order matters a lot.
 Let's say, if A and B are static libraries, C is an exe.      
 - A depends B.
 - C depends A and B.    
@@ -36,38 +26,36 @@ Not
 target_link_libraries(C PRIVATE B A)  #Wrong!
 ```
 
-On Windows, The order of static libraries does matter if a symbol is defined in more than one library.       
+On Windows, the order of static libraries does matter if a symbol is defined in more than one library.       
 On Linux, it matters when one static library references another.
 
-So, in general, please always put them in right order(according to their dependency relationship).
+So, in general, please always put them in right order (according to their dependency relationship).
 
-# No circular dependency between libs
-If A depends on B, then B shouldn't depends on A.  This rule is strict. Don't ask for an exception.
 
 # Don't call target\_link\_libraries on static libraries
 You could do it, but please don't.
 
-As we said before, library order matters. If you explicitly lists all the libs in one line, if some libs were in wrong position, it's easy to fix. It's a trivial problem.
+As we said before, library order matters. If you explicitly list all the libs in one line, and if some libs were in wrong position, it's easy to fix. 
 
 However, if any static lib was built with target\_link\_libraries,
 - First you should know ,there is no link step for a static lib
-- Second, once you hit the ordering problem, it would be harder to fix. Because many of the deps were implicit.
+- Second, once you hit the ordering problem, it would be harder to fix. Because many of the deps were implicit, and their position would be out of our control.
 
 # Every linux program(and shared lib) should link to libpthread and libatomic
-In Linux world, there are two set of pthread symbols. A fake one in the standard c libary, and a real one in pthread.so. If the real one is not loaded while the process was start up, then the process shouldn't use mulitple threading because all the synchronization functions are dummy.
+In Linux world, there are two set of pthread symbols. A fake one in the standard c library, and a real one in pthread.so. If the real one is not loaded while the process was starting up, then the process shouldn't use multiple threading because the core part was missing.
 
 So, We append "Threads::Threads" to the lib list of every shared lib(*.so,*.dll) and exe target. It's easy to get missed. If it happened, the behavior is undefined.
 
-However, even you told compiler to link with pthread, some times it doesn't listen to you. It may ignore your order, mess your life. see [https://github.com/protocolbuffers/protobuf/issues/5923](https://github.com/protocolbuffers/protobuf/issues/5923). So, do the double check. When the build is done, please manually check the result binary if pthread is there. (Run "ldd" command and grep pthread).
-
 Another related thing is: if std::atomic was in use, please also add the atomic lib there. Because some uses of std::atomic require linking to libatomic. see [https://gcc.gnu.org/onlinedocs/libstdc++/manual/using_concurrency.html](https://gcc.gnu.org/onlinedocs/libstdc++/manual/using_concurrency.html)
 
-# Don't use the "-pthread" flags directly. 
+NOTE: However, in rare cases, even you told linker to link the program with pthread, sometimes it doesn't listen to you. It may ignore your order, cause issues. see [https://github.com/protocolbuffers/protobuf/issues/5923](https://github.com/protocolbuffers/protobuf/issues/5923). 
+
+# Don't use the "-pthread" flag directly. 
 Because:
 1. It doesn't work with nvcc(the CUDA compiler)
 2. Not portable. 
 
-Don't bother to add this flag to your compile time flags. On Linux, it's useless. On some very old unix-like system, it may be helpful, but we don't care.
+Don't bother to add this flag to your compile time flags. On Linux, it's useless. On some very old unix-like system, it may be helpful, but we only support Ubuntu 16.04.
 
 Use "Threads::Threads" for linking. Use nothing for compiling.
 
@@ -82,7 +70,7 @@ Use the first one, because the second one is deprecated. Don't use ["find\_packa
 - CUDA\_INCLUDE\_DIRS
 - CUDA\_LIBRARIES
 
-
+So, be careful on this when you copy code from another project to ours, the changes may not work.
 
 
 
