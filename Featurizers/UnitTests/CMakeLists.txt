@@ -27,12 +27,15 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(libFeaturizers STATIC
     ../SampleAdd.h
     ../SampleAdd.cpp
+    ../DateTimeFeaturizer.h
+    ../DateTimeFeaturizer.cpp
 )
 
 enable_testing()
 
 foreach(_test_name IN ITEMS
     SampleAdd_UnitTest
+    DateTimeFeaturizer_UnitTests
 )
     add_executable(${_test_name} ${_test_name}.cpp)
 
