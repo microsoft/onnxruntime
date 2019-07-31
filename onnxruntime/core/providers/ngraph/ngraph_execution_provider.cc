@@ -182,6 +182,36 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
       return true;
     }
+  } else if (optype == "Gather") {
+    // disable Gather for non-floating point types
+    bool is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
+    is_float = is_float || node->InputDefs()[0]->Type()->find("double") != std::string::npos;
+    return !is_float;
+  } else if (optype == "Split") {
+    const auto& attributes = node->GetAttributes();
+    const auto split_attr = attributes.find("split");
+
+    if (split_attr != attributes.end()) {
+      // split implementation contains a bug that doesn't throw for incorrect split values
+      // disabling temporarily until it's fixed in the next release of nGraph
+      const auto splits = split_attr->second.ints();
+      return std::any_of(std::begin(splits), std::end(splits),
+        [](const auto split) { return split <= 0; });
+    }
+  } else if (optype == "QLinearMatMul") {
+    const auto& a_zero_point = node->InputDefs()[2];
+    const auto& b_zero_point = node->InputDefs()[5];
+    const auto& y_zero_point = node->InputDefs()[7];
+
+    bool non_const_zero_point = false;
+
+    // check if any of the zero points is NOT in the initializers list
+    non_const_zero_point |= initializers.find(a_zero_point->Name()) == initializers.end();
+    non_const_zero_point |= initializers.find(b_zero_point->Name()) == initializers.end();
+    non_const_zero_point |= initializers.find(y_zero_point->Name()) == initializers.end();
+
+    // QLinearMatMul is not supported if any of the zero points is a dynamic input
+    return non_const_zero_point;
   }
 
   //Op doesn't fall into known any of unsupported modes.
@@ -292,7 +322,7 @@ static std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int 
   std::map<std::string, std::set<std::string>> ng_supported_ops;
   ng_supported_ops.emplace(kOnnxDomain, ngraph::onnx_import::get_supported_operators(onnx_opset, kOnnxDomain));
 
-  const std::set<std::string> ng_disabled_ops = {};  //Place-holder for ops not supported.
+  const std::set<std::string> ng_disabled_ops = {"LSTM"};  //Place-holder for ops not supported.
 
   for (const auto& disabled_op : ng_disabled_ops) {
     ng_supported_ops.at(kOnnxDomain).erase(disabled_op);
