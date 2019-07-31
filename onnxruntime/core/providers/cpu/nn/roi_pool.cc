@@ -54,8 +54,8 @@ Status RoiPool<float>::Compute(OpKernelContext* context) const {
       for (int ph = 0; ph < pooled_height_; ++ph) {
         for (int pw = 0; pw < pooled_width_; ++pw) {
           // Compute pooling region for this output unit:
-          //  start (included) = floor(ph * roi_height / pooled_height_)
-          //  end (excluded) = ceil((ph + 1) * roi_height / pooled_height_)
+          //  start (included) = (ph * roi_height) / pooled_height_
+          //  end (excluded) = ((ph + 1) * roi_height + pooled_height_ - 1) / pooled_height_
           int hstart = (ph * roi_height) / static_cast<int>(pooled_height_);
           int wstart = (pw * roi_width) / static_cast<int>(pooled_width_);
           int hend = ((ph + 1) * roi_height + static_cast<int>(pooled_height_) - 1) / static_cast<int>(pooled_height_);
