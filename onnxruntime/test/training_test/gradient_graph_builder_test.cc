@@ -3,8 +3,13 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/gradient_op_test_utils.h"
-// #include "test/providers/gradient_checker.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "test/training/runner/training_runner.h"
+
+#ifdef USE_CUDA
+#include "bert_toy_fetches.h"
+#include "core/providers/cuda/cuda_execution_provider.h"
+#endif
 
 using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
@@ -45,8 +50,9 @@ static void CreateMLValue(const AllocatorPtr& alloc,
                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 }
 
-static std::string BuildBackPropGraph(const std::string& forward_model_file, const LossFunctionInfo& loss_func_info) {
-  const std::string backward_model_file = BACKWARD_MODEL_PATH;
+static std::string BuildBackPropGraph(const TrainingRunner::Parameters& params) {
+  const std::string forward_model_file = params.model_path_;
+  const std::string backward_model_file = params.model_with_training_graph_path_;
 
   std::unique_ptr<Environment> env;
   EXPECT_TRUE(Environment::Create(env).IsOK());
@@ -58,9 +64,14 @@ static std::string BuildBackPropGraph(const std::string& forward_model_file, con
 
   EXPECT_TRUE(training_session.Load(forward_model_file).IsOK());
 
-  auto model_inputs = training_session.GetModelInputNames();
-  std::cout << "Model input names = [" << std::endl;
-  for (auto& n : model_inputs) {
+  std::unordered_set<std::string> weights_to_train =
+      training_session.GetTrainableModelInitializers(params.immutable_weigths_);
+  for (const auto& not_to_train : params.weights_not_to_train_) {
+    weights_to_train.erase(not_to_train);
+  }
+
+  std::cout << "Model weights = [" << std::endl;
+  for (auto& n : weights_to_train) {
     std::cout << TAB << n << std::endl;
   }
   std::cout << "]" << std::endl;
@@ -72,9 +83,8 @@ static std::string BuildBackPropGraph(const std::string& forward_model_file, con
   }
   std::cout << "]" << std::endl;
 
-  EXPECT_TRUE(training_session.BuildLossFunction(loss_func_info).IsOK());
-  EXPECT_TRUE(training_session.BuildGradientGraph(model_inputs, loss_func_info.loss_name).IsOK());
-
+  EXPECT_TRUE(training_session.BuildLossFunction(params.loss_func_info_).IsOK());
+  EXPECT_TRUE(training_session.BuildGradientGraph(weights_to_train, params.loss_func_info_.loss_name).IsOK());
   EXPECT_TRUE(training_session.Save(backward_model_file,
                                     TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS)
                   .IsOK());
@@ -83,7 +93,7 @@ static std::string BuildBackPropGraph(const std::string& forward_model_file, con
 }
 
 static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
-    SessionOptions& so, const std::string& backprop_model_file) {
+    const SessionOptions& so, const std::string& backprop_model_file) {
   std::unique_ptr<Environment> env;
   EXPECT_TRUE(Environment::Create(env).IsOK());
 
@@ -128,10 +138,12 @@ static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
 }
 
 TEST(GradientGraphBuilderTest, BuildGradientGraphTest) {
-  const auto loss_func_info = LossFunctionInfo(
-      OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+  TrainingRunner::Parameters params;
+  params.model_path_ = ORIGINAL_MODEL_PATH;
+  params.model_with_training_graph_path_ = BACKWARD_MODEL_PATH;
+  params.loss_func_info_ = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
 
-  const std::string& backprop_model_file = BuildBackPropGraph(ORIGINAL_MODEL_PATH, loss_func_info);
+  const std::string& backprop_model_file = BuildBackPropGraph(params);
 
   std::shared_ptr<Model> pModel;
   EXPECT_TRUE(Model::Load(backprop_model_file, pModel).IsOK());
@@ -168,10 +180,13 @@ TEST(GradientGraphBuilderTest, BuildGradientGraphTest) {
 }
 
 TEST(GradientGraphBuilderTest, RunTrainingSessionTest_Basic) {
-  const auto loss_func_info = LossFunctionInfo(
-      OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+  TrainingRunner::Parameters params;
+  params.model_path_ = ORIGINAL_MODEL_PATH;
+  params.model_with_training_graph_path_ = BACKWARD_MODEL_PATH;
 
-  const std::string& backprop_model_file = BuildBackPropGraph(ORIGINAL_MODEL_PATH, loss_func_info);
+  params.loss_func_info_ = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+
+  const std::string& backprop_model_file = BuildBackPropGraph(params);
 
   SessionOptions so;
   RunTrainingSessionWithChecks(so, backprop_model_file);
@@ -186,10 +201,11 @@ TEST(GradientGraphBuilderTest, RunTrainingSessionTest_WithLogging) {
   EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kWARNING, DataType::USER)) << "WARNING level logging enabled.";
   EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kINFO, DataType::USER)) << "INFO level logging enabled.";
 
-  const auto loss_func_info = LossFunctionInfo(
-      OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
-
-  const std::string& backprop_model_file = BuildBackPropGraph(ORIGINAL_MODEL_PATH, loss_func_info);
+  TrainingRunner::Parameters params;
+  params.model_path_ = ORIGINAL_MODEL_PATH;
+  params.model_with_training_graph_path_ = BACKWARD_MODEL_PATH;
+  params.loss_func_info_ = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+  const std::string& backprop_model_file = BuildBackPropGraph(params);
 
   SessionOptions so;
   so.session_logid = "training_session_with_logging";
@@ -209,10 +225,13 @@ TEST(GradientGraphBuilderTest, RunTrainingSessionTest_WithLogging) {
 }
 
 TEST(GradientGraphBuilderTest, RunTrainingSessionTest_WithProfiler) {
-  const auto loss_func_info = LossFunctionInfo(
-      OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+  TrainingRunner::Parameters params;
+  params.model_path_ = ORIGINAL_MODEL_PATH;
+  params.model_with_training_graph_path_ = BACKWARD_MODEL_PATH;
 
-  const std::string& backprop_model_file = BuildBackPropGraph(ORIGINAL_MODEL_PATH, loss_func_info);
+  params.loss_func_info_ = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+
+  const std::string& backprop_model_file = BuildBackPropGraph(params);
 
   SessionOptions so;
   so.enable_profiling = true;
@@ -266,5 +285,212 @@ TEST(GradientGraphBuilderTest, RunTrainingSessionTest_WithProfiler) {
   }
   ASSERT_TRUE(count > 1);
 }
+
+#ifdef USE_CUDA
+static void RunBertTrainingWithChecks(
+    const SessionOptions& so,
+    const std::string& backprop_model_file) {
+  std::unique_ptr<Environment> env;
+  EXPECT_TRUE(Environment::Create(env).IsOK());
+
+  const auto& log_manager = so.session_log_verbosity_level > 0 ? &DefaultLoggingManager() : nullptr;
+
+  std::unique_ptr<TrainingSession> training_session = std::make_unique<TrainingSession>(so, log_manager);
+
+  EXPECT_TRUE(training_session->Load(backprop_model_file).IsOK());
+
+  std::pair<common::Status, const ModelMetadata*> res = training_session->GetModelMetadata();
+  EXPECT_TRUE(res.first.IsOK());
+  ASSERT_TRUE(res.second != nullptr);
+  auto model_metadata = res.second;
+  std::cout << "Loaded " << model_metadata->graph_name << std::endl;
+
+  CUDAExecutionProviderInfo xp_info;
+  ASSERT_TRUE(training_session->RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)).IsOK());
+
+  ASSERT_TRUE(training_session->Initialize().IsOK());
+
+  RunOptions run_options;
+  run_options.run_log_verbosity_level = so.session_log_verbosity_level;
+  run_options.run_tag = so.session_logid;
+
+  // Creating feeds
+  int batch_size = 13;
+  int max_seq_len_in_batch = 7;
+  std::vector<std::string> feed_names = {
+      "input_ids",
+      "token_type_ids",
+      "input_mask",
+      "masked_lm_ids",
+      "next_sentence_labels",
+      "masked_lm_positions",
+      "masked_lm_weights",
+  };
+  std::vector<TensorShape> tensor_shapes = {
+      {batch_size, max_seq_len_in_batch},
+      {batch_size, max_seq_len_in_batch},
+      {batch_size, max_seq_len_in_batch},
+      {batch_size, max_seq_len_in_batch},
+      {batch_size},
+      {batch_size, max_seq_len_in_batch},
+      {batch_size, max_seq_len_in_batch}};
+
+  std::vector<std::vector<int64_t>> tensor_values = {
+      /*input_ids*/
+      {49, 97, 53, 5, 33, 65, 62,
+       51, 38, 61, 45, 74, 27, 64,
+       17, 36, 17, 96, 12, 79, 32,
+       68, 90, 77, 18, 39, 12, 93,
+       9, 87, 42, 60, 71, 12, 45,
+       55, 40, 78, 81, 26, 70, 61,
+       56, 66, 33, 7, 70, 1, 11,
+       92, 51, 90, 85, 80, 0, 78,
+       63, 42, 31, 93, 41, 90, 8,
+       24, 72, 28, 30, 18, 69, 57,
+       11, 10, 40, 65, 62, 13, 38,
+       70, 37, 90, 15, 70, 42, 69,
+       26, 77, 70, 75, 36, 56, 11},
+      /*token_type_ids*/
+      {12, 13, 1, 8, 15, 12, 9,
+       15, 11, 6, 4, 9, 4, 3,
+       8, 4, 9, 3, 2, 10, 15,
+       3, 11, 13, 10, 6, 15, 14,
+       8, 1, 0, 2, 12, 0, 15,
+       10, 7, 10, 2, 6, 7, 7,
+       4, 14, 2, 2, 10, 15, 3,
+       9, 9, 3, 10, 6, 9, 14,
+       2, 12, 10, 7, 9, 5, 6,
+       5, 1, 8, 15, 2, 2, 4,
+       4, 1, 2, 12, 8, 7, 6,
+       13, 8, 14, 15, 11, 2, 10,
+       3, 15, 10, 6, 7, 0, 8},
+      /*input_mask*/
+      {1, 1, 0, 1, 1, 1, 1,
+       1, 1, 0, 0, 1, 0, 0,
+       1, 0, 1, 0, 0, 1, 1,
+       0, 1, 1, 1, 0, 1, 1,
+       1, 0, 0, 0, 1, 0, 1,
+       1, 0, 1, 0, 0, 0, 0,
+       0, 1, 0, 0, 1, 1, 0,
+       1, 1, 0, 1, 0, 1, 1,
+       0, 1, 1, 0, 1, 0, 0,
+       0, 0, 1, 1, 0, 0, 0,
+       0, 0, 0, 1, 1, 0, 0,
+       1, 1, 1, 1, 1, 0, 1,
+       0, 1, 1, 0, 0, 0, 1},
+      /*masked_lm_ids*/
+      {1, 1, 0, 1, 2, 1, 1,
+       1, 1, 1, 2, 0, 2, 0,
+       1, 0, 0, 2, 1, 2, 2,
+       2, 0, 1, 0, 2, 0, 2,
+       1, 1, 2, 0, 1, 1, 1,
+       2, 2, 0, 2, 1, 1, 2,
+       1, 0, 2, 0, 0, 2, 1,
+       2, 2, 2, 0, 2, 1, 1,
+       0, 2, 1, 2, 0, 0, 2,
+       0, 0, 0, 2, 1, 0, 0,
+       1, 2, 1, 0, 1, 2, 1,
+       2, 0, 2, 1, 2, 0, 2,
+       2, 2, 1, 1, 0, 2, 1},
+      /*next_sentence_labels*/
+      {1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0},
+      /*masked_lm_positions*/
+      {0, 1, 2, 3, 4, 5, 6,
+       0, 1, 2, 3, 4, 5, 6,
+       0, 1, 2, 3, 4, 5, 6,
+       0, 1, 2, 3, 4, 5, 6,
+       0, 1, 2, 3, 4, 5, 6,
+       0, 1, 2, 3, 4, 5, 6,
+       0, 1, 2, 3, 4, 5, 6,
+       0, 1, 2, 3, 4, 5, 6,
+       0, 1, 2, 3, 4, 5, 6,
+       0, 1, 2, 3, 4, 5, 6,
+       0, 1, 2, 3, 4, 5, 6,
+       0, 1, 2, 3, 4, 5, 6,
+       0, 1, 2, 3, 4, 5, 6}};
+  std::vector<float> masked_lm_weights(13 * 7, 1.0f);
+
+  std::vector<OrtValue> feeds(feed_names.size());
+  for (size_t i = 0; i < 6; ++i) {
+    CreateMLValue(GetAllocator(), tensor_shapes[i].GetDims(), tensor_values[i], &feeds[i]);
+  }
+  CreateMLValue(GetAllocator(), tensor_shapes[6].GetDims(), masked_lm_weights, &feeds[6]);
+
+  auto output_names_include_gradients = training_session->GetModelOutputNames();
+  std::vector<std::string> fetch_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
+
+  std::vector<OrtValue> fetches;
+
+  EXPECT_TRUE(training_session->Run(run_options, feed_names, feeds, fetch_names, &fetches).IsOK());
+
+  for (size_t i = 0; i < fetch_names.size(); ++i) {
+    if (!fetches[i].IsAllocated() || !!fetches[i].IsTensor())
+      continue;
+
+    const Tensor& tensor = fetches[i].Get<Tensor>();
+    if (DataTypeImpl::GetType<float>() != tensor.DataType()) {
+      continue;
+    }
+
+    const std::string& name = fetch_names[i];
+    if (BERT_TOY_FETCHES.find(name) == BERT_TOY_FETCHES.end()) {
+      continue;
+    }
+
+    auto gradient_ref = BERT_TOY_FETCHES.at(name);
+    EXPECT_TRUE(tensor.Shape().Size() == gradient_ref.size());
+
+    float max_diff = 0;
+    float max_percent_diff = 0;
+    const float* data = tensor.template Data<float>();
+    for (size_t idx = 0; idx < gradient_ref.size(); ++idx) {
+      float diff = std::fabs(static_cast<float>(gradient_ref[idx]) - data[idx]);
+      max_diff = std::fmax(max_diff, diff);
+      max_percent_diff = std::fmax(max_percent_diff, diff / data[idx]);
+    }
+    EXPECT_TRUE(max_diff < 1e-5) << name << " is incorrect: max_diff is " << max_diff;
+    if (max_diff > 1e-10) {
+      EXPECT_TRUE(max_percent_diff < 0.01f) << name << " is incorrect: max_percent_diff is "
+                                            << max_percent_diff;
+    }
+  }
+}
+#endif
+TEST(GradientGraphBuilderTest, RunBertToyTraining) {
+  TrainingRunner::Parameters params;
+  params.model_path_ = "testdata/bert_toy_optimized.onnx";
+  params.model_with_training_graph_path_ = "testdata/bert_toy_optimized_bw.onnx";
+  params.loss_func_info_ = LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
+                                            "total_loss",
+                                            {/*prediction_masked_lm*/ "prediction_scores",
+                                             /*prediction_next_sentence*/ "seq_relationship_score",
+                                             /*masked_lm_positions*/ "masked_lm_positions",
+                                             /*masked_lm_ids*/ "masked_lm_ids",
+                                             /*masked_lm_weights*/ "masked_lm_weights",
+                                             /*next_sentence_labels*/ "next_sentence_labels",
+                                             /*mlm_loss*/ "mlm_loss",
+                                             /*nsp_loss*/ "nsp_loss",
+                                             /*batch_size*/ std::to_string(13),
+                                             /*max_sequence_len*/ std::to_string(7),
+                                             /*max_predictions_per_sequence*/ std::to_string(7),
+                                             /*summary_loss*/ "summary"});
+  params.weights_not_to_train_ = {
+      "position_01",            // Slice's dat input
+      "op_min_ends_expand_10",  //op_min_ends_expand_10
+  };
+  params.immutable_weigths_ = {
+      {"Div", {{1, 8.0f}, {1, 1.4142135381698608f}}},
+      {"Add", {{1, 1.0f}, {1, 9.999999960041972e-13f}}},
+      {"Mul", {{1, 0.5f}, {1, -10000.0f}}},
+      {"Sub", {{0, 1.0f}}}};
+
+  BuildBackPropGraph(params);
+
+#ifdef USE_CUDA
+  SessionOptions so;
+  RunBertTrainingWithChecks(so, params.model_with_training_graph_path_);
+#endif
+}
+
 }  // namespace test
 }  // namespace onnxruntime
