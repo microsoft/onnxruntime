@@ -259,31 +259,6 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
       }
     }
 
-    //GEMM must have at least 2 dimensions and all input dimensions must match
-    /*
-    if (node->OpType() == "Gemm") {
-      int x_dim = -1;
-      int y_dim = -1;
-      for (size_t i = 0; i < node_inputs.size(); i++) {
-        if (node_inputs[i]->Shape() != nullptr) {
-          if (node_inputs[i]->Shape()->dim_size() < 2) {
-            throw "Gemm input must have at least 2 dimensions";
-          }
-          if(x_dim == -1) {
-            x_dim = node_inputs[i]->Shape()->dim(0).dim_value();
-            y_dim = node_inputs[i]->Shape()->dim(1).dim_value();
-          }
-          else {
-            if(x_dim != node_inputs[i]->Shape()->dim(0).dim_value() ||
-               y_dim != node_inputs[i]->Shape()->dim(1).dim_value()) {
-                throw "Gemm inputs must have the same dimensions";
-            }
-          }
-        }
-      }
-    }
-    */
-
     //Reshape should have shape as initializer
     if (node->OpType() == "Reshape") {
       int input_count = GetInputCount(node, initializers);
@@ -357,13 +332,13 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
     }
 
     //Dropout , Identity and Concat can't have graph inputs
-    if (node->OpType() == "Dropout" || node->OpType() == "Identity" || node->OpType() == "Concat") {
+    if (node->OpType() == "Dropout" || node->OpType() == "Identity" || node->OpType() == "Concat" || node->OpType() == "Gemm") {
       auto graph_inputs = graph_viewer.GetInputs();
       for (const auto& input : node->InputDefs()) {
         auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
         if (it != graph_inputs.end()) {
           {
-            throw "Dropout, Identity and Concat can't have graph inputs";
+            throw "Dropout, Identity, Concat, and Gemm can't have graph inputs";
           }
         }
       }
