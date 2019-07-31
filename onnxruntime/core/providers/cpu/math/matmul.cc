@@ -62,14 +62,24 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   Tensor* Y = ctx->Output(0, helper.OutputShape());
 
   size_t max_len = helper.OutputOffsets().size();
-  for (size_t i = 0; i < max_len; i++) {
+  if (right_X->Shape().NumDimensions() == 2) {
     math::MatMul<T>(
-        static_cast<int>(helper.M()),
+        static_cast<int>(helper.M() * max_len),
         static_cast<int>(helper.N()),
         static_cast<int>(helper.K()),
-        left_X->template Data<T>() + helper.LeftOffsets()[i],
-        right_X->template Data<T>() + helper.RightOffsets()[i],
-        Y->template MutableData<T>() + helper.OutputOffsets()[i]);
+        left_X->template Data<T>(),
+        right_X->template Data<T>(),
+        Y->template MutableData<T>());
+  } else {
+    for (size_t i = 0; i < max_len; i++) {
+      math::MatMul<T>(
+          static_cast<int>(helper.M()),
+          static_cast<int>(helper.N()),
+          static_cast<int>(helper.K()),
+          left_X->template Data<T>() + helper.LeftOffsets()[i],
+          right_X->template Data<T>() + helper.RightOffsets()[i],
+          Y->template MutableData<T>() + helper.OutputOffsets()[i]);
+    }
   }
 
   return Status::OK();

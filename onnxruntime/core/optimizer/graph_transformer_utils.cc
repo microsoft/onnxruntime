@@ -13,6 +13,7 @@
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/multi_matmul_fusion.h"
 #include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/shape_to_initializer.h"
@@ -109,6 +110,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 #ifndef DISABLE_CONTRIB_OPS
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(l2_execution_providers));
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(l2_execution_providers));
+      transformers.emplace_back(std::make_unique<MultiMatMulFusion>(l2_execution_providers));
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(l2_execution_providers));
 #endif
     } break;

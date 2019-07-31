@@ -527,7 +527,7 @@ common::Status InferenceSession::Initialize() {
 
     // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
     ORT_RETURN_IF_ERROR(graph.Resolve());
-
+    Model::Save( *model_, "opt.onnx" );
     ORT_RETURN_IF_ERROR(session_initializer.CreatePlan(nullptr, nullptr, session_options_.enable_sequential_execution));
     ORT_RETURN_IF_ERROR(session_initializer.InitializeAndSave(nullptr));
 
