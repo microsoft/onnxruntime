@@ -7,15 +7,23 @@ namespace server {
 struct MetricRegistry {
   // returns the global metric registry instance
   // use this handle to get the instance to increment/count requests
-  static MetricRegistry& get() {
+  static MetricRegistry& Get() {
       static MetricRegistry metricRegistry;
       return metricRegistry;
   }
 
   // Store quantile buckets 
-  static prometheus::Histogram::BucketBoundaries buckets () {
+  static prometheus::Histogram::BucketBoundaries TimeBuckets () {
     // Anything greater than 10s we should bucket into +inf
     return {0, 50, 100, 250, 500, 1000, 1000, 2500, 5000, 10000};
+  }
+
+  static prometheus::Histogram::BucketBoundaries ByteBuckets() {
+    // get megabyte boundaries?
+    return {
+      0, 500000, 1000000, 2000000, 3000000, 4000000,
+      5000000, 6000000, 7000000, 8000000, 9000000, 10000000
+    };
   }
 
   // The internal prometheus registry
@@ -34,6 +42,10 @@ struct MetricRegistry {
   std::shared_ptr<prometheus::Family<prometheus::Counter>*> totalHTTPErrors;
   // Total number of erroneous gRPC requests, including error code
   std::shared_ptr<prometheus::Family<prometheus::Counter>*> totalGRPCErrors;
+  // Request Sizes of HTTP Requests
+  std::shared_ptr<prometheus::Family<prometheus::Histogram>*> httpRequestSize;
+  // Request Sizes of gRPC Requests
+  std::shared_ptr<prometheus::Family<prometheus::Histogram>*> grpcRequestSize;
 
 private:
   MetricRegistry() {
@@ -77,6 +89,21 @@ private:
         Help("How many bad requests or errors the server has handled over gRPC").
         Register(registry)
     );
+
+    httpRequestSize = std::make_shared<prometheus::Family<prometheus::Histogram>*>(
+      &prometheus::BuildHistogram().
+        Name("ortserver_http_request_size_bytes").
+        Help("File sizes of http requests in bytes").
+        Register(registry)
+    );
+
+    grpcRequestSize = std::make_shared<prometheus::Family<prometheus::Histogram>*>(
+      &prometheus::BuildHistogram().
+        Name("ortserver_grpc_request_size_bytes").
+        Help("File sizes of grpc requests in bytes").
+        Register(registry)
+    );
+
   }
 
 

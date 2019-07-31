@@ -108,7 +108,7 @@ int main(int argc, char* argv[]) {
 
   app.RegisterGet("/metrics", [&](const auto& name, const auto& version, const auto& aciton, auto& context) -> void {
     const auto metricData = prometheus::TextSerializer().Serialize(
-        onnxruntime::server::MetricRegistry::get().registry.Collect()); 
+        onnxruntime::server::MetricRegistry::Get().registry.Collect()); 
     context.response.body() = metricData;
   });
 

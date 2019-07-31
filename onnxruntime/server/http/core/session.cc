@@ -100,7 +100,7 @@ void HttpSession::HandleRequest(http::request<Body, http::basic_fields<Allocator
   const auto path = std::string(context.request.target().to_string());
   // Record how many total requests have been processed by this server
   // this can be used to get QPS metrics
-  (*MetricRegistry::get().totalHTTPRequests)->Add({{"path", path}}).Increment();
+  (*MetricRegistry::Get().totalHTTPRequests)->Add({{"path", path}}).Increment();
 
   // Special handle the liveness probe endpoint for orchestration systems like Kubernetes.
   if (context.request.method() == http::verb::get && path == "/") {
@@ -136,8 +136,12 @@ http::status HttpSession::ExecuteUserFunction(HttpContext& context) {
   auto status = routes_.ParseUrl(context.request.method(), path, model_name, model_version, action, func);
 
   if (status != http::status::ok) {
-    (*MetricRegistry::get().totalHTTPErrors)->Add(
-      {{"path", path}, {"errorCode", std::to_string(static_cast<unsigned>(status))}}).Increment();
+    (*MetricRegistry::Get().totalHTTPErrors)->
+      Add({
+        {"path", path},
+        {"errorCode", std::to_string(static_cast<unsigned>(status))}
+      }).
+      Increment();
     context.error_code = status;
     context.error_message = std::string(http::obsolete_reason(status)) +
                             ". For HTTP method: " +
