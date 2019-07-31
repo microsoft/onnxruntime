@@ -7,7 +7,6 @@
 
 #include "mkldnn_execution_provider.h"
 #include "core/framework/allocator.h"
-#include "core/framework/memcpy.h"
 #include "core/framework/kernel_registry.h"
 #include "mkldnn_fwd.h"
 #include "core/framework/compute_capability.h"
@@ -17,26 +16,6 @@ namespace onnxruntime {
 
 constexpr const char* MKLDNN = "MklDnn";
 constexpr const char* MKLDNN_CPU = "MklDnnCpu";
-
-namespace mkl_dnn {
-
-ONNX_OPERATOR_KERNEL_EX(
-    MemcpyFromHost,
-    kOnnxDomain,
-    1,
-    kMklDnnExecutionProvider,
-    KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(0).TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
-    Memcpy);
-
-ONNX_OPERATOR_KERNEL_EX(
-    MemcpyToHost,
-    kOnnxDomain,
-    1,
-    kMklDnnExecutionProvider,
-    KernelDefBuilder().OutputMemoryType<OrtMemTypeCPUOutput>(0).TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
-    Memcpy);
-
-}  // namespace mkl_dnn
 
 MKLDNNExecutionProvider::MKLDNNExecutionProvider(const MKLDNNExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kMklDnnExecutionProvider} {
@@ -65,8 +44,6 @@ MKLDNNExecutionProvider::~MKLDNNExecutionProvider() {
 namespace mkl_dnn {
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, Conv);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 7, Gemm);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 6, Relu);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 6, Sum);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 7, BatchNormalization);
@@ -81,8 +58,6 @@ void RegisterMKLDNNKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, Conv)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 7, Gemm)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 6, Relu)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 6, Sum)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 7, BatchNormalization)>,
