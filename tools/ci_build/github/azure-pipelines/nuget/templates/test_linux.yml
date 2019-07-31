@@ -1,10 +1,9 @@
 parameters:
   AgentPool: 'Linux-CPU'
-  JobName: 'NuGet_Test_Linux'
   TestGPU: 'false'
 
 jobs:
-- job: ${{ parameters.JobName }}
+- job: NuGet_Test_Linux
   pool: ${{ parameters.AgentPool }}
   dependsOn:
   - NuGet_Packaging
