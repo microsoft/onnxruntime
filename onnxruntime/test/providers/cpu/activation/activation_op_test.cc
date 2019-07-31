@@ -20,7 +20,6 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
 
   std::vector<int64_t> dims{(int64_t)input_vals.size()};
 
-
   std::vector<float> expected_vals;
   for (const auto& iv : input_vals)
     expected_vals.push_back(expected_func(iv));
@@ -108,10 +107,11 @@ TEST(ActivationOpTest, LeakyRelu) {
 
 TEST(ActivationOpTest, ThresholdedRelu) {
   float alpha = 0.1f;
-  TestUnaryElementwiseOp("ThresholdedRelu",
-                         input_vals,
-                         [alpha](float x) { return (x >= alpha) ? x : 0; },
-                         {{"alpha", alpha}}, true, 10);
+  TestUnaryElementwiseOp(
+      "ThresholdedRelu",
+      input_vals,
+      [alpha](float x) { return (x >= alpha) ? x : 0; },
+      {{"alpha", alpha}}, true, 10);
 }
 
 TEST(ActivationOpTest, Selu) {
@@ -207,6 +207,13 @@ TEST(ActivationOpTest, Softsign) {
   TestUnaryElementwiseOp("Softsign",
                          no_inf_input_vals,
                          [](float x) { return x / (1 + std::abs(x)); }, {}, false);  // Disable TensorRT because result mismatches
+}
+
+TEST(ActivationOpTest, Gelu) {
+  TestUnaryElementwiseOp(
+      "Gelu",
+      input_vals,
+      [](float x) { return x * 0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))); }, {}, false, 9);
 }
 
 }  // namespace test

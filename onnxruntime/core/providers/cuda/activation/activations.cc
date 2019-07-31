@@ -52,6 +52,7 @@ UNARY_ACTIVATION_OP_HFD(Softplus, 1);
 UNARY_ACTIVATION_OP_HFD(Softsign, 1);
 UNARY_ACTIVATION_OP_HFD(Tanh, 6);
 UNARY_ACTIVATION_OP_HFD(ThresholdedRelu, 10);
+UNARY_ACTIVATION_OP_HFD(Gelu, 9);
 
 }  // namespace cuda
 }  // namespace onnxruntime
