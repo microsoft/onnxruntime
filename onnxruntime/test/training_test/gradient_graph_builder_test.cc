@@ -65,7 +65,7 @@ static std::string BuildBackPropGraph(const TrainingRunner::Parameters& params) 
   EXPECT_TRUE(training_session.Load(forward_model_file).IsOK());
 
   std::unordered_set<std::string> weights_to_train =
-      training_session.GetTrainableModelInitializers(params.immutable_weigths_);
+      training_session.GetTrainableModelInitializers(params.immutable_weights_);
   for (const auto& not_to_train : params.weights_not_to_train_) {
     weights_to_train.erase(not_to_train);
   }
@@ -478,7 +478,7 @@ TEST(GradientGraphBuilderTest, RunBertToyTraining) {
       "position_01",            // Slice's dat input
       "op_min_ends_expand_10",  //op_min_ends_expand_10
   };
-  params.immutable_weigths_ = {
+  params.immutable_weights_ = {
       {"Div", {{1, 8.0f}, {1, 1.4142135381698608f}}},
       {"Add", {{1, 1.0f}, {1, 9.999999960041972e-13f}}},
       {"Mul", {{1, 0.5f}, {1, -10000.0f}}},

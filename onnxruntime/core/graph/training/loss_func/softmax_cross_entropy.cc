@@ -23,7 +23,7 @@ GraphAugmenter::GraphDefs SoftmaxCrossEntropy::operator()(
 
   {
     const NodeArg* prediction_arg = graph.GetNodeArg(prediction_name);
-    ORT_ENFORCE(prediction_arg != nullptr, "Predition arg ", prediction_name, " is not found in the graph.");
+    ORT_ENFORCE(prediction_arg != nullptr, "Prediction arg ", prediction_name, " is not found in the graph.");
     TypeProto* label_type_proto = graph_defs.CopyTypeProto(prediction_arg);
 
     new_nodes.emplace_back(NodeDef("SoftmaxCrossEntropy",  // Op
@@ -56,7 +56,7 @@ GraphAugmenter::GraphDefs SparseSoftmaxCrossEntropy::operator()(
 
   {
     const NodeArg* prediction_arg = graph.GetNodeArg(prediction_name);
-    ORT_ENFORCE(prediction_arg != nullptr, "Predition arg ", prediction_name, " is not found in the graph.");
+    ORT_ENFORCE(prediction_arg != nullptr, "Prediction arg ", prediction_name, " is not found in the graph.");
     TypeProto* label_type_proto = GetSparseTypeProto(prediction_arg,
                                                      ONNX_NAMESPACE::TensorProto_DataType_INT64,
                                                      graph_defs);

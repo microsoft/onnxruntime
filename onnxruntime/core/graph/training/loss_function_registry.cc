@@ -20,10 +20,10 @@ GraphAugmenter::GraphDefs LossFunctionUsingOperator::operator()(const Graph& gra
   GraphAugmenter::GraphDefs graph_defs;
   std::vector<NodeDef> node_defs;
 
-  const NodeArg* predition_arg = graph.GetNodeArg(prediction_name);
-  ORT_ENFORCE(predition_arg != nullptr,
-              "Predition arg ", prediction_name, " is not found in the graph. ");
-  TypeProto* label_type_proto = graph_defs.CopyTypeProto(predition_arg);
+  const NodeArg* prediction_arg = graph.GetNodeArg(prediction_name);
+  ORT_ENFORCE(prediction_arg != nullptr,
+              "Prediction arg ", prediction_name, " is not found in the graph. ");
+  TypeProto* label_type_proto = graph_defs.CopyTypeProto(prediction_arg);
 
   node_defs.emplace_back(
       NodeDef(loss_func_info.op_def,  // op_def

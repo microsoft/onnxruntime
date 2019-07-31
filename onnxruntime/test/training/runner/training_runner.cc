@@ -42,8 +42,8 @@ TrainingRunner::TrainingRunner(std::shared_ptr<DataSet> training_data,
       params_(params),
       session_(SESSION_OPTION) {
   ORT_ENFORCE(!params_.model_path_.empty());
-  ORT_ENFORCE((!params_.weights_to_train_.empty() && params_.weights_not_to_train_.empty()) ||
-              (params_.weights_to_train_.empty() && !params_.weights_not_to_train_.empty()));
+  if (!params.weights_to_train_.empty())
+    ORT_ENFORCE(params.weights_not_to_train_.empty());
   ORT_ENFORCE(!params_.model_trained_path_.empty() || !params_.model_trained_with_loss_func_path_.empty());
   ORT_ENFORCE(!params_.model_prediction_name_.empty());
   ORT_ENFORCE(!params_.in_graph_optimizer_name_.empty());
@@ -65,7 +65,7 @@ Status TrainingRunner::Initialize() {
   // Otherwise, generate the list by removing not-to-train ones from all initializers.
   auto weights_to_train = params_.weights_to_train_;
   if (weights_to_train.empty()) {
-    weights_to_train = session_.GetTrainableModelInitializers(params_.immutable_weigths_);
+    weights_to_train = session_.GetTrainableModelInitializers(params_.immutable_weights_);
     for (const auto& not_to_train : params_.weights_not_to_train_) {
       weights_to_train.erase(not_to_train);
     }

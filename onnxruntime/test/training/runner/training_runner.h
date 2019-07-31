@@ -57,10 +57,10 @@ class TrainingRunner {
     std::unordered_set<std::string> weights_to_train_;
 
     // The weights not to train. If not empty, all the initializers not in the vector will be trained.
-    // exclusive with weights_not_to_train_.
+    // exclusive with weights_to_train_.
     std::unordered_set<std::string> weights_not_to_train_;
 
-    TrainingSession::ImmutableWeights immutable_weigths_;
+    TrainingSession::ImmutableWeights immutable_weights_;
 
     MapStringToString input_name_map_;
 

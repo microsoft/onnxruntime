@@ -124,7 +124,6 @@ void setup_training_params(TrainingRunner::Parameters& params) {
                                             "loss",
                                             {params.model_prediction_name_, "labels"});
   params.fetch_names = {"predictions", "loss"};
-  params.weights_not_to_train_ = {""};
 
   // TODO: simplify provider/optimizer configuration. For now it is fixed to used SGD with CPU and Adam with GPU.
   if (params.use_cuda_) {

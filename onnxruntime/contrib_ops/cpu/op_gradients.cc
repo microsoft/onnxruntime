@@ -7,6 +7,7 @@
 #include "core/providers/common.h"
 #include <unsupported/Eigen/SpecialFunctions>
 #include "core/util/math.h"
+#include "core/providers/cpu/math/element_wise_ops.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "gsl/gsl_algorithm"
 #include "gsl/gsl_util"
@@ -33,16 +34,6 @@ std::vector<VectorInt64> InferOutputShapes(OpKernelInfo info) {
   }
   return output_tensor_shapes;
 }
-
-template <typename T>
-auto MakeEigenArrayMap(Tensor& t) { return EigenVectorArrayMap<T>(t.template MutableData<T>(), t.Shape().Size()); }
-template <typename T>
-auto MakeEigenArrayMap(const Tensor& t) { return ConstEigenVectorArrayMap<T>(t.template Data<T>(), t.Shape().Size()); }
-
-template <typename T>
-auto MakeEigenArrayMap(Tensor* t) { return EigenVectorArrayMap<T>(t->template MutableData<T>(), t->Shape().Size()); }
-template <typename T>
-auto MakeEigenArrayMap(const Tensor* t) { return ConstEigenVectorArrayMap<T>(t->template Data<T>(), t->Shape().Size()); }
 
 ONNX_CPU_OPERATOR_KERNEL(
     SinGrad,

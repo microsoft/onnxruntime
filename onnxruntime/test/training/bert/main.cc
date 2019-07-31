@@ -164,7 +164,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
   };
   params.fetch_names = {"total_loss", "mlm_loss", "nsp_loss", "summary"};
 
-  params.immutable_weigths_ = {
+  params.immutable_weights_ = {
       {"Div", {{1, 8.0f}, {1, 1.4142135381698608f}}},
       {"Add", {{1, 1.0f}, {1, 9.999999960041972e-13f}}},
       {"Mul", {{1, 0.5f}, {1, -10000.0f}}},

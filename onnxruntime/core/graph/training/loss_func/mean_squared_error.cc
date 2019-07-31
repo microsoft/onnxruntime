@@ -23,7 +23,7 @@ GraphAugmenter::GraphDefs MeanSquaredError::operator()(const Graph& graph, const
   {
     const NodeArg* prediction_arg = graph.GetNodeArg(prediction_name);
     ORT_ENFORCE(prediction_arg != nullptr,
-                "Predition arg ", prediction_name, " is not found in the graph.");
+                "Prediction arg ", prediction_name, " is not found in the graph.");
     TypeProto* label_type_proto = graph_defs.CopyTypeProto(prediction_arg);
 
     new_nodes.emplace_back(NodeDef("Sub",  // Op
