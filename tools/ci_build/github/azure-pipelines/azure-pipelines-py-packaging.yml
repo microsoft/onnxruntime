@@ -233,7 +233,11 @@ jobs:
         sudo python -m pip install numpy==1.15.0
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
         ./build.sh --config Release --skip_submodule_sync --parallel --use_openmp --build_wheel
-      displayName: 'Command Line Script'
+        echo 'SourceDirectory'
+        sudo find '$(Build.SourcesDirectory)'
+        echo 'BinariesDirectory'
+        sudo find '$(Build.BinariesDirectory)'        
+      displayName: 'Command Line Script' 
       
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
