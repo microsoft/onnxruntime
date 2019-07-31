@@ -165,8 +165,7 @@ jobs:
     # So, all the copy/publish jobs are being run on hosted agent
     # TODO: install the desired azureps on our VMs or use later bugfixed version of AzureFileCopy   
     demands: azureps
-  #condition: and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master'))
-  condition: ${{ parameters.DoEsrp }}
+  condition: and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master'))
   dependsOn:
   - NuGet_Test_Win
   - NuGet_Test_Linux
@@ -176,7 +175,6 @@ jobs:
   - template: ../../templates/set-version-number-variables-step.yml
   - template: upload-binary-sizes-from-nuget-package.yml
     parameters:
-#      nugetArtifactName: 'drop-signed-nuget'
       downloadPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
       gitCommitHash: $(OnnxRuntimeGitCommitHashShort)  
 
@@ -184,12 +182,8 @@ jobs:
     displayName: 'Copy Signed NuGet Package to Blob Store'
     condition: ne(variables['IsReleaseBuild'], 'true') # rlease build has a different package naming scheme
     inputs:
-      #Source: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
       sourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
-      #AzureConnectionType: 'Azure Resource Manager'
       azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
-      #AzureRMSubscription: 'AI Infra Build (00c06639-6ee4-454e-8058-8d8b1703bd87)'
-      #DestinationType: AzureBlob
       destination: azureBlob
       storage: ortpackages
       containerName: ortpackages
