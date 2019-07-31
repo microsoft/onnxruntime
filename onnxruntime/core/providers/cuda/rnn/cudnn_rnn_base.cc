@@ -83,7 +83,9 @@ Status CudnnRnnBase<T>::SetCudnnRnnDesc() {
     reverse_ = true;
   }
 
-  cudnn_dropout_desc_.Set(CudnnHandle());
+  cudnn_dropout_desc_.GetCudnnDropoutStatesSize(CudnnHandle(), state_size_);
+  state_buffer_ = GetScratchBuffer<void>(state_size_);
+  cudnn_dropout_desc_.Set(CudnnHandle(), state_buffer_.get(), state_size_);
   ORT_RETURN_IF_ERROR(rnn_desc_.Set(CudnnHandle(), hidden_size_, num_layers_, cudnn_dropout_desc_,
                                             cudnn_direction, rnn_mode_, CudnnTensor::GetDataType<CudaT>()));
 

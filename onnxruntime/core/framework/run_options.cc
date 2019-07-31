@@ -33,10 +33,12 @@ ORT_API_STATUS_IMPL(OrtRunOptionsGetRunTag, _In_ const OrtRunOptions* options, c
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtRunOptionsSetTerminate, _In_ OrtRunOptions* options, int flag) {
-  if (!(flag == 0 || flag == 1)) {
-    return OrtCreateStatus(ORT_INVALID_ARGUMENT, "Invalid value for flag. Should be either 0 or 1");
-  }
-  options->terminate = flag;
+ORT_API_STATUS_IMPL(OrtRunOptionsEnableTerminate, _Inout_ OrtRunOptions* options) {
+  options->terminate = true;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtRunOptionsDisableTerminate, _Inout_ OrtRunOptions* options) {
+  options->terminate = false;
   return nullptr;
 }
