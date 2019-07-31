@@ -35,7 +35,7 @@ class AllocatorManager {
    * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
    */
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const;
-  AllocatorPtr GetAllocator(const std::string& execution_provider_type, int id, OrtMemType mem_type) const;
+  AllocatorPtr GetAllocator(const std::string& execution_provider_type, int device_id, OrtMemType mem_type) const;
   AllocatorPtr GetAllocator(const OrtDevice& device) const;
 
   /*AllocatorPtr GetAllocator(const OrtAllocatorInfo& allocator_info) const {
