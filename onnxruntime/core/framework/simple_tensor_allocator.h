@@ -22,9 +22,9 @@ class SimpleTensorAllocator : public ITensorAllocator {
   std::unordered_map<int, const ONNX_NAMESPACE::TensorProto*> values_;
 
  public:
-  SimpleTensorAllocator(const ExecutionPlanBase& execution_plan, const ExecutionProviders& exec_providers,
+  SimpleTensorAllocator(const ExecutionPlanBase& execution_plan, const AllocatorManager& allocator_mgr,
                         std::vector<BufferUniquePtr>& weights_buffers)
-      : ITensorAllocator(exec_providers),
+      : ITensorAllocator(allocator_mgr),
         weights_buffers_(weights_buffers),
         seq_plan_(execution_plan) {}
   common::Status FinalizePlan() override { return Status::OK(); }

@@ -15,19 +15,22 @@
 
 namespace onnxruntime {
 class DataTransferManager;
+class AllocatorManager;
 
 class OptimizerExecutionFrame final : public IExecutionFrame {
  public:
   class Info {
    public:
-    Info(const std::vector<const Node*>& nodes, const InitializedTensorSet& initialized_tensor_set);
+    Info(const std::vector<const Node*>& nodes,
+		const InitializedTensorSet& initialized_tensor_set,
+		const AllocatorManager& allocator_mgr);
     ~Info() {
       for (auto& kvp : deleter_for_initialized_tensors_) {
         kvp.second.f(kvp.second.param);
       }
     }
     AllocatorPtr GetAllocator(const OrtAllocatorInfo& info) const {
-      return cpu_execution_provider_->GetAllocator(info.id, info.mem_type);
+      return cpu_execution_provider_->GetAllocator(allocator_mgr_, info.id, info.mem_type);
     }
 
     AllocatorPtr GetAllocator() const {
@@ -57,6 +60,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     const OrtMemType mem_type_{OrtMemTypeDefault};
     AllocatorPtr allocator_ptr_;
     DataTransferManager data_transfer_mgr_;
+    const AllocatorManager& allocator_mgr_;
     // MLValues for optimizer
     OrtValueNameIdxMap ort_value_name_idx_map_;
     std::unordered_map<int, const NodeArg*> ort_value_idx_nodearg_map_;

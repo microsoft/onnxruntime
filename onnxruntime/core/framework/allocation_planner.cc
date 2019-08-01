@@ -104,7 +104,7 @@ class PlannerImpl {
   PlannerImpl(const Node* parent_node, const onnxruntime::GraphViewer& graph_viewer,
               const std::vector<const NodeArg*>& outer_scope_node_args, const ExecutionProviders& providers,
               const KernelRegistryManager& kernel_registry, const OrtValueNameIdxMap& ort_value_name_idx_map,
-              const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
+              const ISequentialPlannerContext& context, SequentialExecutionPlan& plan, const AllocatorManager& allocator_mgr)
       : context_{context},
         plan_{plan},
         parent_node_{parent_node},
@@ -112,7 +112,8 @@ class PlannerImpl {
         outer_scope_node_args_{outer_scope_node_args},
         execution_providers_{providers},
         kernel_registry_{kernel_registry},
-        ort_value_name_idx_map_{ort_value_name_idx_map} {}
+        ort_value_name_idx_map_{ort_value_name_idx_map},
+        allocator_mgr_ (allocator_mgr){}
 
   Status CreatePlan();
 
@@ -124,6 +125,7 @@ class PlannerImpl {
   const onnxruntime::GraphViewer& graph_viewer_;
   const std::vector<const NodeArg*>& outer_scope_node_args_;
   const ExecutionProviders& execution_providers_;
+  const AllocatorManager& allocator_mgr_;
 
   const KernelRegistryManager& kernel_registry_;
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
@@ -398,7 +400,7 @@ class PlannerImpl {
                                pnode->GetExecutionProviderType());
       }
 
-      auto& default_allocator_info = exec_provider->GetAllocator(0, OrtMemTypeDefault)->Info();
+      auto& default_allocator_info = exec_provider->GetAllocator(allocator_mgr_, 0, OrtMemTypeDefault)->Info();
       auto outputs = pnode->OutputDefs();
       auto num_outputs = outputs.size();
 
@@ -414,7 +416,7 @@ class PlannerImpl {
           auto memory_type = p_kernelDef->OutputMemoryType(i);
           plan_.SetLocation(static_cast<size_t>(index), memory_type == OrtMemTypeDefault
                                                             ? default_allocator_info
-                                                            : exec_provider->GetAllocator(0, memory_type)->Info());
+                                                            : exec_provider->GetAllocator(allocator_mgr_, 0, memory_type)->Info());
         }
       }
       // if sync is needed, mark allocation plan as create_fence_if_async=true
@@ -445,8 +447,8 @@ class PlannerImpl {
     ORT_ENFORCE(kernel_create_info != nullptr && kernel_create_info->kernel_def != nullptr);
     if (kernel_create_info->kernel_def->IsInputOnCpu(input_index))
       // weights are not output from any node, so it's OK to put its location on CPU provider
-      return execution_providers_.GetDefaultCpuAllocatorInfo();
-    return p_provider->GetAllocator(0, OrtMemTypeDefault)->Info();
+      return allocator_mgr_.GetDefaultCpuAllocatorInfo();
+    return p_provider->GetAllocator(allocator_mgr_, 0, OrtMemTypeDefault)->Info();
   }
 
   Status GeneratePlanForWeights() {
@@ -474,7 +476,7 @@ class PlannerImpl {
       for (size_t j = 0; j != loc.size(); ++j) {
         if (loc[j] != loc[0]) {
           // set the location to CPU
-          plan_.allocation_plan[i].location = execution_providers_.GetDefaultCpuAllocatorInfo();
+          plan_.allocation_plan[i].location = allocator_mgr_.GetDefaultCpuAllocatorInfo();
           break;
         }
       }
@@ -653,12 +655,13 @@ Status SequentialPlanner::CreatePlan(const Node* parent_node, const onnxruntime:
                                      const ExecutionProviders& providers, const KernelRegistryManager& kernel_registry,
                                      const OrtValueNameIdxMap& ort_value_name_idx_map,
                                      const ISequentialPlannerContext& context,
-                                     std::unique_ptr<SequentialExecutionPlan>& plan) {
+                                     std::unique_ptr<SequentialExecutionPlan>& plan,
+                                     const AllocatorManager& allocator_mgr) {
   // allocate/reset here so we know it's clean
   plan = std::make_unique<SequentialExecutionPlan>();
 
   PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers, kernel_registry,
-                      ort_value_name_idx_map, context, *plan);
+                      ort_value_name_idx_map, context, *plan, allocator_mgr);
 
   return planner.CreatePlan();
 }

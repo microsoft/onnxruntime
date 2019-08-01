@@ -43,9 +43,9 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
   }
 
  public:
-  TensorAllocatorWithMemPattern(const ExecutionPlanBase& execution_plan, const ExecutionProviders& exec_providers,
+  TensorAllocatorWithMemPattern(const ExecutionPlanBase& execution_plan, const AllocatorManager& allocator_mgr,
                                 std::vector<BufferUniquePtr>& weights_buffers)
-      : ITensorAllocator(exec_providers),
+      : ITensorAllocator(allocator_mgr),
         planner_(execution_plan),
         weights_buffers_(weights_buffers),
         seq_plan_(execution_plan) {}

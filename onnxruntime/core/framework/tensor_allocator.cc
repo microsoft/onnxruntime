@@ -7,7 +7,7 @@
 namespace onnxruntime {
 
 AllocatorPtr ITensorAllocator::GetAllocator(const OrtAllocatorInfo& allocator_info) {
-  return exec_providers_.GetAllocator(allocator_info);
+  return allocator_mgr_.GetAllocator(allocator_info.device);
 }
 
 std::unique_ptr<ITensorAllocator> ITensorAllocator::Create(bool enable_mem_pattern,

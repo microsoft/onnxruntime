@@ -18,9 +18,9 @@ inline int MakeKey(int id, OrtMemType mem_type) {
 }
 }  // namespace
 
-AllocatorPtr IExecutionProvider::GetAllocator(const AllocatorManager& allocator_mgr, int device_id, OrtMemType mem_type) const {
-  // TODO: add implementation.
-  return nullptr;
+AllocatorPtr IExecutionProvider::GetAllocator(const AllocatorManager& allocator_mgr, int /*device_id*/, OrtMemType /*mem_type*/) const {
+  // By default returning CPU allocator.
+  allocator_mgr.GetAllocator(OrtDevice());
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>

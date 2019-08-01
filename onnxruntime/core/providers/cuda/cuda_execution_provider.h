@@ -13,6 +13,8 @@
 
 namespace onnxruntime {
 
+class AllocatorManager;
+
 // Information needed to construct CUDA execution providers.
 struct CUDAExecutionProviderInfo {
   int device_id{0};
@@ -24,7 +26,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info);
   virtual ~CUDAExecutionProvider();
 
-  AllocatorPtr GetAllocator(int id, OrtMemType mem_type = OrtMemTypeDefault) const override;
+  AllocatorPtr GetAllocator(const AllocatorManager& allocator_mgr, int device_id, OrtMemType mem_type) const override;
 
   Status Sync() const override;
 

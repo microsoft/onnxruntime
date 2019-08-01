@@ -125,14 +125,18 @@ void CUDAExecutionProvider::ReleasePerThreadStuffs() const {
   }
 }
 
-AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+AllocatorPtr CUDAExecutionProvider::GetAllocator(const AllocatorManager& allocator_mgr, int device_id, OrtMemType mem_type) const {
   // Pinned memory allocator is shared between threads, but CUDA memory allocator is per-thread or it may cause result changes
   // A hypothesis is that arena allocator is not aligned with CUDA output cache, and data from different kernel writes may
   // cause cacheline to contain dirty data.
   if (mem_type == OrtMemTypeDefault) {
     return GetPerThreadContext().GetAllocator();
   } else {
-    return IExecutionProvider::GetAllocator(id, mem_type);
+    if (mem_type == OrtMemTypeCPUOutput || mem_type == OrtMemTypeCPU) {
+      return allocator_mgr.GetAllocator(OrtDevice(OrtDevice::CPU, 0, OrtDevice::MemoryType::CUDA_PINNED))
+    } else {
+      return allocator_mgr.GetAllocator(OrtDevice(OrtDevice::GPU, device_id, OrtDevice::MemoryType::DEFAULT))
+	}
   }
 }
 
@@ -814,7 +818,7 @@ static void RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 9, int32_t, Slice)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 9, int64_t, Slice)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 10, int32_t, Slice)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 10, int64_t, Slice)>,      
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 10, int64_t, Slice)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 9, Compress)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 9, Flatten)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 9, float, Upsample)>,

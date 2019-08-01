@@ -15,12 +15,13 @@
 namespace onnxruntime {
 
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
-                                    const InitializedTensorSet& initialized_tensor_set) {
+                                    const InitializedTensorSet& initialized_tensor_set,
+									const AllocatorManager& allocator_mgr) : allocator_mgr_(allocator_mgr) {
   // Create CPU execution provider
   // For now, CPU execution provider will be created every time when initializing Info.
   // Later, it will be changed to pass by Info ctor.
   cpu_execution_provider_ = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  allocator_ptr_ = cpu_execution_provider_->GetAllocator(device_id_, mem_type_);
+  allocator_ptr_ = cpu_execution_provider_->GetAllocator(allocator_mgr_, device_id_, mem_type_);
   ORT_ENFORCE(allocator_ptr_ != nullptr, "Failed to get allocator for optimizer");
 
   data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
@@ -37,7 +38,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
       size_t cpu_tensor_length;
       ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &cpu_tensor_length));
       OrtValue ort_value;
-      const OrtAllocatorInfo& info = cpu_execution_provider_->GetAllocator(0, OrtMemTypeDefault)->Info();
+      const OrtAllocatorInfo& info = cpu_execution_provider_->GetAllocator(allocator_mgr_, 0, OrtMemTypeDefault)->Info();
       std::unique_ptr<char[]> data(new char[cpu_tensor_length]);
       std::unique_ptr<Tensor> p_tensor;
       OrtCallback d;

@@ -16,6 +16,7 @@ namespace onnxruntime {
 class OrtValueNameIdxMap;
 class FuncManager;
 class DataTransferManager;
+class AllocatorManager;
 
 // A very light-weight class, which works as an aggregated
 // view of all data needed for constructing a Kernel instance.
@@ -28,7 +29,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
                         const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                         const OrtValueNameIdxMap& mlvalue_name_idx_map,
                         const FuncManager& funcs_mgr,
-                        const DataTransferManager& data_transfer_mgr);
+                        const DataTransferManager& data_transfer_mgr,
+						const AllocatorManager& allocator_mgr);
 
   OpKernelInfo(const OpKernelInfo& other);
 
@@ -63,6 +65,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
   const FuncManager& funcs_mgr_;
   const DataTransferManager& data_transfer_mgr_;
+  const AllocatorManager& allocator_mgr_;
   ProtoHelperNodeContext proto_helper_context_;
 };
 

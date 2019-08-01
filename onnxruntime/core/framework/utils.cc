@@ -20,7 +20,7 @@
 namespace onnxruntime {
 namespace utils {
 AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info) {
-  return session_state.GetExecutionProviders().GetAllocator(allocator_info);
+  return session_state.GetAllocatorManager().GetAllocator(allocator_info.device);
 }
 
 common::Status AllocateHelper(const IExecutionProvider& execution_provider, int device_id, const Tensor& fetched_tensor,
@@ -92,6 +92,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
   ORT_RETURN_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
 
   auto& exec_providers = session_state.GetExecutionProviders();
+  auto& allocator_mgr = session_state.GetAllocatorManager();
 
   do {
     // currently we only support one device per input. see SessionState::AddInputNameToNodeInfoMapping for more

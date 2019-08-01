@@ -14,10 +14,11 @@ namespace onnxruntime {
 class ExecutionPlanBase;
 class ExecutionProviders;
 class MemBuffer;
+class AllocatorManager;
 
 class ITensorAllocator {
  private:
-  const ExecutionProviders& exec_providers_;
+  const AllocatorManager& allocator_mgr_;
 
  public:
   AllocatorPtr GetAllocator(const OrtAllocatorInfo& allocator_info);
@@ -38,7 +39,8 @@ class ITensorAllocator {
    */
   virtual common::Status Trace(int ort_value_index, const ONNX_NAMESPACE::TensorProto* value) = 0;
   virtual ~ITensorAllocator() = default;
-  explicit ITensorAllocator(const ExecutionProviders& exec_providers) : exec_providers_(exec_providers) {}
+  explicit ITensorAllocator(const AllocatorManager& allocator_mgr) : allocator_mgr_(allocator_mgr) {}
+
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ITensorAllocator);
 
   static std::unique_ptr<ITensorAllocator> Create(bool enable_mem_pattern, const ExecutionPlanBase& execution_plan,
