@@ -342,7 +342,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_OPENVINO_CPU_FP32=" + ("ON" if args.use_openvino == "CPU_FP32" else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_VAD_R=" + ("ON" if args.use_openvino == "VAD-R_FP16" else "OFF"),
                  "-Donnxruntime_USE_NNAPI=" + ("ON" if args.use_dnnlibrary else "OFF"),
-                 "-Donnxruntime_USE_OPENMP=" + ("ON" if args.use_openmp and not args.use_mklml and not args.use_ngraph else "OFF"),
+                 "-Donnxruntime_USE_OPENMP=" + ("ON" if args.use_openmp and not args.use_dnnlibrary and not args.use_mklml and not args.use_ngraph else "OFF"),
                  "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
                  "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
                  "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
