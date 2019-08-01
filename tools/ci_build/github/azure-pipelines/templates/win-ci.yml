@@ -13,10 +13,12 @@ parameters:
   MsbuildArguments: '/m'
   EnvSetupScript: 'setup_env.bat'
   CudaVersion: ''
+  AgentPool: 'Win-CPU'
 
 jobs:
 - job: ${{ parameters.JobName }}
   timeoutInMinutes: 120
+  pool: ${{ parameters.AgentPool }}
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     BuildCommand: ${{ parameters.BuildCommand }}
