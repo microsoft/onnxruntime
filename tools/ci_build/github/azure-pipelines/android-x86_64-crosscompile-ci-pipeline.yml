@@ -4,8 +4,8 @@ jobs:
     vmImage: 'macOS-10.14'
   steps:
     # cmake 3.15 breaks Android NDK https://gitlab.kitware.com/cmake/cmake/issues/19515
-    - script: pip install cmake==3.14.4 && alias cmake=/usr/local/bin/cmake && cmake --version && brew install watch coreutils
-      displayName: Install cmake 3.14, watch and coreutils
+    - script: pip install cmake==3.14.4 && alias cmake=/usr/local/bin/cmake && cmake --version && brew install coreutils
+      displayName: Install cmake 3.14 and coreutils
     - script: 'git submodule update --init --recursive --progress'
       displayName: Clone submodules
     - script: echo "y" | $ANDROID_HOME/tools/bin/sdkmanager --install 'ndk-bundle'
