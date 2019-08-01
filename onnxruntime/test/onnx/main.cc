@@ -294,7 +294,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
 
     std::unordered_set<std::string> cuda_flaky_tests = {
-        "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2", "mlperf_ssd_mobilenet_300", "mlperf_ssd_resnet34_1200", "mask_rcnn"};
+        "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
 
 #if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
     //Minimize mem consumption
@@ -392,6 +392,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
 #ifdef USE_CUDA
   broken_tests.insert({"mxnet_arcface", "result mismatch"});
+  broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
+  broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
   broken_tests.insert({"tf_inception_v1", "flaky test"}); //TODO: Investigate cause for flakiness
 #endif
   // clang-format on
