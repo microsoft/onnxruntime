@@ -50,7 +50,8 @@ class FeedsFetchesManager {
   struct MLValueCopyInfo {
     int allocation_device_id = 0;
     const IExecutionProvider* allocation_provider = nullptr;
-    const IExecutionProvider* copy_provider = nullptr;
+	const AllocatorManager* allocator_mgr;
+    //const IExecutionProvider* copy_provider = nullptr;
   };
 
   static Status Create(const std::vector<std::string>& feed_names, const std::vector<std::string>& output_names,

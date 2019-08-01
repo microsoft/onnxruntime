@@ -24,8 +24,8 @@ AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorI
 }
 
 common::Status AllocateHelper(const IExecutionProvider& execution_provider, int device_id, const Tensor& fetched_tensor,
-                              OrtValue& output_mlvalue) {
-  auto allocator = execution_provider.GetAllocator(device_id, OrtMemTypeDefault);
+                              OrtValue& output_mlvalue, const AllocatorManager& allocator_mgr) {
+  auto allocator = execution_provider.GetAllocator(allocator_mgr, device_id, OrtMemTypeDefault);
   if (!allocator) {
     return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator");
   }
@@ -62,20 +62,16 @@ static Status CopyMLValue(const DataTransferManager& data_transfer_mgr,
                           const FeedsFetchesManager::MLValueCopyInfo& copy_info,
                           const OrtValue& source_mlvalue,
                           OrtValue& target_mlvalue) {
-  if (copy_info.copy_provider == nullptr) {
-    target_mlvalue = source_mlvalue;
-  } else {
-    auto& source_tensor = source_mlvalue.Get<Tensor>();
+  auto& source_tensor = source_mlvalue.Get<Tensor>();
 
-    if (!target_mlvalue.IsAllocated()) {
-      ORT_RETURN_IF_ERROR(utils::AllocateHelper(*copy_info.allocation_provider, copy_info.allocation_device_id,
-                                                source_tensor, target_mlvalue));
-    }
-
-    Tensor* p_output_tensor = target_mlvalue.GetMutable<Tensor>();
-
-    ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensor(source_tensor, *p_output_tensor));
+  if (!target_mlvalue.IsAllocated()) {
+    ORT_RETURN_IF_ERROR(utils::AllocateHelper(*copy_info.allocation_provider, copy_info.allocation_device_id,
+                                              source_tensor, target_mlvalue, *copy_info.allocator_mgr));
   }
+
+  Tensor* p_output_tensor = target_mlvalue.GetMutable<Tensor>();
+
+  ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensor(source_tensor, *p_output_tensor));
 
   return Status::OK();
 }
@@ -117,20 +113,8 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
     auto& input_tensor = orig_mlvalue.Get<Tensor>();
     auto& input_tensor_loc = input_tensor.Location();
 
-    auto* p_input_provider = exec_providers.Get(input_tensor_loc);
-    if (!p_input_provider) {
-      p_input_provider = exec_providers.Get(onnxruntime::kCpuExecutionProvider);
-      ORT_ENFORCE(p_input_provider);
-    }
-
     //no copy for TRT and  nGraph
     if (required_provider_type == onnxruntime::kTensorrtExecutionProvider || required_provider_type == onnxruntime::kNGraphExecutionProvider) {
-      new_mlvalue = orig_mlvalue;
-      break;
-    }
-
-    auto input_provider_type = p_input_provider->Type();
-    if (input_provider_type == required_provider_type && input_tensor_loc.mem_type == OrtMemTypeDefault) {
       new_mlvalue = orig_mlvalue;
       break;
     }
@@ -145,19 +129,14 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
     auto* required_provider = exec_providers.Get(required_provider_type);
     ORT_ENFORCE(required_provider);
 
-    auto* p_copy_provider = (required_provider_type != onnxruntime::kCpuExecutionProvider)
-                                ? required_provider
-                                : p_input_provider;
-
     copy_info.allocation_device_id = target_device_id;
     copy_info.allocation_provider = required_provider;
-    copy_info.copy_provider = p_copy_provider;
+    copy_info.allocator_mgr = &allocator_mgr;
 
     ORT_RETURN_IF_ERROR(CopyMLValue(session_state.GetDataTransferMgr(), copy_info, orig_mlvalue, new_mlvalue));
 
     needed_copy = true;
 
-    // } loop of node_info_vec
   } while (false);
 
   return Status::OK();
@@ -415,17 +394,9 @@ static common::Status CachedCopyOutputsAcrossDevices(
 static DeviceCopyCheck CheckExecutionProviders(const ExecutionProviders& execution_providers) {
   bool all_cpu = true;
   for (const auto& execution_provider : execution_providers) {
-    const auto& allocators = execution_provider->GetAllocators();
-    // this won't work as desired until multiple providers can share the CPU Allocator and the logic here is updated
-    // to detect that..
-    // it will currently handle the scenario when only the CPUExecutionProvider is registered though
-    if (!std::all_of(allocators.cbegin(), allocators.cend(),
-                     [](const gsl::not_null<const IAllocator*>& allocator) {
-                       return strcmp(allocator->Info().name, CPU) == 0;
-                     })) {
-      all_cpu = false;
-      break;
-    }
+    if (execution_provider->Type() == kCpuExecutionProvider || execution_provider->Type() == kMklDnnExecutionProvider) {
+
+	}
   }
 
   return all_cpu ? DeviceCopyCheck::NoCopy : DeviceCopyCheck::Unknown;
