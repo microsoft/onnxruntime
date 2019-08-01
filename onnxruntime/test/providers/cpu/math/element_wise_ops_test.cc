@@ -815,6 +815,26 @@ TEST(MathOpTest, Greater) {
   test.Run();
 }
 
+TEST( MathOpTest, Greater_int32 )
+{
+   OpTester test( "Greater" );
+   std::vector<int64_t> dims { 4 };
+   test.AddInput<int32_t>( "A", dims, { 10, 11, 12, 13 } );
+   test.AddInput<int32_t>( "B", dims, { 15, 7, 12, 9 } );
+   test.AddOutput<bool>( "C", dims, { false, true, false, true } );
+   test.Run();
+}
+
+TEST( MathOpTest, Greater_int64 )
+{
+   OpTester test( "Greater" );
+   std::vector<int64_t> dims { 4 };
+   test.AddInput<int64_t>( "A", dims, { 10, 11, 12, 13 } );
+   test.AddInput<int64_t>( "B", dims, { 15, 7, 12, 9 } );
+   test.AddOutput<bool>( "C", dims, { false, true, false, true } );
+   test.Run();
+}
+
 TEST(MathOpTest, Equal_bool) {
   OpTester test("Equal");
   std::vector<int64_t> dims{4};
