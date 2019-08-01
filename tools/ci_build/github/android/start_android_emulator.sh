@@ -17,9 +17,10 @@ nohup $ANDROID_HOME/emulator/emulator -avd android_emulator -no-snapshot -no-aud
 # start server in advance, so that the result of watch will only change when device gets online
 $ANDROID_HOME/platform-tools/adb start-server
 
-echo "Waiting for device to come online"
-# Sometimes wait-for-device hangs, so add a timeout here
-timeout 60 adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done; input keyevent 82'
+watch -g -n 1 '$ANDROID_HOME/platform-tools/adb devices | grep -c device$'
 
 echo "Emulator is online"
 
+$ANDROID_HOME/platform-tools/adb devices
+
+echo "Emulator started"
