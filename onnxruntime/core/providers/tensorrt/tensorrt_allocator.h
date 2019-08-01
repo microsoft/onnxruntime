@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/framework/allocator.h"
-
+/*
 namespace onnxruntime {
 constexpr const char* TRT = "Trt";
 
@@ -17,10 +17,11 @@ class TensorrtPinnedAllocator : public CPUAllocator {
     return tensorrt_cpu_allocator_info;
   }
 };
-
+*/
 /*! \brief The default allocator doesn't allocate anything. It's used here to let allocation
            planner get allocator information.
 */
+/*
 class TensorrtAllocator : public CPUAllocator {
  public:
   virtual const OrtAllocatorInfo& Info() const override {
@@ -29,4 +30,36 @@ class TensorrtAllocator : public CPUAllocator {
     return tensorrt_default_allocator_info;
   }
 };
+}  // namespace onnxruntime
+*/
+
+namespace onnxruntime {
+
+constexpr const char* TRT = "Tensorrt";
+constexpr const char* TRT_PINNED = "TensorrtPinned";
+
+class TensorrtAllocator : public IDeviceAllocator {//slx
+ public:
+  TensorrtAllocator(int device_id) : info_(TRT, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id), device_id, OrtMemTypeDefault) {}
+  virtual void* Alloc(size_t size) override;
+  virtual void Free(void* p) override;
+  virtual const OrtAllocatorInfo& Info() const override;
+  virtual FencePtr CreateFence(const SessionState* session_state) override;
+
+ private:
+  void CheckDevice() const;
+
+ private:
+  const OrtAllocatorInfo info_;
+};
+
+//TODO: add a default constructor
+class TensorrtPinnedAllocator : public IDeviceAllocator {
+ public:
+  virtual void* Alloc(size_t size) override;
+  virtual void Free(void* p) override;
+  virtual const OrtAllocatorInfo& Info() const override;
+  virtual FencePtr CreateFence(const SessionState* session_state) override;
+};
+
 }  // namespace onnxruntime
