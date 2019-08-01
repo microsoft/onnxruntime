@@ -35,8 +35,8 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
                                  const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                  const logging::Logger& logger) {
   TimePoint tp;
-  bool f_profiler_enabled = session_state.Profiler().FEnabled();
-  if (f_profiler_enabled) {
+  const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
+  if (is_profiler_enabled) {
     tp = session_state.Profiler().StartTime();
   }
 
@@ -102,7 +102,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
     }
   }
 
-  if (f_profiler_enabled) {
+  if (is_profiler_enabled) {
     session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "ParallelExecutor::Execute", tp);
   }
 
@@ -121,7 +121,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
   auto graph_viewer = session_state.GetGraphViewer();
   TimePoint sync_time_begin;
   TimePoint kernel_begin_time;
-  bool f_profiler_enabled = session_state.Profiler().FEnabled();
+  const bool f_profiler_enabled = session_state.Profiler().IsEnabled();
 
   // Avoid context switching if possible.
   while (keep_running) {

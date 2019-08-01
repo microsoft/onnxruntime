@@ -28,7 +28,7 @@ ORT_API(void, OrtReleaseSessionOptions, OrtSessionOptions* ptr) {
   delete ptr;
 }
 
-ORT_API_STATUS_IMPL(OrtCloneSessionOptions, OrtSessionOptions* input, OrtSessionOptions** out) {
+ORT_API_STATUS_IMPL(OrtCloneSessionOptions, const OrtSessionOptions* input, OrtSessionOptions** out) {
   API_IMPL_BEGIN
   *out = new OrtSessionOptions(*input);
   return nullptr;
