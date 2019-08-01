@@ -80,7 +80,7 @@
   docker run -it onnxruntime-trt
   ```
 
-## OpenVINO (PUblic Preview)
+## OpenVINO (Public Preview)
 #### Linux 16.04, Python Bindings
 
 1. Build the onnxruntime image for all the accelerators supported as below 
