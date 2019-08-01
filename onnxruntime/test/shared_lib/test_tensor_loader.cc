@@ -3,6 +3,8 @@
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/common.h"
+#include "core/framework/callback.h"
+#include "core/framework/tensorprotoutils.h"
 #include "onnx_protobuf.h"
 
 #include "test_fixture.h"
@@ -154,20 +156,21 @@ TEST_F(CApiTest, load_huge_tensor_with_external_data) {
   ASSERT_TRUE(p.SerializeToString(&s));
   // deserialize it
   std::vector<int> output(total_ele_count);
-  OrtValue* value;
-  OrtCallback* deleter;
-  auto st = OrtTensorProtoToOrtValue(s.data(), static_cast<int>(s.size()), nullptr, output.data(),
-                                     output.size() * sizeof(int), &value, &deleter);
+  auto value = std::make_unique<OrtValue>();
+  std::unique_ptr<onnxruntime::OrtCallback> deleter = std::make_unique<onnxruntime::OrtCallback>();
+  OrtAllocatorInfo cpu_allocator_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+  auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p,
+                                        MemBuffer(p, len, cpu_allocator_info), *value, *deleter);
+
   // check the result
   ASSERT_EQ(st, nullptr) << OrtGetErrorMessage(st);
   int* buffer;
-  st = OrtGetTensorMutableData(value, (void**)&buffer);
+  st = OrtGetTensorMutableData(value.get(), (void**)&buffer);
   ASSERT_EQ(st, nullptr) << OrtGetErrorMessage(st);
   for (size_t i = 0; i != total_ele_count; ++i) {
     ASSERT_EQ(1, buffer[i]);
   }
-  OrtReleaseValue(value);
-  OrtRunCallback(deleter);
+  OrtRunCallback(deleter.release());
 }
 #endif
 }  // namespace test
