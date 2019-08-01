@@ -27,13 +27,7 @@ TypeProto* BertLoss::GetMaskedLMTypeProto(const NodeArg* prediction_arg,
 }
 
 TypeProto* BertLoss::GetLossTypeProto(GraphAugmenter::GraphDefs& graph_defs) {
-  TypeProto* type_proto = graph_defs.CreateTypeProto();
-  type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-
-  auto* target_shape = type_proto->mutable_tensor_type()->mutable_shape();
-  target_shape->add_dim()->set_dim_value(1);
-
-  return type_proto;
+  return graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 }
 
 GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFunctionInfo& loss_func_info) {

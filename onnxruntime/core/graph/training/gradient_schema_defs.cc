@@ -139,18 +139,23 @@ void RegisterGradientSchemas() {
       .Output(
           0,
           "new_weights",
-          "New weights",
+          "New weights.",
           "T3")
       .Output(
           1,
           "output_moment_1",
-          "New averaged Gradients",
+          "New averaged gradients.",
           "T3")
       .Output(
           2,
           "output_moment_2",
-          "New averaged squared gradients",
+          "New averaged squared gradients.",
           "T3")
+      .Output(
+          3,
+          "output_T",
+          "New update count.",
+          "T2")
       .Attr(
           "alpha",
           "Coefficient of previous gradient in running average.",

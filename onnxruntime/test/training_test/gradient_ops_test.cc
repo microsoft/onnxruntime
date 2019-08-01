@@ -868,8 +868,8 @@ TEST(GradientCheckerTest, SoftMaxGrad) {
   }
 }
 
-TEST(OptimizerTest, SGDTest) {
-  OpTester test("SGDOptimizer", 9, onnxruntime::kOnnxDomain, false);
+TEST(OptimizerTest, SGDOptimizerTest) {
+  OpTester test("SGDOptimizer", 9, onnxruntime::kOnnxDomain);
   test.AddInput<float>("ETA", {}, {0.5f});
   test.AddInput<float>("W", {3}, {1, 2, 3});
   test.AddInput<float>("G", {3}, {4, 5, 6});
@@ -1196,18 +1196,19 @@ TEST(GradientCheckerTest, GatherNDGrad_int32_indice_unique_float_data_axis_2) {
 }
 
 TEST(OptimizerTest, AdamOptimizerTest) {
-  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain, false);
+  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
   test.AddInput<float>("ETA", {}, {0.5f});
   test.AddInput<int64_t>("Update_Count", {}, {3});
   test.AddInput<float>("W", {3}, {1, 2, 3});
-  test.AddInput<float>("G", {3}, {0, 0, 0});
-  test.AddInput<float>("Moment_1", {3}, {0, 0, 0});
-  test.AddInput<float>("Moment_2", {3}, {0, 0, 0});
+  test.AddInput<float>("G", {3}, {4, 5, 6});
+  test.AddInput<float>("Moment_1", {3}, {0.1f, 0.2f, 0.3f});
+  test.AddInput<float>("Moment_2", {3}, {0.4f, 0.5f, 0.6f});
 
-  // dummy values
-  test.AddOutput<float>("W_Out", {3}, {0.79829f, 1.7745964f, 2.634879941f});
-  test.AddOutput<float>("Moment_1_Out", {3}, {4.f, 5.f, 6.f});
-  test.AddOutput<float>("Moment_2_Out", {3}, {4.012f, 5.019f, 6.029f});
+  // Verify AdamOptimizer outputs
+  test.AddOutput<float>("W_Out", {3}, {0.9217458f, 1.9028672f, 2.8865549f});
+  test.AddOutput<float>("Moment_1_Out", {3}, {0.49f, 0.68f, 0.87f});
+  test.AddOutput<float>("Moment_2_Out", {3}, {0.4156f, 0.5245f, 0.6354f});
+  test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
 
   test.Run();
 }

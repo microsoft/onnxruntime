@@ -56,12 +56,11 @@ class SGDBuilder : public OptimizerBuilder {
     }
 #endif
 
-    // outputs: new weights, also set as graph outputs
+    // outputs: new weights
     vector<ArgDef> output_args;
     for (const auto& weight_arg : weight_args) {
       string output_name = weight_arg->Name() + "_SGD_out";
       output_args.emplace_back(output_name, weight_arg->TypeAsProto());
-      graph_defs.AddGraphOutputs({output_name});
     }
 
     graph_defs.AddNodeDefs({NodeDef("SGDOptimizer",
@@ -144,24 +143,27 @@ class AdamOptimizerBuilder : public OptimizerBuilder {
       attr.push_back(MakeAttribute(name, opt_info.attributes_.at(name)));
     }
 
-    // outputs: new weights, also set as graph outputs - This is not used currently
+    // outputs: new weights, moments, step count
     vector<ArgDef> output_args;
     for (const auto& weight_arg : weight_args) {
       string output_name = weight_arg->Name() + "_Adam_out";
       output_args.emplace_back(output_name, weight_arg->TypeAsProto());
-      graph_defs.AddGraphOutputs({output_name});
     }
 
     for (size_t i = 0; i < gradients.size(); ++i) {
       string output_name = gradients[i] + "_Moment_1_Out";
       output_args.emplace_back(output_name, weight_args[i]->TypeAsProto());
-      graph_defs.AddGraphOutputs({output_name});
     }
 
     for (size_t i = 0; i < gradients.size(); ++i) {
       string output_name = gradients[i] + "_Moment_2_Out";
       output_args.emplace_back(output_name, weight_args[i]->TypeAsProto());
-      graph_defs.AddGraphOutputs({output_name});
+    }
+
+    for (size_t i = 0; i < gradients.size(); ++i) {
+      string output_name = gradients[i] + "_Step_Out";
+      TypeProto* type_proto = graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_INT64);
+      output_args.emplace_back(output_name, type_proto);
     }
 
     graph_defs.AddNodeDefs({NodeDef("AdamOptimizer",

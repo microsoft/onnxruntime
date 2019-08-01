@@ -137,6 +137,14 @@ class GraphAugmenter {
       return graph_type_protos_.back().get();
     }
 
+    TypeProto* CreateTypeProto(const std::vector<int64_t>& dims, ONNX_NAMESPACE::TensorProto_DataType data_type) {
+      TypeProto* type_proto = CreateTypeProto();
+      type_proto->mutable_tensor_type()->set_elem_type(data_type);
+      for (int64_t dim : dims)
+        type_proto->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+      return type_proto;
+    }
+
     TypeProto* CopyTypeProto(const NodeArg* node_arg) {
       ORT_ENFORCE(node_arg != nullptr, "CopyTypeProto's node_arg is null.");
       TypeProto* type_proto = CreateTypeProto();

@@ -10,9 +10,47 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
+__global__ void _SGDOptimizer(
+    const T* eta,
+    const T* weights,
+    const T* gradients,
+    T* weights_out,
+    CUDA_LONG N) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  weights_out[id] = weights[id] - ((*eta) * gradients[id]);
+}
+
+template <typename T>
+void SGDOptimizerImpl(
+    const T* eta,
+    const T* weights,
+    const T* gradients,
+    T* weights_out,
+    size_t count) {
+  int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
+  CUDA_LONG N = static_cast<CUDA_LONG>(count);
+  _SGDOptimizer<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      eta,
+      weights,
+      gradients,
+      weights_out,
+      N);
+}
+
+#define SPECIALIZED_IMPL__SGDOptimizerImpl(T)      \
+template void SGDOptimizerImpl(                    \
+    const T* eta,                                  \
+    const T* weights,                              \
+    const T* gradients,                            \
+    T* weights_out,                                \
+    size_t count);
+
+SPECIALIZED_IMPL__SGDOptimizerImpl(float)
+
+template <typename T>
 __global__ void _AdamOptimizer(
     const T* eta,
-    int64_t* update_count,
+    const int64_t* update_count,
     const T* weights,
     const T* grads,
     const T* moment_1,
@@ -24,6 +62,7 @@ __global__ void _AdamOptimizer(
     T* weights_out,
     T* moment_1_out,
     T* moment_2_out,
+    int64_t* update_count_out,
     CUDA_LONG N) {
 
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
@@ -43,13 +82,13 @@ __global__ void _AdamOptimizer(
   float eta_new = (*eta) * numerator / denom;
 
   weights_out[id] = weights[id] - ((eta_new * moment_1_out[id]) / (_Sqrt(moment_2_out[id]) + epsilon));
-  (*update_count)++;
+  *update_count_out = (*update_count) + 1;
 }
 
 template <typename T>
 void AdamOptimizerImpl(
     const T* eta,
-    int64_t* update_count,
+    const int64_t* update_count,
     const T* weights,
     const T* grads,
     const T* moment_1,
@@ -61,6 +100,7 @@ void AdamOptimizerImpl(
     T* weights_out,
     T* moment_1_out,
     T* moment_2_out,
+    int64_t* update_count_out,
     size_t count) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
@@ -78,13 +118,14 @@ void AdamOptimizerImpl(
       weights_out,
       moment_1_out,
       moment_2_out,
+      update_count_out,
       N);
 }
 
 #define SPECIALIZED_IMPL__AdamOptimizerImpl(T)      \
 template void AdamOptimizerImpl(                    \
     const T* eta,                                   \
-    int64_t* update_count,                          \
+    const int64_t* update_count,                    \
     const T* weights,                               \
     const T* grads,                                 \
     const T* moment_1,                              \
@@ -96,6 +137,7 @@ template void AdamOptimizerImpl(                    \
     T* weights_out,                                 \
     T* moment_1_out,                                \
     T* moment_2_out,                                \
+    int64_t* update_count_out,                      \
     size_t count);
 
 SPECIALIZED_IMPL__AdamOptimizerImpl(float)
