@@ -15,6 +15,7 @@
 #include "onnx-ml.pb.h"
 #include "predict.pb.h"
 
+#include "metric_registry.h"
 #include "converter.h"
 #include "executor.h"
 #include "util.h"
@@ -101,7 +102,13 @@ std::vector<Ort::Value> Run(const Ort::Session& session, const Ort::RunOptions& 
     output_ptrs.push_back(output.data());
   }
 
-  return const_cast<Ort::Session&>(session).Run(options, input_ptrs.data(), const_cast<Ort::Value*>(input_values.data()), input_count, output_ptrs.data(), output_count);
+  auto begin = std::chrono::high_resolution_clock::now();
+  std::vector<Ort::Value> result = const_cast<Ort::Session&>(session).Run(options, input_ptrs.data(), const_cast<Ort::Value*>(input_values.data()), input_count, output_ptrs.data(), output_count);
+  auto end = std::chrono::high_resolution_clock::now();
+  (*MetricRegistry::Get().runTimer)->
+    Add({}, MetricRegistry::TimeBuckets()).
+    Observe(std::chrono::duration_cast<std::chrono::milliseconds>(end-begin).count());
+  return result;
 }
 
 protobufutil::Status Executor::Predict(const std::string& model_name,

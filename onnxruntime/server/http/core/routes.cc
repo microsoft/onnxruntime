@@ -63,8 +63,10 @@ http::status Routes::ParseUrl(http::verb method,
 
   bool found_match = false;
   for (const auto& pattern : func_table) {
-    if (re2::RE2::FullMatch(url, pattern.first)
-        || re2::RE2::FullMatch(url, pattern.first, &model_name, &model_version, &action)) {
+    // Due to if statement execution we need to run fullmatch with variables first before
+    // going to the fallback where variables don't exist in the regex
+    if (re2::RE2::FullMatch(url, pattern.first, &model_name, &model_version, &action) ||
+        re2::RE2::FullMatch(url, pattern.first)) {
       func = pattern.second;
       found_match = true;
       break;
