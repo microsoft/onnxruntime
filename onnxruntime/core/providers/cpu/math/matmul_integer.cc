@@ -9,6 +9,9 @@
 #include "core/providers/cpu/math/matmul_integer.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/gemmlowp_common_wrapper.h"
+#ifdef USE_MKLML
+#include <mkl_cblas.h>
+#endif
 
 namespace onnxruntime {
 
@@ -19,10 +22,10 @@ ONNX_OPERATOR_KERNEL_EX(
     10,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T1", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
-    MatMulInteger<uint8_t, uint8_t, int32_t>);
+    MatMulInteger);
 
 Status GemmlowpMultiply(const uint8_t* lhs_data, const uint8_t* rhs_data,
                         int32_t* result_data, const int lhs_offset, const int rhs_offset,
@@ -42,8 +45,15 @@ Status GemmlowpMultiply(const uint8_t* lhs_data, const uint8_t* rhs_data,
   return Status::OK();
 }
 
-template<>
-Status MatMulInteger<uint8_t, uint8_t, int32_t>::Compute(OpKernelContext* ctx) const {
+template <typename T>
+T GetZeroPoint(const Tensor& zeropoint_input) {
+  ORT_ENFORCE(zeropoint_input.Shape().NumDimensions() == 0 || (zeropoint_input.Shape().NumDimensions() == 1 && zeropoint_input.Shape().GetDims().size() == 1),
+              "Currently only scalar zero_point is supported. TODO: add per channel zero point support.");
+  auto zero_point = static_cast<int32_t>(*zeropoint_input.template Data<T>());
+  return zero_point;
+}
+
+Status MatMulInteger::Compute(OpKernelContext* ctx) const {
   auto a = ctx->Input<Tensor>(0);
   auto b = ctx->Input<Tensor>(1);
   ORT_ENFORCE(a != nullptr && b != nullptr);
@@ -52,33 +62,54 @@ Status MatMulInteger<uint8_t, uint8_t, int32_t>::Compute(OpKernelContext* ctx) c
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
-  // validate zero points
   int32_t a_offset = 0;
   int32_t b_offset = 0;
-  if (has_a_zero_point_) {
-    auto a_zero_point = ctx->Input<Tensor>(2);
-    ORT_ENFORCE(a_zero_point->Shape().NumDimensions() == 0 ||
-        (a_zero_point->Shape().NumDimensions() == 1 && a_zero_point->Shape().GetDims().size() == 1),
-        "Currently only scalar zero_point is supported. TODO: add per channel zero point support.");
-    a_offset = static_cast<int32_t>(*a_zero_point->template Data<uint8_t>());
-  }
-  if (has_b_zero_point_) {
-    auto b_zero_point = ctx->Input<Tensor>(3);
-    ORT_ENFORCE(b_zero_point->Shape().NumDimensions() == 0 ||
-        (b_zero_point->Shape().NumDimensions() == 1 && b_zero_point->Shape().GetDims().size() == 1),
-        "Currently only scalar zero_point is supported. TODO: add per channel zero point support.");
-    b_offset = static_cast<int32_t>(*b_zero_point->template Data<uint8_t>());
-  }
 
-  for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
-    GemmlowpMultiply(a->template Data<uint8_t>() + helper.LeftOffsets()[i],
-                     b->template Data<uint8_t>() + helper.RightOffsets()[i],
-                     y->template MutableData<int32_t>() + helper.OutputOffsets()[i],
-                     a_offset,
-                     b_offset,
-                     static_cast<int>(helper.M()),
-                     static_cast<int>(helper.N()),
-                     static_cast<int>(helper.K()));
+  if (a->DataType() == DataTypeImpl::GetType<std::uint8_t>() && b->DataType() == DataTypeImpl::GetType<std::uint8_t>()) {
+    // validate zero points
+    if (has_a_zero_point_) {
+      auto a_zero_point = ctx->Input<Tensor>(2);
+      a_offset = GetZeroPoint<uint8_t>(*a_zero_point);
+    }
+    if (has_b_zero_point_) {
+      auto b_zero_point = ctx->Input<Tensor>(3);
+      b_offset = GetZeroPoint<uint8_t>(*b_zero_point);
+    }
+
+    for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
+      GemmlowpMultiply(a->template Data<uint8_t>() + helper.LeftOffsets()[i],
+                       b->template Data<uint8_t>() + helper.RightOffsets()[i],
+                       y->template MutableData<int32_t>() + helper.OutputOffsets()[i],
+                       a_offset,
+                       b_offset,
+                       static_cast<int>(helper.M()),
+                       static_cast<int>(helper.N()),
+                       static_cast<int>(helper.K()));
+    }
+  } else if (a->DataType() == DataTypeImpl::GetType<std::uint8_t>() && b->DataType() == DataTypeImpl::GetType<std::int8_t>()) {
+#ifdef USE_MKLML
+    // validate zero points
+    if (has_a_zero_point_) {
+      auto a_zero_point = ctx->Input<Tensor>(2);
+      a_offset = GetZeroPoint<uint8_t>(*a_zero_point);
+    }
+    if (has_b_zero_point_) {
+      auto b_zero_point = ctx->Input<Tensor>(3);
+      b_offset = GetZeroPoint<int8_t>(*b_zero_point);
+    }
+
+    //ORT_ENFORCE(a_offset == 0 && b_offset == 0, "MKLML only supports zero point == 0");
+
+    MKL_INT32 co = 0;
+    for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
+      cblas_gemm_s8u8s32(CBLAS_LAYOUT::CblasColMajor, CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_OFFSET::CblasFixOffset,
+                         static_cast<int>(helper.N()), static_cast<int>(helper.M()), static_cast<int>(helper.K()),
+                         1, b->template Data<int8_t>() + helper.RightOffsets()[i], static_cast<int>(helper.N()),
+                         0, a->template Data<uint8_t>() + helper.LeftOffsets()[i], static_cast<int>(helper.K()), 0, 0, y->template MutableData<int32_t>() + helper.OutputOffsets()[i], static_cast<int>(helper.N()), &co);
+    }
+#else
+    ORT_THROW("uint8 * int8 for matmul integer op is only supported when use_mklml build option is set.");
+#endif
   }
 
   return Status::OK();

@@ -9,7 +9,6 @@
 
 namespace onnxruntime {
 
-template <typename T1, typename T2, typename T3>
 class MatMulInteger final : public OpKernel {
  public:
   MatMulInteger(const OpKernelInfo& info) : OpKernel(info) {
