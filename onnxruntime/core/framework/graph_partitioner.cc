@@ -11,6 +11,7 @@
 #include "core/framework/execution_providers.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/func_kernel.h"
+#include "core/platform/env.h" //slx
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 //#define COUNT_NON_CUDA_OPS
@@ -176,7 +177,8 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
         //prepare the func kernel
         KernelDefBuilder builder;
         BuildFusedKernelDef(builder, *node);
-        if (node->GetExecutionProviderType() == onnxruntime::kTensorrtExecutionProvider || node->GetExecutionProviderType() == onnxruntime::kNGraphExecutionProvider || node->GetExecutionProviderType() == onnxruntime::kNnapiExecutionProvider) {
+        //if (node->GetExecutionProviderType() == onnxruntime::kTensorrtExecutionProvider || node->GetExecutionProviderType() == onnxruntime::kNGraphExecutionProvider || node->GetExecutionProviderType() == onnxruntime::kNnapiExecutionProvider) {//slx
+        if (node->GetExecutionProviderType() == onnxruntime::kNGraphExecutionProvider || node->GetExecutionProviderType() == onnxruntime::kNnapiExecutionProvider) {
           builder.SetDefaultInputsMemoryType(OrtMemTypeCPUInput);
           builder.SetDefaultOutputMemoryType(OrtMemTypeCPUOutput);
         }
@@ -187,6 +189,16 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
   }
 
   ORT_RETURN_IF_ERROR(graph.Resolve());
+
+//slx save onnnx model to check the graph after trt fusion !!!!!!!!!!!
+    ::ONNX_NAMESPACE::ModelProto model_proto2;
+    auto graph_proto2 = graph.ToGraphProto();
+    model_proto2.set_allocated_graph(&graph_proto2);
+    //test: save ModelProto to file
+    int fd2;
+    Env::Default().FileOpenWr("trt_model_proto_partitioner_afterResolve.onnx", fd2);
+    model_proto2.SerializeToFileDescriptor(fd2);
+    model_proto2.release_graph();
 
   // To see if the node with no provider can be inlined. If one such nodes can be
   // successfully inlined, we re-run the partitioner on the modified graph.
