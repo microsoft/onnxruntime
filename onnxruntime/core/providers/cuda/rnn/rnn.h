@@ -20,9 +20,9 @@ class RNN final : public CudnnRnnBase<T> {
     std::vector<std::string> activations_;
     ORT_ENFORCE(info.GetAttrs("activations", activations_).IsOK());
     if (activations_[0] == "Relu")
-      CudnnRnnBase<T>::rnn_mode_ = CUDNN_RNN_RELU;
+      CudnnRnnBase<T>::SetRNNMode(CUDNN_RNN_RELU);
     else if (activations_[0] == "Tanh")
-      CudnnRnnBase<T>::rnn_mode_ = CUDNN_RNN_TANH;
+      CudnnRnnBase<T>::SetRNNMode(CUDNN_RNN_TANH);
 
     CudnnRnnBase<T>::SetCudnnRnnDesc();
 

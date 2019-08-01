@@ -23,24 +23,24 @@ enum RNN_Input_Index {
 
 class CudnnRNN {
  public:
-  CudnnRNN() : rnn_desc_(nullptr) {
+  CudnnRNN() : cudnn_rnn_desc_(nullptr) {
   }
 
   ~CudnnRNN() {
-    if (rnn_desc_ != nullptr) {
-      cudnnDestroyRNNDescriptor(rnn_desc_);
-      rnn_desc_ = nullptr;
+    if (cudnn_rnn_desc_ != nullptr) {
+      cudnnDestroyRNNDescriptor(cudnn_rnn_desc_);
+      cudnn_rnn_desc_ = nullptr;
     }
   }
 
   Status Set(const cudnnHandle_t& cudnnHandle, int64_t hidden_size, int num_layers,
              cudnnDropoutDescriptor_t cudnn_dropout_desc, cudnnDirectionMode_t cudnn_direction_model,
              cudnnRNNMode_t rnn_mode, cudnnDataType_t dataType) {
-    if (!rnn_desc_)
-      CUDNN_RETURN_IF_ERROR(cudnnCreateRNNDescriptor(&rnn_desc_));
+    if (!cudnn_rnn_desc_)
+      CUDNN_RETURN_IF_ERROR(cudnnCreateRNNDescriptor(&cudnn_rnn_desc_));
 
     CUDNN_RETURN_IF_ERROR(cudnnSetRNNDescriptor(cudnnHandle,
-                                                rnn_desc_,
+                                                cudnn_rnn_desc_,
                                                 gsl::narrow_cast<int>(hidden_size),
                                                 num_layers,
                                                 cudnn_dropout_desc,
@@ -54,11 +54,18 @@ class CudnnRNN {
   }
 
   operator cudnnRNNDescriptor_t() const {
-    return rnn_desc_;
+    return cudnn_rnn_desc_;
   }
 
  private:
-  cudnnRNNDescriptor_t rnn_desc_;
+  cudnnRNNDescriptor_t cudnn_rnn_desc_;
+};
+
+struct RNNDescriptors {
+  CudnnFilterDescriptor filter_desc;
+  CudnnRNN rnn_desc;
+
+  OrtMutex mutex;
 };
 
 template <typename T>
@@ -84,6 +91,8 @@ class CudnnRnnBase : public CudaKernel {
   Status CacheCudnnRnnWeights(const OpKernelInfo& info);
 
   Status ComputeInternal(OpKernelContext* ctx) const override;
+
+  void SetRNNMode(cudnnRNNMode_t rnn_mode) { rnn_mode_ = rnn_mode; }
 
  private:
   Status SetCudnnRnnWeightBias(const cudnnHandle_t cudnn_handle,
@@ -115,19 +124,22 @@ class CudnnRnnBase : public CudaKernel {
   int64_t num_directions_;
   // required
   int64_t hidden_size_;
-  cudnnRNNMode_t rnn_mode_;
   std::vector<int> W_lin_layer_id_;
   std::vector<int> R_lin_layer_id_;
-  CudnnRNN rnn_desc_;
   bool reverse_;
   int num_layers_;
 
  private:
+  cudnnRNNMode_t rnn_mode_;
   // optional
   std::string direction_;
+  // w_desc_cache_ & cudnn_dropout_desc_ are changed in Constructor only
   CudnnFilterDescriptor w_desc_cache_;
   CudnnDropout cudnn_dropout_desc_;
-  CudnnFilterDescriptor filter_desc_;
+
+  // filter_desc & rnn_desc could be changed in Compute
+  mutable RNNDescriptors rnn_descriptors_;
+
   IAllocatorUniquePtr<void> w_data_cache_;
   bool weight_cached_;
   IAllocatorUniquePtr<void> state_buffer_;

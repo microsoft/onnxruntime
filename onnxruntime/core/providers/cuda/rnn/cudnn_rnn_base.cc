@@ -52,15 +52,15 @@ Status CudnnRnnBase<T>::SetCudnnRnnWeightBias(const cudnnHandle_t cudnn_handle,
   int bias_offset = 0;
   for (int layer = 0; layer < num_layers_ * num_directions_; ++layer) {
     for (size_t idx = 0; idx < W_lin_layer_id_.size(); ++idx) {
-      SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc_, w_data, W_lin_layer_id_[idx], W_data, w_offset, true);
+      SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, rnn_descriptors_.filter_desc, w_data, W_lin_layer_id_[idx], W_data, w_offset, true);
       if (B_data != nullptr) {
-        SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc_, w_data, W_lin_layer_id_[idx], B_data, bias_offset, false);
+        SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, rnn_descriptors_.filter_desc, w_data, W_lin_layer_id_[idx], B_data, bias_offset, false);
       }
     }
     for (size_t idx = 0; idx < R_lin_layer_id_.size(); ++idx) {
-      SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc_, w_data, R_lin_layer_id_[idx], R_data, r_offset, true);
+      SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, rnn_descriptors_.filter_desc, w_data, R_lin_layer_id_[idx], R_data, r_offset, true);
       if (B_data != nullptr) {
-        SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc_, w_data, R_lin_layer_id_[idx], B_data, bias_offset, false);
+        SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, rnn_descriptors_.filter_desc, w_data, R_lin_layer_id_[idx], B_data, bias_offset, false);
       }
     }
   }
@@ -86,8 +86,8 @@ Status CudnnRnnBase<T>::SetCudnnRnnDesc() {
   cudnn_dropout_desc_.GetCudnnDropoutStatesSize(CudnnHandle(), state_size_);
   state_buffer_ = GetScratchBuffer<void>(state_size_);
   cudnn_dropout_desc_.Set(CudnnHandle(), state_buffer_.get(), state_size_);
-  ORT_RETURN_IF_ERROR(rnn_desc_.Set(CudnnHandle(), hidden_size_, num_layers_, cudnn_dropout_desc_,
-                                            cudnn_direction, rnn_mode_, CudnnTensor::GetDataType<CudaT>()));
+  ORT_RETURN_IF_ERROR(rnn_descriptors_.rnn_desc.Set(CudnnHandle(), hidden_size_, num_layers_, cudnn_dropout_desc_,
+                                                    cudnn_direction, rnn_mode_, CudnnTensor::GetDataType<CudaT>()));
 
   return Status::OK();
 }
@@ -123,8 +123,8 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
   const T* R_data = R->template Data<T>();
   const T* B_data = B == nullptr ? nullptr : B->template Data<T>();
 
-  ORT_RETURN_IF_ERROR(SetCudnnRnnWeightBias(CudnnHandle(), rnn_desc_, fake_x_desc, target_w_desc,
-                                                    target_w_data.get(), W_data, R_data, B_data));
+  ORT_RETURN_IF_ERROR(SetCudnnRnnWeightBias(CudnnHandle(), rnn_descriptors_.rnn_desc, fake_x_desc, target_w_desc,
+                                            target_w_data.get(), W_data, R_data, B_data));
 
   return Status::OK();
 }
@@ -198,16 +198,6 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(y_h_desc.Set(dims_hxy, CudnnTensor::GetDataType<CudaT>()));
   ORT_RETURN_IF_ERROR(y_c_desc.Set(dims_hxy, CudnnTensor::GetDataType<CudaT>()));
 
-  // Prepare the weight data
-  IAllocatorUniquePtr<void> w_data;
-  CudnnFilterDescriptor w_desc;
-  if (!weight_cached_) {
-    const Tensor& W = *ctx->Input<Tensor>(RNN_Input_Index::W);
-    const Tensor& R = *ctx->Input<Tensor>(RNN_Input_Index::R);
-    const Tensor* B = ctx->Input<Tensor>(RNN_Input_Index::B);
-    ReorganizeWeights(&W, &R, B, w_data, w_desc);
-  }
-
   IAllocatorUniquePtr<T> x_reversed_data;
   const T* x_data = X->template Data<T>();
   if (reverse_) {
@@ -239,42 +229,31 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   const int32_t* sequence_lens_data = (sequence_lens == nullptr) ? nullptr : sequence_lens->template Data<int32_t>();
 
-  // CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED works with CUDNN_RNN_PADDED_IO_ENABLED, so that it will auto fill 0 for the shorter sequences
-  CUDNN_RETURN_IF_ERROR(cudnnSetRNNPaddingMode(rnn_desc_, CUDNN_RNN_PADDED_IO_ENABLED));
+  {
+    std::lock_guard<OrtMutex> lock(rnn_descriptors_.mutex);
 
-  size_t workspace_bytes;
-  CUDNN_RETURN_IF_ERROR(cudnnGetRNNWorkspaceSize(CudnnHandle(), rnn_desc_, gsl::narrow_cast<int>(seq_length), x_desc.data(), &workspace_bytes));
-  auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes);
+    // Prepare the weight data
+    IAllocatorUniquePtr<void> w_data;
+    CudnnFilterDescriptor w_desc;
+    if (!weight_cached_) {
+      const Tensor& W = *ctx->Input<Tensor>(RNN_Input_Index::W);
+      const Tensor& R = *ctx->Input<Tensor>(RNN_Input_Index::R);
+      const Tensor* B = ctx->Input<Tensor>(RNN_Input_Index::B);
+      ReorganizeWeights(&W, &R, B, w_data, w_desc);
+    }
 
-  if (CUDNN_RNN_RELU == rnn_mode_ || CUDNN_RNN_TANH == rnn_mode_ || nullptr == sequence_lens_data) {
-    CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInference(CudnnHandle(),
-                                                   rnn_desc_,
-                                                   gsl::narrow_cast<int>(seq_length),
-                                                   x_desc.data(),
-                                                   x_data_input,
-                                                   hx_desc,
-                                                   hx_data,
-                                                   cx_desc,
-                                                   cx_data,
-                                                   weight_cached_ ? w_desc_cache_ : w_desc,
-                                                   weight_cached_ ? w_data_cache_.get() : w_data.get(),
-                                                   y_desc.data(),
-                                                   y_data,
-                                                   y_h_desc,
-                                                   y_h_data,
-                                                   y_c_desc,
-                                                   y_c_data,
-                                                   workspace_cuda.get(),
-                                                   workspace_bytes));
-  } else {
-    CudnnDataTensor x_desc;
-    x_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, input_size, sequence_lens_data);
-    CudnnDataTensor y_desc;
-    y_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, hidden_size_ * num_directions_, sequence_lens_data);
+    // CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED works with CUDNN_RNN_PADDED_IO_ENABLED, so that it will auto fill 0 for the shorter sequences
+    CUDNN_RETURN_IF_ERROR(cudnnSetRNNPaddingMode(rnn_descriptors_.rnn_desc, CUDNN_RNN_PADDED_IO_ENABLED));
 
-    CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInferenceEx(CudnnHandle(),
-                                                     rnn_desc_,
-                                                     x_desc,
+    size_t workspace_bytes;
+    CUDNN_RETURN_IF_ERROR(cudnnGetRNNWorkspaceSize(CudnnHandle(), rnn_descriptors_.rnn_desc, gsl::narrow_cast<int>(seq_length), x_desc.data(), &workspace_bytes));
+    auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes);
+
+    if (CUDNN_RNN_RELU == rnn_mode_ || CUDNN_RNN_TANH == rnn_mode_ || nullptr == sequence_lens_data) {
+      CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInference(CudnnHandle(),
+                                                     rnn_descriptors_.rnn_desc,
+                                                     gsl::narrow_cast<int>(seq_length),
+                                                     x_desc.data(),
                                                      x_data_input,
                                                      hx_desc,
                                                      hx_data,
@@ -282,21 +261,47 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                      cx_data,
                                                      weight_cached_ ? w_desc_cache_ : w_desc,
                                                      weight_cached_ ? w_data_cache_.get() : w_data.get(),
-                                                     y_desc,
+                                                     y_desc.data(),
                                                      y_data,
                                                      y_h_desc,
                                                      y_h_data,
                                                      y_c_desc,
                                                      y_c_data,
-                                                     nullptr, nullptr, nullptr, nullptr,
-                                                     nullptr, nullptr, nullptr, nullptr,
                                                      workspace_cuda.get(),
                                                      workspace_bytes));
-    // Early terminate for this case since Y data is not required, and Y_h is obtained correctly, no need the following code to retrive Y_h from Y data.
-    if (nullptr == Y) {
-      return Status::OK();
+    } else {
+      CudnnDataTensor x_desc;
+      x_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, input_size, sequence_lens_data);
+      CudnnDataTensor y_desc;
+      y_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, hidden_size_ * num_directions_, sequence_lens_data);
+
+      CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInferenceEx(CudnnHandle(),
+                                                       rnn_descriptors_.rnn_desc,
+                                                       x_desc,
+                                                       x_data_input,
+                                                       hx_desc,
+                                                       hx_data,
+                                                       cx_desc,
+                                                       cx_data,
+                                                       weight_cached_ ? w_desc_cache_ : w_desc,
+                                                       weight_cached_ ? w_data_cache_.get() : w_data.get(),
+                                                       y_desc,
+                                                       y_data,
+                                                       y_h_desc,
+                                                       y_h_data,
+                                                       y_c_desc,
+                                                       y_c_data,
+                                                       nullptr, nullptr, nullptr, nullptr,
+                                                       nullptr, nullptr, nullptr, nullptr,
+                                                       workspace_cuda.get(),
+                                                       workspace_bytes));
+      // Early terminate for this case since Y data is not required, and Y_h is obtained correctly, no need the following code to retrive Y_h from Y data.
+      if (nullptr == Y) {
+        return Status::OK();
+      }
     }
   }
+
 
   IAllocatorUniquePtr<T> y_reorganized_data;
   if (reverse_ || num_directions_ == 2) {
