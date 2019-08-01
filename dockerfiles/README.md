@@ -44,7 +44,7 @@
   docker run -it onnxruntime-cuda
   ```
 
-## nGraph (Preview)
+## nGraph (Public Preview)
 #### Linux 16.04, Python Bindings
 
 1. Build the docker image from the Dockerfile in this repository.
@@ -80,7 +80,7 @@
   docker run -it onnxruntime-trt
   ```
 
-## OpenVINO (Preview)
+## OpenVINO (PUblic Preview)
 #### Linux 16.04, Python Bindings
 
 1. Build the onnxruntime image for all the accelerators supported as below 
@@ -172,7 +172,7 @@
     docker run -it --device --mount type=bind,source=/var/tmp,destination=/var/tmp --device /dev/ion:/dev/ion  onnxruntime-hddl:latest
 
     ```
-## ONNX Runtime Server (Preview)
+## ONNX Runtime Server (Public Preview)
 #### Linux 16.04
 
 1. Build the docker image from the Dockerfile in this repository
