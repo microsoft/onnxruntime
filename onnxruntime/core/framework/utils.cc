@@ -392,14 +392,17 @@ static common::Status CachedCopyOutputsAcrossDevices(
 // check if all the execution providers use the same allocator. if so, no copies between devices should be required,
 // and the overall status for DeviceCopyChecks can be set to NoCopy
 static DeviceCopyCheck CheckExecutionProviders(const ExecutionProviders& execution_providers) {
-  bool all_cpu = true;
   for (const auto& execution_provider : execution_providers) {
-    if (execution_provider->Type() == kCpuExecutionProvider || execution_provider->Type() == kMklDnnExecutionProvider) {
-
-	}
+    if (execution_provider->Type() != onnxruntime::kCpuExecutionProvider &&
+        execution_provider->Type() != onnxruntime::kMklDnnExecutionProvider &&
+        execution_provider->Type() != onnxruntime::kNGraphExecutionProvider &&
+        execution_provider->Type() != onnxruntime::kNupharExecutionProvider &&
+        execution_provider->Type() != onnxruntime::kOpenVINOExecutionProvider) {
+      return DeviceCopyCheck::Unknown;
+    }
   }
 
-  return all_cpu ? DeviceCopyCheck::NoCopy : DeviceCopyCheck::Unknown;
+  return DeviceCopyCheck::NoCopy;
 }
 
 // execute graph with cached info from FeedsFetchesManager.

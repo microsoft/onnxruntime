@@ -12,6 +12,7 @@ namespace onnxruntime {
 class ExecutionProviders;
 class IExecutionProvider;
 class OrtValueNameIdxMap;
+class AllocatorManager;
 
 enum class DeviceCopyCheck {
   Unknown,
