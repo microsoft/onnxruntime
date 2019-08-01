@@ -853,7 +853,7 @@ class Graph {
 
   // Build and verify node connection (edges).
   // Verify NodeArg name/type/shape matching correctly.
-  common::Status BuildConnections(std::vector<std::string>& outer_scope_node_args_consumed);
+  common::Status BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed);
 
   common::Status VerifyNoDuplicateName();
 
