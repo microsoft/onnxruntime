@@ -370,6 +370,27 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Erf<float>);
 
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Round,
+    11,
+    MLFloat16,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    Round<MLFloat16>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Round,
+    11,
+    float,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Round<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Round,
+    11,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Round<double>);
+
 template <typename T>
 Status Add<T>::Compute(OpKernelContext* context) const {
   return BroadcastTwo<T, T>(
@@ -1083,6 +1104,32 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
 
   MlasComputeErf(X.template Data<float>(), Y.template MutableData<float>(), X.Shape().Size());
 
+  return Status::OK();
+}
+
+template <typename T>
+Status Round<T>::Compute(OpKernelContext* context) const {
+  auto& X = *context->Input<Tensor>(0);
+  auto& Y = *context->Output(0, X.Shape());
+  auto input = X.template Data<T>();
+  auto output = Y.template MutableData<T>();
+  auto size = X.Shape().Size();
+  for (int64_t i = 0; i < size; ++i, ++output, ++input) {
+    *output = ::rint(*input);
+  }
+  return Status::OK();
+}
+
+template <>
+Status Round<MLFloat16>::Compute(OpKernelContext* context) const {
+  auto& X = *context->Input<Tensor>(0);
+  auto& Y = *context->Output(0, X.Shape());
+  auto input = X.template Data<MLFloat16>();
+  auto output = Y.template MutableData<MLFloat16>();
+  auto size = X.Shape().Size();
+  for (int64_t i = 0; i < size; ++i, ++output, ++input) {
+    *output = MLFloat16(math::floatToHalf(::rint(math::halfToFloat(input->val))));
+  }
   return Status::OK();
 }
 

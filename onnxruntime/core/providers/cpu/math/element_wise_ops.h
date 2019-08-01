@@ -297,6 +297,14 @@ class Erf final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
+template <class T>
+class Round final : public OpKernel {
+ public:
+  explicit Round(const OpKernelInfo& info) : OpKernel(info) {}
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
 template <typename T>
 auto MakeEigenArrayMap(Tensor& t) { return EigenVectorArrayMap<T>(t.template MutableData<T>(), t.Shape().Size()); }
 template <typename T>
