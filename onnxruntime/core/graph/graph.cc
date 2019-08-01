@@ -989,30 +989,29 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
 
         const auto& input_arg_name = input_arg->Name();
         auto output_arg_iter = resolve_context_.output_args.find(input_arg_name);
-        if (resolve_context_.output_args.end() == output_arg_iter) {
-          // No such output_arg matching this input_arg.
-          // This input arg should be fed when running evaluation.
+        if (resolve_context_.output_args.end() != output_arg_iter) {
+          // The input to this node is an output from a previous node in this graph.
+          // Create relationship between this node (node), and the node providing the output (output_node).
+          Node& output_node = *output_arg_iter->second.first;
+          AddEdge(output_node.Index(), node.Index(), output_arg_iter->second.second, input_slot_index);
 
-          // See if it's present in the outer scope. If so it will be 'fed' by the execution frame
-          // providing access to the OrtValue from the outer scope. Pass the name back up so nodes can
-          // be linked correctly at that level.
-          if (outer_scope_node_args.find(input_arg_name) != outer_scope_node_args.cend()) {
-            // if it matches an outer scope value make sure it's not also a graph input or initializer
-            // as the ONNX checker currently allows a graph input to shadow an outer scope value
+          inner_nodes.insert(&output_node);
+        } else {
+          // the value is either an input, an initializer, or coming from outer scope. we only need to take action
+          // if coming from outer scope, so first check if this is a subgraph (otherwise there is no outer scope).
+          if (parent_graph_ != nullptr) {
+            // make sure it's not an input or initializer first as those override any outer scope values
             if (resolve_context_.inputs_and_initializers.find(input_arg_name) ==
                 resolve_context_.inputs_and_initializers.cend()) {
-              ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(input_arg_name));
+              // If it is present in the outer scope it will be 'fed' by the execution frame
+              // providing access to the OrtValue from the outer scope. Pass the name back up so nodes can
+              // be linked correctly at that level.
+              if (outer_scope_node_args.find(input_arg_name) != outer_scope_node_args.cend()) {
+                ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(input_arg_name));
+              }
             }
           }
-
-          continue;
         }
-
-        // Create relationship between this node (node), and the node providing the output (output_node).
-        Node& output_node = *output_arg_iter->second.first;
-        AddEdge(output_node.Index(), node.Index(), output_arg_iter->second.second, input_slot_index);
-
-        inner_nodes.insert(&output_node);
       }
     } else if (node.OutputDefs().empty()) {
       // This is a useless node.
@@ -1022,7 +1021,7 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
   }
 
   return Status::OK();
-}
+}  // namespace onnxruntime
 
 void Graph::ReverseDFSFrom(const std::vector<NodeIndex>& from,
                            const std::function<void(const Node*)>& enter,
