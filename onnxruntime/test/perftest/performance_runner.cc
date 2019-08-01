@@ -133,22 +133,37 @@ Status PerformanceRunner::RunParallelDuration() {
 }
 
 Status PerformanceRunner::ForkJoinRepeat() {
+  const auto& run_config = performance_test_config_.run_config;
+
   // Adding trivially simple parallelization to the repeated times test will simply perform
   // m instances of n parallel invocations with a synchronized join after each invocation.
   // TODO: When the thread pool implementation is done, redo if it has join semantics.
   // auto tpool = GetDefaultThreadPool(Env::Default());
-  auto tpool = std::make_unique<DefaultThreadPoolType>(performance_test_config_.run_config.concurrent_session_runs);
+  auto tpool = std::make_unique<DefaultThreadPoolType>(run_config.concurrent_session_runs);
   std::atomic<int> counter = {0};
   std::mutex m;
   std::condition_variable cv;
 
   // Fork
   counter.load(std::memory_order_seq_cst);
-  for (size_t i = 0; i != performance_test_config_.run_config.concurrent_session_runs; ++i) {
+
+  int items_per_thread = run_config.repeated_times / run_config.concurrent_session_runs;
+  int extras = run_config.repeated_times % run_config.concurrent_session_runs;
+  std::vector<int> num_items(run_config.concurrent_session_runs, items_per_thread);
+  int idx = 0;
+
+  // distribute the extras
+  while (extras) {
+    ++num_items[idx++];
+    --extras;
+  }
+
+  for (size_t i = 0; i != run_config.concurrent_session_runs; ++i) {
     counter++;
-    tpool->Schedule([this, &counter, &m, &cv]() {
+    int n = num_items[i];
+    tpool->Schedule([this, &counter, &m, &cv, n]() {
       // session_->ThreadSafeRun();
-      for (size_t ite = 0; ite < performance_test_config_.run_config.repeated_times; ite++) {
+      for (size_t ite = 0; ite < n; ite++) {
         auto status = RunOneIteration<false>();
         if (!status.IsOK())
           std::cerr << status.ErrorMessage();
