@@ -681,7 +681,7 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpGrowBatchSequenceLength) {
   ctx.RunTest(X2, batch2, seq_length2, sequence_length2, &initial_h2, expected_Y2, expected_Y_h2);
 }
 
-TEST(GRUTest, DISABLED_ONNXRuntime_TestGRUOpGrowBatchSequenceLengthLinearBeforeReset) {
+TEST(GRUTest, ONNXRuntime_TestGRUOpGrowBatchSequenceLengthLinearBeforeReset) {
   const std::string direction = "forward";
   const std::vector<std::string> activations = {"sigmoid", "tanh"};
 
@@ -762,7 +762,7 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithBidirectionalLinearBeforeRe
   ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h, true);
 }
 
-TEST(GRUTest, DISABLED_ONNXRuntime_TestGRUOpSequenceLengthWithBidirectionalLinearBeforeReset) {
+TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithBidirectionalLinearBeforeReset) {
   const std::string direction = "bidirectional";
   const std::vector<std::string> activations = {"sigmoid", "tanh", "sigmoid", "tanh"};
 

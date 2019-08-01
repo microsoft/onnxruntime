@@ -86,7 +86,7 @@ void HttpSession::Send(Msg&& msg) {
 
   http::async_write(self_->socket_, *ptr,
                     net::bind_executor(strand_,
-                                       [ self_, close = ptr->need_eof() ](beast::error_code ec, std::size_t bytes) {
+                                       [self_, close = ptr->need_eof()](beast::error_code ec, std::size_t bytes) {
                                          self_->OnWrite(ec, bytes, close);
                                        }));
 }
@@ -117,8 +117,8 @@ http::status HttpSession::ExecuteUserFunction(HttpContext& context) {
   std::string model_name, model_version, action;
   HandlerFn func;
 
-  if (context.request.find("x-ms-client-request-id") != context.request.end()) {
-    context.client_request_id = context.request["x-ms-client-request-id"].to_string();
+  if (context.request.find(util::MS_CLIENT_REQUEST_ID_HEADER) != context.request.end()) {
+    context.client_request_id = context.request[util::MS_CLIENT_REQUEST_ID_HEADER].to_string();
   }
 
   if (path == "/score") {

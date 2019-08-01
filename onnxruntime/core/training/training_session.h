@@ -80,6 +80,8 @@ class TrainingSession : public InferenceSession {
   // TODO: remove or refine below temp interfaces.
   NameMLValMap GetWeights() const;
 
+  common::Status UpdateTrainableWeightsInfoInGraph();
+
   // (To be deprecated)
   // Update the weights when updater is not part of the training graph
   common::Status UpdateWeightsInSessionState(const NameMLValMap& new_weights);

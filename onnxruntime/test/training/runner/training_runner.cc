@@ -99,7 +99,7 @@ Status TrainingRunner::Initialize() {
     ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
   }
 #endif
-
+  ORT_RETURN_IF_ERROR(session_.UpdateTrainableWeightsInfoInGraph());
   if (params_.use_profiler && !SESSION_OPTION.enable_profiling) {
     // Profiling has not already been enabled, so override from command line options.
     session_.StartProfiling(SESSION_OPTION.profile_file_prefix);

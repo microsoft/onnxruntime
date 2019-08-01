@@ -245,5 +245,23 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
   return trainable_initializers;
 }
 
+common::Status TrainingSession::UpdateTrainableWeightsInfoInGraph() {
+  Graph& graph = model_->MainGraph();
+  const auto& graph_inputs = graph.GetInputsIncludingInitializers();
+  std::unordered_set<const NodeArg*> inputs_to_add{};
+  std::transform(
+      weights_to_train_.begin(), weights_to_train_.end(), std::inserter(inputs_to_add, inputs_to_add.end()),
+      [&graph](const std::string& node_name) {
+        return graph.GetNodeArg(node_name);
+      });
+  for (const NodeArg* graph_input : graph_inputs) {
+    inputs_to_add.erase(graph_input);
+  }
+  std::vector<const NodeArg*> new_graph_inputs(graph_inputs);
+  new_graph_inputs.insert(new_graph_inputs.end(), inputs_to_add.begin(), inputs_to_add.end());
+  graph.SetInputs(new_graph_inputs);
+  return Status::OK();
+}
+
 }  // namespace training
 }  // namespace onnxruntime

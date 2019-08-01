@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/identity_elimination.h"
@@ -14,6 +16,8 @@
 #include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/shape_to_initializer.h"
+#include "core/optimizer/nchwc_transformer.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 
@@ -41,6 +45,10 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
       rules.push_back(std::make_unique<ConvMulFusion>());
       rules.push_back(std::make_unique<ConvBNFusion>());
       break;
+
+    case TransformerLevel::Level3:
+      break;
+
     default:
       ORT_ENFORCE(false, "Unsupported level" + std::to_string(static_cast<uint32_t>(level)));
   }
@@ -102,6 +110,16 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(l2_execution_providers));
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(l2_execution_providers));
 #endif
+    } break;
+
+    case TransformerLevel::Level3: {
+#ifndef DISABLE_CONTRIB_OPS
+      // Register the NCHWc layout transformer if supported by the platform.
+      if (MlasNchwcGetBlockSize() > 1) {
+        transformers.emplace_back(std::make_unique<NchwcTransformer>());
+      }
+#endif
+
     } break;
 
     default:

@@ -181,7 +181,7 @@ class InferenceSession {
     * The order of invocation indicates the reversed preference order: Register your most
     * preferred registry at the end.
     * Calling this API is optional.
-	* This API is not thread safe.
+    * This API is not thread safe.
     * @return OK if success.
     */
   common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry);
@@ -214,7 +214,7 @@ class InferenceSession {
     * Initializes a previously loaded model. Initialization includes but is not
     * limited to graph transformations, construction of kernels, etc.
     * This method assumes that a method has been loaded previously.
-	* This API is thread-safe.
+    * This API is thread-safe.
     * @return OK if success
     */
   common::Status Initialize();
@@ -396,14 +396,15 @@ class InferenceSession {
   std::vector<std::string> transformers_to_enable_;
 
   /// Logging manager if provided.
-  logging::LoggingManager* logging_manager_;
+  logging::LoggingManager* logging_manager_ = nullptr;
 
   /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
-  std::unique_ptr<logging::Logger> owned_session_logger_;
+  std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
 
   // Profiler for this session.
   profiling::Profiler session_profiler_;
 
+  // The list of execution providers.
   ExecutionProviders execution_providers_;
 
  protected:
@@ -419,12 +420,14 @@ class InferenceSession {
   std::vector<std::unique_ptr<IExecutor>> executors_;  // TODO do we need this vector?
 
   ModelMetadata model_metadata_;
-  InputDefList required_input_def_list_;
+  std::unordered_set<std::string> required_inputs_;
   std::unordered_map<std::string, const NodeArg*> input_def_map_;
   OutputDefList output_def_list_;
 
   // Threadpool for this session
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
+  // Data transfer manager.
+  DataTransferManager data_transfer_mgr_;
 
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_;

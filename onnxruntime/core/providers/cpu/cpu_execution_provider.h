@@ -46,10 +46,6 @@ class CPUExecutionProvider : public IExecutionProvider {
 #endif
   }
 
-  Status CopyTensor(const Tensor&, Tensor&) const override {
-    return Status(common::ONNXRUNTIME, common::FAIL, "Shouldn't reach here. CPUExecutionProvider doesn't support CopyTensor");
-  }
-
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
  private:

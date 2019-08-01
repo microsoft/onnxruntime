@@ -7,19 +7,20 @@
 
 #include "core/graph/graph.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/ml_value.h"
 #include "core/common/callback.h"
 
 namespace onnxruntime {
+class DataTransferManager;
 
 class OptimizerExecutionFrame final : public IExecutionFrame {
  public:
   class Info {
    public:
-    Info(const std::vector<const Node*>& nodes,
-         const InitializedTensorSet& initialized_tensor_set);
+    Info(const std::vector<const Node*>& nodes, const InitializedTensorSet& initialized_tensor_set);
     ~Info() {
       for (auto& kvp : deleter_for_initialized_tensors_) {
         kvp.second.f(kvp.second.param);
@@ -55,13 +56,13 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     const int device_id_{0};
     const OrtMemType mem_type_{OrtMemTypeDefault};
     AllocatorPtr allocator_ptr_;
-
+    DataTransferManager data_transfer_mgr_;
     // MLValues for optimizer
     OrtValueNameIdxMap ort_value_name_idx_map_;
     std::unordered_map<int, const NodeArg*> ort_value_idx_nodearg_map_;
     std::unordered_map<int, OrtValue> initializers_;
     std::unordered_map<int, std::unique_ptr<char[]>> buffer_for_initialized_tensors_;
-    // This data structure is for unintializing string tensors and
+    // This data structure is for uninitializing string tensors and
     // munmap memory region and close file descriptor
     std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;
     std::unique_ptr<NodeIndexInfo> node_index_info_;

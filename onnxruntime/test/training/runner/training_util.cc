@@ -46,7 +46,7 @@ common::Status DataSet::AddData(const vector<ONNX_NAMESPACE::TensorProto>& featu
     size_t cpu_tensor_length;
     ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &cpu_tensor_length));
     OrtValue ort_value;
-    OrtAllocatorInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+    OrtAllocatorInfo info("Cpu", OrtDeviceAllocator, OrtDevice{}, 0, OrtMemTypeDefault);
     std::unique_ptr<char[]> buffer(new char[cpu_tensor_length]);
     OrtCallback deleter;
     ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(
