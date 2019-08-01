@@ -52,10 +52,6 @@ namespace onnxruntime {
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, float, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), CumSum<float>);
 ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, double, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()), CumSum<double>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, int8_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int8_t>()), CumSum<int8_t>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, uint8_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()), CumSum<uint8_t>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, int16_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int16_t>()), CumSum<int16_t>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, uint16_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint16_t>()), CumSum<uint16_t>);
 ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, int32_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()), CumSum<int32_t>);
 ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, uint32_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint32_t>()), CumSum<uint32_t>);
 ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, int64_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()), CumSum<int64_t>);
