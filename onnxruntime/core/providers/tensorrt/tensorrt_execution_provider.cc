@@ -9,6 +9,8 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/compute_capability.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_fence.h"
 #include "core/platform/env.h"
 #include "core/common/status.h"
 #include "onnx/shape_inference/implementation.h"
@@ -30,7 +32,7 @@ namespace onnxruntime {
       return common::Status(common::ONNXRUNTIME, common::FAIL); \
     }                                                           \
   } while (0)
-
+/*
 TensorrtExecutionProvider::TensorrtExecutionProvider()
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider} {
   DeviceAllocatorRegistrationInfo trt_device_info({OrtMemTypeCPU, [](int) {
@@ -43,6 +45,24 @@ TensorrtExecutionProvider::TensorrtExecutionProvider()
                                                        },
                                                        std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(default_device_info));
+}
+*/
+TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
+    : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider}, device_id_(info.device_id) {
+  CUDA_CALL_THROW(cudaSetDevice(device_id_));
+  //cudaSetDevice(device_id_);
+  // create streams, default is nullptr
+  ///streams_[kCudaStreamDefault] = nullptr;
+  ///CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyIn], cudaStreamNonBlocking));
+  ///CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyOut], cudaStreamNonBlocking));
+
+  DeviceAllocatorRegistrationInfo default_allocator_info(
+      {OrtMemTypeDefault, [](int id) { return std::make_unique<TensorrtAllocator>(id); }, std::numeric_limits<size_t>::max()});
+  InsertAllocator(CreateAllocator(default_allocator_info, device_id_));
+
+  DeviceAllocatorRegistrationInfo pinned_allocator_info(
+      {OrtMemTypeCPUOutput, [](int) { return std::make_unique<TensorrtPinnedAllocator>(); }, std::numeric_limits<size_t>::max()});
+  InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_));
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {}
@@ -180,13 +200,13 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
         }
 
+        ORT_ENFORCE(graph_build.Resolve().IsOK()); //slx
         for (const auto& input : sub_graph->GetMetaDef()->inputs) {
           const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
           if (graph.GetInitializedTensor(input, initializer)) {
             graph_build.AddInitializedTensor(*initializer);
           }
         }
-        ORT_ENFORCE(graph_build.Resolve().IsOK());
 
         // Serialize modelproto to string
         ONNX_NAMESPACE::ModelProto model_proto = model_build.ToProto();
@@ -234,6 +254,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     }
     graph_build.AddNode(node.Name(), node.OpType(), node.Description(), inputs, outputs, &node.GetAttributes(), node.Domain());
   }
+  auto status = graph_build.Resolve();//slx
 
   //Add initializer to graph
   const auto& init_tensors = graph.GetAllInitializedTensors();
@@ -241,7 +262,6 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     graph_build.AddInitializedTensor(*(tensor.second));
   }
 
-  auto status = graph_build.Resolve();
   ORT_ENFORCE(status.IsOK(), status);
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -435,21 +455,49 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       const std::vector<int>& input_indexes = (trt_state->input_info)[0];
       const std::vector<int>& input_dim_sizes = (trt_state->input_info)[1];
       const std::vector<int>& output_indexes = (trt_state->output_info)[0];
-      const std::vector<int>& output_dim_sizes = (trt_state->output_info)[1];
+      ///const std::vector<int>& output_dim_sizes = (trt_state->output_info)[1];
       const std::vector<int>& output_types = (trt_state->output_info)[2];
       std::vector<std::vector<int64_t>> output_shapes = trt_state->output_shapes;
 
       int num_binding_inputs = input_indexes.size();
       int num_binding_outputs = output_indexes.size();
       int total_bindings = num_binding_inputs + num_binding_outputs;
-      cudaStream_t stream;
-      CHECK_CUDA(cudaStreamCreate(&stream));
+      //cudaStream_t stream;
+      ///cudaStream_t stream = nullptr;
+      //CHECK_CUDA(cudaStreamCreate(&stream));
       std::vector<void*> buffers(total_bindings);
       int batch_size = 1;
-
+/*
+    // slx !!
+    std::cout << "==KernelContext_GetInputCount==" << ort.KernelContext_GetInputCount(context) << std::endl;
+    for (int i = 0, end = ort.KernelContext_GetInputCount(context); i < end; ++i) {
+      const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
+      auto& fetched_tensor = input_tensor->Get<Tensor>();
+      auto& fetched_tensor_location = fetched_tensor.Location();
+      const float* buffer = const_cast<float*>(ort.GetTensorData<float>(input_tensor));
+      std::cout << "i: " << i
+         << ",Tensor OrtAllocatorInfo:["
+         << "name: " << fetched_tensor_location.name
+         << ",id: " << fetched_tensor_location.id
+         << ",mem_type: " << fetched_tensor_location.mem_type
+         << ",type: " << fetched_tensor_location.type
+         << ",device type: " << std::to_string(fetched_tensor_location.device.Type())
+         << "],memory addr: " << buffer;
+      if (fetched_tensor_location.device.Type() == 0)
+        std::cout << ", first data: " << buffer[0] << std::endl;
+      else if (fetched_tensor_location.device.Type() == 1) {
+        float* output = new float[10];
+        cudaMemcpy(output, buffer, 10 * sizeof(float), cudaMemcpyDeviceToHost);
+        std::cout << ", first data: " << output[0] << std::endl;
+        delete[] output;
+      }
+    }
+*/
       // Get batch size and allocate cuda memory for inputs
       for (int i = 0, end = num_binding_inputs; i < end; ++i) {
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_indexes[i]);
+        auto& fetched_tensor = input_tensor->Get<Tensor>();
+        auto& fetched_tensor_location = fetched_tensor.Location();
         auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
         const auto& tensor_shape = ort.GetTensorShape(tensor_info);
         auto tensor_type = ort.GetTensorElementType(tensor_info);
@@ -460,25 +508,60 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           ORT_THROW("Input batch size is inconsistent");
         }
         batch_size = input_batch_size;
-
+/*
         int input_size = batch_size * input_dim_sizes[i];
         if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
           const float* input = const_cast<float*>(ort.GetTensorData<float>(input_tensor));
           CHECK_CUDA(cudaMalloc(&buffers[i], input_size * sizeof(float)));
-          CHECK_CUDA(cudaMemcpy(buffers[i], input, input_size * sizeof(float), cudaMemcpyHostToDevice));
+          //CHECK_CUDA(cudaMemcpy(buffers[i], input, input_size * sizeof(float), cudaMemcpyHostToDevice));//slx
+          CHECK_CUDA(cudaMemcpy(buffers[i], input, input_size * sizeof(float), cudaMemcpyDeviceToDevice));
         } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8) {
           const int8_t* input = const_cast<int8_t*>(ort.GetTensorData<int8_t>(input_tensor));
           CHECK_CUDA(cudaMalloc(&buffers[i], input_size * sizeof(int8_t)));
-          CHECK_CUDA(cudaMemcpy(buffers[i], input, input_size * sizeof(int8_t), cudaMemcpyHostToDevice));
+          //CHECK_CUDA(cudaMemcpy(buffers[i], input, input_size * sizeof(int8_t), cudaMemcpyHostToDevice));//slx
+          CHECK_CUDA(cudaMemcpy(buffers[i], input, input_size * sizeof(int8_t), cudaMemcpyDeviceToDevice));
         } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
           const int32_t* input = const_cast<int32_t*>(ort.GetTensorData<int32_t>(input_tensor));
           CHECK_CUDA(cudaMalloc(&buffers[i], input_size * sizeof(int32_t)));
-          CHECK_CUDA(cudaMemcpy(buffers[i], input, input_size * sizeof(int32_t), cudaMemcpyHostToDevice));
+          //CHECK_CUDA(cudaMemcpy(buffers[i], input, input_size * sizeof(int32_t), cudaMemcpyHostToDevice));//slx
+          CHECK_CUDA(cudaMemcpy(buffers[i], input, input_size * sizeof(int32_t), cudaMemcpyDeviceToDevice));
         } else {
           return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
         }
+*/
+          if (fetched_tensor_location.device.Type() == 0) {
+            int input_size = batch_size * input_dim_sizes[i];
+            if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+              const float* input = const_cast<float*>(ort.GetTensorData<float>(input_tensor));
+              CHECK_CUDA(cudaMalloc(&buffers[i], input_size * sizeof(float)));
+              CHECK_CUDA(cudaMemcpy(buffers[i], input, input_size * sizeof(float), cudaMemcpyHostToDevice));//slx
+              //CHECK_CUDA(cudaMemcpy(buffers[i], input, input_size * sizeof(float), cudaMemcpyDeviceToDevice));
+            } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8) {
+              const int8_t* input = const_cast<int8_t*>(ort.GetTensorData<int8_t>(input_tensor));
+              CHECK_CUDA(cudaMalloc(&buffers[i], input_size * sizeof(int8_t)));
+              CHECK_CUDA(cudaMemcpy(buffers[i], input, input_size * sizeof(int8_t), cudaMemcpyHostToDevice));//slx
+              //CHECK_CUDA(cudaMemcpy(buffers[i], input, input_size * sizeof(int8_t), cudaMemcpyDeviceToDevice));
+            } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
+              const int32_t* input = const_cast<int32_t*>(ort.GetTensorData<int32_t>(input_tensor));
+              CHECK_CUDA(cudaMalloc(&buffers[i], input_size * sizeof(int32_t)));
+              CHECK_CUDA(cudaMemcpy(buffers[i], input, input_size * sizeof(int32_t), cudaMemcpyHostToDevice));//slx
+              //CHECK_CUDA(cudaMemcpy(buffers[i], input, input_size * sizeof(int32_t), cudaMemcpyDeviceToDevice));
+            } else {
+              return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
+            }
+          } else if  (fetched_tensor_location.device.Type() == 1) {
+              if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+                buffers[i] = const_cast<float*>(ort.GetTensorData<float>(input_tensor));
+              } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8) {
+                buffers[i] = const_cast<int8_t*>(ort.GetTensorData<int8_t>(input_tensor));
+              } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
+                buffers[i] = const_cast<int32_t*>(ort.GetTensorData<int32_t>(input_tensor));
+              } else {
+                return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
+              }
+          }
       }
-
+/*
       // Allocate cuda memory for outputs
       for (int i = 0, end = num_binding_outputs; i < end; ++i) {
         if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
@@ -491,11 +574,29 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
         }
       }
+*/
+    // Allocate cuda memory for outputs
+    for (int i = 0, end = num_binding_outputs; i < end; ++i) {
+      int output_index = output_indexes[i];
+      output_shapes[i].insert(output_shapes[i].begin(), batch_size);
+
+      OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, output_shapes[i].data(), output_shapes[i].size());
+      if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+        buffers[i + num_binding_inputs] = ort.GetTensorMutableData<float>(output_tensor);
+      } else if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8) {
+        buffers[i + num_binding_inputs] = ort.GetTensorMutableData<int8_t>(output_tensor);
+      } else if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32 || output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
+        buffers[i + num_binding_inputs] = ort.GetTensorMutableData<int32_t>(output_tensor);
+      } else {
+        return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
+      }
+    }
 
       // Run TRT inference
       std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
-      trt_state->context->enqueue(batch_size, &buffers[0], stream, nullptr);
-
+      //trt_state->context->enqueue(batch_size, &buffers[0], stream, nullptr);//slx
+      trt_state->context->enqueue(batch_size, &buffers[0], 0, nullptr);
+/*
       // Copy TRT outputs to output tensors
       for (int i = 0, end = num_binding_outputs; i < end; ++i) {
         int output_index = output_indexes[i];
@@ -504,12 +605,15 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         int output_size = batch_size * output_dim_sizes[i];
         OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, output_shapes[i].data(), output_shapes[i].size());
         if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-          CHECK_CUDA(cudaMemcpy(ort.GetTensorMutableData<float>(output_tensor), buffers[i + num_binding_inputs], output_size * sizeof(float), cudaMemcpyDeviceToHost));
+          //CHECK_CUDA(cudaMemcpy(ort.GetTensorMutableData<float>(output_tensor), buffers[i + num_binding_inputs], output_size * sizeof(float), cudaMemcpyDeviceToHost));//slx
+          CHECK_CUDA(cudaMemcpy(ort.GetTensorMutableData<float>(output_tensor), buffers[i + num_binding_inputs], output_size * sizeof(float), cudaMemcpyDeviceToDevice));
         } else if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8) {
-          CHECK_CUDA(cudaMemcpy(ort.GetTensorMutableData<int8_t>(output_tensor), buffers[i + num_binding_inputs], output_size * sizeof(int8_t), cudaMemcpyDeviceToHost));
+          //CHECK_CUDA(cudaMemcpy(ort.GetTensorMutableData<int8_t>(output_tensor), buffers[i + num_binding_inputs], output_size * sizeof(int8_t), cudaMemcpyDeviceToHost));//slx
+          CHECK_CUDA(cudaMemcpy(ort.GetTensorMutableData<int8_t>(output_tensor), buffers[i + num_binding_inputs], output_size * sizeof(int8_t), cudaMemcpyDeviceToDevice));
         } else if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
-          CHECK_CUDA(cudaMemcpy(ort.GetTensorMutableData<int32_t>(output_tensor), buffers[i + num_binding_inputs], output_size * sizeof(int32_t), cudaMemcpyDeviceToHost));
-        } else if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
+          //CHECK_CUDA(cudaMemcpy(ort.GetTensorMutableData<int32_t>(output_tensor), buffers[i + num_binding_inputs], output_size * sizeof(int32_t), cudaMemcpyDeviceToHost));//slx
+          CHECK_CUDA(cudaMemcpy(ort.GetTensorMutableData<int32_t>(output_tensor), buffers[i + num_binding_inputs], output_size * sizeof(int32_t), cudaMemcpyDeviceToDevice));
+        } else if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) { //slx
           // If output tensor type is INT64, TensorRT processes data as INT32 and the output will be converted to INT64.
           int* output = new int32_t[output_size];
           CHECK_CUDA(cudaMemcpy(output, buffers[i + num_binding_inputs], output_size * sizeof(int32_t), cudaMemcpyDeviceToHost));
@@ -521,7 +625,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
         }
       }
-
+*/
+/*
       // Sync stream
       cudaStreamSynchronize(stream);
 
@@ -531,7 +636,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       for (int i = 0, end = total_bindings; i < end; ++i) {
         CHECK_CUDA(cudaFree(buffers[i]));
       }
-
+*/
       return Status::OK();
     };
 
