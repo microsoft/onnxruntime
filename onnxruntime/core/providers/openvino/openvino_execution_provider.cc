@@ -539,10 +539,6 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
   meta_def->domain = "OpenVINO";
   meta_def->since_version = 1;
 
-  LOGS_DEFAULT(INFO) << openvino_ep::OpenVINOGraph::log_tag << "SubGraph Name: " << meta_def->name << "\n";
-  //LOGS_DEFAULT(INFO) << openvino_ep::OpenVINOGraph::log_tag << "SubGraph XML: " << xml_string << "\n";
-  //LOGS_DEFAULT(INFO) << openvino_ep::OpenVINOGraph::log_tag << "SubGraph Weights: " << weights_string << "\n";
-
   for (auto input : fused_inputs) {
     meta_def->inputs.push_back(input->Name());
   }
