@@ -38,6 +38,7 @@ Status GemmlowpMultiply(const uint8_t* lhs_data, const uint8_t* rhs_data,
   gemmlowp::MatrixMap<std::int32_t, matOrder> result(result_data, m, n);
 
   gemmlowp::GemmContext gemm_context;
+  gemm_context.set_max_num_threads(0);
   gemmlowp::GemmWithOutputPipeline<std::uint8_t, std::int32_t,
                                    gemmlowp::DefaultL8R8BitDepthParams>(
       &gemm_context, lhs, rhs, &result, -lhs_offset, -rhs_offset, empty_pipeline);
