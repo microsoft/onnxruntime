@@ -351,6 +351,8 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
   if (implicit_inputs && implicit_inputs->empty()) {
     implicit_inputs = nullptr;
   }
+  auto exec_plan = session_state.GetExecutionPlan();
+  auto& name_to_id = session_state.GetOrtValueNameIdxMap();
 
   for (auto& node : graph.Nodes()) {
     // note that KernelCreateInfo may not exist for custom kernel
@@ -365,7 +367,11 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
                 return Status::OK();
               }
 
-              SessionState::NodeInfo node_info(index, &node, kci);
+              int arg_index;
+              ORT_RETURN_IF_ERROR(name_to_id.GetIdx(arg.Name(), arg_index));
+              auto& device = exec_plan->GetLocation(arg_index).device;
+
+              SessionState::NodeInfo node_info(index, &node, kci, device);
 
               if (IsArgNameInInputsOutputs(arg.Name(), graph_inputs)) {
                 ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info));
@@ -397,8 +403,13 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
       // copy to/from CPU to go through the control flow nodes where possible/applicable.
       // the processing for the subgraph where the implicit input is consumed will do the real check on whether any
       // copy to a different device is required
-      SessionState::NodeInfo node_info(std::numeric_limits<size_t>::max(), &node, kci);
       for (const auto& input_def : node_implicit_inputs) {
+        int arg_index;
+        //Question: the implicit input may not be found in this session state name to id map, but in parent session state name to id map.
+        //@Scott
+        ORT_RETURN_IF_ERROR(name_to_id.GetIdx(input_def->Name(), arg_index));
+        auto& device = exec_plan->GetLocation(arg_index).device;
+        SessionState::NodeInfo node_info(std::numeric_limits<size_t>::max(), &node, kci, device);
         ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(input_def->Name(), node_info));
       }
     }
@@ -413,7 +424,6 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
 
   auto& input_map = session_state.GetInputNodeInfoMap();
   auto end_map = input_map.cend();
-  SessionState::NodeInfo empty_node_info(std::numeric_limits<size_t>::max(), nullptr, nullptr);
 
   for (const auto& graph_input : graph_inputs) {
     const auto& name = graph_input->Name();
@@ -422,6 +432,10 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
       // utils::CopyOneInputAcrossDevices will use the input OrtValue as is given we don't believe it's used anywhere.
       LOGS(session_state.Logger(), INFO) << (graph.IsSubgraph() ? "Subgraph" : "Graph") << " input with name "
                                          << name << " is not used by any node.";
+      int arg_index;
+      ORT_RETURN_IF_ERROR(name_to_id.GetIdx(name, arg_index));
+      auto& device = exec_plan->GetLocation(arg_index).device;
+      SessionState::NodeInfo empty_node_info(std::numeric_limits<size_t>::max(), nullptr, nullptr, device);
       ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(name, empty_node_info));
     }
   }
