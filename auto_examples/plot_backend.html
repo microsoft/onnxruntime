@@ -65,8 +65,8 @@
     </div>
     <div class="col-xs-12 col-sm-9">
       <div class="sphx-glr-download-link-note admonition note">
-<p class="first admonition-title">Note</p>
-<p class="last">Click <a class="reference internal" href="#sphx-glr-download-auto-examples-plot-backend-py"><span class="std std-ref">here</span></a> to download the full example code</p>
+<p class="admonition-title">Note</p>
+<p>Click <a class="reference internal" href="#sphx-glr-download-auto-examples-plot-backend-py"><span class="std std-ref">here</span></a> to download the full example code</p>
 </div>
 <div class="sphx-glr-example-title section" id="onnx-runtime-backend-for-onnx">
 <span id="l-example-backend-api"></span><span id="sphx-glr-auto-examples-plot-backend-py"></span><h1>ONNX Runtime Backend for ONNX<a class="headerlink" href="#onnx-runtime-backend-for-onnx" title="Permalink to this headline">¶</a></h1>
@@ -75,10 +75,10 @@
 to run predictions using this runtime.
 Let’s use the API to compute the prediction
 of a simple logistic regression model.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
-<span class="kn">from</span> <span class="nn">onnxruntime</span> <span class="kn">import</span> <span class="n">datasets</span>
-<span class="kn">import</span> <span class="nn">onnxruntime.backend</span> <span class="kn">as</span> <span class="nn">backend</span>
-<span class="kn">from</span> <span class="nn">onnx</span> <span class="kn">import</span> <span class="n">load</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">onnxruntime</span> <span class="k">import</span> <span class="n">datasets</span>
+<span class="kn">import</span> <span class="nn">onnxruntime.backend</span> <span class="k">as</span> <span class="nn">backend</span>
+<span class="kn">from</span> <span class="nn">onnx</span> <span class="k">import</span> <span class="n">load</span>
 
 <span class="n">name</span> <span class="o">=</span> <span class="n">datasets</span><span class="o">.</span><span class="n">get_example</span><span class="p">(</span><span class="s2">&quot;logreg_iris.onnx&quot;</span><span class="p">)</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">load</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
@@ -86,8 +86,8 @@ of a simple logistic regression model.</p>
 <span class="n">rep</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="s1">&#39;CPU&#39;</span><span class="p">)</span>
 <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="o">-</span><span class="mf">1.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">2.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
 <span class="n">label</span><span class="p">,</span> <span class="n">proba</span> <span class="o">=</span> <span class="n">rep</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;label={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">label</span><span class="p">))</span>
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;probabilities={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">proba</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;label=</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">label</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;probabilities=</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">proba</span><span class="p">))</span>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
@@ -97,21 +97,21 @@ probabilities=[{0: 0.02731134556233883, 1: 0.5175684094429016, 2: 0.455120265483
 </div>
 <p>The device depends on how the package was compiled,
 GPU or CPU.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">onnxruntime</span> <span class="kn">import</span> <span class="n">get_device</span>
-<span class="k">print</span><span class="p">(</span><span class="n">get_device</span><span class="p">())</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">onnxruntime</span> <span class="k">import</span> <span class="n">get_device</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">get_device</span><span class="p">())</span>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>CPU-MKL-DNN
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>CPU
 </pre></div>
 </div>
 <p>The backend can also directly load the model
 without using <em>onnx</em>.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">rep</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="s1">&#39;CPU&#39;</span><span class="p">)</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">rep</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="s1">&#39;CPU&#39;</span><span class="p">)</span>
 <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="o">-</span><span class="mf">1.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">2.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
 <span class="n">label</span><span class="p">,</span> <span class="n">proba</span> <span class="o">=</span> <span class="n">rep</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;label={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">label</span><span class="p">))</span>
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;probabilities={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">proba</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;label=</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">label</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;probabilities=</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">proba</span><span class="p">))</span>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
@@ -122,14 +122,16 @@ probabilities=[{0: 0.02731134556233883, 1: 0.5175684094429016, 2: 0.455120265483
 <p>The backend API is implemented by other frameworks
 and makes it easier to switch between multiple runtimes
 with the same API.</p>
-<p><strong>Total running time of the script:</strong> ( 0 minutes  0.121 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  0.078 seconds)</p>
 <div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-backend-py">
 <div class="sphx-glr-download docutils container">
-<a class="reference download internal" download="" href="../_downloads/af7e132d219ee179382cb95fc8008c31/plot_backend.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_backend.py</span></code></a></div>
-<div class="sphx-glr-download docutils container">
-<a class="reference download internal" download="" href="../_downloads/2677537d559dd55e194fee6fbf7f1ebd/plot_backend.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_backend.ipynb</span></code></a></div>
+<p><a class="reference download internal" download="" href="../_downloads/07414d774e7573917fe9f036ed647ad9/plot_backend.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_backend.py</span></code></a></p>
 </div>
-<p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.readthedocs.io">Gallery generated by Sphinx-Gallery</a></p>
+<div class="sphx-glr-download docutils container">
+<p><a class="reference download internal" download="" href="../_downloads/d2eead6e164573e054253b729a99fe25/plot_backend.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_backend.ipynb</span></code></a></p>
+</div>
+</div>
+<p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.github.io">Gallery generated by Sphinx-Gallery</a></p>
 </div>
 
     </div>

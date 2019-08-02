@@ -65,8 +65,8 @@
     </div>
     <div class="col-xs-12 col-sm-9">
       <div class="sphx-glr-download-link-note admonition note">
-<p class="first admonition-title">Note</p>
-<p class="last">Click <a class="reference internal" href="#sphx-glr-download-auto-examples-plot-dl-keras-py"><span class="std std-ref">here</span></a> to download the full example code</p>
+<p class="admonition-title">Note</p>
+<p>Click <a class="reference internal" href="#sphx-glr-download-auto-examples-plot-dl-keras-py"><span class="std std-ref">here</span></a> to download the full example code</p>
 </div>
 <div class="sphx-glr-example-title section" id="onnx-runtime-for-keras">
 <span id="l-example-backend-api-tensorflow"></span><span id="sphx-glr-auto-examples-plot-dl-keras-py"></span><h1>ONNX Runtime for Keras<a class="headerlink" href="#onnx-runtime-for-keras" title="Permalink to this headline">¶</a></h1>
@@ -76,55 +76,59 @@ of a pretrained deep learning model obtained from
 with <em>onnxruntime</em>. The conversion requires
 <a class="reference external" href="https://keras.io/">keras</a>,
 <a class="reference external" href="https://www.tensorflow.org/">tensorflow</a>,
-<a class="reference external" href="https://github.com/onnx/sklearn-onnx/">sklearn-onnx</a>,
+<a class="reference external" href="https://github.com/onnx/keras-onnx/">keras-onnx</a>,
 <a class="reference external" href="https://pypi.org/project/onnxmltools/">onnxmltools</a>
 but then only <em>onnxruntime</em> is required
 to compute the predictions.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">os</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">os</span>
 <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="s1">&#39;dense121.onnx&#39;</span><span class="p">):</span>
-    <span class="kn">from</span> <span class="nn">keras.applications.densenet</span> <span class="kn">import</span> <span class="n">DenseNet121</span>
-    <span class="n">model</span> <span class="o">=</span> <span class="n">DenseNet121</span><span class="p">(</span><span class="n">include_top</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="s1">&#39;imagenet&#39;</span><span class="p">)</span>
+    <span class="kn">from</span> <span class="nn">keras.applications.densenet</span> <span class="k">import</span> <span class="n">DenseNet121</span>
+    <span class="n">model</span> <span class="o">=</span> <span class="n">DenseNet121</span><span class="p">(</span><span class="n">include_top</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="s1">&#39;imagenet&#39;</span><span class="p">)</span>
 
-    <span class="kn">from</span> <span class="nn">onnxmltools</span> <span class="kn">import</span> <span class="n">convert_keras</span>
+    <span class="kn">from</span> <span class="nn">keras2onnx</span> <span class="k">import</span> <span class="n">convert_keras</span>
     <span class="n">onx</span> <span class="o">=</span> <span class="n">convert_keras</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="s1">&#39;dense121.onnx&#39;</span><span class="p">)</span>
     <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;dense121.onnx&quot;</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
         <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">onx</span><span class="o">.</span><span class="n">SerializeToString</span><span class="p">())</span>
 </pre></div>
 </div>
 <p>Let’s load an image (source: wikipedia).</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">keras.preprocessing.image</span> <span class="kn">import</span> <span class="n">array_to_img</span><span class="p">,</span> <span class="n">img_to_array</span><span class="p">,</span> <span class="n">load_img</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">keras.preprocessing.image</span> <span class="k">import</span> <span class="n">array_to_img</span><span class="p">,</span> <span class="n">img_to_array</span><span class="p">,</span> <span class="n">load_img</span>
 <span class="n">img</span> <span class="o">=</span> <span class="n">load_img</span><span class="p">(</span><span class="s1">&#39;Sannosawa1.jpg&#39;</span><span class="p">)</span>
 <span class="n">ximg</span> <span class="o">=</span> <span class="n">img_to_array</span><span class="p">(</span><span class="n">img</span><span class="p">)</span>
 
-<span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="kn">as</span> <span class="nn">plt</span>
+<span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
 <span class="n">plt</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">ximg</span> <span class="o">/</span> <span class="mi">255</span><span class="p">)</span>
 <span class="n">plt</span><span class="o">.</span><span class="n">axis</span><span class="p">(</span><span class="s1">&#39;off&#39;</span><span class="p">)</span>
 </pre></div>
 </div>
 <img alt="../_images/sphx_glr_plot_dl_keras_001.png" class="sphx-glr-single-img" src="../_images/sphx_glr_plot_dl_keras_001.png" />
+<p class="sphx-glr-script-out">Out:</p>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Using TensorFlow backend.
+</pre></div>
+</div>
 <p>Let’s load the model with onnxruntime.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">onnxruntime</span> <span class="kn">as</span> <span class="nn">rt</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">onnxruntime</span> <span class="k">as</span> <span class="nn">rt</span>
 
 <span class="n">sess</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="s1">&#39;dense121.onnx&#39;</span><span class="p">)</span>
 
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;The model expects input shape:&quot;</span><span class="p">,</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;image shape:&quot;</span><span class="p">,</span> <span class="n">ximg</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;The model expects input shape:&quot;</span><span class="p">,</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;image shape:&quot;</span><span class="p">,</span> <span class="n">ximg</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>The model expects input shape: [1, 224, 224, 3]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>The model expects input shape: [&#39;N&#39;, 224, 224, 3]
 image shape: (960, 1280, 3)
 </pre></div>
 </div>
 <p>Let’s resize the image.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">skimage.transform</span> <span class="kn">import</span> <span class="n">resize</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">skimage.transform</span> <span class="k">import</span> <span class="n">resize</span>
 <span class="kn">import</span> <span class="nn">numpy</span>
 
-<span class="n">ximg224</span> <span class="o">=</span> <span class="n">resize</span><span class="p">(</span><span class="n">ximg</span> <span class="o">/</span> <span class="mi">255</span><span class="p">,</span> <span class="p">(</span><span class="mi">224</span><span class="p">,</span> <span class="mi">224</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">anti_aliasing</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="n">ximg224</span> <span class="o">=</span> <span class="n">resize</span><span class="p">(</span><span class="n">ximg</span> <span class="o">/</span> <span class="mi">255</span><span class="p">,</span> <span class="p">(</span><span class="mi">224</span><span class="p">,</span> <span class="mi">224</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">anti_aliasing</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="n">ximg</span> <span class="o">=</span> <span class="n">ximg224</span><span class="p">[</span><span class="n">numpy</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,</span> <span class="p">:,</span> <span class="p">:,</span> <span class="p">:]</span>
 <span class="n">ximg</span> <span class="o">=</span> <span class="n">ximg</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
 
-<span class="k">print</span><span class="p">(</span><span class="s2">&quot;new shape:&quot;</span><span class="p">,</span> <span class="n">ximg</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;new shape:&quot;</span><span class="p">,</span> <span class="n">ximg</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
@@ -132,43 +136,50 @@ image shape: (960, 1280, 3)
 </pre></div>
 </div>
 <p>Let’s compute the output.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">input_name</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span>
-<span class="n">res</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="p">{</span><span class="n">input_name</span><span class="p">:</span> <span class="n">ximg</span><span class="p">})</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">input_name</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span>
+<span class="n">res</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="p">{</span><span class="n">input_name</span><span class="p">:</span> <span class="n">ximg</span><span class="p">})</span>
 <span class="n">prob</span> <span class="o">=</span> <span class="n">res</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-<span class="k">print</span><span class="p">(</span><span class="n">prob</span><span class="o">.</span><span class="n">ravel</span><span class="p">()[:</span><span class="mi">10</span><span class="p">])</span>  <span class="c1"># Too big to be displayed.</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">prob</span><span class="o">.</span><span class="n">ravel</span><span class="p">()[:</span><span class="mi">10</span><span class="p">])</span>  <span class="c1"># Too big to be displayed.</span>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[2.1612270e-05 1.1138351e-06 2.1360959e-06 6.0211114e-06 6.5446366e-06
- 1.0469312e-06 2.2719589e-06 6.1393780e-07 1.0240102e-06 4.2285060e-06]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[2.0848269e-05 9.0345173e-07 1.6248799e-06 4.8086245e-06 6.5069430e-06
+ 9.4028013e-07 1.9978056e-06 4.6639886e-07 9.4333654e-07 3.2267878e-06]
 </pre></div>
 </div>
 <p>Let’s get more comprehensive results.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">keras.applications.densenet</span> <span class="kn">import</span> <span class="n">decode_predictions</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">keras.applications.densenet</span> <span class="k">import</span> <span class="n">decode_predictions</span>
 <span class="n">decoded</span> <span class="o">=</span> <span class="n">decode_predictions</span><span class="p">(</span><span class="n">prob</span><span class="p">)</span>
 
 <span class="kn">import</span> <span class="nn">pandas</span>
 <span class="n">df</span> <span class="o">=</span> <span class="n">pandas</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">decoded</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;class_id&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;P&quot;</span><span class="p">])</span>
-<span class="k">print</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>class_id           name         P
-0  n09468604         valley  0.687383
-1  n09193705            alp  0.253061
-2  n09246464          cliff  0.012631
-3  n09399592     promontory  0.012037
-4  n03792972  mountain_tent  0.007539
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Downloading data from https://s3.amazonaws.com/deep-learning-models/image-models/imagenet_class_index.json
+
+ 8192/35363 [=====&gt;........................] - ETA: 0s
+24576/35363 [===================&gt;..........] - ETA: 0s
+40960/35363 [==================================] - 0s 2us/step
+    class_id           name         P
+0  n09468604         valley  0.673280
+1  n09193705            alp  0.267427
+2  n09399592     promontory  0.013859
+3  n09246464          cliff  0.013251
+4  n03792972  mountain_tent  0.007756
 </pre></div>
 </div>
-<p><strong>Total running time of the script:</strong> ( 0 minutes  4.028 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  5.496 seconds)</p>
 <div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-dl-keras-py">
 <div class="sphx-glr-download docutils container">
-<a class="reference download internal" download="" href="../_downloads/86c8c4277fa41835f7f71a1978a93187/plot_dl_keras.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_dl_keras.py</span></code></a></div>
-<div class="sphx-glr-download docutils container">
-<a class="reference download internal" download="" href="../_downloads/462366650d8dd85001eeaf9d4da3edfb/plot_dl_keras.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_dl_keras.ipynb</span></code></a></div>
+<p><a class="reference download internal" download="" href="../_downloads/f683ea8e6fce96a8db746a8fa9557372/plot_dl_keras.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_dl_keras.py</span></code></a></p>
 </div>
-<p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.readthedocs.io">Gallery generated by Sphinx-Gallery</a></p>
+<div class="sphx-glr-download docutils container">
+<p><a class="reference download internal" download="" href="../_downloads/c4b3cabf0719d23a38ea687e9d3633c6/plot_dl_keras.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_dl_keras.ipynb</span></code></a></p>
+</div>
+</div>
+<p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.github.io">Gallery generated by Sphinx-Gallery</a></p>
 </div>
 
     </div>
