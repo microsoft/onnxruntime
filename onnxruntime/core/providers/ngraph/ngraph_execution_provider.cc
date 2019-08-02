@@ -182,11 +182,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
       return true;
     }
-  } else if (optype == "Gather") {
-    // disable Gather for non-floating point types
-    bool is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
-    is_float = is_float || node->InputDefs()[0]->Type()->find("double") != std::string::npos;
-    return !is_float;
   } else if (optype == "Split") {
     const auto& attributes = node->GetAttributes();
     const auto split_attr = attributes.find("split");
@@ -322,7 +317,7 @@ static std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int 
   std::map<std::string, std::set<std::string>> ng_supported_ops;
   ng_supported_ops.emplace(kOnnxDomain, ngraph::onnx_import::get_supported_operators(onnx_opset, kOnnxDomain));
 
-  const std::set<std::string> ng_disabled_ops = {"LSTM"};  //Place-holder for ops not supported.
+  const std::set<std::string> ng_disabled_ops = {"LSTM", "Gather"};  //Place-holder for ops not supported.
 
   for (const auto& disabled_op : ng_disabled_ops) {
     ng_supported_ops.at(kOnnxDomain).erase(disabled_op);
