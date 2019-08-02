@@ -806,7 +806,7 @@ TEST(MathOpTest, Less_Scalar1) {
   test.Run();
 }
 
-TEST(MathOpTest, Greater) {
+TEST(MathOpTest, Greater_7) {
   OpTester test("Greater");
   std::vector<int64_t> dims{4};
   test.AddInput<float>("A", dims, {1.0f, 0.0f, -1.0f, -1.0f});
@@ -815,9 +815,19 @@ TEST(MathOpTest, Greater) {
   test.Run();
 }
 
-TEST( MathOpTest, Greater_int32 )
+TEST( MathOpTest, Greater_9_float )
 {
-   OpTester test( "Greater" );
+   OpTester test( "Greater", 9 );
+   std::vector<int64_t> dims { 4 };
+   test.AddInput<float>( "A", dims, { 1.0f, 0.0f, -1.0f, -1.0f } );
+   test.AddInput<float>( "B", dims, { 1.0f, 1.0f, 2.0f, -1.0f } );
+   test.AddOutput<bool>( "C", dims, { false, false, false, false } );
+   test.Run();
+}
+
+TEST( MathOpTest, Greater_9_int32 )
+{
+   OpTester test( "Greater", 9 );
    std::vector<int64_t> dims { 4 };
    test.AddInput<int32_t>( "A", dims, { 10, 11, 12, 13 } );
    test.AddInput<int32_t>( "B", dims, { 15, 7, 12, 9 } );
@@ -825,9 +835,9 @@ TEST( MathOpTest, Greater_int32 )
    test.Run();
 }
 
-TEST( MathOpTest, Greater_int64 )
+TEST( MathOpTest, Greater_9_int64 )
 {
-   OpTester test( "Greater" );
+   OpTester test( "Greater", 9 );
    std::vector<int64_t> dims { 4 };
    test.AddInput<int64_t>( "A", dims, { 10, 11, 12, 13 } );
    test.AddInput<int64_t>( "B", dims, { 15, 7, 12, 9 } );
