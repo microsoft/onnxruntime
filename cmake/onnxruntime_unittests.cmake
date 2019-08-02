@@ -471,7 +471,9 @@ set(onnx_test_runner_common_srcs
   ${onnx_test_runner_src_dir}/TestCase.h
   ${onnx_test_runner_src_dir}/onnxruntime_event.h
   ${onnx_test_runner_src_dir}/sync_api.h
-  ${onnx_test_runner_src_dir}/sync_api.cc)
+  ${onnx_test_runner_src_dir}/sync_api.cc
+  ${onnx_test_runner_src_dir}/tensorprotoutils.h
+  ${onnx_test_runner_src_dir}/tensorprotoutils.cc)
 
 if(WIN32)
   set(wide_get_opt_src_dir ${TEST_SRC_DIR}/win_getopt/wide)
@@ -483,8 +485,8 @@ if(WIN32)
 endif()
 
 add_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
-onnxruntime_add_include_to_target(onnx_test_runner_common onnxruntime_common onnxruntime_test_utils gsl onnx onnx_proto)
-add_dependencies(onnx_test_runner_common onnxruntime_framework onnx_test_data_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
+onnxruntime_add_include_to_target(onnx_test_runner_common onnxruntime_common onnxruntime_framework onnxruntime_test_utils gsl onnx onnx_proto)
+add_dependencies(onnx_test_runner_common onnx_test_data_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnx_test_runner_common PRIVATE ${eigen_INCLUDE_DIRS} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT})
 set_target_properties(onnx_test_runner_common PROPERTIES FOLDER "ONNXRuntimeTest")
 
@@ -564,7 +566,7 @@ onnxruntime_add_include_to_target(onnxruntime_perf_test gsl)
 
 if (onnxruntime_BUILD_SHARED_LIB)
   set(onnxruntime_perf_test_libs onnxruntime_test_utils onnx_test_runner_common onnxruntime_common
-          onnx_test_data_proto onnx_proto libprotobuf ${GETOPT_LIB_WIDE} onnxruntime
+          onnx_test_data_proto onnx_proto libprotobuf ${GETOPT_LIB_WIDE} onnxruntime onnx onnxruntime_framework
           ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
   if(onnxruntime_USE_NSYNC)
     list(APPEND onnxruntime_perf_test_libs nsync_cpp)
@@ -611,8 +613,10 @@ if (onnxruntime_BUILD_SHARED_LIB)
       list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc)
     endif()
   endif()
+  # added mlas due to this onnxruntime_framework.lib(allocator.obj) : error LNK2019: unresolved external symbol 
+  # "unsigned __int64 __cdecl MlasGetPreferredBufferAlignment(void)"
   set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common
-          onnx_proto)
+          onnx_proto onnxruntime_framework onnxruntime_mlas onnx)
   if(onnxruntime_USE_NSYNC)
     list(APPEND onnxruntime_shared_lib_test_LIBS nsync_cpp)
   endif()
