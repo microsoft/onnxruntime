@@ -86,6 +86,8 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kOpenVINOExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
+            test_config.machine_config.provider_type_name = onnxruntime::kNnapiExecutionProvider;
         } else {
           return false;
         }
