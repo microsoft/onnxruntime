@@ -74,7 +74,7 @@
 <span class="sd">&quot;&quot;&quot;</span>
 <span class="kn">from</span> <span class="nn">onnx.checker</span> <span class="k">import</span> <span class="n">check_model</span>
 <span class="kn">from</span> <span class="nn">onnx.backend.base</span> <span class="k">import</span> <span class="n">Backend</span>
-<span class="kn">from</span> <span class="nn">onnxruntime</span> <span class="k">import</span> <span class="n">InferenceSession</span><span class="p">,</span> <span class="n">RunOptions</span><span class="p">,</span> <span class="n">SessionOptions</span><span class="p">,</span> <span class="n">get_device</span>
+<span class="kn">from</span> <span class="nn">onnxruntime</span> <span class="k">import</span> <span class="n">InferenceSession</span><span class="p">,</span> <span class="n">SessionOptions</span><span class="p">,</span> <span class="n">get_device</span>
 <span class="kn">from</span> <span class="nn">onnxruntime.backend.backend_rep</span> <span class="k">import</span> <span class="n">OnnxRuntimeBackendRep</span>
 
 
@@ -158,11 +158,7 @@
 <span class="sd">        :return: predictions</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">rep</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-        <span class="n">options</span> <span class="o">=</span> <span class="n">RunOptions</span><span class="p">()</span>
-        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">options</span><span class="p">,</span> <span class="n">k</span><span class="p">):</span>
-                <span class="nb">setattr</span><span class="p">(</span><span class="n">options</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">rep</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">options</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">rep</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 
     <span class="nd">@classmethod</span>
     <span class="k">def</span> <span class="nf">run_node</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">node</span><span class="p">,</span> <span class="n">inputs</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">outputs_info</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>

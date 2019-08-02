@@ -83,10 +83,13 @@ thumbnail with its default link Background color */
   color: #888;
   margin: 0;
 }
+p.sphx-glr-script-out {
+    padding-top: 0.7em;
+}
 .sphx-glr-script-out .highlight {
   background-color: transparent;
   margin-left: 2.5em;
-  margin-top: -1.4em;
+  margin-top: -2.1em;
 }
 .sphx-glr-script-out .highlight pre {
   background-color: #fafae2;

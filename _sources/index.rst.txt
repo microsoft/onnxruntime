@@ -24,6 +24,7 @@ The core library is implemented in C++.
 PyPi for Linux Ubuntu 16.04, Python 3.5+ for both
 `CPU <https://pypi.org/project/onnxruntime/>`_ and
 `GPU <https://pypi.org/project/onnxruntime-gpu/>`_.
+Please see `system requirements <https://github.com/Microsoft/onnxruntime#system-requirements>`_ before installating the packages.
 This example demonstrates a simple prediction for an
 `ONNX-ML format <https://github.com/onnx/onnx/blob/master/docs/IR.md>`_
 model. The following file ``model.onnx`` is taken from
