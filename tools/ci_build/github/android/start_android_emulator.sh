@@ -3,8 +3,6 @@
 
 set -e
 
-export TERM=xterm
-
 echo "y" | $ANDROID_HOME/tools/bin/sdkmanager --install 'system-images;android-28;google_apis;x86_64'
 
 echo "no" | $ANDROID_HOME/tools/bin/avdmanager create avd -n android_emulator -k 'system-images;android-28;google_apis;x86_64' --force
@@ -19,7 +17,7 @@ $ANDROID_HOME/platform-tools/adb start-server
 
 echo "Waiting for device to come online"
 # Sometimes wait-for-device hangs, so add a timeout here
-timeout 60 adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done; input keyevent 82'
+timeout 180 adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done; input keyevent 82'
 
 echo "Emulator is online"
 
