@@ -35,14 +35,22 @@ static bool check_ngraph_dump_ops() {
 #endif
 }
 
-NGRAPHCustomOp::NGRAPHCustomOp(const ComputeContext* context, const ONNX_NAMESPACE::ModelProto& model_proto,
-                               const std::shared_ptr<ngraph::runtime::Backend>& ng_backend)
-    : ng_backend_{ng_backend},
-      model_proto_{model_proto} {
+NGRAPHCustomOp::NGRAPHCustomOp(const ComputeContext* context,
+                               const ONNX_NAMESPACE::ModelProto& model_proto,
+                               const std::shared_ptr<ONNX_NAMESPACE::AttributeProto> initializers,
+                               const std::shared_ptr<ngraph::runtime::Backend>& ng_backend) :
+  ng_backend_{ng_backend}, model_proto_{model_proto}
+{
   allocate_func_ = context->allocate_func;
   release_func_ = context->release_func;
   allocator_ = context->allocator_handle;
   name_ = context->node_name;
+
+  auto graph_proto = model_proto_.mutable_graph();
+
+  for (const auto& initializer : initializers->tensors()) {
+    graph_proto->add_initializer()->CopyFrom(initializer);
+  }
 
   if (check_ngraph_dump_ops()) {
     std::fstream dump(name_ + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
@@ -59,7 +67,6 @@ NGRAPHCustomOp::~NGRAPHCustomOp() {
 //This method gets called in critical path of execution: Optimize
 void NGRAPHCustomOp::Initialize(const OrtCustomOpApi* api, OrtKernelContext* context) const {
   Ort::CustomOpApi ort{*api};
-  LOGS_DEFAULT(INFO) << "nGraph compiling customOp: " << name_;
 
   size_t num_inputs = ort.KernelContext_GetInputCount(context);
 
@@ -88,6 +95,9 @@ void NGRAPHCustomOp::Initialize(const OrtCustomOpApi* api, OrtKernelContext* con
     return;
   } else {
     auto graph_proto = model_proto_.mutable_graph();
+
+    LOGS_DEFAULT(INFO) << "[NGRAPHCustomOp] Compiling customOp: " << name_;
+
     // Clear previous shapes if any and set new input shapes
     for (size_t i = 0; i < num_inputs; i++) {
       auto g_in_shape = graph_proto->mutable_input((int)i)->mutable_type()->mutable_tensor_type()->mutable_shape();
@@ -108,12 +118,12 @@ void NGRAPHCustomOp::Initialize(const OrtCustomOpApi* api, OrtKernelContext* con
     try {
       ng_function = ngraph::onnx_import::import_onnx_model(model_stream);
     } catch (const std::exception& exp) {
-      LOGS_DEFAULT(FATAL) << "[" << name_ << "] "
-                          << "Exception while converting onnx to nGraph: " << std::string(exp.what());
+      LOGS_DEFAULT(FATAL) << "[NGRAPHCustomOp] " << " - " << name_ << " - "
+                          << "Exception while importing model to nGraph: " << std::string(exp.what());
       throw;
     } catch (...) {
-      LOGS_DEFAULT(FATAL) << "[" << name_ << "] "
-                          << "Unknown exception while converting onnx to nGraph";
+      LOGS_DEFAULT(FATAL) << "[NGRAPHCustomOp] " << " - " << name_ << " - "
+                          << "Unknown exception while importing model to nGraph";
       throw;
     }
 
@@ -125,9 +135,10 @@ void NGRAPHCustomOp::Initialize(const OrtCustomOpApi* api, OrtKernelContext* con
     try {
       ng_curr_exe_ = ng_backend_->compile(ng_function);
     } catch (const std::exception& exp) {
-      LOGS_DEFAULT(FATAL) << "Exception while compiling nGraph Op: " << name_ << std::string(exp.what());
+      LOGS_DEFAULT(FATAL) << "[NGRAPHCustomOp] " << " - " << name_ << " - "
+                          << "Exception while compiling ngraph::Function: " << std::string(exp.what());
     } catch (...) {
-      LOGS_DEFAULT(FATAL) << "Unknown exception while compiling nGraph Op: " << name_;
+      LOGS_DEFAULT(FATAL) << "[NGRAPHCustomOp] " << " - " << name_ << " - " << "Unknown exception while compiling ngraph::Function";
     }
     it.first->second = ng_curr_exe_;
   }
@@ -157,9 +168,9 @@ Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* cont
       ng_inputs.emplace_back(ng_backend_->create_tensor(ng_param->get_output_element_type(0), ng_param->get_output_shape(0), input_data));
     }
   } catch (const std::exception& exp) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exception while copying input data to nGraph: " + std::string(exp.what()));
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Exception while copying input data to nGraph: " + std::string(exp.what()));
   } catch (...) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unknown exception while copying input data to nGraph");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Unknown exception while copying input data to nGraph");
   }
 
   // Initialize output tensors
@@ -176,19 +187,19 @@ Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* cont
       ng_outputs.emplace_back(ng_backend_->create_tensor(dtype, shape, output_data));
     }
   } catch (const std::exception& exp) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exception while creating nGraph output Tensor: " + std::string(exp.what()));
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Exception while creating nGraph output Tensor: " + std::string(exp.what()));
   } catch (...) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unknown exception while creating nGraph output Tensor");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Unknown exception while creating nGraph output Tensor");
   }
 
   // Run the graph through nGraph.
   try {
     if (!ng_curr_exe_->call(ng_outputs, ng_inputs))
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error while executing nGraph computation");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Error while executing nGraph computation");
   } catch (const std::exception& exp) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exception while executing nGraph computation: " + std::string(exp.what()));
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Exception while executing nGraph computation: " + std::string(exp.what()));
   } catch (...) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unknown exception while executing nGraph computation");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Unknown exception while executing nGraph computation");
   }
 
   return Status::OK();

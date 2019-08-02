@@ -280,27 +280,23 @@ static void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
                                     const onnxruntime::GraphViewer& graph_viewer,
                                     const std::vector<std::string>& inputs,
                                     const std::vector<std::string>& outputs,
-                                    const std::unordered_set<std::string>& ng_required_initializers,
                                     std::vector<std::unique_ptr<ComputeCapability>>& result) {
   static size_t op_counter = 0;
 
-  // Create ng_required_initializers attribute of NGraphCustomOp
-  ONNX_NAMESPACE::AttributeProto initializers;
-  initializers.set_name("initializers");
-  initializers.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS);
-  for (const auto& init : ng_required_initializers) {
-    auto tensor = initializers.add_tensors();
-    *tensor = *(graph_viewer.GetAllInitializedTensors().at(init));
-  }
-
   auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
-  meta_def->attributes["initializers"] = initializers;
   meta_def->name = "NGRAPHCustomOp_" + std::to_string(++op_counter);
   meta_def->domain = kNGraphDomain;
   meta_def->since_version = 1;
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
   meta_def->inputs = inputs;
   meta_def->outputs = outputs;
+
+  //store the name of the graph this node belongs to - used to retrieve graph initializers from the cache
+  ONNX_NAMESPACE::AttributeProto graph_name;
+  graph_name.set_name("graph_name");
+  graph_name.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
+  graph_name.set_s(graph_viewer.Name());
+  meta_def->attributes["graph_name"] = graph_name;
 
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
   sub_graph->nodes = nodes;
@@ -476,6 +472,19 @@ NGRAPHExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, ng_required_initializers);
 
+  // Create a shared_ptr with this graph's initializers which are required to construct nGraph's IR
+  if (graph_initializers_.count(graph_viewer.Name()) == 0) {
+    graph_initializers_[graph_viewer.Name()] = std::make_shared<ONNX_NAMESPACE::AttributeProto>();
+
+    auto& initializers = graph_initializers_[graph_viewer.Name()];
+    initializers->set_name("initializers");
+    initializers->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS);
+    for (const auto& init : ng_required_initializers) {
+      auto tensor = initializers->add_tensors();
+      *tensor = *(graph_viewer.GetAllInitializedTensors().at(init));
+    }
+  }
+
   //If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
   if (unsupported_nodes.empty()) {
     std::vector<std::string> inputs;
@@ -500,7 +509,7 @@ NGRAPHExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
                   [&outputs](const NodeArg* node_arg) { outputs.push_back(node_arg->Name()); });
 
     // Create and add this graph to result.
-    AppendClusterToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), graph_viewer, inputs, outputs, ng_required_initializers, result);
+    AppendClusterToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), graph_viewer, inputs, outputs, result);
 
   } else {  // unsupported_nodes_idx.empty()
     const auto ng_clusters = GetPartitionedClusters(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
@@ -510,7 +519,7 @@ NGRAPHExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       GetInputsOutputsOfCluster(graph_viewer, this_cluster, ng_required_initializers, cluster_inputs, cluster_outputs);
 
       if (!cluster_inputs.empty()) {
-        AppendClusterToSubGraph(this_cluster, graph_viewer, cluster_inputs, cluster_outputs, ng_required_initializers, result);
+        AppendClusterToSubGraph(this_cluster, graph_viewer, cluster_inputs, cluster_outputs, result);
       }
     }
   }
@@ -519,9 +528,6 @@ NGRAPHExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 }
 
 static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node) {
-  const auto& attributes = fused_node->GetAttributes();
-  const auto& initializers = attributes.at("initializers").tensors();
-
   ONNX_NAMESPACE::ModelProto model_proto;
   auto graph_proto = model_proto.mutable_graph();
   const auto& fused_graph = fused_node->GetFunctionBody()->Body();
@@ -540,10 +546,6 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
     *valueInfoProto = output->ToProto();
   }
 
-  for (const auto& initializer : initializers) {
-    graph_proto->add_initializer()->CopyFrom(initializer);
-  }
-
   auto opset = model_proto.add_opset_import();
   opset->set_domain(kOnnxDomain);
   opset->set_version(fused_graph.DomainToVersionMap().at(kOnnxDomain));
@@ -555,14 +557,19 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 Status NGRAPHExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                         std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto& fused_node : fused_nodes) {
-    auto model_proto = GetModelProtoFromFusedNode(fused_node);
-
     NodeComputeInfo compute_info;
+
+    const auto& attributes = fused_node->GetAttributes();
+    const auto graph_name = attributes.at("graph_name").s();
+    // find the shared_ptr with initializes of a graph this fused_node belongs to
+    auto initializers = graph_initializers_.at(graph_name);
 
     // Local copy of backend since, class members cannot be captured.
     auto ngraph_backend = ng_backend_;
-    compute_info.create_state_func = [model_proto, ngraph_backend](ComputeContext* context, FunctionState* state) {
-      auto* p = new onnxruntime::ngraph_ep::NGRAPHCustomOp(context, model_proto, ngraph_backend);
+    compute_info.create_state_func = [model_proto = GetModelProtoFromFusedNode(fused_node), ngraph_backend, initializers]
+                                     (ComputeContext* context, FunctionState* state)
+    {
+      auto* p = new onnxruntime::ngraph_ep::NGRAPHCustomOp(context, model_proto, initializers, ngraph_backend);
       *state = p;
       return 0;
     };
