@@ -142,5 +142,147 @@ template void AdamOptimizerImpl(                    \
 
 SPECIALIZED_IMPL__AdamOptimizerImpl(float)
 
+template <typename T>
+__global__ void _LambComputeDirection(
+    const T* weights,
+    const T* grads,
+    const T* moment_1,
+    const T* moment_2,
+    float alpha,
+    float beta,
+    float lambda,
+    float epsilon,
+    T* weights_out,
+    T* moment_1_out,
+    T* moment_2_out,
+    CUDA_LONG N) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  // Update exponentially-averaged historical gradient
+  moment_1_out[id] = alpha * moment_1[id] + (1 - alpha) * grads[id];
+
+  // Update exponentially-averaged historical squared gradient
+  moment_2_out[id] = beta * moment_2[id] + (1 - beta) * grads[id] * grads[id];
+
+  // Save regularized update direction to output.
+  weights_out[id] = lambda * weights[id] + moment_1_out[id] / (_Sqrt(moment_2_out[id]) + epsilon);
+}
+
+template <typename T>
+void LambComputeDirectionImpl(
+    const T* weights,
+    const T* grads,
+    const T* moment_1,
+    const T* moment_2,
+    float alpha,
+    float beta,
+    float lambda,
+    float epsilon,
+    T* weights_out,
+    T* moment_1_out,
+    T* moment_2_out,
+    size_t count) {
+  int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
+  CUDA_LONG N = static_cast<CUDA_LONG>(count);
+  _LambComputeDirection<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      weights,
+      grads,
+      moment_1,
+      moment_2,
+      alpha,
+      beta,
+      lambda,
+      epsilon,
+      weights_out,
+      moment_1_out,
+      moment_2_out,
+      N);
+}
+
+#define SPECIALIZED_IMPL_LambComputeDirectionImpl(T)\
+template void LambComputeDirectionImpl(            \
+    const T* weights,                               \
+    const T* grads,                                 \
+    const T* moment_1,                              \
+    const T* moment_2,                              \
+    float alpha,                                    \
+    float beta,                                     \
+    float lambda,                                   \
+    float epsilon,                                  \
+    T* weights_out,                                 \
+    T* moment_1_out,                                \
+    T* moment_2_out,                                \
+    size_t count);
+
+SPECIALIZED_IMPL_LambComputeDirectionImpl(float)
+
+template <typename T>
+__global__ void _LambUpdate(
+    const T* eta,
+    const T* r_norm,
+    const T* w_norm,
+    const T* weights,
+    const T* update_direction,
+    T* weights_out,
+    CUDA_LONG N) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  // Compute new weight using the saved update direction.
+  weights_out[id] = weights[id] - (*eta) * (*w_norm) / (*r_norm) * update_direction[id];
+}
+
+template <typename T>
+void LambUpdateImpl(
+    const T* eta,
+    const T* r_norm,
+    const T* w_norm,
+    const T* weights,
+    const T* update_direction,
+    T* weights_out,
+    size_t count) {
+  int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
+  CUDA_LONG N = static_cast<CUDA_LONG>(count);
+  _LambUpdate<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      eta,
+      r_norm,
+      w_norm,
+      weights,
+      update_direction,
+      weights_out,
+      N);
+}
+
+#define SPECIALIZED_IMPL_LambUpdate(T)     \
+template void LambUpdateImpl(              \
+    const T* eta,                          \
+    const T* r_norm,                       \
+    const T* w_norm,                       \
+    const T* weights,                      \
+    const T* update_direction,             \
+    T* weights_out,                        \
+    size_t count);
+
+SPECIALIZED_IMPL_LambUpdate(float)
+
+template <typename T>
+__global__ void _LambScalarL2NormReduction(
+    const T* value,
+    T* value_out) {
+  *value_out = _Abs(*value);
+}
+
+template <typename T>
+void LambScalarL2NormReductionImpl(
+    const T* value,
+    T* value_out) {
+  _LambScalarL2NormReduction<T><<<1, 1, 0>>>(
+      value,
+      value_out);
+}
+
+#define SPECIALIZED_IMPL_LambScalarL2NormReduction(T)     \
+template void LambScalarL2NormReductionImpl(              \
+    const T* value,                                       \
+    T* value_out);
+
+SPECIALIZED_IMPL_LambScalarL2NormReduction(float)
 }  // namespace cuda
 }  // namespace onnxruntime

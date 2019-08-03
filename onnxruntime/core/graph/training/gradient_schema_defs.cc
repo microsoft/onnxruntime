@@ -191,6 +191,82 @@ void RegisterGradientSchemas() {
           "T3",
           {"tensor(float)", "tensor(double)"},
           "Constrain input types to float tensors.");
+
+  // TODO: This is copied from onnx schemas. When the change is in and we update this can be removed.
+  // For Brevity documentation was not copied
+  ONNX_CONTRIB_OPERATOR_SCHEMA(LambOptimizer)
+      .SinceVersion(9)
+      .Input(0, "R", "The initial learning rate.", "T1")
+      .Input(
+          1,
+          "weights",
+          "weights to optimize.",
+          "T3")
+      .Input(
+          2,
+          "gradients",
+          "gradients computed in this iteration.",
+          "T3")
+      .Input(
+          3,
+          "moment_1",
+          "exponentially averaged historical gradients.",
+          "T3")
+      .Input(
+          4,
+          "moment_2",
+          "exponentially averaged historical squared gradients.",
+          "T3")
+      .Output(
+          0,
+          "new_weights",
+          "New weights",
+          "T3")
+      .Output(
+          1,
+          "output_moment_1",
+          "New averaged Gradients",
+          "T3")
+      .Output(
+          2,
+          "output_moment_2",
+          "New averaged squared gradients",
+          "T3")
+      .Attr(
+          "alpha",
+          "Coefficient of previous gradient in running average.",
+          AttributeProto::FLOAT,
+          0.9f)
+      .Attr(
+          "beta",
+          "Coefficient of previous squared gradient in running average."
+          "The effective learning rate is computed by r = R / (1 + T * decay_factor). "
+          "Default to 0 so that increasing update counts doesn't reduce the learning rate.",
+          AttributeProto::FLOAT,
+          0.999f)
+      .Attr(
+          "lambda",
+          "Regularization coefficient of 0.5 * lambda * ||X||_2^2. Default to 0, "
+          "which means no regularization.",
+          AttributeProto::FLOAT,
+          0.0f)
+      .Attr(
+          "epsilon",
+          "Small scalar to avoid dividing by zero.",
+          AttributeProto::FLOAT,
+          1e-6f)
+      .TypeConstraint(
+          "T1",
+          {"tensor(float)", "tensor(double)"},
+          "Constrain input types to float scalars.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(int64)"},
+          "Constrain output types to 64-bit integer scalars.")
+      .TypeConstraint(
+          "T3",
+          {"tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.");
 }
 }  // namespace training
 }  // namespace onnxruntime

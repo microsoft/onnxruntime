@@ -23,38 +23,6 @@ namespace cuda {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
-class CudnnReduceDescriptor final {
- public:
-  CudnnReduceDescriptor() : desc_(nullptr) {
-  }
-
-  ~CudnnReduceDescriptor() {
-    if (desc_ != nullptr) {
-      cudnnDestroyReduceTensorDescriptor(desc_);
-      desc_ = nullptr;
-    }
-  }
-
-  Status Set(cudnnReduceTensorOp_t op, cudnnDataType_t type, cudnnReduceTensorIndices_t indices) {
-    if (!desc_)
-      CUDNN_RETURN_IF_ERROR(cudnnCreateReduceTensorDescriptor(&desc_));
-
-    CUDNN_RETURN_IF_ERROR(cudnnSetReduceTensorDescriptor(
-        desc_,
-        op,
-        type,
-        CUDNN_PROPAGATE_NAN,
-        indices,
-        CUDNN_32BIT_INDICES));  // currently only the 32-bit (unsigned int) type is supported.
-    return Status::OK();
-  }
-
-  operator cudnnReduceTensorDescriptor_t() const { return desc_; }
-
- private:
-  cudnnReduceTensorDescriptor_t desc_;
-};
-
 template <bool allow_multi_axes>
 template <typename T, typename OutT, cudnnReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
