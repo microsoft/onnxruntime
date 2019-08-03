@@ -67,6 +67,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
+  } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
+#ifdef USE_NNAPI
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options));
+#else
+    ORT_THROW("NNAPI is not supported in this build\n");
+#endif
   } else if (!provider_name.empty() && provider_name != onnxruntime::kCpuExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");
   }
