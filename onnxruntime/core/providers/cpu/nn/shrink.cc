@@ -11,7 +11,8 @@ namespace onnxruntime {
 ONNX_CPU_OPERATOR_KERNEL(
     Shrink,
     9,
-    KernelDefBuilder().MayInplace(0, 0)
+    KernelDefBuilder()
+    .MayInplace(0, 0)
     .TypeConstraint("T", DataTypeImpl::AllNumericTensorTypes()),
     Shrink);
 
