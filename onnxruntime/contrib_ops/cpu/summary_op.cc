@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include "summary_op.h"
 #include "core/providers/cpu/tensor/utils.h"
 

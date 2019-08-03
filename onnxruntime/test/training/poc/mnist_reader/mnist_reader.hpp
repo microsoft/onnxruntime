@@ -340,7 +340,6 @@ MNIST_dataset<Container, Image, Label> read_dataset_3d(const std::string& folder
 template <template <typename...> class Container, typename Image, typename Label = uint8_t>
 MNIST_dataset<Container, Image, Label> read_dataset_3d(std::size_t training_limit = 0, std::size_t test_limit = 0) {
   return read_dataset_3d<Container, Image, Label>("mnist", training_limit, test_limit);
-  ;
 }
 
 /*!

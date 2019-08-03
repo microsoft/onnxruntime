@@ -63,7 +63,7 @@ void PrepareMNISTData(const string& data_folder,
                       size_t total_shard) {
   ORT_ENFORCE(shard_index < total_shard, "shard_index must be 0~", total_shard - 1);
 
-  printf("Loading MNIST data ...\n");
+  printf("Loading MNIST data from folder %s\n", data_folder.c_str());
   mnist::MNIST_dataset<std::vector, Image, Label> dataset =
       mnist::read_dataset<std::vector, std::vector, uint8_t, uint8_t>(data_folder);
 

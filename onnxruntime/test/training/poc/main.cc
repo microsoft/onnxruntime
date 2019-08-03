@@ -231,6 +231,10 @@ int main(int argc, char* args[]) {
   std::string mnist_data_path(params.train_data_dir.begin(), params.train_data_dir.end());
   PrepareMNISTData(mnist_data_path, IMAGE_DIMS, LABEL_DIMS, *trainingData, *testData, device_id /* shard_to_load */, device_count /* total_shards */);
 
+  if (testData->NumSamples() == 0) {
+    printf("Warning: No data loaded - run cancelled.\n");
+    return -1;
+  }
   // start training session
   TrainingRunner runner(trainingData, testData, params);
   RETURN_IF_FAIL(runner.Initialize());

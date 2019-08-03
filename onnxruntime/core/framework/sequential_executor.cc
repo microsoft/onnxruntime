@@ -13,7 +13,6 @@
 #include "core/framework/execution_frame.h"
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
-#include "core/framework/utils.h"
 
 // #define TRACE_EXECUTION
 
@@ -176,18 +175,21 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
         const OrtValue* p_input = op_kernel_context.GetInputMLValue(i);
         if (p_input->IsTensor()) {
           const OpKernelInfo& op_kernel_info = p_op_kernel->Info();
-          size_t tensor_size;
           const Tensor* p_tensor = nullptr;
           bool is_param = op_kernel_info.TryGetConstantInput(i, &p_tensor);
-          if (is_param) {
-            tensor_size = p_tensor->Size();
+          if (!is_param) {
+            p_tensor = &(p_input->Get<Tensor>());
           }
-          else {
-              const Tensor &tensor = p_input->Get<Tensor>();
-              tensor_size = tensor.Size();
-          }
+          size_t tensor_size = p_tensor->Size();
 #if defined(TRACE_EXECUTION)
-          std::cout << node_name << " input[" << i << "] is_param=" << is_param << " size=" << tensor_size << std::endl;
+          TensorShape tensor_shape = p_tensor->Shape();
+          size_t element_size = p_tensor->DataType()->Size();
+          std::cout << node_name << " input[" << i << "]"
+                    << " is_param=" << is_param
+                    << " size=" << tensor_size
+                    << " shape=" << tensor_shape.ToString()
+                    << " element_size=" << element_size
+                    << "\n";
 #endif
           if (is_param) {
             input_parameter_sizes += tensor_size;
@@ -216,21 +218,31 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       for (auto i = 0; i < op_kernel_context.OutputCount(); i++) {
         const OrtValue* p_output = op_kernel_context.GetOutputMLValue(i);
         if (p_output->IsTensor()) {
-          total_output_sizes += p_output->Get<Tensor>().Size();
+          const auto& tensor = p_output->Get<Tensor>();
+          size_t tensor_size = tensor.Size();
+#if defined(TRACE_EXECUTION)
+          const TensorShape& tensor_shape = tensor.Shape();
+          std::cout << node_name << " output[" << i << "]"
+            << " size=" << tensor_size
+            << " shape=" << tensor_shape.ToString()
+            << " element_size=" << tensor.DataType()->Size()
+            << "\n";
+#endif
+          total_output_sizes += tensor_size;
         }
       }
 
 #if defined(TRACE_EXECUTION)
       // Trace execution step.
       const Node& node = p_op_kernel->Node();
-      std::cout << "Executing op kernel node " << node_name
+      std::cout << "Executed op kernel node " << node_name
                 << " Index=" << node.Index()
                 << " OpType=" << node.OpType()
                 << " Name=" << node.Name()
                 << " Activation_Size=" << input_activation_sizes
                 << " Parameter_Size=" << input_parameter_sizes
                 << " Output_Size=" << total_output_sizes
-                << std::endl;
+                << "\n";
 #endif
 
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,

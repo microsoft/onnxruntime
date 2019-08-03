@@ -48,7 +48,15 @@ TestEnvironment::TestEnvironment(int argc, char** argv, bool create_default_logg
     LOGS(logger, VERBOSE) << "Logging manager initialized.";
   }
 
-  //SetStaticRandomSeed(0); // set the seed value // TODO make this configurable
+  uint32_t seed = 0;
+  {
+    // Set a specific random seed value here, for reproducing test failure issues.
+    // TODO Make this configurable from cmd line argument.
+    // seed = 2826461700;
+  }
+  if (seed != 0) {
+    SetStaticRandomSeed(seed); // set the random seed value for this test run.
+  }
   std::clog << "ORT test random seed value: " << GetStaticRandomSeed() << std::endl;
 
 #ifdef HAVE_FRAMEWORK_LIB

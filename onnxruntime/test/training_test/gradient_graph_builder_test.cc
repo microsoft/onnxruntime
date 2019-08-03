@@ -92,6 +92,12 @@ static std::string BuildBackPropGraph(const TrainingRunner::Parameters& params) 
   return backward_model_file;
 }
 
+/**
+ * Run a training session for this model for 1 epoch, using batch size of 1 and synthetic input data.
+ * @param so - SessionOptions for this run.
+ * @param backprop_model_file - Mocel file to be run. This should already contain loss function and backward prop nodes.
+ * @return TrainingSession for this run.
+ */
 static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
     const SessionOptions& so, const std::string& backprop_model_file) {
   std::unique_ptr<Environment> env;
@@ -179,7 +185,7 @@ TEST(GradientGraphBuilderTest, BuildGradientGraphTest) {
   }
 }
 
-TEST(GradientGraphBuilderTest, RunTrainingSessionTest_Basic) {
+TEST(GradientGraphBuilderTest, TrainingSession_Basic) {
   TrainingRunner::Parameters params;
   params.model_path_ = ORIGINAL_MODEL_PATH;
   params.model_with_training_graph_path_ = BACKWARD_MODEL_PATH;
@@ -192,7 +198,7 @@ TEST(GradientGraphBuilderTest, RunTrainingSessionTest_Basic) {
   RunTrainingSessionWithChecks(so, backprop_model_file);
 }
 
-TEST(GradientGraphBuilderTest, RunTrainingSessionTest_WithLogging) {
+TEST(GradientGraphBuilderTest, TrainingSession_WithLogging) {
   const auto& log_manager = DefaultLoggingManager();
   const auto& default_logger = log_manager.DefaultLogger();
   log_manager.SetDefaultLoggerSeverity(Severity::kINFO);
@@ -224,7 +230,7 @@ TEST(GradientGraphBuilderTest, RunTrainingSessionTest_WithLogging) {
   EXPECT_EQ(profile_file, std::string()) << "There should be no profile output file.";
 }
 
-TEST(GradientGraphBuilderTest, RunTrainingSessionTest_WithProfiler) {
+TEST(GradientGraphBuilderTest, TrainingSession_WithProfiler) {
   TrainingRunner::Parameters params;
   params.model_path_ = ORIGINAL_MODEL_PATH;
   params.model_with_training_graph_path_ = BACKWARD_MODEL_PATH;
@@ -456,7 +462,7 @@ static void RunBertTrainingWithChecks(
   }
 }
 #endif
-TEST(GradientGraphBuilderTest, RunBertToyTraining) {
+TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
   TrainingRunner::Parameters params;
   params.model_path_ = "testdata/bert_toy_optimized.onnx";
   params.model_with_training_graph_path_ = "testdata/bert_toy_optimized_bw.onnx";

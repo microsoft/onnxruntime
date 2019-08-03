@@ -47,7 +47,17 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
   for (const auto& name : y_node_arg_names) {
     const NodeArg* node_arg = graph->GetNodeArg(name);
     if (!node_arg) {
-      ORT_THROW("Node arg ", name, " is not found in the graph.");
+      std::stringstream ss;
+      bool first = true;
+      for (auto& p_output_node : graph->GetOutputs()) {
+        if (first) {
+          first = false;
+        } else {
+          ss << ", ";
+        }
+        ss << "'" << p_output_node->Name() << "'";
+      }
+      ORT_THROW("Node arg '", name, "' is not found in the graph. Available output names = ", ss.str());
     }
     y_node_args_.insert(node_arg);
 
