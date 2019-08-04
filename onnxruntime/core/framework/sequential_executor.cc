@@ -23,30 +23,6 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
                                   const logging::Logger& logger);
 
-static std::unordered_set<NodeIndex> CalculateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs,
-                                                                const GraphViewer& graph_viewer,
-                                                                const OrtValueNameIdxMap& mlvalue_name_idxs) {
-  // Get the nodes generating the fetches.
-  std::vector<const Node*> nodes;
-  nodes.reserve(fetch_mlvalue_idxs.size());
-  for (auto idx : fetch_mlvalue_idxs) {
-    std::string node_arg_name;
-    if (!mlvalue_name_idxs.GetName(idx, node_arg_name).IsOK()) {
-      return {};
-    }
-
-    auto ending_node = graph_viewer.GetGraph()->GetProducerNode(node_arg_name);
-    nodes.push_back(ending_node);
-  }
-
-  // Reversely traverse to get reachable nodes.
-  std::unordered_set<NodeIndex> reachable_nodes;
-  graph_viewer.GetGraph()->ReverseDFSFrom(
-      nodes, {}, [&reachable_nodes](const Node* n) { reachable_nodes.insert(n->Index()); });
-
-  return reachable_nodes;
-}
-
 Status SequentialExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                                    const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                                    std::vector<OrtValue>& fetches,
@@ -66,13 +42,11 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
   ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
 
-  std::unordered_set<NodeIndex> to_be_executed_nodes;
-  if (only_execute_path_to_fetches_) {
-    // TODO: This information could be potentially stored in a limited size cache.
-    to_be_executed_nodes = CalculateToBeExecutedNodes(fetch_mlvalue_idxs,
-                                                      *session_state.GetGraphViewer(),
-                                                      session_state.GetOrtValueNameIdxMap());
-    VLOGS(logger, 1) << to_be_executed_nodes.size() << " nodes to be executed\n";
+  const std::unordered_set<NodeIndex>* to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
+  const bool only_execute_path_to_fetches = only_execute_path_to_fetches_ && (to_be_executed_nodes != nullptr);
+
+  if (only_execute_path_to_fetches) {
+    VLOGS(logger, 1) << to_be_executed_nodes->size() << " nodes to be executed\n";
   }
 
   LOGS(logger, INFO) << "Begin execution";
@@ -94,7 +68,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     auto node_index = node_exec_plan.node_index;
 
     // If it is not necessary to execute the node.
-    if (only_execute_path_to_fetches_ && to_be_executed_nodes.count(node_index) == 0) {
+    if (only_execute_path_to_fetches && to_be_executed_nodes->count(node_index) == 0) {
       continue;
     }
 
@@ -193,8 +167,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
           if (is_param) {
             input_parameter_sizes += tensor_size;
-          }
-          else {
+          } else {
             input_activation_sizes += tensor_size;
           }
         }
@@ -212,7 +185,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
     if (is_profiler_enabled) {
-
       // Calculate total output sizes for this operation.
       total_output_sizes = 0;
       for (auto i = 0; i < op_kernel_context.OutputCount(); i++) {
@@ -223,10 +195,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #if defined(TRACE_EXECUTION)
           const TensorShape& tensor_shape = tensor.Shape();
           std::cout << node_name << " output[" << i << "]"
-            << " size=" << tensor_size
-            << " shape=" << tensor_shape.ToString()
-            << " element_size=" << tensor.DataType()->Size()
-            << "\n";
+                    << " size=" << tensor_size
+                    << " shape=" << tensor_shape.ToString()
+                    << " element_size=" << tensor.DataType()->Size()
+                    << "\n";
 #endif
           total_output_sizes += tensor_size;
         }

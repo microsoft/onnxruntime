@@ -205,6 +205,9 @@ class SessionState {
   void CalculateNodeIndexInfo();
   const NodeIndexInfo& GetNodeIndexInfo() const;
 
+  void UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs);
+  const std::unordered_set<NodeIndex>* GetToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) const;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -259,6 +262,8 @@ class SessionState {
 
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;
+
+  std::map<std::vector<int>, std::unordered_set<NodeIndex>> to_be_executed_nodes_;
 };
 
 }  // namespace onnxruntime

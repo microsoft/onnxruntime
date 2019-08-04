@@ -135,7 +135,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
   for (size_t i = 0; i < feed_mlvalue_idxs.size(); ++i) {
     std::string name;
     ORT_RETURN_IF_ERROR(this->ort_value_name_idx_map_.GetName(feed_mlvalue_idxs[i], name));
-	feeds.insert({ name, input_shape[i]});
+    feeds.insert({name, input_shape[i]});
   }
   std::unordered_map<std::string, int64_t> map;
   ORT_RETURN_IF_ERROR(ResolveDimParams(*graph_viewer_, feeds, map));
@@ -368,4 +368,38 @@ const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
   ORT_ENFORCE(node_index_info_, "CalculateNodeIndexInfo must be called prior to GetExecutionInfo.");
   return *node_index_info_;
 }
+
+void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) {
+  if (to_be_executed_nodes_.find(fetch_mlvalue_idxs) != to_be_executed_nodes_.end())
+    return;
+
+  const Graph* graph = this->GetGraphViewer()->GetGraph();
+
+  // Get the nodes generating the fetches.
+  std::vector<const Node*> nodes;
+  nodes.reserve(fetch_mlvalue_idxs.size());
+  std::unordered_set<NodeIndex> reachable_nodes;
+
+  for (auto idx : fetch_mlvalue_idxs) {
+    std::string node_arg_name;
+    if (!this->GetOrtValueNameIdxMap().GetName(idx, node_arg_name).IsOK()) {
+      to_be_executed_nodes_.insert(std::make_pair(fetch_mlvalue_idxs, reachable_nodes));
+      return;
+    }
+    auto ending_node = graph->GetProducerNode(node_arg_name);
+    nodes.push_back(ending_node);
+  }
+
+  // Reversely traverse to get reachable nodes.
+  graph->ReverseDFSFrom(
+      nodes, {}, [&reachable_nodes](const Node* n) { reachable_nodes.insert(n->Index()); });
+  to_be_executed_nodes_.insert(std::make_pair(fetch_mlvalue_idxs, reachable_nodes));
+}
+
+const std::unordered_set<NodeIndex>* SessionState::GetToBeExecutedNodes(
+    const std::vector<int>& fetch_mlvalue_idxs) const {
+  auto it = to_be_executed_nodes_.find(fetch_mlvalue_idxs);
+  return (it != to_be_executed_nodes_.end()) ? &it->second : nullptr;
+}
+
 }  // namespace onnxruntime

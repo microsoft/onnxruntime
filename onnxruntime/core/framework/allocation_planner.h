@@ -25,19 +25,12 @@ class ISequentialPlannerContext {
   // If it returns true, planner won't reuse output tensors
   // see PlannerImpl::ComputeReusePlan
   virtual bool IsParallelExecutionEnabled() const { return false; }
-
-  // Set to 'true' to run only the nodes from feeds to required fetches.
-  // So it is possible that only some of the nodes are executed.
-  virtual bool OnlyExecutePathToFetches() const { return false; }
 };
 
 class SequentialPlannerContext : public ISequentialPlannerContext {
  public:
-  SequentialPlannerContext(bool p_enable_parallel_execution,
-                           bool p_only_execute_path_to_fetches)
-      : m_enable_parallel_execution(p_enable_parallel_execution),
-        m_only_execute_path_to_fetches(p_only_execute_path_to_fetches) {
-  }
+  SequentialPlannerContext(bool p_enable_parallel_execution)
+      : m_enable_parallel_execution(p_enable_parallel_execution) {}
 
   const ONNX_NAMESPACE::TensorShapeProto* GetShape(const onnxruntime::NodeArg& arg) const override {
     return arg.Shape();
@@ -45,11 +38,8 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
 
   bool IsParallelExecutionEnabled() const override { return m_enable_parallel_execution; }
 
-  bool OnlyExecutePathToFetches() const override { return m_only_execute_path_to_fetches; }
-
  private:
   bool m_enable_parallel_execution{false};
-  bool m_only_execute_path_to_fetches{false};
 };
 
 class SequentialPlanner {

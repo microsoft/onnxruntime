@@ -30,7 +30,6 @@ static SessionOptions SESSION_OPTION = {
     5,                                 //max_num_graph_transformation_steps
     TransformerLevel::Level1,          //graph_optimization_level
     0,                                 //session_thread_pool_size
-    false                              //only_execute_path_to_fetches
 };
 
 TrainingRunner::TrainingRunner(std::shared_ptr<DataSet> training_data,
@@ -278,10 +277,12 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
         num_batches * params_.batch_size_);
   }
 
+  RunOptions run_options;
+  run_options.only_execute_path_to_fetches = true;
   for (size_t batch_idx = 0; batch_idx < num_batches; ++batch_idx) {
     std::vector<MLValue> feeds = test_data_->GetKthBatch(params_.batch_size_, current_batch);
     vector<MLValue> fetches;
-    ORT_RETURN_IF_ERROR(session.Run(RunOptions(),
+    ORT_RETURN_IF_ERROR(session.Run(run_options,
                                     feed_names,
                                     feeds,
                                     params_.fetch_names,

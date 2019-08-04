@@ -67,8 +67,7 @@ SessionStateInitializer::SessionStateInitializer(bool enable_mem_pattern,
 common::Status SessionStateInitializer::CreatePlan(
     const Node* parent_node,
     const ConstPointerContainer<std::vector<NodeArg*>>* outer_scope_node_args,
-    bool enable_sequential_execution, 
-    bool only_execute_path_to_fetches) {
+    bool enable_sequential_execution) {
   auto graph_viewer = std::make_unique<onnxruntime::GraphViewer>(graph_);
 
   // populate the SessionState OrtValueNameIdxMap
@@ -88,7 +87,7 @@ common::Status SessionStateInitializer::CreatePlan(
   }
 
   std::unique_ptr<SequentialExecutionPlan> exec_plan;
-  SequentialPlannerContext context(!enable_sequential_execution, only_execute_path_to_fetches);
+  SequentialPlannerContext context(!enable_sequential_execution);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_registry_manager_,
                                                     ort_value_name_idx_map, context, exec_plan));

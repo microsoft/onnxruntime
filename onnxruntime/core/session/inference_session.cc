@@ -441,8 +441,7 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
 
       const auto implicit_inputs = node.ImplicitInputDefs();
       ORT_RETURN_IF_ERROR(initializer.CreatePlan(&node, &implicit_inputs,
-                                                 session_options_.enable_sequential_execution,
-                                                 session_options_.only_execute_path_to_fetches));
+                                                 session_options_.enable_sequential_execution));
 
       ORT_RETURN_IF_ERROR(initializer.InitializeAndSave(&implicit_inputs));
 
@@ -533,8 +532,7 @@ common::Status InferenceSession::Initialize() {
 
     ORT_RETURN_IF_ERROR(session_initializer.CreatePlan(nullptr,
                                                        nullptr,
-                                                       session_options_.enable_sequential_execution,
-                                                       session_options_.only_execute_path_to_fetches));
+                                                       session_options_.enable_sequential_execution));
     ORT_RETURN_IF_ERROR(session_initializer.InitializeAndSave(nullptr));
 
     // handle any subgraphs
@@ -680,11 +678,14 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
       ORT_CHECK_AND_SET_RETVAL(xp->OnRunStart());
     }
 
+    if (run_options.only_execute_path_to_fetches) {
+      session_state_.UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
+    }
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(
         utils::ExecuteGraph(session_state_, feeds_fetches_manager, feeds, *p_fetches, {},
                             session_options_.enable_sequential_execution, run_options.terminate, run_logger,
-                            false, session_options_.only_execute_path_to_fetches));
+                            false, run_options.only_execute_path_to_fetches));
 
   } catch (const std::exception& e) {
     retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
