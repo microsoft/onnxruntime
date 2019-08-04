@@ -33,19 +33,35 @@ constexpr const char* NGRAPH = "nGraph";
 
 NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kNGraphExecutionProvider} {
-  DeviceAllocatorRegistrationInfo default_allocator_info({OrtMemTypeDefault,
-                                                          [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault)); },
-                                                          std::numeric_limits<size_t>::max()});
+
+  ORT_ENFORCE(info.ng_backend_type == "CPU", "nGraph Execution Provider for onnxruntime currently is only supported for CPU backend.");
+
+  auto default_allocator_factory = [](int) {
+    auto allocator_info = std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
+    return std::make_unique<CPUAllocator>(std::move(allocator_info));
+  };
+
+  DeviceAllocatorRegistrationInfo default_allocator_info{
+    OrtMemTypeDefault,
+    std::move(default_allocator_factory),
+    std::numeric_limits<size_t>::max()
+  };
 
   InsertAllocator(CreateAllocator(default_allocator_info));
 
-  DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUOutput,
-                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeCPUOutput)); },
-                                                      std::numeric_limits<size_t>::max()});
+
+  auto cpu_allocator_factory = [](int) {
+    auto allocator_info = std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeCPUOutput);
+    return std::make_unique<CPUAllocator>(std::move(allocator_info));
+  };
+
+  DeviceAllocatorRegistrationInfo cpu_allocator_info{
+    OrtMemTypeCPUOutput,
+    std::move(cpu_allocator_factory),
+    std::numeric_limits<size_t>::max()
+  };
 
   InsertAllocator(CreateAllocator(cpu_allocator_info));
-
-  ORT_ENFORCE(info.ng_backend_type == "CPU", "nGraph Execution Provider for onnxruntime currently is only supported for CPU backend.");
 
   try {
     ng_backend_ = ngraph::runtime::Backend::create(info.ng_backend_type);
@@ -322,7 +338,8 @@ static std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int 
   return ng_supported_ops;
 }
 
-static std::vector<NodeIndex> GetUnsupportedNodeIndices(const GraphViewer& graph_viewer, /*out*/ std::unordered_set<std::string>& ng_required_initializers) {
+static std::vector<NodeIndex>
+GetUnsupportedNodeIndices(const GraphViewer& graph_viewer, /*out*/ std::unordered_set<std::string>& ng_required_initializers) {
   const auto ng_supported_ops = GetNgSupportedOps(GetOnnxOpSet(graph_viewer));
 
   std::vector<NodeIndex> unsupported_nodes_idx;
@@ -342,10 +359,12 @@ static std::vector<NodeIndex> GetUnsupportedNodeIndices(const GraphViewer& graph
   return unsupported_nodes_idx;
 }
 
-/* Returns a vector clusters(or node_idx). For each unsupported node, the graph is split into 3 parts.
-   supported_cluster + (UNsupported_node + rest_of_the_graph). This functions returns vector of all supported_clusters by nGraph
-*/
-static std::vector<std::vector<NodeIndex>> GetPartitionedClusters(const std::vector<NodeIndex>& topological_order, const std::vector<NodeIndex>& unsupported_nodes) {
+/**
+ * Returns a vector clusters(or node_idx). For each unsupported node, the graph is split into 3 parts.
+ * supported_cluster + (UNsupported_node + rest_of_the_graph). This functions returns vector of all supported_clusters by nGraph
+ */
+static std::vector<std::vector<NodeIndex>>
+GetPartitionedClusters(const std::vector<NodeIndex>& topological_order, const std::vector<NodeIndex>& unsupported_nodes) {
   std::vector<std::vector<NodeIndex>> ng_clusters;
 
   auto prev = topological_order.begin();

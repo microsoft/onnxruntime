@@ -7,10 +7,10 @@
 #include <map>
 
 namespace ngraph {
-namespace runtime {
-class Backend;
+  namespace runtime {
+    class Backend;
+  }
 }
-}  // namespace ngraph
 
 namespace ONNX_NAMESPACE {
   class AttributeProto;
@@ -43,4 +43,4 @@ class NGRAPHExecutionProvider : public IExecutionProvider {
   mutable std::unordered_map<std::string, std::shared_ptr<ONNX_NAMESPACE::AttributeProto>> graph_initializers_;
 };
 
-}  // namespace onnxruntime
+}
