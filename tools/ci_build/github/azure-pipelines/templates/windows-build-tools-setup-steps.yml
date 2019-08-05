@@ -30,8 +30,20 @@ steps:
       displayName: 'Download python'
       inputs:
         targetType: 'inline'
-        script: 'Invoke-WebRequest -OutFile installer.exe  https://onnxruntimeinstaller.blob.core.windows.net/conda-installer/installer.exe'
+        script: 'Invoke-WebRequest --MaximumRetryCount 10 -OutFile installer.exe  https://onnxruntimeinstaller.blob.core.windows.net/conda-installer/installer.exe'
         workingDirectory: '$(Build.BinariesDirectory)'
+
+    - task: PowerShell@2
+      displayName: 'Download azcopy'
+      inputs:
+        targetType: 'inline'
+        script: 'Invoke-WebRequest --MaximumRetryCount 10 -OutFile azcopy.zip  https://aka.ms/downloadazcopy-v10-windows'
+        workingDirectory: '$(Build.BinariesDirectory)'
+
+    - task: ExtractFiles@1
+      inputs:
+        archiveFilePatterns: '$(Build.BinariesDirectory)\azcopy.zip'
+        destinationFolder: $(Build.BinariesDirectory)\azcopy
 
     - task: CmdLine@1
       displayName: 'Run python installer'
