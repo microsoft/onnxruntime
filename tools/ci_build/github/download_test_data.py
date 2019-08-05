@@ -52,7 +52,7 @@ def download_and_unzip(build_dir, url, dest_folder):
       if shutil.which('7z'):  # 7-Zip
           subprocess.run(['7z','x', local_file_name, '-y', '-o' + dest_folder], check=True)
       elif shutil.which('7za'):  # 7-Zip standalone
-          subprocess.run(['7za', 'x', local_file_name, '-y', '-o'+ dest_folder], check=True)
+          subprocess.run(['7za', 'x', local_file_name, '-y', '-o' + dest_folder], check=True)
       else:
           log.error("No unzip tool for use")   
           sys.exit(1)
@@ -78,6 +78,4 @@ if is_windows():
     url = url.replace('onnxruntimetestdata', hostname)
     dest_folder = os.path.join(args.build_dir, 'installer','opencppcoverage')
     os.makedirs(dest_folder,exist_ok=True)
-    subprocess.run([os.path.join(args.build_dir,'azcopy'),'cp', '--log-level','ERROR', url, build_dir],check=True)
-
-
+    subprocess.run([os.path.join(args.build_dir,'azcopy'),'cp', '--log-level','ERROR', url, dest_folder],check=True)
