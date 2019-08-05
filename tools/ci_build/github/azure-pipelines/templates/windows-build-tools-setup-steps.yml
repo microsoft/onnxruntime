@@ -27,22 +27,21 @@ steps:
 
     # Temporary bypass of artifacts permission issue
     - task: CmdLine@1
-      displayName: 'Run python installer'
+      displayName: 'Download azcopy'
       inputs:
         filename: 'AzCopy.exe'
         arguments: '/Y /Source:https://onnxruntimetestdata.blob.core.windows.net/models/azcopy.exe /Dest:$(Build.BinariesDirectory)\azcopy.exe'
-      
-    - task: PowerShell@2
+        
+    - task: CmdLine@1
       displayName: 'Download python'
       inputs:
-        targetType: 'inline'
-        script: 'Invoke-WebRequest -OutFile installer.exe  https://onnxruntimeinstaller.blob.core.windows.net/conda-installer/installer.exe'
-        workingDirectory: '$(Build.BinariesDirectory)'           
+        filename: 'AzCopy.exe'
+        arguments: '/Y /Source:https://onnxruntimetestdata.blob.core.windows.net/models/Anaconda3-2019.07-Windows-x86_64.exe /Dest:$(Build.BinariesDirectory)\Anaconda3-2019.07-Windows-x86_64.exe'               
   
     - task: CmdLine@1
       displayName: 'Run python installer'
       inputs:
-        filename: '$(Build.BinariesDirectory)\installer.exe'
+        filename: '$(Build.BinariesDirectory)\Anaconda3-2019.07-Windows-x86_64.exe'
         arguments: '/S /NoRegistry=1 /AddToPath=0 /RegisterPython=0 /D=$(Build.BinariesDirectory)\packages\python'
       timeoutInMinutes: 10
 
