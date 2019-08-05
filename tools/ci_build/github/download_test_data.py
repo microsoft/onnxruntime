@@ -78,6 +78,6 @@ if is_windows():
     url = url.replace('onnxruntimetestdata', hostname)
     dest_folder = os.path.join(args.build_dir, 'installer','opencppcoverage')
     os.makedirs(dest_folder,exist_ok=True)
-    subprocess.run([os.path.join(build_dir,'azcopy'),'cp', '--log-level','ERROR', url, build_dir],check=True)
+    subprocess.run([os.path.join(args.build_dir,'azcopy'),'cp', '--log-level','ERROR', url, build_dir],check=True)
 
 
