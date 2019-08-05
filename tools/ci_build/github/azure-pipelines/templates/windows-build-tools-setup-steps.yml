@@ -30,21 +30,27 @@ steps:
       displayName: 'Download python'
       inputs:
         targetType: 'inline'
-        script: 'Invoke-WebRequest -MaximumRetryCount 10 -OutFile installer.exe  https://onnxruntimeinstaller.blob.core.windows.net/conda-installer/installer.exe'
+        script: 'Invoke-WebRequest -OutFile installer.exe  https://onnxruntimeinstaller.blob.core.windows.net/conda-installer/installer.exe'
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - task: PowerShell@2
       displayName: 'Download azcopy'
       inputs:
         targetType: 'inline'
-        script: 'Invoke-WebRequest -MaximumRetryCount 10 -OutFile azcopy.zip  https://aka.ms/downloadazcopy-v10-windows'
+        script: 'Invoke-WebRequest -OutFile azcopy.zip  https://aka.ms/downloadazcopy-v10-windows'
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - task: ExtractFiles@1
       inputs:
         archiveFilePatterns: '$(Build.BinariesDirectory)\azcopy.zip'
-        destinationFolder: $(Build.BinariesDirectory)\azcopy
-
+        destinationFolder: '$(Build.BinariesDirectory)\azcopy'
+        
+    - task: CopyFiles@2
+      inputs:
+        sourceFolder: '$(Build.BinariesDirectory)\azcopy'
+        contents: '**\*.exe' 
+        destinationFolder: '$(Build.BinariesDirectory)'
+  
     - task: CmdLine@1
       displayName: 'Run python installer'
       inputs:
@@ -64,11 +70,21 @@ steps:
         arguments: 'install -q --insecure -y pyopenssl setuptools wheel numpy'
       timeoutInMinutes: 10
 
-    - task: CmdLine@1
+    - task: PythonScript@0
+      displayName: 'Download test data'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
+        arguments: --test_data_url $(TestDataUrl)
+        pythonInterpreter: '$(Build.BinariesDirectory)\packages\python\python.exe'
+        workingDirectory: $(Build.BinariesDirectory)
+    
+    - task: PythonScript@0
       displayName: 'Download cmake'
       inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\download_cmake.py --build_dir $(Build.BinariesDirectory)'
+        pythonInterpreter: '$(Build.BinariesDirectory)\packages\python\python.exe'
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\download_cmake.py'
+        arguments: --build_dir $(Build.BinariesDirectory)
+    
     
     - task: PowerShell@2
       displayName: 'Download OpenCppCoverage installer'
