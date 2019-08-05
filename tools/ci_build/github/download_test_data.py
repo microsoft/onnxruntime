@@ -42,10 +42,13 @@ def get_server_hostname(azure_location):
 
 
 def download_and_unzip(build_dir, url, dest_folder):
+    print("Downloading %s" % url)
+    dest_folder = os.path.join(build_dir, dest_folder)
     subprocess.run([os.path.join(build_dir,'azcopy'),'cp', '--log-level','ERROR', url, build_dir],check=True)
     os.makedirs(dest_folder,exist_ok=True)
     local_file_name = os.path.join(build_dir, os.path.basename(urlparse(url).path))
     if is_windows():
+      print("unzip %s" % local_file_name)
       if shutil.which('7z'):  # 7-Zip
           subprocess.run(['7z','x', local_file_name, '-y', '-o' + dest_folder], check=True)
       elif shutil.which('7za'):  # 7-Zip standalone
