@@ -76,7 +76,7 @@ if is_windows():
     shutil.move(os.path.join(args.build_dir,'cmake_temp','cmake-3.15.1-win64-x64'),dest_dir)
     url = 'https://onnxruntimetestdata.blob.core.windows.net/models/OpenCppCoverageSetup-x64-0.9.7.0.exe'
     url = url.replace('onnxruntimetestdata', hostname)
-    dest_folder = os.path.join(build_dir, 'installer','opencppcoverage')
+    dest_folder = os.path.join(args.build_dir, 'installer','opencppcoverage')
     os.makedirs(dest_folder,exist_ok=True)
     subprocess.run([os.path.join(build_dir,'azcopy'),'cp', '--log-level','ERROR', url, build_dir],check=True)
 
