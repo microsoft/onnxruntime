@@ -436,9 +436,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       Ort::CustomOpApi ort{*api};
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
       const std::vector<int>& input_indexes = (trt_state->input_info)[0];
-      ///const std::vector<int>& input_dim_sizes = (trt_state->input_info)[1];
       const std::vector<int>& output_indexes = (trt_state->output_info)[0];
-      ///const std::vector<int>& output_dim_sizes = (trt_state->output_info)[1];
       const std::vector<int>& output_types = (trt_state->output_info)[2];
       std::vector<std::vector<int64_t>> output_shapes = trt_state->output_shapes;
 
@@ -451,8 +449,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       // Get batch size and allocate cuda memory for inputs
       for (int i = 0, end = num_binding_inputs; i < end; ++i) {
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_indexes[i]);
-        ///auto& fetched_tensor = input_tensor->Get<Tensor>();
-        ///auto& fetched_tensor_location = fetched_tensor.Location();
         auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
         const auto& tensor_shape = ort.GetTensorShape(tensor_info);
         auto tensor_type = ort.GetTensorElementType(tensor_info);
