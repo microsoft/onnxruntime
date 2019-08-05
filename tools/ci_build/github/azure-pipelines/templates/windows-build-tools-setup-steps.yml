@@ -64,20 +64,7 @@ steps:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
         arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
         pythonInterpreter: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        workingDirectory: $(Build.BinariesDirectory)   
-    
-    - task: PowerShell@2
-      displayName: 'Download OpenCppCoverage installer'
-      continueOnError: true
-      inputs:
-        targetType: 'inline'
-        script: '
-          New-Item -Path "$(Build.BinariesDirectory)\installer" -ItemType "directory"
-
-          New-Item -Path "$(Build.BinariesDirectory)\installer\opencppcoverage" -ItemType "directory"
-
-          Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\installer\opencppcoverage\installer.exe https://onnxruntimeinstaller.blob.core.windows.net/opencppcovergae-installer/OpenCppCoverageSetup-x64-0.9.7.0.exe
-          '
+        workingDirectory: $(Build.BinariesDirectory)
 
     - task: CmdLine@1
       continueOnError: true
