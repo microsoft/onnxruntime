@@ -35,8 +35,8 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
                                  const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                  const logging::Logger& logger) {
   TimePoint tp;
-  bool f_profiler_enabled = session_state.Profiler().FEnabled();
-  if (f_profiler_enabled) {
+  const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
+  if (is_profiler_enabled) {
     tp = session_state.Profiler().StartTime();
   }
 
@@ -84,7 +84,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
   VLOGS(logger, 1) << "Done execution.";
 
   if (root_frame_->HasMemoryPatternPlanner()) {
-    std::vector<TensorShape> input_shapes;
+    std::vector<std::reference_wrapper<const TensorShape>> input_shapes;
     bool all_tensors = true;
     for (const auto& feed : feeds) {
       if (!(feed.IsTensor())) {
@@ -92,7 +92,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
         break;
       }
       auto& tensor = feed.Get<Tensor>();
-      input_shapes.push_back(tensor.Shape());
+      input_shapes.push_back(std::cref(tensor.Shape()));
     }
 
     if (all_tensors) {
@@ -102,7 +102,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
     }
   }
 
-  if (f_profiler_enabled) {
+  if (is_profiler_enabled) {
     session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "ParallelExecutor::Execute", tp);
   }
 
@@ -121,7 +121,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
   auto graph_viewer = session_state.GetGraphViewer();
   TimePoint sync_time_begin;
   TimePoint kernel_begin_time;
-  bool f_profiler_enabled = session_state.Profiler().FEnabled();
+  const bool f_profiler_enabled = session_state.Profiler().IsEnabled();
 
   // Avoid context switching if possible.
   while (keep_running) {

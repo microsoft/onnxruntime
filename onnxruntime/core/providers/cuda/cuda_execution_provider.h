@@ -7,6 +7,7 @@
 #include "core/graph/constants.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
+#include "core/providers/cuda/gpu_data_transfer.h"
 #include "shared_inc/cuda_utils.h"
 #include <deque>
 
@@ -15,13 +16,6 @@ namespace onnxruntime {
 // Information needed to construct CUDA execution providers.
 struct CUDAExecutionProviderInfo {
   int device_id{0};
-};
-
-enum CUDAStreamType : int {
-  kCudaStreamDefault = 0,
-  kCudaStreamCopyIn,
-  kCudaStreamCopyOut,
-  kTotalCudaStreams,
 };
 
 // Logical device representation.
@@ -38,21 +32,12 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   Status OnRunEnd() override;
 
-  Status CopyTensor(const Tensor& src, Tensor& dst) const override;
-
-  Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
-
   cublasHandle_t PerThreadCublasHandle() {
     return GetPerThreadContext().CublasHandle();
   }
 
   cudnnHandle_t PerThreadCudnnHandle() {
     return GetPerThreadContext().CudnnHandle();
-  }
-
-  cudaStream_t GetStream(int queue_id) const {
-    ORT_ENFORCE(queue_id >= 0 && queue_id < kTotalCudaStreams);
-    return streams_[queue_id];
   }
 
   template <typename T>
@@ -79,7 +64,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
   int GetDeviceId() const { return device_id_; }
 
  private:
-  cudaStream_t streams_[kTotalCudaStreams];
   int device_id_;
 
   struct DeferredReleaseCPUPtrs {

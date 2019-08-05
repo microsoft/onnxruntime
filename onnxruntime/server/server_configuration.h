@@ -8,7 +8,7 @@
 #include <unordered_map>
 
 #include "boost/program_options.hpp"
-#include "core/common/logging/logging.h"
+#include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
 namespace server {
@@ -26,12 +26,12 @@ enum class Result {
   ContinueSuccess
 };
 
-static std::unordered_map<std::string, onnxruntime::logging::Severity> supported_log_levels{
-    {"verbose", onnxruntime::logging::Severity::kVERBOSE},
-    {"info", onnxruntime::logging::Severity::kINFO},
-    {"warning", onnxruntime::logging::Severity::kWARNING},
-    {"error", onnxruntime::logging::Severity::kERROR},
-    {"fatal", onnxruntime::logging::Severity::kFATAL}};
+static std::unordered_map<std::string, OrtLoggingLevel> supported_log_levels{
+    {"verbose", ORT_LOGGING_LEVEL_VERBOSE},
+    {"info", ORT_LOGGING_LEVEL_INFO},
+    {"warning", ORT_LOGGING_LEVEL_WARNING},
+    {"error", ORT_LOGGING_LEVEL_ERROR},
+    {"fatal", ORT_LOGGING_LEVEL_FATAL}};
 
 // Wrapper around Boost program_options and should provide all the functionality for options parsing
 // Provides sane default values
@@ -41,8 +41,9 @@ class ServerConfiguration {
   std::string model_path;
   std::string address = "0.0.0.0";
   unsigned short http_port = 8001;
+  unsigned short grpc_port = 50051;
   int num_http_threads = std::thread::hardware_concurrency();
-  onnxruntime::logging::Severity logging_level{};
+  OrtLoggingLevel logging_level{};
 
   ServerConfiguration() {
     desc.add_options()("help,h", "Shows a help message and exits");
@@ -51,6 +52,7 @@ class ServerConfiguration {
     desc.add_options()("address", po::value(&address)->default_value(address), "The base HTTP address");
     desc.add_options()("http_port", po::value(&http_port)->default_value(http_port), "HTTP port to listen to requests");
     desc.add_options()("num_http_threads", po::value(&num_http_threads)->default_value(num_http_threads), "Number of http threads");
+    desc.add_options()("grpc_port", po::value(&grpc_port)->default_value(grpc_port), "GRPC port to listen to requests");
   }
 
   // Parses argc and argv and sets the values for the class

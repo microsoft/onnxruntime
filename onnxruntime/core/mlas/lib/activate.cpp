@@ -106,7 +106,11 @@ struct MLAS_ACTIVATION_FUNCTION<MlasReluActivation>
 
     float Activate(float Value)
     {
-        return (std::max)(0.0f, Value);
+#if defined(MLAS_SSE2_INTRINSICS)
+        return _mm_cvtss_f32(Activate(_mm_set_ss(Value)));
+#else
+        return (std::max)(Value, 0.0f);
+#endif
     }
 };
 
@@ -119,7 +123,7 @@ struct MLAS_ACTIVATION_FUNCTION<MlasLeakyReluActivation>
 
     MLAS_ACTIVATION_FUNCTION(const MLAS_ACTIVATION* Activation)
     {
-        AlphaBroadcast = MlasBroadcastFloat32x4(&Activation->alpha);
+        AlphaBroadcast = MlasBroadcastFloat32x4(&Activation->Parameters.LeakyRelu.alpha);
     }
 
     MLAS_FLOAT32X4 Activate(MLAS_FLOAT32X4 Value)
@@ -155,14 +159,46 @@ struct MLAS_ACTIVATION_FUNCTION<MlasLeakyReluActivation>
     }
 };
 
+template<>
+struct MLAS_ACTIVATION_FUNCTION<MlasClipActivation>
+{
+    MLAS_FLOAT32X4 MinimumBroadcast;
+    MLAS_FLOAT32X4 MaximumBroadcast;
+
+    MLAS_ACTIVATION_FUNCTION(const MLAS_ACTIVATION* Activation)
+    {
+        MinimumBroadcast = MlasBroadcastFloat32x4(&Activation->Parameters.Clip.minimum);
+        MaximumBroadcast = MlasBroadcastFloat32x4(&Activation->Parameters.Clip.maximum);
+    }
+
+    MLAS_FLOAT32X4 Activate(MLAS_FLOAT32X4 Value)
+    {
+        Value = MlasMaximumFloat32x4(MinimumBroadcast, Value);
+        Value = MlasMinimumFloat32x4(MaximumBroadcast, Value);
+
+        return Value;
+    }
+
+    float Activate(float Value)
+    {
+#if defined(MLAS_SSE2_INTRINSICS)
+        return _mm_cvtss_f32(Activate(_mm_set_ss(Value)));
+#else
+        Value = (std::max)(Value, MlasExtractLaneFloat32x4<0>(MinimumBroadcast));
+        Value = (std::min)(Value, MlasExtractLaneFloat32x4<0>(MaximumBroadcast));
+
+        return Value;
+#endif
+    }
+};
+
 template<MLAS_ACTIVATION_KIND ActivationKind, bool AddBias>
 void
 MlasActivationKernel(
     const MLAS_ACTIVATION* Activation,
-    const float* Input,
+    float* Buffer,
     const float* Bias,
     size_t M,
-    float* Output,
     size_t N,
     size_t ldc
     )
@@ -177,14 +213,12 @@ Arguments:
 
     Activation - Supplies the parameters for the activation.
 
-    Input - Supplies the input matrix.
+    Buffer - Supplies the output matrix.
 
     Bias - Supplies the optional bias vector.
 
     M - Supplies the number of elements of the bias vector and the number of
         rows in the output matrix.
-
-    Output - Supplies the output matrix.
 
     N - Supplies the number of columns of the output matrix.
 
@@ -205,8 +239,7 @@ Return Value:
 
     while (M-- > 0) {
 
-        const float* input = Input;
-        float* output = Output;
+        float* buffer = Buffer;
         size_t n = N;
 
         BiasAddition.LoadNext(Bias);
@@ -215,10 +248,9 @@ Return Value:
 
             do {
 
-                MLAS_FLOAT32X4 Vector = BiasAddition.Add(MlasLoadFloat32x4(input));
-                MlasStoreFloat32x4(output, ActivationFunction.Activate(Vector));
-                input += 4;
-                output += 4;
+                MLAS_FLOAT32X4 Vector = BiasAddition.Add(MlasLoadFloat32x4(buffer));
+                MlasStoreFloat32x4(buffer, ActivationFunction.Activate(Vector));
+                buffer += 4;
                 n -= 4;
 
             } while (n >= 4);
@@ -226,13 +258,12 @@ Return Value:
 
         while (n > 0) {
 
-            float Scalar = BiasAddition.Add(*input++);
-            *output++ = ActivationFunction.Activate(Scalar);
+            float Scalar = BiasAddition.Add(*buffer);
+            *buffer++ = ActivationFunction.Activate(Scalar);
             n -= 1;
         }
 
-        Input += ldc;
-        Output += ldc;
+        Buffer += ldc;
     }
 }
 
@@ -241,10 +272,9 @@ inline
 void
 MlasActivationKernel<MlasIdentityActivation, false>(
     const MLAS_ACTIVATION* Activation,
-    const float* Input,
+    float* Buffer,
     const float* Bias,
     size_t M,
-    float* Output,
     size_t N,
     size_t ldc
     )
@@ -259,14 +289,12 @@ Arguments:
 
     Activation - Supplies the parameters for the activation.
 
-    Input - Supplies the input matrix.
+    Buffer - Supplies the output matrix.
 
     Bias - Supplies the optional bias vector.
 
     M - Supplies the number of elements of the bias vector and the number of
         rows in the output matrix.
-
-    Output - Supplies the output matrix.
 
     N - Supplies the number of columns of the output matrix.
 
@@ -283,10 +311,9 @@ Return Value:
     //
 
     MLAS_UNREFERENCED_PARAMETER(Activation);
-    MLAS_UNREFERENCED_PARAMETER(Input);
+    MLAS_UNREFERENCED_PARAMETER(Buffer);
     MLAS_UNREFERENCED_PARAMETER(Bias);
     MLAS_UNREFERENCED_PARAMETER(M);
-    MLAS_UNREFERENCED_PARAMETER(Output);
     MLAS_UNREFERENCED_PARAMETER(N);
     MLAS_UNREFERENCED_PARAMETER(ldc);
 }
@@ -296,10 +323,9 @@ inline
 void
 MlasActivationKernel(
     const MLAS_ACTIVATION* Activation,
-    const float* Input,
+    float* Buffer,
     const float* Bias,
     size_t M,
-    float* Output,
     size_t N,
     size_t ldc
     )
@@ -314,14 +340,12 @@ Arguments:
 
     Activation - Supplies the parameters for the activation.
 
-    Input - Supplies the input matrix.
+    Buffer - Supplies the output matrix.
 
     Bias - Supplies the optional bias vector.
 
     M - Supplies the number of elements of the bias vector and the number of
         rows in the output matrix.
-
-    Output - Supplies the output matrix.
 
     N - Supplies the number of columns of the output matrix.
 
@@ -334,9 +358,9 @@ Return Value:
 --*/
 {
     if (Bias != nullptr) {
-        MlasActivationKernel<ActivationKind, true>(Activation, Input, Bias, M, Output, N, ldc);
+        MlasActivationKernel<ActivationKind, true>(Activation, Buffer, Bias, M, N, ldc);
     } else {
-        MlasActivationKernel<ActivationKind, false>(Activation, Input, Bias, M, Output, N, ldc);
+        MlasActivationKernel<ActivationKind, false>(Activation, Buffer, Bias, M, N, ldc);
     }
 }
 
@@ -344,10 +368,9 @@ void
 MLASCALL
 MlasActivation(
     const MLAS_ACTIVATION* Activation,
-    const float* Input,
+    float* Buffer,
     const float* Bias,
     size_t M,
-    float* Output,
     size_t N,
     size_t ldc
     )
@@ -362,14 +385,12 @@ Arguments:
 
     Activation - Supplies the parameters for the activation.
 
-    Input - Supplies the input matrix.
+    Buffer - Supplies the output matrix.
 
     Bias - Supplies the optional bias vector.
 
     M - Supplies the number of elements of the bias vector and the number of
         rows in the output matrix.
-
-    Output - Supplies the output matrix.
 
     N - Supplies the number of columns of the output matrix.
 
@@ -385,34 +406,34 @@ Return Value:
 
         case MlasIdentityActivation:
         {
-            MlasActivationKernel<MlasIdentityActivation>(Activation, Input, Bias, M, Output, N, ldc);
+            MlasActivationKernel<MlasIdentityActivation>(Activation, Buffer, Bias, M, N, ldc);
             break;
         }
 
         case MlasReluActivation:
         {
-            MlasActivationKernel<MlasReluActivation>(Activation, Input, Bias, M, Output, N, ldc);
+            MlasActivationKernel<MlasReluActivation>(Activation, Buffer, Bias, M, N, ldc);
             break;
         }
 
         case MlasLeakyReluActivation:
         {
-            MlasActivationKernel<MlasLeakyReluActivation>(Activation, Input, Bias, M, Output, N, ldc);
+            MlasActivationKernel<MlasLeakyReluActivation>(Activation, Buffer, Bias, M, N, ldc);
             break;
         }
 
         case MlasTanhActivation:
         {
             if (Bias != nullptr) {
-                MlasActivationKernel<MlasIdentityActivation, true>(Activation, Input, Bias, M, Output, N, ldc);
+                MlasActivationKernel<MlasIdentityActivation, true>(Activation, Buffer, Bias, M, N, ldc);
             }
 
             if (N == ldc) {
-                MlasComputeTanh(Output, Output, M * N);
+                MlasComputeTanh(Buffer, Buffer, M * N);
             } else {
                 while (M-- > 0) {
-                    MlasComputeTanh(Output, Output, N);
-                    Output += ldc;
+                    MlasComputeTanh(Buffer, Buffer, N);
+                    Buffer += ldc;
                 }
             }
 
@@ -422,18 +443,24 @@ Return Value:
         case MlasLogisticActivation:
         {
             if (Bias != nullptr) {
-                MlasActivationKernel<MlasIdentityActivation, true>(Activation, Input, Bias, M, Output, N, ldc);
+                MlasActivationKernel<MlasIdentityActivation, true>(Activation, Buffer, Bias, M, N, ldc);
             }
 
             if (N == ldc) {
-                MlasComputeLogistic(Output, Output, M * N);
+                MlasComputeLogistic(Buffer, Buffer, M * N);
             } else {
                 while (M-- > 0) {
-                    MlasComputeLogistic(Output, Output, N);
-                    Output += ldc;
+                    MlasComputeLogistic(Buffer, Buffer, N);
+                    Buffer += ldc;
                 }
             }
 
+            break;
+        }
+
+        case MlasClipActivation:
+        {
+            MlasActivationKernel<MlasClipActivation>(Activation, Buffer, Bias, M, N, ldc);
             break;
         }
     }

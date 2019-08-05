@@ -8,6 +8,7 @@
 #include "core/graph/op.h"
 #include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
+#include "core/mlas/inc/mlas.h"
 
 #ifdef MICROSOFT_INTERNAL
 #include "core/graph/contrib_ops/internal_schema_defs.h"
@@ -19,12 +20,171 @@ void convPoolShapeInference(
     bool use_dilation, bool require_kernel_shape,
     int input1Idx,
     int input2Idx);
-}
+void globalPoolTypeShapeInference(ONNX_NAMESPACE::InferenceContext& ctx);
+}  // namespace ONNX_NAMESPACE
+
 namespace onnxruntime {
 namespace contrib {
 using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::OpSchema;
 using ONNX_NAMESPACE::OPTIONAL;
+
+void NchwcPoolOpSchemaGenerator(OpSchema& schema) {
+  schema.SetDomain(kMSNchwcDomain);
+  schema.SinceVersion(1);
+  schema.SetDoc(R"DOC(For internal use.)DOC");
+  schema.Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"));
+  schema.Attr("kernel_shape", "", AttributeProto::INTS);
+  schema.Attr("dilations", "", AttributeProto::INTS, OPTIONAL);
+  schema.Attr("strides", "", AttributeProto::INTS, OPTIONAL);
+  schema.Attr("pads", "", AttributeProto::INTS, OPTIONAL);
+  schema.Attr("ceil_mode", "", AttributeProto::INT, static_cast<int64_t>(0));
+  schema.Input(0, "X", "", "T");
+  schema.Output(0, "Y", "", "T");
+  schema.TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors");
+  schema.TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+    ONNX_NAMESPACE::convPoolShapeInference(ctx, true, true, 0, 1);
+  });
+}
+
+void NchwcGlobalPoolOpSchemaGenerator(OpSchema& schema) {
+  schema.SetDomain(kMSNchwcDomain);
+  schema.SinceVersion(1);
+  schema.SetDoc(R"DOC(For internal use.)DOC");
+  schema.Input(0, "X", "", "T");
+  schema.Output(0, "Y", "", "T");
+  schema.TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors");
+  schema.TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+    ONNX_NAMESPACE::globalPoolTypeShapeInference(ctx);
+  });
+}
+
+void RegisterNchwcSchemas() {
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ReorderInput)
+      .SetDomain(kMSNchwcDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(For internal use.)DOC")
+      .Input(0, "X", "", "T")
+      .Output(0, "Y", "", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float)", "tensor(int8)", "tensor(uint8)"},
+          "Constrain input and output types to float/quantized tensors")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ReorderOutput)
+      .SetDomain(kMSNchwcDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(For internal use.)DOC")
+      .Attr(
+          "channels",
+          "",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Input(0, "X", "", "T")
+      .Output(0, "Y", "", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float)", "tensor(int8)", "tensor(uint8)"},
+          "Constrain input and output types to float/quantized tensors")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+        propagateShapeFromInputToOutput(ctx, 0, 0);
+
+        // Update the output shape with the actual number of channels.
+        auto channels = getAttribute(ctx, "channels", 0);
+        if (channels <= 0) {
+          fail_shape_inference("invalid channel count");
+        }
+        auto output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+        if (output_shape->dim_size() < 2) {
+          fail_shape_inference("tensor rank too small");
+        }
+        auto* channels_dim = output_shape->mutable_dim(1);
+        channels_dim->clear_dim_param();
+        channels_dim->set_dim_value(channels);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Conv)
+      .SetDomain(kMSNchwcDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(For internal use.)DOC")
+      .Attr(
+          "auto_pad",
+          "",
+          AttributeProto::STRING,
+          std::string("NOTSET"))
+      .Attr(
+          "kernel_shape",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "dilations",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "strides",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "pads",
+          "",
+          AttributeProto::INTS, OPTIONAL)
+      .Attr(
+          "group",
+          "",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .Attr(
+          "activation",
+          "",
+          AttributeProto::STRING,
+          OPTIONAL)
+      .Attr(
+          "activation_params",
+          "",
+          AttributeProto::FLOATS,
+          OPTIONAL)
+      .Input(0, "X", "", "T")
+      .Input(1, "W", "", "T")
+      .Input(2, "B", "", "T", OpSchema::Optional)
+      .Input(3, "Sum", "", "T", OpSchema::Optional)
+      .Output(0, "Y", "", "T")
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        ONNX_NAMESPACE::convPoolShapeInference(ctx, true, false, 0, 1);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MaxPool)
+      .FillUsing(NchwcPoolOpSchemaGenerator)
+      .Attr(
+          "storage_order",
+          "",
+          AttributeProto::INT,
+          static_cast<int64_t>(0));
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(AveragePool)
+      .FillUsing(NchwcPoolOpSchemaGenerator)
+      .Attr(
+          "count_include_pad",
+          "",
+          AttributeProto::INT,
+          static_cast<int64_t>(0));
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GlobalMaxPool)
+      .FillUsing(NchwcGlobalPoolOpSchemaGenerator);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GlobalAveragePool)
+      .FillUsing(NchwcGlobalPoolOpSchemaGenerator);
+}
 
 void RegisterContribSchemas() {
   // Register removed experimental ops for backward compatibility.
@@ -497,12 +657,16 @@ and op)DOC";
                   bottom_border = border[3];
 
           if (H < top_border + bottom_border)
-            fail_shape_inference("Input's height (", H, ") needs to be greater than or equal to "
-                                 "the top_border (", top_border, ") + bottom_border (", bottom_border, ")");
+            fail_shape_inference("Input's height (", H,
+                                 ") needs to be greater than or equal to "
+                                 "the top_border (",
+                                 top_border, ") + bottom_border (", bottom_border, ")");
 
           if (W < left_border + right_border)
-            fail_shape_inference("Input's width (", W, ") needs to be greater than or equal to "
-                                 "the left_border (", left_border, ") + right_border (", right_border, ")");
+            fail_shape_inference("Input's width (", W,
+                                 ") needs to be greater than or equal to "
+                                 "the left_border (",
+                                 left_border, ") + right_border (", right_border, ")");
 
           int64_t bottom_limit = H - bottom_border;
           int64_t right_limit = W - right_border;
@@ -698,10 +862,15 @@ activation.)DOC")
           AttributeProto::INTS,
           OPTIONAL)
       .Attr(
-          "strides", "", AttributeProto::INTS, OPTIONAL)
-      .Attr("pads",
-            "",
-            AttributeProto::INTS, OPTIONAL)
+          "strides",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "pads",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
       .Attr(
           "group",
           "",
@@ -713,9 +882,9 @@ activation.)DOC")
           AttributeProto::STRING,
           OPTIONAL)
       .Attr(
-          "alpha",
+          "activation_params",
           "",
-          AttributeProto::FLOAT,
+          AttributeProto::FLOATS,
           OPTIONAL)
       .Input(
           0,
@@ -727,7 +896,12 @@ activation.)DOC")
           "W",
           "",
           "T")
-      .Input(2, "B", "", "T", OpSchema::Optional)
+      .Input(
+          2,
+          "B",
+          "",
+          "T",
+          OpSchema::Optional)
       .Output(
           0,
           "Y",
@@ -1215,7 +1389,7 @@ Example 4:
                 pads_initializer->int64_data().end());
 
           // fill with zeros if needed to reach appropriate size
-          if (pads_data.size() != static_cast<size_t>(2 * input_rank))
+          if (pads_data.size() != 2 * static_cast<size_t>(input_rank))
             pads_data.resize(2 * input_rank, 0);
 
           const auto& output_shape =
@@ -1309,11 +1483,11 @@ Example 4:
         return;
       })
       .SetDoc(R"DOC(
-              Finds all the unique values (deduped list) present in the given input tensor. 
-              This operator returns 3 outputs. 
-              The first output tensor 'uniques' contains all of the unique elements of the input, 
+              Finds all the unique values (deduped list) present in the given input tensor.
+              This operator returns 3 outputs.
+              The first output tensor 'uniques' contains all of the unique elements of the input,
               sorted in the same order that they occur in the input.
-              The second output tensor 'idx' is the same size as the input and it contains the index 
+              The second output tensor 'idx' is the same size as the input and it contains the index
               of each value of the input in 'uniques'.
               The third output tensor 'counts' contains the count of each element of 'uniques' in the input.
               Example:
@@ -1414,10 +1588,15 @@ Example 4:
         a fixed size = [crop_height, crop_width]. The result is a 4-D tensor [num_boxes, crop_height, crop_width, depth].
         The resizing is corner aligned.)DOC");
 
+  // Register the NCHWc schemas if supported by the platform.
+  if (MlasNchwcGetBlockSize() > 1) {
+    RegisterNchwcSchemas();
+  }
+
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
   RegisterInternalSchemas();
 #endif
-}  // namespace contrib
+}
 }  // namespace contrib
 }  // namespace onnxruntime

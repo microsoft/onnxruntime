@@ -12,7 +12,7 @@ Status Size::Compute(OpKernelContext* ctx) const {
   TensorShape scalar_shape;
   Tensor* p_output_tensor = ctx->Output(0, scalar_shape);
   auto* p_output_scalar = p_output_tensor->template MutableData<int64_t>();
-  assert(p_output_tensor->Size() == sizeof(int64_t));
+  assert(p_output_tensor->SizeInBytes() == sizeof(int64_t));
 
   *p_output_scalar = input_tensor->Shape().Size();
 
