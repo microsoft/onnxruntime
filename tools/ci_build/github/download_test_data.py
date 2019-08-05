@@ -44,7 +44,7 @@ def get_server_hostname(azure_location):
 def download_and_unzip(build_dir, url, dest_folder):
     subprocess.run([os.path.join(build_dir,'azcopy'),'cp', '--log-level','ERROR', url, build_dir],check=True)
     os.makedirs(dest_folder,exist_ok=True)
-    local_file_name = os.path.basename(urlparse(url).path)
+    local_file_name = os.path.join(build_dir, os.path.basename(urlparse(url).path))
     if is_windows():
       if shutil.which('7z'):  # 7-Zip
           subprocess.run(['7z','x', local_file_name, '-y', '-o' + dest_folder], check=True)
@@ -55,6 +55,7 @@ def download_and_unzip(build_dir, url, dest_folder):
           sys.exit(1)
     else:
        subprocess.run(['unzip','-qd', dest_folder ,local_file_name], check=True)
+    os.unlink(local_file_name)
 
 args = parse_arguments()
 hostname = get_server_hostname(args.azure_region)
@@ -69,6 +70,6 @@ if is_windows():
     if os.path.exists(dest_dir):
         print('deleting %s' % dest_dir)
         shutil.rmtree(dest_dir)
-    shutil.move(os.path.join(args.build_dir,'cmake_temp','cmake-3.13.2-win64-x64'),dest_dir)
+    shutil.move(os.path.join(args.build_dir,'cmake_temp','cmake-3.15.1-win64-x64'),dest_dir)
 
 
