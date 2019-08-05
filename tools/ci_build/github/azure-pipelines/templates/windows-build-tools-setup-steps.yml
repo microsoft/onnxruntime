@@ -28,8 +28,9 @@ steps:
     # Temporary bypass of artifacts permission issue
     - task: CmdLine@1
       displayName: 'Run python installer'
-      filename: 'AzCopy.exe'
-      arguments: '/Y /Source:https://onnxruntimetestdata.blob.core.windows.net/models/azcopy.exe /Dest:$(Build.BinariesDirectory)\azcopy.exe'
+      inputs:
+        filename: 'AzCopy.exe'
+        arguments: '/Y /Source:https://onnxruntimetestdata.blob.core.windows.net/models/azcopy.exe /Dest:$(Build.BinariesDirectory)\azcopy.exe'
       
     - task: PowerShell@2
       displayName: 'Download python'
@@ -44,6 +45,7 @@ steps:
         filename: '$(Build.BinariesDirectory)\installer.exe'
         arguments: '/S /NoRegistry=1 /AddToPath=0 /RegisterPython=0 /D=$(Build.BinariesDirectory)\packages\python'
       timeoutInMinutes: 10
+
     - task: BatchScript@1
       displayName: 'setup env'
       inputs:
