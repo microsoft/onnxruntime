@@ -399,7 +399,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
                          std::istreambuf_iterator<char>(model_fs_session2.rdbuf())));
 
   // Execute with empty optimized model filepath doesn't fail loading.
-  so_opt.optimized_model_filepath = L"";
+  so_opt.optimized_model_filepath = ToWideString("");
   InferenceSession session_object_emptyValidation{so_opt, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object_emptyValidation.Load(test_model).IsOK());
   ASSERT_TRUE(session_object_emptyValidation.Initialize().IsOK());
