@@ -650,7 +650,7 @@ include(onnxruntime_mlas.cmake)
 # Build Core AutoML support
 if(onnxruntime_USE_AUTOML)
   include(onnxruntime_automl_featurizers.cmake)
-  include(onnxruntime_automl.cmake)
+  #include(onnxruntime_automl.cmake)
 endif()
 
 if(WIN32)

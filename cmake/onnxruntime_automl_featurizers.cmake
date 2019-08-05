@@ -3,9 +3,9 @@
 # This source code should not depend on the onnxruntime and may be built independently
 
 file(GLOB_RECURSE onnxruntime_automl_featurizers_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/automl/Featurizers/src/FeaturizerPrep/*.h"
-    "${ONNXRUNTIME_ROOT}/core/automl/Featurizers/src/FeaturizerPrep/Featurizers/*.h"
-    "${ONNXRUNTIME_ROOT}/core/automl/Featurizers/src/FeaturizerPrep/Featurizers/*.cpp"
+    "${ONNXRUNTIME_ROOT}/core/automl/featurizers/src/FeaturizerPrep/*.h"
+    "${ONNXRUNTIME_ROOT}/core/automl/featurizers/src/FeaturizerPrep/Featurizers/*.h"
+    "${ONNXRUNTIME_ROOT}/core/automl/featurizers/src/FeaturizerPrep/Featurizers/*.cpp"
 )
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_automl_featurizers_srcs})
