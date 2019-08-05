@@ -67,7 +67,7 @@ print('data url=%s' % url)
 download_and_unzip(args.build_dir, url, 'models')
 if is_windows():
     url = 'https://onnxruntimetestdata.blob.core.windows.net/models/cmake-3.15.1-win64-x64.zip'
-    url = args.test_data_url.replace('onnxruntimetestdata', hostname)
+    url = url.replace('onnxruntimetestdata', hostname)
     download_and_unzip(args.build_dir, url, 'cmake_temp')
     dest_dir = os.path.join(args.build_dir,'cmake')
     if os.path.exists(dest_dir):
