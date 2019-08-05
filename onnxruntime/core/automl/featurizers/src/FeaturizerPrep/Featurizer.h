@@ -7,10 +7,6 @@
 #include <memory>
 #include <tuple>
 
-#include <boost/serialization/access.hpp>
-#include <boost/serialization/base_object.hpp>
-#include <boost/serialization/nvp.hpp>
-
 namespace Microsoft {
 namespace Featurizer {
 
@@ -43,10 +39,6 @@ public:
     virtual return_type transform(arg_type const &arg) const = 0;
 
 private:
-    // ----------------------------------------------------------------------
-    // |  Relationships
-    friend class boost::serialization::access;
-
     // ----------------------------------------------------------------------
     // |  Private Methods
     template <typename ArchiveT>
@@ -91,10 +83,6 @@ public:
     TransformerUniquePtr commit(void);
 
 private:
-    // ----------------------------------------------------------------------
-    // |  Relationships
-    friend class boost::serialization::access;
-
     // ----------------------------------------------------------------------
     // |  Private Data
     bool _committed                         = false;

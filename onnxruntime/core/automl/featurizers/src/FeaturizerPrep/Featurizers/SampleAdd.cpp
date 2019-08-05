@@ -32,7 +32,7 @@ Estimator & Estimator::fit_impl(apache_arrow const &data) /*override*/ {
 }
 
 Estimator::TransformerUniquePtr Estimator::commit_impl(void) /*override*/ {
-    return std::make_unique<SampleAdd::Transformer>(_accumulated_delta);
+  return std::make_unique<SampleAdd::Transformer>(static_cast<std::uint16_t>(_accumulated_delta));
 }
 
 } // namespace SampleAdd

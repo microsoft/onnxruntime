@@ -647,10 +647,10 @@ include(onnxruntime_optimizer.cmake)
 include(onnxruntime_session.cmake)
 include(onnxruntime_mlas.cmake)
 
-# Build Core AutoML support
 if(onnxruntime_USE_AUTOML)
+  add_definitions(-DMICROSOFT_AUTOML)
+  # Build shared featurizer library
   include(onnxruntime_automl_featurizers.cmake)
-  include(onnxruntime_automl.cmake)
 endif()
 
 if(WIN32)

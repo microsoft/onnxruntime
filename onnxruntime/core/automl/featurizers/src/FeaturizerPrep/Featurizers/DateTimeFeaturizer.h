@@ -36,9 +36,13 @@ namespace DateTimeFeaturizer {
         std::uint8_t quarterOfYear = 0; /* 1-4 */
         std::uint8_t weekOfMonth = 0;   /* 0-4 */
 
+        // Need default __ctor to satisfy ORT type system
+        TimePoint() = default;
         TimePoint(const std::chrono::system_clock::time_point& sysTime);
 
         TimePoint(TimePoint&&) = default;
+        TimePoint& operator=(TimePoint&&) = default;
+
         TimePoint(const TimePoint&) = delete;
         TimePoint& operator=(const TimePoint&) = delete;
 
@@ -73,10 +77,6 @@ namespace DateTimeFeaturizer {
             return_type transform(arg_type const &arg) const override;
 
         private:
-        // ----------------------------------------------------------------------
-        // |  Relationships
-        friend class boost::serialization::access;
-
         // ----------------------------------------------------------------------
         // |  Private Methods
         template <typename ArchiveT>

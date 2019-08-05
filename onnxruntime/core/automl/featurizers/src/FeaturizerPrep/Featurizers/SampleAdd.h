@@ -39,10 +39,6 @@ public:
 
 private:
     // ----------------------------------------------------------------------
-    // |  Relationships
-    friend class boost::serialization::access;
-
-    // ----------------------------------------------------------------------
     // |  Private Data
     std::uint32_t const                     _delta;
 
@@ -71,10 +67,6 @@ public:
     Estimator & operator =(Estimator &&) = delete;
 
 private:
-    // ----------------------------------------------------------------------
-    // |  Relationships
-    friend class boost::serialization::access;
-
     // ----------------------------------------------------------------------
     // |  Private Data
     std::uint32_t                           _accumulated_delta = 0;
