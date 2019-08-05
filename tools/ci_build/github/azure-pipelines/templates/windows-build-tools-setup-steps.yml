@@ -26,30 +26,17 @@ steps:
     #     downloadDirectory: '$(Build.BinariesDirectory)\python'
 
     # Temporary bypass of artifacts permission issue
+    - task: CmdLine@1
+      displayName: 'Run python installer'
+      filename: 'AzCopy.exe'
+      arguments: '/Y /Source:https://onnxruntimetestdata.blob.core.windows.net/models/azcopy.exe /Dest:$(Build.BinariesDirectory)\azcopy.exe'
+      
     - task: PowerShell@2
       displayName: 'Download python'
       inputs:
         targetType: 'inline'
         script: 'Invoke-WebRequest -OutFile installer.exe  https://onnxruntimeinstaller.blob.core.windows.net/conda-installer/installer.exe'
-        workingDirectory: '$(Build.BinariesDirectory)'
-
-    - task: PowerShell@2
-      displayName: 'Download azcopy'
-      inputs:
-        targetType: 'inline'
-        script: 'Invoke-WebRequest -OutFile azcopy.zip  https://aka.ms/downloadazcopy-v10-windows'
-        workingDirectory: '$(Build.BinariesDirectory)'
-
-    - task: ExtractFiles@1
-      inputs:
-        archiveFilePatterns: '$(Build.BinariesDirectory)\azcopy.zip'
-        destinationFolder: '$(Build.BinariesDirectory)\azcopy'
-        
-    - task: CopyFiles@2
-      inputs:
-        sourceFolder: '$(Build.BinariesDirectory)\azcopy'
-        contents: '**\*.exe' 
-        destinationFolder: '$(Build.BinariesDirectory)'
+        workingDirectory: '$(Build.BinariesDirectory)'           
   
     - task: CmdLine@1
       displayName: 'Run python installer'
