@@ -36,12 +36,12 @@ steps:
       displayName: 'Download python'
       inputs:
         filename: 'AzCopy.exe'
-        arguments: '/Y /Source:https://onnxruntimetestdata.blob.core.windows.net/models/Anaconda3-2019.07-Windows-x86_64.exe /Dest:$(Build.BinariesDirectory)\Anaconda3-2019.07-Windows-x86_64.exe'               
+        arguments: '/Y /Source:https://onnxruntimetestdata.blob.core.windows.net/models/Miniconda3-4.7.10-Windows-x86_64.exe /Dest:$(Build.BinariesDirectory)\Miniconda3-4.7.10-Windows-x86_64.exe'               
   
     - task: CmdLine@1
       displayName: 'Run python installer'
       inputs:
-        filename: '$(Build.BinariesDirectory)\Anaconda3-2019.07-Windows-x86_64.exe'
+        filename: '$(Build.BinariesDirectory)\Miniconda3-4.7.10-Windows-x86_64.exe'
         arguments: '/S /NoRegistry=1 /AddToPath=0 /RegisterPython=0 /D=$(Build.BinariesDirectory)\packages\python'
       timeoutInMinutes: 10
 
