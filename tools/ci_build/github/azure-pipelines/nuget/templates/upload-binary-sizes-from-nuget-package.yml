@@ -1,12 +1,13 @@
 parameters:
   gitCommitHash: ''
+  downloadPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
 
 steps:
 - task: DownloadPipelineArtifact@0
   displayName: 'Download Pipeline Artifact - Signed NuGet Package'
   inputs:
     artifactName: 'drop-signed-nuget'
-    targetPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
+    targetPath: '${{ parameters.downloadPath }}'
 
 - task: UsePythonVersion@0
   inputs:
@@ -26,7 +27,7 @@ steps:
   inputs:
     script: |
       echo changing directory to artifact download path
-      pushd $(Build.BinariesDirectory)\nuget-artifact\final-package
+      pushd "${{ parameters.downloadPath }}"
       echo processing nupkg
       FOR /R %%i IN (*.nupkg) do (
         echo processing %%~ni.nupkg

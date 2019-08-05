@@ -21,6 +21,11 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(ComputeOutputShape(Node().Name(), input0.Shape(), output_dims, output_shape));
   auto rank = output_shape.NumDimensions();
   auto& output_tensor = *ctx->Output(0, output_shape);
+
+  if (0 == output_shape.Size()) {
+    return Status::OK();
+  }
+
   auto input_shape = input0.Shape().GetDims();
 
   // pad input_dims with 1 to make ranks match
@@ -40,6 +45,8 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
     for (auto i = 0; i < rank; i++) {
       in_span[i] = fast_divmod(static_cast<int>(input_shape[i]));
       out_span[i] = fast_divmod(static_cast<int>(output_shape[i]));
+      // output_shape[i] won't be 0 here, it's covered in (0 == output_shape.Size())
+      // a null output will be returned for that case
       subdim_size /= output_shape[i];
       sdm_span[i] = static_cast<int>(subdim_size);
     }
