@@ -39,7 +39,17 @@ args = parse_arguments()
 hostname=get_server_hostname(args.azure_region)
 url=args.test_data_url.replace('onnxruntimetestdata', hostname)
 print('data url=%s' % url)
-subprocess.run(['./azcopy','cp', '--log-level','ERROR', url,'.'],check=True)
+BUILD_BINARIESDIRECTORY = os.environ.get('BUILD_BINARIESDIRECTORY')
+subprocess.run([os.path.join(BUILD_BINARIESDIRECTORY,'azcopy'),'cp', '--log-level','ERROR', url,'.'],check=True)
 os.makedirs('models',exist_ok=True)
 local_file_name = os.path.basename(urlparse(url).path)
-subprocess.run(['unzip', '-qd','models',local_file_name])
+if is_windows():
+  if shutil.which('7z'):  # 7-Zip
+      run_subprocess(['7z','x', local_file_name, '-y', '-o models'])
+  elif shutil.which('7za'):  # 7-Zip standalone
+      run_subprocess(['7za', 'x', local_file_name, '-y', '-o models'])
+  else:
+      log.error("No unzip tool for use")   
+      sys.exit(1)
+else:
+   subprocess.run(['unzip','-qd', 'models',local_file_name], check=True)
