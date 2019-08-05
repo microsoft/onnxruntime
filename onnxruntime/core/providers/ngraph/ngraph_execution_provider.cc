@@ -37,7 +37,7 @@ NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderIn
   ORT_ENFORCE(info.ng_backend_type == "CPU", "nGraph Execution Provider for onnxruntime currently is only supported for CPU backend.");
 
   auto default_allocator_factory = [](int) {
-    auto allocator_info = std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
+    auto allocator_info = std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator);
     return std::make_unique<CPUAllocator>(std::move(allocator_info));
   };
 
@@ -51,7 +51,8 @@ NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderIn
 
 
   auto cpu_allocator_factory = [](int) {
-    auto allocator_info = std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeCPUOutput);
+    auto allocator_info = std::make_unique<OrtAllocatorInfo>(
+      NGRAPH, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput);
     return std::make_unique<CPUAllocator>(std::move(allocator_info));
   };
 
@@ -71,25 +72,6 @@ NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderIn
     LOGS_DEFAULT(FATAL) << "Unknown exception while while creating nGraph " << info.ng_backend_type << " Backend";
     throw;
   }
-}
-
-/**
- * Checks if a tensor represented by srcLocation can be copied into the dstLocation tensor
- * @param src_location result of Location().name call on the source tensor
- * @param dst_location result of Location().name call on the destination tensor
- * @return true if src and dest locations combination allows copying
- */
-bool TensorCopyPossible(const std::string& src_location, const std::string& dst_location) {
-  // contains allowed combinations of source and destination locations for tensors copying purposes
-  // the first element of a pair denotes a source, the second - destination
-  static const std::map<std::string, std::string> allowed_copy_directions = {
-      {NGRAPH, CPU}, {NGRAPH, NGRAPH}, {CPU, NGRAPH}};
-
-  // copying of tensors is allowed only if the params match any of the allowed combinations
-  return std::any_of(allowed_copy_directions.begin(),
-                     allowed_copy_directions.end(), [&](const auto& copy_direction) {
-                       return src_location == copy_direction.first && dst_location == copy_direction.second;
-                     });
 }
 
 // Returns true only if op is in a mode that is not currently supported
