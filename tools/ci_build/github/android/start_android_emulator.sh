@@ -16,8 +16,7 @@ nohup $ANDROID_HOME/emulator/emulator -avd android_emulator -partition-size 2048
 $ANDROID_HOME/platform-tools/adb start-server
 
 echo "Waiting for device to come online"
-# Sometimes wait-for-device hangs, so add a timeout here
-timeout 180 adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done; input keyevent 82'
+adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done; input keyevent 82'
 
 echo "Emulator is online"
 
