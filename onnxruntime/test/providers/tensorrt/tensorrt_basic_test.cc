@@ -88,9 +88,9 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
 
   InferenceSession session_object{so};
 
-  TensorrtExecutionProviderInfo epi;//slx
-  epi.device_id = 0;//slx
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::TensorrtExecutionProvider>(epi)).IsOK());//slx
+  TensorrtExecutionProviderInfo epi;
+  epi.device_id = 0;
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::TensorrtExecutionProvider>(epi)).IsOK());
 
   status = session_object.Load(model_file_name);
   ASSERT_TRUE(status.IsOK());

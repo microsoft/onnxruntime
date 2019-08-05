@@ -21,17 +21,17 @@ struct TensorrtProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> TensorrtProviderFactory::CreateProvider() {
-  TensorrtExecutionProviderInfo info;//slx
-  info.device_id = device_id_;    //slx
-  return std::make_unique<TensorrtExecutionProvider>(info);//slx
+  TensorrtExecutionProviderInfo info;
+  info.device_id = device_id_;
+  return std::make_unique<TensorrtExecutionProvider>(info);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id) {//slx
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id) {
   return std::make_shared<onnxruntime::TensorrtProviderFactory>(device_id);
 }
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessionOptions* options, int device_id) {//slx
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessionOptions* options, int device_id) {
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Tensorrt(device_id));
   return nullptr;
 }

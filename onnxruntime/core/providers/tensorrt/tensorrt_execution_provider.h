@@ -52,7 +52,6 @@ struct TensorrtFuncState {
 // Logical device representation.
 class TensorrtExecutionProvider : public IExecutionProvider {
  public:
-  ///TensorrtExecutionProvider();//slx
   explicit TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info);
   virtual ~TensorrtExecutionProvider();
 
