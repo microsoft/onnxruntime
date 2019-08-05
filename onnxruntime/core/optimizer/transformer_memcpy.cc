@@ -325,7 +325,6 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
   }
 
   for (auto p_node : provider_nodes_) {
-    std::cout << "p_node name: " << p_node->Name() << "p_node optype: " << p_node->OpType() << std::endl;
     // make a copy of replacement map as the node may exclude mapping for InputDefs with MemTypeOnCpuExplicitly
     auto dup_replacements = replacements;
 
