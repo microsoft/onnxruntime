@@ -203,6 +203,22 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return initializers.find(a_zero_point->Name()) == initializers.end() ||
              initializers.find(b_zero_point->Name()) == initializers.end();
     } // else -> azp & bzp are 0 by default according to ONNX spec
+  } else if (optype == "ConvInteger") {
+    // all ConvInteger zero points need to be constants
+    const auto inputs = node->InputDefs();
+    if (inputs.size() == 3) {
+      const auto& x_zero_point = node->InputDefs()[2];
+
+      // not found in initializers -> not const
+      return initializers.find(x_zero_point->Name()) == initializers.end();
+    } else if (inputs.size() == 4) {
+      const auto& x_zero_point = node->InputDefs()[2];
+      const auto& w_zero_point = node->InputDefs()[3];
+
+      // not found in initializers -> not const
+      return initializers.find(x_zero_point->Name()) == initializers.end() ||
+             initializers.find(w_zero_point->Name()) == initializers.end();
+    } // else -> xzp & wzp are 0 by default according to ONNX spec
   }
 
   //Op doesn't fall into known any of unsupported modes.
