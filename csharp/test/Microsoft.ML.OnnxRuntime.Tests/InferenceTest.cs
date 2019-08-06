@@ -36,6 +36,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal(0, opt.ThreadPoolSize);
                 Assert.Equal(1u, opt.GraphOptimizationLevel);
 
+                // try setting options 
                 opt.EnableSequentialExecution = false;
                 Assert.False(opt.EnableSequentialExecution);
 
@@ -68,7 +69,30 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = 10; }); 
                 
             }
+        }
 
+        [Fact]
+        public void TestRunOptions()
+        {
+            using (var opt = new RunOptions())
+            {
+                Assert.NotNull(opt);
+
+                //verify default options
+                Assert.False(opt.Terminate);
+                Assert.Equal(LogLevel.Verbose, opt.LogVerbosityLevel);
+                Assert.Equal("", opt.LogTag);
+
+                // try setting options
+                opt.Terminate = true;
+                Assert.True(opt.Terminate);
+
+                opt.LogVerbosityLevel = LogLevel.Error;
+                Assert.Equal(LogLevel.Error, opt.LogVerbosityLevel);
+
+                opt.LogTag = "MyLogTag";
+                Assert.Equal("MyLogTag", opt.LogTag);
+            }
         }
 
         [Fact]
