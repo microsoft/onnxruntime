@@ -4,85 +4,39 @@
 using System;
 using System.Text;
 using System.Runtime.InteropServices;
+using System.IO;
 
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
     /// Holds the options for creating an InferenceSession
     /// </summary>
-    public class SessionOptions:IDisposable
+    public class SessionOptions : IDisposable
     {
-        public IntPtr _nativePtr;
-        protected static readonly Lazy<SessionOptions> _default = new Lazy<SessionOptions>(MakeSessionOptionWithCpuProvider);
+        private IntPtr _nativePtr;
+//        protected static readonly Lazy<SessionOptions> _default = new Lazy<SessionOptions>(MakeSessionOptionWithCpuProvider);
         private static string[] cudaDelayLoadedLibs = { "cublas64_100.dll", "cudnn64_7.dll" };
+
+        #region Constructor and Factory methods
 
         /// <summary>
         /// Constructs an empty SessionOptions
         /// </summary>
         public SessionOptions()
         {
-            NativeMethods.OrtCreateSessionOptions(out _nativePtr);
-        }
-
-        /// <summary>
-        /// Sets the graph optimization level for the session. Default is set to 1.        
-        /// </summary>
-        /// <param name="optimization_level">optimization level for the session</param>
-        /// Available options are : 0, 1, 2
-        /// 0 -> Disable all optimizations
-        /// 1 -> Enable basic optimizations
-        /// 2 -> Enable all optimizations
-        public void SetSessionGraphOptimizationLevel(uint optimization_level)
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionGraphOptimizationLevel(_nativePtr, optimization_level));
-        }
-
-        /// <summary>
-        /// Enable Sequential Execution. By default, it is enabled.
-        /// </summary>
-        /// </param>
-        public void EnableSequentialExecution()
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableSequentialExecution(_nativePtr));
-        }
-
-        /// <summary>
-        /// Disable Sequential Execution and enable Parallel Execution.
-        /// </summary>
-        /// </param>
-        public void DisableSequentialExecution()
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableSequentialExecution(_nativePtr));
-        }
-
-        /// <summary>
-        /// Enable Mem Pattern. By default, it is enabled
-        /// </summary>
-        /// </param>
-        public void EnableMemPattern()
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableMemPattern(_nativePtr));
-        }
-
-        /// <summary>
-        /// Disable Mem Pattern.
-        /// </summary>
-        /// </param>
-        public void DisableMemPattern()
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableMemPattern(_nativePtr));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionOptions(out _nativePtr));
         }
 
         /// <summary>
         /// Default instance
         /// </summary>
-        public static SessionOptions Default
-        {
-            get
-            {
-                return _default.Value;
-            }
-        }
+        //public static SessionOptions Default
+        //{
+        //    get
+        //    {
+        //        return _default.Value;
+        //    }
+        //}
 
         private static SessionOptions MakeSessionOptionWithCpuProvider()
         {
@@ -106,7 +60,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="deviceId"></param>
         /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
-        public static SessionOptions MakeSessionOptionWithCudaProvider(int deviceId=0)
+        public static SessionOptions MakeSessionOptionWithCudaProvider(int deviceId = 0)
         {
             CheckLibcVersionGreaterThanMinimum();
             CheckCudaExecutionProviderDLLs();
@@ -115,6 +69,193 @@ namespace Microsoft.ML.OnnxRuntime
             NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options._nativePtr, 1);
             return options;
         }
+
+        #endregion
+
+        #region Public Properties
+
+        internal IntPtr Handle
+        {
+            get
+            {
+                return _nativePtr;
+            }
+        }
+
+        /// <summary>
+        /// Enable Sequential Execution. By default, it is enabled.
+        /// </summary>
+        /// </param>
+        /// 
+        private bool _enableSequentialExecution = true;
+        public bool EnableSequentialExecution
+        {
+            get
+            {
+                return _enableSequentialExecution;
+            }
+            set
+            {
+                if (!_enableSequentialExecution && value)
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableSequentialExecution(_nativePtr));
+                    _enableSequentialExecution = true;
+                }
+                else if (_enableSequentialExecution && !value)
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableSequentialExecution(_nativePtr));
+                    _enableSequentialExecution = false;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Enable Mem Pattern. By default, it is enabled
+        /// </summary>
+        /// </param>
+        /// 
+        private bool _enableMemoryPattern = true;
+        public bool EnableMemoryPattern
+        {
+            get
+            {
+                return _enableMemoryPattern;
+            }
+            set
+            {
+                if (!_enableMemoryPattern && value)
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableMemPattern(_nativePtr));
+                    _enableMemoryPattern = true;
+                }
+                else if (_enableMemoryPattern && !value)
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableMemPattern(_nativePtr));
+                    _enableMemoryPattern = false;
+                }
+            }
+        }
+
+        public string ProfileOutputPathPrefix
+        {
+            get; set;
+        } = "onnxruntime_profile_";   // this is the same default in C++ implementation
+
+        private bool _enableProfiling = false;
+        public bool EnableProfiling
+        {
+            get
+            {
+                return _enableProfiling;
+            }
+            set
+            {
+                if (!_enableProfiling && value)
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableProfiling(_nativePtr, ProfileOutputPathPrefix));
+                    _enableProfiling = true;
+                }
+                else if (_enableProfiling && !value)
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableProfiling(_nativePtr));
+                    _enableProfiling = false;
+                }
+            }
+        }
+
+        private bool _enableCpuMemArena = true;
+        public bool EnableCpuMemArena
+        {
+            get
+            {
+                return _enableCpuMemArena;
+            }
+            set
+            {
+                if (!_enableCpuMemArena && value)
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableCpuMemArena(_nativePtr));
+                    _enableCpuMemArena = true;
+                } 
+                else if (_enableCpuMemArena && !value)
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableCpuMemArena(_nativePtr));
+                    _enableCpuMemArena = false;
+                }
+            }
+        }
+
+        private string _logId = "";
+        public string LogId
+        {
+            get
+            {
+                return _logId;
+            }
+
+            set
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionLogId(_nativePtr, value));
+                _logId = value;
+            }
+        }
+
+        private LogLevel _logVerbosityLevel = LogLevel.Verbose;
+        public LogLevel LogVerbosityLevel
+        {
+            get
+            {
+                return _logVerbosityLevel;
+            }
+            set
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionLogVerbosityLevel(_nativePtr, value));
+                _logVerbosityLevel = value;
+            }
+        }
+
+
+        private int _threadPoolSize = 0; // set to what is set in C++ SessionOptions by default;
+        public int ThreadPoolSize
+        {
+            get
+            {
+                return _threadPoolSize;
+            }
+            set
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionThreadPoolSize(_nativePtr, value));
+                _threadPoolSize = value;
+            }
+        }
+
+        /// <summary>
+        /// Sets the graph optimization level for the session. Default is set to 1.        
+        /// </summary>
+        /// <param name="optimization_level">optimization level for the session</param>
+        /// Available options are : 0, 1, 2
+        /// 0 -> Disable all optimizations
+        /// 1 -> Enable basic optimizations
+        /// 2 -> Enable all optimizations
+
+        private uint _graphOptimizationLevel = 1;
+        public uint GraphOptimizationLevel
+        {
+            get
+            {
+                return _graphOptimizationLevel;
+            }
+            set
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionGraphOptimizationLevel(_nativePtr, value));
+                _graphOptimizationLevel = value;
+            }
+        }
+
+        #endregion
+
+        #region Private Methods
+
 
         // Declared, but called only if OS = Windows.
         [DllImport("kernel32.dll")]
@@ -168,7 +309,7 @@ namespace Microsoft.ML.OnnxRuntime
                         "Linux distribution should be similar to Ubuntu 16.04 or higher");
             }
         }
-
+        #endregion
         #region destructors disposers
 
         ~SessionOptions()

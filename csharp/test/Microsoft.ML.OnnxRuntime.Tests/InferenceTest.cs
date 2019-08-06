@@ -18,6 +18,60 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private const string propertiesFile = "Properties.txt";
 
         [Fact]
+
+        public void TestSessionOptions()
+        {
+            using (SessionOptions opt = new SessionOptions())
+            {
+                Assert.NotNull(opt);
+
+                // check default values of the properties
+                Assert.True(opt.EnableSequentialExecution);
+                Assert.True(opt.EnableMemoryPattern);
+                Assert.False(opt.EnableProfiling);
+                Assert.Equal("onnxruntime_profile_", opt.ProfileOutputPathPrefix);
+                Assert.True(opt.EnableCpuMemArena);
+                Assert.Equal("", opt.LogId);
+                Assert.Equal(LogLevel.Verbose, opt.LogVerbosityLevel);
+                Assert.Equal(0, opt.ThreadPoolSize);
+                Assert.Equal(1u, opt.GraphOptimizationLevel);
+
+                opt.EnableSequentialExecution = false;
+                Assert.False(opt.EnableSequentialExecution);
+
+                opt.EnableMemoryPattern = false;
+                Assert.False(opt.EnableMemoryPattern);
+
+                opt.EnableProfiling = true;
+                Assert.True(opt.EnableProfiling);
+                Assert.Equal("onnxruntime_profile_", opt.ProfileOutputPathPrefix);
+
+                opt.ProfileOutputPathPrefix = "Ort_P_";
+                Assert.Equal("Ort_P_", opt.ProfileOutputPathPrefix);
+
+                opt.EnableCpuMemArena = false;
+                Assert.False(opt.EnableCpuMemArena);
+
+                opt.LogId = "MyLogId";
+                Assert.Equal("MyLogId", opt.LogId);
+
+                opt.LogVerbosityLevel = LogLevel.Error;
+                Assert.Equal(LogLevel.Error, opt.LogVerbosityLevel);
+
+                opt.ThreadPoolSize = 4;
+                Assert.Equal(4, opt.ThreadPoolSize);
+
+                opt.GraphOptimizationLevel = 3;
+                Assert.Equal(3u, opt.GraphOptimizationLevel);
+
+                Assert.Throws<OnnxRuntimeException>(() => { opt.ThreadPoolSize = -2; });
+                Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = 10; }); 
+                
+            }
+
+        }
+
+        [Fact]
         public void CanCreateAndDisposeSessionWithModelPath()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
@@ -61,8 +115,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             // Set the graph optimization level for this session.
             SessionOptions options = new SessionOptions();
-            options.SetSessionGraphOptimizationLevel(graphOptimizationLevel);
-            if (disableSequentialExecution) options.DisableSequentialExecution();
+            options.GraphOptimizationLevel = graphOptimizationLevel;
+            if (disableSequentialExecution) options.EnableSequentialExecution = false;
 
             using (var session = new InferenceSession(modelPath, options))
             {
@@ -657,6 +711,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal(expectedOutput, resultArray, new floatComparer());
             }
         }
+
 
         [DllImport("kernel32", SetLastError = true)]
         static extern IntPtr LoadLibrary(string lpFileName);

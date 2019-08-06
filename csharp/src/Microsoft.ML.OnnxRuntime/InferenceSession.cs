@@ -28,7 +28,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="modelPath"></param>
         public InferenceSession(string modelPath)
-            : this(modelPath, SessionOptions.Default)
+            : this(modelPath, new SessionOptions())
         {
         }
 
@@ -45,9 +45,9 @@ namespace Microsoft.ML.OnnxRuntime
             try
             {
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.Unicode.GetBytes(modelPath), options._nativePtr, out _nativeHandle));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.Unicode.GetBytes(modelPath), options.Handle, out _nativeHandle));
                 else
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.UTF8.GetBytes(modelPath), options._nativePtr, out _nativeHandle));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.UTF8.GetBytes(modelPath), options.Handle, out _nativeHandle));
 
                 // Initialize input/output metadata
                 _inputMetadata = new Dictionary<string, NodeMetadata>();
