@@ -182,15 +182,15 @@ void RegisterGradientSchemas() {
       .TypeConstraint(
           "T1",
           {"tensor(float)", "tensor(double)"},
-          "Constrain input types to float scalars.")
+          "Constrain learning rate to float")
       .TypeConstraint(
           "T2",
-          {"tensor(int64)"},
-          "Constrain output types to 64-bit integer scalars.")
+          {"int64"},
+          "Constrain step count to 64-bit integer")
       .TypeConstraint(
           "T3",
           {"tensor(float)", "tensor(double)"},
-          "Constrain input types to float tensors.");
+          "Constrain input and output to float tensors.");
 
   // TODO: This is copied from onnx schemas. When the change is in and we update this can be removed.
   // For Brevity documentation was not copied
@@ -258,15 +258,11 @@ void RegisterGradientSchemas() {
       .TypeConstraint(
           "T1",
           {"tensor(float)", "tensor(double)"},
-          "Constrain input types to float scalars.")
-      .TypeConstraint(
-          "T2",
-          {"tensor(int64)"},
-          "Constrain output types to 64-bit integer scalars.")
+          "Constrain learning rate to float scalars.")
       .TypeConstraint(
           "T3",
           {"tensor(float)", "tensor(double)"},
-          "Constrain input types to float tensors.");
+          "Constrain input and output types to float tensors.");
 }
 }  // namespace training
 }  // namespace onnxruntime

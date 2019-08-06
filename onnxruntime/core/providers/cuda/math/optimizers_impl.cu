@@ -77,9 +77,9 @@ __global__ void _AdamOptimizer(
   moment_2_out[id] = beta * moment_2[id] + ((1 - beta) * g_regularized * g_regularized);
 
   // Update learning rate - Use the updated eta for the final weight update
-  float numerator = _Sqrt(1 - _Pow(beta, static_cast<float>(*update_count)));
-  float denom = (1 - _Pow(alpha, static_cast<float>(*update_count)));
-  float eta_new = (*eta) * numerator / denom;
+  const float numerator = _Sqrt(1 - _Pow(beta, static_cast<float>(*update_count)));
+  const float denom = (1 - _Pow(alpha, static_cast<float>(*update_count)));
+  const float eta_new = (*eta) * numerator / denom;
 
   weights_out[id] = weights[id] - ((eta_new * moment_1_out[id]) / (_Sqrt(moment_2_out[id]) + epsilon));
   *update_count_out = (*update_count) + 1;

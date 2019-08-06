@@ -947,6 +947,24 @@ TEST(GradientCheckerTest, GeluGrad) {
   UnaryOpGradientTest("Gelu");
 }
 
+TEST(OptimizerTest, AdamOptimizerTest) {
+  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  test.AddInput<float>("ETA", {}, {0.5f});
+  test.AddInput<int64_t>("Update_Count", {}, {3});
+  test.AddInput<float>("W", {3}, {1, 2, 3});
+  test.AddInput<float>("G", {3}, {4, 5, 6});
+  test.AddInput<float>("Moment_1", {3}, {0.1f, 0.2f, 0.3f});
+  test.AddInput<float>("Moment_2", {3}, {0.4f, 0.5f, 0.6f});
+
+  // Verify AdamOptimizer outputs
+  test.AddOutput<float>("W_Out", {3}, {0.9232284f, 1.9051629f, 2.8897603f});
+  test.AddOutput<float>("Moment_1_Out", {3}, {0.49f, 0.68f, 0.87f});
+  test.AddOutput<float>("Moment_2_Out", {3}, {0.4156f, 0.5245f, 0.6354f});
+  test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
+
+  test.Run();
+}
+
 #ifdef USE_CUDA
 
 TEST(GradientCheckerTest, GatherGrad) {
@@ -1193,24 +1211,6 @@ TEST(GradientCheckerTest, GatherNDGrad_int32_indice_unique_float_data_axis_2) {
 
   gradient_checker.ComputeGradientError(op_def, {x_info, indice_info}, {y_info}, &max_error, x_datas, {MakeAttribute("axis", axis)});
   EXPECT_IS_TINY(max_error);
-}
-
-TEST(OptimizerTest, AdamOptimizerTest) {
-  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
-  test.AddInput<float>("ETA", {}, {0.5f});
-  test.AddInput<int64_t>("Update_Count", {}, {3});
-  test.AddInput<float>("W", {3}, {1, 2, 3});
-  test.AddInput<float>("G", {3}, {4, 5, 6});
-  test.AddInput<float>("Moment_1", {3}, {0.1f, 0.2f, 0.3f});
-  test.AddInput<float>("Moment_2", {3}, {0.4f, 0.5f, 0.6f});
-
-  // Verify AdamOptimizer outputs
-  test.AddOutput<float>("W_Out", {3}, {0.9217458f, 1.9028672f, 2.8865549f});
-  test.AddOutput<float>("Moment_1_Out", {3}, {0.49f, 0.68f, 0.87f});
-  test.AddOutput<float>("Moment_2_Out", {3}, {0.4156f, 0.5245f, 0.6354f});
-  test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
-
-  test.Run();
 }
 
 // This helper function is a CPU-based LAMB optimizer

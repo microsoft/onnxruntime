@@ -46,8 +46,6 @@ TrainingRunner::TrainingRunner(std::shared_ptr<DataSet> training_data,
   ORT_ENFORCE(!params_.model_trained_path_.empty() || !params_.model_trained_with_loss_func_path_.empty());
   ORT_ENFORCE(!params_.model_prediction_name_.empty());
   ORT_ENFORCE(!params_.in_graph_optimizer_name_.empty());
-  // Only have SGDOptimizer from CPU
-  ORT_ENFORCE(params_.use_cuda_ || params_.in_graph_optimizer_name_ == "SGDOptimizer");
 }
 
 Status TrainingRunner::Initialize() {

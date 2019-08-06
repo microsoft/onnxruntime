@@ -15,7 +15,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     KernelDefBuilder()
       .Alias(1, 0) // Update weights in-place
-      .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+      .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     SGDOptimizer);
 
 Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
@@ -47,12 +47,12 @@ ONNX_OPERATOR_KERNEL_EX(
       .Alias(2, 0) // Update weights in-place
       .Alias(4, 1) // Update moment-1 in-place
       .Alias(5, 2) // Update moment-2 in-place
-      .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+      .TypeConstraint("T3", DataTypeImpl::GetTensorType<float>()),
     AdamOptimizer);
 
 Status AdamOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor& ETA = *ctx->Input<Tensor>(0);
-  const Tensor& T = *ctx->Input<Tensor>(1);
+  const Tensor& S = *ctx->Input<Tensor>(1);
   const Tensor& W = *ctx->Input<Tensor>(2);
   const Tensor& G = *ctx->Input<Tensor>(3);
   const Tensor& M1 = *ctx->Input<Tensor>(4);
@@ -61,11 +61,11 @@ Status AdamOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   Tensor& NW = *ctx->Output(0, W.Shape());
   Tensor& NM1 = *ctx->Output(1, M1.Shape());
   Tensor& NM2 = *ctx->Output(2, M2.Shape());
-  Tensor& NT = *ctx->Output(3, T.Shape());
+  Tensor& NS = *ctx->Output(3, S.Shape());
 
   AdamOptimizerImpl(
       ETA.template Data<float>(),
-      T.template Data<int64_t>(),
+      S.template Data<int64_t>(),
       W.template Data<float>(),
       G.template Data<float>(),
       M1.template Data<float>(),
@@ -77,7 +77,7 @@ Status AdamOptimizer::ComputeInternal(OpKernelContext* ctx) const {
       NW.template MutableData<float>(),
       NM1.template MutableData<float>(),
       NM2.template MutableData<float>(),
-      NT.template MutableData<int64_t>(),
+      NS.template MutableData<int64_t>(),
       W.Shape().Size());
 
   return Status::OK();
@@ -93,7 +93,7 @@ ONNX_OPERATOR_KERNEL_EX(
       .Alias(1, 0) // Allow in-place update to weight.
       .Alias(2, 1) // Allow in-place update to 1st-order momentum.
       .Alias(3, 2) // Allow in-place update to 2nd-order momentum.
-      .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+      .TypeConstraint("T3", DataTypeImpl::GetTensorType<float>()),
     LambOptimizer);
 
 Status LambOptimizer::ComputeInternal(OpKernelContext* ctx) const {
