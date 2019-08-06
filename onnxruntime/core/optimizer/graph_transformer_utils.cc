@@ -38,12 +38,13 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
       rules.push_back(std::make_unique<EliminateDropout>());
       rules.push_back(std::make_unique<FuseReluClip>());
       rules.push_back(std::make_unique<ShapeToInitializer>());
-      break;
-
-    case TransformerLevel::Level2:
       rules.push_back(std::make_unique<ConvAddFusion>());
       rules.push_back(std::make_unique<ConvMulFusion>());
       rules.push_back(std::make_unique<ConvBNFusion>());
+      break;
+
+    case TransformerLevel::Level2:
+      // No level2 rules available today
       break;
 
     case TransformerLevel::Level3:
