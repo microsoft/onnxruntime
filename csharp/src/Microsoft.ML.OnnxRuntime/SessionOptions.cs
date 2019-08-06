@@ -14,7 +14,6 @@ namespace Microsoft.ML.OnnxRuntime
     public class SessionOptions : IDisposable
     {
         private IntPtr _nativePtr;
-//        protected static readonly Lazy<SessionOptions> _default = new Lazy<SessionOptions>(MakeSessionOptionWithCpuProvider);
         private static string[] cudaDelayLoadedLibs = { "cublas64_100.dll", "cudnn64_7.dll" };
 
         #region Constructor and Factory methods
@@ -27,16 +26,6 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionOptions(out _nativePtr));
         }
 
-        /// <summary>
-        /// Default instance
-        /// </summary>
-        //public static SessionOptions Default
-        //{
-        //    get
-        //    {
-        //        return _default.Value;
-        //    }
-        //}
 
         private static SessionOptions MakeSessionOptionWithCpuProvider()
         {
@@ -46,6 +35,7 @@ namespace Microsoft.ML.OnnxRuntime
             return options;
         }
 
+
         /// <summary>
         /// A helper method to constuct a SessionOptions object for CUDA execution
         /// </summary>
@@ -54,6 +44,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             return MakeSessionOptionWithCudaProvider(0);
         }
+
 
         /// <summary>
         /// A helper method to constuct a SessionOptions object for CUDA execution
@@ -82,6 +73,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+
         /// <summary>
         /// Enable Sequential Execution. By default, it is enabled.
         /// </summary>
@@ -108,6 +100,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
             }
         }
+
 
         /// <summary>
         /// Enable Mem Pattern. By default, it is enabled
@@ -136,6 +129,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+
         public string ProfileOutputPathPrefix
         {
             get; set;
@@ -163,6 +157,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+
         private bool _enableCpuMemArena = true;
         public bool EnableCpuMemArena
         {
@@ -185,6 +180,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+
         private string _logId = "";
         public string LogId
         {
@@ -199,6 +195,7 @@ namespace Microsoft.ML.OnnxRuntime
                 _logId = value;
             }
         }
+
 
         private LogLevel _logVerbosityLevel = LogLevel.Verbose;
         public LogLevel LogVerbosityLevel
@@ -229,6 +226,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+
         /// <summary>
         /// Sets the graph optimization level for the session. Default is set to 1.        
         /// </summary>
@@ -237,7 +235,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// 0 -> Disable all optimizations
         /// 1 -> Enable basic optimizations
         /// 2 -> Enable all optimizations
-
         private uint _graphOptimizationLevel = 1;
         public uint GraphOptimizationLevel
         {

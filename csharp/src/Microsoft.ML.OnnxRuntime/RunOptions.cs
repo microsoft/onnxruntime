@@ -15,6 +15,7 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateRunOptions(out _nativePtr));
         }
 
+
         /// <summary>
         /// LogVerbosityLevel for the Run 
         /// default == LogLevel.Verbose
@@ -32,6 +33,7 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunLogVerbosityLevel(_nativePtr, value));
             }
         }
+
 
         /// <summary>
         /// Log tag to be used during the run. default = ""
@@ -52,6 +54,7 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunTag(_nativePtr, value));
             }
         }
+
 
         private bool _terminate = false; //value set to default value of the C++ RunOptions
         /// <summary>
@@ -77,6 +80,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
             }
         }
+        
         #region destructors disposers
 
         ~RunOptions()
@@ -84,11 +88,13 @@ namespace Microsoft.ML.OnnxRuntime
             Dispose(false);
         }
 
+
         public void Dispose()
         {
             GC.SuppressFinalize(this);
             Dispose(true);
         }
+
 
         protected virtual void Dispose(bool disposing)
         {
