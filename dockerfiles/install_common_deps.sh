@@ -20,6 +20,9 @@ conda install -y python=3.6 numpy
 conda clean -aqy
 rm -rf /opt/miniconda/pkgs
 
+# Add conda location to PATH
+EXPORT PATH=/opt/miniconda/bin:$PATH
+
 # Dependencies: cmake
 sudo wget --quiet https://github.com/Kitware/CMake/releases/download/v3.14.3/cmake-3.14.3-Linux-x86_64.tar.gz
 tar zxf cmake-3.14.3-Linux-x86_64.tar.gz
