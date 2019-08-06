@@ -75,11 +75,10 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         /// <summary>
-        /// Enable Sequential Execution. By default, it is enabled.
+        /// Enable Sequential Execution. Default = true.
         /// </summary>
         /// </param>
         /// 
-        private bool _enableSequentialExecution = true;
         public bool EnableSequentialExecution
         {
             get
@@ -100,14 +99,12 @@ namespace Microsoft.ML.OnnxRuntime
                 }
             }
         }
+        private bool _enableSequentialExecution = true;
 
 
         /// <summary>
-        /// Enable Mem Pattern. By default, it is enabled
+        /// Enables the use of the memory allocation patterns in the first Run() call for subsequent runs. Default = true.
         /// </summary>
-        /// </param>
-        /// 
-        private bool _enableMemoryPattern = true;
         public bool EnableMemoryPattern
         {
             get
@@ -128,14 +125,22 @@ namespace Microsoft.ML.OnnxRuntime
                 }
             }
         }
+        private bool _enableMemoryPattern = true;
 
-
+        
+        /// <summary>
+        /// Path prefix to use for output of profiling data
+        /// </summary>
         public string ProfileOutputPathPrefix
         {
             get; set;
         } = "onnxruntime_profile_";   // this is the same default in C++ implementation
 
-        private bool _enableProfiling = false;
+
+
+        /// <summary>
+        /// Enables profiling of InferenceSession.Run() calls. Default is false
+        /// </summary>
         public bool EnableProfiling
         {
             get
@@ -156,9 +161,12 @@ namespace Microsoft.ML.OnnxRuntime
                 }
             }
         }
+        private bool _enableProfiling = false;
 
-
-        private bool _enableCpuMemArena = true;
+        
+        /// <summary>
+        /// Enables Arena allocator for the CPU memory allocations. Default is true.
+        /// </summary>
         public bool EnableCpuMemArena
         {
             get
@@ -179,9 +187,13 @@ namespace Microsoft.ML.OnnxRuntime
                 }
             }
         }
+        private bool _enableCpuMemArena = true;
 
 
-        private string _logId = "";
+        /// <summary>
+        /// Log Id to be used for the session. Default is empty string.
+        /// TODO: Should it be named LogTag as in RunOptions?
+        /// </summary>
         public string LogId
         {
             get
@@ -195,9 +207,12 @@ namespace Microsoft.ML.OnnxRuntime
                 _logId = value;
             }
         }
+        private string _logId = "";
 
 
-        private LogLevel _logVerbosityLevel = LogLevel.Verbose;
+        /// <summary>
+        /// Log Verbosity Level for the session logs. Default = LogLevel.Verbose
+        /// </summary>
         public LogLevel LogVerbosityLevel
         {
             get
@@ -210,9 +225,13 @@ namespace Microsoft.ML.OnnxRuntime
                 _logVerbosityLevel = value;
             }
         }
+        private LogLevel _logVerbosityLevel = LogLevel.Verbose;
 
 
-        private int _threadPoolSize = 0; // set to what is set in C++ SessionOptions by default;
+        /// <summary>
+        /// Threadpool size for the session.Run() calls. 
+        /// Default = 0, meaning threadpool size is aumatically selected from number of available cores.
+        /// </summary>
         public int ThreadPoolSize
         {
             get
@@ -225,17 +244,16 @@ namespace Microsoft.ML.OnnxRuntime
                 _threadPoolSize = value;
             }
         }
+        private int _threadPoolSize = 0; // set to what is set in C++ SessionOptions by default;
 
 
         /// <summary>
         /// Sets the graph optimization level for the session. Default is set to 1.        
         /// </summary>
-        /// <param name="optimization_level">optimization level for the session</param>
         /// Available options are : 0, 1, 2
         /// 0 -> Disable all optimizations
         /// 1 -> Enable basic optimizations
         /// 2 -> Enable all optimizations
-        private uint _graphOptimizationLevel = 1;
         public uint GraphOptimizationLevel
         {
             get
@@ -248,6 +266,7 @@ namespace Microsoft.ML.OnnxRuntime
                 _graphOptimizationLevel = value;
             }
         }
+        private uint _graphOptimizationLevel = 1;
 
         #endregion
 

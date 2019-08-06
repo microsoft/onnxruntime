@@ -56,9 +56,9 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
 
-        private bool _terminate = false; //value set to default value of the C++ RunOptions
         /// <summary>
         /// Sets a flag to terminate any other Run() call that is using the same RunOptions object 
+        /// Default = false
         /// </summary>
         public bool Terminate
         {
@@ -80,7 +80,9 @@ namespace Microsoft.ML.OnnxRuntime
                 }
             }
         }
-        
+        private bool _terminate = false; //value set to default value of the C++ RunOptions
+
+
         #region destructors disposers
 
         ~RunOptions()
