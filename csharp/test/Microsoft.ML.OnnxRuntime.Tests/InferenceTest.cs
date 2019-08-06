@@ -204,10 +204,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        private void RunInferenceOnSession(InferenceSession session)
-        {
-
-        }
 
         [Fact]
         private void ThrowWrongInputName()
