@@ -9,7 +9,7 @@ jobs:
     AgentPool : 'Win-CPU'
     DoDebugBuild: 'true'
     DoCompliance: 'false'
-    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib  --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrlNoContribOps) --test_data_checksum $(TestDataChecksum) --disable_contrib_ops --enable_msvc_static_runtime --x86'
+    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib  --build_csharp --enable_onnx_tests --disable_contrib_ops --enable_msvc_static_runtime --x86'
     JobName: 'Windows_CI_Dev_x86'
     DoNugetPack:  'false'
     NuPackScript : ''
