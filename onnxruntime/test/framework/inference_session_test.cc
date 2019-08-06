@@ -354,7 +354,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   ASSERT_TRUE(session_object_noopt.Load(test_model).IsOK());
   ASSERT_TRUE(session_object_noopt.Initialize().IsOK());
 
-  // Assert that model has been transformed.
+  // Assert that model has been Identity Nodes.
   const auto& graph_noopt = session_object_noopt.GetGraph();
   std::map<std::string, int> op_to_count_noopt = CountOpsInGraph(graph_noopt);
   ASSERT_TRUE(op_to_count_noopt["Identity"] > 0);
