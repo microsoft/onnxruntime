@@ -34,6 +34,7 @@ namespace Microsoft.ML.OnnxRuntime
             Init(modelPath, _builtInOptions);
         }
 
+
         /// <summary>
         /// Constructs an InferenceSession from a model file, with some additional session options
         /// </summary>
@@ -45,6 +46,9 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
 
+        /// <summary>
+        /// Meta data regarding the input nodes, keyed by input names
+        /// </summary>
         public IReadOnlyDictionary<string, NodeMetadata> InputMetadata
         {
             get
@@ -53,6 +57,9 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Metadata regarding the output nodes, keyed by output names
+        /// </summary>
         public IReadOnlyDictionary<string, NodeMetadata> OutputMetadata
         {
             get
@@ -61,11 +68,12 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+
         /// <summary>
         /// Runs the loaded model for the given inputs, and fetches all the outputs.
         /// </summary>
         /// <param name="inputs"></param>
-        /// <returns>Output Tensors in a Collection of NamedOnnxValue</returns>
+        /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs)
         {
             string[] outputNames = new string[_outputMetadata.Count];
@@ -78,7 +86,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="inputs"></param>
         /// <param name="outputNames"></param>
-        /// <returns>Output Tensors in a Collection of NamedOnnxValue</returns>
+        /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames)
         {
             IDisposableReadOnlyCollection<DisposableNamedOnnxValue> result = null;
@@ -90,12 +98,12 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Runs the loaded model for the given inputs, and fetches the specified outputs in <paramref name="outputNames"/>.
+        /// Runs the loaded model for the given inputs, and fetches the specified outputs in <paramref name="outputNames". Uses the given RunOptions for this run./>.
         /// </summary>
         /// <param name="inputs"></param>
         /// <param name="outputNames"></param>
         /// <param name="options"></param>
-        /// <returns>Output Tensors in a Collection of NamedOnnxValue</returns>
+        /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames, RunOptions options)
         {
             var inputNames = new string[inputs.Count];
