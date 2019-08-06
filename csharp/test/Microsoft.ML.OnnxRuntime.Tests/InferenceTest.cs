@@ -160,30 +160,53 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 // Run the inference
                 using (var results = session.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
                 {
-                    Assert.Equal(1, results.Count);
+                    validateRunResults(results);
+                }
 
-                    float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
-                    // validate the results
-                    foreach (var r in results)
+                // Run Inference with RunOptions
+                using (var runOptions = new RunOptions())
+                {
+                    runOptions.LogTag = "CsharpTest";
+                    runOptions.Terminate = true;
+                    runOptions.LogVerbosityLevel = LogLevel.Error;
+                    IReadOnlyCollection<string> outputNames = session.OutputMetadata.Keys.ToList();
+
+                    using (var results = session.Run(container, outputNames, runOptions))  // results is an IReadOnlyList<NamedOnnxValue> container
                     {
-                        Assert.Equal("softmaxout_1", r.Name);
-
-                        var resultTensor = r.AsTensor<float>();
-                        int[] expectedDimensions = { 1, 1000, 1, 1 };  // hardcoded for now for the test data
-                        Assert.Equal(expectedDimensions.Length, resultTensor.Rank);
-
-                        var resultDimensions = resultTensor.Dimensions;
-                        for (int i = 0; i < expectedDimensions.Length; i++)
-                        {
-                            Assert.Equal(expectedDimensions[i], resultDimensions[i]);
-                        }
-
-                        var resultArray = r.AsTensor<float>().ToArray();
-                        Assert.Equal(expectedOutput.Length, resultArray.Length);
-                        Assert.Equal(expectedOutput, resultArray, new floatComparer());
+                        validateRunResults(results);
                     }
                 }
             }
+        }
+
+        private void validateRunResults(IDisposableReadOnlyCollection<DisposableNamedOnnxValue> results)
+        {
+            float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
+            // validate the results
+            foreach (var r in results)
+            {
+                Assert.Equal(1, results.Count);
+                Assert.Equal("softmaxout_1", r.Name);
+
+                var resultTensor = r.AsTensor<float>();
+                int[] expectedDimensions = { 1, 1000, 1, 1 };  // hardcoded for now for the test data
+                Assert.Equal(expectedDimensions.Length, resultTensor.Rank);
+
+                var resultDimensions = resultTensor.Dimensions;
+                for (int i = 0; i < expectedDimensions.Length; i++)
+                {
+                    Assert.Equal(expectedDimensions[i], resultDimensions[i]);
+                }
+
+                var resultArray = r.AsTensor<float>().ToArray();
+                Assert.Equal(expectedOutput.Length, resultArray.Length);
+                Assert.Equal(expectedOutput, resultArray, new floatComparer());
+            }
+        }
+
+        private void RunInferenceOnSession(InferenceSession session)
+        {
+
         }
 
         [Fact]
