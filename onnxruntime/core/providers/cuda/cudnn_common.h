@@ -60,6 +60,53 @@ class CudnnFilterDescriptor final {
   cudnnFilterDescriptor_t desc_;
 };
 
+class CudnnDropout final {
+ public:
+  CudnnDropout() : dropout_desc_(nullptr) {
+  }
+
+  Status GetCudnnDropoutStatesSize(const cudnnHandle_t& cudnnHandle, size_t& stateSize) {
+    CUDNN_RETURN_IF_ERROR(cudnnDropoutGetStatesSize(cudnnHandle, &stateSize));
+
+    return Status::OK();
+  }
+
+  Status Set(const cudnnHandle_t& cudnnHandle,
+             void* states,
+             size_t stateSize,
+             float dropout = 0.0f,
+             unsigned long long seed = 1) {
+    ORT_RETURN_IF_ERROR(CreateDescriptorIfNeeded());
+    CUDNN_RETURN_IF_ERROR(cudnnSetDropoutDescriptor(dropout_desc_,
+                                                    cudnnHandle,
+                                                    dropout,
+                                                    states,
+                                                    stateSize,
+                                                    seed));
+
+    return Status::OK();
+  }
+
+  ~CudnnDropout() {
+    if (dropout_desc_ != nullptr) {
+      cudnnDestroyDropoutDescriptor(dropout_desc_);
+    }
+  }
+
+  operator cudnnDropoutDescriptor_t() const {
+    return dropout_desc_;
+  }
+
+ private:
+  Status CreateDescriptorIfNeeded() {
+    if (!dropout_desc_)
+      CUDNN_RETURN_IF_ERROR(cudnnCreateDropoutDescriptor(&dropout_desc_));
+    return Status::OK();
+  }
+
+  cudnnDropoutDescriptor_t dropout_desc_;
+};
+
 template <typename ElemType>
 struct Consts {
   static const ElemType Zero;

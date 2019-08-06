@@ -73,8 +73,8 @@ struct Base {
 
  protected:
   Base(const Base&) = delete;
-  Base(Base&& v) : p_{v.p_} { v.p_ = nullptr; }
-  void operator=(Base&& v) {
+  Base(Base&& v) noexcept : p_{v.p_} { v.p_ = nullptr; }
+  void operator=(Base&& v) noexcept {
     OrtRelease(p_);
     p_ = v.p_;
     v.p_ = nullptr;
@@ -101,8 +101,8 @@ struct Value;
 
 struct Env : Base<OrtEnv> {
   Env(nullptr_t) {}
-  Env(OrtLoggingLevel default_warning_level, _In_ const char* logid);
-  Env(OrtLoggingLevel default_warning_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
+  Env(OrtLoggingLevel default_logging_level, _In_ const char* logid);
+  Env(OrtLoggingLevel default_logging_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
 };
 
@@ -117,13 +117,14 @@ struct RunOptions : Base<OrtRunOptions> {
   RunOptions(nullptr_t) {}
   RunOptions();
 
-  RunOptions& SetRunLogVerbosityLevel(unsigned int);
-  unsigned int GetRunLogVerbosityLevel() const;
+  RunOptions& SetRunLogVerbosityLevel(int);
+  int GetRunLogVerbosityLevel() const;
 
   RunOptions& SetRunTag(const char* run_tag);
   const char* GetRunTag() const;
 
-  RunOptions& SetTerminate(bool flag);
+  RunOptions& EnableTerminate();
+  RunOptions& DisableTerminate();
 };
 
 struct SessionOptions : Base<OrtSessionOptions> {
@@ -134,7 +135,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions Clone() const;
 
   SessionOptions& SetThreadPoolSize(int session_thread_pool_size);
-  SessionOptions& SetGraphOptimizationLevel(uint32_t graph_optimization_level);
+  SessionOptions& SetGraphOptimizationLevel(int graph_optimization_level);
 
   SessionOptions& EnableCpuMemArena();
   SessionOptions& DisableCpuMemArena();
@@ -252,7 +253,7 @@ struct AllocatorInfo : Base<OrtAllocatorInfo> {
 struct CustomOpApi {
   CustomOpApi(const OrtCustomOpApi& api) : api_(api) {}
 
-  template <typename T>  // T is only implemented for float and int64_t
+  template <typename T>  // T is only implemented for float, int64_t, and string
   T KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name);
 
   OrtTensorTypeAndShapeInfo* GetTensorTypeAndShape(_In_ const OrtValue* value);

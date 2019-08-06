@@ -11,6 +11,9 @@ namespace onnxruntime {
 TensorShape::TensorShape(const std::vector<int64_t>& dims) : std::vector<int64_t>(dims) {
 }
 
+TensorShape::TensorShape(std::vector<int64_t>&& dims) : std::vector<int64_t>(std::move(dims)) {
+}
+
 TensorShape::TensorShape(const std::initializer_list<int64_t>& dims) : std::vector<int64_t>(dims) {
 }
 
@@ -19,7 +22,6 @@ TensorShape::TensorShape(const int64_t* dimension_sizes, size_t dimension_count)
     (*this)[i] = dimension_sizes[i];
   }
 }
-
 
 TensorShape::TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end) {
   assign(dims.begin() + start, dims.begin() + end);
@@ -38,8 +40,8 @@ int64_t TensorShape::Size() const {
 int64_t TensorShape::SizeToDimension(size_t dimension) const {
   const size_t num_dims = size();
   ORT_ENFORCE(dimension <= num_dims,
-                      "Invalid dimension of ", dimension, " for SizeFromDimension. Tensor has ",
-                      num_dims, " dimensions.");
+              "Invalid dimension of ", dimension, " for SizeFromDimension. Tensor has ",
+              num_dims, " dimensions.");
 
   int64_t size = SizeHelper(0, dimension);
   return size;
@@ -48,8 +50,8 @@ int64_t TensorShape::SizeToDimension(size_t dimension) const {
 int64_t TensorShape::SizeFromDimension(size_t dimension) const {
   const size_t num_dims = size();
   ORT_ENFORCE(dimension <= num_dims,
-                      "Invalid dimension of ", dimension, " for SizeFromDimension. Tensor has ",
-                      num_dims, " dimensions.");
+              "Invalid dimension of ", dimension, " for SizeFromDimension. Tensor has ",
+              num_dims, " dimensions.");
 
   int64_t size = SizeHelper(dimension, num_dims);
   return size;
@@ -57,7 +59,7 @@ int64_t TensorShape::SizeFromDimension(size_t dimension) const {
 
 TensorShape TensorShape::Slice(size_t dimstart, size_t dimend) const {
   ORT_ENFORCE(dimstart <= dimend && dimend <= size(),
-                      "Invalid tensor shape slice argument.");
+              "Invalid tensor shape slice argument.");
   return TensorShape(*this, dimstart, dimend);
 }
 

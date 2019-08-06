@@ -13,7 +13,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolWin)
     JobName: 'Windows_CI_GPU_Dev'
-    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --use_openmp --use_mkldnn --use_mkldnn --build_shared_lib  --build_csharp --enable_onnx_tests --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --msvc_toolset=14.11'
+    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --use_openmp --build_shared_lib  --build_csharp --enable_onnx_tests --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --msvc_toolset=14.11'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
@@ -41,7 +41,7 @@ jobs:
      cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x64
      cd $(Build.BinariesDirectory)
      zip -r linux-x64.zip linux-x64
-     cp $(Build.BinariesDirectory)/*.zip $(Build.ArtifactStagingDirectory)
+     cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
      ls -al $(Build.ArtifactStagingDirectory)
 
 
@@ -92,7 +92,7 @@ jobs:
   - template: ../../templates/esrp_nuget.yml
     parameters:
       DisplayName: 'ESRP - sign NuGet package'
-      FolderPath: '$(Build.BinariesDirectory)/nuget-artifact'
+      FolderPath: '$(Build.ArtifactStagingDirectory)'
       DoEsrp: ${{ parameters.DoEsrp }}
 
   - task: PublishPipelineArtifact@0
@@ -107,3 +107,4 @@ jobs:
 - template: test_linux.yml
   parameters:
     AgentPool : $(AgentPoolLinux)
+    TestGPU : 'true'

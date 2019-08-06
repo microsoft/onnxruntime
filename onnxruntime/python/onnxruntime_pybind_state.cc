@@ -21,7 +21,6 @@
 #define BACKEND_OPENMP ""
 #endif
 
-
 #if USE_MKLDNN
 #define BACKEND_MKLDNN "-MKL-DNN"
 #include "core/providers/mkldnn/mkldnn_execution_provider.h"
@@ -47,8 +46,6 @@
 #else
 #define BACKEND_OPENVINO ""
 #endif
-
-
 
 #if USE_OPENBLAS
 #define BACKEND_OPENBLAS "-OPENBLAS"
@@ -465,8 +462,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                 if (shape->dim(i).has_dim_value()) {
                   res << shape->dim(i).dim_value();
                 } else if (shape->dim(i).has_dim_param()) {
+                  res << "'" << shape->dim(i).dim_param() << "'";
+                } else {
                   res << "None";
                 }
+
                 if (i < shape->dim_size() - 1) {
                   res << ", ";
                 }
@@ -491,6 +491,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
               if (shape->dim(i).has_dim_value()) {
                 arr[i] = py::cast(shape->dim(i).dim_value());
               } else if (shape->dim(i).has_dim_param()) {
+                arr[i] = py::cast(shape->dim(i).dim_param());
+              } else {
                 arr[i] = py::none();
               }
             }

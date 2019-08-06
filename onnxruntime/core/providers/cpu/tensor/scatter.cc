@@ -45,7 +45,7 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
   }
 
   const auto input_elements = input_data_shape.Size();
-  const auto total_input_bytes = data_input->Size();
+  const auto total_input_bytes = data_input->SizeInBytes();
 
   const auto* src_base = static_cast<const Tdata*>(data_input->DataRaw());
   auto* dst_base = static_cast<Tdata*>(data_output->MutableDataRaw());

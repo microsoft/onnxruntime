@@ -3,6 +3,7 @@
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/macros.h"
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/data_types.h"
 #include "core/framework/mldata_type_utils.h"
@@ -16,11 +17,13 @@ namespace onnxruntime {
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const InitializedTensorSet& initialized_tensor_set) {
   // Create CPU execution provider
-  // For now, CPU execution provider will be created every time when initilizing Info.
+  // For now, CPU execution provider will be created every time when initializing Info.
   // Later, it will be changed to pass by Info ctor.
   cpu_execution_provider_ = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   allocator_ptr_ = cpu_execution_provider_->GetAllocator(device_id_, mem_type_);
   ORT_ENFORCE(allocator_ptr_ != nullptr, "Failed to get allocator for optimizer");
+
+  data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
 
   // Create MLValues related maps
   auto initialize_maps = [this, &initialized_tensor_set](const NodeArg& arg, size_t /*index*/) -> Status {
@@ -63,7 +66,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
     std::unique_ptr<OpKernel> op_kernel;
     std::shared_ptr<KernelRegistry> kernel_registry = cpu_execution_provider_->GetKernelRegistry();
     auto status = kernel_registry->TryCreateKernel(*node, *cpu_execution_provider_, initializers_,
-                                                   ort_value_name_idx_map_, FuncManager(), op_kernel);
+                                                   ort_value_name_idx_map_, FuncManager(), data_transfer_mgr_, op_kernel);
     kernels_[node->Index()] = std::move(op_kernel);
   }
 }
