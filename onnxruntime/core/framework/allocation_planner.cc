@@ -541,11 +541,14 @@ class PlannerImpl {
         } else if (IsNonTensor(*node_output)) {
           // we do not try sharing-optimization for non-tensors
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
-        } else if (FindReusableInput(*pnode, output_arg_num, &reused)) {
-          // Reuse one of this node's input buffers as the output buffer (for in-place update)
+        } else if (FindReusableInput(*pnode, output_arg_num, &reused) && !AllocPlan(reused).create_fence_if_async) {
+          // Reuse one of this node's input buffers as the output buffer (for in-place update) if the 
+          // buffer does not have async fence.
           Reuse(reused, current, AllocKind::kReuse);
-        } else if (!context_.IsParallelExecutionEnabled() && FindReusableTensor(*node_output, &reused)) {
-          // Reuse an available (dead) buffer for this output, this is only for sequential execution.
+        } else if (!context_.IsParallelExecutionEnabled() 
+                   && FindReusableTensor(*node_output, &reused)
+                   && !AllocPlan(reused).create_fence_if_async) {
+          // Reuse an available (dead) buffer for this output, this is only for sequential execution and no async fence OrtValue.
           Reuse(reused, current, AllocKind::kReuse);
         } else {
           // otherwise: allocate a new buffer for this output
