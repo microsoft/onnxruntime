@@ -96,7 +96,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="outputNames"></param>
         /// <param name="options"></param>
         /// <returns>Output Tensors in a Collection of NamedOnnxValue</returns>
-        //TODO: kept internal until RunOptions is made public
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames, RunOptions options)
         {
             var inputNames = new string[inputs.Count];
