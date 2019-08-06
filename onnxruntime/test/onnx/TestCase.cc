@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// needs to be included first to get around onnxruntime\cmake\external\onnx\onnx/common/constants.h(14): error C2513: 'bool': no variable declared before '='
+#include "tensorprotoutils.h"
+
 #include "TestCase.h"
 #include <fstream>
 #include <memory>
@@ -14,8 +17,6 @@
 #include <map>
 #include <regex>
 #include "OrtValueList.h"
-#undef OPTIONAL  // to get around onnxruntime\cmake\external\onnx\onnx/common/constants.h(14): error C2513: 'bool': no variable declared before '='
-#include "tensorprotoutils.h"
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
