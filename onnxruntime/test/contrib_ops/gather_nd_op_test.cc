@@ -91,6 +91,8 @@ TEST(GatherNDOpTest, GatherND_slice_float_int32_t_axis_2) {
   test.Run();
 }
 
+#ifdef USE_CUDA
+#if __CUDA_ARCH__ >= 600
 TEST(GatherNDOpTest, GatherND_slice_double_int64_t_axis_3) {
   OpTester test("GatherND", 1, onnxruntime::kOnnxDomain);
   test.AddAttribute<int64_t>("axis", 1);
@@ -100,20 +102,22 @@ TEST(GatherNDOpTest, GatherND_slice_double_int64_t_axis_3) {
   test.Run();
 }
 
+TEST(GatherNDOpTest, GatherND_slice_double_int32_t) {
+  OpTester test("GatherND", 1, onnxruntime::kOnnxDomain);
+  test.AddInput<double>("data", {2, 2}, {0.0f, 0.1f, 0.2f, 0.3f});
+  test.AddInput<int32_t>("indices", {2, 1}, {1LL, 0LL});
+  test.AddOutput<double>("output", {2, 2}, {0.2f, 0.3f, 0.0f, 0.1f});
+  test.Run();
+}
+#endif
+#endif
+
 TEST(GatherNDOpTest, GatherND_slice_float_int64_t_axis_4) {
   OpTester test("GatherND", 1, onnxruntime::kOnnxDomain);
   test.AddAttribute<int64_t>("axis", 1);
   test.AddInput<float>("data", {2, 2, 2}, {0.0f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f});
   test.AddInput<int64_t>("indices", {2, 1, 2}, {1LL, 0LL, 0LL, 1LL});
   test.AddOutput<float>("output", {2, 1}, {0.2f, 0.5f});
-  test.Run();
-}
-
-TEST(GatherNDOpTest, GatherND_slice_double_int32_t) {
-  OpTester test("GatherND", 1, onnxruntime::kOnnxDomain);
-  test.AddInput<double>("data", {2, 2}, {0.0f, 0.1f, 0.2f, 0.3f});
-  test.AddInput<int32_t>("indices", {2, 1}, {1LL, 0LL});
-  test.AddOutput<double>("output", {2, 2}, {0.2f, 0.3f, 0.0f, 0.1f});
   test.Run();
 }
 
@@ -201,7 +205,8 @@ TEST(GatherNDOpTest, GatherNDGrad_slice_float_int64_t_axis_1) {
 }
 #endif
 
-/* TODO: Current CUDA arch does not support double
+#ifdef USE_CUDA
+#if __CUDA_ARCH__ >= 600
 TEST(GatherNDOpTest, GatherNDGrad_slice_double_int32_t_axis_3) {
   OpTester test("GatherNDGrad", 1, onnxruntime::kOnnxDomain);
   test.AddAttribute<int64_t>("axis", 1);
@@ -211,7 +216,50 @@ TEST(GatherNDOpTest, GatherNDGrad_slice_double_int32_t_axis_3) {
   test.AddOutput<double>("output", {2, 2, 3}, {0, 0, 0, 1, 2, 3, 4, 5, 6, 0, 0, 0});
   test.Run();
 }
-*/
+
+TEST(GatherNDOpTest, GatherND_slice_double_int64_t_axis_3) {
+  OpTester test("GatherND", 1, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddInput<double>("data", {2, 2, 2}, {0.0f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f});
+  test.AddInput<int64_t>("indices", {2, 1, 1}, {1LL, 0LL});
+  test.AddOutput<double>("output", {2, 1, 2}, {0.2f, 0.3f, 0.4f, 0.5f});
+  test.Run();
+}
+#endif
+
+#if __CUDA_ARCH__ >= 700
+TEST(GatherNDOpTest, GatherNDGrad_slice_half_int32_t_axis_3) {
+  OpTester test("GatherNDGrad", 1, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddInput<int64_t>("shape", {3}, {2LL, 2LL, 3LL});
+  test.AddInput<int32_t>("indices", {2, 1, 1}, {1LL, 0LL});
+  std::vector<float> updates_f({1, 2, 3, 4, 5, 6});
+  std::vector<float> outputs_f({0, 0, 0, 1, 2, 3, 4, 5, 6, 0, 0, 0});
+  std::vector<MLFloat16> updates(6);
+  std::vector<MLFloat16> outputs(12);
+  ConvertFloatToMLFloat16(updates_f.data(), updates.data(), 6);
+  ConvertFloatToMLFloat16(outputs_f.data(), outputs.data(), 12);
+  test.AddInput<MLFloat16>("update", {2, 3}, updates);
+  test.AddOutput<MLFloat16>("output", {2, 2, 3}, outputs);
+  test.Run();
+}
+
+
+TEST(GatherNDOpTest, GatherND_slice_half_int32_t) {
+  OpTester test("GatherND", 1, onnxruntime::kOnnxDomain);
+  std::vector<float> data_f({0.0f, 0.1f, 0.2f, 0.3f});
+  std::vector<float> outputs_f({0.2f, 0.3f, 0.0f, 0.1f});
+  std::vector<MLFloat16> data(4);
+  std::vector<MLFloat16> outputs(4);
+  ConvertFloatToMLFloat16(data_f.data(), data.data(), 4);
+  ConvertFloatToMLFloat16(outputs_f.data(), outputs.data(), 4);
+  test.AddInput<MLFloat16>("data", {2, 2}, data);
+  test.AddInput<int32_t>("indices", {2, 1}, {1LL, 0LL});
+  test.AddOutput<MLFloat16>("output", {2, 2}, outputs);
+  test.Run();
+}
+#endif
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

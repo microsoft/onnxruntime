@@ -23,7 +23,7 @@ template <typename Tind>
       const int64_t last_indice_dimension,
       const int64_t axis,
       const TensorShape& input_shape,
-      Tensor* input_tensor,
+      const Tensor* input_tensor,
       Tensor* output_tensor,
       const TensorShape& indice_shape,
       const Tensor* indice_tensor,

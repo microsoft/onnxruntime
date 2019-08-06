@@ -7,23 +7,31 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define TYPED_FUNCTION_CALL(T)                                                                       \
-  if (T_type == DataTypeImpl::GetType<T>()) {                                                        \
-    GatherNDGradImpl<T, CudaTind>(element_index_counts_data.get(), indice, last_indice_dimension, N, \
-                                  input_data, output_data, element_to_copy, axis);                   \
+#define TYPED_FUNCTION_CALL_FWD(T)                                                                                    \
+  if (T_type == DataTypeImpl::GetType<T>()) {                                                                         \
+    GatherNDImpl<ToCudaType<T>::MappedType>(N, input_data, output_data, element_to_copy, element_offsets_data.get()); \
   }
 
+#define TYPED_FUNCTION_CALL_BWD(T)                                                                                        \
+  if (T_type == DataTypeImpl::GetType<T>()) {                                                                             \
+    GatherNDGradImpl<ToCudaType<T>::MappedType>(N, input_data, output_data, element_to_copy, element_offsets_data.get()); \
+  }
 template <typename Tind>
 Status GatherNDBase::CommonComputeKernel(
     const int64_t last_indice_dimension,
     const int64_t axis,
     const TensorShape& input_shape,
-    Tensor* input_tensor,
+    const Tensor* input_tensor,
     Tensor* output_tensor,
     const TensorShape& indice_shape,
     const Tensor* indice_tensor,
     const bool fwd) const {
-  typedef typename ToCudaType<Tind>::MappedType CudaTind;
+  auto indice_offset = indice_tensor->Data<Tind>();
+  auto N = indice_shape.Size() / (last_indice_dimension - axis);  // Times to copy;
+  auto input_data = input_tensor->DataRaw();
+  auto output_data = output_tensor->MutableDataRaw();
+  auto element_to_copy = input_shape.SizeFromDimension(last_indice_dimension);
+
   //Element_index_counts
   std::vector<int64_t> element_index_counts(last_indice_dimension + axis, 0LL);
   for (int64_t i = 0; i < last_indice_dimension; ++i) {
@@ -31,6 +39,7 @@ Status GatherNDBase::CommonComputeKernel(
   }
 
   auto last_dim_size = indice_shape.SizeFromDimension(indice_shape.NumDimensions() - 1);
+
 #ifdef USE_OPENMP
 #pragma omp parallel for
 #endif
@@ -38,32 +47,39 @@ Status GatherNDBase::CommonComputeKernel(
     element_index_counts[last_indice_dimension + i] = indice_shape.SizeFromDimension(i + 1) / last_dim_size;
   }
 
+  //Compute the element_offset
+  std::vector<int64_t> element_offsets(N, 0LL);
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+  for (int64_t i = 0; i < N; ++i) {
+    int64_t reminder = i;
+    for (int64_t j = 0; j < axis_; ++j) {
+      int64_t idx = reminder / element_index_counts[last_indice_dimension + j];
+      element_offsets[i] += idx * element_index_counts[j];
+      reminder -= (idx * element_index_counts[last_indice_dimension + j]);
+    }
+    for (int64_t j = axis_; j < last_indice_dimension; ++j) {
+      auto indice = *(indice_offset + i * (last_indice_dimension - axis_) + (j - axis_));
+      element_offsets[i] += indice * element_index_counts[j];
+    }
+  }
+
   //copy element_counts to GPU;
-  auto element_index_counts_data = GetScratchBuffer<int64_t>(element_index_counts.size());
-
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(element_index_counts_data.get(), element_index_counts.data(),
-                                       element_index_counts.size() * sizeof(int64_t), cudaMemcpyHostToDevice));
-
-  //Prepare GPU inputs
-  auto indice = indice_tensor->Data<Tind>();
-  auto N = indice_shape.Size() / (last_indice_dimension - axis);  // Times to copy;
-  auto input_data = input_tensor->MutableDataRaw();
-  auto output_data = output_tensor->MutableDataRaw();
-  auto element_to_copy = input_shape.SizeFromDimension(last_indice_dimension);
-
-  auto element_bytes = input_tensor->DataType()->Size();
+  auto element_offsets_data = GetScratchBuffer<int64_t>(element_offsets.size());
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(element_offsets_data.get(), element_offsets.data(),
+                                       element_offsets.size() * sizeof(int64_t), cudaMemcpyHostToDevice));
   //Call cuda kernel
   if (fwd) {
-    GatherNDImpl<CudaTind>(element_index_counts_data.get(), indice, last_indice_dimension, N,
-                           input_data, output_data, element_to_copy, element_bytes, axis);
-  } else {
-    //TODO: This template is because currently the AtomicAdd op in cuda kernel only supports float. But later
-    //We should add in half and double, since in the kernel registration these are supported types.
     MLDataType T_type = input_tensor->DataType();
-    TYPED_FUNCTION_CALL(float);
-    //TODO: Enable following when the GPU architecture supports AtomicAdd with following data types
-    //TYPED_FUNCTION_CALL(half);
-    //TYPED_FUNCTION_CALL(double);
+    TYPED_FUNCTION_CALL_FWD(float);
+    TYPED_FUNCTION_CALL_FWD(MLFloat16);
+    TYPED_FUNCTION_CALL_FWD(double);
+  } else {
+    MLDataType T_type = input_tensor->DataType();
+    TYPED_FUNCTION_CALL_BWD(float);
+    TYPED_FUNCTION_CALL_BWD(MLFloat16);
+    TYPED_FUNCTION_CALL_BWD(double);
   }
 
   //Release the cuda memory
@@ -79,7 +95,8 @@ Status GatherNDBase::CommonComputeKernel(
       kCudaExecutionProvider,                                                                                               \
       KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),                                     \
                                               DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}) \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tind>()),                                                     \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tind>())                                                      \
+          .InputMemoryType<OrtMemTypeCPUInput>(1),                                                                          \
       GatherND<Tind>);
 
 REGISTER_KERNEL_TYPED_GATHER_ND(int64_t)
@@ -87,8 +104,8 @@ REGISTER_KERNEL_TYPED_GATHER_ND(int32_t)
 
 template <typename Tind>
 Status GatherND<Tind>::ComputeInternal(OpKernelContext* context) const {
-  auto input_tensor = context->MutableInput<Tensor>(0);
-  auto indice_tensor = context->MutableInput<Tensor>(1);
+  auto input_tensor = context->Input<Tensor>(0);
+  auto indice_tensor = context->Input<Tensor>(1);
   ORT_RETURN_IF_NOT(input_tensor != nullptr);
   ORT_RETURN_IF_NOT(indice_tensor != nullptr);
 
@@ -129,7 +146,8 @@ Status GatherND<Tind>::ComputeInternal(OpKernelContext* context) const {
                                               DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}) \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tind>())                                                      \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())                                                     \
-          .InputMemoryType<OrtMemTypeCPUInput>(0),                                                                          \
+          .InputMemoryType<OrtMemTypeCPUInput>(0)                                                                           \
+          .InputMemoryType<OrtMemTypeCPUInput>(1),                                                                          \
       GatherNDGrad<Tind>);
 
 REGISTER_KERNEL_TYPED_GATHER_ND_GRAD(int64_t)
@@ -137,9 +155,9 @@ REGISTER_KERNEL_TYPED_GATHER_ND_GRAD(int32_t)
 
 template <typename Tind>
 Status GatherNDGrad<Tind>::ComputeInternal(OpKernelContext* context) const {
-  auto shape_tensor = context->MutableInput<Tensor>(0);
-  auto indice_tensor = context->MutableInput<Tensor>(1);
-  auto update_tensor = context->MutableInput<Tensor>(2);
+  auto shape_tensor = context->Input<Tensor>(0);
+  auto indice_tensor = context->Input<Tensor>(1);
+  auto update_tensor = context->Input<Tensor>(2);
   ORT_RETURN_IF_NOT(shape_tensor != nullptr);
   ORT_RETURN_IF_NOT(indice_tensor != nullptr);
   ORT_RETURN_IF_NOT(update_tensor != nullptr);
