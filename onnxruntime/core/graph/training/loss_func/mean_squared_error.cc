@@ -3,6 +3,7 @@
 
 #include <vector>
 #include "core/graph/training/loss_func/mean_squared_error.h"
+#include "core/graph/training/attr_proto_util.h"
 
 namespace onnxruntime {
 namespace training {
@@ -28,10 +29,11 @@ GraphAugmenter::GraphDefs MeanSquaredError::operator()(const Graph& graph, const
 
     new_nodes.emplace_back(NodeDef("Sub",  // Op
                                    {
-                                       ArgDef(prediction_name),
-                                       ArgDef(label_name, label_type_proto)},
+                                       ArgDef(prediction_name),          // Inputs
+                                       ArgDef(label_name, label_type_proto),
+                                   },
                                    {
-                                       ArgDef("MeanSquaredError_diff")  // Outputs
+                                       ArgDef("MeanSquaredError_diff"),  // Outputs
                                    },
                                    NodeAttributes(),
                                    "MeanSquaredError_diff"  // name
@@ -48,10 +50,11 @@ GraphAugmenter::GraphDefs MeanSquaredError::operator()(const Graph& graph, const
 
     new_nodes.emplace_back(NodeDef("Pow",  // Op
                                    {
-                                       ArgDef("MeanSquaredError_diff"),
-                                       ArgDef("MeanSquaredError_exponent")},
+                                       ArgDef("MeanSquaredError_diff"),        // Inputs
+                                       ArgDef("MeanSquaredError_exponent"),
+                                   },
                                    {
-                                       ArgDef("MeanSquaredError_diff_square")  // Outputs
+                                       ArgDef("MeanSquaredError_diff_square"), // Outputs
                                    },
                                    NodeAttributes(),
                                    "MeanSquaredError_pow"  // name
@@ -59,29 +62,36 @@ GraphAugmenter::GraphDefs MeanSquaredError::operator()(const Graph& graph, const
   }
   // ReduceMean
   {
-    NodeAttributes attributes;
-    {
-      onnx::AttributeProto att;
-      att.set_name("axes");
-      att.set_type(onnx::AttributeProto::INTS);
-      att.add_ints(1);
-      attributes["axes"] = att;
-    }
-    {
-      onnx::AttributeProto att;
-      att.set_name("keepdims");
-      att.set_type(onnx::AttributeProto::INT);
-      att.set_i(0);
-      attributes["keepdims"] = att;
-    }
     new_nodes.emplace_back(NodeDef("ReduceMean",  // Op
                                    {
-                                       ArgDef("MeanSquaredError_diff_square")},
-                                   {
-                                       ArgDef(loss_name)  // Outputs
+                                       ArgDef("MeanSquaredError_diff_square"), // Inputs
                                    },
-                                   attributes,
+                                   {
+                                       ArgDef("MeanSquaredError_reduce_mean"), // Outputs
+                                   },
+                                   {MakeAttribute("keepdims", int64_t(0))},
                                    "MeanSquaredError_reduce_mean"  // name
+                                   ));
+  }
+  // Reshape
+  {
+    onnx::TensorProto tensor_proto;
+    tensor_proto.add_dims(1);
+    tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    tensor_proto.add_int64_data(1);
+    tensor_proto.set_name("MeanSquaredError_shape");
+    graph_defs.AddInitializers({tensor_proto});
+
+    new_nodes.emplace_back(NodeDef("Reshape",  // Op
+                                   {
+                                       ArgDef("MeanSquaredError_reduce_mean"), // Inputs
+                                       ArgDef("MeanSquaredError_shape"),
+                                   },
+                                   {
+                                       ArgDef(loss_name),   // Outputs
+                                   },
+                                   NodeAttributes(),
+                                   "MeanSquaredError_reshape"  // name
                                    ));
   }
 
