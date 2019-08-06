@@ -64,7 +64,11 @@ class Profiler {
   */
   std::string EndProfiling();
 
- private:
+  static constexpr size_t DEFAULT_MAX_PROFILER_EVENTS = 1000 * 1000;
+  /* The maximum number of profiler records to collect. */
+  static size_t max_num_events_;
+
+private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
 
   // Mutex controlling access to profiler data
@@ -77,7 +81,6 @@ class Profiler {
   TimePoint profiling_start_time_;
   std::vector<EventRecord> events_;
   bool max_events_reached{false};
-  static constexpr size_t max_num_events_ = 1000000;
   bool profile_with_logger_{false};
 };
 

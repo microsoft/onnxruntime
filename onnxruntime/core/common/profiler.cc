@@ -7,6 +7,8 @@ namespace onnxruntime {
 namespace profiling {
 using namespace std::chrono;
 
+size_t profiling::Profiler::max_num_events_ = DEFAULT_MAX_PROFILER_EVENTS;
+
 ::onnxruntime::TimePoint profiling::Profiler::StartTime() const {
   return std::chrono::high_resolution_clock::now();
 }

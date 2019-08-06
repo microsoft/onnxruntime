@@ -70,7 +70,7 @@ Status TrainingRunner::Initialize() {
     }
   }
 
-  for (auto weight : weights_to_train) {
+  for (const std::string& weight : weights_to_train) {
     std::cout << "Training weight " << weight << std::endl;
   }
 
@@ -99,8 +99,14 @@ Status TrainingRunner::Initialize() {
   }
 #endif
   ORT_RETURN_IF_ERROR(session_.UpdateTrainableWeightsInfoInGraph());
+
   if (params_.use_profiler && !SESSION_OPTION.enable_profiling) {
     // Profiling has not already been enabled, so override from command line options.
+
+    if (params_.max_profile_records > 0) {
+      profiling::Profiler::max_num_events_ = params_.max_profile_records;
+    }
+
     session_.StartProfiling(SESSION_OPTION.profile_file_prefix);
   }
 

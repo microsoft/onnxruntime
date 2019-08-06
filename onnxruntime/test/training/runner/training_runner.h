@@ -91,6 +91,8 @@ class TrainingRunner {
 
     // Whether we collect execution profile trace during this run.
     bool use_profiler = false;
+    // Maximum number of profile records to collect.
+    size_t max_profile_records = profiling::Profiler::DEFAULT_MAX_PROFILER_EVENTS;
 
     int world_rank_ = 0;
     int world_size_ = 1;

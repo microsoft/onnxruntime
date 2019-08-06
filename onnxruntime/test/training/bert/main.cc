@@ -52,6 +52,8 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
       ("use_fp16", "Whether to use fp32 or fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
+      ("max_profile_records", "Maximum number of runtime profile data records to collect.",
+          cxxopts::value<size_t>()->default_value(to_string(profiling::Profiler::DEFAULT_MAX_PROFILER_EVENTS)))
       ("mode", "mode for running, can be one of [train|perf]", cxxopts::value<std::string>()->default_value("train"))
       ("num_of_perf_samples", "Num of samples to run for the perf test", cxxopts::value<int>()->default_value("100"))
       ("max_seq_length",
@@ -78,6 +80,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     }
     params.evaluation_period = flags["evaluation_period"].as<size_t>();
     params.use_profiler = flags.count("use_profiler") > 0;
+    params.max_profile_records = flags["max_profile_records"].as<size_t>();
 
     auto train_data_dir = flags["train_data_dir"].as<std::string>();
     auto test_data_dir = flags["test_data_dir"].as<std::string>();
