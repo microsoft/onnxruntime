@@ -52,7 +52,11 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
   ASSERT_TRUE(rule_transformer && rule_transformer->RulesCount() == 1);
   
   transformers = transformer_utils::GenerateTransformers(TransformerLevel::Level2, custom_list);
+#ifndef DISABLE_CONTRIB_OPS
   ASSERT_TRUE(transformers.size() == 1);
+#else
+  ASSERT_TRUE(transformers.size() == 0);
+#endif
 }
 
 }  // namespace test
