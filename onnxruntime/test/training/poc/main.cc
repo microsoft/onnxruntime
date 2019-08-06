@@ -46,7 +46,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("num_of_epoch", "Num of epoch", cxxopts::value<int>()->default_value("2"))
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>()->default_value("100"))
       ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>()->default_value("100"))
-      ("learning_rate", "The initial learning rate for Adam.", cxxopts::value<float>()->default_value("0.1"))
+      ("learning_rate", "The initial learning rate for Adam.", cxxopts::value<float>()->default_value("0.01"))
       ("evaluation_period", "How many training steps to make before making an evaluation.",
         cxxopts::value<size_t>()->default_value("1"));
   // clang-format on
@@ -127,18 +127,16 @@ void setup_training_params(TrainingRunner::Parameters& params) {
 
   // TODO: simplify provider/optimizer configuration. For now it is fixed to used SGD with CPU and Adam with GPU.
   if (params.use_cuda_) {
-      // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
-      // Adding another cuda kernel call for this division seems wasteful currently.
-      params.learning_rate_ /= params.batch_size_;
-      params.in_graph_optimizer_name_ = "AdamOptimizer";
+    // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
+    // Adding another cuda kernel call for this division seems wasteful currently.
+    params.in_graph_optimizer_name_ = "AdamOptimizer";
 
-      params.adam_opt_params_.alpha_ = 0.9f;
-      params.adam_opt_params_.beta_ = 0.999f;
-      params.adam_opt_params_.lambda_ = 0;
-      params.adam_opt_params_.epsilon_ = 0.1f;
+    params.adam_opt_params_.alpha_ = 0.9f;
+    params.adam_opt_params_.beta_ = 0.999f;
+    params.adam_opt_params_.lambda_ = 0;
+    params.adam_opt_params_.epsilon_ = 0.1f;
   } else {
-      params.learning_rate_ /= params.batch_size_;
-      params.in_graph_optimizer_name_ = "SGDOptimizer";
+    params.in_graph_optimizer_name_ = "SGDOptimizer";
   }
 
   params.error_function_ = [](const std::vector<std::string>& /*feed_names*/,

@@ -17,7 +17,7 @@ __global__ void _SoftMaxCrossEntropy(
     CUDA_LONG N) {
 
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  output_data[id] = -_Log(input_data[id]) * label_data[id] / NORMALIZE_FACTOR;
+  output_data[id] = -_Log(_Max(input_data[id], 1e-30f)) * label_data[id] / NORMALIZE_FACTOR;
 }
 
 template <typename T>
@@ -101,7 +101,7 @@ __global__ void _SparseSoftmaxCrossEntropy(
     CUDA_LONG D) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N);
   CUDA_KERNEL_ASSERT(label_data[i] >= 0 && label_data[i] < D);
-  output_data[i] = -_Log(input_data[i * D + label_data[i]]) / (*normalize_factor_data);
+  output_data[i] = -_Log(_Max(input_data[i * D + label_data[i]], 1e-30f)) / (*normalize_factor_data);
 }
 
 template <typename T, typename Tin>
@@ -115,7 +115,7 @@ __global__ void _WeightedSparseSoftmaxCrossEntropy(
     CUDA_LONG D) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N);
   CUDA_KERNEL_ASSERT(label_data[i] >= 0 && label_data[i] < D);
-  output_data[i] = -_Log(input_data[i * D + label_data[i]]) * weight_data[i] / (*normalize_factor_data);
+  output_data[i] = -_Log(_Max(input_data[i * D + label_data[i]], 1e-30f)) * weight_data[i] / (*normalize_factor_data);
 }
 
 template <typename T, typename Tin>

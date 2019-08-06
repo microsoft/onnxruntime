@@ -20,7 +20,7 @@ void ComputeShareSoftmaxCrossEntropyCPU(const int n,
                                         const float* logit_data,
                                         float* shifted_logit,
                                         float* probability_data,
-                                        float* sum_exp) {
+                                        float* log_sum_exp) {
   // Find the max in each batch, resulting in a tensor of shape [batch]
   // logit_max = max(logit_data)
   std::vector<float> logit_max(n);
@@ -36,11 +36,15 @@ void ComputeShareSoftmaxCrossEntropyCPU(const int n,
   math::Exp<float, CPUMathUtil>(nd, shifted_logit, probability_data, nullptr);
 
   // sum_exp = sum_{class} (exp_shifted_logit)
+  float* sum_exp = log_sum_exp;
   math::RowwiseSum<float, CPUMathUtil>(n, d, probability_data, sum_exp, nullptr);
 
   // probability = exp(shifted_logit) / sum(exp(shifted_logit))
   // the division broadcasts along the batch dimension
   math::DivToCol<float, CPUMathUtil>(n, d, sum_exp, probability_data, nullptr);
+
+  // log_sum_exp = log(sum(exp(shifted_logit)))
+  math::Log<float, CPUMathUtil>(n, sum_exp, log_sum_exp, nullptr);
 }
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -77,21 +81,21 @@ Status SoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
 
   // computation begins here
   std::vector<float> shifted_logit(nd);
-  std::vector<float> sum_exp(n);
+  std::vector<float> log_sum_exp(n);
   // probability = exp(shifted_logit) / sum(exp(shifted_logit))
   // where shifted_logit = logit - max_logit
   // along classes
   ComputeShareSoftmaxCrossEntropyCPU(n, d, nd, logit_data,
                                      shifted_logit.data(),
                                      probability_data,
-                                     sum_exp.data());
+                                     log_sum_exp.data());
 
-  // loss = -sum(log(probability) * label)
-  auto& log_prob = shifted_logit;
-  math::Log<float, CPUMathUtil>(nd, probability_data, log_prob.data(), nullptr);
+  // loss = sum(label * (shifted_logit - log_sum_exp))
+  auto& sub = shifted_logit;
+  math::SubToCol<float, CPUMathUtil>(n, d, log_sum_exp.data(), sub.data(), nullptr);
 
-  auto& mul = log_prob;
-  math::Mul<float, CPUMathUtil>(nd, label_data, log_prob.data(), mul.data(), nullptr);
+  auto& mul = sub;
+  math::Mul<float, CPUMathUtil>(nd, label_data, sub.data(), mul.data(), nullptr);
 
   // Sum over batches and classes
   math::Sum<float, CPUMathUtil>(nd, mul.data(), loss_data, nullptr);
@@ -189,15 +193,11 @@ Status SparseSoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
 
   // computation begins here
   std::vector<float> shifted_logit(nd);
-  std::vector<float> sum_exp(n);
+  std::vector<float> log_sum_exp(n);
   ComputeShareSoftmaxCrossEntropyCPU(n, d, nd, logit_data,
                                      shifted_logit.data(),
                                      probability_data,
-                                     sum_exp.data());
-
-  // log(sum(exp(logit - max_logit)))
-  std::vector<float>& log_sum_exp = sum_exp;
-  math::Log<float, CPUMathUtil>(n, sum_exp.data(), log_sum_exp.data(), nullptr);
+                                     log_sum_exp.data());
 
   std::vector<float> loss_sample(n);
 
