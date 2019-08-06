@@ -187,6 +187,22 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
 
     // QLinearMatMul is not supported if any of the zero points is a dynamic input
     return non_const_zero_point;
+  } else if (optype == "MatMulInteger") {
+    // all MatMulInteger zero points need to be constants
+    const auto inputs = node->InputDefs();
+    if (inputs.size() == 3) {
+      const auto& a_zero_point = node->InputDefs()[2];
+
+      // not found in initializers -> not const
+      return initializers.find(a_zero_point->Name()) == initializers.end();
+    } else if (inputs.size() == 4) {
+      const auto& a_zero_point = node->InputDefs()[2];
+      const auto& b_zero_point = node->InputDefs()[3];
+
+      // not found in initializers -> not const
+      return initializers.find(a_zero_point->Name()) == initializers.end() ||
+             initializers.find(b_zero_point->Name()) == initializers.end();
+    } // else -> azp & bzp are 0 by default according to ONNX spec
   }
 
   //Op doesn't fall into known any of unsupported modes.
