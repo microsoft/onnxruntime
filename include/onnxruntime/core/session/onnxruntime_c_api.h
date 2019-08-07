@@ -339,35 +339,6 @@ ORT_API_STATUS(OrtGetStringTensorContent, _In_ const OrtValue* value, _Out_ void
                _Out_ size_t* offsets, size_t offsets_len);
 
 /**
- * Create an OrtValue in CPU memory from a serialized TensorProto
- * @param input           serialized TensorProto object
- * @param input_len       length of 'input'.
- * @param input_file_path A local file path of where the input was loaded from. Can be NULL if the tensor proto doesn't
- *                        have any external data or it was loaded from current working dir. This path could be either a
- *                        relative path or an absolute path.
- * @param preallocated A preallocated buffer for the tensor. It should be allocated from CPU memory
- * @param preallocated_size Length of the preallocated buffer in bytes, can be computed from
- *          the OrtGetTensorMemSizeInBytesFromTensorProto function. This function will return an error if the
- *          preallocated_size is not enough.
- * @param out
- * @return
- */
-ORT_API_STATUS(OrtTensorProtoToOrtValue, _In_ const void* input, int input_len,
-               _In_opt_ const ORTCHAR_T* input_file_path, _Inout_ void* preallocated, size_t preallocated_size,
-               _Outptr_ OrtValue** out, _Outptr_ OrtCallback** deleter);
-
-/**
- *  f will be freed in this call
- */
-ORT_API(void, OrtRunCallback, _Frees_ptr_opt_ OrtCallback* f);
-
-/**
- * calculate the memory requirement for the OrtTensorProtoToOrtValue function
- */
-ORT_API_STATUS(OrtGetTensorMemSizeInBytesFromTensorProto, _In_ const void* input, int input_len, size_t alignment,
-               _Out_ size_t* out);
-
-/**
  * Don't free the 'out' value
  */
 ORT_API_STATUS(OrtCastTypeInfoToTensorInfo, _In_ const OrtTypeInfo*, _Out_ const OrtTensorTypeAndShapeInfo** out);
