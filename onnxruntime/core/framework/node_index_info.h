@@ -31,14 +31,14 @@ class NodeIndexInfo final {
   // Returns kInvalidEntry if the Node with the given node_index did not exist when the NodeIndexInfo was created.
   int GetNodeOffset(NodeIndex node_index) const {
     auto node_offsets_index = GetNodeOffsetsIndex(node_index);
-    ORT_ENFORCE(node_offsets_index < node_offsets_.size());
+    ORT_ENFORCE(node_offsets_index < node_offsets_size_);
     return node_offsets_[node_offsets_index];
   }
 
   // Get the ort_value index value.
   // Returns kInvalidEntry for optional inputs/outputs that do not exist in this graph.
   int GetMLValueIndex(int offset) const {
-    ORT_ENFORCE(offset >= 0 && static_cast<size_t>(offset) < node_values_.size());
+    ORT_ENFORCE(offset >= 0 && static_cast<size_t>(offset) < node_values_size_);
     return node_values_[offset];
   }
 
@@ -63,5 +63,9 @@ class NodeIndexInfo final {
   std::vector<int> node_offsets_;
 
   const int max_mlvalue_idx_;
+
+  // perf optimization to avoid calls to size() on node_values_ and node_offsets_ as they don't change
+  size_t node_values_size_;
+  size_t node_offsets_size_;
 };
 }  // namespace onnxruntime
