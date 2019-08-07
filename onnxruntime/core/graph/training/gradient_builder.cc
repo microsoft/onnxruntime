@@ -531,9 +531,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetUnsqueezeGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetGatherGradient) {
   return std::vector<NodeDef>{
+      NodeDef("Shape",
+              {I(0)},
+              {IA("I0_shape")}),
       NodeDef("GatherGrad",
-              {I(0), I(1), GO(0)},
-              {GI(0)})};
+              {IA("I0_shape"), I(1), GO(0)},
+              {GI(0)},
+              SrcNodeAttributes())};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetReluGradient) {

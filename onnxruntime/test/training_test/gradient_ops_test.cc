@@ -965,8 +965,6 @@ TEST(OptimizerTest, AdamOptimizerTest) {
   test.Run();
 }
 
-#ifdef USE_CUDA
-
 TEST(GradientCheckerTest, GatherGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
@@ -1006,8 +1004,8 @@ TEST(GradientCheckerTest, GatherGrad) {
   // gather_1
   {
     int num_indices = 8;
-    std::function<float(float)> transformer = [](float x) { return std::fmod(7 * std::fabs(x), 4.0f); };
-    TensorInfo indices_info({num_indices}, false, &transformer, DataTypeImpl::GetTensorType<int64_t>());
+    std::function<float(float)> transformer2 = [](float x) { return std::fmod(7 * std::fabs(x), 4.0f); };
+    TensorInfo indices_info({num_indices}, false, &transformer2, DataTypeImpl::GetTensorType<int64_t>());
 
     TensorShape y_shape{x_info.shape};
     int64_t axis = 1;
@@ -1098,6 +1096,8 @@ void TestDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = t
 
   test.Run();
 }
+
+#ifdef USE_CUDA
 
 TEST(GradientCheckerTest, DISABLED_TrainableDropout) {
   {

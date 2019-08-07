@@ -68,10 +68,14 @@ void RegisterGradientSchemas() {
       .Reference("Dropout");
 
   ONNX_GRADIENT_OPERATOR_SCHEMA(GatherGrad)
-      .Input(0, "X", "Tensor of rank r >= 1.", "T")
+      .Input(0, "shape", "Shape of the Gather input X.", "I")
       .Input(1, "indices", "Tensor of int32/int64 indices, of any rank q.", "Tind")
       .Input(2, "dY", "Gradient of output", "T")
       .Output(0, "dX", "Gradient of input", "T")
+      .TypeConstraint(
+          "I",
+          {"tensor(int64)"},
+          "Constrain input shape to integer tensors.")
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),

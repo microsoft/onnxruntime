@@ -45,6 +45,9 @@ class GatherGrad final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
+  template <typename T, typename Tind>
+  Status ComputeImpl(const TensorShape& data_shape, const Tensor& indices, const Tensor& grad, Tensor& output) const;
+
   int64_t axis_;
 };
 }  // namespace contrib

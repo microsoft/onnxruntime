@@ -170,8 +170,8 @@ TEST(GatherOpTest, Gather_axis0_indices2d_half) {
 TEST(GatherOpGradTest, GatherGrad_axis0_indices2d_half) {
   OpTester test("GatherGrad", 9);
   test.AddAttribute<int64_t>("axis", 0LL);
-  test.AddInput<MLFloat16>("data", {3, 3},
-                           FloatToMLFloat16({0, 1, 2, 3, 4, 5, 6, 7, 8}));
+  test.AddInput<int64_t>("shape", {2},
+                           {3, 3});
   test.AddInput<int64_t>("indices", {2LL, 2LL},
                          {0LL, 1LL,
                           0LL, 1LL});

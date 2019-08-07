@@ -63,7 +63,7 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
 
   // Put the output_block_size and block_size into div_strides
   // for divmod calling in _GatherKernel to calculate the input index
-  CudaAsyncBuffer<fast_divmod> div_strides(this, 0, 2);
+  CudaAsyncBuffer<fast_divmod> div_strides(this, GetDeviceId(), 2);
   gsl::span<fast_divmod> div_strides_span = div_strides.CpuSpan();
   div_strides_span[0] = fast_divmod(gsl::narrow_cast<int>(output_block_size));
   div_strides_span[1] = fast_divmod(gsl::narrow_cast<int>(block_size));
@@ -94,6 +94,8 @@ ONNX_OPERATOR_KERNEL_EX(
     9,
     kCudaExecutionProvider,
     KernelDefBuilder()
+        .InputMemoryType<OrtMemTypeCPUInput>(0)
+        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("Tind", std::vector<MLDataType>{
                                     DataTypeImpl::GetTensorType<int32_t>(),
@@ -130,8 +132,8 @@ ONNX_OPERATOR_KERNEL_EX(
   }
 
 Status GatherGrad::ComputeInternal(OpKernelContext* context) const {
-  const Tensor* data = context->Input<Tensor>(0);
-  const TensorShape& data_shape = data->Shape();
+  const Tensor* shape = context->Input<Tensor>(0);
+  const TensorShape data_shape(shape->template Data<int64_t>(), shape->Shape().Size());
   const Tensor* indices = context->Input<Tensor>(1);
   const Tensor* grad = context->Input<Tensor>(2);
 
@@ -147,13 +149,13 @@ Status GatherGrad::ComputeInternal(OpKernelContext* context) const {
 
   // Put the output_block_size and block_size into div_strides
   // for divmod calling in _GatherKernel to calculate the input index
-  CudaAsyncBuffer<fast_divmod> div_strides(this, 0, 2);
+  CudaAsyncBuffer<fast_divmod> div_strides(this, GetDeviceId(), 2);
   gsl::span<fast_divmod> div_strides_span = div_strides.CpuSpan();
   div_strides_span[0] = fast_divmod(gsl::narrow_cast<int>(output_block_size));
   div_strides_span[1] = fast_divmod(gsl::narrow_cast<int>(block_size));
   ORT_RETURN_IF_ERROR(div_strides.CopyToGpu());
 
-  MLDataType T_type = data->DataType();
+  MLDataType T_type = grad->DataType();
   MLDataType Tin_type = indices->DataType();
 
   //TYPED_GRAD_FUNCTION_CALL(int8_t)
