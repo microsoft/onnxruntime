@@ -40,6 +40,7 @@ You may either get a prebuilt onnxruntime from nuget.org, or do it yourself usin
 2. Install cmake-3.13 or better from https://cmake.org/download/.
 
 On Windows:
+
 3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF. After the installation, you should have the 'protoc' executable in your PATH.
 4. (optional) Install onnx from source code (cmake/external/onnx)
     ```
@@ -50,6 +51,7 @@ On Windows:
 5. Run `build.bat --config RelWithDebInfo --build_shared_lib --parallel`. 
 
 On Linux:
+
 3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned ON. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
 4. If you installed your protobuf in a non standard location it would be helpful to set the following env var:`export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=full path to protoc"` so ONNX build can find it. Also run `ldconfig <protobuf lib folder path>` so the linker can find protobuf libraries.
 5. (optional) Install onnx from source code (cmake/external/onnx)
