@@ -13,10 +13,12 @@ parameters:
   MsbuildArguments: '/m'
   EnvSetupScript: 'setup_env.bat'
   CudaVersion: ''
+  AgentPool: 'Win-CPU'
 
 jobs:
 - job: ${{ parameters.JobName }}
   timeoutInMinutes: 120
+  pool: ${{ parameters.AgentPool }}
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     BuildCommand: ${{ parameters.BuildCommand }}
@@ -55,8 +57,9 @@ jobs:
           solution: '$(Build.BinariesDirectory)\Debug\onnxruntime.sln'
           platform: 'x64'
           configuration: 'Debug'
-          msbuildArguments: ${{ parameters.MsbuildArguments }}
+          msbuildArgs: ${{ parameters.MsbuildArguments }}
           msbuildArchitecture: 'x64'
+          maximumCpuCount: true
           logProjectEvents: true
           workingFolder: '$(Build.BinariesDirectory)\Debug'
           createLogFile: true
@@ -77,7 +80,7 @@ jobs:
           restoreNugetPackages: false
           msbuildArchitecture: 'x64'
           workingFolder: '$(Build.SourcesDirectory)\csharp'
-          msbuildArguments: '/m'
+          maximumCpuCount: true
 
       - task: CmdLine@2
         displayName: 'Test C# Debug'
@@ -102,7 +105,7 @@ jobs:
         solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
         platform: 'x64'
         configuration: 'RelWithDebInfo'
-        msbuildArguments: ${{ parameters.MsbuildArguments }}
+        msbuildArgs: ${{ parameters.MsbuildArguments }}
         msbuildArchitecture: 'x64'
         logProjectEvents: true
         workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
@@ -123,7 +126,7 @@ jobs:
         msbuildArchitecture: 'x64'
         restoreNugetPackages: false
         workingFolder: '$(Build.SourcesDirectory)\csharp'
-        msbuildArguments: '/m'
+        maximumCpuCount: true
 
     - task: CmdLine@2
       displayName: 'Test C# RelWithDebInfo'

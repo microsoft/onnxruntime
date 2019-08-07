@@ -13,18 +13,23 @@ def update_version():
         for line in lines:
             if line.startswith('|'):
                 sections = line.split('|')
-                if len(sections) == 6 and sections[1].strip()[0].isdigit() :
+                if len(sections) == 8 and sections[1].strip()[0].isdigit() :
                     current_version = sections[1].strip()
                     break
+    print ('Current version of ORT seems to be: ' + current_version)
     if version != current_version:
         with open(file_path, 'w') as f:
             for i,line in enumerate(lines):
                 f.write(line)
                 if line.startswith('|--'):
                     sections = lines[i+1].split('|')
-                    sections[1] = ' ' + version + ' '
-                    new_line = '|'.join(sections)
-                    f.write(new_line)
+                    # Make sure there are no 'False Positive' version additions
+                    # by making sure the line we are building a new line from
+                    # contains the current_version
+                    if len(sections) > 1 and sections[1].strip() == current_version:
+                        sections[1] = ' ' + version + ' '
+                        new_line = '|'.join(sections)
+                        f.write(new_line)
     lines = []
     current_version = ''
     file_path = os.path.join(cwd, '..', '..', 'docs', 'python', 'README.rst')
@@ -43,6 +48,7 @@ def update_version():
                 if inserted == False and len(sections) == 3 and sections[0].isdigit() and sections[1].isdigit() and sections[2].isdigit():
                     f.write(version + '\n')
                     f.write('^^^^^\n\n')
+                    f.write('Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v' + version.strip() + '\n\n')
                     inserted = True
                 f.write(line)
     lines = []

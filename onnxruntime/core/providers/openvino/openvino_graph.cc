@@ -50,7 +50,7 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
   precision_ = InferenceEngine::Precision::FP16;
   precision_str = "FP16";
 #endif
-#ifdef OPENVINO_CONFIG_VAD_R
+#ifdef OPENVINO_CONFIG_VAD_M
   device_id_ = "HDDL";
   precision_ = InferenceEngine::Precision::FP16;
   precision_str = "FP16";
@@ -65,8 +65,8 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
   // operations associated with the Infer Requests may be scheduled in parallel.
   // Infer Requests hold resources representing the entire network on their target hardware. So,
   // having more Infer Requests than needed would waste system resources.
-  // In VAD-R (HDDL) accelerator, there are 8 parallel execution units. So, creating 8 instances
-  // of Infer Requests only if the VAD-R accelerator is being used.
+  // In VAD-M (HDDL) accelerator, there are 8 parallel execution units. So, creating 8 instances
+  // of Infer Requests only if the VAD-M accelerator is being used.
   // sets number of maximum parallel inferences
   num_inf_reqs_ = (device_id_ == "HDDL") ? 8 : 1;
 

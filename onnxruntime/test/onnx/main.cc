@@ -97,6 +97,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_tensorrt = false;
   bool enable_mem_pattern = true;
   bool enable_openvino = false;
+  bool enable_nnapi = false;
   uint32_t graph_optimization_level{};
   bool user_graph_optimization_level_set = false;
 
@@ -155,6 +156,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_tensorrt = true;
           } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
             enable_openvino = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
+            enable_nnapi = true;
           } else {
             usage();
             return -1;
@@ -277,6 +280,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
+    if (enable_nnapi) {
+#ifdef USE_NNAPI
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf));
+#else
+      fprintf(stderr, "DNNLibrary/NNAPI is not supported in this build");
+      return -1;
+#endif
+    }
 
     if (user_graph_optimization_level_set) {
       sf.SetGraphOptimizationLevel(graph_optimization_level);
@@ -381,6 +392,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
 #ifdef USE_CUDA
   broken_tests.insert({"mxnet_arcface", "result mismatch"});
+  broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
+  broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
   broken_tests.insert({"tf_inception_v1", "flaky test"}); //TODO: Investigate cause for flakiness
 #endif
   // clang-format on

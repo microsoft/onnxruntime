@@ -220,7 +220,7 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
     status = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
   }
 
-  if (session_profiler_.FEnabled()) {
+  if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, event_name, tp);
   }
 
@@ -550,7 +550,7 @@ common::Status InferenceSession::Initialize() {
     LOGS(*session_logger_, ERROR) << status.ErrorMessage();
   }
 
-  if (session_profiler_.FEnabled()) {
+  if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "session_initialization", tp);
   }
   return status;
@@ -566,9 +566,12 @@ common::Status InferenceSession::CheckShapes(const std::string& input_name,
   auto input_shape_sz = input_shape.NumDimensions();
   auto expected_shape_sz = expected_shape.NumDimensions();
   if (input_shape_sz != expected_shape_sz) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid rank for input: ",
-                           input_name,
-                           " Got: ", input_shape_sz, " Expected: ", expected_shape_sz);
+    std::ostringstream ostr;
+    ostr << "Invalid rank for input: " << input_name
+         << " Got: " << input_shape_sz << " Expected: " << expected_shape_sz
+         << " Please fix either the inputs or the model.";
+    LOGS(*session_logger_, WARNING) << ostr.str();
+    return Status::OK();
   }
 
   std::vector<int> invalid_dim_indices;
@@ -588,7 +591,8 @@ common::Status InferenceSession::CheckShapes(const std::string& input_name,
       int idx = invalid_dim_indices[i];
       ostr << " index: " << idx << " Got: " << input_shape[idx] << " Expected: " << expected_shape[idx] << "\n";
     }
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
+    ostr << " Please fix either the inputs or the model.";
+    LOGS(*session_logger_, WARNING) << ostr.str();
   }
 
   return Status::OK();
@@ -738,7 +742,7 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
   }
 
   --current_num_runs_;
-  if (session_profiler_.FEnabled()) {
+  if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
   }
 
@@ -855,7 +859,12 @@ void InferenceSession::StartProfiling(const logging::Logger* logger_ptr) {
 
 std::string InferenceSession::EndProfiling() {
   if (is_model_loaded_) {
-    return session_profiler_.EndProfiling();
+    if (session_profiler_.IsEnabled()) {
+      return session_profiler_.EndProfiling();
+    } else {
+      LOGS(*session_logger_, VERBOSE) << "Profiler is disabled.";
+      return std::string();
+    }
   }
   LOGS(*session_logger_, ERROR) << "Could not write a profile because no model was loaded.";
   return std::string();
