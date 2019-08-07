@@ -70,10 +70,10 @@ include(get_boost.cmake)
 set(re2_src ${REPO_ROOT}/cmake/external/re2)
 set(SPDLOG_BUILD_EXAMPLES OFF)
 add_subdirectory(${REPO_ROOT}/cmake/external/spdlog)
-# Prevent GTest/Gmock conflicts
-set(ENABLE_TESTING OFF)
-set(ENABLE_PUSH OFF)
-set(ENABLE_PULL OFF)
+# Prevent GTest/Gmock conflicts in prometheus CPP
+set(ENABLE_TESTING OFF CACHE INTERNAL "Don't build tests")
+set(ENABLE_PUSH OFF CACHE INTERNAL "Don't add support for prometheus Pushing Metrics")
+set(ENABLE_PULL OFF CACHE INTERNAL "Don't add support for prometheus Pulling Metrics")
 add_subdirectory(${REPO_ROOT}/cmake/external/prometheus-cpp)
 
 # Generate GRPC service source and headers.
@@ -97,7 +97,11 @@ add_custom_command(
 
 add_library(server_grpc_proto ${grpc_srcs})
 target_include_directories(server_grpc_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}" ${CMAKE_CURRENT_BINARY_DIR}/onnx PRIVATE)
-set(grpc_reflection -Wl,--whole-archive grpc++_reflection -Wl,--no-whole-archive)
+if(APPLE)
+  set(grpc_reflection -Wl,-all_load grpc++_reflection -Wl,-noall_load)
+elseif()
+  set(grpc_reflection -Wl,--whole-archive grpc++_reflection -Wl,--no-whole-archive)
+endif()
 set(grpc_static_libs grpc++ grpcpp_channelz)
 target_link_libraries(server_grpc_proto ${grpc_static_libs})
 add_dependencies(server_grpc_proto server_proto)
