@@ -10,7 +10,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// <summary>
     /// Holds the options for creating an InferenceSession
     /// </summary>
-    public class SessionOptions:IDisposable
+    public class SessionOptions : IDisposable
     {
         public IntPtr _nativePtr;
         protected static readonly Lazy<SessionOptions> _default = new Lazy<SessionOptions>(MakeSessionOptionWithCpuProvider);
@@ -106,7 +106,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="deviceId"></param>
         /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
-        public static SessionOptions MakeSessionOptionWithCudaProvider(int deviceId=0)
+        public static SessionOptions MakeSessionOptionWithCudaProvider(int deviceId = 0)
         {
             CheckLibcVersionGreaterThanMinimum();
             CheckCudaExecutionProviderDLLs();
@@ -130,16 +130,16 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     IntPtr handle = LoadLibrary(dll);
                     if (handle != IntPtr.Zero)
-                        continue;                    
+                        continue;
                     var sysdir = new StringBuilder(String.Empty, 2048);
                     GetSystemDirectory(sysdir, (uint)sysdir.Capacity);
                     throw new OnnxRuntimeException(
-                        ErrorCode.NoSuchFile, 
+                        ErrorCode.NoSuchFile,
                         $"kernel32.LoadLibrary():'{dll}' not found. CUDA is required for GPU execution. " +
                         $". Verify it is available in the system directory={sysdir}. Else copy it to the output folder."
-                        );               
+                        );
                 }
-            }   
+            }
             return true;
         }
 

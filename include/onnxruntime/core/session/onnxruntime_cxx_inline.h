@@ -138,7 +138,7 @@ inline SessionOptions& SessionOptions::SetThreadPoolSize(int session_thread_pool
   return *this;
 }
 
-inline SessionOptions& SessionOptions::SetGraphOptimizationLevel(int graph_optimization_level) {
+inline SessionOptions& SessionOptions::SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level) {
   ORT_THROW_ON_ERROR(OrtSetSessionGraphOptimizationLevel(p_, graph_optimization_level));
   return *this;
 }
