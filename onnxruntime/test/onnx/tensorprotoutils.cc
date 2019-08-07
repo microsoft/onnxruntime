@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/tensorprotoutils.h"
+#include "tensorprotoutils.h"
 
 #include <memory>
 #include <algorithm>
@@ -81,6 +81,7 @@ static Status UnpackTensorWithRawData(const void* raw_data, size_t raw_data_leng
 }  // namespace
 
 namespace onnxruntime {
+namespace test {
 namespace utils {
 
 // This macro doesn't work for Float16/bool/string tensors
@@ -335,10 +336,10 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
   }
 }
 
-#define CASE_PROTO(X, Y)                                                                                             \
-  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                               \
-    ORT_RETURN_IF_ERROR(                                                                                             \
-        ::onnxruntime::utils::UnpackTensor<Y>(tensor_proto, raw_data, raw_data_len, (Y*)preallocated, tensor_size)); \
+#define CASE_PROTO(X, Y)                                                                                                   \
+  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                                     \
+    ORT_RETURN_IF_ERROR(                                                                                                   \
+        ::onnxruntime::test::utils::UnpackTensor<Y>(tensor_proto, raw_data, raw_data_len, (Y*)preallocated, tensor_size)); \
     break;
 
 class AutoDelete {
@@ -364,7 +365,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
                             const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, OrtValue& value,
                             OrtCallback& deleter) {
   const OrtAllocatorInfo& allocator = m.GetAllocInfo();
-  ONNXTensorElementDataType ele_type = utils::GetTensorElementType(tensor_proto);
+  ONNXTensorElementDataType ele_type = onnxruntime::test::utils::GetTensorElementType(tensor_proto);
   deleter.f = nullptr;
   deleter.param = nullptr;
   const void* raw_data = nullptr;
@@ -452,8 +453,8 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
             deleter.f = UnInitTensor;
             deleter.param = new UnInitializeParam{preallocated, preallocated_size, ele_type};
           }
-          ORT_RETURN_IF_ERROR(::onnxruntime::utils::UnpackTensor<std::string>(tensor_proto, raw_data, raw_data_len,
-                                                                              (std::string*)preallocated, tensor_size));
+          ORT_RETURN_IF_ERROR(::onnxruntime::test::utils::UnpackTensor<std::string>(tensor_proto, raw_data, raw_data_len,
+                                                                                    (std::string*)preallocated, tensor_size));
           break;
         default: {
           std::ostringstream ostr;
@@ -566,4 +567,5 @@ template common::Status GetSizeInBytesFromTensorProto<256>(const ONNX_NAMESPACE:
                                                            size_t* out);
 template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
 }  // namespace utils
+}  // namespace test
 }  // namespace onnxruntime
