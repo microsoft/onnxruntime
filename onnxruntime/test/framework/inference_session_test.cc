@@ -348,7 +348,6 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   SessionOptions so;
   const string test_model = "testdata/transform/abs-id-max.onnx";
   so.session_logid = "InferenceSessionTests.TestModelSerialization";
-  so.enable_cpu_mem_arena = false;
   so.graph_optimization_level = TransformerLevel::Default;
   InferenceSessionGetGraphWrapper session_object_noopt{so, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object_noopt.Load(test_model).IsOK());
@@ -378,7 +377,6 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   // Load serialized model with no tranform level and serialize model.
   SessionOptions so_opt;
   so_opt.session_logid = "InferenceSessionTests.TestModelSerialization";
-  so_opt.enable_cpu_mem_arena = false;
   so_opt.graph_optimization_level = TransformerLevel::Default;
   so_opt.optimized_model_filepath = ToWideString(so.optimized_model_filepath) + ToWideString("-TransformLevel-" + std::to_string(static_cast<uint32_t>(so_opt.graph_optimization_level)));
   InferenceSession session_object_opt{so_opt, &DefaultLoggingManager()};
