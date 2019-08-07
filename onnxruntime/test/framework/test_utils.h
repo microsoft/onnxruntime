@@ -10,6 +10,8 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/framework/ml_value.h"
 
+#include "gsl/gsl_algorithm"
+
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider.h"
 #endif
@@ -49,6 +51,20 @@ IExecutionProvider* TestNnapiExecutionProvider();
 #endif
 
 template <typename T>
+inline void CopyVectorToTensor(const std::vector<T>& value, Tensor& tensor) {
+  gsl::copy(gsl::make_span(value), tensor.MutableDataAsSpan<T>());
+}
+
+// vector<bool> is specialized so we need to handle it separately
+template <>
+inline void CopyVectorToTensor<bool>(const std::vector<bool>& value, Tensor& tensor) {
+  auto output_span = tensor.MutableDataAsSpan<bool>();
+  for (size_t i = 0, end = value.size(); i < end; ++i) {
+    output_span[i] = value[i];
+  }
+}
+
+template <typename T>
 void CreateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, const std::vector<T>& value,
                    OrtValue* p_mlvalue) {
   TensorShape shape(dims);
@@ -57,8 +73,9 @@ void CreateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, const s
                                                               shape,
                                                               alloc);
   if (value.size() > 0) {
-    memcpy(p_tensor->MutableData<T>(), &value[0], element_type->Size() * shape.Size());
+    CopyVectorToTensor(value, *p_tensor);
   }
+
   p_mlvalue->Init(p_tensor.release(),
                   DataTypeImpl::GetType<Tensor>(),
                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());

@@ -5,13 +5,28 @@
 
 namespace onnxruntime {
 namespace cuda {
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Dropout,
+    kOnnxDomain,
+    7, 9,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(), 
+                              DataTypeImpl::GetTensorType<float>(), 
+                              DataTypeImpl::GetTensorType<double>()})
+        .Alias(0, 0),
+    IdentityOp<true>);
+
 ONNX_OPERATOR_KERNEL_EX(
     Dropout,
     kOnnxDomain,
-    7,
+    10,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(), DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()})
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),
+                              DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>()})
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>())
         .Alias(0, 0),
     IdentityOp<true>);
 

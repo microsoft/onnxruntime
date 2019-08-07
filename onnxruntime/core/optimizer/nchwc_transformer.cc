@@ -18,14 +18,18 @@ class NchwcTransformerImpl {
   void Transform(Node& node);
   void Finalize(bool& modified);
 
-  static constexpr int kNchwcDims = 4;
+  static constexpr int kNchwcBatchChannelDims = 2;
+  static constexpr int kNchwcSpatialDims = 2;
+  static constexpr int kNchwcDims = kNchwcBatchChannelDims + kNchwcSpatialDims;
 
  private:
   // Associate the following state with each created NCHWc output keyed off the
   // original NodeArg.
   struct NchwcArgument {
     // Symbolic shape information for this NCHWc output. Each dimension stores
-    // the original NodeArg* that sourced the value.
+    // the original NodeArg* that sourced the value. Spatial dimensions also
+    // track the number of times the original value has been shifted down due
+    // to a stride count of 2.
     //
     // For example, the first Conv node that takes NCHW input will create a
     // NchwcArgument with the shape referencing itself. Other NCHWc nodes that
@@ -39,6 +43,30 @@ class NchwcTransformerImpl {
     // fusion that can be detected using this additional shape hint.
     struct Shape {
       const NodeArg* dims_[kNchwcDims];
+      size_t shifts_[kNchwcSpatialDims];
+
+      Shape(const NodeArg* initial_dim) {
+        std::fill_n(dims_, kNchwcDims, initial_dim);
+        std::fill_n(shifts_, kNchwcSpatialDims, 0);
+      }
+
+      bool IsDimEqual(const Shape& other, int dim) const {
+        bool is_dim_equal = false;
+        // Test if this dimension is derived from the same NodeArg.
+        if (dims_[dim] == other.dims_[dim]) {
+          if (dim >= kNchwcBatchChannelDims) {
+            // Test if the NodeArg has been shifted down the same number of
+            // times due to striding.
+            int spatial_dim = dim - kNchwcBatchChannelDims;
+            if (shifts_[spatial_dim] == other.shifts_[spatial_dim]) {
+              is_dim_equal = true;
+            }
+          } else {
+            is_dim_equal = true;
+          }
+        }
+        return is_dim_equal;
+      }
     };
 
     // Stores the node that generated the NCHWc output.
@@ -181,7 +209,7 @@ void NchwcTransformerImpl::ConvPoolShapeInference(const Node& node,
                                                   NchwcArgument::Shape& output_shape,
                                                   const ONNX_NAMESPACE::TensorProto* filter_shape) {
   // Skip the leading batch and channel counts.
-  const int kernel_size = kNchwcDims - 2;
+  const int kernel_size = kNchwcSpatialDims;
 
   // Maintain the batch count dimension from the NCHWc input.
   output_shape.dims_[0] = input_shape.dims_[0];
@@ -221,9 +249,16 @@ void NchwcTransformerImpl::ConvPoolShapeInference(const Node& node,
   }
 
   for (int i = 0; i < kernel_size; i++) {
-    if ((strides_attr != nullptr && strides_attr->ints(i) != 1) ||
-        (dilations_attr != nullptr && dilations_attr->ints(i) != 1)) {
+    if (dilations_attr != nullptr && dilations_attr->ints(i) != 1) {
       continue;
+    }
+
+    int64_t stride = 1;
+    if (strides_attr != nullptr) {
+      stride = strides_attr->ints(i);
+      if (stride != 1 && stride != 2) {
+        continue;
+      }
     }
 
     int64_t padding = 0;
@@ -238,8 +273,14 @@ void NchwcTransformerImpl::ConvPoolShapeInference(const Node& node,
       kernel = filter_shape->dims(2 + i);
     }
 
+    // Maintain the spatial dimension from the NCHWc input if the implicit or
+    // explicit padding results in the same symbolic dimension before applying
+    // the stride. When the stride is 2, then the actual output dimensions is
+    // half the original value. Track the number of times the symbolic dimension
+    // has been halved in the shifts field.
     if (padding + 1 == kernel || auto_pad_same_shape) {
-      output_shape.dims_[2 + i] = input_shape.dims_[2 + i];
+      output_shape.dims_[kNchwcBatchChannelDims + i] = input_shape.dims_[kNchwcBatchChannelDims + i];
+      output_shape.shifts_[i] = input_shape.shifts_[i] + static_cast<size_t>(stride) - 1;
     }
   }
 }
@@ -396,8 +437,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     nchwc_node.MutableInputDefs()[2] = nchwc_conv_B_arg;
   }
 
-  NchwcArgument::Shape output_shape;
-  std::fill_n(output_shape.dims_, kNchwcDims, output_defs[0]);
+  NchwcArgument::Shape output_shape(output_defs[0]);
 
   if (do_reorder_input) {
     auto it = nchwc_args_.find(input_defs[0]);
@@ -450,8 +490,7 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
                                     kMSNchwcDomain);
   nchwc_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
-  NchwcArgument::Shape output_shape;
-  std::fill_n(output_shape.dims_, kNchwcDims, output_defs[0]);
+  NchwcArgument::Shape output_shape(output_defs[0]);
 
   auto it = nchwc_args_.find(input_defs[0]);
   if (it == nchwc_args_.end()) {
@@ -492,7 +531,7 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
     auto* nchwc_input_n = nchwc_inputs[n];
     for (int i = 0; i < kNchwcDims; i++) {
       // Test if this dimension is derived from the same NodeArg.
-      if (nchwc_input_0->shape_.dims_[i] != nchwc_input_n->shape_.dims_[i]) {
+      if (!nchwc_input_0->shape_.IsDimEqual(nchwc_input_n->shape_, i)) {
         // Check if ONNX shape inferencing has computed a precise dimension value.
         auto* nchwc_input_n_shape = input_defs[n]->Shape();
         if ((nchwc_input_0_shape == nullptr) || (nchwc_input_n_shape == nullptr)) {
