@@ -130,9 +130,9 @@ Status Concat::Compute(OpKernelContext* ctx) const {
     for (size_t idx_copy = 0, end = input_size / input_axis_pitch; idx_copy < end; ++idx_copy) {
       if (is_string_type) {
         size_t out = initial_output_offset + cur_out_offset;
-        for (int idxItem = 0; idxItem < input_axis_pitch; ++idxItem) {
-          reinterpret_cast<std::string*>(output)[out + idxItem] =
-              reinterpret_cast<const std::string*>(input)[cur_in_offset + idxItem];
+        for (int idx_item = 0; idx_item < input_axis_pitch; ++idx_item) {
+          reinterpret_cast<std::string*>(output)[out + idx_item] =
+              reinterpret_cast<const std::string*>(input)[cur_in_offset + idx_item];
         }
       } else {
         memcpy(
