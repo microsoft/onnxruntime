@@ -6,7 +6,8 @@ using System.Collections.Generic;
 using System.Text;
 using System.IO;
 using Microsoft.ML.OnnxRuntime;
-using System.Numerics.Tensors;
+//using System.Numerics.Tensors;
+using Microsoft.ML.OnnxRuntime.Tensors;
 
 namespace CSharpUsage
 {

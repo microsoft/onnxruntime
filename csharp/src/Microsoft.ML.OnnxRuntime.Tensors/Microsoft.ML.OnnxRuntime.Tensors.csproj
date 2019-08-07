@@ -1,0 +1,36 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard1.1</TargetFramework>
+    <Platforms>AnyCPU;x86</Platforms>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!--SignAssembly>true</SignAssembly>
+    <DelaySign>false</DelaySign>
+    <AssemblyOriginatorKeyFile>OnnxRuntime.snk</AssemblyOriginatorKeyFile-->
+    <!--Configurations>netstandard-Debug;netstandard-Release;netstandard1.1-Debug;netstandard1.1-Release</Configurations-->
+    <!--DocumentationFile>$(OutputPath)$(MSBuildProjectName).xml</DocumentationFile-->
+    <RootNamespace>Microsoft.ML.OnnxRuntime.Tensors</RootNamespace>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ProjectGuid>{BE0F13BE-9140-49A8-9FDD-994D0D8A3805}</ProjectGuid>
+    <LangVersion>7.2</LangVersion>
+  </PropertyGroup>
+  <!--ItemGroup>
+    <Compile Include="Properties\InternalsVisibleTo.cs" />
+    <Compile Include="System\Numerics\Tensors\ArrayTensorExtensions.cs" />
+    <Compile Include="System\Numerics\Tensors\ArrayUtilities.cs" />
+    <Compile Include="System\Numerics\Tensors\CompressedSparseTensor.cs" />
+    <Compile Include="System\Numerics\Tensors\DenseTensor.cs" />
+    <Compile Include="System\Numerics\Tensors\SparseTensor.cs" />
+    <Compile Include="System\Numerics\Tensors\Tensor.cs" />
+  </ItemGroup-->
+  <ItemGroup>
+    <!--Reference Include="System.Collections" />
+    <Reference Include="System.Diagnostics.Debug" />
+    <Reference Include="System.Linq" />
+    <Reference Include="System.Memory" />
+    <Reference Include="System.Runtime" />
+    <Reference Include="System.Runtime.Extensions" />
+    <Reference Include="System.Runtime.InteropServices" /-->
+    <PackageReference Include="System.Memory" Version="4.5.3" />
+  </ItemGroup>
+</Project>

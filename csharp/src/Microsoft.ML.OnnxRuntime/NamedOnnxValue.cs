@@ -4,7 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using System.Numerics.Tensors;
+//using System.Numerics.Tensors;
+using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Buffers;
 using System.Collections;
 using System.Diagnostics;

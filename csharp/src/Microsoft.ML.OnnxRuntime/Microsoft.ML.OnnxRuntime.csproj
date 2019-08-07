@@ -145,9 +145,12 @@
     <Copy SourceFiles="@(PropertiesFile)" DestinationFiles="@(PropertiesFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).props')"/>
     <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).targets')"/>
   </Target>
+  <ItemGroup>
+      <ProjectReference Include="..\Microsoft.ML.OnnxRuntime.Tensors\Microsoft.ML.OnnxRuntime.Tensors.csproj"/>
+  </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.Numerics.Tensors" Version="0.1.0" />
+    <!--PackageReference Include="System.Numerics.Tensors" Version="0.1.0" /-->
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0-beta-63127-02" PrivateAssets="All"/>
   </ItemGroup>
 

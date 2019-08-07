@@ -21,6 +21,10 @@ CMake creates a target to this project
              Targets="Restore" 
              Properties="Platform=AnyCPU;RestoreConfigFile=$(MSBuildThisFileDirectory)\NuGet.CSharp.config;MSBuildWarningsAsMessages=NU1503;RestoreIgnoreFailedSource=true" 
              />
+    <MSBuild Projects="src\Microsoft.ML.OnnxRuntime.Tensors\Microsoft.ML.OnnxRuntime.Tensors.csproj"
+             Targets="Restore" 
+             Properties="Platform=AnyCPU;RestoreConfigFile=$(MSBuildThisFileDirectory)\NuGet.CSharp.config;MSBuildWarningsAsMessages=NU1503;RestoreIgnoreFailedSource=true" 
+             />
     <MSBuild Projects="sample\Microsoft.ML.OnnxRuntime.InferenceSample\Microsoft.ML.OnnxRuntime.InferenceSample.csproj"
              Targets="Restore" 
              Properties="Platform=AnyCPU;RestoreConfigFile=$(MSBuildThisFileDirectory)\NuGet.CSharp.config;MSBuildWarningsAsMessages=NU1503;RestoreIgnoreFailedSource=true" 
@@ -40,6 +44,9 @@ CMake creates a target to this project
 
     <MSBuild Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
              Targets="ObtainPackageVersion;Build" 
+             Properties="Platform=AnyCPU"/>
+    <MSBuild Projects="src\Microsoft.ML.OnnxRuntime.Tensors\Microsoft.ML.OnnxRuntime.Tensors.csproj"
+             Targets="Build" 
              Properties="Platform=AnyCPU"/>
     <MSBuild Projects="sample\Microsoft.ML.OnnxRuntime.InferenceSample\Microsoft.ML.OnnxRuntime.InferenceSample.csproj"
              Targets="Build" 
