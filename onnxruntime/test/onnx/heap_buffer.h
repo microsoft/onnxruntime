@@ -4,7 +4,9 @@
 #pragma once
 #include <vector>
 #include <memory>
+namespace onnxruntime {
 struct OrtCallback;
+}
 
 /**
  * A holder for delay freed buffers
@@ -21,9 +23,9 @@ class HeapBuffer {
     buffers_.push_back(p);
     return p;
   }
-  void AddDeleter(OrtCallback* d);
+  void AddDeleter(onnxruntime::OrtCallback* d);
 
  private:
-  std::vector<OrtCallback*> deleters_;
+  std::vector<onnxruntime::OrtCallback*> deleters_;
   std::vector<void*> buffers_;
 };
