@@ -412,7 +412,6 @@ class PlannerImpl {
           UseCount(node_input->Name())++;
       }
 
-      auto& default_allocator_info = exec_provider->GetAllocator(0, OrtMemTypeDefault)->Info();
       auto outputs = pnode->OutputDefs();
       auto num_outputs = outputs.size();
       for (size_t i = 0; i < num_outputs; ++i) {
@@ -421,14 +420,9 @@ class PlannerImpl {
         OrtValueIndex index = Index(node_output->Name());
         ProcessDef(index, node_output);
         ++UseCount(index);
-        if (strcmp(default_allocator_info.name, CPU) != 0) {
-          // By default, outputs of this node are allocated on the default device allocator,
-          // except for outputs marked for allocation in MemoryType:
-          auto memory_type = p_kernelDef->OutputMemoryType(i);
-          plan_.SetLocation(static_cast<size_t>(index), memory_type == OrtMemTypeDefault
-                                                            ? default_allocator_info
-                                                            : exec_provider->GetAllocator(0, memory_type)->Info());
-        }
+        // By default, outputs of this node are allocated on the default device allocator,
+        // except for outputs marked for allocation in MemoryType:
+        plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, p_kernelDef->OutputMemoryType(i))->Info());
       }
       // if sync is needed, mark allocation plan as create_fence_if_async=true
       // note that the input arg may come from an execution provider (i.e. CPU) that does not support async,
