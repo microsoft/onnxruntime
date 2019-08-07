@@ -14,7 +14,6 @@ class LSTM final : public CudnnRnnBase<T> {
  public:
   LSTM(const OpKernelInfo& info) : CudnnRnnBase<T>(info) {
     CudnnRnnBase<T>::SetRNNMode(CUDNN_LSTM);
-    CudnnRnnBase<T>::SetCudnnRnnDesc();
 
     // ONNX W layout is W[iofc], WB[iofc], mapping to RNNLinLayerMatrixParams the linLayerID is 0, 3, 1, 2
     CudnnRnnBase<T>::W_lin_layer_id_.assign({0, 3, 1, 2});
