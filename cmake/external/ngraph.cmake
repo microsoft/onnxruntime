@@ -9,9 +9,9 @@ set(ngraph_INCLUDE_DIRS ${ngraph_INSTALL_DIR}/include)
 set(ngraph_LIBRARIES ${ngraph_INSTALL_DIR}/${CMAKE_INSTALL_LIBDIR})
 set(ngraph_SRC ${CMAKE_CURRENT_BINARY_DIR}/ngraph/src/project_ngraph)
 set(prebuilt_ONNX_SOURCE_DIR "${PROJECT_SOURCE_DIR}/external/onnx")
-set(prebuilt_ONNX_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/onnx")
+set(prebuilt_ONNX_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 set(ngraph_URL "https://github.com/NervanaSystems/ngraph.git")
-set(ngraph_TAG "v0.22.1")
+set(ngraph_TAG "v0.26.0-rc.0")
 
 # Libraries for python package.
 if (WIN32)
