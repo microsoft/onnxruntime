@@ -44,11 +44,11 @@
     <None Include="TensorTemplate.ttinclude" />
     -->
   </ItemGroup> 
-  <!--ItemGroup>
+  <ItemGroup>
     <!- Some internal types are needed, so we reference the implementation assembly, rather than the reference assembly. ->
     <DefaultReferenceExclusions Include="System.Numerics.Tensors" />
     <ReferenceFromRuntime Include="System.Numerics.Tensors" />
-  </ItemGroup-->
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime.Tensors\Microsoft.ML.OnnxRuntime.Tensors.csproj" />
   </ItemGroup>
