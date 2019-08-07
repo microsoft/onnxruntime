@@ -26,6 +26,24 @@ TypeProto* BertLoss::GetMaskedLMTypeProto(const NodeArg* prediction_arg,
   return type_proto;
 }
 
+TypeProto* BertLoss::GetGatheredPredictionTypeProto(const NodeArg* prediction_arg,
+                                                    int64_t max_predictions_per_sequence,
+                                                    GraphAugmenter::GraphDefs& graph_defs) {
+  ORT_ENFORCE(prediction_arg != nullptr, "GetMaskedPredictionTypeProto's prediction_arg is nullptr");
+  const auto* logits_type_proto = prediction_arg->TypeAsProto();
+  const auto& dims = logits_type_proto->tensor_type().shape().dim();
+
+  TypeProto* type_proto = graph_defs.CreateTypeProto();
+  type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  auto* target_shape = type_proto->mutable_tensor_type()->mutable_shape();
+  target_shape->add_dim()->CopyFrom(dims[0]);
+  target_shape->add_dim()->set_dim_value(max_predictions_per_sequence);
+  target_shape->add_dim()->CopyFrom(dims[2]);
+
+  return type_proto;
+}
+
 TypeProto* BertLoss::GetLossTypeProto(GraphAugmenter::GraphDefs& graph_defs) {
   return graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 }
@@ -71,15 +89,17 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
     shape_tensor_proto.add_int64_data(max_sequence_len);
 
     new_nodes.emplace_back(NodeDef("Unsqueeze",
-                                   {ArgDef(masked_lm_positions, masked_lm_int64_type_proto)},                //Inputs
-                                   {ArgDef("masked_lm_positions_unsqueezed")},                                 //Outputs
-                                   {MakeAttribute("axes", std::vector<int64_t>{static_cast<int64_t>(2)})},  //Attributes
+                                   {ArgDef(masked_lm_positions, masked_lm_int64_type_proto)},
+                                   {ArgDef("masked_lm_positions_unsqueezed")},
+                                   {MakeAttribute("axes", std::vector<int64_t>{static_cast<int64_t>(2)})},
                                    "Mask_LM_Positions_Unsqueezed"));
-
+    TypeProto* gathered_prediction_type_proto = GetGatheredPredictionTypeProto(prediction_arg,
+                                                                               max_predictions_per_sequence,
+                                                                               graph_defs);
     new_nodes.emplace_back(NodeDef("GatherND",
-                                   {ArgDef(prediction_masked_lm), ArgDef("masked_lm_positions_unsqueezed")},  //Inputs
-                                   {ArgDef("gathered_prediction")},                                                 //Outputs
-                                   {MakeAttribute("axis", static_cast<int64_t>(1))},                        //Attributes
+                                   {ArgDef(prediction_masked_lm), ArgDef("masked_lm_positions_unsqueezed")},
+                                   {ArgDef("gathered_prediction", gathered_prediction_type_proto)},
+                                   {MakeAttribute("axis", static_cast<int64_t>(1))},
                                    "GATHERED_LM"));
 
     TypeProto* masked_lm_float_type_proto = GetMaskedLMTypeProto(prediction_arg,
@@ -87,11 +107,11 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
                                                                  max_predictions_per_sequence,
                                                                  graph_defs);
     new_nodes.emplace_back(NodeDef("SparseSoftmaxCrossEntropy",
-                                   {ArgDef("gathered_prediction"),
+                                   {ArgDef("gathered_prediction", gathered_prediction_type_proto),
                                     ArgDef(masked_lm_ids, masked_lm_int64_type_proto),
                                     ArgDef(masked_lm_weights, masked_lm_float_type_proto)},  // Inputs
-                                   {ArgDef(mlm_loss, GetLossTypeProto(graph_defs)),         // Outputs
-                                    ArgDef("probability_lm", prediction_arg->TypeAsProto())},  // Outputs
+                                   {ArgDef(mlm_loss, GetLossTypeProto(graph_defs)),          // Outputs
+                                    ArgDef("probability_lm", gathered_prediction_type_proto)},
                                    {MakeAttribute("reduction", "mean")},
                                    "Masked_LM_Loss"));
   }
