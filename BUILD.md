@@ -70,7 +70,7 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 ---
 # Build Instructions
 * [x86](#Build-x86)
-* [CI & Test Builds](#Build/Test-Flavors-for-CI)
+* [CI & Test Builds](#Build-and-Test-Flavors-for-CI)
 * [Additional Common Build Flavors](#Additional-Build-Flavors)
 * [ARM](#ARM-Builds)
 * [Android](#Android-Builds)
@@ -81,7 +81,7 @@ The complete list of build options can be found by running `./build.sh (or ./bui
  - For Windows, just add --x86 argument when launching build.bat
  - For Linux, it must be built out of a x86 os, --x86 argument also needs be specified to build.sh
 
-## Build/Test Flavors for CI
+## Build and Test Flavors for CI
 
 ### CI Build Environments
 
