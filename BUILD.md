@@ -30,7 +30,8 @@ OS/Compiler Matrix:
 
 ONNX Runtime python binding only supports Python 3.5, 3.6 and 3.7.
 
-## Getting Started
+
+# Getting Started
 You may either get a prebuilt onnxruntime from nuget.org, or do it yourself using the following steps:
 1. Checkout the source tree:
    ```
@@ -39,7 +40,8 @@ You may either get a prebuilt onnxruntime from nuget.org, or do it yourself usin
    ```
 2. Install cmake-3.13 or better from https://cmake.org/download/.
 
-On Windows:
+**On Windows:**
+
 3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF. After the installation, you should have the 'protoc' executable in your PATH.
 4. (optional) Install onnx from source code (cmake/external/onnx)
     ```
@@ -49,7 +51,8 @@ On Windows:
     ```
 5. Run `build.bat --config RelWithDebInfo --build_shared_lib --parallel`. 
 
-On Linux:
+**On Linux:**
+
 3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned ON. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
 4. If you installed your protobuf in a non standard location it would be helpful to set the following env var:`export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=full path to protoc"` so ONNX build can find it. Also run `ldconfig <protobuf lib folder path>` so the linker can find protobuf libraries.
 5. (optional) Install onnx from source code (cmake/external/onnx)
@@ -64,17 +67,19 @@ The build script runs all unit tests by default (for native builds and skips tes
 
 The complete list of build options can be found by running `./build.sh (or ./build.bat) --help`
 
+---
+# Build Instructions
+* [x86](#Build-x86)
+* [CI & Test Builds](#Build/Test-Flavors-for-CI)
+* [Additional Common Build Flavors](#Additional-Build-Flavors)
+* [ARM](#ARM-Builds)
+* [Android](#Android-Builds)
+* [ONNX Runtime Server (Linux)](#Build-ONNX-Runtime-Server-on-Linux)
+---
+
 ## Build x86
  - For Windows, just add --x86 argument when launching build.bat
  - For Linux, it must be built out of a x86 os, --x86 argument also needs be specified to build.sh
-
-## Build ONNX Runtime Server on Linux
-
-1. ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL. 
-    See https://golang.org/doc/install for installation instructions.
-2. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
-3. ONNX Runtime Server supports sending log to [rsyslog](https://www.rsyslog.com/) daemon. To enable it, please build with an additional parameter: `--cmake_extra_defines onnxruntime_USE_SYSLOG=1`. The build command will look like this: `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel --cmake_extra_defines onnxruntime_USE_SYSLOG=1`
-
 
 ## Build/Test Flavors for CI
 
@@ -94,14 +99,14 @@ The complete list of build flavors can be seen by running `./build.sh --help` or
 The default generator on Windows is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat.
 
 ### Windows CUDA Build
-ONNX Runtime supports CUDA builds. You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [CUDNN](https://developer.nvidia.com/cudnn).
+ONNX Runtime supports CUDA builds. You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn).
 
-ONNX Runtime is built and tested with CUDA 9.1 and CUDNN 7.1 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3).
-CUDA versions from 9.1 up to 10.0, and CUDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017.
+ONNX Runtime is built and tested with CUDA 10.0 and cuDNN 7.3 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3). 
+CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017.
 
  - The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`.
- - The path to the CUDNN installation (include the `cuda` folder in the path) must be provided via the CUDNN_PATH environment variable, or `--cudnn_home parameter`. The CUDNN path should contain `bin`, `include` and `lib` directories.
- - The path to the CUDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
+ - The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`. The cuDNN path should contain `bin`, `include` and `lib` directories.
+ - The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
 
 You can build with:
 
@@ -110,7 +115,7 @@ You can build with:
 ./build.bat --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path> (Windows)
 ```
 
-Depending on compatibility between the CUDA, CUDNN, and Visual Studio 2017 versions you are using, you may need to explicitly install an earlier version of the MSVC toolset.
+Depending on compatibility between the CUDA, cuDNN, and Visual Studio 2017 versions you are using, you may need to explicitly install an earlier version of the MSVC toolset.
 - CUDA 10.0 is known to work with toolsets from 14.11 up to 14.16 (Visual Studio 2017 15.9), and should continue to work with future Visual Studio versions
   - https://devblogs.microsoft.com/cppblog/cuda-10-is-now-available-with-support-for-the-latest-visual-studio-2017-versions/
 - CUDA 9.2 is known to work with the 14.11 MSVC toolset (Visual Studio 15.3 and 15.4)
@@ -140,19 +145,19 @@ To build ONNX Runtime using MKL-DNN built with dependency on MKL small libraries
 ONNX runtime with nGraph as an execution provider (released as preview) can be built on Linux as follows : `./build.sh --use_ngraph`.  Similarly, on Windows use `.\build.bat --use_ngraph`.
 
 ### TensorRT
-ONNX Runtime supports the TensorRT execution provider (released as preview). You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit), [CUDNN](https://developer.nvidia.com/cudnn) and [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download).
+ONNX Runtime supports the TensorRT execution provider (released as preview). You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit), [cuDNN](https://developer.nvidia.com/cudnn) and [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download).
 
-The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 9.0/CUDA 10.0, CUDNN 7.1 and TensorRT 5.0.2.6.
+The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 9.0/CUDA 10.0, cuDNN 7.1 and TensorRT 5.0.2.6.
 
  - The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`. The CUDA path should contain `bin`, `include` and `lib` directories.
  - The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
- - The path to the CUDNN installation (path to folder that contains libcudnn.so) must be provided via the CUDNN_PATH environment variable, or `--cudnn_home parameter`.
+ - The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`.
 - The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
 
 You can build from source on Linux by using the following `cmd` from the onnxruntime directory:
 
 ```
-./build.sh --cudnn_home <path to CUDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> (Linux)
+./build.sh --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> (Linux)
 
 ```
 ### OpenVINO Build
@@ -397,3 +402,10 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 3. Denote the unzip destination in step 1 as $ANDROID_NDK, append `-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=path/to/protoc` to your cmake args, run cmake and make to build it.
 
 Note: For 32-bit devices, replace `-DANDROID_ABI=arm64-v8a` to `-DANDROID_ABI=armeabi-v7a`.
+
+## Build ONNX Runtime Server on Linux
+Read more about ONNX Runtime Server [here](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Server_Usage.md)
+1. ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL. 
+    See https://golang.org/doc/install for installation instructions.
+2. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
+3. ONNX Runtime Server supports sending log to [rsyslog](https://www.rsyslog.com/) daemon. To enable it, please build with an additional parameter: `--cmake_extra_defines onnxruntime_USE_SYSLOG=1`. The build command will look like this: `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel --cmake_extra_defines onnxruntime_USE_SYSLOG=1`
