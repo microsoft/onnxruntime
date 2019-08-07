@@ -13,7 +13,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolWin)
     JobName: 'Windows_CI_Dev'
-    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)'
+    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: ${{ parameters.DoCompliance }}
@@ -27,7 +27,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolWin)
     JobName: 'Windows_CI_Dev_x86'
-    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib  --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --x86'
+    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib  --build_csharp --enable_onnx_tests --x86'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
@@ -142,9 +142,8 @@ jobs:
   - template: ../../templates/esrp_nuget.yml
     parameters:
       DisplayName: 'ESRP - sign NuGet package'
-      FolderPath: '$(Build.BinariesDirectory)/nuget-artifact'
+      FolderPath: '$(Build.ArtifactStagingDirectory)'
       DoEsrp: ${{ parameters.DoEsrp }}
-
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'
@@ -158,10 +157,14 @@ jobs:
 - job: Publish_NuGet_Package_And_Report
   variables:
   - group: Dashboard_MySQL_Secret
-  condition: ${{ parameters.DoEsrp }}
   pool: 
     name: Hosted Windows 2019 with VS2019
+    # AzureFileCopy@3 task has some bug that it depends on a particular version of azure power shell, 
+    # which is not available in OnnxRuntime build VMs, but available in the latest hosted agents. 
+    # So, all the copy/publish jobs are being run on hosted agent
+    # TODO: install the desired azureps on our VMs or use later bugfixed version of AzureFileCopy   
     demands: azureps
+  condition: and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master'))
   dependsOn:
   - NuGet_Test_Win
   - NuGet_Test_Linux
@@ -171,6 +174,16 @@ jobs:
   - template: ../../templates/set-version-number-variables-step.yml
   - template: upload-binary-sizes-from-nuget-package.yml
     parameters:
+      downloadPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
       gitCommitHash: $(OnnxRuntimeGitCommitHashShort)  
 
+  - task: AzureFileCopy@3
+    displayName: 'Copy Signed NuGet Package to Blob Store'
+    condition: ne(variables['IsReleaseBuild'], 'true') # rlease build has a different package naming scheme
+    inputs:
+      sourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
+      azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+      destination: azureBlob
+      storage: ortpackages
+      containerName: ortpackages
 

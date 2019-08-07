@@ -83,9 +83,9 @@ Below topologies are supported from ONNX open model zoo using OpenVINO Execution
 |TinyYOLOv2 | Yes | Yes | Yes
 | ResNet101\_DUC\_HDC | Yes | No | No
 
-# Application code changes for VAD-R performance scaling
+# Application code changes for VAD-M performance scaling
 
-VAD-R has 8 VPUs and is suitable for applications that require multiple inferences to run in parallel. We use batching approach for performance scaling on VAD-R.
+VAD-M has 8 VPUs and is suitable for applications that require multiple inferences to run in parallel. We use batching approach for performance scaling on VAD-M.
 
 Below python code snippets provide sample classification code to batch input images, load a model and process the output results.
 

@@ -12,7 +12,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolWin)
     JobName: 'Windows_CI_Dev'
-    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --disable_contrib_ops --enable_msvc_static_runtime --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)'
+    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --disable_contrib_ops --enable_msvc_static_runtime --build_shared_lib --build_csharp --enable_onnx_tests'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
@@ -26,7 +26,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolWin)
     JobName: 'Windows_CI_Dev_x86'
-    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --disable_contrib_ops --enable_msvc_static_runtime --build_shared_lib  --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --x86'
+    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --disable_contrib_ops --enable_msvc_static_runtime --build_shared_lib  --build_csharp --enable_onnx_tests --x86'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
@@ -41,7 +41,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolWin)
     JobName: 'Windows_Arm64_Dev'
-    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --disable_contrib_ops --enable_msvc_static_runtime --build_shared_lib --arm64 --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)'
+    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --disable_contrib_ops --enable_msvc_static_runtime --build_shared_lib --arm64'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
@@ -51,6 +51,8 @@ jobs:
     NuPackScript: |
      mkdir $(Build.BinariesDirectory)\arm64\runtimes\win10-arm\native
      cd $(Build.BinariesDirectory)\arm64
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime.pdb $(Build.BinariesDirectory)\arm64\runtimes\win10-arm\native
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime.lib $(Build.BinariesDirectory)\arm64\runtimes\win10-arm\native
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime.dll $(Build.BinariesDirectory)\arm64\runtimes\win10-arm\native
      powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
      zip -r win10-arm.zip runtimes
@@ -186,7 +188,9 @@ jobs:
          move win-x86\runtimes\win-x86\native\onnxruntime.dll %%~ni\runtimes\win-x86\native\onnxruntime.dll
          move win-x86\runtimes\win-x86\native\onnxruntime.lib %%~ni\runtimes\win-x86\native\onnxruntime.lib
          move win-x86\runtimes\win-x86\native\onnxruntime.pdb %%~ni\runtimes\win-x86\native\onnxruntime.pdb
-         move win10-arm\runtimes\win-x64\native\onnxruntime.dll %%~ni\runtimes\win10-arm\native\onnxruntime.dll
+         move win10-arm\runtimes\win10-arm\native\onnxruntime.lib %%~ni\runtimes\win10-arm\native\onnxruntime.lib
+         move win10-arm\runtimes\win10-arm\native\onnxruntime.dll %%~ni\runtimes\win10-arm\native\onnxruntime.dll
+         move win10-arm\runtimes\win10-arm\native\onnxruntime.pdb %%~ni\runtimes\win10-arm\native\onnxruntime.pdb
          move linux-x64\linux-x64\libonnxruntime.so %%~ni\runtimes\linux-x64\native\libonnxruntime.so
          move linux-x86\linux-x86\libonnxruntime.so %%~ni\runtimes\linux-x86\native\libonnxruntime.so
          unzip osx-x64.zip -d osx-x64
@@ -207,7 +211,7 @@ jobs:
   - template: ../../templates/esrp_nuget.yml
     parameters:
       DisplayName: 'ESRP - sign NuGet package'
-      FolderPath: '$(Build.BinariesDirectory)/nuget-artifact'
+      FolderPath: '$(Build.ArtifactStagingDirectory)'
       DoEsrp: ${{ parameters.DoEsrp }}
 
   - task: PublishPipelineArtifact@0

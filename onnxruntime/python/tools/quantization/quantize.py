@@ -990,7 +990,7 @@ class ONNXQuantizer:
         return [node]
 
 
-def quantize(model, per_channel=True, nbits=8, quantization_mode=QuantizationMode.IntegerOps,
+def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMode.IntegerOps,
     static=False, asymmetric_input_types=False, input_quantization_params=None, output_quantization_params=None):
     '''
         Given an onnx model, create a quantized onnx model and save it into a file

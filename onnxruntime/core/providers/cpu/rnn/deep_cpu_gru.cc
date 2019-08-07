@@ -238,7 +238,7 @@ class UniDirectionalGru {
 
 // #define DUMP_MATRIXES to provide lots of diagnostic output
 #if defined(DUMP_MATRIXES)
-#define DumpMatrix(...) ::onnxruntime::rnn::detail::DumpMatrixImpl(__VA_ARGS__)
+#define DumpMatrix(...) onnxruntime::rnn::detail::DumpMatrixImpl(__VA_ARGS__)
 #else
 #define DumpMatrix(...) ((void)0)
 #endif
@@ -591,8 +591,9 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
 
   // for each item in sequence run all calculations
   for (int step = 0; step < max_sequence_length; step++) {
+#if defined(DUMP_MATRIXES)
     const std::string seqno_str = " [seqno=" + std::to_string(step) + "]";
-
+#endif
     DumpMatrix("Ht-1" + seqno_str, &*prev_Ht, batch_size_, hidden_size_);
 
     out_added_offset = (step * batch_size_) * hidden_size_x3;
@@ -657,7 +658,9 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
       }
     }
 
+#if defined(DUMP_MATRIXES)
     std::string label = linear_before_reset_ ? "rt (.) (Ht-1 * (Rh^T) + Rbh)" : "rt (.) Ht-1";
+#endif
     DumpMatrix(label + seqno_str, &*cur_h_local, batch_size_, hidden_size_);
 
     if (linear_before_reset_) {
@@ -676,7 +679,9 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
         }
       }
     } else {
+#if defined(DUMP_MATRIXES)
       label += " * Rh^T";
+#endif
 
       // out_H currently contains Xt*(Wh^T).
       auto out_H = outputZRH_.begin() + out_added_offset + hidden_size_x2;
@@ -708,9 +713,11 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
 
     for (int r = 0; r < batch_size_; r++) {
       if (step >= min_sequence_length && step >= sequence_lengths[r]) {
-        if (output_sequence) {
+        // if we need output for every step,
+        // or we need to set prev_Ht for an empty sequence to avoid warnings about using uninitialized values
+        if (output_sequence || (step == 0 && sequence_lengths[r] == 0)) {
           auto fill_output = output + r * hidden_size_;
-          std::fill_n(fill_output, hidden_size_, T{});
+          std::fill_n(&*fill_output, hidden_size_, T{});
         }
 
         continue;
@@ -772,28 +779,29 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
   // copy last output to final_hidden_state
   for (int i = 0; i < batch_size_; i++) {
     const int seq_len = sequence_lengths[i];
-    if (seq_len == 0) {
-      auto final_hidden_state_dst = final_hidden_state.begin() + i * hidden_size_;
-      std::fill_n(final_hidden_state_dst, hidden_size_, T{});
-      continue;
-    }
     if (output_sequence) {
-      auto src = outputs.subspan((seq_len - 1) * output_step_length + i * hidden_size_, hidden_size_);
-      auto dest = final_hidden_state.subspan(i * hidden_size_, hidden_size_);
-      gsl::copy(src, dest);
+      if (seq_len == 0) {
+        auto final_hidden_state_dst = final_hidden_state.begin() + i * hidden_size_;
+        std::fill_n(&*final_hidden_state_dst, hidden_size_, T{});
+      } else {
+        auto src = outputs.subspan((seq_len - 1) * output_step_length + i * hidden_size_, hidden_size_);
+        auto dest = final_hidden_state.subspan(i * hidden_size_, hidden_size_);
+        gsl::copy(src, dest);
+      }
     }
   }
 
-  // zero any values beyond the evaluated steps
+  // zero any values beyond the evaluated steps if the maximum explicit sequence length we saw (max_sequence_length)
+  // was shorter than the maximum possible sequence length (seq_length_)
   if (output_sequence && max_sequence_length < seq_length_) {
     if (output_step_length == batch_size_ * hidden_size_) {  // contiguous
       const auto span_to_zero = outputs.subspan(
           max_sequence_length * output_step_length, (seq_length_ - max_sequence_length) * output_step_length);
-      std::fill_n(span_to_zero.begin(), span_to_zero.size(), T{});
+      std::fill_n(&*span_to_zero.begin(), span_to_zero.size(), T{});
     } else {
       for (int i = max_sequence_length; i < seq_length_; ++i) {  // non-contiguous
         const auto span_to_zero = outputs.subspan(i * output_step_length, batch_size_ * hidden_size_);
-        std::fill_n(span_to_zero.begin(), span_to_zero.size(), T{});
+        std::fill_n(&*span_to_zero.begin(), span_to_zero.size(), T{});
       }
     }
   }

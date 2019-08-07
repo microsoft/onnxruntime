@@ -102,7 +102,7 @@
 	| <code>GPU_FP32</code> |Intel<sup></sup> Integrated Graphics |
 	| <code>GPU_FP16</code> | Intel<sup></sup> Integrated Graphics |
 	| <code>MYRIAD_FP16</code> | Intel<sup></sup> Movidius<sup>TM</sup> USB sticks |
-	| <code>VAD-R_FP16</code> | Intel<sup></sup> Vision Accelerator Design based on Movidius<sup>TM</sup> MyriadX VPUs |
+	| <code>VAD-M_FP16</code> | Intel<sup></sup> Vision Accelerator Design based on Movidius<sup>TM</sup> MyriadX VPUs |
 
 ## CPU 
 
@@ -155,12 +155,13 @@
     docker run -it --network host --privileged -v /dev:/dev  onnxruntime-myriad:latest
 
     ```
-## VAD-R Accelerator 
+=======
+## VAD-M Accelerator Version 
 
 1. Retrieve your docker image in one of the following ways. 
    - Build the docker image from the DockerFile in this repository.
      ``` 
-      docker build -t onnxruntime-vadr --build-arg DEVICE=VAD-R_FP16 --network host . 
+      docker build -t onnxruntime-vadr --build-arg DEVICE=VAD-M_FP16 --network host . 
      ```
    - Pull the official image from DockerHub.
      ```
