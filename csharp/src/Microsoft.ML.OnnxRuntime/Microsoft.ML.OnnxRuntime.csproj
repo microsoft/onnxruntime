@@ -6,7 +6,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <SignAssembly>true</SignAssembly>
     <DelaySign>false</DelaySign>
-    <AssemblyOriginatorKeyFile>OnnxRuntime.snk</AssemblyOriginatorKeyFile>
+    <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
 
     <!--internal build related properties-->
     <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>

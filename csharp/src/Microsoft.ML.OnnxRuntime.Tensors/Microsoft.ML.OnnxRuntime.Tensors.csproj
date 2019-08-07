@@ -3,9 +3,9 @@
     <TargetFramework>netstandard1.1</TargetFramework>
     <Platforms>AnyCPU;x86</Platforms>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <!--SignAssembly>true</SignAssembly>
+    <SignAssembly>true</SignAssembly>
     <DelaySign>false</DelaySign>
-    <AssemblyOriginatorKeyFile>OnnxRuntime.snk</AssemblyOriginatorKeyFile-->
+    <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
     <!--Configurations>netstandard-Debug;netstandard-Release;netstandard1.1-Debug;netstandard1.1-Release</Configurations-->
     <!--DocumentationFile>$(OutputPath)$(MSBuildProjectName).xml</DocumentationFile-->
     <RootNamespace>Microsoft.ML.OnnxRuntime.Tensors</RootNamespace>
