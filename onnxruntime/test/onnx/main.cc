@@ -98,8 +98,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_mem_pattern = true;
   bool enable_openvino = false;
   bool enable_nnapi = false;
-  uint32_t graph_optimization_level{};
-  bool user_graph_optimization_level_set = false;
+  uint32_t graph_optimization_level = 3;
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
@@ -173,7 +172,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             usage();
             return -1;
           }
-          user_graph_optimization_level_set = true;
           break;
         case '?':
         case 'h':
@@ -289,9 +287,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
     }
 
-    if (user_graph_optimization_level_set) {
-      sf.SetGraphOptimizationLevel(graph_optimization_level);
-    }
+    sf.SetGraphOptimizationLevel(graph_optimization_level);
 
     std::unordered_set<std::string> cuda_flaky_tests = {
         "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};

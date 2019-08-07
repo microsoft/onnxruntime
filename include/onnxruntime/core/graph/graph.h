@@ -763,12 +763,16 @@ class Graph {
   /** Returns the mutable parent graph if this is a subgraph */
   Graph* MutableParentGraph() { return parent_graph_; }
 
+  /** Returns the Node containing the GraphProto for this Graph instance if IsSubgraph is true */
+  const Node* ParentNode() const { return parent_node_; }
+
   /** Construct a Graph instance for a subgraph that is created from a GraphProto attribute in a Node.
   Inherits some properties from the parent graph.
-  @param parent_graph The Graph containing the Node which has a GraphProto attribute.
+  @param parent_graph The Graph containing the Node that has the GraphProto attribute.
+  @param parent_node The Node that has the GraphProto attribute.
   @param subgraph_proto The GraphProto from the Node attribute.
   */
-  Graph(Graph& parent_graph, ONNX_NAMESPACE::GraphProto& subgraph_proto);
+  Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::GraphProto& subgraph_proto);
 
   virtual ~Graph();
 
@@ -795,6 +799,7 @@ class Graph {
         Version ir_version,
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         Graph* parent_graph,
+        const Node* parent_node,
         const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
 
   // Add node with specified <node_proto>.
@@ -983,6 +988,8 @@ class Graph {
 
   // the parent graph if this is a subgraph.
   Graph* parent_graph_;
+  // the node containing the graph if parent_graph_ is not nullptr
+  const Node* parent_node_;
 
   // NodeArgs that come from outer scope. Used when building a graph so that
   // these don't get recorded as graph inputs in the GraphProto.
