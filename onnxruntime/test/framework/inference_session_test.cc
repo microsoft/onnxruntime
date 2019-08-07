@@ -343,8 +343,8 @@ TEST(InferenceSessionTests, DisableCPUArena) {
 }
 
 TEST(InferenceSessionTests, TestModelSerialization) {
-  // Load model with level1 transform level as session options 
-  // and serialize the model after transformation.
+  // Load model with level 0 transform level
+  // and assert that the model has Identity nodes.
   SessionOptions so;
   const string test_model = "testdata/transform/abs-id-max.onnx";
   so.session_logid = "InferenceSessionTests.TestModelSerialization";
@@ -353,18 +353,19 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   ASSERT_TRUE(session_object_noopt.Load(test_model).IsOK());
   ASSERT_TRUE(session_object_noopt.Initialize().IsOK());
 
-  // Assert that model has been Identity Nodes.
+  // Assert that model has Identity Nodes.
   const auto& graph_noopt = session_object_noopt.GetGraph();
   std::map<std::string, int> op_to_count_noopt = CountOpsInGraph(graph_noopt);
   ASSERT_TRUE(op_to_count_noopt["Identity"] > 0);
 
+  // Load model with level 1 transform level.
   so.graph_optimization_level = TransformerLevel::Level1;
   so.optimized_model_filepath = ToWideString(test_model + "-TransformLevel-" + std::to_string(static_cast<uint32_t>(so.graph_optimization_level)));
   InferenceSessionGetGraphWrapper session_object{so, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object.Load(test_model).IsOK());
   ASSERT_TRUE(session_object.Initialize().IsOK());
  
-  // Assert that model has been transformed and identify Node is removed.
+  // Assert that model has been transformed and identity Node is removed.
   const auto& graph = session_object.GetGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 0);
@@ -374,7 +375,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   ASSERT_TRUE(overwrite_session_object.Load(test_model).IsOK());
   ASSERT_TRUE(overwrite_session_object.Initialize().IsOK());
 
-  // Load serialized model with no tranform level and serialize model.
+  // Load serialized model with no transform level and serialize model.
   SessionOptions so_opt;
   so_opt.session_logid = "InferenceSessionTests.TestModelSerialization";
   so_opt.graph_optimization_level = TransformerLevel::Default;
@@ -383,7 +384,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   ASSERT_TRUE(session_object_opt.Load(so.optimized_model_filepath).IsOK());
   ASSERT_TRUE(session_object_opt.Initialize().IsOK());
   
-  // Assert that refeed of optimized model with default transform level results
+  // Assert that re-feed of optimized model with default transform level results
   // in same runtime model as abs-id-max.onnx with TransformLevel-1.
   std::ifstream model_fs_session1(so.optimized_model_filepath, ios::in | ios::binary);
   ASSERT_TRUE(model_fs_session1.good());
@@ -396,7 +397,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
                          std::istreambuf_iterator<char>(),
                          std::istreambuf_iterator<char>(model_fs_session2.rdbuf())));
 
-  // Execute with empty optimized model filepath doesn't fail loading.
+  // Execute with empty optimized model file-path doesn't fail loading.
   so_opt.optimized_model_filepath = ToWideString("");
   InferenceSession session_object_emptyValidation{so_opt, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object_emptyValidation.Load(test_model).IsOK());

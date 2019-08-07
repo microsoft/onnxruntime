@@ -529,7 +529,7 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_ERROR(graph.Resolve());
 
     if (!session_options_.optimized_model_filepath.empty()) {
-      // Serialize optimized onnx model.
+      // Serialize optimized ONNX model.
       ORT_RETURN_IF_ERROR(Model::Save(*model_, session_options_.optimized_model_filepath));
     }
 
