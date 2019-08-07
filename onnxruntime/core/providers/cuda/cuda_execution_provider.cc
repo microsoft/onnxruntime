@@ -53,6 +53,7 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(int device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
+  CURAND_CALL_THROW(curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT));
 
   DeviceAllocatorRegistrationInfo default_allocator_info(
       {OrtMemTypeDefault,
@@ -63,6 +64,7 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(int device_id) {
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   CUBLAS_CALL_THROW(cublasDestroy(cublas_handle_));
   CUDNN_CALL_THROW(cudnnDestroy(cudnn_handle_));
+  CURAND_CALL_THROW(curandDestroyGenerator(curand_generator_));
 }
 
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info, bool enable_compiler)

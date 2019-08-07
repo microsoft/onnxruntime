@@ -1732,7 +1732,7 @@ Example 4:
       .SinceVersion(9)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("TrainableDropout")
-      .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::FLOAT, OPTIONAL)
+      .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::INT, OPTIONAL)
       .AllowUncheckedAttributes()
       .Input(0, "data", "The input data as Tensor.", "T")
       .Input(1, "ratio",

@@ -131,6 +131,9 @@ class CudaKernel : public OpKernel {
   inline cudnnHandle_t CudnnHandle() const {
     return provider_->PerThreadCudnnHandle();
   }
+  inline curandGenerator_t CurandGenerator() const {
+    return provider_->PerThreadCurandGenerator();
+  }
 
   template <typename T>
   inline const T* GetConstOnes(size_t count) const {

@@ -575,7 +575,7 @@ if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_STANDARD 14)
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
-  list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn)
+  list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand)
   if (WIN32)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
 

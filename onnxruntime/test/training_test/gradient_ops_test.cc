@@ -1079,21 +1079,27 @@ void TestDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = t
   std::vector<float> ratio_data(1, ratio);
 
   float output_constant = input_constant / (1 - ratio);
-  std::vector<float> dx_data({output_constant, 0, 0, 0,
-                              0, 0, 0, 0,
-                              output_constant, 0, 0, 0,
-                              0, 0, 0, 0});
+  std::vector<float> dx_data({output_constant, output_constant, output_constant, 0,
+                              output_constant, 0, output_constant, 0,
+                              output_constant, 0, output_constant, 0,
+                              output_constant, 0, output_constant, 0});
 
   test.AddInput<float>("dy", x_shape.GetDims(), dy_data);
-  test.AddInput<bool>("mask", x_shape.GetDims(), {true, true, true, false, true, false, true, false, true, false, true, false, true, false, true, false});
-  if (!default_ratio)
+
+  test.AddInput<bool>("mask", x_shape.GetDims(), {true, true, true, false,   //
+                                                  true, false, true, false,  //
+                                                  true, false, true, false,  //
+                                                  true, false, true, false});
+  if (!default_ratio) {
     test.AddInput<float>("ratio", {1}, ratio_data);
+  }
+
   test.AddOutput<float>("dx", x_shape.GetDims(), dx_data);
 
   test.Run();
 }
 
-TEST(GradientCheckerTest, TrainableDropout) {
+TEST(GradientCheckerTest, DISABLED_TrainableDropout) {
   {
     //Ratio 0
     TensorShape x_shape({2, 2, 2, 2});
@@ -1117,7 +1123,7 @@ TEST(GradientCheckerTest, TrainableDropout) {
   }
 }
 
-TEST(GradientCheckerTest, TrainableDropoutGrad) {
+TEST(GradientCheckerTest, DISABLED_TrainableDropoutGrad) {
   {
     //Ratio 0
     TensorShape x_shape({8, 2});
@@ -1146,6 +1152,126 @@ TEST(GradientCheckerTest, TrainableDropoutGrad) {
   {
     TensorShape x_shape({2, 4, 2});
     TestDropoutGradOp(0.6f, x_shape);
+  }
+}
+
+void TestCurandDropoutOp(float ratio, TensorShape& x_shape, bool default_ratio = true) {
+  OpTester test("TrainableDropout", 9, kOnnxDomain, false);
+  if (default_ratio)
+    ratio = 0.5f;
+  float input_constant = 3.0f;
+  std::vector<float> x_data(x_shape.Size(), input_constant);
+  std::vector<float> y_data(x_shape.Size(), 3.0f);
+  std::vector<float> ratio_data(1, ratio);
+
+  test.AddInput<float>("x", x_shape.GetDims(), x_data);
+  if (!default_ratio)
+    test.AddInput<float>("ratio", {1}, ratio_data);
+  test.AddOutput<float>("y", x_shape.GetDims(), y_data);
+  test.AddOutput<bool>("mask", x_shape.GetDims(), {true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true});
+  test.Run();
+
+  //Check output
+  auto fwd_output = test.GetFetches();
+
+  const float* output = fwd_output[0].Get<Tensor>().Data<float>();
+  const bool* mask = fwd_output[1].Get<Tensor>().Data<bool>();
+
+  if (ratio > 0) {
+    for (size_t idx = 0; idx < x_data.size(); ++idx) {
+      if (mask[idx] == false) {
+        EXPECT_EQ(0, output[idx]);
+      } else {
+        EXPECT_IS_TINY(output[idx] - input_constant / (1.0f - ratio));
+      }
+    }
+  } else {
+    for (size_t idx = 0; idx < x_data.size(); ++idx) {
+      EXPECT_EQ(output[idx], input_constant);
+    }
+  }
+}
+
+void TestCurandDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = true) {
+  OpTester test("TrainableDropoutGrad", 9, kOnnxDomain, true);
+  if (default_ratio)
+    ratio = 0.5;
+  float input_constant = 3;
+
+  std::vector<float> dy_data(x_shape.Size(), input_constant);
+  std::vector<float> ratio_data(1, ratio);
+
+  float output_constant = input_constant / (1 - ratio);
+  std::vector<float> dx_data({output_constant, output_constant, output_constant, 0,
+                              output_constant, 0, output_constant, 0,
+                              output_constant, 0, output_constant, 0,
+                              output_constant, 0, output_constant, 0});
+
+  test.AddInput<float>("dy", x_shape.GetDims(), dy_data);
+
+  test.AddInput<bool>("mask", x_shape.GetDims(), {true, true, true, false,   //
+                                                  true, false, true, false,  //
+                                                  true, false, true, false,  //
+                                                  true, false, true, false});
+  if (!default_ratio)
+    test.AddInput<float>("ratio", {1}, ratio_data);
+  test.AddOutput<float>("dx", x_shape.GetDims(), dx_data);
+
+  test.Run();
+}
+TEST(GradientCheckerTest, TrainableDropout_CuRand) {
+  {
+    //Ratio 0
+    TensorShape x_shape({2, 2, 2, 2});
+    TestCurandDropoutOp(0.0f, x_shape, false);
+  }
+  //Ratio 0.2, 3D
+  {
+    TensorShape x_shape({4, 2, 2});
+    TestCurandDropoutOp(0.2f, x_shape, false);
+  }
+  //Ratio 0.4, 2D
+  {
+    TensorShape x_shape({4, 4});
+    TestCurandDropoutOp(0.4f, x_shape, false);
+  }
+
+  //Default ratio, 1D
+  {
+    TensorShape x_shape({16});
+    TestCurandDropoutOp(0.2f, x_shape, true);
+  }
+}
+
+TEST(GradientCheckerTest, TrainableDropoutGrad_Curand) {
+  {
+    //Ratio 0
+    TensorShape x_shape({8, 2});
+    TestCurandDropoutGradOp(0.0f, x_shape);
+  }
+
+  //Ratio 0.2, 1D
+  {
+    TensorShape x_shape({16});
+    TestCurandDropoutGradOp(0.2f, x_shape, false);
+  }
+
+  //Ratio 0.3, 2D
+  {
+    TensorShape x_shape({8, 2});
+    TestCurandDropoutGradOp(0.3f, x_shape, false);
+  }
+
+  //Ratio 0.4, 3D
+  {
+    TensorShape x_shape({2, 4, 2});
+    TestCurandDropoutGradOp(0.4f, x_shape, false);
+  }
+
+  //default Ratio, 4D
+  {
+    TensorShape x_shape({2, 4, 2});
+    TestCurandDropoutGradOp(0.6f, x_shape);
   }
 }
 
