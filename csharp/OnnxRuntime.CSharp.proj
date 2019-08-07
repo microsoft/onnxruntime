@@ -33,6 +33,10 @@ CMake creates a target to this project
              Targets="Restore" 
              Properties="RestoreConfigFile=$(MSBuildThisFileDirectory)\NuGet.CSharp.config;MSBuildWarningsAsMessages=NU1503;RestoreIgnoreFailedSource=true" 
              />
+    <MSBuild Projects="test\Microsoft.ML.OnnxRuntime.Tensors.Tests\Microsoft.ML.OnnxRuntime.Tensors.Tests.csproj"
+             Targets="Restore" 
+             Properties="RestoreConfigFile=$(MSBuildThisFileDirectory)\NuGet.CSharp.config;MSBuildWarningsAsMessages=NU1503;RestoreIgnoreFailedSource=true" 
+             />
     <MSBuild Projects="tools\Microsoft.ML.OnnxRuntime.PerfTool\Microsoft.ML.OnnxRuntime.PerfTool.csproj"
              Targets="Restore" 
              Properties="Platform=AnyCPU;RestoreConfigFile=$(MSBuildThisFileDirectory)\NuGet.CSharp.config;MSBuildWarningsAsMessages=NU1503;RestoreIgnoreFailedSource=true" 
@@ -55,6 +59,9 @@ CMake creates a target to this project
     <MSBuild Projects="test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj"
              Targets="Build"
              />
+    <MSBuild Projects="test\Microsoft.ML.OnnxRuntime.Tensors.Tests\Microsoft.ML.OnnxRuntime.Tensors.Tests.csproj"
+             Targets="Build"
+             />
     <MSBuild Projects="tools\Microsoft.ML.OnnxRuntime.PerfTool\Microsoft.ML.OnnxRuntime.PerfTool.csproj"
              Targets="Build" 
              Properties="Platform=AnyCPU"
@@ -64,6 +71,9 @@ CMake creates a target to this project
   <Target Name="RunTest" AfterTargets="Build">
     <Message Importance="High" Text="Running CSharp tests..." />
     <Exec Command="$(DotNetExe) test test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj -c $(Configuration) --no-build" ConsoleToMSBuild="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
+    </Exec>
+    <Exec Command="$(DotNetExe) test test\Microsoft.ML.OnnxRuntime.Tensors.Tests\Microsoft.ML.OnnxRuntime.Tensors.Tests.csproj -c $(Configuration) --no-build" ConsoleToMSBuild="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
     </Exec>
   </Target>

@@ -11,6 +11,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.ML.OnnxRuntime.In
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.ML.OnnxRuntime.Tests", "test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj", "{50173D13-DF29-42E7-A30B-8B12D36C77B1}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.ML.OnnxRuntime.Tensors.Tests", "test\Microsoft.ML.OnnxRuntime.Tensors.Tests\Microsoft.ML.OnnxRuntime.Tensors.Tests.csproj", "{D4718CD3-8492-4734-94B7-E31A39AA6275}"
+EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.ML.OnnxRuntime.PerfTool", "tools\Microsoft.ML.OnnxRuntime.PerfTool\Microsoft.ML.OnnxRuntime.PerfTool.csproj", "{310506FD-6E78-4D62-989B-25D69A85E8CF}"
 EndProject
 Global
@@ -44,6 +46,12 @@ Global
 		{50173D13-DF29-42E7-A30B-8B12D36C77B1}.Release|Any CPU.Build.0 = Release|Any CPU
 		{50173D13-DF29-42E7-A30B-8B12D36C77B1}.RelWithDebInfo|Any CPU.ActiveCfg = Release|Any CPU
 		{50173D13-DF29-42E7-A30B-8B12D36C77B1}.RelWithDebInfo|Any CPU.Build.0 = Release|Any CPU
+		{D4718CD3-8492-4734-94B7-E31A39AA6275}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D4718CD3-8492-4734-94B7-E31A39AA6275}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D4718CD3-8492-4734-94B7-E31A39AA6275}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D4718CD3-8492-4734-94B7-E31A39AA6275}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D4718CD3-8492-4734-94B7-E31A39AA6275}.RelWithDebInfo|Any CPU.ActiveCfg = Release|Any CPU
+		{D4718CD3-8492-4734-94B7-E31A39AA6275}.RelWithDebInfo|Any CPU.Build.0 = Release|Any CPU
 		{310506FD-6E78-4D62-989B-25D69A85E8CF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{310506FD-6E78-4D62-989B-25D69A85E8CF}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{310506FD-6E78-4D62-989B-25D69A85E8CF}.Release|Any CPU.ActiveCfg = Release|Any CPU
