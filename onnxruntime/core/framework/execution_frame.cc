@@ -402,54 +402,54 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
 
   const auto& alloc_info = per_alloc_plan.location;
   const auto* ml_type = per_alloc_plan.value_type;
-  if (ml_type == nullptr)
+  if (ml_type == nullptr) {
     return Status(
         ONNXRUNTIME, INVALID_ARGUMENT,
         "Tried to allocate without valid type information, ort_value index=" + std::to_string(ort_value_index));
+  }
 
-  if (ml_type->IsSparseTensorType()) {
+  if (ml_type->IsTensorType()) {
+    ORT_ENFORCE(shape, "Allocation of tensor types requires a shape.");
+
+    // tensors
+    const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+
+    AllocKind alloc_kind = per_alloc_plan.alloc_kind;
+    switch (alloc_kind) {
+      // Right now for kAllocate and kAllocateOutput we are using same approach.
+      // In the future we may want to have different way to handle it.
+      case AllocKind::kAllocateOutput:
+      case AllocKind::kAllocate: {
+        ORT_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(ort_value, ort_value_index, ml_data_type, alloc_info,
+                                                               *shape, per_alloc_plan.create_fence_if_async));
+        break;
+      }
+      case AllocKind::kReuse: {
+        int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
+        ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
+            ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
+        break;
+      }
+      case AllocKind::kShare: {
+        int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
+        // copy at the OrtValue level so the shared_ptr for the data is shared between the two OrtValue instances
+        ort_value = GetMutableMLValue(reuse_mlvalue_index);
+        break;
+      }
+      default: {
+        std::ostringstream ostr;
+        ostr << "Invalid allocation kind: " << static_cast<std::underlying_type<AllocKind>::type>(alloc_kind);
+        return Status(ONNXRUNTIME, FAIL, ostr.str());
+      }
+    }
+
+    return Status::OK();
+  } else if (ml_type->IsSparseTensorType()) {
     return AllocateSparseTensor(ort_value, *ml_type, GetAllocator(alloc_info),
                                 *shape, nnz, per_alloc_plan.create_fence_if_async, session_state_);
-  }
-  if (!ml_type->IsTensorType()) {
+  } else {
     return AllocateTraditionalMLValue(ort_value, *static_cast<const NonTensorTypeBase*>(ml_type));
   }
-
-  ORT_ENFORCE(shape, "Allocation of tensor types requires a shape.");
-
-  // tensors
-  const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
-
-  AllocKind alloc_kind = per_alloc_plan.alloc_kind;
-  switch (alloc_kind) {
-    // Right now for kAllocate and kAllocateOutput we are using same approach.
-    // In the future we may want to have different way to handle it.
-    case AllocKind::kAllocateOutput:
-    case AllocKind::kAllocate: {
-      ORT_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(ort_value, ort_value_index, ml_data_type, alloc_info,
-                                                             *shape, per_alloc_plan.create_fence_if_async));
-      break;
-    }
-    case AllocKind::kReuse: {
-      int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
-      ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
-          ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
-      break;
-    }
-    case AllocKind::kShare: {
-      int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
-      // copy at the OrtValue level so the shared_ptr for the data is shared between the two OrtValue instances
-      ort_value = GetMutableMLValue(reuse_mlvalue_index);
-      break;
-    }
-    default: {
-      std::ostringstream ostr;
-      ostr << "Invalid allocation kind: " << static_cast<std::underlying_type<AllocKind>::type>(alloc_kind);
-      return Status(ONNXRUNTIME, FAIL, ostr.str());
-    }
-  }
-
-  return Status::OK();
 }
 
 AllocatorPtr ExecutionFrame::GetAllocatorImpl(const OrtAllocatorInfo& info) const {
