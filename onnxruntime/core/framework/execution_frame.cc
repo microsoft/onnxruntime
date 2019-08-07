@@ -23,8 +23,8 @@ IExecutionFrame::IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, cons
                                  const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                                  const OrtValueNameIdxMap& ort_value_idx_map, const NodeIndexInfo& node_index_info)
     : node_index_info_{node_index_info},
-      fetch_mlvalue_idxs_{fetch_mlvalue_idxs},
-      all_values_size_{static_cast<size_t>(ort_value_idx_map.MaxIdx()) + 1} {
+      all_values_size_{static_cast<size_t>(ort_value_idx_map.MaxIdx()) + 1},
+      fetch_mlvalue_idxs_{fetch_mlvalue_idxs} {
   ORT_ENFORCE(feeds.size() == feed_mlvalue_idxs.size());
   ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs_.size());
   ORT_ENFORCE(node_index_info_.GetMaxMLValueIdx() == ort_value_idx_map.MaxIdx(),
