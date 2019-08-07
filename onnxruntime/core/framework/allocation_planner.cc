@@ -407,9 +407,18 @@ class PlannerImpl {
         }
       }
 
-      for (auto node_input : pnode->ImplicitInputDefs()) {
-        if (node_input->Exists())
-          UseCount(node_input->Name())++;
+      auto implicit_inputs = pnode->ImplicitInputDefs();
+      auto num_implicit_inputs = implicit_inputs.size();
+      for (size_t i = 0; i < num_implicit_inputs; ++i) {
+        if (implicit_inputs[i]->Exists()) {
+          UseCount(implicit_inputs[i]->Name())++;
+          if (graph_inputs.end() != graph_inputs.find(implicit_inputs[i]->Name())) {
+            // If it's a graph input, set its plan.
+            // NOTE: Copy nodes should have already been added if a graph input is fed as inputs of nodes assigned to different providers.
+            OrtValueIndex index = Index(implicit_inputs[i]->Name());
+            plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, p_kernelDef->InputMemoryType(i))->Info());
+          }
+        }
       }
 
       auto outputs = pnode->OutputDefs();
@@ -420,8 +429,6 @@ class PlannerImpl {
         OrtValueIndex index = Index(node_output->Name());
         ProcessDef(index, node_output);
         ++UseCount(index);
-        // By default, outputs of this node are allocated on the default device allocator,
-        // except for outputs marked for allocation in MemoryType:
         plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, p_kernelDef->OutputMemoryType(i))->Info());
       }
       // if sync is needed, mark allocation plan as create_fence_if_async=true
