@@ -79,10 +79,11 @@ class LabelEncoder_2 final : public OpKernel {
     auto output = Y.template MutableDataAsSpan<TValue>();
 
     for (int64_t i = 0; i < shape.Size(); ++i) {
-      if (_map.find(input[i]) == _map.end())
+      const auto found = _map.find(input[i]);
+      if (found == _map.end())
         output[i] = _default_value;
       else
-        output[i] = _map.at(input[i]);
+        output[i] = found->second;
     }
 
     return Status::OK();
