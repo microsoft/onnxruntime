@@ -129,11 +129,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
           return true;
       }
     }
-  } else if (optype == "Cast") {
-    //support of casting to bool in nGraph is in progress
-    const auto& attributes = node->GetAttributes();
-    const auto to_attr = attributes.find("to");
-    return to_attr->second.i() == ONNX_NAMESPACE::TensorProto::BOOL;
   } else if (optype == "Slice") {
     //Slice in opset 10 is currently not supported.
     //unsupported inputs: starts, ends, axes, steps
