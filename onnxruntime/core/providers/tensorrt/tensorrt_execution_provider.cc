@@ -58,7 +58,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
 
   // Find inputs and outputs of the subgraph
-  std::unordered_map<const NodeArg *, int> fused_inputs, fused_outputs, fused_outputs_to_add;
+  std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add;
   std::unordered_set<const NodeArg*> erased;
   int input_order = 0;
   int output_order = 0;
@@ -115,7 +115,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   fused_outputs.insert(fused_outputs_to_add.begin(), fused_outputs_to_add.end());
 
   // Sort inputs and outputs by the order they were added
-  std::multimap<int, const NodeArg *> inputs, outputs;
+  std::multimap<int, const NodeArg*> inputs, outputs;
   for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
     inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
   }
@@ -169,7 +169,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         //Add node and node args
         for (const auto& index : group.first) {
           const auto& node = graph.GetNode(node_index[index]);
-          std::vector<onnxruntime::NodeArg *> inputs, outputs;
+          std::vector<onnxruntime::NodeArg*> inputs, outputs;
           for (auto input : node->InputDefs()) {
             auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
             inputs.push_back(&n_input);
@@ -225,7 +225,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap());
   onnxruntime::Graph& graph_build = model.MainGraph();
   for (const auto& node : graph.Nodes()) {
-    std::vector<onnxruntime::NodeArg *> inputs, outputs;
+    std::vector<onnxruntime::NodeArg*> inputs, outputs;
     for (auto input : node.InputDefs()) {
       auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
       inputs.push_back(&n_input);
