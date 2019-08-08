@@ -30,7 +30,7 @@ IExecutionFrame::IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, cons
   ORT_ENFORCE(node_index_info_.GetMaxMLValueIdx() == ort_value_idx_map.MaxIdx(),
               "node_index_info and ort_value_idx_map are out of sync and cannot be used");
 
-  Init(feed_mlvalue_idxs, feeds, initializers, fetches, ort_value_idx_map);
+  Init(feed_mlvalue_idxs, feeds, initializers, fetches);
 }
 
 IExecutionFrame::~IExecutionFrame() = default;
@@ -106,8 +106,7 @@ int IExecutionFrame::GetNodeIdxToMLValueIdx(int index) const {
 
 void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
                            const std::unordered_map<int, OrtValue>& initializers,
-                           const std::vector<OrtValue>& fetches,
-                           const OrtValueNameIdxMap& ort_value_idx_map) {
+                           const std::vector<OrtValue>& fetches) {
   // 1. resize the all_value_ vector
   all_values_.resize(all_values_size_);
 

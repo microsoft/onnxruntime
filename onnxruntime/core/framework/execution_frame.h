@@ -74,7 +74,7 @@ class IExecutionFrame {
 
   void Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
             const std::unordered_map<int, OrtValue>& initializers,
-            const std::vector<OrtValue>& fetches, const OrtValueNameIdxMap& ort_value_idx_map);
+            const std::vector<OrtValue>& fetches);
 
   const OrtValue& GetMLValue(int ort_value_index) const {
     ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_size_);
