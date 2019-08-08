@@ -232,10 +232,11 @@ ORT_API_STATUS(OrtSetSessionLogId, _Inout_ OrtSessionOptions* options, const cha
 ORT_API_STATUS(OrtSetSessionLogVerbosityLevel, _Inout_ OrtSessionOptions* options, int session_log_verbosity_level);
 
 // Set Graph optimization level.
+// TODO Add documentation about which optimizations are enabled for each value.
 typedef enum GraphOptimizationLevel {
-  ORT_DISABLE_ALL,
-  ORT_ENABLE_BASIC,
-  ORT_ENABLE_ALL
+  ORT_DISABLE_ALL = 0,
+  ORT_ENABLE_BASIC = 1,
+  ORT_ENABLE_ALL = 2
 } GraphOptimizationLevel;
 ORT_API_STATUS(OrtSetSessionGraphOptimizationLevel, _Inout_ OrtSessionOptions* options,
                GraphOptimizationLevel graph_optimization_level);
