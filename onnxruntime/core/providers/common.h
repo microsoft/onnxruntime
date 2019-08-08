@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/framework/tensor.h"
 
 namespace onnxruntime {
 
