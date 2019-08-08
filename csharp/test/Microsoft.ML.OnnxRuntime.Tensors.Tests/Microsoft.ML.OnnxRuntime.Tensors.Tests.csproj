@@ -10,7 +10,8 @@
     <SignAssembly>true</SignAssembly> <!-- need signing for freind access to the internals of the Tensors assembly -->
     <DelaySign>false</DelaySign>
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
-
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
     <!--OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
     <ProtocDirectory>$(OnnxRuntimeBuildDirectory)\$(Configuration)\external\protobuf\cmake\$(Configuration)</ProtocDirectory>
     <ProtoSrc>$(OnnxRuntimeCsharpRoot)\..\onnxruntime\core\protobuf</ProtoSrc>
@@ -21,20 +22,20 @@
     <LangVersion>7.2</LangVersion>
   </PropertyGroup>
   <ItemGroup>
-    <!--Compile Include="NativeMemory.cs" />
+    <Compile Include="NativeMemory.cs"/>
+    <Compile Include="TensorExtensions.cs"/>
+    <Compile Include="TensorTests.cs"/>
+    <Compile Include="TensorTestsBase.cs"/>
     <Compile Include="TensorArithmetic.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
       <DependentUpon>TensorArithmetic.tt</DependentUpon>
     </Compile>
-    <Compile Include="TensorExtensions.cs" />
     <Compile Include="TensorOperations.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
       <DependentUpon>TensorOperations.tt</DependentUpon>
     </Compile>
-    <Compile Include="TensorTests.cs" />
-    <Compile Include="TensorTestsBase.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="TensorArithmetic.tt">
@@ -46,7 +47,6 @@
       <LastGenOutput>TensorOperations.cs</LastGenOutput>
     </None>
     <None Include="TensorTemplate.ttinclude" />
-    -->
   </ItemGroup> 
   <ItemGroup>
     <!-- Some internal types are needed, so we reference the implementation assembly, rather than the reference assembly. -->
