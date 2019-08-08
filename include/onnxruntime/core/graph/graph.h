@@ -279,7 +279,7 @@ class Node {
     return !attr_to_subgraph_map_.empty();
   }
 
-  /** Get the const subgraphs from a node. 
+  /** Get the const subgraphs from a node.
   @remarks Creates a new vector so calling ContainsSubgraphs first is preferred. */
   std::vector<gsl::not_null<const Graph*>> GetSubgraphs() const;
 
@@ -773,6 +773,20 @@ class Graph {
     return nullptr;
   }
 
+  Node* GetMutableProducerNode(const std::string& node_arg_name) {
+    return const_cast<Node*>(const_cast<const Graph*>(this)->GetProducerNode(node_arg_name));
+  }
+
+  void UpdateProducerNode(const std::string& node_arg_name, NodeIndex node_index) {
+    auto iter = node_arg_to_producer_node_.find(node_arg_name);
+
+    if (iter != node_arg_to_producer_node_.end()) {
+      iter->second = node_index;
+    } else {
+      node_arg_to_producer_node_[node_arg_name] = node_index;
+    }
+  }
+
   std::vector<const Node*> GetConsumerNodes(const std::string& node_arg_name) const {
     std::vector<const Node*> results;
     auto iter = node_arg_to_consumer_nodes_.find(node_arg_name);
@@ -784,7 +798,28 @@ class Graph {
     return results;
   }
 
-  /** Construct a Graph instance for a subgraph that is created from a GraphProto attribute in a Node. 
+  std::vector<Node*> GetMutableConsumerNodes(const std::string& node_arg_name) {
+    std::vector<Node*> results;
+    auto iter = node_arg_to_consumer_nodes_.find(node_arg_name);
+    if (iter != node_arg_to_consumer_nodes_.end()) {
+      for (auto node_index : iter->second) {
+        results.push_back(GetNode(node_index));
+      }
+    }
+    return results;
+  }
+
+  void UpdateConsumerNodes(const std::string& node_arg_name, const std::vector<Node*>& nodes) {
+    auto iter = node_arg_to_consumer_nodes_.find(node_arg_name);
+    if (iter != node_arg_to_consumer_nodes_.end()) {
+      node_arg_to_consumer_nodes_.erase(node_arg_name);
+    }
+    for (Node* node : nodes) {
+      node_arg_to_consumer_nodes_[node_arg_name].insert(node->Index());
+    }
+  }
+
+  /** Construct a Graph instance for a subgraph that is created from a GraphProto attribute in a Node.
   Inherits some properties from the parent graph.
   @param parent_graph The Graph containing the Node which has a GraphProto attribute.
   @param subgraph_proto The GraphProto from the Node attribute.

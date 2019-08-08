@@ -129,7 +129,7 @@ void RegisterGradientSchemas() {
           3,
           "gradients",
           "gradients computed in this iteration.",
-          "T3")
+          "T4")
       .Input(
           4,
           "moment_1",
@@ -194,7 +194,11 @@ void RegisterGradientSchemas() {
       .TypeConstraint(
           "T3",
           {"tensor(float)", "tensor(double)"},
-          "Constrain input and output to float tensors.");
+          "Constrain input types to float tensors.")
+      .TypeConstraint(
+          "T4",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.");
 
   // TODO: This is copied from onnx schemas. When the change is in and we update this can be removed.
   // For Brevity documentation was not copied

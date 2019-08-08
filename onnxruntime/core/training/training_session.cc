@@ -6,6 +6,10 @@
 #include "core/graph/training/in_graph_training_optimizer.h"
 #include "core/training/gradient_graph_builder.h"
 #include "core/training/training_session.h"
+#include "core/optimizer/constant_folding.h"
+#include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/identity_elimination.h"
+#include "core/graph/training/mixed_precision_transformer.h"
 
 //Gist Encoding
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -70,6 +74,16 @@ Status TrainingSession::BuildLossFunction(const LossFunctionInfo& loss_func_info
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to add loss function:", exp.what());
   }
   return DoPostLoadProcessing(*model_);
+}
+
+common::Status TrainingSession::EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train) {
+  bool modified;
+  RuleBasedGraphTransformer rule_based_graph_transformer("rule_based_graph_transformer");
+  rule_based_graph_transformer.Register(make_unique<EliminateIdentity>());
+  ORT_RETURN_IF_ERROR(rule_based_graph_transformer.Apply(model_->MainGraph(), modified));
+
+  ORT_RETURN_IF_ERROR(TransformGraphForMixedPrecision(model_->MainGraph(), weights_to_train));
+  return Status::OK();
 }
 
 Status TrainingSession::BuildGradientGraph(const unordered_set<string>& weights_to_train,
@@ -280,6 +294,13 @@ common::Status TrainingSession::UpdateTrainableWeightsInfoInGraph() {
   std::vector<const NodeArg*> new_graph_inputs(graph_inputs);
   new_graph_inputs.insert(new_graph_inputs.end(), inputs_to_add.begin(), inputs_to_add.end());
   graph.SetInputs(new_graph_inputs);
+  return Status::OK();
+}
+
+common::Status TrainingSession::RunConstantFolding() {
+  ConstantFolding constant_folder{};
+  bool modified;
+  ORT_RETURN_IF_ERROR(constant_folder.Apply(model_->MainGraph(), modified));
   return Status::OK();
 }
 

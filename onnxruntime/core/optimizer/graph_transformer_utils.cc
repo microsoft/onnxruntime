@@ -94,7 +94,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     case TransformerLevel::Level1: {
       std::unordered_set<std::string> l1_execution_providers = {};
 
-      transformers.emplace_back(std::make_unique<ConstantFolding>(l1_execution_providers));
+      // TODO hack - we'll run it manually prior to the mixed precision transformation
+      //transformers.emplace_back(std::make_unique<ConstantFolding>(l1_execution_providers));
 
       rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
     } break;

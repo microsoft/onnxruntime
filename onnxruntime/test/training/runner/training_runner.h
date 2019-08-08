@@ -101,6 +101,8 @@ class TrainingRunner {
     bool dump_fetches = false;
 
     VectorString fetch_names;
+
+    bool use_mixed_precision_ = false;
   };
 
   TrainingRunner(std::shared_ptr<DataSet> training_data,

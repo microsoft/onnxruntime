@@ -21,7 +21,7 @@ namespace training {
     }                                                          \
   };
 
-DECLARE_GRADIENT_BUILDER(GetCastGradient)
+DECLARE_GRADIENT_BUILDER_DISABLE_COPY_ATTRIBUTES(GetCastGradient)
 DECLARE_GRADIENT_BUILDER(GetSinGradient)
 DECLARE_GRADIENT_BUILDER(GetTanhGradient)
 DECLARE_GRADIENT_BUILDER(GetSqrtGradient)

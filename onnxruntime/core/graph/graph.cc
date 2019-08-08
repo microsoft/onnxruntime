@@ -1544,10 +1544,13 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
 
     if ((existing_type != inferred_type) && (existing_type != nullptr)) {
       // A type exists for this output but does not match the inferred type.
-      return Status(ONNXRUNTIME, FAIL,
-                    "Type Error: Type (" + *existing_type + ") of output arg (" +
-                        output_def->Name() + ") of node (" + node_name +
-                        ") does not match expected type (" + *inferred_type + ").");
+      // For mixed precision training, the type mismatch is expected since the model is loaded with float32 first
+      // and then transformed to float16.
+      // TODO verify that a warning (and not a failure) is ok for cases other than mixed precision
+      output_def->SetType(inferred_type);
+      LOGS_DEFAULT(WARNING) << "Type Mismatch: Type (" + *existing_type + ") of output arg (" +
+                                output_def->Name() + ") of node (" + node_name +
+                               ") does not match expected type (" + *inferred_type + ").";
     }
 
     if (existing_type == nullptr)
@@ -2536,7 +2539,7 @@ Status Graph::InlineFunction(Node& node) {
   auto output_edges = node.GetRelationships().output_edges;
   for (auto output_edge : output_edges) {
     RemoveEdge(node.Index(), output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
-  } 
+  }
   std::unordered_map<std::string, NodeArg*> remap_input_output;
   if (node.MutableInputDefs().size() != subgraph.GetInputsIncludingInitializers().size())
 	  return Status(ONNXRUNTIME, FAIL);

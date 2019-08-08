@@ -41,7 +41,8 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
   std::vector<std::string> custom_list = {l1_rule1, l1_transformer, l2_rule1};
 
   auto transformers = transformer_utils::GenerateTransformers(TransformerLevel::Level1, custom_list);
-  ASSERT_TRUE(transformers.size() == 2);
+  //ASSERT_TRUE(transformers.size() == 2);
+  ASSERT_TRUE(transformers.size() == 1); // TODO hack - temporarily disabled constant folding
   auto l1_rule_transformer_name = transformer_utils::GenerateRuleBasedTransformerName(TransformerLevel::Level1);
   RuleBasedGraphTransformer* rule_transformer = nullptr;
   for (const auto& transformer : transformers) {
@@ -50,7 +51,7 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
     }
   }
   ASSERT_TRUE(rule_transformer && rule_transformer->RulesCount() == 1);
-  
+
   transformers = transformer_utils::GenerateTransformers(TransformerLevel::Level2, custom_list);
   ASSERT_TRUE(transformers.size() == 1);
   rule_transformer = dynamic_cast<RuleBasedGraphTransformer*>(transformers[0].get());

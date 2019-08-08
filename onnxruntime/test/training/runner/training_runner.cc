@@ -78,6 +78,14 @@ Status TrainingRunner::Initialize() {
   // Add gradient graph
   ORT_RETURN_IF_ERROR(session_.BuildGradientGraph(weights_to_train, params_.loss_func_info_.loss_name, opt_info));
 
+  // TODO hack - manually fold constants before mixed precision transformer (if run)
+  // investigate cleaner solution, such as registering an actual mixed precision transformer that runs after constant folding in InferenceSession::Initialize()
+  ORT_RETURN_IF_ERROR(session_.RunConstantFolding());
+
+  if (params_.use_mixed_precision_) {
+    ORT_RETURN_IF_ERROR(session_.EnableMixedPrecision(weights_to_train));
+  }
+
   // Expose all fetches as graph outputs
   ORT_RETURN_IF_ERROR(session_.ExposeAsGraphOutput(params_.fetch_names));
 

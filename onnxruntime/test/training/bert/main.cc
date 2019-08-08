@@ -50,7 +50,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("save_checkpoint_steps", "How often to save the model checkpoint.", cxxopts::value<int>()->default_value("1000"))
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
-      ("use_fp16", "Whether to use fp32 or fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
+      ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
       ("max_profile_records", "Maximum number of runtime profile data records to collect.",
           cxxopts::value<size_t>()->default_value(to_string(profiling::Profiler::DEFAULT_MAX_PROFILER_EVENTS)))
@@ -95,7 +95,10 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     } else {
       printf("Incorrect command line for mode: it must be one of [perf|train]\n");
     }
-
+    params.use_mixed_precision_ = flags["use_mixed_precision"].as<bool>();
+    if (params.use_mixed_precision_) {
+      printf("Mixed precision training is enabled.\n");
+    }
   } catch (const exception& e) {
     std::string msg = "Failed to parse the command line arguments";
     cout << msg << e.what() << endl;

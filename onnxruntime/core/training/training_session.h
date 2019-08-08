@@ -59,6 +59,11 @@ class TrainingSession : public InferenceSession {
                                     const std::string& loss_function_output_name,
                                     const std::unordered_map<std::string, OptimizerInfo>& opt_info = {});
 
+  /** Enable mixed precision training
+  @param weights_to_train a set of weights to be training.
+  */
+  common::Status EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train);
+
   common::Status ExposeAsGraphOutput(const std::vector<std::string>& node_args);
 
   /** Save a model, 3 options:
@@ -95,6 +100,9 @@ class TrainingSession : public InferenceSession {
       ImmutableWeights;
 
   std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights) const;
+
+  // TODO hack - allows us to manually run constant folding before mixed precision transformation
+  common::Status RunConstantFolding();
 
   static bool IsImmutableWeight(const ImmutableWeights& immutable_weights,
                                 const Node* node,

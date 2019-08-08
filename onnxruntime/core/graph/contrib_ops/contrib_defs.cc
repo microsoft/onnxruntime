@@ -1899,11 +1899,11 @@ Example 4:
           "Constrain input and output types to all numeric tensors.")
       .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
           {// nodes: {outputs, op, inputs, attributes}
-           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("OneHalf", 0.5f),
+           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One_half", 0.5f),
            {
                {"Sqrt_Grad"},
                "Div",
-               {"OneHalf", "X"},
+               {"One_half", "X"},
            },
            {
                {"dX"},
@@ -1926,7 +1926,7 @@ Example 4:
           "Constrain input and output types to all numeric tensors.")
       .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
           {// nodes: {outputs, op, inputs, attributes}
-           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("TWO_SQRTPI", static_cast<float>(M_2_SQRTPI)),
+           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Two_sqrt_pi", static_cast<float>(M_2_SQRTPI)),
            {
                {"Square_x"},
                "Mul",
@@ -1945,7 +1945,7 @@ Example 4:
            {
                {"Erf_Grad"},
                "Mul",
-               {"TWO_SQRTPI", "Exp_Neg_Square_x"},
+               {"Two_sqrt_pi", "Exp_Neg_Square_x"},
            },
            {
                {"dX"},
@@ -2027,7 +2027,7 @@ Example 4:
       .Output(0, "summary", "The serialized Tensorboard Summary.", "S")
       .TypeConstraint(
           "T",
-          {"tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input type to float tensors.")
       .TypeConstraint(
           "S",
@@ -2048,7 +2048,7 @@ Example 4:
       .Output(0, "summary", "The serialized Tensorboard Summary.", "S")
       .TypeConstraint(
           "T",
-          {"tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input type to float tensors.")
       .TypeConstraint(
           "S",
@@ -2106,23 +2106,21 @@ Example 4:
       .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
           {
               // nodes: {outputs, op, inputs, attributes}
-              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("sqrt_two", 1.4142135381698608f),
-              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("multiplier", 0.5f),
-              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("one", 1.0f),
-              {
-                  {"X_1"},
-                  "Mul",
-                  {"X", "multiplier"},
-              },
+              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Sqrt_two", static_cast<float>(M_SQRT2)),
+              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One_half", 0.5f),
+              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One", 1.0f),
+              {{"X_1"},
+               "Mul",
+               {"X", "One_half"}},
               {{"X_2"},
                "Div",
-               {"X", "sqrt_two"}},
+               {"X", "Sqrt_two"}},
               {{"X_3"},
                "Erf",
                {"X_2"}},
               {{"X_4"},
                "Add",
-               {"X_3", "one"}},
+               {"X_3", "One"}},
               {{"Y"},
                "Mul",
                {"X_1", "X_4"}},
@@ -2144,30 +2142,28 @@ Example 4:
       .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
           {
               // nodes: {outputs, op, inputs, attributes}
-              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("sqrt_two", 1.4142135381698608f),
-              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("multiplier", 0.5f),
-              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("one", 1.0f),
-              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("two_sqrt_pi", 1.128379225730896f),
-              {
-                  {"X_1"},
-                  "Mul",
-                  {"X", "multiplier"},
-              },
+              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Sqrt_two", static_cast<float>(M_SQRT2)),
+              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One_half", 0.5f),
+              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One", 1.0f),
+              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Two_sqrt_pi", static_cast<float>(M_2_SQRTPI)),
+              {{"X_1"},
+               "Mul",
+               {"X", "One_half"}},
               {{"X_2"},
                "Div",
-               {"X", "sqrt_two"}},
+               {"X", "Sqrt_two"}},
               {{"X_3"},
                "Erf",
                {"X_2"}},
               {{"X_4"},
                "Add",
-               {"X_3", "one"}},
+               {"X_3", "One"}},
               {{"X_5_grad"},
                "Mul",
                {"dY", "X_4"}},
               {{"X_6_grad"},
                "Mul",
-               {"X_5_grad", "multiplier"}},
+               {"X_5_grad", "One_half"}},
               {{"X_7"},
                "Mul",
                {"X_2", "X_2"}},
@@ -2179,7 +2175,7 @@ Example 4:
                {"X_8"}},
               {{"X_10_grad"},
                "Mul",
-               {"two_sqrt_pi", "X_9"}},
+               {"Two_sqrt_pi", "X_9"}},
               {{"X_11_grad"},
                "Mul",
                {"dY", "X_1"}},
@@ -2188,7 +2184,7 @@ Example 4:
                {"X_11_grad", "X_10_grad"}},
               {{"X_13"},
                "Div",
-               {"one", "sqrt_two"}},
+               {"One", "Sqrt_two"}},
               {{"X_14_grad"},
                "Mul",
                {"X_12_grad", "X_13"}},
