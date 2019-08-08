@@ -7,6 +7,10 @@
     <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
     <Platforms>AnyCPU;x86</Platforms>
     <OutputPath>bin\$(Configuration)\</OutputPath>
+    <SignAssembly>true</SignAssembly> <!-- need signing for freind access to the internals of the Tensors assembly -->
+    <DelaySign>false</DelaySign>
+    <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
+
     <!--OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
     <ProtocDirectory>$(OnnxRuntimeBuildDirectory)\$(Configuration)\external\protobuf\cmake\$(Configuration)</ProtocDirectory>
     <ProtoSrc>$(OnnxRuntimeCsharpRoot)\..\onnxruntime\core\protobuf</ProtoSrc>
@@ -45,9 +49,9 @@
     -->
   </ItemGroup> 
   <ItemGroup>
-    <!- Some internal types are needed, so we reference the implementation assembly, rather than the reference assembly. ->
-    <DefaultReferenceExclusions Include="System.Numerics.Tensors" />
-    <ReferenceFromRuntime Include="System.Numerics.Tensors" />
+    <!-- Some internal types are needed, so we reference the implementation assembly, rather than the reference assembly. -->
+    <DefaultReferenceExclusions Include="Microsoft.ML.OnnxRuntime.Tensors" />
+    <ReferenceFromRuntime Include="Microsoft.ML.OnnxRuntime.Tensors" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime.Tensors\Microsoft.ML.OnnxRuntime.Tensors.csproj" />
