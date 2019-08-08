@@ -551,7 +551,7 @@ if(onnxruntime_USE_OPENVINO)
 		add_definitions(-DOPENVINO_CONFIG_VAD_M=1)
     endif()
 
-	if(onnxruntime_USE_HETERO_FPGA)
+	if(onnxruntime_USE_OPENVINO_HETERO_FPGA)
 		add_definitions(-DOPENVINO_CONFIG_HETERO_FPGA=1)
 	endif()
 
