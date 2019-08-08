@@ -543,7 +543,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGatherGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetReluGradient) {
   return std::vector<NodeDef>{
       NodeDef("ReluGrad",
-              {GO(0), I(0)},
+              {GO(0), O(0)},
               {GI(0)})};
 }
 

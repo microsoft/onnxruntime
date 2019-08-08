@@ -90,6 +90,13 @@ Status TrainingRunner::Initialize() {
     }
   }
 
+  if (params_.use_gist_) {
+    ORT_RETURN_IF_ERROR(session_.AddGistEncoding());
+    if (!params_.model_gist_encode_.empty()) {
+      ORT_RETURN_IF_ERROR(session_.Save(params_.model_gist_encode_, TrainingSession::SaveOption::NO_RELOAD));
+    }
+  }
+
 #ifdef USE_CUDA
   if (params_.use_cuda_) {
     CUDAExecutionProviderInfo xp_info{params_.world_rank_};

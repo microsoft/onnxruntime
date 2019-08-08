@@ -7,6 +7,10 @@
 #include "core/training/gradient_graph_builder.h"
 #include "core/training/training_session.h"
 
+//Gist Encoding
+#include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/gist_encode_decode.h"
+
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_allocator.h"
@@ -34,6 +38,22 @@ static Status BuildGradientGraphInternal(Graph& graph,
                                           loss_function_output_name,
                                           opt_info);
   return grad_graph_builder.Build();
+}
+
+Status TrainingSession::AddGistEncoding() {
+  try {
+    Graph& graph = model_->MainGraph();
+
+    auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleGistTransformer1");
+    rule_transformer_L1->Register(std::make_unique<GistEncodeDecode>());
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+    graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+
+    ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1));
+  } catch (const OnnxRuntimeException& exp) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to add Gist Encoding:", exp.what());
+  }
+  return DoPostLoadProcessing(*model_);
 }
 
 Status TrainingSession::BuildLossFunction(const LossFunctionInfo& loss_func_info) {

@@ -30,7 +30,7 @@ Status GraphAugmenter::AugmentGraph(Graph& graph, const GraphDefs& graph_element
 
     graph.AddNode(node_def.name,
                   node_def.op_type,
-                  "",
+                  "Backward pass",
                   input_args,
                   output_args,
                   &node_def.attributes,

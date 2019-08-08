@@ -30,6 +30,7 @@
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/shape_to_initializer.h"
 #include "core/optimizer/gelu_fusion.h"
+#include "core/optimizer/gist_encode_decode.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -467,7 +468,6 @@ TEST(GraphTransformationTests, MatMulAddFusion_three_input) {
 #ifndef DISABLE_CONTRIB_OPS
 TEST(GraphTransformationTests, Gemm_Relu_three_input) {
   string model_uri = MODEL_FOLDER + "matmul_add_fusion/3Input/gemm_relu.onnx";
-
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
   Graph& graph = p_model->MainGraph();
@@ -621,6 +621,24 @@ TEST(GraphTransformationTests, GeluFusion) {
   ASSERT_TRUE(op_to_count["Erf"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
   ASSERT_TRUE(op_to_count["Gelu"] == 1);
+}
+
+TEST(GraphTransformationTests, GistEncodeDecode) {
+  string model_uri = MODEL_FOLDER + "../test_training_model.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleGistTransformer1");
+  rule_transformer_L1->Register(std::make_unique<GistEncodeDecode>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["GistBinarizeEncoder"] == op_to_count["GistBinarizeEncoder"]);
 }
 
 }  // namespace test

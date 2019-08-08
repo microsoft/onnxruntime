@@ -32,6 +32,7 @@ class TrainingRunner {
     std::string model_actual_running_graph_path_;    // To save the model with the actual running graph after transformations.
     std::string model_trained_path_;                 // To save the model after training.
     std::string model_trained_with_loss_func_path_;  // To save the model with loss func after training.
+    std::string model_gist_encode_;                  // To save the model with gist encoding.
 
     PATH_STRING_TYPE train_data_dir;
     PATH_STRING_TYPE test_data_dir;
@@ -39,7 +40,6 @@ class TrainingRunner {
 
     bool is_perf_test;
     int num_of_perf_samples;
-
     LossFunctionInfo loss_func_info_;
 
     // The in-graph optimizer info.
@@ -88,12 +88,12 @@ class TrainingRunner {
     // Use CUDA providers or not.
     // TODO: support a list of providers.
     bool use_cuda_ = false;
-
+    // Use Gist on CPU.
+    bool use_gist_ = false;
     // Whether we collect execution profile trace during this run.
     bool use_profiler = false;
     // Maximum number of profile records to collect.
     size_t max_profile_records = profiling::Profiler::DEFAULT_MAX_PROFILER_EVENTS;
-
     int world_rank_ = 0;
     int world_size_ = 1;
 

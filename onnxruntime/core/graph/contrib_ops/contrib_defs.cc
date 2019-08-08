@@ -1799,6 +1799,35 @@ Example 4:
         propagateShapeAndTypeFromFirstInput(ctx);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistBinarizeEncoder)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .Input(0, "X", "uncompressed input", "T")
+      .Output(0, "Y", "uncompressed output", "T")
+      .Output(1, "Y1", "compressed output", "T1")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to all numeric tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(bool)"},
+          "Binarize tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistBinarizeDecoder)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .Input(0, "X", "compresssed input", "T1")
+      .Output(0, "Y", "uncompressed output", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to all numeric tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(bool)"},
+          "Binarize tensors.");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(SinGradient)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)

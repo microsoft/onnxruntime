@@ -42,6 +42,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("log_dir", "The directory to write tensorboard events.",
         cxxopts::value<std::string>()->default_value("logs"))
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
+	  ("use_gist", "Use GIST encoding/decoding.")
       ("use_cuda", "Use CUDA execution provider for training.", cxxopts::value<bool>()->default_value("false"))
       ("num_of_epoch", "Num of epoch", cxxopts::value<int>()->default_value("2"))
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>()->default_value("100"))
@@ -56,6 +57,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
 
     params.model_name = flags["model_name"].as<std::string>();
     params.use_cuda_ = flags.count("use_cuda") > 0;
+    params.use_gist_ = flags.count("use_gist") > 0;
     params.learning_rate_ = flags["learning_rate"].as<float>();
     params.num_of_epoch_ = flags["num_of_epoch"].as<int>();
     params.batch_size_ = flags["train_batch_size"].as<int>();
@@ -120,6 +122,9 @@ void setup_training_params(TrainingRunner::Parameters& params) {
   params.model_trained_path_ = params.model_name + "_trained.onnx";
   params.model_trained_with_loss_func_path_ = params.model_name + "_with_cost_trained.onnx";
   params.model_prediction_name_ = "predictions";
+
+  //Gist encode
+  params.model_gist_encode_ = params.model_name + "_encode_gist.onnx";
   params.loss_func_info_ = LossFunctionInfo(OpDef("SoftmaxCrossEntropy"),
                                             "loss",
                                             {params.model_prediction_name_, "labels"});
