@@ -20,4 +20,16 @@ inline int64_t HandleNegativeAxis(int64_t axis, int64_t tensor_rank) {
   return axis = axis < 0 ? axis + tensor_rank : axis;
 }
 
+/**
+Returns true if given tensor is a scalar or 1D tensor of size 1
+**/
+inline bool IsScalarOr1ElementVector(const Tensor* input) {
+  if (input->Shape().NumDimensions() == 0 ||
+      (input->Shape().NumDimensions() == 1 && input->Shape().GetDims().size() == 1)) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
 }  // namespace onnxruntime
