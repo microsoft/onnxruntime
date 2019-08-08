@@ -528,7 +528,7 @@ common::Status InferenceSession::Initialize() {
     // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
     ORT_RETURN_IF_ERROR(graph.Resolve());
 
-    if (!session_options_.optimized_model_filepath.empty()) {
+    if (session_options_.graph_optimization_level < TransformerLevel::Level3 && !session_options_.optimized_model_filepath.empty()) {
       // Serialize optimized ONNX model.
       ORT_RETURN_IF_ERROR(Model::Save(*model_, session_options_.optimized_model_filepath));
     }
