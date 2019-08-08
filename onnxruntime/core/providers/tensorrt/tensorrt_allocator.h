@@ -25,6 +25,8 @@ class TensorrtAllocator : public IDeviceAllocator {
   const OrtAllocatorInfo info_;
 };
 
+/*! \brief This allocator here is used to let allocation planner get allocator information
+*/
 class TensorrtPinnedAllocator : public IDeviceAllocator {
  public:
   virtual void* Alloc(size_t size) override;
