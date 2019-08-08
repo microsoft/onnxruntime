@@ -96,7 +96,7 @@ system.
 	 * Version: **CUDA 10.0** and **cuDNN 7.3**
 	 * Linux Python packages require **CUDA 10.1** and **cuDNN 7.3** 
   * Older ONNX Runtime releases: used **CUDA 9.1** and **cuDNN 7.1** - please refer to [prior release notes](https://github.com/microsoft/onnxruntime/releases) for more details.
-* Python binaries are compatible with **Python 3.5-3.7**. See [Python Dev Notes](https://github.com/microsoft/onnxruntime/blob/master/docs/Python_Dev_Notes.md)
+* Python binaries are compatible with **Python 3.5-3.7**. See [Python Dev Notes](https://github.com/microsoft/onnxruntime/blob/master/docs/Python_Dev_Notes.md). If using `pip` to be download the Python binaries, run `pip install --upgrade pip` prior to downloading. 
 * Certain operators makes use of system locales. Installation of the **English language package** and configuring `en_US.UTF-8 locale` is required.
   * For Ubuntu install [language-pack-en package](https://packages.ubuntu.com/search?keywords=language-pack-en)
   * Run the following commands:
