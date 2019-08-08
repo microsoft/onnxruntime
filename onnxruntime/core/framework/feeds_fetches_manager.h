@@ -48,7 +48,7 @@ struct FeedsFetchesInfo {
 class FeedsFetchesManager {
  public:
   struct MLValueCopyInfo {
-    const OrtDevice* target_device = nullptr;
+    OrtDevice target_device;
     const IExecutionProvider* allocation_provider = nullptr;
   };
 

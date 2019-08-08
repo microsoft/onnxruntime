@@ -32,9 +32,9 @@ bool ProviderIsCpuBased(const std::string& provider_type) {
          provider_type == onnxruntime::kNnapiExecutionProvider;
 }
 
-common::Status AllocateHelper(const IExecutionProvider& execution_provider, const OrtDevice* device, const Tensor& fetched_tensor,
+common::Status AllocateHelper(const IExecutionProvider& execution_provider, const OrtDevice& device, const Tensor& fetched_tensor,
                               OrtValue& output_mlvalue) {
-  auto allocator = execution_provider.GetAllocator(device->Id(), OrtMemTypeDefault);
+  auto allocator = execution_provider.GetAllocator(device.Id(), OrtMemTypeDefault);
   if (!allocator) {
     return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator");
   }
@@ -71,6 +71,11 @@ static Status CopyMLValue(const DataTransferManager& data_transfer_mgr,
                           const FeedsFetchesManager::MLValueCopyInfo& copy_info,
                           const OrtValue& source_mlvalue,
                           OrtValue& target_mlvalue) {
+  if (copy_info.allocation_provider == nullptr){
+    target_mlvalue = source_mlvalue;
+    return Status::OK();
+  }
+
   auto& source_tensor = source_mlvalue.Get<Tensor>();
   if (!target_mlvalue.IsAllocated()) {
     ORT_RETURN_IF_ERROR(utils::AllocateHelper(*copy_info.allocation_provider, copy_info.target_device,
@@ -123,7 +128,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
 
     auto& required_provider_type = GetNodeInputProviderType(node_info);
     auto* required_provider = exec_providers.Get(required_provider_type);
-    copy_info.target_device = &required_device;
+    copy_info.target_device = required_device;
     copy_info.allocation_provider = required_provider;
 
     ORT_RETURN_IF_ERROR(CopyMLValue(session_state.GetDataTransferMgr(), copy_info, orig_mlvalue, new_mlvalue));
@@ -337,7 +342,7 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
     }
 
     needed_copy = true;
-    FeedsFetchesManager::MLValueCopyInfo copy_info{&target_device, p_output_provider};
+    FeedsFetchesManager::MLValueCopyInfo copy_info{target_device, p_output_provider};
     ORT_RETURN_IF_ERROR(CopyMLValue(session_state.GetDataTransferMgr(), copy_info, fetched_mlvalue, output_mlvalue));
 
     if (copiers) {

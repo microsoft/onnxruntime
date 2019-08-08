@@ -393,33 +393,29 @@ class PlannerImpl {
                                pnode->GetExecutionProviderType());
       }
 
-      auto inputs = pnode->InputDefs();
-      auto num_inputs = inputs.size();
-      for (size_t i = 0; i < num_inputs; ++i) {
-        if (inputs[i]->Exists()) {
-          UseCount(inputs[i]->Name())++;
-          if (graph_inputs.end() != graph_inputs.find(inputs[i]->Name())) {
-            // If it's a graph input, set its plan.
-            // NOTE: Copy nodes should have already been added if a graph input is fed as inputs of nodes assigned to different providers.
-            OrtValueIndex index = Index(inputs[i]->Name());
-            plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, p_kernelDef->InputMemoryType(i))->Info());
-          }
-        }
-      }
+      // increment UseCount and add location information if applicable for the provided input def
+      auto process_input = [&graph_inputs, &exec_provider, &p_kernelDef, this](const NodeArg& input, size_t arg_idx) {
+        const auto& name = input.Name();
+        UseCount(name)++;
 
-      auto implicit_inputs = pnode->ImplicitInputDefs();
-      auto num_implicit_inputs = implicit_inputs.size();
-      for (size_t i = 0; i < num_implicit_inputs; ++i) {
-        if (implicit_inputs[i]->Exists()) {
-          UseCount(implicit_inputs[i]->Name())++;
-          if (graph_inputs.end() != graph_inputs.find(implicit_inputs[i]->Name())) {
-            // If it's a graph input, set its plan.
-            // NOTE: Copy nodes should have already been added if a graph input is fed as inputs of nodes assigned to different providers.
-            OrtValueIndex index = Index(implicit_inputs[i]->Name());
-            plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, p_kernelDef->InputMemoryType(i))->Info());
-          }
+        // If it's a graph input or outer scope node arg, set its plan.
+        // NOTE: Copy nodes should have already been added if a graph input is fed as input
+        // to nodes assigned to different providers.
+        if (graph_inputs.find(name) != graph_inputs.cend() ||
+            std::find_if(outer_scope_node_args_.cbegin(), outer_scope_node_args_.cend(),
+                         [&name](const NodeArg* value) {
+                           return value && value->Name() == name;
+                         }) != outer_scope_node_args_.cend()) {
+          OrtValueIndex index = Index(name);
+          plan_.SetLocation(static_cast<size_t>(index),
+                            exec_provider->GetAllocator(0, p_kernelDef->InputMemoryType(arg_idx))->Info());
         }
-      }
+
+        return Status::OK();
+      };
+
+      ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(pnode->InputDefs(), process_input));
+      ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(pnode->ImplicitInputDefs(), process_input));
 
       auto outputs = pnode->OutputDefs();
       auto num_outputs = outputs.size();
