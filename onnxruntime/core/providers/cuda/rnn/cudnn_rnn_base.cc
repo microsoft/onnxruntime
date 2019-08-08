@@ -15,7 +15,7 @@ void CudnnRnnBase<T>::SetWeightBias(const cudnnHandle_t handle,
                                     const cudnnTensorDescriptor_t x_desc,
                                     const cudnnFilterDescriptor_t w_desc,
                                     const cudnnFilterDescriptor_t filter_desc,
-                                    const void* w_data,
+                                    const void* reorganized_w_data,
                                     const int lin_layer_id,
                                     const T* pos,
                                     int& offset,
@@ -27,9 +27,9 @@ void CudnnRnnBase<T>::SetWeightBias(const cudnnHandle_t handle,
   T* mem_offset;
 
   if (is_matrix) {
-    cudnnGetRNNLinLayerMatrixParams(handle, rnn_desc, pseudo_layer, x_desc, w_desc, w_data, lin_layer_id, filter_desc, (void**)&mem_offset);
+    cudnnGetRNNLinLayerMatrixParams(handle, rnn_desc, pseudo_layer, x_desc, w_desc, reorganized_w_data, lin_layer_id, filter_desc, (void**)&mem_offset);
   } else {
-    cudnnGetRNNLinLayerBiasParams(handle, rnn_desc, pseudo_layer, x_desc, w_desc, w_data, lin_layer_id, filter_desc, (void**)&mem_offset);
+    cudnnGetRNNLinLayerBiasParams(handle, rnn_desc, pseudo_layer, x_desc, w_desc, reorganized_w_data, lin_layer_id, filter_desc, (void**)&mem_offset);
   }
 
   cudnnGetFilterNdDescriptor(filter_desc, 3, &dt, &tf, &numDims, matDims.data());
@@ -42,60 +42,37 @@ Status CudnnRnnBase<T>::SetCudnnRnnWeightBias(const cudnnHandle_t cudnn_handle,
                                               const cudnnRNNDescriptor_t rnn_desc,
                                               const cudnnTensorDescriptor_t x_desc,
                                               const cudnnFilterDescriptor_t w_desc,
-                                              void* w_data,
+                                              void* reorganized_w_data,
                                               const T* W_data,
                                               const T* R_data,
                                               const T* B_data) const {
-  //Onnx only support 1 layer
   int w_offset = 0;
   int r_offset = 0;
   int bias_offset = 0;
-  for (int layer = 0; layer < num_layers_ * num_directions_; ++layer) {
+  CudnnFilterDescriptor filter_desc;
+  for (int layer = 0; layer < RNN_NUM_LAYERS * num_directions_; ++layer) {
     for (size_t idx = 0; idx < W_lin_layer_id_.size(); ++idx) {
-      SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, rnn_descriptors_.filter_desc, w_data, W_lin_layer_id_[idx], W_data, w_offset, true);
+      SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data, W_lin_layer_id_[idx], W_data, w_offset, true);
       if (B_data != nullptr) {
-        SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, rnn_descriptors_.filter_desc, w_data, W_lin_layer_id_[idx], B_data, bias_offset, false);
+        SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data, W_lin_layer_id_[idx], B_data, bias_offset, false);
       }
     }
     for (size_t idx = 0; idx < R_lin_layer_id_.size(); ++idx) {
-      SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, rnn_descriptors_.filter_desc, w_data, R_lin_layer_id_[idx], R_data, r_offset, true);
+      SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data, R_lin_layer_id_[idx], R_data, r_offset, true);
       if (B_data != nullptr) {
-        SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, rnn_descriptors_.filter_desc, w_data, R_lin_layer_id_[idx], B_data, bias_offset, false);
+        SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, reorganized_w_data, R_lin_layer_id_[idx], B_data, bias_offset, false);
       }
     }
   }
-
-  return Status::OK();
-}
-
-template <typename T>
-Status CudnnRnnBase<T>::SetCudnnRnnDesc() {
-  typedef typename ToCudaType<T>::MappedType CudaT;
-
-  cudnnDirectionMode_t cudnn_direction = CUDNN_UNIDIRECTIONAL;
-  if (direction_ == "bidirectional") {
-    cudnn_direction = CUDNN_BIDIRECTIONAL;
-  } else if (direction_ == "forward") {
-    cudnn_direction = CUDNN_UNIDIRECTIONAL;
-  } else if (direction_ == "reverse") {
-    cudnn_direction = CUDNN_UNIDIRECTIONAL;
-    // need to reverse data
-    reverse_ = true;
-  }
-
-  cudnn_dropout_desc_.GetCudnnDropoutStatesSize(CudnnHandle(), state_size_);
-  state_buffer_ = GetScratchBuffer<void>(state_size_);
-  cudnn_dropout_desc_.Set(CudnnHandle(), state_buffer_.get(), state_size_);
-  ORT_RETURN_IF_ERROR(rnn_descriptors_.rnn_desc.Set(CudnnHandle(), hidden_size_, num_layers_, cudnn_dropout_desc_,
-                                                    cudnn_direction, rnn_mode_, CudnnTensor::GetDataType<CudaT>()));
 
   return Status::OK();
 }
 
 template <typename T>
 Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, const Tensor* B,
-                                          IAllocatorUniquePtr<void>& target_w_data,
-                                          CudnnFilterDescriptor& target_w_desc) const {
+                                          IAllocatorUniquePtr<void>& reorganized_w_data,
+                                          CudnnFilterDescriptor& target_w_desc,
+                                          CudnnRNN& rnn_desc) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   int64_t input_size = W->Shape()[2];
   // RNN W[num_directions_, hidden_size_, input_size]
@@ -117,20 +94,21 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
   fake_x_desc.Set(fake_dims_x, CudnnTensor::GetDataType<CudaT>());
 
   // Prepare the weight data
-  target_w_data = GetScratchBuffer<void>(w_size * sizeof(T));
+  reorganized_w_data = GetScratchBuffer<void>(w_size * sizeof(T));
 
   const T* W_data = W->template Data<T>();
   const T* R_data = R->template Data<T>();
   const T* B_data = B == nullptr ? nullptr : B->template Data<T>();
 
-  ORT_RETURN_IF_ERROR(SetCudnnRnnWeightBias(CudnnHandle(), rnn_descriptors_.rnn_desc, fake_x_desc, target_w_desc,
-                                            target_w_data.get(), W_data, R_data, B_data));
+  ORT_RETURN_IF_ERROR(SetCudnnRnnWeightBias(CudnnHandle(), rnn_desc, fake_x_desc, target_w_desc,
+                                            reorganized_w_data.get(), W_data, R_data, B_data));
 
   return Status::OK();
 }
 
 template <typename T>
 Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
+  typedef typename ToCudaType<T>::MappedType CudaT;
   // Cache the weight
   const Tensor* W;
   const Tensor* R;
@@ -140,10 +118,13 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
   bool get_B = info.TryGetConstantInput(RNN_Input_Index::B, &B);
 
   if (get_W && get_R) {
+    CudnnRNN tmp_rnn_desc;
+    ORT_RETURN_IF_ERROR(tmp_rnn_desc.Set(CudnnHandle(), hidden_size_, RNN_NUM_LAYERS, cudnn_dropout_desc_,
+                                         cudnn_direction_mode_, rnn_mode_, CudnnTensor::GetDataType<CudaT>()));
     if (get_B) {
-      ORT_RETURN_IF_ERROR(ReorganizeWeights(W, R, B, w_data_cache_, w_desc_cache_));
+      ORT_RETURN_IF_ERROR(ReorganizeWeights(W, R, B, w_data_cache_, w_desc_cache_, tmp_rnn_desc));
     } else {
-      ORT_RETURN_IF_ERROR(ReorganizeWeights(W, R, nullptr, w_data_cache_, w_desc_cache_));
+      ORT_RETURN_IF_ERROR(ReorganizeWeights(W, R, nullptr, w_data_cache_, w_desc_cache_, tmp_rnn_desc));
     }
     weight_cached_ = true;
   }
@@ -173,7 +154,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   // optional outputs
   std::vector<int64_t> dims_Y({seq_length, num_directions_, batch_size, hidden_size_});
-  std::vector<int64_t> dims_hxy({num_layers_ * num_directions_, batch_size, hidden_size_});
+  std::vector<int64_t> dims_hxy({RNN_NUM_LAYERS * num_directions_, batch_size, hidden_size_});
   std::vector<int64_t> dims_yc{num_directions_, batch_size, hidden_size_};
   Tensor* Y = ctx->Output(Output_Index::Y, dims_Y);
   Tensor* Y_h = ctx->Output(Output_Index::Y_h, dims_hxy);
@@ -229,31 +210,56 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   const int32_t* sequence_lens_data = (sequence_lens == nullptr) ? nullptr : sequence_lens->template Data<int32_t>();
 
-  {
-    std::lock_guard<OrtMutex> lock(rnn_descriptors_.mutex);
+  CudnnRNN rnn_desc;
+  ORT_RETURN_IF_ERROR(rnn_desc.Set(CudnnHandle(), hidden_size_, RNN_NUM_LAYERS, cudnn_dropout_desc_,
+                                   cudnn_direction_mode_, rnn_mode_, CudnnTensor::GetDataType<CudaT>()));
 
-    // Prepare the weight data
-    IAllocatorUniquePtr<void> w_data;
-    CudnnFilterDescriptor w_desc;
-    if (!weight_cached_) {
-      const Tensor& W = *ctx->Input<Tensor>(RNN_Input_Index::W);
-      const Tensor& R = *ctx->Input<Tensor>(RNN_Input_Index::R);
-      const Tensor* B = ctx->Input<Tensor>(RNN_Input_Index::B);
-      ReorganizeWeights(&W, &R, B, w_data, w_desc);
-    }
+  // Prepare the weight data
+  IAllocatorUniquePtr<void> w_data;
+  CudnnFilterDescriptor w_desc;
+  if (!weight_cached_) {
+    const Tensor& W = *ctx->Input<Tensor>(RNN_Input_Index::W);
+    const Tensor& R = *ctx->Input<Tensor>(RNN_Input_Index::R);
+    const Tensor* B = ctx->Input<Tensor>(RNN_Input_Index::B);
+    ReorganizeWeights(&W, &R, B, w_data, w_desc, rnn_desc);
+  }
 
-    // CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED works with CUDNN_RNN_PADDED_IO_ENABLED, so that it will auto fill 0 for the shorter sequences
-    CUDNN_RETURN_IF_ERROR(cudnnSetRNNPaddingMode(rnn_descriptors_.rnn_desc, CUDNN_RNN_PADDED_IO_ENABLED));
+  // CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED works with CUDNN_RNN_PADDED_IO_ENABLED, so that it will auto fill 0 for the shorter sequences
+  CUDNN_RETURN_IF_ERROR(cudnnSetRNNPaddingMode(rnn_desc, CUDNN_RNN_PADDED_IO_ENABLED));
 
-    size_t workspace_bytes;
-    CUDNN_RETURN_IF_ERROR(cudnnGetRNNWorkspaceSize(CudnnHandle(), rnn_descriptors_.rnn_desc, gsl::narrow_cast<int>(seq_length), x_desc.data(), &workspace_bytes));
-    auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes);
+  size_t workspace_bytes;
+  CUDNN_RETURN_IF_ERROR(cudnnGetRNNWorkspaceSize(CudnnHandle(), rnn_desc, gsl::narrow_cast<int>(seq_length), x_desc.data(), &workspace_bytes));
+  auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes);
 
-    if (CUDNN_RNN_RELU == rnn_mode_ || CUDNN_RNN_TANH == rnn_mode_ || nullptr == sequence_lens_data) {
-      CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInference(CudnnHandle(),
-                                                     rnn_descriptors_.rnn_desc,
-                                                     gsl::narrow_cast<int>(seq_length),
-                                                     x_desc.data(),
+  if (CUDNN_RNN_RELU == rnn_mode_ || CUDNN_RNN_TANH == rnn_mode_ || nullptr == sequence_lens_data) {
+    CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInference(CudnnHandle(),
+                                                   rnn_desc,
+                                                   gsl::narrow_cast<int>(seq_length),
+                                                   x_desc.data(),
+                                                   x_data_input,
+                                                   hx_desc,
+                                                   hx_data,
+                                                   cx_desc,
+                                                   cx_data,
+                                                   weight_cached_ ? w_desc_cache_ : w_desc,
+                                                   weight_cached_ ? w_data_cache_.get() : w_data.get(),
+                                                   y_desc.data(),
+                                                   y_data,
+                                                   y_h_desc,
+                                                   y_h_data,
+                                                   y_c_desc,
+                                                   y_c_data,
+                                                   workspace_cuda.get(),
+                                                   workspace_bytes));
+  } else {
+    CudnnDataTensor x_desc;
+    x_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, input_size, sequence_lens_data);
+    CudnnDataTensor y_desc;
+    y_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, hidden_size_ * num_directions_, sequence_lens_data);
+
+    CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInferenceEx(CudnnHandle(),
+                                                     rnn_desc,
+                                                     x_desc,
                                                      x_data_input,
                                                      hx_desc,
                                                      hx_data,
@@ -261,47 +267,21 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                      cx_data,
                                                      weight_cached_ ? w_desc_cache_ : w_desc,
                                                      weight_cached_ ? w_data_cache_.get() : w_data.get(),
-                                                     y_desc.data(),
+                                                     y_desc,
                                                      y_data,
                                                      y_h_desc,
                                                      y_h_data,
                                                      y_c_desc,
                                                      y_c_data,
+                                                     nullptr, nullptr, nullptr, nullptr,
+                                                     nullptr, nullptr, nullptr, nullptr,
                                                      workspace_cuda.get(),
                                                      workspace_bytes));
-    } else {
-      CudnnDataTensor x_desc;
-      x_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, input_size, sequence_lens_data);
-      CudnnDataTensor y_desc;
-      y_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, hidden_size_ * num_directions_, sequence_lens_data);
-
-      CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInferenceEx(CudnnHandle(),
-                                                       rnn_descriptors_.rnn_desc,
-                                                       x_desc,
-                                                       x_data_input,
-                                                       hx_desc,
-                                                       hx_data,
-                                                       cx_desc,
-                                                       cx_data,
-                                                       weight_cached_ ? w_desc_cache_ : w_desc,
-                                                       weight_cached_ ? w_data_cache_.get() : w_data.get(),
-                                                       y_desc,
-                                                       y_data,
-                                                       y_h_desc,
-                                                       y_h_data,
-                                                       y_c_desc,
-                                                       y_c_data,
-                                                       nullptr, nullptr, nullptr, nullptr,
-                                                       nullptr, nullptr, nullptr, nullptr,
-                                                       workspace_cuda.get(),
-                                                       workspace_bytes));
-      // Early terminate for this case since Y data is not required, and Y_h is obtained correctly, no need the following code to retrive Y_h from Y data.
-      if (nullptr == Y) {
-        return Status::OK();
-      }
+    // Early terminate for this case since Y data is not required, and Y_h is obtained correctly, no need the following code to retrive Y_h from Y data.
+    if (nullptr == Y) {
+      return Status::OK();
     }
   }
-
 
   IAllocatorUniquePtr<T> y_reorganized_data;
   if (reverse_ || num_directions_ == 2) {

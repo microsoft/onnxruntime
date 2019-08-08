@@ -24,8 +24,6 @@ class RNN final : public CudnnRnnBase<T> {
     else if (activations_[0] == "Tanh")
       CudnnRnnBase<T>::SetRNNMode(CUDNN_RNN_TANH);
 
-    CudnnRnnBase<T>::SetCudnnRnnDesc();
-
     // ONNX W mapping to RNNLinLayerMatrixParams the linLayerID is 0
     CudnnRnnBase<T>::W_lin_layer_id_.assign({0});
     // ONNX R mapping to RNNLinLayerMatrixParams the linLayerID is 1
