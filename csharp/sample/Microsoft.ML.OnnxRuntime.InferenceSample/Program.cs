@@ -26,7 +26,7 @@ namespace CSharpUsage
 
             // Optional : Create session options and set the graph optimization level for the session
             SessionOptions options = new SessionOptions();
-            options.SetSessionGraphOptimizationLevel(2);
+            options.SetSessionGraphOptimizationLevel(GraphOptimizationLevel.ORT_ENABLE_ALL);
 
             using (var session = new InferenceSession(modelPath, options))
             {

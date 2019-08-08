@@ -51,11 +51,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Theory]
-        [InlineData(0, true)]
-        [InlineData(0, false)]
-        [InlineData(2, true)]
-        [InlineData(2, false)]
-        private void CanRunInferenceOnAModel(uint graphOptimizationLevel, bool disableSequentialExecution)
+        [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, true)]
+        [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, false)]
+        [InlineData(GraphOptimizationLevel.ORT_ENABLE_ALL, true)]
+        [InlineData(GraphOptimizationLevel.ORT_ENABLE_ALL, false)]
+        private void CanRunInferenceOnAModel(GraphOptimizationLevel graphOptimizationLevel, bool disableSequentialExecution)
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 

@@ -7,6 +7,13 @@ using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
+    public enum GraphOptimizationLevel
+    {
+        ORT_DISABLE_ALL,
+        ORT_ENABLE_BASIC,
+        ORT_ENABLE_ALL
+    }
+
     /// <summary>
     /// Holds the options for creating an InferenceSession
     /// </summary>
@@ -28,11 +35,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Sets the graph optimization level for the session. Default is set to 1.        
         /// </summary>
         /// <param name="optimization_level">optimization level for the session</param>
-        /// Available options are : 0, 1, 2
-        /// 0 -> Disable all optimizations
-        /// 1 -> Enable basic optimizations
-        /// 2 -> Enable all optimizations
-        public void SetSessionGraphOptimizationLevel(uint optimization_level)
+        public void SetSessionGraphOptimizationLevel(GraphOptimizationLevel optimization_level)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionGraphOptimizationLevel(_nativePtr, optimization_level));
         }
