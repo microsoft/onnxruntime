@@ -471,7 +471,9 @@ set(onnx_test_runner_common_srcs
   ${onnx_test_runner_src_dir}/TestCase.h
   ${onnx_test_runner_src_dir}/onnxruntime_event.h
   ${onnx_test_runner_src_dir}/sync_api.h
-  ${onnx_test_runner_src_dir}/sync_api.cc)
+  ${onnx_test_runner_src_dir}/sync_api.cc
+  ${onnx_test_runner_src_dir}/tensorprotoutils.h
+  ${onnx_test_runner_src_dir}/tensorprotoutils.cc)
 
 if(WIN32)
   set(wide_get_opt_src_dir ${TEST_SRC_DIR}/win_getopt/wide)
@@ -564,7 +566,7 @@ onnxruntime_add_include_to_target(onnxruntime_perf_test gsl)
 
 if (onnxruntime_BUILD_SHARED_LIB)
   set(onnxruntime_perf_test_libs onnxruntime_test_utils onnx_test_runner_common onnxruntime_common
-          onnx_test_data_proto onnx_proto libprotobuf ${GETOPT_LIB_WIDE} onnxruntime
+          onnx_test_data_proto onnx_proto libprotobuf ${GETOPT_LIB_WIDE} onnxruntime onnxruntime_framework onnx
           ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
   if(onnxruntime_USE_NSYNC)
     list(APPEND onnxruntime_perf_test_libs nsync_cpp)
@@ -606,7 +608,6 @@ if (onnxruntime_BUILD_SHARED_LIB)
   endif()
   if (NOT(${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))
     #for some reason, these tests are failing. Need investigation.
-    list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_tensor_loader.cc)
     if (onnxruntime_USE_FULL_PROTOBUF)
       list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc)
     endif()
