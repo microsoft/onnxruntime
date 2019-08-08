@@ -91,6 +91,12 @@ class CudnnRnnBase : public CudaKernel {
     rnn_mode_ = CUDNN_LSTM;
     weight_cached_ = false;
     w_data_cache_ = nullptr;
+    
+    size_t state_size;
+    cudnn_dropout_desc_.CreateDescriptorIfNeeded();
+    cudnn_dropout_desc_.GetCudnnDropoutStatesSize(CudnnHandle(), state_size);
+    state_buffer_ = GetScratchBuffer<void>(state_size);
+    cudnn_dropout_desc_.Set(CudnnHandle(), state_buffer_.get(), state_size);
   }
 
   Status CacheCudnnRnnWeights(const OpKernelInfo& info);
@@ -142,6 +148,10 @@ class CudnnRnnBase : public CudaKernel {
   CudnnFilterDescriptor w_desc_cache_;
   IAllocatorUniquePtr<void> w_data_cache_;
   bool weight_cached_;
+
+  // cudnn_dropout_desc_ is a cache, never to be changed
+  IAllocatorUniquePtr<void> state_buffer_;
+  CudnnDropout cudnn_dropout_desc_;
 
   enum Output_Index {
     Y = 0,
