@@ -49,7 +49,6 @@
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/stubs/logging.h>
 #include <google/protobuf/stubs/stl_util.h>
-#include <google/protobuf/stubs/io_win32.h>
 #include "protobuf_parsing_utils.h"
 #include <string.h>
 
@@ -58,6 +57,7 @@ namespace protobuf {
 namespace io {
 
 #ifdef _WIN32
+#include <google/protobuf/stubs/io_win32.h>
 // Win32 lseek is broken:  If invoked on a non-seekable file descriptor, its
 // return value is undefined.  We re-define it to always produce an error.
 #define lseek(fd, offset, origin) ((off_t)-1)
