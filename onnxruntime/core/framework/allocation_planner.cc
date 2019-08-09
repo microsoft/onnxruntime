@@ -338,6 +338,9 @@ class PlannerImpl {
     // Initialize execution plan:
     plan_.execution_plan.reserve(num_graph_nodes);
 
+    // Initialize node_has_fence.
+    plan_.node_has_fence.resize(graph_viewer_.MaxNodeIndex());
+
     // Initialize allocation plan:
     plan_.allocation_plan.resize(num_ml_values);
   }
@@ -585,6 +588,51 @@ class PlannerImpl {
     return Status::OK();
   }
 
+  // Whether a given NodeArg has fence or not.
+  // If the buffer is reused, need to check whether original OrtValue has fence or not.
+  bool HasFence(const onnxruntime::NodeArg* arg) {
+    bool has_fence = false;
+    if (arg && arg->Exists()) {
+      OrtValueIndex index = Index(arg->Name());
+      AllocPlanPerValue& value_plan = AllocPlan(index);
+
+      has_fence = value_plan.create_fence_if_async;
+      if (value_plan.alloc_kind == AllocKind::kReuse)
+      {
+        // Buffer reused, check original buffer to see if fence is shared.
+        has_fence = has_fence || AllocPlan(value_plan.reused_buffer).create_fence_if_async;
+      }
+    }
+
+    return has_fence;
+  }
+
+  // Compute fence check. Set has_fence flag if either one of inputs, implicit inputs or outputs of a given node has fence.
+  Status ComputeFenceCheck() {
+
+    for (SequentialExecutionPlan::NodeExecutionPlan& step : plan_.execution_plan) {
+      auto pnode = graph_viewer_.GetNode(step.node_index);
+      if (pnode == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Can not find the node ", step.node_index);
+
+      bool has_fence = false;
+      for (auto node_input : pnode->InputDefs()) {
+        has_fence = has_fence || HasFence(node_input);
+      }
+
+      for (auto node_input : pnode->ImplicitInputDefs()) {
+        has_fence = has_fence || HasFence(node_input);
+      }
+
+      for (auto node_output : pnode->OutputDefs()) {
+        has_fence = has_fence || HasFence(node_output);
+      }
+
+      plan_.node_has_fence[step.node_index] = has_fence;
+    }
+
+    return Status::OK();
+  }
+
   // Convert information in a freelist (about which ml-value becomes free when) into
   // a deallocation plan in the format required in an ExecutionPlan
   void GenerateDeallocationPlan() {
@@ -641,6 +689,9 @@ Status PlannerImpl::CreatePlan() {
 
   // determine sharing/reuse among ml-values
   ORT_RETURN_IF_ERROR(ComputeReusePlan());
+
+  // Determine nodes that need fence check. This needs to be done after ComputeUseCounts and ComputeReusePlan.
+  ORT_RETURN_IF_ERROR(ComputeFenceCheck());
 
   // convert information in the freelist_ into a deallocation plan in required format
   GenerateDeallocationPlan();
