@@ -566,7 +566,7 @@ onnxruntime_add_include_to_target(onnxruntime_perf_test gsl)
 
 if (onnxruntime_BUILD_SHARED_LIB)
   set(onnxruntime_perf_test_libs onnxruntime_test_utils onnx_test_runner_common onnxruntime_common
-          onnx_test_data_proto onnx_proto libprotobuf ${GETOPT_LIB_WIDE} onnxruntime onnxruntime_framework onnx
+          onnx_test_data_proto onnx_proto libprotobuf ${GETOPT_LIB_WIDE} onnxruntime
           ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
   if(onnxruntime_USE_NSYNC)
     list(APPEND onnxruntime_perf_test_libs nsync_cpp)
