@@ -12,10 +12,6 @@ namespace ngraph {
   }
 }
 
-namespace ONNX_NAMESPACE {
-  class AttributeProto;
-}
-
 namespace onnxruntime {
 
 // Information needed to construct nGraph execution providers.
@@ -38,7 +34,6 @@ class NGRAPHExecutionProvider : public IExecutionProvider {
 
  private:
   std::shared_ptr<ngraph::runtime::Backend> ng_backend_;
-  mutable std::unordered_map<std::string, std::shared_ptr<ONNX_NAMESPACE::AttributeProto>> graph_initializers_;
 };
 
 }
