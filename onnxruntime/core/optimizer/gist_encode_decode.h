@@ -16,6 +16,9 @@ It is attempted to be triggered only on nodes with op type "Relu".
 */
 class GistEncodeDecode : public RewriteRule {
  public:
+  static constexpr const char* GIST_ENCODER_NODE_NAME_BASE = "gist_encode";
+  static constexpr const char* GIST_DECODER_NODE_NAME_BASE = "gist_decode";
+
   GistEncodeDecode() noexcept : RewriteRule("GistEncodeDecode") {}
 
   std::vector<std::string> TargetOpTypes() const noexcept override {

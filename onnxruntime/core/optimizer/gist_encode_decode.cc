@@ -59,7 +59,7 @@ bool GistEncodeDecode::AddEncodeDecode(Graph& graph, Node& curr_node, std::strin
   auto curr_node_output_def_name = curr_node_output_defs[0]->Name();
   auto* curr_node_output_arg = graph.GetNodeArg(curr_node_output_def_name);
 
-  std::string encode_node_name = graph.GenerateNodeName("enc");
+  std::string encode_node_name = graph.GenerateNodeName(GIST_ENCODER_NODE_NAME_BASE);
   for (int i = 0; i < curr_node_output_arg->Shape()->dim_size(); i++) {
     bool_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(curr_node_output_arg->Shape()->dim(i).dim_value());
   }
@@ -67,7 +67,7 @@ bool GistEncodeDecode::AddEncodeDecode(Graph& graph, Node& curr_node, std::strin
   auto& encode_output_def_uncompressed_arg = graph.GetOrCreateNodeArg(encode_node_name + "_identity", curr_node_output_arg->TypeAsProto());
   auto& encode = graph.AddNode(encode_node_name, compression_type + "Encoder", "Encode", {curr_node_output_arg}, {&encode_output_def_uncompressed_arg, &encode_output_def_compressed_arg});
 
-  std::string decode_arg_name = graph.GenerateNodeName("dec");
+  std::string decode_arg_name = graph.GenerateNodeName(GIST_DECODER_NODE_NAME_BASE);
   auto& decode_output_def_uncompressed_arg = graph.GetOrCreateNodeArg(decode_arg_name, curr_node_output_arg->TypeAsProto());
   auto& decode = graph.AddNode(decode_arg_name, compression_type+"Decoder", "Decode", {&encode_output_def_compressed_arg}, {&decode_output_def_uncompressed_arg});
 

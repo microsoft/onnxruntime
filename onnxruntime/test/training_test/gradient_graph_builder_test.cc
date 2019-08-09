@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "core/optimizer/gist_encode_decode.h"
 #include "test/providers/gradient_op_test_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "test/training/runner/training_runner.h"
@@ -20,6 +21,7 @@ namespace test {
 
 constexpr auto ORIGINAL_MODEL_PATH = "testdata/test_training_model.onnx";
 constexpr auto BACKWARD_MODEL_PATH = "testdata/temp_backward_model.onnx";
+constexpr auto GIST_MODEL_PATH = "testdata/temp_backward_model_with_gist.onnx";
 
 constexpr auto TAB = "\t";
 
@@ -85,6 +87,15 @@ static std::string BuildBackPropGraph(const TrainingRunner::Parameters& params) 
 
   EXPECT_TRUE(training_session.BuildLossFunction(params.loss_func_info_).IsOK());
   EXPECT_TRUE(training_session.BuildGradientGraph(weights_to_train, params.loss_func_info_.loss_name).IsOK());
+
+  if (params.use_gist_) {
+    EXPECT_TRUE(training_session.AddGistEncoding().IsOK());
+
+    if (!params.model_gist_encode_.empty()) {
+      EXPECT_TRUE(training_session.Save(params.model_gist_encode_, TrainingSession::SaveOption::NO_RELOAD).IsOK());
+    }
+  }
+
   EXPECT_TRUE(training_session.Save(backward_model_file,
                                     TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS)
                   .IsOK());
@@ -138,7 +149,13 @@ static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
   auto output_names_include_gradients = training_session->GetModelOutputNames();
   std::vector<std::string> training_output_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
 
+  auto start_time = std::chrono::high_resolution_clock::now();
+
   EXPECT_TRUE(training_session->Run(run_options, fw_feeds.first, fw_feeds.second, training_output_names, &gradient_fetches).IsOK());
+
+  auto end_time = std::chrono::high_resolution_clock::now();
+  auto elapsed = TimeDiffMicroSeconds(start_time, end_time);
+  std::cout << "Training session run completed in " << elapsed << " microseconds." << std::endl;
 
   return training_session;
 }
@@ -194,7 +211,45 @@ TEST(GradientGraphBuilderTest, TrainingSession_Basic) {
 
   const std::string& backprop_model_file = BuildBackPropGraph(params);
 
-  SessionOptions so;
+  SessionOptions so{};
+  RunTrainingSessionWithChecks(so, backprop_model_file);
+}
+
+TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
+  const std::string gist_model_file = GIST_MODEL_PATH;
+
+  TrainingRunner::Parameters params;
+  params.model_path_ = ORIGINAL_MODEL_PATH;
+  params.model_with_training_graph_path_ = BACKWARD_MODEL_PATH;
+  params.model_gist_encode_ = gist_model_file;
+  params.use_gist_ = true;
+
+  params.loss_func_info_ = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+
+  const std::string& backprop_model_file = BuildBackPropGraph(params);
+
+  std::cout << "Loading gist model file = " << gist_model_file << std::endl;
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(onnxruntime::Model::Load(gist_model_file, p_model).IsOK());
+
+  const Graph& graph = p_model->MainGraph();
+  bool found_encoder = false;
+  bool found_decoder = false;
+  for (auto& node : graph.Nodes()) {
+    const std::string &node_name = node.Name();
+    std::cout << "Node name='" << node_name << "' op_type=" << node.OpType() << "\n";
+    if (node_name.find(onnxruntime::GistEncodeDecode::GIST_ENCODER_NODE_NAME_BASE) != std::string::npos) {
+      found_encoder = true;
+      std::cout << "Found encoder node " << node_name << "\n";
+    } else if (node_name.find(onnxruntime::GistEncodeDecode::GIST_DECODER_NODE_NAME_BASE) != std::string::npos) {
+      found_decoder = true;
+      std::cout << "Found decoder node " << node_name << "\n";
+    }
+  }
+  ASSERT_TRUE(found_encoder);
+  ASSERT_TRUE(found_decoder);
+
+  SessionOptions so{};
   RunTrainingSessionWithChecks(so, backprop_model_file);
 }
 
