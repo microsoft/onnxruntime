@@ -163,6 +163,8 @@ class GraphAugmenter {
 
   // Augment the graph with new_graph_elements which defines new nodes, outputs, initializers.
   static common::Status AugmentGraph(Graph& graph, const GraphDefs& graph_element_defs);
+
+  static common::Status OverrideGraphOutputs(Graph& graph, const std::unordered_set<std::string>& graph_outputs);
 };
 }  // namespace training
 }  // namespace onnxruntime

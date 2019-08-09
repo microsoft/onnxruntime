@@ -64,7 +64,7 @@ class TrainingSession : public InferenceSession {
   */
   common::Status EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train);
 
-  common::Status ExposeAsGraphOutput(const std::vector<std::string>& node_args);
+  common::Status OverrideGraphOutputs(const std::vector<std::string>& outputs);
 
   /** Save a model, 3 options:
   1. save with updated weights

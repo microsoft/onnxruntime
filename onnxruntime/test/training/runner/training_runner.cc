@@ -87,7 +87,7 @@ Status TrainingRunner::Initialize() {
   }
 
   // Expose all fetches as graph outputs
-  ORT_RETURN_IF_ERROR(session_.ExposeAsGraphOutput(params_.fetch_names));
+  ORT_RETURN_IF_ERROR(session_.OverrideGraphOutputs(params_.fetch_names));
 
   if (params_.world_rank_ == 0 && !params_.model_with_training_graph_path_.empty()) {
     Status s = session_.Save(params_.model_with_training_graph_path_, TrainingSession::SaveOption::NO_RELOAD);

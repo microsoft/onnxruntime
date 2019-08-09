@@ -54,5 +54,19 @@ Status GraphAugmenter::AugmentGraph(Graph& graph, const GraphDefs& graph_element
   return graph.Resolve();
 }
 
+Status GraphAugmenter::OverrideGraphOutputs(Graph& graph, const std::unordered_set<std::string>& graph_outputs) {
+  vector<const NodeArg*> new_output_args;
+  for (const auto& output_name : graph_outputs) {
+    const auto* output_arg = graph.GetNodeArg(output_name);
+    ORT_RETURN_IF(output_arg == nullptr, "Failed to set graph output ", output_name);
+    new_output_args.emplace_back(output_arg);
+  }
+
+  graph.SetOutputs(new_output_args);  // By setting this, Graph::SetGraphInputsOutputs could infer the output as expected.
+  graph.SetGraphResolveNeeded();
+  graph.SetGraphProtoSyncNeeded();
+  return graph.Resolve();
+}
+
 }  // namespace training
 }  // namespace onnxruntime
