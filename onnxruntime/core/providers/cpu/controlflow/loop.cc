@@ -79,8 +79,16 @@ ONNX_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction(LoopInferenceFunction));
 */
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
+                         1, 10,
+                         KernelDefBuilder()
+                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                             .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                         Loop);
+
 ONNX_CPU_OPERATOR_KERNEL(Loop,
-                         1,
+                         11,
                          KernelDefBuilder()
                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
@@ -223,8 +231,14 @@ Status LoopImpl::Initialize() {
   status = context_.GetTempSpaceAllocator(&allocator);
   ORT_RETURN_IF_ERROR(status);
 
-  auto iter_num_rank = subgraph_inputs[0]->Shape()->dim_size();
-  auto condition_rank = subgraph_inputs[1]->Shape()->dim_size();
+  auto iter_num_rank = 0;
+  if (subgraph_inputs[0]->Shape() != nullptr)
+    iter_num_rank = subgraph_inputs[0]->Shape()->dim_size();
+
+  auto condition_rank = 0;
+  if (subgraph_inputs[1]->Shape() != nullptr)
+    condition_rank = subgraph_inputs[1]->Shape()->dim_size();
+  
 
   iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(allocator, 0, iter_num_rank);
   condition_mlvalue_ = MakeScalarMLValue<bool>(allocator, condition_, condition_rank);

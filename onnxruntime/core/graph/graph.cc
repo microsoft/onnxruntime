@@ -683,12 +683,16 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
 
   // Collect all node arg name, type, shape information in the graph.
   // type/shape information will be assigned to each node arg when going
-  // thru all nodes later.
+  // throgh all nodes later.
   for (auto& graph_input : graph_proto_->input()) {
-    if (graph_input.has_name() && graph_input.has_type()) {
-      name_to_type_map[graph_input.name()] = graph_input.type();
+    if (graph_input.has_name()) {
+      const ONNX_NAMESPACE::TypeProto* type_proto = nullptr;
+      if (graph_input.has_type()) {
+        type_proto = &graph_input.type();
+        name_to_type_map[graph_input.name()] = *type_proto;      
+      }
       // always create a NodeArg for graph input in case its from an initializer
-      GetOrCreateNodeArg(graph_input.name(), &graph_input.type());
+      GetOrCreateNodeArg(graph_input.name(), type_proto);
     }
   }
 
@@ -2318,7 +2322,7 @@ Status Graph::SetGraphInputsOutputs() {
     for (auto& graph_input : graph_proto_->input()) {
       auto& name = graph_input.name();
       const auto* node_arg = GetNodeArg(name);
-      ORT_ENFORCE(node_arg, "Graph ctor should have created NodeArg for initializer.");
+      ORT_ENFORCE(node_arg, "Graph ctor should have created NodeArg for initializer. ", name);
       graph_inputs.insert({name, node_arg});
       graph_inputs_including_initializers_.push_back(node_arg);
       if (graph_initializers.end() == graph_initializers.find(name)) {
