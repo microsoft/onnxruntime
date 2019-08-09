@@ -482,19 +482,6 @@ NGRAPHExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, ng_required_initializers);
 
-  // Create a shared_ptr with this graph's initializers which are required to construct nGraph's IR
-  if (graph_initializers_.count(graph_viewer.Name()) == 0) {
-    graph_initializers_[graph_viewer.Name()] = std::make_shared<ONNX_NAMESPACE::AttributeProto>();
-
-    auto& initializers = graph_initializers_[graph_viewer.Name()];
-    initializers->set_name("initializers");
-    initializers->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS);
-    for (const auto& init : ng_required_initializers) {
-      auto tensor = initializers->add_tensors();
-      *tensor = *(graph_viewer.GetAllInitializedTensors().at(init));
-    }
-  }
-
   //If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
   if (unsupported_nodes.empty()) {
     std::vector<std::string> inputs;
@@ -538,28 +525,21 @@ NGRAPHExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 }
 
 static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node) {
-  ONNX_NAMESPACE::ModelProto model_proto;
-  auto graph_proto = model_proto.mutable_graph();
-  const auto& fused_graph = fused_node->GetFunctionBody()->Body();
+  const auto* node_function = fused_node->GetFunctionBody();
 
-  for (const auto& node : fused_graph.Nodes()) {
-    node.ToProto(*(graph_proto->add_node()));
-  }
+  ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", fused_node->Name());
 
-  for (const auto& input : fused_node->InputDefs()) {
-    auto valueInfoProto = graph_proto->add_input();
-    *valueInfoProto = input->ToProto();
-  }
+  const Graph& node_subgraph = node_function->Body();
+  onnxruntime::Model model{node_subgraph.Name(), true};
 
-  for (const auto& output : fused_node->OutputDefs()) {
-    auto valueInfoProto = graph_proto->add_output();
-    *valueInfoProto = output->ToProto();
-  }
+  ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+  *(model_proto.mutable_graph()) = node_subgraph.ToGraphProto();
 
   auto opset = model_proto.add_opset_import();
   opset->set_domain(kOnnxDomain);
-  opset->set_version(fused_graph.DomainToVersionMap().at(kOnnxDomain));
-  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  opset->set_version(node_subgraph.DomainToVersionMap().at(kOnnxDomain));
 
   return model_proto;
 }
@@ -569,17 +549,12 @@ Status NGRAPHExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& f
   for (const auto& fused_node : fused_nodes) {
     NodeComputeInfo compute_info;
 
-    const auto& attributes = fused_node->GetAttributes();
-    const auto graph_name = attributes.at("graph_name").s();
-    // find the shared_ptr with initializes of a graph this fused_node belongs to
-    auto initializers = graph_initializers_.at(graph_name);
-
     // Local copy of backend since, class members cannot be captured.
     auto ngraph_backend = ng_backend_;
-    compute_info.create_state_func = [model_proto = GetModelProtoFromFusedNode(fused_node), ngraph_backend, initializers]
+    compute_info.create_state_func = [model_proto = GetModelProtoFromFusedNode(fused_node), ngraph_backend]
                                      (ComputeContext* context, FunctionState* state)
     {
-      auto* p = new onnxruntime::ngraph_ep::NGRAPHCustomOp(context, model_proto, initializers, ngraph_backend);
+      auto* p = new ngraph_ep::NGRAPHCustomOp(context, model_proto, ngraph_backend);
       *state = p;
       return 0;
     };

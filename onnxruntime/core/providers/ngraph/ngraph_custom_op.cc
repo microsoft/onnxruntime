@@ -37,7 +37,6 @@ static bool check_ngraph_dump_ops() {
 
 NGRAPHCustomOp::NGRAPHCustomOp(const ComputeContext* context,
                                const ONNX_NAMESPACE::ModelProto& model_proto,
-                               const std::shared_ptr<ONNX_NAMESPACE::AttributeProto> initializers,
                                const std::shared_ptr<ngraph::runtime::Backend>& ng_backend) :
   ng_backend_{ng_backend}, model_proto_{model_proto}
 {
@@ -45,12 +44,6 @@ NGRAPHCustomOp::NGRAPHCustomOp(const ComputeContext* context,
   release_func_ = context->release_func;
   allocator_ = context->allocator_handle;
   name_ = context->node_name;
-
-  auto graph_proto = model_proto_.mutable_graph();
-
-  for (const auto& initializer : initializers->tensors()) {
-    graph_proto->add_initializer()->CopyFrom(initializer);
-  }
 
   if (check_ngraph_dump_ops()) {
     std::fstream dump(name_ + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
