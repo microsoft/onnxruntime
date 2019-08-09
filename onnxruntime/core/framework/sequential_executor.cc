@@ -71,8 +71,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
     // sync before compute
     int queue_id = p_op_kernel->KernelDef().ExecQueueId();
-    //if (seq_exec_plan.NodeHasFence(node_index)) {
-    {
+    if (seq_exec_plan.NodeHasFence(node_index)) {
       for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
         Fence_t fence = op_kernel_context.InputFence(input_index);
         if (fence) {
@@ -141,8 +140,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
     // sync after compute for outputs
-    //if (seq_exec_plan.NodeHasFence(node_index)) {
-    {
+    if (seq_exec_plan.NodeHasFence(node_index)) {
       for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
         Fence_t fence = op_kernel_context.InputFence(input_index);
         if (fence) {

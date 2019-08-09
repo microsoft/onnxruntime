@@ -595,14 +595,12 @@ class PlannerImpl {
     if (arg && arg->Exists()) {
       OrtValueIndex index = Index(arg->Name());
       AllocPlanPerValue& value_plan = AllocPlan(index);
+
+      has_fence = value_plan.create_fence_if_async;
       if (value_plan.alloc_kind == AllocKind::kReuse)
       {
         // Buffer reused, check original buffer to see if fence is shared.
-        has_fence = AllocPlan(value_plan.reused_buffer).create_fence_if_async;
-      }
-      else
-      {
-        has_fence = value_plan.create_fence_if_async;
+        has_fence = has_fence || AllocPlan(value_plan.reused_buffer).create_fence_if_async;
       }
     }
 
@@ -618,15 +616,15 @@ class PlannerImpl {
 
       bool has_fence = false;
       for (auto node_input : pnode->InputDefs()) {
-        has_fence |= HasFence(node_input);
+        has_fence = has_fence || HasFence(node_input);
       }
 
       for (auto node_input : pnode->ImplicitInputDefs()) {
-        has_fence |= HasFence(node_input);
+        has_fence = has_fence || HasFence(node_input);
       }
 
       for (auto node_output : pnode->OutputDefs()) {
-        has_fence |= HasFence(node_output);
+        has_fence = has_fence || HasFence(node_output);
       }
 
       plan_.node_has_fence[step.node_index] = has_fence;
