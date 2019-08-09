@@ -9,8 +9,8 @@
 #include <gsl/pointers>
 #include "core/framework/data_types.h"
 #include "core/framework/allocator.h"
-#include "onnx-ml.pb.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
 namespace perftest {

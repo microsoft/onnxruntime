@@ -10,7 +10,9 @@
 
 #include "mem_buffer.h"
 
-#include "onnx-ml.pb.h"
+namespace onnx {
+class TensorProto;
+}
 
 namespace onnxruntime {
 namespace perftest {
