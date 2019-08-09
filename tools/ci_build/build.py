@@ -541,7 +541,7 @@ def adb_push(source_dir, src, dest, **kwargs):
 def adb_shell(*args, **kwargs):
     return run_subprocess(['adb', 'shell', *args], **kwargs)
 
-def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False, enable_ngraph = False):
+def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False, enable_ngraph = False, enable_nnapi=False):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
@@ -550,6 +550,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
             run_subprocess(os.path.join(source_dir, 'tools', 'ci_build', 'github', 'android', 'start_android_emulator.sh'))
             adb_push(source_dir, 'testdata', '/data/local/tmp/', cwd=cwd)
             adb_push(source_dir, os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'), '/data/local/tmp/', cwd=cwd)
+            # Disable scan op test for nnapi ep
+            if enable_nnapi:
+                adb_shell('rm', '-rf', '/data/local/tmp/test/data/node/test_scan9_sum',  
+                        '/data/local/tmp/test/data/node/test_scan_sum')
             adb_push(source_dir, 'onnxruntime_test_all', '/data/local/tmp/', cwd=cwd)
             adb_push(source_dir, 'onnx_test_runner', '/data/local/tmp/', cwd=cwd)
             adb_shell('cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
@@ -905,7 +909,8 @@ def main():
     if args.test :
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                               args.enable_pybind and not args.skip_onnx_tests,
-                              args.use_tvm, args.use_tensorrt, args.use_ngraph)
+                              args.use_tvm, args.use_tensorrt, args.use_ngraph,
+                              args.use_dnnlibrary)
         # run the onnx model tests if requested explicitly.
         if args.enable_onnx_tests and not args.skip_onnx_tests:
             # directory from ONNX submodule with ONNX test data
