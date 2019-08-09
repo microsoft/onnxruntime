@@ -141,11 +141,11 @@ class SessionState {
      * \param p_node0 Nullable
      * \param kci0 Nullable
      */
-    NodeInfo(size_t index_, const onnxruntime::Node* p_node_, const KernelCreateInfo* kci_, const OrtDevice& device_)
-        : index(index_),
-          p_node(p_node_),
-          kci(kci_),
-          device(&device_) {}
+    NodeInfo(size_t index0, const onnxruntime::Node* p_node0, const KernelCreateInfo* kci0, const OrtDevice& device0)
+        : index(index0),
+          p_node(p_node0),
+          kci(kci0),
+          device(&device0) {}
 
     size_t index;
     // Nullable

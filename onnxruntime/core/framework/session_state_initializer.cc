@@ -351,8 +351,8 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
   if (implicit_inputs && implicit_inputs->empty()) {
     implicit_inputs = nullptr;
   }
-  auto exec_plan = session_state.GetExecutionPlan();
-  auto& name_to_id = session_state.GetOrtValueNameIdxMap();
+  const auto* exec_plan = session_state.GetExecutionPlan();
+  const auto& name_to_id = session_state.GetOrtValueNameIdxMap();
 
   for (auto& node : graph.Nodes()) {
     // note that KernelCreateInfo may not exist for custom kernel
@@ -369,7 +369,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
 
               int arg_index;
               ORT_RETURN_IF_ERROR(name_to_id.GetIdx(arg.Name(), arg_index));
-              auto& device = exec_plan->GetLocation(arg_index).device;
+              const auto& device = exec_plan->GetLocation(arg_index).device;
 
               SessionState::NodeInfo node_info(index, &node, kci, device);
 
