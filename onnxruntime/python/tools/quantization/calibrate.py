@@ -1,8 +1,15 @@
+#!/usr/bin/env python
+# coding: utf-8
 # -------------------------------------------------------------------------
-# Copyright (c) Intel Corporation and Microsoft Corporation. All rights reserved.
+# Copyright (c) Intel Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
+
+import os
+import re
+import subprocess
+import json
 
 import onnx
 from onnx import helper, TensorProto
@@ -12,7 +19,7 @@ def preprocess_images_with_debug_op(model_file, image_files):
     """
     Carries out inference in an instrumented model that can log
     outputs of quantizable operators *or* using an unmodified model
-    but through a suitably instrumented inference engine that can 
+    but through a suitably instrumented inference engine that can
     log outputs of quantizable operators.
     """
     for img in image_files:
@@ -67,7 +74,7 @@ def process_logfiles(logs_directory):
         return None, None
 
     data = []  # temp empty list to collect the data
-    spaces_removed_data = [] # temp empty list to collect float outputs 
+    spaces_removed_data = [] # temp empty list to collect float outputs
     scale = 0.05
     zero_point = 0
 
@@ -83,7 +90,7 @@ def process_logfiles(logs_directory):
 
         # FIXME -- maybe log this
         # print(f"Processing: {filename}.")
-                                               
+
         with open(os.path.join(logs_directory, filename), 'r') as file_object:
             spaces_removed_data = []
             for line in file_object:
@@ -148,7 +155,7 @@ def augment_graph(model):
     model.graph.node.extend(added_nodes)
     model.graph.output.extend(added_outputs)
     return model
-  
+
 def main():
     # calibrate_loop()
     pass
