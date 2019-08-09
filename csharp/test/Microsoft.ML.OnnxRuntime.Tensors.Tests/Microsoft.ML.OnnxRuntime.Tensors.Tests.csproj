@@ -1,7 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
-    <!--Configurations>netcoreapp-Debug;netcoreapp-Release</Configurations-->
     <TargetFramework>netcoreapp2.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
@@ -12,10 +11,6 @@
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
-    <!--OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
-    <ProtocDirectory>$(OnnxRuntimeBuildDirectory)\$(Configuration)\external\protobuf\cmake\$(Configuration)</ProtocDirectory>
-    <ProtoSrc>$(OnnxRuntimeCsharpRoot)\..\onnxruntime\core\protobuf</ProtoSrc>
-    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir-->
   </PropertyGroup>
   <PropertyGroup>
     <ProjectGuid>{D4718CD3-8492-4734-94B7-E31A39AA6275}</ProjectGuid>
@@ -48,11 +43,6 @@
     </None>
     <None Include="TensorTemplate.ttinclude" />
   </ItemGroup> 
-  <ItemGroup>
-    <!-- Some internal types are needed, so we reference the implementation assembly, rather than the reference assembly. -->
-    <DefaultReferenceExclusions Include="Microsoft.ML.OnnxRuntime.Tensors" />
-    <ReferenceFromRuntime Include="Microsoft.ML.OnnxRuntime.Tensors" />
-  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime.Tensors\Microsoft.ML.OnnxRuntime.Tensors.csproj" />
   </ItemGroup>
