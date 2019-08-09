@@ -13,6 +13,7 @@
 #include "core/platform/ort_mutex.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/path_lib.h"
+#include "core/framework/allocator.h"
 #include <sstream>
 #include <map>
 #include <regex>
@@ -267,21 +268,17 @@ static void SortTensorFileNames(std::vector<std::basic_string<PATH_CHAR_TYPE>>& 
 
 OrtValue* TensorToOrtValue(const ONNX_NAMESPACE::TensorProto& t, HeapBuffer& b) {
   size_t len = 0;
-  auto status = onnxruntime::test::utils::GetSizeInBytesFromTensorProto<0>(t, &len);
+  auto status = onnxruntime::test::GetSizeInBytesFromTensorProto<0>(t, &len);
   if (!status.IsOK()) {
     ORT_THROW(status.ToString());
   }
   void* p = len == 0 ? nullptr : b.AllocMemory(len);
-  auto d = std::make_unique<onnxruntime::OrtCallback>();
-  auto temp_value = std::make_unique<OrtValue>();
+  Ort::Value temp_value{nullptr};
   OrtAllocatorInfo cpu_allocator_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
-  status = onnxruntime::test::utils::TensorProtoToMLValue(Env::Default(), nullptr, t,
-                                                          MemBuffer(p, len, cpu_allocator_info), *temp_value, *d);
+  status = onnxruntime::test::TensorProtoToMLValue(t, onnxruntime::test::MemBuffer(p, len, cpu_allocator_info),
+                                                   temp_value);
   if (!status.IsOK()) {
     ORT_THROW(status.ToString());
-  }
-  if (d->f) {
-    b.AddDeleter(d.release());
   }
   return temp_value.release();
 }
@@ -582,21 +579,17 @@ void OnnxTestCase::ConvertTestData(const std::vector<ONNX_NAMESPACE::TensorProto
     const ONNX_NAMESPACE::TensorProto& input = test_data_pbs[input_index];
     size_t len = 0;
 
-    auto status = onnxruntime::test::utils::GetSizeInBytesFromTensorProto<0>(input, &len);
+    auto status = onnxruntime::test::GetSizeInBytesFromTensorProto<0>(input, &len);
     if (!status.IsOK()) {
       ORT_THROW(status.ToString());
     }
     void* p = len == 0 ? nullptr : b.AllocMemory(len);
-    auto d = std::make_unique<onnxruntime::OrtCallback>();
+    Ort::Value v1{nullptr};
     OrtAllocatorInfo cpu_allocator_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
-    auto v1 = std::make_unique<OrtValue>();
-    status = onnxruntime::test::utils::TensorProtoToMLValue(Env::Default(), nullptr, input,
-                                                            MemBuffer(p, len, cpu_allocator_info), *v1, *d);
+    status = onnxruntime::test::TensorProtoToMLValue(input, onnxruntime::test::MemBuffer(p, len, cpu_allocator_info),
+                                                     v1);
     if (!status.IsOK()) {
       ORT_THROW(status.ToString());
-    }
-    if (d->f) {
-      b.AddDeleter(d.release());
     }
     out.insert(std::make_pair(name, v1.release()));
   }

@@ -1,8 +1,14 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 #include "core/common/common.h"
 
 namespace onnxruntime {
-namespace perftest {
+namespace test {
+/**
+ * A simple POD for using with tensor deserialization
+ */
 class MemBuffer {
  public:
   MemBuffer(void* buffer, size_t len, const OrtAllocatorInfo& alloc_info)
@@ -17,5 +23,5 @@ class MemBuffer {
   const size_t len_;
   const OrtAllocatorInfo& alloc_info_;
 };
-}  // namespace perftest
+};  // namespace test
 }  // namespace onnxruntime
