@@ -533,7 +533,7 @@ common::Status InferenceSession::Initialize() {
         // Serialize optimized ONNX model.
         ORT_RETURN_IF_ERROR(Model::Save(*model_, session_options_.optimized_model_filepath));
       } else {
-        LOGS(*session_logger_, ERROR) << "Serializing Optimized ONNX model with Graph Optimization"
+        LOGS(*session_logger_, WARNING) << "Serializing Optimized ONNX model with Graph Optimization"
                                         " level greater than 2 is not supported.";
       }
     }
