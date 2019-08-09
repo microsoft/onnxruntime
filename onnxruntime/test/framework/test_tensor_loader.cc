@@ -134,7 +134,7 @@ TEST(CApiTest, load_float_tensor_with_external_data) {
   run_external_data_test<false>();
 }
 
-#if defined(__amd64__) || defined(_M_X64)
+#if (defined(__amd64__) || defined(_M_X64)) && not defined(__ANDROID__)
 
 TEST(CApiTest, load_huge_tensor_with_external_data) {
   FILE* fp;
