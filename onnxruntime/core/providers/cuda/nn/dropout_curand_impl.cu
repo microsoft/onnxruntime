@@ -15,33 +15,10 @@ __global__ void DropoutKernel(
   const float* random_data,
   T* Y_data,
   bool* mask_data) {
-  const float scale = 1. / (1. - ratio);
+  const T scale = T(1.0f) / T(1.0f - ratio);
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  mask_data[id] = (random_data[id] > ratio);
-  Y_data[id] = X_data[id] * mask_data[id] * scale;
-}
-
-template <>
-__global__ void DropoutKernel(
-  const int64_t N,
-  const float ratio,
-  const half* X_data,
-  const float* random_data,
-  half* Y_data,
-  bool* mask_data) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  const half scale = static_cast<half>(1. / (1. - ratio));
-  mask_data[id] = (random_data[id] > ratio);
-#if __CUDA_ARCH__ >= 530
-  Y_data[id] = X_data[id] * static_cast<half>(mask_data[id]) * scale;
-#else
-  half val = 1.0;
-  onnxruntime::cuda::operator*=(val, X_data[id]);
-  onnxruntime::cuda::operator*=(val, static_cast<half>(mask_data[id]));
-  onnxruntime::cuda::operator*=(val, scale);
-  Y_data[id] = val;
-#endif
-  
+  mask_data[id] = random_data[id] > ratio;
+  Y_data[id] = X_data[id] * T(mask_data[id]) * scale;
 }
 
 template <typename T>
@@ -77,26 +54,7 @@ __global__ void DropoutGradientKernel(
   const float scale,
   T* dX_data) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  dX_data[id] = dY_data[id] * mask_data[id] * scale;
-}
-
-template <>
-__global__ void DropoutGradientKernel(
-  const int64_t N,
-  const half* dY_data,
-  const bool* mask_data,
-  const float scale,
-  half* dX_data) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-#if __CUDA_ARCH__ >= 530
-  dX_data[id] = dY_data[id] * static_cast<half>(mask_data[id]) * static_cast<half>(scale);
-#else
-  half val = 1.0;
-  onnxruntime::cuda::operator*=(val, dY_data[id]);
-  onnxruntime::cuda::operator*=(val, static_cast<half>(mask_data[id]));
-  onnxruntime::cuda::operator*=(val, static_cast<half>(scale));
-  dX_data[id] = val;
-#endif
+  dX_data[id] = dY_data[id] * T(mask_data[id] * scale);
 }
 
 template <typename T>
