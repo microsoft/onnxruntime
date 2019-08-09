@@ -13,8 +13,6 @@
 #else
 #pragma warning(push)
 #pragma warning(disable : 4100)  //'identifier' : unreferenced formal parameter
-#endif
-#ifdef _MSC_VER
 #pragma warning(disable : 4244)
 #pragma warning(disable : 4267)
 #endif
