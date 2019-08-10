@@ -5,13 +5,9 @@ VisualStudioVersion = 15.0.28010.2003
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.ML.OnnxRuntime", "src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj", "{584B53B3-359D-4DC2-BCD8-530B5D4685AD}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.ML.OnnxRuntime.Tensors", "src\Microsoft.ML.OnnxRuntime.Tensors\Microsoft.ML.OnnxRuntime.Tensors.csproj", "{BE0F13BE-9140-49A8-9FDD-994D0D8A3805}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.ML.OnnxRuntime.InferenceSample", "sample\Microsoft.ML.OnnxRuntime.InferenceSample\Microsoft.ML.OnnxRuntime.InferenceSample.csproj", "{1AA14958-9246-4163-9403-F650E65ADCBC}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.ML.OnnxRuntime.Tests", "test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj", "{50173D13-DF29-42E7-A30B-8B12D36C77B1}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.ML.OnnxRuntime.Tensors.Tests", "test\Microsoft.ML.OnnxRuntime.Tensors.Tests\Microsoft.ML.OnnxRuntime.Tensors.Tests.csproj", "{D4718CD3-8492-4734-94B7-E31A39AA6275}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.ML.OnnxRuntime.PerfTool", "tools\Microsoft.ML.OnnxRuntime.PerfTool\Microsoft.ML.OnnxRuntime.PerfTool.csproj", "{310506FD-6E78-4D62-989B-25D69A85E8CF}"
 EndProject

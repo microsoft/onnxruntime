@@ -3,6 +3,7 @@
   <PropertyGroup>
     <TargetFrameworks>netstandard1.1;netstandard2.0</TargetFrameworks>
     <Platforms>AnyCPU;x86</Platforms>
+    <LangVersion>7.2</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <SignAssembly>true</SignAssembly>
     <DelaySign>false</DelaySign>
@@ -16,7 +17,7 @@
     
     <!--- packaging properties -->
     <PackageId>Microsoft.ML.OnnxRuntime</PackageId>
-    <!--Authors>Microsoft</Authors>
+    <Authors>Microsoft</Authors>
     <Description>This package contains ONNX Runtime for .Net platforms</Description>
     <PackageTags>ONNX;ONNX Runtime;Machine Learning</PackageTags>
     <PackageProjectUrl>https://github.com/Microsoft/onnxruntime</PackageProjectUrl>
@@ -24,43 +25,22 @@
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
     <PackageIconUrl>https://go.microsoft.com/fwlink/?linkid=2049168</PackageIconUrl>
     <PackageReleaseNotes>
-        Release Def:
+      Release Def:
 	Branch: $(BUILD_SOURCEBRANCH)
 	Commit: $(BUILD_SOURCEVERSION)
 	Build: https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(BUILD_BUILDID)
-    </PackageReleaseNotes-->
+    </PackageReleaseNotes>
     <!-- sourcelink flags -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <!-- Optional: Embed source files that are not tracked by the source control manager in the PDB -->
     <!--EmbedUntrackedSources>true</EmbedUntrackedSources-->
     <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
-    <NuSpecFile>Microsoft.ML.OnnxRuntime.nuspec</NuSpecFile>
-    <NuSpecProperties>id=$(PackageId);OnnxRuntimeCsharpRoot=$(OnnxRuntimeCsharpRoot);NativeBuildOutputDir=$(NativeBuildOutputDir)</NuSpecProperties>
-    <NuSpecProperties>$(NuSpecProperties);Configuration=$(Configuration);TargetArchitecture=$(TargetArchitecture)</NuSpecProperties>
-    <NuSpecProperties>$(NuSpecProperties);RepositoryUrl='$(RepositoryUrl)';RepositoryType=$(RepositoryType);RepositoryBranch=$(RepositoryBranch);RepositoryCommit=$(RepositoryCommit);BuildId=$(BUILD_BUILDID)</NuSpecProperties>
   </PropertyGroup>
 
   <!--TODO: this works for single platform only. Need separate packaging scripts for multi-target packaging -->
   <!--TODO: Find a way to bundle the native symbol files properly -->
-  <PropertyGroup>
-      <NativeRuntimePdbPath Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')">$(NativeBuildOutputDir)\onnxruntime.pdb</NativeRuntimePdbPath>
-      <MklDnnDllPath Condition="Exists('$(NativeBuildOutputDir)\mkldnn.dll')">$(NativeBuildOutputDir)\mkldnn.dll</MklDnnDllPath>
-      <MklMlDllPath Condition="Exists('$(NativeBuildOutputDir)\mklml.dll')">$(NativeBuildOutputDir)\mklml.dll</MklMlDllPath>
-      <OpenMpDllPath Condition="Exists('$(NativeBuildOutputDir)\libiomp5md.dll')">$(NativeBuildOutputDir)\libiomp5md.dll</OpenMpDllPath>
-
-      <NuSpecProperties>$(NuSpecProperties);NativeRuntimePdbPath=$(NativeRuntimePdbPath);OpenMpDllPath=$(OpenMpDllPath)</NuSpecProperties>
-      <NuSpecProperties>$(NuSpecProperties);MklDnnDllPath=$(MklDnnDllPath);MklMlDllPath=$(MklMlDllPath)</NuSpecProperties>
-
-  </PropertyGroup>
   
-  <!-- <ItemGroup>
-    <None Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime.Tensors\$(OutputPath)\Microsoft.ML.OnnxRuntime.Tensors.dll"
-          PackagePath="\lib\netstandard1.1"
-          Pack="true"
-          CopyToOutputDirectory="Never"
-          Visible="false"
-    />  
-
+  <ItemGroup>
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_*.h"
           PackagePath="\build\native\include"
           Pack="true"
@@ -140,7 +120,7 @@
           Visible="false"
     />
 
-  </ItemGroup> -->
+  </ItemGroup>
 
   <ItemGroup>
     <LicenseFile Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE"/>
@@ -160,19 +140,16 @@
       <PackageVersion>@(MajorVersionNumber)</PackageVersion>
       <Version>$(PackageVersion)</Version>
       <PackageVersion Condition="'$(IsReleaseBuild)'!='true'">$(PackageVersion)-dev-$(GitCommitHashShort)</PackageVersion>
-      <NuSpecProperties>$(NuSpecProperties);version=$(PackageVersion)</NuSpecProperties>
     </PropertyGroup>
     <Message Importance="High" Text="PackageVersion=$(PackageVersion)" />
     <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeCsharpRoot)\..\%(Filename).txt')"/>
     <Copy SourceFiles="@(PropertiesFile)" DestinationFiles="@(PropertiesFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).props')"/>
     <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).targets')"/>
   </Target>
-  <ItemGroup>
-    <ProjectReference Include="..\Microsoft.ML.OnnxRuntime.Tensors\Microsoft.ML.OnnxRuntime.Tensors.csproj"/>
-  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0-beta-63127-02" PrivateAssets="All"/>
+    <PackageReference Include="System.Memory" Version="4.5.3" />
   </ItemGroup>
 
 </Project>
