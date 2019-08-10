@@ -379,7 +379,14 @@ void addOpSchemaSubmodule(py::module& m) {
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
 void addObjectMethods(py::module& m) {
-  py::class_<SessionOptions>(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc")
+  py::enum_<GraphOptimizationLevel>(m, "GraphOptimizationLevel")
+      .value("ORT_DISABLE_ALL", GraphOptimizationLevel::ORT_DISABLE_ALL)
+      .value("ORT_ENABLE_BASIC", GraphOptimizationLevel::ORT_ENABLE_BASIC)
+      .value("ORT_ENABLE_EXTENDED", GraphOptimizationLevel::ORT_ENABLE_EXTENDED)
+      .value("ORT_ENABLE_ALL", GraphOptimizationLevel::ORT_ENABLE_ALL);
+
+  py::class_<SessionOptions> sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
+  sess
       .def(py::init())
       .def_readwrite("enable_cpu_mem_arena", &SessionOptions::enable_cpu_mem_arena,
                      R"pbdoc(Enables the memory arena on CPU. Arena may pre-allocate memory for future usage.
@@ -405,17 +412,44 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
 This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
       .def_property_readonly(
           "graph_optimization_level",
-          [](const SessionOptions* options) -> uint32_t {
-            return static_cast<uint32_t>(options->graph_optimization_level);
+          [](const SessionOptions* options) -> GraphOptimizationLevel {
+            GraphOptimizationLevel retval = ORT_ENABLE_EXTENDED;  // just for the sake of initialization
+            switch (options->graph_optimization_level) {
+              case onnxruntime::TransformerLevel::Default:
+                retval = ORT_DISABLE_ALL;
+                break;
+              case onnxruntime::TransformerLevel::Level1:
+                retval = ORT_ENABLE_BASIC;
+                break;
+              case onnxruntime::TransformerLevel::Level2:
+                retval = ORT_ENABLE_EXTENDED;
+                break;
+              case onnxruntime::TransformerLevel::Level3:
+                retval = ORT_ENABLE_ALL;
+                break;
+            }
+            return retval;
           },
           R"pbdoc(Graph optimization level for this session.)pbdoc")
       .def(
           "set_graph_optimization_level",
-          [](SessionOptions* options, uint32_t level) -> void {
-            options->graph_optimization_level = static_cast<TransformerLevel>(level);
+          [](SessionOptions* options, GraphOptimizationLevel level) -> void {
+            switch (level) {
+              case ORT_DISABLE_ALL:
+                options->graph_optimization_level = onnxruntime::TransformerLevel::Default;
+                break;
+              case ORT_ENABLE_BASIC:
+                options->graph_optimization_level = onnxruntime::TransformerLevel::Level1;
+                break;
+              case ORT_ENABLE_EXTENDED:
+                options->graph_optimization_level = onnxruntime::TransformerLevel::Level2;
+                break;
+              case ORT_ENABLE_ALL:
+                options->graph_optimization_level = onnxruntime::TransformerLevel::Level3;
+                break;
+            }
           },
-          R"pbdoc(Graph optimization level for this session. 0 disables all optimizations.
-Whereas 1 enables basic optimizations and 2 enables all optimizations.)pbdoc");
+          R"pbdoc(Graph optimization level for this session.)pbdoc");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())

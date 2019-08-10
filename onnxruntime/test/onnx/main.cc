@@ -175,6 +175,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             case ORT_ENABLE_BASIC:
               graph_optimization_level = ORT_ENABLE_BASIC;
               break;
+            case ORT_ENABLE_EXTENDED:
+              graph_optimization_level = ORT_ENABLE_EXTENDED;
+              break;
             case ORT_ENABLE_ALL:
               graph_optimization_level = ORT_ENABLE_ALL;
               break;

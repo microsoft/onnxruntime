@@ -137,6 +137,9 @@ namespace perftest {
           case ORT_ENABLE_BASIC:
             test_config.run_config.optimization_level = ORT_ENABLE_BASIC;
             break;
+          case ORT_ENABLE_EXTENDED:
+            test_config.run_config.optimization_level = ORT_ENABLE_EXTENDED;
+            break;
           case ORT_ENABLE_ALL:
             test_config.run_config.optimization_level = ORT_ENABLE_ALL;
             break;

@@ -10,5 +10,5 @@ using namespace onnxruntime;
 TEST_F(CApiTest, session_options_graph_optimization_level) {
   // Test set optimization level succeeds when valid level is provided.
   Ort::SessionOptions options;
-  options.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+  options.SetGraphOptimizationLevel(ORT_ENABLE_EXTENDED);
 }

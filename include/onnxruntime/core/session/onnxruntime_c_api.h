@@ -236,7 +236,8 @@ ORT_API_STATUS(OrtSetSessionLogVerbosityLevel, _Inout_ OrtSessionOptions* option
 typedef enum GraphOptimizationLevel {
   ORT_DISABLE_ALL = 0,
   ORT_ENABLE_BASIC = 1,
-  ORT_ENABLE_ALL = 2
+  ORT_ENABLE_EXTENDED = 2,
+  ORT_ENABLE_ALL = 99
 } GraphOptimizationLevel;
 ORT_API_STATUS(OrtSetSessionGraphOptimizationLevel, _Inout_ OrtSessionOptions* options,
                GraphOptimizationLevel graph_optimization_level);

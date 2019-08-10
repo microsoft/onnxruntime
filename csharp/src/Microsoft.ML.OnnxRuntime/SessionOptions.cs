@@ -14,7 +14,8 @@ namespace Microsoft.ML.OnnxRuntime
     {
         ORT_DISABLE_ALL = 0,
         ORT_ENABLE_BASIC = 1,
-        ORT_ENABLE_ALL = 2
+        ORT_ENABLE_EXTENDED = 2,
+        ORT_ENABLE_ALL = 99
     }
 
     /// <summary>
