@@ -68,7 +68,8 @@ CMake creates a target to this project
              />
   </Target>
 
-  <Target Name="RunTest" AfterTargets="Build">
+  <!--Target Name="RunTest" AfterTargets="Build"-->
+  <Target Name="RunTest" >
     <Message Importance="High" Text="Running CSharp tests..." />
     <Exec Command="$(DotNetExe) test test\Microsoft.ML.OnnxRuntime.Tensors.Tests\Microsoft.ML.OnnxRuntime.Tensors.Tests.csproj -c $(Configuration) --no-build" ConsoleToMSBuild="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
