@@ -176,7 +176,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
       {"Mul", {{1, 0.5f}, {1, -10000.0f}}},
       {"Sub", {{0, 1.0f}}}};
 
-  params.in_graph_optimizer_name_ = "AdamOptimizer";
+  params.training_optimizer_name_ = "AdamOptimizer";
   params.adam_opt_params_.alpha_ = 0.9f;
   params.adam_opt_params_.beta_ = 0.999f;
   params.adam_opt_params_.lambda_ = 0;

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/onnx_protobuf.h"
-#include "core/graph/training/in_graph_training_optimizer.h"
+#include "core/graph/training/training_optimizer.h"
 #include "core/graph/training/gradient_builder_base.h"
 #include "core/graph/training/graph_augmenter.h"
 

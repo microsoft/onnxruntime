@@ -6,7 +6,7 @@
 #include "core/session/inference_session.h"
 #include "core/graph/training/loss_func/loss_func_common.h"
 #include "core/graph/training/loss_function_registry.h"
-#include "core/graph/training/in_graph_training_optimizer.h"
+#include "core/graph/training/training_optimizer.h"
 
 namespace onnxruntime {
 namespace training {

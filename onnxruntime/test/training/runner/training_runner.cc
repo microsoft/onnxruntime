@@ -45,7 +45,7 @@ TrainingRunner::TrainingRunner(std::shared_ptr<DataSet> training_data,
     ORT_ENFORCE(params.weights_not_to_train_.empty());
   ORT_ENFORCE(!params_.model_trained_path_.empty() || !params_.model_trained_with_loss_func_path_.empty());
   ORT_ENFORCE(!params_.model_prediction_name_.empty());
-  ORT_ENFORCE(!params_.in_graph_optimizer_name_.empty());
+  ORT_ENFORCE(!params_.training_optimizer_name_.empty());
 }
 
 Status TrainingRunner::Initialize() {
@@ -139,15 +139,8 @@ Status TrainingRunner::Run() {
 
 Status TrainingRunner::TrainingLoop() {
   // Prepare fetches
-  vector<string> fetch_names;
-  if (params_.in_graph_optimizer_name_.empty()) {
-    auto output_names_include_gradients = session_.GetModelOutputNames();
-    fetch_names.assign(output_names_include_gradients.begin(), output_names_include_gradients.end());
-  } else {
-    fetch_names = params_.fetch_names;
-  }
-
-  vector<string> feed_names = training_data_->TensorNames();
+  const vector<string>& fetch_names = params_.fetch_names;
+  const vector<string> feed_names = training_data_->TensorNames();
 
   double total_time{0};
   //Set the first N batchs as warm-up iterations
@@ -196,17 +189,6 @@ Status TrainingRunner::TrainingLoop() {
       printf("Training data range: [%d - %d)\n",
              static_cast<int>(batch * params_.batch_size_),
              static_cast<int>((batch + 1) * params_.batch_size_ - 1));
-
-      if (params_.in_graph_optimizer_name_.empty()) {
-        NameMLValMap grad;
-        for (size_t i = 0; i < fetches.size(); i++) {
-          if (fetch_names[i] == params_.loss_func_info_.loss_name ||
-              fetch_names[i] == params_.model_prediction_name_) {
-            continue;
-          }
-          grad.insert(make_pair(fetch_names[i], fetches[i]));
-        }
-      }
 
       if (step_ % params_.evaluation_period == 0) {
         ORT_RETURN_IF_ERROR(Evaluate(session_));
@@ -339,29 +321,25 @@ Status TrainingRunner::LoadAndEvaluate(const std::string& model_path) {
 
 Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
                                             std::unordered_map<std::string, OptimizerInfo>& opt_infos) {
-  // If in-graph optimizer is used, prepare the weight<->optimizer mapping.
-  // Here all weights use the same SGDOptimizer or AdamOptimizer
-  bool use_in_graph_optimizer = !params_.in_graph_optimizer_name_.empty();
+  // Prepare the weight<->optimizer mapping.
+  // All weights use the same type of optimizer
+  OptimizerInfo opt_info{
+      params_.training_optimizer_name_,
+      params_.learning_rate_,
+      params_.world_rank_,
+      params_.world_size_,
+      {}};
 
-  if (use_in_graph_optimizer) {
-    OptimizerInfo opt_info{
-        params_.in_graph_optimizer_name_,
-        params_.learning_rate_,
-        params_.world_rank_,
-        params_.world_size_,
-        {}};
+  if (params_.training_optimizer_name_ == "AdamOptimizer") {
+    opt_info.attributes_["alpha"] = params_.adam_opt_params_.alpha_;
+    opt_info.attributes_["beta"] = params_.adam_opt_params_.beta_;
+    opt_info.attributes_["lambda"] = params_.adam_opt_params_.lambda_;
+    opt_info.attributes_["epsilon"] = params_.adam_opt_params_.epsilon_;
+  }
 
-    if (params_.in_graph_optimizer_name_ == "AdamOptimizer") {
-      opt_info.attributes_["alpha"] = params_.adam_opt_params_.alpha_;
-      opt_info.attributes_["beta"] = params_.adam_opt_params_.beta_;
-      opt_info.attributes_["lambda"] = params_.adam_opt_params_.lambda_;
-      opt_info.attributes_["epsilon"] = params_.adam_opt_params_.epsilon_;
-    }
-
-    opt_infos.reserve(weights_to_train.size());
-    for (const auto& weight_name : weights_to_train) {
-      opt_infos[weight_name] = opt_info;
-    }
+  opt_infos.reserve(weights_to_train.size());
+  for (const auto& weight_name : weights_to_train) {
+    opt_infos[weight_name] = opt_info;
   }
 
   return Status::OK();

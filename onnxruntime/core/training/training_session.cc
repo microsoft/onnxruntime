@@ -3,7 +3,7 @@
 
 #include "core/graph/model.h"
 #include "core/graph/training/loss_function_builder.h"
-#include "core/graph/training/in_graph_training_optimizer.h"
+#include "core/graph/training/training_optimizer.h"
 #include "core/training/gradient_graph_builder.h"
 #include "core/training/training_session.h"
 #include "core/optimizer/constant_folding.h"

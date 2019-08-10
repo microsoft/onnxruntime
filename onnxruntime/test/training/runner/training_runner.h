@@ -7,7 +7,7 @@
 #include "core/framework/ml_value.h"
 #include "core/training/training_session.h"
 #include "test/training/runner/training_util.h"
-#include "core/graph/training/in_graph_training_optimizer.h"
+#include "core/graph/training/training_optimizer.h"
 #include "test/training/runner/data_loader.h"
 
 namespace onnxruntime {
@@ -42,12 +42,10 @@ class TrainingRunner {
     int num_of_perf_samples;
     LossFunctionInfo loss_func_info_;
 
-    // The in-graph optimizer info.
-    // It is the name of the optimizer OP.
-    // If specified, every gradient output will be connected to a new optimizer node
-    // who has the updated weights as new graph outputs.
+    // The training optimizer name
+    // Every weight's gradient will be connected to an optimizer node
     // For now all to-be-trained weights use the same optimizer type.
-    std::string in_graph_optimizer_name_ = "SGDOptimizer";
+    std::string training_optimizer_name_ = "SGDOptimizer";
 
     // For some model, loss function's input "prediction" is not the model output.
     // So model_prediction_name must be specified.
