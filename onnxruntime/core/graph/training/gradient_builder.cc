@@ -59,6 +59,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
   std::vector<Dimension> B_shape = GetShape(B);
   std::vector<Dimension> Y_shape = GetShape(Y);
 
+  std::vector<AttributeProto> shared_attributes;
+  shared_attributes.push_back(MakeAttribute("beta", float(0)));
+  AttributeProto transpose_first_input = MakeAttribute("transA", int64_t(1));
+  AttributeProto transpose_second_input = MakeAttribute("transB", int64_t(1));
+
   if (A_shape.size() == 2 && B_shape.size() == 2) {
     NodeDef zero_constant_node = ZeroConstantNode();
     ArgDef ZERO = zero_constant_node.output_args[0];
@@ -67,21 +72,25 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
     // is GI(0) required
     if (IsGradientRequiredForSrcNodeInput(0)) {
       // dA = dY * B'
+      std::vector<AttributeProto> attrs(shared_attributes);
+      attrs.push_back(transpose_second_input);
       result.push_back(
           NodeDef("Gemm",
                   {GO(0), B, ZERO},
                   {GI(0)},
-                  {MakeAttribute("transB", int64_t(1))}));
+                  attrs));
     }
 
     // is GI(1) required
     if (IsGradientRequiredForSrcNodeInput(1)) {
       // dB = A' * dY
+      std::vector<AttributeProto> attrs(shared_attributes);
+      attrs.push_back(transpose_first_input);
       result.push_back(
           NodeDef("Gemm",
                   {A, GO(0), ZERO},
                   {GI(1)},
-                  {MakeAttribute("transA", int64_t(1))}));
+                  attrs));
     }
   } else if (A_shape.size() > 2 || B_shape.size() > 2) {
     if (IsGradientRequiredForSrcNodeInput(0)) {
@@ -176,11 +185,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
                     {IA("dY_reshape_2d")}));
 
         // dB = A' * dY
+        std::vector<AttributeProto> attrs(shared_attributes);
+        attrs.push_back(transpose_first_input);
         result.push_back(
             NodeDef("Gemm",
                     {IA("A_reshape_2d"), IA("dY_reshape_2d"), ZERO},
                     {GI(1)},
-                    {MakeAttribute("transA", int64_t(1))}));
+                    attrs));
       } else {
         int64_t A_rank = A_shape.size();
         std::vector<int64_t> A_perm(A_rank);
@@ -255,6 +266,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
   result.push_back(zero_contant_node);
 
   std::vector<AttributeProto> shared_attributes;
+  shared_attributes.push_back(MakeAttribute("beta", float(0)));
   if (has_alpha && alpha != 1.0f) {
     ORT_ENFORCE(alpha != 0.0f);
     AttributeProto alpha_attr = MakeAttribute("alpha", alpha);
