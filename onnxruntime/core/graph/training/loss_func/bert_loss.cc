@@ -88,62 +88,30 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
     shape_tensor_proto.add_int64_data(batch_size);
     shape_tensor_proto.add_int64_data(max_sequence_len);
 
-    new_nodes.emplace_back(NodeDef("Constant",
-                                   {},
-                                   {ArgDef("label_shape")},
-                                   {MakeAttribute("value", shape_tensor_proto)},
-                                   "Label_Shape"));
-
-    // Scatter for LM_Label
-    {
-      ONNX_NAMESPACE::TensorProto zero_tensor_proto;
-      zero_tensor_proto.add_dims(1);
-      zero_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      zero_tensor_proto.add_int64_data(int64_t(0));
-
-      new_nodes.emplace_back(NodeDef("ConstantOfShape",
-                                     {ArgDef("label_shape")},  // Inputs
-                                     {ArgDef("int64_zeros")},  // Outputs
-                                     {MakeAttribute("value", zero_tensor_proto)},
-                                     "Int64_Zeros"));
-
-      new_nodes.emplace_back(NodeDef("Scatter",
-                                     {ArgDef("int64_zeros"),
-                                      ArgDef(masked_lm_positions, masked_lm_int64_type_proto),
-                                      ArgDef(masked_lm_ids, masked_lm_int64_type_proto)},  // Inputs
-                                     {ArgDef("scattered_lm_lables")},                      // Outputs
-                                     {MakeAttribute("axis", int64_t(1))},
-                                     "Scatter_LM_Lable"));
-    }
-
-    //Scatter for LM_Weights
-    {
-      new_nodes.emplace_back(NodeDef("ConstantOfShape",
-                                     {ArgDef("label_shape")},  // Inputs
-                                     {ArgDef("float_zeros")},  // Outputs
-                                     NodeAttributes(),
-                                     "Float_Zeros"));
-
+    new_nodes.emplace_back(NodeDef("Unsqueeze",
+                                   {ArgDef(masked_lm_positions, masked_lm_int64_type_proto)},
+                                   {ArgDef("masked_lm_positions_unsqueezed")},
+                                   {MakeAttribute("axes", std::vector<int64_t>{static_cast<int64_t>(2)})},
+                                   "Mask_LM_Positions_Unsqueezed"));
+    TypeProto* gathered_prediction_type_proto = GetGatheredPredictionTypeProto(prediction_arg,
+                                                                               max_predictions_per_sequence,
+                                                                               graph_defs);
+    new_nodes.emplace_back(NodeDef("GatherND",
+                                   {ArgDef(prediction_masked_lm), ArgDef("masked_lm_positions_unsqueezed")},
+                                   {ArgDef("gathered_prediction", gathered_prediction_type_proto)},
+                                   {MakeAttribute("axis", static_cast<int64_t>(1))},
+                                   "GATHERED_LM"));
 
     TypeProto* masked_lm_float_type_proto = GetMaskedLMTypeProto(prediction_arg,
                                                                  ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
                                                                  max_predictions_per_sequence,
                                                                  graph_defs);
-
-      new_nodes.emplace_back(NodeDef("Scatter",
-                                     {ArgDef("float_zeros"),
-                                      ArgDef(masked_lm_positions, masked_lm_int64_type_proto),
-                                      ArgDef(masked_lm_weights, masked_lm_float_type_proto)},  // Inputs
-                                     {ArgDef("scattered_lm_weights")},                         // Output
-                                     {MakeAttribute("axis", int64_t(1))},
-                                     "Scatter_LM_Weights"));
-    }
     new_nodes.emplace_back(NodeDef("SparseSoftmaxCrossEntropy",
-                                     {ArgDef(prediction_masked_lm),
-                                    ArgDef("scattered_lm_lables"),
-                                    ArgDef("scattered_lm_weights")},  // Inputs
+                                   {ArgDef("gathered_prediction", gathered_prediction_type_proto),
+                                    ArgDef(masked_lm_ids, masked_lm_int64_type_proto),
+                                    ArgDef(masked_lm_weights, masked_lm_float_type_proto)},  // Inputs
                                    {ArgDef(mlm_loss, GetLossTypeProto(graph_defs)),          // Outputs
-                                    ArgDef("probability_lm", prediction_arg->TypeAsProto())},
+                                    ArgDef("probability_lm", gathered_prediction_type_proto)},
                                    {MakeAttribute("reduction", "mean")},
                                    "Masked_LM_Loss"));
   }

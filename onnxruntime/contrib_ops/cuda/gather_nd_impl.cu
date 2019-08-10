@@ -38,7 +38,7 @@ void GatherNDImpl(
     void* output_data,
     const size_t nums_of_elements,
     const int64_t* element_offset) {
-  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  int blocksPerGrid = (int)(ceil(static_cast<float>(N * nums_of_elements) / GridDim::maxThreadsPerBlock));
   _GatherNDKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       N, static_cast<const T*>(input_data), static_cast<T*>(output_data), nums_of_elements, element_offset);
 }
@@ -50,7 +50,7 @@ void GatherNDGradImpl(
     void* output_data,
     const size_t nums_of_elements,
     const int64_t* element_offset) {
-  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  int blocksPerGrid = (int)(ceil(static_cast<float>(N * nums_of_elements) / GridDim::maxThreadsPerBlock));
   _GatherNDGradKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       N, static_cast<const T*>(input_data), static_cast<T*>(output_data), nums_of_elements, element_offset);
 }
