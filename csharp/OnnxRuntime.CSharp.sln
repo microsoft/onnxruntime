@@ -12,6 +12,9 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.ML.OnnxRuntime.PerfTool", "tools\Microsoft.ML.OnnxRuntime.PerfTool\Microsoft.ML.OnnxRuntime.PerfTool.csproj", "{310506FD-6E78-4D62-989B-25D69A85E8CF}"
 EndProject
 Global
+	GlobalSection(Performance) = preSolution
+		HasPerformanceSessions = true
+	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
@@ -22,46 +25,31 @@ Global
 		{584B53B3-359D-4DC2-BCD8-530B5D4685AD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{584B53B3-359D-4DC2-BCD8-530B5D4685AD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{584B53B3-359D-4DC2-BCD8-530B5D4685AD}.Release|Any CPU.Build.0 = Release|Any CPU
-		{584B53B3-359D-4DC2-BCD8-530B5D4685AD}.RelWithDebInfo|Any CPU.ActiveCfg = Release|Any CPU
-		{584B53B3-359D-4DC2-BCD8-530B5D4685AD}.RelWithDebInfo|Any CPU.Build.0 = Release|Any CPU
-		{BE0F13BE-9140-49A8-9FDD-994D0D8A3805}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{BE0F13BE-9140-49A8-9FDD-994D0D8A3805}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{BE0F13BE-9140-49A8-9FDD-994D0D8A3805}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{BE0F13BE-9140-49A8-9FDD-994D0D8A3805}.Release|Any CPU.Build.0 = Release|Any CPU
-		{BE0F13BE-9140-49A8-9FDD-994D0D8A3805}.RelWithDebInfo|Any CPU.ActiveCfg = Release|Any CPU
-		{BE0F13BE-9140-49A8-9FDD-994D0D8A3805}.RelWithDebInfo|Any CPU.Build.0 = Release|Any CPU
+		{584B53B3-359D-4DC2-BCD8-530B5D4685AD}.RelWithDebInfo|Any CPU.ActiveCfg = RelWithDebInfo|Any CPU
+		{584B53B3-359D-4DC2-BCD8-530B5D4685AD}.RelWithDebInfo|Any CPU.Build.0 = RelWithDebInfo|Any CPU
 		{1AA14958-9246-4163-9403-F650E65ADCBC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{1AA14958-9246-4163-9403-F650E65ADCBC}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1AA14958-9246-4163-9403-F650E65ADCBC}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1AA14958-9246-4163-9403-F650E65ADCBC}.Release|Any CPU.Build.0 = Release|Any CPU
-		{1AA14958-9246-4163-9403-F650E65ADCBC}.RelWithDebInfo|Any CPU.ActiveCfg = Release|Any CPU
-		{1AA14958-9246-4163-9403-F650E65ADCBC}.RelWithDebInfo|Any CPU.Build.0 = Release|Any CPU
+		{1AA14958-9246-4163-9403-F650E65ADCBC}.RelWithDebInfo|Any CPU.ActiveCfg = RelWithDebInfo|Any CPU
+		{1AA14958-9246-4163-9403-F650E65ADCBC}.RelWithDebInfo|Any CPU.Build.0 = RelWithDebInfo|Any CPU
 		{50173D13-DF29-42E7-A30B-8B12D36C77B1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{50173D13-DF29-42E7-A30B-8B12D36C77B1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{50173D13-DF29-42E7-A30B-8B12D36C77B1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{50173D13-DF29-42E7-A30B-8B12D36C77B1}.Release|Any CPU.Build.0 = Release|Any CPU
-		{50173D13-DF29-42E7-A30B-8B12D36C77B1}.RelWithDebInfo|Any CPU.ActiveCfg = Release|Any CPU
-		{50173D13-DF29-42E7-A30B-8B12D36C77B1}.RelWithDebInfo|Any CPU.Build.0 = Release|Any CPU
-		{D4718CD3-8492-4734-94B7-E31A39AA6275}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{D4718CD3-8492-4734-94B7-E31A39AA6275}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{D4718CD3-8492-4734-94B7-E31A39AA6275}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{D4718CD3-8492-4734-94B7-E31A39AA6275}.Release|Any CPU.Build.0 = Release|Any CPU
-		{D4718CD3-8492-4734-94B7-E31A39AA6275}.RelWithDebInfo|Any CPU.ActiveCfg = Release|Any CPU
-		{D4718CD3-8492-4734-94B7-E31A39AA6275}.RelWithDebInfo|Any CPU.Build.0 = Release|Any CPU
+		{50173D13-DF29-42E7-A30B-8B12D36C77B1}.RelWithDebInfo|Any CPU.ActiveCfg = RelWithDebInfo|Any CPU
+		{50173D13-DF29-42E7-A30B-8B12D36C77B1}.RelWithDebInfo|Any CPU.Build.0 = RelWithDebInfo|Any CPU
 		{310506FD-6E78-4D62-989B-25D69A85E8CF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{310506FD-6E78-4D62-989B-25D69A85E8CF}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{310506FD-6E78-4D62-989B-25D69A85E8CF}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{310506FD-6E78-4D62-989B-25D69A85E8CF}.Release|Any CPU.Build.0 = Release|Any CPU
-		{310506FD-6E78-4D62-989B-25D69A85E8CF}.RelWithDebInfo|Any CPU.ActiveCfg = Release|Any CPU
-		{310506FD-6E78-4D62-989B-25D69A85E8CF}.RelWithDebInfo|Any CPU.Build.0 = Release|Any CPU
+		{310506FD-6E78-4D62-989B-25D69A85E8CF}.RelWithDebInfo|Any CPU.ActiveCfg = RelWithDebInfo|Any CPU
+		{310506FD-6E78-4D62-989B-25D69A85E8CF}.RelWithDebInfo|Any CPU.Build.0 = RelWithDebInfo|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {C3DBDA2B-F169-4EDE-9353-858904124B75}
-	EndGlobalSection
-	GlobalSection(Performance) = preSolution
-		HasPerformanceSessions = true
 	EndGlobalSection
 EndGlobal
