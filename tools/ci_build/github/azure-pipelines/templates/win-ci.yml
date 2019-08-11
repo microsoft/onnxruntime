@@ -74,20 +74,20 @@ jobs:
       - task: MSBuild@1
         displayName: 'Build C# Debug'
         inputs:
-          Project: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
-          Platform: 'Any CPU'
-          Configuration: 'Debug'
+          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+          platform: 'Any CPU'
+          configuration: 'Debug'
           msbuildArchitecture: 'x64'
           workingFolder: '$(Build.SourcesDirectory)\csharp'
 
       - task: MSBuild@1
         displayName: 'Test C# Debug'
         inputs:
-          Project: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
-          Platform: 'Any CPU'
-          Configuration: 'Debug'
+          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+          platform: 'Any CPU'
+          configuration: 'Debug'
           msbuildArchitecture: 'x64'
-          MsBuildArguments: '/t:RunTest'
+          msbuildArguments: '/t:RunTest'
           workingFolder: '$(Build.SourcesDirectory)\csharp'
 
       # - task: VSBuild@1
@@ -139,20 +139,20 @@ jobs:
     - task: MSBuild@1
       displayName: 'Build C# RelWithDebInfo'
       inputs:
-        Project: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
-        Platform: 'Any CPU'
-        Configuration: 'RelWithDebInfo'
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        platform: 'Any CPU'
+        configuration: 'RelWithDebInfo'
         msbuildArchitecture: 'x64'
         workingFolder: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
       displayName: 'Test C# RelWithDebInfo'
       inputs:
-        Project: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
-        Platform: 'Any CPU'
-        Configuration: 'RelWithDebInfo'
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        platform: 'Any CPU'
+        configuration: 'RelWithDebInfo'
         msbuildArchitecture: 'x64'
-        MsBuildArguments: '/t:RunTest'
+        msbuildArguments: '/t:RunTest'
         workingfolder: '$(Build.SourcesDirectory)\csharp'
     # - task: VSBuild@1
     #   displayName: 'Build c# RelWithDebInfo'
