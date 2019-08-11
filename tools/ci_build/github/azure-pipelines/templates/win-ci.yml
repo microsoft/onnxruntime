@@ -90,24 +90,6 @@ jobs:
           msbuildArguments: '/t:RunTest'
           workingFolder: '$(Build.SourcesDirectory)\csharp'
 
-      # - task: VSBuild@1
-      #   displayName: 'Build C# Debug'
-      #   inputs:
-      #     solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-      #     platform: 'any cpu'
-      #     configuration: 'Debug'
-      #     restoreNugetPackages: false
-      #     msbuildArchitecture: 'x64'
-      #     workingFolder: '$(Build.SourcesDirectory)\csharp'
-      #     maximumCpuCount: true
-
-      # - task: CmdLine@2
-      #   displayName: 'Test C# Debug'
-      #   inputs:
-      #     script: |
-      #      FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
-      #     workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
     # Run test coverage report
     - ${{ if eq(parameters['DoTestCoverage'], 'true') }}:
       - template: windows-code-coverage-steps.yml
@@ -154,23 +136,6 @@ jobs:
         msbuildArchitecture: 'x64'
         msbuildArguments: '/t:RunTest'
         workingfolder: '$(Build.SourcesDirectory)\csharp'
-    # - task: VSBuild@1
-    #   displayName: 'Build c# RelWithDebInfo'
-    #   inputs:
-    #     solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-    #     platform: 'any cpu'
-    #     configuration: 'RelWithDebInfo'
-    #     msbuildArchitecture: 'x64'
-    #     restoreNugetPackages: false
-    #     workingFolder: '$(Build.SourcesDirectory)\csharp'
-    #     maximumCpuCount: true
-
-    # - task: CmdLine@2
-    #   displayName: 'Test C# RelWithDebInfo'
-    #   inputs:
-    #     script: |
-    #      FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
-    #     workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
