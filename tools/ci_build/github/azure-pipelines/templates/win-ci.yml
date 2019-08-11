@@ -78,6 +78,7 @@ jobs:
           Platform: 'Any CPU'
           Configuration: 'Debug'
           msbuildArchitecture: 'x64'
+          workingFolder: '$(Build.SourcesDirectory)\csharp'
 
       - task: MSBuild@1
         displayName: 'Test C# Debug'
@@ -87,6 +88,8 @@ jobs:
           Configuration: 'Debug'
           msbuildArchitecture: 'x64'
           MsBuildArguments: '/t:RunTest'
+          workingFolder: '$(Build.SourcesDirectory)\csharp'
+
       # - task: VSBuild@1
       #   displayName: 'Build C# Debug'
       #   inputs:
