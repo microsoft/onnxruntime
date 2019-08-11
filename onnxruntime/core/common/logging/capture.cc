@@ -31,15 +31,10 @@ void Capture::ProcessPrintf(msvc_printf_check const char* format, va_list args) 
   bool truncated = false;
 
 #if (defined(WIN32) || defined(_WIN32) || defined(__WIN32__) && !defined(__GNUC__))
+  errno = 0;
   const int nbrcharacters = vsnprintf_s(message.data(), message.size(), _TRUNCATE, format, args);
   if (nbrcharacters < 0) {
-    // this can fail and return -1 if
-    //   buffer is nullptr (not possible, local buffer),
-    //   format is nullptr (possible),
-    //   count < 0 and != _TRUNCATE (not possible, always == _TRUNCATE)
-    //   or buffer too small and count != _TRUNCATE (not possible, always == _TRUNCATE)
-    // given there's only one possible cause, check that. alternatively we'd have to check errno which isn't threadsafe
-    error = format == nullptr;
+    error = errno != 0;
     truncated = !error;
   }
 #else
