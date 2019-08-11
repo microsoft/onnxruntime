@@ -140,6 +140,7 @@ jobs:
         Platform: 'Any CPU'
         Configuration: 'RelWithDebInfo'
         msbuildArchitecture: 'x64'
+        workingFolder: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
       displayName: 'Test C# RelWithDebInfo'
@@ -149,6 +150,7 @@ jobs:
         Configuration: 'RelWithDebInfo'
         msbuildArchitecture: 'x64'
         MsBuildArguments: '/t:RunTest'
+        workingfolder: '$(Build.SourcesDirectory)\csharp'
     # - task: VSBuild@1
     #   displayName: 'Build c# RelWithDebInfo'
     #   inputs:
