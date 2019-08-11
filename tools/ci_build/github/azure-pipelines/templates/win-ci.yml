@@ -71,23 +71,39 @@ jobs:
           arguments: '$(BuildCommand) --test --config Debug'
           workingFolder: '$(Build.BinariesDirectory)'
 
-      - task: VSBuild@1
+      - task: MSBuild@1
         displayName: 'Build C# Debug'
         inputs:
-          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-          platform: 'any cpu'
-          configuration: 'Debug'
-          restoreNugetPackages: false
+          Project: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+          Platform: 'Any CPU'
+          Configuration: 'Debug'
           msbuildArchitecture: 'x64'
-          workingFolder: '$(Build.SourcesDirectory)\csharp'
-          maximumCpuCount: true
 
-      - task: CmdLine@2
+      - task: MSBuild@1
         displayName: 'Test C# Debug'
         inputs:
-          script: |
-           FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
-          workingDirectory: '$(Build.SourcesDirectory)\csharp'
+          Project: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+          Platform: 'Any CPU'
+          Configuration: 'Debug'
+          msbuildArchitecture: 'x64'
+          MsBuildArguments: '/t:RunTest'
+      # - task: VSBuild@1
+      #   displayName: 'Build C# Debug'
+      #   inputs:
+      #     solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      #     platform: 'any cpu'
+      #     configuration: 'Debug'
+      #     restoreNugetPackages: false
+      #     msbuildArchitecture: 'x64'
+      #     workingFolder: '$(Build.SourcesDirectory)\csharp'
+      #     maximumCpuCount: true
+
+      # - task: CmdLine@2
+      #   displayName: 'Test C# Debug'
+      #   inputs:
+      #     script: |
+      #      FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
+      #     workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     # Run test coverage report
     - ${{ if eq(parameters['DoTestCoverage'], 'true') }}:
@@ -117,23 +133,39 @@ jobs:
         arguments: '$(BuildCommand) --test --config RelWithDebInfo'
         workingFolder: "$(Build.BinariesDirectory)"
 
-    - task: VSBuild@1
-      displayName: 'Build c# RelWithDebInfo'
+    - task: MSBuild@1
+      displayName: 'Build C# RelWithDebInfo'
       inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        platform: 'any cpu'
-        configuration: 'RelWithDebInfo'
+        Project: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        Platform: 'Any CPU'
+        Configuration: 'RelWithDebInfo'
         msbuildArchitecture: 'x64'
-        restoreNugetPackages: false
-        workingFolder: '$(Build.SourcesDirectory)\csharp'
-        maximumCpuCount: true
 
-    - task: CmdLine@2
+    - task: MSBuild@1
       displayName: 'Test C# RelWithDebInfo'
       inputs:
-        script: |
-         FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        Project: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        Platform: 'Any CPU'
+        Configuration: 'RelWithDebInfo'
+        msbuildArchitecture: 'x64'
+        MsBuildArguments: '/t:RunTest'
+    # - task: VSBuild@1
+    #   displayName: 'Build c# RelWithDebInfo'
+    #   inputs:
+    #     solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+    #     platform: 'any cpu'
+    #     configuration: 'RelWithDebInfo'
+    #     msbuildArchitecture: 'x64'
+    #     restoreNugetPackages: false
+    #     workingFolder: '$(Build.SourcesDirectory)\csharp'
+    #     maximumCpuCount: true
+
+    # - task: CmdLine@2
+    #   displayName: 'Test C# RelWithDebInfo'
+    #   inputs:
+    #     script: |
+    #      FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
+    #     workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
