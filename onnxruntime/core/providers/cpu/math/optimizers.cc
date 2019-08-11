@@ -77,7 +77,10 @@ ONNX_CPU_OPERATOR_KERNEL(
       .Alias(2, 0) // Update weights in-place
       .Alias(4, 1) // Update moment-1 in-place
       .Alias(5, 2) // Update moment-2 in-place
-      .TypeConstraint("T3", DataTypeImpl::GetTensorType<float>()),
+      .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+      .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>())
+      .TypeConstraint("T3", DataTypeImpl::GetTensorType<float>())
+      .TypeConstraint("T4", DataTypeImpl::GetTensorType<float>()),
     AdamOptimizer<float>);
 
 }  // namespace onnxruntime

@@ -23,24 +23,25 @@ class SGDOptimizer final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-template <typename T>
+template <typename T1, typename T2, typename T3, typename T4>
 void AdamOptimizerImpl(
-    const T* eta,
-    const int64_t* update_count,
-    const T* weights,
-    const T* grads,
-    const T* moment_1,
-    const T* moment_2,
-    float alpha,
-    float beta,
-    float lambda,
-    float epsilon,
-    T* weight_out,
-    T* moment_1_out,
-    T* moment_2_out,
-    int64_t* update_count_out,
+    const T1* eta,
+    const T2* update_count,
+    const T3* weights,
+    const T4* grads,
+    const T4* moment_1,
+    const T4* moment_2,
+    T4 alpha,
+    T4 beta,
+    T4 lambda,
+    T4 epsilon,
+    T3* weight_out,
+    T4* moment_1_out,
+    T4* moment_2_out,
+    T2* update_count_out,
     size_t count);
 
+template <typename T1, typename T2, typename T3, typename T4>
 class AdamOptimizer final : public CudaKernel {
  public:
   AdamOptimizer(const OpKernelInfo& info): CudaKernel(info) {

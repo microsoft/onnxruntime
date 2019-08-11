@@ -1339,6 +1339,49 @@ TEST(GradientCheckerTest, GatherNDGrad_int32_indice_unique_float_data_axis_2) {
   EXPECT_IS_TINY(max_error);
 }
 
+TEST(OptimizerTest, AdamOptimizerMixPrecisionTest) {
+  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  std::vector<float> eta = {0.5f};
+  std::vector<float> w = {1.0f, 2.0f, 3.0f};
+  std::vector<float> g = {4.0f, 5.0f, 6.0f};
+  std::vector<float> m1 = {0.1f, 0.2f, 0.3f};
+  std::vector<float> m2 = {0.4f, 0.5f, 0.6f};
+
+  std::vector<MLFloat16> eta_half(eta.size());
+  std::vector<MLFloat16> g_half(w.size());
+  std::vector<MLFloat16> m1_half(w.size());
+  std::vector<MLFloat16> m2_half(w.size());
+
+  ConvertFloatToMLFloat16(eta.data(), eta_half.data(), int(eta.size()));
+  ConvertFloatToMLFloat16(g.data(), g_half.data(), int(g.size()));
+  ConvertFloatToMLFloat16(m1.data(), m1_half.data(), int(m1.size()));
+  ConvertFloatToMLFloat16(m2.data(), m2_half.data(), int(m2.size()));
+
+  std::vector<float> w_new = {0.9232284f, 1.9051629f, 2.8897603f};
+  std::vector<float> m1_new = {0.49f, 0.68f, 0.87f};
+  std::vector<float> m2_new = {0.4156f, 0.5245f, 0.6354f};
+
+  std::vector<MLFloat16> m1_new_half(w.size());
+  std::vector<MLFloat16> m2_new_half(w.size());
+  ConvertFloatToMLFloat16(m1_new.data(), m1_new_half.data(), int(m1_new.size()));
+  ConvertFloatToMLFloat16(m2_new.data(), m2_new_half.data(), int(m2_new.size()));
+
+  test.AddInput<MLFloat16>("ETA", {}, eta_half);
+  test.AddInput<int64_t>("Update_Count", {}, {3});
+  test.AddInput<float>("W", {3}, w);
+  test.AddInput<MLFloat16>("G", {3}, g_half);
+  test.AddInput<MLFloat16>("Moment_1", {3}, m1_half);
+  test.AddInput<MLFloat16>("Moment_2", {3}, m2_half);
+
+  // Verify AdamOptimizer outputs
+  test.AddOutput<float>("W_Out", {3}, w_new);
+  test.AddOutput<MLFloat16>("Moment_1_Out", {3}, m1_new_half);
+  test.AddOutput<MLFloat16>("Moment_2_Out", {3}, m2_new_half);
+  test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
+
+  test.Run();
+}
+
 // This helper function is a CPU-based LAMB optimizer
 // implementation. It mainly focuses on readability.
 void compute_lamb(
