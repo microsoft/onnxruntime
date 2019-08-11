@@ -34,7 +34,6 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
   cxxopts::Options options("POC Training", "Main Program to train on MNIST");
   // clang-format off
   options
-    .allow_unrecognised_options()
     .add_options()
       ("model_name", "model to be trained", cxxopts::value<std::string>())
       ("train_data_dir", "MNIST training and test data path.",
@@ -42,7 +41,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("log_dir", "The directory to write tensorboard events.",
         cxxopts::value<std::string>()->default_value("logs"))
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
-	  ("use_gist", "Use GIST encoding/decoding.")
+      ("use_gist", "Use GIST encoding/decoding.")
       ("use_cuda", "Use CUDA execution provider for training.", cxxopts::value<bool>()->default_value("false"))
       ("num_of_epoch", "Num of epoch", cxxopts::value<int>()->default_value("2"))
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>()->default_value("100"))
@@ -75,8 +74,8 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     params.use_profiler = flags.count("use_profiler") > 0;
 
   } catch (const exception& e) {
-    std::string msg = "Failed to parse the command line arguments";
-    cout << msg << e.what() << endl;
+    const std::string msg = "Failed to parse the command line arguments";
+    cerr << msg << ": " << e.what() << "\n" << options.help() << "\n";
     return Status(ONNXRUNTIME, FAIL, msg);
   }
   return Status::OK();
@@ -208,7 +207,7 @@ int main(int argc, char* args[]) {
 
   // setup training params
   TrainingRunner::Parameters params;
-  ParseArguments(argc, args, params);
+  RETURN_IF_FAIL(ParseArguments(argc, args, params));
   setup_training_params(params);
 
   // setup horovod

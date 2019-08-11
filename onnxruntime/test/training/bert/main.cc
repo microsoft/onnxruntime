@@ -27,7 +27,6 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
   cxxopts::Options options("BERT Training", "Main Program to train BERT");
   // clang-format off
   options
-    .allow_unrecognised_options()
     .add_options()
       ("model_name", "model to be trained", cxxopts::value<std::string>())
       ("train_data_dir", "Input ONNX example files (can be a glob or comma separated).",
@@ -100,8 +99,8 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       printf("Mixed precision training is enabled.\n");
     }
   } catch (const exception& e) {
-    std::string msg = "Failed to parse the command line arguments";
-    cout << msg << e.what() << endl;
+    const std::string msg = "Failed to parse the command line arguments";
+    cerr << msg << ": " << e.what() << "\n" << options.help() << "\n";
     return Status(ONNXRUNTIME, FAIL, msg);
   }
   return Status::OK();
@@ -254,7 +253,7 @@ int main(int argc, char* argv[]) {
 #endif
 
   TrainingRunner::Parameters params;
-  ParseArguments(argc, argv, params);
+  RETURN_IF_FAIL(ParseArguments(argc, argv, params));
   setup_training_params(params);
 
   // setup logger
