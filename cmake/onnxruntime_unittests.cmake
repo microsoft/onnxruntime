@@ -472,6 +472,9 @@ set(onnx_test_runner_common_srcs
   ${onnx_test_runner_src_dir}/onnxruntime_event.h
   ${onnx_test_runner_src_dir}/sync_api.h
   ${onnx_test_runner_src_dir}/sync_api.cc
+  ${onnx_test_runner_src_dir}/callback.h
+  ${onnx_test_runner_src_dir}/callback.cc
+  ${onnx_test_runner_src_dir}/mem_buffer.h
   ${onnx_test_runner_src_dir}/tensorprotoutils.h
   ${onnx_test_runner_src_dir}/tensorprotoutils.cc)
 

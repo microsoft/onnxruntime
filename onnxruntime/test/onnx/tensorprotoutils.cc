@@ -11,6 +11,12 @@
 #include "core/framework/allocator.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/onnx_protobuf.h"
+#include "callback.h"
+
+struct OrtStatus {
+  OrtErrorCode code;
+  char msg[1];  // a null-terminated string
+};
 
 namespace onnxruntime {
 namespace test {
@@ -301,19 +307,37 @@ struct UnInitializeParam {
   ONNXTensorElementDataType ele_type;
 };
 
-void OrtInitializeBufferForTensor(void* input, size_t input_len,
-                                  ONNXTensorElementDataType type) {
+OrtStatus* OrtInitializeBufferForTensor(void* input, size_t input_len,
+                                        ONNXTensorElementDataType type) {
   try {
-    if (type != ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING || input == nullptr) return;
+    if (type != ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING || input == nullptr) return nullptr;
     size_t tensor_size = input_len / sizeof(std::string);
     std::string* ptr = reinterpret_cast<std::string*>(input);
     for (size_t i = 0, n = tensor_size; i < n; ++i) {
       new (ptr + i) std::string();
     }
   } catch (std::exception& ex) {
-    throw Ort::Exception(ex.what(), OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+    return OrtCreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
   }
-  return;
+  return nullptr;
+}
+
+ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enum ONNXTensorElementDataType type);
+
+static void UnInitTensor(void* param) noexcept {
+  UnInitializeParam* p = reinterpret_cast<UnInitializeParam*>(param);
+  OrtUninitializeBuffer(p->preallocated, p->preallocated_size, p->ele_type);
+  delete p;
+}
+
+ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enum ONNXTensorElementDataType type) {
+  if (type != ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING || input == nullptr) return;
+  size_t tensor_size = input_len / sizeof(std::string);
+  std::string* ptr = reinterpret_cast<std::string*>(input);
+  using std::string;
+  for (size_t i = 0, n = tensor_size; i < n; ++i) {
+    ptr[i].~string();
+  }
 }
 
 #define CASE_PROTO(X, Y)                                                                                       \
@@ -352,7 +376,8 @@ ONNXTensorElementDataType GetTensorElementType(const onnx::TensorProto& tensor_p
   return CApiElementTypeFromProtoType(tensor_proto.data_type());
 }
 
-Status TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuffer& m, Ort::Value& value) {
+Status TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuffer& m, Ort::Value& value,
+                            OrtCallback& deleter) {
   const OrtAllocatorInfo& allocator = m.GetAllocInfo();
   ONNXTensorElementDataType ele_type = test::GetTensorElementType(tensor_proto);
   const void* raw_data = nullptr;
@@ -402,7 +427,13 @@ Status TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuff
         CASE_PROTO(BFLOAT16, BFloat16);
         case onnx::TensorProto_DataType::TensorProto_DataType_STRING:
           if (preallocated != nullptr) {
-            OrtInitializeBufferForTensor(preallocated, preallocated_size, ele_type);
+            OrtStatus* status = OrtInitializeBufferForTensor(preallocated, preallocated_size, ele_type);
+            if (status != nullptr) {
+              OrtReleaseStatus(status);
+              return Status(common::ONNXRUNTIME, common::FAIL, "initialize preallocated buffer failed");
+            }
+            deleter.f = UnInitTensor;
+            deleter.param = new UnInitializeParam{preallocated, preallocated_size, ele_type};
           }
           ::onnxruntime::test::UnpackTensor<std::string>(tensor_proto, raw_data, raw_data_len,
                                                          (std::string*)preallocated, tensor_size);

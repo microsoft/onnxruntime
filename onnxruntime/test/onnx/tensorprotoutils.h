@@ -7,7 +7,7 @@
 #include <type_traits>
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
-
+#include "callback.h"
 #include "mem_buffer.h"
 
 namespace onnx {
@@ -26,7 +26,8 @@ common::Status GetSizeInBytesFromTensorProto(const onnx::TensorProto& tensor_pro
  *  Impl must correspond to onnxruntime/core/framework/tensorprotoutils.cc
  * This implementation does not support external data so as to reduce dependency surface.
  */
-common::Status TensorProtoToMLValue(const onnx::TensorProto& input, const MemBuffer& m, /* out */ Ort::Value& value);
+common::Status TensorProtoToMLValue(const onnx::TensorProto& input, const MemBuffer& m, /* out */ Ort::Value& value,
+                                    OrtCallback& deleter);
 
 template <typename T>
 void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
