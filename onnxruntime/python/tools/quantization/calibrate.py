@@ -163,10 +163,13 @@ def get_intermediate_outputs(augmented_model_path, inputs, average_mode='naive')
     Gather intermediate model outputs after running inference
         parameter model: path to augmented FP32 ONNX model
         parameter inputs: list of loaded test inputs
-        parameter average_mode: type 'naive' gives an arithmetic average of (ReduceMin, ReduceMax)
-                                pairs across test data sets, and type 'smooth' yields a smoother
-                                average with anomalous values removed
-        return: dictionary mapping added node names to average (ReduceMin, ReduceMax) values
+        parameter average_mode: type 'naive' gives (ReduceMin, ReduceMax) pairs
+                                for each augmented node across test data sets, where
+                                the first element is a minimum of all ReduceMin values
+                                and the second element is a maximum of all ReduceMax
+                                values; the type 'smooth' yields a smooth average
+                                with anomalous values removed
+        return: dictionary mapping added node names to (ReduceMin, ReduceMax) pairs
     '''
     num_inputs = len(inputs)
 
@@ -182,17 +185,14 @@ def get_intermediate_outputs(augmented_model_path, inputs, average_mode='naive')
     for d in output_dicts:
         for k, v in d.items():
             merged_dict.setdefault(k, []).append(v)
-
     added_output_node_names = output_node_names[1:]
-    node_names = [added_output_node_names[i].rpartition('_')[0] for i in range(0, len(added_output_node_names), 2)]
+    node_names = [added_output_node_names[i].rpartition('_')[0] + ':0' for i in range(0, len(added_output_node_names), 2)] # output names
 
-    # Averaging distribution of a node's values across test data sets
+    # Characterizing distribution of a node's values across test data sets
+    clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i != list(merged_dict.keys())[0])
     if average_mode == 'naive':
-        avg_dict = {}
-        for key, value in merged_dict.items():
-            avg_dict[key] = sum(value)/float(len(value))
-        clean_avg_dict = dict((i, avg_dict[i]) for i in avg_dict if i != list(avg_dict.keys())[0])
-        pairs = [tuple([clean_avg_dict[added_output_node_names[i]], clean_avg_dict[added_output_node_names[i+1]]])
+        pairs = [tuple([float(min(clean_merged_dict[added_output_node_names[i]])),
+                float(max(clean_merged_dict[added_output_node_names[i+1]]))])
                 for i in range(0, len(added_output_node_names), 2)]
         final_dict = dict(zip(node_names, pairs))
     elif average_mode == 'smooth':
