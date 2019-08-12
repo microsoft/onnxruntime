@@ -96,7 +96,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       gemm_input_defs.push_back(add_input_defs[0]);
     }
 
-    if (graph.IsNodeOutputsInGraphOutputs(node)) {
+    if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
       continue;
     }
 

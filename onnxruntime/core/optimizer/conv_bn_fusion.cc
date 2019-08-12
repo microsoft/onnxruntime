@@ -161,7 +161,7 @@ bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node) const 
     return false;
   }
 
-  if (graph.IsNodeOutputsInGraphOutputs(node)) {
+  if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
     return false;
   }
 

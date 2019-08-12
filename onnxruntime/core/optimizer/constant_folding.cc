@@ -32,9 +32,6 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
         // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
         // by the Recurse call above
         node->ContainsSubgraph() ||
-        // if the node output is in the graph output, we will get a graph with no nodes.
-        // TODO check if this is allowed in ONNX and ORT.
-        graph.IsNodeOutputsInGraphOutputs(*node) ||
         !graph_utils::AllNodeInputsAreConstant(graph, *node, constant_inputs)) {
       continue;
     }

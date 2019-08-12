@@ -12,39 +12,32 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
-  // Get "axes" attribute.
-  const ONNX_NAMESPACE::AttributeProto* attr = graph_utils::GetNodeAttribute(node, "axes");
-  if (attr == nullptr || attr->type() != AttributeProto_AttributeType_INTS) {
-    return Status::OK();
-  }
+  // Get "axes" attribute. It's a required attribute so can't be null (model loading would fail if it was).
+  const ONNX_NAMESPACE::AttributeProto& attr = *graph_utils::GetNodeAttribute(node, "axes");
 
   std::vector<int64_t> axes;
-  axes.reserve(attr->ints_size());
-  for (int i = 0; i < attr->ints_size(); i++) {
-    axes.push_back(static_cast<int64_t>(attr->ints(i)));
+  axes.reserve(attr.ints_size());
+  for (int i = 0; i < attr.ints_size(); i++) {
+    axes.push_back(static_cast<int64_t>(attr.ints(i)));
   }
 
   // Generate new dims.
   NodeArg& input_def = *node.MutableInputDefs()[0];
-  const auto* tensor_proto = graph_utils::GetConstantInitializer(graph, input_def.Name());
-  ORT_ENFORCE(tensor_proto);
-
-  std::vector<int64_t> new_dims(axes.size() + tensor_proto->dims().size(), 0);
-  if (new_dims.size() >= static_cast<unsigned int>(std::numeric_limits<int>::max())) {
-    return Status(ONNXRUNTIME, FAIL, "index out of range");
-  }
+  const auto& tensor_proto = *graph_utils::GetConstantInitializer(graph, input_def.Name());
 
   auto new_name = graph.GenerateNodeArgName("UnsqueezeElimination_" + input_def.Name());
-  if (!graph_utils::CanRemoveNode(graph, node, &new_name)) {
+  if (!graph_utils::CanReplaceNodeWithInitializer(graph, node, new_name)) {
     LOGS_DEFAULT(WARNING) << "UnsqueezeElimination cannot remove node " << node.Name();
     return Status::OK();
   }
+
+  std::vector<int64_t> new_dims(axes.size() + tensor_proto.dims().size(), 0);
 
   for (int64_t axis : axes) {
     new_dims[axis] = 1;
   }
 
-  auto begin = tensor_proto->dims().cbegin();
+  auto begin = tensor_proto.dims().cbegin();
   for (auto& axis : new_dims) {
     if (axis == 0) {
       axis = *begin++;
@@ -52,15 +45,12 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
   }
 
   // Update shape of tensor proto.
-  ONNX_NAMESPACE::TensorProto new_tensor_proto(*tensor_proto);
+  ONNX_NAMESPACE::TensorProto new_tensor_proto(tensor_proto);
   new_tensor_proto.set_name(new_name);
+  new_tensor_proto.clear_dims();
 
-  for (int i = 0; i < static_cast<int>(new_dims.size()); i++) {
-    if (i < tensor_proto->dims().size()) {
-      new_tensor_proto.set_dims(i, new_dims[i]);
-    } else {
-      new_tensor_proto.add_dims(new_dims[i]);
-    }
+  for (const auto& dim : new_dims) {
+    new_tensor_proto.add_dims(dim);
   }
 
   auto& new_node_arg = graph_utils::AddInitializer(graph, new_tensor_proto);
@@ -74,8 +64,7 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
 
 bool UnsqueezeElimination::SatisfyCondition(const Graph& graph, const Node& node) const {
   // Attempt to remove an Unsqueeze operator only if it gets a constant initializer as input.
-  return graph_utils::IsConstantInitializer(graph, node.InputDefs()[0]->Name()) &&
-         graph_utils::CanRemoveNode(graph, node, false);
+  return graph_utils::IsConstantInitializer(graph, node.InputDefs()[0]->Name());
 }
 
 }  // namespace onnxruntime

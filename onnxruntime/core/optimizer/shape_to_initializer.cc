@@ -50,9 +50,7 @@ Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& ru
 }
 
 bool ShapeToInitializer::SatisfyCondition(const Graph& graph, const Node& node) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Shape", {1}) ||
-      // Making sure we are not left with a graph with no nodes.
-      graph.IsNodeOutputsInGraphOutputs(node)) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Shape", {1})) {
     return false;
   }
 
@@ -70,8 +68,9 @@ bool ShapeToInitializer::SatisfyCondition(const Graph& graph, const Node& node) 
     }
   }
 
-  // we're going to create an initializer with the same name as the node output, so remove_output is false.
-  if (!graph_utils::CanRemoveNode(graph, node, false)) {
+  // we're going to create an initializer with the same name as the node output
+  const auto& new_initializer_name = node.OutputDefs()[0]->Name();
+  if (!graph_utils::CanReplaceNodeWithInitializer(graph, node, new_initializer_name)) {
     return false;
   }
 

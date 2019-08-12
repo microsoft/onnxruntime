@@ -525,14 +525,19 @@ class Graph {
   @remarks Contains no nullptr values.*/
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return graph_outputs_; }
 
-  /** Returns true if a Node output is a Graph output. */
-  bool IsNodeOutputsInGraphOutputs(const Node& node) const {
+  /** Returns a vector with the indexes of any Node outputs that are a Graph output. */
+  std::vector<size_t> GetNodeOutputsInGraphOutputs(const Node& node) const {
+    size_t output_idx = 0;
+    std::vector<size_t> indexes;
     for (auto output_def : node.OutputDefs()) {
       if (std::find(GetOutputs().cbegin(), GetOutputs().cend(), output_def) != GetOutputs().cend()) {
-        return true;
+        indexes.push_back(output_idx);
       }
+
+      ++output_idx;
     }
-    return false;
+
+    return indexes;
   }
 
   /** Gets the NodeArgs that represent value_info instances in the Graph.

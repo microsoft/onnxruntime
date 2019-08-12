@@ -11,7 +11,7 @@
 namespace onnxruntime {
 
 Status EliminateDropout::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
-  if (graph_utils::RemoveNodeAndUpdateEdges(graph, node)) {
+  if (graph_utils::RemoveNodeAndMergeEdges(graph, node)) {
     rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   }
 
@@ -25,10 +25,10 @@ bool EliminateDropout::SatisfyCondition(const Graph& graph, const Node& node) co
   }
 
   // A Dropout Node has one required output and an optional second output 'mask' at index == 1.
-  // It can be safely removed if it has only one output that is used (checked by CanRemoveNode)
-  // and that output is not the 'mask' output
+  // It can be safely removed if it has only one output that is used (checked by CanRemoveNodeAndMergeEdges)
+  // and that output is not the 'mask' output.
   // The 'is_test' attribute in v1 and v6 is captured by the check for the 'mask' output.
-  return graph_utils::CanRemoveNode(graph, node) && !graph_utils::IsOutputUsed(node, 1);
+  return graph_utils::CanRemoveNodeAndMergeEdges(graph, node) && !graph_utils::IsOutputUsed(node, 1);
 }
 
 }  // namespace onnxruntime

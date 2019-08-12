@@ -12,7 +12,7 @@ Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   // get the following Clip node before we delete the Relu node
   const auto& next_node = *node.OutputNodesBegin();
 
-  if (graph_utils::RemoveNodeAndUpdateEdges(graph, node)) {
+  if (graph_utils::RemoveNodeAndMergeEdges(graph, node)) {
     // update the following Clip node if the 'min' is < 0.f to set it to 0.f
     // this essentially fuses the Relu and Clip
     // if the Clip 'min' is >= 0.f no change is required as Relu would have set the min to 0.f
@@ -33,7 +33,7 @@ bool FuseReluClip::SatisfyCondition(const Graph& graph, const Node& node) const 
     return false;
   }
 
-  if (node.GetOutputEdgesCount() == 0) {
+  if (node.GetOutputEdgesCount() != 1) {
     return false;
   }
 
@@ -46,7 +46,7 @@ bool FuseReluClip::SatisfyCondition(const Graph& graph, const Node& node) const 
     return false;
   }
 
-  if (!graph_utils::CanRemoveNode(graph, node)) {
+  if (!graph_utils::CanRemoveNodeAndMergeEdges(graph, node)) {
     return false;
   }
 

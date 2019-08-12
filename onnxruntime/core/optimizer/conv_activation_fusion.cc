@@ -36,7 +36,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
-    if (graph.IsNodeOutputsInGraphOutputs(*node)) {
+    if (!graph.GetNodeOutputsInGraphOutputs(*node).empty()) {
       continue;
     }
 
@@ -55,7 +55,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         continue;
       }
     }
-    
+
     Node& conv_node = *node;
     Node& act_node = *graph.GetNode(next_node.Index());
 

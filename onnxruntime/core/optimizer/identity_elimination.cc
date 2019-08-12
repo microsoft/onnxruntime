@@ -11,7 +11,7 @@
 namespace onnxruntime {
 
 Status EliminateIdentity::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
-  if (graph_utils::RemoveNodeAndUpdateEdges(graph, node)) {
+  if (graph_utils::RemoveNodeAndMergeEdges(graph, node)) {
     rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   }
 
@@ -19,7 +19,7 @@ Status EliminateIdentity::Apply(Graph& graph, Node& node, RewriteRuleEffect& rul
 }
 
 bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node) const {
-  return graph_utils::CanRemoveNode(graph, node);
+  return graph_utils::CanRemoveNodeAndMergeEdges(graph, node);
 }
 
 }  // namespace onnxruntime

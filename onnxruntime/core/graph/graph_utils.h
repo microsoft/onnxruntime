@@ -81,40 +81,54 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
   return false;
 }
 
-/** Check if it will be possible to remove or fuse a node.
-    We support the removal of the Node as long as the following conditions hold:
-    - The node should not produce a graph output unless something else will produce that output.
-    - Only one of the outputs is used by downstream operators (multiple output edges are allowed).
-    - If the Node has a single incoming node, we can remove the Node and connect its incoming node to its 
-      outgoing nodes, if doing so does not clash with any values in any relevant subgraphs. 
-@param removing_output 
-       If true the output from the node will be removed and replaced with its input.
-       If false a new Node or initializer is being created that will produce output with the same name. In this case
-       it is safe to remove the node even if it provides a graph output.*/
-bool CanRemoveNode(const Graph& graph, const Node& node, bool removing_output = true);
+/** Tests if we can remove a node and merge its input edge (if any) with its output edges.
+Conditions:
+ - Only one of the node's outputs is used by downstream operators
+   - multiple edges for the single used output are allowed
+ - The node must have zero or one input edges 
+   - we merge any input edge with the output edges for the single output that is used
+ - If the node has no input edges it must have a single input
+   - this will be a graph input or initializer
+ - The node must not produce a graph output
+   - the node removal will result in that output name not being produced
+ - Removing the node won't break a subgraph that consumes the node's output
+*/
+bool CanRemoveNodeAndMergeEdges(const Graph& graph, const Node& node);
 
-/** Removes the given Node from the Graph and keeps Graph consistent by rebuilding needed connections.
-See CanRemoveNode for details on when removal is allowed.*/
-bool RemoveNodeAndUpdateEdges(Graph& graph, Node& node);
+/** Removes the given Node from the Graph and merges its input edge (if present) with the edges for its output.
+See CanRemoveNodeAndMergeEdges for the conditions that must be satisfied in order to remove the node.*/
+bool RemoveNodeAndMergeEdges(Graph& graph, Node& node);
 
-/** Remove a node with a single output, and replace its output with the provided NodeArg for an initializer.*/
+/** Tests if we can remove a node and replace its output with an initializer.
+Conditions:
+ - Only one of the node's outputs is used by downstream operators or as a graph output 
+   - multiple edges for the single used output are allowed
+ - If the node produces a graph output the initializer_name must be the same as the node's output name
+   - otherwise the required graph output will not be produced
+ - Removing the node won't break a subgraph that consumes the node's output
+*/
+bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const std::string& initializer_name);
+
+/** Remove a node with a single output, and replace its output with the provided NodeArg for an initializer.
+See CanReplaceNodeWithInitializer for the conditions that must be satisfied in order to remove the node.*/
 bool ReplaceNodeWithInitializer(Graph& graph, Node& node, NodeArg& replacement);
 
 /** Removes all output edges from the given Node of the Graph. 
     This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
 
-/** Replace the output of a node.
-Replaces the output edges from node using the replacement information, and removes the output edges from 'node'.  
+/** Substitutes the single output of a node with output from a replacement node.
+Moves the output edges from 'node' to the replacement node.
 @param replacement The node providing the replacement output.
 @param replacement_output_idx The index of the output from 'replacement' to use. 
 */
-void ReplaceNodeOutput(Graph& graph, Node& node, Node& replacement, int replacement_output_idx);
+void SubstituteNodeOutput(Graph& graph, Node& node, Node& replacement, int replacement_output_idx);
 
-/** Replace the NodeArg for an input to a node. 
-Use this when replacing the input with an initializer. 
+/** Replace the input to a node with a NodeArg for an initializer or graph input.
+@remarks There is no edge between an initializer or graph input and a Node, so the replacement only updates the 
+         node's input definition.
 */
-void ReplaceInputNodeArg(Node& target, int target_input_idx, NodeArg& replacement);
+void ReplaceNodeInputWithNodeArg(Node& target, int target_input_idx, NodeArg& replacement);
 
 /** Finalize the fusion of two nodes.
     If replacement_node is nullptr:
