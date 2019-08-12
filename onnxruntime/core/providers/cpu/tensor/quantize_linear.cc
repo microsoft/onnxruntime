@@ -63,13 +63,22 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     QuantizeLinear,
     10,
-    float,
+    uint8_t,
     KernelDefBuilder()
         .TypeConstraint("x", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("y_scale", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("y_zero_point", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("y", DataTypeImpl::GetTensorType<uint8_t>()),
-    QuantizeLinear<float>);
+    QuantizeLinear<uint8_t>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    QuantizeLinear,
+    10,
+    int8_t,
+    KernelDefBuilder()
+        .TypeConstraint("x", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("y_zero_point", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("y", DataTypeImpl::GetTensorType<int8_t>()),
+    QuantizeLinear<int8_t>);
 
 // clamp doesn't exist in the version of <algorithm> that we're using, so
 // make a local one.
@@ -85,9 +94,9 @@ static float RoundHalfToEven(float input) {
   return result;
 }
 
-template <>
+template <typename T>
 // formula is Y = X / Scale + ZeroPoint
-Status QuantizeLinear<float>::Compute(OpKernelContext* ctx) const {
+Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   auto& x = *ctx->Input<Tensor>(0);
   auto& y_scale = *ctx->Input<Tensor>(1);
   auto& y_zero_point = *ctx->Input<Tensor>(2);
@@ -102,14 +111,18 @@ Status QuantizeLinear<float>::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(scale_shape.NumDimensions() == 0 || (scale_shape.NumDimensions() == 1 && scale_shape.GetDims().size() == 1), "x_scale must be a scalar.");
   ORT_ENFORCE(zero_point_shape.NumDimensions() == 0 || (zero_point_shape.NumDimensions() == 1 && zero_point_shape.GetDims().size() == 1), "x_zero_point must be a scalar.");
   
-  const uint8_t zero_point = *(y_zero_point.template Data<uint8_t>());
+  const T zero_point = *(y_zero_point.template Data<T>());
   const float scale = *(y_scale.template Data<float>());
   const auto* input = x.template Data<float>();
-  auto* output = y.template MutableData<uint8_t>();
+  auto* output = y.template MutableData<T>();
   const auto num_of_elements = x_shape.Size();
+  const float qmax = std::numeric_limits<T>::max();
+  const float qmin_default = std::numeric_limits<T>::min();
+  // adjust qmin for int8 inputs. This is required to keep zero point as zero
+  const float qmin = qmin_default == -128 ? -127 : qmin_default;
 
   for (int i = 0; i < num_of_elements; ++i) {
-    output[i] = static_cast<uint8_t>(clamp(RoundHalfToEven(static_cast<float>(input[i]/scale)) + zero_point, 0.0f, float(UINT8_MAX)));
+    output[i] = static_cast<T>(clamp(RoundHalfToEven(static_cast<float>(input[i]/scale)) + zero_point, qmin, qmax));
   }
 
   return Status::OK();

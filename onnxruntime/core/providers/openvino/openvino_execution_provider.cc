@@ -453,7 +453,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
   device_id = "MYRIAD";
 #endif
 
-#ifdef OPENVINO_CONFIG_VAD_R
+#ifdef OPENVINO_CONFIG_VAD_M
   precision_fp32 = false;
   device_id = "HDDL";
 #endif

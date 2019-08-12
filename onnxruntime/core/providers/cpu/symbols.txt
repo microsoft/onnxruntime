@@ -41,7 +41,6 @@ OrtGetErrorMessage
 OrtGetStringTensorContent
 OrtGetStringTensorDataLength
 OrtGetTensorElementType
-OrtGetTensorMemSizeInBytesFromTensorProto
 OrtGetTensorMutableData
 OrtGetTensorShapeElementCount
 OrtGetTensorTypeAndShape
@@ -51,7 +50,7 @@ OrtGetValueCount
 OrtGetValueType
 OrtGetVersionString
 OrtIsTensor
-OrtOnnxTypeFromTypeInfo
+OrtGetOnnxTypeFromTypeInfo
 OrtReleaseAllocator
 OrtReleaseAllocatorInfo
 OrtReleaseCustomOpDomain
@@ -64,12 +63,12 @@ OrtReleaseTensorTypeAndShapeInfo
 OrtReleaseTypeInfo
 OrtReleaseValue
 OrtRun
-OrtRunCallback
 OrtRunOptionsGetRunLogVerbosityLevel
 OrtRunOptionsGetRunTag
 OrtRunOptionsSetRunLogVerbosityLevel
 OrtRunOptionsSetRunTag
-OrtRunOptionsSetTerminate
+OrtRunOptionsEnableTerminate
+OrtRunOptionsDisableTerminate
 OrtSessionGetInputCount
 OrtSessionGetInputName
 OrtSessionGetInputTypeInfo
@@ -83,4 +82,3 @@ OrtSetSessionLogId
 OrtSetSessionLogVerbosityLevel
 OrtSetSessionThreadPoolSize
 OrtSetTensorElementType
-OrtTensorProtoToOrtValue
