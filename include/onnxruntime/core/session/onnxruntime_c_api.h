@@ -150,7 +150,6 @@ ORT_RUNTIME_CLASS(RunOptions);
 ORT_RUNTIME_CLASS(TypeInfo);
 ORT_RUNTIME_CLASS(TensorTypeAndShapeInfo);
 ORT_RUNTIME_CLASS(SessionOptions);
-ORT_RUNTIME_CLASS(Callback);
 ORT_RUNTIME_CLASS(CustomOpDomain);
 ORT_RUNTIME_CLASS(Allocator);
 
