@@ -1817,7 +1817,8 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistBinarizeDecoder)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
-      .Input(0, "X", "compresssed input", "T1")
+      .Input(0, "X1", "dummy input for late decoding", "T")
+      .Input(1, "X", "compresssed input", "T1")
       .Output(0, "Y", "uncompressed output", "T")
       .TypeConstraint(
           "T",

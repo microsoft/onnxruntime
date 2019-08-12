@@ -45,6 +45,13 @@ static std::vector<GraphEdgeHelper> GetNodeOutputEdges(const Node& node) {
 
   return output_edges;
 }
+static std::vector<GraphEdgeHelper> GetNodeInputEdges(const Node& node) {
+  std::vector<GraphEdgeHelper> input_edges;
+  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
+    input_edges.push_back(GraphEdgeHelper::CreateGraphEdge(node, *it, true));
+  }
+  return input_edges;
+}
 bool GistEncodeDecode::AddEncodeDecode(Graph& graph, Node& curr_node, std::string compression_type) const {
   ONNX_NAMESPACE::TypeProto bool_tensor;
   bool_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
@@ -69,15 +76,26 @@ bool GistEncodeDecode::AddEncodeDecode(Graph& graph, Node& curr_node, std::strin
 
   std::string decode_arg_name = graph.GenerateNodeName(GIST_DECODER_NODE_NAME_BASE);
   auto& decode_output_def_uncompressed_arg = graph.GetOrCreateNodeArg(decode_arg_name, curr_node_output_arg->TypeAsProto());
-  auto& decode = graph.AddNode(decode_arg_name, compression_type+"Decoder", "Decode", {&encode_output_def_compressed_arg}, {&decode_output_def_uncompressed_arg});
+  auto& decode_output_def_dummy_arg = graph.GetOrCreateNodeArg(decode_arg_name + "_late_dec", curr_node_output_arg->TypeAsProto());
+  auto& decode = graph.AddNode(decode_arg_name, compression_type + "Decoder", "Decode", {&decode_output_def_dummy_arg, &encode_output_def_compressed_arg}, {&decode_output_def_uncompressed_arg});
 
   bool early_encoding = false;
+  bool late_decoding = false;
   for (auto& output_edge : output_edges) {
     Node* node_dst = graph.GetNode(output_edge.dst_node);
     if (node_dst->Description() == "Backward pass" && (node_dst->OpType() == "ReluGrad")) {
       graph.AddEdge(output_edge.src_node, encode.Index(), output_edge.src_arg_index, 0);
-      graph.AddEdge(encode.Index(), decode.Index(), 1, 0);
+      graph.AddEdge(encode.Index(), decode.Index(), 1, 1);
       graph.AddEdge(decode.Index(), output_edge.dst_node, 0, output_edge.dst_arg_index);
+      std::vector<GraphEdgeHelper> input_edges_dst = GetNodeInputEdges(*node_dst);
+      size_t i = 0;
+      while (!late_decoding && i < input_edges_dst.size()) {
+        if (graph.GetNode(input_edges_dst[i].src_node)->OpType() != curr_node.OpType()) {
+          graph.AddEdge(input_edges_dst[i].src_node, decode.Index(), input_edges_dst[i].src_arg_index, 0);
+          late_decoding = true;
+        }
+        i++;
+      }
     } else if (!early_encoding) {
       graph.AddEdge(encode.Index(), output_edge.dst_node, 0, output_edge.dst_arg_index);
       early_encoding = true;

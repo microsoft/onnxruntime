@@ -12,7 +12,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     GistBinarizeDecoderOp);
 
 Status GistBinarizeDecoderOp::Compute(OpKernelContext* context) const {
-  const auto* X = context->Input<Tensor>(0);
+  const auto* X = context->Input<Tensor>(1);
   ORT_ENFORCE(X != nullptr);
   const TensorShape& shape = X->Shape();
 
