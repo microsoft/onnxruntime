@@ -57,6 +57,7 @@ Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
 
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float)
 REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16)
+REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16)
 
 template <typename T1, typename T2, typename T3, typename T4>
 Status AdamOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) const {

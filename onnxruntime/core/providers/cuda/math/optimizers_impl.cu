@@ -148,6 +148,7 @@ template void AdamOptimizerImpl(                          \
 
 SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float)
 SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half)
 
 template <typename T>
 __global__ void _LambComputeDirection(
