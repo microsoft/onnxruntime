@@ -388,6 +388,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 #endif
 
+#ifdef USE_NNAPI
+  broken_tests.insert({"scan9_sum", "Error with the extra graph"});
+  broken_tests.insert({"scan_sum", "Error with the extra graph"});
+#endif
+
 
 
 #ifdef USE_CUDA

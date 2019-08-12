@@ -550,10 +550,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
             run_subprocess(os.path.join(source_dir, 'tools', 'ci_build', 'github', 'android', 'start_android_emulator.sh'))
             adb_push(source_dir, 'testdata', '/data/local/tmp/', cwd=cwd)
             adb_push(source_dir, os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'), '/data/local/tmp/', cwd=cwd)
-            # Disable scan op test for nnapi ep
-            if enable_nnapi:
-                adb_shell('rm', '-rf', '/data/local/tmp/test/data/node/test_scan9_sum',  
-                        '/data/local/tmp/test/data/node/test_scan_sum')
             adb_push(source_dir, 'onnxruntime_test_all', '/data/local/tmp/', cwd=cwd)
             adb_push(source_dir, 'onnx_test_runner', '/data/local/tmp/', cwd=cwd)
             adb_shell('cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
