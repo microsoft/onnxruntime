@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 # -------------------------------------------------------------------------
-# Copyright (c) Intel Corporation. All rights reserved.
+# Copyright (c) Intel Corporation and Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
@@ -12,6 +12,7 @@ import subprocess
 import json
 
 import onnx
+import onnxruntime
 from onnx import helper, TensorProto
 
 # Originally from process_images_with_debug_op.bat
@@ -126,13 +127,13 @@ def process_logfiles(logs_directory):
     return (scalefacs, zpoints)
 
 # Adding ability to record intermediate graph outputs
-selected_types = ["Conv", "MatMul"] # node types to extend
+selected_types = ['Conv', 'MatMul'] # node types to extend
 
 def augment_graph(model):
     '''
     Adds ReduceMin and ReduceMax nodes to all Conv and MatMul nodes in
     model and ensures their outputs are stored as part of the graph output
-        parameter model: FP32 ONNX model to quantize
+        parameter model: loaded FP32 ONNX model to quantize
         return: augmented ONNX model
     '''
     added_nodes = []
@@ -141,20 +142,63 @@ def augment_graph(model):
         if node.op_type in selected_types:
             input_name = node.name
             # Adding ReduceMin nodes
-            reduce_min_name = input_name + "_ReduceMin"
-            reduce_min_node = onnx.helper.make_node("ReduceMin", [input_name + ":0"],
-                            [reduce_min_name + ":0"], reduce_min_name, keepdims=0)
+            reduce_min_name = input_name + '_ReduceMin'
+            reduce_min_node = onnx.helper.make_node('ReduceMin', [input_name + ':0'],
+                            [reduce_min_name + ':0'], reduce_min_name, keepdims=0)
             added_nodes.append(reduce_min_node)
-            added_outputs.append(helper.make_tensor_value_info(reduce_min_node.name + ":0", TensorProto.FLOAT, ()))
+            added_outputs.append(helper.make_tensor_value_info(reduce_min_node.name + ':0', TensorProto.FLOAT, ()))
             # Adding ReduceMax nodes
-            reduce_max_name = input_name + "_ReduceMax"
-            reduce_max_node = onnx.helper.make_node("ReduceMax", [input_name + ":0"],
-                            [reduce_max_name + ":0"], reduce_max_name, keepdims=0)
+            reduce_max_name = input_name + '_ReduceMax'
+            reduce_max_node = onnx.helper.make_node('ReduceMax', [input_name + ':0'],
+                            [reduce_max_name + ':0'], reduce_max_name, keepdims=0)
             added_nodes.append(reduce_max_node)
-            added_outputs.append(helper.make_tensor_value_info(reduce_max_node.name + ":0", TensorProto.FLOAT, ()))
+            added_outputs.append(helper.make_tensor_value_info(reduce_max_node.name + ':0', TensorProto.FLOAT, ()))
     model.graph.node.extend(added_nodes)
     model.graph.output.extend(added_outputs)
     return model
+
+# Using augmented outputs to generate inputs to quantize.py
+def get_intermediate_outputs(augmented_model_path, inputs, average_mode='naive'):
+    '''
+    Gather intermediate model outputs after running inference
+        parameter model: path to augmented FP32 ONNX model
+        parameter inputs: list of loaded test inputs
+        parameter average_mode: type 'naive' gives an arithmetic average of (ReduceMin, ReduceMax)
+                                pairs across test data sets, and type 'smooth' yields a smoother
+                                average with anomalous values removed
+        return: dictionary mapping added node names to average (ReduceMin, ReduceMax) values
+    '''
+    num_inputs = len(inputs)
+
+    # Conducting inference
+    session = onnxruntime.InferenceSession(augmented_model_path, None)
+    input_name = session.get_inputs()[0].name
+    intermediate_outputs = [session.run([], {input_name: inputs[i]}) for i in range(num_inputs)]
+
+    # Creating dictionary with output results from multiple test inputs
+    output_node_names = [session.get_outputs()[i].name for i in range(len(intermediate_outputs[0]))]
+    output_dicts = [dict(zip(output_node_names, intermediate_outputs[i])) for i in range(num_inputs)]
+    merged_dict = {}
+    for d in output_dicts:
+        for k, v in d.items():
+            merged_dict.setdefault(k, []).append(v)
+
+    added_output_node_names = output_node_names[1:]
+    node_names = [added_output_node_names[i].rpartition('_')[0] for i in range(0, len(added_output_node_names), 2)]
+
+    # Averaging distribution of a node's values across test data sets
+    if average_mode == 'naive':
+        avg_dict = {}
+        for key, value in merged_dict.items():
+            avg_dict[key] = sum(value)/float(len(value))
+        clean_avg_dict = dict((i, avg_dict[i]) for i in avg_dict if i != list(avg_dict.keys())[0])
+        pairs = [tuple([clean_avg_dict[added_output_node_names[i]], clean_avg_dict[added_output_node_names[i+1]]])
+                for i in range(0, len(added_output_node_names), 2)]
+        final_dict = dict(zip(node_names, pairs))
+    elif average_mode == 'smooth':
+        # TODO: insert smooth averaging code
+        final_dict = {}
+    return final_dict
 
 def main():
     # calibrate_loop()
