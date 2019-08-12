@@ -42,7 +42,7 @@ TEST(MathOpTest, Add_float) {
                          0.0f, 5.0f, -36.0f,
                          -10.8f, 18.6f, 0.0f});
 
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_VAD_R)
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_VAD_M)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  //OpenVINO: Disabled due to accuracy mismatch for FP16
 #else
   test.Run();
@@ -159,7 +159,7 @@ TEST(MathOpTest, Add_Broadcast_2x1x4_1x3x1) {
                          221.0f, 222.0f, 223.0f, 224.0f,
                          231.0f, 232.0f, 233.0f, 234.0f});
 
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_R)
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
   //OpenVINO: Disabled due to software limitation for VPU Plugin.
   //This test runs fine on CPU and GPU Plugins
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});
@@ -185,7 +185,7 @@ TEST(MathOpTest, Add_Broadcast_2x1x1_3x4) {
                          211.0f, 212.0f, 213.0f, 214.0f,
                          221.0f, 222.0f, 223.0f, 224.0f,
                          231.0f, 232.0f, 233.0f, 234.0f});
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_R)
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
   //OpenVINO: Disabled due to software limitation for VPU Plugin.
   //This test runs fine on CPU and GPU Plugins
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});
@@ -275,7 +275,7 @@ TEST(MathOpTest, Mul) {
                          0.0f, 5.25f, -6'400.0f,
                          29.16f, 86.49f, -100'000'000.0f});
 
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_VAD_R)
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_VAD_M)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  //OpenVINO: Disabled due to accuracy issues for MYRIAD FP16
 #else
   test.Run();
@@ -537,7 +537,7 @@ TEST(MathOpTest, Sum_6) {
                          -6.0f, 6.6f, 28.0f,
                          -1.0f, 0.06f, 0.25f});
 
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_VAD_R)
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_VAD_M)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  //OpenVINO: Disabled due to accuracy mismatch for FP16
 #else
   test.Run();
@@ -561,7 +561,7 @@ TEST(MathOpTest, Sum_8_Test1) {
                          311.0f, 312.0f, 313.0f,
                          321.0f, 322.0f, 323.0f,
                          331.0f, 332.0f, 333.0f});
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_R)
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
   //OpenVINO: Disabled due to software limitation for VPU Plugin.
   //This test runs fine on CPU and GPU Plugins
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});
@@ -596,7 +596,7 @@ TEST(MathOpTest, Sum_8_Test2) {
                          3.3f, 4.4f, -94.7f,
                          59.6f, 64.01f, -8.0f});
 
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_R)
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
   //OpenVINO: Disabled due to software limitation for VPU Plugin.
   //This test runs fine on CPU and GPU Plugins
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});
@@ -806,13 +806,51 @@ TEST(MathOpTest, Less_Scalar1) {
   test.Run();
 }
 
-TEST(MathOpTest, Greater) {
+TEST(MathOpTest, Less_int64_Scalar1) {
+  OpTester test("Less", 9);
+  test.AddInput<int64_t>("A", {4}, {1, 0, 2, -1});
+  test.AddInput<int64_t>("B", {1}, {1});
+  test.AddOutput<bool>("C", {4}, {false, true, false, true});
+  test.Run();
+}
+
+TEST(MathOpTest, Greater_7) {
   OpTester test("Greater");
   std::vector<int64_t> dims{4};
   test.AddInput<float>("A", dims, {1.0f, 0.0f, -1.0f, -1.0f});
   test.AddInput<float>("B", dims, {1.0f, 1.0f, 2.0f, -1.0f});
   test.AddOutput<bool>("C", dims, {false, false, false, false});
   test.Run();
+}
+
+TEST( MathOpTest, Greater_9_float )
+{
+   OpTester test( "Greater", 9 );
+   std::vector<int64_t> dims { 4 };
+   test.AddInput<float>( "A", dims, { 1.0f, 0.0f, -1.0f, -1.0f } );
+   test.AddInput<float>( "B", dims, { 1.0f, 1.0f, 2.0f, -1.0f } );
+   test.AddOutput<bool>( "C", dims, { false, false, false, false } );
+   test.Run();
+}
+
+TEST( MathOpTest, Greater_9_int32 )
+{
+   OpTester test( "Greater", 9 );
+   std::vector<int64_t> dims { 4 };
+   test.AddInput<int32_t>( "A", dims, { 10, 11, 12, 13 } );
+   test.AddInput<int32_t>( "B", dims, { 15, 7, 12, 9 } );
+   test.AddOutput<bool>( "C", dims, { false, true, false, true } );
+   test.Run();
+}
+
+TEST( MathOpTest, Greater_9_int64 )
+{
+   OpTester test( "Greater", 9 );
+   std::vector<int64_t> dims { 4 };
+   test.AddInput<int64_t>( "A", dims, { 10, 11, 12, 13 } );
+   test.AddInput<int64_t>( "B", dims, { 15, 7, 12, 9 } );
+   test.AddOutput<bool>( "C", dims, { false, true, false, true } );
+   test.Run();
 }
 
 TEST(MathOpTest, Equal_bool) {

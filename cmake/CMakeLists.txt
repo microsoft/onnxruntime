@@ -542,8 +542,8 @@ if(onnxruntime_USE_OPENVINO)
 		add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
 	endif()
 
-	if(onnxruntime_USE_OPENVINO_VAD_R)
-		add_definitions(-DOPENVINO_CONFIG_VAD_R=1)
+	if(onnxruntime_USE_OPENVINO_VAD_M)
+		add_definitions(-DOPENVINO_CONFIG_VAD_M=1)
 	endif()
 
 endif()
