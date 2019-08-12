@@ -102,3 +102,31 @@ If False, the inputs/activations are quantized using dynamic scale and zero poin
                 'resnet_model/Relu_3:0': [np.int8(0), np.float32(0.011359662748873234)],
                 'resnet_model/Relu_4:0': [np.uint8(0), np.float32(0.011359662748873234)]
             }
+
+## Calibration
+
+Calibration can be used to improve quantization techniques, adding reduced-precision computation for neural networks while retaining high accuracy without retraining. `calibrate.py` adds ReduceMin and ReduceMax nodes to all Conv and MatMul nodes in a loaded ONNX model and ensures their outputs are stored as part of the graph output, extracts intermediate output values after inference, and returns a dictionary mapping added node names to average (ReduceMin, ReduceMax) values as input to `quantize.py`. Example usage:
+```python
+import os
+import onnx
+import calibrate
+from onnx import numpy_helper
+
+model_folder = 'path/to/folder/with/model/and/test/data'
+model_name = 'mobilenet_v1_1.0_224.onnx'
+model = onnx.load(folder_path + '/' + model_name + '.onnx')
+augmented_model = calibrate.augment_graph(model)
+augmented_model_path = model_name + '_augmented.onnx'
+onnx.save(augmented_model, augmented_model_path)
+
+inputs = []
+test_data_num = len([name for name in os.listdir(model_folder) if 'test_data_set_' in name])
+test_data_dir = folder_path + '/test_data_set'
+for i in range(test_data_num):
+    input_file = os.path.join(test_data_dir + '_{}'.format(i), 'input_0.pb')
+    tensor = onnx.TensorProto()
+    with open(input_file, 'rb') as f:
+        tensor.ParseFromString(f.read())
+        inputs.append(numpy_helper.to_array(tensor))
+avg_dict = calibrate.get_intermediate_outputs(augmented_model_path, inputs) # inputs to quantize.py
+```        
