@@ -61,8 +61,7 @@ void CUDAPinnedAllocator::Free(void* p) {
 }
 
 const OrtAllocatorInfo& CUDAPinnedAllocator::Info() const {
-  static constexpr OrtAllocatorInfo cuda_allocator_info(CUDA_PINNED, OrtDeviceAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0), 0, OrtMemTypeCPUOutput);
-  return cuda_allocator_info;
+  return info_;
 }
 
 FencePtr CUDAPinnedAllocator::CreateFence(const SessionState* session_state) {

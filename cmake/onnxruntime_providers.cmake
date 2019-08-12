@@ -99,17 +99,6 @@ if(HAS_DEPRECATED_COPY)
   set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/where_op.cc" PROPERTIES COMPILE_FLAGS -Wno-deprecated-copy)
 endif()
 
-if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64" AND NOT MSVC)
-  # For x86 platforms it is important to pass this flag to compiler. Without this gemmlowp will use slow reference code.
-  # These optimizations are not enabled on MSVC so excluding it.
-  message("enabling optimizations for gemmlowp")
-  set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/math/matmul_integer.cc" PROPERTIES COMPILE_FLAGS "-msse4.1")
-  set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/math/quantize_linear_matmul.cc" PROPERTIES COMPILE_FLAGS "-msse4.1")
-  set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/nn/qlinearconv.cc" PROPERTIES COMPILE_FLAGS "-msse4.1")
-  set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/nn/conv_integer.cc" PROPERTIES COMPILE_FLAGS "-msse4.1")
-endif()
-
-set(gemmlowp_src ${PROJECT_SOURCE_DIR}/external/gemmlowp)
 set(re2_src ${ONNXRUNTIME_ROOT}/../cmake/external/re2)
 target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${gemmlowp_src} ${re2_src})
 add_dependencies(onnxruntime_providers gsl onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
