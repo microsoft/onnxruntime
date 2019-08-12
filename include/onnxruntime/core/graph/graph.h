@@ -526,9 +526,9 @@ class Graph {
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return graph_outputs_; }
 
   /** Returns a vector with the indexes of any Node outputs that are a Graph output. */
-  std::vector<size_t> GetNodeOutputsInGraphOutputs(const Node& node) const {
-    size_t output_idx = 0;
-    std::vector<size_t> indexes;
+  std::vector<int> GetNodeOutputsInGraphOutputs(const Node& node) const {
+    int output_idx = 0;
+    std::vector<int> indexes;
     for (auto output_def : node.OutputDefs()) {
       if (std::find(GetOutputs().cbegin(), GetOutputs().cend(), output_def) != GetOutputs().cend()) {
         indexes.push_back(output_idx);
