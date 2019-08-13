@@ -134,12 +134,12 @@ void RegisterGradientSchemas() {
           4,
           "moment_1",
           "exponentially averaged historical gradients.",
-          "T4")
+          "T3")
       .Input(
           5,
           "moment_2",
           "exponentially averaged historical squared gradients.",
-          "T4")
+          "T3")
       .Output(
           0,
           "new_weights",
@@ -149,12 +149,12 @@ void RegisterGradientSchemas() {
           1,
           "output_moment_1",
           "New averaged gradients.",
-          "T4")
+          "T3")
       .Output(
           2,
           "output_moment_2",
           "New averaged squared gradients.",
-          "T4")
+          "T3")
       .Output(
           3,
           "output_T",
@@ -185,7 +185,7 @@ void RegisterGradientSchemas() {
           1e-6f)
       .TypeConstraint(
           "T1",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float)", "tensor(double)"},
           "Constrain learning rate to float")
       .TypeConstraint(
           "T2",

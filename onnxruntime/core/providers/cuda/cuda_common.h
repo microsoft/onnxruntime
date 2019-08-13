@@ -170,24 +170,6 @@ class ToCudaType<MLFloat16> {
   }
 };
 
-template <>
-class ToCudaType<float> {
- public:
-  typedef float MappedType;
-  static MappedType FromFloat(float f) {
-    return f;
-  }
-};
-
-template <>
-class ToCudaType<double> {
- public:
-  typedef double MappedType;
-  static MappedType FromFloat(float f) {
-    return static_cast<double>(f);
-  }
-};
-
 inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int64_t>& dims) {
   int stride = 1;
   if (dims.empty() || p.size() < gsl::narrow_cast<ptrdiff_t>(dims.size()))

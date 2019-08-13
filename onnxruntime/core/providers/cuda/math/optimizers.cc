@@ -36,36 +36,21 @@ Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-  // TODO: Once Schema is checked in to onnx lets fix this to match that
-#define REGISTER_ADAM_KERNEL_TYPED(T1, T2, T3, T4)                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                    \
-      AdamOptimizer,                                                \
-      kOnnxDomain,                                                  \
-      9,                                                            \
-      T1##_##T2##_##T3##_##T4,                                      \
-      kCudaExecutionProvider,                                       \
-      KernelDefBuilder()                                            \
-          .Alias(1, 3) /* Update step count in-place */             \
-          .Alias(2, 0) /* Update weights in-place */                \
-          .Alias(4, 1) /* Update moment-1 in-place */               \
-          .Alias(5, 2) /* Update moment-2 in-place */               \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())  \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())  \
-          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())  \
-          .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>()), \
-      AdamOptimizer<T1, T2, T3, T4>);
+// TODO: Once Schema is checked in to onnx lets fix this to match that
+ONNX_OPERATOR_KERNEL_EX(
+    AdamOptimizer,
+    kOnnxDomain,
+    9,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+      .Alias(1, 3) // Update step count in-place
+      .Alias(2, 0) // Update weights in-place
+      .Alias(4, 1) // Update moment-1 in-place
+      .Alias(5, 2) // Update moment-2 in-place
+      .TypeConstraint("T3", DataTypeImpl::GetTensorType<float>()),
+    AdamOptimizer);
 
-REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float)
-REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16)
-REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16)
-
-template <typename T1, typename T2, typename T3, typename T4>
-Status AdamOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) const {
-  typedef typename ToCudaType<T1>::MappedType CudaT1;
-  typedef typename ToCudaType<T2>::MappedType CudaT2;
-  typedef typename ToCudaType<T3>::MappedType CudaT3;
-  typedef typename ToCudaType<T4>::MappedType CudaT4;
-
+Status AdamOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor& ETA = *ctx->Input<Tensor>(0);
   const Tensor& S = *ctx->Input<Tensor>(1);
   const Tensor& W = *ctx->Input<Tensor>(2);
@@ -79,20 +64,20 @@ Status AdamOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) cons
   Tensor& NS = *ctx->Output(3, S.Shape());
 
   AdamOptimizerImpl(
-      reinterpret_cast<const CudaT1*>(ETA.template Data<T1>()),
-      reinterpret_cast<const CudaT2*>(S.template Data<T2>()),
-      reinterpret_cast<const CudaT3*>(W.template Data<T3>()),
-      reinterpret_cast<const CudaT4*>(G.template Data<T4>()),
-      reinterpret_cast<const CudaT4*>(M1.template Data<T4>()),
-      reinterpret_cast<const CudaT4*>(M2.template Data<T4>()),
-      ToCudaType<T4>::FromFloat(alpha_),
-      ToCudaType<T4>::FromFloat(beta_),
-      ToCudaType<T4>::FromFloat(lambda_),
-      ToCudaType<T4>::FromFloat(epsilon_),
-      reinterpret_cast<CudaT3*>(NW.template MutableData<T3>()),
-      reinterpret_cast<CudaT4*>(NM1.template MutableData<T4>()),
-      reinterpret_cast<CudaT4*>(NM2.template MutableData<T4>()),
-      reinterpret_cast<CudaT2*>(NS.template MutableData<T2>()),
+      ETA.template Data<float>(),
+      S.template Data<int64_t>(),
+      W.template Data<float>(),
+      G.template Data<float>(),
+      M1.template Data<float>(),
+      M2.template Data<float>(),
+      alpha_,
+      beta_,
+      lambda_,
+      epsilon_,
+      NW.template MutableData<float>(),
+      NM1.template MutableData<float>(),
+      NM2.template MutableData<float>(),
+      NS.template MutableData<int64_t>(),
       W.Shape().Size());
 
   return Status::OK();
