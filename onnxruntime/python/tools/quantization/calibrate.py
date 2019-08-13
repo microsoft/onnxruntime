@@ -157,12 +157,49 @@ def augment_graph(model):
     model.graph.output.extend(added_outputs)
     return model
 
+# Reading user input (images)
+def load_and_resize_image(image_filepath, height, width):
+    '''
+    Resizes image to  to NCHW format
+        parameter image_filepath: path to image files
+        parameter height: image height in pixels
+        parameter width: image width in pixels
+        return: matrix characterizing image
+    '''
+    pillow_img = Image.open(image_filepath).resize((width, height))
+    input_data = np.float32(pillow_img)
+    nhwc_data = np.expand_dims(input_data, axis=0)
+    nchw_data = nhwc_data.transpose(0, 3, 1, 2) # ONNX Runtime standard
+    return nchw_data
+
+def load_batch(images_folder, height, width, size_limit=30):
+    '''
+    Loads a batch of images
+    parameter images_folder: path to folder storing images
+    parameter height: image height in pixels
+    parameter width: image width in pixels
+    parameter size_limit: number of images used to run inference
+    return: list of matrices characterizing multiple images
+    '''
+    image_names = os.listdir(images_folder)
+    if len(image_names) >= size_limit:
+        batch_filenames = [image_names[i] for i in range(size_limit)]
+    else:
+        batch_filenames = image_names
+    unconcatenated_batch_data = []
+    for image_name in batch_filenames:
+        image_filepath = images_folder + '/' + image_name
+        nchw_data = load_and_resize_image(image_filepath, height, width)
+        unconcatenated_batch_data.append(nchw_data)
+    batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
+    return batch_data
+
 # Using augmented outputs to generate inputs to quantize.py
 def get_intermediate_outputs(augmented_model_path, inputs, average_mode='naive'):
     '''
     Gather intermediate model outputs after running inference
         parameter model: path to augmented FP32 ONNX model
-        parameter inputs: list of loaded test inputs
+        parameter inputs: list of loaded test inputs (or image matrices)
         parameter average_mode: type 'naive' gives (ReduceMin, ReduceMax) pairs
                                 for each augmented node across test data sets, where
                                 the first element is a minimum of all ReduceMin values
