@@ -143,6 +143,11 @@ inline SessionOptions& SessionOptions::SetGraphOptimizationLevel(GraphOptimizati
   return *this;
 }
 
+inline SessionOptions& SessionOptions::SetOptimizedModelFilePath(const ORTCHAR_T* optimized_model_filepath) {
+  ORT_THROW_ON_ERROR(OrtSetOptimizedModelFilePath(p_, optimized_model_filepath));
+  return *this;
+}
+
 inline SessionOptions& SessionOptions::EnableProfiling(const ORTCHAR_T* profile_file_prefix) {
   ORT_THROW_ON_ERROR(OrtEnableProfiling(p_, profile_file_prefix));
   return *this;
