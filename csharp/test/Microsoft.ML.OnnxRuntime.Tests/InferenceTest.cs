@@ -646,7 +646,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             // Set the optimized model file path to assert that no exception are thrown.
             SessionOptions options = new SessionOptions();
             options.SetOptimizedModelFilePath(modelOutputPath);
-            options.SetSessionGraphOptimizationLevel(1);
+            options.SetSessionGraphOptimizationLevel(GraphOptimizationLevel.ORT_ENABLE_BASIC);
             var session = new InferenceSession(modelPath, options);
             Assert.NotNull(session);
             Assert.True(File.Exists(modelOutputPath));
