@@ -7,7 +7,7 @@
 #include "core/graph/onnx_protobuf.h"
 
 #ifdef MICROSOFT_AUTOML
-#include "automl_ops/opaque_types.h"
+#include "automl_ops/automl_types.h"
 #endif
 
 #ifdef __GNUC__

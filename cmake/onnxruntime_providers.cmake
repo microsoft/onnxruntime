@@ -28,7 +28,8 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
 file(GLOB onnxruntime_cpu_automl_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/automl_ops/cpu_automl_kernels.h"
   "${ONNXRUNTIME_ROOT}/automl_ops/cpu_automl_kernels.cc"
-  "${ONNXRUNTIME_ROOT}/automl_ops/opaque_types.cc"
+  "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.h"
+  "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.cc"
   "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.cc"
 )

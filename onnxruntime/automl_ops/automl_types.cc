@@ -5,9 +5,8 @@
 #include "core/framework/data_types.h"
 #include "core/framework/op_kernel.h"
 
-#include "automl_ops/opaque_types.h"
-
-#include "core/automl/featurizers/src/FeaturizerPrep/Featurizers/DateTimeFeaturizer.h"
+#include "automl_ops/automl_types.h"
+#include "automl_ops/automl_featurizers.h"
 
 namespace dtf = Microsoft::Featurizer::DateTimeFeaturizer;
 

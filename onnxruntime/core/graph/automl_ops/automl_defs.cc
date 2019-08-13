@@ -24,6 +24,7 @@ void RegisterAutoMLSchemas() {
 
   MS_AUTOML_OPERATOR_SCHEMA(DateTimeTransformer)
       .SinceVersion(1)
+      .SetDomain(kMSAutoMLDomain)
       .SetDoc(DateTimeTransformer_ver1_doc)
       .Input(0, "X",
              "The input represents a number of seconds passed since the epoch, suitable to properly construct"

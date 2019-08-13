@@ -46,6 +46,19 @@ namespace DateTimeFeaturizer {
         TimePoint(const TimePoint&) = delete;
         TimePoint& operator=(const TimePoint&) = delete;
 
+        bool operator==(const TimePoint& o) const {
+          return year == o.year &&
+                 month == o.month &&
+                 day == o.day &&
+                 hour == o.hour &&
+                 minute == o.minute &&
+                 second == o.second &&
+                 dayOfWeek == o.dayOfWeek &&
+                 dayOfYear == o.dayOfYear &&
+                 quarterOfYear == o.quarterOfYear &&
+                 weekOfMonth == o.weekOfMonth;
+        }
+
         enum { 
             JANUARY = 1, FEBRUARY, MARCH, APRIL, MAY, JUNE, 
             JULY, AUGUST, SEPTEMBER, OCTOBER, NOVEMBER, DECEMBER
