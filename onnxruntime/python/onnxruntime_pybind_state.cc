@@ -386,6 +386,8 @@ void addObjectMethods(py::module& m) {
 Set this option to false if you don't want it. Default is True.)pbdoc")
       .def_readwrite("enable_profiling", &SessionOptions::enable_profiling,
                      R"pbdoc(Enable profiling for this session. Default is false.)pbdoc")
+      .def_readwrite("optimized_model_filepath", &SessionOptions::optimized_model_filepath,
+                     R"pbdoc(File path to serialize optimized model. By default, optimized model is not serialized if optimized_model_filepath is not provided.)pbdoc")
       .def_readwrite("enable_mem_pattern", &SessionOptions::enable_mem_pattern,
                      R"pbdoc(Enable the memory pattern optimization. Default is true.)pbdoc")
       .def_readwrite("enable_sequential_execution", &SessionOptions::enable_sequential_execution,
