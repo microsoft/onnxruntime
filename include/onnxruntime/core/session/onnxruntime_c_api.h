@@ -150,7 +150,6 @@ ORT_RUNTIME_CLASS(RunOptions);
 ORT_RUNTIME_CLASS(TypeInfo);
 ORT_RUNTIME_CLASS(TensorTypeAndShapeInfo);
 ORT_RUNTIME_CLASS(SessionOptions);
-ORT_RUNTIME_CLASS(Callback);
 ORT_RUNTIME_CLASS(CustomOpDomain);
 ORT_RUNTIME_CLASS(Allocator);
 
@@ -201,6 +200,9 @@ ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess,
  * \return A pointer of the newly created object. The pointer should be freed by OrtReleaseSessionOptions after use
  */
 ORT_API_STATUS(OrtCreateSessionOptions, _Outptr_ OrtSessionOptions** options);
+
+// Set filepath to save optimized model after graph level transformations.
+ORT_API_STATUS(OrtSetOptimizedModelFilePath, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* optimized_model_filepath);
 
 // create a copy of an existing OrtSessionOptions
 ORT_API_STATUS(OrtCloneSessionOptions, _In_ const OrtSessionOptions* in_options, _Outptr_ OrtSessionOptions** out_options);

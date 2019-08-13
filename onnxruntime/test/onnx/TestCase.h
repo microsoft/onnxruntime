@@ -19,7 +19,7 @@ class ValueInfoProto;
 //One test case can contain multiple test data(input/output pairs)
 class ITestCase {
  public:
-  virtual void LoadTestData(size_t id, HeapBuffer& b, std::unordered_map<std::string, OrtValue*>& name_data_map,
+  virtual void LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b, std::unordered_map<std::string, OrtValue*>& name_data_map,
                             bool is_input) = 0;
   virtual const PATH_CHAR_TYPE* GetModelUrl() const = 0;
   virtual const std::string& GetNodeName() const = 0;

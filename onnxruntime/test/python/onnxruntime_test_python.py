@@ -34,6 +34,14 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(
             output_expected, res[0], rtol=1e-05, atol=1e-08)
 
+    def testModelSerialization(self):
+        so = onnxrt.SessionOptions()
+        so.session_log_verbosity_level = 1
+        so.session_logid = "TestModelSerialization"
+        so.optimized_model_filepath = "./PythonApiTestOptimizedModel.onnx"
+        onnxrt.InferenceSession(self.get_name("mul_1.onnx"), sess_options=so)
+        self.assertTrue(os.path.isfile(so.optimized_model_filepath))
+
     def testRunModel(self):
         sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"))
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
