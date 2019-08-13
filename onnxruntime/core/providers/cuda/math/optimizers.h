@@ -61,38 +61,41 @@ class AdamOptimizer final : public CudaKernel {
 };
 
 // Implementation can be found in cuda file, optimizers_impl.cu
-template <typename T>
+// T1's precision should be higher than T2.
+template <typename T1, typename T2, typename T3>
 void LambComputeDirectionImpl(
-    const T* weights,
-    const T* grads,
-    const T* moment_1,
-    const T* moment_2,
-    float alpha,
-    float beta,
-    float lambda,
-    float epsilon,
-    T* weights_out,
-    T* moment_1_out,
-    T* moment_2_out,
+    const T1* weights,
+    const T2* grads,
+    const T3* moment_1,
+    const T3* moment_2,
+    T3 alpha,
+    T3 beta,
+    T1 lambda,
+    T3 epsilon,
+    T2* update_direction,
+    T3* moment_1_out,
+    T3* moment_2_out,
     size_t count);
 
 // Implementation can be found in cuda file, optimizers_impl.cu
-template <typename T>
+// T2's precision should be higher than T1.
+template <typename T1, typename T2>
 void LambUpdateImpl(
-    const T* eta,
-    const T* r_norm,
-    const T* w_norm,
-    const T* weights,
-    const T* update_direction,
-    T* weights_out,
+    const T1* eta,
+    const T2* r_norm,
+    const T2* w_norm,
+    const T2* weights,
+    const T1* update_direction,
+    T2* weights_out,
     size_t count);
 
 // Implementation can be found in cuda file, optimizers_impl.cu
-template <typename T>
+template <typename T1, typename T2>
 void LambScalarL2NormReductionImpl(
-    const T* value,
-    T* value_out);
+    const T1* value,
+    T2* value_out);
 
+template <typename T1, typename T2, typename T3, typename T4>
 class LambOptimizer final : public CudaKernel {
  public:
   LambOptimizer(const OpKernelInfo& info): CudaKernel(info) {

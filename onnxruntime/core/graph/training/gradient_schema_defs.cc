@@ -209,7 +209,7 @@ void RegisterGradientSchemas() {
           1,
           "weights",
           "weights to optimize.",
-          "T3")
+          "T2")
       .Input(
           2,
           "gradients",
@@ -219,27 +219,27 @@ void RegisterGradientSchemas() {
           3,
           "moment_1",
           "exponentially averaged historical gradients.",
-          "T3")
+          "T4")
       .Input(
           4,
           "moment_2",
           "exponentially averaged historical squared gradients.",
-          "T3")
+          "T4")
       .Output(
           0,
           "new_weights",
           "New weights",
-          "T3")
+          "T2")
       .Output(
           1,
           "output_moment_1",
           "New averaged Gradients",
-          "T3")
+          "T4")
       .Output(
           2,
           "output_moment_2",
           "New averaged squared gradients",
-          "T3")
+          "T4")
       .Attr(
           "alpha",
           "Coefficient of previous gradient in running average.",
@@ -265,12 +265,20 @@ void RegisterGradientSchemas() {
           1e-6f)
       .TypeConstraint(
           "T1",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float scalars.")
+      .TypeConstraint(
+          "T2",
           {"tensor(float)", "tensor(double)"},
-          "Constrain learning rate to float scalars.")
+          "Constrain input types to float tensors.")
       .TypeConstraint(
           "T3",
-          {"tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors.");
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.")
+      .TypeConstraint(
+          "T4",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.");
 }
 }  // namespace training
 }  // namespace onnxruntime

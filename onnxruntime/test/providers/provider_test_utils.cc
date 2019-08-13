@@ -35,19 +35,20 @@ void Check(const OpTester::Data& expected_data, const Tensor& output_tensor, con
   }
 }
 
-template <>
-void Check<float>(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
+template <typename TypeToCheck>
+void InternalNumericalCheck(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
   auto& expected_tensor = expected_data.data_.Get<Tensor>();
-  auto* expected = expected_tensor.template Data<float>();
-  auto* output = output_tensor.template Data<float>();
+  auto* expected = expected_tensor.template Data<TypeToCheck>();
+  auto* output = output_tensor.template Data<TypeToCheck>();
   auto size = output_tensor.Shape().Size();
 
   bool has_abs_err = expected_data.absolute_error_.has_value();
   bool has_rel_err = expected_data.relative_error_.has_value();
 
-  float threshold = 0.001f;
 #ifdef USE_CUDA
-  threshold = 0.005f;
+  float threshold = 0.005f;
+#else
+  float threshold = 0.0001f;
 #endif
 
   for (int i = 0; i < size; ++i) {
@@ -72,6 +73,22 @@ void Check<float>(const OpTester::Data& expected_data, const Tensor& output_tens
 }
 
 template <>
+void Check<double>(
+    const OpTester::Data& expected_data,
+    const Tensor& output_tensor,
+    const std::string& provider_type) {
+  InternalNumericalCheck<double>(expected_data, output_tensor, provider_type);
+}
+
+template <>
+void Check<float>(
+    const OpTester::Data& expected_data,
+    const Tensor& output_tensor,
+    const std::string& provider_type) {
+  InternalNumericalCheck<float>(expected_data, output_tensor, provider_type);
+}
+
+template <>
 void Check<MLFloat16>(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
   auto& expected_tensor = expected_data.data_.Get<Tensor>();
   auto* expected = expected_tensor.template Data<MLFloat16>();
@@ -83,13 +100,18 @@ void Check<MLFloat16>(const OpTester::Data& expected_data, const Tensor& output_
   ConvertMLFloat16ToFloat(expected, f_expected.data(), static_cast<int>(size));
   ConvertMLFloat16ToFloat(output, f_output.data(), static_cast<int>(size));
 
-  float threshold = 0.001f;
+  float threshold = 0.005f;
   for (int i = 0; i < size; ++i) {
     if (std::isinf(f_expected[i]))  // Test infinity for equality
       EXPECT_EQ(f_expected[i], f_output[i]);
     else {
       // the default for existing tests
-      EXPECT_NEAR(f_expected[i], f_output[i], threshold) << "provider_type: " << provider_type;
+      const float max_value = fmax(fabs(f_expected[i]), fabs(f_output[i]));
+      if (max_value != 0)  // max_value = 0 means output and expected are 0s.
+      {
+        const float rel_error = fabs(f_expected[i] - f_output[i]) / max_value;
+        EXPECT_NEAR(0, rel_error, threshold) << "provider_type: " << provider_type;
+      }
     }
   }
 }
@@ -345,8 +367,8 @@ std::vector<MLValue> OpTester::ExecuteModel(Model& model,
           if (add_shape_to_tensor_data_) {
             auto out_shape_proto = expected_data.def_.Shape();
             EXPECT_TRUE(out_shape_proto != nullptr);
-          const auto& tensor_shape = utils::GetTensorShapeFromTensorShapeProto(*out_shape_proto);
-          const auto& inferred_dims = tensor_shape.GetDims();
+            const auto& tensor_shape = utils::GetTensorShapeFromTensorShapeProto(*out_shape_proto);
+            const auto& inferred_dims = tensor_shape.GetDims();
             const auto& expected_shape = expected_data.data_.Get<Tensor>().Shape();
             EXPECT_TRUE(inferred_dims.size() == expected_shape.NumDimensions());
             for (size_t d = 0; d < inferred_dims.size(); ++d) {

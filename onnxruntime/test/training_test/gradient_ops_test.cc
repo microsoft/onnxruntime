@@ -300,7 +300,7 @@ TEST(GradientCheckerTest, GemmGrad) {
   OpDef op_def{"Gemm"};
 
   // Single Batch with Scalar Bias
-  // TODO!!!! :	following test case is failing due to a bug in ReduceSum cuda
+  // TODO!!!! : following test case is failing due to a bug in ReduceSum cuda
   /*
   {
     gradient_checker.ComputeGradientError(op_def, {{1, 4}, {4, 3}, {}}, {{1, 3}}, &max_error);
@@ -315,7 +315,7 @@ TEST(GradientCheckerTest, GemmGrad) {
   }
 
   // Non-Single Batch with Scalar Bias
-  // TODO!!!! :	following test case is failing due to a bug in ReduceSum cuda
+  // TODO!!!! : following test case is failing due to a bug in ReduceSum cuda
   /*
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {}}, {{2, 3}}, &max_error);
@@ -1454,11 +1454,10 @@ void compute_lamb(
 
   // Compute squared sum of all elements. Note that Eigen sqrt could lead to significant
   // numerical error so we use std::sqrt. The std::inner_product produces wrong result
-  // when std::inner_product(r.begin(), r.end(), r.begin(), 0) so we just use a loop below. 
+  // when std::inner_product(r.begin(), r.end(), r.begin(), 0) so we just use a loop below.
   float r_norm = 0.0f;
   float w_norm = 0.0f;
-  for (int i = 0; i < size; ++i)
-  {
+  for (int i = 0; i < size; ++i) {
     r_norm += r[i] * r[i];
     w_norm += w[i] * w[i];
   }
@@ -1470,109 +1469,174 @@ void compute_lamb(
     w_new[i] = w[i] - eta * w_norm / r_norm * r[i];
 }
 
-void run_lamb_test(
-  const std::vector<int64_t> &shape,
-  const std::vector<float> &w,
-  const std::vector<float> &g,
-  const std::vector<float> &m,
-  const std::vector<float> &v,
-  const float eta,
-  const float lambda,
-  const float alpha,
-  const float beta,
-  const float epsilon) {
+template <typename T1, typename T2, typename T3>
+void run_lamb_test_with_baseline(
+    const std::vector<int64_t>& shape,
+    const std::vector<T2>& eta,
+    const std::vector<T1>& w,
+    const std::vector<T2>& g,
+    const std::vector<T3>& m,
+    const std::vector<T3>& v,
+    const float alpha,
+    const float beta,
+    const float lambda,
+    const float epsilon,
+    const std::vector<T1>& w_new,
+    const std::vector<T3>& m_new,
+    const std::vector<T3>& v_new) {
   OpTester test("LambOptimizer", 9, onnxruntime::kOnnxDomain, true);
 
-  // Output buffers of the optimizer.
-  std::vector<float> w_new(w.size(), 0);
-  std::vector<float> m_new(w.size(), 0);
-  std::vector<float> v_new(v.size(), 0);
-
-  // Invoke LAMB's reference implementation to compute output.
-  compute_lamb(
-    shape, w, g, m, v,
-    eta, lambda, alpha, beta, epsilon,
-    w_new, m_new, v_new);
-
-  // Create test to make sure the output is correct.
-  test.AddInput<float>("ETA", {}, {eta});
-  test.AddInput<float>("W", shape, w);
-  test.AddInput<float>("G", shape, g);
-  test.AddInput<float>("Moment_1", shape, m);
-  test.AddInput<float>("Moment_2", shape, v);
+  test.AddInput<T2>("ETA", {}, eta);
+  test.AddInput<T1>("W", shape, w);
+  test.AddInput<T2>("G", shape, g);
+  test.AddInput<T3>("Moment_1", shape, m);
+  test.AddInput<T3>("Moment_2", shape, v);
 
   test.AddAttribute<float>("alpha", alpha);
   test.AddAttribute<float>("beta", beta);
   test.AddAttribute<float>("lambda", lambda);
   test.AddAttribute<float>("epsilon", epsilon);
 
-  test.AddOutput<float>("W_Out", shape, w_new);
-  test.AddOutput<float>("Moment_1_Out", shape, m_new);
-  test.AddOutput<float>("Moment_2_Out", shape, v_new);
+  test.AddOutput<T1>("W_Out", shape, w_new);
+  test.AddOutput<T3>("Moment_1_Out", shape, m_new);
+  test.AddOutput<T3>("Moment_2_Out", shape, v_new);
 
   test.Run();
+}
+
+// Lamb test without baseline. This function computes
+// baseline via an internal function and then invoke
+// run_lamb_test_with_baseline(...) to check the result.
+void run_lamb_test(
+    const std::vector<int64_t>& shape,
+    const std::vector<float>& eta,
+    const std::vector<float>& w,
+    const std::vector<float>& g,
+    const std::vector<float>& m,
+    const std::vector<float>& v,
+    const float lambda,
+    const float alpha,
+    const float beta,
+    const float epsilon) {
+  // Output buffers of the optimizer.
+  std::vector<float> w_new(w.size(), 0);
+  std::vector<float> m_new(w.size(), 0);
+  std::vector<float> v_new(v.size(), 0);
+
+  // Invoke LAMB's reference implementation to compute baseline output.
+  compute_lamb(
+      shape, w, g, m, v,
+      eta[0], lambda, alpha, beta, epsilon,
+      w_new, m_new, v_new);
+
+  // Create test to make sure the output is correct.
+  run_lamb_test_with_baseline(
+      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, w_new, m_new, v_new);
+}
+
+void run_lamb_mix_precision_test(
+    const std::vector<int64_t>& shape,
+    const std::vector<float>& eta,
+    const std::vector<float>& w,
+    const std::vector<float>& g,
+    const std::vector<float>& m,
+    const std::vector<float>& v,
+    const float lambda,
+    const float alpha,
+    const float beta,
+    const float epsilon) {
+  std::vector<float> w_new(w.size(), 0);
+  std::vector<float> m_new(w.size(), 0);
+  std::vector<float> v_new(v.size(), 0);
+
+  // Invoke LAMB's reference implementation to compute output.
+  compute_lamb(
+      shape, w, g, m, v,
+      eta[0], lambda, alpha, beta, epsilon,
+      w_new, m_new, v_new);
+
+  std::vector<MLFloat16> eta_half(eta.size());
+  std::vector<MLFloat16> g_half(w.size());
+  std::vector<MLFloat16> m_half(w.size());
+  std::vector<MLFloat16> v_half(w.size());
+  ConvertFloatToMLFloat16(eta.data(), eta_half.data(), int(eta.size()));
+  ConvertFloatToMLFloat16(g.data(), g_half.data(), int(g.size()));
+  ConvertFloatToMLFloat16(m.data(), m_half.data(), int(m.size()));
+  ConvertFloatToMLFloat16(v.data(), v_half.data(), int(v.size()));
+  std::vector<MLFloat16> m_new_half(w.size());
+  std::vector<MLFloat16> v_new_half(w.size());
+  ConvertFloatToMLFloat16(m_new.data(), m_new_half.data(), int(m_new.size()));
+  ConvertFloatToMLFloat16(v_new.data(), v_new_half.data(), int(v_new.size()));
+
+  // Half momentums.
+  run_lamb_test_with_baseline(
+      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w_new, m_new_half, v_new_half);
+
+  // Float momentums.
+  run_lamb_test_with_baseline(
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w_new, m_new, v_new);
 }
 
 // A optimizer test with an 2-element vector.
 TEST(OptimizerTest, LambOptimizerTestVector) {
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {2};
+  const std::vector<float> eta = {0.5f};
   const std::vector<float> w = {1.0f, 2.0f};
   const std::vector<float> g = {3.0f, 4.0f};
   const std::vector<float> m = {-1.0f, -2.0f};
   const std::vector<float> v = {2.0f, 1.0f};
-  const float eta = 0.5f;
   const float lambda = 0.5f;
   const float alpha = 0.2f;
   const float beta = 0.8f;
   const float epsilon = 1e-6f;
 
-  run_lamb_test(shape, w, g, m, v, eta, lambda, alpha, beta, epsilon);
+  run_lamb_test(shape, eta, w, g, m, v, lambda, alpha, beta, epsilon);
 }
 
 // A optimizer test with an 2-by-1-by-1-by-1 tensor.
 TEST(OptimizerTest, LambOptimizerTest4DTensor) {
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {2, 1, 1, 1};
+  const std::vector<float> eta = {0.5f};
   const std::vector<float> w = {1.0f, 2.0f};
   const std::vector<float> g = {3.0f, 4.0f};
   const std::vector<float> m = {-1.0f, -2.0f};
   const std::vector<float> v = {2.0f, 1.0f};
-  const float eta = 0.5f;
   const float lambda = 0.5f;
   const float alpha = 0.2f;
   const float beta = 0.8f;
   const float epsilon = 1e-6f;
 
-  run_lamb_test(shape, w, g, m, v, eta, lambda, alpha, beta, epsilon);
+  run_lamb_test(shape, eta, w, g, m, v, lambda, alpha, beta, epsilon);
 }
 
 // A optimizer test with an 2-by-3 tensor.
 TEST(OptimizerTest, LambOptimizerTest2by3Tensor) {
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {2, 3};
+  const std::vector<float> eta = {0.5f};
   const std::vector<float> w = {1.0f, 2.0f, 1.0f, 1.0f, 2.0f, 2.0f};
   const std::vector<float> g = {3.0f, 4.0f, 3.0f, 3.0f, 4.0f, 4.0f};
   const std::vector<float> m = {-1.0f, -2.0f, 2.0f, 1.0f, 1.0f, -2.0f};
   const std::vector<float> v = {1.0f, 1.0f, 5.0f, 5.0f, 6.0f, 6.0f};
-  const float eta = 0.5f;
   const float lambda = 0.5f;
   const float alpha = 0.2f;
   const float beta = 0.8f;
   const float epsilon = 1e-6f;
 
-  run_lamb_test(shape, w, g, m, v, eta, lambda, alpha, beta, epsilon);
+  run_lamb_test(shape, eta, w, g, m, v, lambda, alpha, beta, epsilon);
 }
 
 // A optimizer test with an 1-element tensor.
 TEST(OptimizerTest, LambOptimizerTestScalar) {
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {(int64_t)1};
+  const std::vector<float> eta = {0.5f};
   const std::vector<float> w = {1.0f};
   const std::vector<float> g = {3.0f};
   const std::vector<float> m = {-10.0f};
   const std::vector<float> v = {1.0f};
-  const float eta = 0.5f;
   const float lambda = 0.5f;
   const float alpha = 0.2f;
   const float beta = 0.8f;
@@ -1583,59 +1647,151 @@ TEST(OptimizerTest, LambOptimizerTestScalar) {
   std::vector<float> v_new = {0.0f};
   std::vector<float> w_new = {0.0f};
 
-  run_lamb_test(shape, w, g, m, v, eta, lambda, alpha, beta, epsilon);
+  run_lamb_test(shape, eta, w, g, m, v, lambda, alpha, beta, epsilon);
 }
 
 TEST(OptimizerTest, LambOptimizerTestExternalBaseline) {
-  OpTester test("LambOptimizer", 9, onnxruntime::kOnnxDomain, true);
-
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {2, 5};
+  const std::vector<float> eta = {0.1f};
   const std::vector<float> w = {
-    0.01379026f, 0.15308191f, -0.24356517f, -0.21798165f, -0.13770047f, 0.09694599f,
-    -0.02223516f, 0.2664228f, -0.01177993f, 0.06832688f};
+      0.01379026f, 0.15308191f, -0.24356517f, -0.21798165f, -0.13770047f, 0.09694599f,
+      -0.02223516f, 0.2664228f, -0.01177993f, 0.06832688f};
   const std::vector<float> g = {
-    -6.048543f, 10.569487f, -9.207029f, -0.57407373f,
-    5.884985f, -0.21047728f, 3.539946f, -5.957566f, -9.343748f, 1.1502024f};
+      -6.048543f, 10.569487f, -9.207029f, -0.57407373f,
+      5.884985f, -0.21047728f, 3.539946f, -5.957566f, -9.343748f, 1.1502024f};
   const std::vector<float> m = {
-    -5.9078765f, 9.673933f, -8.731428f, -0.6227454f, 5.284312f, -0.27138948f,
-    3.443532f, -5.681713f, -8.72421f, 1.1441823f};
+      -5.9078765f, 9.673933f, -8.731428f, -0.6227454f, 5.284312f, -0.27138948f,
+      3.443532f, -5.681713f, -8.72421f, 1.1441823f};
   const std::vector<float> v = {
-    4.2659229e+01f, 1.1438165e+02f, 9.3179581e+01f, 4.7399229e-01f, 3.4129276e+01f,
-    9.0019435e-02f, 1.4493006e+01f, 3.9455612e+01f, 9.3025581e+01f, 1.6000764e+0f};
+      4.2659229e+01f, 1.1438165e+02f, 9.3179581e+01f, 4.7399229e-01f, 3.4129276e+01f,
+      9.0019435e-02f, 1.4493006e+01f, 3.9455612e+01f, 9.3025581e+01f, 1.6000764e+0f};
 
-  const float eta = 0.1f;
   const float lambda = 0.1f;
   const float alpha = 0.1f;
   const float beta = 0.01f;
   const float epsilon = 0.1f;
 
   std::vector<float> w_new = {
-    0.02979828f, 0.13677707f, -0.22708717f, -0.20361158f, -0.15338624f, 0.1081504f,
-    -0.03804127f, 0.28198114f, 0.00430069f, 0.05319814f};
+      0.02979828f, 0.13677707f, -0.22708717f, -0.20361158f, -0.15338624f, 0.1081504f,
+      -0.03804127f, 0.28198114f, 0.00430069f, 0.05319814f};
   std::vector<float> m_new = {
-    -6.0344763f, 10.479931f, -9.15947f, -0.57894087f, 5.824918f, -0.2165685f,
-    3.5303047f, -5.9299808f, -9.281795f, 1.1496004f};
+      -6.0344763f, 10.479931f, -9.15947f, -0.57894087f, 5.824918f, -0.2165685f,
+      3.5303047f, -5.9299808f, -9.281795f, 1.1496004f};
   std::vector<float> v_new = {
-    3.6645618e+01f, 1.1174072e+02f, 8.4853485e+01f, 3.3100498e-01f, 3.4628010e+01f,
-    4.4757873e-02f, 1.2550836e+01f, 3.5532223e+01f, 8.7362823e+01f, 1.3257366e+00f};
+      3.6645618e+01f, 1.1174072e+02f, 8.4853485e+01f, 3.3100498e-01f, 3.4628010e+01f,
+      4.4757873e-02f, 1.2550836e+01f, 3.5532223e+01f, 8.7362823e+01f, 1.3257366e+00f};
 
-  test.AddInput<float>("ETA", {}, {eta});
-  test.AddInput<float>("W", shape, w);
-  test.AddInput<float>("G", shape, g);
-  test.AddInput<float>("Moment_1", shape, m);
-  test.AddInput<float>("Moment_2", shape, v);
+  run_lamb_test_with_baseline(
+      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, w_new, m_new, v_new);
+}
 
-  test.AddAttribute<float>("alpha", alpha);
-  test.AddAttribute<float>("beta", beta);
-  test.AddAttribute<float>("lambda", lambda);
-  test.AddAttribute<float>("epsilon", epsilon);
+TEST(OptimizerTest, LambOptimizerTestExternalBaselineDouble) {
+  // Input tensors and attributes.
+  const std::vector<int64_t> shape = {2, 5};
+  const std::vector<double> eta = {0.1f};
+  const std::vector<double> w = {
+      0.01379026, 0.15308191, -0.24356517, -0.21798165, -0.13770047, 0.09694599,
+      -0.02223516, 0.2664228, -0.01177993, 0.06832688};
+  const std::vector<double> g = {
+      -6.048543, 10.569487, -9.207029, -0.57407373,
+      5.884985, -0.21047728, 3.539946, -5.957566, -9.343748, 1.1502024};
+  const std::vector<double> m = {
+      -5.9078765, 9.673933, -8.731428, -0.6227454, 5.284312, -0.27138948,
+      3.443532, -5.681713, -8.72421, 1.1441823};
+  const std::vector<double> v = {
+      4.2659229e+01, 1.1438165e+02, 9.3179581e+01, 4.7399229e-01, 3.4129276e+01,
+      9.0019435e-02, 1.4493006e+01, 3.9455612e+01, 9.3025581e+01, 1.6000764e+0};
 
-  test.AddOutput<float>("W_Out", shape, w_new);
-  test.AddOutput<float>("Moment_1_Out", shape, m_new);
-  test.AddOutput<float>("Moment_2_Out", shape, v_new);
+  const float lambda = 0.1f;
+  const float alpha = 0.1f;
+  const float beta = 0.01f;
+  const float epsilon = 0.1f;
 
-  test.Run();
+  std::vector<double> w_new = {
+      0.02979828, 0.13677707, -0.22708717, -0.20361158, -0.15338624, 0.1081504,
+      -0.03804127, 0.28198114, 0.00430069, 0.05319814};
+  std::vector<double> m_new = {
+      -6.0344763, 10.479931, -9.15947, -0.57894087, 5.824918, -0.2165685,
+      3.5303047, -5.9299808, -9.281795, 1.1496004};
+  std::vector<double> v_new = {
+      3.6645618e+01, 1.1174072e+02, 8.4853485e+01, 3.3100498e-01, 3.4628010e+01,
+      4.4757873e-02, 1.2550836e+01, 3.5532223e+01, 8.7362823e+01, 1.3257366e+00};
+
+  run_lamb_test_with_baseline(
+      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, w_new, m_new, v_new);
+}
+
+TEST(OptimizerTest, LambOptimizerTest5DTensorMixPrecision32_16) {
+  const std::vector<int64_t> shape = {2, 2, 2, 1, 1};
+  const std::vector<float> eta = {0.5f};
+  const std::vector<float> w = {1.0f, 2.0f, 2.5f, 1.5f, 1.0f, 2.0f, 2.0f, 1.5f};
+  const std::vector<float> g = {-1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 0.8f};
+  const std::vector<float> m = {1.0f, 2.0f, -0.25f, 1.1f, 1.0f, 2.0f, -0.21f, 1.1f};
+  const std::vector<float> v = {1.5f, 1.0f, 1.1f, 0.76f, 1.5f, 1.0f, 1.5f, 0.76f};
+
+  const float lambda = 1.5f;
+  const float alpha = 1.5f;
+  const float beta = 1.5f;
+  const float epsilon = 1.0f;
+
+  run_lamb_mix_precision_test(
+      shape, eta, w, g, m, v,
+      lambda, alpha, beta, epsilon);
+}
+
+TEST(OptimizerTest, LambOptimizerTestSimpleBaselineMixPrecision32_16) {
+  const std::vector<int64_t> shape = {2, 1};
+  const std::vector<float> eta = {1.0f};
+  const std::vector<float> w = {1.0f, 1.0f};
+  const std::vector<float> g = {-1.0f, 1.0f};
+  const std::vector<float> m = {1.0f, 1.0f};
+  const std::vector<float> v = {0.0f, 0.0f};
+
+  const float lambda = 0.0f;
+  const float alpha = 1.0f;
+  const float beta = 1.0f;
+  const float epsilon = 1.0f;
+
+  run_lamb_mix_precision_test(
+      shape, eta, w, g, m, v,
+      lambda, alpha, beta, epsilon);
+}
+
+TEST(OptimizerTest, LambOptimizerTestBaselineMixPrecision32_16) {
+  const std::vector<int64_t> shape = {2, 1};
+  const std::vector<float> eta = {0.1f};
+  const std::vector<float> w = {-1.5f, 2.4f};
+  const std::vector<float> g = {-0.75f, 1.2f};
+  const std::vector<float> m = {0.87f, -0.94f};
+  const std::vector<float> v = {0.12f, 0.28f};
+
+  const float lambda = 0.25f;
+  const float alpha = 0.9f;
+  const float beta = 0.95f;
+  const float epsilon = 0.33f;
+
+  run_lamb_mix_precision_test(
+      shape, eta, w, g, m, v,
+      lambda, alpha, beta, epsilon);
+}
+
+TEST(OptimizerTest, LambOptimizerTestScalarMixPrecision32_16) {
+  const std::vector<int64_t> shape = {1};
+  const std::vector<float> eta = {0.1f};
+  const std::vector<float> w = {-1.5f};
+  const std::vector<float> g = {-0.75f};
+  const std::vector<float> m = {0.87f};
+  const std::vector<float> v = {0.12f};
+
+  const float lambda = 0.25f;
+  const float alpha = 0.9f;
+  const float beta = 0.95f;
+  const float epsilon = 0.33f;
+
+  run_lamb_mix_precision_test(
+      shape, eta, w, g, m, v,
+      lambda, alpha, beta, epsilon);
 }
 
 static void TestLayerNormGradient(const std::vector<int64_t>& X_dims,
