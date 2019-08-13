@@ -110,14 +110,17 @@ Calibration can be used to improve quantization techniques, adding reduced-preci
 import onnx
 import calibrate
 
+# Generating augmented ONNX model
 model_path = input('Full filepath to model: ')
 model = onnx.load(model_path)
-augmented_model = calibrate.augment_graph(model)
-augmented_model_path = model_name + '_augmented.onnx'
+augmented_model = augment_graph(model)
+augmented_model_path = 'augmented_model.onnx'
 onnx.save(augmented_model, augmented_model_path)
 # Generating inputs for quantization
 images_folder = input('Full filepath to images folder: ')
-inputs = calibrate.load_batch(images_folder, 224, 224)
-dict_for_quantization = calibrate.get_intermediate_outputs(augmented_model_path, inputs)
+height = int(input('Image height (pixels): '))
+width = int(input('Image width (pixels): '))
+inputs = load_batch(images_folder, height, width)
+dict_for_quantization = get_intermediate_outputs(augmented_model_path, inputs)
 print(dict_for_quantization)
 ```        

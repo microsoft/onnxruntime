@@ -10,7 +10,8 @@ import os
 import re
 import subprocess
 import json
-
+import numpy as np
+from PIL import Image
 import onnx
 import onnxruntime
 from onnx import helper, TensorProto
@@ -238,8 +239,19 @@ def get_intermediate_outputs(augmented_model_path, inputs, average_mode='naive')
     return final_dict
 
 def main():
-    # calibrate_loop()
-    pass
+    # Generating augmented ONNX model
+    model_path = input('Full filepath to model: ')
+    model = onnx.load(model_path)
+    augmented_model = augment_graph(model)
+    augmented_model_path = 'augmented_model.onnx'
+    onnx.save(augmented_model, augmented_model_path)
+    # Generating inputs for quantization
+    images_folder = input('Full filepath to images folder: ')
+    height = int(input('Image height (pixels): '))
+    width = int(input('Image width (pixels): '))
+    inputs = load_batch(images_folder, height, width)
+    dict_for_quantization = get_intermediate_outputs(augmented_model_path, inputs)
+    print(dict_for_quantization)
 
 if __name__ == '__main__':
     # parse command-line arguments with argparse
