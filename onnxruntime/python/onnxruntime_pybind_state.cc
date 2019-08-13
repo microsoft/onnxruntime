@@ -413,7 +413,7 @@ This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
       .def_property_readonly(
           "graph_optimization_level",
           [](const SessionOptions* options) -> GraphOptimizationLevel {
-            GraphOptimizationLevel retval = ORT_ENABLE_EXTENDED;  // just for the sake of initialization
+            GraphOptimizationLevel retval = ORT_ENABLE_EXTENDED;
             switch (options->graph_optimization_level) {
               case onnxruntime::TransformerLevel::Default:
                 retval = ORT_DISABLE_ALL;
@@ -426,6 +426,9 @@ This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
                 break;
               case onnxruntime::TransformerLevel::Level3:
                 retval = ORT_ENABLE_ALL;
+                break;
+              default:
+                retval = ORT_ENABLE_BASIC;  // should we log a warning here?
                 break;
             }
             return retval;
