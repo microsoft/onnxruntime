@@ -49,7 +49,9 @@
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/stubs/logging.h>
 #include <google/protobuf/stubs/stl_util.h>
+#ifdef _WIN32
 #include <google/protobuf/stubs/io_win32.h>
+#endif
 #include "protobuf_parsing_utils.h"
 #include <string.h>
 
