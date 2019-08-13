@@ -14,7 +14,7 @@
 #include "core/framework/tensor.h"
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/allocator.h"
-#include "core/common/callback.h"
+#include "core/framework/callback.h"
 #include "core/framework/data_types.h"
 #include "core/framework/path_lib.h"
 
@@ -304,7 +304,7 @@ ORT_API_STATUS(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t input_
  */
 ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enum ONNXTensorElementDataType type);
 
-static void ORT_API_CALL UnInitTensor(void* param) noexcept {
+static void UnInitTensor(void* param) noexcept {
   UnInitializeParam* p = reinterpret_cast<UnInitializeParam*>(param);
   OrtUninitializeBuffer(p->preallocated, p->preallocated_size, p->ele_type);
   delete p;

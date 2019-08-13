@@ -46,6 +46,8 @@ REG_ONE_HOT_OP(float, int64_t, int64_t);
 REG_ONE_HOT_OP(int64_t, string, int64_t);
 REG_ONE_HOT_OP(float, string, int64_t);
 REG_ONE_HOT_OP(int64_t, float, int64_t);
+REG_ONE_HOT_OP(int32_t, float, int32_t);
+REG_ONE_HOT_OP(int32_t, float, float);
 REG_ONE_HOT_OP(float, float, float);      // added this to satisfy onnx model tests
 REG_ONE_HOT_OP(int64_t, int32_t, float);  // added this to satisfy onnx model tests
 

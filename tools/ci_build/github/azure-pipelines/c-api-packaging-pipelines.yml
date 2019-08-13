@@ -156,7 +156,7 @@ jobs:
       displayName: 'Build and Test OnnxRuntime'
       inputs:
         script: |
-          $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(buildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --use_openmp --msvc_toolset=14.11 --use_cuda  --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda"
+          $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(buildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --enable_onnx_tests --use_openmp --msvc_toolset=14.11 --use_cuda  --cuda_home="C:\local\cuda_10.0.130_win10_trt515dll" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda"
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml

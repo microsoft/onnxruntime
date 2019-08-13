@@ -471,7 +471,12 @@ set(onnx_test_runner_common_srcs
   ${onnx_test_runner_src_dir}/TestCase.h
   ${onnx_test_runner_src_dir}/onnxruntime_event.h
   ${onnx_test_runner_src_dir}/sync_api.h
-  ${onnx_test_runner_src_dir}/sync_api.cc)
+  ${onnx_test_runner_src_dir}/sync_api.cc
+  ${onnx_test_runner_src_dir}/callback.h
+  ${onnx_test_runner_src_dir}/callback.cc
+  ${onnx_test_runner_src_dir}/mem_buffer.h
+  ${onnx_test_runner_src_dir}/tensorprotoutils.h
+  ${onnx_test_runner_src_dir}/tensorprotoutils.cc)
 
 if(WIN32)
   set(wide_get_opt_src_dir ${TEST_SRC_DIR}/win_getopt/wide)
@@ -606,7 +611,6 @@ if (onnxruntime_BUILD_SHARED_LIB)
   endif()
   if (NOT(${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))
     #for some reason, these tests are failing. Need investigation.
-    list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_tensor_loader.cc)
     if (onnxruntime_USE_FULL_PROTOBUF)
       list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc)
     endif()

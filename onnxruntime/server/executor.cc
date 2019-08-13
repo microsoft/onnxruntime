@@ -10,7 +10,6 @@
 #include "core/framework/ml_value.h"
 #include "core/framework/tensor.h"
 #include "serializing/tensorprotoutils.h"
-#include "core/common/callback.h"
 
 #include "onnx-ml.pb.h"
 #include "predict.pb.h"
