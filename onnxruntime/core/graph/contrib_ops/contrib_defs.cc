@@ -1844,14 +1844,8 @@ Example 4:
           "Constrain input and output types to all numeric tensors.")
       .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
           {// nodes: {outputs, op, inputs, attributes}
-           {
-               {"X_1"},
-               "Cos",
-               {"X"},
-           },
-           {{"dX"},
-            "Mul",
-            {"X_1", "dY"}}}));
+           {{"X_1"}, "Cos", {"X"}},
+           {{"dX"}, "Mul", {"X_1", "dY"}}}));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TanhGradient)
       .SetDomain(kOnnxDomain)
@@ -1869,21 +1863,9 @@ Example 4:
       .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
           {// nodes: {outputs, op, inputs, attributes}
            ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One", 1.0f),
-           {
-               {"Squared_output"},
-               "Mul",
-               {"X", "X"},
-           },
-           {
-               {"Tanh_Grad"},
-               "Sub",
-               {"One", "Squared_output"},
-           },
-           {
-               {"dX"},
-               "Mul",
-               {"dY", "Tanh_Grad"},
-           }}));
+           {{"Squared_output"}, "Mul", {"X", "X"}},
+           {{"Tanh_Grad"}, "Sub", {"One", "Squared_output"}},
+           {{"dX"}, "Mul", {"dY", "Tanh_Grad"}}}));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SqrtGradient)
       .SetDomain(kOnnxDomain)
@@ -1901,16 +1883,8 @@ Example 4:
       .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
           {// nodes: {outputs, op, inputs, attributes}
            ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One_half", 0.5f),
-           {
-               {"Sqrt_Grad"},
-               "Div",
-               {"One_half", "X"},
-           },
-           {
-               {"dX"},
-               "Mul",
-               {"dY", "Sqrt_Grad"},
-           }}));
+           {{"Sqrt_Grad"}, "Div", {"One_half", "X"}},
+           {{"dX"}, "Mul", {"dY", "Sqrt_Grad"}}}));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ErfGradient)
       .SetDomain(kOnnxDomain)
@@ -1928,31 +1902,11 @@ Example 4:
       .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
           {// nodes: {outputs, op, inputs, attributes}
            ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Two_sqrt_pi", static_cast<float>(M_2_SQRTPI)),
-           {
-               {"Square_x"},
-               "Mul",
-               {"X", "X"},
-           },
-           {
-               {"Neg_Square_x"},
-               "Neg",
-               {"Square_x"},
-           },
-           {
-               {"Exp_Neg_Square_x"},
-               "Exp",
-               {"Neg_Square_x"},
-           },
-           {
-               {"Erf_Grad"},
-               "Mul",
-               {"Two_sqrt_pi", "Exp_Neg_Square_x"},
-           },
-           {
-               {"dX"},
-               "Mul",
-               {"dY", "Erf_Grad"},
-           }}));
+           {{"Square_x"}, "Mul", {"X", "X"}},
+           {{"Neg_Square_x"}, "Neg", {"Square_x"}},
+           {{"Exp_Neg_Square_x"}, "Exp", {"Neg_Square_x"}},
+           {{"Erf_Grad"}, "Mul", {"Two_sqrt_pi", "Exp_Neg_Square_x"}},
+           {{"dX"}, "Mul", {"dY", "Erf_Grad"}}}));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReshapeGradient)
       .SetDomain(kOnnxDomain)
@@ -1969,16 +1923,8 @@ Example 4:
           "Constrain input and output types to all numeric tensors.")
       .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
           {// nodes: {outputs, op, inputs, attributes}
-           {
-               {"x_shape"},
-               "Shape",
-               {"X"},
-           },
-           {
-               {"dX"},
-               "Reshape",
-               {"dY", "x_shape"},
-           }}));
+           {{"x_shape"}, "Shape", {"X"}},
+           {{"dX"}, "Reshape", {"dY", "x_shape"}}}));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(PowGradient)
       .SetDomain(kOnnxDomain)
@@ -1997,26 +1943,10 @@ Example 4:
       .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
           {// nodes: {outputs, op, inputs, attributes}
            ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One", 1.0f),
-           {
-               {"p_minus_one"},
-               "Sub",
-               {"Exponent", "One"},
-           },
-           {
-               {"X_Pow_p_minus_one"},
-               "Pow",
-               {"X", "p_minus_one"},
-           },
-           {
-               {"a_X_Pow_p_minus_one"},
-               "Mul",
-               {"X_Pow_p_minus_one", "Exponent"},
-           },
-           {
-               {"dX"},
-               "Mul",
-               {"a_X_Pow_p_minus_one", "dY"},
-           }}));
+           {{"p_minus_one"}, "Sub", {"Exponent", "One"}},
+           {{"X_Pow_p_minus_one"}, "Pow", {"X", "p_minus_one"}},
+           {{"a_X_Pow_p_minus_one"}, "Mul", {"X_Pow_p_minus_one", "Exponent"}},
+           {{"dX"}, "Mul", {"a_X_Pow_p_minus_one", "dY"}}}));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SummaryScalar)
       .SetDomain(kOnnxDomain)
@@ -2105,27 +2035,15 @@ Example 4:
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
-          {
-              // nodes: {outputs, op, inputs, attributes}
-              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Sqrt_two", static_cast<float>(M_SQRT2)),
-              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One_half", 0.5f),
-              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One", 1.0f),
-              {{"X_1"},
-               "Mul",
-               {"X", "One_half"}},
-              {{"X_2"},
-               "Div",
-               {"X", "Sqrt_two"}},
-              {{"X_3"},
-               "Erf",
-               {"X_2"}},
-              {{"X_4"},
-               "Add",
-               {"X_3", "One"}},
-              {{"Y"},
-               "Mul",
-               {"X_1", "X_4"}},
-          }));
+          {// nodes: {outputs, op, inputs, attributes}
+           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Sqrt_two", static_cast<float>(M_SQRT2)),
+           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One_half", 0.5f),
+           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One", 1.0f),
+           {{"X_1"}, "Mul", {"X", "One_half"}},
+           {{"X_2"}, "Div", {"X", "Sqrt_two"}},
+           {{"X_3"}, "Erf", {"X_2"}},
+           {{"X_4"}, "Add", {"X_3", "One"}},
+           {{"Y"}, "Mul", {"X_1", "X_4"}}}));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GeluGrad)
       .SetDomain(kOnnxDomain)
@@ -2141,58 +2059,26 @@ Example 4:
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
-          {
-              // nodes: {outputs, op, inputs, attributes}
-              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Sqrt_two", static_cast<float>(M_SQRT2)),
-              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One_half", 0.5f),
-              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One", 1.0f),
-              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Two_sqrt_pi", static_cast<float>(M_2_SQRTPI)),
-              {{"X_1"},
-               "Mul",
-               {"X", "One_half"}},
-              {{"X_2"},
-               "Div",
-               {"X", "Sqrt_two"}},
-              {{"X_3"},
-               "Erf",
-               {"X_2"}},
-              {{"X_4"},
-               "Add",
-               {"X_3", "One"}},
-              {{"X_5_grad"},
-               "Mul",
-               {"dY", "X_4"}},
-              {{"X_6_grad"},
-               "Mul",
-               {"X_5_grad", "One_half"}},
-              {{"X_7"},
-               "Mul",
-               {"X_2", "X_2"}},
-              {{"X_8"},
-               "Neg",
-               {"X_7"}},
-              {{"X_9"},
-               "Exp",
-               {"X_8"}},
-              {{"X_10_grad"},
-               "Mul",
-               {"Two_sqrt_pi", "X_9"}},
-              {{"X_11_grad"},
-               "Mul",
-               {"dY", "X_1"}},
-              {{"X_12_grad"},
-               "Mul",
-               {"X_11_grad", "X_10_grad"}},
-              {{"X_13"},
-               "Div",
-               {"One", "Sqrt_two"}},
-              {{"X_14_grad"},
-               "Mul",
-               {"X_12_grad", "X_13"}},
-              {{"dX"},
-               "Sum",
-               {"X_14_grad", "X_6_grad"}},
-          }));
+          {// nodes: {outputs, op, inputs, attributes}
+           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Sqrt_two", static_cast<float>(M_SQRT2)),
+           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One_half", 0.5f),
+           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One", 1.0f),
+           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Two_sqrt_pi", static_cast<float>(M_2_SQRTPI)),
+           {{"X_1"}, "Mul", {"X", "One_half"}},
+           {{"X_2"}, "Div", {"X", "Sqrt_two"}},
+           {{"X_3"}, "Erf", {"X_2"}},
+           {{"X_4"}, "Add", {"X_3", "One"}},
+           {{"X_5_grad"}, "Mul", {"dY", "X_4"}},
+           {{"X_6_grad"}, "Mul", {"X_5_grad", "One_half"}},
+           {{"X_7"}, "Mul", {"X_2", "X_2"}},
+           {{"X_8"}, "Neg", {"X_7"}},
+           {{"X_9"}, "Exp", {"X_8"}},
+           {{"X_10_grad"}, "Mul", {"Two_sqrt_pi", "X_9"}},
+           {{"X_11_grad"}, "Mul", {"dY", "X_1"}},
+           {{"X_12_grad"}, "Mul", {"X_11_grad", "X_10_grad"}},
+           {{"X_13"}, "Div", {"One", "Sqrt_two"}},
+           {{"X_14_grad"}, "Mul", {"X_12_grad", "X_13"}},
+           {{"dX"}, "Sum", {"X_14_grad", "X_6_grad"}}}));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalization)
       .SetDomain(kOnnxDomain)

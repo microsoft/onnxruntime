@@ -152,7 +152,7 @@ class OpTester {
   explicit OpTester(const char* op, int opset_version = 7, const char* domain = onnxruntime::kOnnxDomain, bool verify_output = true)
       : op_(op), domain_(domain), opset_version_(opset_version), verify_output_(verify_output) {}
 
-  ~OpTester();
+  virtual ~OpTester();
 
   // Set whether the NodeArg created by AddInput/AddOutput should include shape information
   // for Tensor types. If not added, shape inferencing should resolve. If added, shape inferencing
