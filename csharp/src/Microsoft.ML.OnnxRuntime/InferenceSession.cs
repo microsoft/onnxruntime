@@ -19,7 +19,8 @@ namespace Microsoft.ML.OnnxRuntime
     {
         protected IntPtr _nativeHandle;
         protected Dictionary<string, NodeMetadata> _inputMetadata, _outputMetadata;
-        private SessionOptions _builtInOptions = null;
+        private SessionOptions _builtInSessionOptions = null;
+        private RunOptions _builtInRunOptions = null;
 
 
         #region Public API
@@ -30,8 +31,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="modelPath"></param>
         public InferenceSession(string modelPath)
         {
-            _builtInOptions = new SessionOptions(); // need to be disposed
-            Init(modelPath, _builtInOptions);
+            _builtInSessionOptions = new SessionOptions(); // need to be disposed
+            Init(modelPath, _builtInSessionOptions);
         }
 
 
@@ -90,10 +91,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames)
         {
             IDisposableReadOnlyCollection<DisposableNamedOnnxValue> result = null;
-            using (var runOptions = new RunOptions())
-            {
-                result = Run(inputs, outputNames, runOptions);
-            }
+            result = Run(inputs, outputNames, _builtInRunOptions);
             return result;
         }
 
@@ -230,6 +228,8 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 throw e;
             }
+
+            _builtInRunOptions = new RunOptions();  // create a default built-in run option, and avoid creating a new one every run() call
         }
 
 
@@ -380,9 +380,14 @@ namespace Microsoft.ML.OnnxRuntime
             if (disposing)
             {
                 // cleanup managed resources
-                if (_builtInOptions != null)
+                if (_builtInSessionOptions != null)
                 {
-                    _builtInOptions.Dispose();
+                    _builtInSessionOptions.Dispose();
+                }
+
+                if (_builtInRunOptions != null)
+                {
+                    _builtInRunOptions.Dispose();
                 }
             }
 

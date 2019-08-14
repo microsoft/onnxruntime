@@ -27,15 +27,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
 
-        private static SessionOptions MakeSessionOptionWithCpuProvider()
-        {
-            CheckLibcVersionGreaterThanMinimum();
-            SessionOptions options = new SessionOptions();
-            NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options._nativePtr, 1);
-            return options;
-        }
-
-
         /// <summary>
         /// A helper method to constuct a SessionOptions object for CUDA execution
         /// </summary>
@@ -53,7 +44,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
         public static SessionOptions MakeSessionOptionWithCudaProvider(int deviceId = 0)
         {
-            CheckLibcVersionGreaterThanMinimum();
             CheckCudaExecutionProviderDLLs();
             SessionOptions options = new SessionOptions();
             NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(options._nativePtr, deviceId);
@@ -300,31 +290,7 @@ namespace Microsoft.ML.OnnxRuntime
             return true;
         }
 
-        [DllImport("libc", ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)]
-        private static extern IntPtr gnu_get_libc_version();
 
-        private static void CheckLibcVersionGreaterThanMinimum()
-        {
-            // require libc version 2.23 or higher
-            var minVersion = new Version(2, 23);
-            var curVersion = new Version(0, 0);
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            {
-                try
-                {
-                    curVersion = Version.Parse(Marshal.PtrToStringAnsi(gnu_get_libc_version()));
-                    if (curVersion >= minVersion)
-                        return;
-                }
-                catch (Exception)
-                {
-                    // trap any obscure exception
-                }
-                throw new OnnxRuntimeException(ErrorCode.RuntimeException,
-                        $"libc.so version={curVersion} does not meet the minimun of 2.23 required by OnnxRuntime. " +
-                        "Linux distribution should be similar to Ubuntu 16.04 or higher");
-            }
-        }
         #endregion
         #region destructors disposers
 
