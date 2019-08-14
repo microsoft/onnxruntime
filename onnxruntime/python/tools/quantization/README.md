@@ -4,7 +4,7 @@ This tool supports quantization of an onnx model. quantize() takes a model in Mo
 ## Calibrate an onnx model
 
 Calibration can be used to improve quantization techniques, adding reduced-precision computation for neural networks while retaining high accuracy without retraining. `calibrate.py` adds ReduceMin and ReduceMax nodes to all Conv and MatMul nodes in a loaded ONNX model and ensures their outputs are stored as part of the graph output, extracts intermediate output values after inference, and returns a dictionary mapping added node names to average (ReduceMin, ReduceMax) values as input to `quantize.py`. Example usage:
-```python
+```
 python calibrate_draft.py --model_path=<'path/to/model.onnx'> --data_set_path=<'path/to/data/folder'> --calib_mode='naive'
 ```  
 
