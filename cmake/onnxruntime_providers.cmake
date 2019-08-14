@@ -30,6 +30,7 @@ file(GLOB onnxruntime_cpu_automl_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/automl_ops/cpu_automl_kernels.cc"
   "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.h"
   "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.cc"
+  "${ONNXRUNTIME_ROOT}/automl_ops/automl_featurizers.h"
   "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.cc"
 )
