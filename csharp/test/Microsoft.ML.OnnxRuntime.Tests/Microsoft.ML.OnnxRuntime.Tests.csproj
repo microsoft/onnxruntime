@@ -17,40 +17,40 @@
     <SignAssembly>true</SignAssembly> <!-- need signing for freind access to the internals of the Tensors assembly -->
     <DelaySign>false</DelaySign>
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
-    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
+    <!--EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultNoneItems>false</EnableDefaultNoneItems-->
     <!-- end -->
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="InferenceTest.cs"/>
+    <!--Compile Include="InferenceTest.cs"/>
     <Compile Include="OnnxML.cs"/>
   
     <Compile Include="Tensors\NativeMemory.cs"/>
     <Compile Include="Tensors\TensorExtensions.cs"/>
     <Compile Include="Tensors\TensorTests.cs"/>
-    <Compile Include="Tensors\TensorTestsBase.cs"/>
-    <Compile Include="Tensors\TensorArithmetic.cs">
+    <Compile Include="Tensors\TensorTestsBase.cs"/-->
+    <Compile Update="Tensors\TensorArithmetic.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
       <DependentUpon>Tensors\TensorArithmetic.tt</DependentUpon>
     </Compile>
-    <Compile Include="Tensors\TensorOperations.cs">
+    <Compile Update="Tensors\TensorOperations.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
       <DependentUpon>Tensors\TensorOperations.tt</DependentUpon>
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="Tensors\TensorArithmetic.tt">
+    <None Update="Tensors\TensorArithmetic.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
       <LastGenOutput>Tensors\TensorArithmetic.cs</LastGenOutput>
     </None>
-    <None Include="Tensors\TensorOperations.tt">
+    <None Update="Tensors\TensorOperations.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
       <LastGenOutput>Tensors\TensorOperations.cs</LastGenOutput>
     </None>
-    <None Include="Tensors\TensorTemplate.ttinclude" />
+    <None Update="Tensors\TensorTemplate.ttinclude" />
   </ItemGroup> 
 
   <ItemGroup>
