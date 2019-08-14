@@ -186,11 +186,12 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
                                                       p_op_kernel->Node().Name() + "_fence_before",
                                                       sync_time_begin,
                                                       {{"op_name", p_op_kernel->KernelDef().OpName()}});
-
-        kernel_begin_time = session_state.Profiler().StartTime();
       }
     }
 
+    if (f_profiler_enabled) {
+       kernel_begin_time = session_state.Profiler().StartTime();
+    }
     // call compute on the kernel
     VLOGS(logger, 1) << "Computing kernel: " << p_op_kernel->Node().Name();
 
@@ -203,14 +204,16 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
       break;
     }
 
+    if (f_profiler_enabled) {
+      session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                                    p_op_kernel->Node().Name() + "_kernel_time",
+                                                    kernel_begin_time,
+                                                    {{"op_name", p_op_kernel->KernelDef().OpName()}, {"provider", p_op_kernel->KernelDef().Provider()}});
+    }
+
     // sync after compute for outputs
     if (exec_plan.NodeHasFence(node_index)) {
       if (f_profiler_enabled) {
-        session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                      p_op_kernel->Node().Name() + "_kernel_time",
-                                                      kernel_begin_time,
-                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}, {"provider", p_op_kernel->KernelDef().Provider()}});
-
         sync_time_begin = session_state.Profiler().StartTime();
       }
 
@@ -242,7 +245,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
                                                       {{"op_name", p_op_kernel->KernelDef().OpName()}});
       }
     }
-    
+
     keep_running = false;
 
     // Checking which output nodes ready for running.

@@ -103,19 +103,21 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       }
 
       if (is_profiler_enabled) {
-      session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     p_op_kernel->Node().Name() + "_fence_before",
-                                                     sync_time_begin,
-                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}});
+        session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                                      p_op_kernel->Node().Name() + "_fence_before",
+                                                      sync_time_begin,
+                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
+      } 
     }
 
 #if defined DEBUG_NODE_INPUTS_OUTPUTS
     utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node());
 #endif
 
-      // call compute on the kernel
-      VLOGS(logger, 1) << "Computing kernel: " << p_op_kernel->Node().Name();
+    // call compute on the kernel
+    VLOGS(logger, 1) << "Computing kernel: " << p_op_kernel->Node().Name();
 
+    if (is_profiler_enabled) {
       kernel_begin_time = session_state.Profiler().StartTime();
     }
 
@@ -130,15 +132,17 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       LOGS(logger, ERROR) << msg_string;
       return Status(compute_status.Category(), compute_status.Code(), msg_string);
     }
+    
+    if (is_profiler_enabled) {
+      session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                                    p_op_kernel->Node().Name() + "_kernel_time",
+                                                    kernel_begin_time,
+                                                    {{"op_name", p_op_kernel->KernelDef().OpName()}, {"provider", p_op_kernel->KernelDef().Provider()}});
+    }
 
     // sync after compute for outputs
     if (seq_exec_plan.NodeHasFence(node_index)) {
       if (is_profiler_enabled) {
-        session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                      p_op_kernel->Node().Name() + "_kernel_time",
-                                                      kernel_begin_time,
-                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}, {"provider", p_op_kernel->KernelDef().Provider()}});
-
         sync_time_begin = session_state.Profiler().StartTime();
       }
 
@@ -170,8 +174,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                       {{"op_name", p_op_kernel->KernelDef().OpName()}});
       }
     }
-
-
 
 #if defined(DEBUG_NODE_INPUTS_OUTPUTS)
     utils::DumpNodeOutputs(op_kernel_context, p_op_kernel->Node(), session_state);

@@ -480,7 +480,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
   while (std::getline(profile, line)) {
     if (count == 0) {
       ASSERT_TRUE(line.find("[") != string::npos);
-    } else if (count <= 7) {
+    } else if (count <= 5) {
       for (auto& s : tags) {
         ASSERT_TRUE(line.find(s) != string::npos);
       }
@@ -519,7 +519,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
   while (std::getline(profile, line)) {
     if (count == 0) {
       ASSERT_TRUE(line.find("[") != string::npos);
-    } else if (count <= 5) {
+    } else if (count <= 3) {
       for (auto& s : tags) {
         ASSERT_TRUE(line.find(s) != string::npos);
       }
@@ -527,9 +527,6 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
       ASSERT_TRUE(line.find("]") != string::npos);
     }
 
-    if (count == 1) {
-      ASSERT_TRUE(line.find("mul_1_fence_before") != string::npos);
-    }
     count++;
   }
 }
