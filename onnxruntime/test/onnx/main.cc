@@ -363,7 +363,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"shrink", "test case is wrong", {"onnx141"}},
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
       {"tf_inception_v2", "result mismatch"},
-      {"mxnet_arcface", "result mismatch"}
+      {"mxnet_arcface", "result mismatch"},
+      {"dynamicquantizelinear", "not implemented yet"},
+      {"dynamicquantizelinear_expanded", "not implemented yet"},
+      {"dynamicquantizelinear_max_adjusted", "not implemented yet"},
+      {"dynamicquantizelinear_max_adjusted_expanded", "not implemented yet"},
+      {"dynamicquantizelinear_min_adjusted", "not implemented yet"},
+      {"dynamicquantizelinear_min_adjusted_expanded", "not implemented yet"},
   };
 
 #ifdef USE_NGRAPH
