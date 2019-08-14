@@ -118,6 +118,18 @@ class FuseExecutionProvider : public IExecutionProvider {
   }
 };
 
+// InferenceSession wrapper to expose loaded graph.
+class InferenceSessionGetGraphWrapper : public InferenceSession {
+ public:
+  explicit InferenceSessionGetGraphWrapper(const SessionOptions& session_options,
+                                          logging::LoggingManager* logging_manager) : InferenceSession(session_options, logging_manager) {
+  }
+
+  const Graph& GetGraph() {
+    return model_->MainGraph();
+  }
+};
+
 namespace test {
 static void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
                           const std::vector<float>& expected_values);
@@ -328,6 +340,77 @@ TEST(InferenceSessionTests, DisableCPUArena) {
   RunOptions run_options;
   run_options.run_tag = "one session/one tag";
   RunModel(session_object, run_options);
+}
+
+TEST(InferenceSessionTests, TestModelSerialization) {
+  // Load model with level 0 transform level
+  // and assert that the model has Identity nodes.
+  SessionOptions so;
+  const string test_model = "testdata/transform/abs-id-max.onnx";
+  so.session_logid = "InferenceSessionTests.TestModelSerialization";
+  so.graph_optimization_level = TransformerLevel::Default;
+  InferenceSessionGetGraphWrapper session_object_noopt{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object_noopt.Load(test_model).IsOK());
+  ASSERT_TRUE(session_object_noopt.Initialize().IsOK());
+
+  // Assert that model has Identity Nodes.
+  const auto& graph_noopt = session_object_noopt.GetGraph();
+  std::map<std::string, int> op_to_count_noopt = CountOpsInGraph(graph_noopt);
+  ASSERT_TRUE(op_to_count_noopt["Identity"] > 0);
+
+  // Load model with level 1 transform level.
+  so.graph_optimization_level = TransformerLevel::Level1;
+  so.optimized_model_filepath = ToWideString(test_model + "-TransformLevel-" + std::to_string(static_cast<uint32_t>(so.graph_optimization_level)));
+  InferenceSessionGetGraphWrapper session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(test_model).IsOK());
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+ 
+  // Assert that model has been transformed and identity Node is removed.
+  const auto& graph = session_object.GetGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 0);
+
+  // Serialize model to the same file path again to make sure that rewrite doesn't fail.
+  InferenceSession overwrite_session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(overwrite_session_object.Load(test_model).IsOK());
+  ASSERT_TRUE(overwrite_session_object.Initialize().IsOK());
+
+  // Load serialized model with no transform level and serialize model.
+  SessionOptions so_opt;
+  so_opt.session_logid = "InferenceSessionTests.TestModelSerialization";
+  so_opt.graph_optimization_level = TransformerLevel::Default;
+  so_opt.optimized_model_filepath = ToWideString(so.optimized_model_filepath) + ToWideString("-TransformLevel-" + std::to_string(static_cast<uint32_t>(so_opt.graph_optimization_level)));
+  InferenceSession session_object_opt{so_opt, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object_opt.Load(so.optimized_model_filepath).IsOK());
+  ASSERT_TRUE(session_object_opt.Initialize().IsOK());
+  
+  // Assert that re-feed of optimized model with default transform level results
+  // in same runtime model as abs-id-max.onnx with TransformLevel-1.
+  std::ifstream model_fs_session1(so.optimized_model_filepath, ios::in | ios::binary);
+  ASSERT_TRUE(model_fs_session1.good());
+  std::ifstream model_fs_session2(so_opt.optimized_model_filepath, ios::in | ios::binary);
+  ASSERT_TRUE(model_fs_session2.good());
+  ASSERT_TRUE(model_fs_session1.tellg() == model_fs_session2.tellg());
+  model_fs_session1.seekg(0, std::ifstream::beg);
+  model_fs_session2.seekg(0, std::ifstream::beg);
+  ASSERT_TRUE(std::equal(std::istreambuf_iterator<char>(model_fs_session1.rdbuf()),
+                         std::istreambuf_iterator<char>(),
+                         std::istreambuf_iterator<char>(model_fs_session2.rdbuf())));
+
+  // Assert that empty optimized model file-path doesn't fail loading.
+  so_opt.optimized_model_filepath = ToWideString("");
+  InferenceSession session_object_emptyValidation{so_opt, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object_emptyValidation.Load(test_model).IsOK());
+  ASSERT_TRUE(session_object_emptyValidation.Initialize().IsOK());
+
+  // Assert that level 3 optimization doesn't result in serialized model.
+  so_opt.optimized_model_filepath = ToWideString("ShouldNotSerialize");
+  so_opt.graph_optimization_level = TransformerLevel::Level3;
+  InferenceSession session_object_Level3Test{so_opt, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object_Level3Test.Load(test_model).IsOK());
+  ASSERT_TRUE(session_object_Level3Test.Initialize().IsOK());
+  std::ifstream model_fs_Level3(so_opt.optimized_model_filepath, ios::in | ios::binary);
+  ASSERT_TRUE(model_fs_Level3.fail());
 }
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS

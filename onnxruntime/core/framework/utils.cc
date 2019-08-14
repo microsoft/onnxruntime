@@ -23,9 +23,18 @@ AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorI
   return session_state.GetExecutionProviders().GetAllocator(allocator_info);
 }
 
-common::Status AllocateHelper(const IExecutionProvider& execution_provider, int device_id, const Tensor& fetched_tensor,
+bool ProviderIsCpuBased(const std::string& provider_type) {
+  return provider_type == onnxruntime::kCpuExecutionProvider ||
+         provider_type == onnxruntime::kMklDnnExecutionProvider ||
+         provider_type == onnxruntime::kNGraphExecutionProvider ||
+         provider_type == onnxruntime::kNupharExecutionProvider ||
+         provider_type == onnxruntime::kOpenVINOExecutionProvider ||
+         provider_type == onnxruntime::kNnapiExecutionProvider;
+}
+
+common::Status AllocateHelper(const IExecutionProvider& execution_provider, const OrtDevice& device, const Tensor& fetched_tensor,
                               OrtValue& output_mlvalue) {
-  auto allocator = execution_provider.GetAllocator(device_id, OrtMemTypeDefault);
+  auto allocator = execution_provider.GetAllocator(device.Id(), OrtMemTypeDefault);
   if (!allocator) {
     return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator");
   }
@@ -62,20 +71,20 @@ static Status CopyMLValue(const DataTransferManager& data_transfer_mgr,
                           const FeedsFetchesManager::MLValueCopyInfo& copy_info,
                           const OrtValue& source_mlvalue,
                           OrtValue& target_mlvalue) {
-  if (copy_info.copy_provider == nullptr) {
+  if (copy_info.allocation_provider == nullptr){
     target_mlvalue = source_mlvalue;
-  } else {
-    auto& source_tensor = source_mlvalue.Get<Tensor>();
-
-    if (!target_mlvalue.IsAllocated()) {
-      ORT_RETURN_IF_ERROR(utils::AllocateHelper(*copy_info.allocation_provider, copy_info.allocation_device_id,
-                                                source_tensor, target_mlvalue));
-    }
-
-    Tensor* p_output_tensor = target_mlvalue.GetMutable<Tensor>();
-
-    ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensor(source_tensor, *p_output_tensor));
+    return Status::OK();
   }
+
+  auto& source_tensor = source_mlvalue.Get<Tensor>();
+  if (!target_mlvalue.IsAllocated()) {
+    ORT_RETURN_IF_ERROR(utils::AllocateHelper(*copy_info.allocation_provider, copy_info.target_device,
+                                              source_tensor, target_mlvalue));
+  }
+
+  Tensor* p_output_tensor = target_mlvalue.GetMutable<Tensor>();
+
+  ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensor(source_tensor, *p_output_tensor));
 
   return Status::OK();
 }
@@ -86,8 +95,6 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
                                          FeedsFetchesManager::MLValueCopyInfo& copy_info) {
   needed_copy = false;
 
-  //TODO: make it configurable
-  const int target_device_id = 0;
   std::vector<SessionState::NodeInfo> node_info_vec;
   ORT_RETURN_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
 
@@ -111,51 +118,23 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
       break;
     }
 
+    auto& required_device = *node_info.device;
+    auto& input_tensor_device = orig_mlvalue.Get<Tensor>().Location().device;
+    if (required_device == input_tensor_device) {
+      // No copy needed for same device.
+      new_mlvalue = orig_mlvalue;
+      break;
+    }
+
     auto& required_provider_type = GetNodeInputProviderType(node_info);
-    auto& input_tensor = orig_mlvalue.Get<Tensor>();
-    auto& input_tensor_loc = input_tensor.Location();
-
-    auto* p_input_provider = exec_providers.Get(input_tensor_loc);
-    if (!p_input_provider) {
-      p_input_provider = exec_providers.Get(onnxruntime::kCpuExecutionProvider);
-      ORT_ENFORCE(p_input_provider);
-    }
-
-    //no copy for TRT and  nGraph
-    if (required_provider_type == onnxruntime::kTensorrtExecutionProvider || required_provider_type == onnxruntime::kNGraphExecutionProvider) {
-      new_mlvalue = orig_mlvalue;
-      break;
-    }
-
-    auto input_provider_type = p_input_provider->Type();
-    if (input_provider_type == required_provider_type && input_tensor_loc.mem_type == OrtMemTypeDefault) {
-      new_mlvalue = orig_mlvalue;
-      break;
-    }
-
-    // If a node requires input on cpu and input tensor is allocated with pinned memory allocator, don't do copy
-    if (required_provider_type == onnxruntime::kCpuExecutionProvider &&
-        input_tensor_loc.mem_type == OrtMemTypeCPU) {
-      new_mlvalue = orig_mlvalue;
-      break;
-    }
-
     auto* required_provider = exec_providers.Get(required_provider_type);
-    ORT_ENFORCE(required_provider);
-
-    auto* p_copy_provider = (required_provider_type != onnxruntime::kCpuExecutionProvider)
-                                ? required_provider
-                                : p_input_provider;
-
-    copy_info.allocation_device_id = target_device_id;
+    copy_info.target_device = required_device;
     copy_info.allocation_provider = required_provider;
-    copy_info.copy_provider = p_copy_provider;
 
     ORT_RETURN_IF_ERROR(CopyMLValue(session_state.GetDataTransferMgr(), copy_info, orig_mlvalue, new_mlvalue));
 
     needed_copy = true;
 
-    // } loop of node_info_vec
   } while (false);
 
   return Status::OK();
@@ -344,43 +323,26 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
       continue;
     }
 
-    auto& fetched_tensor = fetched_mlvalue.Get<Tensor>();
-    auto& fetched_tensor_location = fetched_tensor.Location();
-    auto* p_fetched_provider = execution_providers.Get(fetched_tensor_location);
-    if (!p_fetched_provider) {
-      p_fetched_provider = cpu_execution_provider;
-    }
-
-    auto fetched_provider_type = p_fetched_provider->Type();
-    auto& output_mlvalue = user_fetches[idx];
-
     const IExecutionProvider* p_output_provider = nullptr;
-
+    auto target_device = OrtDevice();
+    auto& output_mlvalue = user_fetches[idx];
     if (output_mlvalue.IsAllocated()) {
       Tensor* p_output_tensor = output_mlvalue.GetMutable<Tensor>();
+      target_device = p_output_tensor->Location().device;
       p_output_provider = execution_providers.Get(p_output_tensor->Location());
+    }
+    auto fetch_result_device = fetched_mlvalue.Get<Tensor>().Location().device;
+    if (target_device == fetch_result_device) {
+      user_fetches[idx] = fetched_mlvalue;
+      continue;
     }
 
     if (!p_output_provider) {
       p_output_provider = cpu_execution_provider;
     }
 
-    auto output_provider_type = p_output_provider->Type();
-
-    if (fetched_provider_type == output_provider_type ||
-        (p_output_provider == cpu_execution_provider && fetched_tensor_location.mem_type == OrtMemTypeCPUOutput)) {
-      user_fetches[idx] = fetched_mlvalue;
-      continue;
-    }
-
     needed_copy = true;
-
-    auto* p_copy_provider = (fetched_provider_type != onnxruntime::kCpuExecutionProvider)
-                                ? p_fetched_provider
-                                : p_output_provider;
-
-    const int device_id = 0;  // TODO: As per comment in the copy input code, make this configurable.
-    FeedsFetchesManager::MLValueCopyInfo copy_info{device_id, p_output_provider, p_copy_provider};
+    FeedsFetchesManager::MLValueCopyInfo copy_info{target_device, p_output_provider};
     ORT_RETURN_IF_ERROR(CopyMLValue(session_state.GetDataTransferMgr(), copy_info, fetched_mlvalue, output_mlvalue));
 
     if (copiers) {
@@ -410,11 +372,7 @@ static common::Status CachedCopyOutputsAcrossDevices(
 
 static DeviceCopyCheck CheckExecutionProviders(const ExecutionProviders& execution_providers) {
   for (const auto& execution_provider : execution_providers) {
-    if (execution_provider->Type() != onnxruntime::kCpuExecutionProvider &&
-        execution_provider->Type() != onnxruntime::kMklDnnExecutionProvider &&
-        execution_provider->Type() != onnxruntime::kNGraphExecutionProvider &&
-        execution_provider->Type() != onnxruntime::kNupharExecutionProvider &&
-        execution_provider->Type() != onnxruntime::kOpenVINOExecutionProvider) {
+    if (!ProviderIsCpuBased(execution_provider->Type())) {
       return DeviceCopyCheck::Unknown;
     }
   }

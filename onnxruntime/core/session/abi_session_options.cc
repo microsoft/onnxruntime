@@ -44,6 +44,12 @@ ORT_API_STATUS_IMPL(OrtDisableSequentialExecution, _In_ OrtSessionOptions* optio
   return nullptr;
 }
 
+// set filepath to save optimized onnx model.
+ORT_API_STATUS_IMPL(OrtSetOptimizedModelFilePath, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* optimized_model_filepath) {
+  options->value.optimized_model_filepath = optimized_model_filepath;
+  return nullptr;
+}
+
 // enable profiling for this session.
 ORT_API_STATUS_IMPL(OrtEnableProfiling, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix) {
   options->value.enable_profiling = true;
