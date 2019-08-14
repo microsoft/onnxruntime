@@ -16,7 +16,6 @@ from PIL import Image
 import onnx
 import onnxruntime
 from onnx import helper, TensorProto
-from smooth_average import smooth_average
 
 # Originally from process_images_with_debug_op.bat
 def preprocess_images_with_debug_op(model_file, image_files):
@@ -143,19 +142,20 @@ def augment_graph(model):
     added_outputs = []
     for node in model.graph.node:
         if node.op_type in selected_types:
-            input_name = node.name
+            input_name = node.output[0]
             # Adding ReduceMin nodes
-            reduce_min_name = input_name + '_ReduceMin'
-            reduce_min_node = onnx.helper.make_node('ReduceMin', [input_name + ':0'],
-                            [reduce_min_name + ':0'], reduce_min_name, keepdims=0)
+            reduce_min_name = node.name + '_ReduceMin'
+            reduce_min_node = onnx.helper.make_node('ReduceMin', [input_name],
+                            [input_name + '_ReduceMin'], reduce_min_name, keepdims=0)
             added_nodes.append(reduce_min_node)
-            added_outputs.append(helper.make_tensor_value_info(reduce_min_node.name + ':0', TensorProto.FLOAT, ()))
+            added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, ()))
+
             # Adding ReduceMax nodes
-            reduce_max_name = input_name + '_ReduceMax'
-            reduce_max_node = onnx.helper.make_node('ReduceMax', [input_name + ':0'],
-                            [reduce_max_name + ':0'], reduce_max_name, keepdims=0)
+            reduce_max_name = node.name + '_ReduceMax'
+            reduce_max_node = onnx.helper.make_node('ReduceMax', [input_name],
+                            [input_name + '_ReduceMax'], reduce_max_name, keepdims=0)
             added_nodes.append(reduce_max_node)
-            added_outputs.append(helper.make_tensor_value_info(reduce_max_node.name + ':0', TensorProto.FLOAT, ()))
+            added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, ()))
     model.graph.node.extend(added_nodes)
     model.graph.output.extend(added_outputs)
     return model
@@ -171,7 +171,7 @@ def load_and_resize_image(image_filepath, height, width):
     '''
     pillow_img = Image.open(image_filepath).resize((width, height))
     input_data = np.float32(pillow_img)/127.5 - 1.0 # normalization
-    input_data -= np.mean(input_data)
+    input_data -= np.mean(input_data) # normalization
     nhwc_data = np.expand_dims(input_data, axis=0)
     nchw_data = nhwc_data.transpose(0, 3, 1, 2) # ONNX Runtime standard
     return nchw_data
@@ -199,7 +199,7 @@ def load_batch(images_folder, height, width, size_limit=30):
     return batch_data
 
 # Using augmented outputs to generate inputs to quantize.py
-def get_intermediate_outputs(augmented_model_path, session, inputs, calib_mode='naive'):
+def get_intermediate_outputs(model_path, session, inputs, calib_mode='naive'):
     '''
     Gather intermediate model outputs after running inference
         parameter model: path to augmented FP32 ONNX model
@@ -212,31 +212,31 @@ def get_intermediate_outputs(augmented_model_path, session, inputs, calib_mode='
                                 with anomalous values removed
         return: dictionary mapping added node names to (ReduceMin, ReduceMax) pairs
     '''
+    model = onnx.load(model_path)
+    num_model_outputs = len(model.graph.output) # number of outputs in original model
     num_inputs = len(inputs)
     input_name = session.get_inputs()[0].name
     intermediate_outputs = [session.run([], {input_name: inputs[i]}) for i in range(num_inputs)]
 
     # Creating dictionary with output results from multiple test inputs
-    output_node_names = [session.get_outputs()[i].name for i in range(len(intermediate_outputs[0]))]
-    output_dicts = [dict(zip(output_node_names, intermediate_outputs[i])) for i in range(num_inputs)]
+    node_output_names = [session.get_outputs()[i].name for i in range(len(intermediate_outputs[0]))]
+    output_dicts = [dict(zip(node_output_names, intermediate_outputs[i])) for i in range(num_inputs)]
     merged_dict = {}
     for d in output_dicts:
         for k, v in d.items():
             merged_dict.setdefault(k, []).append(v)
-    added_output_node_names = output_node_names[1:]
-    node_names = [added_output_node_names[i].rpartition('_')[0] + ':0' for i in range(0, len(added_output_node_names), 2)] # output names
+    added_node_output_names = node_output_names[num_model_outputs:]
+    node_names = [added_node_output_names[i].rpartition('_')[0] for i in range(0, len(added_node_output_names), 2)] # output names
 
     # Characterizing distribution of a node's values across test data sets
     clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i != list(merged_dict.keys())[0])
     if calib_mode == 'naive':
-        pairs = [tuple([float(min(clean_merged_dict[added_output_node_names[i]])),
-                float(max(clean_merged_dict[added_output_node_names[i+1]]))])
-                for i in range(0, len(added_output_node_names), 2)]
+        pairs = [tuple([float(min(clean_merged_dict[added_node_output_names[i]])),
+                float(max(clean_merged_dict[added_node_output_names[i+1]]))])
+                for i in range(0, len(added_node_output_names), 2)]
     elif calib_mode == 'smooth':
-        # Calls smoooth averaging script (number of bootstraps and confidence threshold are adjustable)
-        pairs = [tuple([float(smooth_average(sorted(clean_merged_dict[added_output_node_names[i]]))),
-                float(smooth_average(sorted(clean_merged_dict[added_output_node_names[i+1]])))])
-                for i in range(0, len(added_output_node_names), 2)]
+        # Next PR: calls smoooth averaging script (number of bootstraps and confidence threshold are adjustable)
+        pairs = [] # replace with smooth averaging
     final_dict = dict(zip(node_names, pairs))
     return final_dict
 
@@ -252,17 +252,20 @@ def main():
     images_folder = args.dataset_path
     calib_mode = args.calib_mode
     size_limit = args.dataset_size
+
     # Generating augmented ONNX model
     augmented_model_path = 'augmented_model.onnx'
     model = onnx.load(model_path)
     augmented_model = augment_graph(model)
     onnx.save(augmented_model, augmented_model_path)
+
     # Conducting inference
     session = onnxruntime.InferenceSession(augmented_model_path, None)
     (samples, channels, height, width) = session.get_inputs()[0].shape
+
     # Generating inputs for quantization
     inputs = load_batch(images_folder, height, width, size_limit)
-    dict_for_quantization = get_intermediate_outputs(augmented_model_path, session, inputs, calib_mode)
+    dict_for_quantization = get_intermediate_outputs(model_path, session, inputs, calib_mode)
     print(dict_for_quantization)
     return dict_for_quantization
 
