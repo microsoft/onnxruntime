@@ -141,11 +141,10 @@ void NGRAPHCustomOp::Initialize(const OrtCustomOpApi* api, OrtKernelContext* con
 Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* context) const {
   Ort::CustomOpApi ort{*api};
 
-  //TODO: Minimize locked region
-  std::lock_guard<std::mutex> lock(compute_lock_);
-
   // Initialize nGraph function if it is not already initialized.
-  Initialize(api, context);
+  if (ng_curr_exe_ == nullptr) {
+    Initialize(api, context);
+  }
 
   ORT_ENFORCE(ng_curr_exe_ != nullptr);
 
@@ -186,6 +185,7 @@ Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* cont
   }
 
   // Run the graph through nGraph.
+  std::lock_guard<std::mutex> lock(compute_lock_);
   try {
     if (!ng_curr_exe_->call(ng_outputs, ng_inputs))
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Error while executing nGraph computation");
