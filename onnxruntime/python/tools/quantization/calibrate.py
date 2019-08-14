@@ -8,6 +8,7 @@
 
 import os
 import re
+import argparse
 import subprocess
 import json
 import numpy as np
@@ -168,7 +169,8 @@ def load_and_resize_image(image_filepath, height, width):
         return: matrix characterizing image
     '''
     pillow_img = Image.open(image_filepath).resize((width, height))
-    input_data = np.float32(pillow_img)
+    input_data = np.float32(pillow_img)/127.5 - 1.0 # normalization
+    input_data -= np.mean(input_data)
     nhwc_data = np.expand_dims(input_data, axis=0)
     nchw_data = nhwc_data.transpose(0, 3, 1, 2) # ONNX Runtime standard
     return nchw_data
@@ -196,7 +198,7 @@ def load_batch(images_folder, height, width, size_limit=30):
     return batch_data
 
 # Using augmented outputs to generate inputs to quantize.py
-def get_intermediate_outputs(augmented_model_path, inputs, average_mode='naive'):
+def get_intermediate_outputs(augmented_model_path, session, inputs, calib_mode='naive'):
     '''
     Gather intermediate model outputs after running inference
         parameter model: path to augmented FP32 ONNX model
@@ -210,9 +212,6 @@ def get_intermediate_outputs(augmented_model_path, inputs, average_mode='naive')
         return: dictionary mapping added node names to (ReduceMin, ReduceMax) pairs
     '''
     num_inputs = len(inputs)
-
-    # Conducting inference
-    session = onnxruntime.InferenceSession(augmented_model_path, None)
     input_name = session.get_inputs()[0].name
     intermediate_outputs = [session.run([], {input_name: inputs[i]}) for i in range(num_inputs)]
 
@@ -228,31 +227,39 @@ def get_intermediate_outputs(augmented_model_path, inputs, average_mode='naive')
 
     # Characterizing distribution of a node's values across test data sets
     clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i != list(merged_dict.keys())[0])
-    if average_mode == 'naive':
+    if calib_mode == 'naive':
         pairs = [tuple([float(min(clean_merged_dict[added_output_node_names[i]])),
                 float(max(clean_merged_dict[added_output_node_names[i+1]]))])
                 for i in range(0, len(added_output_node_names), 2)]
         final_dict = dict(zip(node_names, pairs))
-    elif average_mode == 'smooth':
-        # TODO: insert smooth averaging code
+    elif calib_mode == 'smooth':
+        # TODO: call smoooth averaging script
         final_dict = {}
     return final_dict
 
 def main():
+    # Parsing command-line arguments
+    parser = argparse.ArgumentParser(description='parsing model and test data set paths')
+    parser.add_argument('--model_path', required=True)
+    parser.add_argument('--data_set_path', required=True)
+    parser.add_argument('--calib_mode', default='naive')
+    args = parser.parse_args()
+    model_path = args.model_path
+    images_folder = args.data_set_path
+    calib_mode = args.calib_mode
     # Generating augmented ONNX model
-    model_path = input('Full filepath to model: ')
+    augmented_model_path = 'augmented_model.onnx'
     model = onnx.load(model_path)
     augmented_model = augment_graph(model)
-    augmented_model_path = 'augmented_model.onnx'
     onnx.save(augmented_model, augmented_model_path)
+    # Conducting inference
+    session = onnxruntime.InferenceSession(augmented_model_path, None)
+    (samples, channels, height, width) = session.get_inputs()[0].shape
     # Generating inputs for quantization
-    images_folder = input('Full filepath to images folder: ')
-    height = int(input('Image height (pixels): '))
-    width = int(input('Image width (pixels): '))
     inputs = load_batch(images_folder, height, width)
-    dict_for_quantization = get_intermediate_outputs(augmented_model_path, inputs)
+    dict_for_quantization = get_intermediate_outputs(augmented_model_path, session, inputs, calib_mode)
     print(dict_for_quantization)
+    return dict_for_quantization
 
 if __name__ == '__main__':
-    # parse command-line arguments with argparse
     main()

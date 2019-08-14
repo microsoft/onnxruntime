@@ -1,6 +1,13 @@
 # Quantization tool Overview
 This tool supports quantization of an onnx model. quantize() takes a model in ModelProto format and returns the quantized model in ModelProto format.
 
+## Calibrate an onnx model
+
+Calibration can be used to improve quantization techniques, adding reduced-precision computation for neural networks while retaining high accuracy without retraining. `calibrate.py` adds ReduceMin and ReduceMax nodes to all Conv and MatMul nodes in a loaded ONNX model and ensures their outputs are stored as part of the graph output, extracts intermediate output values after inference, and returns a dictionary mapping added node names to average (ReduceMin, ReduceMax) values as input to `quantize.py`. Example usage:
+```python
+python calibrate_draft.py --model_path=<'path/to/model.onnx'> --data_set_path=<'path/to/data/folder'> --calib_mode='naive'
+```  
+
 ## Quantize an onnx model
 ```python
 import onnx
@@ -101,26 +108,4 @@ If False, the inputs/activations are quantized using dynamic scale and zero poin
             {
                 'resnet_model/Relu_3:0': [np.int8(0), np.float32(0.011359662748873234)],
                 'resnet_model/Relu_4:0': [np.uint8(0), np.float32(0.011359662748873234)]
-            }
-
-## Calibration
-
-Calibration can be used to improve quantization techniques, adding reduced-precision computation for neural networks while retaining high accuracy without retraining. `calibrate.py` adds ReduceMin and ReduceMax nodes to all Conv and MatMul nodes in a loaded ONNX model and ensures their outputs are stored as part of the graph output, extracts intermediate output values after inference, and returns a dictionary mapping added node names to average (ReduceMin, ReduceMax) values as input to `quantize.py`. Example usage:
-```python
-import onnx
-import calibrate
-
-# Generating augmented ONNX model
-model_path = input('Full filepath to model: ')
-model = onnx.load(model_path)
-augmented_model = augment_graph(model)
-augmented_model_path = 'augmented_model.onnx'
-onnx.save(augmented_model, augmented_model_path)
-# Generating inputs for quantization
-images_folder = input('Full filepath to images folder: ')
-height = int(input('Image height (pixels): '))
-width = int(input('Image width (pixels): '))
-inputs = load_batch(images_folder, height, width)
-dict_for_quantization = get_intermediate_outputs(augmented_model_path, inputs)
-print(dict_for_quantization)
-```        
+            }      
