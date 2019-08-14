@@ -23,6 +23,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             using (SessionOptions opt = new SessionOptions())
             {
+
+#if ONNXRUNTIME_X86_BUILD
+                Assert.False(System.Environment.Is64BitProcess);
+#else
+                Assert.True(System.Environment.Is64BitProcess);
+#endif    
                 Assert.NotNull(opt);
 
                 // check default values of the properties
@@ -66,8 +72,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal(3u, opt.GraphOptimizationLevel);
 
                 Assert.Throws<OnnxRuntimeException>(() => { opt.ThreadPoolSize = -2; });
-                Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = 10; }); 
-                
+                Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = 10; });
+
             }
         }
 
