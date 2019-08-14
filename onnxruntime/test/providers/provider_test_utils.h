@@ -227,6 +227,13 @@ class OpTester {
   void SetOutputAbsErr(const char* name, float v);
   void SetOutputRelErr(const char* name, float v);
 
+  // Number of times to call InferenceSession::Run. The same feeds are used each time.
+  // e.g. used to verify the generator ops behave as expected
+  void SetNumRunCalls(int n) {
+    ORT_ENFORCE(n > 0);
+    num_run_calls_ = n;
+  }
+
   template <typename T>
   void AddAttribute(std::string name, T value) {
     // Generate a the proper AddAttribute call for later
@@ -318,6 +325,7 @@ class OpTester {
   int opset_version_;
   bool add_shape_to_tensor_data_ = true;
   int add_symbolic_dim_to_tensor_data_ = -1;
+  int num_run_calls_ = 1;
   std::vector<Data> input_data_;
   std::vector<Data> output_data_;
   std::vector<size_t> initializer_index_;
