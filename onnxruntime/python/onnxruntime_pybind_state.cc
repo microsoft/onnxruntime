@@ -8,6 +8,8 @@
 #include <numpy/arrayobject.h>
 
 #include "core/graph/graph_viewer.h"
+#include "core/common/logging/logging.h"
+#include "core/common/logging/severity.h"
 
 #if USE_CUDA
 #define BACKEND_PROC "GPU"
@@ -415,7 +417,7 @@ This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
       .def_property_readonly(
           "graph_optimization_level",
           [](const SessionOptions* options) -> GraphOptimizationLevel {
-            GraphOptimizationLevel retval = ORT_ENABLE_EXTENDED;
+            GraphOptimizationLevel retval = ORT_ENABLE_BASIC;
             switch (options->graph_optimization_level) {
               case onnxruntime::TransformerLevel::Default:
                 retval = ORT_DISABLE_ALL;
@@ -430,7 +432,8 @@ This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
                 retval = ORT_ENABLE_ALL;
                 break;
               default:
-                retval = ORT_ENABLE_BASIC;  // should we log a warning here?
+                retval = ORT_ENABLE_BASIC;
+                LOGS_DEFAULT(WARNING) << "Got invalid graph optimization level; defaulting to ORT_ENABLE_BASIC";
                 break;
             }
             return retval;
