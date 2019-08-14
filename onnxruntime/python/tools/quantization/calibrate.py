@@ -16,6 +16,7 @@ from PIL import Image
 import onnx
 import onnxruntime
 from onnx import helper, TensorProto
+from smooth_average import smooth_average
 
 # Originally from process_images_with_debug_op.bat
 def preprocess_images_with_debug_op(model_file, image_files):
@@ -231,22 +232,26 @@ def get_intermediate_outputs(augmented_model_path, session, inputs, calib_mode='
         pairs = [tuple([float(min(clean_merged_dict[added_output_node_names[i]])),
                 float(max(clean_merged_dict[added_output_node_names[i+1]]))])
                 for i in range(0, len(added_output_node_names), 2)]
-        final_dict = dict(zip(node_names, pairs))
     elif calib_mode == 'smooth':
-        # TODO: call smoooth averaging script
-        final_dict = {}
+        # Calls smoooth averaging script (number of bootstraps and confidence threshold are adjustable)
+        pairs = [tuple([float(smooth_average(sorted(clean_merged_dict[added_output_node_names[i]]))),
+                float(smooth_average(sorted(clean_merged_dict[added_output_node_names[i+1]])))])
+                for i in range(0, len(added_output_node_names), 2)]
+    final_dict = dict(zip(node_names, pairs))
     return final_dict
 
 def main():
     # Parsing command-line arguments
     parser = argparse.ArgumentParser(description='parsing model and test data set paths')
     parser.add_argument('--model_path', required=True)
-    parser.add_argument('--data_set_path', required=True)
+    parser.add_argument('--dataset_path', required=True)
     parser.add_argument('--calib_mode', default='naive')
+    parser.add_argument('--dataset_size', type=int, default=30)
     args = parser.parse_args()
     model_path = args.model_path
-    images_folder = args.data_set_path
+    images_folder = args.dataset_path
     calib_mode = args.calib_mode
+    size_limit = args.dataset_size
     # Generating augmented ONNX model
     augmented_model_path = 'augmented_model.onnx'
     model = onnx.load(model_path)
@@ -256,7 +261,7 @@ def main():
     session = onnxruntime.InferenceSession(augmented_model_path, None)
     (samples, channels, height, width) = session.get_inputs()[0].shape
     # Generating inputs for quantization
-    inputs = load_batch(images_folder, height, width)
+    inputs = load_batch(images_folder, height, width, size_limit)
     dict_for_quantization = get_intermediate_outputs(augmented_model_path, session, inputs, calib_mode)
     print(dict_for_quantization)
     return dict_for_quantization
