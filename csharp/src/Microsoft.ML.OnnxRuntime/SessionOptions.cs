@@ -153,6 +153,27 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private bool _enableProfiling = false;
 
+        /// <summary>
+        ///  Set filepath to save optimized model after graph level transformations. Default is empty, which implies saving is disabled.
+        /// </summary>
+        public string OptimizedModelFilePath
+        {
+            get 
+            {
+                return _optimizedModelFilePath;
+            }
+            set
+            {
+                if (value != _optimizedModelFilePath)
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtSetOptimizedModelFilePath(_nativePtr, value));
+                    _optimizedModelFilePath = value;
+                }
+            }
+        }
+        private string _optimizedModelFilePath = "";
+
+
         
         /// <summary>
         /// Enables Arena allocator for the CPU memory allocations. Default is true.
