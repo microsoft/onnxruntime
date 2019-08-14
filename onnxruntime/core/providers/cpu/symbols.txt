@@ -12,7 +12,7 @@ OrtCompareAllocatorInfo
 OrtCreateAllocatorInfo
 OrtCreateCpuAllocatorInfo
 OrtCreateCustomOpDomain
-OrtCreateDefaultAllocator
+OrtGetDefaultAllocator
 OrtCreateEnv
 OrtCreateEnvWithCustomLogger
 OrtCreateRunOptions
@@ -51,7 +51,6 @@ OrtGetValueType
 OrtGetVersionString
 OrtIsTensor
 OrtGetOnnxTypeFromTypeInfo
-OrtReleaseAllocator
 OrtReleaseAllocatorInfo
 OrtReleaseCustomOpDomain
 OrtReleaseEnv

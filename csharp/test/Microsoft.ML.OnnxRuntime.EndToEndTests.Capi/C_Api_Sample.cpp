@@ -59,7 +59,7 @@ int main(int argc, char* argv[]) {
   size_t num_input_nodes;
   OrtStatus* status;
   OrtAllocator* allocator;
-  CHECK_STATUS(OrtCreateDefaultAllocator(&allocator));
+  CHECK_STATUS(OrtGetDefaultAllocator(&allocator));
 
   // print number of model input nodes
   status = OrtSessionGetInputCount(session, &num_input_nodes);
@@ -97,7 +97,6 @@ int main(int argc, char* argv[]) {
 
     OrtReleaseTypeInfo(typeinfo);
   }
-  OrtReleaseAllocator(allocator);
 
   // Results should be...
   // Number of inputs = 1
