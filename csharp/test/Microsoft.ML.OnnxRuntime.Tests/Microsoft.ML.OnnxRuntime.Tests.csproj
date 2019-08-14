@@ -17,19 +17,10 @@
     <SignAssembly>true</SignAssembly> <!-- need signing for freind access to the internals of the Tensors assembly -->
     <DelaySign>false</DelaySign>
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
-    <!--EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <EnableDefaultNoneItems>false</EnableDefaultNoneItems-->
     <!-- end -->
   </PropertyGroup>
 
   <ItemGroup>
-    <!--Compile Include="InferenceTest.cs"/>
-    <Compile Include="OnnxML.cs"/>
-  
-    <Compile Include="Tensors\NativeMemory.cs"/>
-    <Compile Include="Tensors\TensorExtensions.cs"/>
-    <Compile Include="Tensors\TensorTests.cs"/>
-    <Compile Include="Tensors\TensorTestsBase.cs"/-->
     <Compile Update="Tensors\TensorArithmetic.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
