@@ -102,7 +102,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
   size_t output_count = session_.GetOutputCount();
   output_names_.resize(output_count);
-  Ort::Allocator a = Ort::Allocator::CreateDefault();
+  Ort::Allocator a = Ort::Allocator::GetDefault();
   for (size_t i = 0; i != output_count; ++i) {
     char* output_name = session_.GetOutputName(i, a);
     assert(output_name != nullptr);
