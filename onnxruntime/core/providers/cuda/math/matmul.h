@@ -14,9 +14,15 @@ class MatMul final : public CudaKernel {
  public:
   MatMul(const OpKernelInfo& info)
       : CudaKernel(info) {
+    trans_A_ = info.GetAttrOrDefault<int64_t>("transA", 0);
+    trans_B_ = info.GetAttrOrDefault<int64_t>("transB", 0);
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  bool trans_A_;
+  bool trans_B_;
 };
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -40,8 +40,19 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* left_X = ctx->Input<Tensor>(0);
   const Tensor* right_X = ctx->Input<Tensor>(1);
 
+  // Ignore the transpose flag if rank of input being 1.
+  // Be noted: numpy.transpose on vector does not change anything.
+  bool transa = trans_A_;
+  bool transb = trans_B_;
+  if (left_X->Shape().NumDimensions() == 1) {
+    transa = false;
+  }
+  if (right_X->Shape().NumDimensions() == 1) {
+    transb = false;
+  }
+
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), right_X->Shape()));
+  ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), right_X->Shape(), transa, transb));
 
   Tensor* Y = ctx->Output(0, helper.OutputShape());
   ORT_RETURN_IF_NOT(strcmp(Y->Location().name, CUDA) == 0, "Output should be allocated on CUDA");
@@ -49,22 +60,28 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
+  cublasOperation_t transA = transa ? CUBLAS_OP_T : CUBLAS_OP_N;
+  cublasOperation_t transB = transb ? CUBLAS_OP_T : CUBLAS_OP_N;
+  const int lda = transa ? static_cast<int>(helper.M()) : static_cast<int>(helper.K());
+  const int ldb = transb ? static_cast<int>(helper.K()) : static_cast<int>(helper.N());
+  const int ldc = static_cast<int>(helper.N());
+
   if (helper.OutputOffsets().size() == 1) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         Base::CublasHandle(),
-        CUBLAS_OP_N,
-        CUBLAS_OP_N,
+        transB,
+        transA,
         static_cast<int>(helper.N()),
         static_cast<int>(helper.M()),
         static_cast<int>(helper.K()),
         &one,
         reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
-        static_cast<int>(helper.N()),
+        ldb,
         reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
-        static_cast<int>(helper.K()),
+        lda,
         &zero,
         reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
-        static_cast<int>(helper.N())));
+        ldc));
     return Status::OK();
   }
   int device_id = GetDeviceId();
@@ -82,19 +99,19 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   // so swap left/right operands
   CUBLAS_RETURN_IF_ERROR(cublasGemmBatchedHelper(
       Base::CublasHandle(),
-      CUBLAS_OP_N,
-      CUBLAS_OP_N,
+      transB,
+      transA,
       static_cast<int>(helper.N()),
       static_cast<int>(helper.M()),
       static_cast<int>(helper.K()),
       &one,
       right_arrays.GpuPtr(),
-      static_cast<int>(helper.N()),
+      ldb,
       left_arrays.GpuPtr(),
-      static_cast<int>(helper.K()),
+      lda,
       &zero,
       output_arrays.GpuPtr(),
-      static_cast<int>(helper.N()),
+      ldc,
       static_cast<int>(helper.OutputOffsets().size())));
 
   return Status::OK();
