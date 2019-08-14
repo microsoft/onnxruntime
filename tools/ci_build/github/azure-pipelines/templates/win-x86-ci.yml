@@ -60,7 +60,7 @@ jobs:
           solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
           platform: 'Any CPU'
           configuration: 'Debug'
-          msbuildArchitecture: 'x64'
+          msbuildArchitecture: 'x86'
           msbuildArguments: '/m'
           workingFolder: '$(Build.SourcesDirectory)\csharp'
 
@@ -70,7 +70,7 @@ jobs:
           solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
           platform: 'Any CPU'
           configuration: 'Debug'
-          msbuildArchitecture: 'x64'
+          msbuildArchitecture: 'x86'
           msbuildArguments: '/t:RunTest'
           workingFolder: '$(Build.SourcesDirectory)\csharp'
 
@@ -105,7 +105,7 @@ jobs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         platform: 'Any CPU'
         configuration: 'RelWithDebInfo'
-        msbuildArchitecture: 'x64'
+        msbuildArchitecture: 'x86'
         msbuildArguments: '/m'
         workingFolder: '$(Build.SourcesDirectory)\csharp'
 
@@ -115,7 +115,7 @@ jobs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         platform: 'Any CPU'
         configuration: 'RelWithDebInfo'
-        msbuildArchitecture: 'x64'
+        msbuildArchitecture: 'x86'
         msbuildArguments: '/t:RunTest'
         workingfolder: '$(Build.SourcesDirectory)\csharp'
 
