@@ -20,9 +20,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
     {
         public enum TensorType
         {
-            Dense,
-            Sparse,
-            CompressedSparse
+            Dense
         };
 
         public class TensorConstructor
@@ -37,10 +35,6 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
                 {
                     case TensorType.Dense:
                         return array.ToTensor<T>(IsReversedStride);
-                    case TensorType.Sparse:
-                        return array.ToSparseTensor<T>(IsReversedStride);
-                    case TensorType.CompressedSparse:
-                        return array.ToCompressedSparseTensor<T>(IsReversedStride);
                 }
 
                 throw new ArgumentException(nameof(TensorType));
@@ -51,10 +45,6 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
                 {
                     case TensorType.Dense:
                         return new DenseTensor<T>(dimensions, IsReversedStride);
-                    case TensorType.Sparse:
-                        return new SparseTensor<T>(dimensions, IsReversedStride);
-                    case TensorType.CompressedSparse:
-                        return new CompressedSparseTensor<T>(dimensions, IsReversedStride);
                 }
 
                 throw new ArgumentException(nameof(TensorType));
@@ -68,9 +58,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
 
         private static TensorType[] s_tensorTypes = new[]
         {
-            TensorType.Dense,
-            TensorType.Sparse,
-            TensorType.CompressedSparse
+            TensorType.Dense
         };
 
         private static bool[] s_reverseStrideValues = new[]

@@ -1209,35 +1209,6 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             return denseTensor;
         }
 
-
-        ///// <summary>
-        ///// Creates a copy of this tensor as a SparseTensor&lt;T&gt;.  If this tensor is already a SparseTensor&lt;T&gt; calling this method is equivalent to calling Clone().
-        ///// </summary>
-        ///// <returns></returns>
-        internal virtual SparseTensor<T> ToSparseTensor()
-        {
-            var sparseTensor = new SparseTensor<T>(Dimensions, IsReversedStride);
-            for (int i = 0; i < Length; i++)
-            {
-                sparseTensor.SetValue(i, GetValue(i));
-            }
-            return sparseTensor;
-        }
-
-        /// <summary>
-        /// Creates a copy of this tensor as a CompressedSparseTensor&lt;T&gt;.  If this tensor is already a CompressedSparseTensor&lt;T&gt; calling this method is equivalent to calling Clone().
-        /// </summary>
-        /// <returns></returns>
-        internal virtual CompressedSparseTensor<T> ToCompressedSparseTensor()
-        {
-            var compressedSparseTensor = new CompressedSparseTensor<T>(Dimensions, IsReversedStride);
-            for (int i = 0; i < Length; i++)
-            {
-                compressedSparseTensor.SetValue(i, GetValue(i));
-            }
-            return compressedSparseTensor;
-        }
-
         #endregion
 
         public string GetArrayString(bool includeWhitespace = true)
