@@ -18,17 +18,21 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private const string propertiesFile = "Properties.txt";
 
         [Fact]
+        public void TestX86Build()
+        {
+#if (DEBUG && ONNXRUNTIME_X86_BUILD)
+            Assert.False(System.Environment.Is64BitProcess);
+#else
+            Assert.True(System.Environment.Is64BitProcess);
+#endif    
+        }
 
+
+        [Fact]
         public void TestSessionOptions()
         {
             using (SessionOptions opt = new SessionOptions())
             {
-
-#if ONNXRUNTIME_X86_BUILD
-                Assert.False(System.Environment.Is64BitProcess);
-#else
-                Assert.True(System.Environment.Is64BitProcess);
-#endif    
                 Assert.NotNull(opt);
 
                 // check default values of the properties

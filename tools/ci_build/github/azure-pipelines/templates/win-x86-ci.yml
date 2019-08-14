@@ -61,7 +61,7 @@ jobs:
           platform: 'Any CPU'
           configuration: 'Debug'
           msbuildArchitecture: 'x86'
-          msbuildArguments: '/m /p:DefineConstants="ONNXRUNTIME_X86_BUILD=true"'
+          msbuildArguments: '/m /p:DefineConstants="ONNXRUNTIME_X86_BUILD"'
           workingFolder: '$(Build.SourcesDirectory)\csharp'
 
       - task: MSBuild@1
