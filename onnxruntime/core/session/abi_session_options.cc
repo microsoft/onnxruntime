@@ -100,6 +100,11 @@ ORT_API_STATUS_IMPL(OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* opti
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtSetSessionLogSeverityLevel, _In_ OrtSessionOptions* options, int session_log_severity_level) {
+  options->value.session_log_severity_level = session_log_severity_level;
+  return nullptr;
+}
+
 // Set Graph optimization level.
 // Available options are : 0, 1, 2.
 ORT_API_STATUS_IMPL(OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options, int graph_optimization_level) {

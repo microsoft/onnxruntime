@@ -77,14 +77,14 @@ namespace Microsoft.ML.OnnxRuntime
 
     internal class NativeMemoryAllocator : SafeHandle
     {
-        protected static readonly Lazy<NativeMemoryAllocator> _defaultInstance = new Lazy<NativeMemoryAllocator>(CreateDefaultCpuAllocator);
+        protected static readonly Lazy<NativeMemoryAllocator> _defaultInstance = new Lazy<NativeMemoryAllocator>(GetDefaultCpuAllocator);
 
-        private static NativeMemoryAllocator CreateDefaultCpuAllocator()
+        private static NativeMemoryAllocator GetDefaultCpuAllocator()
         {
             IntPtr allocator = IntPtr.Zero;
             try
             {
-                IntPtr status = NativeMethods.OrtCreateDefaultAllocator(out allocator);
+                IntPtr status = NativeMethods.OrtGetDefaultAllocator(out allocator);
                 NativeApiStatus.VerifySuccess(status);
             }
             catch (Exception e)
@@ -124,7 +124,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        internal IntPtr Handle  
+        internal IntPtr Handle
         {
             get
             {
@@ -137,7 +137,6 @@ namespace Microsoft.ML.OnnxRuntime
         {
             this.handle = allocator;
         }
-
 
         protected static void Delete(IntPtr allocator)
         {

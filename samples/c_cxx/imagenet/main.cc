@@ -128,7 +128,7 @@ class Validator : public OutputCollector<TCharString> {
     CreateSession();
     VerifyInputOutputCount(session_);
     OrtAllocator* ort_alloc;
-    ORT_THROW_ON_ERROR(OrtCreateDefaultAllocator(&ort_alloc));
+    ORT_THROW_ON_ERROR(OrtGetDefaultAllocator(&ort_alloc));
     {
       char* t;
       ORT_THROW_ON_ERROR(OrtSessionGetInputName(session_, 0, ort_alloc, &t));
@@ -253,7 +253,7 @@ int main(int argc, ORTCHAR_T* argv[]) {
   try {
     ret = real_main(argc, argv);
   } catch (const std::exception& ex) {
-    fprintf(stderr, "%s\n", ex.what());    
+    fprintf(stderr, "%s\n", ex.what());
   }
 #ifdef _WIN32
   CoUninitialize();

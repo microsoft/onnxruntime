@@ -120,6 +120,9 @@ struct RunOptions : Base<OrtRunOptions> {
   RunOptions& SetRunLogVerbosityLevel(int);
   int GetRunLogVerbosityLevel() const;
 
+  RunOptions& SetRunLogSeverityLevel(int);
+  int GetRunLogSeverityLevel() const;
+
   RunOptions& SetRunTag(const char* run_tag);
   const char* GetRunTag() const;
 
@@ -228,7 +231,7 @@ struct Value : Base<OrtValue> {
 };
 
 struct Allocator : Base<OrtAllocator> {
-  static Allocator CreateDefault();
+  static Allocator GetDefault();
 
   explicit Allocator(nullptr_t) {}
   explicit Allocator(OrtAllocator* p) : Base<OrtAllocator>{p} {}

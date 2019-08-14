@@ -39,9 +39,9 @@ struct TypeToTensorType<uint32_t> { static constexpr ONNXTensorElementDataType t
 template <>
 struct TypeToTensorType<uint64_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64; };
 
-inline Allocator Allocator::CreateDefault() {
+inline Allocator Allocator::GetDefault() {
   OrtAllocator* p;
-  ORT_THROW_ON_ERROR(OrtCreateDefaultAllocator(&p));
+  ORT_THROW_ON_ERROR(OrtGetDefaultAllocator(&p));
   return Allocator(p);
 }
 
@@ -93,6 +93,11 @@ inline RunOptions::RunOptions() {
 
 inline RunOptions& RunOptions::SetRunLogVerbosityLevel(int level) {
   ORT_THROW_ON_ERROR(OrtRunOptionsSetRunLogVerbosityLevel(p_, level));
+  return *this;
+}
+
+inline RunOptions& RunOptions::SetRunLogSeverityLevel(int level) {
+  ORT_THROW_ON_ERROR(OrtRunOptionsSetRunLogSeverityLevel(p_, level));
   return *this;
 }
 

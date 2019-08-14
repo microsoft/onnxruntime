@@ -202,7 +202,7 @@ ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess,
 ORT_API_STATUS(OrtCreateSessionOptions, _Outptr_ OrtSessionOptions** options);
 
 // Set filepath to save optimized model after graph level transformations.
-ORT_API_STATUS(OrtSetOptimizedModelFilePath, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* optimized_model_filepath);
+ORT_API_STATUS(OrtSetOptimizedModelFilePath, _Inout_ OrtSessionOptions* options, _In_ const ORTCHAR_T* optimized_model_filepath);
 
 // create a copy of an existing OrtSessionOptions
 ORT_API_STATUS(OrtCloneSessionOptions, _In_ const OrtSessionOptions* in_options, _Outptr_ OrtSessionOptions** out_options);
@@ -232,6 +232,7 @@ ORT_API_STATUS(OrtSetSessionLogId, _Inout_ OrtSessionOptions* options, const cha
 
 // < applies to session load, initialization, etc
 ORT_API_STATUS(OrtSetSessionLogVerbosityLevel, _Inout_ OrtSessionOptions* options, int session_log_verbosity_level);
+ORT_API_STATUS(OrtSetSessionLogSeverityLevel, _Inout_ OrtSessionOptions* options, int session_log_severity_level);
 
 // Set Graph optimization level.
 // Available options are : 0, 1, 2.
@@ -281,9 +282,11 @@ ORT_API_STATUS(OrtSessionGetOutputName, _In_ const OrtSession* sess, size_t inde
 ORT_API_STATUS(OrtCreateRunOptions, _Outptr_ OrtRunOptions** out);
 
 ORT_API_STATUS(OrtRunOptionsSetRunLogVerbosityLevel, _Inout_ OrtRunOptions* options, int value);
+ORT_API_STATUS(OrtRunOptionsSetRunLogSeverityLevel, _Inout_ OrtRunOptions* options, int value);
 ORT_API_STATUS(OrtRunOptionsSetRunTag, _In_ OrtRunOptions*, _In_ const char* run_tag);
 
 ORT_API_STATUS(OrtRunOptionsGetRunLogVerbosityLevel, _In_ const OrtRunOptions* options, _Out_ int* out);
+ORT_API_STATUS(OrtRunOptionsGetRunLogSeverityLevel, _In_ const OrtRunOptions* options, _Out_ int* out);
 ORT_API_STATUS(OrtRunOptionsGetRunTag, _In_ const OrtRunOptions*, _Out_ const char** out);
 
 // Set a flag so that any running OrtRun* calls that are using this instance of OrtRunOptions
@@ -434,7 +437,7 @@ ORT_API_STATUS(OrtAllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size, _Outpt
 ORT_API_STATUS(OrtAllocatorFree, _Inout_ OrtAllocator* ptr, void* p);
 ORT_API_STATUS(OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr, _Out_ const OrtAllocatorInfo** out);
 
-ORT_API_STATUS(OrtCreateDefaultAllocator, _Outptr_ OrtAllocator** out);
+ORT_API_STATUS(OrtGetDefaultAllocator, _Outptr_ OrtAllocator** out);
 
 ORT_API(const char*, OrtGetVersionString);
 /**
