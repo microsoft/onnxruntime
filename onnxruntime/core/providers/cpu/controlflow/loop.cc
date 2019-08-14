@@ -231,13 +231,8 @@ Status LoopImpl::Initialize() {
   status = context_.GetTempSpaceAllocator(&allocator);
   ORT_RETURN_IF_ERROR(status);
 
-  auto iter_num_rank = 0;
-  if (subgraph_inputs[0]->Shape() != nullptr)
-    iter_num_rank = subgraph_inputs[0]->Shape()->dim_size();
-
-  auto condition_rank = 0;
-  if (subgraph_inputs[1]->Shape() != nullptr)
-    condition_rank = subgraph_inputs[1]->Shape()->dim_size();
+  auto iter_num_rank = subgraph_inputs[0]->Shape()->dim_size();
+  auto condition_rank = subgraph_inputs[1]->Shape()->dim_size();
   
 
   iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(allocator, 0, iter_num_rank);

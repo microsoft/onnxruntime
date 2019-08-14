@@ -167,8 +167,10 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       const auto& input_tensor_type = input_type.tensor_type();
       const auto& input_tensor_elem_type = input_tensor_type.elem_type();
       const auto& current_tensor_elem_type = current_type.tensor_type().elem_type();
-
-      if (input_tensor_elem_type != current_tensor_elem_type)
+      if (current_tensor_elem_type == TensorProto_DataType_UNDEFINED) {
+        type_ = DataTypeUtils::ToType(input_type);
+        current_type.mutable_tensor_type()->set_elem_type(input_tensor_elem_type);
+      } else if (input_tensor_elem_type != current_tensor_elem_type)
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Tensor element type mismatch. ",
                                static_cast<TensorProto_DataType>(input_tensor_elem_type), " != ",
                                static_cast<TensorProto_DataType>(current_tensor_elem_type));
@@ -683,16 +685,12 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
 
   // Collect all node arg name, type, shape information in the graph.
   // type/shape information will be assigned to each node arg when going
-  // throgh all nodes later.
+  // thru all nodes later.
   for (auto& graph_input : graph_proto_->input()) {
-    if (graph_input.has_name()) {
-      const ONNX_NAMESPACE::TypeProto* type_proto = nullptr;
-      if (graph_input.has_type()) {
-        type_proto = &graph_input.type();
-        name_to_type_map[graph_input.name()] = *type_proto;      
-      }
+    if (graph_input.has_name() && graph_input.has_type()) {
+      name_to_type_map[graph_input.name()] = graph_input.type();
       // always create a NodeArg for graph input in case its from an initializer
-      GetOrCreateNodeArg(graph_input.name(), type_proto);
+      GetOrCreateNodeArg(graph_input.name(), &graph_input.type());
     }
   }
 
@@ -2322,7 +2320,7 @@ Status Graph::SetGraphInputsOutputs() {
     for (auto& graph_input : graph_proto_->input()) {
       auto& name = graph_input.name();
       const auto* node_arg = GetNodeArg(name);
-      ORT_ENFORCE(node_arg, "Graph ctor should have created NodeArg for initializer. ", name);
+      ORT_ENFORCE(node_arg, "Graph ctor should have created NodeArg for initializer.");
       graph_inputs.insert({name, node_arg});
       graph_inputs_including_initializers_.push_back(node_arg);
       if (graph_initializers.end() == graph_initializers.find(name)) {
