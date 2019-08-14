@@ -22,3 +22,12 @@ When using the python wheel from the ONNX Runtime build with TensorRT execution 
 
 ### Using onnxruntime_perf_test
 You can test the performance for your ONNX Model with the TensorRT execution provider. Use the flag `-e tensorrt` in [onnxruntime_perf_test](https://github.com/Microsoft/onnxruntime/tree/master/onnxruntime/test/perftest#onnxruntime-performance-test).
+
+### Configuring Engine Max Batch Size and Workspace Size.
+By default TensorRT execution provider builds an ICudaEngine with max batch size = 1 and max workspace size = 1 GB
+One can override these defaults by setting environment variables ORT_TENSORRT_MAX_BATCH_SIZE and ORT_TENSORRT_MAX_WORKSPACE_SIZE.
+e.g. on Linux
+# override default batch size to 10
+export ORT_TENSORRT_MAX_BATCH_SIZE=10
+# override default max workspace size to 2GB
+export ORT_TENSORRT_MAX_WORKSPACE_SIZE=2147483648
