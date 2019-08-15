@@ -3,7 +3,7 @@
 
 *Pre-built packages are available the locations indicated [here](https://github.com/microsoft/onnxruntime#official-builds).*
 
-**To build the baseline CPU version of ONNX Runtime from source:**
+## To build the baseline CPU version of ONNX Runtime from source:
 1. Checkout the source tree:
    ```
    git clone --recursive https://github.com/Microsoft/onnxruntime
@@ -38,6 +38,8 @@
 
 The build script runs all unit tests by default (for native builds and skips tests by default for cross-compiled builds).
 
+---
+
 # Supported architectures and build environments
 
 ## Architectures
@@ -70,6 +72,7 @@ The build script runs all unit tests by default (for native builds and skips tes
 ONNX Runtime Python bindings support Python 3.5, 3.6 and 3.7.
 
 ---
+
 # Additional Build Instructions
 The complete list of build options can be found by running `./build.sh (or ./build.bat) --help`
 
@@ -79,7 +82,7 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 **Execution Providers**
 * [NVIDIA CUDA](#CUDA)
 * [NVIDIA TensorRT](#TensorRT)
-* [Intel MKL-DNN/MKL-ML](#MKL-DNN/MKL-ML)
+* [Intel MKL-DNN/MKL-ML](#MKLDNN-and-MKLML)
 * [Intel nGraph](#nGraph)
 * [Intel OpenVINO](#openvino)
 
@@ -94,13 +97,6 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 ---
 ## Docker on Linux
 Install Docker: `https://docs.docker.com/install/`
-
-## Build ONNX Runtime Server on Linux
-Read more about ONNX Runtime Server [here](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Server_Usage.md)
-1. ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL. 
-    See https://golang.org/doc/install for installation instructions.
-2. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
-3. ONNX Runtime Server supports sending log to [rsyslog](https://www.rsyslog.com/) daemon. To enable it, please build with an additional parameter: `--cmake_extra_defines onnxruntime_USE_SYSLOG=1`. The build command will look like this: `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel --cmake_extra_defines onnxruntime_USE_SYSLOG=1`
 
 **CPU**
 ```
@@ -129,6 +125,17 @@ Then run it
 ```
 ./tools/ci_build/github/linux/run_dockerbuild.sh
 ```
+
+---
+
+## Build ONNX Runtime Server on Linux
+Read more about ONNX Runtime Server [here](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Server_Usage.md)
+1. ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL. 
+    See https://golang.org/doc/install for installation instructions.
+2. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
+3. ONNX Runtime Server supports sending log to [rsyslog](https://www.rsyslog.com/) daemon. To enable it, please build with an additional parameter: `--cmake_extra_defines onnxruntime_USE_SYSLOG=1`. The build command will look like this: `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel --cmake_extra_defines onnxruntime_USE_SYSLOG=1`
+
+---
 
 ## Execution Providers
 
@@ -173,6 +180,8 @@ _Side note: If you have multiple versions of CUDA installed on a Windows machine
 e.g. C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\Common7\IDE\VC\VCTargets\BuildCustomizations\.
 If you want to build with an earlier version, you must temporarily remove the 'CUDA x.y.*' files for later versions from this directory._
 
+---
+
 ### TensorRT
 ONNX Runtime supports the TensorRT execution provider (released as preview). You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit), [cuDNN](https://developer.nvidia.com/cudnn) and [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download).
 
@@ -189,12 +198,18 @@ You can build from source on Linux by using the following `cmd` from the onnxrun
 ./build.sh --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> (Linux)
 ```
 
-### MKL-DNN/MKL-ML
+---
+
+### MKLDNN and MKLML
 To build ONNX Runtime with MKL-DNN support, build it with `./build.sh --use_mkldnn`
 To build ONNX Runtime using MKL-DNN built with dependency on MKL small libraries, build it with `./build.sh --use_mkldnn --use_mklml`
 
+---
+
 ### nGraph
 ONNX runtime with nGraph as an execution provider (released as preview) can be built on Linux as follows : `./build.sh --use_ngraph`.  Similarly, on Windows use `.\build.bat --use_ngraph`
+
+---
 
 ### OpenVINO
 
@@ -236,7 +251,17 @@ The OpenVINO Execution Provider can be built using the following commands:
 
 For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document OpenVINO-ExecutionProvider.md in <code>$onnxruntime_root/docs/execution_providers</code>
  
+---
+
 ## Options
+### OpenMP
+```
+./build.sh --use_openmp (for Linux)
+./build.bat --use_openmp (for Windows)
+```
+
+---
+
 ### OpenBLAS
 **Windows**
 Instructions how to build OpenBLAS for windows can be found here https://github.com/xianyi/OpenBLAS/wiki/How-to-use-OpenBLAS-in-Microsoft-Visual-Studio#build-openblas-for-universal-windows-platform.
@@ -246,17 +271,15 @@ Once you have the OpenBLAS binaries, build ONNX Runtime with `./build.bat --use_
 **Linux**
 For Linux (e.g. Ubuntu 16.04), install libopenblas-dev package
 `sudo apt-get install libopenblas-dev` and build with `./build.sh --use_openblas`
- 
-### OpenMP
-```
-./build.sh --use_openmp (for Linux)
-./build.bat --use_openmp (for Windows)
-```
+
+--- 
 
 ## Architectures
 ### x86
  - For Windows, just add --x86 argument when launching build.bat
  - For Linux, it must be built out of a x86 os, --x86 argument also needs be specified to build.sh
+
+---
 
 ### ARM
 We have experimental support for Linux ARM builds. Windows on ARM is well tested.
@@ -337,7 +360,6 @@ The Dockerfile used in these instructions specifically targets Raspberry Pi 3/3+
     ```
 6. Append `-DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake` to your cmake args, run cmake and make to build it.
 
-
 #### Native compiling on Linux ARM device (SLOWER)
 Docker build runs on a Raspberry Pi 3B with Raspbian Stretch Lite OS (Desktop version will run out memory when linking the .so file) will take 8-9 hours in total.
 ```bash
@@ -399,6 +421,8 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 
 **Using other compilers**
 (TODO)
+
+---
 
 ### Android
 
