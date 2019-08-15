@@ -201,6 +201,9 @@ ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess,
  */
 ORT_API_STATUS(OrtCreateSessionOptions, _Outptr_ OrtSessionOptions** options);
 
+// Set filepath to save optimized model after graph level transformations.
+ORT_API_STATUS(OrtSetOptimizedModelFilePath, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* optimized_model_filepath);
+
 // create a copy of an existing OrtSessionOptions
 ORT_API_STATUS(OrtCloneSessionOptions, _In_ const OrtSessionOptions* in_options, _Outptr_ OrtSessionOptions** out_options);
 ORT_API_STATUS(OrtEnableSequentialExecution, _Inout_ OrtSessionOptions* options);
@@ -231,11 +234,15 @@ ORT_API_STATUS(OrtSetSessionLogId, _Inout_ OrtSessionOptions* options, const cha
 ORT_API_STATUS(OrtSetSessionLogVerbosityLevel, _Inout_ OrtSessionOptions* options, int session_log_verbosity_level);
 
 // Set Graph optimization level.
-// Available options are : 0, 1, 2.
-// 0 -> Disable all optimizations
-// 1 -> Enable basic optimizations
-// 2 -> Enable all optimizations
-ORT_API_STATUS(OrtSetSessionGraphOptimizationLevel, _Inout_ OrtSessionOptions* options, int graph_optimization_level);
+// TODO Add documentation about which optimizations are enabled for each value.
+typedef enum GraphOptimizationLevel {
+  ORT_DISABLE_ALL = 0,
+  ORT_ENABLE_BASIC = 1,
+  ORT_ENABLE_EXTENDED = 2,
+  ORT_ENABLE_ALL = 99
+} GraphOptimizationLevel;
+ORT_API_STATUS(OrtSetSessionGraphOptimizationLevel, _Inout_ OrtSessionOptions* options,
+               GraphOptimizationLevel graph_optimization_level);
 
 // How many threads in the session thread pool.
 ORT_API_STATUS(OrtSetSessionThreadPoolSize, _Inout_ OrtSessionOptions* options, int session_thread_pool_size);

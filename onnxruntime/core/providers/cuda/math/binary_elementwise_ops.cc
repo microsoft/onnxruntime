@@ -92,6 +92,17 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, int
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       x<T>);
 
+#define BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(x, ver, T)                     \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
+      x,                                                                        \
+      kOnnxDomain,                                                              \
+      ver,                                                                      \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
+                        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
+      x<T>);
+
 #define BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(x, startver, endver, T) \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                         \
       x,                                                                           \
@@ -127,6 +138,11 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, int
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, T) \
   BINARY_ELEMENTWISE_COMPUTE(name, T)
 
+#define BINARY_LOGICALOP_TYPED(name, ver, T)                    \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, T) \
+  BINARY_ELEMENTWISE_COMPUTE(name, T)
+
+
 // since different ops has different types, we cannot use BINARY_OPS() directly
 // the postfix of means the types supported by the op:
 // B: uint8_t
@@ -155,9 +171,14 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, int
   BINARY_OP_HFD(name, ver)
 
 #define BINARY_OP_REGISTER_OIL(name, ver)                        \
-  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, bool)  \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, bool)      \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, int32_t)   \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, int64_t)
+
+#define BINARY_LOGICALOP_REGISTER_OIL(name, ver)                          \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, bool)     \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int32_t)  \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int64_t)
 
 #define BINARY_OP_REGISTER_HFD(name, ver)                        \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, MLFloat16) \
@@ -170,6 +191,15 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, int
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, int32_t)  \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, int64_t)  \
   BINARY_OP_REGISTER_HFD(name, ver)
+
+#define BINARY_LOGICALOP_REGISTER_UZILHFD(name, ver)                        \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, uint32_t)   \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, uint64_t)   \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int32_t)    \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int64_t)    \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, MLFloat16)  \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, float)      \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, double)
 
 #define BINARY_OP_REGISTER_VERSIONED_HFD(name, startver, endver)                        \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, MLFloat16) \
@@ -188,9 +218,9 @@ BINARY_OP_UZILHFD(Sub, 7)
 BINARY_OP_UZILHFD(Mul, 7)
 BINARY_OP_UZILHFD(Div, 7)
 BINARY_OP_HFD(Pow, 7)
-BINARY_OP_TYPED(And, 7, bool)
-BINARY_OP_TYPED(Or, 7, bool)
-BINARY_OP_TYPED(Xor, 7, bool)
+BINARY_LOGICALOP_TYPED(And, 7, bool)
+BINARY_LOGICALOP_TYPED(Or, 7, bool)
+BINARY_LOGICALOP_TYPED(Xor, 7, bool)
 BINARY_OP_HFD(PRelu, 7)
 
 template <typename T>
@@ -440,7 +470,7 @@ Status Equal<T>::ComputeInternal(OpKernelContext* context) const {
 
 BINARY_OP_REGISTER_UZILHFD(Sum, 8)
 BINARY_OP_REGISTER_VERSIONED_UZILHFD(Sum, 6, 7)
-BINARY_OP_REGISTER_UZILHFD(Greater, 9)
+BINARY_LOGICALOP_REGISTER_UZILHFD(Greater, 9)
 BINARY_OP_REGISTER_OIL(Equal, 7)
 BINARY_OP_REGISTER_VERSIONED_HFD(Greater, 7, 8)
 BINARY_OP_REGISTER_HFD(Max, 8)

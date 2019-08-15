@@ -34,7 +34,8 @@ ONNX_CPU_OPERATOR_KERNEL(
                                             DataTypeImpl::GetTensorType<uint16_t>(),
                                             DataTypeImpl::GetTensorType<uint32_t>(),
                                             DataTypeImpl::GetTensorType<uint64_t>(),
-                                            DataTypeImpl::GetTensorType<bool>()}),
+                                            DataTypeImpl::GetTensorType<bool>()})
+                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Tile);
 
 Status TileCoreForFixedSizeTypes(const Tensor& input_tensor, Tensor& output_tensor, const int64_t* repeats, TensorAxisCounters& input_counters, const TensorPitches& output_pitches, size_t element_size) {

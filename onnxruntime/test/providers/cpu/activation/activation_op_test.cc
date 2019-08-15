@@ -200,8 +200,7 @@ TEST(ActivationOpTest, Softplus) {
                              return x + logf(expf(-x) + 1);
                            else
                              return logf(expf(x) + 1);
-                         },
-                         {}, false);  // Disable TensorRT because result mismatches
+                         });
 }
 
 TEST(ActivationOpTest, Softsign) {

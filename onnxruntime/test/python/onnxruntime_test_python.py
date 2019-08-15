@@ -8,7 +8,6 @@ import numpy as np
 import onnxruntime as onnxrt
 import threading
 
-
 class TestInferenceSession(unittest.TestCase):
 
     def get_name(self, name):
@@ -33,6 +32,14 @@ class TestInferenceSession(unittest.TestCase):
             [[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(
             output_expected, res[0], rtol=1e-05, atol=1e-08)
+
+    def testModelSerialization(self):
+        so = onnxrt.SessionOptions()
+        so.session_log_verbosity_level = 1
+        so.session_logid = "TestModelSerialization"
+        so.optimized_model_filepath = "./PythonApiTestOptimizedModel.onnx"
+        onnxrt.InferenceSession(self.get_name("mul_1.onnx"), sess_options=so)
+        self.assertTrue(os.path.isfile(so.optimized_model_filepath))
 
     def testRunModel(self):
         sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"))
@@ -485,6 +492,12 @@ class TestInferenceSession(unittest.TestCase):
         mat = res[1]
         total = mat.sum()
         self.assertEqual(total, 0)
+
+    def testGraphOptimizationLevel(self):
+        sess = onnxrt.InferenceSession(self.get_name("logicaland.onnx"))
+        sess.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL
+        self.assertEqual(sess.graph_optimization_level,
+                         onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL)
 
 
 if __name__ == '__main__':
