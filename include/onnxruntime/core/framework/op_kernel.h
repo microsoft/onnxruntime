@@ -231,6 +231,11 @@ template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace contrib
 
+namespace automl {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}  // namespace automl
+
 namespace contrib {
 namespace cuda {
 template <typename T>
