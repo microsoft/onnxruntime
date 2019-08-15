@@ -12,6 +12,7 @@
 #include <stack>
 
 #include "gsl/pointers"
+#include "core/framework/data_types.h"
 #include "core/graph/function.h"
 #include "core/graph/function_impl.h"
 #include "core/graph/graph_viewer.h"
@@ -78,7 +79,7 @@ NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
   if (nullptr != p_node_arg_type) {
     (*node_arg_info_.mutable_type()) = *p_node_arg_type;
     RemoveInvalidValues(*node_arg_info_.mutable_type());
-    type_ = DataTypeUtils::ToType(node_arg_info_.type());
+    type_ = DataTypeImpl::ToType(node_arg_info_.type());
   } else {
     type_ = nullptr;
   }
@@ -150,7 +151,7 @@ void NodeArg::SetShape(const TensorShapeProto& shape) {
 common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type) {
   if (!node_arg_info_.has_type()) {
     *node_arg_info_.mutable_type() = input_type;
-    type_ = DataTypeUtils::ToType(node_arg_info_.type());
+    type_ = DataTypeImpl::ToType(node_arg_info_.type());
     return Status::OK();
   }
 
@@ -229,11 +230,11 @@ void NodeArg::SetType(DataType p_type) {
   }
 
   type_ = p_type;
-  *(node_arg_info_.mutable_type()) = DataTypeUtils::ToTypeProto(p_type);
+  *(node_arg_info_.mutable_type()) = DataTypeImpl::ToTypeProto(p_type);
 }
 
 void NodeArg::SetType(const TypeProto& type_proto) {
-  type_ = DataTypeUtils::ToType(type_proto);
+  type_ = DataTypeImpl::ToType(type_proto);
   *(node_arg_info_.mutable_type()) = type_proto;
 }
 
@@ -1545,7 +1546,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
       inferred_type = *(op_formal_parameter.GetTypes().begin());
     } else if (FullyDefinedType(onnx_inferred_type)) {
       // Use output type inferred by ONNX inference
-      inferred_type = DataTypeUtils::ToType(onnx_inferred_type);
+      inferred_type = DataTypeImpl::ToType(onnx_inferred_type);
     } else if (existing_type != nullptr) {
       inferred_type = existing_type;
     } else {
@@ -1616,7 +1617,7 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
       const TensorProto* tensor_proto = initializer_pair.second;
       TypeProto tensor_type;
       tensor_type.mutable_tensor_type()->set_elem_type(tensor_proto->data_type());
-      auto inferred_type = DataTypeUtils::ToType(tensor_type);
+      auto inferred_type = DataTypeImpl::ToType(tensor_type);
       auto existing_type = node_arg->Type();
       if (nullptr == existing_type)
         node_arg->SetType(inferred_type);

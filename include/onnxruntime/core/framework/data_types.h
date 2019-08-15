@@ -192,6 +192,11 @@ class DataTypeImpl {
    * \param proto
    */
   static MLDataType TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto);
+  // The two below operate on DataType and is indirection to support
+  // custom data types insertions
+  static const std::string* ToType(const ONNX_NAMESPACE::TypeProto& proto);
+  static const std::string* ToType(const std::string& data_type);
+  static const ONNX_NAMESPACE::TypeProto& ToTypeProto(const std::string* data_type);
 
   static const TensorTypeBase* TensorTypeFromONNXEnum(int type);
   static const SparseTensorTypeBase* SparseTensorTypeFromONNXEnum(int type);

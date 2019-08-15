@@ -270,7 +270,7 @@ class PlannerImpl {
   /*! \brief Given a tensor-type, return the size of an element of the tensor.
   */
   static size_t GetElementSize(const DataType& tensor_type) {
-    const TypeProto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(tensor_type);
+    const TypeProto& type_proto = DataTypeImpl::ToTypeProto(tensor_type);
     MLDataType ml_data_type = DataTypeImpl::TypeFromProto(type_proto);
     const TensorTypeBase* tensor_type_base = ml_data_type->AsTensorType();
     ORT_ENFORCE(nullptr != tensor_type_base);
@@ -666,7 +666,7 @@ class PlannerImpl {
   static bool IsNonTensor(const onnxruntime::NodeArg& nodearg) {
     // TODO: unclear why we should go through a string-representation of type
     auto ptype = nodearg.Type();
-    auto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(ptype);
+    auto& type_proto = DataTypeImpl::ToTypeProto(ptype);
     return !type_proto.has_tensor_type();
   }
 };  // namespace onnxruntime

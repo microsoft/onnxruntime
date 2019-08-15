@@ -9,5 +9,7 @@
 namespace onnxruntime {
 namespace automl {
 void RegisterAutoMLTypes(const std::function<void(MLDataType)>& reg_fn);
+const std::string* GetAutoMLCustomType(const ONNX_NAMESPACE::TypeProto& proto);
+const std::string* GetAutoMLCustomType(const std::string&);
 } // namespace automl
 } // namespace onnxruntime

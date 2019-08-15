@@ -285,7 +285,7 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_SparseTensor& tensor_proto,
 void RegisterAllProtos(const std::function<void(MLDataType)>& /*reg_fn*/);
 
 class DataTypeRegistry {
-  std::unordered_map<std::string, MLDataType> mapping_;
+  std::unordered_map<DataType, MLDataType> mapping_;
 
   DataTypeRegistry() {
     RegisterAllProtos([this](MLDataType mltype) { RegisterDataType(mltype); });
@@ -295,24 +295,6 @@ class DataTypeRegistry {
   }
 
   ~DataTypeRegistry() = default;
-
-  std::string GetDataType(const ONNX_NAMESPACE::TypeProto& proto) const {
-    switch (proto.value_case()) {
-      case TypeProto::ValueCase::kTimepointType:
-      {
-        std::string dtype("op(");
-        dtype.append(proto.timepoint_type().domain())
-            .append(",")
-            .append(proto.timepoint_type().domain())
-            .append(")");
-        return dtype;
-      }
-        break;
-      default:
-        break;
-    }
-    return *Utils::DataTypeUtils::ToType(proto);
-  }
 
  public:
   DataTypeRegistry(const DataTypeRegistry&) = delete;
@@ -327,19 +309,26 @@ class DataTypeRegistry {
     using namespace ONNX_NAMESPACE;
     const auto* proto = mltype->GetTypeProto();
     ORT_ENFORCE(proto != nullptr, "Only ONNX MLDataType can be registered");
-    std::string dtype = GetDataType(*proto);
+    DataType dtype = DataTypeImpl::ToType(*proto);
     auto p = mapping_.insert(std::make_pair(dtype, mltype));
     ORT_ENFORCE(p.second, "We do not expect duplicate registration of types for: ", dtype);
   }
 
   MLDataType GetMLDataType(const ONNX_NAMESPACE::TypeProto& proto) const {
     using namespace ONNX_NAMESPACE;
-    std::string dtype = GetDataType(proto);
+    DataType dtype = DataTypeImpl::ToType(proto);
     auto p = mapping_.find(dtype);
     if (p != mapping_.end()) {
       return p->second;
     }
     return nullptr;
+  }
+  const ONNX_NAMESPACE::TypeProto& ToTypeProto(DataType dtype) const {
+    auto p = mapping_.find(dtype);
+    if (p != mapping_.end()) {
+      return *(p->second->GetTypeProto());
+    }
+    ORT_ENFORCE(false, "Missing datatype");
   }
 };
 
@@ -355,6 +344,34 @@ struct TypeProtoImpl {
 };
 
 }  // namespace data_types_internal
+
+const std::string* DataTypeImpl::ToType(const ONNX_NAMESPACE::TypeProto& proto) {
+#ifdef MICROSOFT_AUTOML
+  // Need to intercept from proto translation
+  auto* result = automl::GetAutoMLCustomType(proto);
+  if (result != nullptr) {
+    // Since we have to use opaque we will rely on the ONNX internal strings
+    return Utils::DataTypeUtils::ToType(*result);
+  }
+#endif
+  return Utils::DataTypeUtils::ToType(proto);
+}
+
+const std::string* DataTypeImpl::ToType(const std::string& data_type) {
+#ifdef MICROSOFT_AUTOML
+  auto* result = automl::GetAutoMLCustomType(data_type);
+  if (result != nullptr) {
+    // Since we have to use opaque we will rely on the ONNX internal strings
+    return Utils::DataTypeUtils::ToType(*result);
+  }
+#endif
+  return Utils::DataTypeUtils::ToType(data_type);
+}
+
+const ONNX_NAMESPACE::TypeProto& DataTypeImpl::ToTypeProto(const std::string* data_type) {
+  auto* dtype = Utils::DataTypeUtils::ToType(*data_type);
+  return data_types_internal::DataTypeRegistry::instance().ToTypeProto(dtype);
+}
 
 /// TensorTypeBase
 struct TensorTypeBase::Impl : public data_types_internal::TypeProtoImpl {
@@ -634,87 +651,44 @@ void DataTypeImpl::RegisterDataType(MLDataType mltype) {
 }
 
 const char* DataTypeImpl::ToString(MLDataType type) {
-  if (type == DataTypeImpl::GetTensorType<float>()) {
-    return "tensor(float)";
-  }
-  if (type == DataTypeImpl::GetTensorType<bool>()) {
-    return "tensor(bool)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<int32_t>()) {
-    return "tensor(int32)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<double>()) {
-    return "tensor(double)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<std::string>()) {
-    return "tensor(string)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<uint8_t>()) {
-    return "tensor(uint8)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<uint16_t>()) {
-    return "tensor(uint16)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<int16_t>()) {
-    return "tensor(int16)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<int64_t>()) {
-    return "tensor(int64)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<uint32_t>()) {
-    return "tensor(uint32)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<uint64_t>()) {
-    return "tensor(uint64)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<MLFloat16>()) {
-    return "tensor(MLFloat16)";
-  }
-  if (type == DataTypeImpl::GetTensorType<BFloat16>()) {
-    return "tensor(bfloat16)";
+  const auto* proto = type->GetTypeProto();
+  ORT_ENFORCE(proto != nullptr, "Only types that have protos");
+  const auto* result = ToType(*proto);
+  if (result != nullptr) {
+    return result->c_str();
   }
   return "unknown";
 }
 const TensorTypeBase* DataTypeImpl::TensorTypeFromONNXEnum(int type) {
   switch (type) {
     case TensorProto_DataType_FLOAT:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<float>());
+      return DataTypeImpl::GetTensorType<float>()->AsTensorType();
     case TensorProto_DataType_BOOL:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<bool>());
+      return DataTypeImpl::GetTensorType<bool>()->AsTensorType();
     case TensorProto_DataType_INT32:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<int32_t>());
+      return DataTypeImpl::GetTensorType<int32_t>()->AsTensorType();
     case TensorProto_DataType_DOUBLE:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<double>());
+      return DataTypeImpl::GetTensorType<double>()->AsTensorType();
     case TensorProto_DataType_STRING:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<std::string>());
+      return DataTypeImpl::GetTensorType<std::string>()->AsTensorType();
     case TensorProto_DataType_UINT8:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<uint8_t>());
+      return DataTypeImpl::GetTensorType<uint8_t>()->AsTensorType();
     case TensorProto_DataType_UINT16:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<uint16_t>());
+      return DataTypeImpl::GetTensorType<uint16_t>()->AsTensorType();
     case TensorProto_DataType_INT8:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<int8_t>());
+      return DataTypeImpl::GetTensorType<int8_t>()->AsTensorType();
     case TensorProto_DataType_INT16:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<int16_t>());
+      return DataTypeImpl::GetTensorType<int16_t>()->AsTensorType();
     case TensorProto_DataType_INT64:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<int64_t>());
+      return DataTypeImpl::GetTensorType<int64_t>()->AsTensorType();
     case TensorProto_DataType_UINT32:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<uint32_t>());
+      return DataTypeImpl::GetTensorType<uint32_t>()->AsTensorType();
     case TensorProto_DataType_UINT64:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<uint64_t>());
+      return DataTypeImpl::GetTensorType<uint64_t>()->AsTensorType();
     case TensorProto_DataType_FLOAT16:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<MLFloat16>());
+      return DataTypeImpl::GetTensorType<MLFloat16>()->AsTensorType();
     case TensorProto_DataType_BFLOAT16:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<BFloat16>());
+      return DataTypeImpl::GetTensorType<BFloat16>()->AsTensorType();
     default:
       ORT_NOT_IMPLEMENTED("tensor type ", type, " is not supported");
   }

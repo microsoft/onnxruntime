@@ -8,6 +8,8 @@
 #include "automl_ops/automl_types.h"
 #include "automl_ops/automl_featurizers.h"
 
+#include <unordered_set>
+
 namespace dtf = Microsoft::Featurizer::DateTimeFeaturizer;
 
 namespace onnxruntime {
@@ -59,6 +61,46 @@ namespace automl {
 void RegisterAutoMLTypes(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_CUSTOM_PROTO(dtf::TimePoint, reg_fn);
 }
+
 #undef REGISTER_CUSTOM_PROTO
+
+static inline std::string MakeTypeString(const std::string& domain, const std::string& name) {
+  // We can not get rid of opaque bc onnx code we can not customize
+  // the places where a string is translated to another string should work
+  // with opaque. Mapping from the string to TypeProto we will handle ourselves
+  std::string result("opaque(");
+  result.append(domain).append(",").append(name).append(")");
+  return result;
+}
+
+static const std::string* LookupCustomType(const std::string& data_type) {
+  static const std::unordered_set<std::string> custom_data_types = {
+      MakeTypeString("com.microsoft.automl", "DateTimeFeaturizer_TimePoint")
+  };
+  auto hit = custom_data_types.find(data_type);
+  if (hit != custom_data_types.end()) {
+    return &(*hit);
+  }
+  return nullptr;
+}
+
+const std::string* GetAutoMLCustomType(const ONNX_NAMESPACE::TypeProto& proto) {
+  switch (proto.value_case()) {
+    case ONNX_NAMESPACE::TypeProto::ValueCase::kTimepointType:
+      {
+      auto dtype = MakeTypeString(proto.timepoint_type().domain(), proto.timepoint_type().name());
+      return LookupCustomType(dtype);
+      }
+      break;
+    default:
+      break;
+  }
+  return nullptr;
+}
+
+const std::string* GetAutoMLCustomType(const std::string& data_type) {
+  return LookupCustomType(data_type);
+}
+
 } // namespace automl
 } // namespace onnxruntime
