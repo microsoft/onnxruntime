@@ -9,6 +9,17 @@ using System.IO;
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
+    /// TODO Add documentation about which optimizations are enabled for each value.
+    /// </summary>
+    public enum GraphOptimizationLevel
+    {
+        ORT_DISABLE_ALL = 0,
+        ORT_ENABLE_BASIC = 1,
+        ORT_ENABLE_EXTENDED = 2,
+        ORT_ENABLE_ALL = 99
+    }
+
+    /// <summary>
     /// Holds the options for creating an InferenceSession
     /// </summary>
     public class SessionOptions : IDisposable
@@ -117,7 +128,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private bool _enableMemoryPattern = true;
 
-        
+
         /// <summary>
         /// Path prefix to use for output of profiling data
         /// </summary>
@@ -158,7 +169,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public string OptimizedModelFilePath
         {
-            get 
+            get
             {
                 return _optimizedModelFilePath;
             }
@@ -174,7 +185,7 @@ namespace Microsoft.ML.OnnxRuntime
         private string _optimizedModelFilePath = "";
 
 
-        
+
         /// <summary>
         /// Enables Arena allocator for the CPU memory allocations. Default is true.
         /// </summary>
@@ -190,7 +201,7 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableCpuMemArena(_nativePtr));
                     _enableCpuMemArena = true;
-                } 
+                }
                 else if (_enableCpuMemArena && !value)
                 {
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableCpuMemArena(_nativePtr));
@@ -259,13 +270,9 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         /// <summary>
-        /// Sets the graph optimization level for the session. Default is set to 1.        
+        /// Sets the graph optimization level for the session. Default is set to ORT_ENABLE_BASIC.        
         /// </summary>
-        /// Available options are : 0, 1, 2
-        /// 0 -> Disable all optimizations
-        /// 1 -> Enable basic optimizations
-        /// 2 -> Enable all optimizations
-        public uint GraphOptimizationLevel
+        public GraphOptimizationLevel GraphOptimizationLevel
         {
             get
             {
@@ -277,7 +284,7 @@ namespace Microsoft.ML.OnnxRuntime
                 _graphOptimizationLevel = value;
             }
         }
-        private uint _graphOptimizationLevel = 1;
+        private GraphOptimizationLevel _graphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_BASIC;
 
         #endregion
 
@@ -298,16 +305,16 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     IntPtr handle = LoadLibrary(dll);
                     if (handle != IntPtr.Zero)
-                        continue;                    
+                        continue;
                     var sysdir = new StringBuilder(String.Empty, 2048);
                     GetSystemDirectory(sysdir, (uint)sysdir.Capacity);
                     throw new OnnxRuntimeException(
-                        ErrorCode.NoSuchFile, 
+                        ErrorCode.NoSuchFile,
                         $"kernel32.LoadLibrary():'{dll}' not found. CUDA is required for GPU execution. " +
                         $". Verify it is available in the system directory={sysdir}. Else copy it to the output folder."
-                        );               
+                        );
                 }
-            }   
+            }
             return true;
         }
 

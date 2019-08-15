@@ -33,7 +33,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal("", opt.LogId);
                 Assert.Equal(LogLevel.Verbose, opt.LogVerbosityLevel);
                 Assert.Equal(0, opt.ThreadPoolSize);
-                Assert.Equal(1u, opt.GraphOptimizationLevel);
+                Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_BASIC, opt.GraphOptimizationLevel);
 
                 // try setting options 
                 opt.EnableSequentialExecution = false;
@@ -61,12 +61,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.ThreadPoolSize = 4;
                 Assert.Equal(4, opt.ThreadPoolSize);
 
-                opt.GraphOptimizationLevel = 3;
-                Assert.Equal(3u, opt.GraphOptimizationLevel);
+                opt.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_EXTENDED;
+                Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, opt.GraphOptimizationLevel);
 
                 Assert.Throws<OnnxRuntimeException>(() => { opt.ThreadPoolSize = -2; });
-                Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = 10; });
-
+                Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; });
             }
         }
 
@@ -128,11 +127,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Theory]
-        [InlineData(0, true)]
-        [InlineData(0, false)]
-        [InlineData(2, true)]
-        [InlineData(2, false)]
-        private void CanRunInferenceOnAModel(uint graphOptimizationLevel, bool disableSequentialExecution)
+        [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, true)]
+        [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, false)]
+        [InlineData(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, true)]
+        [InlineData(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, false)]
+        private void CanRunInferenceOnAModel(GraphOptimizationLevel graphOptimizationLevel, bool disableSequentialExecution)
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 
@@ -742,7 +741,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             // Set the optimized model file path to assert that no exception are thrown.
             SessionOptions options = new SessionOptions();
             options.OptimizedModelFilePath = modelOutputPath;
-            options.GraphOptimizationLevel = 1;
+            options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_BASIC;
             var session = new InferenceSession(modelPath, options);
             Assert.NotNull(session);
             Assert.True(File.Exists(modelOutputPath));
@@ -791,7 +790,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             "OrtEnableSequentialExecution","OrtDisableSequentialExecution","OrtEnableProfiling","OrtDisableProfiling",
             "OrtEnableMemPattern","OrtDisableMemPattern","OrtEnableCpuMemArena","OrtDisableCpuMemArena",
             "OrtSetSessionLogId","OrtSetSessionLogVerbosityLevel","OrtSetSessionThreadPoolSize","OrtSetSessionGraphOptimizationLevel",
-            "OrtSetOptimizedModelFilePath", "OrtSessionOptionsAppendExecutionProvider_CPU", 
+            "OrtSetOptimizedModelFilePath", "OrtSessionOptionsAppendExecutionProvider_CPU",
             "OrtCreateRunOptions", "OrtReleaseRunOptions", "OrtRunOptionsSetRunLogVerbosityLevel", "OrtRunOptionsSetRunTag",
             "OrtRunOptionsGetRunLogVerbosityLevel", "OrtRunOptionsGetRunTag","OrtRunOptionsEnableTerminate", "OrtRunOptionsDisableTerminate",
             "OrtCreateAllocatorInfo","OrtCreateCpuAllocatorInfo",
