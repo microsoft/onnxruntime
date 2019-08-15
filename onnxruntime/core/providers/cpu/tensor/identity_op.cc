@@ -10,7 +10,8 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     7, 9,
     KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(), 
                                             DataTypeImpl::GetTensorType<float>(), 
-                                            DataTypeImpl::GetTensorType<double>()}),
+                                            DataTypeImpl::GetTensorType<double>()})
+                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     IdentityOp<true>);
 
 ONNX_CPU_OPERATOR_KERNEL(

@@ -778,23 +778,43 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
 
 def generate_documentation(source_dir, build_dir, configs):
     operator_doc_path = os.path.join(source_dir, 'docs', 'ContribOperators.md')
+    opkernel_doc_path = os.path.join(source_dir, 'docs', 'OperatorKernels.md')
     for config in configs:
         #copy the gen_doc.py
         shutil.copy(os.path.join(source_dir,'tools','python','gen_doc.py'),
                     os.path.join(build_dir,config, config))
+        shutil.copy(os.path.join(source_dir,'tools','python','gen_opkernel_doc.py'),
+                    os.path.join(build_dir,config, config))
+
         run_subprocess([
                         sys.executable,
                         'gen_doc.py',
                         '--output_path', operator_doc_path
                     ],
                     cwd = os.path.join(build_dir,config, config))
+
+        run_subprocess([
+                        sys.executable,
+                        'gen_opkernel_doc.py',
+                        '--output_path', opkernel_doc_path
+                    ],
+                    cwd = os.path.join(build_dir,config, config))
+
+    docdiff = ''
+    try:
+        docdiff = subprocess.check_output(['git', 'diff', opkernel_doc_path])
+    except subprocess.CalledProcessError:
+        print('git diff returned non-zero error code')
+    if len(docdiff) > 0:
+        # Show warning instead of throwing exception, because it is dependent on build configuration for including execution propviders 
+        log.warning('The updated opkernel document file '+str(opkernel_doc_path)+' is different from the checked in version. Consider regenrating the file with CPU, MKLDNN and CUDA providers enabled.')
+        log.debug('diff:\n'+str(docdiff))
+
     docdiff = ''
     try:
         docdiff = subprocess.check_output(['git', 'diff', operator_doc_path])
     except subprocess.CalledProcessError:
         print('git diff returned non-zero error code')
-
-
     if len(docdiff) > 0:
         raise BuildError('The updated operator document file '+str(operator_doc_path)+' must be checked in.\n diff:\n'+str(docdiff))
 
