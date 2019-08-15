@@ -448,7 +448,6 @@ void OpTester::Run(ExpectResult expect_result,
     std::unordered_map<std::string, OrtValue> feeds;
     std::vector<std::string> output_names;
     FillFeedsAndOutputNames(feeds, output_names);
-
     // Run the model
     SessionOptions so;
     so.session_logid = op_;

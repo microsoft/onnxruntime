@@ -8,7 +8,6 @@ import numpy as np
 import onnxruntime as onnxrt
 import threading
 
-
 class TestInferenceSession(unittest.TestCase):
 
     def get_name(self, name):
@@ -493,6 +492,12 @@ class TestInferenceSession(unittest.TestCase):
         mat = res[1]
         total = mat.sum()
         self.assertEqual(total, 0)
+
+    def testGraphOptimizationLevel(self):
+        sess = onnxrt.InferenceSession(self.get_name("logicaland.onnx"))
+        sess.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL
+        self.assertEqual(sess.graph_optimization_level,
+                         onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL)
 
 
 if __name__ == '__main__':
