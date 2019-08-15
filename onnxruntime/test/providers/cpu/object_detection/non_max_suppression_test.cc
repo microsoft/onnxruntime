@@ -73,7 +73,7 @@ TEST(NonMaxSuppressionOpTest, TwoClasses) {
   test.Run();
 }
 
-TEST(NonMaxSuppressionOpTest, TwoBatches_SingleClass) {
+TEST(NonMaxSuppressionOpTest, TwoBatches_OneClass) {
   OpTester test("NonMaxSuppression", 10, kOnnxDomain);
   test.AddInput<float>("boxes", {2, 6, 4},
                        {0.0f, 0.0f, 1.0f, 1.0f,
@@ -94,7 +94,6 @@ TEST(NonMaxSuppressionOpTest, TwoBatches_SingleClass) {
                         0.9f, 0.75f, 0.6f, 0.95f, 0.5f, 0.3f});
   test.AddInput<int64_t>("max_output_boxes_per_class", {}, {2L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
-
   test.AddInput<float>("score_threshold", {}, {0.0f});
   test.AddOutput<int64_t>("selected_indices", {4, 3},
                           {0L, 0L, 3L,
