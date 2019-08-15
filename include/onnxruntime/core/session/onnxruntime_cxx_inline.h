@@ -39,9 +39,9 @@ struct TypeToTensorType<uint32_t> { static constexpr ONNXTensorElementDataType t
 template <>
 struct TypeToTensorType<uint64_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64; };
 
-inline Allocator Allocator::GetDefault() {
+inline Allocator Allocator::GetWithDefaultOptions() {
   OrtAllocator* p;
-  ORT_THROW_ON_ERROR(OrtGetDefaultAllocator(&p));
+  ORT_THROW_ON_ERROR(OrtGetAllocatorWithDefaultOptions(&p));
   return Allocator(p);
 }
 

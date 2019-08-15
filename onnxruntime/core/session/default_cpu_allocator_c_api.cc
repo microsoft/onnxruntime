@@ -46,7 +46,7 @@ struct OrtDefaultAllocator : OrtAllocatorImpl {
     return OrtCreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
   }
 
-ORT_API_STATUS_IMPL(OrtGetDefaultAllocator, _Out_ OrtAllocator** out) {
+ORT_API_STATUS_IMPL(OrtGetAllocatorWithDefaultOptions, _Out_ OrtAllocator** out) {
   API_IMPL_BEGIN
   static OrtDefaultAllocator ort_default_allocator;
   *out = &ort_default_allocator;

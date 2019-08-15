@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+// Licensed bder the MIT License.
 
 // Summary: The Ort C++ API is a header only wrapper around the Ort C API.
 //
@@ -229,16 +229,22 @@ struct Value : Base<OrtValue> {
   TensorTypeAndShapeInfo GetTensorTypeAndShapeInfo() const;
 };
 
-struct Allocator : Base<OrtAllocator> {
-  static Allocator GetDefault();
+struct Allocator {
+  static Allocator GetWithDefaultOptions();
 
   explicit Allocator(nullptr_t) {}
-  explicit Allocator(OrtAllocator* p) : Base<OrtAllocator>{p} {}
+  explicit Allocator(OrtAllocator* p) : p_{p} {}
+
+  operator OrtAllocator*() { return p_; }
+  operator const OrtAllocator*() const { return p_; }
 
   void* Alloc(size_t size);
   void Free(void* p);
 
   const OrtAllocatorInfo* GetInfo() const;
+
+ private:
+  OrtAllocator* p_{};
 };
 
 struct AllocatorInfo : Base<OrtAllocatorInfo> {

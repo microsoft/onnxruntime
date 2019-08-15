@@ -134,7 +134,7 @@ namespace Microsoft.ML.OnnxRuntime
         internal static DisposableNamedOnnxValue CreateFromOnnxValue(string name, IntPtr nativeOnnxValue)
         {
             IntPtr allocator = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDefaultAllocator(out allocator));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetAllocatorWithDefaultOptions(out allocator));
             var ret = CreateFromOnnxValue(name, nativeOnnxValue, allocator);
             return (DisposableNamedOnnxValue)ret;
         }

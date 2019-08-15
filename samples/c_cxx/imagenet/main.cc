@@ -128,7 +128,7 @@ class Validator : public OutputCollector<TCharString> {
     CreateSession();
     VerifyInputOutputCount(session_);
     OrtAllocator* ort_alloc;
-    ORT_THROW_ON_ERROR(OrtGetDefaultAllocator(&ort_alloc));
+    ORT_THROW_ON_ERROR(OrtGetAllocatorWithDefaultOptions(&ort_alloc));
     {
       char* t;
       ORT_THROW_ON_ERROR(OrtSessionGetInputName(session_, 0, ort_alloc, &t));
