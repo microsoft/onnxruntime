@@ -9,13 +9,11 @@
 #include <wrl/client.h>
 #include <wrl/implements.h>
 
-namespace WRL
-{
-    template <typename... TInterfaces>
-    using Base = Microsoft::WRL::RuntimeClass<
-        Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
-        TInterfaces...
-        >;
+namespace WRL {
+template <typename... TInterfaces>
+using Base = Microsoft::WRL::RuntimeClass<
+    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+    TInterfaces...>;
 }
 
 using namespace Microsoft::WRL;

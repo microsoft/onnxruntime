@@ -181,10 +181,12 @@ if (MSVC)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
   endif()
-  check_cxx_compiler_flag(-Qspectre HAS_QSPECTRE)
-  if (HAS_QSPECTRE)
-    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /Qspectre")
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Qspectre")
+  if (NOT DEFINED onnxruntime_DISABLE_QSPECTRE_CHECK)
+    check_cxx_compiler_flag(-Qspectre HAS_QSPECTRE)
+    if (HAS_QSPECTRE)
+      SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /Qspectre")
+      SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Qspectre")
+    endif()
   endif()
   SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /DYNAMICBASE")
   check_cxx_compiler_flag(-guard:cf HAS_GUARD_CF)
@@ -732,3 +734,16 @@ if (onnxruntime_BUILD_CSHARP)
 #  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
   include(onnxruntime_csharp.cmake)
 endif()
+
+if (onnxruntime_USE_WINML)
+
+  if (NOT onnxruntime_USE_DML)
+    message(
+        FATAL_ERROR 
+        "Option onnxruntime_USE_WINML can only be used when onnxruntime_USE_DML is also enabled")
+  endif()
+
+  include(wil.cmake)
+  include(winml.cmake)
+
+endif() # if(onnxruntime_USE_WINML)

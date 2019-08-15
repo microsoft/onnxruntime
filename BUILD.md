@@ -86,6 +86,7 @@ For other system requirements and other dependencies, please see [this section](
 |**Build Shared Library**|--build_shared_lib||
 |**Build Python wheel**|--build_wheel||
 |**Build C# and C packages**|--build_csharp||
+|**Build WindowsML**|--use_winml --use_dml||
 
 
 # Additional Build Instructions

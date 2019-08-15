@@ -1,0 +1,38 @@
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+import "oaidl.idl";
+import "ocidl.idl";
+import "d3d12.idl";
+
+cpp_quote( "#include <winapifamily.h>" )
+
+#pragma region Desktop Family
+cpp_quote( "#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)" )
+
+cpp_quote( "struct IMLOperatorRegistry; " )
+cpp_quote( "struct __declspec(uuid(\"1adaa23a-eb67-41f3-aad8-5d984e9bacd4\")) __declspec(novtable) ILearningModelOperatorProviderNative : IUnknown  " )
+cpp_quote( "{                                                                                                                                       " )
+cpp_quote( "    STDMETHOD(GetRegistry)(IMLOperatorRegistry** ppOperatorRegistry) PURE;                                                              " )
+cpp_quote( "};                                                                                                                                      " )
+
+[uuid(52f547ef-5b03-49b5-82d6-565f1ee0dd49), object, local]
+interface ITensorNative : IUnknown
+{
+    HRESULT GetBuffer([out, size_is(, *capacity)] BYTE **value, [out] UINT32 *capacity);
+    HRESULT GetD3D12Resource([out] ID3D12Resource ** result);
+};
+
+[uuid(39d055a4-66f6-4ebc-95d9-7a29ebe7690a), object, local]
+interface  ITensorStaticsNative : IUnknown
+{
+    HRESULT CreateFromD3D12Resource(ID3D12Resource *value, [size_is(shapeCount)] __int64 *shape, int shapeCount, [out] IUnknown ** result);
+};
+
+[uuid(1e9b31a1-662e-4ae0-af67-f63bb337e634), object, local]
+interface ILearningModelDeviceFactoryNative : IUnknown
+{
+    HRESULT CreateFromD3D12CommandQueue(ID3D12CommandQueue * value, [out] IUnknown ** result);
+};
+
+cpp_quote("#endif /* WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP) */")
