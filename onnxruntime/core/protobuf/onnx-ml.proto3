@@ -514,6 +514,25 @@ message TypeProto {
     TensorShapeProto shape = 2;
   }
 
+  // This is an AutomML non-standard TimePoint type
+  // All fields are required
+  message TimePoint {
+    uint32  year = 1;
+    uint32  month = 2;         // 1-12 
+    uint32  day = 3;           // 1-31
+    uint32  hour = 4;          // 0-23
+    uint32  minute = 5;        // 0-59
+    uint32  second = 6;        // 0-59
+    uint32  dayOfWeek = 7;     // 0-6
+    uint32 dayOfYear = 8;      // 0-365
+    uint32  quarterOfYear = 9; // 1-4
+    uint32  weekOfMonth = 10;  // 0-4
+    // Temporary members to register as opaque type in our type-system
+    // We do not expect them to be missing
+    string domain = 11;
+    string name = 12;
+  }
+
 
   oneof value {
     // The type of a tensor.
@@ -534,6 +553,8 @@ message TypeProto {
     Opaque opaque_type = 7;
 
     SparseTensor sparse_tensor_type = 8;
+
+    TimePoint    timepoint_type = 100;
 
   }
 

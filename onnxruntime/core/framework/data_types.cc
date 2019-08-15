@@ -285,7 +285,7 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_SparseTensor& tensor_proto,
 void RegisterAllProtos(const std::function<void(MLDataType)>& /*reg_fn*/);
 
 class DataTypeRegistry {
-  std::unordered_map<DataType, MLDataType> mapping_;
+  std::unordered_map<std::string, MLDataType> mapping_;
 
   DataTypeRegistry() {
     RegisterAllProtos([this](MLDataType mltype) { RegisterDataType(mltype); });
@@ -295,6 +295,24 @@ class DataTypeRegistry {
   }
 
   ~DataTypeRegistry() = default;
+
+  std::string GetDataType(const ONNX_NAMESPACE::TypeProto& proto) const {
+    switch (proto.value_case()) {
+      case TypeProto::ValueCase::kTimepointType:
+      {
+        std::string dtype("op(");
+        dtype.append(proto.timepoint_type().domain())
+            .append(",")
+            .append(proto.timepoint_type().domain())
+            .append(")");
+        return dtype;
+      }
+        break;
+      default:
+        break;
+    }
+    return *Utils::DataTypeUtils::ToType(proto);
+  }
 
  public:
   DataTypeRegistry(const DataTypeRegistry&) = delete;
@@ -309,15 +327,15 @@ class DataTypeRegistry {
     using namespace ONNX_NAMESPACE;
     const auto* proto = mltype->GetTypeProto();
     ORT_ENFORCE(proto != nullptr, "Only ONNX MLDataType can be registered");
-    DataType type = Utils::DataTypeUtils::ToType(*proto);
-    auto p = mapping_.insert(std::make_pair(type, mltype));
-    ORT_ENFORCE(p.second, "We do not expect duplicate registration of types for: ", type);
+    std::string dtype = GetDataType(*proto);
+    auto p = mapping_.insert(std::make_pair(dtype, mltype));
+    ORT_ENFORCE(p.second, "We do not expect duplicate registration of types for: ", dtype);
   }
 
   MLDataType GetMLDataType(const ONNX_NAMESPACE::TypeProto& proto) const {
     using namespace ONNX_NAMESPACE;
-    DataType type = Utils::DataTypeUtils::ToType(proto);
-    auto p = mapping_.find(type);
+    std::string dtype = GetDataType(proto);
+    auto p = mapping_.find(dtype);
     if (p != mapping_.end()) {
       return p->second;
     }

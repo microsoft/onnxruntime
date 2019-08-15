@@ -18,10 +18,35 @@ namespace onnxruntime {
 // is globally unique
 
 extern const char kMsAutoMLDomain[] = "com.microsoft.automl";
-
 extern const char kTimepointName[] = "DateTimeFeaturizer_TimePoint";
-// This has to be under onnxruntime to properly specialize a function template
-ORT_REGISTER_OPAQUE_TYPE(dtf::TimePoint, kMsAutoMLDomain, kTimepointName);
+
+// We temporarily create a binding here until we standardize it.
+class AutoMLTimePoint : public NonTensorType<dtf::TimePoint> {
+ public:
+  static MLDataType Type() {
+    static AutoMLTimePoint inst;
+    return &inst;
+  }
+
+  bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const override {
+    const auto& rhs = type_proto;
+    return rhs.value_case() == ONNX_NAMESPACE::TypeProto::ValueCase::kTimepointType &&
+           rhs.timepoint_type().has_domain() && rhs.timepoint_type().domain() == kMsAutoMLDomain &&
+           rhs.timepoint_type().has_name() && rhs.timepoint_type().name() == kTimepointName;
+  }
+
+ private:
+   AutoMLTimePoint() {
+    auto* mutable_tp = this->mutable_type_proto().mutable_timepoint_type();
+    mutable_tp->mutable_domain()->assign(kMsAutoMLDomain);
+    mutable_tp->mutable_name()->assign(kTimepointName);
+  }
+};
+
+template<>
+MLDataType DataTypeImpl::GetType<dtf::TimePoint>() {
+  return AutoMLTimePoint::Type();
+}
 
 namespace automl {
 
