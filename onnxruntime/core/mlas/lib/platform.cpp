@@ -244,7 +244,7 @@ MlasGetPreferredBufferAlignment(
 Routine Description:
 
     This routine returns the preferred byte alignment for buffers that are used
-    with this library. Buffers that are not bytes aligned to this value will
+    with this library. Buffers that are not byte aligned to this value will
     function, but will not achieve best performance.
 
 Arguments:

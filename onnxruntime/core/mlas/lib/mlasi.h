@@ -203,7 +203,7 @@ void
     size_t ldb,
     size_t CountN,
     size_t CountK,
-    int32_t* RowSumVector,
+    int32_t* ColumnSumVector,
     uint16_t offa
     );
 
