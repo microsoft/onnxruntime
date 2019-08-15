@@ -95,7 +95,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     case TransformerLevel::Level1: {
       std::unordered_set<std::string> l1_execution_providers = {};
 
-      // TODO hack - we'll run it manually prior to the mixed precision transformation
+      // TODO hack - constant folding currently doesn't work after mixed precision transformation so it's disabled for now
+      //             ORT uses CPU kernels to evaluate constant values but some of them don't support fp16
       //transformers.emplace_back(std::make_unique<ConstantFolding>(l1_execution_providers));
 
       std::unordered_set<std::string> l1_cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};

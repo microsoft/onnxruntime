@@ -6,13 +6,11 @@
 #include "core/graph/training/training_optimizer.h"
 #include "core/training/gradient_graph_builder.h"
 #include "core/training/training_session.h"
-#include "core/optimizer/constant_folding.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/graph/training/mixed_precision_transformer.h"
 
 //Gist Encoding
-#include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/gist_encode_decode.h"
 
 #ifdef USE_CUDA
@@ -291,13 +289,6 @@ common::Status TrainingSession::UpdateTrainableWeightsInfoInGraph() {
   std::vector<const NodeArg*> new_graph_inputs(graph_inputs);
   new_graph_inputs.insert(new_graph_inputs.end(), inputs_to_add.begin(), inputs_to_add.end());
   graph.SetInputs(new_graph_inputs);
-  return Status::OK();
-}
-
-common::Status TrainingSession::RunConstantFolding() {
-  ConstantFolding constant_folder{};
-  bool modified;
-  ORT_RETURN_IF_ERROR(constant_folder.Apply(model_->MainGraph(), modified));
   return Status::OK();
 }
 

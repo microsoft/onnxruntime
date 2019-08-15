@@ -101,9 +101,6 @@ class TrainingSession : public InferenceSession {
 
   std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights) const;
 
-  // TODO hack - allows us to manually run constant folding before mixed precision transformation
-  common::Status RunConstantFolding();
-
   static bool IsImmutableWeight(const ImmutableWeights& immutable_weights,
                                 const Node* node,
                                 const TensorProto* weight_tensor,
