@@ -18,9 +18,9 @@ ONNX_CPU_OPERATOR_KERNEL(
     MaxUnpool,
     9,
     KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("Y", DataTypeImpl::GetTensorType<float>()),
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),
+        // .TypeConstraint("Y", DataTypeImpl::GetTensorType<float>()),
     MaxUnpool);
 
 Status MaxUnpool::Compute(OpKernelContext* context) const {
