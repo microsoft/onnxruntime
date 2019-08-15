@@ -8,6 +8,8 @@
 #include <numpy/arrayobject.h>
 
 #include "core/graph/graph_viewer.h"
+#include "core/common/logging/logging.h"
+#include "core/common/logging/severity.h"
 
 #if USE_CUDA
 #define BACKEND_PROC "GPU"
@@ -379,7 +381,14 @@ void addOpSchemaSubmodule(py::module& m) {
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
 void addObjectMethods(py::module& m) {
-  py::class_<SessionOptions>(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc")
+  py::enum_<GraphOptimizationLevel>(m, "GraphOptimizationLevel")
+      .value("ORT_DISABLE_ALL", GraphOptimizationLevel::ORT_DISABLE_ALL)
+      .value("ORT_ENABLE_BASIC", GraphOptimizationLevel::ORT_ENABLE_BASIC)
+      .value("ORT_ENABLE_EXTENDED", GraphOptimizationLevel::ORT_ENABLE_EXTENDED)
+      .value("ORT_ENABLE_ALL", GraphOptimizationLevel::ORT_ENABLE_ALL);
+
+  py::class_<SessionOptions> sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
+  sess
       .def(py::init())
       .def_readwrite("enable_cpu_mem_arena", &SessionOptions::enable_cpu_mem_arena,
                      R"pbdoc(Enables the memory arena on CPU. Arena may pre-allocate memory for future usage.
@@ -407,17 +416,48 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
 This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
       .def_property_readonly(
           "graph_optimization_level",
-          [](const SessionOptions* options) -> uint32_t {
-            return static_cast<uint32_t>(options->graph_optimization_level);
+          [](const SessionOptions* options) -> GraphOptimizationLevel {
+            GraphOptimizationLevel retval = ORT_ENABLE_BASIC;
+            switch (options->graph_optimization_level) {
+              case onnxruntime::TransformerLevel::Default:
+                retval = ORT_DISABLE_ALL;
+                break;
+              case onnxruntime::TransformerLevel::Level1:
+                retval = ORT_ENABLE_BASIC;
+                break;
+              case onnxruntime::TransformerLevel::Level2:
+                retval = ORT_ENABLE_EXTENDED;
+                break;
+              case onnxruntime::TransformerLevel::Level3:
+                retval = ORT_ENABLE_ALL;
+                break;
+              default:
+                retval = ORT_ENABLE_BASIC;
+                LOGS_DEFAULT(WARNING) << "Got invalid graph optimization level; defaulting to ORT_ENABLE_BASIC";
+                break;
+            }
+            return retval;
           },
           R"pbdoc(Graph optimization level for this session.)pbdoc")
       .def(
           "set_graph_optimization_level",
-          [](SessionOptions* options, uint32_t level) -> void {
-            options->graph_optimization_level = static_cast<TransformerLevel>(level);
+          [](SessionOptions* options, GraphOptimizationLevel level) -> void {
+            switch (level) {
+              case ORT_DISABLE_ALL:
+                options->graph_optimization_level = onnxruntime::TransformerLevel::Default;
+                break;
+              case ORT_ENABLE_BASIC:
+                options->graph_optimization_level = onnxruntime::TransformerLevel::Level1;
+                break;
+              case ORT_ENABLE_EXTENDED:
+                options->graph_optimization_level = onnxruntime::TransformerLevel::Level2;
+                break;
+              case ORT_ENABLE_ALL:
+                options->graph_optimization_level = onnxruntime::TransformerLevel::Level3;
+                break;
+            }
           },
-          R"pbdoc(Graph optimization level for this session. 0 disables all optimizations.
-Whereas 1 enables basic optimizations and 2 enables all optimizations.)pbdoc");
+          R"pbdoc(Graph optimization level for this session.)pbdoc");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
@@ -450,57 +490,55 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             return *(na.Type());
           },
           "node type")
-      .def(
-          "__str__", [](const onnxruntime::NodeArg& na) -> std::string {
-            std::ostringstream res;
-            res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
-            auto shape = na.Shape();
-            std::vector<py::object> arr;
-            if (shape == nullptr || shape->dim_size() == 0) {
-              res << "[]";
+      .def("__str__", [](const onnxruntime::NodeArg& na) -> std::string {
+        std::ostringstream res;
+        res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
+        auto shape = na.Shape();
+        std::vector<py::object> arr;
+        if (shape == nullptr || shape->dim_size() == 0) {
+          res << "[]";
+        } else {
+          res << "[";
+          for (int i = 0; i < shape->dim_size(); ++i) {
+            if (shape->dim(i).has_dim_value()) {
+              res << shape->dim(i).dim_value();
+            } else if (shape->dim(i).has_dim_param()) {
+              res << "'" << shape->dim(i).dim_param() << "'";
             } else {
-              res << "[";
-              for (int i = 0; i < shape->dim_size(); ++i) {
-                if (shape->dim(i).has_dim_value()) {
-                  res << shape->dim(i).dim_value();
-                } else if (shape->dim(i).has_dim_param()) {
-                  res << "'" << shape->dim(i).dim_param() << "'";
-                } else {
-                  res << "None";
-                }
-
-                if (i < shape->dim_size() - 1) {
-                  res << ", ";
-                }
-              }
-              res << "]";
-            }
-            res << ")";
-
-            return std::string(res.str());
-          },
-          "converts the node into a readable string")
-      .def_property_readonly(
-          "shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
-            auto shape = na.Shape();
-            std::vector<py::object> arr;
-            if (shape == nullptr || shape->dim_size() == 0) {
-              return arr;
+              res << "None";
             }
 
-            arr.resize(shape->dim_size());
-            for (int i = 0; i < shape->dim_size(); ++i) {
-              if (shape->dim(i).has_dim_value()) {
-                arr[i] = py::cast(shape->dim(i).dim_value());
-              } else if (shape->dim(i).has_dim_param()) {
-                arr[i] = py::cast(shape->dim(i).dim_param());
-              } else {
-                arr[i] = py::none();
-              }
+            if (i < shape->dim_size() - 1) {
+              res << ", ";
             }
-            return arr;
-          },
-          "node shape (assuming the node holds a tensor)");
+          }
+          res << "]";
+        }
+        res << ")";
+
+        return std::string(res.str());
+      },
+           "converts the node into a readable string")
+      .def_property_readonly("shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
+        auto shape = na.Shape();
+        std::vector<py::object> arr;
+        if (shape == nullptr || shape->dim_size() == 0) {
+          return arr;
+        }
+
+        arr.resize(shape->dim_size());
+        for (int i = 0; i < shape->dim_size(); ++i) {
+          if (shape->dim(i).has_dim_value()) {
+            arr[i] = py::cast(shape->dim(i).dim_value());
+          } else if (shape->dim(i).has_dim_param()) {
+            arr[i] = py::cast(shape->dim(i).dim_param());
+          } else {
+            arr[i] = py::none();
+          }
+        }
+        return arr;
+      },
+                             "node shape (assuming the node holds a tensor)");
 
   py::class_<SessionObjectInitializer>(m, "SessionObjectInitializer");
   py::class_<InferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
@@ -515,16 +553,15 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             InitializeSession(sess);
           },
           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
-      .def(
-          "read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel) {
-            std::istringstream buffer(serializedModel);
-            auto status = sess->Load(buffer);
-            if (!status.IsOK()) {
-              throw std::runtime_error(status.ToString().c_str());
-            }
-            InitializeSession(sess);
-          },
-          R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
+      .def("read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel) {
+        std::istringstream buffer(serializedModel);
+        auto status = sess->Load(buffer);
+        if (!status.IsOK()) {
+          throw std::runtime_error(status.ToString().c_str());
+        }
+        InitializeSession(sess);
+      },
+           R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
       .def("run", [](InferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr) -> std::vector<py::object> {
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {
