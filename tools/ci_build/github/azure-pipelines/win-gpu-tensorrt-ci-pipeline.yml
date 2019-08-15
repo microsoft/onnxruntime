@@ -4,6 +4,7 @@ jobs:
   pool: Win-GPU-CUDA10
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     CUDA_VERSION: '10.0'
     # There are some tests in 20190130.zip that TensorRT can't run. Instead here use 20181210 opset8 for TensorRT test.
     TestDataUrl: https://onnxruntimetestdata.blob.core.windows.net/models/20181210.zip
@@ -55,7 +56,7 @@ jobs:
         platform: 'Any CPU'
         configuration: 'Debug'
         msbuildArchitecture: 'x64'
-        msbuildArguments: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
+        msbuildArguments: '/m' 
         workingFolder: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
@@ -64,7 +65,7 @@ jobs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         platform: 'Any CPU'
         configuration: 'Debug'
-        msbuildArchitecture: 'x86'
+        msbuildArchitecture: 'x64'
         msbuildArguments: '/t:RunTest'
         workingFolder: '$(Build.SourcesDirectory)\csharp'
     
@@ -93,7 +94,7 @@ jobs:
         platform: 'Any CPU'
         configuration: 'Release'
         msbuildArchitecture: 'x64'
-        msbuildArgs: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
+        msbuildArgs: '/m'
         workingFolder: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
