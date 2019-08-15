@@ -54,8 +54,7 @@ Status TrainingRunner::Initialize() {
   // Add loss func
   ORT_RETURN_IF_ERROR(session_.BuildLossFunction(params_.loss_func_info_));
   if (params_.world_rank_ == 0 && !params_.model_with_loss_func_path_.empty()) {
-    ORT_RETURN_IF_ERROR(session_.Save(params_.model_with_loss_func_path_,
-                                      TrainingSession::SaveOption::NO_RELOAD));
+    session_.Save(params_.model_with_loss_func_path_, TrainingSession::SaveOption::NO_RELOAD);
   }
 
   // Get the weights-to-train list if user specify it.
@@ -86,18 +85,13 @@ Status TrainingRunner::Initialize() {
   ORT_RETURN_IF_ERROR(session_.OverrideGraphOutputs(params_.fetch_names));
 
   if (params_.world_rank_ == 0 && !params_.model_with_training_graph_path_.empty()) {
-    Status s = session_.Save(params_.model_with_training_graph_path_, TrainingSession::SaveOption::NO_RELOAD);
-    // TODO(bahuang): Currently AdamOptimizer's Moment_1 and Moment_2 are stored as graph initializers
-    // They can be removed from initializers list
-    if (!s.IsOK()) {
-      std::cout << "Error when saving model " << params_.model_with_training_graph_path_ << " :" << s.ErrorMessage() << std::endl;
-    }
+    session_.Save(params_.model_with_training_graph_path_, TrainingSession::SaveOption::NO_RELOAD);
   }
 
   if (params_.use_gist_) {
     ORT_RETURN_IF_ERROR(session_.AddGistEncoding());
     if (!params_.model_gist_encode_.empty()) {
-      ORT_RETURN_IF_ERROR(session_.Save(params_.model_gist_encode_, TrainingSession::SaveOption::NO_RELOAD));
+      session_.Save(params_.model_gist_encode_, TrainingSession::SaveOption::NO_RELOAD);
     }
   }
 
@@ -124,7 +118,7 @@ Status TrainingRunner::Initialize() {
 
 Status TrainingRunner::Run() {
   if (params_.world_rank_ == 0 && !params_.model_actual_running_graph_path_.empty()) {
-    ORT_RETURN_IF_ERROR(session_.Save(params_.model_actual_running_graph_path_, TrainingSession::SaveOption::NO_RELOAD));
+    session_.Save(params_.model_actual_running_graph_path_, TrainingSession::SaveOption::NO_RELOAD);
   }
 
   ORT_RETURN_IF_ERROR(TrainingLoop());
@@ -224,12 +218,11 @@ Status TrainingRunner::EndTraining() {
 
   printf("\nSaving the trained model.\n");
   if (!params_.model_trained_path_.empty()) {
-    ORT_RETURN_IF_ERROR(session_.Save(params_.model_trained_path_,
-                                      TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS));
+    session_.Save(params_.model_trained_path_, TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS);
   }
   if (!params_.model_trained_with_loss_func_path_.empty()) {
-    ORT_RETURN_IF_ERROR(session_.Save(params_.model_trained_with_loss_func_path_,
-                                      TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC));
+    session_.Save(params_.model_trained_with_loss_func_path_,
+                  TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC);
   }
 
   // Load and test the trained model.

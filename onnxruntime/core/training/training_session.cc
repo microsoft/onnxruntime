@@ -186,7 +186,13 @@ Status TrainingSession::Save(const string& model_uri, TrainingSession::SaveOptio
                                                    opt_info_));
   }
 
-  return Model::Save(*new_model, model_uri);
+  auto status = Model::Save(*new_model, model_uri);
+
+  if (!status.IsOK()) {
+    LOGS(*session_logger_, WARNING) << "Error when saving model " << model_uri << " : " << status.ErrorMessage();
+  }
+
+  return status;
 }
 
 std::unordered_set<std::string> TrainingSession::GetModelInputNames() const {
