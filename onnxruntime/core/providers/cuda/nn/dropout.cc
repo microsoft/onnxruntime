@@ -93,10 +93,8 @@ Status TrainableDropout<T>::ComputeInternal(OpKernelContext* context) const {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->Size(), cudaMemcpyDeviceToDevice));
     }
   } else {
-    auto status = s_.Set(CudnnHandle(), shape, CudnnTensor::GetDataType<CudaT>(), ratio_data);
-    if(status != Status::OK()){
-      return status;
-    }
+    ORT_RETURN_IF_ERROR(s_.Set(CudnnHandle(), shape, CudnnTensor::GetDataType<CudaT>(), ratio_data));
+
     //Start computing
     //TODO: Should it be mutex guarded? Pytorch doesn't, is it correct?
     CUDNN_RETURN_IF_ERROR(cudnnDropoutForward(
@@ -138,7 +136,7 @@ Status TrainableDropoutGrad<T>::ComputeInternal(OpKernelContext* context) const 
   const TensorShape& shape = dY->Shape();
   auto dY_data = reinterpret_cast<const CudaT*>(dY->template Data<T>());
 
-  auto mask = context->MutableInput<Tensor>(1);
+  auto mask = context->Input<Tensor>(1);
 
   auto dX = context->Output(0, shape);
   auto dX_data = reinterpret_cast<CudaT*>(dX->template MutableData<T>());
@@ -157,13 +155,10 @@ Status TrainableDropoutGrad<T>::ComputeInternal(OpKernelContext* context) const 
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dX_data, dY_data, dX->Size(), cudaMemcpyDeviceToDevice));
     }
   } else {
-    auto status = s_.Set(CudnnHandle(), shape, CudnnTensor::GetDataType<CudaT>(), ratio_data);
-    if(status != Status::OK()){
-      return status;
-    }
+    ORT_RETURN_IF_ERROR(s_.Set(CudnnHandle(), shape, CudnnTensor::GetDataType<CudaT>(), ratio_data));
 
     //Start computing
-    auto mask_data = reinterpret_cast<CudaT*>(mask->template MutableData<bool>());
+    auto mask_data = reinterpret_cast<CudaT*>(const_cast<bool*>(mask->template Data<bool>()));
 
     //TODO: Should it be mutex guarded? Pytorch doesn't, is it correct?
     CUDNN_RETURN_IF_ERROR(cudnnDropoutBackward(

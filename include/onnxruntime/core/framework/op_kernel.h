@@ -87,12 +87,6 @@ class OpKernelContext {
     }
   }
 
-  template <typename T>
-  T* MutableInput(int index) {
-    MLValue* p_ml_value = GetMutableInputMLValue(index);
-    return p_ml_value ? p_ml_value->GetMutable<T>() : nullptr;
-  }
-
   // Fetch output (non-tensor) with specified index.
   template <typename T>
   T* Output(int index) {

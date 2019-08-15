@@ -20,7 +20,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor& ETA = *ctx->Input<Tensor>(0);
-  const Tensor& W = *ctx->MutableInput<Tensor>(1);
+  const Tensor& W = *ctx->Input<Tensor>(1);
   const Tensor& G = *ctx->Input<Tensor>(2);
   Tensor& NW = *ctx->Output(0, W.Shape());
 
