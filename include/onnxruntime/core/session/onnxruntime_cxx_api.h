@@ -43,6 +43,7 @@ struct Exception : std::exception {
 #define ORT_DEFINE_RELEASE(NAME) \
   inline void OrtRelease(Ort##NAME* ptr) { OrtRelease##NAME(ptr); }
 
+ORT_DEFINE_RELEASE(Allocator);
 ORT_DEFINE_RELEASE(AllocatorInfo);
 ORT_DEFINE_RELEASE(CustomOpDomain);
 ORT_DEFINE_RELEASE(Env);
@@ -229,11 +230,11 @@ struct Value : Base<OrtValue> {
   TensorTypeAndShapeInfo GetTensorTypeAndShapeInfo() const;
 };
 
-struct Allocator : Base<OrtAllocator> {
+struct Allocator : Unowned<Base<OrtAllocator>> {
   static Allocator GetDefault();
 
   explicit Allocator(nullptr_t) {}
-  explicit Allocator(OrtAllocator* p) : Base<OrtAllocator>{p} {}
+  explicit Allocator(OrtAllocator* p) : Unowned<Base<OrtAllocator>>{p} {}
 
   void* Alloc(size_t size);
   void Free(void* p);

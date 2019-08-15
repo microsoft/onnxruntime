@@ -441,6 +441,8 @@ ORT_API_STATUS(OrtAllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size, _Outpt
 ORT_API_STATUS(OrtAllocatorFree, _Inout_ OrtAllocator* ptr, void* p);
 ORT_API_STATUS(OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr, _Out_ const OrtAllocatorInfo** out);
 
+// The returned pointer doesn't have to be freed.
+// Always returns the same instance on every invocation.
 ORT_API_STATUS(OrtGetDefaultAllocator, _Outptr_ OrtAllocator** out);
 
 ORT_API(const char*, OrtGetVersionString);
