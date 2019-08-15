@@ -16,7 +16,6 @@ Abstract:
 --*/
 
 #pragma once
-// clang-format off
 
 #include <mlas.h>
 #include <memory.h>
@@ -165,6 +164,52 @@ void
 typedef MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE;
 
 typedef
+size_t
+(MLASCALL MLAS_GEMM_U8U8_KERNEL)(
+    const int16_t* A,
+    const uint8_t* B,
+    int32_t* C,
+    size_t CountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    const int32_t* RowSumVector,
+    const int32_t* ColumnSumVector,
+    int32_t DepthValue,
+    bool ZeroMode
+    );
+
+typedef MLAS_GEMM_U8U8_KERNEL* PMLAS_GEMM_U8U8_KERNEL;
+
+typedef
+void
+(MLASCALL MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE)(
+    int16_t* D,
+    const uint8_t* A,
+    size_t lda,
+    size_t CountM,
+    size_t CountK,
+    int32_t* RowSumVector,
+    uint16_t offb
+    );
+
+typedef MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE* PMLAS_GEMM_U8U8_COPY_PACKA_ROUTINE;
+
+typedef
+void
+(MLASCALL MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE)(
+    uint8_t* D,
+    const uint8_t* B,
+    size_t ldb,
+    size_t CountN,
+    size_t CountK,
+    int32_t* RowSumVector,
+    uint16_t offa
+    );
+
+typedef MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE* PMLAS_GEMM_U8U8_COPY_PACKB_ROUTINE;
+
+typedef
 void
 (MLASCALL MLAS_CONV_FLOAT_KERNEL)(
     const float* Input,
@@ -292,6 +337,14 @@ extern "C" {
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
+    MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx2;
+    MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512BW;
+    MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512Vnni;
+    MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE MlasGemmU8U8CopyPackAAvx2;
+    MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE MlasGemmU8U8CopyPackBAvx2;
+#endif
+
+#if defined(MLAS_TARGET_AMD64)
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelSse;
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelSse;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelSse;
@@ -412,6 +465,9 @@ struct MLAS_PLATFORM {
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1Routine;
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1TransposeBRoutine;
     PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE TransposePackB16x4Routine;
+    PMLAS_GEMM_U8U8_KERNEL GemmU8U8Kernel;
+    PMLAS_GEMM_U8U8_COPY_PACKA_ROUTINE GemmU8U8CopyPackARoutine;
+    PMLAS_GEMM_U8U8_COPY_PACKB_ROUTINE GemmU8U8CopyPackBRoutine;
     PMLAS_CONV_FLOAT_KERNEL ConvNchwFloatKernel;
     PMLAS_CONV_FLOAT_KERNEL ConvNchwcFloatKernel;
     PMLAS_CONV_DEPTHWISE_FLOAT_KERNEL ConvDepthwiseFloatKernel;

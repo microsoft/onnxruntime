@@ -157,6 +157,10 @@ Return Value:
 
             if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
 
+                this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx2;
+                this->GemmU8U8CopyPackARoutine = MlasGemmU8U8CopyPackAAvx2;
+                this->GemmU8U8CopyPackBRoutine = MlasGemmU8U8CopyPackBAvx2;
+
                 if (((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
 
                     this->KernelZeroRoutine = MlasSgemmKernelZeroAvx512F;
@@ -170,6 +174,23 @@ Return Value:
                     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx512F;
                     this->NchwcBlockSize = 16;
                     this->PreferredBufferAlignment = 64;
+
+                    //
+                    // Check if the processor supports AVX512BW.
+                    //
+
+                    if ((Cpuid7[1] & 0x40000000) != 0) {
+
+                        this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512BW;
+
+                        //
+                        // Check if the processor supports AVX512VNNI.
+                        //
+
+                        if ((Cpuid7[2] & 0x800) != 0) {
+                            this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Vnni;
+                        }
+                    }
 
                 } else {
 
