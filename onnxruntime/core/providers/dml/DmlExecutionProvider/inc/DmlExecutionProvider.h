@@ -1,0 +1,58 @@
+#pragma once
+interface IMLOperatorRegistry;
+
+#include "core/common/status.h"
+#include "core/framework/data_transfer.h"
+#include "IWinmlExecutionProvider.h"
+
+namespace onnxruntime
+{
+    class IExecutionProvider;
+    class IAllocator;
+    class CustomRegistry;
+	class InferenceSession;
+    class KernelRegistry;
+}
+
+enum class AllocatorRoundingMode
+{
+    Disabled = 0,
+    Enabled = 1,
+};
+
+namespace Dml
+{
+    const char* const c_executionProviderName = "DmlExecutionProvider";
+
+    void CreateExecutionProviderObjects(
+        IDMLDevice* dmlDevice,
+        ID3D12CommandQueue* commandQueue,
+        std::shared_ptr<winrt::Windows::AI::MachineLearning::implementation::GraphNodeFactoryMap>& graphNodeFactoryMap,
+        std::unique_ptr<onnxruntime::IExecutionProvider>& provider,
+        std::unique_ptr<onnxruntime::IDataTransfer>& dataTransfer,
+        bool enableMetacommands = true
+    );
+
+    ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr);
+    void FlushContext(onnxruntime::IExecutionProvider* provider);    
+    void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode);
+    void ReleaseCompletedReferences(onnxruntime::IExecutionProvider* provider);
+    void TrimUploadHeap(onnxruntime::IExecutionProvider * provider);
+    
+    onnxruntime::common::Status CopyTensor(
+        onnxruntime::IExecutionProvider* provider, 
+        const onnxruntime::Tensor& src, onnxruntime::Tensor& dst
+    );
+
+    void* CreateGPUAllocationFromD3DResource(ID3D12Resource* pResource);
+    void FreeGPUAllocation(void* ptr);
+
+    void RegisterDmlOperators(IMLOperatorRegistry* registry);
+    void RegisterDmlOperatorSchema(onnxruntime::CustomRegistry* registry);
+
+    onnxruntime::common::Status RegisterDmlGraphTransformer(
+        onnxruntime::InferenceSession* session, 
+        std::shared_ptr<onnxruntime::KernelRegistry> dmlRegistry
+    );
+
+} // namespace Dml

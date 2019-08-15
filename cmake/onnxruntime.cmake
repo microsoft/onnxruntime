@@ -67,6 +67,7 @@ target_link_libraries(onnxruntime PRIVATE
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_OPENVINO}
+    ${PROVIDERS_DML}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
