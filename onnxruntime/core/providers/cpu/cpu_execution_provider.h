@@ -7,6 +7,10 @@
 #include "core/framework/execution_provider.h"
 #include "core/graph/constants.h"
 
+#ifdef USE_MIMALLOC
+#include <mimalloc.h>
+#endif
+
 namespace onnxruntime {
 
 // Information needed to construct CPU execution providers.
@@ -37,6 +41,10 @@ class CPUExecutionProvider : public IExecutionProvider {
         std::shared_ptr<IArenaAllocator>(
             std::make_unique<DummyArena>(device_info.factory(0))));
 #else
+  #ifdef USE_MIMALLOC
+    mi_stats_reset();
+    mi_version();
+  #endif
     if (info.create_arena)
       InsertAllocator(CreateAllocator(device_info));
     else
