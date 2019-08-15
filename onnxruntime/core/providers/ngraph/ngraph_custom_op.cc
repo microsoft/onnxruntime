@@ -80,7 +80,29 @@ void NGRAPHCustomOp::Initialize(const OrtCustomOpApi* api, OrtKernelContext* con
     uniq_input_shape.append(reinterpret_cast<const char*>(tensor_shape.data()), ndim * sizeof(int64_t));
   }
 
-  auto it = ng_exe_map_.insert({uniq_input_shape, nullptr});  //TODO: Limit the size of map with configurable size.
+  //auto it = ng_exe_map_.insert({uniq_input_shape, nullptr});  //TODO: Limit the size of map with configurable size.
+  // not present in cache 
+  if (ng_exe_map_.find(uniq_input_shape) == ng_exe_map_.end()) { 
+    // cache is full 
+    if (keyCache.size() == cacheSize) { 
+      // delete least recently used element 
+      std::string last = keyCache.back(); 
+  
+      // Pops the last elmeent 
+      keyCache.pop_back(); 
+  
+      // Erase the last 
+      ng_exe_map_.erase(ng_exe_map_.find(last)); 
+    } 
+  } 
+  
+  // present in cache 
+  else
+    keyCache.remove(uniq_input_shape); 
+  
+  // update reference 
+  keyCache.push_front(uniq_input_shape); 
+  auto it = ng_exe_map_.insert({uniq_input_shape, nullptr});
 
   //ng_exe with current shape already exists
   if (!it.second) {
