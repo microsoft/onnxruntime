@@ -98,7 +98,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_mem_pattern = true;
   bool enable_openvino = false;
   bool enable_nnapi = false;
-  uint32_t graph_optimization_level{};
+  GraphOptimizationLevel graph_optimization_level = ORT_DISABLE_ALL;
   bool user_graph_optimization_level_set = false;
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
@@ -166,15 +166,29 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         case 'x':
           enable_sequential_execution = false;
           break;
-        case 'o':
-          graph_optimization_level = static_cast<uint32_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-          if (graph_optimization_level >= static_cast<uint32_t>(TransformerLevel::MaxTransformerLevel)) {
-            fprintf(stderr, "See usage for valid values of graph optimization level\n");
-            usage();
-            return -1;
+        case 'o': {
+          int tmp = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
+          switch (tmp) {
+            case ORT_DISABLE_ALL:
+              graph_optimization_level = ORT_DISABLE_ALL;
+              break;
+            case ORT_ENABLE_BASIC:
+              graph_optimization_level = ORT_ENABLE_BASIC;
+              break;
+            case ORT_ENABLE_EXTENDED:
+              graph_optimization_level = ORT_ENABLE_EXTENDED;
+              break;
+            case ORT_ENABLE_ALL:
+              graph_optimization_level = ORT_ENABLE_ALL;
+              break;
+            default:
+              fprintf(stderr, "See usage for valid values of graph optimization level\n");
+              usage();
+              return -1;
           }
           user_graph_optimization_level_set = true;
           break;
+        }
         case '?':
         case 'h':
         default:
