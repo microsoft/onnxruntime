@@ -97,7 +97,6 @@ int main(int argc, char* argv[]) {
 
     OrtReleaseTypeInfo(typeinfo);
   }
-  OrtReleaseAllocator(allocator);
 
   // Results should be...
   // Number of inputs = 1

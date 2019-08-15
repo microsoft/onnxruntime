@@ -139,7 +139,6 @@ class Validator : public OutputCollector<TCharString> {
       OrtAllocatorFree(ort_alloc, t);
     }
 
-    OrtReleaseAllocator(ort_alloc);
     OrtTypeInfo* info;
     ORT_THROW_ON_ERROR(OrtSessionGetInputTypeInfo(session_, 0, &info));
     const OrtTensorTypeAndShapeInfo* tensor_info;

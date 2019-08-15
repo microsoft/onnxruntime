@@ -48,12 +48,8 @@ struct OrtDefaultAllocator : OrtAllocatorImpl {
 
 ORT_API_STATUS_IMPL(OrtGetDefaultAllocator, _Out_ OrtAllocator** out) {
   API_IMPL_BEGIN
-  static OrtDefaultAllocator* ort_default_allocator = new OrtDefaultAllocator();
-  *out = ort_default_allocator;
+  static OrtDefaultAllocator ort_default_allocator;
+  *out = &ort_default_allocator;
   return nullptr;
   API_IMPL_END
-}
-
-ORT_API(void, OrtReleaseAllocator, _In_ OrtAllocator* allocator) {
-  delete static_cast<OrtAllocatorImpl*>(allocator);
 }

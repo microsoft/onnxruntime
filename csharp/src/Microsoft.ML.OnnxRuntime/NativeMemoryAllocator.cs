@@ -89,10 +89,6 @@ namespace Microsoft.ML.OnnxRuntime
             }
             catch (Exception e)
             {
-                if (allocator != IntPtr.Zero)
-                {
-                    Delete(allocator);
-                }
                 throw e;
             }
 
@@ -138,14 +134,8 @@ namespace Microsoft.ML.OnnxRuntime
             this.handle = allocator;
         }
 
-        protected static void Delete(IntPtr allocator)
-        {
-            NativeMethods.OrtReleaseAllocator(allocator);
-        }
-
         protected override bool ReleaseHandle()
         {
-            Delete(this.handle);
             return true;
         }
     }

@@ -260,9 +260,6 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern void OrtReleaseAllocatorInfo(IntPtr /*(OrtAllocatorInfo*)*/ allocatorInfo);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void OrtReleaseAllocator(IntPtr /*(OrtAllocator*)*/ allocator);
-
-        [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/OrtGetDefaultAllocator(out IntPtr /*(OrtAllocator**)*/ allocator);
 
         /// <summary>
