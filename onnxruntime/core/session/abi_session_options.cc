@@ -106,14 +106,29 @@ ORT_API_STATUS_IMPL(OrtSetSessionLogSeverityLevel, _In_ OrtSessionOptions* optio
 }
 
 // Set Graph optimization level.
-// Available options are : 0, 1, 2.
-ORT_API_STATUS_IMPL(OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options, int graph_optimization_level) {
+ORT_API_STATUS_IMPL(OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options,
+                    GraphOptimizationLevel graph_optimization_level) {
   if (graph_optimization_level < 0) {
     return OrtCreateStatus(ORT_INVALID_ARGUMENT, "graph_optimization_level is not valid");
   }
-  if (graph_optimization_level >= static_cast<int>(onnxruntime::TransformerLevel::MaxTransformerLevel))
-    return OrtCreateStatus(ORT_INVALID_ARGUMENT, "graph_optimization_level is not valid");
-  options->value.graph_optimization_level = static_cast<onnxruntime::TransformerLevel>(graph_optimization_level);
+
+  switch (graph_optimization_level) {
+    case ORT_DISABLE_ALL:
+      options->value.graph_optimization_level = onnxruntime::TransformerLevel::Default;
+      break;
+    case ORT_ENABLE_BASIC:
+      options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level1;
+      break;
+    case ORT_ENABLE_EXTENDED:
+      options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level2;
+      break;
+    case ORT_ENABLE_ALL:
+      options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level3;
+      break;
+    default:
+      return OrtCreateStatus(ORT_INVALID_ARGUMENT, "graph_optimization_level is not valid");
+  }
+
   return nullptr;
 }
 

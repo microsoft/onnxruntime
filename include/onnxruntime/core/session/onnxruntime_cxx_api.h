@@ -138,7 +138,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions Clone() const;
 
   SessionOptions& SetThreadPoolSize(int session_thread_pool_size);
-  SessionOptions& SetGraphOptimizationLevel(int graph_optimization_level);
+  SessionOptions& SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);
 
   SessionOptions& EnableCpuMemArena();
   SessionOptions& DisableCpuMemArena();
