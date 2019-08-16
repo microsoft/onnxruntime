@@ -3,7 +3,7 @@ include (ExternalProject)
 set(MKLDNN_URL https://github.com/intel/mkl-dnn.git)
 # If MKLDNN_TAG is updated, check if MKLML_VERSION and platform.cmake.patch need to be updated.
 set(MKLDNN_TAG v0.18.1)
-set(MKLML_VERSION 2019.0.5.20190502)
+set(MKLML_VERSION 2020.0.20190813)
 
 if(WIN32)
   set(MKLML_OS_VERSION_STR "win")
@@ -59,15 +59,15 @@ if (onnxruntime_USE_MKLDNN)
     set(MKLDNN_DLL_PATH ${MKLDNN_LIB_DIR}/${MKLDNN_SHARED_LIB})
   endif()
   set(MKLDNN_INCLUDE_DIR ${MKLDNN_INSTALL}/include)
-  set (MKLDNN_CMAKE_EXTRA_ARGS)
+  set(MKLDNN_CMAKE_EXTRA_ARGS)
+  set(MKLDNN_PATCH_COMMAND1 git apply ${CMAKE_SOURCE_DIR}/patches/mkldnn/mem-patch.cmake.patch)
+  # discard prior changes due to patching in mkldnn source to unblock incremental builds.
+  set(MKLDNN_PATCH_DISCARD_COMMAND cd ${MKLDNN_SOURCE} && git checkout -- .)
   if(NOT onnxruntime_BUILD_FOR_NATIVE_MACHINE)
     # pre-v1.0
     list(APPEND MKLDNN_CMAKE_EXTRA_ARGS "-DARCH_OPT_FLAGS=")
     # v1.0
     list(APPEND MKLDNN_CMAKE_EXTRA_ARGS "-DMKLDNN_ARCH_OPT_FLAGS=")
-    set(MKLDNN_PATCH_COMMAND1 git apply ${CMAKE_SOURCE_DIR}/patches/mkldnn/mem-patch.cmake.patch)
-    # discard prior changes due to patching in mkldnn source to unblock incremental builds.
-    set(MKLDNN_PATCH_DISCARD_COMMAND cd ${MKLDNN_SOURCE} && git checkout -- .)
   endif()
   ExternalProject_Add(project_mkldnn
     PREFIX mkl-dnn
