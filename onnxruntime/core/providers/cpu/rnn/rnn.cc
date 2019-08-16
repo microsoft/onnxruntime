@@ -182,7 +182,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
       const float* h_prev = nullptr;
       if (t == 0) {
         if (initial_h != nullptr)
-          h_prev = initial_h->template Data<float>() + direction * batch_size * hidden_size_;
+          h_prev = initial_h->template Data<float>() + (direction * batch_size * hidden_size_);
       } else {
         if (isReverse)
           h_prev = Y_buffer_data_current_frame + num_directions * Y_frame_size;
