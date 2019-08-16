@@ -29,9 +29,8 @@ class MatMulComputeHelper {
       M_ = left_shape.SizeToDimension(left_num_dims - 1);
       K_ = left_shape[left_num_dims - 1];
       N_ = right_shape[right_num_dims - 1];
-      std::vector<int64_t> output_dims = left_shape.GetDims();
-      output_dims[left_num_dims - 1] = N_;
-      output_shape_ = TensorShape(output_dims);
+      output_shape_ = left_shape;
+      output_shape_[left_num_dims - 1] = N_;
       output_offsets_ = {0};
       left_offsets_ = {0};
       right_offsets_ = {0};

@@ -244,7 +244,7 @@ class BFCArena : public IArenaAllocator {
 
     ~AllocationRegion() { delete[] handles_; }
 
-    AllocationRegion(AllocationRegion&& other) { Swap(other); }
+    AllocationRegion(AllocationRegion&& other) noexcept { Swap(other); }
 
     AllocationRegion& operator=(AllocationRegion&& other) {
       Swap(other);
