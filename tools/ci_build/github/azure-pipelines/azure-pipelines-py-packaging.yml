@@ -94,7 +94,7 @@ jobs:
       displayName: 'Run build script'
       inputs:
         scriptPath: 'tools/ci_build/github/linux/run_dockerbuild.sh'
-        args: '-c Release -o manylinux2010 -d gpu -c cuda10.1 -r $(Build.BinariesDirectory) -p $(python.version) -x "--use_openmp --build_wheel"'
+        args: '-c Release -o manylinux2010 -d gpu -c cuda10.0-cudnn7.3 -r $(Build.BinariesDirectory) -p $(python.version) -x "--use_openmp --build_wheel"'
 
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
