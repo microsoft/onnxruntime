@@ -12,7 +12,7 @@ OrtCompareAllocatorInfo
 OrtCreateAllocatorInfo
 OrtCreateCpuAllocatorInfo
 OrtCreateCustomOpDomain
-OrtGetDefaultAllocator
+OrtGetAllocatorWithDefaultOptions
 OrtCreateEnv
 OrtCreateEnvWithCustomLogger
 OrtCreateRunOptions

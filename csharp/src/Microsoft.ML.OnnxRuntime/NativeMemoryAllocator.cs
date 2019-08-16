@@ -84,7 +84,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr allocator = IntPtr.Zero;
             try
             {
-                IntPtr status = NativeMethods.OrtGetDefaultAllocator(out allocator);
+                IntPtr status = NativeMethods.OrtGetAllocatorWithDefaultOptions(out allocator);
                 NativeApiStatus.VerifySuccess(status);
             }
             catch (Exception e)

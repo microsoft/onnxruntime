@@ -151,7 +151,6 @@ ORT_RUNTIME_CLASS(TypeInfo);
 ORT_RUNTIME_CLASS(TensorTypeAndShapeInfo);
 ORT_RUNTIME_CLASS(SessionOptions);
 ORT_RUNTIME_CLASS(CustomOpDomain);
-ORT_RUNTIME_CLASS(Allocator);
 
 // When passing in an allocator to any ORT function, be sure that the allocator object
 // is not destroyed until the last allocated object using it is freed.
@@ -443,7 +442,7 @@ ORT_API_STATUS(OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr, _Out_ const Or
 
 // The returned pointer doesn't have to be freed.
 // Always returns the same instance on every invocation.
-ORT_API_STATUS(OrtGetDefaultAllocator, _Outptr_ OrtAllocator** out);
+ORT_API_STATUS(OrtGetAllocatorWithDefaultOptions, _Outptr_ OrtAllocator** out);
 
 ORT_API(const char*, OrtGetVersionString);
 /**
