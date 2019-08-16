@@ -19,16 +19,11 @@ steps:
     #     downloadDirectory: '$(Build.BinariesDirectory)\python'
 
     # Temporary bypass of artifacts permission issue
-    - task: CmdLine@1
-      displayName: 'Download azcopy'
-      inputs:
-        filename: 'AzCopy.exe'
-        arguments: '/Y /Source:https://onnxruntimetestdata.blob.core.windows.net/models/azcopy.exe /Dest:$(Build.BinariesDirectory)\azcopy.exe'
         
     - task: CmdLine@1
       displayName: 'Download python'
       inputs:
-        filename: 'AzCopy.exe'
+        filename: 'C:\Program Files (x86)\Microsoft SDKs\Azure\AzCopy\AzCopy.exe'
         arguments: '/Y /Source:https://onnxruntimetestdata.blob.core.windows.net/models/Miniconda3-4.7.10-Windows-x86_64.exe /Dest:$(Build.BinariesDirectory)\Miniconda3-4.7.10-Windows-x86_64.exe'               
   
     - task: CmdLine@1
