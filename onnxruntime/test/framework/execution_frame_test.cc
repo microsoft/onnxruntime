@@ -48,7 +48,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
   onnxruntime::NodeArg input_def("X", &tensor_float), output_def("Y", &tensor_float);
 
-  graph.AddNode("node1", "Clip", "Clip operator", ArgMap{&input_def}, ArgMap{&output_def});
+  graph.AddNode("node1", "Relu", "Relu operator", ArgMap{&input_def}, ArgMap{&output_def});
   onnxruntime::Node* node = graph.GetNode(graph.NumberOfNodes() - 1);
 
   Status status = graph.Resolve();

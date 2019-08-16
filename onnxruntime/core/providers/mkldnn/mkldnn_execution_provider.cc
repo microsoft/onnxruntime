@@ -101,7 +101,7 @@ bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_
       index++;
       node = graph_viewer.GetNode(index);
     }
-    if (node->InputDefs()[0]->Type() != nullptr)
+    if (!node->InputDefs().empty() && node->InputDefs()[0]->Type() != nullptr)
       FP16_graph = node->InputDefs()[0]->Type()->find("16") != std::string::npos;
   }
 
