@@ -20,11 +20,11 @@ class MemoryPattern {
  public:
   MemoryPattern() = default;
 
-  MemoryPattern(MemoryPattern&& rhs)
+  MemoryPattern(MemoryPattern&& rhs) noexcept
       : patterns_{std::move(rhs.patterns_)},
         peak_size_{std::move(rhs.peak_size_)} {}
 
-  MemoryPattern& operator=(MemoryPattern&& rhs) {
+  MemoryPattern& operator=(MemoryPattern&& rhs) noexcept {
     patterns_ = std::move(rhs.patterns_);
     peak_size_ = std::move(rhs.peak_size_);
     return *this;

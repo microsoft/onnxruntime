@@ -16,6 +16,8 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cpu/nn/conv_transpose.h"
+#include "core/framework/op_kernel_context_internal.h"
+
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
@@ -228,6 +230,9 @@ Status ConvTranspose<T>::Compute(OpKernelContext* context) const {
 
 template <typename T>
 Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
+  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
+
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   Prepare p;
   bool has_bias = dynamic_padding ? num_inputs == 4 : num_inputs == 3;
@@ -254,7 +259,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   for (auto image_id = 0; image_id < p.N; ++image_id) {
     for (int group_id = 0; group_id < group_; ++group_id) {
       // Weight term
-      math::Gemm<T, CPUMathUtil>(
+      math::Gemm<T>(
           CblasTrans,
           CblasNoTrans,
           kernel_dim,
@@ -265,7 +270,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
           Xdata + group_id * X_offset,
           0,
           col_buffer_data,
-          &CPUMathUtil::Instance());
+          tp);
 
       // Col2im
       math::Col2im<T, CPUMathUtil, StorageOrder::NCHW>(

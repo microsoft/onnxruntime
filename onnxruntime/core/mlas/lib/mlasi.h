@@ -92,8 +92,6 @@ Abstract:
 
 #if defined(_OPENMP)
 #include <omp.h>
-#elif defined(_WIN32)
-#define MLAS_USE_WIN32_THREADPOOL
 #endif
 
 //
@@ -422,10 +420,6 @@ struct MLAS_PLATFORM {
     PMLAS_ELEMENTWISE_KERNEL_ROUTINE ErfKernelRoutine;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
-#endif
-
-#if defined(MLAS_USE_WIN32_THREADPOOL)
-    int32_t MaximumThreadCount;
 #endif
 };
 

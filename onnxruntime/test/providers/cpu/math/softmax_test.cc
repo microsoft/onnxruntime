@@ -194,23 +194,23 @@ TEST(SoftmaxOperator, InvalidAxis) {
 
 TEST(SoftmaxOperator, TestInputTooLarge) {
   float* ignored = nullptr;
-
+  concurrency::ThreadPool tp("", 1);
   // N > INT32_MAX
   int64_t N = int64_t(INT32_MAX) + 1;
   int64_t D = 1;
-  auto status = SoftmaxCPU(N, D, ignored, ignored, ignored, ignored, true, ignored);
+  auto status = SoftmaxCPU(N, D, ignored, ignored, ignored, ignored, true, ignored, &tp);
   EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
 
   // D > INT32_MAX
   N = 1;
   D = int64_t(INT32_MAX) + 1;
-  status = SoftmaxCPU(N, D, ignored, ignored, ignored, ignored, true, ignored);
+  status = SoftmaxCPU(N, D, ignored, ignored, ignored, ignored, true, ignored, &tp);
   EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
 
   // N * D > INT32_MAX
   N = int64_t(INT32_MAX) / 2;
   D = 3;
-  status = SoftmaxCPU(N, D, ignored, ignored, ignored, ignored, true, ignored);
+  status = SoftmaxCPU(N, D, ignored, ignored, ignored, ignored, true, ignored, &tp);
   EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
 
   /*

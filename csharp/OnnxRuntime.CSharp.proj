@@ -19,19 +19,19 @@ CMake creates a target to this project
     <Message Importance="High" Text="Restoring NuGet packages for CSharp projects..." />
     <MSBuild Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
              Targets="Restore" 
-             Properties="Platform=AnyCPU;RestoreConfigFile=$(MSBuildThisFileDirectory)\NuGet.CSharp.config;MSBuildWarningsAsMessages=NU1503;RestoreIgnoreFailedSource=true" 
+             Properties="Platform=AnyCPU;RestorePackagesPath=$(MSBuildThisFileDirectory)\packages;RestoreConfigFile=$(MSBuildThisFileDirectory)\NuGet.CSharp.config;MSBuildWarningsAsMessages=NU1503;RestoreIgnoreFailedSource=true" 
              />
     <MSBuild Projects="sample\Microsoft.ML.OnnxRuntime.InferenceSample\Microsoft.ML.OnnxRuntime.InferenceSample.csproj"
              Targets="Restore" 
-             Properties="Platform=AnyCPU;RestoreConfigFile=$(MSBuildThisFileDirectory)\NuGet.CSharp.config;MSBuildWarningsAsMessages=NU1503;RestoreIgnoreFailedSource=true" 
+             Properties="Platform=AnyCPU;RestorePackagesPath=$(MSBuildThisFileDirectory)\packages;RestoreConfigFile=$(MSBuildThisFileDirectory)\NuGet.CSharp.config;MSBuildWarningsAsMessages=NU1503;RestoreIgnoreFailedSource=true" 
              />
     <MSBuild Projects="test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj"
              Targets="Restore" 
-             Properties="RestoreConfigFile=$(MSBuildThisFileDirectory)\NuGet.CSharp.config;MSBuildWarningsAsMessages=NU1503;RestoreIgnoreFailedSource=true" 
+             Properties="RestorePackagesPath=$(MSBuildThisFileDirectory)\packages;RestoreConfigFile=$(MSBuildThisFileDirectory)\NuGet.CSharp.config;MSBuildWarningsAsMessages=NU1503;RestoreIgnoreFailedSource=true" 
              />
     <MSBuild Projects="tools\Microsoft.ML.OnnxRuntime.PerfTool\Microsoft.ML.OnnxRuntime.PerfTool.csproj"
              Targets="Restore" 
-             Properties="Platform=AnyCPU;RestoreConfigFile=$(MSBuildThisFileDirectory)\NuGet.CSharp.config;MSBuildWarningsAsMessages=NU1503;RestoreIgnoreFailedSource=true" 
+             Properties="Platform=AnyCPU;RestorePackagesPath=$(MSBuildThisFileDirectory)\packages;RestoreConfigFile=$(MSBuildThisFileDirectory)\NuGet.CSharp.config;MSBuildWarningsAsMessages=NU1503;RestoreIgnoreFailedSource=true" 
              />
   </Target>
 
@@ -54,7 +54,7 @@ CMake creates a target to this project
              />
   </Target>
 
-  <Target Name="RunTest" AfterTargets="Build">
+  <Target Name="RunTest">
     <Message Importance="High" Text="Running CSharp tests..." />
     <Exec Command="$(DotNetExe) test test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj -c $(Configuration) --no-build" ConsoleToMSBuild="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
