@@ -57,7 +57,10 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   }
 
   CudnnReduceDescriptor reduce_desc;
-  ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnnReduceOp, cudnn_type_X, ReduceTensorIndices));
+  if (std::is_same<T, MLFloat16>::value)
+    ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnnReduceOp, CudnnTensor::GetDataType<float>(), ReduceTensorIndices));
+  else
+    ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnnReduceOp, cudnn_type_X, ReduceTensorIndices));
   const auto one = Consts<CudaT>::One;
   const auto zero = Consts<CudaT>::Zero;
   CudnnTensor input_tensor;

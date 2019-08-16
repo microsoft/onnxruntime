@@ -303,6 +303,10 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
 
 Status TrainingRunner::LoadAndEvaluate(const std::string& model_path) {
   InferenceSession s{SessionOptions()};
+#ifdef USE_CUDA
+  CUDAExecutionProviderInfo xp_info{params_.world_rank_};
+  ORT_RETURN_IF_ERROR(s.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
+#endif
   ORT_RETURN_IF_ERROR(s.Load(model_path));
   ORT_RETURN_IF_ERROR(s.Initialize());
   return Evaluate(s);
