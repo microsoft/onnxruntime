@@ -23,13 +23,13 @@ RUN NVIDIA_GPGKEY_SUM=d1be581509378368edeec8c1eb2958702feedf3bc3d17011adbf24efac
 
 COPY cuda_manylinux2010.repo /etc/yum.repos.d/cuda.repo
 
-ENV CUDA_VERSION 10.1.168
-ENV CUDA_PKG_VERSION 10-1-$CUDA_VERSION-1
+ENV CUDA_VERSION 10.0.130
+ENV CUDA_PKG_VERSION 10-0-$CUDA_VERSION-1
 
 # For libraries in the cuda-compat-* package: https://docs.nvidia.com/cuda/eula/index.html#attachment-a
 RUN yum install -y \
         cuda-cudart-$CUDA_PKG_VERSION \
-        cuda-compat-10-1 \
+        cuda-compat-10-0 \
         cuda-libraries-$CUDA_PKG_VERSION \
         cuda-nvtx-$CUDA_PKG_VERSION \
         cuda-libraries-dev-$CUDA_PKG_VERSION \
@@ -37,15 +37,15 @@ RUN yum install -y \
         cuda-minimal-build-$CUDA_PKG_VERSION \
         cuda-command-line-tools-$CUDA_PKG_VERSION \
     && \
-    ln -s cuda-10.1 /usr/local/cuda && \
+    ln -s cuda-10.0 /usr/local/cuda && \
     rm -rf /var/cache/yum/*
 
 # cuDNN license: https://developer.nvidia.com/cudnn/license_agreement
-RUN CUDNN_DOWNLOAD_SUM=e956c6f9222fcb867a10449cfc76dee5cfd7c7531021d95fe9586d7e043b57d7 && \
-    curl -fsSL http://developer.download.nvidia.com/compute/redist/cudnn/v7.6.0/cudnn-10.1-linux-x64-v7.6.0.64.tgz -O && \
-    echo "$CUDNN_DOWNLOAD_SUM  cudnn-10.1-linux-x64-v7.6.0.64.tgz" | sha256sum -c - && \
-    tar --no-same-owner -xzf cudnn-10.1-linux-x64-v7.6.0.64.tgz -C /usr/local && \
-    rm cudnn-10.1-linux-x64-v7.6.0.64.tgz && \
+RUN CUDNN_DOWNLOAD_SUM=7526a33bc3c152ca5d8f3eddedaa4a0b3c721a3c0000eeb80ebfe5cbc54696b7 && \
+    curl -fsSL http://developer.download.nvidia.com/compute/redist/cudnn/v7.3.0/cudnn-10.0-linux-x64-v7.3.0.29.tgz -O && \
+    echo "$CUDNN_DOWNLOAD_SUM  cudnn-10.0-linux-x64-v7.3.0.29.tgz" | sha256sum -c - && \
+    tar --no-same-owner -xzf cudnn-10.0-linux-x64-v7.3.0.29.tgz -C /usr/local && \
+    rm cudnn-10.0-linux-x64-v7.3.0.29.tgz && \
     ldconfig
 
 ENV LD_LIBRARY_PATH /usr/local/openblas/lib:/usr/local/cuda/lib64/stubs:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:$LD_LIBRARY_PATH
@@ -54,7 +54,7 @@ ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH}
 # nvidia-container-runtime
 ENV NVIDIA_VISIBLE_DEVICES all
 ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
-ENV NVIDIA_REQUIRE_CUDA "cuda>=10.1 brand=tesla,driver>=384,driver<385 brand=tesla,driver>=396,driver<397 brand=tesla,driver>=410,driver<411"
+ENV NVIDIA_REQUIRE_CUDA "cuda>=10.0 brand=tesla,driver>=384,driver<385 brand=tesla,driver>=396,driver<397 brand=tesla,driver>=410,driver<411"
 
 ARG BUILD_UID=1000
 ARG BUILD_USER=onnxruntimedev

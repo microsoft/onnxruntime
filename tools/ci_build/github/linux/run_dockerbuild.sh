@@ -37,7 +37,7 @@ if [ $BUILD_OS = "android" ]; then
     docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
 elif [ $BUILD_OS = "manylinux2010" ]; then
     if [ $BUILD_DEVICE = "gpu" ]; then
-        IMAGE="manylinux2010-cuda10.1"
+        IMAGE="manylinux2010-cuda10.0"
         DOCKER_FILE=Dockerfile.manylinux2010_gpu
     else
         IMAGE="manylinux2010"
