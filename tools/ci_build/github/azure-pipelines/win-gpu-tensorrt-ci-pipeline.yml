@@ -8,7 +8,7 @@ jobs:
     CUDA_VERSION: '10.0'
 
   steps:
-    # - template: templates/set-test-data-variables-step.yml
+    - template: templates/set-test-data-variables-step.yml
     - template: templates/windows-build-tools-setup-steps.yml
       parameters:
         EnvSetupScript: 'setup_env_cuda.bat'
