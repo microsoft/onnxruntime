@@ -85,6 +85,18 @@ install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cp
 set_target_properties(onnxruntime_providers PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
 
+
+if (onnxruntime_USE_MIMALLOC)
+  set(mimalloc_root_dir ${PROJECT_SOURCE_DIR}/external/mimalloc)
+  add_definitions(-DUSE_MIMALLOC=1 -DMI_OVERRIDE=ON)
+  
+  add_subdirectory(${mimalloc_root_dir} EXCLUDE_FROM_ALL)
+  set_target_properties(mimalloc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+  
+  include_directories(${mimalloc_root_dir}/include)
+  target_link_libraries(onnxruntime_providers PUBLIC mimalloc)
+endif()
+
 if (onnxruntime_USE_CUDA)
   file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
