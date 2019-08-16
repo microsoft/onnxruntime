@@ -73,17 +73,17 @@ private:
 };
 
 TEST(FeaturizerTests, TransformerFunctionality) {
-  ASSERT_TRUE(MyTransformer(true).transform(1) == true);
-  ASSERT_TRUE(MyTransformer(false).transform(1) == false);
-  ASSERT_TRUE(MyTransformer(true).transform(2) == false);
-  ASSERT_TRUE(MyTransformer(false).transform(2) == true);
+  ASSERT_TRUE(MyTransformer(true).transform(1));
+  ASSERT_FALSE(MyTransformer(false).transform(1));
+  ASSERT_FALSE(MyTransformer(true).transform(2));
+  ASSERT_TRUE(MyTransformer(false).transform(2));
 }
 
 TEST(FeaturizerTests, EstimatorFunctionality) {
-  ASSERT_TRUE(MyEstimator().fit(1).commit()->transform(1) == true);
-  ASSERT_TRUE(MyEstimator().fit(0).commit()->transform(1) == false);
-  ASSERT_TRUE(MyEstimator().fit(1).commit()->transform(2) == false);
-  ASSERT_TRUE(MyEstimator().fit(0).commit()->transform(2) == true);
+  ASSERT_TRUE(MyEstimator().fit(1).commit()->transform(1));
+  ASSERT_FALSE(MyEstimator().fit(0).commit()->transform(1));
+  ASSERT_FALSE(MyEstimator().fit(1).commit()->transform(2));
+  ASSERT_TRUE(MyEstimator().fit(0).commit()->transform(2));
 }
 
 TEST(FeaturizerTests, EstimatorErrors) {
@@ -97,8 +97,8 @@ TEST(FeaturizerTests, EstimatorErrors) {
 }
 
 TEST(FeaturizerTests, EstimatorFitAndCommit) {
-  ASSERT_TRUE(Microsoft::Featurizer::fit_and_commit<MyEstimator>(1, false)->transform(1) == true);
-  ASSERT_TRUE(Microsoft::Featurizer::fit_and_commit<MyEstimator>(0, false)->transform(1) == false);
-  ASSERT_TRUE(Microsoft::Featurizer::fit_and_commit<MyEstimator>(1, false)->transform(2) == false);
-  ASSERT_TRUE(Microsoft::Featurizer::fit_and_commit<MyEstimator>(0, false)->transform(2) == true);
+  ASSERT_TRUE(Microsoft::Featurizer::fit_and_commit<MyEstimator>(1, false)->transform(1));
+  ASSERT_FALSE(Microsoft::Featurizer::fit_and_commit<MyEstimator>(0, false)->transform(1));
+  ASSERT_FALSE(Microsoft::Featurizer::fit_and_commit<MyEstimator>(1, false)->transform(2));
+  ASSERT_TRUE(Microsoft::Featurizer::fit_and_commit<MyEstimator>(0, false)->transform(2));
 }
