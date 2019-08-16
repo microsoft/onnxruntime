@@ -5,7 +5,7 @@
 
 #pragma once
 #include <array>
-#include <math.h>
+#include <cmath>
 #include <functional>
 #include <map>
 #include <vector>
@@ -68,7 +68,7 @@ template <>
 struct Traits<float> : public TraitsImpl<float> {
   using nullable_type = float;
   static bool IsNull(nullable_type const& value) {
-    return isnan(value);
+    return std::isnan(value);
   }
 
   // static std::string ToString(nullable_type const& value) {
@@ -80,7 +80,7 @@ template <>
 struct Traits<double> : public TraitsImpl<double> {
   using nullable_type = double;
   static bool IsNull(nullable_type const& value) {
-    return isnan(value);
+    return std::isnan(value);
   }
 
   // static std::string ToString(nullable_type const& value) {
