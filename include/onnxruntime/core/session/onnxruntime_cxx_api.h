@@ -99,6 +99,7 @@ struct Env;
 struct TypeInfo;
 struct Value;
 
+//Don't put such an object as a global(or thread local) variable in a DLL
 struct Env : Base<OrtEnv> {
   Env(nullptr_t) {}
   Env(OrtLoggingLevel default_logging_level, _In_ const char* logid);
@@ -156,6 +157,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& Add(OrtCustomOpDomain* custom_op_domain);
 };
 
+//Don't put such an object as a global(or thread local) variable in a DLL
 struct Session : Base<OrtSession> {
   explicit Session(nullptr_t) {}
   Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);

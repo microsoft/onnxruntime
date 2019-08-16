@@ -23,6 +23,10 @@ extern "C" {
 #define _Inout_
 #define _Inout_opt_
 #define _Frees_ptr_opt_
+#define _Ret_maybenull_
+#define _Ret_notnull_
+#define _Check_return_
+#define _Success_(X)
 #define ORT_ALL_ARGS_NONNULL __attribute__((nonnull))
 #else
 #include <specstrings.h>
@@ -127,11 +131,11 @@ typedef enum OrtErrorCode {
   ORT_EXPORT RETURN_TYPE ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
 #define ORT_API_STATUS(NAME, ...) \
-  ORT_EXPORT OrtStatus* ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION ORT_MUST_USE_RESULT
+  ORT_EXPORT _Check_return_ _Success_(return == 0) _Ret_maybenull_ OrtStatus* ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION ORT_MUST_USE_RESULT
 
 // Used in *.cc files. Almost as same as ORT_API_STATUS, except without ORT_MUST_USE_RESULT
 #define ORT_API_STATUS_IMPL(NAME, ...) \
-  ORT_EXPORT OrtStatus* ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
+  ORT_EXPORT _Check_return_ _Success_(return == 0) _Ret_maybenull_ OrtStatus* ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
 #define ORT_RUNTIME_CLASS(X)    \
   struct Ort##X;                \
@@ -140,12 +144,11 @@ typedef enum OrtErrorCode {
 
 // The actual types defined have an Ort prefix
 ORT_RUNTIME_CLASS(Env);
-ORT_RUNTIME_CLASS(Status);  // nullptr for Status* indicates success
+ORT_RUNTIME_CLASS(Status);
 ORT_RUNTIME_CLASS(Provider);
 ORT_RUNTIME_CLASS(AllocatorInfo);
-ORT_RUNTIME_CLASS(Session);
+ORT_RUNTIME_CLASS(Session); //Don't call OrtReleaseSession from Dllmain (because session owns a thread pool)
 ORT_RUNTIME_CLASS(Value);
-ORT_RUNTIME_CLASS(ValueList);
 ORT_RUNTIME_CLASS(RunOptions);
 ORT_RUNTIME_CLASS(TypeInfo);
 ORT_RUNTIME_CLASS(TensorTypeAndShapeInfo);
@@ -339,7 +342,7 @@ ORT_API_STATUS(OrtGetStringTensorDataLength, _In_ const OrtValue* value, _Out_ s
  * \param value A tensor created from OrtCreateTensor... function.
  * \param s_len total data length, get it from OrtGetStringTensorDataLength
  */
-ORT_API_STATUS(OrtGetStringTensorContent, _In_ const OrtValue* value, _Out_ void* s, size_t s_len,
+ORT_API_STATUS(OrtGetStringTensorContent, _In_ const OrtValue* value, _In_ void* s, size_t s_len,
                _Out_ size_t* offsets, size_t offsets_len);
 
 /**
@@ -444,8 +447,8 @@ ORT_API(const char*, OrtGetVersionString);
 /**
  * \param msg A null-terminated string. Its content will be copied into the newly created OrtStatus
  */
-ORT_API(OrtStatus*, OrtCreateStatus, OrtErrorCode code, _In_ const char* msg)
-ORT_ALL_ARGS_NONNULL;
+ORT_EXPORT _Check_return_ _Ret_notnull_ OrtStatus* ORT_API_CALL OrtCreateStatus(OrtErrorCode code, _In_ const char* msg) NO_EXCEPTION
+    ORT_ALL_ARGS_NONNULL;
 
 ORT_API(OrtErrorCode, OrtGetErrorCode, _In_ const OrtStatus* status)
 ORT_ALL_ARGS_NONNULL;

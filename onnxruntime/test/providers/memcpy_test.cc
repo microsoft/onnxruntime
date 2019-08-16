@@ -22,11 +22,13 @@ void PutAllNodesOnOneProvider(Graph& graph, const std::string& provider_type) {
 }
 }  // namespace
 TEST(MemcpyTest, copy1) {
+  concurrency::ThreadPool tp{"test", 1};
+
   ExecutionProviders execution_providers;
   CPUExecutionProviderInfo epi;
   auto st = execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
-  SessionState s{execution_providers, true};
+  SessionState s{execution_providers, true, &tp};
   s.SetLogger(logging::LoggingManager::DefaultLogger());
   KernelRegistryManager kernel_registry_manager;
   kernel_registry_manager.RegisterKernels(execution_providers);
