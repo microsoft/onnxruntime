@@ -26,10 +26,15 @@ Abstract:
 #else
 #include <sys/mman.h>
 #endif
+#if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#include "core/platform/threadpool.h"
+#endif
 
 #if !defined(_countof)
 #define _countof(_Array) (sizeof(_Array) / sizeof(_Array[0]))
 #endif
+
+MLAS_THREADPOOL* threadpool = nullptr;
 
 template <typename T>
 class MatrixGuardBuffer
@@ -226,7 +231,7 @@ private:
         std::fill_n(C, M * N, -0.5f);
         std::fill_n(CReference, M * N, -0.5f);
 
-        MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, nullptr);
+        MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool);
         ReferenceSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, CReference, ldc);
 
         for (size_t f = 0; f < M * N; f++) {
@@ -482,7 +487,7 @@ private:
         std::fill_n(C, M * N, -1);
         std::fill_n(CReference, M * N, -1);
 
-        MlasQgemm(M, N, K, A, lda, offa, B, ldb, offb, C, ldc, nullptr);
+        MlasQgemm(M, N, K, A, lda, offa, B, ldb, offb, C, ldc, threadpool);
         ReferenceQgemm(M, N, K, A, lda, offa, B, ldb, offb, CReference, ldc);
 
         for (size_t f = 0; f < M * N; f++) {
@@ -839,7 +844,7 @@ protected:
                 }
 
                 MlasSgemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f,
-                    filter, K, Im2Col, OutputSize, 0.0f, Output, OutputSize, nullptr);
+                    filter, K, Im2Col, OutputSize, 0.0f, Output, OutputSize, threadpool);
 
                 //
                 // Apply the bias.
@@ -1244,7 +1249,7 @@ protected:
         float* Output
         )
     {
-        MlasPool(PoolingKind, 2, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, nullptr);
+        MlasPool(PoolingKind, 2, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, threadpool);
     }
 
     void
@@ -1589,7 +1594,7 @@ protected:
         float* Output = BufferOutput.GetBuffer(OutputBufferElements);
         float* OutputReference = BufferOutputReference.GetBuffer(OutputBufferElements);
 
-        MlasPool(MlasMaximumPooling, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, nullptr);
+        MlasPool(MlasMaximumPooling, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, threadpool);
         ReferenceMaximumPool3D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference);
 
         if (memcmp(Output, OutputReference, OutputBufferElements * sizeof(float)) != 0) {
@@ -1597,7 +1602,7 @@ protected:
                 InputChannels, InputDepth, InputHeight, InputWidth, KernelDepth, KernelHeight, KernelWidth);
         }
 
-        MlasPool(MlasAveragePoolingExcludePad, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, nullptr);
+        MlasPool(MlasAveragePoolingExcludePad, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, threadpool);
         ReferenceAveragePool3D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference, false);
 
         if (memcmp(Output, OutputReference, OutputBufferElements * sizeof(float)) != 0) {
@@ -1605,7 +1610,7 @@ protected:
                 InputChannels, InputDepth, InputHeight, InputWidth, KernelDepth, KernelHeight, KernelWidth);
         }
 
-        MlasPool(MlasAveragePoolingIncludePad, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, nullptr);
+        MlasPool(MlasAveragePoolingIncludePad, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, threadpool);
         ReferenceAveragePool3D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference, true);
 
         if (memcmp(Output, OutputReference, OutputBufferElements * sizeof(float)) != 0) {
@@ -1953,31 +1958,40 @@ main(
     void
     )
 {
-    printf("SGEMM tests.\n");
-    std::make_unique<MlasSgemmTest>()->ExecuteShort();
+    for (int i = 0; i != 2; ++i) {
+        printf("SGEMM tests.\n");
+        std::make_unique<MlasSgemmTest>()->ExecuteShort();
 
-    printf("QGEMM tests.\n");
-    std::make_unique<MlasQgemmU8U8Test>()->ExecuteShort();
+        printf("QGEMM tests.\n");
+        std::make_unique<MlasQgemmU8U8Test>()->ExecuteShort();
 
-    printf("Conv2D tests.\n");
-    std::make_unique<MlasConv2DTest>()->ExecuteShort();
-    if (MlasNchwcGetBlockSize() > 1) {
-        std::make_unique<MlasNchwcConv2DTest>()->ExecuteShort();
-    }
+        printf("Conv2D tests.\n");
+        std::make_unique<MlasConv2DTest>()->ExecuteShort();
+        if (MlasNchwcGetBlockSize() > 1) {
+            std::make_unique<MlasNchwcConv2DTest>()->ExecuteShort();
+        }
 
-    printf("Pool2D tests.\n");
-    std::make_unique<MlasPool2DTest>()->ExecuteShort();
-    if (MlasNchwcGetBlockSize() > 1) {
-        std::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
-    }
+        printf("Pool2D tests.\n");
+        std::make_unique<MlasPool2DTest>()->ExecuteShort();
+        if (MlasNchwcGetBlockSize() > 1) {
+            std::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
+        }
 
-    printf("Pool3D tests.\n");
-    std::make_unique<MlasPool3DTest>()->ExecuteShort();
+        printf("Pool3D tests.\n");
+        std::make_unique<MlasPool3DTest>()->ExecuteShort();
 
-    printf("Activation tests.\n");
-    std::make_unique<MlasActivationTest>()->ExecuteShort();
+        printf("Activation tests.\n");
+        std::make_unique<MlasActivationTest>()->ExecuteShort();
 
-    printf("Done.\n");
-
+        printf("Done.\n");
+#if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+        threadpool = new onnxruntime::concurrency::ThreadPool("test", 2);
+#else
+        break;
+#endif
+	}
+#if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+    delete threadpool;
+#endif
     return 0;
 }
