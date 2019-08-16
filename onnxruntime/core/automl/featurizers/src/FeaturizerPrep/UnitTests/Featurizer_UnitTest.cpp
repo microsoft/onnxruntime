@@ -33,14 +33,6 @@ private:
     // ----------------------------------------------------------------------
     // |  Private Data
     bool const                              _true_on_odd;
-
-    // ----------------------------------------------------------------------
-    // |  Private Methods
-    template <typename ArchiveT>
-    void serialize(ArchiveT &ar, unsigned int const /*version*/) {
-        ar & boost::serialization::base_object<transformer_type>(*this);
-        ar & boost::serialization::make_nvp("true_on_odd", const_cast<bool &>(_true_on_odd));
-    }
 };
 
 class MyEstimator : public Microsoft::Featurizer::Estimator<bool, int> {
@@ -77,13 +69,6 @@ private:
             return TransformerUniquePtr();
 
         return std::make_unique<MyTransformer>(_true_on_odd_state);
-    }
-
-    template <typename ArchiveT>
-    void serialize(ArchiveT &ar, unsigned int const /*version*/) {
-        ar & boost::serialization::base_object<estimator_type>(*this);
-        ar & boost::serialization::make_nvp("return_invalid_transformer", const_cast<bool &>(_return_invalid_transformer));
-        ar & boost::serialization::make_nvp("true_on_odd_state", const_cast<bool &>(_true_on_odd_state));
     }
 };
 
