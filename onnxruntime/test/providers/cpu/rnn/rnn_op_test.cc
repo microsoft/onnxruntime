@@ -449,11 +449,11 @@ TEST(RNNTest, RNN_bidirectional_1) {
   test.AddInput<float>("initial_h", initial_h_dims, initial_h_data);
 
   std::vector<int64_t> Y_dims = {seq_length, num_directions, batch_size, hidden_size};
-  std::vector<float> Y_data({-0.25082839F, 0.57703555F, -0.84758246F, 0.89708149F});
+  std::vector<float> Y_data({0.98009639F, 0.98009639F, 0.99100745F, 0.99100745F});
   test.AddOutput<float>("Y", Y_dims, Y_data);
 
   std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
-  std::vector<float> Y_h_data({-0.74539614F, 0.93210655F, -0.63887376F, 0.89708149F});
+  std::vector<float> Y_h_data({0.98009639F, 0.98009639F, 0.99100745F, 0.99100745F});
   test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
 
   test.Run();
