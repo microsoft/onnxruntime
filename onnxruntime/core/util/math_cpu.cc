@@ -20,16 +20,17 @@
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
 #include "Eigen/src/Core/arch/GPU/Half.h"
+using onnxruntime::concurrency::ThreadPool;
 
 namespace onnxruntime {
 namespace math {
 
 // MatMul implementation purely based on Eigen.
-#define EIGEN_MATMUL_FUNCTION(T)                                                         \
-  template <>                                                                            \
-  void MatMul<T>(int M, int N, int K, const T* A, const T* B, T* C) {                    \
-    auto C_mat = EigenMatrixMap<T>(C, N, M);                                             \
-    C_mat.noalias() = ConstEigenMatrixMap<T>(B, N, K) * ConstEigenMatrixMap<T>(A, K, M); \
+#define EIGEN_MATMUL_FUNCTION(T)                                                                \
+  template <>                                                                                   \
+  void MatMul<T>(int M, int N, int K, const T* A, const T* B, T* C, concurrency::ThreadPool*) { \
+    auto C_mat = EigenMatrixMap<T>(C, N, M);                                                    \
+    C_mat.noalias() = ConstEigenMatrixMap<T>(B, N, K) * ConstEigenMatrixMap<T>(A, K, M);        \
   }
 
 EIGEN_MATMUL_FUNCTION(int32_t)
@@ -44,7 +45,7 @@ EIGEN_MATMUL_FUNCTION(uint64_t)
 // CBLAS call or the Eigen implementation.
 ////////////////////////////////////////////////////////////////////////////////
 // when USE_MKLML is defined, use cblas APIs for MKLML
-#if defined(USE_EIGEN_FOR_BLAS) && !defined(USE_MKLML_FOR_BLAS)
+#if !defined(USE_MKLML_FOR_BLAS)
 
 // Caffe2 gemm provides a simpler interface to the gemm functions, with the
 // limitation that the data has to be contiguous in memory.
@@ -62,28 +63,26 @@ EIGEN_MATMUL_FUNCTION(uint64_t)
 // (transpose) if the argument TransA or TransB is set to CblasNoTrans or
 // CblasTrans, respectively, for each of A and B.
 template <>
-void Gemm<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                              const int64_t N, const int64_t K, float alpha, const float* A, const float* B, float beta,
-                              float* C, CPUMathUtil* /*provider*/) {
+void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                             const int64_t N, const int64_t K, float alpha, const float* A, const float* B, float beta,
+                             float* C, ThreadPool* threadpool) {
   int lda = static_cast<int>((TransA == CblasNoTrans) ? K : M);
   int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
-  // TODO: Make this use the operator threadpool
-  MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, nullptr);
+  MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, threadpool);
 }
 
 template <>
-void MatMul<float>(int M, int N, int K, const float* A, const float* B, float* C) {
-  // TODO: Make this use the operator threadpool
-  MlasSgemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, nullptr);
+void MatMul<float>(int M, int N, int K, const float* A, const float* B, float* C, ThreadPool* threadpool) {
+  MlasSgemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, threadpool);
 }
 
 EIGEN_MATMUL_FUNCTION(double)
 
 template <>
-void GemmEx<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int M, int N, int K,
-                                float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C,
-                                int ldc, CPUMathUtil*) {
-  MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, nullptr);
+void GemmEx<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int M, int N, int K,
+                               float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C,
+                               int ldc, ThreadPool* threadpool) {
+  MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool);
 }
 
 template <>
@@ -125,12 +124,12 @@ void Gemv<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float 
 SPECIALIZED_AXPY(float)
 #undef SPECIALIZED_AXPY
 
-#else  // USE_EIGEN_FOR_BLAS
+#else
 
 template <>
-void Gemm<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                              const int64_t N, const int64_t K, float alpha, const float* A, const float* B, float beta,
-                              float* C, CPUMathUtil* /*context*/) {
+void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                             const int64_t N, const int64_t K, float alpha, const float* A, const float* B, float beta,
+                             float* C, ThreadPool* /*context*/) {
   int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
   int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
   cblas_sgemm(CblasRowMajor, TransA, TransB,
@@ -142,19 +141,19 @@ void Gemm<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOS
 }
 
 template <>
-void MatMul<float>(int M, int N, int K, const float* A, const float* B, float* C) {
+void MatMul<float>(int M, int N, int K, const float* A, const float* B, float* C, ThreadPool*) {
   cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, M, N, K, 1, A, K, B, N, 0, C, N);
 }
 
 template <>
-void MatMul<double>(int M, int N, int K, const double* A, const double* B, double* C) {
+void MatMul<double>(int M, int N, int K, const double* A, const double* B, double* C, ThreadPool*) {
   cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, M, N, K, 1, A, K, B, N, 0, C, N);
 }
 
 template <>
-void GemmEx<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int M, int N, int K,
-                                float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C,
-                                int ldc, CPUMathUtil* /*context*/) {
+void GemmEx<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int M, int N, int K,
+                               float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C,
+                               int ldc, ThreadPool* /*context*/) {
   cblas_sgemm(CblasRowMajor, TransA, TransB, M, N, K, alpha, A, lda, B, ldb,
               beta, C, ldc);
 }
@@ -177,7 +176,7 @@ void Gemv<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float 
 CAFFE2_SPECIALIZED_AXPY(float, s)
 #undef CAFFE2_SPECIALIZED_AXPY
 
-#endif  // USE_EIGEN_FOR_BLAS
+#endif
 
 #define DELEGATE_SIMPLE_UNARY_FUNCTION(T, Funcname, expr)                  \
   template <>                                                              \

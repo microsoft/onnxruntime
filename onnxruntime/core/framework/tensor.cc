@@ -47,7 +47,7 @@ void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data,
   byte_offset_ = offset;
 }
 
-Tensor::Tensor(Tensor&& other)
+Tensor::Tensor(Tensor&& other) noexcept
     : p_data_(other.p_data_),
       buffer_deleter_(other.buffer_deleter_),
       shape_(other.shape_),
@@ -61,7 +61,7 @@ Tensor::Tensor(Tensor&& other)
   other.byte_offset_ = 0;
 }
 
-Tensor& Tensor::operator=(Tensor&& other) {
+Tensor& Tensor::operator=(Tensor&& other) noexcept {
   if (this != &other) {
     ReleaseBuffer();
 

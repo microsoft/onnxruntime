@@ -35,11 +35,12 @@ class TestOpKernel : public OpKernel {
 };
 
 TEST(SessionStateTest, AddGetKernelTest) {
+  concurrency::ThreadPool tp{"test", 1};
   ONNX_OPERATOR_SCHEMA(Variable)
       .SetDoc("Input variable.")
       .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
   ExecutionProviders execution_providers;
-  SessionState s{execution_providers, true};
+  SessionState s{execution_providers, true, &tp};
 
   onnxruntime::Model model("graph_1");
   auto& graph = model.MainGraph();
@@ -70,68 +71,80 @@ TEST(SessionStateTest, AddGetKernelTest) {
   EXPECT_EQ(orig_num_outputs, test_kernel->Node().OutputDefs().size());
 }
 
+namespace {
+class TestParam {
+ public:
+  int ir_version;
+  bool enable_mem_pattern;
+};
+TestParam param_list[] = {{3, true}, {4, true}, {3, false}, {4, false}};
+}  // namespace
+class SessionStateTestP : public testing::TestWithParam<TestParam> {
+};
 // Test that we separate out constant and non-constant initializers correctly
-TEST(SessionStateTest, TestInitializerProcessing) {
-  std::vector<int> ir_versions = {3, 4};
-  for (auto ir_version : ir_versions) {
-    std::string model_path = "testdata/optional_inputs_ir" + std::to_string(ir_version) + ".onnx";
-    Status status;
-    std::shared_ptr<Model> model;
-    ASSERT_TRUE((status = Model::Load(model_path, model)).IsOK()) << status;
-    Graph& graph = model->MainGraph();
-    // take a copy as this gets cleared during session state initialization
-    InitializedTensorSet initializers = graph.GetAllInitializedTensors();
+TEST_P(SessionStateTestP, TestInitializerProcessing) {
+  const TestParam& param = GetParam();
+  concurrency::ThreadPool tp{"test", 1};
 
-    const bool enable_mem_pattern = false;
-    ExecutionProviders execution_providers;
-    CPUExecutionProviderInfo epi{false};
-    status = execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
-    ASSERT_TRUE(status.IsOK()) << status;
+  std::string model_path = "testdata/optional_inputs_ir" + std::to_string(param.ir_version) + ".onnx";
+  Status status;
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE((status = Model::Load(model_path, model)).IsOK()) << status;
+  Graph& graph = model->MainGraph();
+  // take a copy as this gets cleared during session state initialization
+  InitializedTensorSet initializers = graph.GetAllInitializedTensors();
 
-    KernelRegistryManager krm;
-    status = krm.RegisterKernels(execution_providers);
-    ASSERT_TRUE(status.IsOK()) << status;
+  ExecutionProviders execution_providers;
+  CPUExecutionProviderInfo epi{false};
+  status = execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
+  ASSERT_TRUE(status.IsOK()) << status;
 
-    SessionState session_state(execution_providers, enable_mem_pattern);
-    SessionStateInitializer session_initializer(enable_mem_pattern, ToWideString(model_path), graph,
-                                                session_state, execution_providers, krm);
+  KernelRegistryManager krm;
+  status = krm.RegisterKernels(execution_providers);
+  ASSERT_TRUE(status.IsOK()) << status;
 
-    GraphPartitioner partitioner(krm, execution_providers);
-    status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr());
-    ASSERT_TRUE(status.IsOK()) << status;
+  SessionState session_state(execution_providers, param.enable_mem_pattern, &tp);
+  SessionStateInitializer session_initializer(param.enable_mem_pattern, ToWideString(model_path), graph,
+                                              session_state, execution_providers, krm);
 
-    status = session_initializer.CreatePlan(nullptr, nullptr, true);
-    ASSERT_TRUE(status.IsOK()) << status;
+  GraphPartitioner partitioner(krm, execution_providers);
+  status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr());
+  ASSERT_TRUE(status.IsOK()) << status;
 
-    status = session_initializer.InitializeAndSave(nullptr);
-    ASSERT_TRUE(status.IsOK()) << status;
+  status = session_initializer.CreatePlan(nullptr, nullptr, true);
+  ASSERT_TRUE(status.IsOK()) << status;
 
-    const auto& initialized_tensors = session_state.GetInitializedTensors();
-    const auto& const_initialized_tensors = session_state.GetConstantInitializedTensors();
+  status = session_initializer.InitializeAndSave(nullptr);
+  ASSERT_TRUE(status.IsOK()) << status;
 
-    ASSERT_EQ(initializers.size(), initialized_tensors.size())
-        << "SessionState should have an entry for all initializers in Graph.";
+  const auto& initialized_tensors = session_state.GetInitializedTensors();
+  const auto& const_initialized_tensors = session_state.GetConstantInitializedTensors();
 
-    if (ir_version < 4) {
-      ASSERT_EQ(initialized_tensors.size(), const_initialized_tensors.size())
-          << "All initializers should be considered constant if IR version < 4.";
-    } else {
-      const auto& name_to_idx = session_state.GetOrtValueNameIdxMap();
+  ASSERT_EQ(initializers.size(), initialized_tensors.size())
+      << "SessionState should have an entry for all initializers in Graph.";
 
-      for (auto entry : initializers) {
-        int idx;
-        name_to_idx.GetIdx(entry.first, idx);
+  if (param.ir_version < 4) {
+    ASSERT_EQ(initialized_tensors.size(), const_initialized_tensors.size())
+        << "All initializers should be considered constant if IR version < 4.";
+  } else {
+    const auto& name_to_idx = session_state.GetOrtValueNameIdxMap();
 
-        bool found = initialized_tensors.find(idx) != initialized_tensors.cend();
-        ASSERT_TRUE(found) << "Missing entry for " << entry.first << " in session state initialized tensors";
+    for (auto entry : initializers) {
+      int idx;
+      name_to_idx.GetIdx(entry.first, idx);
 
-        if (graph_utils::IsConstantInitializer(graph, entry.first, false)) {
-          found = const_initialized_tensors.find(idx) != const_initialized_tensors.cend();
-          ASSERT_TRUE(found) << "Missing entry for " << entry.first << " in session state const initialized tensors";
-        }
+      bool found = initialized_tensors.find(idx) != initialized_tensors.cend();
+      ASSERT_TRUE(found) << "Missing entry for " << entry.first << " in session state initialized tensors";
+
+      if (graph_utils::IsConstantInitializer(graph, entry.first, false)) {
+        found = const_initialized_tensors.find(idx) != const_initialized_tensors.cend();
+        ASSERT_TRUE(found) << "Missing entry for " << entry.first << " in session state const initialized tensors";
       }
     }
   }
 }
+
+INSTANTIATE_TEST_CASE_P(SessionStateTests, SessionStateTestP,
+                        testing::ValuesIn(param_list));
 }  // namespace test
 }  // namespace onnxruntime
