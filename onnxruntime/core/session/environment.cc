@@ -87,7 +87,6 @@ Internal copy node
 }
 
 Environment::~Environment() {
-  delete tp_;
   ::google::protobuf::ShutdownProtobufLibrary();
 }
 
