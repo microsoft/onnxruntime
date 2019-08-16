@@ -159,7 +159,7 @@ void ComputeGemm(const int M,
                  const float beta,
                  TSpanCIter C,
                  TSpanCIter C_end,
-                 const int ldc) {
+                 const int ldc, concurrency::ThreadPool* tp) {
   // validate all the inputs
   // need to use the lda/ldb/ldc strides which should be >= the columns for the span
   ORT_ENFORCE(lda >= K && ldb >= K && ldc >= N);
@@ -167,12 +167,12 @@ void ComputeGemm(const int M,
   ORT_ENFORCE(B + (N * ldb - (ldb - K)) <= B_end);
   ORT_ENFORCE(C + (M * ldc - (ldc - N)) <= C_end);
 
-  ::onnxruntime::math::GemmEx<float, CPUMathUtil>(
+  ::onnxruntime::math::GemmEx<float>(
       CblasNoTrans, CblasTrans,
       M, N, K, alpha,
       &*A, lda,
       &*B, ldb, beta,
-      &*C, ldc, &CPUMathUtil::Instance());
+      &*C, ldc, tp);
 }
 
 // helper to convert a span to a raw pointer

@@ -407,7 +407,7 @@ Status TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuff
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Size overflow");
       }
       size_t size_to_allocate;
-      GetSizeInBytesFromTensorProto<0>(tensor_proto, &size_to_allocate);
+      ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorProto<0>(tensor_proto, &size_to_allocate));
 
       if (preallocated && preallocated_size < size_to_allocate)
         return Status(common::ONNXRUNTIME, common::FAIL, MakeString("The buffer planner is not consistent with tensor buffer size, expected ", size_to_allocate, ", got ", preallocated_size));
