@@ -14,6 +14,11 @@
 #include "core/session/inference_session.h"
 #include "test/util/include/default_providers.h"
 
+#ifdef MICROSOFT_AUTOML
+#include "automl_ops/automl_featurizers.h"
+namespace dtf = Microsoft::Featurizer::DateTimeFeaturizer;
+#endif
+
 using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
@@ -133,6 +138,30 @@ void Check<MLFloat16>(const OpTester::Data& expected_data, const Tensor& output_
   }
 }
 
+template <>
+void Check<BFloat16>(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
+  auto& expected_tensor = expected_data.data_.Get<Tensor>();
+  auto* expected = expected_tensor.template Data<BFloat16>();
+  auto* output = output_tensor.template Data<BFloat16>();
+  auto size = output_tensor.Shape().Size();
+
+  std::vector<float> f_expected(size);
+  std::vector<float> f_output(size);
+  BFloat16ToFloat(expected, f_expected.data(), static_cast<size_t>(size));
+  BFloat16ToFloat(output, f_output.data(), static_cast<size_t>(size));
+
+  /// XXX: May need to adjust threshold as BFloat is coarse
+  float threshold = 0.001f;
+  for (int i = 0; i < size; ++i) {
+    if (std::isinf(f_expected[i]))  // Test infinity for equality
+      EXPECT_EQ(f_expected[i], f_output[i]);
+    else {
+      // the default for existing tests
+      EXPECT_NEAR(f_expected[i], f_output[i], threshold) << "provider_type: " << provider_type;
+    }
+  }
+}
+
 template <typename Type>
 void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
   if (type == DataTypeImpl::GetType<Type>())
@@ -184,8 +213,13 @@ void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, OrtValu
 }
 
 void Check(const OpTester::Data& expected_data, OrtValue& ort_value, const std::string& provider_type) {
+#ifdef MICROSOFT_AUTOML
+  CheckDispatch<dtf::TimePoint,VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
+                                                               provider_type);
+#else
   CheckDispatch<VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
                                                                provider_type);
+#endif
 }
 
 void DebugTrap() {
