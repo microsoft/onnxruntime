@@ -5,6 +5,7 @@
 
 #pragma once
 #include <array>
+#include <math.h>
 #include <functional>
 #include <map>
 #include <vector>
