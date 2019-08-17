@@ -36,7 +36,12 @@ std::unique_ptr<IExecutionProvider> CreateCPUExecutionProvider() {
   return std::make_unique<CPUExecutionProvider>(info);
 }
 
-TEST(ExecutionFrameTest, TensorAllocationTest) {
+class ExecutionFrameTest : public ::testing::Test {
+ protected:
+  concurrency::ThreadPool tp_{"test", 1};
+};
+
+TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   onnxruntime::Model model("test");
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
@@ -57,7 +62,7 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
   status = kernel_registry_manager.RegisterKernels(execution_providers);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  SessionState state{execution_providers, true};
+  SessionState state{execution_providers, true, &tp_};
   state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
 
   OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
@@ -111,7 +116,7 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
   EXPECT_EQ(tensor2->template Data<float>(), p_tensor->template Data<float>());
 }
 
-TEST(ExecutionFrameTest, FeedInDataTest) {
+TEST_F(ExecutionFrameTest, FeedInDataTest) {
   onnxruntime::Model model("test");
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
@@ -140,7 +145,7 @@ TEST(ExecutionFrameTest, FeedInDataTest) {
   execution_providers.Add(xp_typ, std::move(cpu_xp));
   EXPECT_TRUE(kernel_registry_manager.RegisterKernels(execution_providers).IsOK());
 
-  SessionState state{execution_providers, true};
+  SessionState state{execution_providers, true, &tp_};
   state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
 
   OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
@@ -160,7 +165,7 @@ TEST(ExecutionFrameTest, FeedInDataTest) {
   EXPECT_EQ(p_tensor_arg_0->MutableData<float>(), value.GetMutable<Tensor>()->MutableData<float>());
 }
 
-TEST(ExecutionFrameTest, MemPatternTest) {
+TEST_F(ExecutionFrameTest, MemPatternTest) {
   auto cpu_xp = CreateCPUExecutionProvider();
   auto xp_type = cpu_xp->Type();
   std::unordered_map<std::string, int> domain_to_version;
@@ -192,7 +197,7 @@ TEST(ExecutionFrameTest, MemPatternTest) {
   execution_providers.Add(xp_type, std::move(cpu_xp));
   kernel_registry_manager.RegisterKernels(execution_providers);
   //1. prepare input
-  SessionState state{execution_providers, true};
+  SessionState state{execution_providers, true, &tp_};
   state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
 
   OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
@@ -264,7 +269,7 @@ TEST(ExecutionFrameTest, MemPatternTest) {
   EXPECT_EQ(p->GetBlock(4)->offset_, 64);
 }
 
-TEST(ExecutionFrameTest, BadModelInvalidDimParamUsage) {
+TEST(ExecutionFrameTestWithoutSessionState, BadModelInvalidDimParamUsage) {
   // load model with 2 Scan ops that both incorrectly use shapes of { 'None', 'None' } for their outputs.
   // as 'None' is not a special value it's treated as a variable name, leading to a runtime error when we
   // attempt to re-use the output from the first Scan node for the second. validate we detect this and error out.
