@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed bder the MIT License.
+// Licensed under the MIT License.
 
 // Summary: The Ort C++ API is a header only wrapper around the Ort C API.
 //
