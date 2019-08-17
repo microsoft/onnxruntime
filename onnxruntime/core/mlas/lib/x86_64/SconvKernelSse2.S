@@ -249,6 +249,7 @@ Arguments:
         .macro PostProcessBlock FilterCount, OutputCount
 
         .globl  MlasConvPostProcessFloatSseFilter\FilterCount\()Output\OutputCount\()
+        .hidden MlasConvPostProcessFloatSseFilter\FilterCount\()Output\OutputCount\()
 MlasConvPostProcessFloatSseFilter\FilterCount\()Output\OutputCount\():
 
 .if \FilterCount\() > 2
