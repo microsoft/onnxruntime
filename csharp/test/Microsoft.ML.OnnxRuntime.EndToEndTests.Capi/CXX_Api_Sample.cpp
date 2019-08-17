@@ -43,7 +43,7 @@ int main(int argc, char* argv[]) {
 
   //*************************************************************************
   // print model input layer (node names, types, shape etc.)
-  Ort::Allocator allocator = Ort::Allocator::GetWithDefaultOptions();
+  Ort::AllocatorWithDefaultOptions allocator;
 
   // print number of model input nodes
   size_t num_input_nodes = session.GetInputCount();

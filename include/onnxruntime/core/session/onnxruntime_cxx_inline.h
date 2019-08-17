@@ -39,23 +39,21 @@ struct TypeToTensorType<uint32_t> { static constexpr ONNXTensorElementDataType t
 template <>
 struct TypeToTensorType<uint64_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64; };
 
-inline Allocator Allocator::GetWithDefaultOptions() {
-  OrtAllocator* p;
-  ORT_THROW_ON_ERROR(OrtGetAllocatorWithDefaultOptions(&p));
-  return Allocator(p);
+inline AllocatorWithDefaultOptions::AllocatorWithDefaultOptions() {
+  ORT_THROW_ON_ERROR(OrtGetAllocatorWithDefaultOptions(&p_));
 }
 
-inline void* Allocator::Alloc(size_t size) {
+inline void* AllocatorWithDefaultOptions::Alloc(size_t size) {
   void* out;
   ORT_THROW_ON_ERROR(OrtAllocatorAlloc(p_, size, &out));
   return out;
 }
 
-inline void Allocator::Free(void* p) {
+inline void AllocatorWithDefaultOptions::Free(void* p) {
   ORT_THROW_ON_ERROR(OrtAllocatorFree(p_, p));
 }
 
-inline const OrtAllocatorInfo* Allocator::GetInfo() const {
+inline const OrtAllocatorInfo* AllocatorWithDefaultOptions::GetInfo() const {
   const OrtAllocatorInfo* out;
   ORT_THROW_ON_ERROR(OrtAllocatorGetInfo(p_, &out));
   return out;
