@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics.Tensors;
+using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Runtime.InteropServices;
 
 

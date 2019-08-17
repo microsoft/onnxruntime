@@ -50,6 +50,8 @@ class NchwcConv : public OpKernel, public ConvBase {
 class NchwcPoolBase : public PoolBase {
  public:
   NchwcPoolBase(const OpKernelInfo& info) : PoolBase(info) {
+    if (!global_pooling_)
+      ORT_ENFORCE(kernel_shape_.size() == 2, "kernel_shape num_dims is not compatible with X num_dims.");
   }
 
   Status NchwcPool(OpKernelContext* context, MLAS_POOLING_KIND kind) const;

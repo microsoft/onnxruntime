@@ -10,7 +10,39 @@
     <ProtocDirectory>$(OnnxRuntimeBuildDirectory)\$(Configuration)\external\protobuf\cmake\$(Configuration)</ProtocDirectory>
     <ProtoSrc>$(OnnxRuntimeCsharpRoot)\..\onnxruntime\core\protobuf</ProtoSrc>
     <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
+
+    <!-- following attributes were necessary for the migrated Tensor tests -->  
+    <LangVersion>7.2</LangVersion>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <SignAssembly>true</SignAssembly> <!-- need signing for freind access to the internals of the Tensors assembly -->
+    <DelaySign>false</DelaySign>
+    <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
+    <!-- end -->
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Update="Tensors\TensorArithmetic.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Tensors\TensorArithmetic.tt</DependentUpon>
+    </Compile>
+    <Compile Update="Tensors\TensorOperations.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Tensors\TensorOperations.tt</DependentUpon>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="Tensors\TensorArithmetic.tt">
+      <Generator>TextTemplatingFileGenerator</Generator>
+      <LastGenOutput>Tensors\TensorArithmetic.cs</LastGenOutput>
+    </None>
+    <None Update="Tensors\TensorOperations.tt">
+      <Generator>TextTemplatingFileGenerator</Generator>
+      <LastGenOutput>Tensors\TensorOperations.cs</LastGenOutput>
+    </None>
+    <None Update="Tensors\TensorTemplate.ttinclude" />
+  </ItemGroup> 
 
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" Version="3.6.1" />

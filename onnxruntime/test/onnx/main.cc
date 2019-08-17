@@ -377,7 +377,38 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"shrink", "test case is wrong", {"onnx141"}},
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
       {"tf_inception_v2", "result mismatch"},
-      {"mxnet_arcface", "result mismatch"}
+      {"mxnet_arcface", "result mismatch"},
+      {"dynamicquantizelinear", "not implemented yet"},
+      {"dynamicquantizelinear_expanded", "not implemented yet"},
+      {"dynamicquantizelinear_max_adjusted", "not implemented yet"},
+      {"dynamicquantizelinear_max_adjusted_expanded", "not implemented yet"},
+      {"dynamicquantizelinear_min_adjusted", "not implemented yet"},
+      {"dynamicquantizelinear_min_adjusted_expanded", "not implemented yet"},
+      {"top_k", "not implemented yet for opset 11", {"onnxtip"}},
+      {"top_k_smallest", "not implemented yet for opset 11", {"onnxtip"}},
+      {"unique_not_sorted_without_axis", "not implemented yet"},
+      {"unique_sorted_with_axis", "not implemented yet"},
+      {"unique_sorted_with_axis_3d", "not implemented yet"},
+      {"unique_sorted_without_axis", "not implemented yet"},
+      {"scatter_elements_with_axis", "not implemented yet"},
+      {"scatter_elements_without_axis", "not implemented yet"},
+      {"round", "not implemented yet"},
+      {"gather_elements_1", "not implemented yet"},
+      {"gather_elements_0", "not implemented yet"},
+      {"depthtospace_crd_mode_example", "not implemented yet"},
+      {"depthtospace_crd_mode", "not implemented yet"},
+      {"cumsum_2d_axis_1", "not implemented yet"},
+      {"cumsum_2d_axis_0", "not implemented yet"},
+      {"cumsum_1d_reverse_exclusive", "not implemented yet"},
+      {"cumsum_1d_reverse", "not implemented yet"},
+      {"cumsum_1d_exclusive", "not implemented yet"},
+      {"cumsum_1d", "not implemented yet"},
+      {"clip_splitbounds", "not implemented yet for opset 11"},
+      {"clip_outbounds", "not implemented yet for opset 11"},
+      {"clip_example", "not implemented yet for opset 11"},
+      {"clip_default_min", "not implemented yet for opset 11"},
+      {"clip_default_max", "not implemented yet for opset 11"},
+      {"clip", "not implemented yet for opset 11"},
   };
 
 #ifdef USE_NGRAPH
@@ -402,7 +433,21 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 #endif
 
-
+#ifdef USE_TENSORRT
+  broken_tests.insert({"fp16_shufflenet", "TRT EP bug"});
+  broken_tests.insert({"fp16_inception_v1", "TRT EP bug"});
+  broken_tests.insert({"fp16_tiny_yolov2", "TRT EP bug"});
+  broken_tests.insert({"tf_inception_v3", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_mobilenet_v1_1.0_224", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_mobilenet_v2_1.0_224", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_mobilenet_v2_1.4_224", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v1_101", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v1_152", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v1_50", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v2_101", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v2_152", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v2_50", "TRT Engine couldn't be created"});
+#endif
 
 #ifdef USE_CUDA
   broken_tests.insert({"mxnet_arcface", "result mismatch"});

@@ -107,12 +107,12 @@ Status CreateExecutionProviders(std::unique_ptr<ExecutionProviders>* ret) {
   return Status::OK();
 }
 
-Status CreateKernelRegistryManagerFromModel(std::unique_ptr<KernelRegistryManager>* ret, Model* model) {
+Status CreateKernelRegistryManagerFromModel(std::unique_ptr<KernelRegistryManager>* ret, Model* model, concurrency::ThreadPool& tp) {
   std::unique_ptr<ExecutionProviders> execution_providers;
   ORT_RETURN_IF_ERROR(CreateExecutionProviders(&execution_providers));
   std::unique_ptr<KernelRegistryManager> kernel_registry_manager = std::make_unique<KernelRegistryManager>();
   ORT_RETURN_IF_ERROR(kernel_registry_manager->RegisterKernels(*execution_providers));
-  SessionState s{*execution_providers, true};
+  SessionState s{*execution_providers, true, &tp};
   s.SetLogger(logging::LoggingManager::DefaultLogger());
 
   ORT_RETURN_IF_ERROR(model->MainGraph().Resolve());
@@ -125,7 +125,8 @@ Status CreateKernelRegistryManagerFromModel(std::unique_ptr<KernelRegistryManage
 
 static void SearchKernelRegistry_IMPL(benchmark::State& state, Model* model) {
   std::unique_ptr<KernelRegistryManager> kernel_registry_manager;
-  auto st = CreateKernelRegistryManagerFromModel(&kernel_registry_manager, model);
+  concurrency::ThreadPool tp{"test", 1};
+  auto st = CreateKernelRegistryManagerFromModel(&kernel_registry_manager, model, tp);
   if (!st.IsOK()) throw std::runtime_error("failed");
   for (auto _ : state) {
     for (const auto& n : model->MainGraph().Nodes()) {
@@ -175,11 +176,12 @@ static void BM_PartitionModel_tiny_yolo(benchmark::State& state) {
   std::unique_ptr<KernelRegistryManager> kernel_registry_manager = std::make_unique<KernelRegistryManager>();
   status = kernel_registry_manager->RegisterKernels(*execution_providers);
   if (!status.IsOK()) throw std::runtime_error("RegisterKernels failed");
+  concurrency::ThreadPool tp{"test", 1};
 
   for (auto _ : state) {
     state.PauseTiming();
     std::shared_ptr<onnxruntime::Model> model = std::make_shared<onnxruntime::Model>(model_proto);
-    SessionState s{*execution_providers, true};
+    SessionState s{*execution_providers, true, &tp};
     s.SetLogger(logging::LoggingManager::DefaultLogger());
     BM_BREAK_IF_ERROR(model->MainGraph().Resolve());
     s.SetGraphViewer(std::make_unique<GraphViewer>(model->MainGraph()));
@@ -205,11 +207,12 @@ static void BM_PartitionModel_inception_v4(benchmark::State& state) {
   std::unique_ptr<KernelRegistryManager> kernel_registry_manager = std::make_unique<KernelRegistryManager>();
   status = kernel_registry_manager->RegisterKernels(*execution_providers);
   if (!status.IsOK()) throw std::runtime_error("RegisterKernels failed");
+  concurrency::ThreadPool tp{"test", 1};
 
   for (auto _ : state) {
     state.PauseTiming();
     std::shared_ptr<onnxruntime::Model> model = std::make_shared<onnxruntime::Model>(model_proto);
-    SessionState s{*execution_providers, true};
+    SessionState s{*execution_providers, true, &tp};
     s.SetLogger(logging::LoggingManager::DefaultLogger());
     BM_BREAK_IF_ERROR(model->MainGraph().Resolve());
     s.SetGraphViewer(std::make_unique<GraphViewer>(model->MainGraph()));
