@@ -25,7 +25,7 @@ Status DateTimeTransformer::Compute(OpKernelContext* ctx) const {
 
   int64_t tp = *input_tensor->Data<int64_t>();
   std::chrono::system_clock::time_point sys_time{std::chrono::seconds(tp)};
-  *output = std::move(dtf::SystemToDPTimePoint(sys_time));
+  *output = dtf::SystemToDPTimePoint(sys_time);
   return s;
 }
 

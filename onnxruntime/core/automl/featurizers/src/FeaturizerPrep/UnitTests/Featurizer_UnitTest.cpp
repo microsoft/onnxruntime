@@ -33,14 +33,6 @@ private:
     // ----------------------------------------------------------------------
     // |  Private Data
     bool const                              _true_on_odd;
-
-    // ----------------------------------------------------------------------
-    // |  Private Methods
-    template <typename ArchiveT>
-    void serialize(ArchiveT &ar, unsigned int const /*version*/) {
-        ar & boost::serialization::base_object<transformer_type>(*this);
-        ar & boost::serialization::make_nvp("true_on_odd", const_cast<bool &>(_true_on_odd));
-    }
 };
 
 class MyEstimator : public Microsoft::Featurizer::Estimator<bool, int> {
@@ -78,27 +70,20 @@ private:
 
         return std::make_unique<MyTransformer>(_true_on_odd_state);
     }
-
-    template <typename ArchiveT>
-    void serialize(ArchiveT &ar, unsigned int const /*version*/) {
-        ar & boost::serialization::base_object<estimator_type>(*this);
-        ar & boost::serialization::make_nvp("return_invalid_transformer", const_cast<bool &>(_return_invalid_transformer));
-        ar & boost::serialization::make_nvp("true_on_odd_state", const_cast<bool &>(_true_on_odd_state));
-    }
 };
 
 TEST(FeaturizerTests, TransformerFunctionality) {
-  ASSERT_TRUE(MyTransformer(true).transform(1) == true);
-  ASSERT_TRUE(MyTransformer(false).transform(1) == false);
-  ASSERT_TRUE(MyTransformer(true).transform(2) == false);
-  ASSERT_TRUE(MyTransformer(false).transform(2) == true);
+  ASSERT_TRUE(MyTransformer(true).transform(1));
+  ASSERT_FALSE(MyTransformer(false).transform(1));
+  ASSERT_FALSE(MyTransformer(true).transform(2));
+  ASSERT_TRUE(MyTransformer(false).transform(2));
 }
 
 TEST(FeaturizerTests, EstimatorFunctionality) {
-  ASSERT_TRUE(MyEstimator().fit(1).commit()->transform(1) == true);
-  ASSERT_TRUE(MyEstimator().fit(0).commit()->transform(1) == false);
-  ASSERT_TRUE(MyEstimator().fit(1).commit()->transform(2) == false);
-  ASSERT_TRUE(MyEstimator().fit(0).commit()->transform(2) == true);
+  ASSERT_TRUE(MyEstimator().fit(1).commit()->transform(1));
+  ASSERT_FALSE(MyEstimator().fit(0).commit()->transform(1));
+  ASSERT_FALSE(MyEstimator().fit(1).commit()->transform(2));
+  ASSERT_TRUE(MyEstimator().fit(0).commit()->transform(2));
 }
 
 TEST(FeaturizerTests, EstimatorErrors) {
@@ -112,8 +97,8 @@ TEST(FeaturizerTests, EstimatorErrors) {
 }
 
 TEST(FeaturizerTests, EstimatorFitAndCommit) {
-  ASSERT_TRUE(Microsoft::Featurizer::fit_and_commit<MyEstimator>(1, false)->transform(1) == true);
-  ASSERT_TRUE(Microsoft::Featurizer::fit_and_commit<MyEstimator>(0, false)->transform(1) == false);
-  ASSERT_TRUE(Microsoft::Featurizer::fit_and_commit<MyEstimator>(1, false)->transform(2) == false);
-  ASSERT_TRUE(Microsoft::Featurizer::fit_and_commit<MyEstimator>(0, false)->transform(2) == true);
+  ASSERT_TRUE(Microsoft::Featurizer::fit_and_commit<MyEstimator>(1, false)->transform(1));
+  ASSERT_FALSE(Microsoft::Featurizer::fit_and_commit<MyEstimator>(0, false)->transform(1));
+  ASSERT_FALSE(Microsoft::Featurizer::fit_and_commit<MyEstimator>(1, false)->transform(2));
+  ASSERT_TRUE(Microsoft::Featurizer::fit_and_commit<MyEstimator>(0, false)->transform(2));
 }

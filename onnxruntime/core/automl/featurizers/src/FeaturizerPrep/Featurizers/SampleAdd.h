@@ -89,29 +89,6 @@ private:
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
-
-// ----------------------------------------------------------------------
-// |
-// |  Transformer
-// |
-// ----------------------------------------------------------------------
-template <typename ArchiveT>
-void Transformer::serialize(ArchiveT &ar, unsigned int const version) {
-    ar & boost::serialization::base_object<Microsoft::Featurizer::Transformer>(*this);
-    ar & boost::serialization::make_nvp("delta", _delta);
-}
-
-// ----------------------------------------------------------------------
-// |
-// |  Estimator
-// |
-// ----------------------------------------------------------------------
-template <typename ArchiveT>
-void Estimator::serialize(ArchiveT &ar, unsigned int const version) {
-    ar & boost::serialization::base_object<Microsoft::Featurizer::Estimator>(*this);
-    ar & boost::serialization::make_nvp("accumulated_delta", _accumulated_delta);
-}
-
 } // namespace SampleAdd
 
 } // namespace Featurizer
