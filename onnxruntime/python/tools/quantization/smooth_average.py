@@ -2,7 +2,6 @@
 
 import random
 import numpy as np
-from array import array # remove later
 
 def compute_CUSUM(input_list):
     '''
@@ -10,7 +9,7 @@ def compute_CUSUM(input_list):
         parameter input_list: 1D array of floats
         return: 1D array of floats
     '''
-    avg = sum(input_list)/len(input_list)
+    avg = np.average(input_list)
     cusum_list = [0]
     for i in range(len(input_list)):
         cusum_list.append(cusum_list[i] + input_list[i] - avg)
