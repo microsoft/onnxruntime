@@ -34,6 +34,10 @@ Abstract:
 #define _countof(_Array) (sizeof(_Array) / sizeof(_Array[0]))
 #endif
 
+#if defined(_M_IX86) || defined(__i386__) || defined(_M_AMD64) || defined(__x86_64__)
+#define MLAS_HAS_QGEMM_U8U8
+#endif
+
 MLAS_THREADPOOL* threadpool = nullptr;
 
 template <typename T>
@@ -448,6 +452,8 @@ public:
     }
 };
 
+#ifdef MLAS_HAS_QGEMM_U8U8
+
 class MlasQgemmU8U8Test : public MlasTestBase
 {
 private:
@@ -618,6 +624,8 @@ public:
         }
     }
 };
+
+#endif
 
 class MlasConv2DTest : public MlasTestBase
 {
@@ -1962,8 +1970,10 @@ main(
         printf("SGEMM tests.\n");
         std::make_unique<MlasSgemmTest>()->ExecuteShort();
 
+#ifdef MLAS_HAS_QGEMM_U8U8
         printf("QGEMM tests.\n");
         std::make_unique<MlasQgemmU8U8Test>()->ExecuteShort();
+#endif
 
         printf("Conv2D tests.\n");
         std::make_unique<MlasConv2DTest>()->ExecuteShort();

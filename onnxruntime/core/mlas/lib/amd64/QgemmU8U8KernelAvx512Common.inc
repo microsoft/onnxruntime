@@ -62,8 +62,8 @@ GemmU8U8KernelFrame ENDS
 ;
 ;   rdx - Supplies the address into the matrix B data.
 ;
-;   r9 - Supplies the number of columns from matrix A and the number of rows
-;       from matrix B to iterate over.
+;   r9 - Supplies the number of paired columns from matrix A and the number of
+;       paired rows from matrix B to iterate over.
 ;
 ;   r10 - Supplies the length in bytes of a row from matrix A.
 ;
@@ -103,10 +103,10 @@ ENDIF
         EmitIfCountGE RowCount, 6, <vpaddd zmm27,zmm31,DWORD BCST [r12+20]>
 
 ;
-; Iterate over aligned CountK elements from matrix A and matrix B.
+; Iterate over PairedCountK elements from matrix A and matrix B.
 ;
 
-        mov     rsi,r9                      ; reload CountK aligned pairs
+        mov     rsi,r9                      ; reload PairedCountK
 IF RowCount GT 3
         lea     rbx,[r10*2+r10]
         add     rbx,rcx                     ; compute matrix A plus 3 rows
@@ -154,8 +154,8 @@ ENDIF
 ;   rbp - Supplies the number of columns from matrix B and matrix C to iterate
 ;       over.
 ;
-;   r9 - Supplies the number of columns from matrix A and the number of rows
-;       from matrix B to iterate over.
+;   r9 - Supplies the number of paired columns from matrix A and the number of
+;       paired rows from matrix B to iterate over.
 ;
 ;   r10 - Supplies the length in bytes of a row from matrix A.
 ;
@@ -180,7 +180,7 @@ ProcessCountM MACRO RowCount
 
 ProcessNextColumnLoop32xN:
         ProduceOutputBlock 32, RowCount
-        lea     rdx,[rdx+r10*8]             ; advance matrix B by 16*CountK pairs
+        lea     rdx,[rdx+r10*8]             ; advance matrix B by 8*PairedCountK
         test    r14b,r14b                   ; ZeroMode?
         jnz     SkipAccumulateOutput32xNBlock
         EmitIfCountGE RowCount, 1, <vpaddd zmm16,zmm16,ZMMWORD PTR [r8]>
@@ -273,8 +273,8 @@ GemmU8U8KernelAvx512Function MACRO Isa
 ;
 ;   C (r8) - Supplies the address of matrix C.
 ;
-;   CountK (r9) - Supplies the number of columns from matrix A and the number
-;       of rows from matrix B to iterate over.
+;   PairedCountK (r9) - Supplies the number of paired columns from matrix A and
+;       the number of paired rows from matrix B to iterate over.
 ;
 ;   CountM - Supplies the maximum number of rows that can be processed for
 ;       matrix A and matrix C. The actual number of rows handled for this
@@ -319,8 +319,6 @@ GemmU8U8KernelAvx512Function MACRO Isa
         END_PROLOGUE
 
         mov     rdi,rcx
-        inc     r9
-        shr     r9,1                        ; convert to number of aligned pairs
         mov     rbp,GemmU8U8KernelFrame.CountN[rsp]
         mov     rax,GemmU8U8KernelFrame.ldc[rsp]
         shl     rax,2                       ; convert ldc to bytes

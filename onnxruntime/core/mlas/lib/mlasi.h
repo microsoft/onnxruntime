@@ -162,24 +162,6 @@ void
 typedef MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE;
 
 typedef
-size_t
-(MLASCALL MLAS_GEMM_U8U8_KERNEL)(
-    const int16_t* A,
-    const uint8_t* B,
-    int32_t* C,
-    size_t CountK,
-    size_t CountM,
-    size_t CountN,
-    size_t ldc,
-    const int32_t* RowSumVector,
-    const int32_t* ColumnSumVector,
-    int32_t DepthValue,
-    bool ZeroMode
-    );
-
-typedef MLAS_GEMM_U8U8_KERNEL* PMLAS_GEMM_U8U8_KERNEL;
-
-typedef
 void
 (MLASCALL MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE)(
     int16_t* D,
@@ -206,6 +188,24 @@ void
     );
 
 typedef MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE* PMLAS_GEMM_U8U8_COPY_PACKB_ROUTINE;
+
+typedef
+size_t
+(MLASCALL MLAS_GEMM_U8U8_KERNEL)(
+    const int16_t* A,
+    const uint8_t* B,
+    int32_t* C,
+    size_t PairedCountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    const int32_t* RowSumVector,
+    const int32_t* ColumnSumVector,
+    int32_t DepthValue,
+    bool ZeroMode
+    );
+
+typedef MLAS_GEMM_U8U8_KERNEL* PMLAS_GEMM_U8U8_KERNEL;
 
 typedef
 void
@@ -334,12 +334,17 @@ extern "C" {
     MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4Avx;
 #endif
 
+#if defined(MLAS_TARGET_AMD64_IX86)
+    MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE MlasGemmU8U8CopyPackASse;
+    MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE MlasGemmU8U8CopyPackBSse;
+    MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelSse;
 #if defined(MLAS_TARGET_AMD64)
+    MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE MlasGemmU8U8CopyPackAAvx2;
+    MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE MlasGemmU8U8CopyPackBAvx2;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx2;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512BW;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512Vnni;
-    MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE MlasGemmU8U8CopyPackAAvx2;
-    MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE MlasGemmU8U8CopyPackBAvx2;
+#endif
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
@@ -457,15 +462,15 @@ struct MLAS_PLATFORM {
 #if defined(MLAS_TARGET_AMD64_IX86)
     PMLAS_SGEMM_KERNEL_ROUTINE KernelZeroRoutine;
     PMLAS_SGEMM_KERNEL_ROUTINE KernelAddRoutine;
+    PMLAS_GEMM_U8U8_COPY_PACKA_ROUTINE GemmU8U8CopyPackARoutine;
+    PMLAS_GEMM_U8U8_COPY_PACKB_ROUTINE GemmU8U8CopyPackBRoutine;
+    PMLAS_GEMM_U8U8_KERNEL GemmU8U8Kernel;
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1Routine;
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1TransposeBRoutine;
     PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE TransposePackB16x4Routine;
-    PMLAS_GEMM_U8U8_KERNEL GemmU8U8Kernel;
-    PMLAS_GEMM_U8U8_COPY_PACKA_ROUTINE GemmU8U8CopyPackARoutine;
-    PMLAS_GEMM_U8U8_COPY_PACKB_ROUTINE GemmU8U8CopyPackBRoutine;
     PMLAS_CONV_FLOAT_KERNEL ConvNchwFloatKernel;
     PMLAS_CONV_FLOAT_KERNEL ConvNchwcFloatKernel;
     PMLAS_CONV_DEPTHWISE_FLOAT_KERNEL ConvDepthwiseFloatKernel;

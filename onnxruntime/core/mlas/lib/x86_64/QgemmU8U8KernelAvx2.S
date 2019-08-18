@@ -514,7 +514,7 @@ C_UNDERSCORE(MlasGemmU8U8CopyPackBAvx2):
         ret
 
 //
-// Process the remaining columns of matrix B in a loop.
+// Process the remaining columns of matrix B.
 //
 
 .LCopyPackB.ProcessColumnNUnaligned:
@@ -741,8 +741,8 @@ Implicit Arguments:
 
     rsi - Supplies the address into the matrix B data.
 
-    r9 - Supplies the number of columns from matrix A and the number of rows
-        from matrix B to iterate over.
+    rcx - Supplies the number of paired columns from matrix A and the number of
+        paired rows from matrix B to iterate over.
 
     r10 - Supplies the length in bytes of a row from matrix A.
 
@@ -787,14 +787,14 @@ Implicit Arguments:
         EmitIfCountGE \RowCount\(), 6, "vpaddd ymm15,ymm15,ymm1"
 
 //
-// Iterate over aligned CountK elements from matrix A and matrix B.
+// Iterate over PairedCountK elements from matrix A and matrix B.
 //
 // Unrolling the loop to do two iterations improves performance slightly at the
 // cost of larger code size. Balance this by only unrolling for the common case
 // of computing 16 columns for an even number of rows.
 //
 
-        mov     rbp,rcx                     # reload CountK aligned pairs
+        mov     rbp,rcx                     # reload PairedCountK
 .if \RowCount\() > 3
         lea     rbx,[r10*2+r10]
         add     rbx,rdi                     # compute matrix A plus 3 rows
@@ -869,8 +869,8 @@ Implicit Arguments:
     r9 - Supplies the number of columns from matrix B and matrix C to iterate
         over.
 
-    rcx - Supplies the number of columns from matrix A and the number of rows
-        from matrix B to iterate over.
+    rcx - Supplies the number of paired columns from matrix A and the number of
+        paired rows from matrix B to iterate over.
 
     r10 - Supplies the length in bytes of a row from matrix A.
 
@@ -1021,8 +1021,8 @@ Arguments:
 
     C (rdx) - Supplies the address of matrix C.
 
-    CountK (rcx) - Supplies the number of columns from matrix A and the number
-        of rows from matrix B to iterate over.
+    PairedCountK (rcx) - Supplies the number of paired columns from matrix A and
+        the number of paired rows from matrix B to iterate over.
 
     CountM (r8) - Supplies the maximum number of rows that can be processed for
         matrix A and matrix C. The actual number of rows handled for this
@@ -1063,8 +1063,6 @@ C_UNDERSCORE(MlasGemmU8U8KernelAvx2):
         push    r13
         push    r14
 
-        inc     rcx
-        shr     rcx,1                       # convert to number of aligned pairs
         mov     rax,.LGemmU8U8KernelFrame_ldc[rsp]
         shl     rax,2                       # convert ldc to bytes
         lea     r10,[rcx*4]

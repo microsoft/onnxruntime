@@ -86,6 +86,9 @@ Return Value:
 
     this->KernelZeroRoutine = MlasSgemmKernelZeroSse;
     this->KernelAddRoutine = MlasSgemmKernelAddSse;
+    this->GemmU8U8CopyPackARoutine = MlasGemmU8U8CopyPackASse;
+    this->GemmU8U8CopyPackBRoutine = MlasGemmU8U8CopyPackBSse;
+    this->GemmU8U8Kernel = MlasGemmU8U8KernelSse;
 #if defined(MLAS_TARGET_AMD64)
     this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Sse;
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelSse;
@@ -157,9 +160,9 @@ Return Value:
 
             if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
 
-                this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx2;
                 this->GemmU8U8CopyPackARoutine = MlasGemmU8U8CopyPackAAvx2;
                 this->GemmU8U8CopyPackBRoutine = MlasGemmU8U8CopyPackBAvx2;
+                this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx2;
 
                 if (((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
 
