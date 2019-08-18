@@ -433,7 +433,21 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 #endif
 
-
+#ifdef USE_TENSORRT
+  broken_tests.insert({"fp16_shufflenet", "TRT EP bug"});
+  broken_tests.insert({"fp16_inception_v1", "TRT EP bug"});
+  broken_tests.insert({"fp16_tiny_yolov2", "TRT EP bug"});
+  broken_tests.insert({"tf_inception_v3", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_mobilenet_v1_1.0_224", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_mobilenet_v2_1.0_224", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_mobilenet_v2_1.4_224", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v1_101", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v1_152", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v1_50", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v2_101", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v2_152", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v2_50", "TRT Engine couldn't be created"});
+#endif
 
 #ifdef USE_CUDA
   broken_tests.insert({"mxnet_arcface", "result mismatch"});
