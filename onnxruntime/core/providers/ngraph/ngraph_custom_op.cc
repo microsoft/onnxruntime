@@ -25,6 +25,8 @@
 namespace onnxruntime {
 namespace ngraph_ep {
 
+#define NGRAPH_EP_LRU_CACHE_DEFAULT_SIZE 200
+
 static bool check_ngraph_dump_ops() {
 #ifdef _WIN32
   size_t env_name_len = 0;
@@ -80,28 +82,35 @@ void NGRAPHCustomOp::Initialize(const OrtCustomOpApi* api, OrtKernelContext* con
     uniq_input_shape.append(reinterpret_cast<const char*>(tensor_shape.data()), ndim * sizeof(int64_t));
   }
 
-  //auto it = ng_exe_map_.insert({uniq_input_shape, nullptr});  //TODO: Limit the size of map with configurable size.
-  // not present in cache 
-  if (ng_exe_map_.find(uniq_input_shape) == ng_exe_map_.end()) { 
-    // cache is full 
-    if (keyCache.size() == cacheSize) { 
-      // delete least recently used element 
-      std::string last = keyCache.back(); 
+  // Get cache size from environment
+  std::string tempSize;
+  if (std::getenv("NGRAPH_EP_LRU_CACHE_SIZE")) {
+    tempSize = std::getenv("NGRAPH_EP_LRU_CACHE_SIZE");
+  }
+  size_t cacheSize = tempSize.empty() ? NGRAPH_EP_LRU_CACHE_DEFAULT_SIZE : std::stoi(tempSize);
+
+  // Not in cache
+  if (ng_exe_map_.find(uniq_input_shape) == ng_exe_map_.end()) {
+    // Check if full
+    if (keyCache.size() == cacheSize) {
+      // Delete least recently used element
+      std::string last = keyCache.back();
   
-      // Pops the last elmeent 
-      keyCache.pop_back(); 
+      // Pop the last elmeent
+      keyCache.pop_back();
   
-      // Erase the last 
+      // Erase the last element from cache
       ng_exe_map_.erase(ng_exe_map_.find(last)); 
     } 
   } 
   
-  // present in cache 
-  else
-    keyCache.remove(uniq_input_shape); 
+  // Found in cache 
+  else {
+    keyCache.remove(uniq_input_shape);
+  }
   
-  // update reference 
-  keyCache.push_front(uniq_input_shape); 
+  // update reference
+  keyCache.push_front(uniq_input_shape);
   auto it = ng_exe_map_.insert({uniq_input_shape, nullptr});
 
   //ng_exe with current shape already exists
@@ -164,9 +173,9 @@ Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* cont
   Ort::CustomOpApi ort{*api};
 
   // Initialize nGraph function if it is not already initialized.
-  if (ng_curr_exe_ == nullptr) {
-    Initialize(api, context);
-  }
+  compute_lock_.lock();
+  Initialize(api, context);
+  compute_lock_.unlock();
 
   ORT_ENFORCE(ng_curr_exe_ != nullptr);
 
@@ -179,11 +188,15 @@ Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* cont
     for (const auto& ng_param : ng_curr_exe_->get_parameters()) {
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index++);
       void* input_data = const_cast<void*>(ort.GetTensorData<void>(input_tensor));
+      compute_lock_.lock();
       ng_inputs.emplace_back(ng_backend_->create_tensor(ng_param->get_output_element_type(0), ng_param->get_output_shape(0), input_data));
+      compute_lock_.unlock();
     }
   } catch (const std::exception& exp) {
+    compute_lock_.unlock();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Exception while copying input data to nGraph: " + std::string(exp.what()));
   } catch (...) {
+    compute_lock_.unlock();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Unknown exception while copying input data to nGraph");
   }
 
@@ -198,11 +211,15 @@ Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* cont
       std::vector<int64_t> ort_shape{shape.begin(), shape.end()};
       OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index++, ort_shape.data(), ort_shape.size());
       void* output_data = ort.GetTensorMutableData<void>(output_tensor);
+      compute_lock_.lock();
       ng_outputs.emplace_back(ng_backend_->create_tensor(dtype, shape, output_data));
+      compute_lock_.unlock();
     }
   } catch (const std::exception& exp) {
+    compute_lock_.unlock();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Exception while creating nGraph output Tensor: " + std::string(exp.what()));
   } catch (...) {
+    compute_lock_.unlock();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Unknown exception while creating nGraph output Tensor");
   }
 
