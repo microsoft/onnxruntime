@@ -3,7 +3,7 @@ include (ExternalProject)
 set(MKLDNN_URL https://github.com/intel/mkl-dnn.git)
 # If MKLDNN_TAG is updated, check if MKLML_VERSION and platform.cmake.patch need to be updated.
 set(MKLDNN_TAG v0.18.1)
-set(MKLML_VERSION 2020.0.20190813)
+set(MKLML_VERSION 2019.0.5.20190502)
 
 if(WIN32)
   set(MKLML_OS_VERSION_STR "win")
@@ -11,6 +11,8 @@ if(WIN32)
   set(MKLDNN_SHARED_LIB mkldnn.dll)
   set(MKLDNN_IMPORT_LIB mkldnn.lib)
   if(onnxruntime_USE_MKLML)
+    # Windows-only updated MKLML binary which contains fix for thread cleanup hang.
+    set(MKLML_VERSION 2020.0.20190813)
     set(MKLML_SHARED_LIB mklml.dll)
     set(MKLML_IMPORT_LIB mklml.lib)
     set(IOMP5MD_SHARED_LIB libiomp5md.dll)
