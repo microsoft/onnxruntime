@@ -1,43 +1,59 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+/**
+* Copyright (c) 2016-present, Facebook, Inc.
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
+
+//
+// Copyright (c) 2017, NVIDIA CORPORATION. All rights reserved.
+// NVIDIA/apex is licensed under the
+// BSD 3 - Clause "New" or "Revised" License
+//
+
+/* Modifications Copyright (c) Microsoft. */
 
 #pragma once
-#include "core/providers/cuda/shared_inc/fast_divmod.h"
+#include "core/providers/cuda/cuda_common.h"
+
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T>
-void LayerNormLinearKernel(
-    const int64_t N,
-    const int64_t M,
-    const T* X,
-    const T* scale,
-    const T* bias,
-    T* Y);
+template <typename T, typename U>
+void HostApplyLayerNorm(
+    T* output,
+    U* mean,
+    U* invvar,
+    const T* input,
+    int64_t n1,
+    int64_t n2,
+    double epsilon,
+    const T* gamma,
+    const T* beta);
 
-template <typename T>
-void LayerNormGradInternalKernel(
-    const int64_t N,
-    const int64_t M,
-    const T* Y_grad,
-    const T* X_data,
-    const T* X_mean,
-    const T* X_inv_std_var,
-    const T* scale,
-    T* A,
-    T* B,
-    T* C);
-
-template <typename T>
-void LayerNormGradXKernel(
-    const int64_t N,
-    const int64_t M,
-    const T* X_data,
-    const T* X_mean,
-    const T* B,
-    const T* mean_B,
-    const T* mean_C,
-    const T* X_inv_std_var,
-    T* X_grad);
+template <typename T, typename U>
+void HostLayerNormGradient(
+    const T* dout,
+    const U* mean,
+    const U* invvar,
+    const T* input,
+    int64_t n1,
+    int64_t n2,
+    const T* gamma,
+    T* grad_input,
+    T* grad_gamma,
+    T* grad_beta,
+    U* part_grad_gamma,
+    U* part_grad_beta,
+    const int part_size);
 }  // namespace cuda
 }  // namespace onnxruntime

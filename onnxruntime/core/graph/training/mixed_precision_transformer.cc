@@ -14,8 +14,8 @@ namespace training {
 static bool IsFP32Node(const Node* node) {
   return node->OpType() == "ReduceMean" ||
          node->OpType() == "ReduceSum" ||
-         node->OpType() == "LayerNormalization" ||
-         node->OpType() == "LayerNormalizationGrad" ||
+         //  node->OpType() == "LayerNormalization" ||
+         // node->OpType() == "LayerNormalizationGrad" ||
          node->OpType() == "SparseSoftmaxCrossEntropy" ||
          node->OpType() == "SparseSoftmaxCrossEntropyGrad" ||
          node->OpType() == "AdamOptimizer";

@@ -174,8 +174,14 @@ if (onnxruntime_USE_CUDA)
     if (onnxruntime_USE_TVM)
       target_compile_options(onnxruntime_providers_cuda PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
     endif()
+    set(onnxruntime_providers_cuda_static_library_flags
+        -IGNORE:4221 # LNK4221: This object file does not define any previously undefined public symbols, so it will not be used by any link operation that consumes this library
+    )
+    set_target_properties(onnxruntime_providers_cuda PROPERTIES
+        STATIC_LIBRARY_FLAGS "${onnxruntime_providers_cuda_static_library_flags}")
   endif()
 endif()
+
 
 
 if (onnxruntime_USE_MKLDNN)

@@ -2094,12 +2094,16 @@ Example 4:
       .Input(1, "scale", "Scale tensor.", "T")
       .Input(2, "B", "Bias tensor.", "T")
       .Output(0, "Y", "Output data tensor.", "T")
-      .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "T", OpSchema::Optional)
-      .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "T", OpSchema::Optional)
+      .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
+      .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors.")
+          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+      .TypeConstraint(
+          "U",
+          {"tensor(float)"},
+          "Constrain mean and inv_std_var to be float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -2142,15 +2146,19 @@ Example 4:
       .Input(0, "Y_grad", "The gradient tensor from output.", "T")
       .Input(1, "X", "Input data tensor from the forward path", "T")
       .Input(2, "scale", "Scale tensor.", "T")
-      .Input(3, "mean", "mean of X.", "T")
-      .Input(4, "inv_std_var", "inverse std variance of X.", "T")
+      .Input(3, "mean", "mean of X.", "U")
+      .Input(4, "inv_std_var", "inverse std variance of X.", "U")
       .Output(0, "X_grad", "Gradient of the input.", "T")
       .Output(1, "scale_grad", "Gradient of the scale.", "T")
       .Output(2, "bias_grad", "Gradient of the bias.", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors.");
+          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+      .TypeConstraint(
+          "U",
+          {"tensor(float)"},
+          "Constrain except mean and inv_std_var to float tensors.");
 
   static const char* TransposeMatMul_doc = R"DOC(
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
