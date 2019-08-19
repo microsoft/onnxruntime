@@ -92,8 +92,7 @@ inline std::basic_string<T> GetCurrentTimeString() {
 }
 
 concurrency::ThreadPool* CreateThreadPool(int size) {
-  if (size <= 0)
-    size = std::thread::hardware_concurrency() / 2;
+  if (size < 0) size = std::thread::hardware_concurrency() / 2;
   return size > 0 ? new concurrency::ThreadPool("SESSION", size) : nullptr;
 }
 
