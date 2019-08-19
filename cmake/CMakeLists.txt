@@ -53,6 +53,7 @@ option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" O
 option(onnxruntime_USE_MLAS "Use optimized blas library for GEMM and 2D Convolution" ON)
 option(onnxruntime_USE_MKLDNN "Build with MKL-DNN support" OFF)
 option(onnxruntime_USE_MKLML "Build MKL-DNN with MKL-ML binary dependency" OFF)
+option(onnxruntime_USE_AUTOML "Build AutoML support" ON)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
@@ -542,8 +543,8 @@ if(onnxruntime_USE_OPENVINO)
 		add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
 	endif()
 
-	if(onnxruntime_USE_OPENVINO_VAD_R)
-		add_definitions(-DOPENVINO_CONFIG_VAD_R=1)
+	if(onnxruntime_USE_OPENVINO_VAD_M)
+		add_definitions(-DOPENVINO_CONFIG_VAD_M=1)
 	endif()
 
 endif()
@@ -645,6 +646,12 @@ include(onnxruntime_providers.cmake)
 include(onnxruntime_optimizer.cmake)
 include(onnxruntime_session.cmake)
 include(onnxruntime_mlas.cmake)
+
+if(onnxruntime_USE_AUTOML)
+  add_definitions(-DMICROSOFT_AUTOML)
+  # Build shared featurizer library
+  include(onnxruntime_automl_featurizers.cmake)
+endif()
 
 if(WIN32)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES Shlwapi)

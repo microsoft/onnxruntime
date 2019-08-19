@@ -76,6 +76,10 @@ struct OrtDevice {
   DeviceId device_id;
 };
 
+inline bool operator==(const OrtDevice& left, const OrtDevice& other) {
+  return left.Id() == other.Id() && left.MemType() == other.MemType() && left.Type() == other.Type();
+}
+
 struct OrtAllocatorInfo {
   // use string for name, so we could have customized allocator in execution provider.
   const char* name;
@@ -132,6 +136,8 @@ namespace onnxruntime {
 constexpr const char* CPU = "Cpu";
 constexpr const char* CUDA = "Cuda";
 constexpr const char* CUDA_PINNED = "CudaPinned";
+constexpr const char* TRT = "Tensorrt";
+constexpr const char* TRT_PINNED = "TensorrtPinned";
 
 // forward declaration
 class SessionState;

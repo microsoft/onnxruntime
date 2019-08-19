@@ -20,7 +20,7 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ml_value.h"
-#include "core/common/callback.h"
+#include "core/framework/callback.h"
 #include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/node_index_info.h"
 #include "core/graph/graph_viewer.h"
@@ -142,17 +142,18 @@ class SessionState {
      * \param p_node0 Nullable
      * \param kci0 Nullable
      */
-    NodeInfo(size_t index0, const onnxruntime::Node* p_node0, const KernelCreateInfo* kci0)
+    NodeInfo(size_t index0, const onnxruntime::Node* p_node0, const KernelCreateInfo* kci0, const OrtDevice& device0)
         : index(index0),
           p_node(p_node0),
-          kci(kci0) {
-    }
+          kci(kci0),
+          device(&device0) {}
 
     size_t index;
     // Nullable
     const onnxruntime::Node* p_node = nullptr;
     // Nullable
     const KernelCreateInfo* kci = nullptr;
+    const OrtDevice* device = nullptr;
   };
 
   using NameNodeInfoMapType = std::unordered_map<std::string, std::vector<NodeInfo>>;

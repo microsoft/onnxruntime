@@ -86,6 +86,8 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kOpenVINOExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kNnapiExecutionProvider;
         } else {
           return false;
         }
@@ -126,12 +128,26 @@ namespace perftest {
           return false;
         }
         break;
-      case 'o':
-        test_config.run_config.optimization_level = static_cast<uint32_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        if (test_config.run_config.optimization_level >= static_cast<uint32_t>(TransformerLevel::MaxTransformerLevel)) {
-          return false;
+      case 'o': {
+        int tmp = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
+        switch (tmp) {
+          case ORT_DISABLE_ALL:
+            test_config.run_config.optimization_level = ORT_DISABLE_ALL;
+            break;
+          case ORT_ENABLE_BASIC:
+            test_config.run_config.optimization_level = ORT_ENABLE_BASIC;
+            break;
+          case ORT_ENABLE_EXTENDED:
+            test_config.run_config.optimization_level = ORT_ENABLE_EXTENDED;
+            break;
+          case ORT_ENABLE_ALL:
+            test_config.run_config.optimization_level = ORT_ENABLE_ALL;
+            break;
+          default:
+            return false;
         }
         break;
+      }
       case '?':
       case 'h':
       default:

@@ -10,365 +10,152 @@
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Add,
-    7,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Add<float>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Add,
-    7,
-    double,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
-    Add<double>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Add,
-    7,
-    int32_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()),
-    Add<int32_t>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Add,
-    7,
-    int64_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()),
-    Add<int64_t>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Sub,
-    7,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Sub<float>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Sub,
-    7,
-    double,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
-    Sub<double>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Sub,
-    7,
-    int32_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()),
-    Sub<int32_t>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Sub,
-    7,
-    int64_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()),
-    Sub<int64_t>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Mul,
-    7,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Mul<float>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Mul,
-    7,
-    double,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
-    Mul<double>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Mul,
-    7,
-    int32_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()),
-    Mul<int32_t>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Mul,
-    7,
-    int64_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()),
-    Mul<int64_t>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Div,
-    7,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Div<float>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Div,
-    7,
-    double,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
-    Div<double>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Div,
-    7,
-    int32_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()),
-    Div<int32_t>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Div,
-    7,
-    int64_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()),
-    Div<int64_t>);
-
-#define REG_ABS_KERNEL(TYPE)                                                       \
+#define REG_ELEMENTWISE_TYPED_KERNEL(OP_TYPE, VERSION, TYPE, KERNEL_CLASS)         \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
-      Abs,                                                                         \
-      6,                                                                           \
+      OP_TYPE,                                                                     \
+      VERSION,                                                                     \
       TYPE,                                                                        \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
-      Abs<TYPE>);
+      KERNEL_CLASS<TYPE>);
 
-REG_ABS_KERNEL(float)
-REG_ABS_KERNEL(double)
-REG_ABS_KERNEL(int8_t)
-REG_ABS_KERNEL(int16_t)
-REG_ABS_KERNEL(int32_t)
-REG_ABS_KERNEL(int64_t)
-REG_ABS_KERNEL(uint8_t)
-REG_ABS_KERNEL(uint16_t)
-REG_ABS_KERNEL(uint32_t)
-REG_ABS_KERNEL(uint64_t)
+#define REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(OP_TYPE, VERSION, TYPE, KERNEL_CLASS)         \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
+      OP_TYPE,                                                                     \
+      VERSION,                                                                     \
+      TYPE,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>())  \
+                        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
+      KERNEL_CLASS<TYPE>);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Neg,
-    6,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Neg<float>);
+#define REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, TYPE, KERNEL_CLASS) \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                           \
+      OP_TYPE,                                                                                        \
+      VERSION_FROM, VERSION_TO,                                                                       \
+      TYPE,                                                                                           \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()),                    \
+      KERNEL_CLASS<TYPE>);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Neg,
-    6,
-    int8_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int8_t>()),
-    Neg<int8_t>);
+#define REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, TYPE, KERNEL_CLASS) \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                           \
+      OP_TYPE,                                                                                        \
+      VERSION_FROM, VERSION_TO,                                                                       \
+      TYPE,                                                                                           \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>())                    \
+                        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),                    \
+      KERNEL_CLASS<TYPE>);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Neg,
-    6,
-    int32_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()),
-    Neg<int32_t>);
+REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, float, Add);
+REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, double, Add);
+REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, int32_t, Add);
+REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, int64_t, Add);
 
-ONNX_CPU_OPERATOR_KERNEL(
-    Floor,
-    6,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Floor<float>);
+REG_ELEMENTWISE_TYPED_KERNEL(Sub, 7, float, Sub);
+REG_ELEMENTWISE_TYPED_KERNEL(Sub, 7, double, Sub);
+REG_ELEMENTWISE_TYPED_KERNEL(Sub, 7, int32_t, Sub);
+REG_ELEMENTWISE_TYPED_KERNEL(Sub, 7, int64_t, Sub);
 
-ONNX_CPU_OPERATOR_KERNEL(
-    Ceil,
-    6,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Ceil<float>);
+REG_ELEMENTWISE_TYPED_KERNEL(Mul, 7, float, Mul);
+REG_ELEMENTWISE_TYPED_KERNEL(Mul, 7, double, Mul);
+REG_ELEMENTWISE_TYPED_KERNEL(Mul, 7, int32_t, Mul);
+REG_ELEMENTWISE_TYPED_KERNEL(Mul, 7, int64_t, Mul);
 
-ONNX_CPU_OPERATOR_KERNEL(
-    Reciprocal,
-    6,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Reciprocal<float>);
+REG_ELEMENTWISE_TYPED_KERNEL(Div, 7, float, Div);
+REG_ELEMENTWISE_TYPED_KERNEL(Div, 7, double, Div);
+REG_ELEMENTWISE_TYPED_KERNEL(Div, 7, int32_t, Div);
+REG_ELEMENTWISE_TYPED_KERNEL(Div, 7, int64_t, Div);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Sqrt,
-    6,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Sqrt<float>);
+REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, float, Abs);
+REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, double, Abs);
+REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, int8_t, Abs);
+REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, int16_t, Abs);
+REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, int32_t, Abs);
+REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, int64_t, Abs);
+REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, uint8_t, Abs);
+REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, uint16_t, Abs);
+REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, uint32_t, Abs);
+REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, uint64_t, Abs);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Sqrt,
-    6,
-    double,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
-    Sqrt<double>);
+REG_ELEMENTWISE_TYPED_KERNEL(Neg, 6, float, Neg);
+REG_ELEMENTWISE_TYPED_KERNEL(Neg, 6, int8_t, Neg);
+REG_ELEMENTWISE_TYPED_KERNEL(Neg, 6, int32_t, Neg);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Pow,
-    7,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Pow<float>);
+REG_ELEMENTWISE_TYPED_KERNEL(Floor, 6, float, Floor);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Pow,
-    7,
-    double,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
-    Pow<double>);
+REG_ELEMENTWISE_TYPED_KERNEL(Ceil, 6, float, Ceil);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Exp,
-    6,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Exp<float>);
+REG_ELEMENTWISE_TYPED_KERNEL(Reciprocal, 6, float, Reciprocal);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Exp,
-    6,
-    double,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
-    Exp<double>);
+REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 6, float, Sqrt);
+REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 6, double, Sqrt);
 
-ONNX_CPU_OPERATOR_KERNEL(
-    Log,
-    6,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Log<float>);
+REG_ELEMENTWISE_TYPED_KERNEL(Pow, 7, float, Pow);
+REG_ELEMENTWISE_TYPED_KERNEL(Pow, 7, double, Pow);
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    Sum,
-    6, 7,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Sum_6<float>);
+REG_ELEMENTWISE_TYPED_KERNEL(Exp, 6, float, Exp);
+REG_ELEMENTWISE_TYPED_KERNEL(Exp, 6, double, Exp);
 
-ONNX_CPU_OPERATOR_KERNEL(
-    Sum,
-    8,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Sum_8<float>);
+REG_ELEMENTWISE_TYPED_KERNEL(Log, 6, float, Log);
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    Min,
-    6, 7,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Min_6<float>);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sum, 6, 7, float, Sum_6);
+REG_ELEMENTWISE_TYPED_KERNEL(Sum, 8, float, Sum_8);
 
-ONNX_CPU_OPERATOR_KERNEL(
-    Min,
-    8,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Min_8<float>);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Min, 6, 7, float, Min_6);
+REG_ELEMENTWISE_TYPED_KERNEL(Min, 8, float, Min_8);
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    Max,
-    6, 7,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Max_6<float>);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Max, 6, 7, float, Max_6);
+REG_ELEMENTWISE_TYPED_KERNEL(Max, 8, float, Max_8);
+REG_ELEMENTWISE_TYPED_KERNEL(Max, 8, double, Max_8);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Max,
-    8,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Max_8<float>);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 9, float, Less);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 9, int32_t, Less);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 9, int64_t, Less);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Max,
-    8,
-    double,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
-    Max_8<double>);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 7, 9, float, Greater)
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 9, int32_t, Greater);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 9, int64_t, Greater);
+
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 7, bool, Equal);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 7, int32_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 7, int64_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 11, float, Equal);
+
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mean, 6, 7, float, Mean_6);
+REG_ELEMENTWISE_TYPED_KERNEL(Mean, 8, float, Mean_8);
+
+REG_ELEMENTWISE_TYPED_KERNEL(Erf, 9, float, Erf);
+
+// REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Not, 1, bool, Not);
+// REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(And, 7, bool, And);
+// REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Or, 7, bool, Or);
+// REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Xor, 7, bool, Xor);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Not,
     1,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>()),
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
+                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Not);
 
 ONNX_CPU_OPERATOR_KERNEL(
     And,
     7,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>()),
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
+                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     And);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Or,
     7,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>()),
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
+                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Or);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Xor,
     7,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>()),
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
+                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Xor);
-
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
-    Less,
-    7, 9,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Less<float>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Less,
-    9,
-    int32_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()),
-    Less<int32_t>);
-
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
-    Greater,
-    7, 9,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Greater<float>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Greater,
-    9,
-    int32_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()),
-    Greater<int32_t>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Equal,
-    7,
-    bool,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>()),
-    Equal<bool>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Equal,
-    7,
-    int32_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()),
-    Equal<int32_t>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Equal,
-    7,
-    int64_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()),
-    Equal<int64_t>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Equal,
-    11,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Equal<float>);
-
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    Mean,
-    6, 7,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Mean_6<float>);
-
-ONNX_CPU_OPERATOR_KERNEL(
-    Mean,
-    8,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Mean_8<float>);
-
-ONNX_CPU_OPERATOR_KERNEL(
-    Erf,
-    9,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Erf<float>);
 
 template <typename T>
 Status Add<T>::Compute(OpKernelContext* context) const {

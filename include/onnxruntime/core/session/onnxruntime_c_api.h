@@ -150,7 +150,6 @@ ORT_RUNTIME_CLASS(RunOptions);
 ORT_RUNTIME_CLASS(TypeInfo);
 ORT_RUNTIME_CLASS(TensorTypeAndShapeInfo);
 ORT_RUNTIME_CLASS(SessionOptions);
-ORT_RUNTIME_CLASS(Callback);
 ORT_RUNTIME_CLASS(CustomOpDomain);
 ORT_RUNTIME_CLASS(Allocator);
 
@@ -202,6 +201,9 @@ ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess,
  */
 ORT_API_STATUS(OrtCreateSessionOptions, _Outptr_ OrtSessionOptions** options);
 
+// Set filepath to save optimized model after graph level transformations.
+ORT_API_STATUS(OrtSetOptimizedModelFilePath, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* optimized_model_filepath);
+
 // create a copy of an existing OrtSessionOptions
 ORT_API_STATUS(OrtCloneSessionOptions, _In_ const OrtSessionOptions* in_options, _Outptr_ OrtSessionOptions** out_options);
 ORT_API_STATUS(OrtEnableSequentialExecution, _Inout_ OrtSessionOptions* options);
@@ -232,11 +234,15 @@ ORT_API_STATUS(OrtSetSessionLogId, _Inout_ OrtSessionOptions* options, const cha
 ORT_API_STATUS(OrtSetSessionLogVerbosityLevel, _Inout_ OrtSessionOptions* options, int session_log_verbosity_level);
 
 // Set Graph optimization level.
-// Available options are : 0, 1, 2.
-// 0 -> Disable all optimizations
-// 1 -> Enable basic optimizations
-// 2 -> Enable all optimizations
-ORT_API_STATUS(OrtSetSessionGraphOptimizationLevel, _Inout_ OrtSessionOptions* options, int graph_optimization_level);
+// TODO Add documentation about which optimizations are enabled for each value.
+typedef enum GraphOptimizationLevel {
+  ORT_DISABLE_ALL = 0,
+  ORT_ENABLE_BASIC = 1,
+  ORT_ENABLE_EXTENDED = 2,
+  ORT_ENABLE_ALL = 99
+} GraphOptimizationLevel;
+ORT_API_STATUS(OrtSetSessionGraphOptimizationLevel, _Inout_ OrtSessionOptions* options,
+               GraphOptimizationLevel graph_optimization_level);
 
 // How many threads in the session thread pool.
 ORT_API_STATUS(OrtSetSessionThreadPoolSize, _Inout_ OrtSessionOptions* options, int session_thread_pool_size);
@@ -335,35 +341,6 @@ ORT_API_STATUS(OrtGetStringTensorDataLength, _In_ const OrtValue* value, _Out_ s
  */
 ORT_API_STATUS(OrtGetStringTensorContent, _In_ const OrtValue* value, _Out_ void* s, size_t s_len,
                _Out_ size_t* offsets, size_t offsets_len);
-
-/**
- * Create an OrtValue in CPU memory from a serialized TensorProto
- * @param input           serialized TensorProto object
- * @param input_len       length of 'input'.
- * @param input_file_path A local file path of where the input was loaded from. Can be NULL if the tensor proto doesn't
- *                        have any external data or it was loaded from current working dir. This path could be either a
- *                        relative path or an absolute path.
- * @param preallocated A preallocated buffer for the tensor. It should be allocated from CPU memory
- * @param preallocated_size Length of the preallocated buffer in bytes, can be computed from
- *          the OrtGetTensorMemSizeInBytesFromTensorProto function. This function will return an error if the
- *          preallocated_size is not enough.
- * @param out
- * @return
- */
-ORT_API_STATUS(OrtTensorProtoToOrtValue, _In_ const void* input, int input_len,
-               _In_opt_ const ORTCHAR_T* input_file_path, _Inout_ void* preallocated, size_t preallocated_size,
-               _Outptr_ OrtValue** out, _Outptr_ OrtCallback** deleter);
-
-/**
- *  f will be freed in this call
- */
-ORT_API(void, OrtRunCallback, _Frees_ptr_opt_ OrtCallback* f);
-
-/**
- * calculate the memory requirement for the OrtTensorProtoToOrtValue function
- */
-ORT_API_STATUS(OrtGetTensorMemSizeInBytesFromTensorProto, _In_ const void* input, int input_len, size_t alignment,
-               _Out_ size_t* out);
 
 /**
  * Don't free the 'out' value

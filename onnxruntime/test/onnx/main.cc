@@ -98,7 +98,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_mem_pattern = true;
   bool enable_openvino = false;
   bool enable_nnapi = false;
-  uint32_t graph_optimization_level{};
+  GraphOptimizationLevel graph_optimization_level = ORT_DISABLE_ALL;
   bool user_graph_optimization_level_set = false;
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
@@ -166,15 +166,29 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         case 'x':
           enable_sequential_execution = false;
           break;
-        case 'o':
-          graph_optimization_level = static_cast<uint32_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-          if (graph_optimization_level >= static_cast<uint32_t>(TransformerLevel::MaxTransformerLevel)) {
-            fprintf(stderr, "See usage for valid values of graph optimization level\n");
-            usage();
-            return -1;
+        case 'o': {
+          int tmp = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
+          switch (tmp) {
+            case ORT_DISABLE_ALL:
+              graph_optimization_level = ORT_DISABLE_ALL;
+              break;
+            case ORT_ENABLE_BASIC:
+              graph_optimization_level = ORT_ENABLE_BASIC;
+              break;
+            case ORT_ENABLE_EXTENDED:
+              graph_optimization_level = ORT_ENABLE_EXTENDED;
+              break;
+            case ORT_ENABLE_ALL:
+              graph_optimization_level = ORT_ENABLE_ALL;
+              break;
+            default:
+              fprintf(stderr, "See usage for valid values of graph optimization level\n");
+              usage();
+              return -1;
           }
           user_graph_optimization_level_set = true;
           break;
+        }
         case '?':
         case 'h':
         default:
@@ -232,7 +246,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf));
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, 0));
       ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0));
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
@@ -363,7 +377,38 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"shrink", "test case is wrong", {"onnx141"}},
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
       {"tf_inception_v2", "result mismatch"},
-      {"mxnet_arcface", "result mismatch"}
+      {"mxnet_arcface", "result mismatch"},
+      {"dynamicquantizelinear", "not implemented yet"},
+      {"dynamicquantizelinear_expanded", "not implemented yet"},
+      {"dynamicquantizelinear_max_adjusted", "not implemented yet"},
+      {"dynamicquantizelinear_max_adjusted_expanded", "not implemented yet"},
+      {"dynamicquantizelinear_min_adjusted", "not implemented yet"},
+      {"dynamicquantizelinear_min_adjusted_expanded", "not implemented yet"},
+      {"top_k", "not implemented yet for opset 11", {"onnxtip"}},
+      {"top_k_smallest", "not implemented yet for opset 11", {"onnxtip"}},
+      {"unique_not_sorted_without_axis", "not implemented yet"},
+      {"unique_sorted_with_axis", "not implemented yet"},
+      {"unique_sorted_with_axis_3d", "not implemented yet"},
+      {"unique_sorted_without_axis", "not implemented yet"},
+      {"scatter_elements_with_axis", "not implemented yet"},
+      {"scatter_elements_without_axis", "not implemented yet"},
+      {"round", "not implemented yet"},
+      {"gather_elements_1", "not implemented yet"},
+      {"gather_elements_0", "not implemented yet"},
+      {"depthtospace_crd_mode_example", "not implemented yet"},
+      {"depthtospace_crd_mode", "not implemented yet"},
+      {"cumsum_2d_axis_1", "not implemented yet"},
+      {"cumsum_2d_axis_0", "not implemented yet"},
+      {"cumsum_1d_reverse_exclusive", "not implemented yet"},
+      {"cumsum_1d_reverse", "not implemented yet"},
+      {"cumsum_1d_exclusive", "not implemented yet"},
+      {"cumsum_1d", "not implemented yet"},
+      {"clip_splitbounds", "not implemented yet for opset 11"},
+      {"clip_outbounds", "not implemented yet for opset 11"},
+      {"clip_example", "not implemented yet for opset 11"},
+      {"clip_default_min", "not implemented yet for opset 11"},
+      {"clip_default_max", "not implemented yet for opset 11"},
+      {"clip", "not implemented yet for opset 11"},
   };
 
 #ifdef USE_NGRAPH

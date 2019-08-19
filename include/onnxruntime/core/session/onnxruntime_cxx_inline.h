@@ -138,8 +138,13 @@ inline SessionOptions& SessionOptions::SetThreadPoolSize(int session_thread_pool
   return *this;
 }
 
-inline SessionOptions& SessionOptions::SetGraphOptimizationLevel(int graph_optimization_level) {
+inline SessionOptions& SessionOptions::SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level) {
   ORT_THROW_ON_ERROR(OrtSetSessionGraphOptimizationLevel(p_, graph_optimization_level));
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::SetOptimizedModelFilePath(const ORTCHAR_T* optimized_model_filepath) {
+  ORT_THROW_ON_ERROR(OrtSetOptimizedModelFilePath(p_, optimized_model_filepath));
   return *this;
 }
 

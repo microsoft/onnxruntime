@@ -14,6 +14,11 @@
 #include "core/session/inference_session.h"
 #include "test/util/include/default_providers.h"
 
+#ifdef MICROSOFT_AUTOML
+#include "automl_ops/automl_featurizers.h"
+namespace dtf = Microsoft::Featurizer::DateTimeFeaturizer;
+#endif
+
 using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
@@ -30,7 +35,7 @@ void Check(const OpTester::Data& expected_data, const Tensor& output_tensor, con
   auto size = output_tensor.Shape().Size();
 
   for (int i = 0; i < size; ++i) {
-    EXPECT_EQ(expected[i], output[i]) << "provider_type: " << provider_type;
+    EXPECT_EQ(expected[i], output[i]) << "i:" << i << ", provider_type: " << provider_type;
   }
 }
 
@@ -51,19 +56,21 @@ void Check<double>(const OpTester::Data& expected_data, const Tensor& output_ten
 
   for (int i = 0; i < size; ++i) {
     if (std::isinf(expected[i])) {  // Test infinity for equality
-      EXPECT_EQ(expected[i], output[i]);
+      EXPECT_EQ(expected[i], output[i]) << "i:" << i;
     } else if (std::isnan(expected[i])) {
       EXPECT_TRUE(std::isnan(output[i])) << "Expected output " << i << " to be NaN";
     } else {
       if (!has_abs_err && !has_rel_err) {
         // the default for existing tests
-        EXPECT_NEAR(expected[i], output[i], threshold) << "provider_type: " << provider_type;
+        EXPECT_NEAR(expected[i], output[i], threshold) << "i:" << i << ", provider_type: " << provider_type;
       } else {
         if (has_abs_err) {
-          EXPECT_NEAR(expected[i], output[i], expected_data.absolute_error_.value()) << "provider_type: " << provider_type;
+          EXPECT_NEAR(expected[i], output[i], expected_data.absolute_error_.value())
+              << "i:" << i << ", provider_type: " << provider_type;
         }
         if (has_rel_err) {
-          EXPECT_NEAR(expected[i], output[i], expected_data.relative_error_.value() * std::abs(expected[i])) << "provider_type: " << provider_type;
+          EXPECT_NEAR(expected[i], output[i], expected_data.relative_error_.value() * std::abs(expected[i]))
+              << "i:" << i << ", provider_type: " << provider_type;
         }
       }
     }
@@ -87,19 +94,21 @@ void Check<float>(const OpTester::Data& expected_data, const Tensor& output_tens
 
   for (int i = 0; i < size; ++i) {
     if (std::isinf(expected[i])) {  // Test infinity for equality
-      EXPECT_EQ(expected[i], output[i]);
+      EXPECT_EQ(expected[i], output[i]) << "i:" << i;
     } else if (std::isnan(expected[i])) {
       EXPECT_TRUE(std::isnan(output[i])) << "Expected output " << i << " to be NaN";
     } else {
       if (!has_abs_err && !has_rel_err) {
         // the default for existing tests
-        EXPECT_NEAR(expected[i], output[i], threshold) << "provider_type: " << provider_type;
+        EXPECT_NEAR(expected[i], output[i], threshold) << "i:" << i << ", provider_type: " << provider_type;
       } else {
         if (has_abs_err) {
-          EXPECT_NEAR(expected[i], output[i], expected_data.absolute_error_.value()) << "provider_type: " << provider_type;
+          EXPECT_NEAR(expected[i], output[i], expected_data.absolute_error_.value())
+              << "i:" << i << ", provider_type: " << provider_type;
         }
         if (has_rel_err) {
-          EXPECT_NEAR(expected[i], output[i], expected_data.relative_error_.value() * std::abs(expected[i])) << "provider_type: " << provider_type;
+          EXPECT_NEAR(expected[i], output[i], expected_data.relative_error_.value() * std::abs(expected[i]))
+              << "i:" << i << ", provider_type: " << provider_type;
         }
       }
     }
@@ -118,6 +127,30 @@ void Check<MLFloat16>(const OpTester::Data& expected_data, const Tensor& output_
   ConvertMLFloat16ToFloat(expected, f_expected.data(), static_cast<int>(size));
   ConvertMLFloat16ToFloat(output, f_output.data(), static_cast<int>(size));
 
+  float threshold = 0.001f;
+  for (int i = 0; i < size; ++i) {
+    if (std::isinf(f_expected[i]))  // Test infinity for equality
+      EXPECT_EQ(f_expected[i], f_output[i]) << "i:" << i;
+    else {
+      // the default for existing tests
+      EXPECT_NEAR(f_expected[i], f_output[i], threshold) << "i:" << i << ", provider_type: " << provider_type;
+    }
+  }
+}
+
+template <>
+void Check<BFloat16>(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
+  auto& expected_tensor = expected_data.data_.Get<Tensor>();
+  auto* expected = expected_tensor.template Data<BFloat16>();
+  auto* output = output_tensor.template Data<BFloat16>();
+  auto size = output_tensor.Shape().Size();
+
+  std::vector<float> f_expected(size);
+  std::vector<float> f_output(size);
+  BFloat16ToFloat(expected, f_expected.data(), static_cast<size_t>(size));
+  BFloat16ToFloat(output, f_output.data(), static_cast<size_t>(size));
+
+  /// XXX: May need to adjust threshold as BFloat is coarse
   float threshold = 0.001f;
   for (int i = 0; i < size; ++i) {
     if (std::isinf(f_expected[i]))  // Test infinity for equality
@@ -180,8 +213,13 @@ void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, OrtValu
 }
 
 void Check(const OpTester::Data& expected_data, OrtValue& ort_value, const std::string& provider_type) {
+#ifdef MICROSOFT_AUTOML
+  CheckDispatch<dtf::TimePoint,VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
+                                                               provider_type);
+#else
   CheckDispatch<VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
                                                                provider_type);
+#endif
 }
 
 void DebugTrap() {
@@ -342,23 +380,27 @@ void OpTester::ExecuteModel(Model& model, InferenceSession& session_object, Expe
   default_run_options.run_log_verbosity_level = 1;
 
   std::vector<OrtValue> fetches;
-  status = session_object.Run(run_options ? *run_options : default_run_options, feeds, output_names, &fetches);
-  if (status.IsOK()) {
-    EXPECT_TRUE(expect_result == ExpectResult::kExpectSuccess) << "Expected failure but Run was successful";
-    if (expect_result == ExpectResult::kExpectFailure) {
-      return;
-    }
-  } else {
-    if (expect_result == ExpectResult::kExpectFailure) {
-      // Disable expected_failure_string checks for MKL-DNN and nGraph EP's
-      if (provider_type != kMklDnnExecutionProvider && provider_type != kNGraphExecutionProvider) {
-        EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
+  for (int i = 0; i < num_run_calls_; ++i) {
+    fetches.clear();
+    status = session_object.Run(run_options ? *run_options : default_run_options, feeds, output_names, &fetches);
+
+    if (status.IsOK()) {
+      EXPECT_TRUE(expect_result == ExpectResult::kExpectSuccess) << "Expected failure but Run was successful";
+      if (expect_result == ExpectResult::kExpectFailure) {
+        return;
       }
     } else {
-      LOGS_DEFAULT(ERROR) << "Run failed with status: " << status.ErrorMessage();
-      EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+      if (expect_result == ExpectResult::kExpectFailure) {
+        // Disable expected_failure_string checks for MKL-DNN and nGraph EP's
+        if (provider_type != kMklDnnExecutionProvider && provider_type != kNGraphExecutionProvider) {
+          EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
+        }
+      } else {
+        LOGS_DEFAULT(ERROR) << "Run failed with status: " << status.ErrorMessage();
+        EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+      }
+      return;
     }
-    return;
   }
 
   // Verify the outputs
@@ -440,7 +482,6 @@ void OpTester::Run(ExpectResult expect_result,
     std::unordered_map<std::string, OrtValue> feeds;
     std::vector<std::string> output_names;
     FillFeedsAndOutputNames(feeds, output_names);
-
     // Run the model
     SessionOptions so;
     so.session_logid = op_;
@@ -515,7 +556,9 @@ void OpTester::Run(ExpectResult expect_result,
 
           //if node is not registered for the provider, skip
           node.SetExecutionProviderType(provider_type);
-          if (provider_type == onnxruntime::kNGraphExecutionProvider || provider_type == onnxruntime::kTensorrtExecutionProvider || provider_type == onnxruntime::kOpenVINOExecutionProvider)
+          if (provider_type == onnxruntime::kNGraphExecutionProvider ||
+              provider_type == onnxruntime::kTensorrtExecutionProvider ||
+              provider_type == onnxruntime::kOpenVINOExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();
           const KernelCreateInfo* kci = reg->TryFindKernel(node, execution_provider->Type());

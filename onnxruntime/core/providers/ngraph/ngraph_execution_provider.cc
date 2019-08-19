@@ -33,19 +33,36 @@ constexpr const char* NGRAPH = "nGraph";
 
 NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kNGraphExecutionProvider} {
-  DeviceAllocatorRegistrationInfo default_allocator_info({OrtMemTypeDefault,
-                                                          [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator)); },
-                                                          std::numeric_limits<size_t>::max()});
+
+  ORT_ENFORCE(info.ng_backend_type == "CPU", "nGraph Execution Provider for onnxruntime currently is only supported for CPU backend.");
+
+  auto default_allocator_factory = [](int) {
+    auto allocator_info = std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator);
+    return std::make_unique<CPUAllocator>(std::move(allocator_info));
+  };
+
+  DeviceAllocatorRegistrationInfo default_allocator_info{
+    OrtMemTypeDefault,
+    std::move(default_allocator_factory),
+    std::numeric_limits<size_t>::max()
+  };
 
   InsertAllocator(CreateAllocator(default_allocator_info));
 
-  DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUOutput,
-                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); },
-                                                      std::numeric_limits<size_t>::max()});
+
+  auto cpu_allocator_factory = [](int) {
+    auto allocator_info = std::make_unique<OrtAllocatorInfo>(
+      NGRAPH, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput);
+    return std::make_unique<CPUAllocator>(std::move(allocator_info));
+  };
+
+  DeviceAllocatorRegistrationInfo cpu_allocator_info{
+    OrtMemTypeCPUOutput,
+    std::move(cpu_allocator_factory),
+    std::numeric_limits<size_t>::max()
+  };
 
   InsertAllocator(CreateAllocator(cpu_allocator_info));
-
-  ORT_ENFORCE(info.ng_backend_type == "CPU", "nGraph Execution Provider for onnxruntime currently is only supported for CPU backend.");
 
   try {
     ng_backend_ = ngraph::runtime::Backend::create(info.ng_backend_type);
@@ -55,25 +72,6 @@ NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderIn
     LOGS_DEFAULT(FATAL) << "Unknown exception while while creating nGraph " << info.ng_backend_type << " Backend";
     throw;
   }
-}
-
-/**
- * Checks if a tensor represented by srcLocation can be copied into the dstLocation tensor
- * @param src_location result of Location().name call on the source tensor
- * @param dst_location result of Location().name call on the destination tensor
- * @return true if src and dest locations combination allows copying
- */
-bool TensorCopyPossible(const std::string& src_location, const std::string& dst_location) {
-  // contains allowed combinations of source and destination locations for tensors copying purposes
-  // the first element of a pair denotes a source, the second - destination
-  static const std::map<std::string, std::string> allowed_copy_directions = {
-      {NGRAPH, CPU}, {NGRAPH, NGRAPH}, {CPU, NGRAPH}};
-
-  // copying of tensors is allowed only if the params match any of the allowed combinations
-  return std::any_of(allowed_copy_directions.begin(),
-                     allowed_copy_directions.end(), [&](const auto& copy_direction) {
-                       return src_location == copy_direction.first && dst_location == copy_direction.second;
-                     });
 }
 
 // Returns true only if op is in a mode that is not currently supported
@@ -131,11 +129,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
           return true;
       }
     }
-  } else if (optype == "Cast") {
-    //support of casting to bool in nGraph is in progress
-    const auto& attributes = node->GetAttributes();
-    const auto to_attr = attributes.find("to");
-    return to_attr->second.i() == ONNX_NAMESPACE::TensorProto::BOOL;
   } else if (optype == "Slice") {
     //Slice in opset 10 is currently not supported.
     //unsupported inputs: starts, ends, axes, steps
@@ -164,6 +157,63 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
       return true;
     }
+  } else if (optype == "Split") {
+    const auto& attributes = node->GetAttributes();
+    const auto split_attr = attributes.find("split");
+
+    if (split_attr != attributes.end()) {
+      // split implementation contains a bug that doesn't throw for incorrect split values
+      // disabling temporarily until it's fixed in the next release of nGraph
+      const auto splits = split_attr->second.ints();
+      return std::any_of(std::begin(splits), std::end(splits),
+        [](const auto split) { return split <= 0; });
+    }
+  } else if (optype == "QLinearMatMul") {
+    const auto& a_zero_point = node->InputDefs()[2];
+    const auto& b_zero_point = node->InputDefs()[5];
+    const auto& y_zero_point = node->InputDefs()[7];
+
+    bool non_const_zero_point = false;
+
+    // check if any of the zero points is NOT in the initializers list
+    non_const_zero_point |= initializers.find(a_zero_point->Name()) == initializers.end();
+    non_const_zero_point |= initializers.find(b_zero_point->Name()) == initializers.end();
+    non_const_zero_point |= initializers.find(y_zero_point->Name()) == initializers.end();
+
+    // QLinearMatMul is not supported if any of the zero points is a dynamic input
+    return non_const_zero_point;
+  } else if (optype == "MatMulInteger") {
+    // all MatMulInteger zero points need to be constants
+    const auto inputs = node->InputDefs();
+    if (inputs.size() == 3) {
+      const auto& a_zero_point = node->InputDefs()[2];
+
+      // not found in initializers -> not const
+      return initializers.find(a_zero_point->Name()) == initializers.end();
+    } else if (inputs.size() == 4) {
+      const auto& a_zero_point = node->InputDefs()[2];
+      const auto& b_zero_point = node->InputDefs()[3];
+
+      // not found in initializers -> not const
+      return initializers.find(a_zero_point->Name()) == initializers.end() ||
+             initializers.find(b_zero_point->Name()) == initializers.end();
+    } // else -> azp & bzp are 0 by default according to ONNX spec
+  } else if (optype == "ConvInteger") {
+    // all ConvInteger zero points need to be constants
+    const auto inputs = node->InputDefs();
+    if (inputs.size() == 3) {
+      const auto& x_zero_point = node->InputDefs()[2];
+
+      // not found in initializers -> not const
+      return initializers.find(x_zero_point->Name()) == initializers.end();
+    } else if (inputs.size() == 4) {
+      const auto& x_zero_point = node->InputDefs()[2];
+      const auto& w_zero_point = node->InputDefs()[3];
+
+      // not found in initializers -> not const
+      return initializers.find(x_zero_point->Name()) == initializers.end() ||
+             initializers.find(w_zero_point->Name()) == initializers.end();
+    } // else -> xzp & wzp are 0 by default according to ONNX spec
   }
 
   //Op doesn't fall into known any of unsupported modes.
@@ -237,27 +287,23 @@ static void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
                                     const onnxruntime::GraphViewer& graph_viewer,
                                     const std::vector<std::string>& inputs,
                                     const std::vector<std::string>& outputs,
-                                    const std::unordered_set<std::string>& ng_required_initializers,
                                     std::vector<std::unique_ptr<ComputeCapability>>& result) {
   static size_t op_counter = 0;
 
-  // Create ng_required_initializers attribute of NGraphCustomOp
-  ONNX_NAMESPACE::AttributeProto initializers;
-  initializers.set_name("initializers");
-  initializers.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS);
-  for (const auto& init : ng_required_initializers) {
-    auto tensor = initializers.add_tensors();
-    *tensor = *(graph_viewer.GetAllInitializedTensors().at(init));
-  }
-
   auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
-  meta_def->attributes["initializers"] = initializers;
   meta_def->name = "NGRAPHCustomOp_" + std::to_string(++op_counter);
   meta_def->domain = kNGraphDomain;
   meta_def->since_version = 1;
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
   meta_def->inputs = inputs;
   meta_def->outputs = outputs;
+
+  //store the name of the graph this node belongs to - used to retrieve graph initializers from the cache
+  ONNX_NAMESPACE::AttributeProto graph_name;
+  graph_name.set_name("graph_name");
+  graph_name.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
+  graph_name.set_s(graph_viewer.Name());
+  meta_def->attributes["graph_name"] = graph_name;
 
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
   sub_graph->nodes = nodes;
@@ -274,7 +320,7 @@ static std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int 
   std::map<std::string, std::set<std::string>> ng_supported_ops;
   ng_supported_ops.emplace(kOnnxDomain, ngraph::onnx_import::get_supported_operators(onnx_opset, kOnnxDomain));
 
-  const std::set<std::string> ng_disabled_ops = {};  //Place-holder for ops not supported.
+  const std::set<std::string> ng_disabled_ops = {"LSTM", "Gather"};  //Place-holder for ops not supported.
 
   for (const auto& disabled_op : ng_disabled_ops) {
     ng_supported_ops.at(kOnnxDomain).erase(disabled_op);
@@ -283,7 +329,8 @@ static std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int 
   return ng_supported_ops;
 }
 
-static std::vector<NodeIndex> GetUnsupportedNodeIndices(const GraphViewer& graph_viewer, /*out*/ std::unordered_set<std::string>& ng_required_initializers) {
+static std::vector<NodeIndex>
+GetUnsupportedNodeIndices(const GraphViewer& graph_viewer, /*out*/ std::unordered_set<std::string>& ng_required_initializers) {
   const auto ng_supported_ops = GetNgSupportedOps(GetOnnxOpSet(graph_viewer));
 
   std::vector<NodeIndex> unsupported_nodes_idx;
@@ -303,10 +350,12 @@ static std::vector<NodeIndex> GetUnsupportedNodeIndices(const GraphViewer& graph
   return unsupported_nodes_idx;
 }
 
-/* Returns a vector clusters(or node_idx). For each unsupported node, the graph is split into 3 parts.
-   supported_cluster + (UNsupported_node + rest_of_the_graph). This functions returns vector of all supported_clusters by nGraph
-*/
-static std::vector<std::vector<NodeIndex>> GetPartitionedClusters(const std::vector<NodeIndex>& topological_order, const std::vector<NodeIndex>& unsupported_nodes) {
+/**
+ * Returns a vector clusters(or node_idx). For each unsupported node, the graph is split into 3 parts.
+ * supported_cluster + (UNsupported_node + rest_of_the_graph). This functions returns vector of all supported_clusters by nGraph
+ */
+static std::vector<std::vector<NodeIndex>>
+GetPartitionedClusters(const std::vector<NodeIndex>& topological_order, const std::vector<NodeIndex>& unsupported_nodes) {
   std::vector<std::vector<NodeIndex>> ng_clusters;
 
   auto prev = topological_order.begin();
@@ -457,7 +506,7 @@ NGRAPHExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
                   [&outputs](const NodeArg* node_arg) { outputs.push_back(node_arg->Name()); });
 
     // Create and add this graph to result.
-    AppendClusterToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), graph_viewer, inputs, outputs, ng_required_initializers, result);
+    AppendClusterToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), graph_viewer, inputs, outputs, result);
 
   } else {  // unsupported_nodes_idx.empty()
     const auto ng_clusters = GetPartitionedClusters(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
@@ -467,7 +516,7 @@ NGRAPHExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       GetInputsOutputsOfCluster(graph_viewer, this_cluster, ng_required_initializers, cluster_inputs, cluster_outputs);
 
       if (!cluster_inputs.empty()) {
-        AppendClusterToSubGraph(this_cluster, graph_viewer, cluster_inputs, cluster_outputs, ng_required_initializers, result);
+        AppendClusterToSubGraph(this_cluster, graph_viewer, cluster_inputs, cluster_outputs, result);
       }
     }
   }
@@ -476,35 +525,21 @@ NGRAPHExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 }
 
 static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node) {
-  const auto& attributes = fused_node->GetAttributes();
-  const auto& initializers = attributes.at("initializers").tensors();
+  const auto* node_function = fused_node->GetFunctionBody();
 
-  ONNX_NAMESPACE::ModelProto model_proto;
-  auto graph_proto = model_proto.mutable_graph();
-  const auto& fused_graph = fused_node->GetFunctionBody()->Body();
+  ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", fused_node->Name());
 
-  for (const auto& node : fused_graph.Nodes()) {
-    node.ToProto(*(graph_proto->add_node()));
-  }
+  const Graph& node_subgraph = node_function->Body();
+  onnxruntime::Model model{node_subgraph.Name(), true};
 
-  for (const auto& input : fused_node->InputDefs()) {
-    auto valueInfoProto = graph_proto->add_input();
-    *valueInfoProto = input->ToProto();
-  }
+  ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
-  for (const auto& output : fused_node->OutputDefs()) {
-    auto valueInfoProto = graph_proto->add_output();
-    *valueInfoProto = output->ToProto();
-  }
-
-  for (const auto& initializer : initializers) {
-    graph_proto->add_initializer()->CopyFrom(initializer);
-  }
+  *(model_proto.mutable_graph()) = node_subgraph.ToGraphProto();
 
   auto opset = model_proto.add_opset_import();
   opset->set_domain(kOnnxDomain);
-  opset->set_version(fused_graph.DomainToVersionMap().at(kOnnxDomain));
-  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  opset->set_version(node_subgraph.DomainToVersionMap().at(kOnnxDomain));
 
   return model_proto;
 }
@@ -512,14 +547,14 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 Status NGRAPHExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                         std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto& fused_node : fused_nodes) {
-    auto model_proto = GetModelProtoFromFusedNode(fused_node);
-
     NodeComputeInfo compute_info;
 
     // Local copy of backend since, class members cannot be captured.
     auto ngraph_backend = ng_backend_;
-    compute_info.create_state_func = [model_proto, ngraph_backend](ComputeContext* context, FunctionState* state) {
-      auto* p = new onnxruntime::ngraph_ep::NGRAPHCustomOp(context, model_proto, ngraph_backend);
+    compute_info.create_state_func = [model_proto = GetModelProtoFromFusedNode(fused_node), ngraph_backend]
+                                     (ComputeContext* context, FunctionState* state)
+    {
+      auto* p = new ngraph_ep::NGRAPHCustomOp(context, model_proto, ngraph_backend);
       *state = p;
       return 0;
     };
