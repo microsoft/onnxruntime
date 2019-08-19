@@ -42,12 +42,7 @@ namespace perftest {
       "\t-v: Show verbose information.\n"
       "\t-x [thread_size]: Session thread pool size.\n"
       "\t-P: Use parallel executor instead of sequential executor.\n"
-      "\t-o [optimization level]:\n"
-      "\t\t0: disable optimization\n"
-      "\t\t1: basic optimization\n"
-      "\t\t2: extended optimization\n"
-      "\t\t99: extended+layout optimization.\n"
-      "\t\tPlease see onnxruntime_c_api.h for the complete set of values. \n"
+      "\t-o [optimization level]: Please see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. \n"
       "\t-h: help\n");
 }
 
