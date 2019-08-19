@@ -43,8 +43,14 @@ struct MemoryPatternGroup;
  */
 class SessionState {
  public:
-  SessionState(const ExecutionProviders& execution_providers, bool enable_mem_pattern, const AllocatorManager& allocator_mgr)
-      : execution_providers_{execution_providers}, enable_mem_pattern_(enable_mem_pattern), allocator_mgr_(allocator_mgr) {}
+  SessionState(const ExecutionProviders& execution_providers,
+	  bool enable_mem_pattern,
+	  concurrency::ThreadPool* thread_pool,
+	  const AllocatorManager& allocator_mgr)
+	  : execution_providers_{execution_providers},
+	  enable_mem_pattern_(enable_mem_pattern),
+	  thread_pool_(thread_pool),
+	  allocator_mgr_(allocator_mgr) {}
 
   ~SessionState() {
     for (auto& kvp : deleter_for_initialized_tensors_) {
@@ -176,8 +182,7 @@ class SessionState {
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
 
-  onnxruntime::concurrency::ThreadPool* GetThreadPool() const { return thread_pool_; }
-  void SetThreadPool(onnxruntime::concurrency::ThreadPool* p_pool) { thread_pool_ = p_pool; }
+  concurrency::ThreadPool* GetThreadPool() const { return thread_pool_; }
 
   bool ExportDll() const { return export_fused_dll_; }
   void SetExportDllFlag(bool flag) { export_fused_dll_ = flag; }
@@ -234,7 +239,8 @@ class SessionState {
       std::unordered_map<onnxruntime::NodeIndex, std::unordered_map<std::string, std::unique_ptr<SessionState>>>;
   SubgraphSessionStateMap subgraph_session_states_;
 
-  onnxruntime::concurrency::ThreadPool* thread_pool_ = nullptr;
+  //It could be NULL
+  concurrency::ThreadPool* const thread_pool_;
 
   bool export_fused_dll_ = false;
   FuncManager fused_funcs_mgr_;

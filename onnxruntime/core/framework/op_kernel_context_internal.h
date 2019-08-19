@@ -5,6 +5,7 @@
 
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
+#include "core/session/onnxruntime_c_api.h"
 
 // onnxruntime internal OpKernelContext derived class to provide additional
 // APIs that aren't desirable to add to the public OpKernelContext API
@@ -57,7 +58,8 @@ class OpKernelContextInternal : public OpKernelContext {
 
   const bool& GetTerminateFlag() const noexcept { return terminate_flag_; }
 
-  const onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return session_state_.GetThreadPool(); }
+  _Ret_maybenull_ const onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return session_state_.GetThreadPool(); }
+  _Ret_maybenull_ onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() { return session_state_.GetThreadPool(); }
 
  private:
   const SessionState& session_state_;

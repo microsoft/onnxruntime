@@ -408,6 +408,10 @@ class InferenceSession {
   // The list of execution providers.
   ExecutionProviders execution_providers_;
 
+ private:
+  // Threadpool for this session
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
+
  protected:
   // Immutable state for each op in the model. Shared by all executors.
   // It has a dependency on execution_providers_.
@@ -434,8 +438,6 @@ class InferenceSession {
   std::unordered_map<std::string, InputDefMetaData> input_def_map_;
   OutputDefList output_def_list_;
 
-  // Threadpool for this session
-  std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   // Data transfer manager.
   DataTransferManager data_transfer_mgr_;
   AllocatorManager allocator_mgr_;
