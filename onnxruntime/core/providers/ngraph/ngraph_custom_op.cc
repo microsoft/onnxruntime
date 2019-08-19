@@ -29,7 +29,7 @@ static bool check_ngraph_dump_ops() {
 #ifdef _WIN32
   size_t env_name_len = 0;
   char* env_name = nullptr;
-  return (_dupenv_s(&env_name, &env_name_len, "ONNXRUNTIME_NGRAPH_DUMP_OPS") == 0);
+  return (_dupenv_s(&env_name, &env_name_len, "ONNXRUNTIME_NGRAPH_DUMP_OPS") == 0 && env_name != nullptr);
 #else
   return (std::getenv("ONNXRUNTIME_NGRAPH_DUMP_OPS") != nullptr);
 #endif
