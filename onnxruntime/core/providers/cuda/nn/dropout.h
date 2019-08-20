@@ -2,58 +2,39 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/common/common.h"
-#include "core/platform/ort_mutex.h"
-#include "core/framework/op_kernel.h"
+
 #include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/rnn/cudnn_rnn_base.h"
+#include "core/providers/cuda/nn/dropout_impl.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-class DropoutBase : public CudaKernel {
- protected:
-  struct CudnnDropoutState {
-    explicit CudnnDropoutState(cudnnHandle_t handle);
-    cudnnDropoutDescriptor_t dropout_desc;
-    cudnnTensorDescriptor_t dropout_in_out_desc;
-    size_t dropout_state_size;
-    size_t dropout_reserve_size;
-    void* states;
-    void* dropout_reserve_space;
-    OrtMutex mutex;
-    float ratio_;
-    Status Set(cudnnHandle_t handle, const TensorShape& shape, cudnnDataType_t type, float ratio);
-    ~CudnnDropoutState();
-  };
-
-  DropoutBase(const OpKernelInfo& info) : CudaKernel{info}, s_(CudnnHandle()), default_ratio_(0.5) {}
-  ~DropoutBase() = default;
-  //TODO: We need to change this. The kernel should be stateless, which means we should not have mutable field.
-  mutable CudnnDropoutState s_;
-  const float default_ratio_;
-};
-
 template <typename T>
-class TrainableDropout final : public DropoutBase {
+class TrainableDropout final : public CudaKernel {
  public:
-  TrainableDropout(const OpKernelInfo& info) : DropoutBase{info} {
-    info.GetAttrOrDefault("seed", &seed_, static_cast<float>(0.5));
+  TrainableDropout(const OpKernelInfo& info) : CudaKernel(info), default_ratio_(0.5) {
+    int64_t seed = 0;
+    int64_t default_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    info.GetAttrOrDefault<int64_t>("seed", &seed, default_seed);
+    generator_.SetSeed(static_cast<uint64_t>(seed));
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  float seed_;
+  mutable DropoutGenerator generator_;
+  const float default_ratio_;
 };
 
 template <typename T>
-class TrainableDropoutGrad final : public DropoutBase {
+class TrainableDropoutGrad final : public CudaKernel {
  public:
-  TrainableDropoutGrad(const OpKernelInfo& info) : DropoutBase{info} {
-  }
-
+  TrainableDropoutGrad(const OpKernelInfo& info) : CudaKernel(info), default_ratio_(0.5) {}
   Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  const float default_ratio_;
 };
+
 }  // namespace cuda
 }  // namespace onnxruntime
