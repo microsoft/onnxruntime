@@ -57,7 +57,7 @@ class NGRAPHCustomOp {
 */
   mutable std::unordered_map<std::string, std::shared_ptr<ngraph::runtime::Executable>> ng_exe_map_;
   mutable std::list<std::string> keyCache;
-
+  
   mutable std::mutex compute_lock_;
 
   mutable ONNX_NAMESPACE::ModelProto model_proto_;

@@ -25,7 +25,7 @@
 namespace onnxruntime {
 namespace ngraph_ep {
 
-#define NGRAPH_EP_LRU_CACHE_DEFAULT_SIZE 200
+#define NGRAPH_EP_LRU_CACHE_DEFAULT_SIZE 500
 
 static bool check_ngraph_dump_ops() {
 #ifdef _WIN32
@@ -84,8 +84,8 @@ void NGRAPHCustomOp::Initialize(const OrtCustomOpApi* api, OrtKernelContext* con
 
   // Get cache size from environment
   std::string tempSize;
-  if (std::getenv("NGRAPH_EP_LRU_CACHE_SIZE")) {
-    tempSize = std::getenv("NGRAPH_EP_LRU_CACHE_SIZE");
+  if (std::getenv("ONNXRUNTIME_NGRAPH_LRU_CACHE_SIZE")) {
+    tempSize = std::getenv("ONNXRUNTIME_NGRAPH_LRU_CACHE_SIZE");
   }
   size_t cacheSize = tempSize.empty() ? NGRAPH_EP_LRU_CACHE_DEFAULT_SIZE : std::stoi(tempSize);
 
@@ -173,9 +173,11 @@ Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* cont
   Ort::CustomOpApi ort{*api};
 
   // Initialize nGraph function if it is not already initialized.
-  compute_lock_.lock();
-  Initialize(api, context);
-  compute_lock_.unlock();
+  {
+    std::mutex init_lock_;
+    std::lock_guard<std::mutex> lock(init_lock_);
+    Initialize(api, context);
+  }
 
   ORT_ENFORCE(ng_curr_exe_ != nullptr);
 
@@ -188,15 +190,13 @@ Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* cont
     for (const auto& ng_param : ng_curr_exe_->get_parameters()) {
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index++);
       void* input_data = const_cast<void*>(ort.GetTensorData<void>(input_tensor));
-      compute_lock_.lock();
+      std::mutex input_lock_;
+      std::lock_guard<std::mutex> lock(input_lock_);
       ng_inputs.emplace_back(ng_backend_->create_tensor(ng_param->get_output_element_type(0), ng_param->get_output_shape(0), input_data));
-      compute_lock_.unlock();
     }
   } catch (const std::exception& exp) {
-    compute_lock_.unlock();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Exception while copying input data to nGraph: " + std::string(exp.what()));
   } catch (...) {
-    compute_lock_.unlock();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Unknown exception while copying input data to nGraph");
   }
 
@@ -211,15 +211,13 @@ Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* cont
       std::vector<int64_t> ort_shape{shape.begin(), shape.end()};
       OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index++, ort_shape.data(), ort_shape.size());
       void* output_data = ort.GetTensorMutableData<void>(output_tensor);
-      compute_lock_.lock();
+      std::mutex output_lock_;
+      std::lock_guard<std::mutex> lock(output_lock_);
       ng_outputs.emplace_back(ng_backend_->create_tensor(dtype, shape, output_data));
-      compute_lock_.unlock();
     }
   } catch (const std::exception& exp) {
-    compute_lock_.unlock();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Exception while creating nGraph output Tensor: " + std::string(exp.what()));
   } catch (...) {
-    compute_lock_.unlock();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Unknown exception while creating nGraph output Tensor");
   }
 
