@@ -26,7 +26,8 @@ common::Status SubgraphExecuteHelper(std::unique_ptr<FeedsFetchesManager>& cache
   } else {
     // use a local instance until we know we're successful, and cache if it is
     std::unique_ptr<FeedsFetchesManager> new_ffm;
-    impl.CreateFeedsFetchesManager(new_ffm);
+    ORT_RETURN_IF_ERROR(impl.CreateFeedsFetchesManager(new_ffm));
+
     status = impl.Execute(&*new_ffm, nullptr);
     if (status.IsOK()) {
       cached_feeds_fetches_manager = std::move(new_ffm);
