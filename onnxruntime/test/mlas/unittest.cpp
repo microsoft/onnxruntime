@@ -1995,7 +1995,7 @@ main(
 
         printf("Done.\n");
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
-        threadpool = new onnxruntime::concurrency::ThreadPool("test", 2);
+        if(threadpool != nullptr) threadpool = new onnxruntime::concurrency::ThreadPool("test", 2);
 #else
         break;
 #endif
