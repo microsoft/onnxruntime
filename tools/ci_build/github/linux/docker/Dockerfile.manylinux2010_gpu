@@ -2,7 +2,15 @@ FROM quay.io/pypa/manylinux2010_x86_64:latest
 
 ARG PYTHON_VERSION=3.5
 
+RUN rm -rf /var/cache/yum/*
 RUN yum clean packages
+
+# The base image comes with devtoolset-8 installed
+# gcc 8.x doesn't work with CUDA 10.1
+# so downgrade to gcc 7.x
+RUN yum install -y devtoolset-7
+RUN source scl_source enable devtoolset-7
+RUN gcc --version
 
 ADD scripts/install_manylinux2010.sh /tmp/scripts/install_manylinux2010.sh
 RUN /tmp/scripts/install_manylinux2010.sh -p ${PYTHON_VERSION}
@@ -49,12 +57,6 @@ RUN CUDNN_DOWNLOAD_SUM=7526a33bc3c152ca5d8f3eddedaa4a0b3c721a3c0000eeb80ebfe5cbc
     tar --no-same-owner -xzf cudnn-10.0-linux-x64-v7.3.0.29.tgz -C /usr/local && \
     rm cudnn-10.0-linux-x64-v7.3.0.29.tgz && \
     ldconfig
-
-# The base image comes with devtoolset-8 installed
-# gcc 8.x doesn't work with CUDA 10.1
-# so downgrade to gcc 7.x
-RUN yum install -y devtoolset-7
-RUN source scl_source enable devtoolset-7
     
 ENV LD_LIBRARY_PATH /usr/local/openblas/lib:/usr/local/cuda/lib64/stubs:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:$LD_LIBRARY_PATH
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH}
