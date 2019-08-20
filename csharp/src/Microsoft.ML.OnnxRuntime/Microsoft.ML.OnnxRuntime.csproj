@@ -3,10 +3,11 @@
   <PropertyGroup>
     <TargetFramework>netstandard1.1</TargetFramework>
     <Platforms>AnyCPU;x86</Platforms>
+    <LangVersion>7.2</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <SignAssembly>true</SignAssembly>
     <DelaySign>false</DelaySign>
-    <AssemblyOriginatorKeyFile>OnnxRuntime.snk</AssemblyOriginatorKeyFile>
+    <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
 
     <!--internal build related properties-->
     <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
@@ -24,12 +25,11 @@
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
     <PackageIconUrl>https://go.microsoft.com/fwlink/?linkid=2049168</PackageIconUrl>
     <PackageReleaseNotes>
-        Release Def:
+      Release Def:
 	Branch: $(BUILD_SOURCEBRANCH)
 	Commit: $(BUILD_SOURCEVERSION)
 	Build: https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(BUILD_BUILDID)
     </PackageReleaseNotes>
-
     <!-- sourcelink flags -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <!-- Optional: Embed source files that are not tracked by the source control manager in the PDB -->
@@ -39,6 +39,7 @@
 
   <!--TODO: this works for single platform only. Need separate packaging scripts for multi-target packaging -->
   <!--TODO: Find a way to bundle the native symbol files properly -->
+  
   <ItemGroup>
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_*.h"
           PackagePath="\build\native\include"
@@ -147,8 +148,8 @@
   </Target>
 
   <ItemGroup>
-    <PackageReference Include="System.Numerics.Tensors" Version="0.1.0" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0-beta-63127-02" PrivateAssets="All"/>
+    <PackageReference Include="System.Memory" Version="4.5.3" />
   </ItemGroup>
 
 </Project>

@@ -12,11 +12,12 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-ORT_API(OrtStatus*, OrtCreateStatus, OrtErrorCode code, _In_ const char* msg) {
+//Even we say it may not return NULL, indeed it may.
+ORT_EXPORT _Check_return_ _Ret_notnull_ OrtStatus* ORT_API_CALL OrtCreateStatus(OrtErrorCode code, _In_ const char* msg) NO_EXCEPTION {
   assert(!(code == 0 && msg != nullptr));
   size_t clen = strlen(msg);
   OrtStatus* p = reinterpret_cast<OrtStatus*>(::malloc(sizeof(OrtStatus) + clen));
-  if (p == nullptr) return nullptr;  // OOM
+  if (p == nullptr) return nullptr;  // OOM. What we can do here? abort()?
   p->code = code;
   memcpy(p->msg, msg, clen);
   p->msg[clen] = '\0';
