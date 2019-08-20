@@ -31,7 +31,7 @@ steps:
       inputs:
         targetType: 'inline'
         script: |
-          Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\Miniconda3-4.7.10-Windows-x86_64.exe https://onnxruntimetestdata.blob.core.windows.net/models/Miniconda3-4.7.10-Windows-x86_64.exe
+          Invoke-WebRequest -RetryIntervalSec 10 -MaximumRetryCount 2 -OutFile $(Build.BinariesDirectory)\Miniconda3-4.7.10-Windows-x86_64.exe https://onnxruntimetestdata.blob.core.windows.net/models/Miniconda3-4.7.10-Windows-x86_64.exe
 
     - task: CmdLine@1
       displayName: 'Run python installer'
