@@ -9,7 +9,8 @@ RUN yum clean packages
 # gcc 8.x doesn't work with CUDA 10.1
 # so downgrade to gcc 7.x
 RUN yum install -y devtoolset-7
-RUN source scl_source enable devtoolset-7
+RUN scl enable devtoolset-7 -- bash
+RUN source /opt/rh/devtoolset-7/enable
 RUN gcc --version
 
 ADD scripts/install_manylinux2010.sh /tmp/scripts/install_manylinux2010.sh
