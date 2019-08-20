@@ -21,18 +21,22 @@ std::vector<DimensionType> BroadcastTensorShape(
 // e.g. input values = {2,1,3,1,1,5}
 //      value = 1
 //      output indices = {1,3,4}
+#pragma optimize("", off)
 template<typename T>
 void FindValueIndices(gsl::span<const T> values, T value, /*out*/ std::vector<uint32_t>& indices)
 {
     indices.clear();
     for (size_t i = 0, valuesCount = values.size(); i < valuesCount; ++i)
     {
-        if (values[i] == value)
+        // Work around compiler bug on x86 release by using data() rather than operator [] directly.
+        // cl.exe 19.20.27412.4 for x86
+        if (values.data()[i] == value)
         {
             indices.push_back(gsl::narrow_cast<uint32_t>(i));
         }
     }
 }
+#pragma optimize("", on)
 
 // Convert any negative axis into an absolute axis relative to the back end.
 // So given 3 dimensions, a -1 refers to axis 2, and -3 to axis 0.
@@ -430,30 +434,6 @@ public:
 
 protected:
     std::vector<int> m_permutations;
-};
-
-class Upsample2dHelper
-{
-public:
-    void Initialize(
-        const MLOperatorAttributes& operatorAttributes,
-        gsl::span<const DimensionType> inputDimensions
-        );
-
-    // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
-    // Shape_t is used to obtain input shape which will be used for adjusting attribute value. 
-    template<typename Info_t, typename Shape_t>
-    Upsample2dHelper(const Info_t& info, const Shape_t& shape)
-    {
-        Initialize(info, shape.GetInputTensorShape(0));
-    }
-
-    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
-
-protected:
-    float m_scaleSizeW = 1.0f;
-    float m_scaleSizeH = 1.0f;
-    std::vector<DimensionType> m_outputDimensions;
 };
 
 class SplitHelper
@@ -979,27 +959,43 @@ protected:
 class ResizeHelper
 {
 public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value. 
     template<typename Info_t, typename Shape_t>
     ResizeHelper(const Info_t& info, const Shape_t& shape)
     {
-        std::string mode = info.GetOptionalAttribute<std::string>(AttrName::Mode, "NEAREST");
-
-        // Read the input shape and scale factors.
-        MLOperatorTensor scalesTensor = info.GetConstantInputTensor(1);
-        const std::vector<uint32_t> scalesTensorDimensions = scalesTensor.GetShape();
-        ML_CHECK_VALID_ARGUMENT(scalesTensorDimensions.size() == 1, "Resize's scales tensor must be 1D.");
-        m_dimCount = scalesTensorDimensions[0];
-
-        ML_CHECK_VALID_ARGUMENT(scalesTensor.IsCpuData(), "Resize's scales tensor must be CPU Tensor.");
-        const float* scalesData = scalesTensor.GetData<float>();
-
-        m_scales.assign(scalesData, scalesData + m_dimCount);
+        // Read the scales from the 2nd tensor.
+        if (info.GetInputCount() > 1)
+        {
+            MLOperatorTensor scalesTensor = info.GetConstantInputTensor(1);
+            Initialize(scalesTensor, shape.GetInputTensorShape(0));
+        }
+        else // From attribute.
+        {
+            Initialize(info, shape.GetInputTensorShape(0));
+        }
     }
+
+    void Initialize(
+        const MLOperatorAttributes& operatorAttributes,
+        gsl::span<const DimensionType> inputDimensions
+        );
+
+    void Initialize(
+        const MLOperatorTensor& scalesTensor,
+        gsl::span<const DimensionType> inputDimensions
+        );
+
+    void InitializeOutputDimensions(
+        gsl::span<const float> scales,
+        gsl::span<const DimensionType> inputDimensions
+        );
 
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
 protected:
-    size_t m_dimCount;
+    std::vector<DimensionType> m_inputDimensions;
+    std::vector<DimensionType> m_outputDimensions;
     std::vector<float> m_scales; // Cached scales to check for updates/invalidate operator.
 };
 
@@ -1145,7 +1141,7 @@ using ShapeInferenceHelper_Neg = GetOutputShapeAsInputShapeHelper;
  
 using ShapeInferenceHelper_Crop = CropHelper;
 using ShapeInferenceHelper_ImageScaler = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_Upsample = Upsample2dHelper;
+using ShapeInferenceHelper_Upsample = ResizeHelper;
  
 using ShapeInferenceHelper_Sigmoid = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_HardSigmoid = GetOutputShapeAsInputShapeHelper;

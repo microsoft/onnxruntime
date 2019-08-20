@@ -353,4 +353,21 @@ namespace Dml
         return dmlAxis;
     }
 
+    DML_INTERPOLATION_MODE MapStringToInteropolationMode(std::string_view mode)
+    {
+        // The ONNX modes are "nearest" and "linear."  Other modes exist for compatibility,
+        // since Winml supported them in the past.
+        if (mode == "NEAREST" || mode == "nearest" || mode == "nn" || mode == "NN") {
+            return DML_INTERPOLATION_MODE_NEAREST_NEIGHBOR;
+        }
+        else if (mode == "BILINEAR" || mode == "bilinear" || mode == "linear")
+        {
+            return DML_INTERPOLATION_MODE_LINEAR;
+        }
+        else
+        {
+            ML_INVALID_ARGUMENT("Unknown sampling interpolation mode.");
+        }
+    }
+
 } // namespace Dml

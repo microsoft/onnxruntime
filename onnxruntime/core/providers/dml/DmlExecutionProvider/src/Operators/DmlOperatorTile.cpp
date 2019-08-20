@@ -24,53 +24,39 @@ public:
         std::vector<std::optional<uint32_t>> outputIndices = { 0 };
         DmlOperator::Initialize(kernelCreationContext, inputIndices, outputIndices);
 
-        // Because DirectML supports a limited number of dimensions, try to reduce the dimension count
+        // Because DirectML supports a limited number of dimensions, try to squeeze the dimension count
         // to only those which actually matter. Models sometimes use a greater number of dimensions,
         // even though those dimensions have no significance and can be elided (nop 1's), coercing the
         // total dimension count back down to a supported value.
 
         std::vector<uint32_t> squeezedInputShape = m_inputDimensions;
+        std::vector<uint32_t> squeezedOutputShape = m_outputDimensions;
         std::vector<uint32_t> squeezableDimensionIndices;
         std::vector<uint32_t> paddedRepeatsData = m_repeatsData;
-        FindValueIndices<uint32_t>(gsl::make_span(m_outputDimensions), 1u, /*out*/ squeezableDimensionIndices);
+        FindValueIndices<uint32_t>(gsl::make_span(squeezedOutputShape), 1u, /*out*/ squeezableDimensionIndices);
+
         RemoveValuesByIndex(squeezableDimensionIndices, /*keepOneValue*/ true, /*inout*/ squeezedInputShape);
         RemoveValuesByIndex(squeezableDimensionIndices, /*keepOneValue*/ true, /*inout*/ paddedRepeatsData);
-        RemoveValuesByIndex(squeezableDimensionIndices, /*keepOneValue*/ true, /*inout*/ m_outputDimensions);
+        RemoveValuesByIndex(squeezableDimensionIndices, /*keepOneValue*/ true, /*inout*/ squeezedOutputShape);
 
+        // Update the tensor descriptions.
         MLOperatorTensorDataType inputTensorDataType = kernelCreationContext.GetInputEdgeDescription(0).tensorDataType;
-
-        TensorDesc inputTensorDesc =
-            TensorDesc(
-                inputTensorDataType,
-                squeezedInputShape,
-                squeezedInputShape,
-                TensorAxis::DoNotCoerce,
-                TensorAxis::W,
-                NchwDimensionCount, // minDimensionCount
-                0
-            );
-
-        TensorDesc outputTensorDesc =
-            TensorDesc(
-                inputTensorDataType,
-                gsl::make_span(m_outputDimensions),
-                gsl::make_span(m_outputDimensions),
-                TensorAxis::DoNotCoerce,
-                TensorAxis::W,
-                NchwDimensionCount, // minDimensionCount
-                0
-            );
-
-        const size_t reducedDimCount = gsl::narrow_cast<uint32_t>(m_outputDimensions.size());
-        if (outputTensorDesc.GetDimensionCount() > reducedDimCount)
-        {
-            paddedRepeatsData.insert(paddedRepeatsData.begin(), outputTensorDesc.GetDimensionCount() - reducedDimCount, 1);
-        }
-
+        auto inputTensorDesc = TensorDesc(inputTensorDataType, squeezedInputShape, squeezedInputShape, TensorAxis::DoNotCoerce, TensorAxis::W, NchwDimensionCount, 0);
+        auto outputTensorDesc = TensorDesc(inputTensorDataType, squeezedOutputShape, squeezedOutputShape, TensorAxis::DoNotCoerce, TensorAxis::W, NchwDimensionCount, 0);
         m_inputTensorDescs[0] = inputTensorDesc;
         m_outputTensorDescs[0] = outputTensorDesc;
 
-        // Create the operator with new shape
+        // If the output tensor dimension count was right-aligned to a larger size,
+        // then ensure that repeat counts have the same count as the tensor rank by
+        // inserting leading ones, since DirectML requires them to have the same count.
+        const uint32_t squeezedDimCount = gsl::narrow_cast<uint32_t>(squeezedOutputShape.size());
+        const uint32_t dmlCompatibleDimCount = outputTensorDesc.GetDimensionCount();
+        if (dmlCompatibleDimCount > squeezedDimCount)
+        {
+            paddedRepeatsData.insert(paddedRepeatsData.begin(), dmlCompatibleDimCount - squeezedDimCount, 1);
+        }
+
+        // Create the operator description.
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 

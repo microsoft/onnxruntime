@@ -610,45 +610,6 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         return { EdgeShapes(std::move(outputDimensions)) };
     }
 
-    void Upsample2dHelper::Initialize(
-        const MLOperatorAttributes& operatorAttributes,
-        gsl::span<const DimensionType> inputDimensions
-        )
-    {
-        std::vector<float> scales = operatorAttributes.GetOptionalAttribute<std::vector<float>>(AttrName::Scales, std::vector<float>());
-
-        m_outputDimensions.assign(inputDimensions.begin(), inputDimensions.end());
-        ML_CHECK_VALID_ARGUMENT(m_outputDimensions.size() == scales.size());
-
-        size_t rank = scales.size();
-        for (size_t i = 0; i < rank; ++i)
-        {
-            float scale = scales[i];
-            ML_CHECK_VALID_ARGUMENT(scale >= 1, "Scale must be >= 1.");
-            ML_CHECK_VALID_ARGUMENT(i + 2 >= rank || scale == 1, "Batch and channel must be 1. Only width and height may have scale factors.");
-        }
-
-        // TODO: For ONNX 1.2.2, Upsample should support trilinear filtering.
-        // https://microsoft.visualstudio.com/OS/GRFX-Graphics.DirectML/_workitems/edit/16938068
-        if (rank >= 2)
-        {
-            size_t index = rank - 2;
-            m_scaleSizeH = scales[index];
-            m_outputDimensions[index] = static_cast<DimensionType>(floor(m_outputDimensions[index] * m_scaleSizeH));
-        }
-        if (rank >= 1)
-        {
-            size_t index = rank - 1;
-            m_scaleSizeW = scales[index];
-            m_outputDimensions[index] = static_cast<DimensionType>(floor(m_outputDimensions[index] * m_scaleSizeW));
-        }
-    }
-
-    std::vector<EdgeShapes> Upsample2dHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
-    {
-        return { m_outputDimensions };
-    }
-
     std::vector<EdgeShapes> ReduceHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         // Example:
@@ -1143,24 +1104,55 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         return { std::move(EdgeShapes(m_outputDimensions)) };
     }
 
-    std::vector<EdgeShapes> ResizeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    void ResizeHelper::Initialize(
+        const MLOperatorAttributes& operatorAttributes,
+        gsl::span<const DimensionType> inputDimensions
+        )
     {
-        const std::vector<uint32_t> inputShape = shapeInfo.GetInputTensorShape(0);
-        ML_CHECK_VALID_ARGUMENT(inputShape.size() == m_dimCount, "Resize's scales tensor must be the same dimension count as the input tensor.");
+        m_inputDimensions.assign(inputDimensions.begin(), inputDimensions.end());
+        m_scales = operatorAttributes.GetOptionalAttribute<std::vector<float>>(AttrName::Scales, std::vector<float>());
+        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() == m_scales.size(), "Input dimensions and scales must have same rank.");
+        InitializeOutputDimensions(m_scales, inputDimensions);
+    }
 
-        MLOperatorTensor scalesTensor = shapeInfo.GetConstantInputTensor(1);
+    void ResizeHelper::Initialize(
+        const MLOperatorTensor& scalesTensor,
+        gsl::span<const DimensionType> inputDimensions
+        )
+    {
+        m_inputDimensions.assign(inputDimensions.begin(), inputDimensions.end());
+
+        // Read the input shape and scale factors.
+        const std::vector<uint32_t> scalesTensorDimensions = scalesTensor.GetShape();
+        ML_CHECK_VALID_ARGUMENT(scalesTensorDimensions.size() == 1, "Resize's scales tensor must be 1D.");
+        size_t dimCount = scalesTensorDimensions[0];
+        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() == dimCount, "Input dimensions and scales must have same rank.");
+
         ML_CHECK_VALID_ARGUMENT(scalesTensor.IsCpuData(), "Resize's scales tensor must be CPU Tensor.");
         const float* scalesData = scalesTensor.GetData<float>();
+        m_scales.assign(scalesData, scalesData + dimCount);
 
-        // Compute the output size based on the input size and scale factors.
-        std::vector<uint32_t> outputShape;
-        for (size_t i = 0; i < m_dimCount; ++i)
+        InitializeOutputDimensions(m_scales, inputDimensions);
+    }
+
+    void ResizeHelper::InitializeOutputDimensions(
+        gsl::span<const float> scales,
+        gsl::span<const DimensionType> inputDimensions
+        )
+    {
+        assert(m_outputDimensions.empty());
+
+        for (size_t i = 0, rank = scales.size(); i < rank; ++i)
         {
-            ML_CHECK_VALID_ARGUMENT(scalesData[i] > FLT_EPSILON, "Scale values should be positive.");
-            outputShape.push_back(gsl::narrow_cast<uint32_t>(floor(inputShape[i] * scalesData[i])));
+            float scale = m_scales[i];
+            ML_CHECK_VALID_ARGUMENT(scale > FLT_EPSILON, "Scale values should be positive.");
+            m_outputDimensions.push_back(gsl::narrow_cast<uint32_t>(floor(inputDimensions[i] * scale)));
         }
+    }
 
-        return { std::move(EdgeShapes(outputShape)) };
+    std::vector<EdgeShapes> ResizeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        return { m_outputDimensions };
     }
 
     std::vector<EdgeShapes> OneHotHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const

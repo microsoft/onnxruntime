@@ -79,6 +79,9 @@ public:
             }
         }
 
+        // resize the array to the correct direction count. The schema defaults to always be 2 elements which is wrong for single direction case.
+        activations.resize((m_direction == DML_RECURRENT_NETWORK_DIRECTION_BIDIRECTIONAL) ? 2 * defaultActivations.size() : defaultActivations.size());
+
         descs.resize(activations.size());
         m_activationDescs.resize(activations.size());
 

@@ -57,4 +57,6 @@ namespace Dml
 
     uint32_t GetDmlAdjustedAxis(uint32_t onnxAxis, uint32_t onnxDimCount, uint32_t dmlDimCount);
 
+    DML_INTERPOLATION_MODE MapStringToInteropolationMode(std::string_view mode);
+
 } // namespace Dml
