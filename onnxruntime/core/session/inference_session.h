@@ -88,7 +88,7 @@ struct SessionOptions {
   TransformerLevel graph_optimization_level = TransformerLevel::Level1;
 
   // How many threads in the session thread pool.
-  int session_thread_pool_size = 0;
+  int session_thread_pool_size = -1;
 };
 
 /**
@@ -407,6 +407,10 @@ class InferenceSession {
   // The list of execution providers.
   ExecutionProviders execution_providers_;
 
+ private:
+  // Threadpool for this session
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
+
  protected:
   // Immutable state for each op in the model. Shared by all executors.
   // It has a dependency on execution_providers_.
@@ -433,8 +437,6 @@ class InferenceSession {
   std::unordered_map<std::string, InputDefMetaData> input_def_map_;
   OutputDefList output_def_list_;
 
-  // Threadpool for this session
-  std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   // Data transfer manager.
   DataTransferManager data_transfer_mgr_;
 

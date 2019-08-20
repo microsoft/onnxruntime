@@ -257,7 +257,6 @@ Status LoopImpl::CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>&
     feed_names.push_back(entry.first);
   }
 
-  FeedsFetchesInfo ffi(feed_names, subgraph_output_names_);
   auto status =
       FeedsFetchesManager::Create(feed_names, subgraph_output_names_, session_state_.GetOrtValueNameIdxMap(), ffm);
 

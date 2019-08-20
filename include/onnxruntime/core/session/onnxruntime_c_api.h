@@ -23,6 +23,10 @@ extern "C" {
 #define _Inout_
 #define _Inout_opt_
 #define _Frees_ptr_opt_
+#define _Ret_maybenull_
+#define _Ret_notnull_
+#define _Check_return_
+#define _Success_(X)
 #define ORT_ALL_ARGS_NONNULL __attribute__((nonnull))
 #else
 #include <specstrings.h>
@@ -127,11 +131,11 @@ typedef enum OrtErrorCode {
   ORT_EXPORT RETURN_TYPE ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
 #define ORT_API_STATUS(NAME, ...) \
-  ORT_EXPORT OrtStatus* ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION ORT_MUST_USE_RESULT
+  ORT_EXPORT _Check_return_ _Success_(return == 0) _Ret_maybenull_ OrtStatus* ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION ORT_MUST_USE_RESULT
 
 // Used in *.cc files. Almost as same as ORT_API_STATUS, except without ORT_MUST_USE_RESULT
 #define ORT_API_STATUS_IMPL(NAME, ...) \
-  ORT_EXPORT OrtStatus* ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
+  ORT_EXPORT _Check_return_ _Success_(return == 0) _Ret_maybenull_ OrtStatus* ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
 #define ORT_RUNTIME_CLASS(X)    \
   struct Ort##X;                \
@@ -143,9 +147,8 @@ ORT_RUNTIME_CLASS(Env);
 ORT_RUNTIME_CLASS(Status);  // nullptr for Status* indicates success
 ORT_RUNTIME_CLASS(Provider);
 ORT_RUNTIME_CLASS(AllocatorInfo);
-ORT_RUNTIME_CLASS(Session);
+ORT_RUNTIME_CLASS(Session);  //Don't call OrtReleaseSession from Dllmain (because session owns a thread pool)
 ORT_RUNTIME_CLASS(Value);
-ORT_RUNTIME_CLASS(ValueList);
 ORT_RUNTIME_CLASS(RunOptions);
 ORT_RUNTIME_CLASS(TypeInfo);
 ORT_RUNTIME_CLASS(TensorTypeAndShapeInfo);
@@ -244,7 +247,12 @@ typedef enum GraphOptimizationLevel {
 ORT_API_STATUS(OrtSetSessionGraphOptimizationLevel, _Inout_ OrtSessionOptions* options,
                GraphOptimizationLevel graph_optimization_level);
 
-// How many threads in the session thread pool.
+/**
+ * How many threads in the session thread pool.
+ * Set it to 0 to make onnxruntime run as single threaded.
+ * \param session_thread_pool_size <0, let the runtime choose a default. =0, Don't create extra threads. 
+ *                                 >0, create a thread pool with size of this value.
+ */
 ORT_API_STATUS(OrtSetSessionThreadPoolSize, _Inout_ OrtSessionOptions* options, int session_thread_pool_size);
 
 /**
@@ -444,8 +452,8 @@ ORT_API(const char*, OrtGetVersionString);
 /**
  * \param msg A null-terminated string. Its content will be copied into the newly created OrtStatus
  */
-ORT_API(OrtStatus*, OrtCreateStatus, OrtErrorCode code, _In_ const char* msg)
-ORT_ALL_ARGS_NONNULL;
+ORT_EXPORT _Check_return_ _Ret_notnull_ OrtStatus* ORT_API_CALL OrtCreateStatus(OrtErrorCode code, _In_ const char* msg) NO_EXCEPTION
+    ORT_ALL_ARGS_NONNULL;
 
 ORT_API(OrtErrorCode, OrtGetErrorCode, _In_ const OrtStatus* status)
 ORT_ALL_ARGS_NONNULL;

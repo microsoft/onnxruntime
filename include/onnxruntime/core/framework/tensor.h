@@ -78,9 +78,9 @@ class Tensor final {
   //Move is allowed
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(Tensor);
 
-  Tensor(Tensor&& other);
+  Tensor(Tensor&& other) noexcept;
 
-  Tensor& operator=(Tensor&& other);
+  Tensor& operator=(Tensor&& other) noexcept;
 
   /**
      Returns the data type.

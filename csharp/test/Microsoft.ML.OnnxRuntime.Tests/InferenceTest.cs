@@ -6,7 +6,7 @@ using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Numerics.Tensors;
+using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -18,7 +18,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private const string propertiesFile = "Properties.txt";
 
         [Fact]
-
         public void TestSessionOptions()
         {
             using (SessionOptions opt = new SessionOptions())
@@ -64,10 +63,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 opt.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_EXTENDED;
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, opt.GraphOptimizationLevel);
-
-                Assert.Throws<OnnxRuntimeException>(() => { opt.ThreadPoolSize = -2; });
+                
                 Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; });
-
             }
         }
 
