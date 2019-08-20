@@ -24,7 +24,7 @@ steps:
       inputs:
         targetType: 'inline'
         script: |
-          Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\azcopy.exe https://onnxruntimetestdata.blob.core.windows.net/models/azcopy.exe
+          Invoke-WebRequest -RetryIntervalSec 10 -MaximumRetryCount 2 -OutFile $(Build.BinariesDirectory)\azcopy.exe https://onnxruntimetestdata.blob.core.windows.net/models/azcopy.exe
 
     - task: PowerShell@2
       displayName: 'Download Python'
