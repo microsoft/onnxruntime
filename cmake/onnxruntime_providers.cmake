@@ -88,12 +88,32 @@ set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
 
 if (onnxruntime_USE_MIMALLOC)
   set(mimalloc_root_dir ${PROJECT_SOURCE_DIR}/external/mimalloc)
-  add_definitions(-DUSE_MIMALLOC=1 -DMI_OVERRIDE=ON)
-  
-  add_subdirectory(${mimalloc_root_dir} EXCLUDE_FROM_ALL)
-  set_target_properties(mimalloc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
-  
+  add_definitions(
+    -DUSE_MIMALLOC=1
+    -DMI_OVERRIDE=ON)
   include_directories(${mimalloc_root_dir}/include)
+
+  if (WIN32) 
+    set(mimalloc_output mimalloc-override.dll)
+    add_custom_command(OUTPUT ${mimalloc_output} 
+      COMMENT "BUILDING MIMALLOC"
+      COMMAND msbuild ${mimalloc_root_dir}/ide/vs2017/mimalloc-override.vcxproj /p:OutDir=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG> /p:Platform=x64 /p:Configuration=Release)
+  
+    add_custom_target(mimalloc_override ALL
+      COMMENT "BUILDING MIMALLOC"
+      DEPENDS ${mimalloc_output})
+      add_library(mimalloc IMPORTED SHARED STATIC)
+      add_dependencies(mimalloc mimalloc_override)
+
+      set_target_properties(mimalloc
+        PROPERTIES
+        IMPORTED_LOCATION "D:/onnxruntime/cmake/external/mimalloc/out/msvc-x64/Release/mimalloc-override.lib"
+        INTERFACE_INCLUDE_DIRECTORIES ${mimalloc_root_dir}/include)
+  else ()
+    add_subdirectory(${mimalloc_root_dir} EXCLUDE_FROM_ALL)
+    set_target_properties(mimalloc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+  endif()
+  
   target_link_libraries(onnxruntime_providers PUBLIC mimalloc)
 endif()
 

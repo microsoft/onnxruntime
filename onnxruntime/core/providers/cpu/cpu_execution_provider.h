@@ -34,17 +34,19 @@ class CPUExecutionProvider : public IExecutionProvider {
     DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
                                                 [](int) { return std::make_unique<CPUAllocator>(); },
                                                 std::numeric_limits<size_t>::max()};
-#ifdef USE_JEMALLOC
+#if defined(USE_MIMALLOC)
+    // todo: choose which - forces the loading of mimalloc
+    mi_stats_reset();
+    mi_version();
+#endif
+
+#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
     ORT_UNUSED_PARAMETER(info);
-    //JEMalloc already has memory pool, so just use device allocator.
+    //JEMalloc and MiMalloc already have memory pools, so just use device allocator.
     InsertAllocator(
         std::shared_ptr<IArenaAllocator>(
             std::make_unique<DummyArena>(device_info.factory(0))));
 #else
-  #ifdef USE_MIMALLOC
-    mi_stats_reset();
-    mi_version();
-  #endif
     if (info.create_arena)
       InsertAllocator(CreateAllocator(device_info));
     else
