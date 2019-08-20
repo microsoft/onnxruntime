@@ -14,6 +14,7 @@ import onnx
 import onnxruntime
 from onnx import helper, TensorProto
 #from smooth_average import smooth_average
+from quantize import quantize
 
 import re
 import subprocess
@@ -252,7 +253,7 @@ def calculate_scale_zeropoint(node, next_node, rmin, rmax):
     rmax = max(rmax, 0)
 
     # We update the output range min and max when next node is clip or relu
-    # With this technique we can remove these 2 ops and 
+    # With this technique we can remove these 2 ops and
     # reduce the output range which in turn helps to improve accuracy
     if next_node.op_type == 'Clip':
         clip_min = next_node.attribute[0].f
@@ -292,7 +293,7 @@ def calculate_output_quantization_params(model, nbits=8, output_quantization_thr
                 'Conv_4:0': [np.float32(1), np.float32(3.5)]
             }
     :return: Dictionary containing the zero point and scale values for outputs of conv and matmul nodes.
-        The dictionary format is 
+        The dictionary format is
             {
                 "output_name": [min, max]
             }
@@ -302,17 +303,17 @@ def calculate_output_quantization_params(model, nbits=8, output_quantization_thr
 
     if output_quantization_thresholds == None:
         raise ValueError('output quantization threshold is required to calculate quantization thresholds')
-    
+
     quantization_params = {}
-        for index, node in enumerate(model.graph.node):
-            print('Processing node ' + model.graph.node[index])
-            node_output_name = node.output[0]
-            if node_output_name in output_quantization_thresholds:
-                node_thresholds = output_quantization_thresholds[node_output_name]
-                node_params = calculate_scale_zeropoint(node, model.graph.node[index+1], node_thresholds[0], node_thresholds[1])
-                quantization_params[node_output_name] = node_params
-            else:
-                print('Quantization threshold for node output not present' + node_output_name)
+    for index, node in enumerate(model.graph.node):
+        #print('Processing node ' + str(model.graph.node[index]))
+        node_output_name = node.output[0]
+        if node_output_name in output_quantization_thresholds:
+            node_thresholds = output_quantization_thresholds[node_output_name]
+            node_params = calculate_scale_zeropoint(node, model.graph.node[index+1], node_thresholds[0], node_thresholds[1])
+            quantization_params[node_output_name] = node_params
+        #else:
+            #print('Quantization threshold for node output not present: ' + node_output_name)
 
     return quantization_params
 
@@ -342,8 +343,10 @@ def main():
     # Generating inputs for quantization
     inputs = load_batch(images_folder, height, width, size_limit)
     dict_for_quantization = get_intermediate_outputs(model_path, session, inputs, calib_mode)
-    print(dict_for_quantization)
-    return dict_for_quantization
+    output_quantization_params = calculate_output_quantization_params(model, output_quantization_thresholds=dict_for_quantization)
+    calibrated_quantized_model = quantize(model, output_quantization_params=output_quantization_params)
+    onnx.save(calibrated_quantized_model, 'calibrated_quantized_model.onnx')
+    print("Calibrated, quantized model saved.")
 
 if __name__ == '__main__':
     main()
