@@ -458,6 +458,10 @@ else()
 endif()
 
 if (onnxruntime_USE_JEMALLOC)
+  if (onnxruntime_USE_MIMALLOC)
+    message( FATAL_ERROR "You cannot specify both jemalloc and mimalloc." )
+  endif()
+
   if (Win32)
     message( FATAL_ERROR "Jemalloc is not supported on Windows." )
   endif()

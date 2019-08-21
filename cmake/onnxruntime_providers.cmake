@@ -96,6 +96,8 @@ if (onnxruntime_USE_MIMALLOC)
   if (WIN32) 
     # The generic MiMalloc CMakeLists.txt project lacks 
     # the needed hooks to override malloc at runtime on Windows
+    # so we fall back to the specially provided VS solutions (which
+    # do have those hooks)
     set(mimalloc_output mimalloc-override)
     set(mimalloc_output_dir ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE})
 
@@ -121,6 +123,13 @@ if (onnxruntime_USE_MIMALLOC)
     add_library(mimalloc IMPORTED SHARED STATIC)
     add_dependencies(mimalloc mimalloc_override)
     set_target_properties(mimalloc PROPERTIES IMPORTED_LOCATION "${mimalloc_output_dir}/${mimalloc_output}.lib")
+
+    add_custom_command(TARGET mimalloc_override POST_BUILD
+                   COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                       ${mimalloc_output_dir}/${mimalloc_output}.dll
+                       ${mimalloc_output_dir}/onnxruntime/capi/
+                   )
+
   else()
     add_subdirectory(${mimalloc_root_dir} EXCLUDE_FROM_ALL)
     set_target_properties(mimalloc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})

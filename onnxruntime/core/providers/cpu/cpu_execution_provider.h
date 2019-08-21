@@ -35,8 +35,7 @@ class CPUExecutionProvider : public IExecutionProvider {
                                                 [](int) { return std::make_unique<CPUAllocator>(); },
                                                 std::numeric_limits<size_t>::max()};
 #if defined(USE_MIMALLOC)
-    // todo: choose which - forces the loading of mimalloc
-    mi_stats_reset();
+    // force the loading of mimalloc
     mi_version();
 #endif
 
