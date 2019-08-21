@@ -13,8 +13,8 @@ from PIL import Image
 import onnx
 import onnxruntime
 from onnx import helper, TensorProto
+from quantize import quantize, QuantizationMode
 #from smooth_average import smooth_average
-from quantize import quantize
 
 import re
 import subprocess
@@ -344,8 +344,9 @@ def main():
     inputs = load_batch(images_folder, height, width, size_limit)
     dict_for_quantization = get_intermediate_outputs(model_path, session, inputs, calib_mode)
     output_quantization_params = calculate_output_quantization_params(model, output_quantization_thresholds=dict_for_quantization)
-    calibrated_quantized_model = quantize(model, output_quantization_params=output_quantization_params)
+    calibrated_quantized_model = quantize(onnx.load(model_path), quantization_mode=QuantizationMode.QLinearOps, output_quantization_params=output_quantization_params)
     onnx.save(calibrated_quantized_model, 'calibrated_quantized_model.onnx')
+
     print("Calibrated, quantized model saved.")
 
 if __name__ == '__main__':
