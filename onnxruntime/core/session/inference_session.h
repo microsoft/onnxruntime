@@ -89,7 +89,7 @@ struct SessionOptions {
   TransformerLevel graph_optimization_level = TransformerLevel::Level1;
 
   // How many threads in the session thread pool.
-  int session_thread_pool_size = 0;
+  int session_thread_pool_size = -1;
 };
 
 /**

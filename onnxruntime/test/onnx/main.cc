@@ -38,11 +38,8 @@ void usage() {
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph' or 'openvino'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
-      "\t-o [optimization level]: Specifies the graph optimization level to enable. Valid values are 0 through 3. Default is 1.\n"
-      "\t\t0 -> Disable all optimizations\n"
-      "\t\t1 -> Enable basic optimizations\n"
-      "\t\t2 -> Enable extended optimizations\n"
-      "\t\t3 -> Enable extended+layout optimizations\n"
+      "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
+      "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. \n"
       "\t-h: help\n"
       "\n"
       "onnxruntime version: %s\n",
@@ -181,10 +178,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             case ORT_ENABLE_ALL:
               graph_optimization_level = ORT_ENABLE_ALL;
               break;
-            default:
-              fprintf(stderr, "See usage for valid values of graph optimization level\n");
-              usage();
-              return -1;
+            default: {
+              if (tmp > ORT_ENABLE_ALL) {  // relax constraint
+                graph_optimization_level = ORT_ENABLE_ALL;
+              } else {
+                fprintf(stderr, "See usage for valid values of graph optimization level\n");
+                usage();
+                return -1;
+              }
+            }
           }
           user_graph_optimization_level_set = true;
           break;
