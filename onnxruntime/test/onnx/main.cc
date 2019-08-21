@@ -411,6 +411,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
   broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
   broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
+  broken_tests.insert({"clip_splitbounds", "not implemented yet for opset 11"});
+  broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});	
+  broken_tests.insert({"clip_example", "not implemented yet for opset 11"});	
+  broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});	
+  broken_tests.insert({"clip_default_max", "not implemented yet for opset 11"});
+  broken_tests.insert({"clip", "not implemented yet for opset 11"});
 #endif
 
 #ifdef USE_MKLDNN
