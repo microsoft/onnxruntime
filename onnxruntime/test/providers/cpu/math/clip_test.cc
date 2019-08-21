@@ -37,7 +37,9 @@ TEST(MathOpTest, Clip_Default) {
                         {11.0f, 4.4f, 432.3f,
                          -1.3f, 3.5f, 64.0f,
                          -5.4f, 9.3f, 82.4f});
-  test.Run();
+
+  // nGraph does not support Clip opset 11 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 }
 
 TEST(MathOpTest, Clip) {
@@ -54,7 +56,9 @@ TEST(MathOpTest, Clip) {
                         {-1.0f, 0.0f, 1.0f,
                          -5.0f, 0.0f, 5.0f,
                          -5.0f, 2.0f, 5.0f});
-  test.Run();
+
+  // nGraph does not support Clip opset 11 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 }
 
 }  // namespace test
