@@ -124,8 +124,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             IntPtr status = NativeMethods.OrtRun(
                                                 this._nativeHandle,
-                                                IntPtr.Zero,  // TODO: use Run options when Run options creation API is available
-                                                              // Passing null uses the default run options in the C-api
+                                                options.Handle,
                                                 inputNames,
                                                 inputTensors,
                                                 (UIntPtr)(inputTensors.Length),

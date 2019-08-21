@@ -123,6 +123,9 @@ namespace Microsoft.ML.OnnxRuntime
                 case TensorElementType.String:
                     result = DisposableNamedOnnxValueFromNativeTensor<string>(name, nativeOnnxValue);
                     break;
+                case TensorElementType.Bool:
+                    result = DisposableNamedOnnxValueFromNativeTensor<bool>(name, nativeOnnxValue);
+                    break;
                 default:
                     throw new NotSupportedException("Tensor of element type: " + elemType + " is not supported");
 

@@ -304,10 +304,11 @@ namespace Microsoft.ML.OnnxRuntime
                     nativeElementType = TensorElementType.String;
                     dataBufferLength = dt.Buffer.Length * IntPtr.Size;
                 }
-                //TODO: Not supporting boolean for now. bool is non-blittable, the interop needs some care, and possibly need to copy
-                //else if (typeof(T) == typeof(bool))
-                //{
-                //}
+                else if (typeof(T) == typeof(bool))
+                {
+                    nativeElementType = TensorElementType.Bool;
+                    dataBufferLength = dt.Buffer.Length * sizeof(bool); // Assumes sizeof(BOOL) is always 1 byte in native
+                }
                 else
                 {
                     //TODO: may extend the supported types
@@ -400,6 +401,10 @@ namespace Microsoft.ML.OnnxRuntime
                 case TensorElementType.String:
                     type = typeof(byte);
                     width = sizeof(byte);
+                    break;
+                case TensorElementType.Bool:
+                    type = typeof(bool);
+                    width = sizeof(bool);
                     break;
                 default:
                     type = null;
