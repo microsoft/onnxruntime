@@ -727,6 +727,78 @@ TEST(ReductionOpTest, ReduceSum_int32) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceSum_apex_reduction) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("axes", std::vector<int64_t>{0, 1});
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {2}, {36.0f, 42.0f});
+  test.Run();
+}
+
+void test_apex_reduce_sum(
+  int64_t m, int64_t n) {
+  OpTester test("ReduceSum");
+  // Input tensor.
+  std::vector<float> X(m * n, 0.0f);
+  // Reduced tensor.
+  std::vector<float> Y(n, 0.0f);
+  for (int64_t i = 0; i < m; ++i) {
+    for (int64_t j = 0; j < n; ++j) {
+      const float value = float(i + j);
+      X[i * n + j] = value; 
+      Y[j] += value;
+    }
+  }
+
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddInput<float>("data", {m, n}, X);
+  test.AddOutput<float>("reduced", {n}, Y);
+
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_apex_matrix) {
+  for (int64_t m = 1; m < 2048; m *= 8) {
+    for (int64_t n = 1; n < 2048; n *= 8)  {
+      if (m * n <= 32768) {
+        test_apex_reduce_sum(m, n);
+      }
+    }
+  }
+}
+
+TEST(ReductionOpTest, ReduceSum_apex_bert) {
+  test_apex_reduce_sum(6, 2);
+  test_apex_reduce_sum(8, 2);
+  test_apex_reduce_sum(6 * 128, 128);
+  test_apex_reduce_sum(8 * 128, 128);
+  test_apex_reduce_sum(6 * 384, 128);
+  test_apex_reduce_sum(8 * 384, 128);
+  test_apex_reduce_sum(6 * 512, 128);
+  test_apex_reduce_sum(8 * 512, 128);
+}
+
+TEST(ReductionOpTest, ReduceSum_apex_more) {
+  std::srand(0);
+  for (int64_t m = 1; m < 16; ++m) {
+    for (int64_t n = 1; n < 16; ++n)  {
+      const auto m_ = 2 * m;
+      const auto n_ = 2 * n;
+      test_apex_reduce_sum(m_, n_);
+    }
+  }
+}
+
 TEST(ReductionOpTest, ReduceSum_default_axes_keepdims) {
   OpTester test("ReduceSum");
   test.AddAttribute("keepdims", (int64_t)1);

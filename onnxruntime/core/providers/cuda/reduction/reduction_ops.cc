@@ -33,13 +33,36 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
     cudnnReduceTensorOp_t cudnnReduceOp,
     std::vector<int64_t> output_dims) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
-
+  cudnnDataType_t cudnn_type_X = CudnnTensor::GetDataType<CudaT>();
   const auto rank = input_shape.NumDimensions();
-  const auto& input_dims = input_shape.GetDims();
 
+  const auto stride = input_shape[input_shape.NumDimensions() - 1];
+  const auto reduction_size = input_shape.Size() / stride;
+  if (reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
+      apex::is_apex_reduction_sum(
+          cudnn_type_X, cudnnReduceOp,
+          static_cast<int>(reduction_size),
+          static_cast<int>(stride), rank, axes_)) {
+    dim3 block;
+    dim3 grid;
+
+    apex::compute_reduction_grid_and_block(static_cast<int>(reduction_size), static_cast<int>(stride), true, block, grid);
+    auto staging_data = GetScratchBuffer<float>(4 * stride * grid.y);
+    auto semaphores = GetScratchBuffer<int>(grid.x);
+
+    apex::reduce_sum_along_all_but_the_last_axis(
+        reinterpret_cast<const float*>(X),
+        reinterpret_cast<float*>(Y),
+        grid, block,
+        static_cast<int>(reduction_size),
+        static_cast<int>(stride),
+        staging_data.get(), semaphores.get());
+    return Status::OK();
+  }
+
+  const auto& input_dims = input_shape.GetDims();
   int64_t input_count = input_shape.Size();
   IAllocatorUniquePtr<float> temp_X;
-  cudnnDataType_t cudnn_type_X = CudnnTensor::GetDataType<CudaT>();
   if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) {
     // ArgMax/ArgMin with FP16 are not supported by cudnn, so convert input to fp32 then call cudnn
     temp_X = GetScratchBuffer<float>(input_count);

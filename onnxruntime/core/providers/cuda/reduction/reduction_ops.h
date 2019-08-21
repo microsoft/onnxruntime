@@ -204,5 +204,34 @@ class CudnnReduceDescriptor final {
   cudnnReduceTensorDescriptor_t desc_;
 };
 
+// Namespace for importing Nvidia APEX's reduction implementation.
+namespace apex {
+
+// Return true if apex's reduction can be used.
+bool is_apex_reduction_sum(
+  const cudnnDataType_t cudnn_type,
+  const cudnnReduceTensorOp_t cudnnReduceOp,
+  const int m,
+  const int n,
+  const size_t rank,
+  const std::vector<int64_t> axes); 
+
+// Signature of APEX reduction. It reduces all but the last axis.
+// For example, [N, C, H, W]-tensor may lead to a output [W]-tensor.
+// It's implementation is in reduction_ops.cu and called in reduction_ops.cc.
+void reduce_sum_along_all_but_the_last_axis(
+    const float* input, float* output,
+    const dim3 grid, const dim3 block,
+    const int reduction_size, const int stride,
+    float* staging_data, int* semaphores);
+
+// Compute grid and block dimensions to invoke APEX's reduction.
+void compute_reduction_grid_and_block(
+    const int reduction_size,
+    const int stride,
+    const bool coop_flag,
+    /* output */ dim3& block,
+    /* output */ dim3& grid);
+}  // namespace apex
 }  // namespace cuda
 }  // namespace onnxruntime
