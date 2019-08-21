@@ -58,7 +58,7 @@ bool is_apex_reduction_sum(
 
   // Check if all but the last axis are reduced. For example, reducing
   // [N, C, H, W]-tensor to [W]-tensor can pass these two checks but reducing
-  // [N, C]-tensor to [1, C]-tensor cannot.
+  // [N, C]-tensor to [N, 1]-tensor cannot.
   if (axes.size() != rank - 1)
     return false;
 
