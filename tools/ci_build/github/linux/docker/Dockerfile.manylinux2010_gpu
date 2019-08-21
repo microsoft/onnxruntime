@@ -3,14 +3,11 @@ FROM quay.io/pypa/manylinux2010_x86_64:latest
 ARG PYTHON_VERSION=3.5
 
 # The base image comes with devtoolset-8 installed
-# gcc 8.x doesn't work with CUDA 10.1
-# so downgrade to gcc 7.x
-RUN echo $PATH
-RUN rm -rf /opt/rh/devtoolset-8
+# gcc 8.x doesn't work with CUDA 10.0
+# so downgrade to gcc 7.x by using devtoolset-7
 RUN yum install -y devtoolset-7
 RUN scl enable devtoolset-7 -- bash
 ENV PATH /opt/rh/devtoolset-7/root/usr/bin:$PATH
-RUN echo $PATH
 RUN gcc --version
 
 ADD scripts/install_manylinux2010.sh /tmp/scripts/install_manylinux2010.sh
