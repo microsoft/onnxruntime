@@ -84,9 +84,19 @@ void NGRAPHCustomOp::Initialize(const OrtCustomOpApi* api, OrtKernelContext* con
 
   // Get cache size from environment
   std::string tempSize;
+  #ifdef _WIN32
+  char *buf{nullptr};
+  size_t bufSize;
+  _dupenv_s(&buf, &bufSize, "ONNXRUNTIME_NGRAPH_LRU_CACHE_SIZE");
+  if(buf) {
+    tempSize = buf;
+  }
+  free(buf);
+  #else
   if (std::getenv("ONNXRUNTIME_NGRAPH_LRU_CACHE_SIZE")) {
     tempSize = std::getenv("ONNXRUNTIME_NGRAPH_LRU_CACHE_SIZE");
   }
+  #endif
   size_t cacheSize = tempSize.empty() ? NGRAPH_EP_LRU_CACHE_DEFAULT_SIZE : std::stoi(tempSize);
 
   // Not in cache
