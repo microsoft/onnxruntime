@@ -35,8 +35,8 @@ class TestInferenceSession(unittest.TestCase):
 
     def testModelSerialization(self):
         so = onnxrt.SessionOptions()
-        so.log_verbosity_level = 1
-        so.logid = "TestModelSerialization"
+        so.session_log_verbosity_level = 1
+        so.session_logid = "TestModelSerialization"
         so.optimized_model_filepath = "./PythonApiTestOptimizedModel.onnx"
         onnxrt.InferenceSession(self.get_name("mul_1.onnx"), sess_options=so)
         self.assertTrue(os.path.isfile(so.optimized_model_filepath))
@@ -95,15 +95,15 @@ class TestInferenceSession(unittest.TestCase):
 
     def testRunModelMultipleThreads(self):
         so = onnxrt.SessionOptions()
-        so.log_verbosity_level = 1
-        so.logid = "MultiThreadsTest"
+        so.session_log_verbosity_level = 1
+        so.session_logid = "MultiThreadsTest"
         sess = onnxrt.InferenceSession(
             self.get_name("mul_1.onnx"), sess_options=so)
         ro1 = onnxrt.RunOptions()
-        ro1.logid = "thread1"
+        ro1.run_tag = "thread1"
         t1 = threading.Thread(target=self.run_model, args=(sess, ro1))
         ro2 = onnxrt.RunOptions()
-        ro2.logid = "thread2"
+        ro2.run_tag = "thread2"
         t2 = threading.Thread(target=self.run_model, args=(sess, ro2))
         t1.start()
         t2.start()
