@@ -86,12 +86,11 @@ void NGRAPHCustomOp::Initialize(const OrtCustomOpApi* api, OrtKernelContext* con
   std::string tempSize;
   #ifdef _WIN32
   char *buf{nullptr};
-  size_t bufSize;
-  _dupenv_s(&buf, &bufSize, "ONNXRUNTIME_NGRAPH_LRU_CACHE_SIZE");
-  if(buf) {
+  size_t bufSize = 0;
+  if (!_dupenv_s(&buf, &bufSize, "ONNXRUNTIME_NGRAPH_LRU_CACHE_SIZE") && buf) {
     tempSize = buf;
+    free(buf);
   }
-  free(buf);
   #else
   if (std::getenv("ONNXRUNTIME_NGRAPH_LRU_CACHE_SIZE")) {
     tempSize = std::getenv("ONNXRUNTIME_NGRAPH_LRU_CACHE_SIZE");
@@ -184,8 +183,7 @@ Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* cont
 
   // Initialize nGraph function if it is not already initialized.
   {
-    std::mutex init_lock_;
-    std::lock_guard<std::mutex> lock(init_lock_);
+    std::lock_guard<std::mutex> lock(compute_lock_);
     Initialize(api, context);
   }
 
@@ -200,8 +198,7 @@ Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* cont
     for (const auto& ng_param : ng_curr_exe_->get_parameters()) {
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index++);
       void* input_data = const_cast<void*>(ort.GetTensorData<void>(input_tensor));
-      std::mutex input_lock_;
-      std::lock_guard<std::mutex> lock(input_lock_);
+      std::lock_guard<std::mutex> lock(compute_lock_);
       ng_inputs.emplace_back(ng_backend_->create_tensor(ng_param->get_output_element_type(0), ng_param->get_output_shape(0), input_data));
     }
   } catch (const std::exception& exp) {
@@ -221,8 +218,7 @@ Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* cont
       std::vector<int64_t> ort_shape{shape.begin(), shape.end()};
       OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index++, ort_shape.data(), ort_shape.size());
       void* output_data = ort.GetTensorMutableData<void>(output_tensor);
-      std::mutex output_lock_;
-      std::lock_guard<std::mutex> lock(output_lock_);
+      std::lock_guard<std::mutex> lock(compute_lock_);
       ng_outputs.emplace_back(ng_backend_->create_tensor(dtype, shape, output_data));
     }
   } catch (const std::exception& exp) {
@@ -232,8 +228,8 @@ Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* cont
   }
 
   // Run the graph through nGraph.
-  std::lock_guard<std::mutex> lock(compute_lock_);
   try {
+    std::lock_guard<std::mutex> lock(compute_lock_);
     if (!ng_curr_exe_->call(ng_outputs, ng_inputs))
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Error while executing nGraph computation");
   } catch (const std::exception& exp) {
