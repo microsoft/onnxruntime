@@ -26,12 +26,19 @@ steps:
         script: |
           Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\azcopy.exe https://onnxruntimetestdata.blob.core.windows.net/models/azcopy.exe
 
-    - task: PowerShell@2
+    # - task: PowerShell@2
+    #   displayName: 'Download Python'
+    #   inputs:
+    #     targetType: 'inline'
+    #     script: |
+    #       Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\Miniconda3-4.7.10-Windows-x86_64.exe https://onnxruntimetestdata.blob.core.windows.net/models/Miniconda3-4.7.10-Windows-x86_64.exe
+
+    - task: CmdLine@1
       displayName: 'Download Python'
       inputs:
-        targetType: 'inline'
-        script: |
-          Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\Miniconda3-4.7.10-Windows-x86_64.exe https://onnxruntimetestdata.blob.core.windows.net/models/Miniconda3-4.7.10-Windows-x86_64.exe
+        filename: '$(Build.BinariesDirectory)\azcopy.exe'
+        arguments: 'copy https://onnxruntimetestdata.blob.core.windows.net/models/Miniconda3-4.7.10-Windows-x86_64.exe $(Build.BinariesDirectory)\Miniconda3-4.7.10-Windows-x86_64.exe'
+      timeoutInMinutes: 10
 
     - task: CmdLine@1
       displayName: 'Run python installer'
