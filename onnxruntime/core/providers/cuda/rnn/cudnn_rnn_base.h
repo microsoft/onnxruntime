@@ -132,6 +132,12 @@ class CudnnRnnBase : public CudaKernel {
                      int& offset,
                      bool is_matrix) const;
 
+  void SetZeroSequences(const int64_t zero_seq_index_cache_size,
+                        const std::vector<int32_t> zero_seq_index_cache,
+                        T* y_data,
+                        T* y_h_data,
+                        T* y_c_data) const;
+
  protected:
   // W_lin_layer_id_ & R_lin_layer_id_ are set in Constructor
   std::vector<int> W_lin_layer_id_;
