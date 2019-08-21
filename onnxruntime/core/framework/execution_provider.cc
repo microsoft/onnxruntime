@@ -20,7 +20,7 @@ inline int MakeKey(int id, OrtMemType mem_type) {
 
 AllocatorPtr IExecutionProvider::GetAllocator(const AllocatorManager& allocator_mgr, int /*device_id*/, OrtMemType /*mem_type*/) const {
   // By default returning CPU allocator.
-  allocator_mgr.GetAllocator(OrtDevice());
+  return allocator_mgr.GetAllocator(OrtDevice());
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>

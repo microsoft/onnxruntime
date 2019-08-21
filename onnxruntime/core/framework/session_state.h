@@ -245,7 +245,6 @@ class SessionState {
   bool export_fused_dll_ = false;
   FuncManager fused_funcs_mgr_;
   const DataTransferManager* data_transfer_mgr_;
-  const AllocatorManager* allocator_mgr_;
 
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;

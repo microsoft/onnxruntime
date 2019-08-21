@@ -38,7 +38,8 @@ static common::Status SaveInitializedTensors(const Env& env, const std::basic_st
                                              const OrtValueNameIdxMap& ort_value_name_idx_map,
                                              ITensorAllocator* planner, const T& save_tensor_func,
                                              const logging::Logger& logger,
-                                             const DataTransferManager& data_transfer_mgr);
+                                             const DataTransferManager& data_transfer_mgr,
+											 const AllocatorManager& allocator_mgr);
 
 static common::Status SaveKernels(const ExecutionProviders& execution_providers,
                                   SessionState& session_state,
@@ -85,12 +86,12 @@ common::Status SessionStateInitializer::CreatePlan(
                     };
                   });
   }
-
+  
   std::unique_ptr<SequentialExecutionPlan> exec_plan;
   SequentialPlannerContext context(!enable_sequential_execution);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_registry_manager_,
-                                                    ort_value_name_idx_map, context, exec_plan));
+                                                    ort_value_name_idx_map, context, exec_plan, session_state_.GetAllocatorManager()));
   session_state_.SetExecutionPlan(std::move(exec_plan));
   session_state_.SetGraphViewer(std::move(graph_viewer));
 
@@ -113,7 +114,7 @@ common::Status SessionStateInitializer::InitializeAndSave(
       [this](int idx, const OrtValue& value, const OrtCallback& d, bool constant) -> Status {
         return session_state_.AddInitializedTensor(idx, value, &d, constant);
       },
-      logger_, session_state_.GetDataTransferMgr()));
+      logger_, session_state_.GetDataTransferMgr(), session_state_.GetAllocatorManager()));
   // remove weights from the graph now to save memory but in many cases it won't save memory, if the tensor was
   // preallocated with the some other tensors in a single 'allocate' call, which is very common.
   // TODO: make it better
@@ -182,16 +183,12 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m,
                                              const ExecutionProviders& exec_providers, OrtValue& ort_value,
                                              OrtCallback& deleter,
-                                             const DataTransferManager& data_transfer_mgr) {
+                                             const DataTransferManager& data_transfer_mgr,
+											 const AllocatorManager& allocator_mgr) {
   const OrtAllocatorInfo& alloc_info = m.GetAllocInfo();
   if (strcmp(alloc_info.name, CPU) == 0 || alloc_info.mem_type == OrtMemTypeCPUOutput) {
     // deserialize directly to CPU tensor
     return utils::TensorProtoToMLValue(env, proto_path.c_str(), tensor_proto, m, ort_value, deleter);
-  }
-  //alloc_info.name is not 'CPU'
-  const IExecutionProvider* provider = exec_providers.Get(alloc_info);
-  if (provider == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid allocation info. Provider name = ", alloc_info.name);
   }
   // deserialize and copy. In the copy stage, it won't check if the buffer has enough room.
   // The result tensor won't need a deleter because:
@@ -209,7 +206,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error. The preallocated buffer is too small. Requires ",
                            cpu_tensor_length, ", Got ", m.GetLen());
   }
-  OrtAllocatorInfo info = exec_providers.GetDefaultCpuAllocatorInfo();
+  OrtAllocatorInfo info = allocator_mgr.GetDefaultCpuAllocatorInfo();
   std::unique_ptr<char[]> data(new char[cpu_tensor_length]);
   std::unique_ptr<Tensor> p_tensor;
   OrtValue tmp_ort_value;
@@ -229,7 +226,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       // not implemented yet. That's the reason we're adding our own error message so that we can debug better.
       return Status(copy_status.Category(),
                     copy_status.Code(),
-                    "Failed to copy tensor to execution provider: " + provider->Type());
+                    "Failed to copy tensor to device: " + p_tensor->Location().device.ToString());
     }
     return copy_status;
   }
@@ -242,7 +239,7 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
                                       const Graph& graph, const ExecutionProviders& exec_providers,
                                       const OrtValueNameIdxMap& ort_value_name_idx_map, ITensorAllocator* planner,
                                       const T& save_tensor_func, const logging::Logger& logger,
-                                      const DataTransferManager& data_transfer_mgr) {
+                                      const DataTransferManager& data_transfer_mgr, const AllocatorManager& allocator_mgr) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
   ORT_ENFORCE(ort_value_name_idx_map.MaxIdx() > 0, "OrtValue indexes should have been populated.");
 
@@ -275,7 +272,7 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
     ORT_ENFORCE(m->GetBuffer() != nullptr || m->GetLen() == 0);
 #endif
     OrtValue ort_value;
-    Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, *m, exec_providers, ort_value, deleter, data_transfer_mgr);
+    Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, *m, exec_providers, ort_value, deleter, data_transfer_mgr, allocator_mgr);
     if (!st.IsOK()) {
       std::ostringstream oss;
       oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();

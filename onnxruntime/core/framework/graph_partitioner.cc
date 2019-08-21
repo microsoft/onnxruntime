@@ -75,6 +75,7 @@ static Node* PlaceNode(Graph& graph, std::unique_ptr<IndexedSubGraph> capability
     if (nullptr != node && node->GetExecutionProviderType().empty()) {
       // The node was not fused or assigned. Assign it to this <provider>.
       node->SetExecutionProviderType(provider_type);
+      node->SetExecutionDeviceId(capability->device_id);
     }
   } else {
     // The <provider> can run a fused <sub_graph> in the <graph>.
@@ -96,6 +97,7 @@ static Node* PlaceNode(Graph& graph, std::unique_ptr<IndexedSubGraph> capability
       std::string node_name = oss.str();
       auto& fused_node = graph.FuseSubGraph(std::move(capability), node_name);
       fused_node.SetExecutionProviderType(provider_type);
+      fused_node.SetExecutionDeviceId(capability->device_id);
       // searching in kernel registries, if no kernel registered for the fused_node, use compile approach
       if (!kernel_registry_mgr.HasImplementationOf(fused_node, provider_type)) {
         return &fused_node;

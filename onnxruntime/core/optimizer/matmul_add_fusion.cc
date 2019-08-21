@@ -98,6 +98,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     gemm_node.SetExecutionProviderType(matmul_node.GetExecutionProviderType());
+    gemm_node.SetExecutionDeviceId(matmul_node.GetExecutionDeviceId());
 
     removed_nodes.push_front(matmul_node.Index());
     removed_nodes.push_front(add_node.Index());

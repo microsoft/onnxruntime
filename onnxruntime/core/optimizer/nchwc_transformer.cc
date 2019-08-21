@@ -198,6 +198,7 @@ void NchwcTransformerImpl::InsertReorderInput(Node& node) {
                                               nullptr,
                                               kMSNchwcDomain);
     reorder_input_node.SetExecutionProviderType(node.GetExecutionProviderType());
+    reorder_input_node.SetExecutionDeviceId(node.GetExecutionDeviceId());
     input_defs[0] = input_nchwc_arg;
   } else {
     input_defs[0] = it->second;
@@ -430,6 +431,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
                                     &node.GetAttributes(),
                                     kMSNchwcDomain);
   nchwc_node.SetExecutionProviderType(node.GetExecutionProviderType());
+  nchwc_node.SetExecutionDeviceId(node.GetExecutionDeviceId());
 
   nchwc_node.MutableInputDefs()[1] = nchwc_conv_W_arg;
 
@@ -489,6 +491,7 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
                                     &node.GetAttributes(),
                                     kMSNchwcDomain);
   nchwc_node.SetExecutionProviderType(node.GetExecutionProviderType());
+  nchwc_node.SetExecutionDeviceId(node.GetExecutionDeviceId());
 
   NchwcArgument::Shape output_shape(output_defs[0]);
 

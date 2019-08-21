@@ -297,6 +297,12 @@ class Node {
   /** Sets the execution ProviderType that this Node will be executed by. */
   void SetExecutionProviderType(ProviderType execution_provider_type);
 
+  /** Gets the execution device id that this node will be executed against. */
+  int16_t Node::GetExecutionDeviceId() const noexcept;
+
+  /** Sets the execution device id that this Node will be executed against. */
+  void Node::SetExecutionDeviceId(int16_t device_id);
+
   /** Gets the NodeProto representation of this Node. */
   void ToProto(ONNX_NAMESPACE::NodeProto& proto) const;
 
@@ -439,8 +445,9 @@ class Node {
   // Relationships between this node and others in the graph
   Relationships relationships_;
 
-  // Device.
+  // Node execution information: execution provider type and device id.
   std::string execution_provider_type_;
+  int16_t device_id_ = 0;
 
   // Map from attribute name to attribute.
   // This allows attribute adding and removing.

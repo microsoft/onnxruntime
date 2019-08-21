@@ -398,7 +398,7 @@ class PlannerImpl {
                                pnode->GetExecutionProviderType());
       }
 
-      // increment UseCount and add location information if applicable for the provided input def
+	  // increment UseCount and add location information if applicable for the provided input def
       auto process_input = [&graph_inputs, &exec_provider, &p_kernelDef, this](const NodeArg& input, size_t arg_idx) {
         const auto& name = input.Name();
         UseCount(name)++;
@@ -413,7 +413,7 @@ class PlannerImpl {
                          }) != outer_scope_node_args_.cend()) {
           OrtValueIndex index = Index(name);
           plan_.SetLocation(static_cast<size_t>(index),
-                            exec_provider->GetAllocator(0, p_kernelDef->InputMemoryType(arg_idx))->Info());
+                            exec_provider->GetAllocator(this->allocator_mgr_, 0, p_kernelDef->InputMemoryType(arg_idx))->Info());
         }
 
         return Status::OK();
@@ -430,7 +430,7 @@ class PlannerImpl {
         OrtValueIndex index = Index(node_output->Name());
         ProcessDef(index, node_output);
         ++UseCount(index);
-        plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, p_kernelDef->OutputMemoryType(i))->Info());
+        plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(this->allocator_mgr_, 0, p_kernelDef->OutputMemoryType(i))->Info());
       }
       // if sync is needed, mark allocation plan as create_fence_if_async=true
       // note that the input arg may come from an execution provider (i.e. CPU) that does not support async,

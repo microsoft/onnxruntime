@@ -34,10 +34,14 @@ struct IndexedSubGraph {
     NodeAttributes attributes;         ///< Attributes of customized SubGraph/FunctionProto.
 
     std::string doc_string;  ///< Doc string of customized SubGraph/FunctionProto.
+
   };
 
   /** Nodes covered by this subgraph. The NodeIndex values are from the parent Graph.*/
   std::vector<onnxruntime::NodeIndex> nodes;
+
+  /** Specifying the device id that this sub-graph (fused node) will run against. */
+  int16_t device_id = 0;
 
   /** Set the meta definition needed to represent this subgraph as a FunctionProto
   It's needed IF AND ONLY IF there are multiple indexes contained in #nodes. */
@@ -54,6 +58,7 @@ struct IndexedSubGraph {
  private:
   // subgraph meta definition.
   std::unique_ptr<MetaDef> meta_def;
+
 };
 
 }  // namespace onnxruntime

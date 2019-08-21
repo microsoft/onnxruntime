@@ -5,7 +5,7 @@
 
 
 #include "core/common/common.h"
-#include "core/framework/arena.h"
+#include "core/framework/allocator.h"
 #include "gsl/pointers"
 
 namespace onnxruntime {

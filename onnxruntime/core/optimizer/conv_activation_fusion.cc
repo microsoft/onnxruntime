@@ -76,6 +76,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     fused_conv.SetExecutionProviderType(node->GetExecutionProviderType());
+    fused_conv.SetExecutionDeviceId(node->GetExecutionDeviceId());
 
     // Add attributes to specify the activation type and parameters.
     fused_conv.AddAttribute("activation", next_node.OpType());

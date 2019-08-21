@@ -246,6 +246,7 @@ Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node,
                                        const OrtValueNameIdxMap& ort_value_name_idx_map,
                                        const FuncManager& funcs_mgr,
                                        const DataTransferManager& data_transfer_mgr,
+									   const AllocatorManager& allocator_mgr,
                                        /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
   const KernelCreateInfo* kernel_create_info = TryFindKernel(node, execution_provider.Type());
 
@@ -259,7 +260,8 @@ Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node,
                            constant_initialized_tensors,
                            ort_value_name_idx_map,
                            funcs_mgr,
-                           data_transfer_mgr);
+                           data_transfer_mgr,
+                           allocator_mgr);
   op_kernel.reset(kernel_create_info->kernel_create_func(kernel_info));
   return Status::OK();
 }

@@ -30,6 +30,7 @@ class KernelRegistry {
                          const OrtValueNameIdxMap& mlvalue_name_idx_map,
                          const FuncManager& funcs_mgr,
                          const DataTransferManager& data_transfer_mgr,
+                         const AllocatorManager& allocator_mgr,
                          std::unique_ptr<OpKernel>& op_kernel) const;
 
   // Check if an execution provider can create kernel for a node and return

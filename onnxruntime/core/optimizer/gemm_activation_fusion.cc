@@ -74,6 +74,7 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     fused_gemm.SetExecutionProviderType(gemm_node.GetExecutionProviderType());
+    fused_gemm.SetExecutionDeviceId(gemm_node.GetExecutionDeviceId());
 
     //Add optional attributes for activations
     if (act_node.OpType() == "LeakyRelu") {

@@ -32,9 +32,10 @@ bool ProviderIsCpuBased(const std::string& provider_type) {
          provider_type == onnxruntime::kNnapiExecutionProvider;
 }
 
-common::Status AllocateHelper(const IExecutionProvider& execution_provider, int device_id, const Tensor& fetched_tensor,
+common::Status AllocateHelper(const IExecutionProvider& execution_provider, const OrtDevice& device, const Tensor& fetched_tensor,
                               OrtValue& output_mlvalue, const AllocatorManager& allocator_mgr) {
-  auto allocator = execution_provider.GetAllocator(allocator_mgr, device_id, OrtMemTypeDefault);
+  //auto allocator = execution_provider.GetAllocator(allocator_mgr, device.Id(), OrtMemTypeDefault);
+  auto allocator = allocator_mgr.GetAllocator(device);
   if (!allocator) {
     return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator");
   }
@@ -78,7 +79,7 @@ static Status CopyMLValue(const DataTransferManager& data_transfer_mgr,
 
   auto& source_tensor = source_mlvalue.Get<Tensor>();
   if (!target_mlvalue.IsAllocated()) {
-    ORT_RETURN_IF_ERROR(utils::AllocateHelper(*copy_info.allocation_provider, copy_info.allocation_device_id,
+    ORT_RETURN_IF_ERROR(utils::AllocateHelper(*copy_info.allocation_provider, copy_info.target_device,
                                               source_tensor, target_mlvalue, *copy_info.allocator_mgr));
   }
 
@@ -99,7 +100,6 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
   ORT_RETURN_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
 
   auto& exec_providers = session_state.GetExecutionProviders();
-  auto& allocator_mgr = session_state.GetAllocatorManager();
 
   do {
     // currently we only support one device per input. see SessionState::AddInputNameToNodeInfoMapping for more

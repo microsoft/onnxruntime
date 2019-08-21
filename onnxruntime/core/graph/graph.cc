@@ -336,6 +336,16 @@ void Node::SetExecutionProviderType(ProviderType execution_provider_type) {
   execution_provider_type_ = execution_provider_type;
 }
 
+int16_t Node::GetExecutionDeviceId() const noexcept {
+  return device_id_;
+}
+
+void Node::SetExecutionDeviceId(int16_t device_id) {
+  device_id_ = device_id;
+}
+
+
+
 void Node::ToProto(NodeProto& proto) const {
   // Set name.
   proto.set_name(name_);

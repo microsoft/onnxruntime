@@ -69,7 +69,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
     std::unique_ptr<OpKernel> op_kernel;
     std::shared_ptr<KernelRegistry> kernel_registry = cpu_execution_provider_->GetKernelRegistry();
     auto status = kernel_registry->TryCreateKernel(*node, *cpu_execution_provider_, initializers_,
-                                                   ort_value_name_idx_map_, FuncManager(), data_transfer_mgr_, op_kernel);
+                                                   ort_value_name_idx_map_, FuncManager(), data_transfer_mgr_, allocator_mgr_, op_kernel);
     kernels_[node->Index()] = std::move(op_kernel);
   }
 }
