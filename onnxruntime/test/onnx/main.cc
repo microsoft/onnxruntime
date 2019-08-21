@@ -404,13 +404,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"cumsum_1d_reverse_exclusive", "not implemented yet"},
       {"cumsum_1d_reverse", "not implemented yet"},
       {"cumsum_1d_exclusive", "not implemented yet"},
-      {"cumsum_1d", "not implemented yet"},
-      {"clip_splitbounds", "not implemented yet for opset 11"},
-      {"clip_outbounds", "not implemented yet for opset 11"},
-      {"clip_example", "not implemented yet for opset 11"},
-      {"clip_default_min", "not implemented yet for opset 11"},
-      {"clip_default_max", "not implemented yet for opset 11"},
-      {"clip", "not implemented yet for opset 11"},
+      {"cumsum_1d", "not implemented yet"},      
   };
 
 #ifdef USE_NGRAPH

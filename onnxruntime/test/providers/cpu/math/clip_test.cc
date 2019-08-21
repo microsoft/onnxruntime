@@ -7,8 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
-TEST(MathOpTest, Clip) {
-  OpTester test("Clip");
+TEST(MathOpTest, Clip_6) {
+  OpTester test("Clip", 6);
 
   test.AddAttribute("min", -10.0f);
   test.AddAttribute("max", 10.0f);
@@ -22,6 +22,38 @@ TEST(MathOpTest, Clip) {
                         {10.0f, 4.4f, 10.0f,
                          -1.3f, 3.5f, 10.0f,
                          -5.4f, 9.3f, 10.0f});
+  test.Run();
+}
+
+TEST(MathOpTest, Clip_Default) {
+  OpTester test("Clip", 11);
+
+  std::vector<int64_t> dims{3, 3};
+  test.AddInput<float>("X", dims,
+                       {11.0f, 4.4f, 432.3f,
+                        -1.3f, 3.5f, 64.0f,
+                        -5.4f, 9.3f, 82.4f});
+  test.AddOutput<float>("Y", dims,
+                        {11.0f, 4.4f, 432.3f,
+                         -1.3f, 3.5f, 64.0f,
+                         -5.4f, 9.3f, 82.4f});
+  test.Run();
+}
+
+TEST(MathOpTest, Clip) {
+  OpTester test("Clip", 11);
+
+  std::vector<int64_t> dims{3, 3};
+  test.AddInput<float>("X", dims,
+                       {-1.0f, 0.0f, 1.0f,
+                        -6.0f, 0.0f, 6.0f,
+                        -5.4f, 2.0f, 6.0f});
+  test.AddInput<float>("min", {}, {-5});
+  test.AddInput<float>("max", {}, {5});
+  test.AddOutput<float>("Y", dims,
+                        {-1.0f, 0.0f, 1.0f,
+                         -5.0f, 0.0f, 5.0f,
+                         -5.0f, 2.0f, 5.0f});
   test.Run();
 }
 
