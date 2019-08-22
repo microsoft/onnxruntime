@@ -133,6 +133,48 @@ void RnnMaskImpl(const int32_t num_directions,
       div_dir_block, div_batch_block, y_output_data, y_h_output_data, (CUDA_LONG)N);
 }
 
+template <typename T>
+__global__ void _MaskZeroSequences(const int32_t hidden_size,
+                                   T* y_output_data,
+                                   T* y_h_output_data,
+                                   T* y_c_output_data,
+                                   const int32_t* zeor_seq_index_cache,
+                                   const CUDA_LONG N) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+
+  int32_t zero_seq_offset = zeor_seq_index_cache[id] * hidden_size;
+
+  if (y_output_data != nullptr) {
+    for (int i = 0; i < hidden_size; ++i) {
+      y_output_data[zero_seq_offset + i] = 0;
+    }
+  }
+
+  if (y_h_output_data != nullptr) {
+    for (int i = 0; i < hidden_size; ++i) {
+      y_h_output_data[zero_seq_offset + i] = 0;
+    }
+  }
+
+  if (y_c_output_data != nullptr) {
+    for (int i = 0; i < hidden_size; ++i) {
+      y_c_output_data[zero_seq_offset + i] = 0;
+    }
+  }
+}
+
+template <typename T> 
+void MaskZeroSequences(const int32_t hidden_size,
+                       T* y_output_data,
+                       T* y_h_output_data,
+                       T* y_c_output_data,
+                       const int32_t* zeor_seq_index_cache,
+                       const size_t N) {
+  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  _MaskZeroSequences<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      hidden_size, y_output_data, y_h_output_data, y_c_output_data, zeor_seq_index_cache, (CUDA_LONG)N);
+}
+
 #define SPECIALIZED_RNN_IMPL(T)                                                 \
   template void RnnMaskImpl<T>(const int32_t num_directions,                    \
                                const int32_t seq_length,                        \
@@ -153,7 +195,13 @@ void RnnMaskImpl(const int32_t num_directions,
                                                       const int32_t hidden_size,\
                                                       const T* data,            \
                                                       T* reordered_data,        \
-                                                     const size_t N);
+                                                     const size_t N);           \
+template void MaskZeroSequences<T>(const int32_t hidden_size,                   \
+                                   T* y_output_data,                            \
+                                   T* y_h_output_data,                          \
+                                   T* y_c_output_data,                          \
+                                   const int32_t* zeor_seq_index_cache,         \
+                                   const size_t N);
 
 SPECIALIZED_RNN_IMPL(half)
 SPECIALIZED_RNN_IMPL(float)
