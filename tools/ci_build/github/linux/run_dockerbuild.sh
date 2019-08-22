@@ -79,7 +79,7 @@ if [ -z "$NIGHTLY_BUILD" ]; then
     set NIGHTLY_BUILD=0
 fi
 
-if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ] || [ $BUILD_DEVICE = "openvino" ] || [ $BUILD_DEVICE = "nnapi" ]; then
+if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ] || [ $BUILD_DEVICE = "openvino" ] || [ $BUILD_DEVICE = "openvino-edge" ] || [ $BUILD_DEVICE = "nnapi" ]; then
     RUNTIME=
 else
     RUNTIME="--runtime=nvidia"
