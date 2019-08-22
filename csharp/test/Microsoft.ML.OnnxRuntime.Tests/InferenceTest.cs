@@ -469,7 +469,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact(Skip = "Int8 not supported yet")]
+        [Fact]
         private void TestModelInputINT8()
         {
             // model takes 1x5 input of fixed type, echoes back

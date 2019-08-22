@@ -162,6 +162,15 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
+            else if (TryPinAsTensor<sbyte>(out pinnedMemoryHandle,
+                                      out dataBufferPointer,
+                                      out dataBufferLength,
+                                      out shape,
+                                      out rank,
+                                      out nativeElementType
+                                    ))
+            {
+            }
             else if (TryPinAsTensor<bool>(out pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
@@ -226,10 +235,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
 
                 onnxValue = nativeTensor; // set the output
-                unsafe
-                {
-                    pinnedMemoryHandle = new MemoryHandle(null); // dummy value for the output
-                }
+                pinnedMemoryHandle = default; // dummy value for the output
             }
             else
             {
@@ -279,7 +285,9 @@ namespace Microsoft.ML.OnnxRuntime
             dataBufferLength = 0;
             shape = null;
             rank = 0;
-            pinnedMemoryHandle = default(MemoryHandle);
+            pinnedMemoryHandle = default;
+
+            Debug.Assert(typeof(T) != typeof(string), "NamedOnnxValue.TryPinAsTensor() must not be called with a string Tensor value");
 
             if (_value is Tensor<T>)
             {
@@ -353,6 +361,11 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     nativeElementType = TensorElementType.UInt8;
                     dataBufferLength = dt.Buffer.Length * sizeof(byte);
+                }
+                else if (typeof(T) == typeof(sbyte))
+                {
+                    nativeElementType = TensorElementType.Int8;
+                    dataBufferLength = dt.Buffer.Length * sizeof(sbyte);
                 }
                 else if (typeof(T) == typeof(string))
                 {
@@ -452,6 +465,10 @@ namespace Microsoft.ML.OnnxRuntime
                 case TensorElementType.UInt8:
                     type = typeof(byte);
                     width = sizeof(byte);
+                    break;
+                case TensorElementType.Int8:
+                    type = typeof(sbyte);
+                    width = sizeof(sbyte);
                     break;
                 case TensorElementType.String:
                     type = typeof(byte);
