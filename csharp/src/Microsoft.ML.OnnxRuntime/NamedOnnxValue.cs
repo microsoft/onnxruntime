@@ -171,41 +171,96 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-
             //TODO: add other types
-            else
+            // special case for string Tensor, data needs to be copied to the native buffer
+            else if (!(_value is Tensor<string>))
             {
                 // nothing to cleanup here, since no memory has been pinned
                 throw new NotSupportedException("The inference value " + nameof(_value) + " is not of a supported type");
             }
 
 
-            Debug.Assert(dataBufferPointer != IntPtr.Zero, "dataBufferPointer must be non-null after obtaining the pinned buffer");
+            if (_value is Tensor<string>)
+            {
+                // calculate native tensor length (sum of string lengths in utf-8)
+                var tensorValue = _value as Tensor<string>;
+                int totalLength = 0;
+                for (int i = 0; i < tensorValue.Length; i++)
+                {
+                    totalLength += Encoding.UTF8.GetByteCount(tensorValue.GetValue(i));
+                }
 
-            // copy to an ulong[] shape to match size_t[]
-            long[] longShape = new long[rank];
-            for (int i = 0; i < rank; i++)
-            {
-                longShape[i] = shape[i];
-            }
+                long[] longShape = new long[tensorValue.Dimensions.Length];
+                for (int i = 0; i < tensorValue.Dimensions.Length; i++)
+                {
+                    longShape[i] = tensorValue.Dimensions[i];
+                }
 
-            IntPtr status = NativeMethods.OrtCreateTensorWithDataAsOrtValue(
-                    NativeMemoryAllocatorInfo.DefaultInstance.Handle,
-                    dataBufferPointer,
-                    (UIntPtr)(dataBufferLength),
-                    longShape,
-                    (UIntPtr)rank,
-                    nativeElementType,
-                    out onnxValue
-                );
-            try
-            {
-                NativeApiStatus.VerifySuccess(status);
+                // allocate the native tensor
+                IntPtr nativeTensor = IntPtr.Zero;
+                try
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateTensorAsOrtValue(
+                                                    NativeMemoryAllocator.DefaultInstance.Handle,
+                                                    longShape,
+                                                    (UIntPtr)(longShape.Length),
+                                                    TensorElementType.String,
+                                                    out nativeTensor
+                                                    ));
+
+                    // fill the native tensor, using GetValue(index) from the Tensor<string>
+                    string[] stringsInTensor = new string[tensorValue.Length];
+                    for (int i = 0; i < tensorValue.Length; i++)
+                    {
+                        stringsInTensor[i] = tensorValue.GetValue(i);
+                    }
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtFillStringTensor(nativeTensor, stringsInTensor, (UIntPtr)tensorValue.Length));
+                }
+                catch (OnnxRuntimeException e)
+                {
+                    if (nativeTensor != IntPtr.Zero)
+                    {
+                        NativeMethods.OrtReleaseValue(nativeTensor);
+                        throw e;
+                    }
+                }
+
+                onnxValue = nativeTensor; // set the output
+                unsafe
+                {
+                    pinnedMemoryHandle = new MemoryHandle(null); // dummy value for the output
+                }
             }
-            catch (OnnxRuntimeException e)
+            else
             {
-                pinnedMemoryHandle.Dispose();
-                throw e;
+                Debug.Assert(dataBufferPointer != IntPtr.Zero, "dataBufferPointer must be non-null after obtaining the pinned buffer");
+
+                // copy to an ulong[] shape to match size_t[]
+                long[] longShape = new long[rank];
+                for (int i = 0; i < rank; i++)
+                {
+                    longShape[i] = shape[i];
+                }
+
+                IntPtr status = NativeMethods.OrtCreateTensorWithDataAsOrtValue(
+                        NativeMemoryAllocatorInfo.DefaultInstance.Handle,
+                        dataBufferPointer,
+                        (UIntPtr)(dataBufferLength),
+                        longShape,
+                        (UIntPtr)rank,
+                        nativeElementType,
+                        out onnxValue
+                    );
+                try
+                {
+                    NativeApiStatus.VerifySuccess(status);
+                }
+                catch (OnnxRuntimeException e)
+                {
+                    pinnedMemoryHandle.Dispose();
+                    throw e;
+                }
+
             }
 
         }

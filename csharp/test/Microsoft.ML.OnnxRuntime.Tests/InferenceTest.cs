@@ -392,7 +392,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact/*(Skip = "Boolean tensor not supported yet")*/]
+        [Fact]
         private void TestModelInputBOOL()
         {
             // model takes 1x5 input of fixed type, echoes back
@@ -450,15 +450,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
         }
 
-        [Fact(Skip = "String tensor not supported yet")]
+        [Fact]
         private void TestModelInputSTRING()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_STRING.onnx");
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_STRING.pb");
             using (var session = new InferenceSession(modelPath))
             {
                 var container = new List<NamedOnnxValue>();
-                var tensorIn = new DenseTensor<string>(new string[] { "a", "c", "d", "z", "f" }, new int[] { 1, 5 });
+                var tensorIn = new DenseTensor<string>(new string[] { "abc", "ced", "def", "", "frozen" }, new int[] { 1, 5 });
                 var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
                 container.Add(nov);
                 using (var res = session.Run(container))
