@@ -487,7 +487,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
       .def_readwrite("thread_pool_size", &SessionOptions::session_thread_pool_size,
                      R"pbdoc(How many threads in the session thread pool. Default is 0 to let onnxruntime choose.
 This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
-      .def_property_readonly(
+      .def_property(
           "graph_optimization_level",
           [](const SessionOptions* options) -> GraphOptimizationLevel {
             GraphOptimizationLevel retval = ORT_ENABLE_BASIC;
@@ -511,9 +511,7 @@ This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
             }
             return retval;
           },
-          R"pbdoc(Graph optimization level for this session.)pbdoc")
-      .def(
-          "set_graph_optimization_level",
+          
           [](SessionOptions* options, GraphOptimizationLevel level) -> void {
             switch (level) {
               case ORT_DISABLE_ALL:
@@ -531,6 +529,12 @@ This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
             }
           },
           R"pbdoc(Graph optimization level for this session.)pbdoc");
+
+      //     R"pbdoc(Graph optimization level for this session.)pbdoc")
+      // .def(
+      //     "set_graph_optimization_level",
+
+
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
