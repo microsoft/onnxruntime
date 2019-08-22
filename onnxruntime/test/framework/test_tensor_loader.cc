@@ -135,7 +135,7 @@ TEST(CApiTest, load_float_tensor_with_external_data) {
 }
 
 #if defined(__amd64__) || defined(_M_X64)
-
+#ifdef NDEBUG
 TEST(CApiTest, load_huge_tensor_with_external_data) {
   FILE* fp;
   std::basic_string<ORTCHAR_T> filename(ORT_TSTR("tensor_XXXXXX"));
@@ -182,6 +182,7 @@ TEST(CApiTest, load_huge_tensor_with_external_data) {
     OrtRunCallback(deleter.release());
   }
 }
+#endif
 #endif
 }  // namespace test
 }  // namespace onnxruntime

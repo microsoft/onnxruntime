@@ -296,6 +296,14 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern IntPtr /*(OrtStatus*)*/ OrtGetTypeInfo(IntPtr /*(OrtValue*)*/ value, IntPtr /*(OrtValue**)*/ typeInfo);
 
         [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtCreateTensorAsOrtValue(
+                        IntPtr /*_Inout_ OrtAllocator* */ allocator,
+                        long[] /*_In_ const int64_t* */ shape, 
+                        UIntPtr /*size_t*/ shape_len, 
+                        TensorElementType type,
+                        out IntPtr /* OrtValue** */ outputValue);
+
+        [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /* OrtStatus */ OrtCreateTensorWithDataAsOrtValue(
                                                         IntPtr /* (const OrtAllocatorInfo*) */ allocatorInfo,
                                                         IntPtr /* (void*) */dataBufferHandle,
@@ -309,6 +317,15 @@ namespace Microsoft.ML.OnnxRuntime
         /// this is a no-copy method whose pointer is only valid until the backing OrtValue* is free'd.
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtGetTensorMutableData(IntPtr /*(OrtValue*)*/ value, out IntPtr /* (void**)*/ dataBufferHandle);
+
+
+        /// \param value A tensor created from OrtCreateTensor... function.
+        /// \param len total data length, not including the trailing '\0' chars.
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtFillStringTensor(
+                                                        IntPtr /* OrtValue */ value,
+                                                        string[] /* const char* const* */s, 
+                                                        UIntPtr /* size_t */ s_len);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtGetStringTensorContent(
