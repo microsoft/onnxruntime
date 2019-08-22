@@ -65,20 +65,15 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
-  mlvalue_name_idx_map.Add("X");
-  mlvalue_name_idx_map.Add("Y");
-
   node->SetExecutionProviderType(xp_typ);
 
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan;
   // TODO below line is for testing only. In production use SequentialPlanner::CreatePlan()
   SequentialPlannerContext context(false);
   status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers, kernel_registry_manager,
-                                         mlvalue_name_idx_map, context, p_seq_exec_plan);
+                                         state.GetOrtValueNameIdxMap(), context, p_seq_exec_plan);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   state.SetExecutionPlan(std::move(p_seq_exec_plan));
-
 
   vector<OrtValue> outputs;
   ExecutionFrame frame({}, {}, {}, outputs, {}, state);
@@ -148,10 +143,10 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   auto status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
-  auto x_idx = mlvalue_name_idx_map.Add("X");
-  auto y_idx = mlvalue_name_idx_map.Add("Y");
-
+  const OrtValueNameIdxMap& mlvalue_name_idx_map = state.GetOrtValueNameIdxMap();
+  int x_idx, y_idx;
+  ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("X", x_idx).IsOK());
+  ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("Y", y_idx).IsOK());
 
   vector<OrtValue> outputs;
   ExecutionFrame frame({x_idx}, {value}, {y_idx}, outputs, {}, state);
@@ -200,14 +195,17 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
+  const OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
 
-  auto x1_idx = mlvalue_name_idx_map.Add("X1");
-  auto x2_idx = mlvalue_name_idx_map.Add("X2");
-  auto x3_idx = mlvalue_name_idx_map.Add("X3");
-  mlvalue_name_idx_map.Add("T1");
-  mlvalue_name_idx_map.Add("T2");
-  auto t3_idx = mlvalue_name_idx_map.Add("T3");
+  int x1_idx, x2_idx, x3_idx;
+  int t1_idx, t2_idx, t3_idx;
+  ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("X1", x1_idx).IsOK());
+  ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("X2", x2_idx).IsOK());
+  ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("X3", x3_idx).IsOK());
+
+  ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("T1", t1_idx).IsOK());
+  ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("T2", t2_idx).IsOK());
+  ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("T3", t3_idx).IsOK());
 
   auto cpu_allocator = execution_providers.Get(xp_type)->GetAllocator(0, OrtMemTypeDefault);
 
@@ -229,7 +227,6 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   state.SetExecutionPlan(std::move(p_seq_exec_plan));
-
 
   vector<OrtValue> outputs;
   ExecutionFrame frame({x1_idx, x2_idx, x3_idx}, {v1, v2, v3}, {t3_idx}, outputs, {}, state);

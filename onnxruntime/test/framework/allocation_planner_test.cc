@@ -220,12 +220,7 @@ class PlannerTest : public ::testing::Test {
   void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {}) {
     EXPECT_EQ(graph_.Resolve(), Status::OK());
 
-    OrtValueNameIdxMap& mlvalue_name_idx_map{state_.GetOrtValueNameIdxMap()};
-
-    int count = 0;
-    for (auto& pair : name_to_arg_) {
-      EXPECT_EQ(mlvalue_name_idx_map.Add(pair.first), count++);
-    }
+    state_.SetGraph(graph_);
 
     std::shared_ptr<KernelRegistry> reg = std::make_shared<KernelRegistry>();
 
@@ -240,11 +235,11 @@ class PlannerTest : public ::testing::Test {
     execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::move(cpu_execution_provider));
     auto status = kernel_registry_manager.RegisterKernels(execution_providers);
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-    status = state_.SetGraphAndCreateKernels(graph_, kernel_registry_manager);
+    status = state_.CreateKernels(kernel_registry_manager);
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     SequentialPlannerTestContext test_context(&shape_map_);
     status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph_), outer_scope_node_args, execution_providers,
-                                           kernel_registry_manager, mlvalue_name_idx_map, test_context, plan_);
+                                           kernel_registry_manager, state_.GetOrtValueNameIdxMap(), test_context, plan_);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
