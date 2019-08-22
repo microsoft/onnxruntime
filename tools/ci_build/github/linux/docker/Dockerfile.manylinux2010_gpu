@@ -4,10 +4,10 @@ ARG PYTHON_VERSION=3.5
 
 # The base image comes with devtoolset-8 installed
 # gcc 8.x doesn't work with CUDA 10.0
-# so downgrade to gcc 5.x by using devtoolset-5
-RUN yum install -y devtoolset-5
-RUN scl enable devtoolset-5 -- bash
-ENV PATH /opt/rh/devtoolset-5/root/usr/bin:$PATH
+# so downgrade to gcc 6.x by using devtoolset-6
+RUN yum install -y devtoolset-6
+RUN scl enable devtoolset-6 -- bash
+ENV PATH /opt/rh/devtoolset-6/root/usr/bin:$PATH
 RUN gcc --version
 
 ADD scripts/install_manylinux2010.sh /tmp/scripts/install_manylinux2010.sh
