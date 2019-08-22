@@ -94,7 +94,7 @@ void RegisterGradientSchemas() {
       .Output(1, "dB", "Gradient of divisor", "T", OpSchema::Optional)
       .TypeConstraint(
           "T",
-          { "tensor(float16)", "tensor(float)", "tensor(double)" },
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to numeric tensors.");
 
   //TODO: Move this to the right location. Its only here for quick experimentation.
@@ -283,6 +283,32 @@ void RegisterGradientSchemas() {
           "T4",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input types to float tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GradientAccumulator)
+      .SinceVersion(9)
+      .SetDoc("accumulator for gradient")
+      .Input(0, "old_sum", "historical result of accumulator", "T")
+      .Input(1, "value", "the value that will be added to the accumulator", "T")
+      .Output(0, "new_sum", "updated result of accumulator", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ZeroGradient)
+      .SinceVersion(9)
+      .SetDoc("reset the accumulator for gradient")
+      .Input(0, "old_gradient", "historical result of accumulated gradient", "T1")
+      .Input(1, "reset_signal", "if this input is available, it is ready to reset the accumulator", "T2")
+      .Output(0, "zero_gradient", "reset the gradient", "T1")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output gradient types to float tensors.")
+      .TypeConstraint(
+          "T2",
+          OpSchema::all_tensor_types(),
+          "reset_signal can be of any tensor type.");
 }
 }  // namespace training
 }  // namespace onnxruntime

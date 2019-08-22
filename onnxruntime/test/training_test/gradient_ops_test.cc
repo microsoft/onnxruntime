@@ -1872,5 +1872,74 @@ TEST(GradientCheckerTest, LayerNormGrad) {
 }
 #endif
 
+TEST(GradientUtilsTest, GradientAccumulatorFloat32) {
+  OpTester test("GradientAccumulator", 9, onnxruntime::kOnnxDomain);
+
+  test.AddInput<float>("old_sum", {3}, {1, 2, 3});
+  test.AddInput<float>("value", {3}, {4, 5, 6});
+
+  test.AddOutput<float>("new_sum", {3}, {5, 7, 9});
+
+  test.Run();
+}
+
+#ifdef USE_CUDA
+TEST(GradientUtilsTest, GradientAccumulatorFloat16) {
+  OpTester test("GradientAccumulator", 9, onnxruntime::kOnnxDomain);
+
+  std::vector<float> old_sum = {1.0f, 2.0f, 3.0f};
+  std::vector<float> value = {4.0f, 5.0f, 6.0f};
+  std::vector<float> new_sum = {5.0f, 7.0f, 9.0f};
+
+  std::vector<MLFloat16> old_sum_half(3);
+  std::vector<MLFloat16> value_half(3);
+  std::vector<MLFloat16> new_sum_half(3);
+
+  ConvertFloatToMLFloat16(old_sum.data(), old_sum_half.data(), 3);
+  ConvertFloatToMLFloat16(value.data(), value_half.data(), 3);
+  ConvertFloatToMLFloat16(new_sum.data(), new_sum_half.data(), 3);
+
+  test.AddInput<MLFloat16>("old_sum", {3}, old_sum_half);
+  test.AddInput<MLFloat16>("value", {3}, value_half);
+
+  test.AddOutput<MLFloat16>("new_sum", {3}, new_sum_half);
+
+  test.Run();
+}
+#endif
+
+TEST(GradientUtilsTest, ZeroGradientFloat32) {
+  OpTester test("ZeroGradient", 9, onnxruntime::kOnnxDomain);
+
+  test.AddInput<float>("old_gradient", {3}, {1, 2, 3});
+  test.AddInput<float>("reset_signal", {3}, {1, 10, 100});
+
+  test.AddOutput<float>("zero_gradient", {3}, {0, 0, 0});
+
+  test.Run();
+}
+
+#ifdef USE_CUDA
+TEST(GradientUtilsTest, ZeroGradientFloat16) {
+  OpTester test("ZeroGradient", 9, onnxruntime::kOnnxDomain);
+
+  std::vector<float> old_gradient = {1.0f, 2.0f, 3.0f};
+  std::vector<float> zero_gradient = {0.0f, 0.0f, 0.0f};
+
+  std::vector<MLFloat16> old_gradient_half(3);
+  std::vector<MLFloat16> zero_gradient_half(3);
+
+  ConvertFloatToMLFloat16(old_gradient.data(), old_gradient_half.data(), 3);
+  ConvertFloatToMLFloat16(zero_gradient.data(), zero_gradient_half.data(), 3);
+
+  test.AddInput<MLFloat16>("old_gradient", {3}, old_gradient_half);
+  test.AddInput<float>("reset_signal", {3}, {1, 10, 100});
+
+  test.AddOutput<MLFloat16>("zero_gradient", {3}, zero_gradient_half);
+
+  test.Run();
+}
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime

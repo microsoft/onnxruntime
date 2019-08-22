@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "optimizers.h"
+#include "binary_elementwise_ops.h"
 #include "core/providers/cuda/reduction/reduction_ops.h"
 #include "core/providers/cuda/cuda_allocator.h"
 
@@ -14,8 +15,8 @@ ONNX_OPERATOR_KERNEL_EX(
     9,
     kCudaExecutionProvider,
     KernelDefBuilder()
-      .Alias(1, 0) // Update weights in-place
-      .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+        .Alias(1, 0)  // Update weights in-place
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     SGDOptimizer);
 
 Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
@@ -36,7 +37,7 @@ Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-  // TODO: Once Schema is checked in to onnx lets fix this to match that
+// TODO: Once Schema is checked in to onnx lets fix this to match that
 #define REGISTER_ADAM_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD)                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
       AdamOptimizer,                                                        \
@@ -104,21 +105,21 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD>::ComputeInternal(OpKernelContext* c
 }
 
 // TODO: Once Schema is checked in to onnx lets fix this to match that
-#define REGISTER_LAMB_KERNEL_TYPED(T1,T2,T3,T4)                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                       \
-      LambOptimizer,                                                   \
-      kOnnxDomain,                                                     \
-      9,                                                               \
-      T1##_##T2##_##T3##_##T4,                                         \
-      kCudaExecutionProvider,                                          \
-      KernelDefBuilder()                                               \
-          .Alias(1, 0)                                                 \
-          .Alias(2, 1)                                                 \
-          .Alias(3, 2)                                                 \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())     \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())     \
-          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())     \
-          .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>()),    \
+#define REGISTER_LAMB_KERNEL_TYPED(T1, T2, T3, T4)                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                    \
+      LambOptimizer,                                                \
+      kOnnxDomain,                                                  \
+      9,                                                            \
+      T1##_##T2##_##T3##_##T4,                                      \
+      kCudaExecutionProvider,                                       \
+      KernelDefBuilder()                                            \
+          .Alias(1, 0)                                              \
+          .Alias(2, 1)                                              \
+          .Alias(3, 2)                                              \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())  \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())  \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())  \
+          .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>()), \
       LambOptimizer<T1, T2, T3, T4>);
 
 REGISTER_LAMB_KERNEL_TYPED(float, float, float, float)
@@ -126,7 +127,7 @@ REGISTER_LAMB_KERNEL_TYPED(double, double, double, double)
 REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16)
 REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float)
 
-template<typename T1, typename T2, typename T3, typename T4>
+template <typename T1, typename T2, typename T3, typename T4>
 Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) const {
   // CudaT* are types used to invoke CUDA-based functions. It, for example, maps
   // MLFloat16 in ONNXRuntime to half in CUDA.
@@ -135,14 +136,14 @@ Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) cons
   typedef typename ToCudaType<T3>::MappedType CudaT3;
   typedef typename ToCudaType<T4>::MappedType CudaT4;
 
-  const Tensor &eta_tensor = *ctx->Input<Tensor>(0);
-  const Tensor &weights_tensor = *ctx->Input<Tensor>(1);
-  const Tensor &gradients_tensor = *ctx->Input<Tensor>(2);
-  const Tensor &moment_1_tensor = *ctx->Input<Tensor>(3);
-  const Tensor &moment_2_tensor = *ctx->Input<Tensor>(4);
+  const Tensor& eta_tensor = *ctx->Input<Tensor>(0);
+  const Tensor& weights_tensor = *ctx->Input<Tensor>(1);
+  const Tensor& gradients_tensor = *ctx->Input<Tensor>(2);
+  const Tensor& moment_1_tensor = *ctx->Input<Tensor>(3);
+  const Tensor& moment_2_tensor = *ctx->Input<Tensor>(4);
 
-  const TensorShape &weight_tensor_shape = weights_tensor.Shape();
-  const size_t weight_tensor_rank =  weight_tensor_shape.NumDimensions();
+  const TensorShape& weight_tensor_shape = weights_tensor.Shape();
+  const size_t weight_tensor_rank = weight_tensor_shape.NumDimensions();
   const auto weight_tensor_size = weights_tensor.Shape().Size();
 
   ORT_ENFORCE(weight_tensor_shape == gradients_tensor.Shape());
@@ -150,9 +151,9 @@ Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) cons
   ORT_ENFORCE(weight_tensor_shape == moment_2_tensor.Shape());
 
   // It's an alias of weights_tensor, which leads to an in-place update.
-  Tensor &weights_tensor_updated = *ctx->Output(0, weight_tensor_shape);
-  Tensor &moment_1_tensor_updated = *ctx->Output(1, weight_tensor_shape);
-  Tensor &moment_2_tensor_updated = *ctx->Output(2, weight_tensor_shape);
+  Tensor& weights_tensor_updated = *ctx->Output(0, weight_tensor_shape);
+  Tensor& moment_1_tensor_updated = *ctx->Output(1, weight_tensor_shape);
+  Tensor& moment_2_tensor_updated = *ctx->Output(2, weight_tensor_shape);
 
   // Compute update direction and the 1st and the 2nd momentums.
   // Gradient type controls the direction's type.
@@ -183,17 +184,17 @@ Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) cons
   // Do reduction to compute the 2-norm of the weight tensor and
   // the 2-norm of the update direction. They will be used to
   // adjust the learning rate.
-  if (weight_tensor_size > 1)
-  {
+  if (weight_tensor_size > 1) {
     std::vector<int64_t> cudnn_reduction_input_dims = weight_tensor_shape.GetDims();
     std::vector<int64_t> cudnn_reduction_output_dims(weight_tensor_rank, 1);
 
     if (weight_tensor_rank > 8)
       return ORT_MAKE_STATUS(
-        ONNXRUNTIME, FAIL, "CUDNN only supports up to 8-D tensors in reduction, \
-        so the current LAMB optimizer cannot update tensors with more than 8 axes.");
+          ONNXRUNTIME, FAIL,
+          "CUDNN only supports up to 8-D tensors in reduction, \
+          so the current LAMB optimizer cannot update tensors with more than 8 axes.");
 
-    // CUDNN's reduction doesn't work with 1-D and 2-D tensors. 
+    // CUDNN's reduction doesn't work with 1-D and 2-D tensors.
     if (weight_tensor_rank < 3) {
       std::vector<int64_t> pads(3 - weight_tensor_rank, 1);
       cudnn_reduction_input_dims.insert(cudnn_reduction_input_dims.end(), pads.begin(), pads.end());
@@ -206,7 +207,7 @@ Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) cons
     const cudnnDataType_t cudnn_reduction_type_T3 = CudnnTensor::GetDataType<CudaT3>();
 
     // Create shape and type information for input tensor and output tensor
-    // for CUDNN reduction computation. It's useful when allocating memory. 
+    // for CUDNN reduction computation. It's useful when allocating memory.
     CudnnTensor cudnn_input_tensor_desc_T2;
     CudnnTensor cudnn_input_tensor_desc_T3;
     CudnnTensor cudnn_output_tensor_desc;
@@ -221,55 +222,55 @@ Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) cons
     // is higher than T3, T2 is the type that subsequent tensors reduced to.
     CudnnReduceDescriptor cudnn_reduction_desc;
     cudnn_reduction_desc.Set(
-      CUDNN_REDUCE_TENSOR_NORM2,
-      cudnn_reduction_type_T2,
-      CUDNN_REDUCE_TENSOR_NO_INDICES);
+        CUDNN_REDUCE_TENSOR_NORM2,
+        cudnn_reduction_type_T2,
+        CUDNN_REDUCE_TENSOR_NO_INDICES);
 
     // Pre-allocate memory needed in CUDNN reduction.
     size_t cudnn_workspace_bytes_T2 = 0;
     CUDNN_RETURN_IF_ERROR(
-      cudnnGetReductionWorkspaceSize(
-        CudnnHandle(),
-        cudnn_reduction_desc,
-        cudnn_input_tensor_desc_T2,
-        cudnn_output_tensor_desc,
-        &cudnn_workspace_bytes_T2));
+        cudnnGetReductionWorkspaceSize(
+            CudnnHandle(),
+            cudnn_reduction_desc,
+            cudnn_input_tensor_desc_T2,
+            cudnn_output_tensor_desc,
+            &cudnn_workspace_bytes_T2));
 
     auto cudnn_workspace_T2 = GetScratchBuffer<T2>(cudnn_workspace_bytes_T2);
 
     // Compute pre-allocated memory amount needed in CUDNN reduction.
     size_t cudnn_indices_bytes_T2 = 0;
     CUDNN_RETURN_IF_ERROR(
-      cudnnGetReductionIndicesSize(
-        CudnnHandle(),
-        cudnn_reduction_desc,
-        cudnn_input_tensor_desc_T2,
-        cudnn_output_tensor_desc,
-        &cudnn_indices_bytes_T2));
+        cudnnGetReductionIndicesSize(
+            CudnnHandle(),
+            cudnn_reduction_desc,
+            cudnn_input_tensor_desc_T2,
+            cudnn_output_tensor_desc,
+            &cudnn_indices_bytes_T2));
 
     auto cudnn_indices_workspace_T2 = GetScratchBuffer<uint32_t>(cudnn_indices_bytes_T2);
 
     // Pre-allocate memory needed in CUDNN reduction.
     size_t cudnn_workspace_bytes_T3 = 0;
     CUDNN_RETURN_IF_ERROR(
-      cudnnGetReductionWorkspaceSize(
-        CudnnHandle(),
-        cudnn_reduction_desc,
-        cudnn_input_tensor_desc_T3,
-        cudnn_output_tensor_desc,
-        &cudnn_workspace_bytes_T3));
+        cudnnGetReductionWorkspaceSize(
+            CudnnHandle(),
+            cudnn_reduction_desc,
+            cudnn_input_tensor_desc_T3,
+            cudnn_output_tensor_desc,
+            &cudnn_workspace_bytes_T3));
 
     auto cudnn_workspace_T3 = GetScratchBuffer<T3>(cudnn_workspace_bytes_T3);
 
     // Compute pre-allocated memory amount needed in CUDNN reduction.
     size_t cudnn_indices_bytes_T3 = 0;
     CUDNN_RETURN_IF_ERROR(
-      cudnnGetReductionIndicesSize(
-        CudnnHandle(),
-        cudnn_reduction_desc,
-        cudnn_input_tensor_desc_T3,
-        cudnn_output_tensor_desc,
-        &cudnn_indices_bytes_T3));
+        cudnnGetReductionIndicesSize(
+            CudnnHandle(),
+            cudnn_reduction_desc,
+            cudnn_input_tensor_desc_T3,
+            cudnn_output_tensor_desc,
+            &cudnn_indices_bytes_T3));
 
     auto cudnn_indices_workspace_T3 = GetScratchBuffer<uint32_t>(cudnn_indices_bytes_T3);
 
@@ -306,32 +307,68 @@ Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) cons
         &zero,
         cudnn_output_tensor_desc,
         weights_norm_buffer.get()));
-  }
-  else
-  {
+  } else {
     // CUDA reduction doesn't support one-element case, so we do it
     // by our own CUDA kernel.
     LambScalarL2NormReductionImpl(
-      reinterpret_cast<const CudaT3*>(update_direction_buffer.get()),
-      direction_norm_buffer.get());
+        reinterpret_cast<const CudaT3*>(update_direction_buffer.get()),
+        direction_norm_buffer.get());
     LambScalarL2NormReductionImpl(
-      weights_tensor.template Data<T2>(),
-      weights_norm_buffer.get());
+        weights_tensor.template Data<T2>(),
+        weights_norm_buffer.get());
   }
 
   // Use the update direction and the computed norms to compute
   // the new weights.
   LambUpdateImpl(
-    reinterpret_cast<const CudaT1*>(eta_tensor.template Data<T1>()),
-    reinterpret_cast<const CudaT2*>(direction_norm_buffer.get()),
-    reinterpret_cast<const CudaT2*>(weights_norm_buffer.get()),
-    reinterpret_cast<const CudaT2*>(weights_tensor.template Data<T2>()),
-    reinterpret_cast<CudaT3*>(update_direction_buffer.get()),
-    reinterpret_cast<CudaT2*>(weights_tensor_updated.template MutableData<T2>()),
-    weight_tensor_size);
+      reinterpret_cast<const CudaT1*>(eta_tensor.template Data<T1>()),
+      reinterpret_cast<const CudaT2*>(direction_norm_buffer.get()),
+      reinterpret_cast<const CudaT2*>(weights_norm_buffer.get()),
+      reinterpret_cast<const CudaT2*>(weights_tensor.template Data<T2>()),
+      reinterpret_cast<CudaT3*>(update_direction_buffer.get()),
+      reinterpret_cast<CudaT2*>(weights_tensor_updated.template MutableData<T2>()),
+      weight_tensor_size);
 
   return Status::OK();
 }
+
+#define REGISTER_GRADIENT_ACCUMULATOR_TYPED(T)                    \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      GradientAccumulator,                                        \
+      kOnnxDomain,                                                \
+      9,                                                          \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .Alias(0, 0)                                            \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Add<T>);
+REGISTER_GRADIENT_ACCUMULATOR_TYPED(float)
+REGISTER_GRADIENT_ACCUMULATOR_TYPED(MLFloat16)
+
+template <typename T>
+Status ZeroGradient<T>::ComputeInternal(OpKernelContext* ctx) const {
+  const Tensor& old_gradient = *ctx->Input<Tensor>(0);
+  Tensor& zero_gradient = *ctx->Output(0, old_gradient.Shape());
+
+  cudaMemset(zero_gradient.template MutableData<T>(), 0, zero_gradient.Shape().Size() * sizeof(T));
+  return Status::OK();
+}
+
+#define REGISTER_ZERO_GRADIENT_TYPED(T)                           \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      ZeroGradient,                                               \
+      kOnnxDomain,                                                \
+      9,                                                          \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .Alias(0, 0)                                            \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
+          .TypeConstraint("T2", DataTypeImpl::AllTensorTypes()),  \
+      ZeroGradient<T>);
+REGISTER_ZERO_GRADIENT_TYPED(float)
+REGISTER_ZERO_GRADIENT_TYPED(MLFloat16)
 
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -44,7 +44,7 @@ void AdamOptimizerImpl(
 template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD>
 class AdamOptimizer final : public CudaKernel {
  public:
-  AdamOptimizer(const OpKernelInfo& info): CudaKernel(info) {
+  AdamOptimizer(const OpKernelInfo& info) : CudaKernel(info) {
     info.GetAttrOrDefault("alpha", &alpha_, 0.9f);
     info.GetAttrOrDefault("beta", &beta_, 0.999f);
     info.GetAttrOrDefault("lambda", &lambda_, 0.0f);
@@ -54,10 +54,10 @@ class AdamOptimizer final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-   float alpha_;
-   float beta_;
-   float lambda_;
-   float epsilon_;
+  float alpha_;
+  float beta_;
+  float lambda_;
+  float epsilon_;
 };
 
 // Implementation can be found in cuda file, optimizers_impl.cu
@@ -98,7 +98,7 @@ void LambScalarL2NormReductionImpl(
 template <typename T1, typename T2, typename T3, typename T4>
 class LambOptimizer final : public CudaKernel {
  public:
-  LambOptimizer(const OpKernelInfo& info): CudaKernel(info) {
+  LambOptimizer(const OpKernelInfo& info) : CudaKernel(info) {
     info.GetAttrOrDefault("alpha", &alpha_, 0.9f);
     info.GetAttrOrDefault("beta", &beta_, 0.999f);
     info.GetAttrOrDefault("lambda", &lambda_, 0.0f);
@@ -108,10 +108,18 @@ class LambOptimizer final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-   float alpha_;
-   float beta_;
-   float lambda_;
-   float epsilon_;
+  float alpha_;
+  float beta_;
+  float lambda_;
+  float epsilon_;
+};
+
+template <typename T>
+class ZeroGradient final : public CudaKernel {
+ public:
+  ZeroGradient(const OpKernelInfo& info) : CudaKernel(info) {}
+
+  Status ComputeInternal(OpKernelContext* context) const override;
 };
 
 }  // namespace cuda

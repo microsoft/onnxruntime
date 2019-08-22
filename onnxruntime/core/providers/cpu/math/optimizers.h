@@ -19,7 +19,7 @@ class SGDOptimizer final : public OpKernel {
 template <typename T>
 class AdamOptimizer final : public OpKernel {
  public:
-  AdamOptimizer(const OpKernelInfo& info): OpKernel(info) {
+  AdamOptimizer(const OpKernelInfo& info) : OpKernel(info) {
     info.GetAttrOrDefault("alpha", &alpha_, 0.9f);
     info.GetAttrOrDefault("beta", &beta_, 0.999f);
     info.GetAttrOrDefault("lambda", &lambda_, 0.0f);
@@ -29,10 +29,17 @@ class AdamOptimizer final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-   float alpha_;
-   float beta_;
-   float lambda_;
-   float epsilon_;
+  float alpha_;
+  float beta_;
+  float lambda_;
+  float epsilon_;
+};
+
+template <typename T>
+class ZeroGradient final : public OpKernel {
+ public:
+  ZeroGradient(const OpKernelInfo& info) : OpKernel(info) {}
+  Status Compute(OpKernelContext* context) const override;
 };
 
 }  // namespace onnxruntime

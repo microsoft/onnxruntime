@@ -2138,7 +2138,7 @@ Example 4:
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("LayerNormalization")
+      .SetDoc("LayerNormalizationGrad")
       .Attr("axis",
             "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
             AttributeProto::INT, static_cast<int64_t>(-1))
@@ -2159,6 +2159,15 @@ Example 4:
           "U",
           {"tensor(float)"},
           "Constrain except mean and inv_std_var to float tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Group)
+      .SetDomain(kOnnxDomain)
+      .SetDoc("if all the inputs are available, the output will be true")
+      .SinceVersion(9)
+      .Input(0, "input_tensors", "list of dependency tensors", "T", OpSchema::Variadic)
+      .Output(0, "done", "all the dependency tensors are ready", "B")
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "All Tensor types")
+      .TypeConstraint("B", {"tensor(bool)"}, "Only bool");
 
   static const char* TransposeMatMul_doc = R"DOC(
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
