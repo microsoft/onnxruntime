@@ -273,7 +273,7 @@ void InitializeSession(InferenceSession* sess) {
 }  // namespace python
 
 void addGlobalMethods(py::module& m) {
-  // m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
+  m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
   // m.def(
   //     "get_device", []() -> std::string { return BACKEND_DEVICE; },
   //     "Return the device used to compute the prediction (CPU, MKL, ...)");
