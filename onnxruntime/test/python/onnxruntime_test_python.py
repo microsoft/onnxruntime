@@ -494,10 +494,15 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(total, 0)
 
     def testGraphOptimizationLevel(self):
-        sess = onnxrt.InferenceSession(self.get_name("logicaland.onnx"))
-        sess.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL
-        self.assertEqual(sess.graph_optimization_level,
-                         onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL)
+        opt = onnxrt.SessionOptions()
+        opt.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL
+        opt.assertEqual(opt.graph_optimization_level, onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL)
+        sess = onnxrt.InferenceSession(self.get_name("logicaland.onnx"), sess_options=opt)
+        a = np.array([[True, True], [False, False]], dtype=np.bool)
+        res = sess.run([], {'input:0': a})
+        # sess.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL
+        # self.assertEqual(sess.graph_optimization_level,
+        #                  onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL)
 
 
 if __name__ == '__main__':
