@@ -124,8 +124,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             IntPtr status = NativeMethods.OrtRun(
                                                 this._nativeHandle,
-                                                IntPtr.Zero,  // TODO: use Run options when Run options creation API is available
-                                                              // Passing null uses the default run options in the C-api
+                                                options.Handle,
                                                 inputNames,
                                                 inputTensors,
                                                 (UIntPtr)(inputTensors.Length),
@@ -162,7 +161,8 @@ namespace Microsoft.ML.OnnxRuntime
                 // always unpin the input buffers, and delete the native Onnx value objects
                 for (int i = 0; i < inputs.Count; i++)
                 {
-                    NativeMethods.OrtReleaseValue(inputTensors[i]); // this should not release the buffer, but should delete the native tensor object
+                    NativeMethods.OrtReleaseValue(inputTensors[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
+                                                                    // For string tensors, this releases the native memory allocated for the tensor, including the buffer
                     pinnedBufferHandles[i].Dispose();
                 }
             }

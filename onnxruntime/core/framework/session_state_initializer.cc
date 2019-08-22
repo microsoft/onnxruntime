@@ -27,9 +27,6 @@
 
 namespace onnxruntime {
 
-static common::Status SaveMLValueNameIndexMapping(const GraphViewer& graph_viewer,
-                                                  OrtValueNameIdxMap& ort_value_name_idx_map,
-                                                  const logging::Logger& logger);
 
 // T should have signature of '(int idx, const OrtValue& value, const OrtCallback& d) -> Status'
 template <typename T>
@@ -39,11 +36,6 @@ static common::Status SaveInitializedTensors(const Env& env, const std::basic_st
                                              ITensorAllocator* planner, const T& save_tensor_func,
                                              const logging::Logger& logger,
                                              const DataTransferManager& data_transfer_mgr);
-
-static common::Status SaveKernels(const ExecutionProviders& execution_providers,
-                                  SessionState& session_state,
-                                  const KernelRegistryManager& custom_registry_manager,
-                                  const logging::Logger& logger);
 
 static common::Status SaveInputOutputNamesToNodeMapping(
     const onnxruntime::Graph& graph,
@@ -68,11 +60,11 @@ common::Status SessionStateInitializer::CreatePlan(
     const Node* parent_node,
     const ConstPointerContainer<std::vector<NodeArg*>>* outer_scope_node_args,
     bool enable_sequential_execution) {
-  auto graph_viewer = std::make_unique<onnxruntime::GraphViewer>(graph_);
+  session_state_.SetGraph(graph_);
+  const GraphViewer* graph_viewer = session_state_.GetGraphViewer();
 
   // populate the SessionState OrtValueNameIdxMap
-  auto& ort_value_name_idx_map = session_state_.GetOrtValueNameIdxMap();
-  ORT_RETURN_IF_ERROR(SaveMLValueNameIndexMapping(*graph_viewer, ort_value_name_idx_map, logger_));
+  const auto& ort_value_name_idx_map = session_state_.GetOrtValueNameIdxMap();
 
   // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
   std::vector<const NodeArg*> valid_outer_scope_node_args;
@@ -92,17 +84,10 @@ common::Status SessionStateInitializer::CreatePlan(
                                                     execution_providers_, kernel_registry_manager_,
                                                     ort_value_name_idx_map, context, exec_plan));
   session_state_.SetExecutionPlan(std::move(exec_plan));
-  session_state_.SetGraphViewer(std::move(graph_viewer));
 
-  return Status::OK();
-}
-
-common::Status SessionStateInitializer::InitializeAndSave(
-    const ConstPointerContainer<std::vector<NodeArg*>>* implicit_inputs) {
   const auto* exec_plan_ptr = session_state_.GetExecutionPlan();
   ORT_ENFORCE(exec_plan_ptr, "Execution plan was not found in SessionState. CreatePlan must be called first.");
 
-  const auto& ort_value_name_idx_map{session_state_.GetOrtValueNameIdxMap()};
   std::unique_ptr<ITensorAllocator> tensor_allocator_(ITensorAllocator::Create(
       enable_mem_pattern_, *exec_plan_ptr, execution_providers_, session_state_.GetMutableWeightsBuffers()));
 
@@ -119,64 +104,12 @@ common::Status SessionStateInitializer::InitializeAndSave(
   // TODO: make it better
   graph_.CleanAllInitializedTensors();
 
-  ORT_RETURN_IF_ERROR(SaveKernels(execution_providers_, session_state_, kernel_registry_manager_, logger_));
-  ORT_RETURN_IF_ERROR(SaveInputOutputNamesToNodeMapping(graph_, kernel_registry_manager_, session_state_,
-                                                        implicit_inputs));
-
+  ORT_RETURN_IF_ERROR(session_state_.CreateKernels(kernel_registry_manager_));
+  ORT_RETURN_IF_ERROR(
+      SaveInputOutputNamesToNodeMapping(graph_, kernel_registry_manager_, session_state_, outer_scope_node_args));
   return Status::OK();
 }
 
-// Build the OrtValue name->idx mapping
-common::Status SaveMLValueNameIndexMapping(const GraphViewer& graph_viewer, OrtValueNameIdxMap& ort_value_name_idx_map,
-                                           const logging::Logger& logger) {
-  LOGS(logger, INFO) << "SaveMLValueNameIndexMapping";
-  int idx = 0;
-
-  // we keep all graph inputs (including initializers), even if they are unused, so make sure they all have an entry
-  for (const auto* input_def : graph_viewer.GetInputsIncludingInitializers()) {
-    idx = ort_value_name_idx_map.Add(input_def->Name());
-    VLOGS(logger, 1) << "Added graph_viewer input with name: " << input_def->Name()
-                     << " to OrtValueIndex with index: " << idx;
-  }
-
-  for (auto& node : graph_viewer.Nodes()) {
-    // build the OrtValue->index map
-    for (const auto* input_def : node.InputDefs()) {
-      if (input_def->Exists()) {
-        idx = ort_value_name_idx_map.Add(input_def->Name());
-        VLOGS(logger, 1) << "Added input argument with name: " << input_def->Name()
-                         << " to OrtValueIndex with index: " << idx;
-      }
-    }
-
-    for (const auto* input_def : node.ImplicitInputDefs()) {
-      if (input_def->Exists()) {
-        idx = ort_value_name_idx_map.Add(input_def->Name());
-        VLOGS(logger, 1) << "Added implicit input argument with name: " << input_def->Name()
-                         << " to OrtValueIndex with index: " << idx;
-      }
-    }
-
-    for (const auto* output_def : node.OutputDefs()) {
-      if (output_def->Exists()) {
-        ort_value_name_idx_map.Add(output_def->Name());
-        VLOGS(logger, 1) << "Added output argument with name: " << output_def->Name()
-                         << " to OrtValueIndex with index: " << idx;
-      }
-    }
-  }
-
-  // allocate OrtValue for graph outputs when coming from initializers
-  for (const auto& output : graph_viewer.GetOutputs()) {
-    if (output->Exists()) {
-      idx = ort_value_name_idx_map.Add(output->Name());
-      VLOGS(logger, 1) << "Added graph output with name: " << output->Name() << " to OrtValueIndex with index: " << idx;
-    }
-  }
-
-  LOGS(logger, INFO) << "Done saving OrtValue mappings.";
-  return Status::OK();
-}
 
 static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m,
@@ -290,46 +223,6 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
 
   LOGS(logger, INFO) << "Done saving initialized tensors";
   return common::Status::OK();
-}
-
-static common::Status CreateOpKernel(const onnxruntime::Node& node, const ExecutionProviders& execution_providers,
-                                     const SessionState& session_state,
-                                     const KernelRegistryManager& custom_registry_manager,
-                                     std::unique_ptr<OpKernel>& op_kernel) {
-  onnxruntime::ProviderType exec_provider_name = node.GetExecutionProviderType();
-
-  const IExecutionProvider* exec_provider = nullptr;
-  if (exec_provider_name.empty() || (exec_provider = execution_providers.Get(exec_provider_name)) == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not create kernel for node: ", node.Name(),
-                           " as there's no execution provider allocated.");
-  }
-
-  common::Status status = custom_registry_manager.CreateKernel(node, *exec_provider, session_state, op_kernel);
-  if (!status.IsOK()) {
-    return common::Status(
-        status.Category(), status.Code(),
-        MakeString("Kernel creation failed for node: ", node.Name(), " with error: ", status.ErrorMessage()));
-  }
-
-  return status;
-}
-
-common::Status SaveKernels(const ExecutionProviders& execution_providers,
-                           SessionState& session_state,
-                           const KernelRegistryManager& custom_registry_manager,
-                           const logging::Logger& logger) {
-  LOGS(logger, INFO) << "Saving kernels.";
-
-  for (auto& node : session_state.GetGraphViewer()->Nodes()) {
-    // construct and save the kernels
-    std::unique_ptr<OpKernel> op_kernel;
-    ORT_RETURN_IF_ERROR(CreateOpKernel(node, execution_providers, session_state, custom_registry_manager, op_kernel));
-    session_state.AddKernel(node.Index(), std::move(op_kernel));
-  }
-
-  LOGS(logger, INFO) << "Done saving kernels.";
-
-  return Status::OK();
 }
 
 template <typename T>  // T is container of const NodeArg* or NodeArg*
