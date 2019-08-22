@@ -273,16 +273,16 @@ void InitializeSession(InferenceSession* sess) {
 }  // namespace python
 
 void addGlobalMethods(py::module& m) {
-  m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
-  m.def(
-      "get_device", []() -> std::string { return BACKEND_DEVICE; },
-      "Return the device used to compute the prediction (CPU, MKL, ...)");
-  m.def("set_default_logger_severity", [](int severity) {
-    ORT_ENFORCE(severity >= 0 && severity <= 4,
-                "Invalid logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
-    logging::LoggingManager* default_logging_manager = SessionObjectInitializer::Get();
-    default_logging_manager->SetDefaultLoggerSeverity(static_cast<logging::Severity>(severity));
-  });
+  // m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
+  // m.def(
+  //     "get_device", []() -> std::string { return BACKEND_DEVICE; },
+  //     "Return the device used to compute the prediction (CPU, MKL, ...)");
+  // m.def("set_default_logger_severity", [](int severity) {
+  //   ORT_ENFORCE(severity >= 0 && severity <= 4,
+  //               "Invalid logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
+  //   logging::LoggingManager* default_logging_manager = SessionObjectInitializer::Get();
+  //   default_logging_manager->SetDefaultLoggerSeverity(static_cast<logging::Severity>(severity));
+  // });
 
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
   m.def(
