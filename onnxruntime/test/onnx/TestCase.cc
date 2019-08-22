@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-//TODO: switch to use onnxruntime public api
+// needs to be included first to get around onnxruntime\cmake\external\onnx\onnx/common/constants.h(14): error C2513: 'bool': no variable declared before '='
+#include "tensorprotoutils.h"
 
 #include "TestCase.h"
 #include <fstream>
@@ -12,6 +13,7 @@
 #include "core/platform/ort_mutex.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/path_lib.h"
+#include "core/framework/allocator.h"
 #include <sstream>
 #include <map>
 #include <regex>
@@ -57,7 +59,6 @@ using ORT_VALUE_HOLDER = std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)>;
 const std::string TestModelInfo::unknown_version = "unknown version";
 
 namespace {
-
 template <typename T>
 ONNXTensorElementDataType NumericTypeToONNXType();
 template <>
@@ -209,9 +210,9 @@ class OnnxModelInfo : public TestModelInfo {
 #ifdef __GNUG__
     std::smatch match;
     std::string url_string{model_url};
-    const std::regex onnx_tag_regex("onnx[0-9a-z]{3}"); //e.g. onnx141, onnx150, onnxtip
+    const std::regex onnx_tag_regex("onnx[0-9a-z]{3}");  //e.g. onnx141, onnx150, onnxtip
     if (std::regex_search(url_string, match, onnx_tag_regex)) {
-      onnx_commit_tag_ = match[0].str();   
+      onnx_commit_tag_ = match[0].str();
     } else {
       onnx_commit_tag_ = TestModelInfo::unknown_version;
     }
@@ -265,22 +266,30 @@ static void SortTensorFileNames(std::vector<std::basic_string<PATH_CHAR_TYPE>>& 
   }
 }
 
-OrtValue* TensorToOrtValue(const ONNX_NAMESPACE::TensorProto& t, HeapBuffer& b) {
-  std::string s = t.SerializeAsString();
-  size_t len;
-  ORT_THROW_ON_ERROR(OrtGetTensorMemSizeInBytesFromTensorProto(s.data(), static_cast<int>(s.size()), 0, &len));
-  void* p = len == 0 ? nullptr : b.AllocMemory(len);
-  OrtCallback* d;
-  OrtValue* temp_value = nullptr;
-  ORT_THROW_ON_ERROR(OrtTensorProtoToOrtValue(s.data(), static_cast<int>(s.size()), nullptr, p, len, &temp_value, &d));
-  if (d != nullptr) {
-    b.AddDeleter(d);
+OrtValue* TensorToOrtValue(const ONNX_NAMESPACE::TensorProto& t, onnxruntime::test::HeapBuffer& b) {
+  size_t len = 0;
+  auto status = onnxruntime::test::GetSizeInBytesFromTensorProto<0>(t, &len);
+  if (!status.IsOK()) {
+    ORT_THROW(status.ToString());
   }
-  return temp_value;
+  void* p = len == 0 ? nullptr : b.AllocMemory(len);
+  Ort::Value temp_value{nullptr};
+  auto d = std::make_unique<onnxruntime::test::OrtCallback>();
+  OrtAllocatorInfo cpu_allocator_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+  status = onnxruntime::test::TensorProtoToMLValue(t, onnxruntime::test::MemBuffer(p, len, cpu_allocator_info),
+                                                   temp_value, *d);
+  if (!status.IsOK()) {
+    ORT_THROW(status.ToString());
+  }
+  if (d->f) {
+    b.AddDeleter(d.release());
+  }
+  return temp_value.release();
 }
 
 void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo* modelinfo,
-                  std::unordered_map<std::string, OrtValue*>& name_data_map, HeapBuffer& b, std::ostringstream& oss) {
+                  std::unordered_map<std::string, OrtValue*>& name_data_map, onnxruntime::test::HeapBuffer& b,
+                  std::ostringstream& oss) {
   google::protobuf::io::FileInputStream f(test_data_pb_fd);
   f.SetCloseOnDelete(true);
   google::protobuf::io::CodedInputStream coded_input(&f);
@@ -388,7 +397,8 @@ class OnnxTestCase : public ITestCase {
     return std::string();
   }
 
-  void ConvertTestData(const std::vector<ONNX_NAMESPACE::TensorProto>& test_data_pbs, HeapBuffer& b, bool is_input,
+  void ConvertTestData(const std::vector<ONNX_NAMESPACE::TensorProto>& test_data_pbs, onnxruntime::test::HeapBuffer& b,
+                       bool is_input,
                        std::unordered_map<std::string, OrtValue*>& out);
 
   std::once_flag model_parsed_;
@@ -423,7 +433,8 @@ class OnnxTestCase : public ITestCase {
   std::string GetTestCaseVersion() const override {
     return model_info_->GetModelVersion();
   }
-  void LoadTestData(size_t id, HeapBuffer& b, std::unordered_map<std::string, OrtValue*>&, bool is_input) override;
+  void LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b, std::unordered_map<std::string, OrtValue*>&,
+                    bool is_input) override;
 };
 
 ITestCase* CreateOnnxTestCase(const std::string& test_case_name, TestModelInfo* model,
@@ -476,8 +487,6 @@ static bool read_config_file(const std::basic_string<PATH_CHAR_TYPE>& path, std:
   return true;
 }
 
-
-
 //load tensors from disk
 template <typename PATH_STRING_TYPE>
 static void LoadTensors(const std::vector<PATH_STRING_TYPE>& pb_files,
@@ -498,7 +507,8 @@ static void LoadTensors(const std::vector<PATH_STRING_TYPE>& pb_files,
   }
 }
 
-void OnnxTestCase::LoadTestData(size_t id, HeapBuffer& b, std::unordered_map<std::string, OrtValue*>& name_data_map,
+void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
+                                std::unordered_map<std::string, OrtValue*>& name_data_map,
                                 bool is_input) {
   if (id >= test_data_dirs_.size()) {
     ORT_THROW("index out of bound");
@@ -551,7 +561,8 @@ void OnnxTestCase::LoadTestData(size_t id, HeapBuffer& b, std::unordered_map<std
   ConvertTestData(test_data_pbs, b, is_input, name_data_map);
 }
 
-void OnnxTestCase::ConvertTestData(const std::vector<ONNX_NAMESPACE::TensorProto>& test_data_pbs, HeapBuffer& b,
+void OnnxTestCase::ConvertTestData(const std::vector<ONNX_NAMESPACE::TensorProto>& test_data_pbs,
+                                   onnxruntime::test::HeapBuffer& b,
                                    bool is_input, std::unordered_map<std::string, OrtValue*>& out) {
   bool has_valid_names = true;
   std::vector<std::string> var_names(test_data_pbs.size());
@@ -575,15 +586,25 @@ void OnnxTestCase::ConvertTestData(const std::vector<ONNX_NAMESPACE::TensorProto
   for (size_t input_index = 0; input_index != test_data_pbs.size(); ++input_index) {
     std::string name = var_names[input_index];
     const ONNX_NAMESPACE::TensorProto& input = test_data_pbs[input_index];
-    std::string s = input.SerializeAsString();
-    OrtValue* v1;
-    size_t len;
-    ORT_THROW_ON_ERROR(OrtGetTensorMemSizeInBytesFromTensorProto(s.data(), (int)s.size(), 0, &len));
+    size_t len = 0;
+
+    auto status = onnxruntime::test::GetSizeInBytesFromTensorProto<0>(input, &len);
+    if (!status.IsOK()) {
+      ORT_THROW(status.ToString());
+    }
     void* p = len == 0 ? nullptr : b.AllocMemory(len);
-    OrtCallback* d;
-    ORT_THROW_ON_ERROR(OrtTensorProtoToOrtValue(s.data(), (int)s.size(), nullptr, p, len, &v1, &d));
-    if (d != nullptr) b.AddDeleter(d);
-    out.insert(std::make_pair(name, v1));
+    Ort::Value v1{nullptr};
+    auto d = std::make_unique<onnxruntime::test::OrtCallback>();
+    OrtAllocatorInfo cpu_allocator_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+    status = onnxruntime::test::TensorProtoToMLValue(input, onnxruntime::test::MemBuffer(p, len, cpu_allocator_info),
+                                                     v1, *d);
+    if (!status.IsOK()) {
+      ORT_THROW(status.ToString());
+    }
+    if (d->f) {
+      b.AddDeleter(d.release());
+    }
+    out.insert(std::make_pair(name, v1.release()));
   }
 }
 

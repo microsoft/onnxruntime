@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.IO;
 using Microsoft.ML.OnnxRuntime;
-using System.Numerics.Tensors;
+using Microsoft.ML.OnnxRuntime.Tensors;
 
 namespace CSharpUsage
 {
@@ -26,7 +26,7 @@ namespace CSharpUsage
 
             // Optional : Create session options and set the graph optimization level for the session
             SessionOptions options = new SessionOptions();
-            options.SetSessionGraphOptimizationLevel(2);
+            options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_EXTENDED;
 
             using (var session = new InferenceSession(modelPath, options))
             {

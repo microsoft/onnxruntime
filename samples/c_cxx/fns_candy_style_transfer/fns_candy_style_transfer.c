@@ -5,8 +5,10 @@
 #include <stdio.h>
 #include <assert.h>
 #include <png.h>
-
-#define ORT_THROW_ON_ERROR(expr)                         \
+#ifdef _WIN32
+#include <objbase.h>
+#endif
+#define ORT_ABORT_ON_ERROR(expr)                         \
   do {                                                   \
     OrtStatus* onnx_status = (expr);                     \
     if (onnx_status != NULL) {                           \
@@ -94,21 +96,21 @@ static int read_png_file(const char* input_file, size_t* height, size_t* width, 
  */
 static int write_tensor_to_png_file(OrtValue* tensor, const char* output_file) {
   struct OrtTensorTypeAndShapeInfo* shape_info;
-  ORT_THROW_ON_ERROR(OrtGetTensorTypeAndShape(tensor, &shape_info));
+  ORT_ABORT_ON_ERROR(OrtGetTensorTypeAndShape(tensor, &shape_info));
   size_t dim_count;
-  ORT_THROW_ON_ERROR(OrtGetDimensionsCount(shape_info, &dim_count));
+  ORT_ABORT_ON_ERROR(OrtGetDimensionsCount(shape_info, &dim_count));
   if (dim_count != 4) {
     printf("output tensor must have 4 dimensions");
     return -1;
   }
   int64_t dims[4];
-  ORT_THROW_ON_ERROR(OrtGetDimensions(shape_info, dims, sizeof(dims) / sizeof(dims[0])));
+  ORT_ABORT_ON_ERROR(OrtGetDimensions(shape_info, dims, sizeof(dims) / sizeof(dims[0])));
   if (dims[0] != 1 || dims[1] != 3) {
     printf("output tensor shape error");
     return -1;
   }
   float* f;
-  ORT_THROW_ON_ERROR(OrtGetTensorMutableData(tensor, (void**)&f));
+  ORT_ABORT_ON_ERROR(OrtGetTensorMutableData(tensor, (void**)&f));
   png_bytep model_output_bytes;
   png_image image;
   memset(&image, 0, (sizeof image));
@@ -129,12 +131,33 @@ static int write_tensor_to_png_file(OrtValue* tensor, const char* output_file) {
 
 static void usage() { printf("usage: <model_path> <input_file> <output_file> \n"); }
 
-int run_inference(OrtSession* session, const char* input_file, const char* output_file) {
+static char* convert_string(const wchar_t* input) {
+  size_t src_len = wcslen(input) + 1;
+  if (src_len > INT_MAX) {
+    printf("size overflow\n");
+    abort();
+  }
+  const int len = WideCharToMultiByte(CP_ACP, 0, input, (int)src_len, NULL, 0, NULL, NULL);
+  assert(len > 0);
+  char* ret = (char*)malloc(len);
+  assert(ret != NULL);
+  const int r = WideCharToMultiByte(CP_ACP, 0, input, (int)src_len, ret, len, NULL, NULL);
+  assert(len == r);
+  return ret;
+}
+
+int run_inference(OrtSession* session, const ORTCHAR_T* input_file, const ORTCHAR_T* output_file) {
   size_t input_height;
   size_t input_width;
   float* model_input;
   size_t model_input_ele_count;
-  if (read_png_file(input_file, &input_height, &input_width, &model_input, &model_input_ele_count) != 0) {
+#ifdef _WIN32
+  char* output_file_p = convert_string(output_file);
+  char* input_file_p = convert_string(input_file);
+#else
+  char* input_file_p = input_file;
+#endif
+  if (read_png_file(input_file_p, &input_height, &input_width, &model_input, &model_input_ele_count) != 0) {
     return -1;
   }
   if (input_height != 720 || input_width != 720) {
@@ -143,69 +166,82 @@ int run_inference(OrtSession* session, const char* input_file, const char* outpu
     return -1;
   }
   OrtAllocatorInfo* allocator_info;
-  ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
+  ORT_ABORT_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
   const int64_t input_shape[] = {1, 3, 720, 720};
   const size_t input_shape_len = sizeof(input_shape) / sizeof(input_shape[0]);
   const size_t model_input_len = model_input_ele_count * sizeof(float);
 
   OrtValue* input_tensor = NULL;
-  ORT_THROW_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(allocator_info, model_input, model_input_len, input_shape,
+  ORT_ABORT_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(allocator_info, model_input, model_input_len, input_shape,
                                                        input_shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
                                                        &input_tensor));
   assert(input_tensor != NULL);
   int is_tensor;
-  ORT_THROW_ON_ERROR(OrtIsTensor(input_tensor, &is_tensor));
+  ORT_ABORT_ON_ERROR(OrtIsTensor(input_tensor, &is_tensor));
   assert(is_tensor);
   OrtReleaseAllocatorInfo(allocator_info);
   const char* input_names[] = {"inputImage"};
   const char* output_names[] = {"outputImage"};
   OrtValue* output_tensor = NULL;
-  ORT_THROW_ON_ERROR(
+  ORT_ABORT_ON_ERROR(
       OrtRun(session, NULL, input_names, (const OrtValue* const*)&input_tensor, 1, output_names, 1, &output_tensor));
   assert(output_tensor != NULL);
-  ORT_THROW_ON_ERROR(OrtIsTensor(output_tensor, &is_tensor));
+  ORT_ABORT_ON_ERROR(OrtIsTensor(output_tensor, &is_tensor));
   assert(is_tensor);
   int ret = 0;
-  if (write_tensor_to_png_file(output_tensor, output_file) != 0) {
+  if (write_tensor_to_png_file(output_tensor, output_file_p) != 0) {
     ret = -1;
   }
   OrtReleaseValue(output_tensor);
   OrtReleaseValue(input_tensor);
   free(model_input);
+#ifdef _WIN32
+  free(input_file_p);
+  free(output_file_p);
+#endif  // _WIN32
   return ret;
 }
 
 void verify_input_output_count(OrtSession* session) {
   size_t count;
-  ORT_THROW_ON_ERROR(OrtSessionGetInputCount(session, &count));
+  ORT_ABORT_ON_ERROR(OrtSessionGetInputCount(session, &count));
   assert(count == 1);
-  ORT_THROW_ON_ERROR(OrtSessionGetOutputCount(session, &count));
+  ORT_ABORT_ON_ERROR(OrtSessionGetOutputCount(session, &count));
   assert(count == 1);
 }
 
 #ifdef USE_CUDA
 void enable_cuda(OrtSessionOptions* session_options) {
-  ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  ORT_ABORT_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
 }
 #endif
 
+#ifdef _WIN32
+int wmain(int argc, wchar_t* argv[]) {
+#else
 int main(int argc, char* argv[]) {
+#endif
   if (argc < 4) {
     usage();
     return -1;
   }
-  char* model_path = argv[1];
-  char* input_file = argv[2];
-  char* output_file = argv[3];
+#ifdef _WIN32
+  //CoInitializeEx is only needed if Windows Image Component will be used in this program for image loading/saving.
+  HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+  if (!SUCCEEDED(hr)) return -1;
+#endif
+  ORTCHAR_T* model_path = argv[1];
+  ORTCHAR_T* input_file = argv[2];
+  ORTCHAR_T* output_file = argv[3];
   OrtEnv* env;
-  ORT_THROW_ON_ERROR(OrtCreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
+  ORT_ABORT_ON_ERROR(OrtCreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
   OrtSessionOptions* session_options;
-  ORT_THROW_ON_ERROR(OrtCreateSessionOptions(&session_options));
+  ORT_ABORT_ON_ERROR(OrtCreateSessionOptions(&session_options));
 #ifdef USE_CUDA
   enable_cuda(session_options);
 #endif
   OrtSession* session;
-  ORT_THROW_ON_ERROR(OrtCreateSession(env, model_path, session_options, &session));
+  ORT_ABORT_ON_ERROR(OrtCreateSession(env, model_path, session_options, &session));
   verify_input_output_count(session);
   int ret = run_inference(session, input_file, output_file);
   OrtReleaseSessionOptions(session_options);
@@ -214,5 +250,8 @@ int main(int argc, char* argv[]) {
   if (ret != 0) {
     fprintf(stderr, "fail\n");
   }
+#ifdef _WIN32
+  CoUninitialize();
+#endif
   return ret;
 }

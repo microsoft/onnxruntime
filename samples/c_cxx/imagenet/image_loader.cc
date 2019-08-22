@@ -165,22 +165,25 @@ InceptionPreprocessing::InceptionPreprocessing(int out_height, int out_width, in
   }
 }
 
-
 // see: https://github.com/tensorflow/models/blob/master/research/slim/preprocessing/inception_preprocessing.py
 // function: preprocess_for_eval
-void InceptionPreprocessing::operator()(const void* input_data, void* output_data) const {
+void InceptionPreprocessing::operator()(_In_ const void* input_data,
+                                        _Out_writes_bytes_all_(output_len) void* output_data, size_t output_len) const {
   const TCharString& file_name = *reinterpret_cast<const TCharString*>(input_data);
-
+  size_t output_count = channels_ * out_height_ * out_width_;
+  if (output_len < output_count * sizeof(float)) {
+    throw std::runtime_error("buffer is too small");
+  }
   float* float_file_data_pointer;
   int bbox_h_size, bbox_w_size;
-  int channels = 3;
-  ORT_THROW_ON_ERROR(LoadImageFromFileAndCrop(nullptr, file_name.c_str(), central_fraction_, &float_file_data_pointer,
-                                              &bbox_w_size, &bbox_h_size));
+  ORT_THROW_ON_ERROR(LoadImageFromFileAndCrop(image_loader_, file_name.c_str(), central_fraction_,
+                                              &float_file_data_pointer, &bbox_w_size, &bbox_h_size));
   auto output_data_ = reinterpret_cast<float*>(output_data);
   ResizeImageInMemory(float_file_data_pointer, output_data_, bbox_h_size, bbox_w_size, out_height_, out_width_,
-                      channels);
-  size_t output_data_len = channels_ * out_height_ * out_width_;
-  for (size_t i = 0; i != output_data_len; ++i) {
+                      channels_);
+  free(float_file_data_pointer);
+
+  for (size_t i = 0; i != output_count; ++i) {
     output_data_[i] = (output_data_[i] - 0.5f) * 2.f;
   }
 }

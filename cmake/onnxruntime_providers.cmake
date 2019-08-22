@@ -25,6 +25,16 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
 )
 
+file(GLOB onnxruntime_cpu_automl_cc_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/automl_ops/cpu_automl_kernels.h"
+  "${ONNXRUNTIME_ROOT}/automl_ops/cpu_automl_kernels.cc"
+  "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.h"
+  "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.cc"
+  "${ONNXRUNTIME_ROOT}/automl_ops/automl_featurizers.h"
+  "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.h"
+  "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.cc"
+)
+
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
@@ -55,17 +65,30 @@ if(onnxruntime_USE_NNAPI)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
 endif()
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
-# add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
-source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_contrib_ops_srcs})
+
+set(onnxruntime_providers_src ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
 # disable contrib ops conditionally
-if(onnxruntime_DISABLE_CONTRIB_OPS)
-  add_library(onnxruntime_providers ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
-else()
-  add_library(onnxruntime_providers ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs} ${onnxruntime_cpu_contrib_ops_srcs})
+if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
+  source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_contrib_ops_srcs})
+  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_contrib_ops_srcs})
 endif()
 
+if (onnxruntime_USE_AUTOML)
+  source_group(TREE ${ONNXRUNTIME_ROOT}/ FILES ${onnxruntime_cpu_automl_cc_srcs})
+  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_automl_cc_srcs})
+endif()
+
+add_library(onnxruntime_providers ${onnxruntime_providers_src})
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+
+if (onnxruntime_USE_AUTOML)
+  add_dependencies(onnxruntime_providers automl_featurizers)
+  onnxruntime_add_include_to_target(onnxruntime_providers automl_featurizers)
+  target_link_libraries(onnxruntime_providers automl_featurizers)
+endif()
+
 if(HAS_DEPRECATED_COPY)
   #temporarily ignore this warning
   #see: https://en.wikipedia.org/wiki/Rule_of_three_(C%2B%2B_programming)
@@ -77,7 +100,7 @@ if(HAS_DEPRECATED_COPY)
   set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/onehot.cc" PROPERTIES COMPILE_FLAGS -Wno-deprecated-copy)
   set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/where_op.cc" PROPERTIES COMPILE_FLAGS -Wno-deprecated-copy)
 endif()
-set(gemmlowp_src ${PROJECT_SOURCE_DIR}/external/gemmlowp)
+
 set(re2_src ${ONNXRUNTIME_ROOT}/../cmake/external/re2)
 target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${gemmlowp_src} ${re2_src})
 add_dependencies(onnxruntime_providers gsl onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
@@ -96,7 +119,7 @@ if (onnxruntime_USE_CUDA)
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
-  
+
   # disable contrib ops conditionally
   if(onnxruntime_DISABLE_CONTRIB_OPS)
     add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
@@ -260,10 +283,20 @@ if (onnxruntime_USE_OPENVINO)
 
   # Below variables point to directories within the OpenVINO installation directory
   # whose value is set in INTEL_CVSDK_DIR variable by running the setupvars.sh script
-  if (onnxruntime_USE_OPENVINO_BINARY)
-    set(OPENVINO_INCLUDE_DIR $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/include)
-    set(OPENVINO_LIB_DIR $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/lib/ubuntu_16.04/intel64/)
+if (onnxruntime_USE_OPENVINO_BINARY)
+  if ($ENV{INTEL_CVSDK_DIR} MATCHES "2019.1")
+     message($ENV{INTEL_CVSDK_DIR})
+     set(OPENVINO_INCLUDE_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/include)
+     set(OPENVINO_TBB_INCLUDE_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/include)
+     set(OPENVINO_LIB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/)
+     set(OPENVINO_TBB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib)
+     set(OPENVINO_MKL_TINY_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib)
   endif()
+  if ($ENV{INTEL_CVSDK_DIR} MATCHES "2018.5")
+     set(OPENVINO_INCLUDE_DIR $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/include)
+     set(OPENVINO_LIB_DIR $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/lib/ubuntu_16.04/intel64/)
+  endif()
+endif()
 
   find_package(PythonLibs REQUIRED)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
@@ -271,11 +304,17 @@ if (onnxruntime_USE_OPENVINO)
   onnxruntime_add_include_to_target(onnxruntime_providers_openvino gsl onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
   add_dependencies(onnxruntime_providers_openvino ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_openvino PROPERTIES FOLDER "ONNXRuntime")
-  target_include_directories(onnxruntime_providers_openvino PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS})
+  target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${OPENVINO_TBB_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/openvino  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES LINKER_LANGUAGE CXX)
-  link_directories(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR})
-  target_link_libraries(onnxruntime_providers_openvino -linference_engine ${PYTHON_LIBRARIES})
+  if ($ENV{INTEL_CVSDK_DIR} MATCHES "2019.1")
+    link_directories(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR} ${OPENVINO_TBB_DIR} ${OPENVINO_MKL_TINY_DIR})
+    target_link_libraries(onnxruntime_providers_openvino -linference_engine -ltbb ${PYTHON_LIBRARIES})
+  endif()
+  if ($ENV{INTEL_CVSDK_DIR} MATCHES "2018.5")
+    link_directories(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR})
+    target_link_libraries(onnxruntime_providers_openvino -linference_engine ${PYTHON_LIBRARIES})
+  endif()
   file(COPY ${onnxruntime_providers_openvino_py_srcs} DESTINATION ${onnxruntime_BINARY_DIR})
 endif()
 

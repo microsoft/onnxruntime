@@ -111,6 +111,12 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--arm64", action='store_true',
                         help="Create ARM64 makefiles. Requires --update and no existing cache CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
+    parser.add_argument("--android", action='store_true', help='Build for Android')
+    parser.add_argument("--android_abi", type=str, default='arm64-v8a',
+            help='')
+    parser.add_argument("--android_api", type=int, default=27,
+            help='Android API Level, e.g. 21')
+    parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
 
     # Arguments needed by CI
     parser.add_argument("--cmake_path", default="cmake", help="Path to the CMake program.")
@@ -121,9 +127,11 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_openblas", action='store_true', help="Build with OpenBLAS.")
     parser.add_argument("--use_mkldnn", action='store_true', help="Build with MKLDNN.")
     parser.add_argument("--use_mklml", action='store_true', help="Build with MKLML.")
+    parser.add_argument("--use_automl", action='store_true', help="Build with AutoML support.")
     parser.add_argument("--use_ngraph", action='store_true', help="Build with nGraph.")
     parser.add_argument("--use_openvino", nargs="?", const="CPU_FP32",
-                        choices=["CPU_FP32","GPU_FP32","GPU_FP16","VAD-R_FP16","MYRIAD_FP16"], help="Build with OpenVINO for specific hardware.")
+                        choices=["CPU_FP32","GPU_FP32","GPU_FP16","VAD-M_FP16","MYRIAD_FP16"], help="Build with OpenVINO for specific hardware.")
+    parser.add_argument("--use_dnnlibrary", action='store_true', help="Build with DNNLibrary.")
     parser.add_argument("--use_nsync", action='store_true', help="Build with NSYNC.")
     parser.add_argument("--use_preinstalled_eigen", action='store_true', help="Use pre-installed eigen.")
     parser.add_argument("--eigen_path", help="Path to pre-installed eigen.")
@@ -311,11 +319,12 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     cmake_args = [cmake_path, cmake_dir,
                  "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
                  "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
-                 "-Donnxruntime_DEV_MODE=ON",
+                 "-Donnxruntime_DEV_MODE=" + ("OFF" if args.android else "ON"),
                  "-DPYTHON_EXECUTABLE=" + sys.executable,
                  "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
                  "-Donnxruntime_USE_NSYNC=" + ("OFF" if is_windows() or not args.use_nsync else "ON"),
                  "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
+                 "-Donnxruntime_USE_AUTOML=" + ("ON" if args.use_automl else "OFF"),				 
                  "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
                  "-Donnxruntime_USE_JEMALLOC=" + ("ON" if args.use_jemalloc else "OFF"),
                  "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
@@ -333,8 +342,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_OPENVINO_GPU_FP32=" + ("ON" if args.use_openvino == "GPU_FP32" else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_GPU_FP16=" + ("ON" if args.use_openvino == "GPU_FP16" else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_CPU_FP32=" + ("ON" if args.use_openvino == "CPU_FP32" else "OFF"),
-                 "-Donnxruntime_USE_OPENVINO_VAD_R=" + ("ON" if args.use_openvino == "VAD-R_FP16" else "OFF"),
-                 "-Donnxruntime_USE_OPENMP=" + ("ON" if args.use_openmp and not args.use_mklml and not args.use_ngraph else "OFF"),
+                 "-Donnxruntime_USE_OPENVINO_VAD_M=" + ("ON" if args.use_openvino == "VAD-M_FP16" else "OFF"),
+                 "-Donnxruntime_USE_NNAPI=" + ("ON" if args.use_dnnlibrary else "OFF"),
+                 "-Donnxruntime_USE_OPENMP=" + ("ON" if args.use_openmp and not args.use_dnnlibrary and not args.use_mklml and not args.use_ngraph else "OFF"),
                  "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
                  "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
                  "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
@@ -372,11 +382,18 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-Donnxruntime_USE_PREINSTALLED_EIGEN=ON",
                        "-Deigen_SOURCE_PATH=" + args.eigen_path]
 
+    if args.android:
+        cmake_args += ["-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path + "/build/cmake/android.toolchain.cmake",
+                "-DANDROID_PLATFORM=android-" + str(args.android_api),
+                "-DANDROID_ABI=" + str(args.android_abi)]
+
     if path_to_protoc_exe:
         cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
 
     if args.gen_doc:
         cmake_args += ["-Donnxruntime_PYBIND_EXPORT_OPSCHEMA=ON"]
+    else:
+        cmake_args += ["-Donnxruntime_PYBIND_EXPORT_OPSCHEMA=OFF"]
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
@@ -520,10 +537,29 @@ def setup_tensorrt_vars(args):
 
     return tensorrt_home
 
+def adb_push(source_dir, src, dest, **kwargs):
+    return run_subprocess([os.path.join(source_dir, 'tools', 'ci_build', 'github', 'android', 'adb-push.sh'), src, dest], **kwargs)
+
+def adb_shell(*args, **kwargs):
+    return run_subprocess(['adb', 'shell', *args], **kwargs)
+
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False, enable_ngraph = False):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
+        android_x86_64 = args.android_abi == 'x86_64'
+        if android_x86_64:
+            run_subprocess(os.path.join(source_dir, 'tools', 'ci_build', 'github', 'android', 'start_android_emulator.sh'))
+            adb_push(source_dir, 'testdata', '/data/local/tmp/', cwd=cwd)
+            adb_push(source_dir, os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'), '/data/local/tmp/', cwd=cwd)
+            adb_push(source_dir, 'onnxruntime_test_all', '/data/local/tmp/', cwd=cwd)
+            adb_push(source_dir, 'onnx_test_runner', '/data/local/tmp/', cwd=cwd)
+            adb_shell('cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
+            if args.use_dnnlibrary:
+                adb_shell('cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')
+            else:
+                adb_shell('cd /data/local/tmp && /data/local/tmp/onnx_test_runner /data/local/tmp/test')
+            continue
         if enable_tvm:
           dll_path = os.path.join(build_dir, config, "external", "tvm", config)
         elif enable_tensorrt:
@@ -709,23 +745,24 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use
             args.append('--use_openvino')
         run_subprocess(args, cwd=cwd)
 
-def build_protoc_for_windows_host(cmake_path, source_dir, build_dir, cmake_generator):
-    if not is_windows():
+def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
+    if (args.arm or args.arm64) and not is_windows():
         raise BuildError('Currently only support building protoc for Windows host while cross-compiling for ARM/ARM64 arch')
 
     log.info("Building protoc for host to be used in cross-compiled build process")
-    protoc_build_dir = os.path.join(build_dir, 'host_protoc')
+    protoc_build_dir = os.path.join(os.getcwd(), build_dir, 'host_protoc')
     os.makedirs(protoc_build_dir, exist_ok=True)
     # Generate step
     cmd_args = [cmake_path,
-                os.path.join(source_dir, 'cmake\external\protobuf\cmake'),
-                '-T',
-                'host=x64',
-                '-G',
-                cmake_generator,
+                os.path.join(source_dir, 'cmake', 'external', 'protobuf', 'cmake'),
                 '-Dprotobuf_BUILD_TESTS=OFF',
                 '-Dprotobuf_WITH_ZLIB_DEFAULT=OFF',
                 '-Dprotobuf_BUILD_SHARED_LIBS=OFF']
+    if is_windows():
+        cmd_args += ['-T',
+                'host=x64',
+                '-G',
+                args.cmake_generator]
     run_subprocess(cmd_args, cwd= protoc_build_dir)
     # Build step
     cmd_args = [cmake_path,
@@ -734,28 +771,52 @@ def build_protoc_for_windows_host(cmake_path, source_dir, build_dir, cmake_gener
                 "--target", "protoc"]
     run_subprocess(cmd_args)
 
-    if not os.path.exists(os.path.join(build_dir, 'host_protoc', 'Release', 'protoc.exe')):
-        raise BuildError("Couldn't build protoc.exe for host. Failing build.")
+    # Absolute protoc path is needed for cmake
+    expected_protoc_path = os.path.join(protoc_build_dir, 'Release', 'protoc.exe') if is_windows() else os.path.join(protoc_build_dir, 'protoc')
+    if not os.path.exists(expected_protoc_path):
+        raise BuildError("Couldn't build protoc for host. Failing build.")
+
+    return expected_protoc_path
 
 def generate_documentation(source_dir, build_dir, configs):
     operator_doc_path = os.path.join(source_dir, 'docs', 'ContribOperators.md')
+    opkernel_doc_path = os.path.join(source_dir, 'docs', 'OperatorKernels.md')
     for config in configs:
         #copy the gen_doc.py
         shutil.copy(os.path.join(source_dir,'tools','python','gen_doc.py'),
                     os.path.join(build_dir,config, config))
+        shutil.copy(os.path.join(source_dir,'tools','python','gen_opkernel_doc.py'),
+                    os.path.join(build_dir,config, config))
+
         run_subprocess([
                         sys.executable,
                         'gen_doc.py',
                         '--output_path', operator_doc_path
                     ],
                     cwd = os.path.join(build_dir,config, config))
+
+        run_subprocess([
+                        sys.executable,
+                        'gen_opkernel_doc.py',
+                        '--output_path', opkernel_doc_path
+                    ],
+                    cwd = os.path.join(build_dir,config, config))
+
+    docdiff = ''
+    try:
+        docdiff = subprocess.check_output(['git', 'diff', opkernel_doc_path])
+    except subprocess.CalledProcessError:
+        print('git diff returned non-zero error code')
+    if len(docdiff) > 0:
+        # Show warning instead of throwing exception, because it is dependent on build configuration for including execution propviders 
+        log.warning('The updated opkernel document file '+str(opkernel_doc_path)+' is different from the checked in version. Consider regenrating the file with CPU, MKLDNN and CUDA providers enabled.')
+        log.debug('diff:\n'+str(docdiff))
+
     docdiff = ''
     try:
         docdiff = subprocess.check_output(['git', 'diff', operator_doc_path])
     except subprocess.CalledProcessError:
         print('git diff returned non-zero error code')
-
-
     if len(docdiff) > 0:
         raise BuildError('The updated operator document file '+str(operator_doc_path)+' must be checked in.\n diff:\n'+str(docdiff))
 
@@ -765,13 +826,15 @@ def main():
 
     cmake_extra_defines = args.cmake_extra_defines if args.cmake_extra_defines else []
 
+    cross_compiling = args.arm or args.arm64 or args.android
+
     # if there was no explicit argument saying what to do, default to update, build and test (for native builds).
     if (args.update == False and args.clean == False and args.build == False and args.test == False):
         log.debug("Defaulting to running update, build [and test for native builds].")
         args.update = True
         args.build = True
-        if args.arm or args.arm64:
-            args.test = False
+        if cross_compiling:
+            args.test = args.android_abi == 'x86_64'
         else:
             args.test = True
 
@@ -804,13 +867,14 @@ def main():
     log.info("Build started")
     if (args.update):
         cmake_extra_args = []
+        path_to_protoc_exe = None
         if(is_windows()):
           if (args.x86):
             cmake_extra_args = ['-A','Win32','-T','host=x64','-G', args.cmake_generator]
           elif (args.arm or args.arm64):
             # Cross-compiling for ARM(64) architecture
             # First build protoc for host to use during cross-compilation
-            build_protoc_for_windows_host(cmake_path, source_dir, build_dir, args.cmake_generator)
+            path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
             if args.arm:
                 cmake_extra_args = ['-A', 'ARM']
             else:
@@ -828,6 +892,9 @@ def main():
                 toolset += ',cuda=' + args.cuda_version
 
             cmake_extra_args = ['-A','x64','-T', toolset, '-G', args.cmake_generator]
+        if args.android:
+            # Cross-compiling for Android
+            path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
         if is_ubuntu_1604():
             if (args.arm or args.arm64):
                 raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
@@ -845,12 +912,8 @@ def main():
                    raise UsageError("The test_data_url and test_data_checksum arguments are required.")
             setup_test_data(build_dir, configs, args.test_data_url, args.test_data_checksum, args.azure_sas_key)
 
-        path_to_protoc_exe = None
         if args.path_to_protoc_exe:
             path_to_protoc_exe = args.path_to_protoc_exe
-        # Need to provide path to protoc.exe built for host to be used in the cross-compiled build process
-        elif args.arm or args.arm64:
-            path_to_protoc_exe = os.path.join(build_dir, 'host_protoc', 'Release', 'protoc.exe')
 
         generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, tensorrt_home, path_to_protoc_exe, configs, cmake_extra_defines,
                             args, cmake_extra_args)

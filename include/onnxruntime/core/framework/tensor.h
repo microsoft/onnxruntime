@@ -78,9 +78,9 @@ class Tensor final {
   //Move is allowed
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(Tensor);
 
-  Tensor(Tensor&& other);
+  Tensor(Tensor&& other) noexcept;
 
-  Tensor& operator=(Tensor&& other);
+  Tensor& operator=(Tensor&& other) noexcept;
 
   /**
      Returns the data type.
@@ -170,7 +170,7 @@ class Tensor final {
   /**
   The number of bytes of data.
   */
-  size_t Size() const {
+  size_t SizeInBytes() const {
     size_t ret;
     int64_t l = shape_.Size();
     if (l >= static_cast<int64_t>(std::numeric_limits<ptrdiff_t>::max())) {

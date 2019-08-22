@@ -34,11 +34,7 @@ int main(int argc, char* argv[]) {
   OrtSetSessionThreadPoolSize(session_options, 1);
 
   // Sets graph optimization level
-  // Available levels are
-  // 0 -> To disable all optimizations
-  // 1 -> To enable basic optimizations (Such as redundant node removals)
-  // 2 -> To enable all optimizations (Includes level 1 + more complex optimizations like node fusions)
-  OrtSetSessionGraphOptimizationLevel(session_options, 1);
+  OrtSetSessionGraphOptimizationLevel(session_options, ORT_ENABLE_BASIC);
 
   // Optionally add more execution providers via session_options
   // E.g. for CUDA include cuda_provider_factory.h and uncomment the following line:

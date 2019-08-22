@@ -29,7 +29,7 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
   ORT_ENFORCE(tensor_proto);
 
   std::vector<int64_t> new_dims(axes.size() + tensor_proto->dims().size(), 0);
-  if (new_dims.size() >= std::numeric_limits<int>::max()) {
+  if (new_dims.size() >= static_cast<unsigned int>(std::numeric_limits<int>::max())) {
     return Status(ONNXRUNTIME, FAIL, "index out of range");
   }
 

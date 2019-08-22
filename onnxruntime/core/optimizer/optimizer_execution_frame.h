@@ -11,7 +11,7 @@
 #include "core/framework/execution_frame.h"
 #include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/ml_value.h"
-#include "core/common/callback.h"
+#include "core/framework/callback.h"
 
 namespace onnxruntime {
 class DataTransferManager;

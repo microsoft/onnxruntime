@@ -103,7 +103,25 @@ def create_backend_test(testname=None):
                                  '^test_bitshift_left_uint32_cpu.*',
                                  '^test_bitshift_left_uint64_cpu.*',
                                  '^test_bitshift_left_uint8_cpu.*',
-                                 '^test_round_cpu.*'
+                                 '^test_round_cpu.*',
+                                 '^test_cumsum_1d_cpu.*',
+                                 '^test_cumsum_1d_exclusive_cpu.*',
+                                 '^test_cumsum_1d_reverse_cpu.*',
+                                 '^test_cumsum_1d_reverse_exclusive_cpu.*',
+                                 '^test_cumsum_2d_axis_0_cpu.*',
+                                 '^test_cumsum_2d_axis_1_cpu.*',
+                                 '^test_dynamicquantizelinear*',
+                                 '^test_dynamicquantizelinear_expanded*',
+                                 '^test_dynamicquantizelinear_max_adjusted*',
+                                 '^test_dynamicquantizelinear_max_adjusted_expanded*',
+                                 '^test_dynamicquantizelinear_min_adjusted*',
+                                 '^test_dynamicquantizelinear_min_adjusted_expanded*',
+                                 '^test_clip*',
+                                 '^test_depthtospace*',
+                                 '^test_gather_elements*',
+                                 '^test_scatter_elements*',
+                                 '^test_top_k*',
+                                 '^test_unique_*',
                                  )
 
         # Example of how to disable tests for a specific provider.

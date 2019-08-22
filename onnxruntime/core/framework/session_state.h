@@ -20,7 +20,7 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ml_value.h"
-#include "core/common/callback.h"
+#include "core/framework/callback.h"
 #include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/node_index_info.h"
 #include "core/graph/graph_viewer.h"
@@ -43,8 +43,8 @@ struct MemoryPatternGroup;
  */
 class SessionState {
  public:
-  SessionState(const ExecutionProviders& execution_providers, bool enable_mem_pattern)
-      : execution_providers_{execution_providers}, enable_mem_pattern_(enable_mem_pattern) {}
+  SessionState(const ExecutionProviders& execution_providers, bool enable_mem_pattern, concurrency::ThreadPool* thread_pool)
+      : execution_providers_{execution_providers}, enable_mem_pattern_(enable_mem_pattern), thread_pool_(thread_pool) {}
 
   ~SessionState() {
     for (auto& kvp : deleter_for_initialized_tensors_) {
@@ -141,17 +141,18 @@ class SessionState {
      * \param p_node0 Nullable
      * \param kci0 Nullable
      */
-    NodeInfo(size_t index0, const onnxruntime::Node* p_node0, const KernelCreateInfo* kci0)
+    NodeInfo(size_t index0, const onnxruntime::Node* p_node0, const KernelCreateInfo* kci0, const OrtDevice& device0)
         : index(index0),
           p_node(p_node0),
-          kci(kci0) {
-    }
+          kci(kci0),
+          device(&device0) {}
 
     size_t index;
     // Nullable
     const onnxruntime::Node* p_node = nullptr;
     // Nullable
     const KernelCreateInfo* kci = nullptr;
+    const OrtDevice* device = nullptr;
   };
 
   using NameNodeInfoMapType = std::unordered_map<std::string, std::vector<NodeInfo>>;
@@ -174,8 +175,7 @@ class SessionState {
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
 
-  onnxruntime::concurrency::ThreadPool* GetThreadPool() const { return thread_pool_; }
-  void SetThreadPool(onnxruntime::concurrency::ThreadPool* p_pool) { thread_pool_ = p_pool; }
+  concurrency::ThreadPool* GetThreadPool() const { return thread_pool_; }
 
   bool ExportDll() const { return export_fused_dll_; }
   void SetExportDllFlag(bool flag) { export_fused_dll_ = flag; }
@@ -231,7 +231,8 @@ class SessionState {
       std::unordered_map<onnxruntime::NodeIndex, std::unordered_map<std::string, std::unique_ptr<SessionState>>>;
   SubgraphSessionStateMap subgraph_session_states_;
 
-  onnxruntime::concurrency::ThreadPool* thread_pool_ = nullptr;
+  //It could be NULL
+  concurrency::ThreadPool* const thread_pool_;
 
   bool export_fused_dll_ = false;
   FuncManager fused_funcs_mgr_;

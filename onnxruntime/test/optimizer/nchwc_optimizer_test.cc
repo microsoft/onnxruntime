@@ -139,14 +139,17 @@ struct NchwcTestHelper {
 };
 
 void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& build_test_case,
-                          const std::function<void(NchwcInferenceSession& session)>& check_nchwc_graph) {
+                          const std::function<void(NchwcInferenceSession& session)>& check_nchwc_graph,
+                          int opset_version = 10) {
   // Ignore the test if NCHWc is not supported by the platform.
   if (MlasNchwcGetBlockSize() <= 1) {
     return;
   }
 
   // Build the model for this test.
-  Model model("nchwc");
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = opset_version;
+  Model model("nchwc", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
   NchwcTestHelper helper(model.MainGraph());
   build_test_case(helper);
   ASSERT_TRUE(model.MainGraph().Resolve().IsOK());
@@ -164,7 +167,11 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
     ASSERT_TRUE(session.Initialize().IsOK());
 
     RunOptions run_options;
-    ASSERT_TRUE(session.Run(run_options, helper.feeds_, helper.output_names_, &fetches).IsOK());
+    auto status = session.Run(run_options, helper.feeds_, helper.output_names_, &fetches);
+    if (!status.IsOK()) {
+      std::cout << "Run failed with status message: " << status.ErrorMessage() << std::endl;
+    }
+    ASSERT_TRUE(status.IsOK());
 
     if (level == TransformerLevel::Level3) {
       check_nchwc_graph(session);
@@ -181,8 +188,14 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
   ASSERT_TRUE(num_outputs == level3_fetches.size());
 
   for (size_t i = 0; i < num_outputs; i++) {
+    double per_sample_tolerance = 0.0;
+    double relative_per_sample_tolerance = 0.0;
     std::pair<COMPARE_RESULT, std::string> ret =
-        CompareOrtValue(level3_fetches[i], level2_fetches[i], 0.0, 0.0, false);
+        CompareOrtValue(level3_fetches[i],
+                        level2_fetches[i],
+                        per_sample_tolerance,
+                        relative_per_sample_tolerance,
+                        false);
     EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS);
   }
 }
@@ -482,7 +495,7 @@ TEST(NchwcOptimizerTests, ConvGlobalPool) {
 }
 
 TEST(NchwcOptimizerTests, ConvAddFusion) {
-  auto test_case = [&](const std::string& op_type, bool do_relu) {
+  auto test_case = [&](const std::string& op_type, int opset_version, bool do_relu) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
       auto* input_arg = helper.MakeInput({1, 32, 28, 28});
       auto* conv1_output_arg = helper.MakeIntermediate();
@@ -510,15 +523,18 @@ TEST(NchwcOptimizerTests, ConvAddFusion) {
       EXPECT_EQ(op_to_count["Relu"], 0);
     };
 
-    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph, opset_version);
   };
 
   // Verify that Add or Sum can be fused into a preceding NCHWc Conv node,
   // with an optional Relu node following.
   std::vector<std::string> op_types = {"Add", "Sum"};
+  static const int opset_versions[] = {7, 10};
   for (auto& op_type : op_types) {
-    test_case(op_type, false);
-    test_case(op_type, true);
+    for (auto opset_version : opset_versions) {
+      test_case(op_type, opset_version, false);
+      test_case(op_type, opset_version, true);
+    }
   }
 }
 
@@ -702,7 +718,7 @@ TEST(NchwcOptimizerTests, ShapeInferencing) {
     ONNX_NAMESPACE::TypeProto type_proto;
     type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
-    type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(32);
+    type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
     type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("input_height");
     type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("input_width");
 
@@ -746,10 +762,55 @@ TEST(NchwcOptimizerTests, ShapeInferencing) {
   };
 
   // The NCHWc optimizer does a limited amount of symbolic shape inferencing to
-  // handle models such as YoloV3 which can handle variable height/width. Without
+  // handle models such as YoloV3 which can have variable height/width. Without
   // shape inferencing, the transformer would be unable to detect that the inputs
   // to the Add node have identical shapes and thus is eligble for Conv/Add
   // fusion.
+  NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+}
+
+TEST(NchwcOptimizerTests, ShapeInferencing2) {
+  auto build_test_case = [&](NchwcTestHelper& helper) {
+    ONNX_NAMESPACE::TypeProto type_proto;
+    type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+    type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+    type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("input_height");
+    type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("input_width");
+
+    auto* input_arg = helper.MakeInput({1, 1, 49, 98}, type_proto);
+    auto* output_arg = helper.MakeOutput();
+
+    auto* conv1_output_arg = helper.MakeIntermediate();
+    helper.AddConvNode(input_arg, conv1_output_arg, {16, 1, 1, 1});
+
+    auto* conv2a1_output_arg = helper.MakeIntermediate();
+    auto& conv2a1_node = helper.AddConvNode(conv1_output_arg, conv2a1_output_arg, {16, 16, 2, 2});
+    conv2a1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 0, 0});
+    conv2a1_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
+
+    auto* conv2a_output_arg = helper.MakeIntermediate();
+    auto& conv2a2_node = helper.AddConvNode(conv2a1_output_arg, conv2a_output_arg, {16, 16, 2, 2});
+    conv2a2_node.AddAttribute("auto_pad", "SAME_UPPER");
+
+    auto* conv2b_output_arg = helper.MakeIntermediate();
+    auto& conv2b_node = helper.AddConvNode(conv1_output_arg, conv2b_output_arg, {16, 16, 1, 1});
+    conv2b_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
+
+    helper.AddNode("Add", {conv2a_output_arg, conv2b_output_arg}, {output_arg});
+  };
+
+  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
+    auto op_to_count = session.CountOpsInGraph();
+    EXPECT_EQ(op_to_count["nchwc.Conv"], 4);
+    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 0);
+    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    EXPECT_EQ(op_to_count["Add"], 0);
+  };
+
+  // Verify that convolutions using strides of 2 and variable height/width are
+  // recognized as eligible for Conv/Add fusion. This pattern occurs in models
+  // such as Faster-RCNN.
   NchwcOptimizerTester(build_test_case, check_nchwc_graph);
 }
 

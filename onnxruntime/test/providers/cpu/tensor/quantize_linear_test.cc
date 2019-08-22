@@ -47,7 +47,7 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_2) {
 
 
 // quantize with scalar zero point and scale
-TEST(QuantizeLinearOpTest, QuantizeLinear_0) {
+TEST(QuantizeLinearOpTest, QuantizeLinear_uint8) {
   OpTester test("QuantizeLinear", 10);
   std::vector<int64_t> dims{6};
   test.AddInput<float>("x", dims, {0, 2, 3, 1000, -254, -1000});
@@ -57,6 +57,16 @@ TEST(QuantizeLinearOpTest, QuantizeLinear_0) {
   test.Run();
 }
 
+// quantize with scalar zero point and scale
+TEST(QuantizeLinearOpTest, QuantizeLinear_int8) {
+  OpTester test("QuantizeLinear", 10);
+  std::vector<int64_t> dims{6};
+  test.AddInput<float>("x", dims, {0, 2, 3, 5, -2, -5});
+  test.AddInput<float>("y_scale", {}, {.039215686f});
+  test.AddInput<int8_t>("y_zero_point", {}, {0});
+  test.AddOutput<int8_t>("y", dims, {0, 51, 76, 127, -51, -127});
+  test.Run();
+}
 
 // quantize with 2D data
 TEST(QuantizeLinearOpTest, QuantizeLinear_1) {

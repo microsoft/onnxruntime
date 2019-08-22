@@ -87,7 +87,7 @@
 
    Retrieve your docker image in one of the following ways.
 
-    -  For building the docker image, download OpenVINO online installer version 2018 R5.0.1 from [here](https://software.intel.com/en-us/openvino-toolkit/choose-download) and copy the openvino tar file in the same directory and build the image. The online installer size is only 16MB and the components needed for the accelerators are mentioned in the dockerfile. Providing the argument device enables onnxruntime for that particular device. You can also provide arguments ONNXRUNTIME_REPO and ONNXRUNTIME_BRANCH to test that particular repo and branch. Default values are http://github.com/microsoft/onnxruntime and repo is master
+    -  For building the docker image, download OpenVINO online installer version 2019 R1.1 from [here](https://software.intel.com/en-us/openvino-toolkit/choose-download) and copy the openvino tar file in the same directory and build the image. The online installer size is only 16MB and the components needed for the accelerators are mentioned in the dockerfile. Providing the argument device enables onnxruntime for that particular device. You can also provide arguments ONNXRUNTIME_REPO and ONNXRUNTIME_BRANCH to test that particular repo and branch. Default values are http://github.com/microsoft/onnxruntime and repo is master
        ```
        docker build -t onnxruntime --build-arg DEVICE=$DEVICE .
        ```
@@ -102,7 +102,7 @@
 	| <code>GPU_FP32</code> |Intel<sup></sup> Integrated Graphics |
 	| <code>GPU_FP16</code> | Intel<sup></sup> Integrated Graphics |
 	| <code>MYRIAD_FP16</code> | Intel<sup></sup> Movidius<sup>TM</sup> USB sticks |
-	| <code>VAD-R_FP16</code> | Intel<sup></sup> Vision Accelerator Design based on Movidius<sup>TM</sup> MyriadX VPUs |
+	| <code>VAD-M_FP16</code> | Intel<sup></sup> Vision Accelerator Design based on Movidius<sup>TM</sup> MyriadX VPUs |
 
 ## CPU Version 
 
@@ -155,12 +155,12 @@
     docker run -it --network host --privileged -v /dev:/dev  onnxruntime-myriad:latest
 
     ```
-## VAD-R Accelerator Version 
+## VAD-M Accelerator Version 
 
 1. Retrieve your docker image in one of the following ways. 
    - Build the docker image from the DockerFile in this repository.
      ``` 
-      docker build -t onnxruntime-vadr --build-arg DEVICE=VAD-R_FP16 --network host . 
+      docker build -t onnxruntime-vadr --build-arg DEVICE=VAD-M_FP16 --network host . 
      ```
    - Pull the official image from DockerHub.
      ```
