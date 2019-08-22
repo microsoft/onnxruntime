@@ -1588,6 +1588,80 @@ Example 4:
         a fixed size = [crop_height, crop_width]. The result is a 4-D tensor [num_boxes, crop_height, crop_width, depth].
         The resizing is corner aligned.)DOC");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(CumSum)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr(
+          "exclusive",
+          "If set to 1 will return exclusive sum in which the top element is not included in the sum (default = 0).",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "reverse",
+          "If set to 1 will perform the sums in reverse direction (default = 0).",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Input(0, "x", "A 1-D input tensor that is to be processed.", "T")
+      .Input(1, "axis", "(Optional) A 0-D tensor. Must be in the range [-rank(x), rank(x)]", "tensor(int32)")
+      .Output(0, "y",
+              "A 1-D tensor of the same type as 'x' with cumulative sums of the input",
+              "T")
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Input can be of any tensor type.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        // Output has the same shape as input
+        ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 0);
+
+        return;
+      })
+      .SetDoc(R"DOC(
+              Peforms cumulative sum of the input elements along the given axis.
+			  By default it will do the sum inclusively meaning the first element is copied as is.
+              Through an `exclusive` attribute, this behavior can change to exclude the first element.
+              It can also do the sums in the opposite direction of the axis. Set `reverse` attrtibute to do that.
+              Example:
+                input_x = [1, 2, 3]
+                axis=0
+                output = [1, 3, 6]
+                exclusive=1
+                output = [0, 1, 3]
+                exclusive=0
+                reverse=1
+                output = [6, 3, 1]
+                exclusive=1
+                reverse=1
+                output = [3, 1, 0]
+              )DOC");
+
+  static const char* Round_ver1_doc = R"DOC(
+Round takes one input Tensor and rounds the values, element-wise, meaning
+it finds the nearest integer for each value.
+In case of halfs, the rule is to round them to the nearest even integer
+
+Examples:
+```
+round([0.9]) = [1.0]
+round([2.5]) = [2.0]
+round([2.3]) = [2.0]
+round([1.5]) = [2.0]
+round([-4.5]) = [-4.0]
+```
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Round)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(Round_ver1_doc)
+      .Input(0, "X", "Input tensor", "T")
+      .Output(0, "Y", "Output tensor", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();
