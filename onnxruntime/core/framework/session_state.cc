@@ -103,10 +103,6 @@ Status SessionState::CreateKernels(const KernelRegistryManager& custom_registry_
   return Status::OK();
 }
 
-const OpKernel* SessionState::GetKernel(NodeIndex node_id) const {
-  return (node_id < session_kernels_.size()) ? session_kernels_[node_id] : nullptr;
-}
-
 void SessionState::SetExecutionPlan(std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan) {
   p_seq_exec_plan_ = std::move(p_seq_exec_plan);
 }

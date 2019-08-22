@@ -68,12 +68,13 @@ class SessionState {
   // kernels
   // Get kernel for specified node.
   // It should called right before graph execution only.
-  const OpKernel* GetKernel(NodeIndex node_id) const;
+  const OpKernel* GetKernel(size_t node_id) const {
+    return (node_id < session_kernels_.size()) ? session_kernels_[node_id] : nullptr;
+  }
 
   const ExecutionProviders& GetExecutionProviders() const noexcept { return execution_providers_; }
 
   const OrtValueNameIdxMap& GetOrtValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
-  OrtValueNameIdxMap& GetOrtValueNameIdxMap() noexcept { return ort_value_name_idx_map_; }
 
   // initialized tensors
   /**
@@ -202,7 +203,6 @@ class SessionState {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
-  void CalculateNodeIndexInfo();
 
   // cache of the constructed kernels to avoid spending construction
   // time per executor
