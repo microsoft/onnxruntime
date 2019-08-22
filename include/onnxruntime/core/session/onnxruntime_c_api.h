@@ -247,7 +247,12 @@ typedef enum GraphOptimizationLevel {
 ORT_API_STATUS(OrtSetSessionGraphOptimizationLevel, _Inout_ OrtSessionOptions* options,
                GraphOptimizationLevel graph_optimization_level);
 
-// How many threads in the session thread pool.
+/**
+ * How many threads in the session thread pool.
+ * Set it to 0 to make onnxruntime run as single threaded.
+ * \param session_thread_pool_size <0, let the runtime choose a default. =0, Don't create extra threads. 
+ *                                 >0, create a thread pool with size of this value.
+ */
 ORT_API_STATUS(OrtSetSessionThreadPoolSize, _Inout_ OrtSessionOptions* options, int session_thread_pool_size);
 
 /**

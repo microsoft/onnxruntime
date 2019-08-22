@@ -230,6 +230,9 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   size_t workspace_bytes;
   CUDNN_RETURN_IF_ERROR(cudnnGetRNNWorkspaceSize(CudnnHandle(), rnn_desc, gsl::narrow_cast<int>(seq_length), x_desc.data(), &workspace_bytes));
   auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes);
+  int32_t zero_seq_count = 0;
+  std::vector<int32_t> zero_seq_index_cache(batch_size, 0);
+  int64_t zero_seq_index_cache_size = 0;
 
   if (CUDNN_RNN_RELU == rnn_mode_ || CUDNN_RNN_TANH == rnn_mode_ || nullptr == sequence_lens_data) {
     CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInference(CudnnHandle(),
@@ -252,10 +255,32 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                    workspace_cuda.get(),
                                                    workspace_bytes));
   } else {
+    // cudnn doesn't support 0 sequence inside the batch, find the 0 sequence and set it to 1
+    // there's a ZeroMask kernel to reset the result to 0 for the 0 sequence
+    std::vector<int32_t> seq_len_array(sequence_lens_data, sequence_lens_data + batch_size);
+    for (int i = 0; i < batch_size; ++i) {
+      if (0 == seq_len_array[i]) {
+        seq_len_array[i] = 1;
+        zero_seq_index_cache[zero_seq_count] = i;
+        ++zero_seq_count;
+      }
+    }
+
+    // Calculate the zero position cache for reverse direction if it's bidirectional
+    // The cache is for Y_h or Y_c, and the 1st sequence for Y, no need to do it for other sequence in Y since
+    // we hacked the 0 sequence to 1
+    if (zero_seq_count && num_directions_ > 1) {
+      zero_seq_index_cache_size = zero_seq_count * num_directions_;
+      zero_seq_index_cache.resize(zero_seq_index_cache_size);
+      for (int i = 0; i < zero_seq_count; ++i) {
+        zero_seq_index_cache[zero_seq_count + i] = static_cast<int32_t>(batch_size + zero_seq_index_cache[i]);
+      }
+    }
+
     CudnnDataTensor x_desc;
-    x_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, input_size, sequence_lens_data);
+    x_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, input_size, seq_len_array.data());
     CudnnDataTensor y_desc;
-    y_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, hidden_size_ * num_directions_, sequence_lens_data);
+    y_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, hidden_size_ * num_directions_, seq_len_array.data());
 
     CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInferenceEx(CudnnHandle(),
                                                      rnn_desc,
@@ -277,8 +302,13 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                      nullptr, nullptr, nullptr, nullptr,
                                                      workspace_cuda.get(),
                                                      workspace_bytes));
+
     // Early terminate for this case since Y data is not required, and Y_h is obtained correctly, no need the following code to retrive Y_h from Y data.
     if (nullptr == Y) {
+      // Mask on output for 0 sequence batches
+      if (zero_seq_count > 0) {
+        SetZeroSequences(zero_seq_index_cache_size, zero_seq_index_cache, y_data, y_h_data, y_c_data);
+      }
       return Status::OK();
     }
   }
@@ -312,10 +342,14 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
 
+  // Mask on output for 0 sequence batches
+  if (zero_seq_count > 0) {
+    SetZeroSequences(zero_seq_index_cache_size, zero_seq_index_cache, y_data, y_h_data, y_c_data);
+  }
+
   if ((CUDNN_RNN_RELU == rnn_mode_ || CUDNN_RNN_TANH == rnn_mode_) && sequence_lens_data != nullptr && y_h_data != nullptr && y_data != nullptr) {
-    auto count = sequence_lens->Shape().Size();
-    CudaAsyncBuffer<int32_t> sequence_lens_buffer(this, GetDeviceId(), count);
-    memcpy(sequence_lens_buffer.CpuPtr(), sequence_lens_data, count * sizeof(int32_t));
+    CudaAsyncBuffer<int32_t> sequence_lens_buffer(this, GetDeviceId(), batch_size);
+    memcpy(sequence_lens_buffer.CpuPtr(), sequence_lens_data, batch_size * sizeof(int32_t));
     sequence_lens_buffer.CopyToGpu();
     RnnMaskImpl(gsl::narrow_cast<int32_t>(num_directions_),
                 gsl::narrow_cast<int32_t>(seq_length),
@@ -328,6 +362,24 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   return Status::OK();
+}
+
+template <typename T>
+void CudnnRnnBase<T>::SetZeroSequences(const int64_t zero_seq_index_cache_size,
+                                       const std::vector<int32_t> zero_seq_index_cache,
+                                       T* y_data,
+                                       T* y_h_data,
+                                       T* y_c_data) const {
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  CudaAsyncBuffer<int32_t> zero_seq_index_cache_async_buffer(this, GetDeviceId(), zero_seq_index_cache_size);
+  memcpy(zero_seq_index_cache_async_buffer.CpuPtr(), zero_seq_index_cache.data(), zero_seq_index_cache_size * sizeof(int32_t));
+  zero_seq_index_cache_async_buffer.CopyToGpu();
+  MaskZeroSequences(gsl::narrow_cast<int32_t>(hidden_size_),
+                    reinterpret_cast<CudaT*>(y_data),
+                    reinterpret_cast<CudaT*>(y_h_data),
+                    reinterpret_cast<CudaT*>(y_c_data),
+                    zero_seq_index_cache_async_buffer.GpuPtr(),
+                    static_cast<int64_t>(zero_seq_index_cache_size));
 }
 
 template class CudnnRnnBase<float>;
