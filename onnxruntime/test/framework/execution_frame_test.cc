@@ -48,9 +48,8 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
   onnxruntime::NodeArg input_def("X", &tensor_float), output_def("Y", &tensor_float);
 
-  graph.AddNode("node1", "Relu", "Relu operator", ArgMap{&input_def}, ArgMap{&output_def});
-  onnxruntime::Node* node = graph.GetNode(graph.NumberOfNodes() - 1);
-
+  onnxruntime::Node* node = &graph.AddNode("node1", "Relu", "Relu operator", ArgMap{&input_def}, ArgMap{&output_def});
+  node->SetExecutionProviderType(kCpuExecutionProvider);
   Status status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
@@ -63,7 +62,8 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   SessionState state{execution_providers, true, &tp_};
-  state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
+  status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
   mlvalue_name_idx_map.Add("X");
@@ -79,7 +79,6 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   state.SetExecutionPlan(std::move(p_seq_exec_plan));
 
-  state.CalculateNodeIndexInfo();
 
   vector<OrtValue> outputs;
   ExecutionFrame frame({}, {}, {}, outputs, {}, state);
@@ -117,21 +116,22 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
 }
 
 TEST_F(ExecutionFrameTest, FeedInDataTest) {
-  onnxruntime::Model model("test");
+  onnxruntime::Model model("test", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
+                           std::unordered_map<std::string, int>{{"", 10}});
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
   onnxruntime::NodeArg input_def("X", &tensor_float), output_def("Y", &tensor_float);
 
-  graph.AddNode("node1", "Clip", "Clip operator", ArgMap{&input_def}, ArgMap{&output_def});
+  graph.AddNode("node1", "Clip", "Clip operator", ArgMap{&input_def}, ArgMap{&output_def})
+      .SetExecutionProviderType(kCpuExecutionProvider);
   graph.Resolve();
-  auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
   auto element_type = DataTypeImpl::GetType<float>();
   TensorShape shape({3, 2});
+  std::vector<float> fdata(static_cast<size_t>(shape.Size()));
   //create fake ml value with owned buffer.
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
-                                                              shape,
-                                                              cpu_allocator);
+  OrtAllocatorInfo cpuinfo(kCpuExecutionProvider, OrtDeviceAllocator);
+  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type, shape, fdata.data(), cpuinfo);
   OrtValue value;
   value.Init(p_tensor.release(),
              DataTypeImpl::GetType<Tensor>(),
@@ -144,15 +144,14 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   ExecutionProviders execution_providers;
   execution_providers.Add(xp_typ, std::move(cpu_xp));
   EXPECT_TRUE(kernel_registry_manager.RegisterKernels(execution_providers).IsOK());
-
   SessionState state{execution_providers, true, &tp_};
-  state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
+  auto status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
   auto x_idx = mlvalue_name_idx_map.Add("X");
   auto y_idx = mlvalue_name_idx_map.Add("Y");
 
-  state.CalculateNodeIndexInfo();
 
   vector<OrtValue> outputs;
   ExecutionFrame frame({x_idx}, {value}, {y_idx}, outputs, {}, state);
@@ -198,7 +197,8 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   kernel_registry_manager.RegisterKernels(execution_providers);
   //1. prepare input
   SessionState state{execution_providers, true, &tp_};
-  state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
+  status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
 
@@ -230,7 +230,6 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
 
   state.SetExecutionPlan(std::move(p_seq_exec_plan));
 
-  state.CalculateNodeIndexInfo();
 
   vector<OrtValue> outputs;
   ExecutionFrame frame({x1_idx, x2_idx, x3_idx}, {v1, v2, v3}, {t3_idx}, outputs, {}, state);
