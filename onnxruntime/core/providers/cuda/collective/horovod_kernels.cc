@@ -10,9 +10,8 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-         .OutputMemoryType<OrtMemTypeCPUOutput>(0)
+        .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     HorovodAllReduceOp);
-
-}
-}
+}  // namespace cuda
+}  // namespace onnxruntime

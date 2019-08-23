@@ -8,15 +8,10 @@
 #include "core/session/environment.h"
 #include "core/training/training_session.h"
 #include "core/training/tensorboard/event_writer.h"
+#include "core/training/mpi_setup.h"
 #include "test/training/runner/training_runner.h"
 #include "test/training/runner/training_util.h"
 #include "test/training/runner/data_loader.h"
-
-#ifdef USE_HOROVOD
-#include "core/graph/training/horovod_adapters.h"
-#include <mpi.h>
-#include <tuple>
-#endif
 
 using namespace onnxruntime;
 using namespace onnxruntime::training;
@@ -100,39 +95,12 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     }
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
-    cerr << msg << ": " << e.what() << "\n" << options.help() << "\n";
+    cerr << msg << ": " << e.what() << "\n"
+         << options.help() << "\n";
     return Status(ONNXRUNTIME, FAIL, msg);
   }
   return Status::OK();
 }
-
-#ifdef USE_HOROVOD
-std::pair<int, int> setup_horovod() {
-  using namespace horovod::common;
-  // setup MPI amd horovod
-  MPI_Init(0, 0);
-
-  int world_size;
-  MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-
-  int world_rank;
-  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-
-  int* ranks = (int*)malloc(sizeof(int) * world_size);
-
-  MPI_Allgather(&world_rank, 1, MPI_INT, ranks, 1, MPI_INT, MPI_COMM_WORLD);
-
-  horovod_init(ranks, world_size);
-
-  return {world_rank, world_size};
-}
-
-void shutdown_horovod() {
-  horovod::common::horovod_shutdown();
-  MPI_Finalize();
-}
-
-#endif
 
 // NOTE: these variables need to be alive when the error_function is called.
 float total_loss = 0.0f;
@@ -268,21 +236,16 @@ int main(int argc, char* argv[]) {
   unique_ptr<Environment> env;
   ORT_ENFORCE(Environment::Create(env).IsOK());
 
-  int device_id = 0, device_count = 1;
-
 // setup horovod
 #ifdef USE_HOROVOD
-  std::tie(device_id, device_count) = setup_horovod();
+  params.mpi_context = setup_horovod();
 #endif
 
   // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
   // Adding another cuda kernel call for this division seems wasteful currently.
   // params.learning_rate_ = LEARNING_RATE / params.batch_size_;
-  params.learning_rate_ = params.learning_rate_ / device_count;
-  params.world_rank_ = device_id;
-  params.world_size_ = device_count;
+  params.learning_rate_ = params.learning_rate_ / params.mpi_context.world_size;
 
-  printf("Using cuda device #%d, world_size %d \n", params.world_rank_, params.world_size_);
 
   // start training session
   std::unique_ptr<TrainingRunner> runner;
@@ -317,12 +280,14 @@ int main(int argc, char* argv[]) {
     runner = std::make_unique<TrainingRunner>(random_perf_data, random_perf_data, params);
 
   } else {
+    auto device_id = params.mpi_context.local_rank;
+    auto device_count = params.mpi_context.world_size;
     const size_t max_num_files_preload = 2;
 
     auto training_data_loader = std::make_shared<DataLoader>(params.input_name_map_,
                                                              params.train_data_dir,
                                                              max_num_files_preload,
-                                                             device_id,
+                                                             params.mpi_context.world_rank,
                                                              device_count);
     auto test_data_loader = std::make_shared<DataLoader>(params.input_name_map_,
                                                          params.test_data_dir,

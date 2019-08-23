@@ -53,7 +53,7 @@ Status TrainingRunner::Initialize() {
 
   // Add loss func
   ORT_RETURN_IF_ERROR(session_.BuildLossFunction(params_.loss_func_info_));
-  if (params_.world_rank_ == 0 && !params_.model_with_loss_func_path_.empty()) {
+  if (params_.mpi_context.world_rank == 0 && !params_.model_with_loss_func_path_.empty()) {
     session_.Save(params_.model_with_loss_func_path_, TrainingSession::SaveOption::NO_RELOAD);
   }
 
@@ -84,7 +84,7 @@ Status TrainingRunner::Initialize() {
   // Expose all fetches as graph outputs
   ORT_RETURN_IF_ERROR(session_.OverrideGraphOutputs(params_.fetch_names));
 
-  if (params_.world_rank_ == 0 && !params_.model_with_training_graph_path_.empty()) {
+  if (params_.mpi_context.world_rank == 0 && !params_.model_with_training_graph_path_.empty()) {
     session_.Save(params_.model_with_training_graph_path_, TrainingSession::SaveOption::NO_RELOAD);
   }
 
@@ -97,7 +97,7 @@ Status TrainingRunner::Initialize() {
 
 #ifdef USE_CUDA
   if (params_.use_cuda_) {
-    CUDAExecutionProviderInfo xp_info{params_.world_rank_};
+    CUDAExecutionProviderInfo xp_info{params_.mpi_context.local_rank};
     ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
   }
 #endif
@@ -117,7 +117,7 @@ Status TrainingRunner::Initialize() {
 }
 
 Status TrainingRunner::Run() {
-  if (params_.world_rank_ == 0 && !params_.model_actual_running_graph_path_.empty()) {
+  if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path_.empty()) {
     session_.Save(params_.model_actual_running_graph_path_, TrainingSession::SaveOption::NO_RELOAD);
   }
 
@@ -207,8 +207,8 @@ Status TrainingRunner::EndTraining() {
     std::cout << "Profiler data written to file " << profile_file;
   }
 
-  if (params_.world_rank_ != 0) {
-    printf("Skipping end-training on Device #%d, as it's not the root.", params_.world_rank_);
+  if (params_.mpi_context.world_rank != 0) {
+    printf("Skipping end-training on Device #%d, as it's not the root.", params_.mpi_context.world_rank);
     return Status::OK();
   }
 
@@ -236,8 +236,8 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
     return Status::OK();
   }
 
-  if (params_.world_rank_ != 0) {
-    printf("Skipping evaluation on Device #%d, as it's not the root.\n", params_.world_rank_);
+  if (params_.mpi_context.world_rank != 0) {
+    printf("Skipping evaluation on Device #%d, as it's not the root.\n", params_.mpi_context.world_rank);
     return Status::OK();
   }
 
@@ -304,7 +304,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
 Status TrainingRunner::LoadAndEvaluate(const std::string& model_path) {
   InferenceSession s{SessionOptions()};
 #ifdef USE_CUDA
-  CUDAExecutionProviderInfo xp_info{params_.world_rank_};
+  CUDAExecutionProviderInfo xp_info{params_.mpi_context.world_rank};
   ORT_RETURN_IF_ERROR(s.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
 #endif
   ORT_RETURN_IF_ERROR(s.Load(model_path));
@@ -319,8 +319,8 @@ Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string
   OptimizerInfo opt_info{
       params_.training_optimizer_name_,
       params_.learning_rate_,
-      params_.world_rank_,
-      params_.world_size_,
+      params_.mpi_context.world_rank,
+      params_.mpi_context.world_size,
       {}};
 
   if (params_.training_optimizer_name_ == "AdamOptimizer") {

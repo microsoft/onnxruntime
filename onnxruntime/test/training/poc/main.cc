@@ -8,14 +8,11 @@
 #include "core/session/environment.h"
 #include "core/training/training_session.h"
 #include "core/training/tensorboard/event_writer.h"
+#include "core/training/mpi_setup.h"
+
 #include "test/training/poc/mnist_data_provider.h"
 #include "test/training/runner/training_runner.h"
 #include "test/training/runner/training_util.h"
-
-#ifdef USE_HOROVOD
-#include "core/graph/training/horovod_adapters.h"
-#include <mpi.h>
-#endif
 
 #include <condition_variable>
 #include <mutex>
@@ -75,39 +72,12 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
 
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
-    cerr << msg << ": " << e.what() << "\n" << options.help() << "\n";
+    cerr << msg << ": " << e.what() << "\n"
+         << options.help() << "\n";
     return Status(ONNXRUNTIME, FAIL, msg);
   }
   return Status::OK();
 }
-
-#ifdef USE_HOROVOD
-std::pair<int, int> setup_horovod() {
-  using namespace horovod::common;
-  // setup MPI amd horovod
-  MPI_Init(0, 0);
-
-  int world_size;
-  MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-
-  int world_rank;
-  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-
-  int* ranks = (int*)malloc(sizeof(int) * world_size);
-
-  MPI_Allgather(&world_rank, 1, MPI_INT, ranks, 1, MPI_INT, MPI_COMM_WORLD);
-
-  horovod_init(ranks, world_size);
-
-  return {world_rank, world_size};
-}
-
-void shutdown_horovod() {
-  horovod::common::horovod_shutdown();
-  MPI_Finalize();
-}
-
-#endif
 
 // NOTE: these variables need to be alive when the error_function is called.
 int true_count = 0;
@@ -211,27 +181,19 @@ int main(int argc, char* args[]) {
   setup_training_params(params);
 
   // setup horovod
-  int device_id = 0,
-      device_count = 1;
-
 #ifdef USE_HOROVOD
-  std::tie(device_id, device_count) = setup_horovod();
+  params.mpi_context = setup_horovod();
 #endif
 
-#ifdef USE_CUDA
-  params.learning_rate_ /= device_count;
-  params.world_rank_ = device_id;
-  if (params.use_cuda_) {
-    printf("Using cuda device #%d \n", params.world_rank_);
-  }
-#endif
+  params.learning_rate_ /= params.mpi_context.world_size;
 
   // setup data
+  auto device_count = params.mpi_context.world_size;
   std::vector<string> feeds{"X", "labels"};
   auto trainingData = std::make_shared<DataSet>(feeds);
   auto testData = std::make_shared<DataSet>(feeds);
   std::string mnist_data_path(params.train_data_dir.begin(), params.train_data_dir.end());
-  PrepareMNISTData(mnist_data_path, IMAGE_DIMS, LABEL_DIMS, *trainingData, *testData, device_id /* shard_to_load */, device_count /* total_shards */);
+  PrepareMNISTData(mnist_data_path, IMAGE_DIMS, LABEL_DIMS, *trainingData, *testData, params.mpi_context.world_rank /* shard_to_load */, device_count /* total_shards */);
 
   if (testData->NumSamples() == 0) {
     printf("Warning: No data loaded - run cancelled.\n");

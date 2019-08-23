@@ -84,8 +84,8 @@ class CudaKernel : public OpKernel {
       memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T));
     }
 
-    void AllocCpuPtr(int id, size_t count) {
-      cpu_pinned_copy_ = op_kernel_->AllocateBufferOnCPUPinned<T>(id, count);
+    void AllocCpuPtr(int /*id*/, size_t count) {
+      cpu_pinned_copy_ = op_kernel_->AllocateBufferOnCPUPinned<T>(0, count);
       if (cpu_pinned_copy_ == nullptr)
         throw std::runtime_error("alloc failed");
       count_ = count;

@@ -9,6 +9,7 @@
 #include "test/training/runner/training_util.h"
 #include "core/graph/training/training_optimizer.h"
 #include "test/training/runner/data_loader.h"
+#include "core/training/mpi_setup.h"
 
 namespace onnxruntime {
 namespace training {
@@ -92,9 +93,7 @@ class TrainingRunner {
     bool use_profiler = false;
     // Maximum number of profile records to collect.
     size_t max_profile_records = profiling::Profiler::DEFAULT_MAX_PROFILER_EVENTS;
-    int world_rank_ = 0;
-    int world_size_ = 1;
-
+    MPIContext mpi_context;
     bool skip_evaluation_ = false;
     bool dump_fetches = false;
 
