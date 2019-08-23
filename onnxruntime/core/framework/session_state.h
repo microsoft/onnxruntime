@@ -40,6 +40,12 @@ struct MemoryPatternGroup;
  * SessionState should be modified by the inference session class only.
  * It is supposed to be passed by const-ref only to all the executors.
  * This class owns all the initializers.
+ * Brief usage:
+ * SessionState s(...);
+ * for(...) s.AddInitializedTensor(...);
+ * s.SetGraphAndCreateKernels(...);
+ * Then you can use:
+ * s.GetKernel(...);
  */
 class SessionState {
  public:
@@ -53,27 +59,28 @@ class SessionState {
 	  allocator_mgr_(allocator_mgr) {}
 
   ~SessionState() {
+    for (auto* p : session_kernels_) {
+      delete p;
+    }
     for (auto& kvp : deleter_for_initialized_tensors_) {
       kvp.second.f(kvp.second.param);
     }
   }
 
   // Graph viewer.
-  void SetGraphViewer(std::unique_ptr<GraphViewer> graph_viewer);
   const GraphViewer* GetGraphViewer() const;
 
   // kernels
   // Get kernel for specified node.
   // It should called right before graph execution only.
-  const OpKernel* GetKernel(NodeIndex node_id) const;
-
-  void AddKernel(NodeIndex node_id, std::unique_ptr<OpKernel> p_kernel);
+  const OpKernel* GetKernel(size_t node_id) const {
+    return (node_id < session_kernels_.size()) ? session_kernels_[node_id] : nullptr;
+  }
 
   const ExecutionProviders& GetExecutionProviders() const noexcept { return execution_providers_; }
   const AllocatorManager& GetAllocatorManager() const noexcept { return allocator_mgr_; }
 
   const OrtValueNameIdxMap& GetOrtValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
-  OrtValueNameIdxMap& GetOrtValueNameIdxMap() noexcept { return ort_value_name_idx_map_; }
 
   // initialized tensors
   /**
@@ -84,6 +91,12 @@ class SessionState {
    */
   Status AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d, bool constant);
 
+  Status SetGraph(const Graph& graph);
+  Status CreateKernels(const KernelRegistryManager& custom_registry_manager);
+  Status SetGraphAndCreateKernels(const Graph& graph, const KernelRegistryManager& custom_registry_manager) {
+    ORT_RETURN_IF_ERROR(SetGraph(graph));
+    return CreateKernels(custom_registry_manager);
+  }
   /**
    * Gets the map of ort_value_index to initialized tensors (weights) so that it can be used by the
    * execution frame to setup the appropriate OrtValue vectors.
@@ -92,8 +105,8 @@ class SessionState {
   const std::unordered_map<int, OrtValue>& GetInitializedTensors() const;
 
   /**
-   * Gets the map of ort_value_index to initialized tensors (e.g. weights) that are constant 
-   * and cannot be overridden at runtime. 
+   * Gets the map of ort_value_index to initialized tensors (e.g. weights) that are constant
+   * and cannot be overridden at runtime.
    * The lifetime of returned OrtValues are limited by this SessionState object.
    */
   const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
@@ -103,12 +116,12 @@ class SessionState {
   const SequentialExecutionPlan* GetExecutionPlan() const;
 
   /**
-  Set the logger to use for this session. 
+  Set the logger to use for this session.
   */
   SessionState& SetLogger(const logging::Logger& logger);
 
   /**
-  Get the logger for this session. 
+  Get the logger for this session.
   Falls back to returning Logging::LoggingManager::DefaultLogger if SetLogger has not been called.
   */
   const logging::Logger& Logger() const;
@@ -127,10 +140,11 @@ class SessionState {
   /**
   Get cached memory pattern based on input shapes
   */
-  const MemoryPatternGroup* GetMemoryPatternGroup(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes) const;
+  const MemoryPatternGroup* GetMemoryPatternGroup(
+      const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes) const;
 
   /**
-  Set generated memory pattern with a given input shapes. 
+  Set generated memory pattern with a given input shapes.
   Const as it's an internal cache update only.
   */
   Status UpdateMemoryPatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
@@ -149,10 +163,7 @@ class SessionState {
      * \param kci0 Nullable
      */
     NodeInfo(size_t index0, const onnxruntime::Node* p_node0, const KernelCreateInfo* kci0, const OrtDevice& device0)
-        : index(index0),
-          p_node(p_node0),
-          kci(kci0),
-          device(&device0) {}
+        : index(index0), p_node(p_node0), kci(kci0), device(&device0) {}
 
     size_t index;
     // Nullable
@@ -194,7 +205,6 @@ class SessionState {
   void SetDataTransferMgr(const DataTransferManager* data_transfer_mgr) { data_transfer_mgr_ = data_transfer_mgr; }
 
   std::vector<BufferUniquePtr>& GetMutableWeightsBuffers() { return weights_buffers_; }
-  void CalculateNodeIndexInfo();
   const NodeIndexInfo& GetNodeIndexInfo() const;
 
  private:
@@ -202,7 +212,7 @@ class SessionState {
 
   // cache of the constructed kernels to avoid spending construction
   // time per executor
-  std::unordered_map<NodeIndex, std::unique_ptr<OpKernel>> session_kernels_;
+  std::vector<OpKernel*> session_kernels_;
   std::unique_ptr<GraphViewer> graph_viewer_;
 
   const ExecutionProviders& execution_providers_;  // owned by InferenceSession
@@ -239,7 +249,7 @@ class SessionState {
       std::unordered_map<onnxruntime::NodeIndex, std::unordered_map<std::string, std::unique_ptr<SessionState>>>;
   SubgraphSessionStateMap subgraph_session_states_;
 
-  //It could be NULL
+  // It could be NULL
   concurrency::ThreadPool* const thread_pool_;
 
   bool export_fused_dll_ = false;
