@@ -383,6 +383,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #ifdef USE_CUDA
   broken_tests.insert({"mxnet_arcface", "result mismatch"});
   broken_tests.insert({"tf_inception_v1", "flaky test"}); //TODO: Investigate cause for flakiness
+  broken_tests.insert({"tf_resnet_v1_152", "flaky test"}); //TODO: Investigate cause for flakiness
 #endif
   // clang-format on
 
