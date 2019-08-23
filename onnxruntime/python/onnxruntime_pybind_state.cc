@@ -465,8 +465,6 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
                      R"pbdoc(Enable the memory pattern optimization. Default is true.)pbdoc")
       .def_readwrite("enable_sequential_execution", &SessionOptions::enable_sequential_execution,
                      R"pbdoc(Enables sequential execution, disables parallel execution. Default is true.)pbdoc")
-      // .def_readwrite("max_num_graph_transformation_steps", &SessionOptions::max_num_graph_transformation_steps,
-      //                R"pbdoc(Runs optimization steps on the execution graph. Default is 5.)pbdoc")
       .def_readwrite("logid", &SessionOptions::session_logid,
                      R"pbdoc(Logger id to use for session output.)pbdoc")
       .def_readwrite("log_severity_level", &SessionOptions::session_log_severity_level,
