@@ -23,10 +23,11 @@ int main(int argc, char* argv[]) {
 
   // Sets graph optimization level
   // Available levels are
-  // 0 -> To disable all optimizations
-  // 1 -> To enable basic optimizations (Such as redundant node removals)
-  // 2 -> To enable all optimizations (Includes level 1 + more complex optimizations like node fusions)
-  session_options.SetGraphOptimizationLevel(1);
+  // ORT_DISABLE_ALL -> To disable all optimizations
+  // ORT_ENABLE_BASIC -> To enable basic optimizations (Such as redundant node removals)
+  // ORT_ENABLE_EXTENDED -> To enable extended optimizations (Includes level 1 + more complex optimizations like node fusions)
+  // ORT_ENABLE_ALL -> To Enable All possible opitmizations
+  session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
 
   //*************************************************************************
   // create session and load model into memory
