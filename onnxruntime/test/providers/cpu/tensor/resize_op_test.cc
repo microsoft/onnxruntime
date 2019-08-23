@@ -46,6 +46,7 @@ TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_2DBilinear) {
   test.AddOutput<float>("Y", {(int64_t)(H * scales[0]), (int64_t)(W * scales[1])}, Y);
   test.Run();
 }
+
 TEST(ResizeOpTest, ResizeOpLineartUpSampleTest_4DBilinear) {
   OpTester test("Resize", 10);
   std::vector<float> scales{1.0f, 1.0f, 2.0f, 4.0f};
