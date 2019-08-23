@@ -49,7 +49,7 @@ struct NchwcTestHelper {
     }
 
     OrtValue input_value;
-    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), shape,
+    CreateMLValue<float>(TestAllocatorManager().GetAllocator(OrtDevice()), shape,
                          FillRandomData(static_cast<size_t>(num_elements)), &input_value);
     std::string name = graph_.GenerateNodeArgName("input");
     feeds_.insert(std::make_pair(name, input_value));

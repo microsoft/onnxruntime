@@ -61,7 +61,8 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   status = kernel_registry_manager.RegisterKernels(execution_providers);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  SessionState state{execution_providers, true, &tp_};
+  AllocatorManager allocator_mgr;
+  SessionState state{execution_providers, true, &tp_, allocator_mgr};
   status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
@@ -71,7 +72,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   // TODO below line is for testing only. In production use SequentialPlanner::CreatePlan()
   SequentialPlannerContext context(false);
   status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers, kernel_registry_manager,
-                                         state.GetOrtValueNameIdxMap(), context, p_seq_exec_plan);
+                                         state.GetOrtValueNameIdxMap(), context, p_seq_exec_plan, allocator_mgr);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   state.SetExecutionPlan(std::move(p_seq_exec_plan));
 
@@ -84,7 +85,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   TensorShape shape(std::vector<int64_t>{2, 3});
   OrtValue& mlvalue0 = *frame.GetMutableNodeInputOrOutputMLValue(start_index);
   status = frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue0, start_index, DataTypeImpl::GetType<float>(),
-                                                    execution_providers.Get(xp_typ)->GetAllocator(0, OrtMemTypeDefault)->Info(), shape);
+                                                    allocator_mgr.GetAllocator(OrtDevice())->Info(), shape);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   OrtValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
@@ -137,9 +138,10 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
 
   KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
+  AllocatorManager allocator_mgr;
   execution_providers.Add(xp_typ, std::move(cpu_xp));
   EXPECT_TRUE(kernel_registry_manager.RegisterKernels(execution_providers).IsOK());
-  SessionState state{execution_providers, true, &tp_};
+  SessionState state{execution_providers, true, &tp_, allocator_mgr};
   auto status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
@@ -188,10 +190,11 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   KernelRegistryManager kernel_registry_manager;
 
   ExecutionProviders execution_providers;
+  AllocatorManager allocator_mgr;
   execution_providers.Add(xp_type, std::move(cpu_xp));
   kernel_registry_manager.RegisterKernels(execution_providers);
   //1. prepare input
-  SessionState state{execution_providers, true, &tp_};
+  SessionState state{execution_providers, true, &tp_, allocator_mgr};
   status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
@@ -207,7 +210,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("T2", t2_idx).IsOK());
   ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("T3", t3_idx).IsOK());
 
-  auto cpu_allocator = execution_providers.Get(xp_type)->GetAllocator(0, OrtMemTypeDefault);
+  auto cpu_allocator = allocator_mgr.GetAllocator(OrtDevice());
 
   OrtValue v1, v2, v3;
   CreateMLValue<float>(cpu_allocator,
@@ -223,7 +226,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan = std::make_unique<SequentialExecutionPlan>();
   SequentialPlannerContext context(false);
   status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers, kernel_registry_manager,
-                                         mlvalue_name_idx_map, context, p_seq_exec_plan);
+                                         mlvalue_name_idx_map, context, p_seq_exec_plan, allocator_mgr);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   state.SetExecutionPlan(std::move(p_seq_exec_plan));
@@ -285,7 +288,7 @@ TEST(ExecutionFrameTestWithoutSessionState, BadModelInvalidDimParamUsage) {
   }
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_X, values_X, &ml_value);
+  CreateMLValue<float>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_X, values_X, &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value));
 

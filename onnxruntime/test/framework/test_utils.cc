@@ -12,6 +12,11 @@ IExecutionProvider* TestCPUExecutionProvider() {
   return &cpu_provider;
 }
 
+const onnxruntime::AllocatorManager& TestAllocatorManager() {
+  static onnxruntime::AllocatorManager allocator_mgr;
+  return allocator_mgr;
+}
+
 #ifdef USE_CUDA
 IExecutionProvider* TestCudaExecutionProvider() {
   static CUDAExecutionProviderInfo info;

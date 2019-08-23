@@ -155,6 +155,7 @@ class PlannerTest : public ::testing::Test {
   std::vector<std::unique_ptr<OpKernelInfo>> op_kernel_infos_;
   std::vector<std::pair<onnxruntime::Node*, KernelDef&>> kernel_bindings_;
   ExecutionProviders execution_providers_;
+  AllocatorManager allocator_mgr_;
   concurrency::ThreadPool tp_;
   SessionState state_;
   ShapeMap shape_map_;
@@ -162,7 +163,7 @@ class PlannerTest : public ::testing::Test {
 
  public:
   PlannerTest()
-      : model_("test"), graph_(model_.MainGraph()), tp_("test", 1), state_(execution_providers_, false, &tp_) {
+      : model_("test"), graph_(model_.MainGraph()), tp_("test", 1), state_(execution_providers_, false, &tp_, allocator_mgr_) {
     std_kernel_ = KernelDefBuilder().SetName("Transpose").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
     in_place_kernel_ =
         KernelDefBuilder().SetName("Relu").Provider(kCpuExecutionProvider).SinceVersion(1, 10).MayInplace(0, 0).Build();
@@ -199,7 +200,7 @@ class PlannerTest : public ::testing::Test {
   void BindKernel(onnxruntime::Node* p_node, ::onnxruntime::KernelDef& kernel_def, KernelRegistry* reg) {
     auto info = std::make_unique<OpKernelInfo>(*p_node, kernel_def, *execution_providers_.Get(*p_node),
                                                state_.GetInitializedTensors(), state_.GetOrtValueNameIdxMap(),
-                                               state_.GetFuncMgr(), state_.GetDataTransferMgr());
+                                               state_.GetFuncMgr(), state_.GetDataTransferMgr(), state_.GetAllocatorManager());
     op_kernel_infos_.push_back(std::move(info));
     if (reg->TryFindKernel(*p_node, onnxruntime::kCpuExecutionProvider) == nullptr) {
       auto st = reg->Register(
@@ -239,7 +240,7 @@ class PlannerTest : public ::testing::Test {
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     SequentialPlannerTestContext test_context(&shape_map_);
     status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph_), outer_scope_node_args, execution_providers,
-                                           kernel_registry_manager, state_.GetOrtValueNameIdxMap(), test_context, plan_);
+                                           kernel_registry_manager, state_.GetOrtValueNameIdxMap(), test_context, plan_, allocator_mgr_);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());

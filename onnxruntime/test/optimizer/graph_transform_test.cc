@@ -510,7 +510,7 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   for (int i = 0; i < 9; ++i) {
     values_x.push_back(x_f);
   }
-  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+  CreateMLValue<MLFloat16>(TestAllocatorManager().GetAllocator(OrtDevice()),
                            dims_x, values_x, &ml_value_x);
   feeds.insert(std::make_pair("X", ml_value_x));
 

@@ -16,7 +16,7 @@ template <typename T>
 void CPUTensorTest(std::vector<int64_t> dims, const int offset = 0) {
   //not own the buffer
   TensorShape shape(dims);
-  auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  auto alloc = TestAllocatorManager().GetAllocator(OrtDevice());
   auto data = alloc->Alloc(sizeof(T) * (shape.Size() + offset));
   EXPECT_TRUE(data);
   Tensor t(DataTypeImpl::GetType<T>(), shape, data, alloc->Info(), offset);
@@ -123,7 +123,7 @@ TEST(TensorTest, CPUUInt64TensorOffsetTest) {
 
 TEST(TensorTest, EmptyTensorTest) {
   auto type = DataTypeImpl::GetType<float>();
-  Tensor t(type, TensorShape({1, 0}), nullptr, TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault)->Info());
+  Tensor t(type, TensorShape({1, 0}), nullptr, TestAllocatorManager().GetAllocator(OrtDevice())->Info());
   auto& shape = t.Shape();
   EXPECT_EQ(shape.Size(), 0);
   EXPECT_EQ(t.DataType(), type);
@@ -146,7 +146,7 @@ TEST(TensorTest, StringTensorTest) {
 #endif
   {
     TensorShape shape({2, 3});
-    auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+    auto alloc = TestAllocatorManager().GetAllocator(OrtDevice());
     Tensor t(DataTypeImpl::GetType<std::string>(), shape, alloc);
 
     auto& tensor_shape = t.Shape();

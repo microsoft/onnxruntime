@@ -40,7 +40,8 @@ TEST(SessionStateTest, AddGetKernelTest) {
       .SetDoc("Input variable.")
       .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
   ExecutionProviders execution_providers;
-  SessionState s{execution_providers, true, &tp};
+  AllocatorManager allocator_mgr;
+  SessionState s{execution_providers, true, &tp, allocator_mgr};
 
   onnxruntime::Model model("graph_1");
   auto& graph = model.MainGraph();
@@ -58,7 +59,7 @@ TEST(SessionStateTest, AddGetKernelTest) {
   auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
 
   OpKernelInfo p_info(node, *kernel_def, *cpu_execution_provider.get(), s.GetConstantInitializedTensors(),
-                      s.GetOrtValueNameIdxMap(), s.GetFuncMgr(), s.GetDataTransferMgr());
+                      s.GetOrtValueNameIdxMap(), s.GetFuncMgr(), s.GetDataTransferMgr(), s.GetAllocatorManager());
   unique_ptr<TestOpKernel> p_kernel;
   p_kernel.reset(new TestOpKernel(p_info));
   size_t orig_num_outputs = p_kernel->Node().OutputDefs().size();
@@ -103,6 +104,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   InitializedTensorSet initializers = graph.GetAllInitializedTensors();
 
   ExecutionProviders execution_providers;
+  AllocatorManager allocator_mgr;
   CPUExecutionProviderInfo epi{false};
   status = execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
   ASSERT_TRUE(status.IsOK()) << status;
@@ -111,7 +113,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   status = krm.RegisterKernels(execution_providers);
   ASSERT_TRUE(status.IsOK()) << status;
 
-  SessionState session_state(execution_providers, param.enable_mem_pattern, &tp);
+  SessionState session_state(execution_providers, param.enable_mem_pattern, &tp, allocator_mgr);
   SessionStateInitializer session_initializer(param.enable_mem_pattern, ToWideString(model_path), graph, session_state,
                                               execution_providers, krm);
 

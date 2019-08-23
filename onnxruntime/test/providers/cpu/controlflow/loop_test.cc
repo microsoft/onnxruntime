@@ -594,13 +594,13 @@ TEST(Loop, SubgraphInputShadowsOuterScopeValue) {
   NameMLValMap feeds;
   OrtValue ml_value;
 
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), scalar, a, &ml_value);
+  CreateMLValue<float>(TestAllocatorManager().GetAllocator(OrtDevice()), scalar, a, &ml_value);
   feeds.insert(std::make_pair("a", ml_value));
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), scalar, b, &ml_value);
+  CreateMLValue<float>(TestAllocatorManager().GetAllocator(OrtDevice()), scalar, b, &ml_value);
   feeds.insert(std::make_pair("b", ml_value));
-  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), scalar, trip_count, &ml_value);
+  CreateMLValue<int64_t>(TestAllocatorManager().GetAllocator(OrtDevice()), scalar, trip_count, &ml_value);
   feeds.insert(std::make_pair("max_trip_count", ml_value));
-  CreateMLValue<bool>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), scalar, keep_going, &ml_value);
+  CreateMLValue<bool>(TestAllocatorManager().GetAllocator(OrtDevice()), scalar, keep_going, &ml_value);
   feeds.insert(std::make_pair("keep_going_inp", ml_value));
 
   // prepare outputs

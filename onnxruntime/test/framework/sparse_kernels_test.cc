@@ -358,7 +358,7 @@ class SparseTensorTests : public testing::Test {
 
   MLValue Constant(const std::vector<int64_t>& elts, const std::vector<int64_t>& shape) {
     MLValue mlvalue;
-    CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), shape, elts, &mlvalue);
+    CreateMLValue<int64_t>(TestAllocatorManager().GetAllocator(OrtDevice()), shape, elts, &mlvalue);
     return mlvalue;
   }
 

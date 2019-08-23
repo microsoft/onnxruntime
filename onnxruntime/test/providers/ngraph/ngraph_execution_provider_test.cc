@@ -65,7 +65,7 @@ ONNX_NAMESPACE::OpSchema GetUnSupportedOpSchema() {
 
 void add_feeds(NameMLValMap& feeds, std::string name, std::vector<int64_t> dims, std::vector<float> value) {
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, value, &ml_value);
+  CreateMLValue<float>(TestAllocatorManager().GetAllocator(OrtDevice()), dims, value, &ml_value);
   feeds.insert(std::make_pair(name, ml_value));
 }
 

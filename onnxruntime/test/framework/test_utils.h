@@ -31,6 +31,7 @@ class Graph;
 namespace test {
 // Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestCPUExecutionProvider();
+const onnxruntime::AllocatorManager& TestAllocatorManager();
 
 #ifdef USE_CUDA
 // Doesn't work with ExecutionProviders class and KernelRegistryManager

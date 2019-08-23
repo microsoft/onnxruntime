@@ -90,7 +90,7 @@ TEST(MLValueToTensorProtoTests, FloatToRaw) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<float>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ true, spdlog::default_logger(), tp);
@@ -126,7 +126,7 @@ TEST(MLValueToTensorProtoTests, FloatToFloatData) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<float>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ false, spdlog::default_logger(), tp);
@@ -158,7 +158,7 @@ TEST(MLValueToTensorProtoTests, Int32ToRaw) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int32_t> values_mul_x = {1, 2, 3, 4, 5, 6};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<int32_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<int32_t>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ true, spdlog::default_logger(), tp);
@@ -194,7 +194,7 @@ TEST(MLValueToTensorProtoTests, Int32ToInt32Data) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int32_t> values_mul_x = {1, 2, 3, 4, 5, 6};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<int32_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<int32_t>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ false, spdlog::default_logger(), tp);
@@ -226,7 +226,7 @@ TEST(MLValueToTensorProtoTests, UInt8ToRaw) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint8_t> values_mul_x = {1, 2, 3, 4, 5, 6};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<uint8_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<uint8_t>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ true, spdlog::default_logger(), tp);
@@ -262,7 +262,7 @@ TEST(MLValueToTensorProtoTests, UInt8ToInt32Data) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint8_t> values_mul_x = {1, 2, 3, 4, 5, 6};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<uint8_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<uint8_t>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ false, spdlog::default_logger(), tp);
@@ -343,7 +343,7 @@ TEST(MLValueToTensorProtoTests, Int8ToRaw) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int8_t> values_mul_x = {1, 2, 3, 4, 5, 6};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<int8_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<int8_t>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ true, spdlog::default_logger(), tp);
@@ -379,7 +379,7 @@ TEST(MLValueToTensorProtoTests, Int8ToInt32Data) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int8_t> values_mul_x = {1, 2, 3, 4, 5, 6};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<int8_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<int8_t>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ false, spdlog::default_logger(), tp);
@@ -412,7 +412,7 @@ TEST(MLValueToTensorProtoTests, UInt16ToRaw) {
   std::vector<int64_t> dims_mul_x = {3, 3};
   std::vector<uint16_t> values_mul_x = {1, 2, 3, 4, 5, 6, 7, 8, 9};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<uint16_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<uint16_t>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ true, spdlog::default_logger(), tp);
@@ -448,7 +448,7 @@ TEST(MLValueToTensorProtoTests, UInt16ToInt32Data) {
   std::vector<int64_t> dims_mul_x = {3, 3};
   std::vector<uint16_t> values_mul_x = {1, 2, 3, 4, 5, 6, 7, 8, 9};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<uint16_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<uint16_t>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ false, spdlog::default_logger(), tp);
@@ -481,7 +481,7 @@ TEST(MLValueToTensorProtoTests, Int16ToRaw) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int16_t> values_mul_x = {1, 2, 3, 4, 5, 6};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<int16_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<int16_t>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ true, spdlog::default_logger(), tp);
@@ -517,7 +517,7 @@ TEST(MLValueToTensorProtoTests, Int16ToInt32Data) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int16_t> values_mul_x = {1, 2, 3, 4, 5, 6};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<int16_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<int16_t>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ false, spdlog::default_logger(), tp);
@@ -550,7 +550,7 @@ TEST(MLValueToTensorProtoTests, BoolToRaw) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   bool values_mul_x[] = {true, false, false, true, true, false};
   Ort::Value ml_value{nullptr};
-  CreateMLValueBool(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  CreateMLValueBool(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ true, spdlog::default_logger(), tp);
@@ -586,7 +586,7 @@ TEST(MLValueToTensorProtoTests, BoolToInt32Data) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   bool values_mul_x[] = {true, false, false, true, true, false};
   Ort::Value ml_value{nullptr};
-  CreateMLValueBool(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  CreateMLValueBool(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ false, spdlog::default_logger(), tp);
@@ -625,7 +625,7 @@ TEST(MLValueToTensorProtoTests, Float16ToRaw) {
       onnxruntime::MLFloat16(5),
       onnxruntime::MLFloat16(6)};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<onnxruntime::MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<onnxruntime::MLFloat16>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ true, spdlog::default_logger(), tp);
@@ -667,7 +667,7 @@ TEST(MLValueToTensorProtoTests, FloatToInt32Data) {
       onnxruntime::MLFloat16(5),
       onnxruntime::MLFloat16(6)};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<onnxruntime::MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<onnxruntime::MLFloat16>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ false, spdlog::default_logger(), tp);
@@ -708,7 +708,7 @@ TEST(MLValueToTensorProtoTests, BFloat16ToRaw) {
       onnxruntime::BFloat16(5.0f),
       onnxruntime::BFloat16(6.0f)};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<onnxruntime::BFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<onnxruntime::BFloat16>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ true, spdlog::default_logger(), tp);
@@ -750,7 +750,7 @@ TEST(MLValueToTensorProtoTests, BFloatToInt32Data) {
       onnxruntime::BFloat16(5.0f),
       onnxruntime::BFloat16(6.0f)};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<onnxruntime::BFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<onnxruntime::BFloat16>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ false, spdlog::default_logger(), tp);
@@ -785,7 +785,7 @@ TEST(MLValueToTensorProtoTests, StringToStringData) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<std::string> values_mul_x{"A", "BC", "DEF", "123", "45", "6"};
   OrtValue* p_mlValue = new OrtValue{};
-  onnxruntime::test::AllocateMLValue<std::string>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, p_mlValue);
+  onnxruntime::test::AllocateMLValue<std::string>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, p_mlValue);
 
   Tensor* mutable_tensor = p_mlValue->GetMutable<Tensor>();
   std::string* mutable_data = mutable_tensor->MutableData<std::string>();
@@ -824,7 +824,7 @@ TEST(MLValueToTensorProtoTests, Int64ToRaw) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<int64_t>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ true, spdlog::default_logger(), tp);
@@ -860,7 +860,7 @@ TEST(MLValueToTensorProtoTests, Int64ToInt64Data) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<int64_t>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ false, spdlog::default_logger(), tp);
@@ -892,7 +892,7 @@ TEST(MLValueToTensorProtoTests, UInt32ToRaw) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint32_t> values_mul_x = {1, 2, 3, 4, 5, 6};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<uint32_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<uint32_t>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ true, spdlog::default_logger(), tp);
@@ -928,7 +928,7 @@ TEST(MLValueToTensorProtoTests, UInt32ToUint64Data) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint32_t> values_mul_x = {1, 2, 3, 4, 5, 6};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<uint32_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<uint32_t>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ false, spdlog::default_logger(), tp);
@@ -962,7 +962,7 @@ TEST(MLValueToTensorProtoTests, UInt64ToRaw) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<uint64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<uint64_t>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ true, spdlog::default_logger(), tp);
@@ -998,7 +998,7 @@ TEST(MLValueToTensorProtoTests, UInt64ToInt64Data) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<uint64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<uint64_t>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ false, spdlog::default_logger(), tp);
@@ -1030,7 +1030,7 @@ TEST(MLValueToTensorProtoTests, DoubleToRaw) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<double> values_mul_x = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<double>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<double>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ true, spdlog::default_logger(), tp);
@@ -1066,7 +1066,7 @@ TEST(MLValueToTensorProtoTests, DoubleToInt64Data) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<double> values_mul_x = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
   Ort::Value ml_value{nullptr};
-  onnxruntime::server::test::CreateMLValue<double>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, ml_value);
+  onnxruntime::server::test::CreateMLValue<double>(TestAllocatorManager().GetAllocator(OrtDevice()), dims_mul_x, values_mul_x, ml_value);
 
   onnx::TensorProto tp;
   onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ false, spdlog::default_logger(), tp);
