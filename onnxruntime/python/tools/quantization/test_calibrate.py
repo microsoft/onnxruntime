@@ -14,6 +14,25 @@ from onnx import helper, TensorProto
 from onnx.helper import make_node, make_tensor_value_info
 import calibrate
 
+'''
+from quantize import quantize, QuantizationMode
+class ProcessLogFileTest(unittest.TestCase):
+    # def test_baddir(self):
+    #     self.assertRaises(ValueError, calibrate.process_logfiles('/non/existent/path'))
+
+    def test_gooddata(self):
+        expected = "gpu_0_conv1_1"
+        sfacs, zpts = calibrate.process_logfiles('test_data')
+        self.assertTrue(expected in sfacs)
+        self.assertTrue(expected in zpts)
+
+        self.assertEqual(8.999529411764707, sfacs[expected])
+        self.assertEqual(23086, zpts[expected])
+        
+## Load the onnx model
+# model = onnx.load('path/to/the/model.onnx')
+'''
+
 class TestCalibrate(unittest.TestCase):
 
     def test_augment_graph(self):
