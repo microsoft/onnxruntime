@@ -138,6 +138,7 @@ TEST(TensorTest, EmptyTensorTest) {
 }
 
 TEST(TensorTest, StringTensorTest) {
+  auto allocator_mgr = TestAllocatorManager();
 //add scope to explicitly delete tensor
 #ifdef _MSC_VER
   std::string* string_ptr = nullptr;
@@ -146,7 +147,7 @@ TEST(TensorTest, StringTensorTest) {
 #endif
   {
     TensorShape shape({2, 3});
-    auto alloc = TestAllocatorManager().GetAllocator(OrtDevice());
+    auto alloc = allocator_mgr.GetAllocator(OrtDevice());
     Tensor t(DataTypeImpl::GetType<std::string>(), shape, alloc);
 
     auto& tensor_shape = t.Shape();
