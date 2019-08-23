@@ -83,13 +83,7 @@ std::shared_ptr<KernelRegistry> GetFusedKernelRegistry() {
 
 class FuseExecutionProvider : public IExecutionProvider {
  public:
-  explicit FuseExecutionProvider() : IExecutionProvider{kFuseExecutionProvider} {
-    /*DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault,
-                                                 [](int) { return std::make_unique<CPUAllocator>(); },
-                                                 std::numeric_limits<size_t>::max()});
-    InsertAllocator(std::shared_ptr<IArenaAllocator>(
-        std::make_unique<DummyArena>(device_info.factory(0))));*/
-  }
+  explicit FuseExecutionProvider() : IExecutionProvider{kFuseExecutionProvider} {}
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,

@@ -24,6 +24,8 @@ using AllocatorMap = std::map<int, AllocatorPtr>;
 
 class AllocatorManager {
  public:
+  AllocatorManager() = default;
+
   /**
      Get all IAllocators for <*this> execution provider.
   */

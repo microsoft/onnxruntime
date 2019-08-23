@@ -42,14 +42,6 @@ TensorrtLogger& GetTensorrtLogger() {
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider}, device_id_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
-
-  DeviceAllocatorRegistrationInfo default_allocator_info(
-      {OrtMemTypeDefault, [](int id) { return std::make_unique<CUDAAllocator>(id, TRT); }, std::numeric_limits<size_t>::max()});
-  InsertAllocator(CreateAllocator(default_allocator_info, device_id_));
-
-  DeviceAllocatorRegistrationInfo pinned_allocator_info(
-      {OrtMemTypeCPUOutput, [](int) { return std::make_unique<CUDAPinnedAllocator>(0, TRT_PINNED); }, std::numeric_limits<size_t>::max()});
-  InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_));
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {}

@@ -118,8 +118,6 @@ class IExecutionProvider {
   */
   virtual common::Status OnRunEnd();
 
-  //  void InsertAllocator(AllocatorPtr allocator);
-
   /**
   Given a list of fused_node, return create_state/compute/release_state func for each node.
   */

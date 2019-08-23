@@ -90,6 +90,9 @@ struct SessionOptions {
 
   // How many threads in the session thread pool.
   int session_thread_pool_size = -1;
+
+  bool create_arena = false;
+
 };
 
 /**
@@ -386,6 +389,8 @@ class InferenceSession {
 
   template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
+
+  void RegisterAllocators();
 
   const SessionOptions session_options_;
 

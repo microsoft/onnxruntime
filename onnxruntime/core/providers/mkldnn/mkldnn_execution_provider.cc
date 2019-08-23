@@ -18,25 +18,7 @@ constexpr const char* MKLDNN = "MklDnn";
 constexpr const char* MKLDNN_CPU = "MklDnnCpu";
 
 MKLDNNExecutionProvider::MKLDNNExecutionProvider(const MKLDNNExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kMklDnnExecutionProvider} {
-  DeviceAllocatorRegistrationInfo default_allocator_info({OrtMemTypeDefault,
-                                                          [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(MKLDNN, OrtAllocatorType::OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
-
-  DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUOutput,
-                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(MKLDNN_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); }, std::numeric_limits<size_t>::max()});
-
-  if (info.create_arena) {
-    InsertAllocator(CreateAllocator(default_allocator_info));
-
-    InsertAllocator(CreateAllocator(cpu_allocator_info));
-  } else {
-    InsertAllocator(std::shared_ptr<IArenaAllocator>(
-        std::make_unique<DummyArena>(default_allocator_info.factory(0))));
-
-    InsertAllocator(std::shared_ptr<IArenaAllocator>(
-        std::make_unique<DummyArena>(cpu_allocator_info.factory(0))));
-  }
-}  // namespace onnxruntime
+    : IExecutionProvider{onnxruntime::kMklDnnExecutionProvider} {}  // namespace onnxruntime
 
 MKLDNNExecutionProvider::~MKLDNNExecutionProvider() {
 }

@@ -28,9 +28,6 @@ constexpr const char* OpenVINO = "OpenVINO";
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(OpenVINOExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider} {
   ORT_UNUSED_PARAMETER(info);
-
-  DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(OPENVINO, OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
-  InsertAllocator(CreateAllocator(device_info));
 }
 
 static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::GraphViewer& graph_viewer) {

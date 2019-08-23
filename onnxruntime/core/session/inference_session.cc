@@ -22,6 +22,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
 #include "core/framework/allocatormgr.h"
+#include "core/framework/arena.h"
 #include "core/framework/customregistry.h"
 #include "core/session/environment.h"
 #include "core/framework/error_code_helper.h"
@@ -435,7 +436,6 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
       ORT_RETURN_IF_ERROR(initializer.CreatePlan(&node, &implicit_inputs,
                                                  session_options_.enable_sequential_execution));
 
-
       // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
       //                                                   &*subgraph_info.session_state);
 
@@ -445,6 +445,38 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
   }
 
   return Status::OK();
+}
+
+void InferenceSession::RegisterAllocators() {
+  DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
+                                              [](int) { return std::make_unique<CPUAllocator>(); },
+                                              std::numeric_limits<size_t>::max()};
+#ifdef USE_JEMALLOC
+  //JEMalloc already has memory pool, so just use device allocator.
+  allocator_mgr_.InsertAllocator(
+      std::shared_ptr<IArenaAllocator>(
+          std::make_unique<DummyArena>(device_info.factory(0))));
+#else
+  if (session_options_.create_arena)
+    allocator_mgr_.InsertAllocator(CreateAllocator(device_info));
+  else
+    allocator_mgr_.InsertAllocator(
+        std::shared_ptr<IArenaAllocator>(
+            std::make_unique<DummyArena>(device_info.factory(0))));
+#endif
+  /*
+  DeviceAllocatorRegistrationInfo default_allocator_info(
+      {OrtMemTypeDefault, [](int id) { return std::make_unique<CUDAAllocator>(id, CUDA); }, std::numeric_limits<size_t>::max()});
+  allocator_mgr_.InsertAllocator(CreateAllocator(default_allocator_info, device_id_));
+
+  DeviceAllocatorRegistrationInfo pinned_allocator_info(
+      {OrtMemTypeCPUOutput, [](int) { return std::make_unique<CUDAPinnedAllocator>(0, CUDA_PINNED); }, std::numeric_limits<size_t>::max()});
+  allocator_mgr_.InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_));
+
+   TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
+   This will be refactored/removed when allocator and execution provider are decoupled.
+  DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUInput, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUInput)); }, std::numeric_limits<size_t>::max()});
+  allocator_mgr_.InsertAllocator(CreateAllocator(cpu_allocator_info));*/
 }
 
 common::Status InferenceSession::Initialize() {
@@ -481,6 +513,8 @@ common::Status InferenceSession::Initialize() {
       data_transfer_mgr_.RegisterDataTransfer(std::make_unique<GPUDataTransfer>());
     }
 #endif
+
+    RegisterAllocators();
 
     if (!session_options_.enable_sequential_execution &&
         execution_providers_.Get(onnxruntime::kCudaExecutionProvider)) {

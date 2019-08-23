@@ -15,20 +15,7 @@ namespace onnxruntime {
 constexpr const char* NNAPI = "Nnapi";
 
 NnapiExecutionProvider::NnapiExecutionProvider()
-    : IExecutionProvider{onnxruntime::kNnapiExecutionProvider} {
-  DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
-                                              [](int) { return std::make_unique<CPUAllocator>(
-                                                            std::make_unique<OrtAllocatorInfo>(NNAPI,
-                                                                                               OrtAllocatorType::OrtDeviceAllocator)); },
-                                              std::numeric_limits<size_t>::max()};
-  InsertAllocator(CreateAllocator(device_info));
-
-  DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUOutput,
-                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(NNAPI, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); },
-                                                      std::numeric_limits<size_t>::max()});
-
-  InsertAllocator(CreateAllocator(cpu_allocator_info));
-}
+    : IExecutionProvider{onnxruntime::kNnapiExecutionProvider} {}
 
 NnapiExecutionProvider::~NnapiExecutionProvider() {}
 

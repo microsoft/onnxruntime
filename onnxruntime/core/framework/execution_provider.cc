@@ -47,17 +47,6 @@ common::Status IExecutionProvider::OnRunStart() { return Status::OK(); }
 
 common::Status IExecutionProvider::OnRunEnd() { return Status::OK(); }
 
-//void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
-//  const OrtAllocatorInfo& info = allocator->Info();
-//  const int key = MakeKey(info.id, info.mem_type);
-//  auto iter = allocators_.find(key);
-//  if (iter != allocators_.end()) {
-//    ORT_THROW("duplicated allocator");
-//  }
-//  allocators_.insert(iter, {key, allocator});
-//  allocator_list_.emplace_back(gsl::not_null<IAllocator*>(allocator.get()));
-//}
-
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
   return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);

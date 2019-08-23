@@ -15,7 +15,6 @@ class DummyExecutionProvider : public IExecutionProvider {
 
  public:
   DummyExecutionProvider() : IExecutionProvider{kDummyExecutionProviderType} {
-    //InsertAllocator(std::make_unique<DummyAllocator>());
   }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
