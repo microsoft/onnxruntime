@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#pragma once
-
 #include "core/providers/common.h"
 #include "core/providers/cuda/math/clip.h"
 #include "core/providers/cuda/math/clip_impl.h"
@@ -22,7 +20,6 @@ namespace cuda {
 
 template <typename T>
 Status Clip<T>::ComputeInternal(OpKernelContext* ctx) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
   const Tensor& X = *ctx->Input<Tensor>(0);
   const TensorShape input_shape{X.Shape()};
   Tensor* Y = ctx->Output(0, input_shape);
