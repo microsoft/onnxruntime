@@ -19,4 +19,3 @@ from onnxruntime.capi import onnxruntime_validation
 onnxruntime_validation.check_distro_info()
 from onnxruntime.capi.session import InferenceSession
 from onnxruntime.capi._pybind_state import RunOptions, SessionOptions, NodeArg, ModelMetadata, GraphOptimizationLevel
-#, set_default_logger_severity, get_device,
