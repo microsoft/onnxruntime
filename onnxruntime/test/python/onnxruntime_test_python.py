@@ -110,6 +110,10 @@ class TestInferenceSession(unittest.TestCase):
         t1.join()
         t2.join()
 
+    def testRunDevice(self):
+        device = onnxrt.get_device()
+        self.assertTrue('CPU' in device or 'GPU' in device)
+
     def testRunModelSymbolicInput(self):
         sess = onnxrt.InferenceSession(self.get_name("matmul_2.onnx"))
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
