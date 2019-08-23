@@ -66,6 +66,29 @@ class TestCalibrate(unittest.TestCase):
         for output in added_outputs:
             self.assertTrue(output in augmented_model_outputs)
 
+        # Checking order of augmented graph outputs
+        G = helper.make_tensor_value_info('G', TensorProto.FLOAT, [1, 1, 5, 5])
+        H = helper.make_tensor_value_info('H', TensorProto.FLOAT, [1, 1, 5, 1])
+        I = helper.make_tensor_value_info('I', TensorProto.FLOAT, [1, 1, 5, 1])
+        J = helper.make_tensor_value_info('J', TensorProto.FLOAT, [1, 1, 5, 1])
+        K = helper.make_tensor_value_info('K', TensorProto.FLOAT, [1, 1, 5, 1])
+        matmul_node_1 = onnx.helper.make_node('MatMul', ['G', 'H'], ['I'], name='MatMul_1')
+        matmul_node_2 = onnx.helper.make_node('MatMul', ['I', 'J'], ['K'], name='MatMul_2')
+        graph = helper.make_graph([matmul_node_1, matmul_node_2], 'test_graph_order', [G, H, J], [K])
+        model = helper.make_model(graph)
+        onnx.save(model, 'test_model_matmul.onnx')
+
+        # Augmenting graph
+        augmented_model = calibrate.augment_graph(model)
+        onnx.save(augmented_model, 'augmented_test_model_matmul.onnx')
+
+        augmented_model_outputs = [output.name for output in augmented_model.graph.output]
+        self.assertEqual(augmented_model_outputs[0], 'K')
+        self.assertEqual(augmented_model_outputs[1], 'I_ReduceMin')
+        self.assertEqual(augmented_model_outputs[2], 'I_ReduceMax')
+        self.assertEqual(augmented_model_outputs[3], 'K_ReduceMin')
+        self.assertEqual(augmented_model_outputs[4], 'K_ReduceMax')
+
     def test_load_batch(self):
         images_folder = 'test_images'
         session = onnxruntime.InferenceSession('augmented_test_model.onnx')
