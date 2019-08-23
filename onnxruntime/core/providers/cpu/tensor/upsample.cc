@@ -369,7 +369,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
         std::ostringstream oss;
         oss << "'Linear' mode only support 2-D inputs ('Bilinear') or 4-D inputs "
                "with the corresponding outermost 2 scale values being 1 in the ";
-        oss << is_resize ? "Resize operator" : "Upsample operator";
+        oss << (is_resize ? "Resize operator" : "Upsample operator");
         return Status(ONNXRUNTIME, FAIL, oss.str());      
       }
 
