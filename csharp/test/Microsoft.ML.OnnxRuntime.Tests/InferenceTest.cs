@@ -732,19 +732,19 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        // [Fact]
-        // private void TestModelSerialization()
-        // {
-        //     string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
-        //     string modelOutputPath = Path.Combine(Directory.GetCurrentDirectory(), "optimized-squeezenet.onnx");
-        //     // Set the optimized model file path to assert that no exception are thrown.
-        //     SessionOptions options = new SessionOptions();
-        //     options.OptimizedModelFilePath = modelOutputPath;
-        //     options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_BASIC;
-        //     var session = new InferenceSession(modelPath, options);
-        //     Assert.NotNull(session);
-        //     Assert.True(File.Exists(modelOutputPath));
-        // }
+        [Fact(Skip="The Model Serialization Test fails on linux. Test skipped until fixed. Serialization API should not be used before fix.")]
+        private void TestModelSerialization()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+            string modelOutputPath = Path.Combine(Directory.GetCurrentDirectory(), "optimized-squeezenet.onnx");
+            // Set the optimized model file path to assert that no exception are thrown.
+            SessionOptions options = new SessionOptions();
+            options.OptimizedModelFilePath = modelOutputPath;
+            options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_BASIC;
+            var session = new InferenceSession(modelPath, options);
+            Assert.NotNull(session);
+            Assert.True(File.Exists(modelOutputPath));
+        }
 
         [GpuFact]
         private void TestGpu()
