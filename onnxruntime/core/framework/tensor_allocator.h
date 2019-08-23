@@ -44,7 +44,7 @@ class ITensorAllocator {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ITensorAllocator);
 
   static std::unique_ptr<ITensorAllocator> Create(bool enable_mem_pattern, const ExecutionPlanBase& execution_plan,
-                                                  const ExecutionProviders& exec_providers,
+                                                  const AllocatorManager& allocator_mgr,
                                                   std::vector<BufferUniquePtr>& weights_buffers);
 };
 

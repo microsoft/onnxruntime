@@ -106,7 +106,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
       thread_pool_(CreateThreadPool(session_options.session_thread_pool_size)),
       session_state_(execution_providers_,
                      session_options.enable_mem_pattern && session_options.enable_sequential_execution,
-                     thread_pool_.get()),
+                     thread_pool_.get(), allocator_mgr_),
       insert_cast_transformer_{"CastFloat16Transformer"} {
   ORT_ENFORCE(Environment::IsInitialized(),
               "Environment must be initialized before creating an InferenceSession.");
@@ -394,7 +394,7 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
 
       auto subgraph_session_state =
-          std::make_unique<SessionState>(execution_providers_, session_state.GetEnableMemoryPattern(), session_state.GetThreadPool());
+          std::make_unique<SessionState>(execution_providers_, session_state.GetEnableMemoryPattern(), session_state.GetThreadPool(), session_state.GetAllocatorManager());
       subgraph_session_state->SetProfiler(session_profiler_);
       subgraph_session_state->SetLogger(*session_logger_);
       // Pass data transfer manager to subgraph.

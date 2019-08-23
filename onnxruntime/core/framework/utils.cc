@@ -32,9 +32,8 @@ bool ProviderIsCpuBased(const std::string& provider_type) {
          provider_type == onnxruntime::kNnapiExecutionProvider;
 }
 
-common::Status AllocateHelper(const IExecutionProvider& execution_provider, const OrtDevice& device, const Tensor& fetched_tensor,
+common::Status AllocateHelper(const OrtDevice& device, const Tensor& fetched_tensor,
                               OrtValue& output_mlvalue, const AllocatorManager& allocator_mgr) {
-  //auto allocator = execution_provider.GetAllocator(allocator_mgr, device.Id(), OrtMemTypeDefault);
   auto allocator = allocator_mgr.GetAllocator(device);
   if (!allocator) {
     return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator");
@@ -72,14 +71,9 @@ static Status CopyMLValue(const DataTransferManager& data_transfer_mgr,
                           const FeedsFetchesManager::MLValueCopyInfo& copy_info,
                           const OrtValue& source_mlvalue,
                           OrtValue& target_mlvalue) {
-  if (copy_info.allocation_provider == nullptr) {
-    target_mlvalue = source_mlvalue;
-    return Status::OK();
-  }
-
   auto& source_tensor = source_mlvalue.Get<Tensor>();
   if (!target_mlvalue.IsAllocated()) {
-    ORT_RETURN_IF_ERROR(utils::AllocateHelper(*copy_info.allocation_provider, copy_info.target_device,
+    ORT_RETURN_IF_ERROR(utils::AllocateHelper(copy_info.target_device,
                                               source_tensor, target_mlvalue, *copy_info.allocator_mgr));
   }
 
@@ -98,8 +92,6 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
 
   std::vector<SessionState::NodeInfo> node_info_vec;
   ORT_RETURN_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
-
-  auto& exec_providers = session_state.GetExecutionProviders();
 
   do {
     // currently we only support one device per input. see SessionState::AddInputNameToNodeInfoMapping for more
@@ -127,10 +119,8 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
       break;
     }
 
-    auto& required_provider_type = GetNodeInputProviderType(node_info);
-    auto* required_provider = exec_providers.Get(required_provider_type);
     copy_info.target_device = required_device;
-    copy_info.allocation_provider = required_provider;
+    copy_info.allocator_mgr = &session_state.GetAllocatorManager();
 
     ORT_RETURN_IF_ERROR(CopyMLValue(session_state.GetDataTransferMgr(), copy_info, orig_mlvalue, new_mlvalue));
 
@@ -306,11 +296,6 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
     copiers->resize(num_outputs);
   }
 
-  auto& execution_providers = session_state.GetExecutionProviders();
-
-  // CPU execution provider is always registered so this is not null
-  const auto* cpu_execution_provider = execution_providers.Get(onnxruntime::kCpuExecutionProvider);
-
   for (size_t idx = 0; idx < num_outputs; ++idx) {
     auto& fetched_mlvalue = fetches[idx];
     if (!fetched_mlvalue.IsTensor()) {
@@ -318,13 +303,11 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
       continue;
     }
 
-    const IExecutionProvider* p_output_provider = nullptr;
     auto target_device = OrtDevice();
     auto& output_mlvalue = user_fetches[idx];
     if (output_mlvalue.IsAllocated()) {
       Tensor* p_output_tensor = output_mlvalue.GetMutable<Tensor>();
       target_device = p_output_tensor->Location().device;
-      p_output_provider = execution_providers.Get(p_output_tensor->Location());
     }
     auto fetch_result_device = fetched_mlvalue.Get<Tensor>().Location().device;
     if (target_device == fetch_result_device) {
@@ -332,12 +315,8 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
       continue;
     }
 
-    if (!p_output_provider) {
-      p_output_provider = cpu_execution_provider;
-    }
-
     needed_copy = true;
-    FeedsFetchesManager::MLValueCopyInfo copy_info{target_device, p_output_provider};
+    FeedsFetchesManager::MLValueCopyInfo copy_info{target_device, &session_state.GetAllocatorManager()};
     ORT_RETURN_IF_ERROR(CopyMLValue(session_state.GetDataTransferMgr(), copy_info, fetched_mlvalue, output_mlvalue));
 
     if (copiers) {

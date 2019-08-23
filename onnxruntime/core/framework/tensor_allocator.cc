@@ -12,12 +12,12 @@ AllocatorPtr ITensorAllocator::GetAllocator(const OrtAllocatorInfo& allocator_in
 
 std::unique_ptr<ITensorAllocator> ITensorAllocator::Create(bool enable_mem_pattern,
                                                            const ExecutionPlanBase& execution_plan,
-                                                           const ExecutionProviders& exec_providers,
+                                                           const AllocatorManager& allocator_mgr,
                                                            std::vector<BufferUniquePtr>& weights_buffers) {
   if (enable_mem_pattern) {
-    return std::make_unique<TensorAllocatorWithMemPattern>(execution_plan, exec_providers, weights_buffers);
+    return std::make_unique<TensorAllocatorWithMemPattern>(execution_plan, allocator_mgr, weights_buffers);
   }
-  return std::make_unique<SimpleTensorAllocator>(execution_plan, exec_providers, weights_buffers);
+  return std::make_unique<SimpleTensorAllocator>(execution_plan, allocator_mgr, weights_buffers);
 }
 
 }  // namespace onnxruntime

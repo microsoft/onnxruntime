@@ -105,7 +105,7 @@ common::Status SessionStateInitializer::InitializeAndSave(
 
   const auto& ort_value_name_idx_map{session_state_.GetOrtValueNameIdxMap()};
   std::unique_ptr<ITensorAllocator> tensor_allocator_(ITensorAllocator::Create(
-      enable_mem_pattern_, *exec_plan_ptr, execution_providers_, session_state_.GetMutableWeightsBuffers()));
+      enable_mem_pattern_, *exec_plan_ptr, session_state_.GetAllocatorManager(), session_state_.GetMutableWeightsBuffers()));
 
   // lambda to save initialized tensors into SessionState directly
   const Env& env = Env::Default();
