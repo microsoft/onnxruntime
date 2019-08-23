@@ -3,8 +3,6 @@ jobs:
   timeoutInMinutes: 240
   pool: OpenVINO
   steps:
-    - template: templates/set-test-data-variables-step.yml
-
     - task: CmdLine@2
       displayName: 'Clean untagged docker images'
       inputs:
