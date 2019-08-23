@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "test_utils.h"
+#include "core/framework/arena.h"
 #include "core/graph/graph.h"
 
 namespace onnxruntime {
@@ -12,8 +13,9 @@ IExecutionProvider* TestCPUExecutionProvider() {
   return &cpu_provider;
 }
 
-const onnxruntime::AllocatorManager& TestAllocatorManager() {
-  static onnxruntime::AllocatorManager allocator_mgr;
+onnxruntime::AllocatorManager TestAllocatorManager() {
+  onnxruntime::AllocatorManager allocator_mgr;
+  onnxruntime::RegisterCPUAllocator(allocator_mgr, true);
   return allocator_mgr;
 }
 

@@ -39,9 +39,8 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       continue;
     }
 
-	AllocatorManager allocator_mgr;
     // Create execution frame for executing constant nodes.
-    OptimizerExecutionFrame::Info info({node}, constant_inputs, allocator_mgr);
+    OptimizerExecutionFrame::Info info({node}, constant_inputs);
 
     std::vector<int> fetch_mlvalue_idxs;
     for (const auto* node_out : node->OutputDefs()) {

@@ -64,8 +64,7 @@ TEST(OptimizerTest, Basic) {
     nodes.push_back(&node);
   }
 
-  AllocatorManager allocator_mgr;
-  OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set, allocator_mgr);
+  OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set);
   std::vector<int> fetch_mlvalue_idxs{info.GetMLValueIndex("out")};
   OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
   const logging::Logger& logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();

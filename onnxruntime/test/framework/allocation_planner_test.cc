@@ -220,7 +220,7 @@ class PlannerTest : public ::testing::Test {
 
   void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {}) {
     EXPECT_EQ(graph_.Resolve(), Status::OK());
-
+    onnxruntime::RegisterCPUAllocator(allocator_mgr_, true);
     state_.SetGraph(graph_);
 
     std::shared_ptr<KernelRegistry> reg = std::make_shared<KernelRegistry>();

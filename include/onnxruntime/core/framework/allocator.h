@@ -141,6 +141,7 @@ constexpr const char* TRT_PINNED = "TensorrtPinned";
 
 // forward declaration
 class SessionState;
+class AllocatorManager;
 
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
@@ -275,4 +276,5 @@ class CPUAllocator : public IDeviceAllocator {
 
 using AllocatorPtr = std::shared_ptr<IAllocator>;
 
+void RegisterCPUAllocator(AllocatorManager& allocator_mgr, bool create_arena);
 }  // namespace onnxruntime

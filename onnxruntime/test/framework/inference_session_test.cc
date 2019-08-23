@@ -1060,6 +1060,7 @@ TEST(ExecutionProviderTest, FunctionTest) {
   CPUExecutionProviderInfo epi;
   auto testCPUExecutionProvider = std::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
   onnxruntime::AllocatorManager allocator_mgr;
+  onnxruntime::RegisterCPUAllocator(allocator_mgr, true);
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
@@ -1362,6 +1363,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
   auto dummy_provider = std::make_unique<DummyExecutionProvider>();
   session_object.RegisterExecutionProvider(std::move(dummy_provider));
   onnxruntime::AllocatorManager allocator_mgr;
+  onnxruntime::RegisterCPUAllocator(allocator_mgr, true);
   // prepare inputs
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};

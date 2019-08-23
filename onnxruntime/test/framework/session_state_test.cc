@@ -41,6 +41,7 @@ TEST(SessionStateTest, AddGetKernelTest) {
       .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
   ExecutionProviders execution_providers;
   AllocatorManager allocator_mgr;
+  onnxruntime::RegisterCPUAllocator(allocator_mgr, true);
   SessionState s{execution_providers, true, &tp, allocator_mgr};
 
   onnxruntime::Model model("graph_1");
@@ -105,6 +106,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
 
   ExecutionProviders execution_providers;
   AllocatorManager allocator_mgr;
+  onnxruntime::RegisterCPUAllocator(allocator_mgr, true);
   CPUExecutionProviderInfo epi{false};
   status = execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
   ASSERT_TRUE(status.IsOK()) << status;

@@ -62,6 +62,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   AllocatorManager allocator_mgr;
+  onnxruntime::RegisterCPUAllocator(allocator_mgr, true);
   SessionState state{execution_providers, true, &tp_, allocator_mgr};
   status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -72,7 +73,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   // TODO below line is for testing only. In production use SequentialPlanner::CreatePlan()
   SequentialPlannerContext context(false);
   status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers, kernel_registry_manager,
-                                         state.GetOrtValueNameIdxMap(), context, p_seq_exec_plan, allocator_mgr);
+                                         state.GetOrtValueNameIdxMap(), context, p_seq_exec_plan, state.GetAllocatorManager());
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   state.SetExecutionPlan(std::move(p_seq_exec_plan));
 
@@ -139,6 +140,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
   AllocatorManager allocator_mgr;
+  onnxruntime::RegisterCPUAllocator(allocator_mgr, true);
   execution_providers.Add(xp_typ, std::move(cpu_xp));
   EXPECT_TRUE(kernel_registry_manager.RegisterKernels(execution_providers).IsOK());
   SessionState state{execution_providers, true, &tp_, allocator_mgr};
@@ -191,6 +193,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
 
   ExecutionProviders execution_providers;
   AllocatorManager allocator_mgr;
+  onnxruntime::RegisterCPUAllocator(allocator_mgr, true);
   execution_providers.Add(xp_type, std::move(cpu_xp));
   kernel_registry_manager.RegisterKernels(execution_providers);
   //1. prepare input

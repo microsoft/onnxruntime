@@ -3,6 +3,7 @@
 
 #include "core/framework/allocator.h"
 #include "core/framework/allocatormgr.h"
+#include "core/framework/arena.h"
 #include "core/mlas/inc/mlas.h"
 #include <cstdlib>
 #include <sstream>
@@ -83,4 +84,23 @@ ORT_API_STATUS_IMPL(OrtCompareAllocatorInfo, _In_ const OrtAllocatorInfo* info1,
                     _Out_ int* out) {
   *out = (*info1 == *info2) ? 0 : -1;
   return nullptr;
+}
+
+void onnxruntime::RegisterCPUAllocator(AllocatorManager& allocator_mgr, bool create_arena) {
+  onnxruntime::DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
+                                                           [](int) { return std::make_unique<onnxruntime::CPUAllocator>(); },
+                                                           std::numeric_limits<size_t>::max()};
+#ifdef USE_JEMALLOC
+  //JEMalloc already has memory pool, so just use device allocator.
+  allocator_mgr.InsertAllocator(
+      std::shared_ptr<onnxruntime::IArenaAllocator>(
+          std::make_unique<onnxruntime::DummyArena>(device_info.factory(0))));
+#else
+  if (create_arena)
+    allocator_mgr.InsertAllocator(onnxruntime::CreateAllocator(device_info));
+  else
+    allocator_mgr.InsertAllocator(
+        std::shared_ptr<onnxruntime::IArenaAllocator>(
+            std::make_unique<onnxruntime::DummyArena>(device_info.factory(0))));
+#endif
 }

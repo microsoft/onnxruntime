@@ -448,22 +448,7 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
 }
 
 void InferenceSession::RegisterAllocators() {
-  DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
-                                              [](int) { return std::make_unique<CPUAllocator>(); },
-                                              std::numeric_limits<size_t>::max()};
-#ifdef USE_JEMALLOC
-  //JEMalloc already has memory pool, so just use device allocator.
-  allocator_mgr_.InsertAllocator(
-      std::shared_ptr<IArenaAllocator>(
-          std::make_unique<DummyArena>(device_info.factory(0))));
-#else
-  if (session_options_.create_arena)
-    allocator_mgr_.InsertAllocator(CreateAllocator(device_info));
-  else
-    allocator_mgr_.InsertAllocator(
-        std::shared_ptr<IArenaAllocator>(
-            std::make_unique<DummyArena>(device_info.factory(0))));
-#endif
+  onnxruntime::RegisterCPUAllocator(allocator_mgr_, session_options_.create_arena);
   /*
   DeviceAllocatorRegistrationInfo default_allocator_info(
       {OrtMemTypeDefault, [](int id) { return std::make_unique<CUDAAllocator>(id, CUDA); }, std::numeric_limits<size_t>::max()});

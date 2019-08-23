@@ -17,12 +17,12 @@
 namespace onnxruntime {
 
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
-                                    const InitializedTensorSet& initialized_tensor_set,
-									const AllocatorManager& allocator_mgr) : allocator_mgr_(allocator_mgr) {
+                                    const InitializedTensorSet& initialized_tensor_set) {
   // Create CPU execution provider
   // For now, CPU execution provider will be created every time when initializing Info.
   // Later, it will be changed to pass by Info ctor.
   cpu_execution_provider_ = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  onnxruntime::RegisterCPUAllocator(allocator_mgr_, true);
   allocator_ptr_ = cpu_execution_provider_->GetAllocator(allocator_mgr_, device_id_, mem_type_);
   ORT_ENFORCE(allocator_ptr_ != nullptr, "Failed to get allocator for optimizer");
 

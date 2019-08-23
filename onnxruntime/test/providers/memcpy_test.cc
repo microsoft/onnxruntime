@@ -26,6 +26,7 @@ TEST(MemcpyTest, copy1) {
 
   ExecutionProviders execution_providers;
   AllocatorManager allocator_mgr;
+  onnxruntime::RegisterCPUAllocator(allocator_mgr, true);
   CPUExecutionProviderInfo epi;
   auto st = execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
