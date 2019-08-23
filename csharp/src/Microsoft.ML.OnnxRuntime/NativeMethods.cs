@@ -158,6 +158,9 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern IntPtr /*(OrtStatus*)*/ OrtSetSessionLogVerbosityLevel(IntPtr /* OrtSessionOptions* */ options, LogLevel sessionLogVerbosityLevel);
 
         [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSetSessionLogSeverityLevel(IntPtr /* OrtSessionOptions* */ options, LogLevel sessionLogSeverityLevel);
+
+        [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSetSessionThreadPoolSize(IntPtr /* OrtSessionOptions* */ options, int sessionThreadPoolSize);
 
         [DllImport(nativeLib, CharSet = charSet)]
@@ -257,10 +260,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern void OrtReleaseAllocatorInfo(IntPtr /*(OrtAllocatorInfo*)*/ allocatorInfo);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/OrtCreateDefaultAllocator(out IntPtr /*(OrtAllocator**)*/ allocator);
-
-        [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void OrtReleaseAllocator(IntPtr /*(OrtAllocator*)*/ allocator);
+        public static extern IntPtr /*(OrtStatus*)*/OrtGetAllocatorWithDefaultOptions(out IntPtr /*(OrtAllocator**)*/ allocator);
 
         /// <summary>
         /// Release any object allocated by an allocator

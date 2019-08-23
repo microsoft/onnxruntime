@@ -789,11 +789,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             "OrtEnableSequentialExecution","OrtDisableSequentialExecution","OrtEnableProfiling","OrtDisableProfiling",
             "OrtEnableMemPattern","OrtDisableMemPattern","OrtEnableCpuMemArena","OrtDisableCpuMemArena",
             "OrtSetSessionLogId","OrtSetSessionLogVerbosityLevel","OrtSetSessionThreadPoolSize","OrtSetSessionGraphOptimizationLevel",
-            "OrtSetOptimizedModelFilePath", "OrtSessionOptionsAppendExecutionProvider_CPU",
-            "OrtCreateRunOptions", "OrtReleaseRunOptions", "OrtRunOptionsSetRunLogVerbosityLevel", "OrtRunOptionsSetRunTag",
-            "OrtRunOptionsGetRunLogVerbosityLevel", "OrtRunOptionsGetRunTag","OrtRunOptionsEnableTerminate", "OrtRunOptionsDisableTerminate",
-            "OrtCreateAllocatorInfo","OrtCreateCpuAllocatorInfo",
-            "OrtCreateDefaultAllocator","OrtAllocatorFree","OrtAllocatorGetInfo",
+            "OrtSetOptimizedModelFilePath", "OrtSessionOptionsAppendExecutionProvider_CPU","OrtCreateAllocatorInfo","OrtCreateCpuAllocatorInfo",
+            "OrtGetAllocatorWithDefaultOptions","OrtAllocatorFree","OrtAllocatorGetInfo",
             "OrtCreateTensorWithDataAsOrtValue","OrtGetTensorMutableData", "OrtReleaseAllocatorInfo",
             "OrtCastTypeInfoToTensorInfo","OrtGetTensorTypeAndShape","OrtGetTensorElementType","OrtGetDimensionsCount",
             "OrtGetDimensions","OrtGetTensorShapeElementCount","OrtReleaseValue"};
