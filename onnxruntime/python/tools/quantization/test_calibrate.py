@@ -28,7 +28,7 @@ class ProcessLogFileTest(unittest.TestCase):
 
         self.assertEqual(8.999529411764707, sfacs[expected])
         self.assertEqual(23086, zpts[expected])
-        
+
 ## Load the onnx model
 # model = onnx.load('path/to/the/model.onnx')
 '''
@@ -66,14 +66,6 @@ class TestCalibrate(unittest.TestCase):
         for output in added_outputs:
             self.assertTrue(output in augmented_model_outputs)
 
-    def test_load_and_resize_image(self):
-        session = onnxruntime.InferenceSession('augmented_test_model.onnx')
-        (samples, channels, height, width) = session.get_inputs()[0].shape
-        nchw_data = calibrate.load_and_resize_image('test_images/' + os.listdir('test_images')[0], height, width)
-        self.assertEqual(nchw_data.shape[1], 3) # checking for 3 channels for colored image
-        self.assertEqual(nchw_data.shape[2], height) # checking if resized height is correct
-        self.assertEqual(nchw_data.shape[3], width) # checking if resized width is correct
-
     def test_load_batch(self):
         images_folder = 'test_images'
         session = onnxruntime.InferenceSession('augmented_test_model.onnx')
@@ -81,9 +73,9 @@ class TestCalibrate(unittest.TestCase):
         batch_data = calibrate.load_batch(images_folder, height, width)
         self.assertEqual(len(batch_data.shape), 5) # for 2D images like the ones in test_images
         self.assertEqual(batch_data.shape[0], len(os.listdir(images_folder)))
-        self.assertEqual(batch_data.shape[2], 3)
-        self.assertEqual(batch_data.shape[3], height)
-        self.assertEqual(batch_data.shape[4], width)
+        self.assertEqual(batch_data.shape[2], 3) # checking for 3 channels for colored image
+        self.assertEqual(batch_data.shape[3], height) # checking if resized height is correct
+        self.assertEqual(batch_data.shape[4], width) # checking if resized width is correct
 
     def test_get_intermediate_outputs(self):
         # Creating graph
