@@ -197,10 +197,11 @@ Status upsampleLiner(const T* input,
                      T* output,
                      const TensorShape& input_shape,
                      const TensorShape& output_shape,
-                     const vector<float>& scales) {
+                     const vector<float>& scales,
+                     const bool is_resize) {
   if (!input || !output)
     return Status(ONNXRUNTIME, FAIL, is_resize ? "Resize: input / output value is nullptr" : 
-                                                 "Upsample: input / output value is nullptr", );
+                                                 "Upsample: input / output value is nullptr");
   if (input_shape.NumDimensions() != output_shape.NumDimensions())
     return Status(ONNXRUNTIME, FAIL, is_resize ? "Resize: input/output value's dimension mismatch" : 
                                                  "Upsample: input/output value's dimension mismatch");
