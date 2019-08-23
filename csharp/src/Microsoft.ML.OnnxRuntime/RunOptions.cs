@@ -9,6 +9,14 @@ namespace Microsoft.ML.OnnxRuntime
     public class RunOptions: IDisposable
     {
         private IntPtr _nativePtr;
+        internal IntPtr Handle
+        {
+            get
+            {
+                return _nativePtr;
+            }
+        }
+
 
         public RunOptions()
         {
