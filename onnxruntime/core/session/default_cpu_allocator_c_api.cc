@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <atomic>
+#include "core/framework/utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include <assert.h>
 
@@ -23,10 +24,10 @@ struct OrtDefaultAllocator : OrtAllocatorImpl {
   ~OrtDefaultAllocator() override { OrtReleaseAllocatorInfo(cpuAllocatorInfo); }
 
   void* Alloc(size_t size) {
-    return ::malloc(size);
+    return onnxruntime::utils::DefaultAlloc(size);
   }
   void Free(void* p) {
-    return ::free(p);
+    onnxruntime::utils::DefaultFree(p);
   }
   const OrtAllocatorInfo* Info() const {
     return cpuAllocatorInfo;
