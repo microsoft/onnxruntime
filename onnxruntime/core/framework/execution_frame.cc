@@ -22,11 +22,15 @@ IExecutionFrame::IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, cons
                                  const std::unordered_map<int, OrtValue>& initializers,
                                  const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                                  const OrtValueNameIdxMap& ort_value_idx_map, const NodeIndexInfo& node_index_info)
-    : node_index_info_{node_index_info}, fetch_mlvalue_idxs_{fetch_mlvalue_idxs} {
+    : node_index_info_{node_index_info},
+      all_values_size_{static_cast<size_t>(ort_value_idx_map.MaxIdx()) + 1},
+      fetch_mlvalue_idxs_{fetch_mlvalue_idxs} {
   ORT_ENFORCE(feeds.size() == feed_mlvalue_idxs.size());
   ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs_.size());
+  ORT_ENFORCE(node_index_info_.GetMaxMLValueIdx() == ort_value_idx_map.MaxIdx(),
+              "node_index_info and ort_value_idx_map are out of sync and cannot be used");
 
-  Init(feed_mlvalue_idxs, feeds, initializers, fetches, ort_value_idx_map);
+  Init(feed_mlvalue_idxs, feeds, initializers, fetches);
 }
 
 IExecutionFrame::~IExecutionFrame() = default;
@@ -79,7 +83,7 @@ AllocatorPtr IExecutionFrame::GetAllocator(const OrtAllocatorInfo& info) const {
 Status IExecutionFrame::ReleaseMLValue(int ort_value_idx) { return ReleaseMLValueImpl(ort_value_idx); }
 
 Status IExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
-  if (ort_value_idx == NodeIndexInfo::kInvalidEntry || static_cast<size_t>(ort_value_idx) >= all_values_.size()) {
+  if (ort_value_idx == NodeIndexInfo::kInvalidEntry || static_cast<size_t>(ort_value_idx) >= all_values_size_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", ort_value_idx);
   }
 
@@ -95,19 +99,16 @@ Status IExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
 }
 
 int IExecutionFrame::GetNodeIdxToMLValueIdx(int index) const {
+  // the validity of index is checked by GetMLValueIndex
   int ort_value_idx = node_index_info_.GetMLValueIndex(index);
-  ORT_ENFORCE(ort_value_idx == NodeIndexInfo::kInvalidEntry ||
-              (ort_value_idx >= 0 && static_cast<size_t>(ort_value_idx) < all_values_.size()));
-
   return ort_value_idx;
 }
 
 void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
                            const std::unordered_map<int, OrtValue>& initializers,
-                           const std::vector<OrtValue>& fetches,
-                           const OrtValueNameIdxMap& ort_value_idx_map) {
+                           const std::vector<OrtValue>& fetches) {
   // 1. resize the all_value_ vector
-  all_values_.resize(ort_value_idx_map.MaxIdx() + 1);
+  all_values_.resize(all_values_size_);
 
   // 2. Handle non-empty output vector
   if (!fetches.empty()) {

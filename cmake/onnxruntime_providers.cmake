@@ -25,6 +25,16 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
 )
 
+file(GLOB onnxruntime_cpu_automl_cc_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/automl_ops/cpu_automl_kernels.h"
+  "${ONNXRUNTIME_ROOT}/automl_ops/cpu_automl_kernels.cc"
+  "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.h"
+  "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.cc"
+  "${ONNXRUNTIME_ROOT}/automl_ops/automl_featurizers.h"
+  "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.h"
+  "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.cc"
+)
+
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
@@ -55,17 +65,30 @@ if(onnxruntime_USE_NNAPI)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
 endif()
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
-# add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
-source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_contrib_ops_srcs})
+
+set(onnxruntime_providers_src ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
 # disable contrib ops conditionally
-if(onnxruntime_DISABLE_CONTRIB_OPS)
-  add_library(onnxruntime_providers ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
-else()
-  add_library(onnxruntime_providers ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs} ${onnxruntime_cpu_contrib_ops_srcs})
+if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
+  source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_contrib_ops_srcs})
+  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_contrib_ops_srcs})
 endif()
 
+if (onnxruntime_USE_AUTOML)
+  source_group(TREE ${ONNXRUNTIME_ROOT}/ FILES ${onnxruntime_cpu_automl_cc_srcs})
+  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_automl_cc_srcs})
+endif()
+
+add_library(onnxruntime_providers ${onnxruntime_providers_src})
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+
+if (onnxruntime_USE_AUTOML)
+  add_dependencies(onnxruntime_providers automl_featurizers)
+  onnxruntime_add_include_to_target(onnxruntime_providers automl_featurizers)
+  target_link_libraries(onnxruntime_providers automl_featurizers)
+endif()
+
 if(HAS_DEPRECATED_COPY)
   #temporarily ignore this warning
   #see: https://en.wikipedia.org/wiki/Rule_of_three_(C%2B%2B_programming)
@@ -78,17 +101,6 @@ if(HAS_DEPRECATED_COPY)
   set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/where_op.cc" PROPERTIES COMPILE_FLAGS -Wno-deprecated-copy)
 endif()
 
-if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64" AND NOT MSVC)
-  # For x86 platforms it is important to pass this flag to compiler. Without this gemmlowp will use slow reference code.
-  # These optimizations are not enabled on MSVC so excluding it.
-  message("enabling optimizations for gemmlowp")
-  set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/math/matmul_integer.cc" PROPERTIES COMPILE_FLAGS "-msse4.1")
-  set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/math/quantize_linear_matmul.cc" PROPERTIES COMPILE_FLAGS "-msse4.1")
-  set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/nn/qlinearconv.cc" PROPERTIES COMPILE_FLAGS "-msse4.1")
-  set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/nn/conv_integer.cc" PROPERTIES COMPILE_FLAGS "-msse4.1")
-endif()
-
-set(gemmlowp_src ${PROJECT_SOURCE_DIR}/external/gemmlowp)
 set(re2_src ${ONNXRUNTIME_ROOT}/../cmake/external/re2)
 target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${gemmlowp_src} ${re2_src})
 add_dependencies(onnxruntime_providers gsl onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})

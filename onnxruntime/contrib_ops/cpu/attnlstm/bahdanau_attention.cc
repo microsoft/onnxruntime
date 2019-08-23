@@ -15,8 +15,8 @@ namespace contrib {
 template <typename T>
 BahdanauAttention<T>::BahdanauAttention(AllocatorPtr allocator, const logging::Logger& logger,
                                         int batch_size, int max_memory_step, int memory_depth,
-                                        int query_depth, int attn_depth, bool normalize)
-    : allocator_(allocator), logger_(logger), batch_size_(batch_size), max_memory_steps_(max_memory_step), memory_depth_(memory_depth), query_depth_(query_depth), attn_depth_(attn_depth), normalize_(normalize) {
+                                        int query_depth, int attn_depth, bool normalize, concurrency::ThreadPool* threadpool)
+    : allocator_(allocator), logger_(logger), batch_size_(batch_size), max_memory_steps_(max_memory_step), memory_depth_(memory_depth), query_depth_(query_depth), attn_depth_(attn_depth), normalize_(normalize), ttp_(threadpool) {
   values_ = Allocate(allocator_, batch_size_ * max_memory_steps_ * memory_depth_, values_ptr_, true);
   keys_ = Allocate(allocator_, batch_size_ * max_memory_steps_ * attn_depth_, keys_ptr_, true);
   processed_query_ = Allocate(allocator_, batch_size_ * attn_depth_, processed_query_ptr_, true);
@@ -72,11 +72,11 @@ void BahdanauAttention<T>::PrepareMemory(
                 "Real memory steps ", mem_steps, " is not in (0, ", max_memory_steps_, "]");
   }
 
-  math::GemmEx<T, CPUMathUtil>(CblasNoTrans, CblasNoTrans,
-                               batch_size_ * max_memory_steps_, attn_depth_, memory_depth_, T{1.0},
-                               memory.data(), memory_depth_,
-                               memory_layer_weights_.data(), attn_depth_, T{0.0},
-                               keys_.data(), attn_depth_, &CPUMathUtil::Instance());
+  math::GemmEx<T>(CblasNoTrans, CblasNoTrans,
+                  batch_size_ * max_memory_steps_, attn_depth_, memory_depth_, T{1.0},
+                  memory.data(), memory_depth_,
+                  memory_layer_weights_.data(), attn_depth_, T{0.0},
+                  keys_.data(), attn_depth_, ttp_);
 }
 
 template <typename T>
@@ -115,11 +115,11 @@ void BahdanauAttention<T>::Compute(
     const gsl::span<T>& output,
     const gsl::span<T>& aligns) const {
   //process query in dense query layer without bias
-  math::GemmEx<T, CPUMathUtil>(CblasNoTrans, CblasNoTrans,
-                               batch_size_, attn_depth_, query_depth_, T{1.0},
-                               queries.data(), query_depth_,
-                               query_layer_weights_.data(), attn_depth_, T{0.0},
-                               processed_query_.data(), attn_depth_, &CPUMathUtil::Instance());
+  math::GemmEx<T>(CblasNoTrans, CblasNoTrans,
+                  batch_size_, attn_depth_, query_depth_, T{1.0},
+                  queries.data(), query_depth_,
+                  query_layer_weights_.data(), attn_depth_, T{0.0},
+                  processed_query_.data(), attn_depth_, ttp_);
 
   std::fill(aligns.begin(), aligns.end(), T{});
 
@@ -146,11 +146,11 @@ void BahdanauAttention<T>::Compute(
     // Calculate the context
     auto outspan = output.subspan(b * memory_depth_);
     auto values = values_.subspan(b * max_memory_steps_ * memory_depth_);
-    math::GemmEx<T, CPUMathUtil>(CblasNoTrans, CblasNoTrans,
-                                 1, memory_depth_, max_memory_steps_, T{1.0},
-                                 alignments, max_memory_steps_,
-                                 values.data(), memory_depth_, T{0.0},
-                                 outspan.data(), memory_depth_, &CPUMathUtil::Instance());
+    math::GemmEx<T>(CblasNoTrans, CblasNoTrans,
+                    1, memory_depth_, max_memory_steps_, T{1.0},
+                    alignments, max_memory_steps_,
+                    values.data(), memory_depth_, T{0.0},
+                    outspan.data(), memory_depth_, ttp_);
   }
 }
 

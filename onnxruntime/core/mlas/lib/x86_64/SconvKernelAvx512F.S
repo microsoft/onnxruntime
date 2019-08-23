@@ -361,6 +361,9 @@ Arguments:
         .macro PostProcessBlock FilterCount, OutputCount
 
         .globl  MlasConvPostProcessFloatAvx512FFilter\FilterCount\()Output\OutputCount\()
+#if !defined(__APPLE__)
+        .hidden MlasConvPostProcessFloatAvx512FFilter\FilterCount\()Output\OutputCount\()
+#endif
 MlasConvPostProcessFloatAvx512FFilter\FilterCount\()Output\OutputCount\():
 
 .if \FilterCount\() > 2

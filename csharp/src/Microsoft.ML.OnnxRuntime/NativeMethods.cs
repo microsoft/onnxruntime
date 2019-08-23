@@ -131,6 +131,9 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern IntPtr /*(OrtStatus*)*/ OrtDisableSequentialExecution(IntPtr /*(OrtSessionOptions*)*/ options);
 
         [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSetOptimizedModelFilePath(IntPtr /* OrtSessionOptions* */ options, [MarshalAs(UnmanagedType.LPWStr)]string optimizedModelFilepath);
+
+        [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtEnableProfiling(IntPtr /* OrtSessionOptions* */ options, string profilePathPrefix);
 
         [DllImport(nativeLib, CharSet = charSet)]
@@ -158,7 +161,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern IntPtr /*(OrtStatus*)*/ OrtSetSessionThreadPoolSize(IntPtr /* OrtSessionOptions* */ options, int sessionThreadPoolSize);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtSetSessionGraphOptimizationLevel(IntPtr /* OrtSessionOptions* */ options, uint graphOptimizationLevel);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSetSessionGraphOptimizationLevel(IntPtr /* OrtSessionOptions* */ options, GraphOptimizationLevel graphOptimizationLevel);
 
 
         ///**
@@ -180,6 +183,37 @@ namespace Microsoft.ML.OnnxRuntime
 
         //[DllImport(nativeLib, CharSet = charSet)]
         //public static extern void OrtAddCustomOp(IntPtr /*(OrtSessionOptions*)*/ options, string custom_op_path);
+
+        #endregion
+
+        #region RunOptions API
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtCreateRunOptions( out IntPtr /* OrtRunOptions** */ runOptions);
+
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern void OrtReleaseRunOptions(IntPtr /*(OrtRunOptions*)*/options);
+
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtRunOptionsSetRunLogVerbosityLevel(IntPtr /* OrtRunOptions* */ options, LogLevel value);
+
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtRunOptionsSetRunTag(IntPtr /* OrtRunOptions* */ options, string /* const char* */ runTag);
+
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtRunOptionsGetRunLogVerbosityLevel(IntPtr /* OrtRunOptions* */ options, out LogLevel verbosityLevel);
+
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtRunOptionsGetRunTag(IntPtr /* const OrtRunOptions* */options, out IntPtr /* const char** */ runtag);
+
+        // Set a flag so that any running OrtRun* calls that are using this instance of OrtRunOptions
+        // will exit as soon as possible if the flag is true.
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtRunOptionsEnableTerminate(IntPtr /* OrtRunOptions* */ options);
+
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtRunOptionsDisableTerminate(IntPtr /* OrtRunOptions* */ options);
+
+
 
         #endregion
 
@@ -262,6 +296,14 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern IntPtr /*(OrtStatus*)*/ OrtGetTypeInfo(IntPtr /*(OrtValue*)*/ value, IntPtr /*(OrtValue**)*/ typeInfo);
 
         [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtCreateTensorAsOrtValue(
+                        IntPtr /*_Inout_ OrtAllocator* */ allocator,
+                        long[] /*_In_ const int64_t* */ shape, 
+                        UIntPtr /*size_t*/ shape_len, 
+                        TensorElementType type,
+                        out IntPtr /* OrtValue** */ outputValue);
+
+        [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /* OrtStatus */ OrtCreateTensorWithDataAsOrtValue(
                                                         IntPtr /* (const OrtAllocatorInfo*) */ allocatorInfo,
                                                         IntPtr /* (void*) */dataBufferHandle,
@@ -275,6 +317,15 @@ namespace Microsoft.ML.OnnxRuntime
         /// this is a no-copy method whose pointer is only valid until the backing OrtValue* is free'd.
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtGetTensorMutableData(IntPtr /*(OrtValue*)*/ value, out IntPtr /* (void**)*/ dataBufferHandle);
+
+
+        /// \param value A tensor created from OrtCreateTensor... function.
+        /// \param len total data length, not including the trailing '\0' chars.
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtFillStringTensor(
+                                                        IntPtr /* OrtValue */ value,
+                                                        string[] /* const char* const* */s, 
+                                                        UIntPtr /* size_t */ s_len);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtGetStringTensorContent(

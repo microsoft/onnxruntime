@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics.Tensors;
+using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Runtime.InteropServices;
 
 
@@ -120,8 +120,14 @@ namespace Microsoft.ML.OnnxRuntime
                 case TensorElementType.UInt8:
                     result = DisposableNamedOnnxValueFromNativeTensor<byte>(name, nativeOnnxValue);
                     break;
+                case TensorElementType.Int8:
+                    result = DisposableNamedOnnxValueFromNativeTensor<sbyte>(name, nativeOnnxValue);
+                    break;
                 case TensorElementType.String:
                     result = DisposableNamedOnnxValueFromNativeTensor<string>(name, nativeOnnxValue);
+                    break;
+                case TensorElementType.Bool:
+                    result = DisposableNamedOnnxValueFromNativeTensor<bool>(name, nativeOnnxValue);
                     break;
                 default:
                     throw new NotSupportedException("Tensor of element type: " + elemType + " is not supported");

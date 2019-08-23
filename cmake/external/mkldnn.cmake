@@ -11,6 +11,8 @@ if(WIN32)
   set(MKLDNN_SHARED_LIB mkldnn.dll)
   set(MKLDNN_IMPORT_LIB mkldnn.lib)
   if(onnxruntime_USE_MKLML)
+    # Windows-only updated MKLML binary which contains fix for thread cleanup hang.
+    set(MKLML_VERSION 2020.0.20190813)
     set(MKLML_SHARED_LIB mklml.dll)
     set(MKLML_IMPORT_LIB mklml.lib)
     set(IOMP5MD_SHARED_LIB libiomp5md.dll)
@@ -59,15 +61,15 @@ if (onnxruntime_USE_MKLDNN)
     set(MKLDNN_DLL_PATH ${MKLDNN_LIB_DIR}/${MKLDNN_SHARED_LIB})
   endif()
   set(MKLDNN_INCLUDE_DIR ${MKLDNN_INSTALL}/include)
-  set (MKLDNN_CMAKE_EXTRA_ARGS)
+  set(MKLDNN_CMAKE_EXTRA_ARGS)
+  set(MKLDNN_PATCH_COMMAND1 git apply ${CMAKE_SOURCE_DIR}/patches/mkldnn/mem-patch.cmake.patch)
+  # discard prior changes due to patching in mkldnn source to unblock incremental builds.
+  set(MKLDNN_PATCH_DISCARD_COMMAND cd ${MKLDNN_SOURCE} && git checkout -- .)
   if(NOT onnxruntime_BUILD_FOR_NATIVE_MACHINE)
     # pre-v1.0
     list(APPEND MKLDNN_CMAKE_EXTRA_ARGS "-DARCH_OPT_FLAGS=")
     # v1.0
     list(APPEND MKLDNN_CMAKE_EXTRA_ARGS "-DMKLDNN_ARCH_OPT_FLAGS=")
-    set(MKLDNN_PATCH_COMMAND1 git apply ${CMAKE_SOURCE_DIR}/patches/mkldnn/mem-patch.cmake.patch)
-    # discard prior changes due to patching in mkldnn source to unblock incremental builds.
-    set(MKLDNN_PATCH_DISCARD_COMMAND cd ${MKLDNN_SOURCE} && git checkout -- .)
   endif()
   ExternalProject_Add(project_mkldnn
     PREFIX mkl-dnn

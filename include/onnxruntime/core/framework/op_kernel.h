@@ -210,7 +210,7 @@ struct KernelCreateInfo {
       : kernel_def(std::move(definition)),
         kernel_create_func(create_func) {}
 
-  KernelCreateInfo(KernelCreateInfo&& other)
+  KernelCreateInfo(KernelCreateInfo&& other) noexcept
       : kernel_def(std::move(other.kernel_def)),
         kernel_create_func(std::move(other.kernel_create_func)) {}
 };
@@ -230,6 +230,11 @@ namespace contrib {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace contrib
+
+namespace automl {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}  // namespace automl
 
 namespace contrib {
 namespace cuda {

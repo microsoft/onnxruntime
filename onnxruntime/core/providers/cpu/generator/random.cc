@@ -76,8 +76,6 @@ void GenerateData(std::default_random_engine& generator, TDistribution distribut
 static Status RandomNormalCompute(float mean, float scale, std::default_random_engine& generator, TensorProto::DataType dtype, Tensor& Y);
 static Status RandomUniformCompute(float high, float low, std::default_random_engine& generator, TensorProto::DataType dtype, Tensor& Y);
 
-// Leaving in case we need to change to this approach
-//static Status CreateOutputTensorFromTensorValues(OpKernelContext* ctx, const Tensor& X,Tensor** Y);
 static Status CreateOutputTensorFromTensorShape(OpKernelContext* ctx, const Tensor& X, Tensor** Y);
 static TensorProto::DataType InferDataType(const Tensor& tensor);
 
@@ -168,53 +166,48 @@ static Status MultinomialCompute(OpKernelContext* ctx,
   Eigen::array<int64_t, 2> Y_dims = {{batch_size, num_samples}};
   Matrix<OutputType> output = Matrix<OutputType>(Y.template MutableData<OutputType>(), Y_dims);
 
-  // TODO (perf optimization) - the idea behind making this a lambda is so that we can parallelize across batches.
-  // When we do that this lamdba will act as one task given to a thread
-  auto DoWork = [ctx, num_samples, num_classes, &generator, &logits, &output](int64_t start_row,
-                                                                              int64_t limit_row) {
-    std::default_random_engine generator_copy = generator;
-    // BEGIN create temporary tensor
-    AllocatorPtr alloc;
-    ctx->GetTempSpaceAllocator(&alloc);
-    auto cdf_data = static_cast<double*>(alloc->Alloc(sizeof(double) * num_classes));
-    BufferUniquePtr cdf_buffer(cdf_data, BufferDeleter(alloc));
-    Eigen::array<int64_t, 1> cdf_dims = {{num_classes}};
-    auto cdf = EigenVector<double>(cdf_data, cdf_dims);
-    // END create temporary tensor
+  // BEGIN create temporary tensor
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
+  auto cdf_data = static_cast<double*>(alloc->Alloc(sizeof(double) * num_classes));
+  BufferUniquePtr cdf_buffer(cdf_data, BufferDeleter(alloc));
+  Eigen::array<int64_t, 1> cdf_dims = {{num_classes}};
+  auto cdf = EigenVector<double>(cdf_data, cdf_dims);
+  // END create temporary tensor
 
-    std::uniform_real_distribution<double> dist(0.0, 1.0);  // TODO: should this be initialized per batch?
-    for (int64_t b = start_row; b < limit_row; ++b) {
-      const float* logits_row = &(logits(b, 0));
-      // Takes an along-class maximum (for numerical stability).
-      float maxx = std::numeric_limits<float>::lowest();
-      for (int64_t j = 0; j < num_classes; ++j) {
-        if (Eigen::numext::isfinite(logits_row[j])) {
-          maxx = std::max(maxx, logits_row[j]);
-        }
-      }
-      const auto max_logit = static_cast<double>(maxx);
+  std::uniform_real_distribution<double> dist(0.0, 1.0);  // TODO: should this be initialized per batch?
 
-      // Precompute cumulative probability distribution across classes.
-      // Note: This isn't normalized.
-      cdf = (logits.chip<0>(b).cast<double>() - max_logit).exp();
-      double running_total = 0;
-      for (int64_t j = 0; j < num_classes; ++j) {
-        if (Eigen::numext::isfinite(logits_row[j])) {
-          running_total += cdf(j);
-        }
-        cdf(j) = running_total;
-      }
-      // Generate each sample.
-      const double* cdf_begin = cdf.data();
-      const double* cdf_end = cdf.data() + num_classes;
-      for (int64_t j = 0; j < num_samples; ++j) {
-        const double to_find = dist(generator_copy) * running_total;
-        auto found_iter = std::upper_bound(cdf_begin, cdf_end, to_find);
-        output(b, j) = static_cast<OutputType>(std::distance(cdf_begin, found_iter));
+  for (int64_t b = 0; b < batch_size; ++b) {
+    const float* logits_row = &(logits(b, 0));
+    // Takes an along-class maximum (for numerical stability).
+    float maxx = std::numeric_limits<float>::lowest();
+    for (int64_t j = 0; j < num_classes; ++j) {
+      if (Eigen::numext::isfinite(logits_row[j])) {
+        maxx = std::max(maxx, logits_row[j]);
       }
     }
-  };
-  DoWork(0, batch_size);
+    const auto max_logit = static_cast<double>(maxx);
+
+    // Precompute cumulative probability distribution across classes.
+    // Note: This isn't normalized.
+    cdf = (logits.chip<0>(b).cast<double>() - max_logit).exp();
+    double running_total = 0;
+    for (int64_t j = 0; j < num_classes; ++j) {
+      if (Eigen::numext::isfinite(logits_row[j])) {
+        running_total += cdf(j);
+      }
+      cdf(j) = running_total;
+    }
+    // Generate each sample.
+    const double* cdf_begin = cdf.data();
+    const double* cdf_end = cdf.data() + num_classes;
+    for (int64_t j = 0; j < num_samples; ++j) {
+      const double to_find = dist(generator) * running_total;
+      auto found_iter = std::upper_bound(cdf_begin, cdf_end, to_find);
+      output(b, j) = static_cast<OutputType>(std::distance(cdf_begin, found_iter));
+    }
+  }
+
   return Status::OK();
 }
 
@@ -261,32 +254,6 @@ Status Multinomial::Compute(OpKernelContext* ctx) const {
 
   return status;
 }
-
-/*
-alternative interpretation of the spec is that the input tensor contains the dimensions as ints.
-Keeping this temporarily in case we go back to that.
-
-// read shape information from input tensor and create output tensor with it
-static Status CreateOutputTensorFromTensorValues(OpKernelContext* ctx, const Tensor& X, Tensor** Y) {
-  const TensorShape& shape = X.Shape();
-  auto size = shape.Size();
-  auto num_dims = shape.NumDimensions();
-
-  if (num_dims != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Expected 1 dimension tensor with shape information. Dimensions=", num_dims);
-  }
-
-  std::vector<int64_t> dims;
-  dims.reserve(shape.Size());
-
-  auto data = gsl::make_span(tensor.template Data<int64_t>(), shape.Size());
-  dims.insert(dims.cbegin(), data.cbegin(), data.cend());
-
-  *Y = ctx->Output(0, TensorShape(dims));
-
-  return Status::OK();
-}
-*/
 
 // create output tensor using shape of input tensor
 static Status CreateOutputTensorFromTensorShape(OpKernelContext* ctx, const Tensor& X, Tensor** Y) {
@@ -363,9 +330,11 @@ static Status RandomUniformCompute(float low, float high,
 
 template <typename T, typename TDistribution>
 void GenerateData(std::default_random_engine& generator, TDistribution distribution, Tensor& tensor) {
-  auto out = gsl::make_span(tensor.template MutableData<T>(), tensor.Shape().Size());
-
-  std::for_each(out.begin(), out.end(), [&generator, &distribution](T& value) { value = distribution(generator); });
+  T* out = tensor.MutableData<T>();
+  for (int64_t i = 0, end = tensor.Shape().Size(); i < end; ++i) {
+    *out = distribution(generator);
+    ++out;
+  }
 }
 
 }  // namespace onnxruntime
