@@ -32,7 +32,8 @@ namespace perftest {
       "\t-M: Disable memory pattern.\n"
       "\t-A: Disable memory arena\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
-      "\t-e [cpu|cuda|mkldnn|tensorrt|ngraph|openvino]: Specifies the provider 'cpu','cuda','mkldnn','tensorrt', 'ngraph' or 'openvino'. "
+      "\t-e [cpu|cuda|mkldnn|tensorrt|ngraph|openvino]: Specifies the provider 'cpu','cuda','mkldnn','tensorrt', "
+      "'ngraph' or 'openvino'. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
@@ -40,9 +41,10 @@ namespace perftest {
       "\t-p [profile_file]: Specifies the profile name to enable profiling and dump the profile data to the file.\n"
       "\t-s: Show statistics result, like P75, P90.\n"
       "\t-v: Show verbose information.\n"
-      "\t-x [thread_size]: Session thread pool size.\n"
+      "\t-x [thread_size]: Session thread pool size, must >=0.\n"
       "\t-P: Use parallel executor instead of sequential executor.\n"
-      "\t-o [optimization level]: 0: disable optimization, 1: basic optimization, 2: extended optimization, 3: extended+layout optimization. \n"
+      "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
+      "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. \n"
       "\t-h: help\n");
 }
 
@@ -114,7 +116,7 @@ namespace perftest {
         break;
       case 'x':
         test_config.run_config.session_thread_pool_size = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        if (test_config.run_config.session_thread_pool_size <= 0) {
+        if (test_config.run_config.session_thread_pool_size < 0) {
           return false;
         }
         break;
@@ -143,8 +145,13 @@ namespace perftest {
           case ORT_ENABLE_ALL:
             test_config.run_config.optimization_level = ORT_ENABLE_ALL;
             break;
-          default:
-            return false;
+          default: {
+            if (tmp > ORT_ENABLE_ALL) {  // relax constraint
+              test_config.run_config.optimization_level = ORT_ENABLE_ALL;
+            } else {
+              return false;
+            }
+          }
         }
         break;
       }

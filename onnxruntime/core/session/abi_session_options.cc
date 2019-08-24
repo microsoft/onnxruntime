@@ -100,6 +100,11 @@ ORT_API_STATUS_IMPL(OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* opti
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtSetSessionLogSeverityLevel, _In_ OrtSessionOptions* options, int session_log_severity_level) {
+  options->value.session_log_severity_level = session_log_severity_level;
+  return nullptr;
+}
+
 // Set Graph optimization level.
 ORT_API_STATUS_IMPL(OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options,
                     GraphOptimizationLevel graph_optimization_level) {
@@ -129,8 +134,6 @@ ORT_API_STATUS_IMPL(OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions*
 
 ///How many threads in the session thread pool.
 ORT_API_STATUS_IMPL(OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size) {
-  if (session_thread_pool_size <= 0)
-    return OrtCreateStatus(ORT_INVALID_ARGUMENT, "session_thread_pool_size is not valid");
   options->value.session_thread_pool_size = session_thread_pool_size;
   return nullptr;
 }

@@ -17,6 +17,11 @@ ORT_API_STATUS_IMPL(OrtRunOptionsSetRunLogVerbosityLevel, _In_ OrtRunOptions* op
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtRunOptionsSetRunLogSeverityLevel, _In_ OrtRunOptions* options, int value) {
+  options->run_log_severity_level = value;
+  return nullptr;
+}
+
 ORT_API_STATUS_IMPL(OrtRunOptionsSetRunTag, _In_ OrtRunOptions* options, _In_ const char* run_tag) {
   if (run_tag)
     options->run_tag = run_tag;
@@ -25,6 +30,11 @@ ORT_API_STATUS_IMPL(OrtRunOptionsSetRunTag, _In_ OrtRunOptions* options, _In_ co
 
 ORT_API_STATUS_IMPL(OrtRunOptionsGetRunLogVerbosityLevel, _In_ const OrtRunOptions* options, int* out) {
   *out = options->run_log_verbosity_level;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtRunOptionsGetRunLogSeverityLevel, _In_ const OrtRunOptions* options, int* out) {
+  *out = options->run_log_severity_level;
   return nullptr;
 }
 

@@ -91,9 +91,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   else
     session_options.DisableSequentialExecution();
   fprintf(stdout, "Setting thread pool size to %d\n", performance_test_config.run_config.session_thread_pool_size);
-  // Don't set the thread pool size unless it has been changed from our zero default value (as zero will fail)
-  if (performance_test_config.run_config.session_thread_pool_size != 0)
-    session_options.SetThreadPoolSize(performance_test_config.run_config.session_thread_pool_size);
+  session_options.SetThreadPoolSize(performance_test_config.run_config.session_thread_pool_size);
   // Set optimization level.
   session_options.SetGraphOptimizationLevel(performance_test_config.run_config.optimization_level);
   if (!performance_test_config.run_config.profile_file.empty())
@@ -102,7 +100,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
   size_t output_count = session_.GetOutputCount();
   output_names_.resize(output_count);
-  Ort::Allocator a = Ort::Allocator::CreateDefault();
+  Ort::AllocatorWithDefaultOptions a;
   for (size_t i = 0; i != output_count; ++i) {
     char* output_name = session_.GetOutputName(i, a);
     assert(output_name != nullptr);

@@ -12,7 +12,7 @@ OrtCompareAllocatorInfo
 OrtCreateAllocatorInfo
 OrtCreateCpuAllocatorInfo
 OrtCreateCustomOpDomain
-OrtCreateDefaultAllocator
+OrtGetAllocatorWithDefaultOptions
 OrtCreateEnv
 OrtCreateEnvWithCustomLogger
 OrtCreateRunOptions
@@ -51,7 +51,6 @@ OrtGetValueType
 OrtGetVersionString
 OrtIsTensor
 OrtGetOnnxTypeFromTypeInfo
-OrtReleaseAllocator
 OrtReleaseAllocatorInfo
 OrtReleaseCustomOpDomain
 OrtReleaseEnv
@@ -66,6 +65,7 @@ OrtRun
 OrtRunOptionsGetRunLogVerbosityLevel
 OrtRunOptionsGetRunTag
 OrtRunOptionsSetRunLogVerbosityLevel
+OrtRunOptionsSetRunLogSeverityLevel
 OrtRunOptionsSetRunTag
 OrtRunOptionsEnableTerminate
 OrtRunOptionsDisableTerminate
@@ -80,6 +80,7 @@ OrtSetDimensions
 OrtSetSessionGraphOptimizationLevel
 OrtSetSessionLogId
 OrtSetSessionLogVerbosityLevel
+OrtSetSessionLogSeverityLevel
 OrtSetOptimizedModelFilePath
 OrtSetSessionThreadPoolSize
 OrtSetTensorElementType
