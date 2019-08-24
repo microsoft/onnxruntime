@@ -258,10 +258,7 @@ def check_md5(filename, expected_md5):
 
 #the last part of src_url should be unique, across all the builds
 def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
-    if is_windows():
-        cache_dir = r'D:\data\onnxruntime' # build agent may run out of memory as the build binaries are in C:
-    else:
-        cache_dir = os.path.join(expanduser("~"), '.cache','onnxruntime')
+    cache_dir = os.path.join(expanduser("~"), '.cache','onnxruntime')
     os.makedirs(cache_dir, exist_ok=True)
     local_zip_file = os.path.join(cache_dir, os.path.basename(src_url))
     if not check_md5(local_zip_file, expected_md5):

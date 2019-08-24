@@ -4,9 +4,6 @@
 #pragma once
 #include <vector>
 #include <memory>
-#if !(_MSC_VER)
-#include <stdlib.h>
-#endif
 
 namespace onnxruntime {
 namespace test {
@@ -21,23 +18,7 @@ class HeapBuffer {
    * free all the buffers allocated from 'AllocMemory' function
    */
   ~HeapBuffer();
-  void* AllocMemory(size_t size) {
-    if (size == 0)
-      return nullptr;
-
-    void* p;
-    size_t alignment = 64;
-#if _MSC_VER
-    p = _aligned_malloc(size, alignment);
-    if (p == nullptr) throw std::bad_alloc();
-#else
-    int ret = posix_memalign(&p, alignment, size);
-    if (ret != 0) throw std::bad_alloc();
-#endif
-
-    buffers_.push_back(p);
-    return p;
-  }
+  void* AllocMemory(size_t size);
   void AddDeleter(OrtCallback* d);
 
  private:
