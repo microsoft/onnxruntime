@@ -195,6 +195,43 @@ The OpenVINO Execution Provider can be built using the following commands:
 
 For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document OpenVINO-ExecutionProvider.md in <code>$onnxruntime_root/docs/execution_providers</code>
 
+### Nuphar
+ONNX Runtime supports Nuphar execution provider (released as preview). It is an execution provider built on top of [TVM](https://github.com/dmlc/tvm) and [LLVM](https://llvm.org). Currently it targets to X64 CPU.
+
+The Nuphar execution provider for ONNX Runtime is built and tested with LLVM 6.0.1. Because of TVM's requirement when building with LLVM, you need to build LLVM from source:
+
+Window with Visual Studio 2017: (Note here builds release flavor. Debug build of LLVM would be needed to build with Debug flavor of ONNX Runtime)
+```
+REM download llvm source code 6.0.1 and unzip to \llvm\source\path, then install to \llvm\install\path
+cd \llvm\source\path
+mkdir build
+cd build
+cmake .. -G "Visual Studio 15 2017 Win64" -DLLVM_TARGETS_TO_BUILD=X86
+msbuild llvm.sln /maxcpucount /p:Configuration=Release /p:Platform=x64
+cmake -DCMAKE_INSTALL_PREFIX=\llvm\install\path -DBUILD_TYPE=Release -P cmake_install.cmake
+```
+
+Linux:
+```
+# download llvm source code 6.0.1 and unzip to /llvm/source/path, then install to /llvm/install/path
+cd /llvm/source/path
+mkdir build
+cd build
+cmake .. -DLLVM_TARGETS_TO_BUILD=X86 -DCMAKE_BUILD_TYPE=Release
+cmake --build.
+cmake -DCMAKE_INSTALL_PREFIX=/llvm/install/path -DBUILD_TYPE=Release -P cmake_install.cmake
+```
+
+Then you can build from source by using following command from the onnxruntime directory:
+Windows:
+```
+build.bat --use_tvm --use_llvm --llvm_path=\llvm\install\path\lib\cmake\llvm --use_mklml --use_nuphar --config=Release
+```
+
+Linux:
+```
+./build.sh --use_tvm --use_llvm --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --config=Release
+```
 ### OpenBLAS
 #### Windows
 Instructions how to build OpenBLAS for windows can be found here https://github.com/xianyi/OpenBLAS/wiki/How-to-use-OpenBLAS-in-Microsoft-Visual-Studio#build-openblas-for-universal-windows-platform.

@@ -20,7 +20,6 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
 
   std::vector<int64_t> dims{(int64_t)input_vals.size()};
 
-
   std::vector<float> expected_vals;
   for (const auto& iv : input_vals)
     expected_vals.push_back(expected_func(iv));
@@ -199,19 +198,21 @@ TEST(ActivationOpTest, PRelu_MultiChannel) {
 }
 
 TEST(ActivationOpTest, Softplus) {
-  TestUnaryElementwiseOp("Softplus",
-                         input_vals,
-                         [](float x) {
-                           if (x > 0)
-                             return x + logf(expf(-x) + 1);
-                           else
-                             return logf(expf(x) + 1);
-                         });
+  TestUnaryElementwiseOp(
+      "Softplus",
+      input_vals,
+      [](float x) {
+        if (x > 0)
+          return x + logf(expf(-x) + 1);
+        else
+          return logf(expf(x) + 1);
+      },
+      {}, false);
 }
 
 TEST(ActivationOpTest, Softsign) {
   TestUnaryElementwiseOp("Softsign",
-                         no_inf_input_vals,
+                         no_flt_max_inf_input_vals,
                          [](float x) { return x / (1 + std::abs(x)); }, {}, false);  // Disable TensorRT because result mismatches
 }
 

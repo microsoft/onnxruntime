@@ -1,13 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "traverse_shape_infer.h"
+#include "core/providers/nuphar/compiler/traverse_shape_infer.h"
+
 #include "core/codegen/common/common.h"
 #include "core/common/common.h"
 #include "core/framework/tensorprotoutils.h"
 
-// TODO analysis move to nuphar
+// TODO retire this file
+
 namespace onnxruntime {
+namespace nuphar {
 
 // local shape infernece function for input
 static bool CreateInput(const NodeArg* def,
@@ -49,7 +52,7 @@ static Status CreateOutputs(
         if (shape_proto) {
           TensorShape shape{utils::GetTensorShapeFromTensorShapeProto(*shape_proto)};
           ShapeExpr output_shape(shape.NumDimensions());
-          for (size_t d = 0; d < shape.NumDimensions(); ++d) {
+          for (int d = 0; d < gsl::narrow<int>(shape.NumDimensions()); ++d) {
             if (shape[d] > 0) {
               output_shape[d] = DimExpr(shape[d]);
             } else {
@@ -77,8 +80,9 @@ Status ShapeInference(
     }
   }
 
-  // build input_from_ and initializers
-  for (const auto& node : graph.Nodes()) {
+  // perform shape inference using the topological order from ORT
+  for (const NodeIndex& node_index : graph.GetNodesInTopologicalOrder()) {
+    const Node& node = *graph.GetNode(node_index);
     // initializers
     node.ForEachWithIndex(
         node.InputDefs(),
@@ -90,13 +94,25 @@ Status ShapeInference(
           return Status::OK();
         });
 
-    auto subgraph = GetSubgraph(node);
+    // handle subgraph
+    const Graph* subgraph = GetSubgraph(node);
     if (nullptr != subgraph) {
       GraphViewer subgraph_viewer(*subgraph);
       ShapeInference(subgraph_viewer, context);
     }
 
-    // input_from_
+    // collect inputs before creating outputs
+    std::vector<const ShapeExpr*> inputs;
+    for (const NodeArg* def : node.InputDefs()) {
+      inputs.push_back(def->Exists() ? context.Lookup(def) : nullptr);
+    }
+
+    // create outputs
+    std::vector<ShapeExpr> op_outputs;
+    ORT_RETURN_IF_ERROR(CreateOutputs(&node, inputs, op_outputs));
+    context.ops.emplace(&node, std::move(op_outputs));
+
+    // recall input_from_
     node.ForEachWithIndex(
         node.OutputDefs(),
         [&node, &context](const NodeArg& def, size_t index) {
@@ -105,20 +121,8 @@ Status ShapeInference(
         });
   }
 
-  // iterate though the graph and create op (outputs)
-  for (auto node_index : graph.GetNodesInTopologicalOrder()) {
-    const auto& node = *graph.GetNode(node_index);
-    std::vector<const ShapeExpr*> inputs;
-    for (const NodeArg* def : node.InputDefs()) {
-      inputs.push_back(def->Exists() ? context.Lookup(def) : nullptr);
-    }
-
-    std::vector<ShapeExpr> op_outputs;
-    ORT_RETURN_IF_ERROR(CreateOutputs(&node, inputs, op_outputs));
-    context.ops.emplace(&node, std::move(op_outputs));
-  }
-
   return Status::OK();
 }
 
+}  // namespace nuphar
 }  // namespace onnxruntime

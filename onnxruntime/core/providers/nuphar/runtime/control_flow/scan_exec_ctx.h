@@ -6,7 +6,7 @@
 #include "core/providers/nuphar/runtime/control_flow/loop_exec_ctx.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 // Note ScanExecInfo have all ort related meta data
 struct ScanExecInfo : ControlFlowInfo {
@@ -18,6 +18,7 @@ struct ScanExecInfo : ControlFlowInfo {
   int64_t num_state_variables;
   int64_t num_scan_inputs;
   int64_t num_scan_outputs;
+  int64_t num_scan_implicit_inputs;
 
   std::vector<int> state_to_output_indices;
 
@@ -31,11 +32,14 @@ class ScanExecCtx final : public LoopExecCtx {
   ScanExecCtx() : seq_length_(0) {
   }
 
-  void InitContext(NupharComputeCtx* compute_ctx) override;
-  void UpdateContext(NupharComputeCtx* compute_ctx) override;
-  void FillTVMArgs(NupharComputeCtx* compute_ctx) override;
+  void InitContext(KernelComputeCtx* compute_ctx,
+                   const NupharFuncInfo* func_info) override;
+  void UpdateContext(KernelComputeCtx* compute_ctx,
+                     const NupharFuncInfo* func_info) override;
+  void InitIteration(KernelComputeCtx* compute_ctx,
+                     const NupharFuncInfo* func_info) override;
 
-  void LoopFinalize() override;
+  void LoopFinalizer() override;
   void Advance(const ControlFlowInfo* cf_info) override;
 
  private:
@@ -65,6 +69,7 @@ class ScanExecCtx final : public LoopExecCtx {
   // allocated state buffers
   // This is unqiue_ptr from Ort, and will be freed after this class is free
   std::vector<IAllocatorUniquePtr<void>> ort_state_buffer_unique_ptrs_;
+
   // state buffers (raw ptrs)
   // The raw pointer of the above.
   // These two the one we common use for address calculation
@@ -78,5 +83,5 @@ class ScanExecCtx final : public LoopExecCtx {
   ;
 };
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

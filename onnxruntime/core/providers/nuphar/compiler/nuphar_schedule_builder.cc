@@ -4,14 +4,14 @@
 #include "core/providers/nuphar/compiler/nuphar_schedule_builder.h"
 
 #include "core/codegen/common/settings.h"
-#include "core/codegen/target/generic/scheduler/schedule_utils.h"
-#include "core/codegen/target/tvm_schedule_builder.h"
+#include "core/codegen/passes/scheduler/schedule_utils.h"
+#include "core/codegen/passes/scheduler/tvm_schedule_builder.h"
 
-#include "core/providers/nuphar/common/analysis/subgraph_gen_stats.h"
+#include "core/providers/nuphar/common/analysis/subgraph_codegen_stats.h"
 
 // TODO change name space
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 // Traverse iterates a tvm::Tensor and itself dependencies
 // and builds schedule (in ScheduleContext)
@@ -19,10 +19,10 @@ namespace tvm_codegen {
 static void Traverse(const tvm::Tensor& tensor,
                      const Node* node,
                      NupharCodeGenCtx& ctx_codegen,
-                     ScheduleContext& ctx_schedule) {
+                     tvm_codegen::ScheduleContext& ctx_schedule) {
   // no need to traverse on nodes already marked as closured
   if (ctx_schedule.scheduled_tensors.count(tensor->op.get()) > 0) {
-    if (ctx_schedule.scheduled_tensors[tensor->op.get()] == ScheduleType::ScheduleClosure) {
+    if (ctx_schedule.scheduled_tensors[tensor->op.get()] == tvm_codegen::ScheduleType::ScheduleClosure) {
       return;
     }
   }
@@ -31,7 +31,7 @@ static void Traverse(const tvm::Tensor& tensor,
 
   // for real ouput
   bool is_real_output = nullptr != node &&
-                        codegen::Promote<codegen::SubGraphStats>(ctx_codegen.GetGraphStats())->IsOutputNode(node);
+                        Promote<CodeGenUnitStats>(ctx_codegen.GetGraphStats())->IsOutputNode(node);
 
   if (is_real_output) {
     // TODO change it to the value from Target
@@ -62,9 +62,9 @@ tvm::Schedule CreateSchedule(const tvm::Array<tvm::Tensor>& outs,
   if (codegen::CodeGenSettings::Instance().HasOption(codegen::CodeGenSettings::kCodeGenDumpSchedule))
     ctx_codegen.GetCodeGenHandle()->schedule_builder->DumpAllSchedulers();
 
-  ScheduleContext ctx_schedule(out_ops);
+  tvm_codegen::ScheduleContext ctx_schedule(out_ops);
 
-  // Schedule all optus
+  // Schedule all outputs
   for (const auto& t : outs) {
     const Node* node = ctx_codegen.FindNode(t);
     Traverse(t, node, ctx_codegen, ctx_schedule);
@@ -73,5 +73,5 @@ tvm::Schedule CreateSchedule(const tvm::Array<tvm::Tensor>& outs,
   return ctx_schedule.schedule;
 }
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

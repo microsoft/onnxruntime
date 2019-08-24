@@ -4,22 +4,20 @@
 #pragma once
 
 #include "core/codegen/common/common.h"
-#include "core/providers/nuphar/common/analysis/analysis.h"
 #include "core/graph/graph.h"
+#include "core/providers/nuphar/common/analysis/analysis.h"
 
 namespace onnxruntime {
-namespace codegen {
+namespace nuphar {
 
-class OutputAliasAnalysis : public OrtAnalysis {
+class OutputAliasAnalysis : public NupharAnalysis {
  public:
   OutputAliasAnalysis()
-      : OrtAnalysis("OutputAliasAnalysis") {}
+      : NupharAnalysis("OutputAliasAnalysis") {}
 
   ~OutputAliasAnalysis() = default;
 
-  void Evaluate(const onnxruntime::GraphViewer& graph) override;
-
-  void EvaluateSingleNode(const onnxruntime::Node& node);
+  void Evaluate(const onnxruntime::nuphar::NupharSubgraphUnit& graph) override;
 
   bool IsOutputNode(const onnxruntime::Node* node) const;
 
@@ -33,9 +31,13 @@ class OutputAliasAnalysis : public OrtAnalysis {
   // a map from an output alias to its input
   std::map<NodeKey, const onnxruntime::NodeArg*> alias_use_defs_;
 
+  void Traverse(const std::vector<const Node*>& nodes,
+                const std::set<std::string>& graph_inputs,
+                const std::set<std::string>& graph_outputs);
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OutputAliasAnalysis);
 };
 
-}  // namespace codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

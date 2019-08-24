@@ -8,12 +8,13 @@
 #include "core/graph/graph_viewer.h"
 #include "core/providers/nuphar/common/analysis/analysis.h"
 
+#include "core/providers/nuphar/common/nuphar_subgraph.h"
 // Base class of GraphStatsBase
 // GraphStatsBase holds analysis results from a graph
 // GraphStatsBase can hold multiple analyses
 
 namespace onnxruntime {
-namespace codegen {
+namespace nuphar {
 
 template <typename INPUT_TYPE>
 class GraphStatsBase {
@@ -23,7 +24,7 @@ class GraphStatsBase {
 
   GraphStatsBase() {}
 
-  ~GraphStatsBase() = default;
+  virtual ~GraphStatsBase() = default;
 
   // Evaluate all passes
   virtual void Evaluate(INPUT_TYPE graph) {
@@ -54,20 +55,23 @@ class GraphStatsBase {
   }
 
  protected:
-  // existed eval passes not requiring evaluation
-  std::vector<std::shared_ptr<AnalysisBase<INPUT_TYPE>>> existed_eval_passes_;
-
-  std::string name_{"Unknown"};
+  const std::string name_{"Unknown"};
 
   std::vector<std::shared_ptr<AnalysisBase<INPUT_TYPE>>> passes_;
+
+ private:
+  // existed eval passes not requiring evaluation
+  std::vector<std::shared_ptr<AnalysisBase<INPUT_TYPE>>> existed_eval_passes_;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphStatsBase);
 };
 
 using OrtGraphStats = GraphStatsBase<const onnxruntime::GraphViewer&>;
+using NupharSubgraphUnitStats = GraphStatsBase<const onnxruntime::nuphar::NupharSubgraphUnit&>;
 
-// Add Promote for OrtGraphStats
+// Add Promote for OrtGraphStats and NupharSubgraphUnitStats
 DYNAMIC_PROMOTE(OrtGraphStats)
+DYNAMIC_PROMOTE(NupharSubgraphUnitStats)
 
-}  // namespace codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

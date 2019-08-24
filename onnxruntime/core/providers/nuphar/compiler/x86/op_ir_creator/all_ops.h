@@ -2,11 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/codegen/target/tvm_op_creator.h"
-#include "core/codegen/target/tvm_context.h"
+#include "core/codegen/passes/utils/codegen_context.h"
+#include "core/codegen/passes/op_ir_creator/tvm_op_creator.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 // Declare a TVM IR builder based on the ORT OP type
 // with postfix NupharTVMX86
@@ -21,26 +21,44 @@ namespace tvm_codegen {
 #define NUPHAR_TVM_X86_OP_IR_CREATOR_STRING(OP) \
   STRINGIZE(NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(OP))
 
+#define LIST_X86_UNARY_OPS()   \
+  UNARY_OP(Erf)                \
+  UNARY_OP(Exp)                \
+  UNARY_OP(Log)                \
+  UNARY_OP(ParametricSoftplus) \
+  UNARY_OP(ScaledTanh)         \
+  UNARY_OP(Selu)               \
+  UNARY_OP(Sigmoid)            \
+  UNARY_OP(Softplus)           \
+  UNARY_OP(Tanh)
+
 #define LIST_REDUCE_V_OPS() \
   REDUCE_V_OP(ReduceMax)    \
   REDUCE_V_OP(ReduceMin)    \
   REDUCE_V_OP(ReduceSum)
 
-#define LIST_ALL_X86_OPS()   \
-  LIST_REDUCE_V_OPS()        \
-  ADD_OP_ITEM(LogSoftmax)    \
-  ADD_OP_ITEM(MatMul)        \
-  ADD_OP_ITEM(MatMulInteger) \
-  ADD_OP_ITEM(Softmax)
+#define LIST_ALL_X86_OPS()     \
+  LIST_REDUCE_V_OPS()          \
+  LIST_X86_UNARY_OPS()         \
+  ADD_OP_ITEM(Gemm)            \
+  ADD_OP_ITEM(LogSoftmax)      \
+  ADD_OP_ITEM(MatMul)          \
+  ADD_OP_ITEM(MatMulInteger)   \
+  ADD_OP_ITEM(MatMulInteger16) \
+  ADD_OP_ITEM(Slice)           \
+  ADD_OP_ITEM(Softmax)         \
+  ADD_OP_ITEM(Tile)
 
 // Define all OPs for NupharTVMX86
 #define ADD_OP_ITEM(OP) DECLARE_NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(OP)
 #define REDUCE_V_OP(OP) ADD_OP_ITEM(OP)
+#define UNARY_OP(OP) ADD_OP_ITEM(OP)
 
 LIST_ALL_X86_OPS()
 
 #undef ADD_OP_ITEM
 #undef REDUCE_V_OP
+#undef UNARY_OP
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

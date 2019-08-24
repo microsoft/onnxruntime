@@ -6,20 +6,26 @@
 #include "core/codegen/common/common.h"
 #include "core/codegen/common/utils.h"
 #include "core/common/logging/logging.h"
+#include "core/providers/nuphar/nuphar_execution_provider.h"
+
 #include <algorithm>
 #include <cctype>
 #include <unordered_set>
+#include <regex>
 
 namespace onnxruntime {
-namespace nuphar_codegen {
+namespace nuphar {
 
 static const std::unordered_set<std::string> valid_keys = {
     codegen::CodeGenSettings::kDumpAllOptions,
     codegen::CodeGenSettings::kCodeGenDumpModule,
     codegen::CodeGenSettings::kCodeGenDumpLower,
     codegen::CodeGenSettings::kCodeGenDumpSchedule,
-    codegen::CodeGenSettings::kCodeGenFastMath,
+    kNupharFastMath,
+    kNupharFastActivation,
     kNupharDumpFusedNodes,
+    kNupharDumpPartition,
+    kNupharIMatMulForceMkl,
     kNupharMatmulExec,
     kNupharCachePath,
     kNupharCacheVersion,
@@ -28,8 +34,67 @@ static const std::unordered_set<std::string> valid_keys = {
     kNupharCacheForceNoJIT,
     kNupharCodeGenTarget};
 
-void CreateNupharCodeGenSettings() {
+void SetDefaultOptions(std::map<std::string, std::string>& options) {
+  // create two temporary strings to get rid of the odr-use issue introduced
+  // The issue would trigger missing definition errors for static constexpr members
+  // at link time.
+  std::string fast_math_opt(kNupharFastMath);
+  std::string select_fast_math(kNupharFastMath_ShortPolynormial);
+  options.insert(std::make_pair(fast_math_opt, select_fast_math));
+
+  std::string fast_act_opt(kNupharFastActivation);
+  std::string select_fast_act(kNupharActivations_DeepCpu);
+  options.insert(std::make_pair(fast_act_opt, select_fast_act));
+
+  // set jit cache so name
+  std::string cache_so_name_opt(kNupharCacheSoName);
+  std::string cache_so_name_default(kNupharCacheSoName_Default);
+  options.insert(std::make_pair(cache_so_name_opt, cache_so_name_default));
+}
+
+void CreateNupharCodeGenSettings(const NupharExecutionProviderInfo& info) {
   std::map<std::string, std::string> options;
+  SetDefaultOptions(options);
+
+  std::unordered_set<std::string> required_options;
+  if (!info.settings.empty()) {
+    const std::string& str = info.settings;
+
+    // tokenize settings
+    std::regex reg("\\s*,\\s*");
+    std::sregex_token_iterator iter(str.begin(), str.end(), reg, -1);
+    std::sregex_token_iterator iter_end;
+    std::vector<std::string> pairs(iter, iter_end);
+
+    ORT_ENFORCE(pairs.size() > 0);
+    for (const auto& pair : pairs) {
+      auto pos_colon = pair.find(':');
+      ORT_ENFORCE(pos_colon != std::string::npos, "Invalid key value pair.");
+      std::string key = pair.substr(0, pos_colon);
+      std::string value = pair.substr(pos_colon + 1);
+
+      // trim leading and trailing spaces from key/value
+      auto trim = [](const std::string& str) -> std::string {
+        const std::string WHITESPACE = " \n\r\t\f\v";
+        size_t start = str.find_first_not_of(WHITESPACE);
+        if (start == std::string::npos) {
+          return "";
+        } else {
+          size_t end = str.find_last_not_of(WHITESPACE);
+          ORT_ENFORCE(end != std::string::npos);
+          return str.substr(start, end + 1);
+        }
+      };
+      key = trim(key);
+      value = trim(value);
+
+      if (valid_keys.count(key) == 0) {
+        ORT_NOT_IMPLEMENTED("NupharCodeGenSettings: unknown option (", key, ")");
+      }
+      required_options.insert(key);
+      options.insert(std::make_pair(key, value));
+    }
+  }
 
 #ifndef GOLDEN_BUILD
   // environment variables override existing settings
@@ -38,34 +103,23 @@ void CreateNupharCodeGenSettings() {
     // env var is always upper case
     std::transform(key.begin(), key.end(), std::back_inserter(env_key), (int (*)(int))std::toupper);
     if (IsEnvVarDefined(env_key.c_str())) {
-      // value is always lower case
+      // value is case-sensitive
       auto value = std::string(GetEnv(env_key.c_str()).get());
 
-      if (options.count(key) > 0 && options.at(key) != value) {
-        LOGS_DEFAULT(CODEGEN_SETTINGS_LOG_LEVEL) << "NupharCodeGenSettings: option" << key << " is overridded by environment variable "
-                                                 << env_key << " from: " << options.at(key) << " to: " << value;
+      if (required_options.count(key) > 0 && options.at(key) != value) {
+        LOGS_DEFAULT(CODEGEN_SETTINGS_LOG_LEVEL)
+            << "NupharCodeGenSettings: option(" << key
+            << ") from environment variable is ignored because of existing required option value: "
+            << options.at(key);
+      } else {
+        options[key] = value;
       }
-
-      std::string value_lower;
-      std::transform(value.begin(), value.end(), std::back_inserter(value_lower), (int (*)(int))std::tolower);
-      options[key] = value_lower;
     }
   }
 #endif
 
   codegen::CodeGenSettings& settings = codegen::CodeGenSettings::Instance();
-
-  // create two temporary strings to get rid of the odr-use issue introduced
-  // The issue would trigger missing definition errors for static constexpr members
-  // at link time.
-  std::string fast_math_opt(codegen::CodeGenSettings::kCodeGenFastMath);
-  std::string select_fast_math(codegen::CodeGenSettings::kCodeGenFastMath_ShortPolynormial);
-  // set jit cache so name
-  std::string cache_so_name_opt(nuphar_codegen::kNupharCacheSoName);
-  std::string cache_so_name_default(nuphar_codegen::kNupharCacheSoName_default);
-
-  settings.InsertOptions({{fast_math_opt, select_fast_math},
-                          {cache_so_name_opt, cache_so_name_default}});
+  settings.Clear();  // remove previous settings and start from scratch
 
   settings.InsertOptions(options);
 
@@ -74,5 +128,5 @@ void CreateNupharCodeGenSettings() {
   }
 }
 
-}  // namespace nuphar_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

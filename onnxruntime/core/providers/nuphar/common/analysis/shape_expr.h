@@ -4,6 +4,8 @@
 #pragma once
 #include "core/common/common.h"
 
+// TODO retire this file
+
 namespace onnxruntime {
 
 // A mini IR layer for shape inference

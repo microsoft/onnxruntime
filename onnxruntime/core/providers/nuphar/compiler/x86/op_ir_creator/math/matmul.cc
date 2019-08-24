@@ -6,14 +6,14 @@
 #include "core/providers/nuphar/compiler/nuphar_codegen_ctx.h"
 #include "core/providers/nuphar/mti_x86/math/matmul_ops.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
-#include "core/codegen/target/generic/weight_layout/transpose_2d.h"
-#include "core/codegen/target/generic/weight_layout/vertical_stripes_2d.h"
+#include "core/codegen/passes/weight_layout/transpose_2d.h"
+#include "core/codegen/passes/weight_layout/vertical_stripes_2d.h"
 #include "core/providers/nuphar/compiler/x86/x86_target_info.h"
 
 #include <tvm/ir_pass.h>
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 // TODO: remove tvm core function
 
@@ -44,18 +44,18 @@ static bool MatMul_weights2D(
 
   // align A, B to multiple of block size
   const auto& A_shape = A->shape;
-  tvm::Expr A0_size = SizeToDimension(A_shape, -1);
-  auto A0_roundup = RoundUp(A0_size, block_size);
-  tvm::Expr A1_size = SizeFromDimension(A_shape, -1);
-  auto A1_roundup = RoundUp(A1_size, block_size);
+  tvm::Expr A0_size = tvm_codegen::SizeToDimension(A_shape, -1);
+  auto A0_roundup = tvm_codegen::RoundUp(A0_size, block_size);
+  tvm::Expr A1_size = tvm_codegen::SizeFromDimension(A_shape, -1);
+  auto A1_roundup = tvm_codegen::RoundUp(A1_size, block_size);
   bool A0_need_pad = !tvm::ir::Equal(A0_roundup, A0_size);
   bool A1_need_pad = !tvm::ir::Equal(A1_roundup, A1_size);
 
   const auto& B_shape = B->shape;
-  tvm::Expr B0_size = SizeToDimension(B_shape, 1);
-  auto B0_roundup = RoundUp(B0_size, block_size);
-  tvm::Expr B1_size = SizeFromDimension(B_shape, 1);
-  auto B1_roundup = RoundUp(B1_size, block_size);
+  tvm::Expr B0_size = tvm_codegen::SizeToDimension(B_shape, 1);
+  auto B0_roundup = tvm_codegen::RoundUp(B0_size, block_size);
+  tvm::Expr B1_size = tvm_codegen::SizeFromDimension(B_shape, 1);
+  auto B1_roundup = tvm_codegen::RoundUp(B1_size, block_size);
   bool B1_need_pad = !tvm::ir::Equal(B1_roundup, B1_size);
 
   ORT_ENFORCE(tvm::ir::Equal(A1_roundup, B0_roundup));
@@ -64,7 +64,7 @@ static bool MatMul_weights2D(
   if (A0_need_pad || A1_need_pad || B1_need_pad)
     return false;
 
-  auto layout_key = WeightLayoutVerticalStripe2D::GetKey(proto_type, stripe_width);
+  auto layout_key = tvm_codegen::WeightLayoutVerticalStripe2D::GetKey(proto_type, stripe_width);
   auto B_unmarshalled = ctx_nuphar->ApplyWeightLayout(layout_key, initializer_name, B, false);
 
   ORT_ENFORCE(B_unmarshalled->op.as<tvm::ComputeOpNode>());
@@ -102,19 +102,19 @@ static bool MatMulF32ExternCpuEx(
   // transpose weights if not already
   tvm::Tensor actual_B = B;
 
-  if (nullptr != ctx_nuphar.GetInitializerInfo(B_initializer_name) && !trans_b) {
-    auto layout_key = WeightLayoutTranspose2D::GetKey(proto_type);
+  if (ctx_nuphar.IsInitializer(B_initializer_name) && !trans_b) {
+    auto layout_key = tvm_codegen::WeightLayoutTranspose2D::GetKey(proto_type);
     actual_B = ctx_nuphar.ApplyWeightLayout(layout_key, B_initializer_name, B, true);
     trans_b = true;
   }
 
-  return nuphar_codegen::MatMulExternCpu(A, actual_B, Y, trans_a, trans_b, name);
+  return nuphar::MatMulExternCpu(A, actual_B, Y, trans_a, trans_b, name);
 }
 
 Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(MatMul)::Evaluate(
     const tvm::Array<tvm::Tensor>& inputs,
     const Node& node,
-    CodeGenContext& ctx_codegen,
+    tvm_codegen::CodeGenContext& ctx_codegen,
     tvm::Array<tvm::Tensor>& outputs) {
   NupharCodeGenCtx* ctx_nuphar = Promote<NupharCodeGenCtx>(&ctx_codegen);
 
@@ -132,17 +132,17 @@ Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(MatMul)::Evaluate(
     return Status::OK();
   }
 
-  if (ShapeRank(node.InputDefs()[1]) == 2 && nullptr != ctx_nuphar->GetInitializerInfo(input_1_name)) {
+  if (ShapeRank(node.InputDefs()[1]) == 2 && ctx_nuphar->IsInitializer(input_1_name)) {
     if (MatMul_weights2D(proto_type, A, B, input_1_name, *ctx_nuphar, Y)) {
       outputs.push_back(Y);
       return Status::OK();
     }
   }
 
-  Y = nuphar_codegen::MatMul(A, B, node.Name());
+  Y = nuphar::MatMul(A, B, node.Name());
   outputs.push_back(Y);
   return Status::OK();
 }
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

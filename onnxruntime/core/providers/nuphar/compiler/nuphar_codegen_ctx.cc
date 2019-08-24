@@ -6,38 +6,44 @@
 #include "core/codegen/common/common.h"
 #include "core/codegen/common/utils.h"
 #include "core/codegen/mti/mti_tvm_utils.h"  // TODO: remove this after decoupling layout compile and run
-#include "core/providers/nuphar/common/analysis/subgraph_gen_stats.h"
-#include "core/codegen/target/ort_tvm_utils.h"  // TODO: remove this after decoupling layout compile and run
-#include <tvm/build_module.h>                   // TODO: remove this after decoupling layout compile and run
+#include "core/providers/nuphar/common/analysis/subgraph_codegen_stats.h"
+#include "core/codegen/passes/utils/ort_tvm_utils.h"  // TODO: remove this after decoupling layout compile and run
+#include <tvm/build_module.h>                         // TODO: remove this after decoupling layout compile and run
 
 #include "core/providers/nuphar/common/nuphar_tvm_utils.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 NupharCodeGenCtx::NupharCodeGenCtx(
     const Node& node,
-    InitializerMap& initializers,
+    const std::map<std::string, const Tensor*>& initializers,
+    std::unordered_map<std::string, std::unique_ptr<Tensor>>& global_generated_initializers,
     const NupharCodeGenHandle* handle)
     : CodeGenContext(handle),
       nuphar_handle_(handle),
-      initializer_map_(initializers) {
-  graph_stats_ = std::make_unique<codegen::SubGraphStats>(nuphar_handle_->shape_inference);
-  const Graph* subgraph = GetSubgraph(node);
-  if (nullptr != subgraph && !IsFusedNode(node)) {
-    codegen::Promote<codegen::SubGraphStats>(graph_stats_)
-        ->Evaluate(GraphViewer(*subgraph));
-  } else {
-    codegen::Promote<codegen::SubGraphStats>(graph_stats_)
-        ->EvaluateSingleNode(node);
-  }
+      initializers_(initializers),
+      global_generated_initializers_(global_generated_initializers) {
+  // construct graph_stats
+  graph_stats_ = std::make_unique<CodeGenUnitStats>(nuphar_handle_->shape_inference);
+}
+
+NupharCodeGenCtx::NupharCodeGenCtx(
+    const nuphar::NupharSubgraphUnit& subgraph,
+    std::unordered_map<std::string, std::unique_ptr<Tensor>>& global_generated_initializers,
+    const NupharCodeGenHandle* handle)
+    : CodeGenContext(handle),
+      nuphar_handle_(handle),
+      initializers_(subgraph.initializers),
+      global_generated_initializers_(global_generated_initializers) {
+  graph_stats_ = std::make_unique<CodeGenUnitStats>(nuphar_handle_->shape_inference);
+  Promote<CodeGenUnitStats>(graph_stats_)->Evaluate(subgraph);
 }
 
 // This is a temp function before we decouple weight layout compilation and run
-// OLD code
 // This will be moved.
 // TODO: remove this.
-static tvm::runtime::PackedFunc LowerLayoutFunc(const WeightLayout* layout) {
+static tvm::runtime::PackedFunc LowerLayoutFunc(const tvm_codegen::WeightLayout* layout) {
   tvm::Array<tvm::Tensor> inputs;
   tvm::Array<tvm::Tensor> outputs;
 
@@ -50,13 +56,13 @@ static tvm::runtime::PackedFunc LowerLayoutFunc(const WeightLayout* layout) {
 
   std::string func_name = layout->Name() + "_marshall";
 
-  tvm::runtime::PackedFunc cached_func = nuphar_codegen::LoadTVMPackedFuncFromCache(func_name);
+  tvm::runtime::PackedFunc cached_func = nuphar::LoadTVMPackedFuncFromCache(func_name);
 
   if (cached_func == nullptr) {
     auto lowered = tvm::lower(S, {inputs[0], outputs[0]}, func_name, {}, config);
     auto module = tvm::build(lowered, tvm::target::llvm(), tvm::Target(), config);
-    DumpTVMModuleToFile(func_name, module);
-    nuphar_codegen::SaveTVMModuleToCache(func_name, module);
+    tvm_codegen::DumpTVMModuleToFile(func_name, module);
+    nuphar::SaveTVMModuleToCache(func_name, module);
     cached_func = module.GetFunction(func_name);
   }
   return cached_func;
@@ -65,10 +71,11 @@ static tvm::runtime::PackedFunc LowerLayoutFunc(const WeightLayout* layout) {
 // This is a temp function before we decouple weight layout compilation and run.
 // This will be moved.
 // TODO: remove this.
-static std::shared_ptr<Tensor> Marshalling(
+static const Tensor* Marshalling(
     const std::string& initializer_name,
+    std::unordered_map<std::string, std::unique_ptr<Tensor>>& global_generated_initializers,
     const Tensor* original_initializer,
-    const WeightLayout* layout_ptr,
+    const tvm_codegen::WeightLayout* layout_ptr,
     WeightLayoutCtx& ctx_layout,
     AllocatorPtr allocator) {
   tvm::runtime::PackedFunc packed_func;
@@ -85,13 +92,15 @@ static std::shared_ptr<Tensor> Marshalling(
   auto marshalled_size = TotalSize(marshalled_shape);
   auto byte_size = original_initializer->DataType()->Size();
 
-  std::shared_ptr<Tensor> out;
+  std::unique_ptr<Tensor> out_ptr;
   void* p_data = allocator->Alloc(marshalled_size * byte_size);
-  out = std::make_shared<Tensor>(
+  out_ptr = std::make_unique<Tensor>(
       original_initializer->DataType(),
       TensorShape(marshalled_shape),
       p_data,
       allocator->Info());
+
+  global_generated_initializers.emplace(initializer_name, std::move(out_ptr));
 
   int num_args = 2;
   DLContext tvm_ctx{kDLCPU, 0};
@@ -121,7 +130,7 @@ static std::shared_ptr<Tensor> Marshalling(
   tvm::TVMArgs tvm_args(lvalues.data(), types_code.data(), num_args);
   tvm::TVMRetValue rvalue;
   packed_func.CallPacked(tvm_args, &rvalue);
-  return out;
+  return global_generated_initializers.at(initializer_name).get();
 }
 
 // on the fly WeightLayout transformer
@@ -131,10 +140,11 @@ tvm::Tensor NupharCodeGenCtx::ApplyWeightLayout(
     const tvm::Tensor& X,
     bool returnMarshalled) {
   tvm::Tensor marshalled;
-  auto info = GetInitializerInfo(initializer_name);
-  ORT_ENFORCE(nullptr != info);
-  auto layout_info = info->layout_info.get();
+  ORT_ENFORCE(IsInitializer(initializer_name));
+  auto layout_info = GetWeightLayoutInfo(initializer_name);
   ORT_ENFORCE(nullptr != layout_info);
+
+  const Tensor* original_initializer = GetOrtInitializerTensor(initializer_name);
 
   auto layout_ptr = nuphar_handle_->layout_registry->Get(layout_key);
   ORT_ENFORCE(nullptr != layout_ptr);
@@ -149,7 +159,8 @@ tvm::Tensor NupharCodeGenCtx::ApplyWeightLayout(
     // TODO: change to delayed call
     layout_info->marshalled_initializer =
         Marshalling(initializer_name,
-                    info->original_initializer,
+                    global_generated_initializers_,
+                    original_initializer,
                     layout_ptr,
                     weight_layout_ctx_,
                     nuphar_handle_->allocator);
@@ -179,50 +190,45 @@ tvm::Tensor NupharCodeGenCtx::ApplyWeightLayout(
   return layout_info->unmarshalled_tensor;
 }
 
-const codegen::OrtGraphStats* NupharCodeGenCtx::GetGraphStats() const {
+const NupharSubgraphUnitStats* NupharCodeGenCtx::GetGraphStats() const {
   return graph_stats_.get();
 }
 
-InitializerInfo* NupharCodeGenCtx::GetInitializerInfo(const std::string& name) {
-  if (initializer_map_.count(name) > 0)
-    return &initializer_map_.at(name);
-  else
-    return nullptr;
+bool NupharCodeGenCtx::IsInitializer(const std::string& name) const {
+  return initializers_.count(name) > 0;
 }
 
-const InitializerInfo* NupharCodeGenCtx::GetInitializerInfo(const std::string& name) const {
-  if (initializer_map_.count(name) > 0)
-    return &initializer_map_.at(name);
-  else
-    return nullptr;
+const Tensor* NupharCodeGenCtx::GetOrtInitializerTensor(const std::string& name) const {
+  if (IsInitializer(name))
+    return initializers_.at(name);
+  return nullptr;
 }
 
-bool NupharCodeGenCtx::IsInitializerMarshalled(const std::string& name) const {
-  auto info = GetInitializerInfo(name);
-  if (nullptr == info)
-    return false;
-  return (nullptr != info->layout_info);
+WeightLayoutCodegenInfo* NupharCodeGenCtx::GetWeightLayoutInfo(const std::string& name) {
+  if (initializer_layouts_.count(name) > 0)
+    return initializer_layouts_.at(name).get();
+  return nullptr;
 }
 
-const InitializerMap& NupharCodeGenCtx::GetInitializerMap() const {
-  return initializer_map_;
+const WeightLayoutCodegenInfo* NupharCodeGenCtx::GetWeightLayoutInfo(const std::string& name) const {
+  if (initializer_layouts_.count(name) > 0)
+    return initializer_layouts_.at(name).get();
+  return nullptr;
 }
 
-size_t NupharCodeGenCtx::SizeInitializerMarshalled() const {
-  size_t count = 0;
-  for (const auto& item : initializer_map_) {
-    const auto& info = item.second;
-    if (nullptr != info.layout_info) {
-      ++count;
-    }
-  }
-  return count;
+void NupharCodeGenCtx::CreateWeightLayoutInfo(const std::string& name, const tvm::Tensor& tensor) {
+  ORT_ENFORCE(initializer_layouts_.count(name) == 0);
+  initializer_layouts_.emplace(name, std::move(std::make_unique<WeightLayoutCodegenInfo>(tensor)));
+}
+
+const std::map<std::string, std::unique_ptr<WeightLayoutCodegenInfo>>& NupharCodeGenCtx::GetWeightLayoutMap() const {
+  return initializer_layouts_;
 }
 
 void NupharCodeGenCtx::RecordTensorToNode(const tvm::Tensor& t, const Node* node) {
   // Insert tvm::Tensor and Node to the lookup table
   // But bypass it when node is a output alias
-  if (!codegen::Promote<codegen::SubGraphStats>(graph_stats_)->IsOutputAlias(node))
+  if (!Promote<CodeGenUnitStats>(graph_stats_)->IsOutputAlias(node))
     tvm_tensor_to_node_lookup_.insert(std::make_pair(t->op.get(), node));
 }
 
@@ -233,18 +239,9 @@ const Node* NupharCodeGenCtx::FindNode(const tvm::Tensor& t) const {
   return nullptr;
 }
 
-const Tensor* NupharCodeGenCtx::GetOrtInitializedTensor(const NodeArg* def) const {
-  if (nullptr != def) {
-    auto iter = initializer_map_.find(def->Name());
-    if (iter != initializer_map_.cend())
-      return iter->second.original_initializer;
-  }
-  return nullptr;
-}
-
 const NupharCodeGenHandle* NupharCodeGenCtx::GetCodeGenHandle() const {
   return nuphar_handle_;
 }
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

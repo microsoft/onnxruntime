@@ -2,22 +2,28 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/providers/nuphar/compiler/nuphar_func_ctx.h"
+#include "core/providers/nuphar/compiler/func_info.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
-class NupharComputeCtx;
+class KernelComputeCtx;
 
+// abstract class for loop
 class LoopExecCtx {
  public:
   LoopExecCtx() {}
 
-  virtual void InitContext(NupharComputeCtx* compute_ctx) = 0;
-  virtual void UpdateContext(NupharComputeCtx* compute_ctx) = 0;
-  virtual void FillTVMArgs(NupharComputeCtx* compute_ctx) = 0;
+  virtual ~LoopExecCtx() = default;
 
-  virtual void LoopFinalize() = 0;
+  virtual void InitContext(KernelComputeCtx* compute_ctx,
+                           const NupharFuncInfo* func_info) = 0;
+  virtual void UpdateContext(KernelComputeCtx* compute_ctx,
+                             const NupharFuncInfo* func_info) = 0;
+  virtual void InitIteration(KernelComputeCtx* compute_ctx,
+                             const NupharFuncInfo* func_info) = 0;
+
+  virtual void LoopFinalizer() = 0;
   // Marching to next loop iteration
   virtual void Advance(const ControlFlowInfo* cf_info) = 0;
   virtual bool IsValid() {
@@ -33,5 +39,5 @@ class LoopExecCtx {
   int max_loop_step_;
 };
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

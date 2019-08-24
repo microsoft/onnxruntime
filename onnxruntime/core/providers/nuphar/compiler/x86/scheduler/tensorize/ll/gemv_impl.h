@@ -2,7 +2,7 @@
 // clang++.exe -fno-preserve-as-comments -S -emit-llvm gemv_impl.cpp
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 const char* gemv_stubs_ir = R"gemv_stub_escape(
 ; ModuleID = 'gemv_stubs.cpp'
@@ -133,5 +133,5 @@ attributes #0 = { noinline nounwind optnone uwtable "correctly-rounded-divide-sq
 !2 = !{!"clang version 6.0.1 (tags/RELEASE_601/final)"}
 )gemv_stub_escape";
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

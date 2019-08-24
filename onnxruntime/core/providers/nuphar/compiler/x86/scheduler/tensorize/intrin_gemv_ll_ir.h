@@ -5,9 +5,9 @@
 #include "tensorize_base.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
-class NaiveLLVMIRGemvTensorization : public TensorizeBase {
+class NaiveLLVMIRGemvTensorization : public tvm_codegen::TensorizeBase {
  public:
   NaiveLLVMIRGemvTensorization(const std::string& name);
 
@@ -16,5 +16,5 @@ class NaiveLLVMIRGemvTensorization : public TensorizeBase {
   tvm::TensorIntrin CreateTensorIntrin() override;
 };
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

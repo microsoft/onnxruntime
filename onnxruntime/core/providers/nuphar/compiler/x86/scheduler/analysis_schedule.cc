@@ -3,32 +3,29 @@
 
 #include "core/providers/nuphar/compiler/x86/scheduler/nuphar_scheduler.h"
 
-#include "core/codegen/target/generic/scheduler/schedule_utils.h"
+#include "core/codegen/passes/scheduler/schedule_utils.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 // This is for UseCount
 bool TVM_SCHEDULER_CLASS(True, NupharX86UseCount)::Evaluate(
     const tvm::Tensor& tensor,
     const Node*,
-    CodeGenContext&,
-    ScheduleContext& ctx_sched) {
-  // TODO change it to the value from Target
-  int64_t natural_vector_size = 16;
-
-  bool status_vec = TryVectorization(tensor, natural_vector_size, ctx_sched);
-  bool status_r_and_c = InsertRootScheduleAndClosure(tensor, ctx_sched);
+    tvm_codegen::CodeGenContext&,
+    tvm_codegen::ScheduleContext& ctx_sched) {
+  bool status_vec = TryVectorizationX86(tensor, ctx_sched);
+  bool status_r_and_c = tvm_codegen::InsertRootScheduleAndClosure(tensor, ctx_sched);
   return status_vec || status_r_and_c;
 }
 
 bool TVM_SCHEDULER_CLASS(False, NupharX86UseCount)::Evaluate(
     const tvm::Tensor& tensor,
     const Node*,
-    CodeGenContext&,
-    ScheduleContext& ctx_sched) {
-  return TryInlineSchedule(tensor, ctx_sched);
+    tvm_codegen::CodeGenContext&,
+    tvm_codegen::ScheduleContext& ctx_sched) {
+  return tvm_codegen::TryInlineSchedule(tensor, ctx_sched);
 }
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

@@ -18,7 +18,10 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
                   const std::vector<int64_t>& steps,
                   const std::vector<int64_t>& output_dims,
                   const std::vector<T>& output_vals,
-                  bool v10_only = false) {
+                  bool v10_only = false,
+                  std::vector<int64_t> symbolic_dims = {},
+                  std::unordered_set<std::string> exclusive_providers = {}) {
+  exclusive_providers.insert(kTensorrtExecutionProvider);
   // V1-9
   if (!v10_only)
   {
@@ -27,13 +30,19 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
       testv9.AddAttribute("ends", ends);
       if (axes.size() != 0)
         testv9.AddAttribute("axes", axes);
+      for (auto dim : symbolic_dims) {
+        testv9.AddShapeToTensorData(true, dim);
+      }
       testv9.AddInput<T>("data", input_dims, input_vals);
       testv9.AddOutput<T>("output", output_dims, output_vals);
-      testv9.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+      testv9.Run(OpTester::ExpectResult::kExpectSuccess, "", exclusive_providers);
   }
 
   // V10
   OpTester testv10("Slice", 10);
+  for (auto dim : symbolic_dims) {
+    testv10.AddShapeToTensorData(true, dim);
+  }
   testv10.AddInput<T>("data", input_dims, input_vals);
   testv10.AddInput<int64_t>("starts", {static_cast<int64_t>(starts.size())}, starts);
   testv10.AddInput<int64_t>("ends", {static_cast<int64_t>(ends.size())}, ends);
@@ -42,7 +51,7 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
   if (steps.size() != 0)
     testv10.AddInput<int64_t>("steps", {static_cast<int64_t>(steps.size())}, steps);
   testv10.AddOutput<T>("output", output_dims, output_vals);
-  testv10.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  testv10.Run(OpTester::ExpectResult::kExpectSuccess, "", exclusive_providers);
 }
 
 // Slice V1-9 & Slice V10 can both run the following tests
@@ -524,6 +533,79 @@ TEST(SliceTest, OptionalAxesInputAloneMissing) {
   testv10.AddInput<int64_t>("ends", {static_cast<int64_t>(ends.size())}, ends);
   testv10.AddMissingOptionalInput<int64_t>();
   testv10.AddInput<int64_t>("steps", {static_cast<int64_t>(steps.size())}, steps);
+  testv10.AddOutput<float>("output", output_dims, output_vals);
+  testv10.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(SliceTest, SymbolicSequenceInputV9_1) {
+  RunSliceTest<float>(/*input_dims*/ {3},
+                      /*input_vals*/ {1.0f, 2.0f, 3.0f},
+                      /*starts*/ {-2},
+                      /*ends*/ {std::numeric_limits<int64_t>::max()},
+                      /*axes*/ {0},
+                      /*steps*/ {},
+                      /*output_dims*/ {2},
+                      /*output_vals*/ {2.0f, 3.0f},
+                      /*v10_only*/ false,
+                      /*symbolic_dims*/ {0});
+}
+
+TEST(SliceTest, SymbolicSequenceInputV10_1) {
+  RunSliceTest<float>(/*input_dims*/ {3},
+                      /*input_vals*/ {1.0f, 2.0f, 3.0f},
+                      /*starts*/ {-2},
+                      /*ends*/ {std::numeric_limits<int64_t>::max()},
+                      /*axes*/ {0},
+                      /*steps*/ {},
+                      /*output_dims*/ {2},
+                      /*output_vals*/ {2.0f, 3.0f},
+                      /*v10_only*/ true,
+                      /*symbolic_dims*/ {0});
+}
+
+TEST(SliceTest, SymbolicSequenceInputV9_2) {
+  RunSliceTest<float>(/*input_dims*/ {3, 2},
+                      /*input_vals*/ {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f},
+                      /*starts*/ {-2},
+                      /*ends*/ {std::numeric_limits<int64_t>::max()},
+                      /*axes*/ {0},
+                      /*steps*/ {},
+                      /*output_dims*/ {2, 2},
+                      /*output_vals*/ {3.0f, 4.0f, 5.0f, 6.0f},
+                      /*v10_only*/ false,
+                      /*symbolic_dims*/ {0});
+}
+
+TEST(SliceTest, SymbolicSequenceInputV10_2) {
+  RunSliceTest<float>(/*input_dims*/ {3, 2},
+                      /*input_vals*/ {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f},
+                      /*starts*/ {0, -1},
+                      /*ends*/ {1, std::numeric_limits<int64_t>::max()},
+                      /*axes*/ {0, 1},
+                      /*steps*/ {},
+                      /*output_dims*/ {1, 1},
+                      /*output_vals*/ {2.0f},
+                      /*v10_only*/ true,
+                      /*symbolic_dims*/ {1});
+}
+
+TEST(SliceTest, SymbolicSequenceInputV10_3) {
+  std::vector<int64_t> input_dims = {3, 2};
+  auto input_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  std::initializer_list<int64_t> starts = {1, -1};
+  std::initializer_list<int64_t> ends = {2, std::numeric_limits<int64_t>::max()};
+  std::initializer_list<int64_t> axes = {0, 1};
+  std::vector<int64_t> output_dims = {1, 1};
+  auto output_vals = {4.0f};
+
+  OpTester testv10("Slice", 10);
+
+  testv10.AddShapeToTensorData(true, 1);
+  testv10.AddInput<float>("data", input_dims, input_vals);
+  testv10.AddInput<int64_t>("starts", {static_cast<int64_t>(starts.size())}, starts, /*is_initializer*/ true);
+  testv10.AddInput<int64_t>("ends", {static_cast<int64_t>(ends.size())}, ends, /*is_initializer*/ true);
+  testv10.AddInput<int64_t>("axes", {static_cast<int64_t>(axes.size())}, axes, /*is_initializer*/ true);
   testv10.AddOutput<float>("output", output_dims, output_vals);
   testv10.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }

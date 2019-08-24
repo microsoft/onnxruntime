@@ -4,6 +4,8 @@
 #include "core/providers/nuphar/mti_x86/math/matmul_ops.h"
 
 #include "core/codegen/common/profile.h"
+#include "core/codegen/mti/math/matmul_ops.h"
+#include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/nuphar/common/nuphar_settings.h"
 #include "core/codegen/mti/math/matmul_ops.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
@@ -13,7 +15,7 @@
 #include <topi/transform.h>
 
 namespace onnxruntime {
-namespace nuphar_codegen {
+namespace nuphar {
 
 tvm::Tensor MatMul2D(const tvm::Tensor& A, const tvm::Tensor& B, bool trans_a, bool trans_b, const std::string& name) {
   tvm::Tensor Y;
@@ -24,8 +26,8 @@ tvm::Tensor MatMul2D(const tvm::Tensor& A, const tvm::Tensor& B, bool trans_a, b
 }
 
 TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.sgemm_cpu")
-    .set_body([](tvm::TVMArgs args, tvm::TVMRetValue* ret) {
-      CODEGEN_PROFILER_EVENT(math_sgemm);
+    .set_body([](tvm::TVMArgs args, tvm::TVMRetValue* /*ret*/) {
+      CODEGEN_PROFILER_EVENT("math_sgemm");
       // Explicitly construct TVMArgValue instead of calling operator[] on args for saving some cycles.
       DLTensor* A = tvm::runtime::TVMArgValue(args.values[0], args.type_codes[0]);
       DLTensor* B = tvm::runtime::TVMArgValue(args.values[1], args.type_codes[1]);
@@ -46,7 +48,7 @@ TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.sgemm_cpu")
 
       // compute default M by flatten A dims
       M = 1;
-      for (size_t d = 0; d < A->ndim - 1; ++d)
+      for (int d = 0; d < A->ndim - 1; ++d)
         M *= A->shape[d];
 
       if (A->ndim == 1) {
@@ -80,7 +82,7 @@ TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.sgemm_cpu")
       if (M == 0 || N == 0 || K == 0)
         return;
 
-      math::Gemm<float, CPUMathUtil>(
+      math::Gemm<float, concurrency::ThreadPool>(
           trans_a ? CblasTrans : CblasNoTrans,
           trans_b ? CblasTrans : CblasNoTrans,
           M,
@@ -92,6 +94,38 @@ TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.sgemm_cpu")
           beta,
           reinterpret_cast<float*>(static_cast<char*>(C->data) + C->byte_offset),
           nullptr);
+    });
+
+TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.batched_matmul_cpu")
+    .set_body([](tvm::TVMArgs args, tvm::TVMRetValue* /*ret*/) {
+      CODEGEN_PROFILER_EVENT("math_batched_sgemm");
+      DLTensor* A = tvm::runtime::TVMArgValue(args.values[0], args.type_codes[0]);
+      DLTensor* B = tvm::runtime::TVMArgValue(args.values[1], args.type_codes[1]);
+      DLTensor* C = tvm::runtime::TVMArgValue(args.values[2], args.type_codes[2]);
+
+      DCHECK(C->strides == nullptr);
+      DCHECK(B->strides == nullptr);
+      DCHECK(A->strides == nullptr);
+      DCHECK(tvm::runtime::TypeMatch(A->dtype, kDLFloat, 32));
+      DCHECK(tvm::runtime::TypeMatch(B->dtype, kDLFloat, 32));
+      DCHECK(tvm::runtime::TypeMatch(C->dtype, kDLFloat, 32));
+
+      MatMulComputeHelper helper;
+      TensorShape A_shape(A->shape, A->ndim);
+      TensorShape B_shape(B->shape, B->ndim);
+      helper.Compute(A_shape, B_shape);
+
+      size_t max_len = helper.OutputOffsets().size();
+      for (size_t i = 0; i < max_len; i++) {
+        math::MatMul<float>(
+            static_cast<int>(helper.M()),
+            static_cast<int>(helper.N()),
+            static_cast<int>(helper.K()),
+            (float*)A->data + helper.LeftOffsets()[i],
+            (float*)B->data + helper.RightOffsets()[i],
+            (float*)C->data + helper.OutputOffsets()[i],
+            nullptr);  // TODO: use thread pool from OpContext
+      }
     });
 
 bool MatMulExternCpu(
@@ -116,15 +150,6 @@ bool MatMulExternCpu(
       !A->dtype.is_float() ||
       A->dtype.bits() != 32)
     return false;
-
-  // TODO: support gemm_batched
-  // B is assumed to be 1-D or 2-D below
-  if (B->shape.size() > 2) {
-    auto flatten_B0 = tvm_codegen::SizeToDimension(B->shape, -2);
-    auto* p = tvm::as_const_int(flatten_B0);
-    if (p == nullptr || *p > 1)
-      return false;
-  }
 
   // inputs need to be at least 1D
   auto rank_A = A->shape.size();
@@ -156,26 +181,39 @@ bool MatMulExternCpu(
     for (size_t d = 0; d < rank_A - 1; ++d)
       out_shape.push_back(A->shape[d]);
   } else {
-    // N-D x N-D, note that gemm_batched has been ruled out, so B is essentially 2-D
-    if (trans_a) {
-      // trans_a is only allowed for 2D
-      out_shape.push_back(A->shape[rank_A - 1]);
+    // N-D x N-D
+    if (rank_B == 2) {
+      if (trans_a) {
+        // trans_a is only allowed for 2D
+        out_shape.push_back(A->shape[rank_A - 1]);
+      } else {
+        for (size_t d = 0; d < rank_A - 1; ++d)
+          out_shape.push_back(A->shape[d]);
+      }
+      out_shape.push_back(B->shape[trans_b ? rank_B - 2 : rank_B - 1]);
     } else {
-      for (size_t d = 0; d < rank_A - 1; ++d)
-        out_shape.push_back(A->shape[d]);
+      ORT_ENFORCE(!trans_a && !trans_b);
+      // batched matmul
+      out_shape = tvm_codegen::ComputeMatMulShape(A->shape, B->shape);
     }
-    out_shape.push_back(B->shape[trans_b ? rank_B - 2 : rank_B - 1]);
   }
 
   Y = topi::detail::make_extern(
       {out_shape}, {A->dtype}, {A, B},
       [&](tvm::Array<tvm::Buffer> ins, tvm::Array<tvm::Buffer> outs) {
-        return topi::detail::call_packed({tvm::Expr("tvm.contrib.onnxruntime.sgemm_cpu"),
-                                          topi::detail::pack_buffer(ins[0]),
-                                          topi::detail::pack_buffer(ins[1]),
-                                          topi::detail::pack_buffer(outs[0]),
-                                          trans_a,
-                                          trans_b});
+        if (rank_B <= 2) {
+          return topi::detail::call_packed({tvm::Expr("tvm.contrib.onnxruntime.sgemm_cpu"),
+                                            topi::detail::pack_buffer(ins[0]),
+                                            topi::detail::pack_buffer(ins[1]),
+                                            topi::detail::pack_buffer(outs[0]),
+                                            trans_a,
+                                            trans_b});
+        } else {
+          return topi::detail::call_packed({tvm::Expr("tvm.contrib.onnxruntime.batched_matmul_cpu"),
+                                            topi::detail::pack_buffer(ins[0]),
+                                            topi::detail::pack_buffer(ins[1]),
+                                            topi::detail::pack_buffer(outs[0])});
+        }
       },
       name, "", {})[0];
 
@@ -183,16 +221,12 @@ bool MatMulExternCpu(
 }
 
 tvm::Tensor MatMul(const tvm::Tensor& A, const tvm::Tensor& B, const std::string& name) {
-  int64_t a_rank = gsl::narrow_cast<int64_t>(A->shape.size());
-  int64_t b_rank = gsl::narrow_cast<int64_t>(B->shape.size());
-  if (a_rank == 2 && b_rank == 2) {
-    // 2-D X 2-D: call nuphar version which does special handling for 2D MatMul
-    return nuphar_codegen::MatMul2D(A, B);
-  } else {
-    // go through generic case otherwise
-    return tvm_codegen::MatMul(A, B);
-  }
+  tvm::Tensor Y;
+  if (MatMulExternCpu(A, B, Y))
+    return Y;
+  // go through generic case otherwise
+  return tvm_codegen::MatMul(A, B, name);
 }
 
-}  // namespace nuphar_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

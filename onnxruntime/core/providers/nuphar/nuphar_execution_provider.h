@@ -2,20 +2,17 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <tvm/build_module.h>
 
-#include "nuphar_allocator.h"
-#include "core/providers/nuphar/common/analysis/graph_stats.h"
 #include "core/codegen/common/common.h"
-#include "core/providers/nuphar/compiler/traverse_shape_infer.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
-#include "core/providers/nuphar/partition/fuse_rules/fuse_rule_base.h"
-
-#include "core/providers/nuphar/compiler/tvm_manager.h"
-
+#include "core/providers/nuphar/common/analysis/graph_stats.h"
+#include "core/providers/nuphar/compiler/codegen_manager.h"
+#include "core/providers/nuphar/compiler/traverse_shape_infer.h"
 #include "core/providers/nuphar/runtime/handle.h"
+
+#include <tvm/build_module.h>
 
 namespace onnxruntime {
 
@@ -23,30 +20,37 @@ namespace onnxruntime {
 class CodeGenTarget;
 
 // By default, construct either "llvm" or "stackvm" TVM target, for which the default device_type is kDLCPU.
+constexpr const char* llvm_target_str = "llvm";
+constexpr const char* stackvm_target_str = "stackvm";
+
 #ifdef USE_TVM_WITH_LLVM
-constexpr const char* default_nuphar_target_str = "llvm";
+constexpr const char* default_nuphar_target_str = llvm_target_str;
 #else
-constexpr const char* default_nuphar_target_str = "stackvm";
+constexpr const char* default_nuphar_target_str = stackvm_target_str;
 #endif  // USE_TVM_WITH_LLVM
 
 // Information needed to construct Nuphar execution providers.
 struct NupharExecutionProviderInfo {
   int device_id{0};
   // By default, let provider decide the target by passing in empty string.
-  std::string target_str;
   bool enable_per_node_parallel;  // TODO: remove
 
   // this flag set TVM build_config with data_alignment=1, at the cost of performance
   bool allow_unaligned_buffers;
 
+  // this string contains key/value pairs like:
+  // key1:value1, key2:value2, ...
+  // it would override environment variables for settings
+  std::string settings;
+
   explicit NupharExecutionProviderInfo(bool unaligned_buffers,
                                        int dev_id = 0,
-                                       const std::string& tgt_str = "",
+                                       const std::string& str_settings = "",
                                        bool per_node_parallel = true)
       : device_id(dev_id),
-        target_str(tgt_str),
         enable_per_node_parallel(per_node_parallel),
-        allow_unaligned_buffers(unaligned_buffers) {}
+        allow_unaligned_buffers(unaligned_buffers),
+        settings(str_settings) {}
   NupharExecutionProviderInfo() = default;
 };
 
@@ -55,8 +59,6 @@ class NupharExecutionProvider : public IExecutionProvider {
   explicit NupharExecutionProvider(const NupharExecutionProviderInfo& info);
 
   virtual ~NupharExecutionProvider() = default;
-
-  Status CopyTensor(const Tensor& src, Tensor& dst) const override;
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
@@ -82,23 +84,20 @@ class NupharExecutionProvider : public IExecutionProvider {
     return Status::OK();
   }
 
-  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
-
-  const TVMContext& GetTVMContext() const {
-    return tvm_ctx_;
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
+    // do not register individual kernels
+    return std::make_shared<KernelRegistry>();
   }
+
+  // internal registry for checking if op is supported
+  std::shared_ptr<KernelRegistry> GetKernelRegistryInternal() const;
 
   tvm::Target GetTVMTarget() const {
     return tvm_target_;
   }
 
   tvm::Target GetTVMHostTarget() const {
-    return tvm_target_;
-  }
-
-  // TODO remove
-  const std::shared_ptr<ShapeExprContext>& GetShapeInfernece() const {
-    return whole_graph_shape_infer_;
+    return tvm_host_target_;
   }
 
   // NOTE: realized_dims_ is thread_local, so it can only be accessed in execution thread (not ctor/dtor)
@@ -106,11 +105,9 @@ class NupharExecutionProvider : public IExecutionProvider {
     return *(tls_realized_dims_.get());
   }
 
-  // TODO: refactor after adding multi-target
-  // TODO: rename
-  const tvm_codegen::NupharCodeGenHandle* GetNupharCodeGenHandle() const {
-    ORT_ENFORCE(nuphar_codegen_handles_.size() > 0);
-    return nuphar_codegen_handles_.front().get();
+  const nuphar::NupharCodeGenHandle* GetNupharCodeGenHandle() const {
+    ORT_ENFORCE(codegen_handles_.size() > 0);
+    return codegen_handles_.front().get();
   }
 
   const nuphar::NupharRuntimeHandle* GetNupharRuntimeHandle() const {
@@ -122,9 +119,14 @@ class NupharExecutionProvider : public IExecutionProvider {
     return domain_versions_[name];
   }
 
- private:
-  void RegisterFuseRules();
+  const Tensor* GetConstantInitializer(const std::string& name) const {
+    auto iter = constant_initializers_used_in_compiled_nodes_.find(name);
+    if (iter == constant_initializers_used_in_compiled_nodes_.end())
+      return nullptr;
+    return iter->second.get();
+  }
 
+ private:
   void CreateTVMTarget();
 
   Status SaveInitializer(
@@ -132,45 +134,32 @@ class NupharExecutionProvider : public IExecutionProvider {
       const ONNX_NAMESPACE::TensorProto* proto) const;
 
  private:
-  // TODO remove
+  // TODO move this to another place
   std::unique_ptr<CodeGenTarget> codegen_target_;
-
   // TODO: move all tvm related code a manager
   tvm::Target tvm_target_;
   tvm::Target tvm_host_target_;
   TVMContext tvm_ctx_;
 
   // shape inference
-  std::shared_ptr<ShapeExprContext> whole_graph_shape_infer_;
-
-  // graph stats
-  std::unique_ptr<codegen::OrtGraphStats> graph_stats_;
-
-  // All fused rules that will be applied to nuphar provider.
-  // The order is sigfinicant - pushing high-priority rules towards
-  // the beginning of the vector, because they will run earlier.
-  std::vector<std::unique_ptr<nuphar::FuseRule>> fuse_rules_;
+  std::shared_ptr<nuphar::ShapeExprContext> whole_graph_shape_infer_;
 
   // mapping from symbolic dimension to actual value
   static thread_local std::unique_ptr<std::unordered_map<std::string, int64_t>> tls_realized_dims_;
 
-  std::unique_ptr<tvm_codegen::TVMCodeGenManager> tvm_codegen_manager_;
+  std::unique_ptr<nuphar::TVMCodeGenManager> tvm_codegen_manager_;
 
-  // nuphar_codegen_handles_ holds a list of NupharCodeGenHandle .
-  // Why a list? it is for multi-target support later
+  // codegen_handles_ holds a list of NupharCodeGenHandle .
+  // Why a list? it is for multi-target support
   // The current release supports one codegen target.
   // TODO: support multi-target support
-  std::vector<std::unique_ptr<tvm_codegen::NupharCodeGenHandle>> nuphar_codegen_handles_;
+  std::vector<std::unique_ptr<nuphar::NupharCodeGenHandle>> codegen_handles_;
 
   std::unique_ptr<nuphar::NupharRuntimeHandle> runtime_handle_;
 
   mutable std::shared_ptr<KernelRegistry> kernel_registry_;
 
-  // a copy of Node to keep Node's life-time
-  // TODO: remove this after completely decoupling runtime and compiler
-  std::vector<onnxruntime::Node*> compiled_nodes_;
-
-  mutable std::unordered_map<std::string, std::unique_ptr<Tensor>> initializers_used_in_compiled_nodes_;
+  mutable std::unordered_map<std::string, std::unique_ptr<Tensor>> constant_initializers_used_in_compiled_nodes_;
   mutable std::unordered_map<std::string, int> domain_versions_;
 };
 

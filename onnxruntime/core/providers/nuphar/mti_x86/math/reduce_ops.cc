@@ -10,7 +10,7 @@
 #include <topi/reduction.h>
 
 namespace onnxruntime {
-namespace nuphar_codegen {
+namespace nuphar {
 
 using FReduce = std::function<tvm::Expr(tvm::Expr source, const tvm::Array<tvm::IterVar>& axis)>;
 
@@ -352,5 +352,5 @@ tvm::Tensor ReduceMinV(const tvm::Tensor& X, const int32_t vector_size, const st
   return ReduceValueLowest_noPad(X, topi::MinOp, vector_size, name);
 }
 
-}  // namespace nuphar_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

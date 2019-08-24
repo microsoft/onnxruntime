@@ -4,11 +4,13 @@
 #pragma once
 #include <tvm/tvm.h>
 
+// TODO move this tvm_codegen
+
 namespace onnxruntime {
 namespace tvm_codegen {
 
 #define TENSORIZE_CLASS(tensorize_name)                                         \
-  class tensorize_name : public TensorizeBase {                                 \
+  class tensorize_name : public tvm_codegen::TensorizeBase {                    \
    public:                                                                      \
     tensorize_name(const std::string& name, const std::vector<int32_t>& shape); \
     virtual ~tensorize_name() = default;                                        \
@@ -16,7 +18,7 @@ namespace tvm_codegen {
   };
 
 #define TENSORIZE_CLASS_WITH_LLVM_IMPORT(tensorize_name)                        \
-  class tensorize_name : public TensorizeWithLLVMImport {                       \
+  class tensorize_name : public tvm_codegen::TensorizeWithLLVMImport {          \
    public:                                                                      \
     tensorize_name(const std::string& name, const std::vector<int32_t>& shape); \
     virtual ~tensorize_name() = default;                                        \

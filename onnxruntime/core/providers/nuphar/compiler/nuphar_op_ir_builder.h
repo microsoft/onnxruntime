@@ -6,8 +6,10 @@
 #include "core/common/common.h"
 #include "core/providers/nuphar/compiler/nuphar_codegen_ctx.h"
 
+#include "core/providers/nuphar/common/nuphar_subgraph.h"
+
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 // CreateTVMIR function traverses a GraphViewer
 // and builds tvm ir (and store them in CodeGenContext)
@@ -22,5 +24,11 @@ Status CreateTVMIR(const GraphViewer& graph,
 Status CreateTVMIR(const Node& node,
                    NupharCodeGenCtx& ctx_codegen);
 
-}  // namespace tvm_codegen
+// CreateTVMIR function traverses a NupharSubgraphUnit
+// and builds tvm ir (and store them in CodeGenContext)
+// based on corresponding ORT ir
+Status CreateTVMIR(const nuphar::NupharSubgraphUnit& subgraph,
+                   NupharCodeGenCtx& ctx_codegen);
+
+}  // namespace nuphar
 }  // namespace onnxruntime

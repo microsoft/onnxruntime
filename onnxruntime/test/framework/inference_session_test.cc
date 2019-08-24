@@ -123,7 +123,7 @@ class FuseExecutionProvider : public IExecutionProvider {
 class InferenceSessionGetGraphWrapper : public InferenceSession {
  public:
   explicit InferenceSessionGetGraphWrapper(const SessionOptions& session_options,
-                                          logging::LoggingManager* logging_manager) : InferenceSession(session_options, logging_manager) {
+                                           logging::LoggingManager* logging_manager) : InferenceSession(session_options, logging_manager) {
   }
 
   const Graph& GetGraph() {
@@ -365,7 +365,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   InferenceSessionGetGraphWrapper session_object{so, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object.Load(test_model).IsOK());
   ASSERT_TRUE(session_object.Initialize().IsOK());
- 
+
   // Assert that model has been transformed and identity Node is removed.
   const auto& graph = session_object.GetGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -384,7 +384,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   InferenceSession session_object_opt{so_opt, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object_opt.Load(so.optimized_model_filepath).IsOK());
   ASSERT_TRUE(session_object_opt.Initialize().IsOK());
-  
+
   // Assert that re-feed of optimized model with default transform level results
   // in same runtime model as abs-id-max.onnx with TransformLevel-1.
   std::ifstream model_fs_session1(so.optimized_model_filepath, ios::in | ios::binary);
@@ -1511,6 +1511,86 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
 }
 
 #endif
+
+TEST(InferenceSessionTests, TruncatedBatchSeqLenIntTest) {
+  static const std::string GRU_MODEL_URI = "testdata/gru_batch_seq_len_imatmul.onnx";
+  // This model is a GRU with batch and sequence length, with quantized MatMulInteger
+
+  SessionOptions so;
+  InferenceSession session_object(so);
+#ifdef USE_NUPHAR
+  session_object.RegisterExecutionProvider(DefaultNupharExecutionProvider());
+#endif
+  ASSERT_TRUE(session_object.Load(GRU_MODEL_URI).IsOK());
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+
+  RunOptions run_options;
+  run_options.run_tag = "one session/one tag";
+
+  std::vector<int64_t> X_dims = {3, 3, 3};
+  std::vector<float> X =
+      {0, 1, 2, 3, 4, 5, 6, 7, 8,
+       9, 8, 7, 6, 5, 4, 0, 0, 0,
+       3, 2, 1, 0, 0, 0, 0, 0, 0};
+
+  std::vector<int64_t> seq_dims = {3};
+  std::vector<int32_t> seq = {3, 2, 1};
+
+  OrtValue X_ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), X_dims, X, &X_ml_value);
+
+  OrtValue seq_ml_value;
+  CreateMLValue<int32_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), seq_dims, seq, &seq_ml_value);
+
+  NameMLValMap feeds;
+  feeds.emplace("Input3", X_ml_value);
+  feeds.emplace("seq_len", seq_ml_value);
+
+  std::vector<std::string> output_names = {"Plus623_Output_0", "Hidden_output"};
+  std::vector<OrtValue> fetches;
+
+  // Now run the full sequence
+  common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
+  if (!st.IsOK()) {
+    std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
+  }
+  ASSERT_TRUE(st.IsOK());
+  ASSERT_EQ(2, fetches.size());
+
+  std::vector<int64_t> Y_dims = {3, 3, 2};
+  std::vector<float> Y_data =
+      {0.112073f, 0.463166f,
+       0.0613338f, 0.141461f,
+       0.0222765f, -0.00191399f,
+
+       0.283774f, 0.45093f,
+       0.400833f, 0.101056f,
+       0, 0,
+
+       0.513725f, 0.316251f,
+       0, 0,
+       0, 0};
+
+  std::vector<int64_t> Y_h_dims = {1, 3, 2};
+  std::vector<float> Y_h_data =
+      {0.513725f, 0.316251f,
+       0.400833f, 0.101056f,
+       0.0222765f, -0.00191399f};
+
+  const auto& Y_tensor = fetches[0].Get<Tensor>();
+  const float* Y_real_output = Y_tensor.template Data<float>();
+
+  const auto& Y_h_tensor = fetches[1].Get<Tensor>();
+  const float* Y_h_real_output = Y_h_tensor.template Data<float>();
+
+  ASSERT_EQ(TensorShape(Y_dims), Y_tensor.Shape());
+  for (size_t i = 0; i < Y_data.size(); ++i)
+    EXPECT_NEAR(Y_data[i], Y_real_output[i], 1e-3f);
+
+  ASSERT_EQ(TensorShape(Y_h_dims), Y_h_tensor.Shape());
+  for (size_t i = 0; i < Y_h_data.size(); ++i)
+    EXPECT_NEAR(Y_h_data[i], Y_h_real_output[i], 1e-3f);
+}
 
 }  // namespace test
 }  // namespace onnxruntime

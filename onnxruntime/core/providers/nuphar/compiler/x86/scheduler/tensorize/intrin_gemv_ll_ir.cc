@@ -2,13 +2,14 @@
 // Licensed under the MIT License.
 
 #include "intrin_gemv_ll_ir.h"
+
 #include "core/providers/nuphar/compiler/x86/scheduler/tensorize/tensorize_utilities.h"
 #include <tvm/buffer.h>
 #include <tvm/codegen.h>
 #include <tvm/ir.h>
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 const int32_t dim0 = 1;
 const int32_t dim1 = 8;
@@ -65,16 +66,16 @@ tvm::TensorIntrin NaiveLLVMIRGemvTensorization::CreateTensorIntrin() {
   auto b_float32x8 = b_buf.vload({0, 0}, HalideIR::Float(32, 8));
   auto z_float32x8 = tvm::make_const(HalideIR::Float(32, 8), 0);
 
-  auto axb = LLVMIntrinsic(HalideIR::Float(32, 8),
-                           "llvm.x86.fma.vfmadd.ps.256",
-                           {a_float32x8,
-                            b_float32x8,
-                            z_float32x8});
+  auto axb = tvm_codegen::LLVMIntrinsic(HalideIR::Float(32, 8),
+                                        "llvm.x86.fma.vfmadd.ps.256",
+                                        {a_float32x8,
+                                         b_float32x8,
+                                         z_float32x8});
 
-  auto sum = ExtractElement(axb, 0);
+  auto sum = tvm_codegen::ExtractElement(axb, 0);
 
   for (int i = 1; i < 8; ++i) {
-    auto z0 = ExtractElement(axb, i);
+    auto z0 = tvm_codegen::ExtractElement(axb, i);
     sum += z0;
   }
 
@@ -91,5 +92,5 @@ tvm::TensorIntrin NaiveLLVMIRGemvTensorization::CreateTensorIntrin() {
       reset,
       update);
 }
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

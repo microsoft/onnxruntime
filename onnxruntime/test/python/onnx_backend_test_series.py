@@ -121,6 +121,7 @@ def create_backend_test(testname=None):
                                  '^test_scatter_elements*',
                                  '^test_top_k*',
                                  '^test_unique_*',
+                                 '^test_mod_float_mixed_sign_example_cpu.*', #onnxruntime::Mod::Compute fmod_ was false. fmod attribute must be true for float, float16 and double types
                                  )
 
         # Example of how to disable tests for a specific provider.
@@ -128,6 +129,11 @@ def create_backend_test(testname=None):
         #    current_failing_tests = current_failing_tests + ('|^test_operator_repeat_dim_overflow_cpu.*',)
         if c2.supports_device('NGRAPH'):
             current_failing_tests = current_failing_tests + ('|^test_clip*',)
+
+        # Failing for Nuphar.
+        if c2.supports_device('NUPHAR'):
+            current_failing_tests = current_failing_tests + ('^test_scan_sum_cpu.*',   #Nuphar: Graph output (sum_out) does not exist in the graph
+                                                             '^test_scan9_sum_cpu.*',) #Nuphar: Graph output (sum_out) does not exist in the graph
 
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \

@@ -8,7 +8,7 @@
 #include <tvm/ir.h>
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 Gemv16bitTensorization::Gemv16bitTensorization(const std::string& name, const std::vector<int32_t>& vshape)
     : TensorizeBase(name, "Gemv16bitTensorization_Parameter", {vshape[0], vshape[1]}) {}
@@ -65,23 +65,23 @@ tvm::TensorIntrin Gemv16bitTensorization::CreateTensorIntrin() {
     auto a_int16x16 = a_buf.vload({i * 16}, HalideIR::Int(16, 16));
     auto b_int16x16 = b_buf.vload({0, i * 16}, HalideIR::Int(16, 16));
 
-    auto axb_int32x8 = LLVMIntrinsic(HalideIR::Int(32, 8),
-                                     "llvm.x86.avx2.pmadd.wd",
-                                     {a_int16x16, b_int16x16});
+    auto axb_int32x8 = tvm_codegen::LLVMIntrinsic(HalideIR::Int(32, 8),
+                                                  "llvm.x86.avx2.pmadd.wd",
+                                                  {a_int16x16, b_int16x16});
     sum_int32x8 += axb_int32x8;
   }
 
-  sum_int32x8 = LLVMIntrinsic(HalideIR::Int(32, 8),
-                              "llvm.x86.avx2.phadd.d",
-                              {sum_int32x8, sum_int32x8});
-  sum_int32x8 = LLVMIntrinsic(HalideIR::Int(32, 8),
-                              "llvm.x86.avx2.phadd.d",
-                              {sum_int32x8, sum_int32x8});
+  sum_int32x8 = tvm_codegen::LLVMIntrinsic(HalideIR::Int(32, 8),
+                                           "llvm.x86.avx2.phadd.d",
+                                           {sum_int32x8, sum_int32x8});
+  sum_int32x8 = tvm_codegen::LLVMIntrinsic(HalideIR::Int(32, 8),
+                                           "llvm.x86.avx2.phadd.d",
+                                           {sum_int32x8, sum_int32x8});
 
-  auto sum_int32x4_l = VectorLow(sum_int32x8);
-  auto sum_int32x4_h = VectorHigh(sum_int32x8);
+  auto sum_int32x4_l = tvm_codegen::VectorLow(sum_int32x8);
+  auto sum_int32x4_h = tvm_codegen::VectorHigh(sum_int32x8);
   auto sum_int32x4 = sum_int32x4_l + sum_int32x4_h;
-  auto sum_int32x1 = ExtractElement(sum_int32x4, 0);
+  auto sum_int32x1 = tvm_codegen::ExtractElement(sum_int32x4, 0);
 
   auto reset = c_buf.vstore({0}, tvm::make_const(HalideIR::Int(32, 1), 0));
   auto body = c_buf.vstore({0}, sum_int32x1);
@@ -96,5 +96,5 @@ tvm::TensorIntrin Gemv16bitTensorization::CreateTensorIntrin() {
       reset,
       update);
 }
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

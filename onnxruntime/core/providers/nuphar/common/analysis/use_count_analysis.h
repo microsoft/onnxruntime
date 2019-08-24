@@ -11,16 +11,43 @@
 #include <functional>
 #include <unordered_map>
 
-// TODO analysis move to nuphar
+// TODO change namespace from codegen to nuphar
 
 namespace onnxruntime {
-namespace codegen {
+namespace nuphar {
 
-class UseCountAnalysis : public OrtAnalysis {
+class InternalUseCountAnalysis {
  public:
-  UseCountAnalysis(const std::shared_ptr<ShapeExprContext>& shape_inference);
+  InternalUseCountAnalysis(const std::shared_ptr<ShapeExprContext>& shape_inference);
 
-  ~UseCountAnalysis() = default;
+  ~InternalUseCountAnalysis() = default;
+
+  void Evaluate(const onnxruntime::GraphViewer& graph);
+
+  void Evaluate(const NupharSubgraphUnit& graph);
+
+  void IncrementCount(const onnxruntime::NodeArg* arg);
+
+  int NodeUseCount(const onnxruntime::Node* node) const;
+
+ private:
+  void Traverse(const std::vector<const Node*>& nodes,
+                const std::vector<const NodeArg*>& graph_inputs,
+                const std::vector<const NodeArg*>& graph_outputs);
+
+  std::unordered_map<NodeKey, int> node_use_counts_;
+  std::function<const ShapeExpr*(const onnxruntime::NodeArg*)> shape_func_;
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InternalUseCountAnalysis);
+};
+
+// TODO analysis move to namespace nuphar
+
+class OrtUseCountAnalysis : public OrtAnalysis {
+ public:
+  OrtUseCountAnalysis(const std::shared_ptr<ShapeExprContext>& shape_inference);
+  ~OrtUseCountAnalysis() = default;
 
   void Evaluate(const onnxruntime::GraphViewer& graph) override;
 
@@ -29,33 +56,28 @@ class UseCountAnalysis : public OrtAnalysis {
   int NodeUseCount(const onnxruntime::Node* node) const;
 
  private:
-  std::unordered_map<NodeKey, int> node_use_counts_;
-  std::function<const ShapeExpr*(const onnxruntime::NodeArg*)> shape_func_;
-
-  // TODO: move these to source as make them local functions
-  // local utility functions for analyze specific Node or NodeArg
-  void CountGemmOp(const onnxruntime::Node& node,
-                   const std::vector<const NodeArg*>& graph_inputs);
-
-  void CountMatMulOp(const onnxruntime::Node& node,
-                     const std::vector<const NodeArg*>& graph_inputs);
-
-  void CountLSTMOp(const onnxruntime::Node& node,
-                   const std::vector<const NodeArg*>& graph_inputs);
-
-  void CountMatrixArgs(const onnxruntime::NodeArg* A,
-                       const onnxruntime::NodeArg* B,
-                       const onnxruntime::Node& node,
-                       const std::vector<const NodeArg*>& graph_inputs);
-
-  void CountNodeArg(const onnxruntime::NodeArg* input_def,
-                    const onnxruntime::Node& node,
-                    const std::vector<const NodeArg*>& graph_inputs,
-                    int use_cnt);
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(UseCountAnalysis);
+  std::unique_ptr<InternalUseCountAnalysis> internal_analysis_;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtUseCountAnalysis);
 };
 
-}  // namespace codegen
+class NupharUseCountAnalysis : public NupharAnalysis {
+ public:
+  NupharUseCountAnalysis(const std::shared_ptr<ShapeExprContext>& shape_inference);
+
+  ~NupharUseCountAnalysis() = default;
+
+  void Evaluate(const onnxruntime::nuphar::NupharSubgraphUnit& graph) override;
+
+  void IncrementCount(const onnxruntime::NodeArg* arg);
+
+  int NodeUseCount(const onnxruntime::Node* node) const;
+
+ private:
+  std::unique_ptr<InternalUseCountAnalysis> internal_analysis_;
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(NupharUseCountAnalysis);
+};
+
+}  // namespace nuphar
 }  // namespace onnxruntime

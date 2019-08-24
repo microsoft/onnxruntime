@@ -1,3 +1,6 @@
+:: Copyright (c) Microsoft Corporation. All rights reserved.
+:: Licensed under the MIT License.
+
 @echo off
 setlocal EnableDelayedExpansion
 
@@ -13,7 +16,10 @@ set OUTPUT_DLL=%3
 )
 
 REM check required tools
+if not "%2"=="" (
+REM need fciv when provided model file
 where /q fciv.exe || echo Could not find fciv.exe, please make sure it is in PATH, or download from https://support.microsoft.com/en-us/help/841290 && exit /b -1
+)
 where /q cl.exe || echo Could not find cl.exe, please make sure it is in PATH, or install Visual Studio 2017 && exit /b -1
 where /q link.exe || echo Could not find link.exe, please make sure it is in path, or install Visual Studio 2017 && exit /b -1
 
@@ -27,7 +33,7 @@ echo                       LPVOID lpReserved) >>%DLLMAIN_CC%
 echo {return TRUE;} >>%DLLMAIN_CC%
 
 REM skip checksum if no model file specified
-if NOT EXIST %MODEL_FILE% goto Compile
+if NOT EXIST "%MODEL_FILE%" goto Compile
 
 REM get checksum from the model file
 set CHECKSUM_CC=%CACHE_DIR%\checksum.cc

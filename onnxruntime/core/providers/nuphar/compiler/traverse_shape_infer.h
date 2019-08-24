@@ -8,11 +8,8 @@
 #include "core/framework/tensor.h"
 #include "core/graph/graph_viewer.h"
 
-// TODO analysis move to nuphar
 namespace onnxruntime {
-
-// TODO move this to common and
-// TODO: maybe to create a base class or template for context
+namespace nuphar {
 
 // A collection of ShapeExpr
 struct ShapeExprContext {
@@ -48,4 +45,5 @@ struct ShapeExprContext {
 Status ShapeInference(const GraphViewer& graph,
                       ShapeExprContext& context);
 
+}  // namespace nuphar
 }  // namespace onnxruntime

@@ -7,9 +7,9 @@
 #include <tvm/tvm.h>
 
 namespace onnxruntime {
-namespace nuphar_codegen {
+namespace nuphar {
 
 tvm::Tensor LogSoftmax(const tvm::Tensor& input, int64_t axis, const std::string& name = "LogSoftmax");
 
-}  // namespace nuphar_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

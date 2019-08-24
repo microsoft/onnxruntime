@@ -10,7 +10,7 @@ extern "C" {
  * \param device_id nuphar device id, starts from zero.
  * \param target_str TVM target string.
  */
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Nuphar, _In_ OrtSessionOptions* options, int allow_unaligned_buffers, int device_id, _In_ const char* target_str);
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Nuphar, _In_ OrtSessionOptions* options, int allow_unaligned_buffers, int device_id, _In_ const char* settings_str);
 
 #ifdef __cplusplus
 }

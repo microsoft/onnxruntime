@@ -8,7 +8,7 @@
 // Use inline if utilities are in a runtime critical path
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 inline void ShapeRemoveAxis(
     std::vector<int64_t>& shape,
@@ -68,5 +68,5 @@ inline int64_t BytesOfShape(const int64_t* shape, size_t rank, MLDataType dtype)
     return derived;                                   \
   }
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

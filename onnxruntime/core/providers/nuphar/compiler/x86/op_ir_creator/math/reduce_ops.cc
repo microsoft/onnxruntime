@@ -10,7 +10,7 @@
 #include <algorithm>  // for sort
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 using ReduceVFunc = tvm::Tensor (*)(const tvm::Tensor& X,
                                     const std::vector<int64_t>& axes,
@@ -114,19 +114,28 @@ class FuncReduceV {
     ORT_ENFORCE(info.GetAttr("keepdims", &keepdims_i).IsOK());
     keep_dims_ = (keepdims_i == 1);
     func_ = func;
-    name_ = name;
+    name_ = node.Name() + "_" + name;
     natural_vector_ = natural_vector;
   }
 
   tvm::Tensor operator()(const tvm::Tensor& X) const {
     std::vector<int64_t> axes;
-    for (auto i : axes_)
+    for (auto i : axes_) {
       axes.push_back(HandleNegativeAxis(i, gsl::narrow_cast<int64_t>(X->shape.size())));
+    }
 
     auto p = VectorWidthAndFuseDimForReduce(natural_vector_(X->dtype.bits()), axes, def_);
     int vector_width = std::get<0>(p);
     int fuse_dim = std::get<1>(p);
-    return func_(X, axes, keep_dims_, vector_width, false, fuse_dim, name_);
+
+    bool last_dim_aligned = false;
+    const int64_t* p_last_dim_size = tvm::as_const_int(X->shape[X->shape.size() - 1]);
+
+    if (p_last_dim_size != nullptr) {
+      last_dim_aligned = (*p_last_dim_size) % vector_width == 0;
+    }
+
+    return func_(X, axes, keep_dims_, vector_width, last_dim_aligned, fuse_dim, name_);
   }
 
  private:
@@ -138,23 +147,23 @@ class FuncReduceV {
   const NodeArg* def_;
 };
 
-#define REDUCE_V_OP(name)                                                                                            \
-  Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(name)::Evaluate(                                                         \
-      const tvm::Array<tvm::Tensor>& inputs,                                                                         \
-      const Node& node,                                                                                              \
-      CodeGenContext& ctx_codegen,                                                                                   \
-      tvm::Array<tvm::Tensor>& outputs) {                                                                            \
-    auto natural_vector = [&](int bits) {                                                                            \
-      return ctx_codegen.GetCodeGenHandle()->codegen_target->NaturalVectorWidth(bits);                               \
-    };                                                                                                               \
-    tvm::Tensor Y = FuncReduceV(node, &nuphar_codegen::name, natural_vector, node.InputDefs()[0], #name)(inputs[0]); \
-    outputs.push_back(Y);                                                                                            \
-    return Status::OK();                                                                                             \
+#define REDUCE_V_OP(name)                                                                                    \
+  Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(name)::Evaluate(                                                 \
+      const tvm::Array<tvm::Tensor>& inputs,                                                                 \
+      const Node& node,                                                                                      \
+      tvm_codegen::CodeGenContext& ctx_codegen,                                                              \
+      tvm::Array<tvm::Tensor>& outputs) {                                                                    \
+    auto natural_vector = [&](int bits) {                                                                    \
+      return ctx_codegen.GetCodeGenHandle()->codegen_target->NaturalVectorWidth(bits);                       \
+    };                                                                                                       \
+    tvm::Tensor Y = FuncReduceV(node, &nuphar::name, natural_vector, node.InputDefs()[0], #name)(inputs[0]); \
+    outputs.push_back(Y);                                                                                    \
+    return Status::OK();                                                                                     \
   }
 
 LIST_REDUCE_V_OPS()
 
 #undef REDUCE_V_OP
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

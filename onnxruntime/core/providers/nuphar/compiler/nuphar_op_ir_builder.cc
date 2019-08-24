@@ -4,22 +4,26 @@
 #include "core/providers/nuphar/compiler/nuphar_op_ir_builder.h"
 
 #include "core/codegen/common/op_macro.h"
-#include "core/providers/nuphar/compiler/recurrent_state_util.h"
-#include "core/providers/nuphar/compiler/tvm_initializer.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
-#include "core/codegen/target/generic/op_ir_creator/all_ops.h"
-#include "core/codegen/target/ort_tvm_utils.h"
-#include "core/codegen/target/tvm_ir_builder.h"
-#include "core/providers/nuphar/compiler/x86/op_ir_creator/all_ops.h"
+#include "core/codegen/passes/op_ir_creator/all_ops.h"
+#include "core/codegen/passes/op_ir_creator/tvm_ir_builder.h"
+#include "core/codegen/passes/utils/ort_tvm_utils.h"
 #include "core/common/common.h"
+#include "core/providers/nuphar/compiler/initializer_info.h"
+#include "core/providers/nuphar/compiler/x86/op_ir_creator/all_ops.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 // Declaration of GetOrCreateInitializer
 // GetOrCreateInitializer create tvm::placeholder for a marshalled weight
 // with correpsonding data layout transfomration for a weight,
 // Note the weight is fed during build
+static const tvm::Tensor& GetOrCreateInitializer(const std::string& name,
+                                                 const Tensor* tensor,
+                                                 bool is_sliced,
+                                                 NupharCodeGenCtx& ctx_codegen);
+
 static const tvm::Tensor& GetOrCreateInitializer(const NodeArg* def,
                                                  const Tensor* tensor,
                                                  bool is_sliced,
@@ -32,7 +36,7 @@ static tvm::Tensor CreateInputPlaceholder(const tvm::Array<tvm::Expr>& shape,
                                           HalideIR::Type halide_type,
                                           const std::string& name,
                                           bool is_sliced) {
-  return tvm::placeholder(is_sliced && shape.size() > 1 ? SliceShapeFromDimension(shape, 1) : shape, halide_type, name);
+  return tvm::placeholder(is_sliced && shape.size() > 1 ? tvm_codegen::SliceShapeFromDimension(shape, 1) : shape, halide_type, name);
 }
 
 // CreateInput creats tvm::Tensor of corresponding ORT input
@@ -43,7 +47,7 @@ static bool CreateInput(
     bool initializer_only,
     bool is_sliced,
     NupharCodeGenCtx& ctx_codegen) {
-  const Tensor* initialized_tensor = ctx_codegen.GetOrtInitializedTensor(def);
+  const Tensor* initialized_tensor = ctx_codegen.GetOrtInitializerTensor(def->Name());
   if (nullptr == initialized_tensor && initializer_only)
     return false;
 
@@ -54,7 +58,7 @@ static bool CreateInput(
     // Handle inputs without initializer
     std::string name = NormalizeNodeArgName(def);
     MLDataType ONNXRUNTIME_data_type = DataTypeImpl::TypeFromProto(*def->TypeAsProto());
-    DLDataType dtype = ToTvmDLDataType(ONNXRUNTIME_data_type);
+    DLDataType dtype = tvm_codegen::ToTvmDLDataType(ONNXRUNTIME_data_type);
     HalideIR::Type halide_type((halideir_type_code_t)dtype.code, dtype.bits, dtype.lanes);
     tvm::Array<tvm::Expr> shape = ShapeToTvmArray(def, ctx_codegen);
 
@@ -68,26 +72,33 @@ static bool CreateInput(
 // GetOrCreateInitializer create tvm::placeholder for a marshalled weight
 // with correpsonding data layout transfomration for a weight,
 // Note the weight is fed during build
-const tvm::Tensor& GetOrCreateInitializer(const NodeArg* def,
+const tvm::Tensor& GetOrCreateInitializer(const std::string& name,
                                           const Tensor* tensor,
                                           bool is_sliced,
                                           NupharCodeGenCtx& ctx_codegen) {
-  auto info = ctx_codegen.GetInitializerInfo(def->Name());
-  ORT_ENFORCE(nullptr != info);
+  ORT_ENFORCE(ctx_codegen.IsInitializer(name));
 
-  if (nullptr != info->layout_info) {
-    return info->layout_info->marshalled_tensor;
+  auto layout_info = ctx_codegen.GetWeightLayoutInfo(name);
+  if (nullptr != layout_info) {
+    return layout_info->marshalled_tensor;
   }
 
   auto ONNXRUNTIME_data_type = tensor->DataType();
   DLDataType dtype = tvm_codegen::ToTvmDLDataType(ONNXRUNTIME_data_type);
   HalideIR::Type halide_type((halideir_type_code_t)dtype.code, dtype.bits, dtype.lanes);
-  std::string name = NormalizeNodeArgName(def);
-  auto tvm_shape = ToTvmArray(tensor->Shape().GetDims());
-  auto tvm_tensor = CreateInputPlaceholder(tvm_shape, halide_type, name, is_sliced);
+  std::string normalized_name = NormalizeCppName(name);
+  auto tvm_shape = tvm_codegen::ToTvmArray(tensor->Shape().GetDims());
+  auto tvm_tensor = CreateInputPlaceholder(tvm_shape, halide_type, normalized_name, is_sliced);
   // create the layout info
-  info->layout_info = std::make_unique<WeightLayoutInfo>(tvm_tensor);
-  return info->layout_info->marshalled_tensor;
+  ctx_codegen.CreateWeightLayoutInfo(name, tvm_tensor);
+  return ctx_codegen.GetWeightLayoutInfo(name)->marshalled_tensor;
+}
+
+const tvm::Tensor& GetOrCreateInitializer(const NodeArg* def,
+                                          const Tensor* tensor,
+                                          bool is_sliced,
+                                          NupharCodeGenCtx& ctx_codegen) {
+  return GetOrCreateInitializer(def->Name(), tensor, is_sliced, ctx_codegen);
 }
 
 // CreateOutputs constructs tvm::Tensor with corresponding computation
@@ -101,11 +112,6 @@ static Status CreateOutputs(const Node* node,
 
   // Collect constructed tvm::Node to onnxruntime::Node mapping
   // Both states and outputs
-  // TODO remove GetTVMTensorCtx and LookupLoopStates
-  for (const auto& l_state : ctx_codegen.GetTVMTensorCtx().LookupLoopStates(node)) {
-    ctx_codegen.RecordTensorToNode(l_state.second, node);
-  }
-
   for (const auto& t : outputs) {
     ctx_codegen.RecordTensorToNode(t, node);
   }
@@ -119,7 +125,7 @@ Status CreateTVMIR(
     const GraphViewer& graph,
     NupharCodeGenCtx& ctx_codegen,
     bool use_placeholder_for_input) {
-  TVMTensorCtx& ctx_shape_and_tensor = ctx_codegen.GetTVMTensorCtx();
+  TVMTensorCtx& ctx_tensor = ctx_codegen.GetTVMTensorCtx();
 
   if (use_placeholder_for_input) {
     // build graph inputs
@@ -128,8 +134,9 @@ Status CreateTVMIR(
       tvm::Tensor value;
       if (CreateInput(graph_inputs[i], value,
                       /*initializer_only*/ false, /*is_sliced*/ false,
-                      ctx_codegen))
-        ctx_shape_and_tensor.inputs.emplace(graph_inputs[i]->Name(), std::move(value));
+                      ctx_codegen)) {
+        ctx_tensor.inputs.emplace(graph_inputs[i]->Name(), std::move(value));
+      }
     }
   }
 
@@ -137,44 +144,53 @@ Status CreateTVMIR(
     // initializers
     node.ForEachWithIndex(
         node.InputDefs(),
-        [&ctx_codegen, &ctx_shape_and_tensor](const NodeArg& def, size_t) {
+        [&ctx_codegen, &ctx_tensor](const NodeArg& def, size_t) {
           tvm::Tensor value;
           if (CreateInput(&def, value, /*initializer_only*/ true, /*is_sliced*/ false,
-                          ctx_codegen))
-            ctx_shape_and_tensor.inputs.emplace(def.Name(), std::move(value));
+                          ctx_codegen)) {
+            ctx_tensor.inputs.emplace(def.Name(), std::move(value));
+          }
           return Status::OK();
         });
   }
 
-  // iterate though the graph and create op (outputs)
+  // iterate through the graph and create op (outputs)
   for (auto node_index : graph.GetNodesInTopologicalOrder()) {
     const auto& node = *graph.GetNode(node_index);
     tvm::Array<tvm::Tensor> inputs;
     for (const NodeArg* def : node.InputDefs()) {
-      inputs.push_back(def->Exists() ? ctx_shape_and_tensor.Lookup(def) : tvm::Tensor());
+      tvm::Tensor input;
+      if (def->Exists()) {
+        bool exist = ctx_tensor.Lookup(def, input);
+        if (!exist) {
+          tvm::Tensor value;
+          if (CreateInput(def, value,
+                          /*initializer_only*/ false, /*is_sliced*/ false,
+                          ctx_codegen)) {
+            ctx_tensor.inputs.emplace(def->Name(), std::move(value));
+          }
+          input = ctx_tensor.Lookup(def);
+        }
+      }
+      inputs.push_back(input);
     }
 
-    // TODO: remove this
-    // TODO remove CreateRecurrentStates
-    std::vector<std::pair<tvm::Tensor, tvm::Tensor>> l_states;
-    CreateRecurrentStates(node, l_states);
-    ctx_shape_and_tensor.loop_states.emplace(&node, std::move(l_states));
-
     auto subgraph = GetSubgraph(node);
-    if (subgraph) {
+    if (nullptr != subgraph) {
+      // unboxing
       GraphViewer subgraph_viewer(*subgraph);
       ORT_RETURN_IF_ERROR(CreateTVMIR(subgraph_viewer, ctx_codegen, /*use_placeholder_for_input*/ false));
     } else {
       tvm::Array<tvm::Tensor> op_outputs;
       ORT_RETURN_IF_ERROR(CreateOutputs(&node, inputs, op_outputs, ctx_codegen));
-      ctx_shape_and_tensor.ops.emplace(&node, std::move(op_outputs));
+      ctx_tensor.ops.emplace(&node, std::move(op_outputs));
 
       // input_from_
       node.ForEachWithIndex(
           node.OutputDefs(),
-          [&node, &ctx_shape_and_tensor](const NodeArg& def, size_t index) {
-            ORT_ENFORCE(ctx_shape_and_tensor.input_from.count(def.Name()) == 0);
-            ctx_shape_and_tensor.input_from.emplace(def.Name(), std::make_pair(&node, index));
+          [&node, &ctx_tensor](const NodeArg& def, size_t index) {
+            ORT_ENFORCE(ctx_tensor.input_from.count(def.Name()) == 0);
+            ctx_tensor.input_from.emplace(def.Name(), std::make_pair(&node, index));
             return Status::OK();
           });
     }
@@ -189,47 +205,107 @@ Status CreateTVMIR(
     const Node& node,
     NupharCodeGenCtx& ctx_codegen) {
   // wrapper
-  TVMTensorCtx& ctx_shape_and_tensor = ctx_codegen.GetTVMTensorCtx();
+  TVMTensorCtx& ctx_tensor = ctx_codegen.GetTVMTensorCtx();
   bool has_loop = HasLoop(node);
 
   // create real Inputs
   node.ForEachWithIndex(
       node.InputDefs(),
-      [&has_loop, &ctx_codegen, &ctx_shape_and_tensor](const NodeArg& def, size_t) {
+      [&has_loop, &ctx_codegen, &ctx_tensor](const NodeArg& def, size_t) {
         tvm::Tensor value;
         if (CreateInput(&def, value, /*initializer_only*/ false, /*is_sliced*/ has_loop,
-                        ctx_codegen))
-          ctx_shape_and_tensor.inputs.emplace(def.Name(), std::move(value));
+                        ctx_codegen)) {
+          ctx_tensor.inputs.emplace(def.Name(), std::move(value));
+        }
         return Status::OK();
       });
 
   // input_from_
   node.ForEachWithIndex(
       node.OutputDefs(),
-      [&node, &ctx_shape_and_tensor](const NodeArg& def, size_t index) {
-        ctx_shape_and_tensor.input_from.emplace(def.Name(), std::make_pair(&node, index));
+      [&node, &ctx_tensor](const NodeArg& def, size_t index) {
+        ctx_tensor.input_from.emplace(def.Name(), std::make_pair(&node, index));
         return Status::OK();
       });
 
   tvm::Array<tvm::Tensor> inputs;
   for (const NodeArg* def : node.InputDefs()) {
-    inputs.push_back(def->Exists() ? ctx_shape_and_tensor.Lookup(def) : tvm::Tensor());
+    inputs.push_back(def->Exists() ? ctx_tensor.Lookup(def) : tvm::Tensor());
   }
-
-  // TODO remove this
-  // TODO remove CreateRecurrentStates
-  // create loop states.
-  std::vector<std::pair<tvm::Tensor, tvm::Tensor>> l_states;
-  CreateRecurrentStates(node, l_states);
-  ctx_shape_and_tensor.loop_states.emplace(&node, std::move(l_states));
 
   // create ops (outputs)
   tvm::Array<tvm::Tensor> op_outputs;
   ORT_RETURN_IF_ERROR(CreateOutputs(&node, inputs, op_outputs, ctx_codegen));
-  ctx_shape_and_tensor.ops.emplace(&node, std::move(op_outputs));
+  ctx_tensor.ops.emplace(&node, std::move(op_outputs));
 
   return Status::OK();
 }
 
-}  // namespace tvm_codegen
+// CreateTVMIR is the entry function for building TVM IR
+// It will call TVMIRBuilder (in CreateOutputs) from CodeGenContext
+Status CreateTVMIR(
+    const nuphar::NupharSubgraphUnit& subgraph,
+    NupharCodeGenCtx& ctx_codegen) {
+  ////////////////////////////////////////
+  // handle a special case for a single node
+  ////////////////////////////////////////
+  if (subgraph.IsSingleNode()) {
+    const Node* node = subgraph.nodes.front();
+
+    const Graph* onnx_graph = GetSubgraph(*node);
+
+    if (nullptr != onnx_graph) {
+      return CreateTVMIR(GraphViewer(*onnx_graph), ctx_codegen, true);
+    }
+    return CreateTVMIR(*node, ctx_codegen);
+  }
+
+  //////////////////////////////
+  // handle a generic subgraph below
+  //////////////////////////////
+  TVMTensorCtx& ctx_tensor = ctx_codegen.GetTVMTensorCtx();
+
+  // build subgraph inputs
+  for (const NodeArg* def : subgraph.inputs) {
+    tvm::Tensor value;
+
+    if (CreateInput(def, value, /*initializer_only*/ false, /*is_sliced*/ false,
+                    ctx_codegen)) {
+      ctx_tensor.inputs.emplace(def->Name(), std::move(value));
+    }
+  }
+
+  // build subgraph initializers
+  for (auto& p : subgraph.initializers) {
+    tvm::Tensor value = GetOrCreateInitializer(p.first, p.second, false, ctx_codegen);
+    ctx_tensor.inputs.emplace(p.first, std::move(value));
+  }
+
+  // iterate through the subgraph nodes and create op (outputs)
+  for (auto& node : subgraph.nodes) {
+    tvm::Array<tvm::Tensor> inputs;
+
+    // collects local inputs
+    for (const NodeArg* def : node->InputDefs()) {
+      inputs.push_back(def->Exists() ? ctx_tensor.Lookup(def) : tvm::Tensor());
+    }
+
+    tvm::Array<tvm::Tensor> op_outputs;
+    ORT_RETURN_IF_ERROR(CreateOutputs(node, inputs, op_outputs, ctx_codegen));
+    ctx_tensor.ops.emplace(node, std::move(op_outputs));
+
+    // input_from_
+    node->ForEachWithIndex(
+        node->OutputDefs(),
+        [&node, &ctx_tensor](const NodeArg& def, size_t index) {
+          ORT_ENFORCE(ctx_tensor.input_from.count(def.Name()) == 0);
+          ctx_tensor.input_from.emplace(def.Name(), std::make_pair(node, index));
+          return Status::OK();
+        });
+  }
+
+  return Status::OK();
+}
+
+}  // namespace nuphar
 }  // namespace onnxruntime

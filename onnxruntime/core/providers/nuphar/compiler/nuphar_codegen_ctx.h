@@ -3,48 +3,59 @@
 
 #pragma once
 
-// TODO: clean header
-
-#include <tvm/tvm.h>
-#include "core/codegen/target/tvm_context.h"
 #include "core/codegen/common/common.h"
-#include "core/providers/nuphar/compiler/nuphar_handle.h"
-#include "core/providers/nuphar/compiler/tvm_initializer.h"
+#include "core/codegen/passes/utils/codegen_context.h"
 #include "core/common/common.h"
 #include "core/graph/graph.h"
 #include "core/providers/nuphar/common/analysis/graph_stats.h"
+#include "core/providers/nuphar/common/nuphar_subgraph.h"
+#include "core/providers/nuphar/compiler/initializer_info.h"
+#include "core/providers/nuphar/compiler/nuphar_handle.h"
+
+#include <tvm/tvm.h>
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 // Nuphar Tensor Context
 struct TVMTensorCtx {
   std::map<std::string, tvm::Tensor> inputs;
   std::map<const Node*, tvm::Array<tvm::Tensor>> ops;
   std::map<std::string, std::pair<const Node*, size_t>> input_from;
-  std::map<const Node*, std::vector<std::pair<tvm::Tensor, tvm::Tensor>>> loop_states;
 
-  std::vector<std::pair<tvm::Tensor, tvm::Tensor>>&
-  LookupLoopStates(const Node* node) {
-    auto iter = loop_states.find(node);
-    ORT_ENFORCE(iter != loop_states.end());
-    return iter->second;
+  bool Lookup(const NodeArg* def, tvm::Tensor& tensor) {
+    const std::string& def_name = def->Name();
+    auto iter = inputs.find(def_name);
+    if (iter != inputs.end()) {
+      tensor = iter->second;
+      return true;
+    }
+
+    auto iter_out_index = input_from.find(def_name);
+
+    if (iter_out_index == input_from.end()) {
+      return false;
+    }
+
+    const Node* from_node = iter_out_index->second.first;
+    size_t index = iter_out_index->second.second;
+    auto iter_op = ops.find(from_node);
+    ORT_ENFORCE(iter_op != ops.end());
+    tensor = iter_op->second[index];
+    return true;
   }
 
   const tvm::Tensor
   Lookup(const NodeArg* def) const {
     const std::string& def_name = def->Name();
     auto iter = inputs.find(def_name);
-    if (iter != inputs.end())
+    if (iter != inputs.end()) {
       return iter->second;
+    }
 
     auto iter_out_index = input_from.find(def_name);
 
-    // OK if shape inference is incomplete
-    // This is for some per-node unit test where NodeArg does not even have shape ranks
-    // We ignore the shape inference in ToCapacity computation in per-node unit tests
-    if (iter_out_index == input_from.end())
-      return tvm::Tensor();  // TODO confirm this
+    ORT_ENFORCE(iter_out_index != input_from.end());
 
     const Node* from_node = iter_out_index->second.first;
     size_t index = iter_out_index->second.second;
@@ -55,28 +66,32 @@ struct TVMTensorCtx {
 };
 
 struct WeightLayoutCtx {
-  //std::unordered_map<std::string, std::string> initializer_to_weight_layout;  // unused yet. This is for decoupling weight layout compile and run
+  //std::map<std::string, std::string> initializer_to_weight_layout;  // unused yet. This is for decoupling weight layout compile and run
   std::unordered_map<std::string, tvm::runtime::PackedFunc> weight_layout_to_packed_func;
 };
 
-// TODO: gradually move CodeGenContext's members to NupharCodeGenCtx
-//       until CodeGenContext becoming generic
-class NupharCodeGenCtx : public CodeGenContext {
+// NupharCodeGenCtx is Nuphar-specific CodeGenContext
+class NupharCodeGenCtx : public tvm_codegen::CodeGenContext {
  public:
   NupharCodeGenCtx(const Node& node,
-                   InitializerMap& initializers,
+                   const std::map<std::string, const Tensor*>& initializers,
+                   std::unordered_map<std::string, std::unique_ptr<Tensor>>& global_generated_initializers,
+                   const NupharCodeGenHandle* handle);
+
+  NupharCodeGenCtx(const nuphar::NupharSubgraphUnit& subgraph,
+                   std::unordered_map<std::string, std::unique_ptr<Tensor>>& global_generated_initializers,
                    const NupharCodeGenHandle* handle);
 
   virtual ~NupharCodeGenCtx() = default;
 
-  const codegen::OrtGraphStats* GetGraphStats() const;
+  const NupharSubgraphUnitStats* GetGraphStats() const;
 
-  InitializerInfo* GetInitializerInfo(const std::string& name);
-  const InitializerInfo* GetInitializerInfo(const std::string& name) const;
-  bool IsInitializerMarshalled(const std::string& name) const;
-  const InitializerMap& GetInitializerMap() const;
-  // TODO: remove this
-  size_t SizeInitializerMarshalled() const;
+  bool IsInitializer(const std::string& name) const;
+  const Tensor* GetOrtInitializerTensor(const std::string& name) const;
+  WeightLayoutCodegenInfo* GetWeightLayoutInfo(const std::string& name);
+  const WeightLayoutCodegenInfo* GetWeightLayoutInfo(const std::string& name) const;
+  void CreateWeightLayoutInfo(const std::string& name, const tvm::Tensor& tensor);
+  const std::map<std::string, std::unique_ptr<WeightLayoutCodegenInfo>>& GetWeightLayoutMap() const;
 
   // On-the-fly apply an existing layout
   tvm::Tensor ApplyWeightLayout(
@@ -87,13 +102,13 @@ class NupharCodeGenCtx : public CodeGenContext {
 
   void RecordTensorToNode(const tvm::Tensor& t, const Node* node);
   const Node* FindNode(const tvm::Tensor& t) const;
-  const Tensor* GetOrtInitializedTensor(const NodeArg* def) const;
 
   const NupharCodeGenHandle* GetCodeGenHandle() const;
 
+  // TODO remove this after decoupling compiler and runtime of WeightLayout
   template <typename T>
   IAllocatorUniquePtr<T> AllocateT(size_t size) const { return IAllocator::MakeUniquePtr<T>(nuphar_handle_->allocator, size); }
-
+  // TODO remove this after decoupling compiler and runtime of WeightLayout
   IAllocatorUniquePtr<void> Allocate(size_t size) const { return AllocateT<void>(size); }
 
   // Keep for CodeGenContext
@@ -107,12 +122,11 @@ class NupharCodeGenCtx : public CodeGenContext {
   }
 
  private:
-  std::unique_ptr<codegen::OrtGraphStats> graph_stats_;
-
-  // initializer lookup table
-  InitializerMap& initializer_map_;
+  std::unique_ptr<NupharSubgraphUnitStats> graph_stats_;
 
   const NupharCodeGenHandle* nuphar_handle_;
+
+  const std::map<std::string, const Tensor*>& initializers_;
 
   // A table from tvm::Tensor (its unchanged source tvm::Node*) to ORT Node
   std::unordered_map<const tvm::Node*, const Node*> tvm_tensor_to_node_lookup_;
@@ -120,9 +134,14 @@ class NupharCodeGenCtx : public CodeGenContext {
   // All TVM Tensor and correponidng shape context
   TVMTensorCtx tvm_tensor_ctx_;
 
-  // all layout
+  // local copy
+  std::map<std::string, std::unique_ptr<WeightLayoutCodegenInfo>> initializer_layouts_;
+
+  std::unordered_map<std::string, std::unique_ptr<Tensor>>& global_generated_initializers_;
+
+  // all layouts
   WeightLayoutCtx weight_layout_ctx_;
 };
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

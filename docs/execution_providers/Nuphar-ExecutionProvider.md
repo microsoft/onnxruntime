@@ -1,8 +1,8 @@
 ## Nuphar Execution Provider (preview)
 
-The Nuphar execution provider in the ONNX Runtime is built on top of [TVM](https://github.com/dmlc/tvm) and [LLVM](https://llvm.org) to accelerate ONNX models by compiling nodes in subgraphs into optimized functions via JIT. It also provides JIT caching to save compilation time at runtime. 
+NUPHAR stands for Neural-network Unified Preprocessing Heterogeneous ARchitecture. As an execution provider in the ONNX Runtime, it is built on top of [TVM](https://github.com/dmlc/tvm) and [LLVM](https://llvm.org) to accelerate ONNX models by compiling nodes in subgraphs into optimized functions via JIT. It also provides JIT caching to save compilation time at runtime. 
 
-This execution provider release is currently in preview. With the Nuphar execution provider, the ONNX Runtime delivers better inferencing performance on the same hardware compared to generic X64 CPU acceleration, especially for quantized recurrent neural networks. Speech recognition in Microsoft has been able to get up to 3X COGS (Cost Of Goods Sold) savings with no loss of accuracy, by running quantized LSTMs via the Nuphar execution provider in the ONNX Runtime.
+This execution provider release is currently in preview. With the Nuphar execution provider, the ONNX Runtime delivers better inferencing performance on the same hardware compared to generic X64 CPU acceleration, especially for quantized recurrent neural networks. Various products at Microsoft have seen up to a 5x improvement in performance with no loss of accuracy, by running quantized LSTMs via the Nuphar execution provider in the ONNX Runtime.
 
 ### Build Nuphar execution provider
 Developers can now tap into the power of Nuphar through ONNX Runtime to accelerate inferencing of ONNX models. Besides, the Nuphar execution provider also comes with a common ONNX to TVM lowering [library](../../onnxruntime/core/codegen), that could be reused by other execution providers to leverage TVM. Instructions to build the Nuphar execution provider from source is available [here](../../BUILD.md#nuphar).
@@ -24,7 +24,7 @@ You can use the Nuphar execution provider via the python wheel from the ONNX Run
 You can test your ONNX model's performance with [onnxruntime_perf_test](../../onnxruntime/test/perftest/README.md), or test accuracy with [onnx_test_runner](../../onnxruntime/test/onnx/README.txt). To run these tools with the Nuphar execution provider, please pass `-e nuphar` in command line options.
 
 ### Model conversion/quantization
-You may use Python Script [model_editor.py](../../onnxruntime/core/providers/nuphar/scripts/model_editor.py) to turn LSTM/GRU/RNN ops to Scan ops for a given model, and then quantize MatMul ops into MatMulInteger ops.
+You may use Python script [model_editor.py](../../onnxruntime/core/providers/nuphar/scripts/model_editor.py) to turn LSTM/GRU/RNN ops to Scan ops for a given model, and then use [model_quantizer.py](../../onnxruntime/core/providers/nuphar/scripts/model_quantizer.py) to quantize MatMul ops into MatMulInteger ops.
 
 We use dynamic per-row quantization for inputs of LSTM MatMul, so MatMul becomes three parts: quantization, MatMulInteger and dequantization. Weights for MatMulInteger are statically quantized per-column to int8. We have observed good speed-up and no loss of accuracy with this quantization scheme inside Scan for various LSTM models.
 
@@ -35,7 +35,7 @@ python model_editor.py --input /path/to/input/model --output /path/to/output/mod
 
 To quantize MatMul ops to MatMulInteger ops (use option --only_for_scan to only quantize MatMuls inside Scan):
 ```
-python model_editor.py --input /path/to/input/model --output /path/to/output/model --mode to_imatmul --only_for_scan
+python model_quantizer.py --input /path/to/input/model --output /path/to/output/model --only_for_scan
 ```
 
 As an experiment, you may test conversion and quantization on [the BiDAF model](https://github.com/onnx/models/tree/master/bidaf) from the ONNX model zoo. This model has 5 bidirectional LSTM ops, and long sequence lengths. Our test shows that the quantized model has comparable accuracy of F1 76.24, EM 68.08, vs. floating point model accuracy of F1 76.20, EM 68.11.
@@ -89,18 +89,24 @@ There are several [environment variables](../../onnxruntime/core/codegen/common/
 
     Set it to "verbose" to dump all nodes, or node op_type to dump specific nodes. You may use "concise" to dump just the op_type of nodes.
 
-* NUPHAR_DUMP_FUSED_NODES
+* NUPHAR_DUMP_PARTITION
 
-    Dumps fused nodes in each subgraph.
+    Dumps nodes in each partition.
 
     Set it to "1" to dump partitions.
 
 ### Known issues
 * ONNX shape inference dependency
 
-    To save runtime JIT cost, Nuphar requires models to have shape inference information from ONNX after model is loaded. Some nodes in ONNX can generate dynamic output tensor shapes from input data value, i.e. ConstantOfShape, Tile, Slice in opset 10, Compress, etc. Those ops may block ONNX shape inference and make the model not runnable in Nuphar.
+    To save runtime JIT cost, Nuphar requires models to have shape inference information from ONNX after model is loaded. Some nodes in ONNX can generate dynamic output tensor shapes from input data value, i.e. ConstantOfShape, Tile, Slice in opset 10, Compress, etc. Those ops may block ONNX shape inference and make the part of graph after such nodes not runnable in Nuphar.
 
-    We are working on solutions to this. A workaround would be manually add output tensor shapes in the model in graph.value_info field, if the shape in model can be determined by user even though the op output shape is dynamic by ONNX spec. For example, if you have Hardmax output casted to bool as Compress input condition, then the unknown dimension of the output of Compress is actually 1.
+    User may use Python script [symbolic_shape_infer.py](../../onnxruntime/core/providers/nuphar/scripts/symbolic_shape_infer.py) to run symbolic shape inference in ONNX model. This script adds output tensor shapes in the model in graph.value_info field, by doing symbolic dimension computation using sympy when there are Shape ops in model. Besides, running symbolic shape inference on ONNX model would make the graph more readable. Note that when using [model_editor.py](../../onnxruntime/core/providers/nuphar/scripts/model_editor.py) to convert models with LSTM/GRU/RNN to Scan, the resulting model may have incomplete shape inference. Running symbolic_shape_infer.py is needed to get the Scan ops in the model to run in Nuphar.
+
+    In addition, user may also manually add shapes to graph.value_info using [onnx.helper.make_tensor_value_info](https://github.com/onnx/onnx/blob/v1.5.0/onnx/helper.py#L290) with model specific knowledge. For example, if you have Hardmax output casted to bool as Compress input condition, then the unknown dimension of the output of Compress is actually 1.
+
+* Performance benchmark
+
+    Current Nuphar's speed-up in quantized RNNs is optimized for AVX2, when running in single thread and batch size is 1. To help understand RNN performance in different configurations, please use Python script [rnn_benchmark.py](../../onnxruntime/core/providers/nuphar/scripts/rnn_benchmark.py). For older X64 CPUs that do not support AVX2, quantized model may have worse performance than non-quantized ones.
 
 * Patches to TVM
 

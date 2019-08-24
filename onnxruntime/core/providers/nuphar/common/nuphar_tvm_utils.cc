@@ -3,7 +3,11 @@
 
 #include "core/providers/nuphar/common/nuphar_tvm_utils.h"
 
+#include "core/providers/nuphar/common/nuphar_subgraph.h"
 #include "core/providers/nuphar/common/nuphar_settings.h"
+#include "core/codegen/common/common.h"
+#include "core/codegen/common/target_info.h"
+
 #include "core/common/logging/logging.h"
 #include "core/platform/env.h"
 #include "core/providers/common.h"
@@ -15,7 +19,7 @@
 namespace fs = std::experimental::filesystem;
 
 namespace onnxruntime {
-namespace nuphar_codegen {
+namespace nuphar {
 
 static bool GetOrCreateTVMModuleCacheDirectory(fs::path& path, bool create) {
   codegen::CodeGenSettings& settings = codegen::CodeGenSettings::Instance();
@@ -24,10 +28,11 @@ static bool GetOrCreateTVMModuleCacheDirectory(fs::path& path, bool create) {
     return false;
 
   std::string version;
-  if (settings.HasOption(kNupharCacheVersion))
+  if (settings.HasOption(kNupharCacheVersion)) {
     version = settings.GetOptionValue(kNupharCacheVersion);
-  else
-    version = kNupharCacheVersion_current;
+  } else {
+    version = kNupharCacheVersion_Current;
+  }
 
   path = settings.GetOptionValue(kNupharCachePath);
   if (!create && !fs::is_directory(path))
@@ -137,6 +142,8 @@ tvm::runtime::PackedFunc LoadTVMPackedFuncFromCache(const std::string& func_name
   return func;
 }
 
+thread_local int saved_tvm_model_cnt = 0;
+
 void SaveTVMModuleToCache(const std::string& filename, tvm::runtime::Module& module) {
   fs::path path;
 
@@ -144,10 +151,12 @@ void SaveTVMModuleToCache(const std::string& filename, tvm::runtime::Module& mod
     return;
 
   static std::mutex save_cache_mutex;
+  static std::unordered_set<std::string> existing_files;
   std::lock_guard<std::mutex> lock(save_cache_mutex);
-
-  if (GetOrCreateTVMModuleCacheDirectory(path, /*create*/ true)) {
-    path.append(filename + ".o");
+  if (existing_files.count(filename) == 0 &&
+      GetOrCreateTVMModuleCacheDirectory(path, /*create*/ true)) {
+    existing_files.insert(filename);
+    path.append("cached_" + std::to_string(saved_tvm_model_cnt++) + ".o");
     if (fs::exists(path)) {
       LOGS_DEFAULT(CODEGEN_SETTINGS_LOG_LEVEL) << "Object file " << path << " already exists, skip saving...";
       return;
@@ -156,5 +165,10 @@ void SaveTVMModuleToCache(const std::string& filename, tvm::runtime::Module& mod
   }
 }
 
-}  // namespace nuphar_codegen
+std::string GetPackedFuncName(const nuphar::NupharSubgraphUnit& subgraph, const CodeGenTarget& codegen_target) {
+  // in C, a function does not allow its name starting with a digit.
+  return NormalizeCppName("_" + subgraph.UniqueId() + " " + codegen_target.GetTargetName());
+}
+
+}  // namespace nuphar
 }  // namespace onnxruntime

@@ -12,12 +12,12 @@ namespace nuphar {
 struct NupharRuntimeHandle {
   bool allow_unaligned_buffers;
   const DLContext& dl_ctx;
+  bool enable_model_parallelism;
 
   AllocatorPtr allocator;
 
-  NupharRuntimeHandle(const DLContext& _dl_ctx, bool _allow_unaligned_buffers)
-      : allow_unaligned_buffers(_allow_unaligned_buffers),
-        dl_ctx(_dl_ctx) {}
+  NupharRuntimeHandle(const DLContext& _dl_ctx)
+      : dl_ctx(_dl_ctx) {}
 };
 
 }  // namespace nuphar

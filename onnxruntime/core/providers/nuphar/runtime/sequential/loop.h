@@ -7,7 +7,7 @@
 #include "core/common/common.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 // LoopExecBlock is an ExecBlock for regular loops.
 // It is mainly for Scan, LSTM, GRU, RNN, those recurrences.
@@ -16,16 +16,15 @@ namespace tvm_codegen {
 
 class LoopExecBlock : public ExecBlock {
  public:
-  LoopExecBlock(const std::string& name)
-      : ExecBlock(name, "LoopExecBlock") {}
+  LoopExecBlock(const NupharFuncInfo* info, const std::string& name);
 
-  void Run(NupharComputeCtx* compute_ctx) override;
-  void InitContext(NupharComputeCtx* compute_ctx) override;
-  void UpdateContext(NupharComputeCtx* compute_ctx) override;
+  void Run(KernelComputeCtx* compute_ctx) override;
+  void InitContext(KernelComputeCtx* compute_ctx) const override;
+  void UpdateContext(KernelComputeCtx* compute_ctx) const override;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LoopExecBlock);
 };
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime
