@@ -6,6 +6,7 @@
 Implements ONNX's backend API.
 """
 import numpy as np
+from onnxruntime import RunOptions
 from onnx.backend.base import BackendRep
 
 
@@ -27,11 +28,17 @@ class OnnxRuntimeBackendRep(BackendRep):
         Computes the prediction.
         See :meth:`onnxruntime.InferenceSession.run`.
         """
+
+        options = RunOptions()
+        for k, v in kwargs.items():
+            if hasattr(options, k):
+                setattr(options, k, v)
+
         if isinstance(inputs, list):
             inps = {}
             for i, inp in enumerate(self._session.get_inputs()):
                 inps[inp.name] = inputs[i]
-            outs = self._session.run(None, inps)
+            outs = self._session.run(None, inps, options)
             if isinstance(outs, list):
                 return outs
             else:
@@ -42,4 +49,4 @@ class OnnxRuntimeBackendRep(BackendRep):
             if len(inp) != 1:
                 raise RuntimeError("Model expect {0} inputs".format(len(inp)))
             inps = {inp[0].name: inputs}
-            return self._session.run(None, inps)
+            return self._session.run(None, inps, options)

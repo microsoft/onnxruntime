@@ -52,23 +52,17 @@ struct TensorrtFuncState {
 // Logical device representation.
 class TensorrtExecutionProvider : public IExecutionProvider {
  public:
-  TensorrtExecutionProvider();
+  explicit TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info);
   virtual ~TensorrtExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
 
+  int GetDeviceId() const { return device_id_; }
+
   common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
-
-  Status CopyTensor(const Tensor& src, Tensor& dst) const override;
-
-  const void* GetExecutionHandle() const noexcept override {
-    return nullptr;
-  }
-
-  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
   void SetMaxBatchSize(const int batch_size) {
     max_batch_size_ = batch_size;

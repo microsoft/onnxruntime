@@ -31,4 +31,3 @@ std::string escape_string(const std::string& message);
 
 }  // namespace server
 }  // namespace onnxruntime
-

@@ -21,17 +21,6 @@ namespace test {
 class XPUExecutionProvider : public IExecutionProvider {
  public:
   XPUExecutionProvider() : IExecutionProvider{onnxruntime::kCpuExecutionProvider} {}
-
-  Status CopyTensor(const Tensor& src, Tensor& dst) const override {
-    ORT_UNUSED_PARAMETER(src);
-    ORT_UNUSED_PARAMETER(dst);
-    return Status::OK();
-  }
-
-  virtual const void* GetExecutionHandle() const noexcept override {
-    // The XPU interface does not return anything interesting.
-    return nullptr;
-  }
 };
 
 }  // namespace test

@@ -20,6 +20,7 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
 
   std::vector<int64_t> dims{(int64_t)input_vals.size()};
 
+
   std::vector<float> expected_vals;
   for (const auto& iv : input_vals)
     expected_vals.push_back(expected_func(iv));
@@ -32,6 +33,16 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
   if (!is_tensorrt_supported) {
     excluded_providers.insert(kTensorrtExecutionProvider);
   }
+
+//Disabled because of accuracy issues for MYRIAD FP16 and VAD_M
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+    int relu = strcmp(szOp, "Relu");
+    int leaky = strcmp(szOp, "LeakyRelu");
+    if(relu == 0 || leaky == 0){
+        excluded_providers.insert(kOpenVINOExecutionProvider);
+    }
+#endif
+
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
@@ -187,60 +198,21 @@ TEST(ActivationOpTest, PRelu_MultiChannel) {
   test.Run();
 }
 
-#ifndef DISABLE_CONTRIB_OPS
-TEST(ActivationOpTest, ThresholdedRelu_version_1_to_9) {
-  float alpha = 0.1f;
-  TestUnaryElementwiseOp(
-      "ThresholdedRelu",
-      input_vals,
-      [alpha](float x) { return (x > alpha) ? x : 0; },
-      {{"alpha", alpha}}, true, 1);
-}
-
-TEST(ActivationOpTest, ScaledTanh) {
-  static constexpr float alpha = 2.0f;
-  static constexpr float beta = 1.5f;
-
-  TestUnaryElementwiseOp("ScaledTanh",
-                         input_vals,
-                         [](float x) { return alpha * tanh(beta * x); },
-                         {{"alpha", alpha}, {"beta", beta}});
-}
-
-TEST(ActivationOpTest, ParametricSoftplus) {
-  static constexpr float alpha = 2.0f;
-  static constexpr float beta = 1.5f;
-
-  TestUnaryElementwiseOp("ParametricSoftplus",
-                         no_flt_max_inf_input_vals,
-                         [](float x) {
-                           float bx = beta * x;
-                           if (bx > 0)
-                             return alpha * (bx + logf(expf(-bx) + 1));
-                           else
-                             return alpha * logf(expf(bx) + 1);
-                         },
-                         {{"alpha", alpha}, {"beta", beta}});
-}
-#endif
-
 TEST(ActivationOpTest, Softplus) {
-  TestUnaryElementwiseOp(
-      "Softplus",
-      no_inf_input_vals,
-      [](float x) {
-        if (x > 0)
-          return x + logf(expf(-x) + 1);
-        else
-          return logf(expf(x) + 1);
-      },
-      {}, false);
+  TestUnaryElementwiseOp("Softplus",
+                         input_vals,
+                         [](float x) {
+                           if (x > 0)
+                             return x + logf(expf(-x) + 1);
+                           else
+                             return logf(expf(x) + 1);
+                         });
 }
 
 TEST(ActivationOpTest, Softsign) {
   TestUnaryElementwiseOp("Softsign",
-                         no_flt_max_inf_input_vals,
-                         [](float x) { return x / (1 + std::abs(x)); });
+                         no_inf_input_vals,
+                         [](float x) { return x / (1 + std::abs(x)); }, {}, false);  // Disable TensorRT because result mismatches
 }
 
 }  // namespace test

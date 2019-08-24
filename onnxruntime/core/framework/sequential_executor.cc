@@ -27,12 +27,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                    std::vector<OrtValue>& fetches,
                                    const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                    const logging::Logger& logger) {
-  bool f_profiler_enabled = session_state.Profiler().FEnabled();
+  const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   TimePoint tp;
   TimePoint sync_time_begin;
   TimePoint kernel_begin_time;
 
-  if (f_profiler_enabled) {
+  if (is_profiler_enabled) {
     tp = session_state.Profiler().StartTime();
   }
 
@@ -65,42 +65,48 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger,
                                               p_op_kernel->Node().ImplicitInputDefs(), terminate_flag_);
     // TODO: log kernel outputs?
-    if (f_profiler_enabled) {
+    if (is_profiler_enabled) {
       sync_time_begin = session_state.Profiler().StartTime();
     }
 
     // sync before compute
     int queue_id = p_op_kernel->KernelDef().ExecQueueId();
-    for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
-      Fence_t fence = op_kernel_context.InputFence(input_index);
-      if (fence) {
-        auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
-        if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
-          execution_provider_type = kCpuExecutionProvider;
+    if (seq_exec_plan.NodeHasFence(node_index)) {
+      for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
+        Fence_t fence = op_kernel_context.InputFence(input_index);
+        if (fence) {
+          auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+          if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+            execution_provider_type = kCpuExecutionProvider;
+          }
+          fence->BeforeUsingAsInput(execution_provider_type, queue_id);
         }
-        fence->BeforeUsingAsInput(execution_provider_type, queue_id);
       }
-    }
 
-    for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
-      Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
-      if (fence) {
-        auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
-        if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
-          execution_provider_type = kCpuExecutionProvider;
+      for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
+        Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
+        if (fence) {
+          auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+          if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+            execution_provider_type = kCpuExecutionProvider;
+          }
+          fence->BeforeUsingAsInput(execution_provider_type, queue_id);
         }
-        fence->BeforeUsingAsInput(execution_provider_type, queue_id);
+      }
+
+      for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
+        Fence_t fence = op_kernel_context.OutputFence(output_index);
+        if (fence) {
+          fence->BeforeUsingAsOutput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
+        }
       }
     }
 
-    for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
-      Fence_t fence = op_kernel_context.OutputFence(output_index);
-      if (fence) {
-        fence->BeforeUsingAsOutput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
-      }
-    }
+#if defined DEBUG_NODE_INPUTS_OUTPUTS
+    utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node());
+#endif
 
-    if (f_profiler_enabled) {
+    if (is_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      p_op_kernel->Node().Name() + "_fence_before",
                                                      sync_time_begin,
@@ -124,7 +130,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       return Status(compute_status.Category(), compute_status.Code(), msg_string);
     }
 
-    if (f_profiler_enabled) {
+    if (is_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      p_op_kernel->Node().Name() + "_kernel_time",
                                                      kernel_begin_time,
@@ -134,33 +140,39 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
     // sync after compute for outputs
-    for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
-      Fence_t fence = op_kernel_context.InputFence(input_index);
-      if (fence) {
-        fence->AfterUsedAsInput(queue_id);
+    if (seq_exec_plan.NodeHasFence(node_index)) {
+      for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
+        Fence_t fence = op_kernel_context.InputFence(input_index);
+        if (fence) {
+          fence->AfterUsedAsInput(queue_id);
+        }
+      }
+
+      for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
+        Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
+        if (fence) {
+          fence->AfterUsedAsInput(queue_id);
+        }
+      }
+
+      for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
+        Fence_t fence = op_kernel_context.OutputFence(output_index);
+        if (fence) {
+          fence->AfterUsedAsOutput(queue_id);
+        }
       }
     }
 
-    for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
-      Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
-      if (fence) {
-        fence->AfterUsedAsInput(queue_id);
-      }
-    }
-
-    for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
-      Fence_t fence = op_kernel_context.OutputFence(output_index);
-      if (fence) {
-        fence->AfterUsedAsOutput(queue_id);
-      }
-    }
-
-    if (f_profiler_enabled) {
+    if (is_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      p_op_kernel->Node().Name() + "_fence_after",
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
     }
+
+#if defined(DEBUG_NODE_INPUTS_OUTPUTS)
+    utils::DumpNodeOutputs(op_kernel_context, p_op_kernel->Node(), session_state);
+#endif
 
     // free ml-values corresponding to this node
     VLOGS(logger, 1) << "Releasing node ML values after computing kernel: " << p_op_kernel->Node().Name();
@@ -173,7 +185,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   VLOGS(logger, 1) << "Done with execution.";
 
   if (frame.HasMemoryPatternPlanner()) {
-    std::vector<TensorShape> input_shapes;
+    std::vector<std::reference_wrapper<const TensorShape>> input_shapes;
     bool all_tensors = true;
     for (const auto& feed : feeds) {
       if (!(feed.IsTensor())) {
@@ -181,7 +193,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
         break;
       }
       auto& tensor = feed.Get<Tensor>();
-      input_shapes.push_back(tensor.Shape());
+      input_shapes.push_back(std::cref(tensor.Shape()));
     }
 
     if (all_tensors) {
@@ -191,7 +203,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
   }
 
-  if (f_profiler_enabled) {
+  if (is_profiler_enabled) {
     session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", tp);
   }
 

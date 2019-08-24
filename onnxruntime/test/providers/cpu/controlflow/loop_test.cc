@@ -11,6 +11,7 @@
 
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/framework/test_utils.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -25,8 +26,11 @@ struct RunOptions {
   bool mixed_execution_providers = false;
   bool init_cond_1d_tensor = true;
   bool init_iter_num_1d_tensor = true;
+  bool subgraph_cond_1d_tensor = true;
+  bool subgraph_iter_num_1d_tensor = true;
 };
-}
+}  // namespace
+
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options);
 
 static const float kOuterNodeAddValue = 3.f;
@@ -90,8 +94,8 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
 
   bool use_null_typeproto = !include_types && !include_dim_value && !graph_output_shape_required;
 
-  bool is_init_cond_1d = options.init_cond_1d_tensor;
-  bool is_init_iter_num_1d = options.init_iter_num_1d_tensor;
+  bool is_cond_1d = options.subgraph_cond_1d_tensor;
+  bool is_iter_num_1d = options.subgraph_iter_num_1d_tensor;
 
   Model model("Loop subgraph");
   auto& graph = model.MainGraph();
@@ -103,7 +107,6 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
      Concats the iter_num to loop_var_1_in (test loop var that changes shape) so each iteration appends the iter_num
      to loop_var_1
      Loop output is the iter_num and sum for that iteration, so each iteration adds a pair to the overall output
-     Inputs require Identity nodes to fix their order.
 
     Inputs: iter_num, cond_in, loop_var_in
 
@@ -156,16 +159,16 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
 
   // graph inputs
   auto& iter_num_in = graph.GetOrCreateNodeArg("iter_num_in",
-                                               is_init_iter_num_1d ? &int64_tensor_single_dim : &int64_scalar);
+                                               is_iter_num_1d ? &int64_tensor_single_dim : &int64_scalar);
   auto& cond_in = graph.GetOrCreateNodeArg("cond_in",
-                                           is_init_cond_1d ? &bool_tensor_single_dim : &bool_scalar);
+                                           is_cond_1d ? &bool_tensor_single_dim : &bool_scalar);
   auto& loop_var_0_in = graph.GetOrCreateNodeArg("loop_var_0_in", &float_tensor_single_dim);
   auto& loop_var_1_in = graph.GetOrCreateNodeArg("loop_var_1_in", &float_tensor_single_dim);
 
   auto& iter_num_float = graph.GetOrCreateNodeArg("iter_num_float",
-                                                  is_init_iter_num_1d ? &float_tensor_single_dim : &float_scalar);
-  auto& iter_num_float_tensor = is_init_iter_num_1d ? iter_num_float
-                                                    : graph.GetOrCreateNodeArg("iter_num_float_tensor", &float_tensor_single_dim);
+                                                  is_iter_num_1d ? &float_tensor_single_dim : &float_scalar);
+  auto& iter_num_float_tensor = is_iter_num_1d ? iter_num_float
+                                               : graph.GetOrCreateNodeArg("iter_num_float_tensor", &float_tensor_single_dim);
 
   // outer scope values. need type but not shape.
   auto& outer_scope_0 = graph.GetOrCreateNodeArg("outer_scope_0", &float_tensor);
@@ -206,7 +209,7 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
   }
 
   // Unsqueeze iter_num_float, if initial iter_num is scalar.
-  if (!is_init_iter_num_1d) {
+  if (!is_iter_num_1d) {
     auto& unsqueeze = graph.AddNode("iter_num_unsqueeze", "Unsqueeze",
                                     "Unsqueeze iter_num_float to tensor of single dim",
                                     {&iter_num_float}, {&iter_num_float_tensor});
@@ -342,7 +345,7 @@ void RunTest(int64_t max_iterations,
   }
 
   test.AddInput<float>("loop_var_0_orig", {1}, {0.f});
-  test.AddInput<float>("loop_var_0_orig", {1}, {0.f});
+  test.AddInput<float>("loop_var_1_orig", {1}, {0.f});
 
   test.AddOutput<float>("loop_var_0_final", {1}, {loop_var_0_final});
   test.AddOutput<float>("loop_var_1_final", loop_var_1_final_shape, loop_var_1_final);
@@ -357,7 +360,7 @@ void RunTest(int64_t max_iterations,
 
     test.Run(expect_result, failure_message, {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   } else {
-    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider});// Disable TensorRT because of unsupported data type INT64
+    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider});  // Disable TensorRT because of unsupported data type INT64
   }
 }
 
@@ -384,17 +387,19 @@ void ExitDueToCond(const RunOptions& options) {
           options);
 }
 
-#define TEST_EXIT_DUE_TO_COND(name, dim_in_main_graph, iter_num_1d, cond_1d)   \
-  TEST(Loop, name) {                                                           \
-    RunOptions options{};                                                      \
-    options.include_dim_values_in_main_graph = dim_in_main_graph;              \
-    options.include_dim_values_in_subgraph = !dim_in_main_graph;               \
-    options.include_types_in_subgraph = false;                                 \
-                                                                               \
-    options.init_iter_num_1d_tensor = iter_num_1d;                             \
-    options.init_cond_1d_tensor = cond_1d;                                     \
-                                                                               \
-    ExitDueToCond(options);                                                    \
+#define TEST_EXIT_DUE_TO_COND(name, dim_in_main_graph, iter_num_1d, cond_1d) \
+  TEST(Loop, name) {                                                         \
+    RunOptions options{};                                                    \
+    options.include_dim_values_in_main_graph = dim_in_main_graph;            \
+    options.include_dim_values_in_subgraph = !dim_in_main_graph;             \
+    options.include_types_in_subgraph = false;                               \
+                                                                             \
+    options.init_iter_num_1d_tensor = iter_num_1d;                           \
+    options.init_cond_1d_tensor = cond_1d;                                   \
+    options.subgraph_iter_num_1d_tensor = iter_num_1d;                       \
+    options.subgraph_cond_1d_tensor = cond_1d;                               \
+                                                                             \
+    ExitDueToCond(options);                                                  \
   }
 
 TEST_EXIT_DUE_TO_COND(ExitDueToCond_DimsInMainGraph, true, true, true);
@@ -405,6 +410,28 @@ TEST_EXIT_DUE_TO_COND(ExitDueToCond_DimsInSubGraph, false, true, true);
 TEST_EXIT_DUE_TO_COND(ExitDueToCond_DimsInSubGraph_ScalarIter, false, false, true);
 TEST_EXIT_DUE_TO_COND(ExitDueToCond_DimsInSubGraph_ScalarCond, false, true, false);
 TEST_EXIT_DUE_TO_COND(ExitDueToCond_DimsInSubGraph_ScalarBoth, false, false, false);
+
+// check that a rank mismatch between the Loop 'M' and 'cond' inputs and the subgraph is handled gracefully
+// if both equate to a scalar (rank 0 or rank 1 with shape of {1})
+TEST(Loop, LoopSubgraphRankMismatch) {
+  RunOptions options{};
+  options.include_dim_values_in_main_graph = false;
+  options.include_dim_values_in_subgraph = false;
+
+  options.init_iter_num_1d_tensor = true;
+  options.init_cond_1d_tensor = true;
+  options.subgraph_cond_1d_tensor = false;
+  options.subgraph_cond_1d_tensor = false;
+
+  ExitDueToCond(options);
+
+  options.init_iter_num_1d_tensor = false;
+  options.init_cond_1d_tensor = false;
+  options.subgraph_cond_1d_tensor = true;
+  options.subgraph_cond_1d_tensor = true;
+
+  ExitDueToCond(options);
+}
 
 TEST(Loop, ExitDueToMaxIterations) {
   int64_t max_iterations = 2;
@@ -418,6 +445,25 @@ TEST(Loop, ExitDueToMaxIterations) {
   std::vector<int64_t> loop_out_0_final_shape{expected_num_iterations, 2};
   std::vector<float> loop_out_0_final{0.f, 3.f,  // iter #, sum for each iteration
                                       1.f, 6.f};
+
+  RunTest(max_iterations,
+          loop_var_0_final,
+          loop_var_1_final_shape, loop_var_1_final,
+          loop_out_0_final_shape, loop_out_0_final,
+          {});
+}
+
+TEST(Loop, ZeroIterations) {
+  int64_t max_iterations = 0;
+
+  float loop_var_0_final = 0.f;
+
+  std::vector<int64_t> loop_var_1_final_shape{1};
+  std::vector<float> loop_var_1_final{0.f};
+
+  // zero iterations so first dim value is 0. also checking rank is correct.
+  std::vector<int64_t> loop_out_0_final_shape{0, 0};
+  std::vector<float> loop_out_0_final{};
 
   RunTest(max_iterations,
           loop_var_0_final,
@@ -518,14 +564,70 @@ TEST(Loop, InfiniteLoopTermination) {
   std::future<void> terminator_result = task.get_future();
   std::thread terminator_thread{std::move(task)};
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Exiting due to terminate flag being set to true", {kTensorrtExecutionProvider},
-           &session_run_options);// Disable TensorRT on unsupported data type BOOL
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Exiting due to terminate flag being set to true",
+           {kTensorrtExecutionProvider}, &session_run_options);  // Disable TensorRT on unsupported data type BOOL
 
   // call get to propagate any exception
   terminator_result.get();
 
   // done with the thread
   terminator_thread.join();
+}
+
+// Regression test that a subgraph input overrides an outer scope value of the same name.
+// Replicate issue from https://github.com/onnx/onnx/issues/2082
+TEST(Loop, SubgraphInputShadowsOuterScopeValue) {
+  SessionOptions so;
+  so.session_logid = "SubgraphInputShadowsOuterScopeValue";
+
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  Status st;
+  ASSERT_TRUE((st = session_object.Load("testdata/subgraph_input_shadows_outer_scope_value.onnx")).IsOK()) << st;
+  ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
+
+  // prepare inputs
+  std::vector<int64_t> scalar = {1};
+  std::vector<float> a = {3.f}, b = {6.f};
+  std::vector<int64_t> trip_count = {10};
+  std::vector<bool> keep_going = {true};
+
+  NameMLValMap feeds;
+  OrtValue ml_value;
+
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), scalar, a, &ml_value);
+  feeds.insert(std::make_pair("a", ml_value));
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), scalar, b, &ml_value);
+  feeds.insert(std::make_pair("b", ml_value));
+  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), scalar, trip_count, &ml_value);
+  feeds.insert(std::make_pair("max_trip_count", ml_value));
+  CreateMLValue<bool>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), scalar, keep_going, &ml_value);
+  feeds.insert(std::make_pair("keep_going_inp", ml_value));
+
+  // prepare outputs
+  std::vector<std::string> output_names{"b", "user_defined_vals"};
+  std::vector<OrtValue> fetches;
+
+  // Now run
+  onnxruntime::RunOptions run_options;
+  st = session_object.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(st.IsOK()) << st;
+  ASSERT_EQ(2, fetches.size());
+
+  // prepare expected outputs
+  float expected_value_b = 6.f;
+  std::vector<int64_t> expected_dims_user_defined_vals = {2, 1};
+  std::vector<float> expected_user_defined_vals = {-6.f, 12.f};
+
+  auto& b_out = fetches[0].Get<Tensor>();
+  TensorShape expected_shape(scalar);
+  ASSERT_EQ(expected_shape, b_out.Shape());
+  ASSERT_EQ(b_out.DataAsSpan<float>()[0], expected_value_b);
+
+  auto user_defined_vals_out = fetches[1].Get<Tensor>().DataAsSpan<float>();
+  ASSERT_EQ(expected_user_defined_vals.size(), static_cast<size_t>(user_defined_vals_out.size()));
+  for (size_t i = 0, end = expected_user_defined_vals.size(); i < end; ++i) {
+    ASSERT_THAT(user_defined_vals_out[i], testing::FloatEq(expected_user_defined_vals[i]));
+  }
 }
 
 #ifdef USE_CUDA

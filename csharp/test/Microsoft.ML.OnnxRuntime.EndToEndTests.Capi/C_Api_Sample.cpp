@@ -29,15 +29,16 @@ int main(int argc, char* argv[]) {
   CHECK_STATUS(OrtCreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
 
   // initialize session options if needed
-  OrtSessionOptions* session_options = OrtCreateSessionOptions();
+  OrtSessionOptions* session_options;
+  CHECK_STATUS(OrtCreateSessionOptions(&session_options));
   OrtSetSessionThreadPoolSize(session_options, 1);
 
   // Sets graph optimization level
-  // Available levels are
-  // 0 -> To disable all optimizations
-  // 1 -> To enable basic optimizations (Such as redundant node removals)
-  // 2 -> To enable all optimizations (Includes level 1 + more complex optimizations like node fusions)
-  OrtSetSessionGraphOptimizationLevel(session_options, 1);
+  OrtSetSessionGraphOptimizationLevel(session_options, ORT_ENABLE_BASIC);
+
+  // Optionally add more execution providers via session_options
+  // E.g. for CUDA include cuda_provider_factory.h and uncomment the following line:
+  // OrtSessionOptionsAppendExecutionProvider_CUDA(sessionOptions, 0);
 
   //*************************************************************************
   // create session and load model into memory
@@ -50,6 +51,7 @@ int main(int argc, char* argv[]) {
   const char* model_path = "squeezenet.onnx";
 #endif
 
+  printf("Using Onnxruntime C API\n");
   CHECK_STATUS(OrtCreateSession(env, model_path, session_options, &session));
 
   //*************************************************************************
@@ -57,13 +59,13 @@ int main(int argc, char* argv[]) {
   size_t num_input_nodes;
   OrtStatus* status;
   OrtAllocator* allocator;
-  CHECK_STATUS(OrtCreateDefaultAllocator(&allocator));
+  CHECK_STATUS(OrtGetAllocatorWithDefaultOptions(&allocator));
 
   // print number of model input nodes
   status = OrtSessionGetInputCount(session, &num_input_nodes);
   std::vector<const char*> input_node_names(num_input_nodes);
   std::vector<int64_t> input_node_dims;  // simplify... this model has only 1 input node {1, 3, 224, 224}.
-                                        // Otherwise need vector<vector<>>
+                                         // Otherwise need vector<vector<>>
 
   printf("Number of inputs = %zu\n", num_input_nodes);
 
@@ -78,12 +80,15 @@ int main(int argc, char* argv[]) {
     // print input node types
     OrtTypeInfo* typeinfo;
     status = OrtSessionGetInputTypeInfo(session, i, &typeinfo);
-    const OrtTensorTypeAndShapeInfo* tensor_info = OrtCastTypeInfoToTensorInfo(typeinfo);
-    ONNXTensorElementDataType type = OrtGetTensorElementType(tensor_info);
+    const OrtTensorTypeAndShapeInfo* tensor_info;
+    CHECK_STATUS(OrtCastTypeInfoToTensorInfo(typeinfo, &tensor_info));
+    ONNXTensorElementDataType type;
+    CHECK_STATUS(OrtGetTensorElementType(tensor_info, &type));
     printf("Input %zu : type=%d\n", i, type);
 
     // print input shapes/dims
-    size_t num_dims = OrtGetDimensionsCount(tensor_info);
+    size_t num_dims;
+    CHECK_STATUS(OrtGetDimensionsCount(tensor_info, &num_dims));
     printf("Input %zu : num_dims=%zu\n", i, num_dims);
     input_node_dims.resize(num_dims);
     OrtGetDimensions(tensor_info, (int64_t*)input_node_dims.data(), num_dims);
@@ -92,7 +97,6 @@ int main(int argc, char* argv[]) {
 
     OrtReleaseTypeInfo(typeinfo);
   }
-  OrtReleaseAllocator(allocator);
 
   // Results should be...
   // Number of inputs = 1
@@ -127,13 +131,16 @@ int main(int argc, char* argv[]) {
   CHECK_STATUS(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
   OrtValue* input_tensor = NULL;
   CHECK_STATUS(OrtCreateTensorWithDataAsOrtValue(allocator_info, input_tensor_values.data(), input_tensor_size * sizeof(float), input_node_dims.data(), 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
-  assert(OrtIsTensor(input_tensor));
+  int is_tensor;
+  CHECK_STATUS(OrtIsTensor(input_tensor, &is_tensor));
+  assert(is_tensor);
   OrtReleaseAllocatorInfo(allocator_info);
 
   // score model & input tensor, get back output tensor
   OrtValue* output_tensor = NULL;
   CHECK_STATUS(OrtRun(session, NULL, input_node_names.data(), (const OrtValue* const*)&input_tensor, 1, output_node_names.data(), 1, &output_tensor));
-  assert(OrtIsTensor(output_tensor));
+  CHECK_STATUS(OrtIsTensor(output_tensor, &is_tensor));
+  assert(is_tensor);
 
   // Get pointer to output tensor float values
   float* floatarr;

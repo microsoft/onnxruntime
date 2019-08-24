@@ -176,6 +176,30 @@ class OpTester {
     AddData(input_data_, name, dims, values.data(), values.size(), is_initializer);
   }
 
+  // Add other registered types, possibly experimental
+  template <typename T>
+  void AddInput(const char* name, const T& val) {
+    auto mltype = DataTypeImpl::GetType<T>();
+    ORT_ENFORCE(mltype != nullptr, "T must be a registered cpp type");
+    auto ptr = std::make_unique<T>(val);
+    OrtValue value;
+    value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
+    ptr.release();
+    input_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>()});
+  }
+
+  template <typename T>
+  void AddInput(const char* name, T&& val) {
+    auto mltype = DataTypeImpl::GetType<T>();
+    ORT_ENFORCE(mltype != nullptr, "T must be a registered cpp type");
+    auto ptr = std::make_unique<T>(std::move(val));
+    OrtValue value;
+    value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
+    ptr.release();
+    input_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>()});
+  }
+
+
   template <typename TKey, typename TVal>
   void AddInput(const char* name, const std::map<TKey, TVal>& val) {
     std::unique_ptr<std::map<TKey, TVal>> ptr = std::make_unique<std::map<TKey, TVal>>(val);
@@ -208,6 +232,29 @@ class OpTester {
     output_data_.push_back({{name, &s_type_proto<T>}, {}, optional<float>(), optional<float>()});
   }
 
+  // Add other registered types, possibly experimental
+  template <typename T>
+  void AddOutput(const char* name, const T& val) {
+    auto mltype = DataTypeImpl::GetType<T>();
+    ORT_ENFORCE(mltype != nullptr, "T must be a registered cpp type");
+    auto ptr = std::make_unique<T>(val);
+    OrtValue value;
+    value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
+    ptr.release();
+    output_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>()});
+  }
+
+  template <typename T>
+  void AddOutput(const char* name, T&& val) {
+    auto mltype = DataTypeImpl::GetType<T>();
+    ORT_ENFORCE(mltype != nullptr, "T must be a registered cpp type");
+    auto ptr = std::make_unique<T>(std::move(val));
+    OrtValue value;
+    value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
+    ptr.release();
+    output_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>()});
+  }
+
   // Add non tensor output
   template <typename TKey, typename TVal>
   void AddOutput(const char* name, const std::vector<std::map<TKey, TVal>>& val) {
@@ -220,14 +267,19 @@ class OpTester {
   }
 
   void AddCustomOpRegistry(std::shared_ptr<CustomRegistry> registry) {
-    // need to do some static casting so we can easily use this later
-    //UTScustom_schema_registries_.push_back(std::static_pointer_cast<IOnnxRuntimeOpSchemaCollection>(registry->GetOpschemaRegistry()));
     custom_schema_registries_.push_back(registry->GetOpschemaRegistry());
-    custom_session_registries_.push_back(std::static_pointer_cast<CustomRegistry>(registry));
+    custom_session_registries_.push_back(registry);
   }
 
   void SetOutputAbsErr(const char* name, float v);
   void SetOutputRelErr(const char* name, float v);
+
+  // Number of times to call InferenceSession::Run. The same feeds are used each time.
+  // e.g. used to verify the generator ops behave as expected
+  void SetNumRunCalls(int n) {
+    ORT_ENFORCE(n > 0);
+    num_run_calls_ = n;
+  }
 
   template <typename T>
   void AddAttribute(std::string name, T value) {
@@ -244,7 +296,8 @@ class OpTester {
   void Run(ExpectResult expect_result = ExpectResult::kExpectSuccess, const std::string& expected_failure_string = "",
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
-           std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr);
+           std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
+           bool sequential_execution = true);
 
   struct Data {
     onnxruntime::NodeArg def_;
@@ -319,6 +372,7 @@ class OpTester {
   int opset_version_;
   bool add_shape_to_tensor_data_ = true;
   int add_symbolic_dim_to_tensor_data_ = -1;
+  int num_run_calls_ = 1;
   std::vector<Data> input_data_;
   std::vector<Data> output_data_;
   std::vector<size_t> initializer_index_;

@@ -278,6 +278,10 @@ class Node {
     return !attr_to_subgraph_map_.empty();
   }
 
+  /** Get the const subgraphs from a node. 
+  @remarks Creates a new vector so calling ContainsSubgraphs first is preferred. */
+  std::vector<gsl::not_null<const Graph*>> GetSubgraphs() const;
+
   /** Gets a map of attribute name to the mutable Graph instances for all subgraphs of the Node.
   @returns Map of the attribute name that defines the subgraph to the subgraph's Graph instance.
            nullptr if the Node has no subgraphs.
@@ -498,6 +502,9 @@ class Graph {
 
   /** Removes all initializer tensors from this Graph and releases the memory they were using. */
   void CleanAllInitializedTensors() noexcept;
+
+  /** Returns true if an initializer value can be overridden by a graph input with the same name. */
+  bool CanOverrideInitializer() const noexcept { return ir_version_ >= 4; }
 
   /** Gets the Graph inputs excluding initializers.
   These are the required inputs to the Graph as the initializers can be optionally overridden via graph inputs.
@@ -749,6 +756,12 @@ class Graph {
   /** Returns true if this is a subgraph or fase if it is a high-level graph. */
   bool IsSubgraph() const { return parent_graph_ != nullptr; }
 
+  /** Returns the parent graph if this is a subgraph */
+  const Graph* ParentGraph() const { return parent_graph_; }
+
+  /** Returns the mutable parent graph if this is a subgraph */
+  Graph* MutableParentGraph() { return parent_graph_; }
+
   /** Construct a Graph instance for a subgraph that is created from a GraphProto attribute in a Node.
   Inherits some properties from the parent graph.
   @param parent_graph The Graph containing the Node which has a GraphProto attribute.
@@ -839,7 +852,7 @@ class Graph {
 
   // Build and verify node connection (edges).
   // Verify NodeArg name/type/shape matching correctly.
-  common::Status BuildConnections(std::vector<std::string>& outer_scope_node_args_consumed);
+  common::Status BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed);
 
   common::Status VerifyNoDuplicateName();
 
@@ -961,7 +974,7 @@ class Graph {
   std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_functions_;
 
   // Model IR version.
-  Version ir_version_{};
+  Version ir_version_{ONNX_NAMESPACE::Version::IR_VERSION};
 
   int name_generator_ = 0;
 
@@ -973,6 +986,9 @@ class Graph {
   // NodeArgs that come from outer scope. Used when building a graph so that
   // these don't get recorded as graph inputs in the GraphProto.
   std::unordered_set<std::string> outer_scope_node_arg_names_;
+
+  // number of times Resolve has run.
+  int num_resolves_ = 0;
 };
 
 }  // namespace onnxruntime

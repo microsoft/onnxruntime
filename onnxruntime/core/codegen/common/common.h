@@ -4,6 +4,7 @@
 #pragma once
 #include "core/framework/compute_capability.h"
 #include "core/framework/tensor.h"
+#include "core/graph/graph_nodes.h"
 #include "core/graph/graph_viewer.h"
 
 #ifndef NDEBUG
@@ -103,9 +104,12 @@ namespace onnxruntime {
 using NodeKey = std::string;
 
 NodeKey GetKey(const onnxruntime::Node* node);
+NodeKey GetKey(const onnxruntime::Node& node);
 NodeKey GetKey(const onnxruntime::NodeArg* def);
 
 bool IsRecurrentNode(const onnxruntime::Node& node);
+
+bool IsAliasNode(const onnxruntime::Node& node);
 
 // Helper function that creates ComputeCapability for subgraphs
 std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& graph,
@@ -135,6 +139,10 @@ int64_t ShapeValue(const NodeArg* def, int i);
 const std::string& ShapeSymbol(const NodeArg* def, int i);
 
 ONNX_NAMESPACE::TensorProto_DataType TensorProtoDataType(const NodeArg* def);
+
+// Convert GraphNodes to internal NodePtrs without check lifetime.
+// Please use it only locally when GraphNodes still exist
+std::vector<const Node*> ConvertGraphNodesToNodePtrs(const GraphNodes& graph_nodes);
 
 enum : int {
   Dimension_Unknown = -1,

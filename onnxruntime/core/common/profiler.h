@@ -50,7 +50,10 @@ class Profiler {
   */
   TimePoint StartTime() const;
 
-  bool FEnabled() const {
+  /*
+   Whether data collection and output from this profiler is enabled.
+   */
+  bool IsEnabled() const {
     return enabled_;
   }
 

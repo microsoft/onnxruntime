@@ -53,7 +53,7 @@ tvm::Tensor MatMul(const tvm::Tensor& A, const tvm::Tensor& B, const std::string
       auto ndims = indices.size();
       MTI_ASSERT(ndims >= 1);
       tvm::Array<tvm::Expr> b_indices;
-      for (auto bi = 0; bi < ndims - 1; ++bi) {
+      for (size_t bi = 0; bi < ndims - 1; ++bi) {
         b_indices.push_back(indices[bi]);
       }
       b_indices.push_back(k);
@@ -119,9 +119,7 @@ tvm::Tensor MatMul(const tvm::Tensor& A, const tvm::Tensor& B, const std::string
 
     tvm::Array<tvm::Expr> output_shape;
     int64_t output_rank = std::max(a_rank, b_rank);
-    auto* reduce_dim_a = tvm::as_const_int(A_shape[a_rank - 1]);
-    auto* reduce_dim_b = tvm::as_const_int(B_shape[b_rank - 2]);
-    MTI_ASSERT(reduce_dim_a != nullptr && reduce_dim_b != nullptr && *reduce_dim_a == *reduce_dim_b);
+    MTI_ASSERT(tvm::ir::Equal(A_shape[a_rank - 1], B_shape[b_rank - 2]));
     for (int64_t i = 0; i < output_rank - 2; i++) {
       tvm::Expr broadcasted_dim = tvm::make_const(HalideIR::Int(32), 1);
       bool broadcasted =

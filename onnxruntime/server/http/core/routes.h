@@ -38,4 +38,3 @@ class Routes {
 
 }  //namespace server
 }  // namespace onnxruntime
-

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <atomic>
+#include "core/framework/utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include <assert.h>
 
@@ -17,39 +18,16 @@ struct OrtDefaultAllocator : OrtAllocatorImpl {
     OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<OrtDefaultAllocator*>(this_)->Alloc(size); };
     OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<OrtDefaultAllocator*>(this_)->Free(p); };
     OrtAllocator::Info = [](const OrtAllocator* this_) { return static_cast<const OrtDefaultAllocator*>(this_)->Info(); };
-    ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &cpuAllocatorInfo));
+    ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpuAllocatorInfo));
   }
 
   ~OrtDefaultAllocator() override { OrtReleaseAllocatorInfo(cpuAllocatorInfo); }
 
   void* Alloc(size_t size) {
-    if (size == 0)
-      return nullptr;
-    //default align to 64;
-    void* p;
-#if defined(_WIN32) && !defined(_WIN64)
-  size_t alignment = 32;
-#else  
-  size_t alignment = 64;
-#endif
-#if _MSC_VER
-    p = _aligned_malloc(size, alignment);
-    if (p == nullptr) throw std::bad_alloc();
-#elif defined(_LIBCPP_SGX_CONFIG)
-    p = memalign(alignment, size);
-    if (p == nullptr) throw std::bad_alloc();
-#else
-    int ret = posix_memalign(&p, alignment, size);
-    if (ret != 0) throw std::bad_alloc();
-#endif
-    return p;
+    return onnxruntime::utils::DefaultAlloc(size);
   }
   void Free(void* p) {
-#if _MSC_VER
-    _aligned_free(p);
-#else
-    free(p);
-#endif
+    onnxruntime::utils::DefaultFree(p);
   }
   const OrtAllocatorInfo* Info() const {
     return cpuAllocatorInfo;
@@ -69,13 +47,10 @@ struct OrtDefaultAllocator : OrtAllocatorImpl {
     return OrtCreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
   }
 
-ORT_API_STATUS_IMPL(OrtCreateDefaultAllocator, _Out_ OrtAllocator** out) {
+ORT_API_STATUS_IMPL(OrtGetAllocatorWithDefaultOptions, _Out_ OrtAllocator** out) {
   API_IMPL_BEGIN
-  *out = new OrtDefaultAllocator();
+  static OrtDefaultAllocator ort_default_allocator;
+  *out = &ort_default_allocator;
   return nullptr;
   API_IMPL_END
-}
-
-ORT_API(void, OrtReleaseAllocator, _In_ OrtAllocator* allocator) {
-  delete static_cast<OrtAllocatorImpl*>(allocator);
 }

@@ -13,18 +13,22 @@
 
 namespace onnxruntime {
 
-class MLValueNameIdxMap;
+class OrtValueNameIdxMap;
 class FuncManager;
+class DataTransferManager;
 
 // A very light-weight class, which works as an aggregated
 // view of all data needed for constructing a Kernel instance.
 // NOTE: it does not own/hold any objects.
 class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
  public:
-  explicit OpKernelInfo(const onnxruntime::Node& node, const KernelDef& kernel_def,
+  explicit OpKernelInfo(const onnxruntime::Node& node,
+                        const KernelDef& kernel_def,
                         const IExecutionProvider& execution_provider,
-                        const std::unordered_map<int, OrtValue>& initialized_tensors,
-                        const MLValueNameIdxMap& mlvalue_name_idx_map, const FuncManager& funcs_mgr);
+                        const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
+                        const OrtValueNameIdxMap& mlvalue_name_idx_map,
+                        const FuncManager& funcs_mgr,
+                        const DataTransferManager& data_transfer_mgr);
 
   OpKernelInfo(const OpKernelInfo& other);
 
@@ -35,6 +39,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   const KernelDef& GetKernelDef() const;
 
   const IExecutionProvider* GetExecutionProvider() const noexcept;
+
+  const DataTransferManager& GetDataTransferManager() const noexcept;
 
   const onnxruntime::Node& node() const noexcept;
 
@@ -55,9 +61,10 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   // For non cpu/cuda case, this pointer should be set so that function kernel
   // will delegate kernel compute call to <execution_provider> compute call.
   gsl::not_null<const ::onnxruntime::IExecutionProvider*> execution_provider_;
-  const std::unordered_map<int, OrtValue>& initialized_tensors_;
-  const MLValueNameIdxMap& ort_value_name_idx_map_;
+  const std::unordered_map<int, OrtValue>& constant_initialized_tensors_;
+  const OrtValueNameIdxMap& ort_value_name_idx_map_;
   const FuncManager& funcs_mgr_;
+  const DataTransferManager& data_transfer_mgr_;
   ProtoHelperNodeContext proto_helper_context_;
 };
 

@@ -56,10 +56,22 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options));
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0));
     ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
+#endif
+  } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
+#ifdef USE_OPENVINO
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_OpenVINO(session_options, "CPU"));
+#else
+    ORT_THROW("OpenVINO is not supported in this build\n");
+#endif
+  } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
+#ifdef USE_NNAPI
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options));
+#else
+    ORT_THROW("NNAPI is not supported in this build\n");
 #endif
   } else if (!provider_name.empty() && provider_name != onnxruntime::kCpuExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");
@@ -88,7 +100,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
   size_t output_count = session_.GetOutputCount();
   output_names_.resize(output_count);
-  Ort::Allocator a = Ort::Allocator::CreateDefault();
+  Ort::AllocatorWithDefaultOptions a;
   for (size_t i = 0; i != output_count; ++i) {
     char* output_name = session_.GetOutputName(i, a);
     assert(output_name != nullptr);

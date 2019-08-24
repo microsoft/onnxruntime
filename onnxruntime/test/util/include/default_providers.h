@@ -14,6 +14,8 @@ std::unique_ptr<IExecutionProvider> DefaultNGraphExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider(bool allow_unaligned_buffers = true);
 std::unique_ptr<IExecutionProvider> DefaultBrainSliceExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider();
+std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider();
+std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider();
 
 }  // namespace test
 }  // namespace onnxruntime

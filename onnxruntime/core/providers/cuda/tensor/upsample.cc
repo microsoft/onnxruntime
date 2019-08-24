@@ -51,7 +51,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   // kernel
-  int device_id = 0;
+  int device_id = GetDeviceId();
   TensorPitches input_pitches(X_dims);
   CudaAsyncBuffer<int64_t> input_strides(this, device_id, rank);
   gsl::span<int64_t> input_stride_span = input_strides.CpuSpan();

@@ -6,6 +6,7 @@
 #include <memory>
 #include <vector>
 #include <iostream>
+#include <fstream>
 #include <atomic>
 #include <gtest/gtest.h>
 #include "test_allocator.h"
@@ -113,8 +114,11 @@ void TestInference(Ort::Env& env, T model_uri,
                &value_y);
 }
 
-static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.pb");
-static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.pb");
+static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
+static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
+static constexpr PATH_TYPE PYOP_FLOAT_MODEL_URI = TSTR("testdata/pyop_1.onnx");
+#endif
 
 class CApiTestWithProvider : public CApiTest,
                              public ::testing::WithParamInterface<int> {
@@ -213,6 +217,31 @@ TEST_F(CApiTest, custom_op_handler) {
 
   TestInference<PATH_TYPE>(env_, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain);
 }
+
+#if defined(ENABLE_LANGUAGE_INTEROP_OPS) && !defined(_WIN32)  // on windows, PYTHONHOME must be set explicitly
+TEST_F(CApiTest, test_pyop) {
+  std::cout << "Test model with pyop" << std::endl;
+  std::ofstream module("mymodule.py");
+  module << "class MyKernel:" << std::endl;
+  module << "\t"
+         << "def __init__(self,A,B,C):" << std::endl;
+  module << "\t\t"
+         << "self.a,self.b,self.c = A,B,C" << std::endl;
+  module << "\t"
+         << "def compute(self,x):" << std::endl;
+  module << "\t\t"
+         << "return x*2" << std::endl;
+  module.close();
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {2, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<int64_t> expected_dims_y = {2, 2};
+  std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f};
+  TestInference<PATH_TYPE>(env_, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr);
+}
+#endif
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 TEST_F(CApiTest, create_session_without_session_option) {

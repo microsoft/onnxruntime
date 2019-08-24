@@ -7,6 +7,7 @@
 #include "core/graph/graph.h"
 #include "core/graph/schema_registry.h"
 #include <algorithm>
+#include <unordered_set>
 
 namespace onnxruntime {
 
@@ -14,6 +15,11 @@ NodeKey GetKey(const onnxruntime::Node* node) {
   ORT_ENFORCE(nullptr != node);
   ORT_ENFORCE(node->OutputDefs().size() > 0);
   return node->OutputDefs()[0]->Name();
+}
+
+NodeKey GetKey(const onnxruntime::Node& node) {
+  ORT_ENFORCE(node.OutputDefs().size() > 0);
+  return node.OutputDefs()[0]->Name();
 }
 
 NodeKey GetKey(const onnxruntime::NodeArg* def) {
@@ -26,6 +32,12 @@ bool IsRecurrentNode(const onnxruntime::Node& node) {
   auto op_type = node.OpType();
   return (op_type == "LSTM" || op_type == "RNN" || op_type == "GRU" ||
           op_type == "Scan" || op_type == "Loop");
+}
+
+bool IsAliasNode(const onnxruntime::Node& node) {
+  auto op_type = node.OpType();
+  return (op_type == "Flatten" || op_type == "Identity" || op_type == "Reshape" ||
+          op_type == "Squeeze" || op_type == "Unsqueeze");
 }
 
 std::string NormalizeCppName(const std::string& name) {
@@ -110,6 +122,7 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
 
   for (const auto& node_index : subgraph->nodes) {
     const auto& node = *graph.GetNode(node_index);
+    // handle current graph's inputs
     node.ForEachWithIndex(
         node.InputDefs(),
         [&meta_def, &node, &node_indices](const onnxruntime::NodeArg& def, size_t) {
@@ -122,34 +135,75 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
           return Status::OK();
         });
 
-    // add outputs to nodes outside of subgraph to meta_def and tvm_outputs
+    // Handle outouts
+    // two cases are considerd as outputs
+    // 1. Output NodeArg is not used by any Node
+    // 2. Output NodeArg is used by at least one Node out of this subgraph.
+    //    Note a NodeArg can be used by Nodes in and out of the subgraph at the same time.
+
+    auto InsertOutputToSubgraph = [&meta_def](const NodeArg* def) {
+      if (std::find(meta_def->outputs.begin(), meta_def->outputs.end(), def->Name()) ==
+          meta_def->outputs.end()) {
+        meta_def->outputs.push_back(def->Name());
+      }
+    };
+
+    std::unordered_set<std::string> input_names_from_the_output_node;
+
+    for (auto o_iter = node.OutputEdgesBegin(); o_iter != node.OutputEdgesEnd(); ++o_iter) {
+      const auto& p = *o_iter;
+      const Node& out_node = p.GetNode();
+
+      // preprocess for the case 1
+      out_node.ForEachWithIndex(
+          out_node.InputDefs(),
+          [&input_names_from_the_output_node](const onnxruntime::NodeArg& in_def, size_t) {
+            input_names_from_the_output_node.insert(in_def.Name());
+            return Status::OK();
+          });
+
+      // handle the case 2
+      if (node_indices.count(out_node.Index()) == 0) {
+        const NodeArg* def = node.OutputDefs()[p.GetSrcArgIndex()];
+        InsertOutputToSubgraph(def);
+      }
+    }
+
+    // handle case 1
     node.ForEachWithIndex(
         node.OutputDefs(),
-        [&meta_def, &node, &node_indices](const onnxruntime::NodeArg& def, size_t) {
-          const auto& output_name = def.Name();
-          // search output node set to see if output_name is in their inputs
-          const onnxruntime::Node* output_node = nullptr;
-          for (auto iter = node.OutputNodesBegin(); iter != node.OutputNodesEnd(); ++iter) {
-            const onnxruntime::Node& p = *iter;
-            bool found = false;
-            p.ForEachWithIndex(
-                p.InputDefs(),
-                [&found, &output_name](const onnxruntime::NodeArg& out_def, size_t) {
-                  if (output_name == out_def.Name()) {
-                    found = true;
-                  }
-                  return Status::OK();
-                });
-            if (found)
-              output_node = &p;
-          }
-          bool output_to_subgraph = output_node && node_indices.count(output_node->Index());
-          if (!output_to_subgraph) {
-            meta_def->outputs.push_back(def.Name());
+        [&](const onnxruntime::NodeArg& def, size_t) {
+          if (input_names_from_the_output_node.count(def.Name()) == 0) {
+            InsertOutputToSubgraph(&def);
           }
           return Status::OK();
         });
   }
+
+  // Handle subgraph's initializers
+  const auto& all_initializers = graph.GetAllInitializedTensors();
+  for (const auto& node_index : subgraph->nodes) {
+    const auto& node = *graph.GetNode(node_index);
+    // check whether it is an immediate nested subgraph
+    auto immediate_nested_subgraph = GetSubgraph(node);
+    // If so, copy the immediate nested subgraph's initializers to meta_def->inputs.
+    // Note we don't need recursion here, since Ort did recursion for us by handling subgraph early than the current graph.
+    // Therefore, the all inner nested subgraph's initializers should be already in the immediate nested subgraph's inputs.
+    if (nullptr != immediate_nested_subgraph) {
+      for (auto& n : immediate_nested_subgraph->Nodes()) {
+        n.ForEachWithIndex(
+            n.InputDefs(),
+            [&meta_def, &all_initializers](const onnxruntime::NodeArg& def, size_t) {
+              auto iter = all_initializers.find(def.Name());
+              if (iter != all_initializers.end()) {
+                meta_def->inputs.push_back(def.Name());
+              }
+              return Status::OK();
+            });
+      }
+    }
+  }
+
   meta_def->since_version = 1;
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
   std::unique_ptr<IndexedSubGraph> finished_subgraph(subgraph.release());
@@ -189,6 +243,16 @@ const std::string& ShapeSymbol(const NodeArg* def, int i) {
 ONNX_NAMESPACE::TensorProto_DataType TensorProtoDataType(const NodeArg* def) {
   ORT_ENFORCE_DEBUG(nullptr != def);
   return static_cast<ONNX_NAMESPACE::TensorProto_DataType>(def->TypeAsProto()->tensor_type().elem_type());
+}
+
+// Convert GraphNodes to internal NodePtrs without check lifetime.
+// Please use it only locally when GraphNodes still exist
+std::vector<const Node*> ConvertGraphNodesToNodePtrs(const GraphNodes& graph_nodes) {
+  std::vector<const Node*> nodes;
+  for (auto& node : graph_nodes) {
+    nodes.push_back(&node);
+  }
+  return nodes;
 }
 
 }  // namespace onnxruntime

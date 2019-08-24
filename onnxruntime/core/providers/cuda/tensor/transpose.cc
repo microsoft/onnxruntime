@@ -20,13 +20,13 @@ namespace cuda {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Transpose<T>);
 
-// special case acceleration using cublas matrix tranpose
+// special case acceleration using cublas matrix transpose
 std::tuple<int, int> TryTransposeWithCublas(const std::vector<size_t>& perm, const TensorShape& input_shape) {
   int M = 0;
   int N = 0;
 
   if (perm.size() == 4 && input_shape[0] == 1 && perm[0] == 0) {
-    // NCHW < ->NHWC when N == 1
+    // NCHW <-> NHWC when N == 1
     if ((perm[1] == 2 && perm[2] == 3 && perm[3] == 1) ||
         (perm[1] == 3 && perm[2] == 1 && perm[3] == 2)) {
       if (perm[1] == 2) {
@@ -92,7 +92,7 @@ Status Transpose<T>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  int device_id = 0;
+  int device_id = GetDeviceId();
   CudaAsyncBuffer<int64_t> input_strides(this, device_id, rank);
   CudaAsyncBuffer<size_t> perm(this, device_id, *p_perm);
   CudaAsyncBuffer<fast_divmod> fdm_output_strides(this, device_id, rank);

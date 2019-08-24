@@ -288,23 +288,6 @@ class Expand_8 final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-#ifndef DISABLE_CONTRIB_OPS
-namespace contrib {
-template <typename T>
-class Scale final : public OpKernel {
- public:
-  Scale(const OpKernelInfo& info) : OpKernel(info) {
-    ORT_ENFORCE(info.GetAttr("scale", &scale_).IsOK());
-  }
-
-  Status Compute(OpKernelContext* context) const override;
-
- private:
-  float scale_;
-};
-}  // namespace contrib
-#endif
-
 template <typename T>
 class Erf final : public OpKernel {
  public:
@@ -335,6 +318,11 @@ struct BroadcastIterator {
       }
     }
     return index;
+  }
+
+  void Reserve(int64_t max_dims) {
+    deltas_.reserve(max_dims);
+    counts_.reserve(max_dims);
   }
 
   void Init(int64_t axis, int64_t largest) {
@@ -385,6 +373,8 @@ struct Broadcaster {
     size_t dimension_count_max = std::max(shape1.size(), shape2.size());
     size_t dimension_count_min = std::min(shape1.size(), shape2.size());
     output_shape_.resize(dimension_count_max);
+    iterator1_.Reserve(dimension_count_max);
+    iterator2_.Reserve(dimension_count_max);
 
     auto iter1 = shape1.end();
     auto iter2 = shape2.end();
@@ -412,22 +402,22 @@ struct Broadcaster {
         *--output_shape = axis;
       }
       index++;  // Manually increment since we processed one axis
-    }
+    } else {
+      for (; index < dimension_count_min; index++) {
+        auto axis1 = *--iter1;
+        auto axis2 = *--iter2;
 
-    for (; index < dimension_count_min; index++) {
-      auto axis1 = *--iter1;
-      auto axis2 = *--iter2;
+        auto largest = std::max(axis1, axis2);
+        *--output_shape = largest;
 
-      auto largest = std::max(axis1, axis2);
-      *--output_shape = largest;
+        if (largest == 1 && index + 1 < dimension_count_min)  // Nothing to do in this case
+          continue;
 
-      if (largest == 1 && index + 1 < dimension_count_min)  // Nothing to do in this case
-        continue;
-
-      iterator1_.Init(axis1, largest);
-      iterator2_.Init(axis2, largest);
-      index++;  // Manually increment since we processed one axis
-      break;
+        iterator1_.Init(axis1, largest);
+        iterator2_.Init(axis2, largest);
+        index++;  // Manually increment since we processed one axis
+        break;
+      }
     }
 
     for (; index < dimension_count_min; index++) {
@@ -540,7 +530,8 @@ struct TBroadcastOutput {
 template <typename T>
 struct TensorAllocator {
   TensorAllocator(OpKernelContext& context) {
-    ORT_ENFORCE(context.GetTempSpaceAllocator(&allocator_).IsOK());
+    auto status = context.GetTempSpaceAllocator(&allocator_);
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   }
 
   std::unique_ptr<Tensor> Allocate(const TensorShape& shape) {

@@ -43,14 +43,6 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   return result;
 }
 
-common::Status IExecutionProvider::CopyTensor(const Tensor& src,
-                                              Tensor& dst,
-                                              int exec_queue_id) const {
-  // execution provider may override this to support different exec queues
-  ORT_ENFORCE(exec_queue_id == 0);
-  return CopyTensor(src, dst);
-}
-
 common::Status IExecutionProvider::Sync() const { return Status::OK(); };
 
 common::Status IExecutionProvider::OnRunStart() { return Status::OK(); }
@@ -76,6 +68,10 @@ common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
                                            std::string& /*dll_path*/) {
   return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
+}
+
+std::shared_ptr<KernelRegistry> IExecutionProvider::GetKernelRegistry() const {
+  return nullptr;
 }
 
 }  // namespace onnxruntime

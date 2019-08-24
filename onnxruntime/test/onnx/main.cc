@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <core/session/onnxruntime_cxx_api.h>
+#include <set>
 #include <iostream>
 #include <fstream>
 #ifdef _WIN32
@@ -18,6 +19,7 @@
 #include <google/protobuf/stubs/common.h>
 #include "core/framework/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/optimizer/graph_transformer_level.h"
 
 using namespace onnxruntime;
 
@@ -33,10 +35,15 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph' or 'nuphar'. Default: 'cpu'.\n"
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph' or 'openvino'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
-      "\t-h: help\n");
+      "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
+      "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. \n"
+      "\t-h: help\n"
+      "\n"
+      "onnxruntime version: %s\n",
+      OrtGetVersionString());
 }
 
 #ifdef _WIN32
@@ -86,10 +93,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_nuphar = false;
   bool enable_tensorrt = false;
   bool enable_mem_pattern = true;
+  bool enable_openvino = false;
+  bool enable_nnapi = false;
+  GraphOptimizationLevel graph_optimization_level = ORT_DISABLE_ALL;
+  bool user_graph_optimization_level_set = false;
+
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xv"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -139,6 +151,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_nuphar = true;
           } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
             enable_tensorrt = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
+            enable_openvino = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
+            enable_nnapi = true;
           } else {
             usage();
             return -1;
@@ -147,6 +163,34 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         case 'x':
           enable_sequential_execution = false;
           break;
+        case 'o': {
+          int tmp = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
+          switch (tmp) {
+            case ORT_DISABLE_ALL:
+              graph_optimization_level = ORT_DISABLE_ALL;
+              break;
+            case ORT_ENABLE_BASIC:
+              graph_optimization_level = ORT_ENABLE_BASIC;
+              break;
+            case ORT_ENABLE_EXTENDED:
+              graph_optimization_level = ORT_ENABLE_EXTENDED;
+              break;
+            case ORT_ENABLE_ALL:
+              graph_optimization_level = ORT_ENABLE_ALL;
+              break;
+            default: {
+              if (tmp > ORT_ENABLE_ALL) {  // relax constraint
+                graph_optimization_level = ORT_ENABLE_ALL;
+              } else {
+                fprintf(stderr, "See usage for valid values of graph optimization level\n");
+                usage();
+                return -1;
+              }
+            }
+          }
+          user_graph_optimization_level_set = true;
+          break;
+        }
         case '?':
         case 'h':
         default:
@@ -184,8 +228,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
-    double relative_per_sample_tolerance = enable_cuda ? 0.017 : 1e-3;
+    // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
+    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009 : 1e-3;
+
     Ort::SessionOptions sf;
+
     if (enable_cpu_mem_arena)
       sf.EnableCpuMemArena();
     else
@@ -198,12 +245,22 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.EnableSequentialExecution();
     else
       sf.DisableSequentialExecution();
+
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf));
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, 0));
       ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0));
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
+      return -1;
+#endif
+    }
+
+    if (enable_openvino) {
+#ifdef USE_OPENVINO
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "CPU"));
+#else
+      fprintf(stderr, "OpenVINO is not supported in this build");
       return -1;
 #endif
     }
@@ -238,6 +295,18 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       fprintf(stderr, "nGraph is not supported in this build");
       return -1;
 #endif
+    }
+    if (enable_nnapi) {
+#ifdef USE_NNAPI
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf));
+#else
+      fprintf(stderr, "DNNLibrary/NNAPI is not supported in this build");
+      return -1;
+#endif
+    }
+
+    if (user_graph_optimization_level_set) {
+      sf.SetGraphOptimizationLevel(graph_optimization_level);
     }
 
     std::unordered_set<std::string> cuda_flaky_tests = {
@@ -286,142 +355,169 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     fwrite(res.c_str(), 1, res.size(), stdout);
   }
   // clang-format off
-  std::map<std::string, std::string> broken_tests{
-      {"AvgPool1d", "disable reason"},
-      {"AvgPool1d_stride", "disable reason"},
-      {"AvgPool2d", "disable reason"},
-      {"AvgPool2d_stride", "disable reason"},
-      {"AvgPool3d", "disable reason"},
-      {"AvgPool3d_stride", "disable reason"},
-      {"AvgPool3d_stride1_pad0_gpu_input", "disable reason"},
-      {"BatchNorm1d_3d_input_eval", "disable reason"},
-      {"BatchNorm2d_eval", "disable reason"},
-      {"BatchNorm2d_momentum_eval", "disable reason"},
-      {"BatchNorm3d_eval", "disable reason"},
-      {"BatchNorm3d_momentum_eval", "disable reason"},
-      {"constantofshape_float_ones", "test data bug"},
-      {"constantofshape_int_zeros", "test data bug"},
-      {"GLU", "disable reason"},
-      {"GLU_dim", "disable reason"},
-      {"Linear", "disable reason"},
-      {"PReLU_1d", "disable reason"},
-      {"PReLU_1d_multiparam", "disable reason"},
-      {"PReLU_2d", "disable reason"},
-      {"PReLU_2d_multiparam", "disable reason"},
-      {"PReLU_3d", "disable reason"},
-      {"PReLU_3d_multiparam", "disable reason"},
-      {"PoissonNLLLLoss_no_reduce", "disable reason"},
-      {"Softsign", "disable reason"},
+
+  struct BrokenTest
+  {
+    std::string test_name_;
+    std::string reason_;
+    std::set<std::string> broken_versions_ = {}; // apply to all versions if empty
+    bool operator < (const struct BrokenTest& test) const {
+        return strcmp(test_name_.c_str(), test.test_name_.c_str()) < 0;
+    }
+  };
+
+  std::set<BrokenTest> broken_tests = {
+      {"constantofshape_float_ones", "test data bug", {"onnx141","onnx150"}},
+      {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
       {"convtranspose_1d", "disable reason"},
       {"convtranspose_3d", "disable reason"},
-      {"flatten_axis0", "disable reason"},
-      {"flatten_axis1", "disable reason"},
-      {"flatten_axis2", "disable reason"},
-      {"flatten_axis3", "disable reason"},
-      {"flatten_default_axis", "disable reason"},
-      {"gemm_broadcast", "disable reason"},
-      {"gemm_nobroadcast", "disable reason"},
-      {"matmul_2d", "disable reason"},
-      {"matmul_3d", "disable reason"},
-      {"matmul_4d", "disable reason"},
-      {"operator_add_broadcast", "disable reason"},
-      {"operator_add_size1_broadcast", "disable reason"},
-      {"operator_add_size1_right_broadcast", "disable reason"},
-      {"operator_add_size1_singleton_broadcast", "disable reason"},
-      {"operator_addconstant", "disable reason"},
-      {"operator_addmm", "disable reason"},
-      {"operator_basic", "disable reason"},
-      {"operator_mm", "disable reason"},
-      {"operator_non_float_params", "disable reason"},
-      {"operator_params", "disable reason"},
-      {"operator_pow", "disable reason"},
       {"cast_STRING_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
-      {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
-      {"tf_inception_v4", "Cast opset 9 not supported yet"},
       {"tf_nasnet_large", "disable temporarily"},
       {"tf_nasnet_mobile", "disable temporarily"},
       {"tf_pnasnet_large", "disable temporarily"},
-      {"shrink", "test case is wrong"},
-      {"maxpool_2d_precomputed_strides", "ShapeInferenceError"},
-      {"averagepool_2d_precomputed_strides", "ShapeInferenceError"},
+      {"shrink", "test case is wrong", {"onnx141"}},
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
       {"tf_inception_v2", "result mismatch"},
-      {"tf_mobilenet_v2_1.0_224", "result mismatch"},
-      {"tf_mobilenet_v2_1.4_224", "result mismatch"},
-      {"tf_mobilenet_v1_1.0_224", "result mismatch"},
-      {"mobilenetv2-1.0", "result mismatch"},
-      {"mxnet_arcface", "result mismatch"}
+      {"mxnet_arcface", "result mismatch"},
+      {"dynamicquantizelinear", "not implemented yet"},
+      {"dynamicquantizelinear_expanded", "not implemented yet"},
+      {"dynamicquantizelinear_max_adjusted", "not implemented yet"},
+      {"dynamicquantizelinear_max_adjusted_expanded", "not implemented yet"},
+      {"dynamicquantizelinear_min_adjusted", "not implemented yet"},
+      {"dynamicquantizelinear_min_adjusted_expanded", "not implemented yet"},
+      {"top_k", "not implemented yet for opset 11", {"onnxtip"}},
+      {"top_k_smallest", "not implemented yet for opset 11", {"onnxtip"}},
+      {"unique_not_sorted_without_axis", "not implemented yet"},
+      {"unique_sorted_with_axis", "not implemented yet"},
+      {"unique_sorted_with_axis_3d", "not implemented yet"},
+      {"unique_sorted_without_axis", "not implemented yet"},
+      {"scatter_elements_with_axis", "not implemented yet"},
+      {"scatter_elements_without_axis", "not implemented yet"},
+      {"round", "not implemented yet"},
+      {"gather_elements_1", "not implemented yet"},
+      {"gather_elements_0", "not implemented yet"},
+      {"depthtospace_crd_mode_example", "not implemented yet"},
+      {"depthtospace_crd_mode", "not implemented yet"},
+      {"cumsum_2d_axis_1", "not implemented yet"},
+      {"cumsum_2d_axis_0", "not implemented yet"},
+      {"cumsum_1d_reverse_exclusive", "not implemented yet"},
+      {"cumsum_1d_reverse", "not implemented yet"},
+      {"cumsum_1d_exclusive", "not implemented yet"},
+      {"cumsum_1d", "not implemented yet"},      
   };
 
 #ifdef USE_NGRAPH
-  broken_tests["dequantizelinear"] = "ambiguity in scalar dimensions [] vs [1]";
-  broken_tests["qlinearconv"] = "ambiguity in scalar dimensions [] vs [1]";
-  broken_tests["quantizelinear"] = "ambiguity in scalar dimensions [] vs [1]";
-  broken_tests["tiny_yolov2"] = "temporarily disable due to graph resolve failure.";
-  broken_tests["operator_repeat_dim_overflow"] = "temporarily disable due to graph resolve failure.";
+  broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
+  broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
+  broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
+  broken_tests.insert({"clip_splitbounds", "not implemented yet for opset 11"});
+  broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});	
+  broken_tests.insert({"clip_example", "not implemented yet for opset 11"});	
+  broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});	
+  broken_tests.insert({"clip_default_max", "not implemented yet for opset 11"});
+  broken_tests.insert({"clip", "not implemented yet for opset 11"});
+#endif
+
+#ifdef USE_MKLDNN
+  broken_tests.insert({"tf_mobilenet_v2_1.0_224", "result mismatch"});
+  broken_tests.insert({"tf_mobilenet_v2_1.4_224", "result mismatch"});
+  broken_tests.insert({"tf_mobilenet_v1_1.0_224", "result mismatch"});
+  broken_tests.insert({"mobilenetv2-1.0", "result mismatch"});
+#endif
+
+#ifdef USE_OPENVINO
+  broken_tests.insert({"fp16_shufflenet", "accuracy mismatch with fp16 precision"});
+  broken_tests.insert({"fp16_inception_v1", "accuracy mismatch with fp16 precision"});
+  broken_tests.insert({"fp16_tiny_yolov2", "accuaracy mismatch with fp16 precision"});
+#ifdef OPENVINO_CONFIG_GPU_FP32
+  broken_tests.insert({"tiny_yolov2", "accuracy mismatch"});
+#endif
+#endif
+
+#ifdef USE_TENSORRT
+  broken_tests.insert({"fp16_shufflenet", "TRT EP bug"});
+  broken_tests.insert({"fp16_inception_v1", "TRT EP bug"});
+  broken_tests.insert({"fp16_tiny_yolov2", "TRT EP bug"});
+  broken_tests.insert({"tf_inception_v3", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_mobilenet_v1_1.0_224", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_mobilenet_v2_1.0_224", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_mobilenet_v2_1.4_224", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v1_101", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v1_152", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v1_50", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v2_101", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v2_152", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v2_50", "TRT Engine couldn't be created"});
 #endif
 
 #ifdef USE_CUDA
-  broken_tests["mxnet_arcface"] = "result mismatch";
-  broken_tests["tf_inception_v1"] = "flaky test"; //TODO: Investigate cause for flakiness
+  broken_tests.insert({"mxnet_arcface", "result mismatch"});
+  broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
+  broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
+  broken_tests.insert({"tf_inception_v1", "flaky test"}); //TODO: Investigate cause for flakiness
 #endif
   // clang-format on
 
 #if defined(_WIN32) && !defined(_WIN64)
-  broken_tests["vgg19"] = "failed: bad allocation";
+  broken_tests.insert({"vgg19", "failed: bad allocation"});
 #endif
 
 #if defined(__GNUG__) && !defined(__LP64__)
-  broken_tests["nonzero_example"] = "failed: type mismatch";
+  broken_tests.insert({"nonzero_example", "failed: type mismatch", {"onnx123", "onnx130", "onnx141", "onnx150", "onnxtip"}});
+  broken_tests.insert({"slice_neg_steps", "failed: type mismatch"});
+  broken_tests.insert({"mod_float_mixed_sign_example", "failed: type mismatch"});
 #endif
 
 #ifdef DISABLE_CONTRIB_OPS
-  broken_tests["coreml_SqueezeNet_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_Permute_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_ReLU_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_Padding-Upsampling-Normalizer_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["tiny_yolov2"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_Pooling_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_Padding_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_Normalizer_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_linear_sklearn_load_breast_cancer"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_linear_ImageNet_small"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_linear_ImageNet_large"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_linear_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_leakyrelu_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_hard_sigmoid_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_elu_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_Dense_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_Conv2D_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["coreml_VGG16_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["coreml_Resnet50_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["coreml_Inceptionv3_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["coreml_FNS-Candy_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["coreml_AgeNet_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_thresholdedrelu_ImageNet_large"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_thresholdedrelu_ImageNet_small"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_thresholdedrelu_sklearn_load_breast_cancer"] = "This model uses contrib ops.";
-  broken_tests["thresholdedrelu"] = "This model uses contrib ops.";
-  broken_tests["thresholdedrelu_default"] = "This model uses contrib ops.";
-  broken_tests["dynamic_slice_default_axes"] = "This model uses contrib ops.";
-  broken_tests["thresholdedrelu_example"] = "This model uses contrib ops.";
-  broken_tests["dynamic_slice_neg failed"] = "This model uses contrib ops.";
-  broken_tests["dynamic_slice_start_out_of_bounds"] = "This model uses contrib ops.";
-  broken_tests["dynamic_slice"] = "This model uses contrib ops.";
-  broken_tests["dynamic_slice_end_out_of_bounds"] = "This model uses contrib ops.";
-  broken_tests["dynamic_slice_neg"] = "This model uses contrib ops.";
-  broken_tests["mvn"] = "This model uses contrib ops.";
+  broken_tests.insert({"coreml_SqueezeNet_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Permute_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_ReLU_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Padding-Upsampling-Normalizer_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"tiny_yolov2", "This model uses contrib ops."});
+  broken_tests.insert({"fp16_tiny_yolov2", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Pooling_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Padding_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Normalizer_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_linear_sklearn_load_breast_cancer", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_linear_ImageNet_small", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_linear_ImageNet_large", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_linear_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_leakyrelu_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_hard_sigmoid_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_elu_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Dense_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Conv2D_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"coreml_VGG16_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"coreml_Resnet50_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"coreml_Inceptionv3_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"coreml_FNS-Candy_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"coreml_AgeNet_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_thresholdedrelu_ImageNet_large", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_thresholdedrelu_ImageNet_small", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_thresholdedrelu_sklearn_load_breast_cancer", "This model uses contrib ops."});
+  broken_tests.insert({"thresholdedrelu", "This model uses contrib ops."});
+  broken_tests.insert({"thresholdedrelu_default", "This model uses contrib ops."});
+  broken_tests.insert({"dynamic_slice_default_axes", "This model uses contrib ops."});
+  broken_tests.insert({"thresholdedrelu_example", "This model uses contrib ops."});
+  broken_tests.insert({"dynamic_slice_neg failed", "This model uses contrib ops."});
+  broken_tests.insert({"dynamic_slice_start_out_of_bounds", "This model uses contrib ops."});
+  broken_tests.insert({"dynamic_slice", "This model uses contrib ops."});
+  broken_tests.insert({"dynamic_slice_end_out_of_bounds", "This model uses contrib ops."});
+  broken_tests.insert({"dynamic_slice_neg", "This model uses contrib ops."});
+  broken_tests.insert({"mvn", "This model uses contrib ops.", {"onnx130"}});
 #endif
 
   int result = 0;
-  for (const std::string& s : stat.GetFailedTest()) {
-    if (broken_tests.find(s) == broken_tests.end()) {
-      fprintf(stderr, "test %s failed, please fix it\n", s.c_str());
+  for (const auto& p : stat.GetFailedTest()) {
+    BrokenTest t = {p.first, ""};
+    auto iter = broken_tests.find(t);
+    if (iter == broken_tests.end() ||
+        (p.second != TestModelInfo::unknown_version && !iter->broken_versions_.empty() && iter->broken_versions_.find(p.second) == iter->broken_versions_.end())) {
+      fprintf(stderr, "test %s failed, please fix it\n", p.first.c_str());
       result = -1;
     }
   }
-
   return result;
 }
 #ifdef _WIN32

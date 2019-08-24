@@ -18,8 +18,8 @@
 namespace onnxruntime {
 
 class SessionState;
-class MLValueNameIdxMap;
-class MLValuePatternPlanner;
+class OrtValueNameIdxMap;
+class OrtValuePatternPlanner;
 struct MemoryPatternGroup;
 class NodeIndexInfo;
 
@@ -27,7 +27,7 @@ class IExecutionFrame {
  protected:
   IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
                   const std::unordered_map<int, OrtValue>& initializers, const std::vector<int>& fetch_mlvalue_idxs,
-                  const std::vector<OrtValue>& fetches, const MLValueNameIdxMap& ort_value_idx_map,
+                  const std::vector<OrtValue>& fetches, const OrtValueNameIdxMap& ort_value_idx_map,
                   const NodeIndexInfo& node_index_info);
 
  public:
@@ -46,7 +46,7 @@ class IExecutionFrame {
   // This method is not thread safe!
   // Return S_OK and nullptr if index map to an value that is an unused optional input/output
   // Shape is required for tensors but not traditional ML values.
-  Status GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, OrtValue*& p_ort_value);
+  Status GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, OrtValue*& p_ort_value, size_t nnz = 0);
 
   /**
    * write the output values to the 'fetches' vector
@@ -73,22 +73,26 @@ class IExecutionFrame {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IExecutionFrame);
 
   void Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
-            const std::unordered_map<int, OrtValue>& initializers, const std::vector<int>& fetch_mlvalue_idxs,
-            const std::vector<OrtValue>& fetches, const MLValueNameIdxMap& ort_value_idx_map);
+            const std::unordered_map<int, OrtValue>& initializers,
+            const std::vector<OrtValue>& fetches);
 
   const OrtValue& GetMLValue(int ort_value_index) const {
-    ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_.size());
+    ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_size_);
     return all_values_[ort_value_index];
   }
 
   virtual AllocatorPtr GetAllocatorImpl(const OrtAllocatorInfo& info) const = 0;
-  virtual Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) = 0;
+
+  virtual Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape, size_t nnz) = 0;
 
   const NodeIndexInfo& node_index_info_;
 
   // All the intermediate values for the entire graph.
   // Input and Output values are passed in by executors
   std::vector<OrtValue> all_values_;
+
+  // perf optimization to avoid calling all_values_.size() repeatedly as the size is fixed once constructed
+  const size_t all_values_size_;
 
   const std::vector<int> fetch_mlvalue_idxs_;
 };
@@ -126,9 +130,10 @@ class ExecutionFrame final : public IExecutionFrame {
 
   AllocatorPtr GetAllocatorImpl(const OrtAllocatorInfo& info) const override;
   Status ReleaseMLValueImpl(int ort_value_idx) override;
-  Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) override;
+  Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape, size_t nnz) override;
 
-  common::Status AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape);
+  common::Status AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape,
+                                             size_t nnz);
 
   Status AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_value, int ort_value_index, MLDataType element_type,
                                                   const OrtAllocatorInfo& location, const TensorShape& shape,
@@ -154,7 +159,7 @@ class ExecutionFrame final : public IExecutionFrame {
 
   // If no cached memory pattern, and we enable the memory pattern optimization
   // use this planner_ to trace the memory allocation in current executor.
-  std::unique_ptr<MLValuePatternPlanner> planner_;
+  std::unique_ptr<OrtValuePatternPlanner> planner_;
 
   // Big chunks on different locations that will be used by mem_pattern.
   std::map<OrtAllocatorInfo, BufferUniquePtr> buffers_;

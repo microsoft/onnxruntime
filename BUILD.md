@@ -1,4 +1,5 @@
 # Build ONNX Runtime
+Dockerfiles are available [here](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/linux/docker) to help you get started.
 
 ## Supported architectures
 
@@ -12,7 +13,7 @@
 
 | OS          | Supports CPU | Supports GPU| Notes                              |
 |-------------|:------------:|:------------:|------------------------------------|
-|Windows 10   | YES          | YES         |Must use VS 2017 or the latest VS2015|
+|Windows 10   | YES          | YES         | VS2019 through the latest VS2015 are supported |
 |Windows 10 <br/> Subsystem for Linux | YES         | NO        |         |
 |Ubuntu 16.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
 
@@ -29,36 +30,51 @@ OS/Compiler Matrix:
 
 ONNX Runtime python binding only supports Python 3.5, 3.6 and 3.7.
 
-## Build
+## Getting Started
+You may either get a prebuilt onnxruntime from nuget.org, or do it yourself using the following steps:
 1. Checkout the source tree:
    ```
    git clone --recursive https://github.com/Microsoft/onnxruntime
    cd onnxruntime
    ```
 2. Install cmake-3.13 or better from https://cmake.org/download/.
-3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF on Windows and turned ON on Linux. After the installation, you should have the 'protoc' executable in your PATH. On Linux it is recommended to run `ldconfig` to make sure protobuf libraries are found.
-4. If you installed your protobuf in a non standard location it would be helpful on Linux build to set the following env var:
-`export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=full path to protoc"` so ONNX build can find it.
-On Linux also run `ldconfig <protobuf lib folder path>` so the linker can find protobuf libraries.
+
+On Windows:
+3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF. After the installation, you should have the 'protoc' executable in your PATH.
+4. (optional) Install onnx from source code (cmake/external/onnx)
+    ```
+    export ONNX_ML=1
+    python3 setup.py bdist_wheel
+    pip3 install --upgrade dist/*.whl
+    ```
+5. Run `build.bat --config RelWithDebInfo --build_shared_lib --parallel`. 
+
+On Linux:
+3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned ON. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
+4. If you installed your protobuf in a non standard location it would be helpful to set the following env var:`export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=full path to protoc"` so ONNX build can find it. Also run `ldconfig <protobuf lib folder path>` so the linker can find protobuf libraries.
 5. (optional) Install onnx from source code (cmake/external/onnx)
     ```
     export ONNX_ML=1
     python3 setup.py bdist_wheel
     pip3 install --upgrade dist/*.whl
     ```
-6. Run `./build.sh --config RelWithDebInfo --build_wheel` for Linux (or `build.bat --config RelWithDebInfo --build_wheel` for Windows). Upon successful build you should be able to find the wheel under `dist` folder.
+6. Run `./build.sh --config RelWithDebInfo --build_shared_lib --parallel`.
 
 The build script runs all unit tests by default (for native builds and skips tests by default for cross-compiled builds).
 
 The complete list of build options can be found by running `./build.sh (or ./build.bat) --help`
 
 ## Build x86
-1. For Windows, just add --x86 argument when launching build.bat
-2. For Linux, it must be built out of a x86 os, --x86 argument also needs be specified to build.sh
+ - For Windows, just add --x86 argument when launching build.bat
+ - For Linux, it must be built out of a x86 os, --x86 argument also needs be specified to build.sh
 
 ## Build ONNX Runtime Server on Linux
 
-1. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
+1. ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL. 
+    See https://golang.org/doc/install for installation instructions.
+2. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
+3. ONNX Runtime Server supports sending log to [rsyslog](https://www.rsyslog.com/) daemon. To enable it, please build with an additional parameter: `--cmake_extra_defines onnxruntime_USE_SYSLOG=1`. The build command will look like this: `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel --cmake_extra_defines onnxruntime_USE_SYSLOG=1`
+
 
 ## Build/Test Flavors for CI
 
@@ -73,6 +89,9 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 
 ## Additional Build Flavors
 The complete list of build flavors can be seen by running `./build.sh --help` or `./build.bat --help`. Here are some common flavors.
+
+### Windows CMake Generator
+The default generator on Windows is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat.
 
 ### Windows CUDA Build
 ONNX Runtime supports CUDA builds. You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [CUDNN](https://developer.nvidia.com/cudnn).
@@ -136,44 +155,45 @@ You can build from source on Linux by using the following `cmd` from the onnxrun
 ./build.sh --cudnn_home <path to CUDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> (Linux)
 
 ```
+### OpenVINO Build
 
-### Nuphar
-ONNX Runtime supports Nuphar execution provider (released as preview). It is an execution provider built on top of [TVM](https://github.com/dmlc/tvm) and [LLVM](https://llvm.org). Currently it targets to X64 CPU.
+ONNX Runtime supports OpenVINO Execution Provider to enable deep learning inference using Intel<sup>®</sup> OpenVINO<sup>TM</sup> Toolkit. This execution provider supports several Intel hardware device types - CPU, integrated GPU, Intel<sup>®</sup> Movidius<sup>TM</sup> VPUs and Intel<sup>®</sup> Vision accelerator Design with 8 Intel Movidius<sup>TM</sup> MyriadX VPUs.
 
-The Nuphar execution provider for ONNX Runtime is built and tested with LLVM 6.0.1. Because of TVM's requirement when building with LLVM, you need to build LLVM from source:
+The OpenVINO Execution Provider can be built using the following commands:
 
-Window with Visual Studio 2017: (Note here builds release flavor. Debug build of LLVM would be needed to build with Debug flavor of ONNX Runtime)
-```
-REM download llvm source code 6.0.1 and unzip to \llvm\source\path, then install to \llvm\install\path
-cd \llvm\source\path
-mkdir build
-cd build
-cmake .. -G "Visual Studio 15 2017 Win64" -DLLVM_TARGETS_TO_BUILD=X86
-msbuild llvm.sln /maxcpucount /p:Configuration=Release /p:Platform=x64
-cmake -DCMAKE_INSTALL_PREFIX=\llvm\install\path -DBUILD_TYPE=Release -P cmake_install.cmake
-```
+- Currently supports and validated on two versions of OpenVINO: OpenVINO 2018 R5.0.1 and OpenVINO 2019 R1.1(Recommended). Install the OpenVINO release along with its dependencies from ([https://software.intel.com/en-us/openvino-toolkit](https://software.intel.com/en-us/openvino-toolkit)).
 
-Linux:
-```
-# download llvm source code 6.0.1 and unzip to /llvm/source/path, then install to /llvm/install/path
-cd /llvm/source/path
-mkdir build
-cd build
-cmake .. -DLLVM_TARGETS_TO_BUILD=X86 -DCMAKE_BUILD_TYPE=Release
-cmake --build.
-cmake -DCMAKE_INSTALL_PREFIX=/llvm/install/path -DBUILD_TYPE=Release -P cmake_install.cmake
-```
+- Install the model optimizer prerequisites for ONNX by running
+<code><openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.sh</code>
 
-Then you can build from source by using following command from the onnxruntime directory:
-Windows:
-```
-build.bat --use_tvm --use_llvm --llvm_path=\llvm\install\path\lib\cmake\llvm --use_mklml --use_nuphar�--config=Release
-```
+- Initialize the OpenVINO environment by running the setupvars.sh in <code>\<openvino\_install\_directory\>\/bin</code> using the below command:
 
-Linux:
-```
-./build.sh --use_tvm --use_llvm --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar�--config=Release
-```
+   <code>source setupvars.sh</code>
+
+- To configure Intel<sup>®</sup> Processor Graphics(GPU), please follow the installation steps from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
+
+- To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow the getting started guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+
+- To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow the configuration guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#install-VPU)
+
+
+- Build ONNX Runtime using the below command.
+
+   <code>./build.sh --config RelWithDebInfo --use_openvino <hardware_option>  </code>
+
+   <code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
+
+   <code><hardware_option></code>: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
+
+| Hardware Option | Target Device |
+| --------------- | ------------------------|
+| <code>CPU_FP32</code> | Intel<sup>®</sup> CPUs |
+| <code>GPU_FP32</code> | Intel<sup>®</sup> Integrated Graphics |
+| <code>GPU_FP16</code> | Intel<sup>®</sup> Integrated Graphics with FP16 quantization of models |
+| <code>MYRIAD_FP16</code> | Intel<sup>®</sup> Movidius<sup>TM</sup> USB sticks | 
+| <code>VAD-M_FP16</code> | Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs |
+
+For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document OpenVINO-ExecutionProvider.md in <code>$onnxruntime_root/docs/execution_providers</code>
 
 ### OpenBLAS
 #### Windows
@@ -374,6 +394,6 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 
    You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip. Please unzip it after downloading.
 
-3. Denote the unzip destination in step 1 as $ANDROID_NDK, append `-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=path/to/protoc` to your cmake args, run cmake and make to build it. 
+3. Denote the unzip destination in step 1 as $ANDROID_NDK, append `-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=path/to/protoc` to your cmake args, run cmake and make to build it.
 
 Note: For 32-bit devices, replace `-DANDROID_ABI=arm64-v8a` to `-DANDROID_ABI=armeabi-v7a`.

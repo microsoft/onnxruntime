@@ -4,6 +4,7 @@
 #include "core/codegen/mti/debug/tvm_print.h"
 
 #include "core/codegen/common/utils.h"
+#include "core/codegen/common/dump_array.h"
 #include "core/codegen/mti/common.h"
 #include <topi/detail/extern.h>
 

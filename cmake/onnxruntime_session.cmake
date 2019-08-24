@@ -15,6 +15,16 @@ onnxruntime_add_include_to_target(onnxruntime_session onnxruntime_common onnxrun
 target_include_directories(onnxruntime_session PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
 add_dependencies(onnxruntime_session ${onnxruntime_EXTERNAL_DEPENDENCIES})
 set_target_properties(onnxruntime_session PROPERTIES FOLDER "ONNXRuntime")
+if (onnxruntime_USE_CUDA)
+  target_include_directories(onnxruntime_session PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+endif()
+
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  add_definitions(-DENABLE_LANGUAGE_INTEROP_OPS)
+  include(onnxruntime_language_interop_ops.cmake)
+  onnxruntime_add_include_to_target(onnxruntime_session onnxruntime_language_interop)
+  add_dependencies(onnxruntime_session onnxruntime_language_interop)
+endif()
 
 if(onnxruntime_USE_EIGEN_THREADPOOL)
     target_compile_definitions(onnxruntime_session PUBLIC USE_EIGEN_THREADPOOL)

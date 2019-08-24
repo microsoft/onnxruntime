@@ -18,27 +18,6 @@ class DummyExecutionProvider : public IExecutionProvider {
     InsertAllocator(std::make_unique<DummyAllocator>());
   }
 
-  Status CopyTensor(const Tensor& src, Tensor& dst) const override {
-    // we can 'copy' from anything we allocated to/from CPU
-    ORT_ENFORCE(strcmp(dst.Location().name, DummyAllocator::kDummyAllocator) == 0 ||
-                strcmp(dst.Location().name, CPU) == 0);
-    ORT_ENFORCE(strcmp(src.Location().name, DummyAllocator::kDummyAllocator) == 0 ||
-                strcmp(src.Location().name, CPU) == 0);
-
-    // no really copy needed.
-    const void* src_data = src.DataRaw();
-    void* dst_data = dst.MutableDataRaw();
-
-    // copying between cpu memory
-    memcpy(dst_data, src_data, src.Size());
-
-    return Status::OK();
-  }
-
-  const void* GetExecutionHandle() const noexcept override {
-    return nullptr;
-  }
-
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 };
 

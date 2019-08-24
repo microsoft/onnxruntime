@@ -14,6 +14,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
@@ -25,6 +26,9 @@
 #include "core/platform/env.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/gpu_data_transfer.h"
+#endif
 #include "core/session/IOBinding.h"
 #include "dummy_provider.h"
 #include "test_utils.h"
@@ -113,23 +117,25 @@ class FuseExecutionProvider : public IExecutionProvider {
     static std::shared_ptr<KernelRegistry> kernel_registry = GetFusedKernelRegistry();
     return kernel_registry;
   }
+};
 
-  common::Status CopyTensor(const Tensor& src, Tensor& dst) const override {
-    ORT_UNUSED_PARAMETER(src);
-    ORT_UNUSED_PARAMETER(dst);
-    return Status::OK();
+// InferenceSession wrapper to expose loaded graph.
+class InferenceSessionGetGraphWrapper : public InferenceSession {
+ public:
+  explicit InferenceSessionGetGraphWrapper(const SessionOptions& session_options,
+                                          logging::LoggingManager* logging_manager) : InferenceSession(session_options, logging_manager) {
   }
 
-  const void* GetExecutionHandle() const noexcept override {
-    return nullptr;
+  const Graph& GetGraph() {
+    return model_->MainGraph();
   }
 };
 
 namespace test {
 static void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
                           const std::vector<float>& expected_values);
-static const std::string MODEL_URI = "testdata/mul_1.pb";
-static const std::string MODEL_URI_NO_OPSET = "testdata/mul_1.pb.noopset";
+static const std::string MODEL_URI = "testdata/mul_1.onnx";
+static const std::string MODEL_URI_NO_OPSET = "testdata/mul_1.noopset.onnx";
 //static const std::string MODEL_URI = "./testdata/squeezenet/model.onnx"; // TODO enable this after we've weights?
 
 static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, ProviderType provider_type) {
@@ -289,7 +295,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
                                                                   shape,
                                                                   cpu_allocator);
-    st = TestCudaExecutionProvider()->CopyTensor(rtensor, *cpu_tensor.get());
+    st = GPUDataTransfer().CopyTensor(rtensor, *cpu_tensor.get(), 0);
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
     ml_value.Init(cpu_tensor.release(),
@@ -337,6 +343,77 @@ TEST(InferenceSessionTests, DisableCPUArena) {
   RunModel(session_object, run_options);
 }
 
+TEST(InferenceSessionTests, TestModelSerialization) {
+  // Load model with level 0 transform level
+  // and assert that the model has Identity nodes.
+  SessionOptions so;
+  const string test_model = "testdata/transform/abs-id-max.onnx";
+  so.session_logid = "InferenceSessionTests.TestModelSerialization";
+  so.graph_optimization_level = TransformerLevel::Default;
+  InferenceSessionGetGraphWrapper session_object_noopt{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object_noopt.Load(test_model).IsOK());
+  ASSERT_TRUE(session_object_noopt.Initialize().IsOK());
+
+  // Assert that model has Identity Nodes.
+  const auto& graph_noopt = session_object_noopt.GetGraph();
+  std::map<std::string, int> op_to_count_noopt = CountOpsInGraph(graph_noopt);
+  ASSERT_TRUE(op_to_count_noopt["Identity"] > 0);
+
+  // Load model with level 1 transform level.
+  so.graph_optimization_level = TransformerLevel::Level1;
+  so.optimized_model_filepath = ToWideString(test_model + "-TransformLevel-" + std::to_string(static_cast<uint32_t>(so.graph_optimization_level)));
+  InferenceSessionGetGraphWrapper session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(test_model).IsOK());
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+ 
+  // Assert that model has been transformed and identity Node is removed.
+  const auto& graph = session_object.GetGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 0);
+
+  // Serialize model to the same file path again to make sure that rewrite doesn't fail.
+  InferenceSession overwrite_session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(overwrite_session_object.Load(test_model).IsOK());
+  ASSERT_TRUE(overwrite_session_object.Initialize().IsOK());
+
+  // Load serialized model with no transform level and serialize model.
+  SessionOptions so_opt;
+  so_opt.session_logid = "InferenceSessionTests.TestModelSerialization";
+  so_opt.graph_optimization_level = TransformerLevel::Default;
+  so_opt.optimized_model_filepath = ToWideString(so.optimized_model_filepath) + ToWideString("-TransformLevel-" + std::to_string(static_cast<uint32_t>(so_opt.graph_optimization_level)));
+  InferenceSession session_object_opt{so_opt, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object_opt.Load(so.optimized_model_filepath).IsOK());
+  ASSERT_TRUE(session_object_opt.Initialize().IsOK());
+  
+  // Assert that re-feed of optimized model with default transform level results
+  // in same runtime model as abs-id-max.onnx with TransformLevel-1.
+  std::ifstream model_fs_session1(so.optimized_model_filepath, ios::in | ios::binary);
+  ASSERT_TRUE(model_fs_session1.good());
+  std::ifstream model_fs_session2(so_opt.optimized_model_filepath, ios::in | ios::binary);
+  ASSERT_TRUE(model_fs_session2.good());
+  ASSERT_TRUE(model_fs_session1.tellg() == model_fs_session2.tellg());
+  model_fs_session1.seekg(0, std::ifstream::beg);
+  model_fs_session2.seekg(0, std::ifstream::beg);
+  ASSERT_TRUE(std::equal(std::istreambuf_iterator<char>(model_fs_session1.rdbuf()),
+                         std::istreambuf_iterator<char>(),
+                         std::istreambuf_iterator<char>(model_fs_session2.rdbuf())));
+
+  // Assert that empty optimized model file-path doesn't fail loading.
+  so_opt.optimized_model_filepath = ToWideString("");
+  InferenceSession session_object_emptyValidation{so_opt, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object_emptyValidation.Load(test_model).IsOK());
+  ASSERT_TRUE(session_object_emptyValidation.Initialize().IsOK());
+
+  // Assert that level 3 optimization doesn't result in serialized model.
+  so_opt.optimized_model_filepath = ToWideString("ShouldNotSerialize");
+  so_opt.graph_optimization_level = TransformerLevel::Level3;
+  InferenceSession session_object_Level3Test{so_opt, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object_Level3Test.Load(test_model).IsOK());
+  ASSERT_TRUE(session_object_Level3Test.Initialize().IsOK());
+  std::ifstream model_fs_Level3(so_opt.optimized_model_filepath, ios::in | ios::binary);
+  ASSERT_TRUE(model_fs_Level3.fail());
+}
+
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 static bool Compare(const InputDefList& f_arg, const InputDefList& s_arg) {
   if (f_arg.size() != s_arg.size()) {
@@ -353,8 +430,8 @@ static bool Compare(const InputDefList& f_arg, const InputDefList& s_arg) {
     if (!x->Shape()) {
       continue;
     }
-    vector<int64_t> x_shape = utils::GetTensorShapeFromTensorShapeProto(*x->Shape());
-    vector<int64_t> y_shape = utils::GetTensorShapeFromTensorShapeProto(*y->Shape());
+    auto x_shape = utils::GetTensorShapeFromTensorShapeProto(*x->Shape());
+    auto y_shape = utils::GetTensorShapeFromTensorShapeProto(*y->Shape());
     if (x->Name() == y->Name() && x_shape == y_shape && *x->Type() == *y->Type()) {
       continue;
     }
@@ -444,6 +521,7 @@ TEST(InferenceSessionTests, CheckRunLogger) {
 
   RunOptions run_options;
   run_options.run_tag = "RunTag";
+  run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   RunModel(session_object, run_options);
 
 #ifndef NDEBUG
@@ -583,6 +661,7 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
   SessionOptions so;
 
   so.session_logid = "ConfigureVerbosityLevel";
+  so.session_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   so.session_log_verbosity_level = 1;
 
   // create CapturingSink. LoggingManager will own it, but as long as the logging_manager
@@ -601,6 +680,7 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
 
   RunOptions run_options;
   run_options.run_tag = "ConfigureVerbosityLevel";
+  run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   run_options.run_log_verbosity_level = 1;
   RunModel(session_object, run_options);
 
@@ -830,56 +910,19 @@ TEST(InferenceSessionTests, ModelWithoutOpset) {
   }
 }
 
-static ONNX_NAMESPACE::ModelProto CreateModelWithOptionalInputs() {
-  Model model("ModelWithOptionalInputs");
-  auto& graph = model.MainGraph();
-
-  // create an initializer, which is an optional input that can be overridden
-  ONNX_NAMESPACE::TensorProto tensor_proto;
-  tensor_proto.add_dims(1);
-  tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
-  tensor_proto.add_float_data(1.f);
-  tensor_proto.set_name("optional_input");
-
-  graph.AddInitializedTensor(tensor_proto);
-
-  TypeProto single_float;
-  single_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  single_float.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
-
-  auto& required_input = graph.GetOrCreateNodeArg("required_input", &single_float);
-  auto& optional_input = graph.GetOrCreateNodeArg("optional_input", nullptr);
-  auto& add_output = graph.GetOrCreateNodeArg("add_output", &single_float);
-
-  EXPECT_TRUE(optional_input.Shape() != nullptr) << "AddInitializedTensor should have created the NodeArg with shape.";
-
-  graph.AddNode("add", "Add", "Add required and optional inputs", {&required_input, &optional_input}, {&add_output});
-
-  auto status = graph.Resolve();
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-
-  auto model_proto = model.ToProto();
-
-  return model_proto;
-}
-
 static common::Status RunOptionalInputTest(bool add_required_input,
                                            bool add_optional_input,
-                                           bool add_invalid_input) {
-  auto model_proto = CreateModelWithOptionalInputs();
-
+                                           bool add_invalid_input,
+                                           int model_ir_version) {
   SessionOptions so;
-  so.session_logid = "InferenceSessionTests.TestOptionalInputs";
+  so.session_logid = "RunOptionalInputTest";
 
   InferenceSession session_object{so, &DefaultLoggingManager()};
+  Status status;
+  std::string model_path = "testdata/optional_inputs_ir" + std::to_string(model_ir_version) + ".onnx";
 
-  std::string s1;
-  model_proto.SerializeToString(&s1);
-  std::stringstream sstr(s1);
-  auto status = session_object.Load(sstr);
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  status = session_object.Initialize();
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ORT_RETURN_IF_ERROR(session_object.Load(model_path));
+  ORT_RETURN_IF_ERROR(session_object.Initialize());
 
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
@@ -887,12 +930,17 @@ static common::Status RunOptionalInputTest(bool add_required_input,
   // prepare inputs
   std::vector<int64_t> dims = {1};
   std::vector<float> required_input_val = {1.f};
+  std::vector<float> other_required_input_val = {0.f};
   std::vector<float> optional_input_val = {10.f};  // override initializer value of 1
   std::vector<float> unknown_input_val = {20.f};
 
   OrtValue required_input_mlvalue;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
                        dims, required_input_val, &required_input_mlvalue);
+
+  OrtValue other_required_input_mlvalue;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+                       dims, other_required_input_val, &other_required_input_mlvalue);
 
   OrtValue optional_input_mlvalue;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
@@ -906,6 +954,9 @@ static common::Status RunOptionalInputTest(bool add_required_input,
 
   if (add_required_input)
     feeds.insert(std::make_pair("required_input", required_input_mlvalue));
+
+  // always add this one
+  feeds.insert(std::make_pair("other_required_input", other_required_input_mlvalue));
 
   if (add_optional_input)
     feeds.insert(std::make_pair("optional_input", optional_input_mlvalue));
@@ -935,24 +986,37 @@ static common::Status RunOptionalInputTest(bool add_required_input,
   return status;
 }
 
+// test the change in handling of graph inputs that match initializers between IR version 3 and 4
+// in V3 disallow overriding an initializer via the feeds
+// for V4 allow it
 TEST(InferenceSessionTests, TestOptionalInputs) {
-  // required input only
-  auto status = RunOptionalInputTest(true, false, false);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  std::vector<int> ir_versions{3, 4};
+  for (auto version : ir_versions) {
+    // required input only
+    auto status = RunOptionalInputTest(true, false, false, version);
+    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  // required and optional input
-  status = RunOptionalInputTest(true, true, false);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+    // required and optional input
+    status = RunOptionalInputTest(true, true, false, version);
+    if (version == 3) {
+      ASSERT_FALSE(status.IsOK()) << status.ErrorMessage();
+    } else {
+      ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+    }
+    // required, optional and invalid input
+    status = RunOptionalInputTest(true, true, true, version);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Name"));
 
-  // required, optional and invalid input
-  status = RunOptionalInputTest(true, true, true);
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Name"));
-
-  // missing required
-  status = RunOptionalInputTest(false, true, false);
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing Input:"));
+    // missing required
+    status = RunOptionalInputTest(false, true, false, version);
+    ASSERT_FALSE(status.IsOK());
+    if (version == 3) {
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Name"));
+    } else {
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing Input:"));
+    }
+  }
 }
 
 TEST(ExecutionProviderTest, FunctionTest) {
@@ -1140,7 +1204,8 @@ TEST(ExecutionProviderTest, FunctionInlineTest) {
 
 TEST(InferenceSessionTests, TestTruncatedSequence) {
   // model/data generated by <repo>/onnxruntime/test/testdata/CNTK/gen.py GenScan()
-  static const std::string LSTM_MODEL_URI = "testdata/scan_1.pb";
+  // Manually updated to have IR version of 4.
+  static const std::string LSTM_MODEL_URI = "testdata/scan_1.onnx";
   // This model is a 4x forward LSTM. Parse it to find out mapping between init_state input/output
   ONNX_NAMESPACE::ModelProto model_proto;
   int model_fd;
@@ -1433,7 +1498,7 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
   so.enable_sequential_execution = false;
   so.session_logid = "InferenceSessionTests.TestParallelExecutionWithCudaProvider";
   InferenceSession session_object{so};
-  
+
   CUDAExecutionProviderInfo epi;
   epi.device_id = 0;
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());

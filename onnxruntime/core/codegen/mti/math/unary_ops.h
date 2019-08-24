@@ -8,9 +8,6 @@
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Expr exp(const tvm::Expr& x_full);
-tvm::Expr log(const tvm::Expr& x_full);
-
 tvm::Tensor Abs(const tvm::Tensor& X, const std::string& name = "abs");
 tvm::Tensor Affine(const tvm::Tensor& X, float alpha, float beta, const std::string& name = "affine");
 tvm::Tensor Ceil(const tvm::Tensor& X, const std::string& name = "ceil");

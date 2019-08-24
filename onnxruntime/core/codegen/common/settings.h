@@ -20,10 +20,6 @@ class CodeGenSettings {
   constexpr static const char* kCodeGenDumpModule = "codegen_dump_module";      // dump tvm module
   constexpr static const char* kCodeGenDumpLower = "codegen_dump_lower";        // dump lowered func
   constexpr static const char* kCodeGenDumpSchedule = "codegen_dump_schedule";  // dump scheduler
-  constexpr static const char* kCodeGenFastMath = "codegen_fast_math";          // fast math
-
-  constexpr static const char* kCodeGenFastMath_Polynormial = "polynormial_math";             // generic polynormial fast math for exp and log
-  constexpr static const char* kCodeGenFastMath_ShortPolynormial = "short_polynormial_math";  // generic shorter polynormial fast math for exp and log
 
   void InsertOptions(const std::map<std::string, std::string>& options);
   void DumpOptions() const;
