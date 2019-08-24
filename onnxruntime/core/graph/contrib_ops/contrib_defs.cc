@@ -186,6 +186,31 @@ void RegisterNchwcSchemas() {
       .FillUsing(NchwcGlobalPoolOpSchemaGenerator);
 }
 
+void RegisterBertSchemas() {
+  static const char* Normalize_ver1_doc = R"DOC(
+Affine takes one input data (Tensor<T>) and produces one output data
+(Tensor<T>) where the affine function, y = alpha * x + beta,
+is applied to the tensor elementwise.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Normalize)
+      .SinceVersion(1)
+      .SetDoc(Normalize_ver1_doc)
+      .Attr("PowerDegree", "Value of alpha", AttributeProto::FLOAT)
+      .Attr("bias", "Value of alpha", AttributeProto::FLOAT)
+      .Attr("gamma", "Value of alpha", AttributeProto::TENSOR )
+      .Attr("beta", "Value of alpha", AttributeProto::TENSOR )
+      .Input(0, "X", "3D input tensor", "T")
+      .Output(0, "Y", "3D output tensor", "T")
+      .TypeConstraint(
+          "T",
+          {
+              "tensor(float)",
+          },
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+}
+
 void RegisterContribSchemas() {
   // Register removed experimental ops for backward compatibility.
   // Experimental operators do not have version history. However, RS5 takes bunch of experimental operators
@@ -1588,6 +1613,7 @@ Example 4:
         a fixed size = [crop_height, crop_width]. The result is a 4-D tensor [num_boxes, crop_height, crop_width, depth].
         The resizing is corner aligned.)DOC");
 
+  RegisterBertSchemas();
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();

@@ -16,8 +16,8 @@ CUDAFence::CUDAFence(const GPUDataTransfer* data_transfer) : data_transfer_(data
 }
 
 CUDAFence::~CUDAFence() {
-  CUDA_CALL_THROW(cudaEventDestroy(read_event_));
-  CUDA_CALL_THROW(cudaEventDestroy(write_event_));
+  //CUDA_CALL_THROW(cudaEventDestroy(read_event_));
+  //CUDA_CALL_THROW(cudaEventDestroy(write_event_));
 }
 
 void CUDAFence::BeforeUsingAsInput(onnxruntime::ProviderType provider_type, int async_queue_id) {
