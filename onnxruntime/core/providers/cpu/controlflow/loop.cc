@@ -136,7 +136,8 @@ Status Loop::Compute(OpKernelContext* ctx) const {
   auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
   auto* session_state = ctx_internal->SubgraphSessionState("body");
   ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
-
+  ORT_ENFORCE(ctx->NumVariadicInputs(2) >= 1,
+              "Number of loop carried dependencies should be atleast 1 for Loop operator (opset 10 and below)");
   LoopImpl loop_impl{*ctx_internal, *session_state};
 
   auto status = loop_impl.Initialize();

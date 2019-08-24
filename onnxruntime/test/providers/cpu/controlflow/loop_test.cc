@@ -40,8 +40,8 @@ class LoopOpTester : public OpTester {
  public:
   using SubgraphFunc = std::function<const ONNX_NAMESPACE::GraphProto(const RunOptions& options)>;
 
-  LoopOpTester(const RunOptions& options, SubgraphFunc create_subgraph = CreateSubgraph)
-      : OpTester("Loop", 8), options_{options}, create_subgraph_{create_subgraph} {
+  LoopOpTester(const RunOptions& options, SubgraphFunc create_subgraph = CreateSubgraph, int opset_version = 8)
+      : OpTester("Loop", opset_version), options_{options}, create_subgraph_{create_subgraph} {
   }
 
  protected:
@@ -572,6 +572,65 @@ TEST(Loop, InfiniteLoopTermination) {
 
   // done with the thread
   terminator_thread.join();
+}
+
+TEST(Loop, Loop11NoVariadicInputs) {
+  auto create_subgraph = [](const RunOptions&) {
+    Model model("Loop(11) with no variadic inputs");
+    auto& graph = model.MainGraph();
+
+    std::vector<NodeArg*> inputs;
+    std::vector<NodeArg*> outputs;
+
+    /* Never change cond_in so loop is infinite
+            Inputs: iter_num, cond_in.
+
+         iter_num_in    cond_in     
+           (unused)        |         
+                       [Identity]    
+                           |               
+                        cond_out     
+    */
+
+    // graph inputs types.
+    TypeProto int64_scalar;
+    int64_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+    int64_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto bool_scalar;
+    bool_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+    bool_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    // graph inputs
+    auto& iter_num_in = graph.GetOrCreateNodeArg("iter_num_in", &int64_scalar);
+    auto& cond_in = graph.GetOrCreateNodeArg("cond_in", &bool_scalar);
+
+    // graph outputs
+    auto& cond_out = graph.GetOrCreateNodeArg("cond_out", &bool_scalar);
+
+    // cond_in -> cond_out
+    {
+      inputs = {&cond_in};
+      outputs = {&cond_out};
+
+      graph.AddNode("cond_in_identity", "Identity", "Forward cond_in to cond_out", inputs, outputs);
+    }
+
+    graph.SetInputs({&iter_num_in, &cond_in});
+    graph.SetOutputs({&cond_out});
+
+    auto status = graph.Resolve();
+    EXPECT_EQ(status, Status::OK());
+
+    return graph.ToGraphProto();
+  };
+
+  LoopOpTester test{{}, create_subgraph, 11};
+
+  test.AddInput<int64_t>("M", {1}, {INT64_MAX});
+  test.AddInput<bool>("cond", {1}, {true});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // Disable TensorRT on unsupported data type BOOL
 }
 
 // Regression test that a subgraph input overrides an outer scope value of the same name.
