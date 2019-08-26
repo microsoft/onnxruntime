@@ -708,7 +708,7 @@ endif()
 
 add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
 target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
-set(onnxruntime_mlas_test_libs onnxruntime_mlas onnxruntime_common)
+set(onnxruntime_mlas_test_libs onnxruntime_mlas onnxruntime_common onnxruntime_session)
 if(onnxruntime_USE_NSYNC)
   list(APPEND onnxruntime_mlas_test_libs nsync_cpp)
 endif()
