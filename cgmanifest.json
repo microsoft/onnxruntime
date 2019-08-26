@@ -303,7 +303,7 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"ab22710a3f0166f31c9c14feab98c04bfb86b71b",
+               "commitHash":"2d4b0f05bbbb89537eee49d803ec3ea240d6d5db",
                "repositoryUrl":"https://github.com/JDAI-CV/DNNLibrary.git"
             }
          }
