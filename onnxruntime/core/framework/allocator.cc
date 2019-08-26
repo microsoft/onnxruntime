@@ -3,35 +3,18 @@
 
 #include "core/framework/allocator.h"
 #include "core/framework/allocatormgr.h"
-#include "core/mlas/inc/mlas.h"
+#include "core/framework/utils.h"
 #include <cstdlib>
 #include <sstream>
 
 namespace onnxruntime {
 
 void* CPUAllocator::Alloc(size_t size) {
-  if (size <= 0) return nullptr;
-  void* p;
-  size_t alignment = MlasGetPreferredBufferAlignment();
-#if _MSC_VER
-  p = _aligned_malloc(size, alignment);
-  if (p == nullptr) throw std::bad_alloc();
-#elif defined(_LIBCPP_SGX_CONFIG)
-  p = memalign(alignment, size);
-  if (p == nullptr) throw std::bad_alloc();
-#else
-  int ret = posix_memalign(&p, alignment, size);
-  if (ret != 0) throw std::bad_alloc();
-#endif
-  return p;
+  return utils::DefaultAlloc(size);
 }
 
 void CPUAllocator::Free(void* p) {
-#if _MSC_VER
-  _aligned_free(p);
-#else
-  free(p);
-#endif
+  utils::DefaultFree(p);
 }
 
 const OrtAllocatorInfo& CPUAllocator::Info() const { return *allocator_info_; }
