@@ -45,23 +45,6 @@ using namespace onnxruntime;
     if (_status) return _status;      \
   } while (0)
 
-struct OrtEnv {
- public:
-  Environment* value;
-  LoggingManager* loggingManager;
-
-  OrtEnv(Environment* value1, LoggingManager* loggingManager1) : value(value1), loggingManager(loggingManager1) {
-  }
-  /**
-   * This function will call ::google::protobuf::ShutdownProtobufLibrary
-   */
-  ~OrtEnv() {
-    delete loggingManager;
-    delete value;
-  }
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtEnv);
-};
-
 #define TENSOR_READ_API_BEGIN                          \
   API_IMPL_BEGIN                                       \
   auto v = reinterpret_cast<const ::OrtValue*>(value); \
@@ -96,14 +79,15 @@ ORT_API_STATUS_IMPL(OrtCreateEnvWithCustomLogger, OrtLoggingFunction logging_fun
   API_IMPL_BEGIN
   std::string name = logid;
   std::unique_ptr<ISink> logger = std::make_unique<LoggingWrapper>(logging_function, logger_param);
-  auto default_logging_manager = std::make_unique<LoggingManager>(std::move(logger),
-                                                                  static_cast<Severity>(default_warning_level), false,
-                                                                  LoggingManager::InstanceType::Default,
-                                                                  &name);
-  std::unique_ptr<Environment> env;
-  Status status = Environment::Create(env);
-  if (status.IsOK())
-    *out = new OrtEnv(env.release(), default_logging_manager.release());
+  auto logging_manager = std::make_unique<LoggingManager>(std::move(logger),
+                                                          static_cast<Severity>(default_warning_level),
+                                                          false);
+  std::unique_ptr<Environment> env = std::make_unique<Environment>(std::move(logging_manager));
+  Status status = env->Initialize(name);
+  if (status.IsOK()) {
+    *out = reinterpret_cast<OrtEnv*>(env.release());
+    return nullptr;
+  }
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -116,17 +100,15 @@ ORT_API_STATUS_IMPL(OrtCreateEnv, OrtLoggingLevel default_warning_level,
                     _In_ const char* logid, _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
   std::string name = logid;
-  auto default_logging_manager = std::make_unique<LoggingManager>(std::unique_ptr<ISink>{new CLogSink{}},
-                                                                  static_cast<Severity>(default_warning_level), false,
-                                                                  LoggingManager::InstanceType::Default,
-                                                                  &name);
-  std::unique_ptr<Environment> env;
-  Status status = Environment::Create(env);
+  auto logging_manager = std::make_unique<LoggingManager>(std::unique_ptr<ISink>{new CLogSink{}},
+                                                          static_cast<Severity>(default_warning_level),
+                                                          false);
+  std::unique_ptr<Environment> env = std::make_unique<Environment>(std::move(logging_manager));
+  Status status = env->Initialize(name);
   if (status.IsOK()) {
-    *out = new OrtEnv(env.release(), default_logging_manager.release());
+    *out = reinterpret_cast<OrtEnv*>(env.release());
     return nullptr;
   }
-  *out = nullptr;
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -368,7 +350,7 @@ template <typename Loader>
 OrtStatus* CreateSessionImpl(_In_ const OrtEnv* env, _In_ const OrtSessionOptions* options,
                              Loader loader, _Outptr_ OrtSession** out) {
   auto sess = std::make_unique<::onnxruntime::InferenceSession>(
-      options == nullptr ? onnxruntime::SessionOptions() : options->value, env->loggingManager);
+    options == nullptr ? onnxruntime::SessionOptions() : options->value, nullptr);
   Status status;
   if (options != nullptr) {
     if (!options->custom_op_domains_.empty()) {
@@ -1074,7 +1056,7 @@ ORT_API_STATUS_IMPL(OrtCreateValue, const OrtValue* const* in, size_t num_values
 
 // End support for non-tensor types
 
-DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Env, OrtEnv)
+DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Env, ::onnxruntime::Environment)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, OrtValue)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)

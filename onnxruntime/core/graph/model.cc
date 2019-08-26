@@ -3,7 +3,7 @@
 
 #include "core/graph/model.h"
 #include <memory>
-#include "core/common/logging/logging.h"
+#include "core/session/environment.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)

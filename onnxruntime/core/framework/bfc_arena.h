@@ -21,8 +21,8 @@ limitations under the License.
 #include <sstream>
 
 #include "core/common/common.h"
-#include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/session/environment.h"
 #include "core/platform/ort_mutex.h"
 #include "core/framework/arena.h"
 #include "onnxruntime_config.h"

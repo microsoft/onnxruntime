@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "../framework/test_utils.h"
+#include "core/session/environment.h"
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include <core/framework/session_state_initializer.h>
@@ -27,7 +28,7 @@ TEST(MemcpyTest, copy1) {
   auto st = execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
   SessionState s{execution_providers, true};
-  s.SetLogger(logging::LoggingManager::DefaultLogger());
+  s.SetLogger(Environment::DefaultLogger());
   KernelRegistryManager kernel_registry_manager;
   kernel_registry_manager.RegisterKernels(execution_providers);
 

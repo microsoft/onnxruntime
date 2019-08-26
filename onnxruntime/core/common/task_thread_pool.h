@@ -54,8 +54,8 @@ Example of that usage:
 #include <utility>
 
 #include "core/common/common.h"
-#include "core/common/logging/logging.h"
 #include "core/platform/ort_mutex.h"
+#include "core/session/environment.h"
 
 namespace onnxruntime {
 

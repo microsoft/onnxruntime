@@ -9,7 +9,7 @@
 #include <windows.h>
 #include <DbgHelp.h>
 
-#include "core/common/logging/logging.h"
+#include "core/session/environment.h"
 #include "gsl/span"
 
 namespace onnxruntime {

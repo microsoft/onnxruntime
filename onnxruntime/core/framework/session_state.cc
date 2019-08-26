@@ -5,7 +5,7 @@
 
 #include <sstream>
 
-#include "core/common/logging/logging.h"
+#include "core/session/environment.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/utils.h"
@@ -70,7 +70,7 @@ SessionState& SessionState::SetLogger(const logging::Logger& logger) {
 
 const logging::Logger& SessionState::Logger() const {
   // DefaultLogger either throws or returns a valid logger.
-  const logging::Logger* logger = logger_ != nullptr ? logger_ : &logging::LoggingManager::DefaultLogger();
+  const logging::Logger* logger = logger_ != nullptr ? logger_ : &Environment::DefaultLogger();
   return *logger;
 }
 

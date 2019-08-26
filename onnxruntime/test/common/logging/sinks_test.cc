@@ -11,7 +11,6 @@
 #include "test/common/logging/helpers.h"
 
 using namespace ::onnxruntime::logging;
-using InstanceType = LoggingManager::InstanceType;
 
 namespace {
 void CheckStringInFile(const std::string& filename, const std::string& look_for) {
@@ -45,8 +44,7 @@ TEST(LoggingTests, TestCLogSink) {
 
   // create scoped manager so sink gets destroyed once done
   {
-    LoggingManager manager{std::unique_ptr<ISink>{new CLogSink{}}, min_log_level, false,
-                           InstanceType::Temporal};
+    LoggingManager manager{std::unique_ptr<ISink>{new CLogSink{}}, min_log_level, false};
 
     auto logger = manager.CreateLogger(logid);
 
@@ -81,8 +79,7 @@ TEST(LoggingTests, TestCErrSink) {
 
   // create scoped manager so sink gets destroyed once done
   {
-    LoggingManager manager{std::unique_ptr<ISink>{new CErrSink{}}, min_log_level, false,
-                           InstanceType::Temporal};
+    LoggingManager manager{std::unique_ptr<ISink>{new CErrSink{}}, min_log_level, false};
 
     auto logger = manager.CreateLogger(logid);
 
@@ -111,7 +108,7 @@ TEST(LoggingTests, TestFileSink) {
   // create scoped manager so sink gets destroyed once done
   {
     LoggingManager manager{std::unique_ptr<ISink>{new FileSink{filename, false, false}},
-                           min_log_level, false, InstanceType::Temporal};
+                           min_log_level, false};
 
     auto logger = manager.CreateLogger(logid);
 
@@ -138,7 +135,7 @@ TEST(LoggingTests, TestCompositeSink) {
 
   CompositeSink* sink = new CompositeSink();
   sink->AddSink(std::unique_ptr<ISink>{sink_ptr1}).AddSink(std::unique_ptr<ISink>{sink_ptr2});
-  LoggingManager manager{std::unique_ptr<ISink>(sink), min_log_level, false, InstanceType::Temporal};
+  LoggingManager manager{std::unique_ptr<ISink>(sink), min_log_level, false};
 
   auto logger = manager.CreateLogger(logid);
 

@@ -16,6 +16,7 @@ struct OrtRunOptions {
   int run_log_severity_level = -1;
   int run_log_verbosity_level = 0;  ///< VLOG level if debug build and run_log_severity_level is 0 (VERBOSE).
   std::string run_tag;              ///< A tag for the Run() calls using this.
+  bool per_run_logging = false;     ///< Enable per-run logging.
 
   // Set to 'true' to ensure the termination of all the outstanding Run() calls
   // that use this OrtRunOptions instance. Some of the outstanding Run() calls may

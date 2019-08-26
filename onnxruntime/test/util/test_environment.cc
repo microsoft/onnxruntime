@@ -18,6 +18,7 @@ namespace onnxruntime {
 namespace test {
 
 static std::unique_ptr<::onnxruntime::logging::LoggingManager> s_default_logging_manager;
+static std::unique_ptr<::onnxruntime::logging::Logger> s_default_logger;
 
 ::onnxruntime::logging::LoggingManager& DefaultLoggingManager() {
   ORT_ENFORCE(s_default_logging_manager != nullptr,
@@ -36,34 +37,32 @@ TestEnvironment::TestEnvironment(int argc, char** argv, bool create_default_logg
   if (create_default_logging_manager) {
     static std::string default_logger_id{"Default"};
     s_default_logging_manager = std::make_unique<LoggingManager>(std::unique_ptr<ISink>{new CLogSink{}},
-                                                        Severity::kWARNING,  // TODO make this configurable through
-                                                                             // cmd line arguments or some other way
-                                                        false,
-                                                        LoggingManager::InstanceType::Default,
-                                                        &default_logger_id);
-
+                                                            Severity::kWARNING,  // TODO make this configurable through
+                                                                                 // cmd line arguments or some other way
+                                                            false);
     // make sure default logging manager exists and is working
-    auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
-    LOGS(logger, VERBOSE) << "Logging manager initialized.";
+    s_default_logger = ::onnxruntime::test::DefaultLoggingManager().CreateLogger(default_logger_id);
+    LOGS(*s_default_logger, VERBOSE) << "Logging manager initialized.";
   }
 
 #ifdef HAVE_FRAMEWORK_LIB
-  auto status = Environment::Create(runtime_environment_);
+  runtime_environment_ = std::make_unique<Environment>(std::move(logging_manager));
+  Status status = runtime_environment_->Initialize(name);
   ORT_ENFORCE(status == Status::OK(), "Failed creating runtime environment. ", status.ErrorMessage());
 #endif
 }
 
 TestEnvironment::~TestEnvironment() {
-#ifdef HAVE_FRAMEWORK_LIB
+  s_default_logger = nullptr;
+  s_default_logging_manager = nullptr;
+
+ #ifdef HAVE_FRAMEWORK_LIB
   // release environment followed by logging manager so any log output from runtime environment shutdown
   // using the default logger will succeed.
   runtime_environment_ = nullptr;
 #else
   ::google::protobuf::ShutdownProtobufLibrary();
 #endif
-
-  // dispose logging manager manually to make sure it's destructed before the default logging mutex
-  s_default_logging_manager = nullptr;
 }
 
 }  // namespace test

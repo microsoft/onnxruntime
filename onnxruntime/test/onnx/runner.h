@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 #include "core/common/common.h"
-#include "core/common/logging/logging.h"
+#include "core/session/environment.h"
 #include "core/platform/env_time.h"
 #include "core/session/onnxruntime_cxx_api.h"
 

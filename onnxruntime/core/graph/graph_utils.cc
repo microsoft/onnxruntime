@@ -4,7 +4,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/common/logging/logging.h"
+#include "core/session/environment.h"
 
 namespace onnxruntime {
 

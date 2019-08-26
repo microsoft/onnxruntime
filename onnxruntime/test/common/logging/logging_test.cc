@@ -6,7 +6,7 @@
 #include <string>
 
 #include "core/common/logging/isink.h"
-#include "core/common/logging/logging.h"
+#include "core/session/environment.h"
 #include "core/common/logging/sinks/clog_sink.h"
 
 #include "test/common/logging/helpers.h"
@@ -21,7 +21,6 @@ using testing::Property;
 
 namespace onnxruntime {
 using namespace logging;
-using InstanceType = LoggingManager::InstanceType;
 
 namespace test {
 
@@ -74,7 +73,7 @@ TEST_F(LoggingTestsFixture, TestWhereMacro) {
                                                  Field(&CodeLocation::function, HasSubstr(function))))))
       .WillRepeatedly(PrintArgs());
 
-  LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), min_log_level, false, InstanceType::Temporal};
+  LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), min_log_level, false};
 
   std::unique_ptr<Logger> logger = manager.CreateLogger(logid);
 
@@ -96,8 +95,7 @@ TEST_F(LoggingTestsFixture, TestDefaultFiltering) {
       .Times(1)
       .WillRepeatedly(PrintArgs());
 
-  LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), min_log_level, filter_user_data,
-                         InstanceType::Temporal};
+  LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), min_log_level, filter_user_data};
 
   auto logger = manager.CreateLogger(logid);
 
@@ -131,7 +129,7 @@ TEST_F(LoggingTestsFixture, TestLoggerFiltering) {
       .WillRepeatedly(PrintArgs());
 
   LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), Severity::kERROR, default_filter_user_data,
-                         InstanceType::Temporal, nullptr, default_max_vlog_level};
+                         default_max_vlog_level};
 
   bool filter_user_data = false;
   int max_vlog_level = 2;
@@ -147,14 +145,7 @@ TEST_F(LoggingTestsFixture, TestLoggerFiltering) {
 /// </summary>
 TEST_F(LoggingTestsFixture, TestLoggingManagerCtor) {
   // throw if sink is null
-  EXPECT_THROW((LoggingManager{std::unique_ptr<ISink>{nullptr}, Severity::kINFO, false,
-                               InstanceType::Temporal}),
-               std::logic_error);
-
-  // can't have two logging managers with InstanceType of Default.
-  // this should clash with LoggingTestsFixture::default_logging_manager_
-  EXPECT_THROW((LoggingManager{std::unique_ptr<ISink>{new MockSink{}}, Severity::kINFO, false,
-                               InstanceType::Default}),
+  EXPECT_THROW((LoggingManager{std::unique_ptr<ISink>{nullptr}, Severity::kINFO, false}),
                std::logic_error);
 }
 
@@ -175,8 +166,7 @@ TEST_F(LoggingTestsFixture, TestConditionalMacros) {
       .Times(2)
       .WillRepeatedly(PrintArgs());
 
-  LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), min_log_level, filter_user_data,
-                         InstanceType::Temporal};
+  LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), min_log_level, filter_user_data};
 
   auto logger = manager.CreateLogger(logger_id);
 
@@ -210,7 +200,7 @@ TEST_F(LoggingTestsFixture, TestVLog) {
 #endif
 
   const bool filter_user_data = false;
-  LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), Severity::kVERBOSE, filter_user_data, InstanceType::Temporal};
+  LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), Severity::kVERBOSE, filter_user_data};
 
   int max_vlog_level = 2;
   auto logger = manager.CreateLogger(logid, Severity::kVERBOSE, filter_user_data, max_vlog_level);
@@ -249,8 +239,7 @@ TEST_F(LoggingTestsFixture, TestTruncation) {
   std::ostringstream out;
   auto* sink_ptr = new CTestSink{out};
 
-  LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), min_log_level, filter_user_data,
-                         InstanceType::Temporal};
+  LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), min_log_level, filter_user_data};
 
   auto logger = manager.CreateLogger(logger_id);
 

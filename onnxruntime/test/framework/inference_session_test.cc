@@ -511,8 +511,7 @@ TEST(InferenceSessionTests, CheckRunLogger) {
   auto capturing_sink = new CapturingSink();
 
   auto logging_manager = std::make_unique<logging::LoggingManager>(
-      std::unique_ptr<ISink>(capturing_sink), logging::Severity::kVERBOSE, false,
-      LoggingManager::InstanceType::Temporal);
+      std::unique_ptr<ISink>(capturing_sink), logging::Severity::kVERBOSE, false);
 
   InferenceSession session_object{so, logging_manager.get()};
   ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
@@ -670,8 +669,7 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(capturing_sink),
       logging::Severity::kVERBOSE,
-      false,
-      LoggingManager::InstanceType::Temporal);
+      false);
 
   InferenceSession session_object{so, logging_manager.get()};
   ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());

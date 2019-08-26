@@ -6,6 +6,7 @@
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/session/environment.h"
 
 using namespace onnxruntime::common;
 
@@ -50,7 +51,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
 
     auto* kernel = info.GetKernel(node->Index());
-    OpKernelContext op_kernel_context(&frame, kernel, ::onnxruntime::logging::LoggingManager::DefaultLogger());
+    OpKernelContext op_kernel_context(&frame, kernel, ::onnxruntime::Environment::DefaultLogger());
 
     ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
 

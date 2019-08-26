@@ -838,7 +838,8 @@ common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_bin
 common::Status InferenceSession::Run(const RunOptions& run_options, IOBinding& io_binding) {
   // TODO should Run() call io_binding.SynchronizeInputs() or should it let the callers do it?
   // io_binding.SynchronizeInputs();
-  return Run(run_options, io_binding.feed_names_, io_binding.feeds_, io_binding.output_names_, &io_binding.outputs_);
+  return Run(run_options, io_binding.feed_names_, io_binding.feeds_,
+             io_binding.output_names_, &io_binding.outputs_);
 }
 
 common::Status InferenceSession::Run(IOBinding& io_binding) {
@@ -947,8 +948,8 @@ const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& ru
                                                             std::unique_ptr<logging::Logger>& new_run_logger) {
   const logging::Logger* run_logger;
 
-  // create a per-run logger if we can
-  if (logging_manager_ != nullptr) {
+  // create a per-run logger if instructed.
+  if (logging_manager_ != nullptr && run_options.per_run_logging) {
     std::string run_log_id{session_options_.session_logid};
 
     if (!session_options_.session_logid.empty() && !run_options.run_tag.empty()) {
@@ -972,7 +973,6 @@ const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& ru
                                                     severity,
                                                     false,
                                                     run_options.run_log_verbosity_level);
-
     run_logger = new_run_logger.get();
     VLOGS(*run_logger, 1) << "Created logger for run with id of " << run_log_id;
   } else {
@@ -989,10 +989,10 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
   if (logging_manager != nullptr && !session_options_.session_logid.empty()) {
     logging::Severity severity = logging::Severity::kWARNING;
     if (session_options_.session_log_severity_level == -1) {
-      severity = logging::LoggingManager::DefaultLogger().GetSeverity();
+      severity = Environment::DefaultLogger().GetSeverity();
     } else {
       ORT_ENFORCE(session_options_.session_log_severity_level >= 0 &&
-                      session_options_.session_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
+                  session_options_.session_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
                   "Invalid session log severity level. Not a valid onnxruntime::logging::Severity value: ",
                   session_options_.session_log_severity_level);
       severity = static_cast<logging::Severity>(session_options_.session_log_severity_level);
@@ -1004,7 +1004,7 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
                                                            session_options_.session_log_verbosity_level);
     session_logger_ = owned_session_logger_.get();
   } else {
-    session_logger_ = &logging::LoggingManager::DefaultLogger();
+    session_logger_ = &Environment::DefaultLogger();
   }
 
   session_state_.SetLogger(*session_logger_);

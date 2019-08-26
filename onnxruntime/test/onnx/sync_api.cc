@@ -17,7 +17,7 @@
 #pragma GCC diagnostic pop
 #endif
 #include <core/common/common.h>
-#include <core/common/logging/logging.h>
+#include <core/session/environment.h>
 #include <core/platform/ort_mutex.h>
 #include "onnxruntime_event.h"
 

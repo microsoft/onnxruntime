@@ -26,8 +26,7 @@ TEST(LoggingTests, TestEtwSink) {
   // create scoped manager so sink gets destroyed once done and we check disposal
   // within the scope of this test
   {
-    LoggingManager manager{std::unique_ptr<ISink>{new EtwSink{}}, Severity::kWARNING, false,
-                           LoggingManager::InstanceType::Temporal};
+    LoggingManager manager{std::unique_ptr<ISink>{new EtwSink{}}, Severity::kWARNING, false};
 
     auto logger = manager.CreateLogger(logid);
 
@@ -50,8 +49,7 @@ TEST(LoggingTests, TestEtwSinkCtor) {
 
   LoggingManager manager{std::unique_ptr<ISink>{sinks},
                          Severity::kWARNING,
-                         false,
-                         LoggingManager::InstanceType::Temporal};
+                         false};
 
   auto logger = manager.CreateLogger("logid");
 

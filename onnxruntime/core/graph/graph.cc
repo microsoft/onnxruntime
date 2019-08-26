@@ -17,9 +17,10 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/op.h"
-#include "core/common/logging/logging.h"
+#include "core/session/environment.h"
 #include "onnx/checker.h"
 #include "core/graph/schema_registry.h"
+
 using namespace ONNX_NAMESPACE;
 using namespace ONNX_NAMESPACE::Utils;
 using namespace ONNX_NAMESPACE::checker;
