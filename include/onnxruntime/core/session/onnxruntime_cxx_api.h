@@ -43,7 +43,6 @@ struct Exception : std::exception {
 #define ORT_DEFINE_RELEASE(NAME) \
   inline void OrtRelease(Ort##NAME* ptr) { OrtRelease##NAME(ptr); }
 
-ORT_DEFINE_RELEASE(Allocator);
 ORT_DEFINE_RELEASE(AllocatorInfo);
 ORT_DEFINE_RELEASE(CustomOpDomain);
 ORT_DEFINE_RELEASE(Env);
@@ -93,7 +92,7 @@ struct Unowned : T {
   ~Unowned() { this->p_ = nullptr; }
 };
 
-struct Allocator;
+struct AllocatorWithDefaultOptions;
 struct AllocatorInfo;
 struct Env;
 struct TypeInfo;
@@ -120,6 +119,9 @@ struct RunOptions : Base<OrtRunOptions> {
   RunOptions& SetRunLogVerbosityLevel(int);
   int GetRunLogVerbosityLevel() const;
 
+  RunOptions& SetRunLogSeverityLevel(int);
+  int GetRunLogSeverityLevel() const;
+
   RunOptions& SetRunTag(const char* run_tag);
   const char* GetRunTag() const;
 
@@ -135,10 +137,12 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions Clone() const;
 
   SessionOptions& SetThreadPoolSize(int session_thread_pool_size);
-  SessionOptions& SetGraphOptimizationLevel(int graph_optimization_level);
+  SessionOptions& SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);
 
   SessionOptions& EnableCpuMemArena();
   SessionOptions& DisableCpuMemArena();
+
+  SessionOptions& SetOptimizedModelFilePath(const ORTCHAR_T* optimized_model_file);
 
   SessionOptions& EnableProfiling(const ORTCHAR_T* profile_file_prefix);
   SessionOptions& DisableProfiling();
@@ -225,16 +229,19 @@ struct Value : Base<OrtValue> {
   TensorTypeAndShapeInfo GetTensorTypeAndShapeInfo() const;
 };
 
-struct Allocator : Base<OrtAllocator> {
-  static Allocator CreateDefault();
+struct AllocatorWithDefaultOptions {
+  AllocatorWithDefaultOptions();
 
-  explicit Allocator(nullptr_t) {}
-  explicit Allocator(OrtAllocator* p) : Base<OrtAllocator>{p} {}
+  operator OrtAllocator*() { return p_; }
+  operator const OrtAllocator*() const { return p_; }
 
   void* Alloc(size_t size);
   void Free(void* p);
 
   const OrtAllocatorInfo* GetInfo() const;
+
+ private:
+  OrtAllocator* p_{};
 };
 
 struct AllocatorInfo : Base<OrtAllocatorInfo> {

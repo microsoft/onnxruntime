@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "core/platform/threadpool.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 // there's no way to use a raw pointer as the copy destination with std::copy_n
 // (which gsl::copy uses with span::data() which returns a raw pointer) with the 14.11 toolset
@@ -167,7 +169,8 @@ class UniDirectionalGru {
   UniDirectionalGru(AllocatorPtr allocator, int seq_length, int batch_size, int input_size, int hidden_size,
                     bool linear_before_reset, Direction direction, const gsl::span<const T>& bias,
                     const gsl::span<const T>& initial_hidden_state, const ActivationFuncs::Entry& activation_func_f,
-                    const ActivationFuncs::Entry& activation_func_g, float clip);
+                    const ActivationFuncs::Entry& activation_func_g, float clip,
+                    onnxruntime::concurrency::ThreadPool* ttp);
 
   void Compute(const gsl::span<const T>& inputs, const gsl::span<const int>& sequence_lengths, int num_directions,
                const gsl::span<const T>& input_weights, const gsl::span<const T>& recurrent_weights,
@@ -233,6 +236,8 @@ class UniDirectionalGru {
   deepcpu::GruOutputGateFuncPtr output_gate_{};
 
   void AllocateBuffers();
+
+  onnxruntime::concurrency::ThreadPool* ttp_;
 };
 }  // namespace detail
 
@@ -263,6 +268,9 @@ Status DeepCpuGruOp::Compute(OpKernelContext* context) const {
 
 template <typename T>
 Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(&context);
+  concurrency::ThreadPool* thread_pool = ctx_internal->GetOperatorThreadPool();
+
   const Tensor& X = *context.Input<Tensor>(0);  // inputs. [seq_length, batch_size, input_size]
   const Tensor& W = *context.Input<Tensor>(1);  // weights. [num_directions, 3*hidden_size, input_size]
   const Tensor& R = *context.Input<Tensor>(2);  // recurrence weights. [num_directions, 3*hidden_size, hidden_size]
@@ -367,7 +375,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
                                     linear_before_reset_, Direction::kForward, bias_1, initial_hidden_1,
                                     activation_funcs_.Entries()[0],
                                     activation_funcs_.Entries()[1],
-                                    clip_);
+                                    clip_, thread_pool);
     fw.Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1,
                output_1, hidden_output_1);
 
@@ -375,7 +383,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
                                     linear_before_reset_, Direction::kReverse, bias_2, initial_hidden_2,
                                     activation_funcs_.Entries()[2],
                                     activation_funcs_.Entries()[3],
-                                    clip_);
+                                    clip_, thread_pool);
     bw.Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2,
                output_2, hidden_output_2);
   } else {
@@ -383,7 +391,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
                                        linear_before_reset_, direction_, bias_1, initial_hidden_1,
                                        activation_funcs_.Entries()[0],
                                        activation_funcs_.Entries()[1],
-                                       clip_);
+                                       clip_, thread_pool);
     gru_p.Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1,
                   output_1, hidden_output_1);
   }
@@ -412,7 +420,7 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
                                         const gsl::span<const T>& initial_hidden_state,
                                         const ActivationFuncs::Entry& activation_func_f,
                                         const ActivationFuncs::Entry& activation_func_g,
-                                        const float clip)
+                                        const float clip, onnxruntime::concurrency::ThreadPool* ttp)
     : allocator_(allocator),
       seq_length_(seq_length),
       batch_size_(batch_size),
@@ -421,7 +429,8 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
       linear_before_reset_(linear_before_reset),
       clip_(clip),
       direction_(direction),
-      use_bias_(!bias.empty()) {
+      use_bias_(!bias.empty()),
+      ttp_(ttp) {
   clip_with_bias_ptr_ = use_bias_ ? deepcpu::clip_add_bias : deepcpu::clip_ignore_bias;
 
   // setup activation function pointers and alpha/beta values to use with them
@@ -540,7 +549,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
               input_weights.cbegin(), input_weights.cend(),
               input_size_, beta,
               outputZRH_.begin(), outputZRH_.end(),
-              hidden_size_x3);
+              hidden_size_x3, ttp_);
 
   DumpMatrix("inputs with weights applied", outputZRH_.data(), seq_length_ * batch_size_ * 3, hidden_size_);
 
@@ -606,7 +615,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
                 recurrent_weightsZR.cbegin(), recurrent_weightsZR.cend(),
                 hidden_size_, beta,
                 outputZRH_.begin() + out_added_offset, outputZRH_.end(),
-                hidden_size_x3);
+                hidden_size_x3, ttp_);
 
     DumpMatrix("Ht-1 * R[zr] + Xt*(W[zr]^T)" + seqno_str,
                outputZRH_.data() + out_added_offset, batch_size_, hidden_size_x2, 0, hidden_size_x3);
@@ -622,7 +631,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
                   recurrent_weightsH.cbegin(), recurrent_weightsH.cend(),  // Rh^T
                   hidden_size_, beta,
                   linear_output_.begin(), linear_output_.end(),  // pre: Rbh, post:output
-                  hidden_size_);
+                  hidden_size_, ttp_);
 
       DumpMatrix("Ht-1 * (Rh^T) + Rbh " + seqno_str, linear_output_.data(), batch_size_, hidden_size_);
     }
@@ -693,7 +702,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
                   recurrent_weightsH.cbegin(), recurrent_weightsH.cend(),  // Rh^T
                   hidden_size_, beta,
                   out_H, outputZRH_.end(),
-                  hidden_size_x3);
+                  hidden_size_x3, ttp_);
     }
 
     DumpMatrix("Xt*(Wh^T) + (" + label + ")" + seqno_str, outputZRH_.data() + out_added_offset,

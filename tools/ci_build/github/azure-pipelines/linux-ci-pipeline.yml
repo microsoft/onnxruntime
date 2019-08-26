@@ -3,6 +3,6 @@ jobs:
   parameters:
     AgentPool : 'Linux-CPU'
     JobName: 'Linux_CI_Dev'
-    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --build_wheel --enable_language_interop_ops"'
+    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --use_automl --build_wheel --enable_language_interop_ops"'
     DoNugetPack:  'false'
     ArtifactName: 'drop-linux'

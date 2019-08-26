@@ -67,9 +67,9 @@ struct OrtEnv {
   auto v = reinterpret_cast<const ::OrtValue*>(value); \
   auto& tensor = v->Get<onnxruntime::Tensor>();
 
-#define TENSOR_READWRITE_API_BEGIN               \
-  API_IMPL_BEGIN                                 \
-  auto v = reinterpret_cast<::OrtValue*>(value); \
+#define TENSOR_READWRITE_API_BEGIN \
+  API_IMPL_BEGIN                   \
+  auto v = (value);                \
   auto tensor = v->GetMutable<onnxruntime::Tensor>();
 
 class LoggingWrapper : public ISink {
@@ -416,7 +416,7 @@ ORT_API_STATUS_IMPL(OrtCreateSessionFromArray, _In_ const OrtEnv* env, _In_ cons
 }
 
 ORT_API_STATUS_IMPL(OrtRun, _Inout_ OrtSession* sess,
-                    _In_ const OrtRunOptions* run_options,
+                    _In_opt_ const OrtRunOptions* run_options,
                     _In_ const char* const* input_names, _In_ const OrtValue* const* input, size_t input_len,
                     _In_ const char* const* output_names1, size_t output_names_len, _Outptr_ OrtValue** output) {
   API_IMPL_BEGIN
@@ -449,7 +449,7 @@ ORT_API_STATUS_IMPL(OrtRun, _Inout_ OrtSession* sess,
   std::vector<OrtValue> fetches(output_names_len);
   for (size_t i = 0; i != output_names_len; ++i) {
     if (output[i] != nullptr) {
-      ::OrtValue& value = *reinterpret_cast<::OrtValue*>(output[i]);
+      ::OrtValue& value = *(output[i]);
       if (value.Fence())
         value.Fence()->BeforeUsingAsOutput(onnxruntime::kCpuExecutionProvider, queue_id);
       fetches[i] = value;
@@ -520,9 +520,9 @@ ORT_API_STATUS_IMPL(OrtGetStringTensorContent, _In_ const OrtValue* value,
     if ((!_status.IsOK())) return ToOrtStatus(_status); \
   } while (0)
 
-#define DEFINE_RELEASE_ORT_OBJECT_FUNCTION(INPUT_TYPE, REAL_TYPE) \
-  ORT_API(void, OrtRelease##INPUT_TYPE, Ort##INPUT_TYPE* value) { \
-    delete reinterpret_cast<REAL_TYPE*>(value);                   \
+#define DEFINE_RELEASE_ORT_OBJECT_FUNCTION(INPUT_TYPE, REAL_TYPE)                 \
+  ORT_API(void, OrtRelease##INPUT_TYPE, _Frees_ptr_opt_ Ort##INPUT_TYPE* value) { \
+    delete reinterpret_cast<REAL_TYPE*>(value);                                   \
   }
 
 ORT_API_STATUS_IMPL(OrtSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {

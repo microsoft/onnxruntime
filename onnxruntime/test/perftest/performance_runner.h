@@ -128,7 +128,7 @@ class PerformanceRunner {
   PerformanceTestConfig performance_test_config_;
   TestModelInfo* test_model_info_;
   std::unique_ptr<TestSession> session_;
-  HeapBuffer b_;
+  onnxruntime::test::HeapBuffer b_;
   std::unique_ptr<ITestCase> test_case_;
 
   // TODO: Convert to OrtMutex

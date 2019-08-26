@@ -44,6 +44,12 @@ ORT_API_STATUS_IMPL(OrtDisableSequentialExecution, _In_ OrtSessionOptions* optio
   return nullptr;
 }
 
+// set filepath to save optimized onnx model.
+ORT_API_STATUS_IMPL(OrtSetOptimizedModelFilePath, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* optimized_model_filepath) {
+  options->value.optimized_model_filepath = optimized_model_filepath;
+  return nullptr;
+}
+
 // enable profiling for this session.
 ORT_API_STATUS_IMPL(OrtEnableProfiling, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix) {
   options->value.enable_profiling = true;
@@ -94,22 +100,40 @@ ORT_API_STATUS_IMPL(OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* opti
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtSetSessionLogSeverityLevel, _In_ OrtSessionOptions* options, int session_log_severity_level) {
+  options->value.session_log_severity_level = session_log_severity_level;
+  return nullptr;
+}
+
 // Set Graph optimization level.
-// Available options are : 0, 1, 2.
-ORT_API_STATUS_IMPL(OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options, int graph_optimization_level) {
+ORT_API_STATUS_IMPL(OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options,
+                    GraphOptimizationLevel graph_optimization_level) {
   if (graph_optimization_level < 0) {
     return OrtCreateStatus(ORT_INVALID_ARGUMENT, "graph_optimization_level is not valid");
   }
-  if (graph_optimization_level >= static_cast<int>(onnxruntime::TransformerLevel::MaxTransformerLevel))
-    return OrtCreateStatus(ORT_INVALID_ARGUMENT, "graph_optimization_level is not valid");
-  options->value.graph_optimization_level = static_cast<onnxruntime::TransformerLevel>(graph_optimization_level);
+
+  switch (graph_optimization_level) {
+    case ORT_DISABLE_ALL:
+      options->value.graph_optimization_level = onnxruntime::TransformerLevel::Default;
+      break;
+    case ORT_ENABLE_BASIC:
+      options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level1;
+      break;
+    case ORT_ENABLE_EXTENDED:
+      options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level2;
+      break;
+    case ORT_ENABLE_ALL:
+      options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level3;
+      break;
+    default:
+      return OrtCreateStatus(ORT_INVALID_ARGUMENT, "graph_optimization_level is not valid");
+  }
+
   return nullptr;
 }
 
 ///How many threads in the session thread pool.
 ORT_API_STATUS_IMPL(OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size) {
-  if (session_thread_pool_size <= 0)
-    return OrtCreateStatus(ORT_INVALID_ARGUMENT, "session_thread_pool_size is not valid");
   options->value.session_thread_pool_size = session_thread_pool_size;
   return nullptr;
 }

@@ -9,15 +9,6 @@ using namespace onnxruntime;
 
 TEST_F(CApiTest, session_options_graph_optimization_level) {
   // Test set optimization level succeeds when valid level is provided.
-  uint32_t valid_optimization_level = static_cast<uint32_t>(TransformerLevel::Level2);
   Ort::SessionOptions options;
-  options.SetGraphOptimizationLevel(valid_optimization_level);
-
-  // Test set optimization level fails when invalid level is provided.
-  try {
-    uint32_t invalid_level = static_cast<uint32_t>(TransformerLevel::MaxTransformerLevel);
-    options.SetGraphOptimizationLevel(invalid_level);
-  } catch (const Ort::Exception& e) {
-    ASSERT_EQ(e.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
-  }
+  options.SetGraphOptimizationLevel(ORT_ENABLE_EXTENDED);
 }

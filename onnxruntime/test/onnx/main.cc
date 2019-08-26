@@ -38,11 +38,8 @@ void usage() {
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph' or 'openvino'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
-      "\t-o [optimization level]: Specifies the graph optimization level to enable. Valid values are 0 through 3. Default is 1.\n"
-      "\t\t0 -> Disable all optimizations\n"
-      "\t\t1 -> Enable basic optimizations\n"
-      "\t\t2 -> Enable extended optimizations\n"
-      "\t\t3 -> Enable extended+layout optimizations\n"
+      "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
+      "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. \n"
       "\t-h: help\n"
       "\n"
       "onnxruntime version: %s\n",
@@ -98,7 +95,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_mem_pattern = true;
   bool enable_openvino = false;
   bool enable_nnapi = false;
-  uint32_t graph_optimization_level{};
+  GraphOptimizationLevel graph_optimization_level = ORT_DISABLE_ALL;
   bool user_graph_optimization_level_set = false;
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
@@ -166,15 +163,34 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         case 'x':
           enable_sequential_execution = false;
           break;
-        case 'o':
-          graph_optimization_level = static_cast<uint32_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-          if (graph_optimization_level >= static_cast<uint32_t>(TransformerLevel::MaxTransformerLevel)) {
-            fprintf(stderr, "See usage for valid values of graph optimization level\n");
-            usage();
-            return -1;
+        case 'o': {
+          int tmp = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
+          switch (tmp) {
+            case ORT_DISABLE_ALL:
+              graph_optimization_level = ORT_DISABLE_ALL;
+              break;
+            case ORT_ENABLE_BASIC:
+              graph_optimization_level = ORT_ENABLE_BASIC;
+              break;
+            case ORT_ENABLE_EXTENDED:
+              graph_optimization_level = ORT_ENABLE_EXTENDED;
+              break;
+            case ORT_ENABLE_ALL:
+              graph_optimization_level = ORT_ENABLE_ALL;
+              break;
+            default: {
+              if (tmp > ORT_ENABLE_ALL) {  // relax constraint
+                graph_optimization_level = ORT_ENABLE_ALL;
+              } else {
+                fprintf(stderr, "See usage for valid values of graph optimization level\n");
+                usage();
+                return -1;
+              }
+            }
           }
           user_graph_optimization_level_set = true;
           break;
+        }
         case '?':
         case 'h':
         default:
@@ -363,13 +379,44 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"shrink", "test case is wrong", {"onnx141"}},
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
       {"tf_inception_v2", "result mismatch"},
-      {"mxnet_arcface", "result mismatch"}
+      {"mxnet_arcface", "result mismatch"},
+      {"dynamicquantizelinear", "not implemented yet"},
+      {"dynamicquantizelinear_expanded", "not implemented yet"},
+      {"dynamicquantizelinear_max_adjusted", "not implemented yet"},
+      {"dynamicquantizelinear_max_adjusted_expanded", "not implemented yet"},
+      {"dynamicquantizelinear_min_adjusted", "not implemented yet"},
+      {"dynamicquantizelinear_min_adjusted_expanded", "not implemented yet"},
+      {"top_k", "not implemented yet for opset 11", {"onnxtip"}},
+      {"top_k_smallest", "not implemented yet for opset 11", {"onnxtip"}},
+      {"unique_not_sorted_without_axis", "not implemented yet"},
+      {"unique_sorted_with_axis", "not implemented yet"},
+      {"unique_sorted_with_axis_3d", "not implemented yet"},
+      {"unique_sorted_without_axis", "not implemented yet"},
+      {"scatter_elements_with_axis", "not implemented yet"},
+      {"scatter_elements_without_axis", "not implemented yet"},
+      {"round", "not implemented yet"},
+      {"gather_elements_1", "not implemented yet"},
+      {"gather_elements_0", "not implemented yet"},
+      {"depthtospace_crd_mode_example", "not implemented yet"},
+      {"depthtospace_crd_mode", "not implemented yet"},
+      {"cumsum_2d_axis_1", "not implemented yet"},
+      {"cumsum_2d_axis_0", "not implemented yet"},
+      {"cumsum_1d_reverse_exclusive", "not implemented yet"},
+      {"cumsum_1d_reverse", "not implemented yet"},
+      {"cumsum_1d_exclusive", "not implemented yet"},
+      {"cumsum_1d", "not implemented yet"},      
   };
 
 #ifdef USE_NGRAPH
   broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
   broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
   broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
+  broken_tests.insert({"clip_splitbounds", "not implemented yet for opset 11"});
+  broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});	
+  broken_tests.insert({"clip_example", "not implemented yet for opset 11"});	
+  broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});	
+  broken_tests.insert({"clip_default_max", "not implemented yet for opset 11"});
+  broken_tests.insert({"clip", "not implemented yet for opset 11"});
 #endif
 
 #ifdef USE_MKLDNN
@@ -388,7 +435,21 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 #endif
 
-
+#ifdef USE_TENSORRT
+  broken_tests.insert({"fp16_shufflenet", "TRT EP bug"});
+  broken_tests.insert({"fp16_inception_v1", "TRT EP bug"});
+  broken_tests.insert({"fp16_tiny_yolov2", "TRT EP bug"});
+  broken_tests.insert({"tf_inception_v3", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_mobilenet_v1_1.0_224", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_mobilenet_v2_1.0_224", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_mobilenet_v2_1.4_224", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v1_101", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v1_152", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v1_50", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v2_101", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v2_152", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v2_50", "TRT Engine couldn't be created"});
+#endif
 
 #ifdef USE_CUDA
   broken_tests.insert({"mxnet_arcface", "result mismatch"});
