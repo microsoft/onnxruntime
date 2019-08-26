@@ -22,8 +22,8 @@ const OrtAllocatorInfo& CPUAllocator::Info() const { return *allocator_info_; }
 
 std::ostream& operator<<(std::ostream& out, const OrtAllocatorInfo& info) { return (out << info.ToString()); }
 
-ORT_API_STATUS_IMPL(OrtCreateAllocatorInfo, _In_ const char* name1, OrtAllocatorType type, int id1,
-                    OrtMemType mem_type1, _Out_ OrtAllocatorInfo** out) {
+ORT_API_STATUS_IMPL(OrtCreateAllocatorInfo, _In_ const char* name1, enum OrtAllocatorType type, int id1,
+                    enum OrtMemType mem_type1, _Outptr_ OrtAllocatorInfo** out) {
   if (strcmp(name1, onnxruntime::CPU) == 0) {
     *out = new OrtAllocatorInfo(name1, type, OrtDevice(), id1, mem_type1);
   } else if (strcmp(name1, onnxruntime::CUDA) == 0) {

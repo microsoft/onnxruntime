@@ -57,10 +57,10 @@ SessionStateInitializer::SessionStateInitializer(bool enable_mem_pattern,
       enable_mem_pattern_(enable_mem_pattern) {}
 
 common::Status SessionStateInitializer::CreatePlan(
-    const Node* parent_node,
-    const ConstPointerContainer<std::vector<NodeArg*>>* outer_scope_node_args,
+    _In_opt_ const Node* parent_node,
+    _In_opt_ const ConstPointerContainer<std::vector<NodeArg*>>* outer_scope_node_args,
     bool enable_sequential_execution) {
-  session_state_.SetGraph(graph_);
+  ORT_RETURN_IF_ERROR(session_state_.SetGraph(graph_));
   const GraphViewer* graph_viewer = session_state_.GetGraphViewer();
 
   // populate the SessionState OrtValueNameIdxMap

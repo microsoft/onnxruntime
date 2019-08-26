@@ -14,8 +14,7 @@ namespace onnxruntime {
 
 template <>
 Status LogSoftmax<float>::Compute(OpKernelContext* ctx) const {
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
 
   const auto* tensor_pointer = ctx->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");

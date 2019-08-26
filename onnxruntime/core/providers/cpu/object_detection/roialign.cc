@@ -334,22 +334,14 @@ Status RoiAlign<T>::Compute(OpKernelContext* context) const {
 
   auto& Y = *context->Output(0, {num_rois, x_dims[1], output_height_, output_width_});
   int64_t output_size = Y.Shape().Size();
-  RoiAlignForward<T>(
-      output_size,  // num threads
-      X_ptr->Data<T>(),
-      spatial_scale_,
-      x_dims[1],  // num channels
-      x_dims[2],  // height
-      x_dims[3],  // width
-      output_height_,
-      output_width_,
-      sampling_ratio_,
-      rois_ptr->Data<T>(),
-      num_roi_cols,
-      Y.template MutableData<T>(),
-      mode_,
-      batch_indices_ptr->Data<int64_t>(),
-      static_cast<OpKernelContextInternal*>(context)->GetOperatorThreadPool());
+  RoiAlignForward<T>(output_size,  // num threads
+                     X_ptr->Data<T>(), spatial_scale_,
+                     x_dims[1],  // num channels
+                     x_dims[2],  // height
+                     x_dims[3],  // width
+                     output_height_, output_width_, sampling_ratio_, rois_ptr->Data<T>(), num_roi_cols,
+                     Y.template MutableData<T>(), mode_, batch_indices_ptr->Data<int64_t>(),
+                     context->GetOperatorThreadPool());
 
   return Status::OK();
 }

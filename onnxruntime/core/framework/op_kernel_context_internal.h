@@ -58,8 +58,12 @@ class OpKernelContextInternal : public OpKernelContext {
 
   const bool& GetTerminateFlag() const noexcept { return terminate_flag_; }
 
-  _Ret_maybenull_ const onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return session_state_.GetThreadPool(); }
-  _Ret_maybenull_ onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() { return session_state_.GetThreadPool(); }
+  _Ret_maybenull_ const onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const override {
+    return session_state_.GetThreadPool();
+  }
+  _Ret_maybenull_ onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() override {
+    return session_state_.GetThreadPool();
+  }
 
  private:
   const SessionState& session_state_;

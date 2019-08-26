@@ -21,6 +21,9 @@
 #include "onnx/defs/schema.h"
 
 namespace onnxruntime {
+namespace concurrency {
+class ThreadPool;
+}
 class IExecutionFrame;
 class OpKernelContext;
 class OpKernelWrapper;
@@ -157,6 +160,9 @@ class OpKernelContext {
   It is null if the output OrtValue doesn't have fence or the output is optional.
   */
   Fence_t OutputFence(int index) const;
+
+  virtual _Ret_maybenull_ const concurrency::ThreadPool* GetOperatorThreadPool() const { return nullptr; }
+  virtual _Ret_maybenull_ concurrency::ThreadPool* GetOperatorThreadPool() { return nullptr; }
 
  protected:
   onnxruntime::NodeIndex GetNodeIndex() const;

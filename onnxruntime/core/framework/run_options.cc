@@ -5,19 +5,19 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/error_code_helper.h"
 
-ORT_API_STATUS_IMPL(OrtCreateRunOptions, OrtRunOptions** out) {
+ORT_API_STATUS_IMPL(OrtCreateRunOptions, _Outptr_ OrtRunOptions** out) {
   API_IMPL_BEGIN
   *out = new OrtRunOptions();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtRunOptionsSetRunLogVerbosityLevel, _In_ OrtRunOptions* options, int value) {
+ORT_API_STATUS_IMPL(OrtRunOptionsSetRunLogVerbosityLevel, _Inout_ OrtRunOptions* options, int value) {
   options->run_log_verbosity_level = value;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtRunOptionsSetRunLogSeverityLevel, _In_ OrtRunOptions* options, int value) {
+ORT_API_STATUS_IMPL(OrtRunOptionsSetRunLogSeverityLevel, _Inout_ OrtRunOptions* options, int value) {
   options->run_log_severity_level = value;
   return nullptr;
 }
@@ -28,17 +28,17 @@ ORT_API_STATUS_IMPL(OrtRunOptionsSetRunTag, _In_ OrtRunOptions* options, _In_ co
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtRunOptionsGetRunLogVerbosityLevel, _In_ const OrtRunOptions* options, int* out) {
+ORT_API_STATUS_IMPL(OrtRunOptionsGetRunLogVerbosityLevel, _In_ const OrtRunOptions* options, _Out_ int* out) {
   *out = options->run_log_verbosity_level;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtRunOptionsGetRunLogSeverityLevel, _In_ const OrtRunOptions* options, int* out) {
+ORT_API_STATUS_IMPL(OrtRunOptionsGetRunLogSeverityLevel, _In_ const OrtRunOptions* options, _Out_ int* out) {
   *out = options->run_log_severity_level;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtRunOptionsGetRunTag, _In_ const OrtRunOptions* options, const char** out) {
+ORT_API_STATUS_IMPL(OrtRunOptionsGetRunTag, _In_ const OrtRunOptions* options, _Out_ const char** out) {
   *out = options->run_tag.c_str();
   return nullptr;
 }
