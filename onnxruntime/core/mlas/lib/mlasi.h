@@ -170,7 +170,7 @@ void
     size_t CountM,
     size_t CountK,
     int32_t* RowSumVector,
-    uint16_t offb
+    int16_t offb
     );
 
 typedef MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE* PMLAS_GEMM_U8U8_COPY_PACKA_ROUTINE;
@@ -184,7 +184,7 @@ void
     size_t CountN,
     size_t CountK,
     int32_t* ColumnSumVector,
-    uint16_t offa
+    int16_t offa
     );
 
 typedef MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE* PMLAS_GEMM_U8U8_COPY_PACKB_ROUTINE;
