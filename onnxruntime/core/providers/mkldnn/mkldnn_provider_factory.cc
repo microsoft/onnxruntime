@@ -27,6 +27,7 @@ std::unique_ptr<IExecutionProvider> MkldnnProviderFactory::CreateProvider() {
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int device_id) {
   return std::make_shared<onnxruntime::MkldnnProviderFactory>(device_id);
+  //TODO: This is apparently a bug. The consructor parameter is create-arena-flag, not the device-id
 }
 
 }  // namespace onnxruntime

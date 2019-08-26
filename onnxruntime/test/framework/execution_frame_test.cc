@@ -36,16 +36,20 @@ std::unique_ptr<IExecutionProvider> CreateCPUExecutionProvider() {
   return std::make_unique<CPUExecutionProvider>(info);
 }
 
-TEST(ExecutionFrameTest, TensorAllocationTest) {
+class ExecutionFrameTest : public ::testing::Test {
+ protected:
+  concurrency::ThreadPool tp_{"test", 1};
+};
+
+TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   onnxruntime::Model model("test");
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
   onnxruntime::NodeArg input_def("X", &tensor_float), output_def("Y", &tensor_float);
 
-  graph.AddNode("node1", "Clip", "Clip operator", ArgMap{&input_def}, ArgMap{&output_def});
-  onnxruntime::Node* node = graph.GetNode(graph.NumberOfNodes() - 1);
-
+  onnxruntime::Node* node = &graph.AddNode("node1", "Relu", "Relu operator", ArgMap{&input_def}, ArgMap{&output_def});
+  node->SetExecutionProviderType(kCpuExecutionProvider);
   Status status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
@@ -57,12 +61,9 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
   status = kernel_registry_manager.RegisterKernels(execution_providers);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  SessionState state{execution_providers, true};
-  state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
-
-  OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
-  mlvalue_name_idx_map.Add("X");
-  mlvalue_name_idx_map.Add("Y");
+  SessionState state{execution_providers, true, &tp_};
+  status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   node->SetExecutionProviderType(xp_typ);
 
@@ -70,11 +71,9 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
   // TODO below line is for testing only. In production use SequentialPlanner::CreatePlan()
   SequentialPlannerContext context(false);
   status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers, kernel_registry_manager,
-                                         mlvalue_name_idx_map, context, p_seq_exec_plan);
+                                         state.GetOrtValueNameIdxMap(), context, p_seq_exec_plan);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   state.SetExecutionPlan(std::move(p_seq_exec_plan));
-
-  state.CalculateNodeIndexInfo();
 
   vector<OrtValue> outputs;
   ExecutionFrame frame({}, {}, {}, outputs, {}, state);
@@ -111,22 +110,23 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
   EXPECT_EQ(tensor2->template Data<float>(), p_tensor->template Data<float>());
 }
 
-TEST(ExecutionFrameTest, FeedInDataTest) {
-  onnxruntime::Model model("test");
+TEST_F(ExecutionFrameTest, FeedInDataTest) {
+  onnxruntime::Model model("test", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
+                           std::unordered_map<std::string, int>{{"", 10}});
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
   onnxruntime::NodeArg input_def("X", &tensor_float), output_def("Y", &tensor_float);
 
-  graph.AddNode("node1", "Clip", "Clip operator", ArgMap{&input_def}, ArgMap{&output_def});
+  graph.AddNode("node1", "Clip", "Clip operator", ArgMap{&input_def}, ArgMap{&output_def})
+      .SetExecutionProviderType(kCpuExecutionProvider);
   graph.Resolve();
-  auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
   auto element_type = DataTypeImpl::GetType<float>();
   TensorShape shape({3, 2});
+  std::vector<float> fdata(static_cast<size_t>(shape.Size()));
   //create fake ml value with owned buffer.
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
-                                                              shape,
-                                                              cpu_allocator);
+  OrtAllocatorInfo cpuinfo(kCpuExecutionProvider, OrtDeviceAllocator);
+  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type, shape, fdata.data(), cpuinfo);
   OrtValue value;
   value.Init(p_tensor.release(),
              DataTypeImpl::GetType<Tensor>(),
@@ -139,15 +139,14 @@ TEST(ExecutionFrameTest, FeedInDataTest) {
   ExecutionProviders execution_providers;
   execution_providers.Add(xp_typ, std::move(cpu_xp));
   EXPECT_TRUE(kernel_registry_manager.RegisterKernels(execution_providers).IsOK());
+  SessionState state{execution_providers, true, &tp_};
+  auto status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  SessionState state{execution_providers, true};
-  state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
-
-  OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
-  auto x_idx = mlvalue_name_idx_map.Add("X");
-  auto y_idx = mlvalue_name_idx_map.Add("Y");
-
-  state.CalculateNodeIndexInfo();
+  const OrtValueNameIdxMap& mlvalue_name_idx_map = state.GetOrtValueNameIdxMap();
+  int x_idx, y_idx;
+  ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("X", x_idx).IsOK());
+  ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("Y", y_idx).IsOK());
 
   vector<OrtValue> outputs;
   ExecutionFrame frame({x_idx}, {value}, {y_idx}, outputs, {}, state);
@@ -160,7 +159,7 @@ TEST(ExecutionFrameTest, FeedInDataTest) {
   EXPECT_EQ(p_tensor_arg_0->MutableData<float>(), value.GetMutable<Tensor>()->MutableData<float>());
 }
 
-TEST(ExecutionFrameTest, MemPatternTest) {
+TEST_F(ExecutionFrameTest, MemPatternTest) {
   auto cpu_xp = CreateCPUExecutionProvider();
   auto xp_type = cpu_xp->Type();
   std::unordered_map<std::string, int> domain_to_version;
@@ -192,17 +191,21 @@ TEST(ExecutionFrameTest, MemPatternTest) {
   execution_providers.Add(xp_type, std::move(cpu_xp));
   kernel_registry_manager.RegisterKernels(execution_providers);
   //1. prepare input
-  SessionState state{execution_providers, true};
-  state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
+  SessionState state{execution_providers, true, &tp_};
+  status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
+  const OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
 
-  auto x1_idx = mlvalue_name_idx_map.Add("X1");
-  auto x2_idx = mlvalue_name_idx_map.Add("X2");
-  auto x3_idx = mlvalue_name_idx_map.Add("X3");
-  mlvalue_name_idx_map.Add("T1");
-  mlvalue_name_idx_map.Add("T2");
-  auto t3_idx = mlvalue_name_idx_map.Add("T3");
+  int x1_idx, x2_idx, x3_idx;
+  int t1_idx, t2_idx, t3_idx;
+  ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("X1", x1_idx).IsOK());
+  ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("X2", x2_idx).IsOK());
+  ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("X3", x3_idx).IsOK());
+
+  ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("T1", t1_idx).IsOK());
+  ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("T2", t2_idx).IsOK());
+  ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("T3", t3_idx).IsOK());
 
   auto cpu_allocator = execution_providers.Get(xp_type)->GetAllocator(0, OrtMemTypeDefault);
 
@@ -224,8 +227,6 @@ TEST(ExecutionFrameTest, MemPatternTest) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   state.SetExecutionPlan(std::move(p_seq_exec_plan));
-
-  state.CalculateNodeIndexInfo();
 
   vector<OrtValue> outputs;
   ExecutionFrame frame({x1_idx, x2_idx, x3_idx}, {v1, v2, v3}, {t3_idx}, outputs, {}, state);
@@ -264,7 +265,7 @@ TEST(ExecutionFrameTest, MemPatternTest) {
   EXPECT_EQ(p->GetBlock(4)->offset_, 64);
 }
 
-TEST(ExecutionFrameTest, BadModelInvalidDimParamUsage) {
+TEST(ExecutionFrameTestWithoutSessionState, BadModelInvalidDimParamUsage) {
   // load model with 2 Scan ops that both incorrectly use shapes of { 'None', 'None' } for their outputs.
   // as 'None' is not a special value it's treated as a variable name, leading to a runtime error when we
   // attempt to re-use the output from the first Scan node for the second. validate we detect this and error out.

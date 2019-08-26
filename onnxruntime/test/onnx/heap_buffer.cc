@@ -2,18 +2,22 @@
 // Licensed under the MIT License.
 
 #include "heap_buffer.h"
-#include "core/framework/callback.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "callback.h"
 
-void HeapBuffer::AddDeleter(onnxruntime::OrtCallback* d) {
+namespace onnxruntime {
+namespace test {
+void HeapBuffer::AddDeleter(OrtCallback* d) {
   if (d != nullptr) deleters_.push_back(d);
 }
 
 HeapBuffer::~HeapBuffer() {
   for (auto d : deleters_) {
-    onnxruntime::OrtRunCallback(d);
+    OrtRunCallback(d);
   }
   for (void* p : buffers_) {
     free(p);
   }
 }
+}  // namespace test
+}  // namespace onnxruntime
