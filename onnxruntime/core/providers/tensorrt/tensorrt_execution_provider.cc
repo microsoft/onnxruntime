@@ -492,7 +492,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       if (!ret) {
         if (trt_state->context->getEngine().getMaxBatchSize() < batch_size) {
 	  return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-			        "TRT enqueue failed: Set ORT_TRT_MAX_BATCH_SIZE environment variable to at least " + to_string(batch_size));
+			        "TRT enqueue failed: Set ORT_TENSORRT_MAX_BATCH_SIZE environment variable to at least " + to_string(batch_size));
         }
         return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to enqueue to TRT execution context.");
       }
