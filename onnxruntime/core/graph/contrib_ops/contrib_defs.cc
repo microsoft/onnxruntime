@@ -2304,6 +2304,30 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
         }
         updateOutputShape(ctx, 0, resultShape);
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(IsFinite)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("IsFinite")
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(bool)"},
+          "Constrain the output to a boolean tensor.")
+      .Input(
+          0,
+          "X",
+          "The input tensor.",
+          "T")
+      .Output(
+          0,
+          "Y",
+          "The output tensor. Its shape is the same as the input.",
+          "T1");
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
   RegisterInternalSchemas();

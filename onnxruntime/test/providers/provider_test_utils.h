@@ -197,6 +197,7 @@ class OpTester {
     AddData(output_data_, name, dims, expected_values.begin(), expected_values.size());
   }
 
+  // This function doesn't work for vector<bool> because const vector<bool> cannot invoke its data().
   template <typename T>
   void AddOutput(const char* name, const std::vector<int64_t>& dims, const std::vector<T>& expected_values) {
     AddData(output_data_, name, dims, expected_values.data(), expected_values.size());
