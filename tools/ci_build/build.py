@@ -334,10 +334,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_EIGEN_FOR_BLAS=" + ("OFF" if args.use_openblas else "ON"),
                  "-Donnxruntime_USE_OPENBLAS=" + ("ON" if args.use_openblas else "OFF"),
                  "-Donnxruntime_USE_MKLDNN=" + ("ON" if args.use_mkldnn else "OFF"),
-                 "-Donnxruntime_USE_MKLML=" + ("ON" if args.use_mklml else "OFF"),
-                 # Use gemmlowp when explitcitly requested or when building for arm
-                 # gemmlowp is optimized for arm devices so it is used by default for arm
-                 "-Donnxruntime_USE_GEMMLOWP=" + ("ON" if args.use_gemmlowp or args.arm64 or args.arm else "OFF"),
+                 "-Donnxruntime_USE_MKLML=" + ("ON" if args.use_mklml else "OFF"),                 
+                 "-Donnxruntime_USE_GEMMLOWP=" + ("ON" if args.use_gemmlowp else "OFF"),
                  "-Donnxruntime_USE_NGRAPH=" + ("ON" if args.use_ngraph else "OFF"),
                  "-Donnxruntime_USE_OPENVINO=" + ("ON" if args.use_openvino else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_BINARY=" + ("ON" if args.use_openvino else "OFF"),
