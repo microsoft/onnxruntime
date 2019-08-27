@@ -298,10 +298,10 @@ class Node {
   void SetExecutionProviderType(ProviderType execution_provider_type);
 
   /** Gets the execution device id that this node will be executed against. */
-  int16_t Node::GetExecutionDeviceId() const noexcept;
+  int16_t GetExecutionDeviceId() const noexcept;
 
   /** Sets the execution device id that this Node will be executed against. */
-  void Node::SetExecutionDeviceId(int16_t device_id);
+  void SetExecutionDeviceId(int16_t device_id);
 
   /** Gets the NodeProto representation of this Node. */
   void ToProto(ONNX_NAMESPACE::NodeProto& proto) const;
