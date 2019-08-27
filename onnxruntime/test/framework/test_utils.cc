@@ -4,6 +4,9 @@
 #include "test_utils.h"
 #include "core/framework/arena.h"
 #include "core/graph/graph.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_allocator.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
