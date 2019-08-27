@@ -58,7 +58,7 @@ static Status BuildOptimizerInternal(Graph& graph,
     auto opt_builder = OptimizerBuilderRegistry::GetInstance().MakeUnique(optimizer_info.name_);
     ORT_RETURN_IF_NOT(opt_builder);
 
-    ORT_RETURN_IF_ERROR(opt_builder->Build({weight_arg},
+    ORT_RETURN_IF_ERROR(opt_builder->Build(weight_arg,
                                            optimizer_info,
                                            graph_defs));
   }

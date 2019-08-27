@@ -10,64 +10,56 @@
 // Here is to reference GRADIENT_OP_VERSION temporarily for global version control.
 #include "core/graph/training/gradient_op_schema.h"
 
-using namespace std;
 namespace onnxruntime {
 namespace training {
+
+#ifndef USE_HOROVOD
+std::string BuildAllReduceNode(const std::string& /*gradient*/, GraphAugmenter::GraphDefs& /*graph_defs*/) {
+  ORT_NOT_IMPLEMENTED("Distributed training is not supported, as Horovod is not enabled in this build.");
+}
+#else
+std::string BuildAllReduceNode(const std::string& gradient, GraphAugmenter::GraphDefs& graph_defs) {
+  const std::string allreduce_output = gradient + "_AllReduce_Out";
+  graph_defs.AddNodeDefs({NodeDef("HorovodAllReduceOp",
+                                  {ArgDef(gradient)},
+                                  {ArgDef(allreduce_output)},
+                                  NodeAttributes(),
+                                  gradient)});
+  return allreduce_output;
+}
+#endif
 
 class SGDBuilder : public OptimizerBuilder {
  public:
   SGDBuilder() : OptimizerBuilder("SGDOptimizer") {}
 
-  Status Build(const std::vector<const NodeArg*> weight_args,
+  Status Build(const NodeArg* weight_arg,
                const OptimizerInfo& opt_info,
                GraphAugmenter::GraphDefs& graph_defs) const override {
-    std::vector<std::string> gradients(weight_args.size());
-    for (size_t i = 0; i < weight_args.size(); ++i) {
-      gradients[i] = GradientBuilderBase::GradientName(weight_args[i]->Name());
-    }
+    const std::string gradient = GradientBuilderBase::GradientName(weight_arg->Name());
 
     // Initialized tensor for Learning Rate
     TensorProto lr_tensor_proto = CreateTensorProto<float>(learning_rate_string_, opt_info.learning_rate);
     graph_defs.AddInitializers({lr_tensor_proto});
 
-    // inputs : learning_rate + weights + grads
-    vector<ArgDef> input_args;
-    input_args.emplace_back(learning_rate_string_);
+    std::vector<ArgDef> input_args;
+    input_args.emplace_back(learning_rate_string_);                          // input 0 learning_rate
+    input_args.emplace_back(weight_arg->Name(), weight_arg->TypeAsProto());  // input 1 weight
 
-    for (const auto& weight_arg : weight_args) {
-      input_args.emplace_back(weight_arg->Name(), weight_arg->TypeAsProto());
-    }
-
-#ifdef USE_HOROVOD
-    std::vector<ArgDef> agg_grads;
+    std::string processed_gradient = gradient;
     if (opt_info.world_size > 1) {
-      BuildAllReduceNode(gradients, graph_defs, agg_grads);
-      for (const auto& grad : agg_grads) {
-        input_args.emplace_back(grad);
-      }
-    } else {
-      for (const auto& grad : gradients) {
-        input_args.emplace_back(grad);
-      }
+      processed_gradient = BuildAllReduceNode(gradient, graph_defs);
     }
-#else
-    for (size_t i = 0; i < weight_args.size(); ++i) {
-      input_args.emplace_back(gradients[i], weight_args[i]->TypeAsProto());
-    }
-#endif
 
-    // outputs: new weights
-    vector<ArgDef> output_args;
-    for (const auto& weight_arg : weight_args) {
-      string output_name = weight_arg->Name() + "_SGD_out";
-      output_args.emplace_back(output_name, weight_arg->TypeAsProto());
-    }
+    input_args.emplace_back(processed_gradient);  // input 2:  allreduce output or gradient
+
+    ArgDef output_arg(weight_arg->Name() + "_SGD_out", weight_arg->TypeAsProto());  // output 0 new weights
 
     graph_defs.AddNodeDefs({NodeDef("SGDOptimizer",
                                     input_args,
-                                    output_args,
+                                    {output_arg},
                                     NodeAttributes(),
-                                    "SGDOptimizer_" + weight_args[0]->Name())});
+                                    "SGDOptimizer_" + weight_arg->Name())});
     return Status::OK();
   }
 };
@@ -76,101 +68,65 @@ class AdamOptimizerBuilder : public OptimizerBuilder {
  public:
   AdamOptimizerBuilder() : OptimizerBuilder("AdamOptimizer") {}
 
-  Status Build(const std::vector<const NodeArg*> weight_args,
+  Status Build(const NodeArg* weight_arg,
                const OptimizerInfo& opt_info,
                GraphAugmenter::GraphDefs& graph_defs) const override {
-    std::vector<std::string> gradients(weight_args.size());
-    for (size_t i = 0; i < weight_args.size(); ++i) {
-      gradients[i] = GradientBuilderBase::GradientName(weight_args[i]->Name());
-    }
+    const std::string gradient = GradientBuilderBase::GradientName(weight_arg->Name());
 
     // Initialized tensor for Learning Rate
     TensorProto lr_tensor_proto = CreateTensorProto<float>(learning_rate_string_, opt_info.learning_rate);
 
     // The type proto initializer for Update Count
-    std::string update_count_string = "Update_Count" + ((weight_args.size() > 1) ? "" : "_" + weight_args[0]->Name());  // per weight optimizer requires a per weight update count
+    std::string update_count_string = "Update_Count_" + weight_arg->Name();  // per weight optimizer requires a per weight update count
     TensorProto uc_tensor_proto = CreateTensorProto<int64_t>(update_count_string, 1);
 
     // Add lr and uc tensorproto as initializers
     graph_defs.AddInitializers({lr_tensor_proto, uc_tensor_proto});
 
-    // inputs :learning_rate + update_count + weights + gradients + first moment + second moment
-    vector<ArgDef> input_args;
-    input_args.emplace_back(learning_rate_string_);
-    input_args.emplace_back(update_count_string);
+    std::vector<ArgDef> input_args;
+    input_args.emplace_back(learning_rate_string_);                          // input 0 learning_rate
+    input_args.emplace_back(update_count_string);                            // input 1 update_count
+    input_args.emplace_back(weight_arg->Name(), weight_arg->TypeAsProto());  // input 2 weights
 
-    for (const auto& weight_arg : weight_args) {
-      input_args.emplace_back(weight_arg->Name(), weight_arg->TypeAsProto());
-    }
-
-#ifdef USE_HOROVOD
-    std::vector<ArgDef> agg_grads;
+    std::string processed_gradient = gradient;
     if (opt_info.world_size > 1) {
-      BuildAllReduceNode(gradients, graph_defs, agg_grads);
-      for (const auto& grad : agg_grads) {
-        input_args.emplace_back(grad);
-      }
-    } else {
-      for (const auto& grad : gradients) {
-        input_args.emplace_back(grad);
-      }
+      processed_gradient = BuildAllReduceNode(gradient, graph_defs);
     }
-#else
-    for (size_t i = 0; i < gradients.size(); ++i) {
-      input_args.emplace_back(gradients[i], weight_args[i]->TypeAsProto());
-    }
-#endif
+
+    input_args.emplace_back(processed_gradient);  // input 3 gradient or allreduce output
 
     // The tensor proto for first and second moments of grad
-    vector<string> moments_strings({"Moment_1_", "Moment_2_"});
+    std::vector<std::string> moments_strings({"Moment_1_", "Moment_2_"});
     for (auto moment_string : moments_strings) {
-      for (size_t i = 0; i < gradients.size(); i++) {
-        std::string gradient_moment_name = moment_string + gradients[i];
-        std::vector<int64_t> dims;
-        for (auto dim : weight_args[i]->Shape()->dim()) {
-          dims.push_back(dim.dim_value());
-        }
-        TensorProto moment_tensor_proto = CreateTensorProto<float>(gradient_moment_name, 0.f, dims);
-        graph_defs.AddInitializers({moment_tensor_proto});
-        input_args.emplace_back(gradient_moment_name);
+      std::string gradient_moment_name = moment_string + gradient;
+      std::vector<int64_t> dims;
+      for (auto dim : weight_arg->Shape()->dim()) {
+        dims.push_back(dim.dim_value());
       }
+      TensorProto moment_tensor_proto = CreateTensorProto<float>(gradient_moment_name, 0.f, dims);
+      graph_defs.AddInitializers({moment_tensor_proto});
+      input_args.emplace_back(gradient_moment_name);  // input 4 moment_1, input 5 moment_2
     }
 
-    std::vector<string> attr_names{"alpha", "beta", "lambda", "epsilon"};
-    std::vector<AttributeProto> attr;
+    std::vector<ArgDef> output_args;
+    output_args.emplace_back(weight_arg->Name() + "_Adam_out", weight_arg->TypeAsProto());  // output 0 new weights
+    output_args.emplace_back(gradient + "_Moment_1_Out", weight_arg->TypeAsProto());        // output 1 moment 1
+    output_args.emplace_back(gradient + "_Moment_2_Out", weight_arg->TypeAsProto());        // output 2 moment 2
 
+    TypeProto* type_proto = graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    output_args.emplace_back(gradient + "_Step_Out", type_proto);  //output 3 step count
+
+    std::vector<std::string> attr_names{"alpha", "beta", "lambda", "epsilon"};
+    std::vector<AttributeProto> attr;
     for (auto name : attr_names) {
       attr.push_back(MakeAttribute(name, opt_info.attributes_.at(name)));
-    }
-
-    // outputs: new weights, moments, step count
-    vector<ArgDef> output_args;
-    for (const auto& weight_arg : weight_args) {
-      string output_name = weight_arg->Name() + "_Adam_out";
-      output_args.emplace_back(output_name, weight_arg->TypeAsProto());
-    }
-
-    for (size_t i = 0; i < gradients.size(); ++i) {
-      string output_name = gradients[i] + "_Moment_1_Out";
-      output_args.emplace_back(output_name, weight_args[i]->TypeAsProto());
-    }
-
-    for (size_t i = 0; i < gradients.size(); ++i) {
-      string output_name = gradients[i] + "_Moment_2_Out";
-      output_args.emplace_back(output_name, weight_args[i]->TypeAsProto());
-    }
-
-    for (size_t i = 0; i < gradients.size(); ++i) {
-      string output_name = gradients[i] + "_Step_Out";
-      TypeProto* type_proto = graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      output_args.emplace_back(output_name, type_proto);
     }
 
     graph_defs.AddNodeDefs({NodeDef("AdamOptimizer",
                                     input_args,
                                     output_args,
                                     attr,
-                                    "AdamOptimizer_" + weight_args[0]->Name())});
+                                    "AdamOptimizer_" + weight_arg->Name())});
     return Status::OK();
   }
 };

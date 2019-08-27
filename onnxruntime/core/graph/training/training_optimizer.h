@@ -56,37 +56,13 @@ class OptimizerBuilder {
 
   virtual ~OptimizerBuilder() {}
 
-  virtual common::Status Build(const std::vector<const NodeArg*> weight_args,
+  virtual common::Status Build(const NodeArg* weight_arg,
                                const OptimizerInfo& opt_info,
                                GraphAugmenter::GraphDefs& graph_defs) const = 0;
 
   const std::string& Name() const { return name_; }
 
  protected:
-  common::Status BuildAllReduceNode(
-      const std::vector<std::string>& gradients,
-      GraphAugmenter::GraphDefs& graph_defs,
-      std::vector<ArgDef>& agg_grads) const {
-    // inputs : grads
-    std::vector<ArgDef> input_grads;
-    for (const auto& grad : gradients) {
-      input_grads.emplace_back(grad, nullptr);
-    }
-
-    // outputs: aggregated grads
-    agg_grads.clear();
-    for (const auto& grad : gradients) {
-      std::string output_name = grad + "_AllReduce_Out";
-      agg_grads.emplace_back(output_name, nullptr);
-    }
-
-    // The following code works under the assumption allreduce is called per gradient.
-    // TODO: if the assumption changes, the parameter to AddNodeDefs(gradients[0]) needs to be fixed
-    ORT_ENFORCE(gradients.size() == 1);
-    graph_defs.AddNodeDefs({NodeDef("HorovodAllReduceOp", input_grads, agg_grads, NodeAttributes(), gradients[0])});
-    return Status::OK();
-  }
-
   const std::string learning_rate_string_ = "Learning_Rate";
 
  private:
