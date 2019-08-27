@@ -1,8 +1,5 @@
-//-----------------------------------------------------------------------------
-//
-//  Copyright (c) Microsoft Corporation. All rights reserved.
-//
-//-----------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #pragma once
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
@@ -35,14 +32,12 @@ namespace Dml
 
         STDMETHOD(AddUAVBarrier)() const noexcept = 0;
 
-        // TODO: Bug 7165: Use only ABI types
         STDMETHOD(InitializeOperator)(
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<const DML_BUFFER_BINDING> inputTensors
             ) const noexcept = 0;
         
-        // TODO: Bug 7165: Use only ABI types
         STDMETHOD(ExecuteOperator)(
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,

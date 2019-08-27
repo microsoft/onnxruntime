@@ -1,8 +1,6 @@
-//-----------------------------------------------------------------------------
-//
-//  Copyright (c) Microsoft Corporation. All rights reserved.
-//
-//-----------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "precomp.h"
 
 namespace Dml
@@ -38,7 +36,7 @@ public:
         m_zeroOperator = InitializeZeroInt64Tensor(m_outputTensorDescs[1].GetBufferSizeInBytes());
 
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_TOP_K, &operatorDesc };
-        SetDmlOperatorDesc(opDesc, kernelCreationContext); // TODO(jeffbloo): hookup "SetAsFactory" with new DmlOperator/API types
+        SetDmlOperatorDesc(opDesc, kernelCreationContext);
     }
 
     void Compute(const MLOperatorKernelContext& kernelContext) override

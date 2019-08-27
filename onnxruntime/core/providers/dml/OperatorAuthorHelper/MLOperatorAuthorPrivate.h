@@ -1,4 +1,6 @@
-//Private headers not part of the public ABI
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 interface IDMLOperation;

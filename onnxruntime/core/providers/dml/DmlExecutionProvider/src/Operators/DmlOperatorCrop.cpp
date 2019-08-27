@@ -1,8 +1,6 @@
-//-----------------------------------------------------------------------------
-//
-//  Copyright (c) Microsoft Corporation. All rights reserved.
-//
-//-----------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "precomp.h"
 
 namespace Dml
@@ -38,8 +36,6 @@ public:
         SetDmlOperatorDesc({ DML_OPERATOR_SLICE, &opDesc}, kernelInfo);
     }
 
-    // TODO(justoeck): DML slice requires strides, but they are always 1 for cropping.
-    // Consider making strides optional on the slice operation.
     static const uint32_t c_strides[NchwDimensionCount];
 };
 

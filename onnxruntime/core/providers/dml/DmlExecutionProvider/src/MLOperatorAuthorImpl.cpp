@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "precomp.h"
 
 #include "core/framework/customregistry.h"
@@ -97,7 +100,6 @@ const std::string* AttributeValue::GetStringAttribute(
     return &strings.data()[elementIndex];
 }
 
-// TODO - Generalize this in Lotus
 bool IsAllocationInterface(const ::OrtAllocatorInfo& info)
 {
     return strcmp(info.name, onnxruntime::CPU) && !(info.mem_type == ::OrtMemType::OrtMemTypeCPUOutput  || info.mem_type == ::OrtMemType::OrtMemTypeCPUInput);
@@ -256,7 +258,6 @@ struct MLTypeTraits<onnxruntime::MLFloat16> {
     ML_TENSOR_TYPE_CASE(uint64_t);
     ML_TENSOR_TYPE_CASE(onnxruntime::MLFloat16);
 
-    // TODO - non-primitive traits classes: string, float16, complex64, complex128
     THROW_HR(E_NOTIMPL);
 }
 
@@ -283,8 +284,6 @@ onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type)
     ML_TENSOR_TYPE_CASE(uint32_t);
     ML_TENSOR_TYPE_CASE(uint64_t);
     ML_TENSOR_TYPE_CASE(onnxruntime::MLFloat16);
-
-    // TODO - non-primitive traits classes: string, float16, complex64, complex128
 
     THROW_HR(E_NOTIMPL);
 }
@@ -361,14 +360,11 @@ onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type)
         }
     }
 
-    // TODO support non-tensor types
-
     return ret;
 }
 
 std::string ToTypeString(MLOperatorEdgeDescription desc)
 {
-    // TODO - handle non-tensor types
     if (desc.edgeType != MLOperatorEdgeType::Tensor)
     {
         THROW_HR(E_NOTIMPL);

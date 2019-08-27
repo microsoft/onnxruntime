@@ -1,8 +1,5 @@
-//-----------------------------------------------------------------------------
-//
-//  Copyright (c) Microsoft Corporation. All rights reserved.
-//
-//-----------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "precomp.h"
 #include "OperatorRegistration.h"
@@ -16,7 +13,6 @@
 #include <mutex>
 using namespace Microsoft::WRL;
 
-// TODO: Update Lotus to use non-static registration for non-onnx schema.  In the meantime,
 // This re-exposes the MeanVarianceNormalization schema as needed for RegisterDmlOperatorSchema 
 // to use it as a template to construct fused schema.  The schema within the ONNX registry can't
 // be used due to the Finalize step which occurs during registration.
@@ -248,8 +244,6 @@ const static SupportedTensorDataTypes supportedTypeListWhere[2] = { SupportedTen
 const static SupportedTensorDataTypes supportedTypeListOneHot[3] = /* indices, depth, values */ { SupportedTensorDataTypes::Int32to64, SupportedTensorDataTypes::AllScalars, SupportedTensorDataTypes::Float16to32 };
 const static SupportedTensorDataTypes supportedTypeListLogicalComparison[2] = /* A&B,C */ { SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Bool };
 
-// TODO: Verify each of these type lists against the current ONNX spec: https://github.com/onnx/onnx/blob/master/docs/Operators.md
-
 // Define a single row of registration information.
 #define REG_INFO(version, operatorName, ...) \
     #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, false, ##__VA_ARGS__, 
@@ -429,7 +423,7 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO_MS(   1,  FusedAdd,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, 
     {REG_INFO_MS(   1,  FusedSum,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {}, 2)}, 
                 
-    // DwayneR implement MaxUnpool https://dev.azure.com/microsoft/OS/_workitems/edit/21267466
+    // TODO: DwayneR implement MaxUnpool https://dev.azure.com/microsoft/OS/_workitems/edit/21267466
 };
 
 template<typename T> 

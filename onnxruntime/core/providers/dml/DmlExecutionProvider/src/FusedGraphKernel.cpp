@@ -1,8 +1,6 @@
-//-----------------------------------------------------------------------------
-//
-//  Copyright (c) Microsoft Corporation. All rights reserved.
-//
-//-----------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "precomp.h"
 
 #include "MLOperatorAuthorImpl.h"
@@ -190,9 +188,7 @@ namespace Dml
                     {
                         ComPtr<ID3D12Resource> initializeInputBuffer;
 
-                        // TODO: Bug 22098542. D3D_FEATURE_LEVEL_1_0_CORE doesn't support Custom heaps, and since DML doesn't currently 
-                        // support upload heaps with metacommands, a default resource must be used for initialization input.  This should
-                        // ultimately be fixed to enable VPU to pre-process tensors using the CPU.
+                        // D3D_FEATURE_LEVEL_1_0_CORE doesn't support Custom heaps
                         if (m_provider->IsMcdmDevice())
                         {
                             initializeInputBuffer = CreateResource(tensorPtr, tensorByteSize);
@@ -589,7 +585,6 @@ namespace Dml
 
             // Allocate temporary data which will automatically be freed when the GPU work 
             // which is scheduled up to the point that this method returns has completed.
-            // TODO: handle base alignment when implemented
             ComPtr<IUnknown> tempAlloc;
             uint64_t tempAllocId = 0;
             THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(execBindingProps.TemporaryResourceSize, tempAlloc.GetAddressOf(), &tempAllocId));

@@ -1,8 +1,6 @@
-//-----------------------------------------------------------------------------
-//
-//  Copyright (c) Microsoft Corporation. All rights reserved.
-//
-//-----------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 #include "OperatorUtility.h"
@@ -66,7 +64,6 @@ namespace Dml
         std::vector<DML_TENSOR_DESC> GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> GetDmlOutputDescs();
 
-        // TODO(justoeck): this should be moved to its own operator in the future.
         // Sets the memory of a tensor to all zeros.
         //
         // WinML requires int64_t for certain operators, like ArgMax and ArgMin. DML does not directly support
@@ -78,7 +75,6 @@ namespace Dml
         //
         ComPtr<IDMLCompiledOperator> InitializeZeroInt64Tensor(uint64_t tensorSizeInBytes);
 
-        // TODO(justoeck): this should be moved to its own operator in the future.
         void ExecuteZeroInt64Tensor(IDMLCompiledOperator* compiledOperator, IMLOperatorTensor* tensor);
 
         TensorDesc CreateTensorDescFromInput(

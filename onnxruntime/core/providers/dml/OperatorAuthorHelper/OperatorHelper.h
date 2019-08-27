@@ -1,8 +1,6 @@
-//-----------------------------------------------------------------------------
-//
-//  Copyright (c) Microsoft Corporation. All rights reserved.
-//
-//-----------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 #include "Common.h"
@@ -119,7 +117,7 @@ struct KernelArgs
     // This is true if padding must be automatically computed based on input sizes.
     // ResolveAutoPadding must happen during Compute rather than initialization.
     // This is temporary until kernel initialization routine once Lotus can provide
-    // sizes at operator initialization. TODO(jeffbloo) Rework this.
+    // sizes at operator initialization.
     bool autoPad;
     bool autoPadSameUpper;
     uint32_t spatialDimensionCount;

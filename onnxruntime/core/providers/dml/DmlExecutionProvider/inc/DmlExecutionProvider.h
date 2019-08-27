@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 interface IMLOperatorRegistry;
 
@@ -10,7 +13,7 @@ namespace onnxruntime
     class IExecutionProvider;
     class IAllocator;
     class CustomRegistry;
-	class InferenceSession;
+    class InferenceSession;
     class KernelRegistry;
 }
 

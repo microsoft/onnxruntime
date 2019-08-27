@@ -1,8 +1,5 @@
-//-----------------------------------------------------------------------------
-//
-//    Copyright (c) Microsoft Corporation. All rights reserved.
-//
-//-----------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #pragma once
 #include "core/providers/dml/DmlExecutionProvider/inc/IWinmlExecutionProvider.h"
@@ -476,7 +473,6 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext>, publi
     onnxruntime::OpKernelContext* m_impl = nullptr;
     const EdgeShapes* m_outputShapes = nullptr;
 
-    // TODO - Use a custom STL allocator to avoid heap allocations in the common case.
     std::vector<ComPtr<TensorWrapper>> m_inputTensors;
     std::vector<ComPtr<TensorWrapper>> m_outputTensors;
 
@@ -593,7 +589,7 @@ class MLKernelInferenceContext final : public OpNodeInfoWrapper<
  public:
     MLKernelInferenceContext() = delete;
     MLKernelInferenceContext(
-            onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,    //todo - don't use node?
+            onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
             const EdgeShapes* inputShapesOverride,
             EdgeShapes& inferredOutputShapes,
             const AttributeMap* defaultAttributes,

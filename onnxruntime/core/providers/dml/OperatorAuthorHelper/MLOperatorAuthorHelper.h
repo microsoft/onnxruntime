@@ -1,14 +1,11 @@
-//-----------------------------------------------------------------------------
-//
-//  Copyright (c) Microsoft Corporation. All rights reserved.
-//
-//-----------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
 #include "MLOperatorAuthorPrivate.h"
 
-// TODO - replace with specific error codes at each instance
 #define ML_CHECK_BOOL(x) THROW_HR_IF(E_INVALIDARG, !(x))
 
 class MLFloat16;
@@ -72,8 +69,6 @@ struct MLTypeTraits<bool>
 {
     static const MLOperatorTensorDataType TensorType = MLOperatorTensorDataType::Bool;
 };
-
-// TODO - non-primitive traits classes: string, float16, complex64, complex128
 
 template <>
 struct MLTypeTraits<double>
@@ -373,7 +368,6 @@ public:
     MLOperatorTensor(MLOperatorTensor&&) = default;
     MLOperatorTensor& operator=(const MLOperatorTensor&) = default;
 
-    // TODO rename to shape to match other methods
     uint32_t GetDimensionCount() const
     {
         return m_impl->GetDimensionCount();

@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "precomp.h"
 #include "ExecutionContext.h"
 #include "CommandQueue.h"

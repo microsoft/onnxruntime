@@ -1,8 +1,6 @@
-//-----------------------------------------------------------------------------
-//
-//  Copyright (c) Microsoft Corporation. All rights reserved.
-//
-//-----------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "precomp.h"
 
 namespace Dml
@@ -59,7 +57,7 @@ public:
         operatorDesc.FusedActivation = fusedActivation ? &fusedActivationDmlDesc : nullptr;
 
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_BATCH_NORMALIZATION, &operatorDesc };
-        SetDmlOperatorDesc(opDesc, kernelCreationContext); // TODO(jeffbloo): hookup "SetAsFactory" with new DmlOperator/API types
+        SetDmlOperatorDesc(opDesc, kernelCreationContext);
     }
 };
 

@@ -1,8 +1,6 @@
-//-----------------------------------------------------------------------------
-//
-//  Copyright (c) Microsoft Corporation. All rights reserved.
-//
-//-----------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "precomp.h"
 
 namespace Dml
@@ -69,9 +67,6 @@ public:
         SetDmlOperatorDesc({ DML_OPERATOR_TILE, &operatorDesc }, kernelCreationContext);
     }
 };
-
-// Bug 7325: Reshape and tile are missing graph optimization due to constant CPU tensors
-// https://dev.azure.com/microsoft/OS/_workitems/edit/21113503
 
 DML_OP_DEFINE_CREATION_FUNCTION(Tile, DmlOperatorTile);
 

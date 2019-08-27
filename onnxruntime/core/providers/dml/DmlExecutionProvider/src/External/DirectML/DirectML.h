@@ -1,4 +1,5 @@
-//  Copyright (c) Microsoft Corporation.  All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #ifndef DIRECTML_H
 #define DIRECTML_H
@@ -81,8 +82,8 @@ struct DML_BUFFER_TENSOR_DESC
     DML_TENSOR_DATA_TYPE DataType;
     DML_TENSOR_FLAGS Flags;
     UINT DimensionCount;
-    _In_reads_(DimensionCount) const UINT* Sizes;
-    _In_reads_opt_(DimensionCount) const UINT* Strides;
+    _Field_size_(DimensionCount) const UINT* Sizes;
+    _Field_size_opt_(DimensionCount) const UINT* Strides;
     UINT64 TotalTensorSizeInBytes;
     UINT GuaranteedBaseOffsetAlignment;
 };
@@ -90,7 +91,7 @@ struct DML_BUFFER_TENSOR_DESC
 struct DML_TENSOR_DESC
 {
     DML_TENSOR_TYPE Type;
-    _In_reads_(_Inexpressible_("Dependent on tensor type")) const void* Desc;
+    _Field_size_(_Inexpressible_("Dependent on tensor type")) const void* Desc;
 };
 
 
@@ -181,7 +182,7 @@ enum DML_OPERATOR_TYPE
     DML_OPERATOR_LSTM,
     DML_OPERATOR_GRU,
 
-#if NTDDI_VERSION >= NTDDI_WIN10_19H1 // TODO: 21399229 Change to NTDDI_WIN10_VB after sdddkver.w has the new definition.
+#if NTDDI_VERSION >= NTDDI_WIN10_VB
     DML_OPERATOR_ELEMENT_WISE_SIGN,
     DML_OPERATOR_ELEMENT_WISE_IS_NAN,
     DML_OPERATOR_ELEMENT_WISE_ERF,
@@ -281,28 +282,28 @@ enum DML_RECURRENT_NETWORK_DIRECTION
 struct DML_OPERATOR_DESC
 {
     DML_OPERATOR_TYPE Type;
-    _In_reads_(_Inexpressible_("Dependent on operator type")) const void* Desc;
+    _Field_size_(_Inexpressible_("Dependent on operator type")) const void* Desc;
 };
 
 struct DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_ABS_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_ACOS_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_ADD_OPERATOR_DESC
@@ -317,35 +318,35 @@ struct DML_ELEMENT_WISE_ADD1_OPERATOR_DESC
     const DML_TENSOR_DESC* ATensor;
     const DML_TENSOR_DESC* BTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_OPERATOR_DESC* FusedActivation;
+    _Maybenull_ const DML_OPERATOR_DESC* FusedActivation;
 };
 
 struct DML_ELEMENT_WISE_ASIN_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_ATAN_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_CEIL_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_CLIP_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
     FLOAT Min;
     FLOAT Max;
 };
@@ -354,7 +355,7 @@ struct DML_ELEMENT_WISE_COS_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_DIVIDE_OPERATOR_DESC
@@ -368,21 +369,21 @@ struct DML_ELEMENT_WISE_EXP_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_FLOOR_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_LOG_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_LOGICAL_AND_OPERATOR_DESC
@@ -466,14 +467,14 @@ struct DML_ELEMENT_WISE_POW_OPERATOR_DESC
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* ExponentTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_CONSTANT_POW_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
     FLOAT Exponent;
 };
 
@@ -481,21 +482,21 @@ struct DML_ELEMENT_WISE_RECIP_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_SIN_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_SQRT_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_SUBTRACT_OPERATOR_DESC
@@ -509,14 +510,14 @@ struct DML_ELEMENT_WISE_TAN_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_THRESHOLD_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
     FLOAT Min;
 };
 
@@ -663,31 +664,31 @@ struct DML_CONVOLUTION_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* FilterTensor;
-    _In_opt_ const DML_TENSOR_DESC* BiasTensor;
+    _Maybenull_ const DML_TENSOR_DESC* BiasTensor;
     const DML_TENSOR_DESC* OutputTensor;
     DML_CONVOLUTION_MODE Mode;
     DML_CONVOLUTION_DIRECTION Direction;
     UINT DimensionCount;
-    _In_reads_(DimensionCount) const UINT* Strides;
-    _In_reads_(DimensionCount) const UINT* Dilations;
-    _In_reads_(DimensionCount) const UINT* StartPadding;
-    _In_reads_(DimensionCount) const UINT* EndPadding;
-    _In_reads_(DimensionCount) const UINT* OutputPadding;
+    _Field_size_(DimensionCount) const UINT* Strides;
+    _Field_size_(DimensionCount) const UINT* Dilations;
+    _Field_size_(DimensionCount) const UINT* StartPadding;
+    _Field_size_(DimensionCount) const UINT* EndPadding;
+    _Field_size_(DimensionCount) const UINT* OutputPadding;
     UINT GroupCount;
-    _In_opt_ const DML_OPERATOR_DESC* FusedActivation;
+    _Maybenull_ const DML_OPERATOR_DESC* FusedActivation;
 };
 
 struct DML_GEMM_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* ATensor;
     const DML_TENSOR_DESC* BTensor;
-    _In_opt_ const DML_TENSOR_DESC* CTensor;
+    _Maybenull_ const DML_TENSOR_DESC* CTensor;
     const DML_TENSOR_DESC* OutputTensor;
     DML_MATRIX_TRANSFORM TransA;
     DML_MATRIX_TRANSFORM TransB;
     FLOAT Alpha;
     FLOAT Beta;
-    _In_opt_ const DML_OPERATOR_DESC* FusedActivation;
+    _Maybenull_ const DML_OPERATOR_DESC* FusedActivation;
 };
 
 struct DML_REDUCE_OPERATOR_DESC
@@ -696,7 +697,7 @@ struct DML_REDUCE_OPERATOR_DESC
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
     UINT AxisCount;
-    _In_reads_(AxisCount) const UINT* Axes;
+    _Field_size_(AxisCount) const UINT* Axes;
 };
 
 struct DML_AVERAGE_POOLING_OPERATOR_DESC
@@ -704,10 +705,10 @@ struct DML_AVERAGE_POOLING_OPERATOR_DESC
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
     UINT DimensionCount;
-    _In_reads_(DimensionCount) const UINT* Strides;
-    _In_reads_(DimensionCount) const UINT* WindowSize;
-    _In_reads_(DimensionCount) const UINT* StartPadding;
-    _In_reads_(DimensionCount) const UINT* EndPadding;
+    _Field_size_(DimensionCount) const UINT* Strides;
+    _Field_size_(DimensionCount) const UINT* WindowSize;
+    _Field_size_(DimensionCount) const UINT* StartPadding;
+    _Field_size_(DimensionCount) const UINT* EndPadding;
     BOOL IncludePadding;
 };
 
@@ -716,10 +717,10 @@ struct DML_LP_POOLING_OPERATOR_DESC
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
     UINT DimensionCount;
-    _In_reads_(DimensionCount) const UINT* Strides;
-    _In_reads_(DimensionCount) const UINT* WindowSize;
-    _In_reads_(DimensionCount) const UINT* StartPadding;
-    _In_reads_(DimensionCount) const UINT* EndPadding;
+    _Field_size_(DimensionCount) const UINT* Strides;
+    _Field_size_(DimensionCount) const UINT* WindowSize;
+    _Field_size_(DimensionCount) const UINT* StartPadding;
+    _Field_size_(DimensionCount) const UINT* EndPadding;
     UINT P;
 };
 
@@ -728,10 +729,10 @@ struct DML_MAX_POOLING_OPERATOR_DESC
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
     UINT DimensionCount;
-    _In_reads_(DimensionCount) const UINT* Strides;
-    _In_reads_(DimensionCount) const UINT* WindowSize;
-    _In_reads_(DimensionCount) const UINT* StartPadding;
-    _In_reads_(DimensionCount) const UINT* EndPadding;
+    _Field_size_(DimensionCount) const UINT* Strides;
+    _Field_size_(DimensionCount) const UINT* WindowSize;
+    _Field_size_(DimensionCount) const UINT* StartPadding;
+    _Field_size_(DimensionCount) const UINT* EndPadding;
 };
 
 struct DML_MAX_POOLING1_OPERATOR_DESC
@@ -740,10 +741,10 @@ struct DML_MAX_POOLING1_OPERATOR_DESC
     const DML_TENSOR_DESC* OutputTensor;
     _Maybenull_ const DML_TENSOR_DESC* OutputIndicesTensor;
     UINT DimensionCount;
-    _In_reads_(DimensionCount) const UINT* Strides;
-    _In_reads_(DimensionCount) const UINT* WindowSize;
-    _In_reads_(DimensionCount) const UINT* StartPadding;
-    _In_reads_(DimensionCount) const UINT* EndPadding;
+    _Field_size_(DimensionCount) const UINT* Strides;
+    _Field_size_(DimensionCount) const UINT* WindowSize;
+    _Field_size_(DimensionCount) const UINT* StartPadding;
+    _Field_size_(DimensionCount) const UINT* EndPadding;
 };
 
 struct DML_ROI_POOLING_OPERATOR_DESC
@@ -760,9 +761,9 @@ struct DML_SLICE_OPERATOR_DESC
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
     UINT DimensionCount;
-    _In_reads_(DimensionCount) const UINT* Offsets;
-    _In_reads_(DimensionCount) const UINT* Sizes;
-    _In_reads_(DimensionCount) const UINT* Strides;
+    _Field_size_(DimensionCount) const UINT* Offsets;
+    _Field_size_(DimensionCount) const UINT* Sizes;
+    _Field_size_(DimensionCount) const UINT* Strides;
 };
 
 struct DML_CAST_OPERATOR_DESC
@@ -775,14 +776,14 @@ struct DML_SPLIT_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     UINT OutputCount;
-    _In_reads_(OutputCount) const DML_TENSOR_DESC* OutputTensors;
+    _Field_size_(OutputCount) const DML_TENSOR_DESC* OutputTensors;
     UINT Axis;
 };
 
 struct DML_JOIN_OPERATOR_DESC
 {
     UINT InputCount;
-    _In_reads_(InputCount) const DML_TENSOR_DESC* InputTensors;
+    _Field_size_(InputCount) const DML_TENSOR_DESC* InputTensors;
     const DML_TENSOR_DESC* OutputTensor;
     UINT Axis;
 };
@@ -794,8 +795,8 @@ struct DML_PADDING_OPERATOR_DESC
     DML_PADDING_MODE PaddingMode;
     FLOAT PaddingValue;
     UINT DimensionCount;
-    _In_reads_(DimensionCount) const UINT* StartPadding;
-    _In_reads_(DimensionCount) const UINT* EndPadding;
+    _Field_size_(DimensionCount) const UINT* StartPadding;
+    _Field_size_(DimensionCount) const UINT* EndPadding;
 };
 
 struct DML_VALUE_SCALE_2D_OPERATOR_DESC
@@ -804,7 +805,7 @@ struct DML_VALUE_SCALE_2D_OPERATOR_DESC
     const DML_TENSOR_DESC* OutputTensor;
     FLOAT Scale;
     UINT ChannelCount;
-    _In_reads_(ChannelCount) const FLOAT* Bias;
+    _Field_size_(ChannelCount) const FLOAT* Bias;
 };
 
 struct DML_UPSAMPLE_2D_OPERATOR_DESC
@@ -843,7 +844,7 @@ struct DML_TILE_OPERATOR_DESC
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
     UINT RepeatsCount;
-    _In_reads_(RepeatsCount) const UINT* Repeats;
+    _Field_size_(RepeatsCount) const UINT* Repeats;
 };
 
 struct DML_TOP_K_OPERATOR_DESC
@@ -865,19 +866,19 @@ struct DML_BATCH_NORMALIZATION_OPERATOR_DESC
     const DML_TENSOR_DESC* OutputTensor;
     BOOL Spatial;
     FLOAT Epsilon;
-    _In_opt_ const DML_OPERATOR_DESC* FusedActivation;
+    _Maybenull_ const DML_OPERATOR_DESC* FusedActivation;
 };
 
 struct DML_MEAN_VARIANCE_NORMALIZATION_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
-    _In_opt_ const DML_TENSOR_DESC* ScaleTensor;
-    _In_opt_ const DML_TENSOR_DESC* BiasTensor;
+    _Maybenull_ const DML_TENSOR_DESC* ScaleTensor;
+    _Maybenull_ const DML_TENSOR_DESC* BiasTensor;
     const DML_TENSOR_DESC* OutputTensor;
     BOOL CrossChannel;
     BOOL NormalizeVariance;
     FLOAT Epsilon;
-    _In_opt_ const DML_OPERATOR_DESC* FusedActivation;
+    _Maybenull_ const DML_OPERATOR_DESC* FusedActivation;
 };
 
 struct DML_LOCAL_RESPONSE_NORMALIZATION_OPERATOR_DESC
@@ -905,13 +906,13 @@ struct DML_RNN_OPERATOR_DESC
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* WeightTensor;
     const DML_TENSOR_DESC* RecurrenceTensor;
-    _In_opt_ const DML_TENSOR_DESC* BiasTensor;
-    _In_opt_ const DML_TENSOR_DESC* HiddenInitTensor;
-    _In_opt_ const DML_TENSOR_DESC* SequenceLengthsTensor;
-    _In_opt_ const DML_TENSOR_DESC* OutputSequenceTensor;
-    _In_opt_ const DML_TENSOR_DESC* OutputSingleTensor;
+    _Maybenull_ const DML_TENSOR_DESC* BiasTensor;
+    _Maybenull_ const DML_TENSOR_DESC* HiddenInitTensor;
+    _Maybenull_ const DML_TENSOR_DESC* SequenceLengthsTensor;
+    _Maybenull_ const DML_TENSOR_DESC* OutputSequenceTensor;
+    _Maybenull_ const DML_TENSOR_DESC* OutputSingleTensor;
     UINT ActivationDescCount;
-    _In_reads_(ActivationDescCount) const DML_OPERATOR_DESC* ActivationDescs;
+    _Field_size_(ActivationDescCount) const DML_OPERATOR_DESC* ActivationDescs;
     DML_RECURRENT_NETWORK_DIRECTION Direction;
 };
 
@@ -920,16 +921,16 @@ struct DML_LSTM_OPERATOR_DESC
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* WeightTensor;
     const DML_TENSOR_DESC* RecurrenceTensor;
-    _In_opt_ const DML_TENSOR_DESC* BiasTensor;
-    _In_opt_ const DML_TENSOR_DESC* HiddenInitTensor;
-    _In_opt_ const DML_TENSOR_DESC* CellMemInitTensor;
-    _In_opt_ const DML_TENSOR_DESC* SequenceLengthsTensor;
-    _In_opt_ const DML_TENSOR_DESC* PeepholeTensor;
-    _In_opt_ const DML_TENSOR_DESC* OutputSequenceTensor;
-    _In_opt_ const DML_TENSOR_DESC* OutputSingleTensor;
-    _In_opt_ const DML_TENSOR_DESC* OutputCellSingleTensor;
+    _Maybenull_ const DML_TENSOR_DESC* BiasTensor;
+    _Maybenull_ const DML_TENSOR_DESC* HiddenInitTensor;
+    _Maybenull_ const DML_TENSOR_DESC* CellMemInitTensor;
+    _Maybenull_ const DML_TENSOR_DESC* SequenceLengthsTensor;
+    _Maybenull_ const DML_TENSOR_DESC* PeepholeTensor;
+    _Maybenull_ const DML_TENSOR_DESC* OutputSequenceTensor;
+    _Maybenull_ const DML_TENSOR_DESC* OutputSingleTensor;
+    _Maybenull_ const DML_TENSOR_DESC* OutputCellSingleTensor;
     UINT ActivationDescCount;
-    _In_reads_(ActivationDescCount) const DML_OPERATOR_DESC* ActivationDescs;
+    _Field_size_(ActivationDescCount) const DML_OPERATOR_DESC* ActivationDescs;
     DML_RECURRENT_NETWORK_DIRECTION Direction;
     float ClipThreshold;
     BOOL UseClipThreshold;
@@ -941,18 +942,18 @@ struct DML_GRU_OPERATOR_DESC
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* WeightTensor;
     const DML_TENSOR_DESC* RecurrenceTensor;
-    _In_opt_ const DML_TENSOR_DESC* BiasTensor;
-    _In_opt_ const DML_TENSOR_DESC* HiddenInitTensor;
-    _In_opt_ const DML_TENSOR_DESC* SequenceLengthsTensor;
-    _In_opt_ const DML_TENSOR_DESC* OutputSequenceTensor;
-    _In_opt_ const DML_TENSOR_DESC* OutputSingleTensor;
+    _Maybenull_ const DML_TENSOR_DESC* BiasTensor;
+    _Maybenull_ const DML_TENSOR_DESC* HiddenInitTensor;
+    _Maybenull_ const DML_TENSOR_DESC* SequenceLengthsTensor;
+    _Maybenull_ const DML_TENSOR_DESC* OutputSequenceTensor;
+    _Maybenull_ const DML_TENSOR_DESC* OutputSingleTensor;
     UINT ActivationDescCount;
-    _In_reads_(ActivationDescCount) const DML_OPERATOR_DESC* ActivationDescs;
+    _Field_size_(ActivationDescCount) const DML_OPERATOR_DESC* ActivationDescs;
     DML_RECURRENT_NETWORK_DIRECTION Direction;
     BOOL LinearBeforeReset;
 };
 
-#if NTDDI_VERSION >= NTDDI_WIN10_19H1 // TODO: 21399229 Change to NTDDI_WIN10_VB after sdddkver.w has the new definition.
+#if NTDDI_VERSION >= NTDDI_WIN10_VB
 
 struct DML_ELEMENT_WISE_SIGN_OPERATOR_DESC
 {
@@ -970,49 +971,49 @@ struct DML_ELEMENT_WISE_ERF_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_SINH_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_COSH_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_TANH_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_ASINH_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_ACOSH_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_ATANH_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
     const DML_TENSOR_DESC* OutputTensor;
-    _In_opt_ const DML_SCALE_BIAS* ScaleBias;
+    _Maybenull_ const DML_SCALE_BIAS* ScaleBias;
 };
 
 struct DML_ELEMENT_WISE_IF_OPERATOR_DESC
@@ -1068,7 +1069,7 @@ struct DML_RESAMPLE_OPERATOR_DESC
     const DML_TENSOR_DESC* OutputTensor;
     DML_INTERPOLATION_MODE InterpolationMode;
     UINT ScaleCount;
-    _In_reads_(ScaleCount) const FLOAT* Scales;
+    _Field_size_(ScaleCount) const FLOAT* Scales;
 };
 
 #endif // NTDDI_VERSION >= NTDDI_WIN10_VB
@@ -1077,20 +1078,21 @@ struct DML_RESAMPLE_OPERATOR_DESC
 //   DML feature support queries
 // ===================================================================================================================
 
-#if NTDDI_VERSION >= NTDDI_WIN10_19H1 // TODO: 21399229 Change to NTDDI_WIN10_VB after sdddkver.w has the new definition.
+#if NTDDI_VERSION >= NTDDI_WIN10_VB
 
 enum DML_FEATURE_LEVEL
 {
     DML_FEATURE_LEVEL_1_0 = 0x1000,
     DML_FEATURE_LEVEL_2_0 = 0x2000,
 };
+
 #endif // NTDDI_VERSION >= NTDDI_WIN10_VB
 
 enum DML_FEATURE
 {
     DML_FEATURE_TENSOR_DATA_TYPE_SUPPORT,
 
-#if NTDDI_VERSION >= NTDDI_WIN10_19H1 // TODO: 21399229 Change to NTDDI_WIN10_VB after sdddkver.w has the new definition.
+#if NTDDI_VERSION >= NTDDI_WIN10_VB
     DML_FEATURE_FEATURE_LEVELS,
 #endif // NTDDI_VERSION >= NTDDI_WIN10_VB
 };
@@ -1105,7 +1107,7 @@ struct DML_FEATURE_DATA_TENSOR_DATA_TYPE_SUPPORT
     BOOL IsSupported;
 };
 
-#if NTDDI_VERSION >= NTDDI_WIN10_19H1 // TODO: 21399229 Change to NTDDI_WIN10_VB after sdddkver.w has the new definition.
+#if NTDDI_VERSION >= NTDDI_WIN10_VB
 
 struct DML_FEATURE_QUERY_FEATURE_LEVELS
 {
@@ -1157,7 +1159,7 @@ STDAPI DMLCreateDevice(
     _COM_Outptr_opt_ void** ppv
     );
 
-#if NTDDI_VERSION >= NTDDI_WIN10_19H1 // TODO: 21399229 Change to NTDDI_WIN10_VB after sdddkver.w has the new definition.
+#if NTDDI_VERSION >= NTDDI_WIN10_VB
 
 STDAPI DMLCreateDevice1(
     ID3D12Device* d3d12Device,
@@ -1340,12 +1342,12 @@ enum DML_BINDING_TYPE
 struct DML_BINDING_DESC
 {
     DML_BINDING_TYPE Type;
-    _In_reads_opt_(_Inexpressible_("Dependent on binding type")) const void* Desc;
+    _Field_size_opt_(_Inexpressible_("Dependent on binding type")) const void* Desc;
 };
 
 struct DML_BUFFER_BINDING
 {
-    _In_opt_ ID3D12Resource* Buffer;
+    _Maybenull_ ID3D12Resource* Buffer;
     UINT64 Offset;
     UINT64 SizeInBytes;
 };
@@ -1353,7 +1355,7 @@ struct DML_BUFFER_BINDING
 struct DML_BUFFER_ARRAY_BINDING
 {
     UINT BindingCount;
-    _In_reads_(BindingCount) const DML_BUFFER_BINDING* Bindings;
+    _Field_size_(BindingCount) const DML_BUFFER_BINDING* Bindings;
 };
 
 interface DML_DECLARE_INTERFACE("29c687dc-de74-4e3b-ab00-1168f2fc3cfc") IDMLBindingTable : IDMLDeviceChild

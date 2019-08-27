@@ -1,8 +1,5 @@
-//-----------------------------------------------------------------------------
-//
-//  Copyright (c) Microsoft Corporation. All rights reserved.
-//
-//-----------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "precomp.h"
 #include "OperatorUtility.h"
@@ -152,9 +149,7 @@ namespace Dml
             OperatorInfo{ "Gemm",                      onnxDomain, OnnxOperatorSet7::sc_sinceVer_Gemm },
             OperatorInfo{ "MatMul",                    onnxDomain, OnnxOperatorSet7::sc_sinceVer_MatMul },
 
-            // TODO(jeffbloo): The filter for activation functions maps to what DML's fused op internally fuses at the shader level.
-            // The filter is a performance optimization and a stop gap until graph compilation internally happens in DML,
-            // and internal steps within DML operators can be spliced into the graph.
+            // The filter for activation functions maps to what DML's fused op internally fuses at the shader level.
             OperatorInfo{ "Add",                       onnxDomain, OnnxOperatorSet7::sc_sinceVer_Add, {"Relu", "LeakyRelu"} },
             OperatorInfo{ "Sum",                       onnxDomain, OnnxOperatorSet7::sc_sinceVer_Sum, {"Relu", "LeakyRelu"}, 2 },
             OperatorInfo{ "Sum",                       onnxDomain, OnnxOperatorSet8::sc_sinceVer_Sum, {"Relu", "LeakyRelu"}, 2 },

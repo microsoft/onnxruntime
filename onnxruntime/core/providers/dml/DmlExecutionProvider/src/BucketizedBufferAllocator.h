@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 #include "core/framework/allocator.h"
@@ -15,8 +18,6 @@ namespace Dml
 
     class BucketizedBufferAllocator;
 
-    // TODO - define an interface for safety.  This is the only IUnknown
-    // allocation type we use though.
     class AllocationInfo : public Microsoft::WRL::RuntimeClass<
         Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IUnknown>
     {
@@ -112,7 +113,6 @@ namespace Dml
         // The pool consists of a number of buckets, and each bucket contains a number of resources of the same size.
         // The resources in each bucket are always sized as a power of two, and each bucket contains resources twice
         // as large as the previous bucket.
-        // TODO #3604: currently this only ever expands. How do we trim these buckets?
         struct Resource
         {
             ComPtr<ID3D12Resource> resource;

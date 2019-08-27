@@ -1,8 +1,6 @@
-//-----------------------------------------------------------------------------
-//
-//  Copyright (c) Microsoft Corporation. All rights reserved.
-//
-//-----------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "precomp.h"
 
 namespace Dml
@@ -35,8 +33,6 @@ public:
 
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_CAST, &castDesc };
         
-        // TODO(justoeck): https://mscodehub.visualstudio.com/WindowsAI/_workitems/edit/7164
-        // The DML operator only supports mixed-precision casting if typed UAVs are supported.
         SetDmlOperatorDesc(opDesc, kernelInfo);
     }
 

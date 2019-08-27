@@ -1,8 +1,5 @@
-//-----------------------------------------------------------------------------
-//
-//  Copyright (c) Microsoft Corporation. All rights reserved.
-//
-//-----------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "precomp.h"
 
@@ -515,10 +512,6 @@ namespace Dml
     {
         assert(!m_closed);
 
-        // TODO(adrian)  - Do the shadow copy if the layout is opaque and the flags don't indicate 
-        // an internal DML operator. The tensor shape when the opaque layout was introduced
-        // needs to be tracked, to support this pattern and to handle cases where operators reshape 
-        // their inputs.
         *dataCopy = data;
         data->AddRef();
     }

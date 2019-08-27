@@ -1,8 +1,5 @@
-//-----------------------------------------------------------------------------
-//
-//  Copyright (c) Microsoft Corporation. All rights reserved.
-//
-//-----------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "precomp.h"
 #include "GraphDescBuilder.h"
@@ -14,7 +11,7 @@ namespace Dml::GraphDescBuilder
     // TODO: This is a hack which strips the suffix added within Lotus transforms that insert mem copies.
     // This shouldn't be necessary if Lotus exposes the inputs/ouputs in the same order between the kernel
     // for a function, and the graph for that function exposed as a kernel property.  When the ordering 
-    // mismatch is fixed (WindowsAI: 7137, Lotus: 1953), this workaround should be removed.
+    // mismatch is fixed (WindowsAI: 21114358, Lotus: 1953), this workaround should be removed.
     static std::string GetFusedNodeArgNameMatchingGraph(const std::string& fusedNodeArgeName)
     {
         // The suffix used when inserting mem copies is equal to the below, followed by an incrementing number.
