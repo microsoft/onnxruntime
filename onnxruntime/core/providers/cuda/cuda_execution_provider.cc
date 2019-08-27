@@ -126,11 +126,14 @@ AllocatorPtr CUDAExecutionProvider::GetAllocator(const AllocatorManager& allocat
   } else {
     if (mem_type == OrtMemTypeCPUOutput || mem_type == OrtMemTypeCPU) {
       return allocator_mgr.GetAllocator(OrtDevice(OrtDevice::CPU, 0, OrtDevice::MemType::CUDA_PINNED));
+    } else if (mem_type == OrtMemTypeCPUInput) {
+      return allocator_mgr.GetAllocator(OrtDevice());
     } else {
       return allocator_mgr.GetAllocator(OrtDevice(OrtDevice::GPU, device_id, OrtDevice::MemType::DEFAULT));
     }
   }
 }
+}  // namespace onnxruntime
 
 Status CUDAExecutionProvider::Sync() const {
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
