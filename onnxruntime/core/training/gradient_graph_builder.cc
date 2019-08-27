@@ -27,10 +27,10 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
                                            const unordered_set<string>& y_node_arg_names,
                                            const unordered_set<string>& x_node_arg_names,
                                            string loss_node_arg_name,
-                                           const unordered_map<string, OptimizerInfo>& opt_info)
+                                           const bool set_gradient_as_graph_output)
     : graph_(graph),
       loss_node_arg_name_(loss_node_arg_name),
-      opt_info_(opt_info) {
+      set_gradient_as_graph_output_(set_gradient_as_graph_output) {
   auto rule_based_graph_transformer =
       std::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
   rule_based_graph_transformer->Register(make_unique<InsertMaxPoolOutput>());
@@ -227,28 +227,9 @@ Status GradientGraphBuilder::Build() {
                  "AccumulateGrad_" + gradient_pair.first.name)});
   }
 
-  // Set the gradients as graph outputs, if in-graph optimizers are not used.
-  // Otherwise, add optimizer nodes and their outputs as graph outputs.
-  if (opt_info_.empty()) {
+  if (set_gradient_as_graph_output_) {
     for (auto x_node_arg : x_node_args_) {
       gradient_graph_defs.AddGraphOutputs({GradientBuilderBase::GradientName(x_node_arg->Name())});
-    }
-  } else {
-    // Add optimizer nodes
-    // For now every weight has its own optimizer node.
-    for (const NodeArg* x_node_arg : x_node_args_) {
-      const string& weight_name = x_node_arg->Name();
-
-      auto opt_info_it = opt_info_.find(weight_name);
-      ORT_RETURN_IF_NOT(opt_info_it != opt_info_.end(),
-                        "Weight ", weight_name, " is not found in the optimizer info map.");
-
-      const auto& opt_info = opt_info_it->second;
-      auto opt_builder = OptimizerBuilderRegistry::GetInstance().MakeUnique(opt_info.name_);
-
-      ORT_RETURN_IF_ERROR(opt_builder->Build({x_node_arg},
-                                             opt_info,
-                                             gradient_graph_defs));
     }
   }
 

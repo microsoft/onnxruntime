@@ -46,8 +46,6 @@ class GradientGraphBuilder {
     @param graph The forward computation graph
     @param y_node_arg_names_ Set of name for NodeArgs whose initial gradients will be provided
     @param x_node_arg_names_ Set of name for NodeArgs that need the gradients
-    @param opt_info The optimizers used by each weight, 1-1 mapping to x_node_arg_names.
-        If empty, optimizers will not be added to the graph.
 
     @remarks Given initial gradients at 'y_node_args' w.r.t some loss function L,
     the backward graph computes the partial derivative of 'L' w.r.t the 'x_node_args'
@@ -56,7 +54,7 @@ class GradientGraphBuilder {
                        const std::unordered_set<std::string>& y_node_arg_names,
                        const std::unordered_set<std::string>& x_node_arg_names,
                        std::string loss_node_arg_name,
-                       const std::unordered_map<std::string, OptimizerInfo>& opt_info);
+                       const bool set_gradient_as_graph_output = false);
 
   Status Build();
 
@@ -72,8 +70,6 @@ class GradientGraphBuilder {
   std::string loss_node_arg_name_;
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr_{5};
-
-  std::unordered_map<std::string, OptimizerInfo> opt_info_;
 
   // key: ArgDef for the gradient after accumulation
   // value: ArgDef for the gradients to be accumulated
@@ -100,6 +96,9 @@ class GradientGraphBuilder {
   @returns OK if all 'x_node_args_' are reachable, else an ONNXRUNTIME INVALID_ARGUMENT status 
   */
   Status CheckNodeArgsReachable(const NodeSet& reachable_nodes);
+
+  // if it is true, set gradient of trainable weight as graph output
+  const bool set_gradient_as_graph_output_;
 };
 
 }  // namespace training

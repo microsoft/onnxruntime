@@ -69,9 +69,9 @@ void GradientOpTester::Run(
                                                       dy_values,
                                                       weights_to_train,
                                                       "",
-                                                      {});
+                                                      true);
     status = grad_graph_builder.Build();
-    ORT_ENFORCE(status.IsOK(), "Gradient graph build failed: " + status.ErrorMessage());
+    EXPECT_TRUE(status.IsOK());
 
     // Hookup the inputs and outputs
     std::unordered_map<std::string, MLValue> feeds;

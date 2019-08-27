@@ -71,11 +71,13 @@ Status TrainingRunner::Initialize() {
     std::cout << "Training weight " << weight << std::endl;
   }
 
+  // Add gradient graph
+  ORT_RETURN_IF_ERROR(session_.BuildGradientGraph(weights_to_train, params_.loss_func_info_.loss_name));
+
+  // Add optimizer
   std::unordered_map<std::string, OptimizerInfo> opt_info;
   ORT_RETURN_IF_ERROR(SetupOptimizerParams(weights_to_train, opt_info));
-
-  // Add gradient graph
-  ORT_RETURN_IF_ERROR(session_.BuildGradientGraph(weights_to_train, params_.loss_func_info_.loss_name, opt_info));
+  ORT_RETURN_IF_ERROR(session_.BuildOptimizer(opt_info));
 
   if (params_.use_mixed_precision_) {
     ORT_RETURN_IF_ERROR(session_.EnableMixedPrecision(weights_to_train));

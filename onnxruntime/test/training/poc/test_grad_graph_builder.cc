@@ -53,7 +53,7 @@ const std::string BACKWARD_MODEL_PATH = SHARED_PATH + MODEL_NAME + "/model_bw.on
     }                                                                  \
   }
 
-int main(int /*argc*/, char* /*args*/[]) {
+int main(int /*argc*/, char* /*args*/ []) {
   std::string default_logger_id{"Default"};
   logging::LoggingManager default_logging_manager{std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
                                                   logging::Severity::kWARNING, false,
@@ -81,8 +81,7 @@ int main(int /*argc*/, char* /*args*/[]) {
   }
   std::vector<std::string> weights_to_train(weights.begin(), weights.end());
 
-  Status s = training_session.BuildGradientGraph(weights_to_train, "loss");
-  if (!s.IsOK()) {
+  if (!training_session.BuildGradientGraph(weights_to_train, "loss", true).IsOK()) {
     return -1;
   }
 

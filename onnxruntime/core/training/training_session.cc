@@ -9,6 +9,7 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/graph/training/mixed_precision_transformer.h"
+#include "core/graph/training/gradient_builder_base.h"
 
 //Gist Encoding
 #include "core/optimizer/gist_encode_decode.h"
@@ -32,14 +33,37 @@ static Status AddLossFuncionInternal(Graph& graph,
 static Status BuildGradientGraphInternal(Graph& graph,
                                          const string& loss_function_output_name,
                                          const unordered_set<string>& node_arg_names_to_train,
-                                         const unordered_map<string, OptimizerInfo>& opt_info) {
+                                         const bool set_gradient_as_graph_output = false) {
   // Compute the gradient graph def.
   GradientGraphBuilder grad_graph_builder(&graph,
                                           {loss_function_output_name},
                                           node_arg_names_to_train,
                                           loss_function_output_name,
-                                          opt_info);
+                                          set_gradient_as_graph_output);
   return grad_graph_builder.Build();
+}
+
+static Status BuildOptimizerInternal(Graph& graph,
+                                     const unordered_map<string, OptimizerInfo>& opt_info) {
+  GraphAugmenter::GraphDefs graph_defs;
+
+  // Add optimizer nodes
+  // Every weight currently has its own optimizer node.
+  for (auto it = opt_info.begin(); it != opt_info.end(); it++) {
+    auto weight_name = it->first;
+    const NodeArg* weight_arg = graph.GetNodeArg(weight_name);
+    ORT_RETURN_IF_NOT(weight_arg, "Node arg ", weight_name, " is not found in the graph.");
+
+    auto optimizer_info = it->second;
+    auto opt_builder = OptimizerBuilderRegistry::GetInstance().MakeUnique(optimizer_info.name_);
+    ORT_RETURN_IF_NOT(opt_builder);
+
+    ORT_RETURN_IF_ERROR(opt_builder->Build({weight_arg},
+                                           optimizer_info,
+                                           graph_defs));
+  }
+
+  return GraphAugmenter::AugmentGraph(graph, graph_defs);
 }
 
 Status TrainingSession::AddGistEncoding() {
@@ -86,15 +110,31 @@ common::Status TrainingSession::EnableMixedPrecision(const std::unordered_set<st
 
 Status TrainingSession::BuildGradientGraph(const unordered_set<string>& weights_to_train,
                                            const string& loss_function_output_name,
-                                           const unordered_map<string, OptimizerInfo>& opt_info) {
+                                           const bool set_gradient_as_graph_output) {
   // Fill weights_to_train_ according to weights_to_train
   weights_to_train_ = weights_to_train;
-  opt_info_ = opt_info;
 
   ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(model_->MainGraph(),
                                                  loss_function_output_name,
                                                  weights_to_train_,
-                                                 opt_info_));
+                                                 set_gradient_as_graph_output));
+
+  return DoPostLoadProcessing(*model_);
+}
+
+Status TrainingSession::BuildOptimizer(const unordered_map<string, OptimizerInfo>& opt_info) {
+  ORT_RETURN_IF_NOT(!opt_info.empty(), "Cannot build optimizer due to the empty opt_info");
+
+  std::unordered_set<std::string> weights_in_map;
+  for (auto it = opt_info.begin(); it != opt_info.end(); it++) {
+    weights_in_map.insert(it->first);
+  }
+  ORT_RETURN_IF_NOT(weights_in_map == weights_to_train_, "the opt_info does not match weights_to_train_");
+
+  opt_info_ = opt_info;
+
+  ORT_RETURN_IF_ERROR(BuildOptimizerInternal(model_->MainGraph(),
+                                             opt_info_));
 
   return DoPostLoadProcessing(*model_);
 }
@@ -183,7 +223,9 @@ Status TrainingSession::Save(const string& model_uri, TrainingSession::SaveOptio
     ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(new_model->MainGraph(),
                                                    loss_func_info_.loss_name,
                                                    weights_to_train_,
-                                                   opt_info_));
+                                                   false));
+    ORT_RETURN_IF_ERROR(BuildOptimizerInternal(new_model->MainGraph(),
+                                               opt_info_));
   }
 
   auto status = Model::Save(*new_model, model_uri);

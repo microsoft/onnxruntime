@@ -86,7 +86,7 @@ static std::string BuildBackPropGraph(const TrainingRunner::Parameters& params) 
   std::cout << "]" << std::endl;
 
   EXPECT_TRUE(training_session.BuildLossFunction(params.loss_func_info_).IsOK());
-  EXPECT_TRUE(training_session.BuildGradientGraph(weights_to_train, params.loss_func_info_.loss_name).IsOK());
+  EXPECT_TRUE(training_session.BuildGradientGraph(weights_to_train, params.loss_func_info_.loss_name, true).IsOK());
 
   if (params.use_gist_) {
     EXPECT_TRUE(training_session.AddGistEncoding().IsOK());
@@ -165,6 +165,7 @@ TEST(GradientGraphBuilderTest, BuildGradientGraphTest) {
   params.model_path_ = ORIGINAL_MODEL_PATH;
   params.model_with_training_graph_path_ = BACKWARD_MODEL_PATH;
   params.loss_func_info_ = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+  params.training_optimizer_name_ = "SGDOptimizer";
 
   const std::string& backprop_model_file = BuildBackPropGraph(params);
 
@@ -225,6 +226,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
   params.use_gist_ = true;
 
   params.loss_func_info_ = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+  params.training_optimizer_name_ = "SGDOptimizer";
 
   const std::string& backprop_model_file = BuildBackPropGraph(params);
 
@@ -236,7 +238,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
   bool found_encoder = false;
   bool found_decoder = false;
   for (auto& node : graph.Nodes()) {
-    const std::string &node_name = node.Name();
+    const std::string& node_name = node.Name();
     std::cout << "Node name='" << node_name << "' op_type=" << node.OpType() << "\n";
     if (node_name.find(onnxruntime::GistEncodeDecode::GIST_ENCODER_NODE_NAME_BASE) != std::string::npos) {
       found_encoder = true;
@@ -266,6 +268,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithLogging) {
   params.model_path_ = ORIGINAL_MODEL_PATH;
   params.model_with_training_graph_path_ = BACKWARD_MODEL_PATH;
   params.loss_func_info_ = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+  params.training_optimizer_name_ = "SGDOptimizer";
   const std::string& backprop_model_file = BuildBackPropGraph(params);
 
   SessionOptions so;
@@ -291,6 +294,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithProfiler) {
   params.model_with_training_graph_path_ = BACKWARD_MODEL_PATH;
 
   params.loss_func_info_ = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+  params.training_optimizer_name_ = "SGDOptimizer";
 
   const std::string& backprop_model_file = BuildBackPropGraph(params);
 
@@ -544,6 +548,12 @@ TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
       {"Add", {{1, 1.0f}, {1, 9.999999960041972e-13f}}},
       {"Mul", {{1, 0.5f}, {1, -10000.0f}}},
       {"Sub", {{0, 1.0f}}}};
+
+  params.training_optimizer_name_ = "AdamOptimizer";
+  params.adam_opt_params_.alpha_ = 0.9f;
+  params.adam_opt_params_.beta_ = 0.999f;
+  params.adam_opt_params_.lambda_ = 0;
+  params.adam_opt_params_.epsilon_ = 0.1f;
 
   BuildBackPropGraph(params);
 

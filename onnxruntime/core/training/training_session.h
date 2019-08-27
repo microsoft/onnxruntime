@@ -45,19 +45,17 @@ class TrainingSession : public InferenceSession {
   /** Perform auto-diff to add backward graph into the model.
   @param weights_to_train a set of weights to be training.
   @param loss_function_output_name the name of the loss function's output.
-  @param opt_info optional, specify the optimizers used by each weight in weights_to_train, 1-1 mapping to weights_to_train.
-  @remarks if optimizer_and_params is not empty, in the gradient graph, every gradient will be fed into a new optimizer
-           node:
-           1. New inputs: the parameters of the optimizer are the new graph inputs
-                          Optimizer with same names share the same parameters.
-           2. New outputs: the output of optimizer will become the new graph outputs.
-           3. Every weight in weights_to_train must have the optimizer info specified.
-           4. Different weights can have different optimizers and parameters.
+  @param set_gradient_as_graph_output, if it is true, set gradient of trainable weight as graph output
   */
-
   common::Status BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,
                                     const std::string& loss_function_output_name,
-                                    const std::unordered_map<std::string, OptimizerInfo>& opt_info = {});
+                                    const bool set_gradient_as_graph_output = false);
+
+  /** Add optimizer into the model. Each trainable weight will have an optimizer
+  @param opt_info, specify the optimizers used by each weight in weights_to_train, 1-1 mapping to weights_to_train.
+  @remarks the input param opt_info cannot be empty, otherwise, this function will return FAIL.
+  */
+  common::Status BuildOptimizer(const std::unordered_map<std::string, OptimizerInfo>& opt_info);
 
   /** Enable mixed precision training
   @param weights_to_train a set of weights to be training.
