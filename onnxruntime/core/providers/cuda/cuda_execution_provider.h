@@ -47,7 +47,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return GetPerThreadContext().template GetConstOnes<T>(count);
   }
 
-  void AddDeferredReleaseCPUPtr(const std::unique_ptr<void> p);
+  void AddDeferredReleaseCPUPtr(const std::unique_ptr<void>&& p);
 
   template <typename T>
   inline IAllocatorUniquePtr<T> GetScratchBuffer(const AllocatorManager& allocator_mgr, size_t count_or_bytes) const {

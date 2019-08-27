@@ -138,7 +138,7 @@ Status CUDAExecutionProvider::Sync() const {
   return Status::OK();
 }
 
-void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(const std::unique_ptr<void>& p) {
+void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(const std::unique_ptr<void>&& p) {
   // when not running in InferenceSession (e.g. Test)
   // it's OK to not remember the deferred release ptr
   // as the actual memory will be cleaned in arena allocator dtor
@@ -147,7 +147,7 @@ void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(const std::unique_ptr<void>
     std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
     auto iter = deferred_release_cpu_ptr_.find(current_deferred_release_event);
     ORT_ENFORCE(iter != deferred_release_cpu_ptr_.end());
-    iter->second.cpu_ptrs.push_back(std::move(p));
+    iter->second.cpu_ptrs.push_back(p);
   }
 }
 
