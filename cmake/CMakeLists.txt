@@ -473,7 +473,8 @@ if (onnxruntime_USE_MKLDNN OR onnxruntime_USE_MKLML)
   include(mkldnn)
 endif()
 
-if(onnxruntime_USE_GEMMLOWP)
+if(onnxruntime_USE_GEMMLOWP OR CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm")
+  message("Using gemmlowp for u8u8 gemms")
   add_definitions(-DUSE_GEMMLOWP=1)
 endif()
 
