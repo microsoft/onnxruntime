@@ -57,8 +57,8 @@ class CudaKernel : public OpKernel {
     return provider_->GetScratchBuffer<T>(Info().GetAllocatorManager(), count_or_bytes);
   }
 
-  inline void AddDeferredReleaseCPUPtr(const std::unique_ptr<void>&& p) const {
-    provider_->AddDeferredReleaseCPUPtr(std::move(p));
+  inline void AddDeferredReleaseCPUPtr(void* p, AllocatorPtr p_allocator) const {
+    provider_->AddDeferredReleaseCPUPtr(p, p_allocator);
   }
 
   // To support cudaMemcpyAsync, the cpu memory should be allocated in pinned memory
@@ -86,6 +86,7 @@ class CudaKernel : public OpKernel {
 
     void AllocCpuPtr(int id, size_t count) {
       cpu_pinned_copy_ = op_kernel_->AllocateBufferOnCPUPinned<T>(id, count);
+      cpu_pinned_copy_allocator_ = op_kernel_->GetAllocator(id, OrtMemTypeCPU);
       if (cpu_pinned_copy_ == nullptr)
         throw std::runtime_error("alloc failed");
       count_ = count;
@@ -95,7 +96,7 @@ class CudaKernel : public OpKernel {
       if (cpu_pinned_copy_) {
         gpu_copy_ = op_kernel_->GetScratchBuffer<T>(count_);
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), cudaMemcpyHostToDevice));
-        op_kernel_->AddDeferredReleaseCPUPtr(std::move(cpu_pinned_copy_));
+        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.get(), cpu_pinned_copy_allocator_);
       }
       return Status::OK();
     }
@@ -119,6 +120,7 @@ class CudaKernel : public OpKernel {
    protected:
     IAllocatorUniquePtr<T> gpu_copy_;
     IAllocatorUniquePtr<T> cpu_pinned_copy_;
+    AllocatorPtr cpu_pinned_copy_allocator_;
     size_t count_;
     const CudaKernel* op_kernel_;
   };

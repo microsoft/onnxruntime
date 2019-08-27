@@ -76,8 +76,7 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
     if (v.recorded)
       CUDA_CALL_THROW(cudaEventSynchronize(e));
     for (auto p : v.cpu_ptrs) {
-      //cpu_alloc->Free(p);
-      p.reset();
+      p.second->Free(p.first);
     }
     CUDA_CALL_THROW(cudaEventDestroy(e));
     it = deferred_release_cpu_ptr_.erase(it);
@@ -138,7 +137,7 @@ Status CUDAExecutionProvider::Sync() const {
   return Status::OK();
 }
 
-void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(const std::unique_ptr<void>&& p) {
+void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(void* p, AllocatorPtr p_allocator) {
   // when not running in InferenceSession (e.g. Test)
   // it's OK to not remember the deferred release ptr
   // as the actual memory will be cleaned in arena allocator dtor
@@ -147,7 +146,7 @@ void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(const std::unique_ptr<void>
     std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
     auto iter = deferred_release_cpu_ptr_.find(current_deferred_release_event);
     ORT_ENFORCE(iter != deferred_release_cpu_ptr_.end());
-    iter->second.cpu_ptrs.push_back(p);
+    iter->second.cpu_ptrs.push_back({p, p_allocator});
   }
 }
 
@@ -163,7 +162,7 @@ Status CUDAExecutionProvider::OnRunStart() {
     // note that cudaEventQuery returns cudaSucess before first cudaEventRecord
     if (v.recorded && cudaSuccess == cudaEventQuery(e)) {
       for (auto p : v.cpu_ptrs) {
-        p.reset();
+        p.second->Free(p.first);
       }
       cudaEvent_t expired_event = it->first;
       it = deferred_release_cpu_ptr_.erase(it);

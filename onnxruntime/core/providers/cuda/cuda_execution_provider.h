@@ -47,7 +47,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return GetPerThreadContext().template GetConstOnes<T>(count);
   }
 
-  void AddDeferredReleaseCPUPtr(const std::unique_ptr<void>&& p);
+  void AddDeferredReleaseCPUPtr(void* p, AllocatorPtr p_allocator);
 
   template <typename T>
   inline IAllocatorUniquePtr<T> GetScratchBuffer(const AllocatorManager& allocator_mgr, size_t count_or_bytes) const {
@@ -70,7 +70,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
-    std::vector<std::unique_ptr<void>> cpu_ptrs;
+    std::vector<std::pair<void*, AllocatorPtr>> cpu_ptrs;
   };
   std::unordered_map<cudaEvent_t, DeferredReleaseCPUPtrs> deferred_release_cpu_ptr_;
   OrtMutex deferred_release_cpu_ptr_mutex_;
