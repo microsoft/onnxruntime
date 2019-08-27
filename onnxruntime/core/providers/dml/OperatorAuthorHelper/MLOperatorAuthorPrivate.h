@@ -20,7 +20,7 @@ struct MLOperatorKernelDmlProperties
 };
 
 
-interface __declspec(uuid("95ED8242-8B98-4A7B-A697-3D9D57CC085C"))
+interface __declspec(uuid("aa2173bb-6684-4de8-abf2-9acbdf88b426"))
 IMLOperatorShapeInferenceContextPrivate : public IMLOperatorShapeInferenceContext 
 {
     STDMETHOD(GetConstantInputTensor)(
@@ -29,7 +29,7 @@ IMLOperatorShapeInferenceContextPrivate : public IMLOperatorShapeInferenceContex
         ) const noexcept PURE;
 };
 
-interface __declspec(uuid("F5197886-9D15-4939-87BE-B682CE3CA8FA"))
+interface __declspec(uuid("63bff199-0203-43c7-86c4-f442a599df4c"))
 IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContext 
 {
     STDMETHOD(GetConstantInputTensor)(
@@ -46,7 +46,7 @@ IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContex
     ) const noexcept PURE;
 };
 
-interface DECLSPEC_UUID("2508589D-D59F-4308-887A-9AE82FE4C2D4") DECLSPEC_NOVTABLE
+interface DECLSPEC_UUID("3de1dc1e-13e9-4099-ae88-7b4100083415") DECLSPEC_NOVTABLE
 IMLOperatorRegistryPrivate : public IUnknown
 {
     STDMETHOD(RegisterOperatorKernel)(
@@ -67,7 +67,7 @@ IMLOperatorRegistryPrivate : public IUnknown
 //! \brief Represents the values of an operator's attributes, as determined by a model using the operator.
 //! This interface is called by implementations of custom operator kernels, and by implementations
 //! of shape and type inferrers.
-interface DECLSPEC_UUID("6B510C7A-8EA5-4105-B2A5-81E8D651376B") DECLSPEC_NOVTABLE
+interface DECLSPEC_UUID("3a798815-dfe3-4bcd-b6a6-f70650d5f80b") DECLSPEC_NOVTABLE
 IMLOperatorAttributes1 : public IMLOperatorAttributes
 {
     //! Gets an interface pointer for the constant tensor.

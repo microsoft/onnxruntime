@@ -16,7 +16,7 @@ namespace Dml
 
     // DML specific interface into the execution provider, which avoids any dependencies with
     // internal Lotus data types.
-    interface __declspec(uuid("3b3817c2-d26b-4849-b73b-4412e23a8243"))
+    interface __declspec(uuid("b2488edb-fad2-4704-a6d2-5b5b129d4b8e"))
     IExecutionProvider : public IUnknown
     {
     public:

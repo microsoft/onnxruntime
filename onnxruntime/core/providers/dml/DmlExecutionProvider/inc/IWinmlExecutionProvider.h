@@ -21,7 +21,7 @@ namespace onnxruntime
 
 namespace winrt::Windows::AI::MachineLearning::implementation
 {
-    interface __declspec(uuid("BF0AA975-1A79-4559-AF43-29233372ED10"))
+    interface __declspec(uuid("5b19a18a-5ed5-4df2-a363-21b89380a698"))
     IWinmlExecutionProvider : public IUnknown
     {
     public:
