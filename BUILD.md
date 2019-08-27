@@ -436,5 +436,3 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 
 2. Use `build.bat` and specify `--arm` or `--arm64` as the build option to start building. Preferably use `Developer Command Prompt for VS` or make sure all the installed cross-compilers are findable from the command prompt being used to build using the PATH environmant variable.
 
-**Using other compilers**
-(TODO)
