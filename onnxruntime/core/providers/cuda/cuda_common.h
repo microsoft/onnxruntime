@@ -57,7 +57,7 @@ class CudaKernel : public OpKernel {
     return provider_->GetScratchBuffer<T>(Info().GetAllocatorManager(), count_or_bytes);
   }
 
-  inline void AddDeferredReleaseCPUPtr(void* p) const {
+  inline void AddDeferredReleaseCPUPtr(const std::unique_ptr<void>& p) const {
     provider_->AddDeferredReleaseCPUPtr(p);
   }
 
@@ -95,7 +95,7 @@ class CudaKernel : public OpKernel {
       if (cpu_pinned_copy_) {
         gpu_copy_ = op_kernel_->GetScratchBuffer<T>(count_);
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), cudaMemcpyHostToDevice));
-        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release());
+        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_);
       }
       return Status::OK();
     }

@@ -67,8 +67,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
   const FuncManager& funcs_mgr_;
   const DataTransferManager& data_transfer_mgr_;
-  const AllocatorManager& allocator_mgr_;
   ProtoHelperNodeContext proto_helper_context_;
+  const AllocatorManager& allocator_mgr_;
 };
 
 }  // namespace onnxruntime
