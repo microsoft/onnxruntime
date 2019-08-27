@@ -31,7 +31,7 @@ namespace onnxruntime {
 // T should have signature of '(int idx, const OrtValue& value, const OrtCallback& d) -> Status'
 template <typename T>
 static common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
-                                             const onnxruntime::Graph& graph, const ExecutionProviders& exec_providers,
+                                             const onnxruntime::Graph& graph,
                                              const OrtValueNameIdxMap& ort_value_name_idx_map,
                                              ITensorAllocator* planner, const T& save_tensor_func,
                                              const logging::Logger& logger,
@@ -95,7 +95,7 @@ common::Status SessionStateInitializer::CreatePlan(
   // lambda to save initialized tensors into SessionState directly
   const Env& env = Env::Default();
   ORT_RETURN_IF_ERROR(SaveInitializedTensors(
-      env, graph_loc_, graph_, execution_providers_, ort_value_name_idx_map, tensor_allocator_.get(),
+      env, graph_loc_, graph_, ort_value_name_idx_map, tensor_allocator_.get(),
       [this](int idx, const OrtValue& value, const OrtCallback& d, bool constant) -> Status {
         return session_state_.AddInitializedTensor(idx, value, &d, constant);
       },
@@ -114,9 +114,7 @@ common::Status SessionStateInitializer::CreatePlan(
 
 static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m,
-                                             const ExecutionProviders& exec_providers, OrtValue& ort_value,
-                                             OrtCallback& deleter,
-                                             const DataTransferManager& data_transfer_mgr,
+                                             OrtValue& ort_value, OrtCallback& deleter, const DataTransferManager& data_transfer_mgr,
 											 const AllocatorManager& allocator_mgr) {
   const OrtAllocatorInfo& alloc_info = m.GetAllocInfo();
   if (strcmp(alloc_info.name, CPU) == 0 || alloc_info.mem_type == OrtMemTypeCPUOutput) {
@@ -169,7 +167,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 
 template <typename T>
 common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
-                                      const Graph& graph, const ExecutionProviders& exec_providers,
+                                      const Graph& graph,
                                       const OrtValueNameIdxMap& ort_value_name_idx_map, ITensorAllocator* planner,
                                       const T& save_tensor_func, const logging::Logger& logger,
                                       const DataTransferManager& data_transfer_mgr, const AllocatorManager& allocator_mgr) {
@@ -205,7 +203,7 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
     ORT_ENFORCE(m->GetBuffer() != nullptr || m->GetLen() == 0);
 #endif
     OrtValue ort_value;
-    Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, *m, exec_providers, ort_value, deleter, data_transfer_mgr, allocator_mgr);
+    Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, *m, ort_value, deleter, data_transfer_mgr, allocator_mgr);
     if (!st.IsOK()) {
       std::ostringstream oss;
       oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();

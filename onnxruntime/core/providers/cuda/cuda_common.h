@@ -58,7 +58,7 @@ class CudaKernel : public OpKernel {
   }
 
   inline void AddDeferredReleaseCPUPtr(const std::unique_ptr<void>&& p) const {
-    provider_->AddDeferredReleaseCPUPtr(p);
+    provider_->AddDeferredReleaseCPUPtr(std::move(p));
   }
 
   // To support cudaMemcpyAsync, the cpu memory should be allocated in pinned memory

@@ -66,7 +66,6 @@ TEST(AllocatorTest, MakeUniquePtrTest) {
   auto allocator = std::make_shared<TestAllocator>(num_floats * sizeof(float));
   IAllocatorUniquePtr<float> float_ptr = IAllocator::MakeUniquePtr<float>(allocator, num_floats);
   float_ptr = nullptr;  // reset so TestAllocator.Free is called here
-
   // void should create buffer of size 16 for void*
   // Create new TestAllocator to validate that.
   allocator = std::make_shared<TestAllocator>(16);
