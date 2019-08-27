@@ -125,11 +125,11 @@ AllocatorPtr CUDAExecutionProvider::GetAllocator(const AllocatorManager& allocat
     return GetPerThreadContext().GetAllocator();
   } else {
     if (mem_type == OrtMemTypeCPUOutput || mem_type == OrtMemTypeCPU) {
-      return allocator_mgr.GetAllocator(OrtDevice(OrtDevice::CPU, 0, OrtDevice::MemoryType::CUDA_PINNED));
+      return allocator_mgr.GetAllocator(OrtDevice(OrtDevice::CPU, 0, OrtDevice::MemType::CUDA_PINNED));
     } else if (mem_type == OrtMemTypeCPUInput) {
       return allocator_mgr.GetAllocator(OrtDevice());
     } else {
-      return allocator_mgr.GetAllocator(OrtDevice(OrtDevice::GPU, device_id, OrtDevice::MemoryType::DEFAULT));
+      return allocator_mgr.GetAllocator(OrtDevice(OrtDevice::GPU, device_id, OrtDevice::MemType::DEFAULT));
     }
   }
 }
