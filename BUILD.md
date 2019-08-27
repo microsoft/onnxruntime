@@ -1,7 +1,7 @@
 # Building ONNX Runtime - Getting Started
 *Dockerfiles are available [here](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/linux/docker) to help you get started.*
 
-*Pre-built packages are available the locations indicated [here](https://github.com/microsoft/onnxruntime#official-builds).*
+*Pre-built packages are available at the locations indicated [here](https://github.com/microsoft/onnxruntime#official-builds).*
 
 ## To build the baseline CPU version of ONNX Runtime from source:
 1. Checkout the source tree:
