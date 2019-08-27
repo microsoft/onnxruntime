@@ -256,7 +256,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
                              &output_ml_value);
     } else if (allocation_provider == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      AllocateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), expected_output_dims,
+      AllocateMLValue<float>(TestAllocatorManager().GetAllocator(OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)), expected_output_dims,
                              &output_ml_value);
 #endif
     } else {

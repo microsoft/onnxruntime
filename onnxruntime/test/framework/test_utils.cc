@@ -16,6 +16,9 @@ IExecutionProvider* TestCPUExecutionProvider() {
 onnxruntime::AllocatorManager TestAllocatorManager() {
   onnxruntime::AllocatorManager allocator_mgr;
   onnxruntime::RegisterCPUAllocator(allocator_mgr, true);
+#ifdef USE_CUDA
+  onnxruntime::RegisterCudaAllocator(allocator_mgr, 0);
+#endif
   return allocator_mgr;
 }
 
