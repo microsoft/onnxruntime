@@ -113,7 +113,7 @@ class PlannerImpl {
         execution_providers_{providers},
         kernel_registry_{kernel_registry},
         ort_value_name_idx_map_{ort_value_name_idx_map},
-        allocator_mgr_ (allocator_mgr){}
+        allocator_mgr_(allocator_mgr) {}
 
   Status CreatePlan();
 
@@ -125,10 +125,9 @@ class PlannerImpl {
   const onnxruntime::GraphViewer& graph_viewer_;
   const std::vector<const NodeArg*>& outer_scope_node_args_;
   const ExecutionProviders& execution_providers_;
-  const AllocatorManager& allocator_mgr_;
-
   const KernelRegistryManager& kernel_registry_;
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
+  const AllocatorManager& allocator_mgr_;
 
   // OrtValueInfo: Auxiliary information about an OrtValue used only during plan-generation:
   struct OrtValueInfo {
@@ -398,7 +397,7 @@ class PlannerImpl {
                                pnode->GetExecutionProviderType());
       }
 
-	  // increment UseCount and add location information if applicable for the provided input def
+      // increment UseCount and add location information if applicable for the provided input def
       auto process_input = [&graph_inputs, &exec_provider, &p_kernelDef, this](const NodeArg& input, size_t arg_idx) {
         const auto& name = input.Name();
         UseCount(name)++;
@@ -609,8 +608,7 @@ class PlannerImpl {
       AllocPlanPerValue& value_plan = AllocPlan(index);
 
       has_fence = value_plan.create_fence_if_async;
-      if (value_plan.alloc_kind == AllocKind::kReuse)
-      {
+      if (value_plan.alloc_kind == AllocKind::kReuse) {
         // Buffer reused, check original buffer to see if fence is shared.
         has_fence = has_fence || AllocPlan(value_plan.reused_buffer).create_fence_if_async;
       }
@@ -621,7 +619,6 @@ class PlannerImpl {
 
   // Compute fence check. Set has_fence flag if either one of inputs, implicit inputs or outputs of a given node has fence.
   Status ComputeFenceCheck() {
-
     for (SequentialExecutionPlan::NodeExecutionPlan& step : plan_.execution_plan) {
       auto pnode = graph_viewer_.GetNode(step.node_index);
       if (pnode == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Can not find the node ", step.node_index);

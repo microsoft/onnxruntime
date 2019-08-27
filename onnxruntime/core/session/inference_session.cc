@@ -47,6 +47,7 @@
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #ifdef USE_CUDA
+#include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #endif
 #include "core/session/IOBinding.h"
@@ -450,9 +451,9 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
 void InferenceSession::RegisterAllocators() {
   onnxruntime::RegisterCPUAllocator(allocator_mgr_, session_options_.create_arena);
 #ifdef USE_CUDA
-  // TODO: this should be refactored later by exposing separate API to allow users to register different data transfers for different devices.
   bool is_nvidia_gpu_used = (nullptr != execution_providers_.Get(kCudaExecutionProvider)) || (nullptr != execution_providers_.Get(kTensorrtExecutionProvider));
   if (is_nvidia_gpu_used) {
+    // TODO: this should be updated by adding allocators for all devices.
     onnxruntime::RegisterCudaAllocator(allocator_mgr_, 0);
   }
 #endif
