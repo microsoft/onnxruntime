@@ -78,8 +78,8 @@ void RegisterCudaAllocator(AllocatorManager& allocator_mgr, int device_id) {
   allocator_mgr.InsertAllocator(CreateAllocator(pinned_allocator_info, device_id));
 
   // This is actually used for the cuda kernels which explicitly ask for inputs from CPU.
-  DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUInput, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUInput)); }, std::numeric_limits<size_t>::max()});
-  allocator_mgr.InsertAllocator(CreateAllocator(cpu_allocator_info));
+  //DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUInput, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUInput)); }, std::numeric_limits<size_t>::max()});
+  //allocator_mgr.InsertAllocator(CreateAllocator(cpu_allocator_info));
 }
 
 }  // namespace onnxruntime
