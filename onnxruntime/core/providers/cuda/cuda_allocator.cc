@@ -77,8 +77,7 @@ void RegisterCudaAllocator(AllocatorManager& allocator_mgr, int device_id) {
       {OrtMemTypeCPUOutput, [](int) { return std::make_unique<CUDAPinnedAllocator>(0, CUDA_PINNED); }, std::numeric_limits<size_t>::max()});
   allocator_mgr.InsertAllocator(CreateAllocator(pinned_allocator_info, device_id));
 
-  // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
-  // This will be refactored/removed when allocator and execution provider are decoupled.
+  // This is actually used for the cuda kernels which explicitly ask for inputs from CPU.
   DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUInput, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUInput)); }, std::numeric_limits<size_t>::max()});
   allocator_mgr.InsertAllocator(CreateAllocator(cpu_allocator_info));
 }

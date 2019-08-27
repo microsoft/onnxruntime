@@ -50,13 +50,13 @@ struct MemoryPatternGroup;
 class SessionState {
  public:
   SessionState(const ExecutionProviders& execution_providers,
-	  bool enable_mem_pattern,
-	  concurrency::ThreadPool* thread_pool,
-	  const AllocatorManager& allocator_mgr)
-	  : execution_providers_{execution_providers},
-	  enable_mem_pattern_(enable_mem_pattern),
-	  thread_pool_(thread_pool),
-	  allocator_mgr_(allocator_mgr) {}
+               bool enable_mem_pattern,
+               concurrency::ThreadPool* thread_pool,
+               const AllocatorManager& allocator_mgr)
+      : execution_providers_{execution_providers},
+        enable_mem_pattern_(enable_mem_pattern),
+        thread_pool_(thread_pool),
+        allocator_mgr_(allocator_mgr) {}
 
   ~SessionState() {
     for (auto* p : session_kernels_) {
@@ -216,7 +216,6 @@ class SessionState {
   std::unique_ptr<GraphViewer> graph_viewer_;
 
   const ExecutionProviders& execution_providers_;  // owned by InferenceSession
-  const AllocatorManager& allocator_mgr_;
   OrtValueNameIdxMap ort_value_name_idx_map_;
 
   // initialized tensors
@@ -255,6 +254,7 @@ class SessionState {
   bool export_fused_dll_ = false;
   FuncManager fused_funcs_mgr_;
   const DataTransferManager* data_transfer_mgr_;
+  const AllocatorManager& allocator_mgr_;
 
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;
