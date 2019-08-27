@@ -15,7 +15,7 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
                            const OrtValueNameIdxMap& ort_value_name_idx_map,
                            const FuncManager& funcs_mgr,
                            const DataTransferManager& data_transfer_mgr,
-						   const AllocatorManager& allocator_mgr)
+                           const AllocatorManager& allocator_mgr)
     : OpNodeProtoHelper(&proto_helper_context_),
       node_(node),
       kernel_def_(kernel_def),
@@ -25,7 +25,7 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
       funcs_mgr_(funcs_mgr),
       data_transfer_mgr_(data_transfer_mgr),
       proto_helper_context_(node),
-	  allocator_mgr_(allocator_mgr){}
+      allocator_mgr_(allocator_mgr) {}
 
 OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
     : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.constant_initialized_tensors_,
@@ -51,6 +51,10 @@ const IExecutionProvider* OpKernelInfo::GetExecutionProvider() const noexcept {
 
 const DataTransferManager& OpKernelInfo::GetDataTransferManager() const noexcept {
   return data_transfer_mgr_;
+}
+
+const AllocatorManager& OpKernelInfo::GetAllocatorManager() const noexcept {
+  return allocator_mgr_;
 }
 
 const onnxruntime::Node& OpKernelInfo::node() const noexcept {

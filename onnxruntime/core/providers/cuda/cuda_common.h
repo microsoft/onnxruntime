@@ -54,7 +54,7 @@ class CudaKernel : public OpKernel {
 
   template <typename T>
   inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
-    return provider_->GetScratchBuffer<T>(count_or_bytes);
+    return provider_->GetScratchBuffer<T>(Info().GetAllocatorManager(), count_or_bytes);
   }
 
   inline void AddDeferredReleaseCPUPtr(void* p) const {

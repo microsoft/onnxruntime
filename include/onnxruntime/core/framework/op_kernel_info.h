@@ -30,7 +30,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
                         const OrtValueNameIdxMap& mlvalue_name_idx_map,
                         const FuncManager& funcs_mgr,
                         const DataTransferManager& data_transfer_mgr,
-						const AllocatorManager& allocator_mgr);
+                        const AllocatorManager& allocator_mgr);
 
   OpKernelInfo(const OpKernelInfo& other);
 
@@ -43,6 +43,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   const IExecutionProvider* GetExecutionProvider() const noexcept;
 
   const DataTransferManager& GetDataTransferManager() const noexcept;
+
+  const AllocatorManager& GetAllocatorManager() const noexcept;
 
   const onnxruntime::Node& node() const noexcept;
 
