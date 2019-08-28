@@ -394,13 +394,17 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"unique_sorted_without_axis", "not implemented yet"},
       {"scatter_elements_with_axis", "not implemented yet"},
       {"scatter_elements_without_axis", "not implemented yet"},
+      {"round", "not implemented yet"},
       {"gather_elements_1", "not implemented yet"},
       {"gather_elements_0", "not implemented yet"},
       {"depthtospace_crd_mode_example", "not implemented yet"},
       {"depthtospace_crd_mode", "not implemented yet"},
+      {"cumsum_2d_axis_1", "not implemented yet"},
+      {"cumsum_2d_axis_0", "not implemented yet"},
       {"cumsum_1d_reverse_exclusive", "not implemented yet"},
+      {"cumsum_1d_reverse", "not implemented yet"},
       {"cumsum_1d_exclusive", "not implemented yet"},
-
+      {"cumsum_1d", "not implemented yet"},
   };
 
 #ifdef USE_NGRAPH
