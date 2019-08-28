@@ -39,7 +39,8 @@ class FunctionKernel : public OpKernel {
   }
 
   virtual Status Compute(OpKernelContext* context) const override {
-    return func_(func_state_, &GetCustomOpApi(), context);
+    auto* context_internal = static_cast<OpKernelContextInternal*>(context);
+    return func_(func_state_, &GetCustomOpApi(), reinterpret_cast<OrtKernelContext*>(context_internal));
   }
 
  private:
