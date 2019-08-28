@@ -25,7 +25,7 @@ namespace protobufutil = google::protobuf::util;
     }                                                                                            \
     auto json_error_message = CreateJsonError(http_error_code, (message));                       \
     logger->debug(json_error_message);                                                           \
-    MetricRegistry::Get().totalHTTPErrors->Add({                                              \
+    MetricRegistry::GetInstance()->totalHTTPErrors->Add({                                        \
       {"path", (context).request.target().to_string()},                                          \
       {"errorCode", std::to_string(static_cast<unsigned>(http_error_code))},                     \
     }).Increment();                                                                              \
@@ -80,7 +80,7 @@ void Predict(const std::string& name,
   }
 
   // Don't log failed requests as that will potentially skew results
-  MetricRegistry::Get().inferenceTimer->Add({{"name", name}, {"version", version}},
+  MetricRegistry::GetInstance()->inferenceTimer->Add({{"name", name}, {"version", version}},
       // Note: Need to specify quantiles each time, cannot add to the family
       // see: https://github.com/jupp0r/prometheus-cpp/issues/53#issuecomment-295151744
       MetricRegistry::TimeBuckets()).
@@ -125,7 +125,7 @@ static bool ParseRequestPayload(const HttpContext& context, SupportedContentType
         return false;
       }
       // Log Request Size of JSON payload
-      MetricRegistry::Get().httpRequestSize->
+      MetricRegistry::GetInstance()->httpRequestSize->
           Add({{"type","json"}}, MetricRegistry::ByteBuckets()).
           Observe(static_cast<int>(body.size()));
       break;
@@ -138,7 +138,7 @@ static bool ParseRequestPayload(const HttpContext& context, SupportedContentType
         return false;
       }
       // Log request size of protobuf payload
-      MetricRegistry::Get().httpRequestSize->
+      MetricRegistry::GetInstance()->httpRequestSize->
           Add({{"type","protobuf"}}, MetricRegistry::ByteBuckets()).
           Observe(static_cast<int>(body.size()));
       break;

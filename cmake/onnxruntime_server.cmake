@@ -126,6 +126,7 @@ set(onnxruntime_server_lib_srcs
   "${ONNXRUNTIME_ROOT}/server/converter.cc"
   "${ONNXRUNTIME_ROOT}/server/util.cc"
   "${ONNXRUNTIME_ROOT}/server/core/request_id.cc"
+  "${ONNXRUNTIME_ROOT}/server/core/metric_registry.cc"
   "${ONNXRUNTIME_ROOT}/server/grpc/prediction_service_impl.cc"
   "${ONNXRUNTIME_ROOT}/server/grpc/grpc_app.cc"
   "${ONNXRUNTIME_ROOT}/server/serializing/tensorprotoutils.cc"
