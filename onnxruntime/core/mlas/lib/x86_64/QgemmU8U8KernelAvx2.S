@@ -6,12 +6,14 @@ Licensed under the MIT License.
 
 Module Name:
 
-    QgemmU8U8KernelAvx2.S
+    QgemmU8U8KernelAvx2.s
 
 Abstract:
 
     This module implements the kernels for the quantized integer matrix/matrix
     multiply operation (QGEMM).
+
+    This implementation uses AVX2 instructions.
 
 --*/
 
@@ -122,9 +124,8 @@ C_UNDERSCORE(MlasGemmU8U8CopyPackAAvx2):
         inc     eax
         shr     eax,1                       # align unaligned count to pair count
         mov     DWORD PTR .LGemmU8U8CopyPackAFrame_mask[rsp],eax
-        mov     rbp,QWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOTPCREL[rip]
         vpbroadcastd ymm9,DWORD PTR .LGemmU8U8CopyPackAFrame_mask[rsp]
-        vpcmpgtd ymm9,ymm9,YMMWORD PTR [rbp]
+        vpcmpgtd ymm9,ymm9,YMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip]
 
 //
 // Zero initialize the padded stack buffers.
@@ -973,9 +974,8 @@ Implicit Arguments:
 
 .LOutputMasked8xNBlock.\RowCount\():
         mov     DWORD PTR .LGemmU8U8KernelFrame_mask[rsp],r9d
-        mov     rbp,QWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOTPCREL[rip]
         vpbroadcastd ymm0,DWORD PTR .LGemmU8U8KernelFrame_mask[rsp]
-        vpcmpgtd ymm0,ymm0,YMMWORD PTR [rbp]
+        vpcmpgtd ymm0,ymm0,YMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip]
         test    r14b,r14b                   # ZeroMode?
         jnz     .LSkipAccumulateOutputMasked8xNBlock.\RowCount\()
         EmitIfCountGE \RowCount\(), 1, "vpmaskmovd ymm4,ymm0,YMMWORD PTR [rdx]"
