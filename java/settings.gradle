@@ -1,1 +1,1 @@
-include ':app', ':onnxruntime'
+include ':sample', ':onnxruntime'
