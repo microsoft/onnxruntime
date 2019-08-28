@@ -29,8 +29,6 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
-  ORT_RETURN_IF_NOT(y->DataType() == DataTypeImpl::GetType<std::int32_t>());
-
   if (a->DataType() == DataTypeImpl::GetType<std::uint8_t>() &&
       b->DataType() == DataTypeImpl::GetType<std::uint8_t>()) {
     // validate zero points
@@ -38,14 +36,14 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
     uint8_t b_offset = 0;
     if (has_a_zero_point_) {
       auto a_zero_point = ctx->Input<Tensor>(2);
-    ORT_ENFORCE(IsScalarOr1ElementVector(a_zero_point), 
-        "MatmulInteger : input1 zero point must be a scalar or 1D tensor of size 1");
+      ORT_ENFORCE(IsScalarOr1ElementVector(a_zero_point),
+                  "MatmulInteger : input1 zero point must be a scalar or 1D tensor of size 1");
       a_offset = static_cast<int32_t>(*a_zero_point->template Data<uint8_t>());
     }
     if (has_b_zero_point_) {
       auto b_zero_point = ctx->Input<Tensor>(3);
       ORT_ENFORCE(IsScalarOr1ElementVector(b_zero_point),
-                "MatmulInteger : input2 zero point must be a scalar or 1D tensor of size 1");    
+                  "MatmulInteger : input2 zero point must be a scalar or 1D tensor of size 1");
       b_offset = static_cast<int32_t>(*b_zero_point->template Data<uint8_t>());
     }
 
