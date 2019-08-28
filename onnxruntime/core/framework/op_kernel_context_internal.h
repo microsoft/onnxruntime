@@ -29,17 +29,11 @@ class OpKernelContextInternal : public OpKernelContext {
     return session_state_.GetSubgraphSessionState(GetNodeIndex(), attribute_name);
   }
 
-  const OrtValue* GetInputMLValue(int index) const {
-    return OpKernelContext::GetInputMLValue(index);
-  }
+  const OrtValue* GetInputMLValue(int index) const { return OpKernelContext::GetInputMLValue(index); }
 
-  OrtValue* GetOutputMLValue(int index) {
-    return OpKernelContext::GetOutputMLValue(index);
-  }
+  OrtValue* GetOutputMLValue(int index) { return OpKernelContext::GetOutputMLValue(index); }
 
-  OrtValue* OutputMLValue(int index, const TensorShape& shape) {
-    return OpKernelContext::OutputMLValue(index, shape);
-  }
+  OrtValue* OutputMLValue(int index, const TensorShape& shape) { return OpKernelContext::OutputMLValue(index, shape); }
 
   std::unordered_map<std::string, const OrtValue*> GetImplicitInputs() const {
     // we need to convert implicit_inputs_ to a name to OrtValue map so it can be used in the ExecutionFrame
@@ -54,13 +48,6 @@ class OpKernelContextInternal : public OpKernelContext {
   }
 
   const bool& GetTerminateFlag() const noexcept { return terminate_flag_; }
-
-  _Ret_maybenull_ const onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const override {
-    return session_state_.GetThreadPool();
-  }
-  _Ret_maybenull_ onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() override {
-    return session_state_.GetThreadPool();
-  }
 
  private:
   const SessionState& session_state_;
