@@ -322,14 +322,7 @@ Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string
       params_.learning_rate,
       params_.mpi_context.world_rank,
       params_.mpi_context.world_size,
-      {}};
-
-  if (params_.training_optimizer_name == "AdamOptimizer") {
-    opt_info.attributes["alpha"] = params_.adam_opt_params.alpha;
-    opt_info.attributes["beta"] = params_.adam_opt_params.beta;
-    opt_info.attributes["lambda"] = params_.adam_opt_params.lambda;
-    opt_info.attributes["epsilon"] = params_.adam_opt_params.epsilon;
-  }
+      params_.optimizer_attributes};
 
   opt_infos.reserve(weights_to_train.size());
   for (const auto& weight_name : weights_to_train) {

@@ -15,6 +15,7 @@ using ONNX_NAMESPACE::TensorProto;
 using ONNX_NAMESPACE::TypeProto;
 
 struct ArgDef {
+  ArgDef() : name(""), type_proto(nullptr) {}
   ArgDef(std::string name, const TypeProto* type = nullptr) : name(name), type_proto(type) {}
 
   std::string name;

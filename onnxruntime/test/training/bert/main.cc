@@ -35,7 +35,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("num_of_epoch", "Num of epoch", cxxopts::value<int>()->default_value("1"))
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>())
       ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>())
-      ("learning_rate", "The initial learning rate for Adam.", cxxopts::value<float>()->default_value("5e-5"))
+      ("learning_rate", "The initial learning rate for the optimizer.", cxxopts::value<float>()->default_value("5e-5"))
       ("num_train_steps", "Number of training steps.", cxxopts::value<int>()->default_value("100000"))
       ("num_warmup_steps", "Number of warmup steps.", cxxopts::value<int>()->default_value("10000"))
       ("evaluation_period",
@@ -56,7 +56,8 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
         "than this will be padded. Must match data generation.", cxxopts::value<int>()->default_value("512"))
       ("max_predictions_per_seq",
         "Maximum number of masked LM predictions per sequence. "
-        "Must match data generation.", cxxopts::value<int>()->default_value("80"));
+        "Must match data generation.", cxxopts::value<int>()->default_value("80"))
+      ("optimizer", "Adam or Lamb", cxxopts::value<std::string>()->default_value("Adam"));
   // clang-format on
 
   try {
@@ -93,9 +94,18 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     if (params.use_mixed_precision) {
       printf("Mixed precision training is enabled.\n");
     }
+
+    std::string optimizer_name = flags["optimizer"].as<std::string>();
+    if (optimizer_name == "adam" || optimizer_name == "Adam") {
+      params.training_optimizer_name = "AdamOptimizer";
+    } else if (optimizer_name == "lamb" || optimizer_name == "Lamb") {
+      params.training_optimizer_name = "LambOptimizer";
+    } else {
+      printf("Incorrect optimizer type: it must be one of [Adam|Lamb]\n");
+    }    
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
-    cerr << msg << ": " << e.what() << "\n"
+    cerr << msg << ": " << e.what() << "\n" 
          << options.help() << "\n";
     return Status(ONNXRUNTIME, FAIL, msg);
   }
@@ -142,11 +152,12 @@ void setup_training_params(TrainingRunner::Parameters& params) {
       {"Mul", {{1, 0.5f}, {1, -10000.0f}}},
       {"Sub", {{0, 1.0f}}}};
 
-  params.training_optimizer_name = "AdamOptimizer";
-  params.adam_opt_params.alpha = 0.9f;
-  params.adam_opt_params.beta = 0.999f;
-  params.adam_opt_params.lambda = 0;
-  params.adam_opt_params.epsilon = 1e-6f;
+  params.optimizer_attributes = {
+      {"alpha", 0.9f},
+      {"beta", 0.999f},
+      {"lambda", 0.0f},
+      {"epsilon", 1e-6f},
+  };
 
   params.shuffle_data = false;
 
@@ -239,11 +250,6 @@ int main(int argc, char* argv[]) {
 #ifdef USE_HOROVOD
   params.mpi_context = setup_horovod();
 #endif
-
-  // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
-  // Adding another cuda kernel call for this division seems wasteful currently.
-  // params.learning_rate_ = LEARNING_RATE / params.batch_size_;
-  params.learning_rate = params.learning_rate / params.mpi_context.world_size;
 
   // start training session
   std::unique_ptr<TrainingRunner> runner;

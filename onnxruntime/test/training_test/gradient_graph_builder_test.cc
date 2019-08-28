@@ -260,9 +260,9 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithLogging) {
   const auto& default_logger = log_manager.DefaultLogger();
   log_manager.SetDefaultLoggerSeverity(Severity::kINFO);
 
-  EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kERROR, DataType::USER)) << "ERROR level logging enabled.";
-  EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kWARNING, DataType::USER)) << "WARNING level logging enabled.";
-  EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kINFO, DataType::USER)) << "INFO level logging enabled.";
+  EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kERROR, ::onnxruntime::logging::DataType::USER)) << "ERROR level logging enabled.";
+  EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kWARNING, ::onnxruntime::logging::DataType::USER)) << "WARNING level logging enabled.";
+  EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kINFO, ::onnxruntime::logging::DataType::USER)) << "INFO level logging enabled.";
 
   TrainingRunner::Parameters params;
   params.model_path = ORIGINAL_MODEL_PATH;
@@ -277,9 +277,9 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithLogging) {
 
   std::unique_ptr<TrainingSession> training_session = RunTrainingSessionWithChecks(so, backprop_model_file);
 
-  EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kERROR, DataType::USER)) << "ERROR level logging still enabled.";
-  EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kWARNING, DataType::USER)) << "WARNING level logging still enabled.";
-  EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kINFO, DataType::USER)) << "INFO level logging still enabled.";
+  EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kERROR, ::onnxruntime::logging::DataType::USER)) << "ERROR level logging still enabled.";
+  EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kWARNING, ::onnxruntime::logging::DataType::USER)) << "WARNING level logging still enabled.";
+  EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kINFO, ::onnxruntime::logging::DataType::USER)) << "INFO level logging still enabled.";
 
   std::string profile_file = training_session->EndProfiling();
 
@@ -550,10 +550,12 @@ TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
       {"Sub", {{0, 1.0f}}}};
 
   params.training_optimizer_name = "AdamOptimizer";
-  params.adam_opt_params.alpha = 0.9f;
-  params.adam_opt_params.beta = 0.999f;
-  params.adam_opt_params.lambda = 0;
-  params.adam_opt_params.epsilon = 0.1f;
+  params.optimizer_attributes = {
+      {"alpha", 0.9f},
+      {"beta", 0.999f},
+      {"lambda", 0.0f},
+      {"epsilon", 0.1f},
+  };
 
   BuildBackPropGraph(params);
 

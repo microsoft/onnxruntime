@@ -47,6 +47,8 @@ class TrainingRunner {
     // Every weight's gradient will be connected to an optimizer node
     // For now all to-be-trained weights use the same optimizer type.
     std::string training_optimizer_name = "SGDOptimizer";
+    std::unordered_map<std::string, float> optimizer_attributes;
+    float learning_rate;
 
     // The weights to train, exclusive with weights_not_to_train_.
     std::unordered_set<std::string> weights_to_train;
@@ -64,10 +66,6 @@ class TrainingRunner {
     size_t eval_batch_size;
     size_t num_of_epoch;
     size_t evaluation_period;
-
-    // Optimizer Parameter
-    float learning_rate;
-    AdamOptimizerParams adam_opt_params;
 
     // error_function_ is called when evaluating the error for a single sample.
     std::function<void(const std::vector<std::string>& feed_names,

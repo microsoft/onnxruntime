@@ -103,11 +103,12 @@ void setup_training_params(TrainingRunner::Parameters& params) {
     // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
     // Adding another cuda kernel call for this division seems wasteful currently.
     params.training_optimizer_name = "AdamOptimizer";
-
-    params.adam_opt_params.alpha = 0.9f;
-    params.adam_opt_params.beta = 0.999f;
-    params.adam_opt_params.lambda = 0;
-    params.adam_opt_params.epsilon = 0.1f;
+    params.optimizer_attributes = {
+        {"alpha", 0.9f},
+        {"beta", 0.999f},
+        {"lambda", 0.0f},
+        {"epsilon", 0.1f},
+    };
   } else {
     params.training_optimizer_name = "SGDOptimizer";
   }
