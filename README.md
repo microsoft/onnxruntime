@@ -66,8 +66,8 @@ We are continuously working to integrate new execution providers for further imp
 ## Cross Platform
 [API documentation and package installation](https://github.com/microsoft/onnxruntime#installation)
 
-ONNX Runtime is available for Linux, Windows, Mac with Python, C#, and C APIs, with more to come!
-If you have specific scenarios that are not currently supported, please share your suggestions and scenario details via [Github Issues](https://github.com/microsoft/onnxruntime/issues).
+ONNX Runtime is currently available for Linux, Windows, and Mac with Python, C#, C++, and C APIs.
+If you have specific scenarios that are not supported, please share your suggestions and scenario details via [Github Issues](https://github.com/microsoft/onnxruntime/issues).
 ***
 # Installation
 **Quick Start:** The [ONNX-Ecosystem Docker container image](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem) is available on Dockerhub and includes ONNX Runtime (CPU, Python), dependencies, tools to convert from various frameworks, and Jupyter notebooks to help get started.
@@ -110,7 +110,7 @@ system.
 ## Building from Source
 If additional build flavors are needed, please find instructions on building from source at [Build ONNX Runtime](BUILD.md). For production scenarios, it's strongly recommended to build from an [official release branch](https://github.com/microsoft/onnxruntime/releases).
 
-Dockerfiles are available [here](https://github.com/microsoft/onnxruntime/tree/faxu-doc-updates/tools/ci_build/github/linux/docker) to help you get started.
+Dockerfiles are available [here](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/linux/docker) to help you get started.
 
 ***
 # Usage
