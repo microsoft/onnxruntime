@@ -88,10 +88,17 @@ set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
 
 if (onnxruntime_USE_MIMALLOC)
   set(mimalloc_root_dir ${PROJECT_SOURCE_DIR}/external/mimalloc)
+  set(mimalloc_output_dir ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/)
+  set(mimalloc_wheel_dir ${mimalloc_output_dir}/onnxruntime/capi/)
+
   add_definitions(
     -DUSE_MIMALLOC=1 # used in ONNXRuntime
     -DMI_OVERRIDE=ON) # used in building MiMalloc
   include_directories(${mimalloc_root_dir}/include)
+
+  if(NOT IS_DIRECTORY ${mimalloc_wheel_dir})
+    file(MAKE_DIRECTORY ${mimalloc_wheel_dir})
+  endif()
   
   if (WIN32) 
     # The generic MiMalloc CMakeLists.txt project lacks 
@@ -99,7 +106,6 @@ if (onnxruntime_USE_MIMALLOC)
     # so we fall back to the specially provided VS solutions (which
     # do have those hooks)
     set(mimalloc_output mimalloc-override)
-    set(mimalloc_output_dir ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE})
 
     if(NOT ${CMAKE_GENERATOR_PLATFORM} MATCHES "x64|Win32")
       message(FATAL_ERROR "MiMalloc doesn't support ARM/ARM64 targets")
@@ -122,17 +128,18 @@ if (onnxruntime_USE_MIMALLOC)
 
     add_library(mimalloc IMPORTED SHARED STATIC)
     add_dependencies(mimalloc mimalloc_override)
-    set_target_properties(mimalloc PROPERTIES IMPORTED_LOCATION "${mimalloc_output_dir}/${mimalloc_output}.lib")
+    set_target_properties(mimalloc PROPERTIES IMPORTED_LOCATION "${mimalloc_output_dir}${mimalloc_output}.lib")
 
     add_custom_command(TARGET mimalloc_override POST_BUILD
                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
                        ${mimalloc_output_dir}/${mimalloc_output}.dll
-                       ${mimalloc_output_dir}/onnxruntime/capi/
+                       ${mimalloc_wheel_dir}
                    )
 
   else()
     add_subdirectory(${mimalloc_root_dir} EXCLUDE_FROM_ALL)
     set_target_properties(mimalloc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+    configure_file(${mimalloc_output_dir}mimalloc.so ${mimalloc_wheel_dir}mimalloc.so COPYONLY)
   endif()
   
   target_link_libraries(onnxruntime_providers PUBLIC mimalloc)
