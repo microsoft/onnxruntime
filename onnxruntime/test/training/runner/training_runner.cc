@@ -40,29 +40,28 @@ TrainingRunner::TrainingRunner(std::shared_ptr<DataSet> training_data,
       step_(0),
       params_(params),
       session_(SESSION_OPTION) {
-  ORT_ENFORCE(!params_.model_path_.empty());
-  if (!params.weights_to_train_.empty())
-    ORT_ENFORCE(params.weights_not_to_train_.empty());
-  ORT_ENFORCE(!params_.model_trained_path_.empty() || !params_.model_trained_with_loss_func_path_.empty());
-  ORT_ENFORCE(!params_.model_prediction_name_.empty());
-  ORT_ENFORCE(!params_.training_optimizer_name_.empty());
+  ORT_ENFORCE(!params_.model_path.empty());
+  if (!params.weights_to_train.empty())
+    ORT_ENFORCE(params.weights_not_to_train.empty());
+  ORT_ENFORCE(!params_.model_trained_path.empty() || !params_.model_trained_with_loss_func_path.empty());
+  ORT_ENFORCE(!params_.training_optimizer_name.empty());
 }
 
 Status TrainingRunner::Initialize() {
-  ORT_RETURN_IF_ERROR(session_.Load(params_.model_path_));
+  ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
 
   // Add loss func
-  ORT_RETURN_IF_ERROR(session_.BuildLossFunction(params_.loss_func_info_));
-  if (params_.mpi_context.world_rank == 0 && !params_.model_with_loss_func_path_.empty()) {
-    session_.Save(params_.model_with_loss_func_path_, TrainingSession::SaveOption::NO_RELOAD);
+  ORT_RETURN_IF_ERROR(session_.BuildLossFunction(params_.loss_func_info));
+  if (params_.mpi_context.world_rank == 0 && !params_.model_with_loss_func_path.empty()) {
+    session_.Save(params_.model_with_loss_func_path, TrainingSession::SaveOption::NO_RELOAD);
   }
 
   // Get the weights-to-train list if user specify it.
   // Otherwise, generate the list by removing not-to-train ones from all initializers.
-  auto weights_to_train = params_.weights_to_train_;
+  auto weights_to_train = params_.weights_to_train;
   if (weights_to_train.empty()) {
-    weights_to_train = session_.GetTrainableModelInitializers(params_.immutable_weights_);
-    for (const auto& not_to_train : params_.weights_not_to_train_) {
+    weights_to_train = session_.GetTrainableModelInitializers(params_.immutable_weights);
+    for (const auto& not_to_train : params_.weights_not_to_train) {
       weights_to_train.erase(not_to_train);
     }
   }
@@ -72,33 +71,33 @@ Status TrainingRunner::Initialize() {
   }
 
   // Add gradient graph
-  ORT_RETURN_IF_ERROR(session_.BuildGradientGraph(weights_to_train, params_.loss_func_info_.loss_name));
+  ORT_RETURN_IF_ERROR(session_.BuildGradientGraph(weights_to_train, params_.loss_func_info.loss_name));
 
   // Add optimizer
   std::unordered_map<std::string, OptimizerInfo> opt_info;
   ORT_RETURN_IF_ERROR(SetupOptimizerParams(weights_to_train, opt_info));
   ORT_RETURN_IF_ERROR(session_.BuildOptimizer(opt_info));
 
-  if (params_.use_mixed_precision_) {
+  if (params_.use_mixed_precision) {
     ORT_RETURN_IF_ERROR(session_.EnableMixedPrecision(weights_to_train));
   }
 
   // Expose all fetches as graph outputs
   ORT_RETURN_IF_ERROR(session_.OverrideGraphOutputs(params_.fetch_names));
 
-  if (params_.mpi_context.world_rank == 0 && !params_.model_with_training_graph_path_.empty()) {
-    session_.Save(params_.model_with_training_graph_path_, TrainingSession::SaveOption::NO_RELOAD);
+  if (params_.mpi_context.world_rank == 0 && !params_.model_with_training_graph_path.empty()) {
+    session_.Save(params_.model_with_training_graph_path, TrainingSession::SaveOption::NO_RELOAD);
   }
 
-  if (params_.use_gist_) {
+  if (params_.use_gist) {
     ORT_RETURN_IF_ERROR(session_.AddGistEncoding());
-    if (!params_.model_gist_encode_.empty()) {
-      session_.Save(params_.model_gist_encode_, TrainingSession::SaveOption::NO_RELOAD);
+    if (!params_.model_gist_encode.empty()) {
+      session_.Save(params_.model_gist_encode, TrainingSession::SaveOption::NO_RELOAD);
     }
   }
 
 #ifdef USE_CUDA
-  if (params_.use_cuda_) {
+  if (params_.use_cuda) {
     CUDAExecutionProviderInfo xp_info{params_.mpi_context.local_rank};
     ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
   }
@@ -119,8 +118,8 @@ Status TrainingRunner::Initialize() {
 }
 
 Status TrainingRunner::Run() {
-  if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path_.empty()) {
-    session_.Save(params_.model_actual_running_graph_path_, TrainingSession::SaveOption::NO_RELOAD);
+  if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path.empty()) {
+    session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
   }
 
   ORT_RETURN_IF_ERROR(TrainingLoop());
@@ -138,21 +137,21 @@ Status TrainingRunner::TrainingLoop() {
   //Set the first N batchs as warm-up iterations
   size_t warm_up_iters = 10;
 
-  size_t num_shards_to_visit = params_.num_of_epoch_;
+  size_t num_shards_to_visit = params_.num_of_epoch;
   if (training_data_loader_) {
     num_shards_to_visit *= training_data_loader_->NumShards();
   }
 
   for (size_t shard_it = 0; shard_it < num_shards_to_visit; ++shard_it) {
     // Shuffle the data for each epoch
-    if (params_.shuffle_data_) {
+    if (params_.shuffle_data) {
       printf("Randomly shuffle training data.\n");
       training_data_->RandomShuffle();
     }
 
     // loop through the data
-    for (size_t batch = 0; batch < training_data_->TotalBatch(params_.batch_size_); ++batch) {
-      std::vector<MLValue> feeds = training_data_->GetKthBatch(params_.batch_size_, batch);
+    for (size_t batch = 0; batch < training_data_->TotalBatch(params_.batch_size); ++batch) {
+      std::vector<MLValue> feeds = training_data_->GetKthBatch(params_.batch_size, batch);
       vector<MLValue> fetches;
 
       std::chrono::duration<double> duration_seconds;
@@ -175,12 +174,12 @@ Status TrainingRunner::TrainingLoop() {
       // Print some info when reaching the end of the batch.
       printf("batch: %d/%d, shard_iteration: %d/%d \n",
              static_cast<int>(batch),
-             static_cast<int>(training_data_->TotalBatch(params_.batch_size_)),
+             static_cast<int>(training_data_->TotalBatch(params_.batch_size)),
              static_cast<int>(shard_it + 1),
              static_cast<int>(num_shards_to_visit));
       printf("Training data range: [%d - %d)\n",
-             static_cast<int>(batch * params_.batch_size_),
-             static_cast<int>((batch + 1) * params_.batch_size_ - 1));
+             static_cast<int>(batch * params_.batch_size),
+             static_cast<int>((batch + 1) * params_.batch_size - 1));
 
       if (step_ % params_.evaluation_period == 0) {
         ORT_RETURN_IF_ERROR(Evaluate(session_));
@@ -193,10 +192,10 @@ Status TrainingRunner::TrainingLoop() {
     }
   }
 
-  auto total_batchs = num_shards_to_visit * training_data_->TotalBatch(params_.batch_size_) - warm_up_iters;
+  auto total_batchs = num_shards_to_visit * training_data_->TotalBatch(params_.batch_size) - warm_up_iters;
   std::cout << "Total running time:" << total_time << " seconds" << std::endl
             << "Average running time per batch:" << total_time / total_batchs * 1000 << " ms" << std::endl
-            << "Throughput: " << params_.batch_size_ * total_batchs / total_time << " Examples / second" << std::endl;
+            << "Throughput: " << params_.batch_size * total_batchs / total_time << " Examples / second" << std::endl;
 
   return Status::OK();
 }
@@ -219,21 +218,21 @@ Status TrainingRunner::EndTraining() {
   ORT_RETURN_IF_ERROR(Evaluate(session_));
 
   printf("\nSaving the trained model.\n");
-  if (!params_.model_trained_path_.empty()) {
-    session_.Save(params_.model_trained_path_, TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS);
+  if (!params_.model_trained_path.empty()) {
+    session_.Save(params_.model_trained_path, TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS);
   }
-  if (!params_.model_trained_with_loss_func_path_.empty()) {
-    session_.Save(params_.model_trained_with_loss_func_path_,
+  if (!params_.model_trained_with_loss_func_path.empty()) {
+    session_.Save(params_.model_trained_with_loss_func_path,
                   TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC);
   }
 
   // Load and test the trained model.
-  printf("\nTesting the saved model: %s\n", params_.model_trained_with_loss_func_path_.c_str());
-  return LoadAndEvaluate(params_.model_trained_with_loss_func_path_);
+  printf("\nTesting the saved model: %s\n", params_.model_trained_with_loss_func_path.c_str());
+  return LoadAndEvaluate(params_.model_trained_with_loss_func_path);
 }
 
 Status TrainingRunner::Evaluate(InferenceSession& session) {
-  if (params_.skip_evaluation_) {
+  if (params_.skip_evaluation) {
     printf("Skipping evaluation...\n");
     return Status::OK();
   }
@@ -246,7 +245,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
   // A static batch index representing current test batch
   static size_t current_batch = 0;
 
-  if (params_.shuffle_data_ && current_batch == 0) {
+  if (params_.shuffle_data && current_batch == 0) {
     printf("Randomly shuffle test data.\n");
     test_data_->RandomShuffle();
   }
@@ -259,20 +258,20 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
 
   vector<string> feed_names = test_data_->TensorNames();
 
-  size_t num_batches = size_t(ceil((float)evaluation_batch_size / (float)params_.batch_size_));
-  if (evaluation_batch_size % params_.batch_size_ != 0) {
+  size_t num_batches = size_t(ceil((float)evaluation_batch_size / (float)params_.batch_size));
+  if (evaluation_batch_size % params_.batch_size != 0) {
     printf(
         "evaluation_batch_size %zu is not an integer multiple of batch_size %zu. "
         "Using evaluation_batch_size %zu",
         evaluation_batch_size,
-        params_.batch_size_,
-        num_batches * params_.batch_size_);
+        params_.batch_size,
+        num_batches * params_.batch_size);
   }
 
   RunOptions run_options;
   run_options.only_execute_path_to_fetches = true;
   for (size_t batch_idx = 0; batch_idx < num_batches; ++batch_idx) {
-    std::vector<MLValue> feeds = test_data_->GetKthBatch(params_.batch_size_, current_batch);
+    std::vector<MLValue> feeds = test_data_->GetKthBatch(params_.batch_size, current_batch);
     vector<MLValue> fetches;
     ORT_RETURN_IF_ERROR(session.Run(run_options,
                                     feed_names,
@@ -281,12 +280,12 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
                                     &fetches));
 
     // Call error function
-    if (params_.error_function_) {
-      params_.error_function_(feed_names, feeds, params_.fetch_names, fetches);
+    if (params_.error_function) {
+      params_.error_function(feed_names, feeds, params_.fetch_names, fetches);
     }
 
     // Set to next batch
-    if (++current_batch >= test_data_->TotalBatch(params_.batch_size_)) {
+    if (++current_batch >= test_data_->TotalBatch(params_.batch_size)) {
       if (test_data_loader_ != nullptr) {
         // Move to next shard
         test_data_ = test_data_loader_->NextShard();
@@ -296,8 +295,8 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
   }
 
   // Call after a test batch.
-  if (params_.post_evaluation_callback_) {
-    params_.post_evaluation_callback_(evaluation_batch_size, step_);
+  if (params_.post_evaluation_callback) {
+    params_.post_evaluation_callback(evaluation_batch_size, step_);
   }
 
   return Status::OK();
@@ -319,17 +318,17 @@ Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string
   // Prepare the weight<->optimizer mapping.
   // All weights use the same type of optimizer
   OptimizerInfo opt_info{
-      params_.training_optimizer_name_,
-      params_.learning_rate_,
+      params_.training_optimizer_name,
+      params_.learning_rate,
       params_.mpi_context.world_rank,
       params_.mpi_context.world_size,
       {}};
 
-  if (params_.training_optimizer_name_ == "AdamOptimizer") {
-    opt_info.attributes_["alpha"] = params_.adam_opt_params_.alpha_;
-    opt_info.attributes_["beta"] = params_.adam_opt_params_.beta_;
-    opt_info.attributes_["lambda"] = params_.adam_opt_params_.lambda_;
-    opt_info.attributes_["epsilon"] = params_.adam_opt_params_.epsilon_;
+  if (params_.training_optimizer_name == "AdamOptimizer") {
+    opt_info.attributes["alpha"] = params_.adam_opt_params.alpha;
+    opt_info.attributes["beta"] = params_.adam_opt_params.beta;
+    opt_info.attributes["lambda"] = params_.adam_opt_params.lambda;
+    opt_info.attributes["epsilon"] = params_.adam_opt_params.epsilon;
   }
 
   opt_infos.reserve(weights_to_train.size());

@@ -10,11 +10,11 @@ namespace onnxruntime {
 namespace training {
 
 struct OptimizerInfo {
-  std::string name_;
+  std::string name;
   float learning_rate;
   int world_rank;
   int world_size;
-  std::unordered_map<std::string, float> attributes_;
+  std::unordered_map<std::string, float> attributes;
 };
 
 // Utils for Constant Node Creation - Currently Used only in in_graph_training_optimizer

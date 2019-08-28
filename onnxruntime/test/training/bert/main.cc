@@ -63,14 +63,14 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     auto flags = options.parse(argc, argv);
 
     params.model_name = flags["model_name"].as<std::string>();
-    params.learning_rate_ = flags["learning_rate"].as<float>();
-    params.num_of_epoch_ = flags["num_of_epoch"].as<int>();
+    params.learning_rate = flags["learning_rate"].as<float>();
+    params.num_of_epoch = flags["num_of_epoch"].as<int>();
     params.num_of_perf_samples = flags["num_of_perf_samples"].as<int>();
-    params.batch_size_ = flags["train_batch_size"].as<int>();
+    params.batch_size = flags["train_batch_size"].as<int>();
     if (flags.count("eval_batch_size")) {
       params.eval_batch_size = flags["eval_batch_size"].as<int>();
     } else {
-      params.eval_batch_size = params.batch_size_;
+      params.eval_batch_size = params.batch_size;
     }
     params.evaluation_period = flags["evaluation_period"].as<size_t>();
     params.use_profiler = flags.count("use_profiler") > 0;
@@ -89,8 +89,8 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     } else {
       printf("Incorrect command line for mode: it must be one of [perf|train]\n");
     }
-    params.use_mixed_precision_ = flags["use_mixed_precision"].as<bool>();
-    if (params.use_mixed_precision_) {
+    params.use_mixed_precision = flags["use_mixed_precision"].as<bool>();
+    if (params.use_mixed_precision) {
       printf("Mixed precision training is enabled.\n");
     }
   } catch (const exception& e) {
@@ -109,50 +109,49 @@ float nsp_loss = 0.0f;
 std::vector<std::string> summary_loss;
 
 void setup_training_params(TrainingRunner::Parameters& params) {
-  params.model_path_ = params.model_name + ".onnx";
-  params.model_with_loss_func_path_ = params.model_name + "_with_cost.onnx";
-  params.model_with_training_graph_path_ = params.model_name + "_bw.onnx";
-  params.model_actual_running_graph_path_ = params.model_name + "_bw_running.onnx";
-  params.model_trained_path_ = params.model_name + "_trained.onnx";
-  params.model_trained_with_loss_func_path_ = params.model_name + "_with_cost_trained.onnx";
+  params.model_path = params.model_name + ".onnx";
+  params.model_with_loss_func_path = params.model_name + "_with_cost.onnx";
+  params.model_with_training_graph_path = params.model_name + "_bw.onnx";
+  params.model_actual_running_graph_path = params.model_name + "_bw_running.onnx";
+  params.model_trained_path = params.model_name + "_trained.onnx";
+  params.model_trained_with_loss_func_path = params.model_name + "_with_cost_trained.onnx";
 
-  params.loss_func_info_ = LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
-                                            "total_loss",
-                                            {/*prediction_masked_lm*/ "output1",
-                                             /*prediction_next_sentence*/ "output2",
-                                             /*masked_lm_positions*/ "masked_lm_positions",
-                                             /*masked_lm_ids*/ "masked_lm_ids",
-                                             /*masked_lm_weights*/ "masked_lm_weights",
-                                             /*next_sentence_labels*/ "next_sentence_labels",
-                                             /*mlm_loss*/ "mlm_loss",
-                                             /*nsp_loss*/ "nsp_loss",
-                                             /*batch_size*/ std::to_string(params.batch_size_),
-                                             /*max_sequence_len*/ std::to_string(512),
-                                             /*max_predictions_per_sequence*/ std::to_string(80),
-                                             /*summary_loss*/ "summary"});
-  params.model_prediction_name_ = "output1";  //"output2";
-  params.weights_not_to_train_ = {
+  params.loss_func_info = LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
+                                           "total_loss",
+                                           {/*prediction_masked_lm*/ "output1",
+                                            /*prediction_next_sentence*/ "output2",
+                                            /*masked_lm_positions*/ "masked_lm_positions",
+                                            /*masked_lm_ids*/ "masked_lm_ids",
+                                            /*masked_lm_weights*/ "masked_lm_weights",
+                                            /*next_sentence_labels*/ "next_sentence_labels",
+                                            /*mlm_loss*/ "mlm_loss",
+                                            /*nsp_loss*/ "nsp_loss",
+                                            /*batch_size*/ std::to_string(params.batch_size),
+                                            /*max_sequence_len*/ std::to_string(512),
+                                            /*max_predictions_per_sequence*/ std::to_string(80),
+                                            /*summary_loss*/ "summary"});
+  params.weights_not_to_train = {
       "position_01",            // Slice's dat input
       "op_min_ends_expand_10",  //op_min_ends_expand_10
   };
   params.fetch_names = {"total_loss", "mlm_loss", "nsp_loss", "summary"};
 
-  params.immutable_weights_ = {
+  params.immutable_weights = {
       {"Div", {{1, 8.0f}, {1, 1.4142135381698608f}}},
       {"Add", {{1, 1.0f}, {1, 9.999999960041972e-13f}}},
       {"Mul", {{1, 0.5f}, {1, -10000.0f}}},
       {"Sub", {{0, 1.0f}}}};
 
-  params.training_optimizer_name_ = "AdamOptimizer";
-  params.adam_opt_params_.alpha_ = 0.9f;
-  params.adam_opt_params_.beta_ = 0.999f;
-  params.adam_opt_params_.lambda_ = 0;
-  params.adam_opt_params_.epsilon_ = 1e-6f;
+  params.training_optimizer_name = "AdamOptimizer";
+  params.adam_opt_params.alpha = 0.9f;
+  params.adam_opt_params.beta = 0.999f;
+  params.adam_opt_params.lambda = 0;
+  params.adam_opt_params.epsilon = 1e-6f;
 
-  params.shuffle_data_ = false;
+  params.shuffle_data = false;
 
   // name_in_data_file -> name_in_model
-  params.input_name_map_ = {
+  params.input_name_map = {
       {"input_ids", "input1"},
       {"segment_ids", "input2"},
       {"input_mask", "input3"},
@@ -161,14 +160,14 @@ void setup_training_params(TrainingRunner::Parameters& params) {
       {"masked_lm_weights", "masked_lm_weights"},
       {"next_sentence_label", "next_sentence_labels"}};
 
-  params.use_cuda_ = true;
+  params.use_cuda = true;
 
-  params.skip_evaluation_ = params.is_perf_test;
+  params.skip_evaluation = params.is_perf_test;
 
-  params.error_function_ = [params](const std::vector<std::string>& /*feed_names*/,
-                                    const std::vector<OrtValue>& /*feeds*/,
-                                    const std::vector<std::string>& fetch_names,
-                                    const std::vector<OrtValue>& fetches) {
+  params.error_function = [params](const std::vector<std::string>& /*feed_names*/,
+                                   const std::vector<OrtValue>& /*feeds*/,
+                                   const std::vector<std::string>& fetch_names,
+                                   const std::vector<OrtValue>& fetches) {
     const Tensor& total_loss_t = fetches[0].Get<Tensor>();
     const Tensor& mlm_loss_t = fetches[1].Get<Tensor>();
     const Tensor& nsp_loss_t = fetches[2].Get<Tensor>();
@@ -194,7 +193,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
   };
 
   auto tensorboard = std::make_shared<EventWriter>(params.log_dir);
-  params.post_evaluation_callback_ = [tensorboard](size_t num_samples, size_t step) {
+  params.post_evaluation_callback = [tensorboard](size_t num_samples, size_t step) {
     float average_total_loss = total_loss / float(num_samples);
     float average_mlm_loss = mlm_loss / float(num_samples);
     float average_nsp_loss = nsp_loss / float(num_samples);
@@ -244,14 +243,13 @@ int main(int argc, char* argv[]) {
   // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
   // Adding another cuda kernel call for this division seems wasteful currently.
   // params.learning_rate_ = LEARNING_RATE / params.batch_size_;
-  params.learning_rate_ = params.learning_rate_ / params.mpi_context.world_size;
-
+  params.learning_rate = params.learning_rate / params.mpi_context.world_size;
 
   // start training session
   std::unique_ptr<TrainingRunner> runner;
   if (params.is_perf_test) {
     // setup fake data
-    int batch_size = static_cast<int>(params.batch_size_);
+    int batch_size = static_cast<int>(params.batch_size);
     int max_seq_len_in_batch = 512;
     std::vector<std::string> tensor_names = {"input1",
                                              "input2",
@@ -284,12 +282,12 @@ int main(int argc, char* argv[]) {
     auto device_count = params.mpi_context.world_size;
     const size_t max_num_files_preload = 2;
 
-    auto training_data_loader = std::make_shared<DataLoader>(params.input_name_map_,
+    auto training_data_loader = std::make_shared<DataLoader>(params.input_name_map,
                                                              params.train_data_dir,
                                                              max_num_files_preload,
                                                              params.mpi_context.world_rank,
                                                              device_count);
-    auto test_data_loader = std::make_shared<DataLoader>(params.input_name_map_,
+    auto test_data_loader = std::make_shared<DataLoader>(params.input_name_map,
                                                          params.test_data_dir,
                                                          max_num_files_preload);
     RETURN_IF_FAIL(training_data_loader->Load());

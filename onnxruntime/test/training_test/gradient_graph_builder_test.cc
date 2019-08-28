@@ -53,8 +53,8 @@ static void CreateMLValue(const AllocatorPtr& alloc,
 }
 
 static std::string BuildBackPropGraph(const TrainingRunner::Parameters& params) {
-  const std::string forward_model_file = params.model_path_;
-  const std::string backward_model_file = params.model_with_training_graph_path_;
+  const std::string forward_model_file = params.model_path;
+  const std::string backward_model_file = params.model_with_training_graph_path;
 
   std::unique_ptr<Environment> env;
   EXPECT_TRUE(Environment::Create(env).IsOK());
@@ -67,8 +67,8 @@ static std::string BuildBackPropGraph(const TrainingRunner::Parameters& params) 
   EXPECT_TRUE(training_session.Load(forward_model_file).IsOK());
 
   std::unordered_set<std::string> weights_to_train =
-      training_session.GetTrainableModelInitializers(params.immutable_weights_);
-  for (const auto& not_to_train : params.weights_not_to_train_) {
+      training_session.GetTrainableModelInitializers(params.immutable_weights);
+  for (const auto& not_to_train : params.weights_not_to_train) {
     weights_to_train.erase(not_to_train);
   }
 
@@ -85,14 +85,14 @@ static std::string BuildBackPropGraph(const TrainingRunner::Parameters& params) 
   }
   std::cout << "]" << std::endl;
 
-  EXPECT_TRUE(training_session.BuildLossFunction(params.loss_func_info_).IsOK());
-  EXPECT_TRUE(training_session.BuildGradientGraph(weights_to_train, params.loss_func_info_.loss_name, true).IsOK());
+  EXPECT_TRUE(training_session.BuildLossFunction(params.loss_func_info).IsOK());
+  EXPECT_TRUE(training_session.BuildGradientGraph(weights_to_train, params.loss_func_info.loss_name, true).IsOK());
 
-  if (params.use_gist_) {
+  if (params.use_gist) {
     EXPECT_TRUE(training_session.AddGistEncoding().IsOK());
 
-    if (!params.model_gist_encode_.empty()) {
-      EXPECT_TRUE(training_session.Save(params.model_gist_encode_, TrainingSession::SaveOption::NO_RELOAD).IsOK());
+    if (!params.model_gist_encode.empty()) {
+      EXPECT_TRUE(training_session.Save(params.model_gist_encode, TrainingSession::SaveOption::NO_RELOAD).IsOK());
     }
   }
 
@@ -162,10 +162,10 @@ static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
 
 TEST(GradientGraphBuilderTest, BuildGradientGraphTest) {
   TrainingRunner::Parameters params;
-  params.model_path_ = ORIGINAL_MODEL_PATH;
-  params.model_with_training_graph_path_ = BACKWARD_MODEL_PATH;
-  params.loss_func_info_ = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
-  params.training_optimizer_name_ = "SGDOptimizer";
+  params.model_path = ORIGINAL_MODEL_PATH;
+  params.model_with_training_graph_path = BACKWARD_MODEL_PATH;
+  params.loss_func_info = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+  params.training_optimizer_name = "SGDOptimizer";
 
   const std::string& backprop_model_file = BuildBackPropGraph(params);
 
@@ -205,10 +205,10 @@ TEST(GradientGraphBuilderTest, BuildGradientGraphTest) {
 
 TEST(GradientGraphBuilderTest, TrainingSession_Basic) {
   TrainingRunner::Parameters params;
-  params.model_path_ = ORIGINAL_MODEL_PATH;
-  params.model_with_training_graph_path_ = BACKWARD_MODEL_PATH;
+  params.model_path = ORIGINAL_MODEL_PATH;
+  params.model_with_training_graph_path = BACKWARD_MODEL_PATH;
 
-  params.loss_func_info_ = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+  params.loss_func_info = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
 
   const std::string& backprop_model_file = BuildBackPropGraph(params);
 
@@ -220,13 +220,13 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
   const std::string gist_model_file = GIST_MODEL_PATH;
 
   TrainingRunner::Parameters params;
-  params.model_path_ = ORIGINAL_MODEL_PATH;
-  params.model_with_training_graph_path_ = BACKWARD_MODEL_PATH;
-  params.model_gist_encode_ = gist_model_file;
-  params.use_gist_ = true;
+  params.model_path = ORIGINAL_MODEL_PATH;
+  params.model_with_training_graph_path = BACKWARD_MODEL_PATH;
+  params.model_gist_encode = gist_model_file;
+  params.use_gist = true;
 
-  params.loss_func_info_ = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
-  params.training_optimizer_name_ = "SGDOptimizer";
+  params.loss_func_info = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+  params.training_optimizer_name = "SGDOptimizer";
 
   const std::string& backprop_model_file = BuildBackPropGraph(params);
 
@@ -265,10 +265,10 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithLogging) {
   EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kINFO, DataType::USER)) << "INFO level logging enabled.";
 
   TrainingRunner::Parameters params;
-  params.model_path_ = ORIGINAL_MODEL_PATH;
-  params.model_with_training_graph_path_ = BACKWARD_MODEL_PATH;
-  params.loss_func_info_ = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
-  params.training_optimizer_name_ = "SGDOptimizer";
+  params.model_path = ORIGINAL_MODEL_PATH;
+  params.model_with_training_graph_path = BACKWARD_MODEL_PATH;
+  params.loss_func_info = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+  params.training_optimizer_name = "SGDOptimizer";
   const std::string& backprop_model_file = BuildBackPropGraph(params);
 
   SessionOptions so;
@@ -290,11 +290,11 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithLogging) {
 
 TEST(GradientGraphBuilderTest, TrainingSession_WithProfiler) {
   TrainingRunner::Parameters params;
-  params.model_path_ = ORIGINAL_MODEL_PATH;
-  params.model_with_training_graph_path_ = BACKWARD_MODEL_PATH;
+  params.model_path = ORIGINAL_MODEL_PATH;
+  params.model_with_training_graph_path = BACKWARD_MODEL_PATH;
 
-  params.loss_func_info_ = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
-  params.training_optimizer_name_ = "SGDOptimizer";
+  params.loss_func_info = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+  params.training_optimizer_name = "SGDOptimizer";
 
   const std::string& backprop_model_file = BuildBackPropGraph(params);
 
@@ -523,43 +523,43 @@ static void RunBertTrainingWithChecks(
 #endif
 TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
   TrainingRunner::Parameters params;
-  params.model_path_ = "testdata/bert_toy_optimized.onnx";
-  params.model_with_training_graph_path_ = "testdata/bert_toy_optimized_bw.onnx";
-  params.loss_func_info_ = LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
-                                            "total_loss",
-                                            {/*prediction_masked_lm*/ "prediction_scores",
-                                             /*prediction_next_sentence*/ "seq_relationship_score",
-                                             /*masked_lm_positions*/ "masked_lm_positions",
-                                             /*masked_lm_ids*/ "masked_lm_ids",
-                                             /*masked_lm_weights*/ "masked_lm_weights",
-                                             /*next_sentence_labels*/ "next_sentence_labels",
-                                             /*mlm_loss*/ "mlm_loss",
-                                             /*nsp_loss*/ "nsp_loss",
-                                             /*batch_size*/ std::to_string(13),
-                                             /*max_sequence_len*/ std::to_string(7),
-                                             /*max_predictions_per_sequence*/ std::to_string(7),
-                                             /*summary_loss*/ "summary"});
-  params.weights_not_to_train_ = {
+  params.model_path = "testdata/bert_toy_optimized.onnx";
+  params.model_with_training_graph_path = "testdata/bert_toy_optimized_bw.onnx";
+  params.loss_func_info = LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
+                                           "total_loss",
+                                           {/*prediction_masked_lm*/ "prediction_scores",
+                                            /*prediction_next_sentence*/ "seq_relationship_score",
+                                            /*masked_lm_positions*/ "masked_lm_positions",
+                                            /*masked_lm_ids*/ "masked_lm_ids",
+                                            /*masked_lm_weights*/ "masked_lm_weights",
+                                            /*next_sentence_labels*/ "next_sentence_labels",
+                                            /*mlm_loss*/ "mlm_loss",
+                                            /*nsp_loss*/ "nsp_loss",
+                                            /*batch_size*/ std::to_string(13),
+                                            /*max_sequence_len*/ std::to_string(7),
+                                            /*max_predictions_per_sequence*/ std::to_string(7),
+                                            /*summary_loss*/ "summary"});
+  params.weights_not_to_train = {
       "position_01",            // Slice's dat input
       "op_min_ends_expand_10",  //op_min_ends_expand_10
   };
-  params.immutable_weights_ = {
+  params.immutable_weights = {
       {"Div", {{1, 8.0f}, {1, 1.4142135381698608f}}},
       {"Add", {{1, 1.0f}, {1, 9.999999960041972e-13f}}},
       {"Mul", {{1, 0.5f}, {1, -10000.0f}}},
       {"Sub", {{0, 1.0f}}}};
 
-  params.training_optimizer_name_ = "AdamOptimizer";
-  params.adam_opt_params_.alpha_ = 0.9f;
-  params.adam_opt_params_.beta_ = 0.999f;
-  params.adam_opt_params_.lambda_ = 0;
-  params.adam_opt_params_.epsilon_ = 0.1f;
+  params.training_optimizer_name = "AdamOptimizer";
+  params.adam_opt_params.alpha = 0.9f;
+  params.adam_opt_params.beta = 0.999f;
+  params.adam_opt_params.lambda = 0;
+  params.adam_opt_params.epsilon = 0.1f;
 
   BuildBackPropGraph(params);
 
 #ifdef USE_CUDA
   SessionOptions so;
-  RunBertTrainingWithChecks(so, params.model_with_training_graph_path_);
+  RunBertTrainingWithChecks(so, params.model_with_training_graph_path);
 #endif
 }
 

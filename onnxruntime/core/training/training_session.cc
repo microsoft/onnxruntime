@@ -55,7 +55,7 @@ static Status BuildOptimizerInternal(Graph& graph,
     ORT_RETURN_IF_NOT(weight_arg, "Node arg ", weight_name, " is not found in the graph.");
 
     auto optimizer_info = it->second;
-    auto opt_builder = OptimizerBuilderRegistry::GetInstance().MakeUnique(optimizer_info.name_);
+    auto opt_builder = OptimizerBuilderRegistry::GetInstance().MakeUnique(optimizer_info.name);
     ORT_RETURN_IF_NOT(opt_builder);
 
     ORT_RETURN_IF_ERROR(opt_builder->Build(weight_arg,

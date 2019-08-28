@@ -119,7 +119,7 @@ class AdamOptimizerBuilder : public OptimizerBuilder {
     std::vector<std::string> attr_names{"alpha", "beta", "lambda", "epsilon"};
     std::vector<AttributeProto> attr;
     for (auto name : attr_names) {
-      attr.push_back(MakeAttribute(name, opt_info.attributes_.at(name)));
+      attr.push_back(MakeAttribute(name, opt_info.attributes.at(name)));
     }
 
     graph_defs.AddNodeDefs({NodeDef("AdamOptimizer",

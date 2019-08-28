@@ -52,15 +52,15 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     auto flags = options.parse(argc, argv);
 
     params.model_name = flags["model_name"].as<std::string>();
-    params.use_cuda_ = flags.count("use_cuda") > 0;
-    params.use_gist_ = flags.count("use_gist") > 0;
-    params.learning_rate_ = flags["learning_rate"].as<float>();
-    params.num_of_epoch_ = flags["num_of_epoch"].as<int>();
-    params.batch_size_ = flags["train_batch_size"].as<int>();
+    params.use_cuda = flags.count("use_cuda") > 0;
+    params.use_gist = flags.count("use_gist") > 0;
+    params.learning_rate = flags["learning_rate"].as<float>();
+    params.num_of_epoch = flags["num_of_epoch"].as<int>();
+    params.batch_size = flags["train_batch_size"].as<int>();
     if (flags.count("eval_batch_size")) {
       params.eval_batch_size = flags["eval_batch_size"].as<int>();
     } else {
-      params.eval_batch_size = params.batch_size_;
+      params.eval_batch_size = params.batch_size;
     }
     params.evaluation_period = flags["evaluation_period"].as<size_t>();
 
@@ -84,39 +84,38 @@ int true_count = 0;
 float total_loss = 0.0f;
 
 void setup_training_params(TrainingRunner::Parameters& params) {
-  params.model_path_ = params.model_name + ".onnx";
-  params.model_with_loss_func_path_ = params.model_name + "_with_cost.onnx";
-  params.model_with_training_graph_path_ = params.model_name + "_bw.onnx";
-  params.model_actual_running_graph_path_ = params.model_name + "_bw_running.onnx";
-  params.model_trained_path_ = params.model_name + "_trained.onnx";
-  params.model_trained_with_loss_func_path_ = params.model_name + "_with_cost_trained.onnx";
-  params.model_prediction_name_ = "predictions";
+  params.model_path = params.model_name + ".onnx";
+  params.model_with_loss_func_path = params.model_name + "_with_cost.onnx";
+  params.model_with_training_graph_path = params.model_name + "_bw.onnx";
+  params.model_actual_running_graph_path = params.model_name + "_bw_running.onnx";
+  params.model_trained_path = params.model_name + "_trained.onnx";
+  params.model_trained_with_loss_func_path = params.model_name + "_with_cost_trained.onnx";
 
   //Gist encode
-  params.model_gist_encode_ = params.model_name + "_encode_gist.onnx";
-  params.loss_func_info_ = LossFunctionInfo(OpDef("SoftmaxCrossEntropy"),
-                                            "loss",
-                                            {params.model_prediction_name_, "labels"});
+  params.model_gist_encode = params.model_name + "_encode_gist.onnx";
+  params.loss_func_info = LossFunctionInfo(OpDef("SoftmaxCrossEntropy"),
+                                           "loss",
+                                           {"predictions", "labels"});
   params.fetch_names = {"predictions", "loss"};
 
   // TODO: simplify provider/optimizer configuration. For now it is fixed to used SGD with CPU and Adam with GPU.
-  if (params.use_cuda_) {
+  if (params.use_cuda) {
     // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
     // Adding another cuda kernel call for this division seems wasteful currently.
-    params.training_optimizer_name_ = "AdamOptimizer";
+    params.training_optimizer_name = "AdamOptimizer";
 
-    params.adam_opt_params_.alpha_ = 0.9f;
-    params.adam_opt_params_.beta_ = 0.999f;
-    params.adam_opt_params_.lambda_ = 0;
-    params.adam_opt_params_.epsilon_ = 0.1f;
+    params.adam_opt_params.alpha = 0.9f;
+    params.adam_opt_params.beta = 0.999f;
+    params.adam_opt_params.lambda = 0;
+    params.adam_opt_params.epsilon = 0.1f;
   } else {
-    params.training_optimizer_name_ = "SGDOptimizer";
+    params.training_optimizer_name = "SGDOptimizer";
   }
 
-  params.error_function_ = [](const std::vector<std::string>& /*feed_names*/,
-                              const std::vector<OrtValue>& feeds,
-                              const std::vector<std::string>& /*fetch_names*/,
-                              const std::vector<OrtValue>& fetches) {
+  params.error_function = [](const std::vector<std::string>& /*feed_names*/,
+                             const std::vector<OrtValue>& feeds,
+                             const std::vector<std::string>& /*fetch_names*/,
+                             const std::vector<OrtValue>& fetches) {
     const Tensor& label_t = feeds[1].Get<Tensor>();
     const Tensor& predict_t = fetches[0].Get<Tensor>();
     const Tensor& loss_t = fetches[1].Get<Tensor>();
@@ -146,7 +145,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
   };
 
   auto tensorboard = std::make_shared<EventWriter>(params.log_dir);
-  params.post_evaluation_callback_ = [tensorboard](size_t num_samples, size_t step) {
+  params.post_evaluation_callback = [tensorboard](size_t num_samples, size_t step) {
     float precision = float(true_count) / num_samples;
     float average_loss = total_loss / float(num_samples);
     tensorboard->AddScalar("precision", precision, step);
@@ -185,7 +184,7 @@ int main(int argc, char* args[]) {
   params.mpi_context = setup_horovod();
 #endif
 
-  params.learning_rate_ /= params.mpi_context.world_size;
+  params.learning_rate /= params.mpi_context.world_size;
 
   // setup data
   auto device_count = params.mpi_context.world_size;
