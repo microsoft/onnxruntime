@@ -1670,6 +1670,11 @@ Status Graph::VerifyNodeAndOpMatch() {
   // we may have some locally defined outer scope args if we're in the middle of constructing a subgraph
   // and need to call Resolve
   lsc.output_names.insert(outer_scope_node_arg_names_.cbegin(), outer_scope_node_arg_names_.cend());
+  try {
+    checker::check_graph(*graph_proto_, ctx, lsc);
+  } catch (const std::exception& ex) {
+    return Status(ONNXRUNTIME, INVALID_GRAPH, ex.what());
+  }
 
   for (auto node_index : nodes_in_topological_order_) {
     // Node verification.
@@ -1689,12 +1694,6 @@ Status Graph::VerifyNodeAndOpMatch() {
     }
 
     if (!node.Op()) {
-      try {
-        checker::check_node(node_proto, ctx, lsc);
-      } catch (const std::exception& ex) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "This is an invalid model. Error in Node:", node_name, " : ", ex.what());
-      }
-
       auto maxInclusiveVersion = DomainToVersionMap().find(domain)->second;
       node.op_ = schema_registry_->GetSchema(node.OpType(), maxInclusiveVersion, node.Domain());
 
