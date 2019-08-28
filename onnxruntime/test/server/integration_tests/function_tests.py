@@ -360,6 +360,13 @@ class HttpEndpointTests(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.content.decode('utf-8'), 'Healthy')
 
+    def test_metric_endpoint(self):
+        url = url = "http://{0}:{1}/metrics".format(self.server_ip, self.server_port)
+        test_util.test_log(url)
+        r = requests.get(url)
+        self.assertEqual(r.status_code, 200)
+#        self.assertEqual(r.content.decode(''))
+
 class GRPCTests(unittest.TestCase):
     server_ip = '127.0.0.1'
     server_port = 54321

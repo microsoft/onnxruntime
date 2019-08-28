@@ -44,6 +44,11 @@ App& App::RegisterStartup(const StartFn& on_start) {
   return *this;
 }
 
+App& App::RegisterGet(const std::string& route, const HandlerFn& fn) {
+  routes_.RegisterController(http::verb::get, route, fn);
+  return *this;
+}
+
 App& App::RegisterPost(const std::string& route, const HandlerFn& fn) {
   routes_.RegisterController(http::verb::post, route, fn);
   return *this;

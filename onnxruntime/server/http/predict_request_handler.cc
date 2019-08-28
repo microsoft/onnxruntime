@@ -2,12 +2,14 @@
 // Licensed under the MIT License.
 
 #include <google/protobuf/stubs/status.h>
+#include <chrono> // high res clock for inference monitoring
 
 #include "environment.h"
 #include "http_server.h"
 #include "json_handling.h"
 #include "executor.h"
 #include "util.h"
+#include "metric_registry.h"
 
 namespace onnxruntime {
 namespace server {
@@ -23,6 +25,10 @@ namespace protobufutil = google::protobuf::util;
     }                                                                                            \
     auto json_error_message = CreateJsonError(http_error_code, (message));                       \
     logger->debug(json_error_message);                                                           \
+    (*MetricRegistry::Get().totalHTTPErrors)->Add({                                              \
+      {"path", (context).request.target().to_string()},                                          \
+      {"errorCode", std::to_string(static_cast<unsigned>(http_error_code))},                     \
+    }).Increment();                                                                              \
     (context).response.result(http_error_code);                                                  \
     (context).response.body() = json_error_message;                                              \
     (context).response.set(http::field::content_type, "application/json");                       \
@@ -53,8 +59,8 @@ void Predict(const std::string& name,
   // Deserialize the payload
   auto body = context.request.body();
   PredictRequest predict_request{};
-  http::status error_code;
-  std::string error_message;
+  http::status error_code = http::status(0);
+  std::string error_message = "";
   bool parse_succeeded = ParseRequestPayload(context, request_type, predict_request, error_code, error_message);
   if (!parse_succeeded) {
     GenerateErrorResponse(logger, error_code, error_message, context);
@@ -64,11 +70,21 @@ void Predict(const std::string& name,
   // Run Prediction
   Executor executor(env.get(), context.request_id);
   PredictResponse predict_response{};
+  // Log inference (prediction only) time, do not record json serde
+  auto begin = std::chrono::high_resolution_clock::now();
   auto status = executor.Predict(name, version, predict_request, predict_response);
+  auto end = std::chrono::high_resolution_clock::now();
   if (!status.ok()) {
     GenerateErrorResponse(logger, GetHttpStatusCode((status)), status.error_message(), context);
     return;
   }
+
+  // Don't log failed requests as that will potentially skew results
+  (*MetricRegistry::Get().inferenceTimer)->Add({{"name", name}, {"version", version}},
+      // Note: Need to specify quantiles each time, cannot add to the family
+      // see: https://github.com/jupp0r/prometheus-cpp/issues/53#issuecomment-295151744
+      MetricRegistry::TimeBuckets()).
+      Observe(std::chrono::duration_cast<std::chrono::milliseconds>(end-begin).count());
 
   // Serialize to proper output format
   std::string response_body{};
@@ -108,6 +124,10 @@ static bool ParseRequestPayload(const HttpContext& context, SupportedContentType
         error_message = status.error_message();
         return false;
       }
+      // Log Request Size of JSON payload
+      (*MetricRegistry::Get().httpRequestSize)->
+          Add({{"type","json"}}, MetricRegistry::ByteBuckets()).
+          Observe(static_cast<int>(body.size()));
       break;
     }
     case SupportedContentType::PbByteArray: {
@@ -117,6 +137,10 @@ static bool ParseRequestPayload(const HttpContext& context, SupportedContentType
         error_message = "Invalid payload.";
         return false;
       }
+      // Log request size of protobuf payload
+      (*MetricRegistry::Get().httpRequestSize)->
+          Add({{"type","protobuf"}}, MetricRegistry::ByteBuckets()).
+          Observe(static_cast<int>(body.size()));
       break;
     }
     default: {

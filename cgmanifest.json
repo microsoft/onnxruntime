@@ -400,15 +400,24 @@
          }
      },
      {  
-       "component":{  
-          "type":"other",
-          "Other":{  
-             "Name":"Go",
-             "Version":"1.12.6",
-             "DownloadUrl":"https://dl.google.com/go/go1.12.6.linux-amd64.tar.gz"
-          }
-   }
-}
+         "component": {  
+            "type":"other",
+            "Other": {  
+               "Name":"Go",
+               "Version":"1.12.6",
+               "DownloadUrl":"https://dl.google.com/go/go1.12.6.linux-amd64.tar.gz"
+            }
+         }
+      },
+      {
+         "component": {
+            "git": {
+               "commitHash": "d83dd68e496e024ae0f1f0c19ac2ab0d27330330",
+               "repositoryUrl": "https://github.com/jupp0r/prometheus-cpp.git"
+            },
+            "type": "git"
+         }
+      }
    ],
    "Version":1
 }

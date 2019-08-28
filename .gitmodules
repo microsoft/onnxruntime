@@ -37,6 +37,9 @@
 [submodule "cmake/external/spdlog"]
 	path = cmake/external/spdlog
 	url = https://github.com/gabime/spdlog.git
+[submodule "cmake/external/prometheus-cpp"]
+	path = cmake/external/prometheus-cpp
+	url = https://github.com/jupp0r/prometheus-cpp.git
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git

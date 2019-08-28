@@ -5,7 +5,10 @@
 #include "http_server.h"
 #include "predict_request_handler.h"
 #include "server_configuration.h"
+#include "metric_registry.h"
+
 #include "grpc/grpc_app.h"
+#include <prometheus/text_serializer.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/sink.h>
 #include <spdlog/sinks/stdout_sinks.h>
@@ -102,6 +105,12 @@ int main(int argc, char* argv[]) {
         }
         context.response.body() = server::CreateJsonError(context.error_code, context.error_message);
       });
+
+  app.RegisterGet("/metrics", [&](const auto& name, const auto& version, const auto& aciton, auto& context) -> void {
+    const auto metricData = prometheus::TextSerializer().Serialize(
+        onnxruntime::server::MetricRegistry::Get().registry.Collect()); 
+    context.response.body() = metricData;
+  });
 
   app.RegisterPost(
       R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))",
