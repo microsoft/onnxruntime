@@ -181,7 +181,7 @@ class DataTypeImpl {
   }
 
   // Return the type meta that we are using in the runtime.
-  template <typename T, typename... Types>
+  template <typename T>
   static MLDataType GetType();
 
   // Return the types for a concrete tensor type, like Tensor_Float
@@ -480,7 +480,7 @@ class SparseTensorType : public SparseTensorTypeBase {
   */
 template <class T>
 struct NonTensorTypeConverter {
-  static void FromContainer(const void* data, size_t data_size, OrtValue& output) {
+  static void FromContainer(MLDataType dtype, const void* data, size_t data_size, OrtValue& output) {
     ORT_THROW("Not implemented");
   }
   static void ToContainer(const OrtValue& input, size_t data_size, void* data) {
@@ -648,7 +648,7 @@ class OpaqueType : public NonTensorType<T> {
   }
 
   void FromDataContainer (const void* data, size_t data_size, OrtValue& output) const override {
-    NonTensorTypeConverter<T>::FromContainer(data, data_size, output);
+    NonTensorTypeConverter<T>::FromContainer(this, data, data_size, output);
   }
 
   void ToDataContainer (const OrtValue& input, size_t data_size, void* data) const override {

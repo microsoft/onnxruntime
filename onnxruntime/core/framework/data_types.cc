@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/framework/data_types.h"
-#include "core/framework/ml_value.h"
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/graph/onnx_protobuf.h"
