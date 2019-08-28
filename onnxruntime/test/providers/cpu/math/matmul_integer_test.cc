@@ -68,7 +68,6 @@ void RunMatMulIntegerU8S8Test(const int M, const int N, const int K) {
                         ToVector<int8_t>(T2.data(), K * N), /*is_initializer*/ true);
   test.AddOutput<int32_t>("T3", {M, N},
                           ToVector<int32_t>(T3.data(), M * N));
-  test.Run();
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});  // currently nGraph provider does not support gemm_u8s8
 }
