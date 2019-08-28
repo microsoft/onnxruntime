@@ -528,7 +528,7 @@ private:
                 int32_t sum = 0;
 
                 for (size_t k = 0; k < K; k++) {
-                    sum += ((*b + offb) * (*a + offa));
+                    sum += ((int32_t(*b) - offb) * (int32_t(*a) - offa));
                     b += ldb;
                     a += 1;
                 }
