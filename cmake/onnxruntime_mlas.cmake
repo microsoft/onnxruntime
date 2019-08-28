@@ -190,5 +190,5 @@ else()
 endif()
 
 add_library(onnxruntime_mlas STATIC ${mlas_common_srcs} ${mlas_platform_srcs})
-target_include_directories(onnxruntime_mlas PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}/core/mlas/lib)
+target_include_directories(onnxruntime_mlas PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}/core/mlas/lib ${eigen_INCLUDE_DIRS})
 set_target_properties(onnxruntime_mlas PROPERTIES FOLDER "ONNXRuntime")
