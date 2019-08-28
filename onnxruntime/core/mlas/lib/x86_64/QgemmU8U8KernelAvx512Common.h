@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    QgemmU8U8KernelAvx512Common.inc
+    QgemmU8U8KernelAvx512Common.h
 
 Abstract:
 
