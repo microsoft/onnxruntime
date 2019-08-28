@@ -137,11 +137,11 @@ Abstract:
         ClearBlockAccumulators \Columns\(),\Rows\()
 
 .if \Rows\() >= 2
-        add     x10,x0,x6,lsl 2             // compute matrix A plus 1 row
+        add     x10,x0,x6,lsl #2            // compute matrix A plus 1 row
 .endif
 .if \Rows\() >= 4
-        add     x11,x10,x6,lsl 2            // compute matrix A plus 2 rows
-        add     x12,x11,x6,lsl 2            // compute matrix A plus 3 rows
+        add     x11,x10,x6,lsl #2           // compute matrix A plus 2 rows
+        add     x12,x11,x6,lsl #2           // compute matrix A plus 3 rows
 .endif
 
         sub     x9,x3,#4                    // decrement block count to process
@@ -433,9 +433,9 @@ MlasSgemmKernel\Mode\():
         stp     d8,d9,[sp,#-32]!
         stp     d10,d11,[sp,#16]
 
-        add     x13,x2,x7,lsl 2             // compute matrix C plus 1 row
-        add     x14,x13,x7,lsl 2            // compute matrix C plus 2 rows
-        add     x15,x14,x7,lsl 2            // compute matrix C plus 3 rows
+        add     x13,x2,x7,lsl #2            // compute matrix C plus 1 row
+        add     x14,x13,x7,lsl #2           // compute matrix C plus 2 rows
+        add     x15,x14,x7,lsl #2           // compute matrix C plus 3 rows
         mov     x8,x0                       // save matrix A
 
 //
