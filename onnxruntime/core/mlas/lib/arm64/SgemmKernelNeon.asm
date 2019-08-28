@@ -452,8 +452,8 @@ $Mode.OutputRemaining1x$Rows.Block
         PROLOG_SAVE_REG_PAIR d10,d11,#16
 
         add     x13,x2,x7 lsl #2            ; compute matrix C plus 1 row
-        add     x14,x13,x7 lsl #2           ; compute matrix C plus 1 row
-        add     x15,x14,x7 lsl #2           ; compute matrix C plus 1 row
+        add     x14,x13,x7 lsl #2           ; compute matrix C plus 2 rows
+        add     x15,x14,x7 lsl #2           ; compute matrix C plus 3 rows
         mov     x8,x0                       ; save matrix A
 
 ;
