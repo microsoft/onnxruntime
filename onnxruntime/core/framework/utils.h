@@ -25,6 +25,8 @@ class Logger;
 }
 
 namespace utils {
+void* DefaultAlloc(size_t size);
+void DefaultFree(void* p);
 
 AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info);
 
