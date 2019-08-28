@@ -27,8 +27,7 @@ class IExecutionFrame {
  protected:
   IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
                   const std::unordered_map<int, OrtValue>& initializers, const std::vector<int>& fetch_mlvalue_idxs,
-                  const std::vector<OrtValue>& fetches, const OrtValueNameIdxMap& ort_value_idx_map,
-                  const NodeIndexInfo& node_index_info);
+                  const std::vector<OrtValue>& fetches, const NodeIndexInfo& node_index_info);
 
  public:
   virtual ~IExecutionFrame();

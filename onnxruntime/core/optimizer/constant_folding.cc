@@ -20,66 +20,62 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     if (!node) {
       continue;
     }
+    try {
+      ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
 
-    ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
+      InitializedTensorSet constant_inputs;
 
-    InitializedTensorSet constant_inputs;
+      // Check if constant folding can be applied on this node.
+      if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders()) ||
+          excluded_op_types_.find(node->OpType()) != excluded_op_types_.end() ||
+          // constant folding does not support executing a node that includes subgraphs (control flow operators,
+          // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
+          // by the Recurse call above
+          node->ContainsSubgraph() ||
+          // if the node output is in the graph output, we will get a graph with no nodes.
+          // TODO check if this is allowed in ONNX and ORT.
+          graph.IsNodeOutputsInGraphOutputs(*node) ||
+          !graph_utils::AllNodeInputsAreConstant(graph, *node, constant_inputs)) {
+        continue;
+      }
 
-    // Check if constant folding can be applied on this node.
-    if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders()) ||
-        excluded_op_types_.find(node->OpType()) != excluded_op_types_.end() ||
-        // constant folding does not support executing a node that includes subgraphs (control flow operators,
-        // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
-        // by the Recurse call above
-        node->ContainsSubgraph() ||
-        // if the node output is in the graph output, we will get a graph with no nodes.
-        // TODO check if this is allowed in ONNX and ORT.
-        graph.IsNodeOutputsInGraphOutputs(*node) ||
-        !graph_utils::AllNodeInputsAreConstant(graph, *node, constant_inputs)) {
+      // Create execution frame for executing constant nodes.
+      OptimizerExecutionFrame::Info info({node}, constant_inputs);
+
+      std::vector<int> fetch_mlvalue_idxs;
+      for (auto n : node->OutputDefs()) {
+        if (n->Exists()) {
+          fetch_mlvalue_idxs.push_back(info.GetMLValueIndex(n->Name()));
+        }
+      }
+      std::vector<OrtValue> fetches;
+      Status st = info.RunSingleKernel(fetch_mlvalue_idxs, node->Index(), fetches);
+      if (!st.IsOK()) continue;
+
+      // Go over all output node args and substitute them with the newly computed tensors, which will be
+      // added to the graph as initializers.
+      ORT_ENFORCE(fetches.size() == node->OutputDefs().size());
+      for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
+        OrtValue& ort_value = fetches[fetch_idx];
+
+        // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
+        const auto* constant_arg_out = node->OutputDefs()[fetch_idx];
+        ORT_ENFORCE(ort_value.IsTensor());
+        const Tensor& out_tensor = ort_value.Get<Tensor>();
+        ONNX_NAMESPACE::TensorProto out_tensorproto =
+            utils::TensorToTensorProto(out_tensor, constant_arg_out->Name(), *constant_arg_out->TypeAsProto());
+
+        graph.AddInitializedTensor(out_tensorproto);
+      }
+    } catch (const std::exception&) {
+      // ignore the errors
       continue;
     }
-
-    // Create execution frame for executing constant nodes.
-    OptimizerExecutionFrame::Info info({node}, constant_inputs);
-
-    std::vector<int> fetch_mlvalue_idxs;
-    for (const auto* node_out : node->OutputDefs()) {
-      fetch_mlvalue_idxs.push_back(info.GetMLValueIndex(node_out->Name()));
-    }
-
-    OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
-
-    auto* kernel = info.GetKernel(node->Index());
-    OpKernelContext op_kernel_context(&frame, kernel, ::onnxruntime::logging::LoggingManager::DefaultLogger());
-
-    ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
-
-    std::vector<OrtValue> fetches;
-    frame.GetOutputs(fetches);
-
-    // Go over all output node args and substitute them with the newly computed tensors, which will be
-    // added to the graph as initializers.
-    ORT_ENFORCE(fetches.size() == node->OutputDefs().size());
-    for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
-      OrtValue& ort_value = fetches[fetch_idx];
-
-      // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
-      const auto* constant_arg_out = node->OutputDefs()[fetch_idx];
-      ORT_ENFORCE(ort_value.IsTensor());
-      const Tensor& out_tensor = ort_value.Get<Tensor>();
-      ONNX_NAMESPACE::TensorProto out_tensorproto =
-          utils::TensorToTensorProto(out_tensor, constant_arg_out->Name(), *constant_arg_out->TypeAsProto());
-
-      graph.AddInitializedTensor(out_tensorproto);
-    }
-
     // Remove the output edges of the constant node and then remove the node itself.
     graph_utils::RemoveNodeOutputEdges(graph, *node);
     graph.RemoveNode(node->Index());
-
     // The output nodes already have the right input arg, since we used the same name in the initializer.
     // We could remove unused graph initializers here, but Graph::Resolve() will take care of it.
-
     modified = true;
   }
 

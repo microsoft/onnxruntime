@@ -16,6 +16,19 @@
 
 namespace onnxruntime {
 
+Status OptimizerExecutionFrame::Info::RunSingleKernel(std::vector<int>& fetch_mlvalue_idxs, size_t node_index,
+                                                      std::vector<OrtValue>& fetches, const logging::Logger& logger) {
+  OptimizerExecutionFrame frame(*this, fetch_mlvalue_idxs);
+  auto* kernel = GetKernel(node_index);
+  if (kernel == nullptr) {
+    return Status(ONNXRUNTIME, FAIL);
+  }
+  OpKernelContext op_kernel_context(frame, *kernel, logger, nullptr);
+  ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
+  ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
+  return Status::OK();
+}
+
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const InitializedTensorSet& initialized_tensor_set) {
   // Create CPU execution provider
@@ -48,8 +61,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
 
       initializers_[idx] = ort_value;
       buffer_for_initialized_tensors_[idx] = std::move(data);
-      if (d.f != nullptr)
-        deleter_for_initialized_tensors_[idx] = d;
+      if (d.f != nullptr) deleter_for_initialized_tensors_[idx] = d;
     }
 
     return Status::OK();
@@ -62,14 +74,14 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   }
 
   node_index_info_ = std::make_unique<NodeIndexInfo>(nodes, ort_value_name_idx_map_);
-
+  std::shared_ptr<KernelRegistry> kernel_registry = cpu_execution_provider_->GetKernelRegistry();
+  FuncManager fm;
   // create kernels for these nodes
   for (auto* node : nodes) {
     std::unique_ptr<OpKernel> op_kernel;
-    std::shared_ptr<KernelRegistry> kernel_registry = cpu_execution_provider_->GetKernelRegistry();
     auto status = kernel_registry->TryCreateKernel(*node, *cpu_execution_provider_, initializers_,
-                                                   ort_value_name_idx_map_, FuncManager(), data_transfer_mgr_, op_kernel);
-    kernels_[node->Index()] = std::move(op_kernel);
+                                                   ort_value_name_idx_map_, fm, data_transfer_mgr_, op_kernel);
+    if (status.IsOK()) kernels_[node->Index()] = std::move(op_kernel);
   }
 }
 
@@ -85,7 +97,7 @@ const OpKernel* OptimizerExecutionFrame::Info::GetKernel(NodeIndex node_id) cons
 // If needed, the parameters of OptimizerExecutionFrame ctor can be changed later.
 OptimizerExecutionFrame::OptimizerExecutionFrame(const Info& info, const std::vector<int>& fetch_mlvalue_idxs)
     : IExecutionFrame(std::vector<int>(), std::vector<OrtValue>(), info.GetInitializers(), fetch_mlvalue_idxs,
-                      std::vector<OrtValue>(), info.GetMLValueNameIdxMap(), info.GetNodeIndexInfo()),
+                      std::vector<OrtValue>(), info.GetNodeIndexInfo()),
       info_(info) {}
 
 AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtAllocatorInfo& info) const {
@@ -117,9 +129,7 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
   // tensors
   auto element_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
   AllocatorPtr allocator_ptr = info_.GetAllocator();
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
-                                                              *shape,
-                                                              allocator_ptr);
+  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type, *shape, allocator_ptr);
 
   ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 

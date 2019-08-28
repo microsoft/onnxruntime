@@ -8,7 +8,6 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "gemm_helper.h"
-#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 

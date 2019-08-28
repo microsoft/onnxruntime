@@ -4,7 +4,6 @@
 #include "core/providers/cpu/math/softmax.h"
 
 #include "core/framework/op_kernel.h"
-#include "core/framework/op_kernel_context_internal.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/math/softmax_shared.h"
 #include "core/util/math.h"

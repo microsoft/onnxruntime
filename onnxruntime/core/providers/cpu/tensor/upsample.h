@@ -17,7 +17,7 @@ enum UpsampleMode {
 
 class UpsampleBase {
  protected:
-  UpsampleBase(OpKernelInfo info) : scales_cached_(false) {
+  UpsampleBase(const OpKernelInfo& info) : scales_cached_(false) {
     int start;
     int end;
     info.GetKernelDef().SinceVersion(&start, &end);
@@ -93,8 +93,7 @@ class UpsampleBase {
 template <typename T>
 class Upsample : public UpsampleBase, public OpKernel {
  public:
-  Upsample(OpKernelInfo info) : UpsampleBase(info), OpKernel(info) {
-  }
+  Upsample(const OpKernelInfo& info) : UpsampleBase(info), OpKernel(info) {}
 
   Status Compute(OpKernelContext* context) const override;
 

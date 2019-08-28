@@ -16,17 +16,14 @@ class ExecutionFrame;
 
 class OpKernelContextInternal : public OpKernelContext {
  public:
-  explicit OpKernelContextInternal(const SessionState& session_state,
-                                   IExecutionFrame& frame,
-                                   const OpKernel& kernel,
+  explicit OpKernelContextInternal(const SessionState& session_state, IExecutionFrame& frame, const OpKernel& kernel,
                                    const logging::Logger& logger,
                                    const ConstPointerContainer<std::vector<NodeArg*>> implicit_inputs,
                                    const bool& terminate_flag)
-      : OpKernelContext(&frame, &kernel, logger),
+      : OpKernelContext(frame, kernel, logger, session_state.GetThreadPool()),
         session_state_{session_state},
         implicit_inputs_{implicit_inputs},
-        terminate_flag_{terminate_flag} {
-  }
+        terminate_flag_{terminate_flag} {}
 
   const SessionState* SubgraphSessionState(const std::string& attribute_name) {
     return session_state_.GetSubgraphSessionState(GetNodeIndex(), attribute_name);

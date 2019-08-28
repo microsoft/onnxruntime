@@ -64,9 +64,8 @@ class OpKernelContext {
  public:
   using ArgMap = std::unordered_map<std::string, size_t>;
 
-  explicit OpKernelContext(IExecutionFrame* frame,
-                           const OpKernel* kernel,
-                           const logging::Logger& logger);
+  OpKernelContext(IExecutionFrame& frame, const OpKernel& kernel, const logging::Logger& logger,
+                  concurrency::ThreadPool* thread_pool);
 
   virtual ~OpKernelContext() = default;
 
@@ -86,7 +85,7 @@ class OpKernelContext {
     try {
       return p_ml_value ? &(p_ml_value->Get<T>()) : nullptr;
     } catch (const std::exception& /*e*/) {
-      throw OnnxRuntimeException(ORT_WHERE_WITH_STACK, "Missing Input: " + kernel_->Node().InputDefs()[index]->Name());
+      throw OnnxRuntimeException(ORT_WHERE_WITH_STACK, "Missing Input: " + kernel_.Node().InputDefs()[index]->Name());
     }
   }
 
@@ -117,19 +116,13 @@ class OpKernelContext {
   }
 
   // always >= 0
-  int InputCount() const {
-    return static_cast<int>(kernel_->Node().InputDefs().size());
-  }
+  int InputCount() const { return static_cast<int>(kernel_.Node().InputDefs().size()); }
 
   // always >= 0
-  int ImplicitInputCount() const {
-    return static_cast<int>(kernel_->Node().ImplicitInputDefs().size());
-  }
+  int ImplicitInputCount() const { return static_cast<int>(kernel_.Node().ImplicitInputDefs().size()); }
 
   // always >= 0
-  int OutputCount() const {
-    return static_cast<int>(kernel_->Node().OutputDefs().size());
-  }
+  int OutputCount() const { return static_cast<int>(kernel_.Node().OutputDefs().size()); }
 
   /**
    * return an allocator on device 0, with memtype of OrtMemTypeDefault
@@ -185,14 +178,16 @@ class OpKernelContext {
   int GetImplicitInputArgIndex(int index) const;
   int GetOutputArgIndex(int index) const;
 
-  IExecutionFrame* execution_frame_{nullptr};
-  const OpKernel* kernel_{nullptr};
+  IExecutionFrame& execution_frame_;
+  const OpKernel& kernel_;
   const logging::Logger* logger_{nullptr};
 
   // The argument starting index in ExecutionFrame.
   int node_input_start_index_{-1};
   int node_implicit_input_start_index_{-1};
   int node_output_start_index_{-1};
+
+  concurrency::ThreadPool* const thread_pool_;
 };
 
 // Fetching output tensor without shape is not allowed except when it already exists

@@ -34,7 +34,6 @@
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/sequential_executor.h"
-#include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/parallel_executor.h"
 #include "core/framework/session_state_initializer.h"
 #include "core/framework/tensorprotoutils.h"

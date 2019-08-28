@@ -26,15 +26,13 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
         kvp.second.f(kvp.second.param);
       }
     }
+
     AllocatorPtr GetAllocator(const OrtAllocatorInfo& info) const {
       return cpu_execution_provider_->GetAllocator(info.id, info.mem_type);
     }
 
-    AllocatorPtr GetAllocator() const {
-      return allocator_ptr_;
-    }
+    AllocatorPtr GetAllocator() const { return allocator_ptr_; }
 
-    const OrtValueNameIdxMap& GetMLValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
     const std::unordered_map<int, const NodeArg*>& GetMLValueIdxNodeArgMap() const noexcept {
       return ort_value_idx_nodearg_map_;
     }
@@ -49,6 +47,8 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     }
 
     const OpKernel* GetKernel(NodeIndex node_id) const;
+    Status RunSingleKernel(std::vector<int>& fetch_mlvalue_idxs, size_t node_index, std::vector<OrtValue>& fetches,
+                           const logging::Logger& logger = logging::LoggingManager::DefaultLogger());
 
    private:
     // The optimizer is running on CPU execution provider by default.
@@ -71,8 +71,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Info);
   };
 
-  OptimizerExecutionFrame(const Info& info,
-                          const std::vector<int>& fetch_mlvalue_idxs);
+  OptimizerExecutionFrame(const Info& info, const std::vector<int>& fetch_mlvalue_idxs);
 
   ~OptimizerExecutionFrame() override = default;
 
@@ -81,7 +80,8 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
 
   AllocatorPtr GetAllocatorImpl(const OrtAllocatorInfo& info) const override;
 
-  Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape, size_t nnz) override;
+  Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape,
+                                     size_t nnz) override;
 
   const Info& info_;
 };

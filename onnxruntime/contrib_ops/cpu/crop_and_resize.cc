@@ -20,7 +20,6 @@ limitations under the License.
 #include "core/util/math_cpuonly.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
-#include "core/framework/op_kernel_context_internal.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/object_detection/roialign.h"
 
@@ -218,21 +217,13 @@ Status CropAndResize<T>::Compute(OpKernelContext* context) const {
 
   auto& Y = *context->Output(0, {num_rois, x_dims[1], crop_height, crop_width});
   int64_t output_size = Y.Shape().Size();
-  CropAndResizeForward<T>(
-      output_size,  // num threads
-      X_ptr->Data<T>(),
-      extrapolation_value_,
-      x_dims[1],  // num channels
-      x_dims[2],  // height
-      x_dims[3],  // width
-      crop_height,
-      crop_width,
-      rois_ptr->Data<T>(),
-      num_roi_cols,
-      Y.template MutableData<T>(),
-      mode_,
-      batch_indices_ptr->Data<int32_t>(),
-      static_cast<OpKernelContextInternal*>(context)->GetOperatorThreadPool());
+  CropAndResizeForward<T>(output_size,  // num threads
+                          X_ptr->Data<T>(), extrapolation_value_,
+                          x_dims[1],  // num channels
+                          x_dims[2],  // height
+                          x_dims[3],  // width
+                          crop_height, crop_width, rois_ptr->Data<T>(), num_roi_cols, Y.template MutableData<T>(),
+                          mode_, batch_indices_ptr->Data<int32_t>(), context->GetOperatorThreadPool());
 
   return Status::OK();
 }

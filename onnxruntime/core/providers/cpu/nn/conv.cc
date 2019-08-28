@@ -14,10 +14,8 @@
 * limitations under the License.
 */
 /* Modifications Copyright (c) Microsoft. */
-#include "core/framework/op_kernel_context_internal.h"
 
 #include "core/providers/cpu/nn/conv.h"
-#include "core/framework/op_kernel_context_internal.h"
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {

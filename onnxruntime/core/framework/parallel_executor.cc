@@ -12,8 +12,8 @@
 #include "core/framework/allocation_planner.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/session_state.h"
-#include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
+#include "core/framework/op_kernel_context_internal.h"
 #include "core/platform/threadpool.h"
 
 namespace onnxruntime {

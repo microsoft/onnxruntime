@@ -16,7 +16,6 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cpu/nn/conv_transpose.h"
-#include "core/framework/op_kernel_context_internal.h"
 
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
