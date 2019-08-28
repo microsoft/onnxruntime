@@ -1072,6 +1072,20 @@ ORT_API_STATUS_IMPL(OrtCreateValue, const OrtValue* const* in, size_t num_values
   API_IMPL_END
 }
 
+ORT_API_STATUS(OrtCreateOpaqueValue, const char* domain_name, const char* type_name, const void* data_container,
+               size_t data_container_size, OrtValue** out) {
+    API_IMPL_BEGIN
+        // MLDataType ml_type = DataTypeImpl::GetType()
+    API_IMPL_END
+}
+
+ORT_API_STATUS(OrtGetOpaqueValue, const char* domain_name, const char* type_name, const OrtValue* in, 
+    void* data_container, size_t data_container_size) {
+    API_IMPL_BEGIN
+    API_IMPL_END
+}
+
+
 // End support for non-tensor types
 
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Env, OrtEnv)

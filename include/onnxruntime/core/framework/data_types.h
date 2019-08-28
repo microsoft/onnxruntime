@@ -38,6 +38,7 @@ using VectorMapInt64ToFloat = std::vector<MapInt64ToFloat>;
 class DataTypeImpl;
 class TensorTypeBase;
 class SparseTensorTypeBase;
+class NonTensorTypeBase;
 
 // MLFloat16
 union MLFloat16 {
@@ -173,6 +174,10 @@ class DataTypeImpl {
     return nullptr;
   }
 
+  virtual const NonTensorTypeBase* AsNonTensorTypeBase() const {
+    return nullptr;
+  }
+
   // Return the type meta that we are using in the runtime.
   template <typename T, typename... Types>
   static MLDataType GetType();
@@ -201,6 +206,7 @@ class DataTypeImpl {
   // MLDataType. DataType is produced by internalizing an instance of
   // TypeProto contained within MLDataType
   static void RegisterDataType(MLDataType);
+  static MLDataType GetDataType(const std::string&);
 
   static const std::vector<MLDataType>& AllTensorTypes();
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes();
@@ -473,6 +479,27 @@ class NonTensorTypeBase : public DataTypeImpl {
 
   const ONNX_NAMESPACE::TypeProto* GetTypeProto() const override;
 
+  const NonTensorTypeBase* AsNonTensorTypeBase() const override {
+    return this;
+  }
+
+  // Override for Non-tensor types to create an internal CPP
+  // data representation and initialize it from data. The caller of the interface
+  // should have a shared definition of the data which is used to initialize
+  // CPP data representation. This is used from C API.
+  // Returns true if conversion was successful.
+  virtual bool FromDataContainer(const void* data, size_t specified_size) {
+    return false;
+  }
+
+  // Override for Non-tensor types to fetch data from the internal CPP data representation
+  // The caller of the interface should have a shared definition of the data which is used to initialize
+  // CPP data representation. This is used from C API.
+  // Returns true if conversion was successful.
+  virtual bool ToDataContainer(size_t specified_size, void* data) {
+    return false;
+  }
+
   NonTensorTypeBase(const NonTensorTypeBase&) = delete;
   NonTensorTypeBase& operator=(const NonTensorTypeBase&) = delete;
 
@@ -551,7 +578,7 @@ class MapType : public NonTensorType<CPPType> {
  * \brief SequenceType. Use to register sequences.
  *
  *  \param T - CPP type that you wish to register as Sequence
- *             runtime type.
+ *             runtime type. 
  *
  * \details Usage: ORT_REGISTER_SEQ(C++Type)
  *          The type is required to have value_type defined
@@ -592,6 +619,15 @@ class OpaqueType : public NonTensorType<T> {
   bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const override {
     return this->IsOpaqueCompatible(type_proto);
   }
+
+  // U is a template type parameter that represents data container used to initialize
+  // or fetch data from the internal CPP representation (T).
+  // Specialize these two entry points and return true.
+  template <class U>
+  bool FromDataContainer(const void* data, size_t specified_size) override;
+
+  template <class U>
+  bool ToDataContainer(size_t specified_size, void* data) override;
 
  private:
   OpaqueType() {

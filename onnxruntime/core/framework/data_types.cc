@@ -323,6 +323,19 @@ class DataTypeRegistry {
     }
     return nullptr;
   }
+
+  MLDataType GetMLDataType(const std::string& data_type) const {
+    using namespace ONNX_NAMESPACE;
+    DataType dtype = Utils::DataTypeUtils::ToType(data_type);
+    if (dtype == nullptr) {
+      return nullptr;
+    }
+    auto hit = mapping_.find(dtype);
+    if (hit == mapping_.end()) {
+      return nullptr;
+    }
+    return hit->second;
+  }
 };
 
 struct TypeProtoImpl {
@@ -615,6 +628,10 @@ void DataTypeImpl::RegisterDataType(MLDataType mltype) {
   data_types_internal::DataTypeRegistry::instance().RegisterDataType(mltype);
 }
 
+MLDataType DataTypeImpl::GetDataType(const std::string& data_type) {
+  return data_types_internal::DataTypeRegistry::instance().GetMLDataType(data_type);
+}
+
 const char* DataTypeImpl::ToString(MLDataType type) {
   if (type == DataTypeImpl::GetTensorType<float>()) {
     return "tensor(float)";
@@ -670,33 +687,33 @@ const char* DataTypeImpl::ToString(MLDataType type) {
 const TensorTypeBase* DataTypeImpl::TensorTypeFromONNXEnum(int type) {
   switch (type) {
     case TensorProto_DataType_FLOAT:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<float>());
+      return DataTypeImpl::GetTensorType<float>()->AsTensorType();
     case TensorProto_DataType_BOOL:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<bool>());
+      return DataTypeImpl::GetTensorType<bool>()->AsTensorType();
     case TensorProto_DataType_INT32:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<int32_t>());
+      return DataTypeImpl::GetTensorType<int32_t>()->AsTensorType();
     case TensorProto_DataType_DOUBLE:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<double>());
+      return DataTypeImpl::GetTensorType<double>()->AsTensorType();
     case TensorProto_DataType_STRING:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<std::string>());
+      return DataTypeImpl::GetTensorType<std::string>()->AsTensorType();
     case TensorProto_DataType_UINT8:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<uint8_t>());
+      return DataTypeImpl::GetTensorType<uint8_t>()->AsTensorType();
     case TensorProto_DataType_UINT16:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<uint16_t>());
+      return DataTypeImpl::GetTensorType<uint16_t>()->AsTensorType();
     case TensorProto_DataType_INT8:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<int8_t>());
+      return DataTypeImpl::GetTensorType<int8_t>()->AsTensorType();
     case TensorProto_DataType_INT16:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<int16_t>());
+      return DataTypeImpl::GetTensorType<int16_t>()->AsTensorType();
     case TensorProto_DataType_INT64:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<int64_t>());
+      return DataTypeImpl::GetTensorType<int64_t>()->AsTensorType();
     case TensorProto_DataType_UINT32:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<uint32_t>());
+      return DataTypeImpl::GetTensorType<uint32_t>()->AsTensorType();
     case TensorProto_DataType_UINT64:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<uint64_t>());
+      return DataTypeImpl::GetTensorType<uint64_t>()->AsTensorType();
     case TensorProto_DataType_FLOAT16:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<MLFloat16>());
+      return DataTypeImpl::GetTensorType<MLFloat16>()->AsTensorType();
     case TensorProto_DataType_BFLOAT16:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<BFloat16>());
+      return DataTypeImpl::GetTensorType<BFloat16>()->AsTensorType();
     default:
       ORT_NOT_IMPLEMENTED("tensor type ", type, " is not supported");
   }
