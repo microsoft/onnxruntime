@@ -13,9 +13,9 @@ PredictionServiceImpl::PredictionServiceImpl(const std::shared_ptr<onnxruntime::
 ::grpc::Status PredictionServiceImpl::Predict(::grpc::ServerContext* context, const ::onnxruntime::server::PredictRequest* request, ::onnxruntime::server::PredictResponse* response) {
   auto request_id = SetRequestContext(context);
   // No labels for gRPC counter as we don't have model arguments
-  (*MetricRegistry::Get().totalGRPCRequests)->Add({}).Increment();
+  MetricRegistry::Get().totalGRPCRequests->Add({}).Increment();
   // Log Request size
-  (*MetricRegistry::Get().grpcRequestSize)->
+  MetricRegistry::Get().grpcRequestSize->
     Add({}, MetricRegistry::ByteBuckets()).
     Observe(request->ByteSize());
   onnxruntime::server::Executor executor(environment_.get(), request_id);
@@ -25,13 +25,13 @@ PredictionServiceImpl::PredictionServiceImpl(const std::shared_ptr<onnxruntime::
   auto end = std::chrono::high_resolution_clock::now();
   if (!status.ok()) {
     // Record error on prometheus
-    (*MetricRegistry::Get().totalGRPCErrors)->Add({
+    MetricRegistry::Get().totalGRPCErrors->Add({
       {"errorCode", std::to_string(static_cast<unsigned>(status.error_code()))},
     }).Increment();
     return ::grpc::Status(::grpc::StatusCode(status.error_code()), status.error_message());
   }
   // See above, currently only support one model so hardcoded
-  (*MetricRegistry::Get().inferenceTimer)->Add({{"name", "default"}, {"version", "1"}},
+  MetricRegistry::Get().inferenceTimer->Add({{"name", "default"}, {"version", "1"}},
       MetricRegistry::TimeBuckets()).
       // Casting for MS
       Observe(std::chrono::duration_cast<std::chrono::milliseconds>(end-begin).count());
