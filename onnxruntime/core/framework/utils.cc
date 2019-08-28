@@ -16,9 +16,35 @@
 #include "core/framework/parallel_executor.h"
 #include "core/framework/session_state.h"
 #include "core/framework/sequential_executor.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 namespace utils {
+void* DefaultAlloc(size_t size) {
+  if (size <= 0) return nullptr;
+  void* p;
+  size_t alignment = MlasGetPreferredBufferAlignment();
+#if _MSC_VER
+  p = _aligned_malloc(size, alignment);
+  if (p == nullptr) throw std::bad_alloc();
+#elif defined(_LIBCPP_SGX_CONFIG)
+  p = memalign(alignment, size);
+  if (p == nullptr) throw std::bad_alloc();
+#else
+  int ret = posix_memalign(&p, alignment, size);
+  if (ret != 0) throw std::bad_alloc();
+#endif
+  return p;
+}
+
+void DefaultFree(void* p) {
+#if _MSC_VER
+  _aligned_free(p);
+#else
+  free(p);
+#endif
+}
+
 AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info) {
   return session_state.GetExecutionProviders().GetAllocator(allocator_info);
 }
