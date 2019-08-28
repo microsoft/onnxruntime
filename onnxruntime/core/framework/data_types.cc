@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/data_types.h"
+#include "core/framework/ml_value.h"
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/graph/onnx_protobuf.h"
@@ -504,6 +505,15 @@ bool NonTensorTypeBase::IsOpaqueCompatible(const ONNX_NAMESPACE::TypeProto& type
   ORT_ENFORCE(thisProto->opaque_type().has_domain());
   ORT_ENFORCE(thisProto->opaque_type().has_name());
   return data_types_internal::IsCompatible(thisProto->opaque_type(), type_proto.opaque_type());
+}
+
+// The below two APIs must be implemented in the derived types to be used
+void NonTensorTypeBase::FromDataContainer(const void* /* data */, size_t /*data_size*/, OrtValue& /* output */) const {
+  ORT_ENFORCE(false, "Not implemented");
+}
+
+void NonTensorTypeBase::ToDataContainer (const OrtValue& /* input */, size_t /*data_size */, void* data) const {
+  ORT_ENFORCE(false, "Not implemented");
 }
 
 ORT_REGISTER_TENSOR_TYPE(int32_t);
