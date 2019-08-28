@@ -32,7 +32,7 @@ file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
 
 if (NOT onnxruntime_USE_HOROVOD)
   list(REMOVE_ITEM onnxruntime_providers_srcs
-  "${ONNXRUNTIME_ROOT}/core/providers/cpu/collectives/horovod_kernels.cc"
+  "${ONNXRUNTIME_ROOT}/core/providers/cpu/collective/horovod_kernels.cc"
   )
 endif()
 

@@ -1,6 +1,9 @@
-
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "horovod_adapters.h"
+#include "core/common/common.h"
+#include "core/framework/op_kernel.h"
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -21,23 +24,21 @@ switch (status.type()) {
 }
 
 hvd::Status ConvertStatus(const common::Status& status) {
-
   switch (status.Code()) {
-  case  0:
-    return hvd::Status::OK();
-  case 3:
-    return hvd::Status::InvalidArgument(status.ErrorMessage());
-  default:
-    return hvd::Status::UnknownError("Unknown error.");
+    case 0:
+      return hvd::Status::OK();
+    case 3:
+      return hvd::Status::InvalidArgument(status.ErrorMessage());
+    default:
+      return hvd::Status::UnknownError("Unknown error.");
   }
 }
 
 ORTTensor::ORTTensor(const onnxruntime::Tensor* tensor) : tensor_(tensor) {}
 
 const hvd::DataType ORTTensor::dtype() const {
-
   auto type = tensor_->DataType();
-  if(type == DataTypeImpl::GetType<uint8_t>()) {
+  if (type == DataTypeImpl::GetType<uint8_t>()) {
     return hvd::HOROVOD_UINT8;
   } else if (type == DataTypeImpl::GetType<int8_t>()) {
     return hvd::HOROVOD_INT8;
@@ -47,18 +48,17 @@ const hvd::DataType ORTTensor::dtype() const {
     return hvd::HOROVOD_INT16;
   } else if (type == DataTypeImpl::GetType<int32_t>()) {
     return hvd::HOROVOD_INT32;
-  } else if(type == DataTypeImpl::GetType<int64_t>()) {
+  } else if (type == DataTypeImpl::GetType<int64_t>()) {
     return hvd::HOROVOD_INT64;
-  } else if(type == DataTypeImpl::GetType<float>()) {
+  } else if (type == DataTypeImpl::GetType<float>()) {
     return hvd::HOROVOD_FLOAT32;
-  } else if(type == DataTypeImpl::GetType<double>()) {
+  } else if (type == DataTypeImpl::GetType<double>()) {
     return hvd::HOROVOD_FLOAT64;
-  } else if(type == DataTypeImpl::GetType<bool>()) {
+  } else if (type == DataTypeImpl::GetType<bool>()) {
     return hvd::HOROVOD_BOOL;
-  } else if(type == DataTypeImpl::GetType<BFloat16>()) {
+  } else if (type == DataTypeImpl::GetType<MLFloat16>()) {
     return hvd::HOROVOD_FLOAT16;
-  }
-  else {
+  } else {
     throw std::logic_error("Invalid tensor type.");
   }
 }
@@ -66,7 +66,7 @@ const hvd::DataType ORTTensor::dtype() const {
 const hvd::TensorShape ORTTensor::shape() const {
   hvd::TensorShape shape;
   const std::vector<int64_t> original_shape = tensor_->Shape().GetDims();
-  for (auto dim : original_shape){
+  for (auto dim : original_shape) {
     shape.AddDim(dim);
   }
   return shape;
@@ -77,36 +77,33 @@ const void* ORTTensor::data() const {
 }
 
 int64_t ORTTensor::size() const {
- return (int64_t)tensor_->Shape().Size();
+  return (int64_t)tensor_->Shape().Size();
 }
 
-ORTPersistentBuffer::ORTPersistentBuffer(OpKernelContext* context, int64_t size) {
-    AllocatorPtr allocator;
-    ORT_ENFORCE(context->GetTempSpaceAllocator(&allocator).IsOK());
-    buffer_ = allocator->Alloc(size);
+ORTPersistentBuffer::ORTPersistentBuffer(AllocatorPtr allocator, int64_t size) : allocator_(allocator) {
+  buffer_ = allocator->Alloc(size);
+}
+
+ORTPersistentBuffer::~ORTPersistentBuffer() {
+  if (buffer_) {
+    allocator_->Free(buffer_);
+  }
 }
 
 const void* ORTPersistentBuffer::AccessData(std::shared_ptr<hvd::OpContext>) const {
-    return buffer_;
+  return buffer_;
 }
 
-ORTOpContext::ORTOpContext(OpKernelContext* context) : context_(context) {}
+ORTOpContext::ORTOpContext(AllocatorPtr allocator) : allocator_(allocator) {}
 
 hvd::Status ORTOpContext::AllocatePersistent(int64_t size, std::shared_ptr<hvd::PersistentBuffer>* tensor) {
-    *tensor = std::make_shared<ORTPersistentBuffer>(context_, size);
-    return hvd::Status::OK();
+  *tensor = std::make_shared<ORTPersistentBuffer>(allocator_, size);
+  return hvd::Status::OK();
 }
 
-hvd::Status ORTOpContext::AllocateOutput(hvd::TensorShape shape, std::shared_ptr<hvd::Tensor>* tensor) {
-  std::vector<int64_t> tensor_shape;
-  for (int idx = 0; idx < shape.dims(); idx++)
-  {
-     tensor_shape.push_back(shape.dim_size(idx));
-  }
-
-  *tensor = std::make_shared<ORTTensor>(context_->Output(0, TensorShape(tensor_shape)));
-
-  return hvd::Status::OK();
+hvd::Status ORTOpContext::AllocateOutput(hvd::TensorShape /*shape*/, std::shared_ptr<hvd::Tensor>* tensor) {
+  *tensor = nullptr;
+  return hvd::Status::InvalidArgument("Not implemented");
 }
 
 hvd::Framework ORTOpContext::framework() const {
@@ -114,7 +111,7 @@ hvd::Framework ORTOpContext::framework() const {
   return hvd::Framework::TENSORFLOW;
 }
 
-}
+}  // namespace onnxruntime
 
 #ifdef __GNUC__
 #pragma GCC diagnostic pop

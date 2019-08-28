@@ -1,5 +1,7 @@
-#pragma once
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
+#pragma once
 
 #include "core/framework/tensor.h"
 #include "core/framework/op_kernel.h"
@@ -32,17 +34,20 @@ private:
 };
 
 class ORTPersistentBuffer : public hvd::PersistentBuffer {
-public:
-    ORTPersistentBuffer(OpKernelContext* context, int64_t size);
-    virtual const void* AccessData(std::shared_ptr<hvd::OpContext> context) const override;
+ public:
+  ORTPersistentBuffer(AllocatorPtr allocator, int64_t size);
+  virtual ~ORTPersistentBuffer();
 
-private:
-     void* buffer_ = nullptr;
+  virtual const void* AccessData(std::shared_ptr<hvd::OpContext> context) const override;
+
+ private:
+  AllocatorPtr allocator_;
+  void* buffer_ = nullptr;
 };
 
 class ORTOpContext : public hvd::OpContext {
 public:
-  ORTOpContext(OpKernelContext* context);
+  ORTOpContext(AllocatorPtr allocator);
 
   virtual hvd::Status AllocatePersistent(int64_t size, std::shared_ptr<hvd::PersistentBuffer>* tensor) override;
 
@@ -51,10 +56,10 @@ public:
   virtual hvd::Framework framework() const override;
 
 private:
-  OpKernelContext* context_;
+  AllocatorPtr allocator_;
 };
 
-}
+}  // namespace onnxruntime
 
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
