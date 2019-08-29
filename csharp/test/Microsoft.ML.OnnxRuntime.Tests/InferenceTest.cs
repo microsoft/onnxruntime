@@ -889,7 +889,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
             var option = new SessionOptions();
 #if USE_CUDA
-            option = SessionOptions.MakeSessionOptionWithCudaProvider(cudaDeviceId.Value);
+            if (cudaDeviceId.HasValue)
+            {
+                option = SessionOptions.MakeSessionOptionWithCudaProvider(cudaDeviceId.Value);
+            }
 #endif
             var session = (cudaDeviceId.HasValue)
                 ? new InferenceSession(modelPath, option)
