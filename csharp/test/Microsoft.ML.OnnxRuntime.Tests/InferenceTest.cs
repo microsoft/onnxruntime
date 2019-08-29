@@ -65,6 +65,28 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, opt.GraphOptimizationLevel);
                 
                 Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; });
+
+                opt.AppendExecutionProvider_CPU(1);
+#if USE_MKLDNN
+                opt.AppendExecutionProvider_Mkldnn(0);
+#endif
+#if USE_CUDA
+                opt.AppendExecutionProvider_CUDA(0);
+#endif
+#if USE_NGRAPH
+                opt.AppendExecutionProvider_NGraph("CPU");  //TODO: this API should be refined
+#endif
+#if USE_OPENVINO
+                opt.AppendExecutionProvider_OpenVINO(null);  //TODO: this won't work, because the native side copies the const char*
+#endif
+#if USE_TENSORRT
+                opt.AppendExecutionProvider_Tensorrt(0);
+#endif
+#if USE_NNAPI
+                opt.AppendExecutionProvider_Nnapi();
+#endif
+
+
             }
         }
 
@@ -78,7 +100,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 //verify default options
                 Assert.False(opt.Terminate);
                 Assert.Equal(LogLevel.Verbose, opt.LogVerbosityLevel);
-                Assert.Equal("", opt.LogTag);
+                Assert.Equal("", opt.LogId);
 
                 // try setting options
                 opt.Terminate = true;
@@ -87,8 +109,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.LogVerbosityLevel = LogLevel.Error;
                 Assert.Equal(LogLevel.Error, opt.LogVerbosityLevel);
 
-                opt.LogTag = "MyLogTag";
-                Assert.Equal("MyLogTag", opt.LogTag);
+                opt.LogId = "MyLogTag";
+                Assert.Equal("MyLogTag", opt.LogId);
             }
         }
 
@@ -163,7 +185,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 // Run Inference with RunOptions
                 using (var runOptions = new RunOptions())
                 {
-                    runOptions.LogTag = "CsharpTest";
+                    runOptions.LogId = "CsharpTest";
                     runOptions.Terminate = false;  // TODO: Test terminate = true, it currently crashes
                     runOptions.LogVerbosityLevel = LogLevel.Error;
                     IReadOnlyCollection<string> outputNames = session.OutputMetadata.Keys.ToList();
@@ -793,7 +815,26 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             "OrtGetAllocatorWithDefaultOptions","OrtAllocatorFree","OrtAllocatorGetInfo",
             "OrtCreateTensorWithDataAsOrtValue","OrtGetTensorMutableData", "OrtReleaseAllocatorInfo",
             "OrtCastTypeInfoToTensorInfo","OrtGetTensorTypeAndShape","OrtGetTensorElementType","OrtGetDimensionsCount",
-            "OrtGetDimensions","OrtGetTensorShapeElementCount","OrtReleaseValue"};
+            "OrtGetDimensions","OrtGetTensorShapeElementCount","OrtReleaseValue"
+#if USE_MKLDNN
+            ,"OrtSessionOptionsAppendExecutionProvider_Mkldnn"
+#endif
+#if USE_CUDA
+            ,"OrtSessionOptionsAppendExecutionProvider_CUDA"
+#endif
+#if USE_NGRAPH
+            ,"OrtSessionOptionsAppendExecutionProvider_NGraph"
+#endif
+#if USE_OPENVINO
+            ,"OrtSessionOptionsAppendExecutionProvider_OpenVINO"
+#endif
+#if USE_TENSORRT
+            ,"OrtSessionOptionsAppendExecutionProvider_Tensorrt"
+#endif
+#if USE_NNAPI
+            ,"OrtSessionOptionsAppendExecutionProvider_Nnapi"
+#endif
+    };
 
             var hModule = LoadLibrary(module);
             foreach (var ep in entryPointNames)

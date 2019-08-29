@@ -175,12 +175,36 @@ namespace Microsoft.ML.OnnxRuntime
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_CPU(IntPtr /*(OrtSessionOptions*) */ options, int use_arena);
 
+#if USE_MKLDNN
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Mkldnn(IntPtr /*(OrtSessionOptions*) */ options, int use_arena);
+#endif
 
+#if USE_CUDA
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_CUDA(IntPtr /*(OrtSessionOptions*) */ options, int device_id);
+#endif
 
+#if USE_NGRAPH
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_NGraph(IntPtr /*(OrtSessionOptions*) */ options, string /*(const char*)*/ ng_backend_type);
+#endif
+
+#if USE_OPENVINO
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_OpenVINO(
+                                                    IntPtr /*(OrtSessionOptions*)*/ options, string /*(const char*)*/ device_id);
+#endif
+
+#if USE_TENSORRT
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Tensorrt(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);
+#endif
+
+#if USE_NNAPI
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Nnapi(IntPtr /*(OrtSessionOptions*)*/ options);
+#endif
         //[DllImport(nativeLib, CharSet = charSet)]
         //public static extern IntPtr /*(OrtStatus*)*/ OrtCreateNupharExecutionProviderFactory(int device_id, string target_str, out IntPtr /*(OrtProviderFactoryPtr**)*/ factory);
 
@@ -218,9 +242,9 @@ namespace Microsoft.ML.OnnxRuntime
 
 
 
-        #endregion
+#endregion
 
-        #region Allocator/AllocatorInfo API
+#region Allocator/AllocatorInfo API
 
         //TODO: consider exposing them publicly, when allocator API is exposed
         public enum AllocatorType
@@ -273,9 +297,9 @@ namespace Microsoft.ML.OnnxRuntime
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/OrtAllocatorGetInfo(IntPtr /*(const OrtAllocator*)*/ ptr, out IntPtr /*(const struct OrtAllocatorInfo**)*/info);
 
-        #endregion Allocator/AllocatorInfo API
+#endregion Allocator/AllocatorInfo API
 
-        #region Tensor/OnnxValue API
+#region Tensor/OnnxValue API
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtGetValue(IntPtr /*(OrtValue*)*/ value,
@@ -377,6 +401,6 @@ namespace Microsoft.ML.OnnxRuntime
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern void OrtReleaseValue(IntPtr /*(OrtValue*)*/ value);
 
-        #endregion
+#endregion
     } //class NativeMethods
 } //namespace

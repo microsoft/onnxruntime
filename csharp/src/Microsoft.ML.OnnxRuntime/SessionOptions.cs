@@ -27,7 +27,7 @@ namespace Microsoft.ML.OnnxRuntime
         private IntPtr _nativePtr;
         private static string[] cudaDelayLoadedLibs = { "cublas64_100.dll", "cudnn64_7.dll" };
 
-        #region Constructor and Factory methods
+#region Constructor and Factory methods
 
         /// <summary>
         /// Constructs an empty SessionOptions
@@ -37,7 +37,7 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionOptions(out _nativePtr));
         }
 
-
+#if USE_CUDA
         /// <summary>
         /// A helper method to constuct a SessionOptions object for CUDA execution
         /// </summary>
@@ -46,7 +46,6 @@ namespace Microsoft.ML.OnnxRuntime
         {
             return MakeSessionOptionWithCudaProvider(0);
         }
-
 
         /// <summary>
         /// A helper method to constuct a SessionOptions object for CUDA execution
@@ -61,9 +60,58 @@ namespace Microsoft.ML.OnnxRuntime
             NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options._nativePtr, 1);
             return options;
         }
+#endif
+#endregion
 
-        #endregion
+#region ExecutionProviderAppends
+        public void AppendExecutionProvider_CPU(int useArena)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(_nativePtr, useArena));
+        }
 
+#if USE_MKLDNN
+        public void AppendExecutionProvider_Mkldnn(int useArena)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Mkldnn(_nativePtr, useArena));
+        }
+#endif
+
+#if USE_CUDA
+        public void AppendExecutionProvider_CUDA(int deviceId)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(_nativePtr, deviceId));
+        }
+#endif
+
+#if USE_NGRAPH
+        public void AppendExecutionProvider_NGraph(string nGraphBackendType)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_NGraph(_nativePtr, nGraphBackendType));
+        }
+#endif
+
+#if USE_OPENVINO
+        public void AppendExecutionProvider_OpenVINO(string deviceId)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_OpenVINO(_nativePtr, deviceId));
+        }
+#endif
+
+#if USE_TENSORRT
+        public void AppendExecutionProvider_Tensorrt(int deviceId)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tensorrt(_nativePtr, deviceId));
+        }
+#endif
+
+#if USE_NNAPI
+        public void AppendExecutionProvider_Nnapi()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nnapi(_nativePtr));
+        }
+#endif
+
+        #endregion //ExecutionProviderAppends
         #region Public Properties
 
         internal IntPtr Handle
@@ -286,9 +334,9 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private GraphOptimizationLevel _graphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_BASIC;
 
-        #endregion
+#endregion
 
-        #region Private Methods
+#region Private Methods
 
 
         // Declared, but called only if OS = Windows.
@@ -319,8 +367,8 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
 
-        #endregion
-        #region destructors disposers
+#endregion
+#region destructors disposers
 
         ~SessionOptions()
         {
@@ -342,6 +390,6 @@ namespace Microsoft.ML.OnnxRuntime
             NativeMethods.OrtReleaseSessionOptions(_nativePtr);
         }
 
-        #endregion
+#endregion
     }
 }
