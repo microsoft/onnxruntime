@@ -166,7 +166,7 @@ jobs:
     demands: azureps
 #  condition: and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master'))
 #  remove master condition for testing
-  condition: (${{ parameters.DoEsrp }})
+  condition: ${{ parameters.DoEsrp }}
   dependsOn:
   - NuGet_Test_Win
   - NuGet_Test_Linux
