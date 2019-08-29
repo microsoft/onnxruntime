@@ -9,19 +9,61 @@
 namespace onnxruntime {
 namespace training {
 
-#ifndef USE_HOROVOD
-std::string BuildAllReduceNode(const std::string& /*gradient*/, GraphAugmenter::GraphDefs& /*graph_defs*/) {
-  ORT_NOT_IMPLEMENTED("Distributed training is not supported, as Horovod is not enabled in this build.");
+#ifdef USE_HOROVOD
+static const std::string global_barrier_name = "horovod/barrier";
+static const std::string global_barrier_ready = "horovod/barrier/ready";
+
+static NodeDef BuildGlobalBarrierNode(const std::vector<std::string>& ready_names, GraphAugmenter::GraphDefs& graph_defs) {
+  std::string barrier_input_name = global_barrier_name + "/input";
+  std::string barrier_output_name = global_barrier_name + "/output";
+
+  // Global barrier no-op input.
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  tensor_proto.add_dims(0);
+  tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  tensor_proto.set_name(barrier_input_name);
+  graph_defs.AddInitializers({tensor_proto});
+
+  std::vector<ArgDef> barrier_inputs{barrier_input_name};
+  std::transform(ready_names.begin(), ready_names.end(), std::back_inserter(barrier_inputs), [](const std::string& name) { return ArgDef(name); });
+  std::vector<ArgDef> barrier_outputs{barrier_output_name, global_barrier_ready};
+
+  return NodeDef("HorovodBarrier", barrier_inputs, barrier_outputs, NodeAttributes(), global_barrier_name);
+}
+
+static NodeDef& GetGlobalBarrierNode(GraphAugmenter::GraphDefs& graph_defs) {
+  // Find the global barrier node.
+  auto& nodes = graph_defs.NodeDefs();
+  auto barrier_iter = std::find_if(nodes.begin(), nodes.end(), [&](const NodeDef& def) { return def.name == global_barrier_name; });
+  if (barrier_iter != nodes.end())
+    return *barrier_iter;
+
+  // Create the global barrier.
+  graph_defs.AddNodeDefs({BuildGlobalBarrierNode({}, graph_defs)});
+  return *std::find_if(nodes.begin(), nodes.end(), [&](const NodeDef& def) { return def.name == global_barrier_name; });
+}
+
+static std::string BuildAllReduceNode(const std::string& gradient, GraphAugmenter::GraphDefs& graph_defs) {
+  ArgDef reduce_output(gradient + "_AllReduce_Out");
+  ArgDef reduce_ready(gradient + "_AllReduce_Ready");
+  ArgDef local_barrier_output(gradient + "_Barrier_Out");
+  ArgDef local_barrier_ready(gradient + "_Barrier_Ready");
+
+  // Add horovod all reduce node.
+  graph_defs.AddNodeDefs({NodeDef("HorovodAllReduce", {gradient}, {reduce_output, reduce_ready}, NodeAttributes(), gradient)});
+
+  // Add ready check to global barrier.
+  NodeDef& global_barrier_node = GetGlobalBarrierNode(graph_defs);
+  global_barrier_node.input_args.push_back(reduce_ready);
+
+  // Add local barrier node.
+  graph_defs.AddNodeDefs({NodeDef("HorovodBarrier", {reduce_output, global_barrier_ready}, {local_barrier_output, local_barrier_ready}, NodeAttributes(), gradient + "_Barrier")});
+
+  return local_barrier_output.name;
 }
 #else
-std::string BuildAllReduceNode(const std::string& gradient, GraphAugmenter::GraphDefs& graph_defs) {
-  const std::string allreduce_output = gradient + "_AllReduce_Out";
-  graph_defs.AddNodeDefs({NodeDef("HorovodAllReduceOp",
-                                  {ArgDef(gradient)},
-                                  {ArgDef(allreduce_output)},
-                                  NodeAttributes(),
-                                  gradient)});
-  return allreduce_output;
+static std::string BuildAllReduceNode(const std::string& /*gradient*/, GraphAugmenter::GraphDefs& /*graph_defs*/) {
+  ORT_NOT_IMPLEMENTED("Distributed training is not supported, as Horovod is not enabled in this build.");
 }
 #endif
 

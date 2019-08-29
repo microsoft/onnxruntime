@@ -7,7 +7,8 @@ MPIContext::MPIContext(int w_rank, int l_rank, int w_size) : world_rank(w_rank),
 MPIContext setup_horovod() {
   using namespace horovod::common;
   // setup MPI amd horovod
-  MPI_Init(0, 0);
+  int provided;
+  MPI_Init_thread(NULL, NULL, MPI_THREAD_MULTIPLE, &provided);
 
   int world_size;
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
@@ -28,8 +29,13 @@ MPIContext setup_horovod() {
                       MPI_INFO_NULL, &shmcomm);
   MPI_Comm_rank(shmcomm, &local_rank);
 
-  printf("Using cuda device #%d, rank is %d, world_size %d \n",
-         local_rank, world_rank, world_size);
+  // Get version
+  int len;
+  char version[MPI_MAX_LIBRARY_VERSION_STRING];
+  MPI_Get_library_version(version, &len);
+
+  printf("Using cuda local_rank: %d, world_rank: %d, world_size: %d (version: %s)\n",
+         local_rank, world_rank, world_size, version);
 
   return MPIContext(world_rank, local_rank, world_size);
 }
