@@ -98,7 +98,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) cons
 
     const Node* mul2_node = nullptr;
     for (auto iter = mul_node.InputNodesBegin(); iter != mul_node.InputNodesEnd(); ++iter) {
-      if ((*iter).Name() != add_node.Name()) {
+      if ((*iter).OpType().compare("Mul") == 0) {
         // find the other input node of Mul
         mul2_node = &(*iter);
         break;
