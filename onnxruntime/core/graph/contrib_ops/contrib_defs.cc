@@ -21,6 +21,10 @@ void convPoolShapeInference(
     int input1Idx,
     int input2Idx);
 void globalPoolTypeShapeInference(ONNX_NAMESPACE::InferenceContext& ctx);
+void matmulShapeInference(
+    ONNX_NAMESPACE::InferenceContext& ctx,
+    int input1Idx,
+    int input2Idx);
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -1156,6 +1160,39 @@ of [N, 0] then [N, 0].
           output_shape.add_dim()->set_dim_value(0);
         }
         updateOutputShape(ctx, 0, output_shape);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulInteger16)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(
+Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html.
+ The production MUST never overflow. The accumulation may overflow if and only if in 32 bits.)DOC")
+      .Input(0, "A", "N-dimensional matrix A", "T1")
+      .Input(1, "B", "N-dimensional matrix B", "T2")
+      .Output(0, "Y", "Matrix multiply results from A * B", "T3")
+      .TypeConstraint("T1", {"tensor(int16)", "tensor(uint16)"}, "Constrain input A data types as 16-bit integer tensor")
+      .TypeConstraint("T2", {"tensor(int16)", "tensor(uint16)"}, "Constrain input B data types as 16-bit integer tensor")
+      .TypeConstraint("T3",
+                      {"tensor(int32)", "tensor(uint32)"},
+                      "Constrain output Y data types as 32-bit integer tensor."
+                      "T3 must be tensor(uint32) when both T1 and T2 are tensor(uint16),"
+                      "or must be tensor(int32) when either T1 or T2 is tensor(int16).")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto a_type = ctx.getInputType(0);
+        auto b_type = ctx.getInputType(1);
+        auto y_type = ctx.getOutputType(0);
+        if (nullptr == a_type || nullptr == b_type || nullptr == y_type ||
+            a_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
+            b_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
+          fail_type_inference(
+              "inputs are expected to have tensor type and output type should not be null.");
+        }
+
+        // Right now we only support int32
+        y_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::INT32);
+
+        matmulShapeInference(ctx, 0, 1);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceSumInteger)
