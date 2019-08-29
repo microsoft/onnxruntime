@@ -36,7 +36,7 @@ LRN<T>::LRN(const OpKernelInfo& info) : CudaKernel(info) {
   float bias = info.GetAttrOrDefault<float>("bias", 1.0f);
 
   ORT_ENFORCE(norm_desc_.Set(
-                            gsl::narrow_cast<uint32_t>(size),
+                            static_cast<uint32_t>(size),
                             static_cast<double>(alpha),
                             static_cast<double>(beta),
                             static_cast<double>(bias))

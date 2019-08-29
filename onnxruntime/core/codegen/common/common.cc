@@ -213,7 +213,7 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
 
 int64_t ShapeRank(const NodeArg* def) {
   ORT_ENFORCE_DEBUG(nullptr != def);
-  return gsl::narrow_cast<int64_t>(def->Shape()->dim_size());
+  return static_cast<int64_t>(def->Shape()->dim_size());
 }
 
 bool ShapeHasValue(const NodeArg* def, int i) {

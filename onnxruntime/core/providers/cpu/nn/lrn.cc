@@ -30,10 +30,10 @@ Status LRN<float>::Compute(OpKernelContext* context) const {
 
   // Supports NCHW image format.
   ORT_ENFORCE(X->Shape().NumDimensions() == 4);
-  const int N = gsl::narrow_cast<int>(X->Shape()[0]);
-  const int C = gsl::narrow_cast<int>(X->Shape()[1]);
-  const int H = gsl::narrow_cast<int>(X->Shape()[2]);
-  const int W = gsl::narrow_cast<int>(X->Shape()[3]);
+  const int N = static_cast<int>(X->Shape()[0]);
+  const int C = static_cast<int>(X->Shape()[1]);
+  const int H = static_cast<int>(X->Shape()[2]);
+  const int W = static_cast<int>(X->Shape()[3]);
   const int image_size = C * H * W;
   const int pre_pad = (size_ - 1) / 2;
 
@@ -43,7 +43,7 @@ Status LRN<float>::Compute(OpKernelContext* context) const {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-  const int Xsize = gsl::narrow_cast<int>(X->Shape().Size());
+  const int Xsize = static_cast<int>(X->Shape().Size());
   auto sdata = alloc->Alloc(sizeof(float) * Xsize);
   BufferUniquePtr scale_buffer(sdata, BufferDeleter(alloc));
   auto* scale_data = static_cast<float*>(scale_buffer.get());

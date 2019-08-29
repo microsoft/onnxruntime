@@ -27,7 +27,7 @@ Status SliceCommon(const tvm::Array<tvm::Tensor>& inputs,
   std::vector<int64_t> axes;
   if (axes1.size() == 0) {
     for (size_t i = 0; i < starts.size(); ++i) {
-      axes.push_back(gsl::narrow_cast<int64_t>(i));
+      axes.push_back(static_cast<int64_t>(i));
     }
   } else {
     axes = axes1;
@@ -67,7 +67,7 @@ Status SliceCommon(const tvm::Array<tvm::Tensor>& inputs,
   tvm::Tensor Y;
   if (empty) {
     tvm::Array<tvm::Expr> shape;
-    for (size_t dim = 0; dim < gsl::narrow_cast<size_t>(shape_proto->dim_size()); ++dim) {
+    for (size_t dim = 0; dim < static_cast<size_t>(shape_proto->dim_size()); ++dim) {
       shape.push_back(tvm::ir::Simplify(tvm_ends[dim] - tvm_starts[dim]));
     }
     Y = MakeZeroTensor(shape, inputs[0]->dtype, node.Name() + "_zeros");

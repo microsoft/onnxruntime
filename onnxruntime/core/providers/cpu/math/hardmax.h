@@ -17,7 +17,7 @@ class Hardmax final : public OpKernel {
     Status status = info.GetAttr<int64_t>("axis", &axis);
 
     if (status.IsOK()) {
-      axis_ = gsl::narrow_cast<int>(axis);
+      axis_ = static_cast<int>(axis);
     }
 
     // if value was provided, make sure it was valid

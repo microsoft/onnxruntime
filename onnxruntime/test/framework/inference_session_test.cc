@@ -1242,7 +1242,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
       // output 0..N-1 are for output states, and N.. are actual outputs
       auto attr_num_scan_inputs = find_attr(node, "num_scan_inputs");
       ASSERT_TRUE(attr_num_scan_inputs != nullptr);
-      int num_scan_inputs = gsl::narrow_cast<int>(attr_num_scan_inputs->i());
+      int num_scan_inputs = static_cast<int>(attr_num_scan_inputs->i());
       ASSERT_TRUE(node.input_size() - num_scan_inputs < node.output_size());
       for (int i = 0; i < node.input_size() - num_scan_inputs; ++i) {
         init_state_map.insert(std::make_pair(node.output(i), node.input(i)));

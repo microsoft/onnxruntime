@@ -22,7 +22,7 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Softmax)::Evaluate(
   int64_t axis_i64;
   ORT_RETURN_IF_ERROR(info.GetAttr<int64_t>("axis", &axis_i64));
 
-  axis_i64 = HandleNegativeAxis(axis_i64, gsl::narrow_cast<int64_t>(inputs[0]->shape.size()));
+  axis_i64 = HandleNegativeAxis(axis_i64, static_cast<int64_t>(inputs[0]->shape.size()));
   tvm::Tensor Y = Softmax(inputs[0], axis_i64, node.Name() + "_Softmax");
   outputs.push_back(Y);
   return Status::OK();

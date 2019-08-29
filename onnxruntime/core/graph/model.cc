@@ -16,9 +16,6 @@
 #endif
 #include "core/util/protobuf_parsing_utils.h"
 
-#include "gsl/pointers"
-#include "gsl/gsl_util"
-
 #include "core/platform/env.h"
 #include "core/graph/schema_registry.h"
 using namespace ONNX_NAMESPACE;
@@ -32,12 +29,12 @@ Model::Model(const std::string& graph_name,
              const IOnnxRuntimeOpSchemaRegistryList& local_registries,
              const std::unordered_map<std::string, int>& domain_to_version,
              const std::vector<ONNX_NAMESPACE::FunctionProto>& model_functions) {
-  model_proto_ = std::make_unique<ModelProto>();
+  model_proto_ = std::unique_ptr<ModelProto>(new ModelProto());
   model_proto_->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   model_proto_->mutable_graph()->set_name(graph_name);
   model_metadata_ = model_metadata;
   for (auto& metadata : model_metadata_) {
-    const gsl::not_null<StringStringEntryProto*> prop{model_proto_->add_metadata_props()};
+    StringStringEntryProto* prop{model_proto_->add_metadata_props()};
     prop->set_key(metadata.first);
     prop->set_value(metadata.second);
   }
@@ -55,7 +52,7 @@ Model::Model(const std::string& graph_name,
   }
 
   for (const auto& domain : *p_domain_to_version) {
-    const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto_->add_opset_import()};
+    OperatorSetIdProto* opset_id_proto{model_proto_->add_opset_import()};
     opset_id_proto->set_domain(domain.first);
     opset_id_proto->set_version(domain.second);
   }
@@ -73,7 +70,7 @@ Model::Model(const std::string& graph_name,
 }
 
 Model::Model(const ModelProto& model_proto, const IOnnxRuntimeOpSchemaRegistryList* local_registries)
-    : Model(std::make_unique<ModelProto>(model_proto), local_registries) {
+    : Model(std::unique_ptr<ModelProto>(new ModelProto(model_proto)), local_registries) {
 }
 
 Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
@@ -119,14 +116,14 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
                             << " model may run depending upon legacy support "
                                "of some older opset version operators.";
     }
-    domain_to_version[domain] = gsl::narrow_cast<int>(version);
+    domain_to_version[domain] = static_cast<int>(version);
   }
 
   auto domain_map = schema_registry->GetLatestOpsetVersions(false);
   for (const auto& domain : domain_map) {
     if (domain_to_version.find(domain.first) == domain_to_version.end()) {
       domain_to_version[domain.first] = domain.second;
-      const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto_->add_opset_import()};
+      OperatorSetIdProto* opset_id_proto = model_proto_->add_opset_import();
       opset_id_proto->set_domain(domain.first);
       opset_id_proto->set_version(domain.second);
     }
@@ -344,13 +341,13 @@ Status Model::Save(Model& model, const std::string& file_path) {
 }
 
 Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
-  std::unique_ptr<ModelProto> modelProto = std::make_unique<ModelProto>();
+  std::unique_ptr<ModelProto> modelProto = std::unique_ptr<ModelProto>(new ModelProto());
   const bool result = modelProto->ParseFromArray(p_bytes, count);
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
 
-  p_model = std::make_shared<Model>(std::move(modelProto), local_registries);
+  p_model.reset(new Model(std::move(modelProto), local_registries));
 
   ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
 
@@ -366,7 +363,7 @@ Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOp
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
   }
 
-  std::unique_ptr<ModelProto> model_proto = std::make_unique<ModelProto>();
+  std::unique_ptr<ModelProto> model_proto = std::unique_ptr<ModelProto>(new ModelProto());
 #if GOOGLE_PROTOBUF_VERSION >= 3002000
   FileInputStream fs(fd);
   const bool result = model_proto->ParseFromZeroCopyStream(&fs) && fs.GetErrno() == 0;

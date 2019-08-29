@@ -21,7 +21,7 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Cast)::Evaluate(
 
   int64_t to;
   ORT_RETURN_IF_ERROR(attrs.GetAttr<int64_t>("to", &to));
-  auto to_type_proto = gsl::narrow_cast<ONNX_NAMESPACE::TensorProto_DataType>(to);
+  auto to_type_proto = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(to);
 
   tvm::Tensor X = inputs[0];
   tvm::Tensor Y;

@@ -25,7 +25,7 @@ TEST(Random, RandomNormal2DDouble) {
   test.AddAttribute<int64_t>("dtype", TensorProto::DOUBLE);
   test.AddAttribute("shape", dims);
 
-  std::default_random_engine generator{gsl::narrow_cast<uint32_t>(seed)};
+  std::default_random_engine generator{static_cast<uint32_t>(seed)};
   std::normal_distribution<double> distribution{mean, scale};
 
   std::vector<double> expected_output(TensorShape(dims).Size());
@@ -59,7 +59,7 @@ void RunRandomNormalLike3DFloat(bool infer_dtype = false) {
                         0.f, 0.f, 0.f,
                         0.f, 0.f, 0.f});
 
-  std::default_random_engine generator{gsl::narrow_cast<uint32_t>(seed)};
+  std::default_random_engine generator{static_cast<uint32_t>(seed)};
   std::normal_distribution<float> distribution{mean, scale};
 
   std::vector<float> expected_output(TensorShape(dims).Size());
@@ -95,7 +95,7 @@ TEST(Random, RandomUniform1DFloat) {
   test.AddAttribute<int64_t>("dtype", TensorProto::FLOAT);
   test.AddAttribute("shape", dims);
 
-  std::default_random_engine generator{gsl::narrow_cast<uint32_t>(seed)};
+  std::default_random_engine generator{static_cast<uint32_t>(seed)};
   std::uniform_real_distribution<float> distribution{low, high};
 
   std::vector<float> expected_output(TensorShape(dims).Size());
@@ -127,7 +127,7 @@ void RunRandomUniformLikeTest(bool infer_dtype = false) {
                         {0., 0., 0., 0., 0., 0.,
                          0., 0., 0., 0., 0., 0.});
 
-  std::default_random_engine generator{gsl::narrow_cast<uint32_t>(seed)};
+  std::default_random_engine generator{static_cast<uint32_t>(seed)};
   std::uniform_real_distribution<double> distribution{low, high};
 
   std::vector<double> expected_output(TensorShape(dims).Size());

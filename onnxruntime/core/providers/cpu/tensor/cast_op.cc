@@ -160,7 +160,7 @@ class Cast final : public OpKernel {
     int64_t to;
     Status status = info.GetAttr("to", &to);
     ORT_ENFORCE(status.IsOK(), "Attribute to is not set.");
-    to_ = gsl::narrow_cast<ONNX_NAMESPACE::TensorProto_DataType>(to);
+    to_ = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(to);
   }
 
   Status Compute(OpKernelContext* context) const override;

@@ -7,7 +7,7 @@ namespace onnxruntime {
 
 class FuncManager {
  public:
-  FuncManager() : fused_funcs_(std::make_shared<std::unordered_map<std::string, FuncInfo> >()), lib_loader_(std::make_unique<ExLibLoader>()) {}
+  FuncManager() : fused_funcs_(std::make_shared<std::unordered_map<std::string, FuncInfo> >()), lib_loader_(std::unique_ptr<ExLibLoader>(new ExLibLoader())) {}
 
   Status AddFuncInfo(const std::string& name, const std::string& dll_path);
 

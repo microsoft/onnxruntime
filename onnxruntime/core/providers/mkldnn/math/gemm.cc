@@ -28,9 +28,9 @@ Status Gemm<float>::Compute(OpKernelContext* ctx) const {
   if (!helper.State().IsOK())
     return helper.State();
 
-  int M = gsl::narrow_cast<int>(helper.M());
-  int N = gsl::narrow_cast<int>(helper.N());
-  int K = gsl::narrow_cast<int>(helper.K());
+  int M = static_cast<int>(helper.M());
+  int N = static_cast<int>(helper.N());
+  int K = static_cast<int>(helper.K());
   auto Y = ctx->Output(0, TensorShape({M, N}));
 
   if (beta_ != 0) {

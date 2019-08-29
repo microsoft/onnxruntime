@@ -15,7 +15,7 @@ class Cast final : public CudaKernel {
     int64_t to;
     Status status = info.GetAttr("to", &to);
     ORT_ENFORCE(status.IsOK(), "Attribute to is not set.");
-    to_ = gsl::narrow_cast<ONNX_NAMESPACE::TensorProto_DataType>(to);
+    to_ = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(to);
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;

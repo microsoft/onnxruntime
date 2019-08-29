@@ -27,7 +27,7 @@ static void RunTest(const std::map<int64_t, TFrom>& input,
 
   test.AddInput<int64_t, TFrom>("X", input);
 
-  std::vector<int64_t> dims{1, gsl::narrow_cast<int64_t>(output.size())};
+  std::vector<int64_t> dims{1, static_cast<int64_t>(output.size())};
   test.AddOutput("Y", dims, output);
 
   test.Run(expect_result);
@@ -119,7 +119,7 @@ void RunBadAttributeTest(const std::string& cast_to,
 
   test.AddInput<int64_t, float>("X", input);
 
-  std::vector<int64_t> dims{1, gsl::narrow_cast<int64_t>(output.size())};
+  std::vector<int64_t> dims{1, static_cast<int64_t>(output.size())};
   test.AddOutput<float>("Y", dims, output);
 
   test.Run(expect_result);

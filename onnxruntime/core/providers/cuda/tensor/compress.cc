@@ -66,10 +66,10 @@ Status Compress::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   ORT_RETURN_IF_ERROR(CompressImpl(element_bytes,
-                                           gsl::narrow_cast<int32_t>(valid_condition_length),
-                                           gsl::narrow_cast<int32_t>(axis_right_stride),
-                                           has_axis_ ? gsl::narrow_cast<int32_t>(input_dimensions[axis_]) : gsl::narrow_cast<int32_t>(input_size),
-                                           gsl::narrow_cast<int32_t>(positive_condition_count),
+                                           static_cast<int32_t>(valid_condition_length),
+                                           static_cast<int32_t>(axis_right_stride),
+                                           has_axis_ ? static_cast<int32_t>(input_dimensions[axis_]) : static_cast<int32_t>(input_size),
+                                           static_cast<int32_t>(positive_condition_count),
                                            condition_cumulative_sum,
                                            condition_data,
                                            input_tensor->DataRaw(),

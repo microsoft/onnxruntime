@@ -44,7 +44,7 @@ class CudnnRNN {
 
     CUDNN_RETURN_IF_ERROR(cudnnSetRNNDescriptor(cudnnHandle,
                                                 cudnn_rnn_desc_,
-                                                gsl::narrow_cast<int>(hidden_size),
+                                                static_cast<int>(hidden_size),
                                                 num_layers,
                                                 cudnn_dropout_desc,
                                                 CUDNN_LINEAR_INPUT,  // We can also skip the input matrix transformation

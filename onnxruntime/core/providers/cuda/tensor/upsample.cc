@@ -62,7 +62,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
 
   for (int i = 0; i < rank; ++i) {
     input_stride_span[i] = input_pitches[i];
-    div_strides_span[i] = fast_divmod(gsl::narrow_cast<int>(output_pitches[i]));
+    div_strides_span[i] = fast_divmod(static_cast<int>(output_pitches[i]));
   }
   input_strides.CopyToGpu();
   output_div_pitches.CopyToGpu();
@@ -95,7 +95,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
     gsl::span<fast_divmod> scales_div_span = scales_div.CpuSpan();
 
     for (int i = 0; i < rank; ++i) {
-      scales_div_span[i] = fast_divmod(gsl::narrow_cast<int>(ceil(scales[i])));
+      scales_div_span[i] = fast_divmod(static_cast<int>(ceil(scales[i])));
     }
     scales_div.CopyToGpu();
 

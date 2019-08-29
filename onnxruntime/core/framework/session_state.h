@@ -7,7 +7,7 @@
 #include <map>
 #include <unordered_map>
 #include <vector>
-#include "gsl/gsl_util"
+
 
 #include "core/platform/ort_mutex.h"
 #include "core/common/common.h"

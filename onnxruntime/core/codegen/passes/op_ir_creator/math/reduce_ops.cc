@@ -31,7 +31,7 @@ class FuncReduceIndexed {
   }
 
   tvm::Tensor operator()(const tvm::Tensor& X) const {
-    auto axis = HandleNegativeAxis(axis_, gsl::narrow_cast<int64_t>(X->shape.size()));
+    auto axis = HandleNegativeAxis(axis_, static_cast<int64_t>(X->shape.size()));
     tvm::Tensor index32 = func_(X, axis, keep_dims_, name_);
     return Cast(index32, tvm::Int(64));
   }
@@ -60,7 +60,7 @@ class FuncReduce {
   tvm::Tensor operator()(const tvm::Tensor& X) const {
     std::vector<int64_t> axes;
     for (auto i : axes_)
-      axes.push_back(HandleNegativeAxis(i, gsl::narrow_cast<int64_t>(X->shape.size())));
+      axes.push_back(HandleNegativeAxis(i, static_cast<int64_t>(X->shape.size())));
 
     return func_(X, axes, keep_dims_, name_);
   }

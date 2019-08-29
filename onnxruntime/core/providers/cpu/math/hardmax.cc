@@ -25,8 +25,8 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, msg);
   }
 
-  const int N = gsl::narrow_cast<int>(tmpN);
-  const int D = gsl::narrow_cast<int>(tmpD);
+  const int N = static_cast<int>(tmpN);
+  const int D = static_cast<int>(tmpD);
 
   std::vector<float> rowmax_(N);
   float* rowmax_data = rowmax_.data();

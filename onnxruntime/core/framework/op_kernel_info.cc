@@ -56,7 +56,7 @@ const onnxruntime::Node& OpKernelInfo::node() const noexcept {
 }
 
 bool OpKernelInfo::TryGetConstantInput(int input_index, const Tensor** constant_input_value) const {
-  if (input_index < 0 || input_index >= gsl::narrow_cast<int>(node_.InputDefs().size())) {
+  if (input_index < 0 || input_index >= static_cast<int>(node_.InputDefs().size())) {
     return false;
   }
   auto& input_arg_name = node_.InputDefs()[input_index]->Name();

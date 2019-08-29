@@ -179,14 +179,14 @@ Scan<9>::Scan(const OpKernelInfo& info) : OpKernel(info) {
   ReadDirections(info, "scan_output_directions", output_directions_, num_scan_outputs);
 
   if (info.GetAttrs<int64_t>("scan_input_axes", input_axes_).IsOK()) {
-    ORT_ENFORCE(gsl::narrow_cast<int64_t>(input_axes_.size()) == num_scan_inputs_,
+    ORT_ENFORCE(static_cast<int64_t>(input_axes_.size()) == num_scan_inputs_,
                 "Number of entries in 'scan_input_axes' was ", input_axes_.size(), " but expected ", num_scan_inputs_);
   } else {
     input_axes_ = std::vector<int64_t>(num_scan_inputs_, 0);
   }
 
   if (info.GetAttrs<int64_t>("scan_output_axes", output_axes_).IsOK()) {
-    ORT_ENFORCE(gsl::narrow_cast<int64_t>(output_axes_.size()) == num_scan_outputs,
+    ORT_ENFORCE(static_cast<int64_t>(output_axes_.size()) == num_scan_outputs,
                 "Number of entries in 'scan_output_axes' was ", output_axes_.size(), " but expected ",
                 num_scan_outputs);
   } else {
@@ -222,7 +222,7 @@ ScanImpl::ScanImpl(OpKernelContextInternal& context,
     : context_{context},
       session_state_{session_state},
       subgraph_{*session_state.GetGraphViewer()},
-      num_scan_inputs_{gsl::narrow_cast<int>(num_scan_inputs)},
+      num_scan_inputs_{static_cast<int>(num_scan_inputs)},
       input_directions_{input_directions},
       output_directions_{output_directions},
       input_axes_from_attribute_{input_axes},

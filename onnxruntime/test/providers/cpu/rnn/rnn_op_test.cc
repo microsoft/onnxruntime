@@ -720,7 +720,7 @@ TEST(RNNTest, RNN_invalid_sequence_lens) {
     test.AddInput<float>("B", B_dims, B_data);
 
     // std::vector<int64_t> sequence_lens_dims({batch_size});
-    std::vector<int64_t> sequence_lens_dims{gsl::narrow_cast<int64_t>(sequence_lens.size())};
+    std::vector<int64_t> sequence_lens_dims{static_cast<int64_t>(sequence_lens.size())};
     test.AddInput<int>("sequence_lens", sequence_lens_dims, sequence_lens);
 
     std::vector<int64_t> initial_h_dims = {num_directions, batch_size, hidden_size};

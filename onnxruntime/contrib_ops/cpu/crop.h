@@ -6,7 +6,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 
-#include "gsl/gsl_util"
+
 
 namespace onnxruntime {
 namespace contrib {

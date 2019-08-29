@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <gsl/pointers>
 
 #include "core/common/common.h"
 #include "core/framework/callback.h"

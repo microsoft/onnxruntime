@@ -21,11 +21,11 @@ class RandomNormal final : public OpKernel {
     // read optional seed attribute and generate if not provided
     float seed = 0.f;
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
-      generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
+      generator_ = std::default_random_engine{static_cast<uint32_t>(seed)};
     }
     else {
       generator_ = std::default_random_engine{
-        gsl::narrow_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
+        static_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
       };
     }
 
@@ -64,11 +64,11 @@ class RandomNormalLike final : public OpKernel {
     // read optional seed attribute and generate if not provided
     float seed = 0.f;
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
-      generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
+      generator_ = std::default_random_engine{static_cast<uint32_t>(seed)};
     }
     else {
       generator_ = std::default_random_engine{
-        gsl::narrow_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
+        static_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
       };
     }
 
@@ -101,11 +101,11 @@ class RandomUniform final : public OpKernel {
     // read optional seed attribute and generate if not provided
     float seed = 0.f;
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
-      generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
+      generator_ = std::default_random_engine{static_cast<uint32_t>(seed)};
     }
     else {
       generator_ = std::default_random_engine{
-        gsl::narrow_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
+        static_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
       };
     }
 
@@ -141,11 +141,11 @@ class RandomUniformLike final : public OpKernel {
     // read optional seed attribute and generate if not provided
     float seed = 0.f;
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
-      generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
+      generator_ = std::default_random_engine{static_cast<uint32_t>(seed)};
     }
     else {
       generator_ = std::default_random_engine{
-        gsl::narrow_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
+        static_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
       };
     }
 
@@ -176,11 +176,11 @@ class Multinomial final : public OpKernel {
 
     float seed = 0.f;
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
-      generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
+      generator_ = std::default_random_engine{static_cast<uint32_t>(seed)};
     }
     else {
       generator_ = std::default_random_engine{
-        gsl::narrow_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
+        static_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
       };
     }
 

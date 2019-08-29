@@ -4,7 +4,6 @@
 #pragma once
 
 #include <unordered_map>
-#include "gsl/pointers"
 
 #include "core/common/status.h"
 #include "core/framework/tensor.h"
@@ -47,7 +46,7 @@ class IExecutionProvider {
   /**
      Get all IAllocators for <*this> execution provider.
   */
-  const std::vector<gsl::not_null<const IAllocator*>>& GetAllocators() const {
+  const std::vector<const IAllocator*>& GetAllocators() const {
     return allocator_list_;
   }
 
@@ -148,6 +147,6 @@ class IExecutionProvider {
 
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
   // contains the same instances as allocators_
-  std::vector<gsl::not_null<const IAllocator*>> allocator_list_;
+  std::vector<const IAllocator*> allocator_list_;
 };
 }  // namespace onnxruntime

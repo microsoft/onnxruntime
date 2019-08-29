@@ -5,7 +5,6 @@
 
 #include "core/common/status.h"
 #include "core/graph/graph_viewer.h"
-#include "gsl/span"
 
 #ifdef __has_attribute
 #define ORT_HAVE_ATTRIBUTE(x) __has_attribute(x)
@@ -79,7 +78,7 @@ class OpNodeProtoHelper {
   MUST_USE_RESULT Status GetAttrs(const std::string& name, std::vector<T>& values) const;
 
   template <typename T>
-  MUST_USE_RESULT Status GetAttrs(const std::string& name, gsl::span<T> values) const;
+  MUST_USE_RESULT Status GetAttrs(const std::string& name, T* values, int values_len) const;
 
   uint32_t GetPrimitiveAttrElementCount(ONNX_NAMESPACE::AttributeProto_AttributeType type,
                                         const std::string& name) const noexcept;
@@ -88,11 +87,11 @@ class OpNodeProtoHelper {
                              const std::string& name) const noexcept;
 
   uint32_t GetInputCount() const {
-    return gsl::narrow_cast<uint32_t>(impl_->getNumInputs());
+    return static_cast<uint32_t>(impl_->getNumInputs());
   }
 
   uint32_t GetOutputCount() const {
-    return gsl::narrow_cast<uint32_t>(impl_->getNumOutputs());
+    return static_cast<uint32_t>(impl_->getNumOutputs());
   }
 
   const ONNX_NAMESPACE::TypeProto* GetInputType(size_t index) const {

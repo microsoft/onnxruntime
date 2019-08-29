@@ -141,11 +141,11 @@ TopK<9, float>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_in
   int64_t k_temp;
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_temp).IsOK());
   ORT_ENFORCE(k_temp > 0);
-  k_ = gsl::narrow_cast<unsigned>(k_temp);
+  k_ = static_cast<unsigned>(k_temp);
 
   int64_t axis_temp;
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("axis", &axis_temp).IsOK());
-  axis_ = gsl::narrow_cast<int>(axis_temp);
+  axis_ = static_cast<int>(axis_temp);
 }
 
 // Opset ver - 1 to 9
@@ -162,7 +162,7 @@ template <>
 TopK<10, float>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
   int64_t axis_temp;
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("axis", &axis_temp).IsOK());
-  axis_ = gsl::narrow_cast<int>(axis_temp);
+  axis_ = static_cast<int>(axis_temp);
 }
 
 // Opset ver - 10
@@ -177,7 +177,7 @@ Status TopK<10, float>::Compute(OpKernelContext* p_op_kernel_context) const {
   if (y_shape.size() != 1 || y_shape[0] != 1) return Status(common::ONNXRUNTIME, common::FAIL, "k tensor should be a 1D tensor of size 1");
   auto parsed_input_k = Y->template Data<int64_t>()[0];
   if (parsed_input_k < 0) return Status(common::ONNXRUNTIME, common::FAIL, "value of k must not be negative");
-  return TopKImpl(p_op_kernel_context, X, axis_, gsl::narrow_cast<unsigned>(parsed_input_k));
+  return TopKImpl(p_op_kernel_context, X, axis_, static_cast<unsigned>(parsed_input_k));
 }
 
 // Register necessary kernels

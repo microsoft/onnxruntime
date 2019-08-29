@@ -83,7 +83,7 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Conv)::Evaluate(
       ORT_ENFORCE(channel_out % group == 0);
 
       int64_t cout_group = channel_out / group;
-      Y_shape.Set(1, Y_shape[1] / gsl::narrow_cast<int>(group));
+      Y_shape.Set(1, Y_shape[1] / static_cast<int>(group));
 
       tvm::Array<tvm::Integer> split_index0;
       tvm::Array<tvm::Integer> split_index1;

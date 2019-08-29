@@ -183,7 +183,7 @@ Scan8Impl::Scan8Impl(OpKernelContextInternal& context,
   num_variadic_inputs_ = context_.NumVariadicInputs(1);
   num_variadic_outputs_ = context_.OutputCount();
 
-  num_loop_state_variables_ = num_variadic_inputs_ - gsl::narrow_cast<int>(num_scan_inputs);
+  num_loop_state_variables_ = num_variadic_inputs_ - static_cast<int>(num_scan_inputs);
 }
 
 Status Scan8Impl::Initialize() {

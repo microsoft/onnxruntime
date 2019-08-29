@@ -39,7 +39,7 @@ class ReshapeHelper {
       requested_shape[unknown_dim] = input_shape.Size() / size;
     } else {
       // check if the output shape is valid.
-      ORT_ENFORCE(gsl::narrow_cast<int64_t>(input_shape.Size()) == size,
+      ORT_ENFORCE(static_cast<int64_t>(input_shape.Size()) == size,
                   "The input tensor cannot be reshaped to the requested shape. Input shape:", input_shape, ", requested shape:", TensorShape(requested_shape));
     }
   }

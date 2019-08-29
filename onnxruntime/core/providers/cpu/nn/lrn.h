@@ -17,7 +17,7 @@ class LRN : public OpKernel {
   LRN(const OpKernelInfo& info) : OpKernel(info) {
     int64_t size;
     ORT_ENFORCE(info.GetAttr<int64_t>("size", &size).IsOK());
-    size_ = gsl::narrow_cast<int>(size);
+    size_ = static_cast<int>(size);
     ORT_ENFORCE(size_ > 0);
     ORT_ENFORCE(size_ % 2 == 1);
     ORT_ENFORCE(info.GetAttr<float>("alpha", &alpha_).IsOK());

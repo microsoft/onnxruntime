@@ -9,7 +9,7 @@
 #include "onnx/defs/schema.h"
 #include "core/framework/op_kernel.h"
 #include "onnx/defs/schema.h"
-#include "gsl/span"
+
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
@@ -49,12 +49,12 @@ namespace onnxruntime {
   template <>                                                                      \
   template <>                                                                      \
   Status OpNodeProtoHelper<IMPL_T>::GetAttrs<T>(                                   \
-      const std::string& name, gsl::span<T> values) const {                        \
+      const std::string& name, T* values, int values_len) const {                        \
     const AttributeProto* attr = TryGetAttribute(name);                            \
     if (!attr) {                                                                   \
       return Status(ONNXRUNTIME, FAIL, "No attribute with this name is defined."); \
     }                                                                              \
-    ORT_ENFORCE(values.size() == attr->list##_size());                     \
+    ORT_ENFORCE(values_len == attr->list##_size());                     \
     for (int i = 0; i < attr->list##_size(); ++i) {                                \
       values[i] = static_cast<T>(attr->list(i));                                   \
     }                                                                              \

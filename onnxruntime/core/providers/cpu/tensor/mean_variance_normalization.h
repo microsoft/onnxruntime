@@ -49,11 +49,11 @@ class MeanVarianceNormalization_0 : public OpKernel {
     for (int nc = 0; nc < N * C; ++nc) {
       mean(nc % C) += X_arr.col(nc).sum();
     }
-    mean /= gsl::narrow_cast<T>(N * sample_size);
+    mean /= static_cast<T>(N * sample_size);
     for (int64_t nc = 0; nc < N * C; ++nc) {
       var(nc % C) += (X_arr.col(nc) - mean(nc % C)).matrix().squaredNorm();
     }
-    var /= gsl::narrow_cast<T>(N * sample_size);
+    var /= static_cast<T>(N * sample_size);
 
     Eigen::Array<T, Eigen::Dynamic, 1> inv_std;
     EigenArrayMap<T> Y_arr(Ydata, sample_size, N * C);

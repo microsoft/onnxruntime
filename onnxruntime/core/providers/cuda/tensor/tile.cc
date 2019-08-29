@@ -53,7 +53,7 @@ Status Tile<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   auto fdm_input_shape_span = fdm_input_shape.CpuSpan();
   for (size_t i = 0; i < input_shape.size(); ++i)
-    fdm_input_shape_span[i] = fast_divmod(gsl::narrow_cast<int>(input_shape[i]));
+    fdm_input_shape_span[i] = fast_divmod(static_cast<int>(input_shape[i]));
 
   ORT_RETURN_IF_ERROR(fdm_input_shape.CopyToGpu());
   ORT_RETURN_IF_ERROR(input_strides.CopyToGpu());

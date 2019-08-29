@@ -4,7 +4,7 @@
 #include "core/codegen/mti/tensor/gather.h"
 
 #include "core/codegen/mti/mti_tvm_utils.h"
-#include "gsl/gsl_util"
+
 #include <topi/transform.h>
 
 namespace onnxruntime {

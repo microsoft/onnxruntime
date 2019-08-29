@@ -103,7 +103,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
 
       cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
       ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations, mode, CudnnTensor::GetDataType<CudaT>()));
-      CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(s_.conv_desc, gsl::narrow_cast<int>(group_)));
+      CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(s_.conv_desc, static_cast<int>(group_)));
 
       if (has_bias) {
         const Tensor* B = context->Input<Tensor>(2);
@@ -211,14 +211,14 @@ Status CudnnConvolutionDescriptor::Set(
   std::vector<int> stride_dims(rank);
   std::vector<int> dilation_dims(rank);
   for (int i = 0; i < rank; i++) {
-    pad_dims[i] = gsl::narrow_cast<int>(pads[i]);
-    stride_dims[i] = gsl::narrow_cast<int>(strides[i]);
-    dilation_dims[i] = gsl::narrow_cast<int>(dilations[i]);
+    pad_dims[i] = static_cast<int>(pads[i]);
+    stride_dims[i] = static_cast<int>(strides[i]);
+    dilation_dims[i] = static_cast<int>(dilations[i]);
   }
 
   CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionNdDescriptor(
       desc_,
-      gsl::narrow_cast<int>(rank),
+      static_cast<int>(rank),
       pad_dims.data(),
       stride_dims.data(),
       dilation_dims.data(),

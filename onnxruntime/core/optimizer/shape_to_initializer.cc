@@ -18,7 +18,7 @@ Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& ru
   std::vector<int64_t> input_dims;
   int num_dimensions = input_shape_proto->dim_size();
   for (int i = 0; i < num_dimensions; i++) {
-    input_dims.push_back(gsl::narrow_cast<int64_t>(input_shape_proto->dim(i).dim_value()));
+    input_dims.push_back(static_cast<int64_t>(input_shape_proto->dim(i).dim_value()));
   }
 
   // Create the TensorProto that will be used as initializer in place of the Shape operator.
@@ -28,7 +28,7 @@ Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& ru
 
   shape_initializer_proto.set_name(shape_out_def->Name());
 
-  TensorShape tensor_shape({gsl::narrow_cast<int64_t>(num_dimensions)});
+  TensorShape tensor_shape({static_cast<int64_t>(num_dimensions)});
   for (auto& dim : tensor_shape.GetDims()) {
     shape_initializer_proto.add_dims(dim);
   }

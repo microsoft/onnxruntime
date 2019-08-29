@@ -92,14 +92,14 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   CudaAsyncBuffer<fast_divmod> div_strides(this, device_id, dimension_count);
   gsl::span<fast_divmod> div_strides_span = div_strides.CpuSpan();
   for (int i = 0; i < dimension_count; ++i) {
-    div_strides_span[i] = fast_divmod(gsl::narrow_cast<int>(output_pitches[i]));
+    div_strides_span[i] = fast_divmod(static_cast<int>(output_pitches[i]));
   }
   div_strides.CopyToGpu();
 
   size_t element_size = input_tensor->DataType()->Size();
 
   ORT_RETURN_IF_ERROR(SliceImpl(element_size,
-                              gsl::narrow_cast<int32_t>(dimension_count),
+                              static_cast<int32_t>(dimension_count),
                               starts_buffer.GpuPtr(),
                               steps_buffer.GpuPtr(),
                               input_strides.GpuPtr(),

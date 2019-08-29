@@ -64,8 +64,8 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
   // for divmod calling in _GatherKernel to calculate the input index
   CudaAsyncBuffer<fast_divmod> div_strides(this, 0, 2);
   gsl::span<fast_divmod> div_strides_span = div_strides.CpuSpan();
-  div_strides_span[0] = fast_divmod(gsl::narrow_cast<int>(output_block_size));
-  div_strides_span[1] = fast_divmod(gsl::narrow_cast<int>(block_size));
+  div_strides_span[0] = fast_divmod(static_cast<int>(output_block_size));
+  div_strides_span[1] = fast_divmod(static_cast<int>(block_size));
   ORT_RETURN_IF_ERROR(div_strides.CopyToGpu());
 
   MLDataType T_type = p.input_tensor->DataType();

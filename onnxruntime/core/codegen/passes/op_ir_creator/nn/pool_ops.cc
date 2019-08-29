@@ -78,7 +78,7 @@ POOL_OP(AveragePool)
       CodeGenContext&,                                                                                                      \
       tvm::Array<tvm::Tensor>& outputs) {                                                                                   \
     if (inputs[0]->shape.size() != 4)                                                                                       \
-      ORT_NOT_IMPLEMENTED(gsl::narrow_cast<int64_t>(inputs[0]->shape.size()) - 2, "d global pooling is not implementated"); \
+      ORT_NOT_IMPLEMENTED(static_cast<int64_t>(inputs[0]->shape.size()) - 2, "d global pooling is not implementated"); \
     tvm::Tensor Y = name(inputs[0], "NCHW");                                                                                \
     outputs.push_back(Y);                                                                                                   \
     return Status::OK();                                                                                                    \

@@ -131,8 +131,8 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
     // mean/stddev is (N,C,1,1)
     // NOTE cudnnBatchNormalization computes unbiased variance sum((Xi - mean)^2) / (count - 1)
     // and it needs to be corrected with (count - 1) / count
-    fast_divmod fdm_HW(gsl::narrow_cast<int>(image_size));
-    fast_divmod fdm_C(gsl::narrow_cast<int>(C));
+    fast_divmod fdm_HW(static_cast<int>(image_size));
+    fast_divmod fdm_C(static_cast<int>(C));
 
     InstanceNormImpl<CudaT>(
         x_data,

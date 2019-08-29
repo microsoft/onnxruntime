@@ -33,7 +33,7 @@ namespace detail {
 void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
                     std::vector<int64_t>& directions, int64_t num_entries) {
   if (info.GetAttrs<int64_t>(attr_name, directions).IsOK()) {
-    ORT_ENFORCE(num_entries < 0 || gsl::narrow_cast<int64_t>(directions.size()) == num_entries,
+    ORT_ENFORCE(num_entries < 0 || static_cast<int64_t>(directions.size()) == num_entries,
                 "Number of entries in '", attr_name, "' was ", directions.size(),
                 " but expected ", num_entries);
 

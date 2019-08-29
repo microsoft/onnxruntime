@@ -130,14 +130,14 @@ template <>
 void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
                              const int64_t N, const int64_t K, float alpha, const float* A, const float* B, float beta,
                              float* C, ThreadPool* /*context*/) {
-  int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
-  int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
+  int lda = static_cast<int>((TransA == CblasNoTrans) ? K : M);
+  int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
   cblas_sgemm(CblasRowMajor, TransA, TransB,
-              gsl::narrow_cast<int>(M),
-              gsl::narrow_cast<int>(N),
-              gsl::narrow_cast<int>(K),
+              static_cast<int>(M),
+              static_cast<int>(N),
+              static_cast<int>(K),
               alpha, A, lda, B, ldb,
-              beta, C, gsl::narrow_cast<int>(N));
+              beta, C, static_cast<int>(N));
 }
 
 template <>

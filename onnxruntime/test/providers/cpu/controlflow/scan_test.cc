@@ -376,7 +376,7 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
   auto calculate_output_shape = [&](size_t output_index) {
     if (output_axes && output_axes->size() > output_index) {
       auto axis = output_axes->at(output_index);
-      auto rank = gsl::narrow_cast<int64_t>(output_shape.size());
+      auto rank = static_cast<int64_t>(output_shape.size());
 
       // skip if this is an invalid input test and axis is out of the valid range
       if (axis >= -rank && axis < rank) {

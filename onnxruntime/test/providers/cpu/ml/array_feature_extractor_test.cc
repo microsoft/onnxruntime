@@ -36,7 +36,7 @@ TEST_F(ArrayFeatureExtractorTest, Basic) {
       expected_output.push_back(X[offset + Y[j]]);
     }
   }
-  const vector<int64_t> expected_dims{N, gsl::narrow_cast<int64_t>(Y.size())};
+  const vector<int64_t> expected_dims{N, static_cast<int64_t>(Y.size())};
   test_.AddOutput<float>("Z", expected_dims, expected_output);
 
   test_.Run();
@@ -54,7 +54,7 @@ TEST_F(ArrayFeatureExtractorTest, HigherDimensionalX) {
   test_.AddInput("X", x_dims, X);
 
   const std::vector<int64_t> Y{0, 1, 1, 2};
-  const int64_t y_size = gsl::narrow_cast<int64_t>(Y.size());
+  const int64_t y_size = static_cast<int64_t>(Y.size());
   const std::vector<int64_t> y_dims{1, y_size};
   test_.AddInput("Y", y_dims, Y);
 

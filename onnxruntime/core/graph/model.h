@@ -9,8 +9,6 @@
 #include <string>
 #include "core/graph/graph_viewer.h"
 
-#include "gsl/pointers"
-
 namespace onnxruntime {
 typedef std::unordered_map<std::string, std::string> ModelMetaData;
 using IOnnxRuntimeOpSchemaRegistryList = std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>>;

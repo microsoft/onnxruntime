@@ -21,7 +21,7 @@ struct TensorPitches : std::vector<int64_t> {
     auto tensor_rank = dims.size();
     auto pitch_rank = p.size();
     auto padded_rank = pitch_rank - tensor_rank;
-    if (gsl::narrow_cast<ptrdiff_t>(padded_rank) < 0)
+    if (static_cast<ptrdiff_t>(padded_rank) < 0)
       return false;
 
     *(p.rbegin()) = 1;  // The innermost axis is 1 (single values)

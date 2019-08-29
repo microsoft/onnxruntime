@@ -3,7 +3,6 @@
 
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/common/logging/logging.h"
 
 namespace onnxruntime {
@@ -60,7 +59,7 @@ static bool CanUpdateImplicitInputNameInSubgraph(const Node& node,
   if (!node.ContainsSubgraph())
     return true;
 
-  for (const gsl::not_null<const Graph*>& subgraph : node.GetSubgraphs()) {
+  for (const Graph*& subgraph : node.GetSubgraphs()) {
     // if we have an existing NodeArg in the subgraph with the new_output_name that would override an implicit input
     // with the same name
     if (subgraph->GetNodeArg(new_output_name) != nullptr) {

@@ -6,7 +6,7 @@
 #include "core/codegen/common/profile.h"
 #include "core/codegen/passes/utils/codegen_context.h"
 #include "core/providers/common.h"
-#include "gsl/gsl_util"
+
 
 #include <topi/detail/extern.h>
 
@@ -92,7 +92,7 @@ tvm::Expr ShapeDimToTvmDim(const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim
   if (dim.has_dim_param()) {
     return ctx.GetOrCreateDynamicDim(dim.dim_param());
   } else if (dim.has_dim_value()) {
-    return tvm::Expr(gsl::narrow_cast<int32_t>(dim.dim_value()));
+    return tvm::Expr(static_cast<int32_t>(dim.dim_value()));
   }
   return ctx.GetOrCreateDynamicDim(ctx.CreateUnnamedSymbol());
 }

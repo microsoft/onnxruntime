@@ -49,7 +49,7 @@ class OpKernelContextInternal : public OpKernelContext {
     // for a subgraph (the index numbers will be different there).
     std::unordered_map<std::string, const OrtValue*> implicit_inputs_map;
 
-    for (int i = 0, end = gsl::narrow_cast<int>(implicit_inputs_.size()); i < end; ++i) {
+    for (int i = 0, end = static_cast<int>(implicit_inputs_.size()); i < end; ++i) {
       implicit_inputs_map[implicit_inputs_[i]->Name()] = GetImplicitInputMLValue(i);
     }
 

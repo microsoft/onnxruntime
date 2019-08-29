@@ -52,15 +52,15 @@ Status Crop<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* Y = context->Output(0, TensorShape({N, C, bottomLimit - topBorder, rightLimit - leftBorder}));
 
   typedef typename ToCudaType<T>::MappedType CudaT;
-  fast_divmod fdm_YW(gsl::narrow_cast<int>(rightLimit - leftBorder));
-  fast_divmod fdm_YHW(gsl::narrow_cast<int>((bottomLimit - topBorder) * (rightLimit - leftBorder)));
+  fast_divmod fdm_YW(static_cast<int>(rightLimit - leftBorder));
+  fast_divmod fdm_YHW(static_cast<int>((bottomLimit - topBorder) * (rightLimit - leftBorder)));
 
   CropImpl<CudaT>(
       reinterpret_cast<const CudaT*>(X->template Data<T>()),
-      gsl::narrow_cast<int>(leftBorder),
-      gsl::narrow_cast<int>(topBorder),
-      gsl::narrow_cast<int>(W),
-      gsl::narrow_cast<int>(W * H),
+      static_cast<int>(leftBorder),
+      static_cast<int>(topBorder),
+      static_cast<int>(W),
+      static_cast<int>(W * H),
       fdm_YW,
       fdm_YHW,
       reinterpret_cast<CudaT*>(Y->template MutableData<T>()),

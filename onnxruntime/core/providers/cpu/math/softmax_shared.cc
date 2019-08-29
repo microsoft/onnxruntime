@@ -57,9 +57,9 @@ common::Status SoftmaxCPU(const int64_t N,
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, msg);
   }
 
-  const int n = gsl::narrow_cast<int>(N);
-  const int d = gsl::narrow_cast<int>(D);
-  const int nd = gsl::narrow_cast<int>(N * D);
+  const int n = static_cast<int>(N);
+  const int d = static_cast<int>(D);
+  const int nd = static_cast<int>(N * D);
 
   math::RowwiseMax<float, CPUMathUtil>(n, d, Xdata, rowmax, nullptr);
 

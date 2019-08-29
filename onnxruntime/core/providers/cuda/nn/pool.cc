@@ -71,18 +71,18 @@ class CudnnPoolingDescriptor final {
     if (!desc_)
       CUDNN_RETURN_IF_ERROR(cudnnCreatePoolingDescriptor(&desc_));
 
-    int rank = gsl::narrow_cast<int>(kernel_shape.size());
+    int rank = static_cast<int>(kernel_shape.size());
     std::vector<int> window(rank);
     std::vector<int> padding(rank);
     std::vector<int> stride(rank);
     for (int i = 0; i < rank; i++) {
-      window[i] = gsl::narrow_cast<int>(kernel_shape[i]);
+      window[i] = static_cast<int>(kernel_shape[i]);
     }
     for (int i = 0; i < rank; i++) {
-      padding[i] = gsl::narrow_cast<int>(pads[i]);
+      padding[i] = static_cast<int>(pads[i]);
     }
     for (int i = 0; i < rank; i++) {
-      stride[i] = gsl::narrow_cast<int>(strides[i]);
+      stride[i] = static_cast<int>(strides[i]);
     }
     CUDNN_RETURN_IF_ERROR(cudnnSetPoolingNdDescriptor(
         desc_,

@@ -67,11 +67,11 @@ struct BinaryElementwisePreparation {
         std::vector<int64_t> new_output_dims;
         if (N == 1) {
           output_rank_or_simple_broadcast = static_cast<size_t>(SimpleBroadcast::RightPerChannelBatch1);
-          fdm_H = fast_divmod(gsl::narrow_cast<int>(H));
+          fdm_H = fast_divmod(static_cast<int>(H));
         } else {
           output_rank_or_simple_broadcast = static_cast<size_t>(SimpleBroadcast::RightPerChannelBatchN);
-          fdm_H = fast_divmod(gsl::narrow_cast<int>(H));
-          fdm_C = fast_divmod(gsl::narrow_cast<int>(C));
+          fdm_H = fast_divmod(static_cast<int>(H));
+          fdm_C = fast_divmod(static_cast<int>(C));
         }
         return Status::OK();
       }

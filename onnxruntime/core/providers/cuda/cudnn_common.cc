@@ -29,13 +29,13 @@ Status CudnnTensor::CreateTensorIfNeeded() {
 Status CudnnTensor::Set(const std::vector<int64_t>& input_dims, cudnnDataType_t dataType) {
   ORT_RETURN_IF_ERROR(CreateTensorIfNeeded());
 
-  int rank = gsl::narrow_cast<int>(input_dims.size());
+  int rank = static_cast<int>(input_dims.size());
   TensorPitches pitches(input_dims);
   std::vector<int> dims(rank);
   std::vector<int> strides(rank);
   for (int i = 0; i < rank; i++) {
-    dims[i] = gsl::narrow_cast<int>(input_dims[i]);
-    strides[i] = gsl::narrow_cast<int>(pitches[i]);
+    dims[i] = static_cast<int>(input_dims[i]);
+    strides[i] = static_cast<int>(pitches[i]);
   }
   CUDNN_RETURN_IF_ERROR(cudnnSetTensorNdDescriptor(tensor_, dataType, static_cast<int>(rank), dims.data(), strides.data()));
   return Status::OK();
@@ -110,10 +110,10 @@ Status CudnnFilterDescriptor::Set(const std::vector<int64_t>& filter_dims, cudnn
   if (!desc_)
     CUDNN_RETURN_IF_ERROR(cudnnCreateFilterDescriptor(&desc_));
 
-  int rank = gsl::narrow_cast<int>(filter_dims.size());
+  int rank = static_cast<int>(filter_dims.size());
   std::vector<int> w_dims(rank);
   for (int i = 0; i < rank; i++) {
-    w_dims[i] = gsl::narrow_cast<int>(filter_dims[i]);
+    w_dims[i] = static_cast<int>(filter_dims[i]);
   }
 
   CUDNN_RETURN_IF_ERROR(cudnnSetFilterNdDescriptor(desc_,

@@ -19,8 +19,6 @@
 #include "core/graph/node_arg.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/function.h"
-#include "gsl/gsl_util"
-#include "gsl/pointers"
 
 namespace onnxruntime {
 class Graph;
@@ -281,13 +279,13 @@ class Node {
 
   /** Get the const subgraphs from a node. 
   @remarks Creates a new vector so calling ContainsSubgraphs first is preferred. */
-  std::vector<gsl::not_null<const Graph*>> GetSubgraphs() const;
+  std::vector<const Graph*> GetSubgraphs() const;
 
   /** Gets a map of attribute name to the mutable Graph instances for all subgraphs of the Node.
   @returns Map of the attribute name that defines the subgraph to the subgraph's Graph instance.
            nullptr if the Node has no subgraphs.
   */
-  const std::unordered_map<std::string, gsl::not_null<Graph*>>& GetAttributeNameToMutableSubgraphMap() {
+  const std::unordered_map<std::string, Graph*>& GetAttributeNameToMutableSubgraphMap() {
     return attr_to_subgraph_map_;
   }
 
@@ -319,7 +317,7 @@ class Node {
   */
   class Definitions {
    public:
-    Definitions() noexcept = default;
+    Definitions() = default;
 
     /** The Node's explicit input definitions. */
     std::vector<NodeArg*> input_defs;
@@ -450,7 +448,7 @@ class Node {
   Graph* graph_;
 
   // Map of attribute name to the Graph instance created from the GraphProto attribute
-  std::unordered_map<std::string, gsl::not_null<Graph*>> attr_to_subgraph_map_;
+  std::unordered_map<std::string, Graph*> attr_to_subgraph_map_;
 
   // Graph instances for subgraphs that are owned by this Node
   std::vector<std::unique_ptr<Graph>> subgraphs_;
@@ -589,7 +587,7 @@ class Graph {
       return *(iter->second);
     }
 
-    auto result = node_args_.insert(std::make_pair(name, std::make_unique<NodeArg>(name, p_arg_type)));
+    auto result = node_args_.insert(std::make_pair(name, std::unique_ptr<NodeArg>(new NodeArg(name, p_arg_type))));
     return *(result.first->second);
   }
 
@@ -896,7 +894,7 @@ class Graph {
   // Clear all unused initializers
   void CleanUnusedInitializers();
 
-  gsl::not_null<Node*> AllocateNode();
+  Node* AllocateNode();
 
   // Release the node.
   // @returns false if node_index was invalid.

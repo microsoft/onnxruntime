@@ -11,7 +11,6 @@
 #include <numeric>
 #include <stack>
 
-#include "gsl/pointers"
 #include "core/graph/function.h"
 #include "core/graph/function_impl.h"
 #include "core/graph/graph_viewer.h"
@@ -349,7 +348,7 @@ void Node::ToProto(NodeProto& proto) const {
   // Set attributes.
   proto.clear_attribute();
   for (const auto& attribute : attributes_) {
-    const gsl::not_null<AttributeProto*> attr{proto.add_attribute()};
+    AttributeProto* attr{proto.add_attribute()};
     *attr = attribute.second;
   }
 
@@ -419,7 +418,7 @@ void Node::CreateSubgraph(const std::string& attr_name) {
   if (attr != attributes_.cend() && attr->second.has_g()) {
     GraphProto& mutable_graph = *attr->second.mutable_g();
     std::unique_ptr<Graph> subgraph{new Graph(*graph_, mutable_graph)};
-    attr_to_subgraph_map_.insert({std::string{attr_name}, gsl::not_null<Graph*>{subgraph.get()}});
+    attr_to_subgraph_map_.insert({std::string{attr_name}, {subgraph.get()}});
     subgraphs_.push_back(std::move(subgraph));
   }
 }
@@ -569,11 +568,11 @@ const Graph* Node::GetGraphAttribute(const std::string& attr_name) const {
   return const_cast<Node*>(this)->GetMutableGraphAttribute(attr_name);
 }
 
-std::vector<gsl::not_null<const Graph*>> Node::GetSubgraphs() const {
-  std::vector<gsl::not_null<const Graph*>> subgraphs;
+std::vector<const Graph*> Node::GetSubgraphs() const {
+  std::vector<const Graph*> subgraphs;
   subgraphs.reserve(attr_to_subgraph_map_.size());
   std::transform(attr_to_subgraph_map_.cbegin(), attr_to_subgraph_map_.cend(), std::back_inserter(subgraphs),
-                 [](const auto& entry) { return entry.second; });
+                 [](const decltype(attr_to_subgraph_map_)::value_type& entry) { return entry.second; });
 
   return subgraphs;
 }
@@ -649,14 +648,14 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
     }
 
     // Copy constant nodes _value to name_to_initial_tensor_
-    const gsl::not_null<TensorProto*>
+    TensorProto*
         tensor{graph_proto_->add_initializer()};
     *tensor = node.attribute(0).t();
     *(tensor->mutable_name()) = node.output(0);
   }
 
   // Remove constant nodes as they're replaced with initializers above.
-  const gsl::not_null<RepeatedPtrField<NodeProto>*> graph_mutable_nodes{graph_proto_->mutable_node()};
+  RepeatedPtrField<NodeProto>* graph_mutable_nodes{graph_proto_->mutable_node()};
   graph_mutable_nodes->erase(
       std::remove_if(graph_mutable_nodes->begin(), graph_mutable_nodes->end(),
                      [](NodeProto& p) {
@@ -1215,7 +1214,7 @@ using SubgraphInferencingFunc =
 class GraphInferencerImpl : public ONNX_NAMESPACE::GraphInferencer {
  public:
   GraphInferencerImpl(const Node& node, Graph& graph, SubgraphInferencingFunc& inferencing_func)
-      : node_{node}, graph_{graph}, inferencing_func_{inferencing_func} {
+      : node_(node), graph_(graph), inferencing_func_(inferencing_func) {
   }
 
   // Perform inferencing on the graph contained in GraphInferencer.
@@ -1312,7 +1311,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     auto* subgraph = node_.GetMutableGraphAttribute(attribute_name);
 
     if (subgraph) {
-      auto inferencer = std::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_);
+      auto inferencer = std::unique_ptr<GraphInferencerImpl>(new GraphInferencerImpl(node_, *subgraph, subgraph_inferencing_func_));
       graph_inferencer = inferencer.get();
       graph_inferencers_.push_back(std::move(inferencer));
     } else {
@@ -1513,7 +1512,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
     return Status(ONNXRUNTIME, FAIL, ex.what());
   }
 
-  const auto& onnx_inferred_types{context.InferredOutputTypes()};
+  const auto& onnx_inferred_types = context.InferredOutputTypes();
 
   // Infer and verify node output arg type information.
   int i = -1;
@@ -1526,7 +1525,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
     // correspond to the last formal parameter. (The ONNX schema verification check
     // would have checked that the corresponding formal parameter is variadic.)
 
-    const int num_formal_params = gsl::narrow_cast<int>(op.outputs().size());
+    const int num_formal_params = static_cast<int>(op.outputs().size());
     auto operand_index = std::min(i, num_formal_params - 1);
     auto op_formal_parameter = op.outputs().at(operand_index);
 
@@ -1651,7 +1650,7 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
 
 Status Graph::VerifyNodeAndOpMatch() {
   CheckerContext ctx;
-  ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
+  ctx.set_ir_version(static_cast<int>(IrVersion()));
   ctx.set_opset_imports(DomainToVersionMap());
   ctx.set_schema_registry(schema_registry_.get());
 
@@ -1683,7 +1682,7 @@ Status Graph::VerifyNodeAndOpMatch() {
     auto iter = model_functions_.find(node.OpType());
     if (iter != model_functions_.end()) {
       const ONNX_NAMESPACE::FunctionProto* model_function_proto = iter->second;
-      auto model_func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), model_function_proto);
+      auto model_func_ptr = std::unique_ptr<onnxruntime::FunctionImpl>(new onnxruntime::FunctionImpl(*this, node.Index(), model_function_proto));
       function_container_.emplace_back(std::move(model_func_ptr));
       node.SetFunctionBody(*function_container_.back());
     }
@@ -1704,7 +1703,7 @@ Status Graph::VerifyNodeAndOpMatch() {
 
       if (node.op_ && node.op_->HasFunction()) {
         auto onnx_function_proto = node.op_->GetFunction();
-        auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto);
+        auto func_ptr = std::unique_ptr<onnxruntime::FunctionImpl>(new onnxruntime::FunctionImpl(*this, node.Index(), onnx_function_proto));
         function_container_.emplace_back(std::move(func_ptr));
         node.SetFunctionBody(*function_container_.back());
       }
@@ -1718,7 +1717,7 @@ Status Graph::VerifyNodeAndOpMatch() {
 
     // currently an Op is required by ValidateVersion, so we use gsl::not_null to validate that.
     // This may change in the future to allow a null Op
-    const gsl::not_null<const OpSchema*> p_op{node.Op()};
+    const OpSchema* p_op = node.Op();
 
     // Attribute verification and fill node attribute with
     // default value defined in operator definition if needed.
@@ -1932,7 +1931,7 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
     return;
   }
 
-  const gsl::not_null<TensorProto*> tensor_added{graph_proto_->add_initializer()};
+  TensorProto* tensor_added = graph_proto_->add_initializer();
   *(tensor_added) = tensor;
   name_to_initial_tensor_[tensor.name()] = tensor_added;
 
@@ -2097,7 +2096,7 @@ Node& Graph::AddNode(const std::string& name,
     outputs[i++] = &GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
   }
 
-  const gsl::not_null<Node*> node = AllocateNode();
+  Node* node = AllocateNode();
   node->Init(name, op_type, description, inputs, outputs, attributes, domain);
   if (0 != op_type.compare(kNoOp)) {
     graph_proto_sync_needed_ = true;
@@ -2154,7 +2153,7 @@ const ONNX_NAMESPACE::GraphProto& Graph::ToGraphProto() {
     std::sort(removed_initializer_indexes_.begin(), removed_initializer_indexes_.end());
     int lastInUseInitializerIndex = graph_proto_->initializer_size() - 1;
     int start = 0;
-    int end = gsl::narrow_cast<int>(removed_initializer_indexes_.size()) - 1;
+    int end = static_cast<int>(removed_initializer_indexes_.size()) - 1;
     int lastRemovedInitializerIndex = removed_initializer_indexes_[end];
 
     for (; start <= end; start++) {
@@ -2227,8 +2226,8 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
   GraphViewer graph_viewer(*this);
   // Nodes must be sorted in Topological Order in the GraphProto per ONNX spec.
   for (auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
-    const gsl::not_null<NodeProto*> node_proto{graph_proto.add_node()};
-    const gsl::not_null<const Node*> p_node{GetNode(node_idx)};
+    NodeProto* node_proto = graph_proto.add_node();
+    const Node* p_node = GetNode(node_idx);
     p_node->ToProto(*node_proto);
   }
 }
@@ -2463,8 +2462,7 @@ Status Graph::SetGraphInputsOutputs() {
 }
 
 // calling private ctor
-GSL_SUPPRESS(r .11)
-gsl::not_null<Node*> Graph::AllocateNode() {
+Node* Graph::AllocateNode() {
   ORT_ENFORCE(nodes_.size() < static_cast<unsigned int>(std::numeric_limits<int>::max()));
   std::unique_ptr<Node> new_node(new Node(nodes_.size(), *this));
   Node* node{new_node.get()};
@@ -2473,7 +2471,7 @@ gsl::not_null<Node*> Graph::AllocateNode() {
   ++num_of_nodes_;
   graph_resolve_needed_ = true;
 
-  return gsl::not_null<Node*>{node};
+  return node;
 }
 
 // TODO: Does this need (and maybe AllocateNode) to be threadsafe so nodes_ and num_of_nodes_ managed more carefully?

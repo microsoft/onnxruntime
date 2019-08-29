@@ -26,8 +26,8 @@ file(GLOB_RECURSE onnxruntime_ir_defs_src CONFIGURE_DEPENDS
 )
 
 add_library(onnxruntime_graph ${onnxruntime_graph_src} ${onnxruntime_ir_defs_src})
-add_dependencies(onnxruntime_graph onnx_proto gsl)
-onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common gsl onnx onnx_proto protobuf::libprotobuf)
+add_dependencies(onnxruntime_graph onnx_proto)
+onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common onnx onnx_proto protobuf::libprotobuf)
 
 target_include_directories(onnxruntime_graph PRIVATE ${ONNXRUNTIME_ROOT})
 set_target_properties(onnxruntime_graph PROPERTIES FOLDER "ONNXRuntime")
