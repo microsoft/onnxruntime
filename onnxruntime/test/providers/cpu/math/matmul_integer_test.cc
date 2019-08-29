@@ -6,22 +6,14 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#ifdef USE_NUPHAR
-#include "core/providers/providers.h"
-#endif // USE_NUPHAR
 #include "core/util/math_cpuonly.h"
 
 #include <random>
 
 namespace onnxruntime {
-
-#ifdef USE_NUPHAR
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, int device_id, const char*);
-#endif // USE_NUPHAR
-
 namespace test {
 
-TEST(MatmulIntegerOpTest, MatMulInteger1) {
+TEST(MatmulIntegerOpTest, MatMulInteger_2D) {
   OpTester test("MatMulInteger", 10);
   test.AddInput<uint8_t>("T1", {4, 3}, {11, 7, 3, 10, 6, 2, 9, 5, 1, 8, 4, 0});
   test.AddInput<uint8_t>("T2", {3, 2}, {1, 4, 2, 5, 3, 6});
@@ -38,6 +30,15 @@ TEST(MatmulIntegerOpTest, MatMulInteger) {
   test.AddInput<uint8_t>("a_zero_point", {}, {12});
   test.AddInput<uint8_t>("b_zero_point", {}, {12});
   test.AddOutput<int32_t>("T3", {1, 1}, {-1});
+  test.Run();
+}
+TEST(MatmulIntegerOpTest, MatMulInteger_WithZero_ZeroPoint) {
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<uint8_t>("T1", {4, 3}, {11, 7, 3, 10, 6, 2, 9, 5, 1, 8, 4, 0});
+  test.AddInput<uint8_t>("T2", {3, 2}, {1, 4, 2, 5, 3, 6});
+  test.AddInput<uint8_t>("a_zero_point", {}, {0});
+  test.AddInput<uint8_t>("b_zero_point", {}, {0});
+  test.AddOutput<int32_t>("T3", {4, 2}, {34, 97, 28, 82, 22, 67, 16, 52});
   test.Run();
 }
 
@@ -67,31 +68,17 @@ void RunMatMulIntegerU8S8Test(const int M, const int N, const int K) {
                         ToVector<int8_t>(T2.data(), K * N), /*is_initializer*/ true);
   test.AddOutput<int32_t>("T3", {M, N},
                           ToVector<int32_t>(T3.data(), M * N));
-  test.Run();
 
-#ifdef NUPHAR_USE_MKL
-  // Make sure nuphar's MKL path works as expected
-  const char* nuphar_setting = "nuphar_imatmul_force_mkl:1";
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(
-                        CreateExecutionProviderFactory_Nuphar(/*allow_unaligned_buffers*/ true,
-                                                              /*device_id*/ 0,
-                                                              nuphar_setting)->CreateProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess,
-           /*expected_failure_string*/ "",
-           /*excluded_provider_types*/ {},
-           /*run_options*/ nullptr,
-           &execution_providers);
-#endif // NUPHAR_USE_MKL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});  // currently nGraph provider does not support gemm_u8s8
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8) {
   // GEMV
+  RunMatMulIntegerU8S8Test(1, 2, 64);
+  RunMatMulIntegerU8S8Test(1, 2, 16);
+  RunMatMulIntegerU8S8Test(1, 1, 288);
   RunMatMulIntegerU8S8Test(1, 1, 32);
   RunMatMulIntegerU8S8Test(1, 1, 260);
-  RunMatMulIntegerU8S8Test(1, 1, 288);
-  RunMatMulIntegerU8S8Test(1, 2, 16);
-  RunMatMulIntegerU8S8Test(1, 2, 64);
   // GEMM
   RunMatMulIntegerU8S8Test(2, 2, 40);
   RunMatMulIntegerU8S8Test(2, 48, 33);

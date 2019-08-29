@@ -1171,8 +1171,8 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
       .Input(0, "A", "N-dimensional matrix A", "T1")
       .Input(1, "B", "N-dimensional matrix B", "T2")
       .Output(0, "Y", "Matrix multiply results from A * B", "T3")
-      .TypeConstraint("T1", {"tensor(int16)", "tensor(uint16)"}, "Constrain input A data types as 8-bit integer tensor")
-      .TypeConstraint("T2", {"tensor(int16)", "tensor(uint16)"}, "Constrain input B data types as 8-bit integer tensor")
+      .TypeConstraint("T1", {"tensor(int16)", "tensor(uint16)"}, "Constrain input A data types as 16-bit integer tensor")
+      .TypeConstraint("T2", {"tensor(int16)", "tensor(uint16)"}, "Constrain input B data types as 16-bit integer tensor")
       .TypeConstraint("T3",
                       {"tensor(int32)", "tensor(uint32)"},
                       "Constrain output Y data types as 32-bit integer tensor."

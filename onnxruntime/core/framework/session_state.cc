@@ -205,7 +205,7 @@ common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& in
       // replace existing entry that is for an implicit input with new entry for explicit usage in this graph
       entries[0] = node_info;
     } else {
-      // if the providers match we can add the new entry for completeness (it will be ignored in
+      // if the devices match we can add the new entry for completeness (it will be ignored in
       // utils::CopyOneInputAcrossDevices though).
       // if they don't, we are broken.
       const auto& current_device = entries[0].device;

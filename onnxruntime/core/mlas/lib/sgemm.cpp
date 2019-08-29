@@ -55,7 +55,7 @@ struct MLAS_SGEMM_WORK_BLOCK {
 // Stores a vector to build a conditional load/store mask for vmaskmovps.
 //
 
-extern "C" MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveAvx[8], 8 * sizeof(float)) = { 0, 1, 2, 3, 4, 5, 6, 7 };
+MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveAvx[8], 8 * sizeof(float)) = { 0, 1, 2, 3, 4, 5, 6, 7 };
 
 #endif
 
