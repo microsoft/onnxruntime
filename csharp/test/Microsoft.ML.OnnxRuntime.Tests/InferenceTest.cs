@@ -887,8 +887,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet(int? cudaDeviceId = null)
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+            var option = new SessionOptions();
+#if USE_CUDA
+            option = SessionOptions.MakeSessionOptionWithCudaProvider(cudaDeviceId.Value);
+#endif
             var session = (cudaDeviceId.HasValue)
-                ? new InferenceSession(modelPath, SessionOptions.MakeSessionOptionWithCudaProvider(cudaDeviceId.Value))
+                ? new InferenceSession(modelPath, option)
                 : new InferenceSession(modelPath);
             float[] inputData = LoadTensorFromFile(@"bench.in");
             float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
