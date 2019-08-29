@@ -283,8 +283,6 @@ if (onnxruntime_USE_MKLDNN)
 endif()
 add_dependencies(onnxruntime_test_utils_for_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime_test_utils_for_framework PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE ${eigen_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT})
-# Add the define for conditionally using the framework Environment class in TestEnvironment
-target_compile_definitions(onnxruntime_test_utils_for_framework PUBLIC "HAVE_FRAMEWORK_LIB")
 set_target_properties(onnxruntime_test_utils_for_framework PROPERTIES FOLDER "ONNXRuntimeTest")
 
 #without auto initialize onnxruntime
@@ -708,7 +706,7 @@ endif()
 
 add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
 target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
-set(onnxruntime_mlas_test_libs onnxruntime_mlas onnxruntime_common onnxruntime_session)
+set(onnxruntime_mlas_test_libs onnxruntime_mlas onnxruntime_common)
 if(onnxruntime_USE_NSYNC)
   list(APPEND onnxruntime_mlas_test_libs nsync_cpp)
 endif()

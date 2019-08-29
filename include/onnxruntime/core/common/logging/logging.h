@@ -18,7 +18,6 @@
 #include "core/common/logging/macros.h"
 
 /*
-
   Logging overview and expected usage:
 
   At program startup:
@@ -44,7 +43,6 @@
   filtering check.
 
   A sink can do further filter as needed.
-
 */
 
 namespace onnxruntime {
