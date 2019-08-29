@@ -56,7 +56,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options));
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0));
     ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
@@ -66,6 +66,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_OpenVINO(session_options, "CPU"));
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
+#endif
+  } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
+#ifdef USE_NNAPI
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options));
+#else
+    ORT_THROW("NNAPI is not supported in this build\n");
 #endif
   } else if (!provider_name.empty() && provider_name != onnxruntime::kCpuExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");
@@ -85,9 +91,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   else
     session_options.DisableSequentialExecution();
   fprintf(stdout, "Setting thread pool size to %d\n", performance_test_config.run_config.session_thread_pool_size);
-  // Don't set the thread pool size unless it has been changed from our zero default value (as zero will fail)
-  if (performance_test_config.run_config.session_thread_pool_size != 0)
-    session_options.SetThreadPoolSize(performance_test_config.run_config.session_thread_pool_size);
+  session_options.SetThreadPoolSize(performance_test_config.run_config.session_thread_pool_size);
   // Set optimization level.
   session_options.SetGraphOptimizationLevel(performance_test_config.run_config.optimization_level);
   if (!performance_test_config.run_config.profile_file.empty())
@@ -96,7 +100,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
   size_t output_count = session_.GetOutputCount();
   output_names_.resize(output_count);
-  Ort::Allocator a = Ort::Allocator::CreateDefault();
+  Ort::AllocatorWithDefaultOptions a;
   for (size_t i = 0; i != output_count; ++i) {
     char* output_name = session_.GetOutputName(i, a);
     assert(output_name != nullptr);

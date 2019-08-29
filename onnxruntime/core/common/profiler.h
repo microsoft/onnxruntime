@@ -44,6 +44,9 @@ class Profiler {
   */
   TimePoint StartTime() const;
 
+  /*
+   Whether data collection and output from this profiler is enabled.
+   */
   bool IsEnabled() const {
     return enabled_;
   }

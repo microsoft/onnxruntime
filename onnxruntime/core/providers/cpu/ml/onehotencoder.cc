@@ -52,7 +52,8 @@ template <typename T>
 OneHotEncoderOp<T>::OneHotEncoderOp(const OpKernelInfo& info) : OpKernel(info), zeros_(info.GetAttrOrDefault<int64_t>("zeros", 1)), num_categories_(0) {
   std::vector<int64_t> tmp_cats_int64s = info.GetAttrsOrDefault<int64_t>("cats_int64s");
   std::vector<std::string> tmp_cats_strings = info.GetAttrsOrDefault<string>("cats_strings");
-  ORT_ENFORCE(tmp_cats_int64s.empty() || tmp_cats_strings.empty());
+  ORT_ENFORCE(tmp_cats_int64s.empty() || tmp_cats_strings.empty(),
+              "One and only one of the 'cats_*' attributes must be defined");
   if (!tmp_cats_int64s.empty()) {
     num_categories_ = tmp_cats_int64s.size();
     for (size_t idx = 0, end = tmp_cats_int64s.size(); idx < end; ++idx) {
@@ -71,18 +72,18 @@ template <typename T>
 common::Status OneHotEncoderOp<T>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   const TensorShape& input_shape = X->Shape();
-  ORT_ENFORCE(input_shape.NumDimensions() <= 2);
 
   std::vector<int64_t> output_shape(input_shape.GetDims());
   output_shape.push_back(num_categories_);
 
   Tensor* Y = context->Output(0, TensorShape(output_shape));
-  auto y_data = Y->template MutableData<float>();
+  auto* y_data = Y->template MutableData<float>();
   std::fill_n(y_data, Y->Shape().Size(), 0.0f);
 
-  auto x_data = X->template Data<T>();
+  const auto* x_data = X->template Data<T>();
+  const auto x_size = input_shape.Size();
   std::unordered_map<int64_t, size_t>::const_iterator idx;
-  for (int64_t i = 0; i < input_shape.Size(); ++i) {
+  for (int64_t i = 0; i < x_size; ++i) {
     auto int_idx = cats_int64s_.find(static_cast<int64_t>(x_data[i]));
     if (int_idx != cats_int64s_.cend())
       y_data[i * num_categories_ + int_idx->second] = 1.0f;
@@ -96,17 +97,17 @@ template <>
 common::Status OneHotEncoderOp<std::string>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   const TensorShape& input_shape = X->Shape();
-  ORT_ENFORCE(input_shape.NumDimensions() <= 2);
 
   std::vector<int64_t> output_shape(input_shape.GetDims());
   output_shape.push_back(num_categories_);
 
   Tensor* Y = context->Output(0, TensorShape(output_shape));
-  auto y_data = Y->template MutableData<float>();
+  auto* y_data = Y->template MutableData<float>();
   std::fill_n(y_data, Y->Shape().Size(), 0.0f);
 
-  auto x_data = X->template Data<std::string>();
-  for (int64_t i = 0; i < input_shape.Size(); ++i) {
+  const auto* x_data = X->template Data<std::string>();
+  const auto x_size = input_shape.Size();
+  for (int64_t i = 0; i < x_size; ++i) {
     auto str_idx = cats_strings_.find(x_data[i]);
     if (str_idx != cats_strings_.cend())
       y_data[i * num_categories_ + str_idx->second] = 1.0f;

@@ -26,14 +26,14 @@ class MatMulComputeHelper {
     // special case for right_shape being 2D and left_shape > 2D by flattening left_shape to 2D
     // note that padding 1s in front of the right_shape can be flattened too
     if (!transa && !transb) {
+      // note that padding 1s in front of the right shape can be flattened too
       if (left_num_dims >= 2 && right_num_dims >= 2 &&
           right_shape.SizeToDimension(right_num_dims - 1) == right_shape[right_num_dims - 2]) {
         M_ = left_shape.SizeToDimension(left_num_dims - 1);
         K_ = left_shape[left_num_dims - 1];
         N_ = right_shape[right_num_dims - 1];
-        std::vector<int64_t> output_dims = left_shape.GetDims();
-        output_dims[left_num_dims - 1] = N_;
-        output_shape_ = TensorShape(output_dims);
+        output_shape_ = left_shape;
+        output_shape_[left_num_dims - 1] = N_;
         output_offsets_ = {0};
         left_offsets_ = {0};
         right_offsets_ = {0};

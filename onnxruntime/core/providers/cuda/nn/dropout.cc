@@ -53,7 +53,7 @@ Status TrainableDropout<T>::ComputeInternal(OpKernelContext* context) const {
   bool is_test = (ratio_data == 0);
   if (is_test) {
     if (Y_data != X_data) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->Size(), cudaMemcpyDeviceToDevice));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->SizeInBytes(), cudaMemcpyDeviceToDevice));
     }
   } else {
     const int64_t N = shape.Size();
@@ -106,7 +106,7 @@ Status TrainableDropoutGrad<T>::ComputeInternal(OpKernelContext* context) const 
   bool is_test = (ratio_data == 0);
   if (is_test) {
     if (dX_data != dY_data) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dX_data, dY_data, dX->Size(), cudaMemcpyDeviceToDevice));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dX_data, dY_data, dX->SizeInBytes(), cudaMemcpyDeviceToDevice));
     }
   } else {
     const float scale = 1.f / (1.f - ratio_data);

@@ -30,7 +30,7 @@ namespace onnxruntime {
 
 namespace {
 
-static void ORT_API_CALL DeleteBuffer(void* param) noexcept { ::free(param); }
+static void DeleteBuffer(void* param) noexcept { ::free(param); }
 
 class WindowsEnv : public Env {
  public:

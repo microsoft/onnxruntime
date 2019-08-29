@@ -174,14 +174,14 @@ Status GatherNDGrad<Tind>::ComputeInternal(OpKernelContext* context) const {
 
   //Output
   auto shape_data = shape_tensor->Data<int64_t>();
-  auto input_shape = TensorShape(shape_data, shape_tensor->Size() / sizeof(shape_tensor->DataType()));
+  auto input_shape = TensorShape(shape_data, shape_tensor->SizeInBytes() / sizeof(shape_tensor->DataType()));
 
   if (last_indice_dimension > static_cast<int64_t>(input_shape.NumDimensions())) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "last dimension of indices must not be larger than rank of input tensor");
   }
   auto output_tensor = context->Output(0, input_shape);
-  CUDA_RETURN_IF_ERROR(cudaMemset(output_tensor->MutableDataRaw(), 0, output_tensor->Size()));
+  CUDA_RETURN_IF_ERROR(cudaMemset(output_tensor->MutableDataRaw(), 0, output_tensor->SizeInBytes()));
 
   auto status = CommonComputeKernel<Tind>(last_indice_dimension, axis_, input_shape, update_tensor, output_tensor, indice_shape, indice_tensor, false);
   return status;

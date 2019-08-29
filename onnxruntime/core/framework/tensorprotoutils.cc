@@ -14,7 +14,7 @@
 #include "core/framework/tensor.h"
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/allocator.h"
-#include "core/common/callback.h"
+#include "core/framework/callback.h"
 #include "core/framework/data_types.h"
 #include "core/framework/path_lib.h"
 
@@ -278,8 +278,8 @@ TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShape
   const auto& dims = tensor_shape_proto.dim();
   std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
   for (int i = 0; i < dims.size(); ++i) {
-    tensor_shape_vec[i] = dims[i].has_dim_param() ? -1 /* symbolic dimensions are represented as -1 in onnxruntime*/
-                                                  : dims[i].dim_value();
+    tensor_shape_vec[i] = dims[i].has_dim_value() ? dims[i].dim_value()
+                                                  : -1; /* symbolic dimensions are represented as -1 in onnxruntime*/
   }
   return TensorShape(std::move(tensor_shape_vec));
 }
@@ -304,7 +304,7 @@ ORT_API_STATUS(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t input_
  */
 ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enum ONNXTensorElementDataType type);
 
-static void ORT_API_CALL UnInitTensor(void* param) noexcept {
+static void UnInitTensor(void* param) noexcept {
   UnInitializeParam* p = reinterpret_cast<UnInitializeParam*>(param);
   OrtUninitializeBuffer(p->preallocated, p->preallocated_size, p->ele_type);
   delete p;
@@ -557,7 +557,7 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std:
 
   tensor_proto.set_data_type(tensor_proto_type.tensor_type().elem_type());
 
-  tensor_proto.set_raw_data(tensor.DataRaw(), tensor.Size());
+  tensor_proto.set_raw_data(tensor.DataRaw(), tensor.SizeInBytes());
 
   return tensor_proto;
 }

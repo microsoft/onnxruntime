@@ -26,6 +26,7 @@
 #ifdef _WIN32
 #include <atlbase.h>
 #endif
+using namespace std::chrono;
 
 class Validator : public OutputCollector<TCharString> {
  private:
@@ -85,6 +86,7 @@ class Validator : public OutputCollector<TCharString> {
   char* output_name_ = nullptr;
   OrtEnv* const env_;
   const TCharString model_path_;
+  system_clock::time_point start_time_;
 
  public:
   int GetImageSize() const { return image_size_; }
@@ -126,7 +128,7 @@ class Validator : public OutputCollector<TCharString> {
     CreateSession();
     VerifyInputOutputCount(session_);
     OrtAllocator* ort_alloc;
-    ORT_THROW_ON_ERROR(OrtCreateDefaultAllocator(&ort_alloc));
+    ORT_THROW_ON_ERROR(OrtGetAllocatorWithDefaultOptions(&ort_alloc));
     {
       char* t;
       ORT_THROW_ON_ERROR(OrtSessionGetInputName(session_, 0, ort_alloc, &t));
@@ -137,7 +139,6 @@ class Validator : public OutputCollector<TCharString> {
       OrtAllocatorFree(ort_alloc, t);
     }
 
-    OrtReleaseAllocator(ort_alloc);
     OrtTypeInfo* info;
     ORT_THROW_ON_ERROR(OrtSessionGetInputTypeInfo(session_, 0, &info));
     const OrtTensorTypeAndShapeInfo* tensor_info;
@@ -152,6 +153,7 @@ class Validator : public OutputCollector<TCharString> {
     }
 
     image_size_ = static_cast<int>(dims[1]);
+    start_time_ = system_clock::now();
   }
 
   void operator()(const std::vector<TCharString>& task_id_list, const OrtValue* input_tensor) override {
@@ -174,8 +176,12 @@ class Validator : public OutputCollector<TCharString> {
         }
         probs = end;
       }
-      finished_count_ += static_cast<int>(remain);
-      printf("%d\n", finished_count_.load());
+      size_t finished = finished_count_ += static_cast<int>(remain);
+      float progress = static_cast<float>(finished) / validation_data_.size();
+      auto elapsed = system_clock::now() - start_time_;
+      auto eta = progress > 0 ? duration_cast<minutes>(elapsed * (1 - progress) / progress).count() : 9999999;
+      float accuracy = finished > 0 ? top_1_correct_count_ / static_cast<float>(finished) : 0;
+      printf("accuracy = %.2f, progress %.2f%%, expect to be finished in %d minutes\n", accuracy, progress * 100, eta);
       OrtReleaseValue(output_tensor);
     }
   }
@@ -246,7 +252,7 @@ int main(int argc, ORTCHAR_T* argv[]) {
   try {
     ret = real_main(argc, argv);
   } catch (const std::exception& ex) {
-    fprintf(stderr, "%s\n", ex.what());    
+    fprintf(stderr, "%s\n", ex.what());
   }
 #ifdef _WIN32
   CoUninitialize();

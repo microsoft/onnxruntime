@@ -18,12 +18,16 @@
 #include "core/providers/cpu/nn/conv.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 namespace contrib {
 
 template <typename T>
 Status ConvGrad<T>::Compute(OpKernelContext* context) const {
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
+  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
+
   const Tensor* dY = context->Input<Tensor>(0);
   const Tensor* X = context->Input<Tensor>(1);
   const Tensor* W = context->Input<Tensor>(2);
@@ -137,7 +141,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
             &CPUMathUtil::Instance());
       }
       // Gradient with respect to W, filter.
-      math::Gemm<T, CPUMathUtil>(
+      math::Gemm<T>(
           CblasNoTrans,
           CblasTrans,
           M / group_,
@@ -148,7 +152,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
           col_buffer_data,
           1,
           dWdata + group_id * W_offset,
-          &CPUMathUtil::Instance());
+          tp);
     }
     if (dB) {
       // Gradient with respect to bias can be computed independent from group.
@@ -174,7 +178,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
     for (int image_id = 0; image_id < N; ++image_id) {
       for (int group_id = 0; group_id < group_; ++group_id) {
         // Compute gradient into col_buffer.
-        math::Gemm<T, CPUMathUtil>(
+        math::Gemm<T>(
             CblasTrans,
             CblasNoTrans,
             kernel_dim,
@@ -185,7 +189,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
             dYdata,
             0,
             col_buffer_data,
-            &CPUMathUtil::Instance());
+            tp);
 
         if (Is2DKernel) {
           math::Col2im<T, CPUMathUtil, StorageOrder::NCHW>(

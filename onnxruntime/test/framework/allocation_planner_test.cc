@@ -34,8 +34,8 @@ struct UnaryNode {
   std::vector<onnxruntime::NodeArg*> output_args;
   onnxruntime::Node* p_node;
 
-  UnaryNode(onnxruntime::Graph& graph, const std::string& op,
-            onnxruntime::NodeArg* p_input_arg, onnxruntime::NodeArg* p_output_arg)
+  UnaryNode(onnxruntime::Graph& graph, const std::string& op, onnxruntime::NodeArg* p_input_arg,
+            onnxruntime::NodeArg* p_output_arg)
       : input_args({p_input_arg}), output_args({p_output_arg}) {
     int num = NodeCounter::Next();
     p_node = &graph.AddNode("node" + std::to_string(num), op, "test op", input_args, output_args);
@@ -155,14 +155,17 @@ class PlannerTest : public ::testing::Test {
   std::vector<std::unique_ptr<OpKernelInfo>> op_kernel_infos_;
   std::vector<std::pair<onnxruntime::Node*, KernelDef&>> kernel_bindings_;
   ExecutionProviders execution_providers_;
+  concurrency::ThreadPool tp_;
   SessionState state_;
   ShapeMap shape_map_;
   std::unique_ptr<SequentialExecutionPlan> plan_;
 
  public:
-  PlannerTest() : model_("test"), graph_{model_.MainGraph()}, state_{execution_providers_, false} {
-    std_kernel_ = KernelDefBuilder().SetName("Transpose").Build();
-    in_place_kernel_ = KernelDefBuilder().SetName("Clip").MayInplace(0, 0).Build();
+  PlannerTest()
+      : model_("test"), graph_(model_.MainGraph()), tp_("test", 1), state_(execution_providers_, false, &tp_) {
+    std_kernel_ = KernelDefBuilder().SetName("Transpose").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
+    in_place_kernel_ =
+        KernelDefBuilder().SetName("Relu").Provider(kCpuExecutionProvider).SinceVersion(1, 10).MayInplace(0, 0).Build();
     CPUExecutionProviderInfo epi;
     auto execution_provider = std::make_unique<CPUExecutionProvider>(epi);
     execution_providers_.Add("CPUExecutionProvider", std::move(execution_provider));
@@ -193,18 +196,20 @@ class PlannerTest : public ::testing::Test {
     return AddNode(*in_place_kernel_, input, output);
   }
 
-  void BindKernel(onnxruntime::Node* p_node, ::onnxruntime::KernelDef& kernel_def) {
+  void BindKernel(onnxruntime::Node* p_node, ::onnxruntime::KernelDef& kernel_def, KernelRegistry* reg) {
     auto info = std::make_unique<OpKernelInfo>(*p_node, kernel_def, *execution_providers_.Get(*p_node),
                                                state_.GetInitializedTensors(), state_.GetOrtValueNameIdxMap(),
                                                state_.GetFuncMgr(), state_.GetDataTransferMgr());
-    auto dummy = std::make_unique<DummyOpKernel>(*info);
     op_kernel_infos_.push_back(std::move(info));
-    state_.AddKernel(p_node->Index(), std::move(dummy));
+    if (reg->TryFindKernel(*p_node, onnxruntime::kCpuExecutionProvider) == nullptr) {
+      auto st = reg->Register(
+          KernelCreateInfo(std::make_unique<KernelDef>(kernel_def),
+                           [](const OpKernelInfo& info) -> OpKernel* { return new DummyOpKernel(info); }));
+      ORT_ENFORCE(st.IsOK(), st.ErrorMessage());
+    }
   }
 
-  void SetShape(std::string& name, TensorShapeProto* shape) {
-    shape_map_[Arg(name)] = shape;
-  }
+  void SetShape(std::string& name, TensorShapeProto* shape) { shape_map_[Arg(name)] = shape; }
 
   void SetShape(std::initializer_list<std::pair<std::string&, TensorShapeProto*>> shapes) {
     for (auto& pair : shapes) {
@@ -214,29 +219,27 @@ class PlannerTest : public ::testing::Test {
 
   void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {}) {
     EXPECT_EQ(graph_.Resolve(), Status::OK());
-    state_.SetGraphViewer(std::make_unique<GraphViewer>(graph_));
 
-    OrtValueNameIdxMap& mlvalue_name_idx_map{state_.GetOrtValueNameIdxMap()};
+    state_.SetGraph(graph_);
 
-    int count = 0;
-    for (auto& pair : name_to_arg_) {
-      EXPECT_EQ(mlvalue_name_idx_map.Add(pair.first), count++);
-    }
+    std::shared_ptr<KernelRegistry> reg = std::make_shared<KernelRegistry>();
 
     for (auto& binding : kernel_bindings_) {
-      BindKernel(binding.first, binding.second);
+      BindKernel(binding.first, binding.second, reg.get());
     }
 
     auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
     KernelRegistryManager kernel_registry_manager;
+    kernel_registry_manager.RegisterKernelRegistry(reg);
     ExecutionProviders execution_providers;
     execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::move(cpu_execution_provider));
     auto status = kernel_registry_manager.RegisterKernels(execution_providers);
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-
+    status = state_.CreateKernels(kernel_registry_manager);
+    EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     SequentialPlannerTestContext test_context(&shape_map_);
     status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph_), outer_scope_node_args, execution_providers,
-                                           kernel_registry_manager, mlvalue_name_idx_map, test_context, plan_);
+                                           kernel_registry_manager, state_.GetOrtValueNameIdxMap(), test_context, plan_);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());

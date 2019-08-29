@@ -6,7 +6,7 @@
 FROM ubuntu:16.04
 
 RUN apt update && \
-    apt -y install python3.5 python3-pip zip x11-apps lsb-core wget cpio sudo libboost-python-dev libpng-dev zlib1g-dev git libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.58.0 libboost-thread1.58.0 protobuf-compiler libprotoc-dev libusb-1.0-0-dev&& pip3 install numpy networkx opencv-python pytest && locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8
+    apt -y install python3.5 python3-pip zip x11-apps lsb-core wget cpio sudo libboost-python-dev libpng-dev zlib1g-dev git libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.58.0 libboost-thread1.58.0 protobuf-compiler libprotoc-dev libusb-1.0-0-dev && pip3 install numpy networkx opencv-python pytest && locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8
 
 ARG DEVICE=CPU_FP32
 ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime
@@ -28,20 +28,20 @@ RUN tar -xzf l_openvino_toolkit*.tgz && \
     cd /opt/intel/openvino/deployment_tools/model_optimizer/install_prerequisites && ./install_prerequisites_onnx.sh
 
 ENV LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
-ENV INTEL_OPENVINO_DIR=/opt/intel/openvino
-ENV INTEL_CVSDK_DIR=/opt/intel/openvino
-ENV LD_LIBRARY_PATH=${INSTALL_OPENVINO_DIR}/deployment_tools/model_optimizer/model_optimizer_caffe/bin:${LD_LIBRARY_PATH}
-ENV ModelOptimizer_ROOT_DIR=${INSTALL_OPENVINO_DIR}/deployment_tools/model_optimizer/model_optimizer_caffe
+ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2019.1.144
+ENV INTEL_CVSDK_DIR=/opt/intel/openvino_2019.1.144
+ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/model_optimizer/model_optimizer_caffe/bin:${LD_LIBRARY_PATH}
+ENV ModelOptimizer_ROOT_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/model_optimizer/model_optimizer_caffe
 ENV InferenceEngine_DIR=${INTEL_CVSDK_DIR}/deployment_tools/inference_engine/share
 ENV IE_PLUGINS_PATH=${INTEL_CVSDK_DIR}/deployment_tools/inference_engine/lib/intel64
-ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INSTALL_OPENVINO_DIR}/deployment_tools/inference_engine/external/cldnn/lib:${INSTALL_OPENVINO_DIR}/inference_engine/external/gna/lib:${INSTALL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib:${INSTALL_OPENVINO_DIR}/deployment_tools/inference_engine/external/omp/lib:${INSTALL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
-ENV OpenCV_DIR=${INSTALL_OPENVINO_DIR}/opencv/share/OpenCV
-ENV LD_LIBRARY_PATH=${INSTALL_OPENVINO_DIR}/opencv/lib:${INSTALL_OPENVINO_DIR}/opencv/share/OpenCV/3rdparty/lib:${LD_LIBRARY_PATH}
+ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/cldnn/lib:${INTEL_OPENVINO_DIR}/inference_engine/external/gna/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/omp/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
+ENV OpenCV_DIR=${INTEL_OPENVINO_DIR}/opencv/share/OpenCV
+ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/opencv/lib:${INTEL_OPENVINO_DIR}/opencv/share/OpenCV/3rdparty/lib:${LD_LIBRARY_PATH}
 ENV PATH=${INTEL_CVSDK_DIR}/deployment_tools/model_optimizer:$PATH
 ENV PYTHONPATH=${INTEL_CVSDK_DIR}/deployment_tools/model_optimizer:$PYTHONPATH
 ENV PYTHONPATH=$INTEL_CVSDK_DIR/python/python3.5:${INTEL_CVSDK_DIR}/python/python3.5/ubuntu16:${PYTHONPATH}
-ENV HDDL_INSTALL_DIR=${INSTALL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl
-ENV LD_LIBRARY_PATH=${INSTALL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl/lib:$LD_LIBRARY_PATH
+ENV HDDL_INSTALL_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl
+ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl/lib:$LD_LIBRARY_PATH
 
 RUN wget https://github.com/intel/compute-runtime/releases/download/19.15.12831/intel-gmmlib_19.1.1_amd64.deb
 RUN wget https://github.com/intel/compute-runtime/releases/download/19.15.12831/intel-igc-core_1.0.2-1787_amd64.deb
@@ -54,13 +54,17 @@ RUN sudo dpkg -i *.deb && rm -rf *.deb
 
 RUN mkdir -p /opt/cmake/bin
 
-ENV PATH /opt/cmake/bin:$PATH
+ENV PATH /opt/cmake/bin:/opt/miniconda/bin:$PATH
+
 ENV LANG en_US.UTF-8
 RUN wget https://github.com/Kitware/CMake/releases/download/v3.13.2/cmake-3.13.2-Linux-x86_64.tar.gz && \
     tar -xf cmake-3.13.2-Linux-x86_64.tar.gz --strip 1 -C /opt/cmake && rm -rf /cmake-3.13.2-Linux-x86_64.tar.gz
 
 RUN git clone --recursive -b $ONNXRUNTIME_BRANCH $ONNXRUNTIME_REPO /onnxruntime && \
     cd /onnxruntime/cmake/external/onnx && python3 setup.py install && \
+    /bin/sh onnxruntime/dockerfiles/install_common_deps.sh &&\
+    cp onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt &&\
+    cp onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt &&\
     cd /onnxruntime && ./build.sh --config RelWithDebInfo --update --build --parallel --use_openvino $DEVICE --build_wheel && pip3 install /onnxruntime/build/Linux/RelWithDebInfo/dist/*-linux_x86_64.whl && rm -rf /onnxruntime
 
 

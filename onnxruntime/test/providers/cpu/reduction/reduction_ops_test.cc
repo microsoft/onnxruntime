@@ -471,6 +471,23 @@ TEST(ReductionOpTest, ReduceMax_int32) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: axis must be 0
 }
 
+TEST(ReductionOpTest, ReduceMax_int64) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{1, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int64_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {3, 1, 1}, {4, 8, 12});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+}
+
 TEST(ReductionOpTest, ReduceMean_default_axes_keepdims) {
   OpTester test("ReduceMean");
   test.AddAttribute("keepdims", (int64_t)1);
@@ -676,6 +693,23 @@ TEST(ReductionOpTest, ReduceSum) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceSum_double) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<double>("data", {3, 2, 2},
+                       {1.0, 2.0,
+                        3.0, 4.0,
+
+                        5.0, 6.0,
+                        7.0, 8.0,
+
+                        9.0, 10.0,
+                        11.0, 12.0});
+  test.AddOutput<double>("reduced", {1, 2, 1}, {33.0, 45.0});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceSum_axes01) {
   OpTester test("ReduceSum");
   test.AddAttribute("axes", std::vector<int64_t>{2});
@@ -789,14 +823,32 @@ TEST(ReductionOpTest, ReduceSum_apex_bert) {
 }
 
 TEST(ReductionOpTest, ReduceSum_apex_more) {
-  std::srand(0);
-  for (int64_t m = 1; m < 16; ++m) {
-    for (int64_t n = 1; n < 16; ++n)  {
-      const auto m_ = 2 * m;
-      const auto n_ = 2 * n;
-      test_apex_reduce_sum(m_, n_);
-    }
-  }
+	std::srand(0);
+	for (int64_t m = 1; m < 16; ++m) {
+		for (int64_t n = 1; n < 16; ++n) {
+			const auto m_ = 2 * m;
+			const auto n_ = 2 * n;
+			test_apex_reduce_sum(m_, n_);
+		}
+	}
+}
+
+TEST( ReductionOpTest, ReduceSum_int64 )
+{
+   OpTester test( "ReduceSum" );
+   test.AddAttribute( "axes", std::vector<int64_t>{0, 2} );
+   test.AddAttribute( "keepdims", ( int64_t ) 1 );
+   test.AddInput<int64_t>( "data", { 3, 2, 2 },
+      { 1, 2,
+       3, 4,
+
+       5, 6,
+       7, 8,
+
+       9, 10,
+       11, 12 } );
+   test.AddOutput<int64_t>( "reduced", { 1, 2, 1 }, { 33, 45 } );
+   test.Run();
 }
 
 TEST(ReductionOpTest, ReduceSum_default_axes_keepdims) {
@@ -867,6 +919,23 @@ TEST(ReductionOpTest, ReduceSumSquare) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 2, 1}, {247.0f, 403.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSumSquare_double) {
+  OpTester test("ReduceSumSquare");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<double>("data", {3, 2, 2},
+                       {1.0, 2.0,
+                        3.0, 4.0,
+
+                        5.0, 6.0,
+                        7.0, 8.0,
+
+                        9.0, 10.0,
+                        11.0, 12.0});
+  test.AddOutput<double>("reduced", {1, 2, 1}, {247.0, 403.});
   test.Run();
 }
 

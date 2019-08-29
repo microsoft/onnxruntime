@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/framework/graph_partitioner.h"
-
 #include "core/framework/kernel_registry_manager.h"
 #include "core/graph/function.h"
 #include "core/graph/graph_viewer.h"
@@ -176,10 +175,6 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
         //prepare the func kernel
         KernelDefBuilder builder;
         BuildFusedKernelDef(builder, *node);
-        if (node->GetExecutionProviderType() == onnxruntime::kTensorrtExecutionProvider || node->GetExecutionProviderType() == onnxruntime::kNGraphExecutionProvider || node->GetExecutionProviderType() == onnxruntime::kNnapiExecutionProvider) {
-          builder.SetDefaultInputsMemoryType(OrtMemTypeCPUInput);
-          builder.SetDefaultOutputMemoryType(OrtMemTypeCPUOutput);
-        }
         ORT_RETURN_IF_ERROR(fused_kernel_registry->Register(
             builder, static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new FunctionKernel(info); })));
       }

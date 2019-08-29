@@ -136,7 +136,7 @@ Status GatherGrad::Compute(OpKernelContext* context) const {
 
   const TensorShape data_shape(shape.template Data<int64_t>(), shape.Shape().Size());
   Tensor& output = *context->Output(0, data_shape);
-  memset(output.MutableDataRaw(), 0, output.Size());
+  memset(output.MutableDataRaw(), 0, output.SizeInBytes());
 
   MLDataType T_type = grad.DataType();
   MLDataType Tind_type = indices.DataType();

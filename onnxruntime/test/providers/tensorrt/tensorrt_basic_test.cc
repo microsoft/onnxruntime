@@ -88,9 +88,17 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
   run_options.run_tag = so.session_logid;
 
   InferenceSession session_object{so};
+<<<<<<< HEAD
   CUDAExecutionProviderInfo xp_info{0};
   session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info));
   //session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::TensorrtExecutionProvider>());
+=======
+
+  TensorrtExecutionProviderInfo epi;
+  epi.device_id = 0;
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::TensorrtExecutionProvider>(epi)).IsOK());
+
+>>>>>>> origin/master
   status = session_object.Load(model_file_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object.Initialize();

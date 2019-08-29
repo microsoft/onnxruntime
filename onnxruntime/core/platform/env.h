@@ -24,7 +24,7 @@ limitations under the License.
 #include <gsl/pointers>
 
 #include "core/common/common.h"
-#include "core/common/callback.h"
+#include "core/framework/callback.h"
 #include "core/platform/env_time.h"
 
 #ifndef _WIN32
