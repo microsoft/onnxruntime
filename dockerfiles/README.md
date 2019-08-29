@@ -1,5 +1,7 @@
 # Docker containers for ONNX Runtime
 
+#### Build Instructions
+
 - [Arm 32v7](Dockerfile.arm32v7)
 - [Build from source (CPU)](Dockerfile.source)
 - [CUDA + CUDNN](Dockerfile.cuda)
@@ -7,6 +9,21 @@
 - [TensorRT](Dockerfile.tensorrt)
 - [OpenVINO](Dockerfile.openvino)
 - [ONNX Runtime Server](Dockerfile.server)
+
+#### Published Microsoft Container Registry (MCR) Images
+
+Use `docker pull` with any of the images and tags below to pull an image and try for yourself. Note that the build from source (CPU), CUDA, and TensorRT images include additional dependencies like miniconda for compatibility with AzureML image deployment.
+
+**Example**: Run `docker pull mcr.microsoft.com/azureml/onnxruntime:latest-cuda` to pull the latest released docker image with ONNX Runtime GPU, CUDA, and CUDNN support.
+
+| Build Flavor      | Base Image                            | ONNX Runtime v0.4.0     | ONNX Runtime v0.5.0     | Latest           |
+|-------------------|---------------------------------------|-------------------------|-------------------------|------------------|
+| Source (CPU)      | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0                 | :v0.5.0                 | :latest          |
+| CUDA (GPU)        | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0-cuda10.0-cudnn7 | :v0.5.0-cuda10.1-cudnn7 | :latest-cuda     |
+| TensorRT (x86)    | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0-tensorrt19.03   | :v0.5.0-tensorrt19.06   | :latest-tensorrt |
+| OpenVino (VAD-M)  | mcr.microsoft.com/azureml/onnxruntime | N/A                     | TBA                     | TBA              |
+| OpenVino (MYRIAD) | mcr.microsoft.com/azureml/onnxruntime | N/A                     | TBA                     | TBA              |
+| Server            | mcr.microsoft.com/onnxruntime/server  | :v0.4.0                 | :v0.5.0                 | :latest          |
 
 ## Build from Source
 #### Linux 16.04, CPU, Python Bindings
