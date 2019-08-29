@@ -184,7 +184,7 @@
 2. Run the ONNXRuntime server with the image created in step 1
 
   ```
-  docker run -v {localModelAbsoluteFolder}:{dockerModelAbsoluteFolder} -e MODEL_ABSOLUTE_PATH={dockerModelAbsolutePath} -p {your_local_port}:8001 {imageName}
+  docker run -v {localModelAbsoluteFolder}:{dockerModelAbsoluteFolder} -p {your_local_port}:8001 {imageName} --model_path {dockerModelAbsolutePath}
   ```
 3. Send HTTP requests to the container running ONNX Runtime Server
 
