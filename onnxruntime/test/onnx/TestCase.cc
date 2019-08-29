@@ -281,6 +281,9 @@ OrtValue* TensorToOrtValue(const ONNX_NAMESPACE::TensorProto& t, onnxruntime::te
   if (!status.IsOK()) {
     ORT_THROW(status.ToString());
   }
+  if (d->f) {
+    b.AddDeleter(d.release());
+  }
   return temp_value.release();
 }
 
@@ -597,6 +600,9 @@ void OnnxTestCase::ConvertTestData(const std::vector<ONNX_NAMESPACE::TensorProto
                                                      v1, *d);
     if (!status.IsOK()) {
       ORT_THROW(status.ToString());
+    }
+    if (d->f) {
+      b.AddDeleter(d.release());
     }
     out.insert(std::make_pair(name, v1.release()));
   }

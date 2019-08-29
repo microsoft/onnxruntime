@@ -310,7 +310,7 @@ struct UnInitializeParam {
 OrtStatus* OrtInitializeBufferForTensor(void* input, size_t input_len,
                                         ONNXTensorElementDataType type) {
   try {
-    if (type != ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING || input == nullptr) return;
+    if (type != ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING || input == nullptr) return nullptr;
     size_t tensor_size = input_len / sizeof(std::string);
     std::string* ptr = reinterpret_cast<std::string*>(input);
     for (size_t i = 0, n = tensor_size; i < n; ++i) {
@@ -338,7 +338,6 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
   for (size_t i = 0, n = tensor_size; i < n; ++i) {
     ptr[i].~string();
   }
-  return;
 }
 
 #define CASE_PROTO(X, Y)                                                                                       \
