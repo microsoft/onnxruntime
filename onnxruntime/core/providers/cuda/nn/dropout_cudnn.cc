@@ -71,13 +71,13 @@ Status TrainableDropoutCudnn<T>::ComputeInternal(OpKernelContext* context) const
   auto Y = context->Output(0, shape);
   auto Y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->Size(), cudaMemcpyDeviceToDevice));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->SizeInBytes(), cudaMemcpyDeviceToDevice));
   //Get mask_data
   auto mask = context->Output(1, shape);
   CudaT* mask_data = nullptr;
   if (mask){
     mask_data = reinterpret_cast<CudaT*>(mask->template MutableData<bool>());
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask_data, 0, mask->Size()));
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask_data, 0, mask->SizeInBytes()));
   }
 
   //Get the ratio_data
@@ -90,7 +90,7 @@ Status TrainableDropoutCudnn<T>::ComputeInternal(OpKernelContext* context) const
   bool is_test = (ratio_data == 0);
   if (is_test) {
     if (Y_data != X_data) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->Size(), cudaMemcpyDeviceToDevice));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->SizeInBytes(), cudaMemcpyDeviceToDevice));
     }
   } else {
     ORT_RETURN_IF_ERROR(s_.Set(CudnnHandle(), shape, CudnnTensor::GetDataType<CudaT>(), ratio_data));
@@ -152,7 +152,7 @@ Status TrainableDropoutCudnnGrad<T>::ComputeInternal(OpKernelContext* context) c
   bool is_test = (ratio_data == 0);
   if (is_test) {
     if (dX_data != dY_data) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dX_data, dY_data, dX->Size(), cudaMemcpyDeviceToDevice));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dX_data, dY_data, dX->SizeInBytes(), cudaMemcpyDeviceToDevice));
     }
   } else {
     ORT_RETURN_IF_ERROR(s_.Set(CudnnHandle(), shape, CudnnTensor::GetDataType<CudaT>(), ratio_data));
