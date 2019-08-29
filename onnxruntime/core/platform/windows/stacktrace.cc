@@ -8,7 +8,7 @@
 
 #include <windows.h>
 #include <DbgHelp.h>
-
+#include <gsl/span>
 #include "core/common/logging/logging.h"
 
 
