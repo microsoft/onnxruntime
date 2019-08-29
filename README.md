@@ -134,16 +134,17 @@ ONNX Runtime is open and extensible, supporting a broad set of configurations an
 ***
 # Examples and Tutorials
 ## Python
-* [Basic Inferencing Sample](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/simple_onnxruntime_inference.ipynb)
-* [Inferencing (Resnet50)](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/resnet50_modelzoo_onnxruntime_inference.ipynb)
-* [Inferencing samples](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem/inference_demos) using [ONNX-Ecosystem Docker image](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem)
-* [Train, Convert, and Inference a SKL pipeline](https://microsoft.github.io/onnxruntime/auto_examples/plot_train_convert_predict.html#sphx-glr-auto-examples-plot-train-convert-predict-py)
-* [Convert and Inference a Keras model](https://microsoft.github.io/onnxruntime/auto_examples/plot_dl_keras.html#sphx-glr-auto-examples-plot-dl-keras-py)
-* [ONNX Runtime Server: SSD Single Shot MultiBox Detector](https://github.com/onnx/tutorials/blob/master/tutorials/OnnxRuntimeServerSSDModel.ipynb)
-* [Running ONNX model tests](./docs/Model_Test.md)
+**Inference only**
+* [Model Inferencing (single node Sigmoid)](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/simple_onnxruntime_inference.ipynb)
+* [Model Inferencing (Resnet50)](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/resnet50_modelzoo_onnxruntime_inference.ipynb)
+* [Model Inferencing](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem/inference_demos) using [ONNX-Ecosystem Docker image](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem)
+* [Model Inferencing using ONNX Runtime Server (SSD Single Shot MultiBox Detector)](https://github.com/onnx/tutorials/blob/master/tutorials/OnnxRuntimeServerSSDModel.ipynb)
 
+**Inference with model conversion**
+* [SKL Pipeline: Train, Convert, and Inference](https://microsoft.github.io/onnxruntime/auto_examples/plot_train_convert_predict.html#sphx-glr-auto-examples-plot-train-convert-predict-py)
+* [Keras: Convert and Inference](https://microsoft.github.io/onnxruntime/auto_examples/plot_dl_keras.html#sphx-glr-auto-examples-plot-dl-keras-py)
 
-**Deployment with AzureML**
+**Inference and deploy through AzureML**
 * Inferencing using [ONNX Model Zoo](https://github.com/onnx/models) models: 
   * [Facial Expression Recognition](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-inference-facial-expression-recognition-deploy.ipynb) 
   * [MNIST Handwritten Digits](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-inference-mnist-deploy.ipynb)
@@ -152,9 +153,16 @@ ONNX Runtime is open and extensible, supporting a broad set of configurations an
   * [TinyYolo](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-convert-aml-deploy-tinyyolo.ipynb)
 * Train a model with PyTorch and Inferencing:
   * [MNIST](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-train-pytorch-aml-deploy-mnist.ipynb)
- 
-* Inferencing with TensorRT Execution Provider on GPU (AKS)
+
+* GPU: Inferencing with TensorRT Execution Provider (AKS)
   * [FER+](./docs/python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb)
+
+**Inference and Deploy wtih Azure IoT Edge**
+  * [Intel OpenVINO](http://aka.ms/onnxruntime-openvino)
+  * [NVIDIA TensorRT on Jetson Nano (ARM64)](http://aka.ms/onnxruntime-arm64)
+
+**Other**
+* [Running ONNX model tests](./docs/Model_Test.md)
 
 
 ## C#
@@ -162,9 +170,9 @@ ONNX Runtime is open and extensible, supporting a broad set of configurations an
 
 
 ## C/C++
-* [Basic Inferencing (SqueezeNet) - C](./csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
-* [Basic Inferencing (SqueezeNet) - C++](./csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/CXX_Api_Sample.cpp)
-* [Inferencing (MNIST) - C++](./samples/c_cxx/MNIST)
+* [C - Inferencing (SqueezeNet)](./csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
+* [C++ - Inferencing (SqueezeNet)](./csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/CXX_Api_Sample.cpp)
+* [C++ - Inferencing (MNIST)](./samples/c_cxx/MNIST)
 
 ***
 # Technical Design Details
