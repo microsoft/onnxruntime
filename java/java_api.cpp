@@ -2,7 +2,6 @@
 
 #include <vector>
 
-#include <android/log.h>
 #include <core/providers/nnapi/nnapi_provider_factory.h>
 #include <onnxruntime_cxx_api.h>
 
@@ -41,7 +40,6 @@ Java_ml_microsoft_onnxruntime_RunOptions_initHandle(JNIEnv* env, jobject obj /* 
   ORT_JAVA_API_IMPL_BEGIN
   OrtRunOptions* run_options;
   ORT_THROW_ON_ERROR(OrtCreateRunOptions(&run_options));
-  std::vector<int> a;
 
   setHandle(env, obj, run_options);
   ORT_JAVA_API_IMPL_END

@@ -32,9 +32,7 @@ public class MainActivity extends AppCompatActivity {
     try {
       Env env = new Env(LoggingLevel.INFO, "test");
       RunOptions runOptions = new RunOptions();
-      String modelPath = "/data/local/tmp/squeezenet1.onnx";
-      // String input = "data";
-      // String output = "mobilenetv20_output_flatten0_reshape0";
+      String modelPath = "/data/local/tmp/squeezenet.onnx";
       SessionOptions sessionOptionsWithNnapi = new SessionOptions();
       sessionOptionsWithNnapi.appendNnapiExecutionProvider();
       Session sessionWithNnapi = new Session(env, modelPath, sessionOptionsWithNnapi);
