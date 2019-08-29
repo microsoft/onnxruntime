@@ -18,7 +18,7 @@ tvm::Tensor Tile(const tvm::Tensor& t,
   for (size_t i = 0; i < t->shape.size(); ++i) {
     if (repeats[i] == 0)
       repeats_zero = true;
-    output_shape.push_back(t->shape[i] * gsl::narrow<int>(repeats[i]));
+    output_shape.push_back(t->shape[i] * static_cast<int>(repeats[i]));
   }
 
   auto l = [&](const tvm::Array<tvm::Var>& ovars) {

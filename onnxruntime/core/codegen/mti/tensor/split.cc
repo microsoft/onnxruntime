@@ -16,11 +16,11 @@ tvm::Array<tvm::Tensor> Split(const tvm::Tensor& X,
                               const tvm::Array<tvm::Expr>& split_sizes,
                               int64_t axis,
                               const std::string& name) {
-  MTI_ASSERT(axis < gsl::narrow<int64_t>(X->shape.size()));
-  size_t axis_t = gsl::narrow<int>(axis);
+  MTI_ASSERT(axis < static_cast<int64_t>(X->shape.size()));
+  size_t axis_t = static_cast<int>(axis);
 
   tvm::Array<tvm::Array<tvm::Expr>> output_shapes;
-  int num_splits = gsl::narrow<int>(split_sizes.size());
+  int num_splits = static_cast<int>(split_sizes.size());
   for (auto& s : split_sizes) {
     tvm::Array<tvm::Expr> shape;
     for (size_t i = 0; i < axis_t; i++) {
@@ -65,7 +65,7 @@ tvm::Array<tvm::Tensor> SplitWithIndices(const tvm::Tensor& X,
                                          const tvm::Array<tvm::Integer>& split_sizes,
                                          int64_t axis,
                                          const std::string& name) {
-  return topi::split(X, split_sizes, gsl::narrow<int>(axis), name);
+  return topi::split(X, split_sizes, static_cast<int>(axis), name);
 }
 
 }  // namespace tvm_codegen

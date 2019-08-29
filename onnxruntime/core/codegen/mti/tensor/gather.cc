@@ -15,8 +15,8 @@ tvm::Tensor Gather(const tvm::Tensor& t,
                    const tvm::Tensor& indices,
                    const std::string& name) {
   // handle negative axis
-  axis = HandleNegativeAxis(axis, gsl::narrow<int64_t>(t->shape.size()));
-  size_t axis_t = gsl::narrow<size_t>(axis);
+  axis = HandleNegativeAxis(axis, static_cast<int64_t>(t->shape.size()));
+  size_t axis_t = static_cast<size_t>(axis);
 
   tvm::Array<tvm::Expr> output_shape;
   for (size_t i = 0; i < axis_t; ++i)

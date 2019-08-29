@@ -32,7 +32,7 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Transpose)::Evaluate(
   } else {
     default_permute.resize(input_0_shape_rank);
     for (size_t i = 0; i < input_0_shape_rank; ++i) {
-      default_permute[i] = gsl::narrow<int64_t>(input_0_shape_rank - 1 - i);
+      default_permute[i] = static_cast<int64_t>(input_0_shape_rank - 1 - i);
     }
     perm = &default_permute;
   }

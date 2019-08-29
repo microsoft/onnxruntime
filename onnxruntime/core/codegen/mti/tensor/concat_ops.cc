@@ -22,8 +22,8 @@ tvm::Tensor Concat(const tvm::Array<tvm::Tensor>& inputs,
 tvm::Tensor ConcatSafe(const tvm::Array<tvm::Tensor>& inputs,
                        int64_t axis,
                        const std::string& name) {
-  axis = HandleNegativeAxis(axis, gsl::narrow<int64_t>(inputs[0]->shape.size()));
-  MTI_ASSERT(axis < gsl::narrow<int64_t>(inputs[0]->shape.size()) && "axis out of bounds");
+  axis = HandleNegativeAxis(axis, static_cast<int64_t>(inputs[0]->shape.size()));
+  MTI_ASSERT(axis < static_cast<int64_t>(inputs[0]->shape.size()) && "axis out of bounds");
 
   tvm::Array<tvm::Expr> axis_sizes;
   for (auto t : inputs) {
@@ -37,7 +37,7 @@ tvm::Tensor ConcatSafe(const tvm::Array<tvm::Tensor>& inputs,
   join_size = tvm::ir::Simplify(join_size);
   tvm::Array<tvm::Expr> out_shape;
   for (size_t i = 0; i < inputs[0]->shape.size(); ++i) {
-    out_shape.push_back(i == gsl::narrow<size_t>(axis) ? join_size : inputs[0]->shape[i]);
+    out_shape.push_back(i == static_cast<size_t>(axis) ? join_size : inputs[0]->shape[i]);
   }
 
   return tvm::compute(
@@ -52,7 +52,7 @@ tvm::Tensor ConcatSafe(const tvm::Array<tvm::Tensor>& inputs,
 
         //input i = 0
         for (size_t j = 0; j < ovars.size(); ++j) {
-          if (j == gsl::narrow<size_t>(axis)) {
+          if (j == static_cast<size_t>(axis)) {
             tvm::Expr ivar = ovars[j];
             indices.push_back(tvm::max(tvm::min(ivar, min + extent - 1), min));
           } else {
@@ -65,7 +65,7 @@ tvm::Tensor ConcatSafe(const tvm::Array<tvm::Tensor>& inputs,
           offset += extent;
           tvm::Expr min = 0;
           extent = axis_sizes[i];
-          auto j = gsl::narrow<size_t>(axis);
+          auto j = static_cast<size_t>(axis);
           tvm::Expr ivar = ovars[j] - offset;
           indices.Set(j, tvm::max(tvm::min(ivar, min + extent - 1), min));
 
