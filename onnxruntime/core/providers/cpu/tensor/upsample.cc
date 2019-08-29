@@ -63,7 +63,7 @@ Status UpsampleNearest(const T* input,
                        const TensorShape& input_shape,
                        const TensorShape& output_shape,
                        const vector<float>& scales,
-                       const bool is_resize) {
+                       bool is_resize) {
   if (!input || !output)
     return Status(ONNXRUNTIME, FAIL, is_resize ? "Resize: input/output value is nullptr" : 
                                                  "Upsample: input/output value is nullptr");
