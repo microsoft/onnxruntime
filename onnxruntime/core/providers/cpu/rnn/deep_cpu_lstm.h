@@ -82,8 +82,8 @@ class DeepCpuLstmOp final : public OpKernel {
   // across them. mutable due to this.
   // The alternative would be to create a threadpool in each call to Compute but that would incur thread creation
   // cost on every call.
-  mutable onnxruntime::concurrency::ThreadPool ttp_{"DEEPCPU_LSTM",
-                                                    static_cast<int>(std::thread::hardware_concurrency())};
+  mutable onnxruntime::concurrency::ThreadPool lstm_tp_{"DEEPCPU_LSTM",
+                                                        static_cast<int>(std::thread::hardware_concurrency())};
 };
 
 }  // namespace onnxruntime

@@ -1,37 +1,9 @@
-# Build ONNX Runtime
-Dockerfiles are available [here](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/linux/docker) to help you get started.
+# Building ONNX Runtime - Getting Started
+*Dockerfiles are available [here](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/linux/docker) to help you get started.*
 
-## Supported architectures
+*Pre-built packages are available at the locations indicated [here](https://github.com/microsoft/onnxruntime#official-builds).*
 
-|           | x86_32       | x86_64       | ARM32v7      | ARM64        |
-|-----------|:------------:|:------------:|:------------:|:------------:|
-|Windows    | YES          | YES          |  YES         | YES          |
-|Linux      | YES          | YES          |  YES         | YES          |
-|Mac OS X   | NO           | YES          |  NO          | NO           |
-
-## Supported dev environments
-
-| OS          | Supports CPU | Supports GPU| Notes                              |
-|-------------|:------------:|:------------:|------------------------------------|
-|Windows 10   | YES          | YES         | VS2019 through the latest VS2015 are supported |
-|Windows 10 <br/> Subsystem for Linux | YES         | NO        |         |
-|Ubuntu 16.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
-
-* Red Hat Enterprise Linux and CentOS are not supported.
-* Other version of Ubuntu might work but we don't support them officially.
-* GCC 4.x and below are not supported.
-
-OS/Compiler Matrix:
-
-| OS/Compiler | Supports VC  | Supports GCC     |
-|-------------|:------------:|:----------------:|
-|Windows 10   | YES          | Not tested       |
-|Linux        | NO           | YES(gcc>=5.0)    |
-
-ONNX Runtime python binding only supports Python 3.5, 3.6 and 3.7.
-
-## Getting Started
-You may either get a prebuilt onnxruntime from nuget.org, or do it yourself using the following steps:
+## To build the baseline CPU version of ONNX Runtime from source:
 1. Checkout the source tree:
    ```
    git clone --recursive https://github.com/Microsoft/onnxruntime
@@ -39,7 +11,8 @@ You may either get a prebuilt onnxruntime from nuget.org, or do it yourself usin
    ```
 2. Install cmake-3.13 or better from https://cmake.org/download/.
 
-On Windows:
+**On Windows:**
+
 3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF. After the installation, you should have the 'protoc' executable in your PATH.
 4. (optional) Install onnx from source code (cmake/external/onnx)
     ```
@@ -49,7 +22,10 @@ On Windows:
     ```
 5. Run `build.bat --config RelWithDebInfo --build_shared_lib --parallel`. 
 
-On Linux:
+*Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat.*
+
+**On Linux:**
+
 3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned ON. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
 4. If you installed your protobuf in a non standard location it would be helpful to set the following env var:`export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=full path to protoc"` so ONNX build can find it. Also run `ldconfig <protobuf lib folder path>` so the linker can find protobuf libraries.
 5. (optional) Install onnx from source code (cmake/external/onnx)
@@ -62,46 +38,119 @@ On Linux:
 
 The build script runs all unit tests by default (for native builds and skips tests by default for cross-compiled builds).
 
+---
+
+# Supported architectures and build environments
+
+## Architectures
+
+|           | x86_32       | x86_64       | ARM32v7      | ARM64        |
+|-----------|:------------:|:------------:|:------------:|:------------:|
+|Windows    | YES          | YES          |  YES         | YES          |
+|Linux      | YES          | YES          |  YES         | YES          |
+|Mac OS X   | NO           | YES          |  NO          | NO           |
+
+## Environments
+
+| OS          | Supports CPU | Supports GPU| Notes                              |
+|-------------|:------------:|:------------:|------------------------------------|
+|Windows 10   | YES          | YES         | VS2019 through the latest VS2015 are supported |
+|Windows 10 <br/> Subsystem for Linux | YES         | NO        |         |
+|Ubuntu 16.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
+
+* Red Hat Enterprise Linux and CentOS are not supported.
+* Other version of Ubuntu might work but we don't support them officially.
+* GCC 4.x and below are not supported.
+
+### OS/Compiler Matrix:
+
+| OS/Compiler | Supports VC  | Supports GCC     |
+|-------------|:------------:|:----------------:|
+|Windows 10   | YES          | Not tested       |
+|Linux        | NO           | YES(gcc>=5.0)    |
+
+ONNX Runtime Python bindings support Python 3.5, 3.6 and 3.7.
+
+---
+
+# Additional Build Instructions
 The complete list of build options can be found by running `./build.sh (or ./build.bat) --help`
 
-## Build x86
- - For Windows, just add --x86 argument when launching build.bat
- - For Linux, it must be built out of a x86 os, --x86 argument also needs be specified to build.sh
+* [Docker on Linux](#Docker-on-Linux)
+* [ONNX Runtime Server (Linux)](#Build-ONNX-Runtime-Server-on-Linux)
+
+**Execution Providers**
+* [NVIDIA CUDA](#CUDA)
+* [NVIDIA TensorRT](#TensorRT)
+* [Intel MKL-DNN/MKL-ML](#MKLDNN-and-MKLML)
+* [Intel nGraph](#nGraph)
+* [Intel OpenVINO](#openvino)
+* [Android NNAPI](#Android)
+
+**Options**
+* [OpenMP](#OpenMP)
+* [OpenBLAS](#OpenBLAS)
+
+**Architectures**
+* [x86](#x86)
+* [ARM](#ARM)
+
+---
+## Docker on Linux
+Install Docker: `https://docs.docker.com/install/`
+
+**CPU**
+```
+cd tools/ci_build/github/linux/docker
+docker build -t onnxruntime_dev --build-arg OS_VERSION=16.04 -f Dockerfile.ubuntu .
+docker run --rm -it onnxruntime_dev /bin/bash
+```
+
+**GPU**
+If you need GPU support, please also install:
+1. nvidia driver. Before doing this please add `nomodeset rd.driver.blacklist=nouveau` to your linux [kernel boot parameters](https://www.kernel.org/doc/html/v4.17/admin-guide/kernel-parameters.html).
+2. nvidia-docker2: [Install doc](`https://github.com/NVIDIA/nvidia-docker/wiki/Installation-(version-2.0)`)
+
+To test if your nvidia-docker works:
+```
+docker run --runtime=nvidia --rm nvidia/cuda nvidia-smi
+```
+
+Then build a docker image. We provided a sample for use:
+```
+cd tools/ci_build/github/linux/docker
+docker build -t cuda_dev -f Dockerfile.ubuntu_gpu .
+```
+
+Then run it
+```
+./tools/ci_build/github/linux/run_dockerbuild.sh
+```
+
+---
 
 ## Build ONNX Runtime Server on Linux
-
+Read more about ONNX Runtime Server [here](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Server_Usage.md)
 1. ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL. 
     See https://golang.org/doc/install for installation instructions.
 2. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
 3. ONNX Runtime Server supports sending log to [rsyslog](https://www.rsyslog.com/) daemon. To enable it, please build with an additional parameter: `--cmake_extra_defines onnxruntime_USE_SYSLOG=1`. The build command will look like this: `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel --cmake_extra_defines onnxruntime_USE_SYSLOG=1`
 
+---
 
-## Build/Test Flavors for CI
+## Execution Providers
 
-### CI Build Environments
+### CUDA
+For Linux, please use [this Dockerfile](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/linux/docker/Dockerfile.ubuntu_gpu) and refer to instructions above for [building with Docker on Linux](#Docker-on-Linux)
 
-| Build Job Name     | Environment         | Dependency                      | Test Coverage            | Scripts                                  |
-|--------------------|---------------------|---------------------------------|--------------------------|------------------------------------------|
-| Linux_CI_Dev       | Ubuntu 16.04        | python=3.5                      | Unit tests; ONNXModelZoo | [script](tools/ci_build/github/linux/run_build.sh) |
-| Linux_CI_GPU_Dev   | Ubuntu 16.04        | python=3.5; nvidia-docker       | Unit tests; ONNXModelZoo | [script](tools/ci_build/github/linux/run_build.sh) |
-| Windows_CI_Dev     | Windows Server 2016 | python=3.5                      | Unit tests; ONNXModelZoo | [script](build.bat)                                |
-| Windows_CI_GPU_Dev | Windows Server 2016 | cuda=9.1; cudnn=7.1; python=3.5 | Unit tests; ONNXModelZoo | [script](build.bat)                                |
+ONNX Runtime supports CUDA builds. You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn).
 
-## Additional Build Flavors
-The complete list of build flavors can be seen by running `./build.sh --help` or `./build.bat --help`. Here are some common flavors.
-
-### Windows CMake Generator
-The default generator on Windows is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat.
-
-### Windows CUDA Build
-ONNX Runtime supports CUDA builds. You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [CUDNN](https://developer.nvidia.com/cudnn).
-
-ONNX Runtime is built and tested with CUDA 9.1 and CUDNN 7.1 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3).
-CUDA versions from 9.1 up to 10.0, and CUDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017.
+ONNX Runtime is built and tested with CUDA 10.0 and cuDNN 7.3 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3). 
+CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017.
 
  - The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`.
- - The path to the CUDNN installation (include the `cuda` folder in the path) must be provided via the CUDNN_PATH environment variable, or `--cudnn_home parameter`. The CUDNN path should contain `bin`, `include` and `lib` directories.
- - The path to the CUDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
+ - The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`. The cuDNN path should contain `bin`, `include` and `lib` directories.
+ - The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
 
 You can build with:
 
@@ -110,7 +159,7 @@ You can build with:
 ./build.bat --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path> (Windows)
 ```
 
-Depending on compatibility between the CUDA, CUDNN, and Visual Studio 2017 versions you are using, you may need to explicitly install an earlier version of the MSVC toolset.
+Depending on compatibility between the CUDA, cuDNN, and Visual Studio 2017 versions you are using, you may need to explicitly install an earlier version of the MSVC toolset.
 - CUDA 10.0 is known to work with toolsets from 14.11 up to 14.16 (Visual Studio 2017 15.9), and should continue to work with future Visual Studio versions
   - https://devblogs.microsoft.com/cppblog/cuda-10-is-now-available-with-support-for-the-latest-visual-studio-2017-versions/
 - CUDA 9.2 is known to work with the 14.11 MSVC toolset (Visual Studio 15.3 and 15.4)
@@ -132,30 +181,38 @@ _Side note: If you have multiple versions of CUDA installed on a Windows machine
 e.g. C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\Common7\IDE\VC\VCTargets\BuildCustomizations\.
 If you want to build with an earlier version, you must temporarily remove the 'CUDA x.y.*' files for later versions from this directory._
 
-### MKL-DNN/MKLML
-To build ONNX Runtime with MKL-DNN support, build it with `./build.sh --use_mkldnn`
-To build ONNX Runtime using MKL-DNN built with dependency on MKL small libraries, build it with `./build.sh --use_mkldnn --use_mklml`
-
-### nGraph
-ONNX runtime with nGraph as an execution provider (released as preview) can be built on Linux as follows : `./build.sh --use_ngraph`.  Similarly, on Windows use `.\build.bat --use_ngraph`.
+---
 
 ### TensorRT
-ONNX Runtime supports the TensorRT execution provider (released as preview). You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit), [CUDNN](https://developer.nvidia.com/cudnn) and [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download).
+ONNX Runtime supports the TensorRT execution provider (released as preview). You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit), [cuDNN](https://developer.nvidia.com/cudnn) and [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download).
 
-The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 9.0/CUDA 10.0, CUDNN 7.1 and TensorRT 5.0.2.6.
+The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 9.0/CUDA 10.0, cuDNN 7.1 and TensorRT 5.0.2.6.
 
  - The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`. The CUDA path should contain `bin`, `include` and `lib` directories.
  - The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
- - The path to the CUDNN installation (path to folder that contains libcudnn.so) must be provided via the CUDNN_PATH environment variable, or `--cudnn_home parameter`.
+ - The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`.
 - The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
 
 You can build from source on Linux by using the following `cmd` from the onnxruntime directory:
 
 ```
-./build.sh --cudnn_home <path to CUDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> (Linux)
-
+./build.sh --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> (Linux)
 ```
-### OpenVINO Build
+
+---
+
+### MKLDNN and MKLML
+To build ONNX Runtime with MKL-DNN support, build it with `./build.sh --use_mkldnn`
+To build ONNX Runtime using MKL-DNN built with dependency on MKL small libraries, build it with `./build.sh --use_mkldnn --use_mklml`
+
+---
+
+### nGraph
+ONNX runtime with nGraph as an execution provider (released as preview) can be built on Linux as follows : `./build.sh --use_ngraph`.  Similarly, on Windows use `.\build.bat --use_ngraph`
+
+---
+
+### OpenVINO
 
 ONNX Runtime supports OpenVINO Execution Provider to enable deep learning inference using Intel<sup>®</sup> OpenVINO<sup>TM</sup> Toolkit. This execution provider supports several Intel hardware device types - CPU, integrated GPU, Intel<sup>®</sup> Movidius<sup>TM</sup> VPUs and Intel<sup>®</sup> Vision accelerator Design with 8 Intel Movidius<sup>TM</sup> MyriadX VPUs.
 
@@ -194,58 +251,57 @@ The OpenVINO Execution Provider can be built using the following commands:
 | <code>VAD-M_FP16</code> | Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs |
 
 For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document OpenVINO-ExecutionProvider.md in <code>$onnxruntime_root/docs/execution_providers</code>
+ 
+---
 
-### OpenBLAS
-#### Windows
-Instructions how to build OpenBLAS for windows can be found here https://github.com/xianyi/OpenBLAS/wiki/How-to-use-OpenBLAS-in-Microsoft-Visual-Studio#build-openblas-for-universal-windows-platform.
+### Android
 
-Once you have the OpenBLAS binaries, build ONNX Runtime with `./build.bat --use_openblas`
+#### Cross compiling on Linux
 
-#### Linux
-For Linux (e.g. Ubuntu 16.04), install libopenblas-dev package
-`sudo apt-get install libopenblas-dev` and build with `./build.sh --use_openblas`
+1. Get Android NDK from https://developer.android.com/ndk/downloads. Please unzip it after downloading.
 
+2. Get a pre-compiled protoc:
+
+   You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip. Please unzip it after downloading.
+
+3. Denote the unzip destination in step 1 as $ANDROID_NDK, append `-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=path/to/protoc` to your cmake args, run cmake and make to build it.
+
+Note: For 32-bit devices, replace `-DANDROID_ABI=arm64-v8a` to `-DANDROID_ABI=armeabi-v7a`.
+
+---
+
+## Options
 ### OpenMP
 ```
 ./build.sh --use_openmp (for Linux)
 ./build.bat --use_openmp (for Windows)
 ```
 
-### Build with Docker on Linux
-Install Docker: `https://docs.docker.com/install/`
+---
 
-#### CPU
-```
-cd tools/ci_build/github/linux/docker
-docker build -t onnxruntime_dev --build-arg OS_VERSION=16.04 -f Dockerfile.ubuntu .
-docker run --rm -it onnxruntime_dev /bin/bash
-```
+### OpenBLAS
+**Windows**
+Instructions how to build OpenBLAS for windows can be found here https://github.com/xianyi/OpenBLAS/wiki/How-to-use-OpenBLAS-in-Microsoft-Visual-Studio#build-openblas-for-universal-windows-platform.
 
-#### GPU
-If you need GPU support, please also install:
-1. nvidia driver. Before doing this please add `nomodeset rd.driver.blacklist=nouveau` to your linux [kernel boot parameters](https://www.kernel.org/doc/html/v4.17/admin-guide/kernel-parameters.html).
-2. nvidia-docker2: [Install doc](`https://github.com/NVIDIA/nvidia-docker/wiki/Installation-(version-2.0)`)
+Once you have the OpenBLAS binaries, build ONNX Runtime with `./build.bat --use_openblas`
 
-To test if your nvidia-docker works:
-```
-docker run --runtime=nvidia --rm nvidia/cuda nvidia-smi
-```
+**Linux**
+For Linux (e.g. Ubuntu 16.04), install libopenblas-dev package
+`sudo apt-get install libopenblas-dev` and build with `./build.sh --use_openblas`
 
-Then build a docker image. We provided a sample for use:
-```
-cd tools/ci_build/github/linux/docker
-docker build -t cuda_dev -f Dockerfile.ubuntu_gpu .
-```
+--- 
 
-Then run it
-```
-./tools/ci_build/github/linux/run_dockerbuild.sh
-```
+## Architectures
+### x86
+ - For Windows, just add --x86 argument when launching build.bat
+ - For Linux, it must be built out of a x86 os, --x86 argument also needs be specified to build.sh
 
-## ARM Builds
+---
+
+### ARM
 We have experimental support for Linux ARM builds. Windows on ARM is well tested.
 
-### Cross compiling for ARM with Docker (Linux/Windows - FASTER, RECOMMENDED)
+#### Cross compiling for ARM with Docker (Linux/Windows - FASTER, RECOMMENDED)
 This method allows you to compile using a desktop or cloud VM. This is much faster than compiling natively and avoids out-of-memory issues that may be encountered when on lower-powered ARM devices. The resulting ONNX Runtime Python wheel (.whl) file is then deployed to an ARM device where it can be invoked in Python 3 scripts.
 
 The Dockerfile used in these instructions specifically targets Raspberry Pi 3/3+ running Raspbian Stretch. The same approach should work for other ARM devices, but may require some changes to the Dockerfile such as choosing a different base image (Line 0: `FROM ...`).
@@ -296,7 +352,7 @@ The Dockerfile used in these instructions specifically targets Raspberry Pi 3/3+
     ```
 10. Test installation by following the instructions [here](https://microsoft.github.io/onnxruntime/)
 
-### Cross compiling on Linux (without Docker)
+#### Cross compiling on Linux (without Docker)
 1. Get the corresponding toolchain. For example, if your device is Raspberry Pi and the device os is Ubuntu 16.04, you may use gcc-linaro-6.3.1 from [https://releases.linaro.org/components/toolchain/binaries](https://releases.linaro.org/components/toolchain/binaries)
 2. Setup env vars
     ```bash
@@ -321,8 +377,7 @@ The Dockerfile used in these instructions specifically targets Raspberry Pi 3/3+
     ```
 6. Append `-DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake` to your cmake args, run cmake and make to build it.
 
-
-### Native compiling on Linux ARM device (SLOWER)
+#### Native compiling on Linux ARM device (SLOWER)
 Docker build runs on a Raspberry Pi 3B with Raspbian Stretch Lite OS (Desktop version will run out memory when linking the .so file) will take 8-9 hours in total.
 ```bash
 sudo apt-get update
@@ -374,26 +429,10 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/*.so
 ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 ```
 
-### Cross compiling on Windows
-#### Using Visual C++ compilers
+#### Cross compiling on Windows
+**Using Visual C++ compilers**
 1. Download and install Visual C++ compilers and libraries for ARM(64).
    If you have Visual Studio installed, please use the Visual Studio Installer (look under the section `Individual components` after choosing to `modify` Visual Studio) to download and install the corresponding ARM(64) compilers and libraries.
 
 2. Use `build.bat` and specify `--arm` or `--arm64` as the build option to start building. Preferably use `Developer Command Prompt for VS` or make sure all the installed cross-compilers are findable from the command prompt being used to build using the PATH environmant variable.
 
-### Using other compilers
-(TODO)
-
-## Android Builds
-
-### Cross compiling on Linux
-
-1. Get Android NDK from https://developer.android.com/ndk/downloads. Please unzip it after downloading.
-
-2. Get a pre-compiled protoc:
-
-   You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip. Please unzip it after downloading.
-
-3. Denote the unzip destination in step 1 as $ANDROID_NDK, append `-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=path/to/protoc` to your cmake args, run cmake and make to build it.
-
-Note: For 32-bit devices, replace `-DANDROID_ABI=arm64-v8a` to `-DANDROID_ABI=armeabi-v7a`.

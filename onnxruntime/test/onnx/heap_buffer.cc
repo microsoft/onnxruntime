@@ -3,9 +3,21 @@
 
 #include "heap_buffer.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "callback.h"
+
+namespace onnxruntime {
+namespace test {
+void HeapBuffer::AddDeleter(OrtCallback* d) {
+  if (d != nullptr) deleters_.push_back(d);
+}
 
 HeapBuffer::~HeapBuffer() {
+  for (auto d : deleters_) {
+    OrtRunCallback(d);
+  }
   for (void* p : buffers_) {
     free(p);
   }
 }
+}  // namespace test
+}  // namespace onnxruntime

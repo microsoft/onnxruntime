@@ -5,6 +5,9 @@
 #include <vector>
 #include <memory>
 
+namespace onnxruntime {
+namespace test {
+struct OrtCallback;
 /**
  * A holder for delay freed buffers
  */
@@ -20,7 +23,11 @@ class HeapBuffer {
     buffers_.push_back(p);
     return p;
   }
+  void AddDeleter(OrtCallback* d);
 
  private:
+  std::vector<OrtCallback*> deleters_;
   std::vector<void*> buffers_;
 };
+}  // namespace test
+}  // namespace onnxruntime

@@ -25,6 +25,12 @@ using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
 
+// Per TensorRT documentation, logger needs to be a singleton.
+TensorrtLogger& GetTensorrtLogger() {
+  static TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
+  return trt_logger;
+}
+
 #define CHECK_CUDA(call)                                        \
   do {                                                          \
     cudaError_t status = call;                                  \
@@ -197,7 +203,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         // Get supported node list recursively
         SubGraphCollection_t parser_nodes_list;
-        TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
+        TensorrtLogger& trt_logger = GetTensorrtLogger();
         auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
         auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
         auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
@@ -255,7 +261,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
   // Get supported node list
   SubGraphCollection_t parser_nodes_vector;
-  TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
+  TensorrtLogger& trt_logger = GetTensorrtLogger();
   auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
   auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
   auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
@@ -323,7 +329,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     model_proto.SerializeToString(&string_buf);
 
     // Create TensorRT engine
-    TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
+    TensorrtLogger& trt_logger = GetTensorrtLogger();
     auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
     auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
     auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
@@ -490,7 +496,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
       // Run TRT inference
       std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
-      trt_state->context->enqueue(batch_size, &buffers[0], nullptr, nullptr);
+      bool ret = trt_state->context->enqueue(batch_size, &buffers[0], nullptr, nullptr);
+      if (!ret) {
+        if (trt_state->context->getEngine().getMaxBatchSize() < batch_size) {
+	  return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+			        "TRT enqueue failed: Set ORT_TENSORRT_MAX_BATCH_SIZE environment variable to at least " + to_string(batch_size));
+        }
+        return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to enqueue to TRT execution context.");
+      }
 
       return Status::OK();
     };

@@ -14,6 +14,7 @@
 * limitations under the License.
 */
 /* Modifications Copyright (c) Microsoft. */
+#include "core/framework/op_kernel_context_internal.h"
 
 #include "core/providers/cpu/nn/conv.h"
 #include "core/framework/op_kernel_context_internal.h"
@@ -24,6 +25,8 @@ namespace onnxruntime {
 template <typename T>
 Status Conv<T>::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
+  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
 
   const auto* X = context->Input<Tensor>(0);
   const auto* W = context->Input<Tensor>(1);
@@ -116,7 +119,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
             col_buffer_data,
             &CPUMathUtil::Instance());
       }
-      math::Gemm<T, CPUMathUtil>(
+      math::Gemm<T>(
           CblasNoTrans,
           CblasNoTrans,
           M / group_,
@@ -127,7 +130,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
           col_buffer_data,
           0,
           Ydata + group_id * Y_offset,
-          &CPUMathUtil::Instance());
+          tp);
     }
 
     if (B != nullptr) {
@@ -144,6 +147,9 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 }
 
 Status Conv<float>::Compute(OpKernelContext* context) const {
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
+  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
+
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const auto* X = context->Input<Tensor>(0);
   const auto* W = context->Input<Tensor>(1);
@@ -186,11 +192,6 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   const size_t kernel_rank = kernel_shape.size();
 
   if (kernel_rank == 2 || kernel_rank == 3) {
-    // Get access to the internal threadpool
-    // Temporarily derive concurrency parameters without access to session state
-    auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
-    auto thread_pool = ctx_internal->GetOperatorThreadPool();
-
     MLAS_CONV_PARAMETERS Parameters;
     size_t WorkingBufferSize;
     MlasConvPrepare(&Parameters,
@@ -207,7 +208,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                     static_cast<size_t>(M / group_),
                     &activation_,
                     &WorkingBufferSize,
-                    const_cast<concurrency::ThreadPool*>(thread_pool));
+                    tp);
 
     auto working_data = WorkingBufferSize > 0 ? alloc->Alloc(sizeof(float) * WorkingBufferSize) : nullptr;
     BufferUniquePtr working_buffer(working_data, BufferDeleter(alloc));
@@ -218,7 +219,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
              Bdata,
              static_cast<float*>(working_buffer.get()),
              Ydata,
-             const_cast<concurrency::ThreadPool*>(thread_pool));
+             tp);
   } else {
     const int64_t input_image_size = input_shape.Size();
     const int64_t output_image_size = output_shape.Size();
@@ -253,7 +254,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             static_cast<int>(kernel_shape.size()),
             col_buffer_data,
             &CPUMathUtil::Instance());
-        math::Gemm<float, CPUMathUtil>(
+        math::Gemm<float>(
             CblasNoTrans,
             CblasNoTrans,
             M / group_,
@@ -264,7 +265,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             col_buffer_data,
             0,
             Ydata + group_id * Y_offset,
-            &CPUMathUtil::Instance());
+            tp);
       }
 
       MlasActivation(&activation_, Ydata, Bdata, M, output_image_size, output_image_size);

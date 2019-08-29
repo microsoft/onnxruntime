@@ -128,7 +128,7 @@ class Validator : public OutputCollector<TCharString> {
     CreateSession();
     VerifyInputOutputCount(session_);
     OrtAllocator* ort_alloc;
-    ORT_THROW_ON_ERROR(OrtCreateDefaultAllocator(&ort_alloc));
+    ORT_THROW_ON_ERROR(OrtGetAllocatorWithDefaultOptions(&ort_alloc));
     {
       char* t;
       ORT_THROW_ON_ERROR(OrtSessionGetInputName(session_, 0, ort_alloc, &t));
@@ -139,7 +139,6 @@ class Validator : public OutputCollector<TCharString> {
       OrtAllocatorFree(ort_alloc, t);
     }
 
-    OrtReleaseAllocator(ort_alloc);
     OrtTypeInfo* info;
     ORT_THROW_ON_ERROR(OrtSessionGetInputTypeInfo(session_, 0, &info));
     const OrtTensorTypeAndShapeInfo* tensor_info;
@@ -253,7 +252,7 @@ int main(int argc, ORTCHAR_T* argv[]) {
   try {
     ret = real_main(argc, argv);
   } catch (const std::exception& ex) {
-    fprintf(stderr, "%s\n", ex.what());    
+    fprintf(stderr, "%s\n", ex.what());
   }
 #ifdef _WIN32
   CoUninitialize();
