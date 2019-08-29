@@ -37,8 +37,6 @@ CMake creates a target to this project
 
   <Target Name="Build">
     <Message Importance="High" Text="Building CSharp projects..." />
-    <Message Importance="High" Text="DefineConstants = $(DefineConstants)"/>
-    <Message Importance="High" Text="CSHARP_PREPROCESSOR_DEFINES = $(CSHARP_PREPROCESSOR_DEFINES)"/>
  
     <MSBuild Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
              Targets="ObtainPackageVersion;Build" 

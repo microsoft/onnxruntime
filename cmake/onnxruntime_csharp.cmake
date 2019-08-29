@@ -30,15 +30,11 @@ if (onnxruntime_USE_NGRAPH)
   STRING(APPEND CSHARP_PREPROCESSOR_DEFINES "USE_NGRAPH,")
 endif()
 
-# SET(ENV{CSHARP_PREPROCESSOR_DEFINES} ${CSHARP_PREPROCESSOR_DEFINES})
-
-MESSAGE(STATUS "CSHARP_PREPROCESSOR_DEFINES = $ENV{CSHARP_PREPROCESSOR_DEFINES}")
-
 include(CSharpUtilities)
 
 include_external_msproject(${CSHARP_MASTER_TARGET}
                            ${CSHARP_MASTER_PROJECT}
-			                     ${CSHARP_DEPENDS}
+                           ${CSHARP_DEPENDS}
                            )
 
 # generate Directory.Build.props
