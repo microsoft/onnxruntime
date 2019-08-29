@@ -4,6 +4,7 @@
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
 #include "core/framework/op_kernel.h"
+#include "core/session/automl_data_containers.h"
 
 #include "automl_ops/automl_types.h"
 #include "automl_ops/automl_featurizers.h"
@@ -20,28 +21,13 @@ namespace onnxruntime {
 extern const char kMsAutoMLDomain[] = "com.microsoft.automl";
 extern const char kTimepointName[] = "DateTimeFeaturizer_TimePoint";
 
-// External struct which should be made available to the client
-// of the API via an external header.
-struct ExternalTimePoint {
-  std::int32_t year;
-  std::uint8_t month;
-  std::uint8_t day;
-  std::uint8_t hour;
-  std::uint8_t minute;
-  std::uint8_t second;
-  std::uint8_t dayOfWeek;
-  std::uint16_t dayOfYear;
-  std::uint8_t quarterOfYear;
-  std::uint8_t weekOfMonth;
-};
-
 // Specialize for our type so we can convert to external struct
 // 
 template <>
 struct NonTensorTypeConverter<dtf::TimePoint> {
   static void FromContainer(MLDataType dtype, const void* data, size_t data_size, OrtValue& output) {
-    ORT_ENFORCE(sizeof(ExternalTimePoint) == data_size, "Expecting an instance of ExternalTimePoint");
-    const ExternalTimePoint* dc = reinterpret_cast<const ExternalTimePoint*>(data);
+    ORT_ENFORCE(sizeof(DateTimeFeaturizerTimePointData) == data_size, "Expecting an instance of ExternalTimePoint");
+    const DateTimeFeaturizerTimePointData* dc = reinterpret_cast<const DateTimeFeaturizerTimePointData*>(data);
     std::unique_ptr<dtf::TimePoint> tp(new dtf::TimePoint);
     tp->year = dc->year;
     tp->month = dc->month;
@@ -59,8 +45,8 @@ struct NonTensorTypeConverter<dtf::TimePoint> {
     tp.release();
   }
   static void ToContainer(const OrtValue& input, size_t data_size, void* data) {
-    ORT_ENFORCE(sizeof(ExternalTimePoint) == data_size, "Expecting an instance of ExternalTimePoint");
-    ExternalTimePoint* dc = reinterpret_cast<ExternalTimePoint*>(data);
+    ORT_ENFORCE(sizeof(DateTimeFeaturizerTimePointData) == data_size, "Expecting an instance of ExternalTimePoint");
+    DateTimeFeaturizerTimePointData* dc = reinterpret_cast<DateTimeFeaturizerTimePointData*>(data);
     const dtf::TimePoint& tp = input.Get<dtf::TimePoint>();
     dc->year = tp.year;
     dc->month = tp.month;

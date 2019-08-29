@@ -480,7 +480,7 @@ class SparseTensorType : public SparseTensorTypeBase {
   */
 template <class T>
 struct NonTensorTypeConverter {
-  static void FromContainer(MLDataType dtype, const void* data, size_t data_size, OrtValue& output) {
+  static void FromContainer(MLDataType /*dtype*/, const void* /*data*/, size_t /*data_size*/, OrtValue& /*output*/) {
     ORT_THROW("Not implemented");
   }
   static void ToContainer(const OrtValue& input, size_t data_size, void* data) {

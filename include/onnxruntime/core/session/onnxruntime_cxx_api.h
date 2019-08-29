@@ -212,6 +212,12 @@ struct Value : Base<OrtValue> {
   static Value CreateMap(Value& keys, Value& values);
   static Value CreateSequence(std::vector<Value>& values);
 
+  template<typename T>
+  static Value CreateOpaque(const char* domain, const char* type_name, const T&);
+
+  template <typename T>
+  void GetOpaqueData(const char* domain, const char* type_name, T&);
+
   explicit Value(nullptr_t) {}
   explicit Value(OrtValue* p) : Base<OrtValue>{p} {}
 

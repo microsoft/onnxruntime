@@ -1072,7 +1072,7 @@ ORT_API_STATUS_IMPL(OrtCreateValue, const OrtValue* const* in, size_t num_values
   API_IMPL_END
 }
 
-ORT_API_STATUS(OrtCreateOpaqueValue, const char* domain_name, const char* type_name, const void* data_container,
+ORT_API_STATUS_IMPL(OrtCreateOpaqueValue, const char* domain_name, const char* type_name, const void* data_container,
                size_t data_container_size, OrtValue** out) {
   API_IMPL_BEGIN
   std::string dtype("opaque(");
@@ -1089,7 +1089,7 @@ ORT_API_STATUS(OrtCreateOpaqueValue, const char* domain_name, const char* type_n
   return nullptr;
 }
 
-ORT_API_STATUS(OrtGetOpaqueValue, const char* domain_name, const char* type_name, const OrtValue* in, 
+ORT_API_STATUS_IMPL(OrtGetOpaqueValue, const char* domain_name, const char* type_name, const OrtValue* in, 
     void* data_container, size_t data_container_size) {
   API_IMPL_BEGIN
   std::string dtype("opaque(");

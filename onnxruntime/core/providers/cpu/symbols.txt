@@ -15,6 +15,7 @@ OrtCreateCustomOpDomain
 OrtGetAllocatorWithDefaultOptions
 OrtCreateEnv
 OrtCreateEnvWithCustomLogger
+OrtCreateOpaqueValue
 OrtCreateRunOptions
 OrtCreateSession
 OrtCreateSessionFromArray
@@ -38,6 +39,7 @@ OrtGetDimensions
 OrtGetDimensionsCount
 OrtGetErrorCode
 OrtGetErrorMessage
+OrtGetOpaqueValue
 OrtGetStringTensorContent
 OrtGetStringTensorDataLength
 OrtGetTensorElementType

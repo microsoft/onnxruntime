@@ -511,7 +511,7 @@ void NonTensorTypeBase::FromDataContainer(const void* /* data */, size_t /*data_
   ORT_ENFORCE(false, "Not implemented");
 }
 
-void NonTensorTypeBase::ToDataContainer (const OrtValue& /* input */, size_t /*data_size */, void* data) const {
+void NonTensorTypeBase::ToDataContainer (const OrtValue& /* input */, size_t /*data_size */, void* /* data */) const {
   ORT_ENFORCE(false, "Not implemented");
 }
 
