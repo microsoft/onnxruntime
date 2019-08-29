@@ -72,9 +72,10 @@ class UpsampleBase {
     }
 
     if (UpsampleMode::LINEAR == mode) {
-      ORT_ENFORCE(scales.size() == 4, "Upsample: linear mode upsample only support bilinear with 4 dimension.");
-      ORT_ENFORCE(((scales[0] == 1) && (scales[1] == 1)),
-                  "Upsample: linear mode upsample only support bilinear, the first 2 scales should be 1.");
+      ORT_ENFORCE(scales.size() == 2 || (scales.size() == 4 && scales[0] == 1 && scales[1] == 1), 
+                  "'Linear' mode only support 2-D inputs ('Bilinear') or 4-D inputs " 
+                  "with the corresponding outermost 2 scale values being 1 in the ",
+                  is_resize ? "Resize operator" : "Upsample operator");
     }
   }
 
