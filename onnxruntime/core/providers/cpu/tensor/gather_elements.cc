@@ -8,7 +8,9 @@ namespace onnxruntime {
 ONNX_CPU_OPERATOR_KERNEL(
     GatherElements,
     11,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()).TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+                      .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), 
+                                                                      DataTypeImpl::GetTensorType<int64_t>()}),
     GatherElements);
 
 // Some helpers needed for GatherElements op -
@@ -18,7 +20,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 // and the axis that 'GatherElements' is processing for as that requires the corresponding
 // 'indices' value
 // This prevents the need to compute this offset for every element within the same 'inner_dimension' chunk
-// as this value is constant for the entire chunk
+// as this value is constant for the entire chunk and we can have this cached and re-use as needed
 int64_t compute_base_offset(const std::vector<int64_t>& shape, const TensorPitches& pitches, int64_t skip_axis) {
   // in this context rank can never be < 1, so saving checking overhead
   auto loop_size = static_cast<int64_t>(shape.size()) - 1;
@@ -33,7 +35,7 @@ int64_t compute_base_offset(const std::vector<int64_t>& shape, const TensorPitch
   return base_offset;
 }
 
-// This method computes the number of 'inner_dimensions'
+// This method computes the number of 'inner_dimension' chunks
 // Example: input = [2, 3]     output = 2
 //          input = [3, 2, 4]  output = 3 * 2 = 6
 //          input  = [2]       output = 1
@@ -52,7 +54,11 @@ int64_t calculate_num_inner_dim(const std::vector<int64_t>& dims) {
 }
 
 // This method computes increments over an 'inner_dimension'
-// Example: current_dims = [0, 0, 0] tensor_dims = [1, 2, 2], then current_dims = [0, 1, 0]
+// Example 1: current_dims = [0, 0] tensor_dims = [3, 1], then current_dims = [1, 0]
+//            current_dims = [1, 0] tensor_dims = [2, 1], then current_dims = [2, 0]
+//            current_dims = [2, 0 ] tensor_dims = [ 2, 1 ], then current_dims = [0, 0]
+
+// Example 2: current_dims = [0, 0, 0] tensor_dims = [1, 2, 2], then current_dims = [0, 1, 0]
 //          current_dims = [0, 1, 0] tensor_dims = [1, 2, 2], then current_dims = [0, 0, 0]
 void increment_over_inner_dim(std::vector<int64_t>& current_dims, const std::vector<int64_t>& tensor_dims) {
   // in this context rank can never be < 1, so saving checking overhead
