@@ -18,8 +18,9 @@ limitations under the License.
 #include "core/util/eigen_common_wrapper.h"
 #include "core/platform/env.h"
 
+#ifndef EIGEN_USE_THREADS
 #define EIGEN_USE_THREADS
-
+#endif
 using namespace ::onnxruntime::common;
 using namespace std;
 

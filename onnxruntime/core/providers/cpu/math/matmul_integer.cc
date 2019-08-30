@@ -9,19 +9,32 @@
 namespace onnxruntime {
 
 // only register this operator if low precision computation is enabled.
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_TYPED_KERNEL_EX(
     MatMulInteger,
     kOnnxDomain,
     10,
+    uint8_t,
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
-    MatMulInteger<uint8_t, uint8_t, int32_t>);
+    MatMulInteger<uint8_t, uint8_t>);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    MatMulInteger,
+    kOnnxDomain,
+    10,
+    int8_t,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
+    MatMulInteger<uint8_t, int8_t>);
 
 template <>
-Status MatMulInteger<uint8_t, uint8_t, int32_t>::Compute(OpKernelContext* ctx) const {
+Status MatMulInteger<uint8_t, uint8_t>::Compute(OpKernelContext* ctx) const {
   auto a = ctx->Input<Tensor>(0);
   auto b = ctx->Input<Tensor>(1);
   ORT_ENFORCE(a != nullptr && b != nullptr);
@@ -60,7 +73,50 @@ Status MatMulInteger<uint8_t, uint8_t, int32_t>::Compute(OpKernelContext* ctx) c
                   static_cast<int>(helper.N()),
                   nullptr);
   }
+  return Status::OK();
+}
 
+template <>
+Status MatMulInteger<uint8_t, int8_t>::Compute(OpKernelContext* ctx) const {
+  auto a = ctx->Input<Tensor>(0);
+  auto b = ctx->Input<Tensor>(1);
+  ORT_ENFORCE(a != nullptr && b != nullptr);
+
+  MatMulComputeHelper helper;
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
+  Tensor* y = ctx->Output(0, helper.OutputShape());
+
+  if (has_a_zero_point_ || has_b_zero_point_) {
+    // currently zero point is only supported in Gemmlowp path above
+    // in future, the selection of Eigen/Gemmlowp/mklml/etc. should be in a common math library like SGEMM
+
+    auto IsZeroPointTensorAllZero = [](OpKernelContext* ctx, int input_idx) -> bool {
+      auto t = ctx->Input<Tensor>(input_idx);
+      ORT_ENFORCE(t->Shape().NumDimensions() <= 1 && t->Shape().Size() == 1,
+                  "Currently only scalar zero_point is supported. TODO: add per channel zero point support.");
+      ORT_ENFORCE(t->DataType() == DataTypeImpl::GetType<int8_t>() ||
+                  t->DataType() == DataTypeImpl::GetType<uint8_t>());
+      auto data = reinterpret_cast<const int8_t*>(t->DataRaw());
+      auto vec = std::vector<int8_t>(data, data + t->Shape().Size());
+      return std::all_of(vec.begin(), vec.end(), [](int8_t v) { return v == 0; });
+    };
+
+    if ((has_a_zero_point_ && !IsZeroPointTensorAllZero(ctx, 2)) ||
+        (has_b_zero_point_ && !IsZeroPointTensorAllZero(ctx, 3))) {
+      ORT_NOT_IMPLEMENTED("MatMulInteger: Unsupported input types with zero point");
+    }
+  }
+
+  // NOTE: Eigen based implementation is a reference implementation for accuracy only
+  for (int i = 0; i < static_cast<int>(helper.OutputOffsets().size()); i++) {
+    EigenCastGEMM<uint8_t, int8_t, int32_t>(
+        a->template Data<uint8_t>() + helper.LeftOffsets()[i],
+        b->template Data<int8_t>() + helper.RightOffsets()[i],
+        y->template MutableData<int32_t>() + helper.OutputOffsets()[i],
+        static_cast<int>(helper.M()),
+        static_cast<int>(helper.N()),
+        static_cast<int>(helper.K()));
+  }
   return Status::OK();
 }
 }  // namespace onnxruntime
