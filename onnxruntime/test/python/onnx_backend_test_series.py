@@ -117,7 +117,6 @@ def create_backend_test(testname=None):
                                  '^test_dynamicquantizelinear_min_adjusted*',
                                  '^test_dynamicquantizelinear_min_adjusted_expanded*',
                                  '^test_depthtospace*',
-                                 '^test_gather_elements*',
                                  '^test_scatter_elements*',
                                  '^test_top_k*',
                                  '^test_unique_*',
