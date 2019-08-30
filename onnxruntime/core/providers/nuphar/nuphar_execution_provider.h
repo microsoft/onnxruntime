@@ -31,7 +31,6 @@ constexpr const char* default_nuphar_target_str = stackvm_target_str;
 
 // Information needed to construct Nuphar execution providers.
 struct NupharExecutionProviderInfo {
-  int device_id{0};
   // By default, let provider decide the target by passing in empty string.
   bool enable_per_node_parallel;  // TODO: remove
 
@@ -44,11 +43,9 @@ struct NupharExecutionProviderInfo {
   std::string settings;
 
   explicit NupharExecutionProviderInfo(bool unaligned_buffers,
-                                       int dev_id = 0,
                                        const std::string& str_settings = "",
                                        bool per_node_parallel = true)
-      : device_id(dev_id),
-        enable_per_node_parallel(per_node_parallel),
+      : enable_per_node_parallel(per_node_parallel),
         allow_unaligned_buffers(unaligned_buffers),
         settings(str_settings) {}
   NupharExecutionProviderInfo() = default;

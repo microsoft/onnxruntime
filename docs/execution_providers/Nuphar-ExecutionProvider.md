@@ -9,13 +9,7 @@ Developers can now tap into the power of Nuphar through ONNX Runtime to accelera
 
 ### Using the Nuphar execution provider
 #### C/C++
-The Nuphar execution provider needs to be registered with ONNX Runtime to enable in the inference session. 
-```
-InferenceSession session_object{so};
-session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::NupharExecutionProvider>());
-status = session_object.Load(model_file_name);
-```
-The C API details are [here](../C_API.md#c-api).
+The Nuphar execution provider needs to be registered with ONNX Runtime to enable in the inference session. The C API details are [here](../C_API.md#c-api).
 
 ### Python
 You can use the Nuphar execution provider via the python wheel from the ONNX Runtime build. The Nuphar execution provider will be automatically prioritized over the default CPU execution providers, thus no need to separately register the execution provider. Python APIs details are [here](../python/api_summary.rst#api-summary).
@@ -40,7 +34,7 @@ python model_quantizer.py --input /path/to/input/model --output /path/to/output/
 
 As an experiment, you may test conversion and quantization on [the BiDAF model](https://github.com/onnx/models/tree/master/bidaf) from the ONNX model zoo. This model has 5 bidirectional LSTM ops, and long sequence lengths. Our test shows that the quantized model has comparable accuracy of F1 76.24, EM 68.08, vs. floating point model accuracy of F1 76.20, EM 68.11.
 
-Speed-up in this model is ~20% on Intel Xeon E5-1620v4 (Note that AVX2 is required for Nuphar int8 GEMV performance), when comparing CPU execution provider with the floating point model with LSTM ops, vs. the Nuphar execution provider with quantized MatMulInteger inside Scan ops. Profile shows that most of the cost is in input projection outside of Scan ops, which uses MKL SGEMM. It's worth noting that MKL int8 GEMM is about the same speed as SGEMM in this model, so quantization of that SGEMM won't help performance. We are looking at ways to speedup int8 GEMM for better performance on quantized models.
+Speed-up in this model is ~20% on Intel Xeon E5-1620v4 (Note that AVX2 is required for Nuphar int8 GEMV performance), when comparing CPU execution provider with the floating point model with LSTM ops, vs. the Nuphar execution provider with quantized MatMulInteger inside Scan ops. Profile shows that most of the cost is in input projection outside of Scan ops, which uses MKL SGEMM. It's worth noting that MKL int8 GEMM is about the same speed as SGEMM in this model, so quantization of SGEMMs outside of Scan won't help performance. We are looking at ways to speedup int8 GEMM for better performance on quantized models.
 
 ### JIT caching
 You may cache JIT binaries to reduce model loading time spent in JIT, using [create_shared.cmd](../../onnxruntime/core/providers/nuphar/scripts/create_shared.cmd) on Windows with Visual Studio 2017, or [create_shared.sh](../../onnxruntime/core/providers/nuphar/scripts/create_shared.sh) on Linux with gcc.
@@ -95,12 +89,41 @@ There are several [environment variables](../../onnxruntime/core/codegen/common/
 
     Set it to "1" to dump partitions.
 
+### Settings
+When there are conflicts of environment variables running Nuphar in multiple processes, user can specify settings string when creating the Nuphar execution provider. The string comprises of comma separated key:value pairs. Keys should be lower cased environment variable names as shown above, and separated from corresponding values with colon. For example, the equivalent string of setting environment variables of NUPHAR_CACHE_PATH/NUPHAR_CACHE_MODEL_CHECKSUM would be "nuphar_cache_path:<path_to_cache>, nuphar_cache_model_checksum:<model_file_checksum>".
+
+* Using in C/C++
+
+Settings string could be specified when creating execution provider to specify JIT cache path, as well as model checksum:
+
+```
+OrtStatus* status = OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, 1, "nuphar_cache_path:/path/to/cache, nuphar_cache_model_checksum:<model_checksum>"));
+```
+
+* Using in C#
+
+Settings string could be specified when creating session options:
+
+```
+SessionOptions.MakeSessionOptionWithNupharProvider("nuphar_cache_path:/path/to/cache, nuphar_cache_model_checksum:<model_checksum>")
+```
+
+* Using in Python
+
+Settings string should be passed in before InferenceSession is created, as providers are not currently exposed yet. Here's an example in Python to set cache path and model checksum:
+
+```
+nuphar_settings = 'nuphar_cache_path:{}, nuphar_cache_model_checksum:{}'.format(cache_dir, model_checksum)
+onnxruntime.capi._pybind_state.set_nuphar_settings(nuphar_settings)
+sess = onnxruntime.InferenceSession(model_path)
+```
+
 ### Known issues
 * ONNX shape inference dependency
 
     To save runtime JIT cost, Nuphar requires models to have shape inference information from ONNX after model is loaded. Some nodes in ONNX can generate dynamic output tensor shapes from input data value, i.e. ConstantOfShape, Tile, Slice in opset 10, Compress, etc. Those ops may block ONNX shape inference and make the part of graph after such nodes not runnable in Nuphar.
 
-    User may use Python script [symbolic_shape_infer.py](../../onnxruntime/core/providers/nuphar/scripts/symbolic_shape_infer.py) to run symbolic shape inference in ONNX model. This script adds output tensor shapes in the model in graph.value_info field, by doing symbolic dimension computation using sympy when there are Shape ops in model. Besides, running symbolic shape inference on ONNX model would make the graph more readable. Note that when using [model_editor.py](../../onnxruntime/core/providers/nuphar/scripts/model_editor.py) to convert models with LSTM/GRU/RNN to Scan, the resulting model may have incomplete shape inference. Running symbolic_shape_infer.py is needed to get the Scan ops in the model to run in Nuphar.
+    User may use Python script [symbolic_shape_infer.py](../../onnxruntime/core/providers/nuphar/scripts/symbolic_shape_infer.py) to run symbolic shape inference in ONNX model. This script adds output tensor shapes in the model in graph.value_info field, by doing symbolic dimension computation using sympy when there are Shape ops in model. Besides, running symbolic shape inference on ONNX model would make the graph more readable. Note that when using [model_editor.py](../../onnxruntime/core/providers/nuphar/scripts/model_editor.py) to convert models with LSTM/GRU/RNN to Scan, the resulting model may have incomplete shape inference. Running symbolic_shape_infer.py is needed to get the Scan ops in the model to run in Nuphar. Besides, please note that quantization should be the last step, after verified accuracy and performance of the edited floating point model.
 
     In addition, user may also manually add shapes to graph.value_info using [onnx.helper.make_tensor_value_info](https://github.com/onnx/onnx/blob/v1.5.0/onnx/helper.py#L290) with model specific knowledge. For example, if you have Hardmax output casted to bool as Compress input condition, then the unknown dimension of the output of Compress is actually 1.
 
@@ -110,7 +133,7 @@ There are several [environment variables](../../onnxruntime/core/codegen/common/
 
 * Patches to TVM
 
-    There are some changes/bug fixes in TVM for Nuphar to work properly. We are in the process of contributing them back to TVM, but for now patches are used. To build cleanly from scratch, please run following commands before running build.bat or build.sh:
+    There are some changes/bug fixes in TVM for Nuphar to work properly. We are in the process of contributing them back to TVM, but for now patches are used in [our forked TVM](https://github.com/microsoft/onnxruntime-tvm). To build cleanly from scratch, please run following commands before running build.bat or build.sh:
 ```
 git submodule sync
 git submodule foreach --recursive git stash

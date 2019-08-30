@@ -9,30 +9,28 @@
 
 namespace onnxruntime {
 struct NupharExecutionProviderFactory : IExecutionProviderFactory {
-  NupharExecutionProviderFactory(bool allow_unaligned_buffers, int device_id, const char* settings)
-      : device_id_(device_id),
-        settings_(settings),
+  NupharExecutionProviderFactory(bool allow_unaligned_buffers, const char* settings)
+      : settings_(settings),
         allow_unaligned_buffers_(allow_unaligned_buffers) {}
   ~NupharExecutionProviderFactory() = default;
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
-  int device_id_;
   std::string settings_;
   bool allow_unaligned_buffers_;
 };
 
 std::unique_ptr<IExecutionProvider> NupharExecutionProviderFactory::CreateProvider() {
-  NupharExecutionProviderInfo info(allow_unaligned_buffers_, device_id_, settings_, /*per_node_parallel*/ true);
+  NupharExecutionProviderInfo info(allow_unaligned_buffers_, settings_, /*per_node_parallel*/ true);
   return std::make_unique<NupharExecutionProvider>(info);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool allow_unaligned_buffers, int device_id, const char* settings) {
-  return std::make_shared<onnxruntime::NupharExecutionProviderFactory>(allow_unaligned_buffers, device_id, settings);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool allow_unaligned_buffers, const char* settings) {
+  return std::make_shared<onnxruntime::NupharExecutionProviderFactory>(allow_unaligned_buffers, settings);
 }
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nuphar, _In_ OrtSessionOptions* options, int allow_unaligned_buffers, int device_id, _In_ const char* settings) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Nuphar(static_cast<bool>(allow_unaligned_buffers), device_id, settings));
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nuphar, _In_ OrtSessionOptions* options, int allow_unaligned_buffers, _In_ const char* settings) {
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Nuphar(static_cast<bool>(allow_unaligned_buffers), settings));
   return nullptr;
 }

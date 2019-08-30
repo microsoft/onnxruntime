@@ -81,7 +81,7 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
 
   tvm_host_target_ = tvm::Target::create(GetCurrentHostTargetString());
   tvm_ctx_.device_type = static_cast<DLDeviceType>(tvm_target_->device_type);
-  tvm_ctx_.device_id = info.device_id;
+  tvm_ctx_.device_id = 0; // use the default device id for CPU allocator
 
   whole_graph_shape_infer_ = std::make_shared<ShapeExprContext>();
 
@@ -100,7 +100,7 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
   auto handle = std::make_unique<NupharCodeGenHandle>();
   tvm_codegen_manager_->Initialization();
   tvm_codegen_manager_->SetCodeGenHandle(handle.get());
-  handle->allocator = GetAllocator(0, OrtMemTypeDefault);
+  handle->allocator = GetAllocator(tvm_ctx_.device_id, OrtMemTypeDefault);
   handle->codegen_target = codegen_target_.get();
   handle->domain_version_lookup_func =
       [this](const std::string& domain) {
@@ -118,7 +118,7 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
 
   // Runtime Handle
   runtime_handle_ = std::make_unique<nuphar::NupharRuntimeHandle>(tvm_ctx_);
-  runtime_handle_->allocator = GetAllocator(0, OrtMemTypeDefault);
+  runtime_handle_->allocator = GetAllocator(tvm_ctx_.device_id, OrtMemTypeDefault);
   runtime_handle_->allow_unaligned_buffers = info.allow_unaligned_buffers;
   runtime_handle_->enable_model_parallelism = false;
 }
