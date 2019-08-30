@@ -82,6 +82,13 @@ struct OP_ThresholdedRelu : public CtxThresholdedRelu {
   }
 };
 
+template <typename T>
+struct OP_Gelu : public CtxGelu {
+  __device__ __inline__ T operator()(const T& a) const {
+    return a * _Normcdf(a);
+  }
+};
+
 #define UNARY_ACTIVATION_IMPL(name)                                        \
   UNARY_ACTIVATION_IMPL_DECLARATION(name) {                                \
     UnaryElementWiseImpl(input_data,                                       \

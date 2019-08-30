@@ -8,6 +8,7 @@
 #include "core/graph/op.h"
 #include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
+#include "onnx/defs/function.h"
 #include "core/mlas/inc/mlas.h"
 
 #ifdef MICROSOFT_INTERNAL
@@ -198,8 +199,8 @@ is applied to the tensor elementwise.
       .SetDoc(Normalize_ver1_doc)
       .Attr("PowerDegree", "Value of alpha", AttributeProto::FLOAT)
       .Attr("bias", "Value of alpha", AttributeProto::FLOAT)
-      .Attr("gamma", "Value of alpha", AttributeProto::TENSOR )
-      .Attr("beta", "Value of alpha", AttributeProto::TENSOR )
+      .Attr("gamma", "Value of alpha", AttributeProto::TENSOR)
+      .Attr("beta", "Value of alpha", AttributeProto::TENSOR)
       .Input(0, "X", "3D input tensor", "T")
       .Output(0, "Y", "3D output tensor", "T")
       .TypeConstraint(
@@ -209,6 +210,28 @@ is applied to the tensor elementwise.
           },
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Gelu)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Gelu")
+      .Input(0, "X", "The input data as Tensor.", "T")
+      .Output(0, "Y", "The output.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
+          {// nodes: {outputs, op, inputs, attributes}
+           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Sqrt_two", static_cast<float>(M_SQRT2)),
+           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One_half", 0.5f),
+           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One", 1.0f),
+           {{"X_1"}, "Mul", {"X", "One_half"}},
+           {{"X_2"}, "Div", {"X", "Sqrt_two"}},
+           {{"X_3"}, "Erf", {"X_2"}},
+           {{"X_4"}, "Add", {"X_3", "One"}},
+           {{"Y"}, "Mul", {"X_1", "X_4"}}}));
 }
 
 void RegisterContribSchemas() {

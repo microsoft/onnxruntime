@@ -17,6 +17,7 @@
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/shape_to_initializer.h"
 #include "core/optimizer/nchwc_transformer.h"
+#include "core/optimizer/gelu_fusion.h"
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
@@ -97,6 +98,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(std::make_unique<ConstantFolding>(l1_execution_providers));
 
       rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
+
+      std::unordered_set<std::string> l1_cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
+      transformers.emplace_back(std::make_unique<GeluFusion>(l1_cuda_execution_providers));
+
     } break;
 
     case TransformerLevel::Level2: {

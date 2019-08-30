@@ -763,6 +763,17 @@ class Graph {
   /** Returns the mutable parent graph if this is a subgraph */
   Graph* MutableParentGraph() { return parent_graph_; }
 
+  std::vector<const Node*> GetConsumerNodes(const std::string& node_arg_name) const {
+    std::vector<const Node*> results;
+    auto iter = node_arg_to_consumer_nodes_.find(node_arg_name);
+    if (iter != node_arg_to_consumer_nodes_.end()) {
+      for (auto node_index : iter->second) {
+        results.push_back(GetNode(node_index));
+      }
+    }
+    return results;
+  }
+
   /** Construct a Graph instance for a subgraph that is created from a GraphProto attribute in a Node.
   Inherits some properties from the parent graph.
   @param parent_graph The Graph containing the Node which has a GraphProto attribute.
@@ -969,6 +980,9 @@ class Graph {
 
   // All node args owned by <*this> graph. Key is node arg name.
   std::unordered_map<std::string, std::unique_ptr<NodeArg>> node_args_;
+
+  // node arg to its consumer nodes
+  std::unordered_map<std::string, std::unordered_set<NodeIndex>> node_arg_to_consumer_nodes_;
 
   const std::unordered_map<std::string, int> domain_to_version_;
 
