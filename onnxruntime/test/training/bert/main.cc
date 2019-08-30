@@ -105,7 +105,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     }    
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
-    cerr << msg << ": " << e.what() << "\n" 
+    cerr << msg << ": " << e.what() << "\n"
          << options.help() << "\n";
     return Status(ONNXRUNTIME, FAIL, msg);
   }
@@ -280,8 +280,8 @@ int main(int argc, char* argv[]) {
                                                             onnx::TensorProto_DataType_INT64};
 
     auto random_perf_data = std::make_shared<RandomDataSet>(params.num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
-
-    runner = std::make_unique<TrainingRunner>(random_perf_data, random_perf_data, params);
+    auto random_perf_data_loader = std::make_shared<SingleDataLoader>(random_perf_data, tensor_names);
+    runner = std::make_unique<TrainingRunner>(random_perf_data_loader, random_perf_data_loader, params);
 
   } else {
     auto device_id = params.mpi_context.local_rank;
@@ -296,10 +296,10 @@ int main(int argc, char* argv[]) {
     auto test_data_loader = std::make_shared<DataLoader>(params.input_name_map,
                                                          params.test_data_dir,
                                                          max_num_files_preload);
-    RETURN_IF_FAIL(training_data_loader->Load());
+    RETURN_IF_FAIL(training_data_loader->InitialPreLoadAsync());
     // Evaluation is only done in device #0
     if (device_id == 0) {
-      RETURN_IF_FAIL(test_data_loader->Load());
+      RETURN_IF_FAIL(test_data_loader->InitialPreLoadAsync());
     }
 
     runner = std::make_unique<TrainingRunner>(training_data_loader, test_data_loader, params);

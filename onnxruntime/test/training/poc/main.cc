@@ -200,9 +200,11 @@ int main(int argc, char* args[]) {
     return -1;
   }
   // start training session
-  TrainingRunner runner(trainingData, testData, params);
-  RETURN_IF_FAIL(runner.Initialize());
-  RETURN_IF_FAIL(runner.Run());
+  auto training_data_loader = std::make_shared<SingleDataLoader>(trainingData, feeds);
+  auto test_data_loader = std::make_shared<SingleDataLoader>(testData, feeds);
+  auto runner = std::make_unique<TrainingRunner>(training_data_loader, test_data_loader, params);
+  RETURN_IF_FAIL(runner->Initialize());
+  RETURN_IF_FAIL(runner->Run());
 
 #ifdef USE_HOROVOD
   shutdown_horovod();
