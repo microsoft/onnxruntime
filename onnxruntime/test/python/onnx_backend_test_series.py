@@ -127,11 +127,6 @@ def create_backend_test(testname=None):
         if c2.supports_device('NGRAPH'):
             current_failing_tests = current_failing_tests + ('|^test_clip*',)
 
-        # Failing for Nuphar.
-        if c2.supports_device('NUPHAR'):
-            current_failing_tests = current_failing_tests + ('^test_scan_sum_cpu.*',   #Nuphar: Graph output (sum_out) does not exist in the graph
-                                                             '^test_scan9_sum_cpu.*',) #Nuphar: Graph output (sum_out) does not exist in the graph
-
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \
                   unsupported_usages_filters()
