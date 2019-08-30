@@ -49,9 +49,6 @@ struct Subgraph {
     std::vector<std::string> outputs_as_input_other_node;
     std::vector<onnxruntime::NodeIndex> subgraph_node_indexes;
 
-    SubgraphVariables() {
-    }
-
 	void Reset() {
       subgraph_node_indexes.clear();
       inputs.clear();
