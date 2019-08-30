@@ -54,7 +54,7 @@ int64_t calculate_num_inner_dim(const std::vector<int64_t>& dims) {
 // This method computes increments over an 'inner_dimension'
 // Example: current_dims = [0, 0, 0] tensor_dims = [1, 2, 2], then current_dims = [0, 1, 0]
 //          current_dims = [0, 1, 0] tensor_dims = [1, 2, 2], then current_dims = [0, 0, 0]
-void increment_over_inner_dim(std::vector<int64_t>& current_dims, std::vector<int64_t> tensor_dims) {
+void increment_over_inner_dim(std::vector<int64_t>& current_dims, const std::vector<int64_t>& tensor_dims) {
   // in this context rank can never be < 1, so saving checking overhead
   int64_t rank = static_cast<int64_t>(current_dims.size());
 
@@ -145,9 +145,9 @@ Status GatherElements::CoreImplString(const Tensor* input_tensor, const Tensor* 
 
   int64_t base_offset = 0;
   int64_t indices_counter = -1;
-  std::vector<int64_t> process_dims(input_rank, 0);
-
   int64_t output_counter = -1;
+
+  std::vector<int64_t> process_dims(input_rank, 0);
 
   if (!processing_inner_dim) {
     while (num_inner_dim-- != 0) {
@@ -160,7 +160,9 @@ Status GatherElements::CoreImplString(const Tensor* input_tensor, const Tensor* 
 
       increment_over_inner_dim(process_dims, indices_shape);
     }
-  } else {
+  } 
+  // we special-case inner dim as we can weed-out some unnecessary computations in element offset calculations
+  else {
     while (num_inner_dim-- != 0) {
       base_offset = compute_base_offset(process_dims, input_shape_pitches, axis);
 
@@ -178,14 +180,14 @@ Status GatherElements::CoreImplString(const Tensor* input_tensor, const Tensor* 
 
 Status GatherElements::CoreImpl(const Tensor* input_tensor, const Tensor* indices_tensor,
                                 Tensor* output_tensor, int64_t axis) const {
-  const char* input_data = reinterpret_cast<const char*>(input_tensor->DataRaw());
+  const int8_t* input_data = reinterpret_cast<const int8_t*>(input_tensor->DataRaw());
   const std::vector<int64_t>& input_shape = input_tensor->Shape().GetDims();
   const int64_t input_rank = static_cast<int64_t>(input_tensor->Shape().NumDimensions());
 
   const std::vector<int64_t>& indices_data = parse_and_validate_indices_tensor(indices_tensor, axis, input_shape);
   const std::vector<int64_t>& indices_shape = indices_tensor->Shape().GetDims();
 
-  char* output_data = reinterpret_cast<char*>(output_tensor->MutableDataRaw());
+  int8_t* output_data = reinterpret_cast<int8_t*>(output_tensor->MutableDataRaw());
 
   const TensorPitches input_shape_pitches(*input_tensor);
 
@@ -211,7 +213,9 @@ Status GatherElements::CoreImpl(const Tensor* input_tensor, const Tensor* indice
 
       increment_over_inner_dim(process_dims, indices_shape);
     }
-  } else {
+  } 
+  // we special-case inner dim as we can weed-out some unnecessary computations in element offset calculations
+  else {
     while (num_inner_dim-- != 0) {
       base_offset = compute_base_offset(process_dims, input_shape_pitches, axis);
 
