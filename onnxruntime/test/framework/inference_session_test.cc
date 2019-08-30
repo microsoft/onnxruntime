@@ -1482,6 +1482,17 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
 
 #endif
 
+TEST(InferenceSessionTests, ModelWithKOnnxDomainAlias) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.NoTimeout";
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  std::string file_name = "testdata/test_model_with_fullonnxdomain.onnx";
+  auto ret_status = session_object.Load(file_name);
+  ASSERT_TRUE(ret_status.IsOK()) << ret_status.ErrorMessage();
+  ret_status = session_object.Initialize();
+  ASSERT_TRUE(ret_status.IsOK()) << ret_status.ErrorMessage();
+}
+
 TEST(InferenceSessionTests, TruncatedBatchSeqLenIntTest) {
   static const std::string GRU_MODEL_URI = "testdata/gru_batch_seq_len_imatmul.onnx";
   // This model is a GRU with batch and sequence length, with quantized MatMulInteger
