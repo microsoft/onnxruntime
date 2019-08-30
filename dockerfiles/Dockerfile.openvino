@@ -54,7 +54,7 @@ RUN sudo dpkg -i *.deb && rm -rf *.deb
 
 ENV LANG en_US.UTF-8
 WORKDIR /code
-ENV PATH /code/miniconda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:$PATH
+ENV PATH /opt/miniconda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:$PATH
 
 ADD scripts /tmp/scripts
 RUN /bin/sh /tmp/scripts/install_common_deps.sh && \
