@@ -16,11 +16,7 @@ HeapBuffer::~HeapBuffer() {
     OrtRunCallback(d);
   }
   for (void* p : buffers_) {
-#if _MSC_VER
-    _aligned_free(p);
-#else
     free(p);
-#endif
   }
 }
 }  // namespace test
