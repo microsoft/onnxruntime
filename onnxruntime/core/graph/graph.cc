@@ -1572,7 +1572,16 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
       // For mixed precision training, the type mismatch is expected since the model is loaded with float32 first
       // and then transformed to float16.
       // TODO verify that a warning (and not a failure) is ok for cases other than mixed precision
-      output_def->SetType(inferred_type);
+      
+      // The "SetType" call will override the shape information to empty.
+      // If the original tensor has shape information, need to set it back. 
+      if (output_def->Shape()){
+        auto old_shape = *output_def->Shape();
+        output_def->SetType(inferred_type);
+        output_def->SetShape(old_shape);
+      } else {
+        output_def->SetType(inferred_type);
+      }
       LOGS_DEFAULT(WARNING) << "Type Mismatch: Type (" + *existing_type + ") of output arg (" +
                                 output_def->Name() + ") of node (" + node_name +
                                ") does not match expected type (" + *inferred_type + ").";
