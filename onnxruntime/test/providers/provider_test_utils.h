@@ -176,6 +176,11 @@ class OpTester {
     AddData(input_data_, name, dims, values.data(), values.size(), is_initializer);
   }
 
+  template <typename T>
+  void AddInput(const char* name, const std::vector<int64_t>& dims, const T* p_values, const size_t size, bool is_initializer = false) {
+    AddData(input_data_, name, dims, p_values, size, is_initializer);
+  }
+
   template <typename TKey, typename TVal>
   void AddInput(const char* name, const std::map<TKey, TVal>& val) {
     std::unique_ptr<std::map<TKey, TVal>> ptr = std::make_unique<std::map<TKey, TVal>>(val);

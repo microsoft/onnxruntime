@@ -2350,6 +2350,26 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
           "Y",
           "The output tensor. Its shape is the same as the input.",
           "T1");
+
+  static const char* All_doc = R"DOC(
+Return true if all elements are true and false otherwise.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(All)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("All")
+      .Input(0, "X", "input", "T")
+      .Output(0, "Y", "output.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(bool)"},
+          "Constrain input and output types to boolean tensors.")
+      .SetDoc(All_doc)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      });
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
   RegisterInternalSchemas();
