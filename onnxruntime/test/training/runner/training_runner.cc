@@ -198,8 +198,8 @@ Status TrainingRunner::TrainingLoop() {
   }
 
   auto total_batchs = total_batch_num - warm_up_iters;
-  std::cout << "Total running time:" << total_time << " seconds" << std::endl
-            << "Average running time per batch:" << total_time / total_batchs * 1000 << " ms" << std::endl
+  std::cout << "Total running time:" << total_time << " seconds" << "\n"
+            << "Average running time per batch:" << total_time / total_batchs * 1000 << " ms" << "\n"
             << "Throughput: " << params_.batch_size * total_batchs / total_time << " Examples / second" << std::endl;
 
   return Status::OK();
@@ -210,11 +210,11 @@ Status TrainingRunner::EndTraining() {
     // Write profiler data to disk.
     // We do this first in case there are any problems saving the trained model.
     std::string profile_file = session_.EndProfiling();
-    std::cout << "Profiler data written to file " << profile_file;
+    std::cout << "Profiler data written to file " << profile_file << "\n";
   }
 
   if (params_.mpi_context.world_rank != 0) {
-    printf("Skipping end-training on Device #%d, as it's not the root.", params_.mpi_context.world_rank);
+    printf("Skipping end-training on Device #%d, as it's not the root.\n", params_.mpi_context.world_rank);
     return Status::OK();
   }
 
@@ -265,8 +265,8 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
   const size_t num_batches = size_t(ceil((float)evaluation_batch_size / (float)params_.batch_size));
   if (evaluation_batch_size % params_.batch_size != 0) {
     printf(
-        "evaluation_batch_size %zu is not an integer multiple of batch_size %zu. "
-        "Using evaluation_batch_size %zu",
+        "WARNING: evaluation_batch_size %zu is not an integer multiple of batch_size %zu. "
+        "Using evaluation_batch_size %zu\n",
         evaluation_batch_size,
         params_.batch_size,
         num_batches * params_.batch_size);
