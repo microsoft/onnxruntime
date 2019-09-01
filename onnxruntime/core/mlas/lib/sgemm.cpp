@@ -915,6 +915,8 @@ Return Value:
 
         for (size_t k = 0; k < K; k += CountK) {
 
+            bool ZeroMode = (k == 0 && beta == 0.0f);
+
             CountK = StrideK;
 
             if (CountK > (K - k)) {
@@ -930,17 +932,6 @@ Return Value:
             } else {
                 MlasSgemmTransposePackB(PanelB, B + k + n * ldb, ldb, CountN, CountK);
             }
-
-            //
-            // Select the kernel routine to use for this panel.
-            //
-
-            bool UseKernelZeroRoutine = (k == 0 && beta == 0.0f);
-
-#if defined(MLAS_TARGET_AMD64_IX86)
-            PMLAS_SGEMM_KERNEL_ROUTINE SgemmKernelRoutine =
-                UseKernelZeroRoutine ? MlasPlatform.KernelZeroRoutine : MlasPlatform.KernelAddRoutine;
-#endif
 
             //
             // Step through each slice of matrix A along the M dimension.
@@ -962,9 +953,9 @@ Return Value:
                 do {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
-                    RowsHandled = SgemmKernelRoutine(a, PanelB, c, CountK, RowsRemaining, CountN, lda, ldc, alpha);
+                    RowsHandled = MlasPlatform.GemmFloatKernel(a, PanelB, c, CountK, RowsRemaining, CountN, lda, ldc, alpha, ZeroMode);
 #else
-                    if (UseKernelZeroRoutine) {
+                    if (ZeroMode) {
                         RowsHandled = MlasSgemmKernelZero(a, PanelB, c, CountK, RowsRemaining, CountN, lda, ldc, alpha);
                     } else {
                         RowsHandled = MlasSgemmKernelAdd(a, PanelB, c, CountK, RowsRemaining, CountN, lda, ldc, alpha);
@@ -1009,9 +1000,9 @@ Return Value:
                     do {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
-                        RowsHandled = SgemmKernelRoutine(pa, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha);
+                        RowsHandled = MlasPlatform.GemmFloatKernel(pa, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode);
 #else
-                        if (UseKernelZeroRoutine) {
+                        if (ZeroMode) {
                             RowsHandled = MlasSgemmKernelZero(pa, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha);
                         } else {
                             RowsHandled = MlasSgemmKernelAdd(pa, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha);
