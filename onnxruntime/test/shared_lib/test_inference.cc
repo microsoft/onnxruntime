@@ -77,7 +77,7 @@ void TestInference(Ort::Env& env, T model_uri,
 #endif
   } else if (provider_type == 3) {
 #ifdef USE_NUPHAR
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, 0, ""));
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, /*allow_unaligned_buffers*/ 1, ""));
     std::cout << "Running simple inference with nuphar provider" << std::endl;
 #else
     return;
