@@ -86,7 +86,8 @@ def create_backend_test(testname=None):
 
     # Type not supported
     backend_test.exclude(r'(FLOAT16)')
-
+    backend_test.exclude(r'(test_logsoftmax_axis_0)')
+    backend_test.exclude(r'(test_softmax_axis_0)')
     if testname:
         backend_test.include(testname + '.*')
     else:
