@@ -192,8 +192,6 @@ class ThresholdedRelu final : public OpKernel {
   const float alpha_;
 };
 
-// Currently added for training purposed Op are put in contrib namespace.
-// Todo: we need unify a place to manage all Ops added for training.
 namespace contrib {
 
 template <typename T>
