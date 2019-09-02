@@ -29,6 +29,7 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/shape_to_initializer.h"
+#include "core/optimizer/gelu_fusion.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -604,6 +605,25 @@ TEST(GraphTransformationTests, ReluClipFusion) {
       ASSERT_TRUE(min->f() >= 0.f);
     }
   }
+}
+
+TEST(GraphTransformationTests, GeluFusion) {
+  string model_uri = MODEL_FOLDER + "fusion/gelu.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Erf"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["Gelu"] == 1);
 }
 
 }  // namespace test

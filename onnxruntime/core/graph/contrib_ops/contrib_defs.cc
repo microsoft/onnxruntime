@@ -1630,6 +1630,49 @@ Example 4:
     RegisterNchwcSchemas();
   }
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Gelu)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Gelu")
+      .Input(0, "X", "The input data as Tensor.", "T")
+      .Output(0, "Y", "The output.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
+      { // nodes: {outputs, op, inputs, attributes}
+        ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("sqrt_two", 1.4142135381698608f),
+        ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("multiplier", 0.5f),
+        ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("one", 1.0f),
+        {
+          {"X_1"},
+          "Mul",
+          {"X", "multiplier"},
+        },
+        {
+          {"X_2"},
+          "Div",
+          {"X", "sqrt_two" }
+        },
+        {
+          {"X_3"},
+          "Erf",
+          {"X_2"}
+        },
+        {
+          {"X_4"},
+          "Add",
+          {"X_3", "one"}
+        },
+        {
+          {"Y"},
+          "Mul",
+          {"X_1", "X_4"}
+        },
+      }));
+
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
   RegisterInternalSchemas();
