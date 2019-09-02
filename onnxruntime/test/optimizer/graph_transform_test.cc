@@ -606,6 +606,7 @@ TEST(GraphTransformationTests, ReluClipFusion) {
   }
 }
 
+#ifndef DISABLE_CONTRIB_OPS
 TEST(GraphTransformationTests, GeluFusionTest) {
   string model_uri = MODEL_FOLDER + "fusion/gelu.onnx";
   std::shared_ptr<Model> p_model;
@@ -624,6 +625,7 @@ TEST(GraphTransformationTests, GeluFusionTest) {
   ASSERT_TRUE(op_to_count["Mul"] == 0);
   ASSERT_TRUE(op_to_count["Gelu"] == 1);
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
