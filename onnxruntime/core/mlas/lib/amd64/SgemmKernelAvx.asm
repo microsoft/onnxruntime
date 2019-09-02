@@ -379,7 +379,7 @@ ENDIF
 ;
 ;   ldc - Supplies the first dimension of matrix C.
 ;
-;   Alpha - Supplies the scaler multiplier (see SGEMM definition).
+;   Alpha - Supplies the scalar alpha multiplier (see SGEMM definition).
 ;
 ;   ZeroMode - Supplies true if the output matrix must be zero initialized,
 ;       else false if the output matrix is accumulated into.
@@ -457,7 +457,7 @@ ProcessCountMLessThan2:
 ;
 ;   ldb - Supplies the first dimension of matrix B.
 ;
-;   Beta - Supplies the scaler multiplier (see SGEMM definition).
+;   Beta - Supplies the scalar beta multiplier (see SGEMM definition).
 ;
 ; Return Value:
 ;
@@ -720,7 +720,7 @@ ProcessRemainingCountN1:
 ;
 ;   ldb - Supplies the first dimension of matrix B.
 ;
-;   Beta - Supplies the scaler multiplier (see SGEMM definition).
+;   Beta - Supplies the scalar beta multiplier (see SGEMM definition).
 ;
 ; Return Value:
 ;

@@ -84,7 +84,7 @@ Arguments:
 
     ldc - Supplies the first dimension of matrix C.
 
-    beta - Supplies the scaler multiplier (see SGEMM definition).
+    beta - Supplies the scalar beta multiplier (see SGEMM definition).
 
 Return Value:
 
@@ -808,7 +808,7 @@ Arguments:
     K - Supplies the number of columns of matrix A and the number of rows of
         matrix B.
 
-    alpha - Supplies the scaler alpha multiplier (see SGEMM definition).
+    alpha - Supplies the scalar alpha multiplier (see SGEMM definition).
 
     A - Supplies the address of matrix A.
 
@@ -818,7 +818,7 @@ Arguments:
 
     ldb - Supplies the first dimension of matrix B.
 
-    beta - Supplies the scaler beta multiplier (see SGEMM definition).
+    beta - Supplies the scalar beta multiplier (see SGEMM definition).
 
     C - Supplies the address of matrix C.
 
@@ -1094,7 +1094,7 @@ Arguments:
     K - Supplies the number of columns of matrix A and the number of rows of
         matrix B.
 
-    alpha - Supplies the scaler alpha multiplier (see SGEMM definition).
+    alpha - Supplies the scalar alpha multiplier (see SGEMM definition).
 
     A - Supplies the address of matrix A.
 
@@ -1104,7 +1104,7 @@ Arguments:
 
     ldb - Supplies the first dimension of matrix B.
 
-    beta - Supplies the scaler beta multiplier (see SGEMM definition).
+    beta - Supplies the scalar beta multiplier (see SGEMM definition).
 
     C - Supplies the address of matrix C.
 
@@ -1266,7 +1266,7 @@ Arguments:
     K - Supplies the number of columns of matrix A and the number of rows of
         matrix B.
 
-    alpha - Supplies the scaler alpha multiplier (see SGEMM definition).
+    alpha - Supplies the scalar alpha multiplier (see SGEMM definition).
 
     A - Supplies the address of matrix A.
 
@@ -1276,7 +1276,7 @@ Arguments:
 
     ldb - Supplies the first dimension of matrix B.
 
-    beta - Supplies the scaler beta multiplier (see SGEMM definition).
+    beta - Supplies the scalar beta multiplier (see SGEMM definition).
 
     C - Supplies the address of matrix C.
 
