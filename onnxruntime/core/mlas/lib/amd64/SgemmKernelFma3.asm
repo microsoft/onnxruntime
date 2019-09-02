@@ -222,16 +222,16 @@ ENDIF
 ProcessCountM MACRO RowCount, Fallthrough
 
         LOCAL   ProcessNextColumnLoop16xN
-        LOCAL   MultiplyBeta16xNBlock
+        LOCAL   MultiplyAlpha16xNBlock
         LOCAL   Store16xNBlock
         LOCAL   ProcessRemainingCountN
-        LOCAL   MultiplyBeta8xNBlock
+        LOCAL   MultiplyAlpha8xNBlock
         LOCAL   Store8xNBlock
         LOCAL   OutputMasked16xNBlock
-        LOCAL   MultiplyBetaMasked16xNBlock
+        LOCAL   MultiplyAlphaMasked16xNBlock
         LOCAL   StoreMasked16xNBlock
         LOCAL   OutputMasked8xNBlock
-        LOCAL   MultiplyBetaMasked8xNBlock
+        LOCAL   MultiplyAlphaMasked8xNBlock
         LOCAL   StoreMasked8xNBlock
 
         cmp     rbp,8
@@ -248,7 +248,7 @@ ProcessNextColumnLoop16xN:
         sub     rbp,16
         jb      OutputMasked16xNBlock
         test    r15b,r15b                   ; ZeroMode?
-        jnz     MultiplyBeta16xNBlock
+        jnz     MultiplyAlpha16xNBlock
         EmitIfCountGE RowCount, 1, <vfmadd213ps ymm4,ymm2,YMMWORD PTR [r8]>
         EmitIfCountGE RowCount, 1, <vfmadd213ps ymm5,ymm2,YMMWORD PTR [r8+32]>
         EmitIfCountGE RowCount, 2, <vfmadd213ps ymm6,ymm2,YMMWORD PTR [r8+rax]>
@@ -263,7 +263,7 @@ ProcessNextColumnLoop16xN:
         EmitIfCountGE RowCount, 6, <vfmadd213ps ymm15,ymm2,YMMWORD PTR [rbx+rax*2+32]>
         jmp     Store16xNBlock
 
-MultiplyBeta16xNBlock:
+MultiplyAlpha16xNBlock:
         EmitIfCountGE RowCount, 1, <vmulps ymm4,ymm4,ymm2>
         EmitIfCountGE RowCount, 1, <vmulps ymm5,ymm5,ymm2>
         EmitIfCountGE RowCount, 2, <vmulps ymm6,ymm6,ymm2>
@@ -303,7 +303,7 @@ ProcessRemainingCountN:
         cmp     rbp,8
         jb      OutputMasked8xNBlock
         test    r15b,r15b                   ; ZeroMode?
-        jnz     MultiplyBeta8xNBlock
+        jnz     MultiplyAlpha8xNBlock
         EmitIfCountGE RowCount, 1, <vfmadd213ps ymm5,ymm2,YMMWORD PTR [r8]>
         EmitIfCountGE RowCount, 2, <vfmadd213ps ymm7,ymm2,YMMWORD PTR [r8+rax]>
         EmitIfCountGE RowCount, 3, <vfmadd213ps ymm9,ymm2,YMMWORD PTR [r8+rax*2]>
@@ -312,7 +312,7 @@ ProcessRemainingCountN:
         EmitIfCountGE RowCount, 6, <vfmadd213ps ymm15,ymm2,YMMWORD PTR [rbx+rax*2]>
         jmp     Store8xNBlock
 
-MultiplyBeta8xNBlock:
+MultiplyAlpha8xNBlock:
         EmitIfCountGE RowCount, 1, <vmulps ymm5,ymm5,ymm2>
         EmitIfCountGE RowCount, 2, <vmulps ymm7,ymm7,ymm2>
         EmitIfCountGE RowCount, 3, <vmulps ymm9,ymm9,ymm2>
@@ -331,7 +331,7 @@ Store8xNBlock:
 
 OutputMasked16xNBlock:
         test    r15b,r15b                   ; ZeroMode?
-        jnz     MultiplyBetaMasked16xNBlock
+        jnz     MultiplyAlphaMasked16xNBlock
         EmitIfCountGE RowCount, 1, <vfmadd213ps ymm4,ymm2,YMMWORD PTR [r8]>
         EmitIfCountGE RowCount, 2, <vfmadd213ps ymm6,ymm2,YMMWORD PTR [r8+rax]>
         EmitIfCountGE RowCount, 3, <vfmadd213ps ymm8,ymm2,YMMWORD PTR [r8+rax*2]>
@@ -340,7 +340,7 @@ OutputMasked16xNBlock:
         EmitIfCountGE RowCount, 6, <vfmadd213ps ymm14,ymm2,YMMWORD PTR [rbx+rax*2]>
         jmp     StoreMasked16xNBlock
 
-MultiplyBetaMasked16xNBlock:
+MultiplyAlphaMasked16xNBlock:
         EmitIfCountGE RowCount, 1, <vmulps ymm4,ymm4,ymm2>
         EmitIfCountGE RowCount, 2, <vmulps ymm6,ymm6,ymm2>
         EmitIfCountGE RowCount, 3, <vmulps ymm8,ymm8,ymm2>
@@ -366,7 +366,7 @@ OutputMasked8xNBlock:
         vbroadcastss ymm0,DWORD PTR SgemmKernelFrame.CountN[rsp]
         vpcmpgtd ymm0,ymm0,YMMWORD PTR [MlasMaskMoveAvx]
         test    r15b,r15b                   ; ZeroMode?
-        jnz     MultiplyBetaMasked8xNBlock
+        jnz     MultiplyAlphaMasked8xNBlock
         EmitIfCountGE RowCount, 1, <vmaskmovps ymm4,ymm0,YMMWORD PTR [r8]>
         EmitIfCountGE RowCount, 2, <vmaskmovps ymm6,ymm0,YMMWORD PTR [r8+rax]>
         EmitIfCountGE RowCount, 3, <vmaskmovps ymm8,ymm0,YMMWORD PTR [r8+rax*2]>
@@ -381,7 +381,7 @@ OutputMasked8xNBlock:
         EmitIfCountGE RowCount, 6, <vfmadd213ps ymm15,ymm2,ymm14>
         jmp     StoreMasked8xNBlock
 
-MultiplyBetaMasked8xNBlock:
+MultiplyAlphaMasked8xNBlock:
         EmitIfCountGE RowCount, 1, <vmulps ymm5,ymm5,ymm2>
         EmitIfCountGE RowCount, 2, <vmulps ymm7,ymm7,ymm2>
         EmitIfCountGE RowCount, 3, <vmulps ymm9,ymm9,ymm2>

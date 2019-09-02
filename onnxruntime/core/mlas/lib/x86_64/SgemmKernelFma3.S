@@ -253,7 +253,7 @@ Implicit Arguments:
         sub     r9,16
         jb      .LOutputMasked16xNBlock\@
         test    r15b,r15b                   # ZeroMode?
-        jnz     .LMultiplyBeta16xNBlock\@
+        jnz     .LMultiplyAlpha16xNBlock\@
         EmitIfCountGE \RowCount\(), 1, "vfmadd213ps ymm4,ymm2,YMMWORD PTR [rdx]"
         EmitIfCountGE \RowCount\(), 1, "vfmadd213ps ymm5,ymm2,YMMWORD PTR [rdx+32]"
         EmitIfCountGE \RowCount\(), 2, "vfmadd213ps ymm6,ymm2,YMMWORD PTR [rdx+rax]"
@@ -268,7 +268,7 @@ Implicit Arguments:
         EmitIfCountGE \RowCount\(), 6, "vfmadd213ps ymm15,ymm2,YMMWORD PTR [rbx+rax*2+32]"
         jmp     .LStore16xNBlock\@
 
-.LMultiplyBeta16xNBlock\@:
+.LMultiplyAlpha16xNBlock\@:
         EmitIfCountGE \RowCount\(), 1, "vmulps ymm4,ymm4,ymm2"
                                             # multiply by alpha
         EmitIfCountGE \RowCount\(), 1, "vmulps ymm5,ymm5,ymm2"
@@ -309,7 +309,7 @@ Implicit Arguments:
         cmp     r9,8
         jb      .LOutputMasked8xNBlock\@
         test    r15b,r15b                   # ZeroMode?
-        jnz     .LMultiplyBeta8xNBlock\@
+        jnz     .LMultiplyAlpha8xNBlock\@
         EmitIfCountGE \RowCount\(), 1, "vfmadd213ps ymm5,ymm2,YMMWORD PTR [rdx]"
         EmitIfCountGE \RowCount\(), 2, "vfmadd213ps ymm7,ymm2,YMMWORD PTR [rdx+rax]"
         EmitIfCountGE \RowCount\(), 3, "vfmadd213ps ymm9,ymm2,YMMWORD PTR [rdx+rax*2]"
@@ -318,7 +318,7 @@ Implicit Arguments:
         EmitIfCountGE \RowCount\(), 6, "vfmadd213ps ymm15,ymm2,YMMWORD PTR [rbx+rax*2]"
         jmp     .LStore8xNBlock\@
 
-.LMultiplyBeta8xNBlock\@:
+.LMultiplyAlpha8xNBlock\@:
         EmitIfCountGE \RowCount\(), 1, "vmulps ymm5,ymm5,ymm2"
                                             # multiply by alpha
         EmitIfCountGE \RowCount\(), 2, "vmulps ymm7,ymm7,ymm2"
@@ -338,7 +338,7 @@ Implicit Arguments:
 
 .LOutputMasked16xNBlock\@:
         test    r15b,r15b                   # ZeroMode?
-        jnz     .LMultiplyBetaMasked16xNBlock\@
+        jnz     .LMultiplyAlphaMasked16xNBlock\@
         EmitIfCountGE \RowCount\(), 1, "vfmadd213ps ymm4,ymm2,YMMWORD PTR [rdx]"
         EmitIfCountGE \RowCount\(), 2, "vfmadd213ps ymm6,ymm2,YMMWORD PTR [rdx+rax]"
         EmitIfCountGE \RowCount\(), 3, "vfmadd213ps ymm8,ymm2,YMMWORD PTR [rdx+rax*2]"
@@ -347,7 +347,7 @@ Implicit Arguments:
         EmitIfCountGE \RowCount\(), 6, "vfmadd213ps ymm14,ymm2,YMMWORD PTR [rbx+rax*2]"
         jmp     .LStoreMasked16xNBlock\@
 
-.LMultiplyBetaMasked16xNBlock\@:
+.LMultiplyAlphaMasked16xNBlock\@:
         EmitIfCountGE \RowCount\(), 1, "vmulps ymm4,ymm4,ymm2"
         EmitIfCountGE \RowCount\(), 2, "vmulps ymm6,ymm6,ymm2"
         EmitIfCountGE \RowCount\(), 3, "vmulps ymm8,ymm8,ymm2"
@@ -373,7 +373,7 @@ Implicit Arguments:
         vbroadcastss ymm0,DWORD PTR [rsp+.LSgemmKernelFrame_mask]
         vpcmpgtd ymm0,ymm0,YMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip]
         test    r15b,r15b                   # ZeroMode?
-        jnz     .LMultiplyBetaMasked8xNBlock\@
+        jnz     .LMultiplyAlphaMasked8xNBlock\@
         EmitIfCountGE \RowCount\(), 1, "vmaskmovps ymm4,ymm0,YMMWORD PTR [rdx]"
         EmitIfCountGE \RowCount\(), 2, "vmaskmovps ymm6,ymm0,YMMWORD PTR [rdx+rax]"
         EmitIfCountGE \RowCount\(), 3, "vmaskmovps ymm8,ymm0,YMMWORD PTR [rdx+rax*2]"
@@ -388,7 +388,7 @@ Implicit Arguments:
         EmitIfCountGE \RowCount\(), 6, "vfmadd213ps ymm15,ymm2,ymm14"
         jmp     .LStoreMasked8xNBlock\@
 
-.LMultiplyBetaMasked8xNBlock\@:
+.LMultiplyAlphaMasked8xNBlock\@:
         EmitIfCountGE \RowCount\(), 1, "vmulps ymm5,ymm5,ymm2"
         EmitIfCountGE \RowCount\(), 2, "vmulps ymm7,ymm7,ymm2"
         EmitIfCountGE \RowCount\(), 3, "vmulps ymm9,ymm9,ymm2"
@@ -439,7 +439,7 @@ Arguments:
 
     ldc - Supplies the first dimension of matrix C.
 
-    Alpha (xmm0) - Supplies the scaler multiplier (see SGEMM definition).
+    Alpha (xmm0) - Supplies the scalar alpha multiplier (see SGEMM definition).
 
     ZeroMode - Supplies true if the output matrix must be zero initialized,
         else false if the output matrix is accumulated into.
@@ -452,12 +452,6 @@ Return Value:
 
         .globl  C_UNDERSCORE(MlasGemmFloatKernelSse)
 C_UNDERSCORE(MlasGemmFloatKernelSse):
-
-        .globl  C_UNDERSCORE(MlasGemmFloatKernelAvx)
-C_UNDERSCORE(MlasGemmFloatKernelAvx):
-
-        .globl  C_UNDERSCORE(MlasGemmFloatKernelAvx512F)
-C_UNDERSCORE(MlasGemmFloatKernelAvx512F):
 
         .globl  C_UNDERSCORE(MlasGemmFloatKernelFma3)
 C_UNDERSCORE(MlasGemmFloatKernelFma3):

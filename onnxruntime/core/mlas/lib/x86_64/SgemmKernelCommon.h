@@ -62,6 +62,10 @@ Implicit Arguments:
         add     rdi,4*4                     # advance matrix A by 4 columns
 .if \RowCount\() > 3
         add     rbx,4*4                     # advance matrix A plus rows by 4 columns
+.if \RowCount\() == 12
+        add     r13,4*4
+        add     r14,4*4
+.endif
 .endif
         sub     rbp,4
         jae     .LComputeBlockBy4Loop\@
@@ -76,6 +80,10 @@ Implicit Arguments:
         add     rdi,4                       # advance matrix A by 1 column
 .if \RowCount\() > 3
         add     rbx,4                       # advance matrix A plus rows by 1 column
+.if \RowCount\() == 12
+        add     r13,4
+        add     r14,4
+.endif
 .endif
         dec     rbp
         jne     .LComputeBlockBy1Loop\@

@@ -245,11 +245,11 @@ ENDIF
 ProcessCountM MACRO RowCount
 
         LOCAL   ProcessNextColumnLoop32xN
-        LOCAL   MultiplyBeta32xNBlock
+        LOCAL   MultiplyAlpha32xNBlock
         LOCAL   Store32xNBlock
         LOCAL   Output16xNBlock
         LOCAL   Output16xNBlockWithMask
-        LOCAL   MultiplyBeta16xNBlockWithMask
+        LOCAL   MultiplyAlpha16xNBlockWithMask
         LOCAL   Store16xNBlockWithMask
         LOCAL   ProcessRemainingCountN
 
@@ -273,7 +273,7 @@ ProcessNextColumnLoop32xN:
         ComputeBlockAvx512FLoop ComputeBlockAvx512FBy32, RowCount
         add     rdx,r12                     ; advance matrix B by 16*CountK floats
         test    r15b,r15b                   ; ZeroMode?
-        jnz     MultiplyBeta32xNBlock
+        jnz     MultiplyAlpha32xNBlock
         EmitIfCountGE RowCount, 1, <vfmadd213ps zmm4,zmm31,ZMMWORD PTR [r8]>
         EmitIfCountGE RowCount, 2, <vfmadd213ps zmm6,zmm31,ZMMWORD PTR [r8+rax]>
         EmitIfCountGE RowCount, 3, <vfmadd213ps zmm8,zmm31,ZMMWORD PTR [r8+rax*2]>
@@ -288,7 +288,7 @@ ProcessNextColumnLoop32xN:
         EmitIfCountGE RowCount, 12, <vfmadd213ps zmm26,zmm31,ZMMWORD PTR [r14+rax*2]>
         jmp     Store32xNBlock
 
-MultiplyBeta32xNBlock:
+MultiplyAlpha32xNBlock:
         EmitIfCountGE RowCount, 1, <vmulps zmm4,zmm4,zmm31>
         EmitIfCountGE RowCount, 2, <vmulps zmm6,zmm6,zmm31>
         EmitIfCountGE RowCount, 3, <vmulps zmm8,zmm8,zmm31>
@@ -318,8 +318,10 @@ Store32xNBlock:
         add     r8,16*4                     ; advance matrix C by 16 columns
 IF RowCount GT 3
         add     rbx,16*4                    ; advance matrix C plus 3 rows by 16 columns
+IF RowCount EQ 12
         add     r13,16*4                    ; advance matrix C plus 6 rows by 16 columns
         add     r14,16*4                    ; advance matrix C plus 9 rows by 16 columns
+ENDIF
 ENDIF
         sub     rbp,16
 
@@ -335,7 +337,7 @@ Output16xNBlock:
 
 Output16xNBlockWithMask:
         test    r15b,r15b                   ; ZeroMode?
-        jnz     MultiplyBeta16xNBlockWithMask
+        jnz     MultiplyAlpha16xNBlockWithMask
         EmitIfCountGE RowCount, 1, <vfmadd213ps zmm5{k1},zmm31,ZMMWORD PTR [r8]>
         EmitIfCountGE RowCount, 2, <vfmadd213ps zmm7{k1},zmm31,ZMMWORD PTR [r8+rax]>
         EmitIfCountGE RowCount, 3, <vfmadd213ps zmm9{k1},zmm31,ZMMWORD PTR [r8+rax*2]>
@@ -350,7 +352,7 @@ Output16xNBlockWithMask:
         EmitIfCountGE RowCount, 12, <vfmadd213ps zmm27{k1},zmm31,ZMMWORD PTR [r14+rax*2]>
         jmp     Store16xNBlockWithMask
 
-MultiplyBeta16xNBlockWithMask:
+MultiplyAlpha16xNBlockWithMask:
         EmitIfCountGE RowCount, 1, <vmulps zmm5,zmm5,zmm31>
         EmitIfCountGE RowCount, 2, <vmulps zmm7,zmm7,zmm31>
         EmitIfCountGE RowCount, 3, <vmulps zmm9,zmm9,zmm31>
@@ -450,7 +452,7 @@ ProcessRemainingCountN:
         vbroadcastss zmm31,DWORD PTR SgemmKernelFrame.Alpha[rsp]
 
 ;
-; Process N rows of the matrices.
+; Process CountM rows of the matrices.
 ;
 
         cmp     r11,12

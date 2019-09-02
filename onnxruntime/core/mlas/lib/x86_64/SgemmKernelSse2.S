@@ -125,7 +125,7 @@ Arguments:
 
     ldc - Supplies the first dimension of matrix C.
 
-    Alpha (xmm0) - Supplies the scaler multiplier (see SGEMM definition).
+    Alpha (xmm0) - Supplies the scalar alpha multiplier (see SGEMM definition).
 
 Return Value:
 
