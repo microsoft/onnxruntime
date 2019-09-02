@@ -8,6 +8,7 @@
 #include "core/graph/op.h"
 #include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
+#include "onnx/defs/function.h"
 #include "core/mlas/inc/mlas.h"
 
 #ifdef MICROSOFT_INTERNAL

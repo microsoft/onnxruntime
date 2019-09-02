@@ -35,11 +35,11 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
 
 //Disabled because of accuracy issues for MYRIAD FP16 and VAD_M
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-    int relu = strcmp(szOp, "Relu");
-    int leaky = strcmp(szOp, "LeakyRelu");
-    if(relu == 0 || leaky == 0){
-        excluded_providers.insert(kOpenVINOExecutionProvider);
-    }
+  int relu = strcmp(szOp, "Relu");
+  int leaky = strcmp(szOp, "LeakyRelu");
+  if (relu == 0 || leaky == 0) {
+    excluded_providers.insert(kOpenVINOExecutionProvider);
+  }
 #endif
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
@@ -204,16 +204,18 @@ TEST(ActivationOpTest, Softplus) {
 }
 
 TEST(ActivationOpTest, Softsign) {
-  TestUnaryElementwiseOp("Softsign",
-                         no_inf_input_vals,
-                         [](float x) { return x / (1 + std::abs(x)); }, {}, false);  // Disable TensorRT because result mismatches
+  TestUnaryElementwiseOp(
+      "Softsign",
+      no_inf_input_vals,
+      [](float x) { return x / (1 + std::abs(x)); }, {}, false);  // Disable TensorRT because result mismatches
 }
 
 TEST(ActivationOpTest, Gelu) {
   TestUnaryElementwiseOp(
       "Gelu",
       input_vals,
-      [](float x) { return x * 0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))); }, {}, false, 9);
+      [](float x) { return x * 0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))); },
+      {}, false, 9);
 }
 
 }  // namespace test

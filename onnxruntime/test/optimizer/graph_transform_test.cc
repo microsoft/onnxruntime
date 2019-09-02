@@ -538,7 +538,6 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
 }
 
 TEST(GraphTransformationTests, ReluClipFusion) {
-
   // Clip op schema changed for opset version 11. Until Clip op is updated in ORT hard coding this model to use
   // older opset.
   Model model("ReluClipFusion", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 10}}, {});
@@ -607,7 +606,7 @@ TEST(GraphTransformationTests, ReluClipFusion) {
   }
 }
 
-TEST(GraphTransformationTests, GeluFusion) {
+TEST(GraphTransformationTests, GeluFusionTest) {
   string model_uri = MODEL_FOLDER + "fusion/gelu.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());

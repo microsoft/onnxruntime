@@ -17,6 +17,7 @@
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/shape_to_initializer.h"
 #include "core/optimizer/nchwc_transformer.h"
+#include "core/optimizer/gelu_fusion.h"
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
@@ -110,6 +111,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(l2_execution_providers));
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(l2_execution_providers));
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(l2_execution_providers));
+      transformers.emplace_back(std::make_unique<GeluFusion>(l2_execution_providers));
 #endif
     } break;
 

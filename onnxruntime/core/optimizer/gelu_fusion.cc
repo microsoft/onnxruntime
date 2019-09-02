@@ -9,13 +9,6 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
-// Todo: use graph_utils::NodeArgIsConstant once the Constant change (e.g. represented as an initalier only)
-// in master is merged. We can do this way purely because Gelu subgraphs in
-// BERT does not have inputs connected directly.
-bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg) {
-  const onnx::TensorProto* initializer = nullptr;
-  return graph.GetInitializedTensor(node_arg.Name(), initializer);
-}
 
 static void IsInputConstant(const Graph& graph, const Node& node, std::tuple<bool, NodeArg*, NodeArg*>& ret) {
   const auto& inputs = node.InputDefs();
@@ -23,7 +16,7 @@ static void IsInputConstant(const Graph& graph, const Node& node, std::tuple<boo
   NodeArg* gelu_non_const_input = nullptr;
   NodeArg* gelu_const_input = nullptr;
   for (auto& i : inputs) {
-    if (NodeArgIsConstant(graph, *i)) {
+    if (graph_utils::NodeArgIsConstant(graph, *i)) {
       // Todo: check the constant for example be sqrt(2.0) or 1
       found_constant = true;
       gelu_const_input = const_cast<NodeArg*>(i);
@@ -35,11 +28,26 @@ static void IsInputConstant(const Graph& graph, const Node& node, std::tuple<boo
   ret = std::make_tuple(found_constant, gelu_non_const_input, gelu_const_input);
 }
 
+static bool HasConsumers(Graph& graph, const NodeArg* arg) {
+  for (auto& node : graph.Nodes()) {
+    auto ret = std::find(node.MutableInputDefs().begin(), node.MutableInputDefs().end(), arg);
+    if (ret != node.MutableInputDefs().end()) {
+      return true;
+    }
+
+    ret = std::find(node.MutableImplicitInputDefs().begin(), node.MutableImplicitInputDefs().end(), arg);
+    if (ret != node.MutableImplicitInputDefs().end()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   std::deque<onnxruntime::NodeIndex> removed_nodes;
-  std::deque<std::string> removed_initializers;
+  std::deque<NodeArg*> removed_initializers;
 
   for (auto node_index : node_topology_list) {
     auto& node = *graph.GetNode(node_index);
@@ -135,9 +143,9 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) cons
     removed_nodes.push_front(add_node.Index());
     removed_nodes.push_front(mul2_node->Index());
     removed_nodes.push_front(mul_node.Index());
-    removed_initializers.push_front(std::get<2>(t)->Name());
-    removed_initializers.push_front(std::get<2>(add_input_check)->Name());
-    removed_initializers.push_front(std::get<2>(mul2_input_check)->Name());
+    removed_initializers.push_front(std::get<2>(t));
+    removed_initializers.push_front(std::get<2>(add_input_check));
+    removed_initializers.push_front(std::get<2>(mul2_input_check));
   }
 
   // Have to remove node in reversed order for now to walk around the issue in RemoveNode
@@ -145,9 +153,9 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) cons
     graph.RemoveNode(removed_node);
   }
 
-  for (auto& tensor_name : removed_initializers) {
-    if (graph.GetConsumerNodes(tensor_name).empty()) {
-      graph.RemoveInitializedTensor(tensor_name);
+  for (auto& tensor_arg : removed_initializers) {
+    if (!HasConsumers(graph, tensor_arg)) {
+      graph.RemoveInitializedTensor(tensor_arg->Name());
     }
   }
 
