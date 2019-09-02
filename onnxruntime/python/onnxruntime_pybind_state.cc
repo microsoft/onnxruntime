@@ -49,13 +49,19 @@
 #define BACKEND_OPENVINO ""
 #endif
 
+#ifdef USE_NUPHAR
+#define BACKEND_NUPHAR "-NUPHAR"
+#else
+#define BACKEND_NUPHAR ""
+#endif
+
 #if USE_OPENBLAS
 #define BACKEND_OPENBLAS "-OPENBLAS"
 #else
 #define BACKEND_OPENBLAS ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_MKLDNN BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_OPENBLAS
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_MKLDNN BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -78,6 +84,7 @@
 #endif
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
+std::string nuphar_settings;
 #endif
 #ifdef USE_BRAINSLICE
 #include "core/providers/brainslice/brainslice_provider_factory.h"
@@ -90,7 +97,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(int device_id, const char*);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(uint32_t ip, int, int, bool, const char*, const char*, const char*);
 }  // namespace onnxruntime
 
@@ -254,9 +261,10 @@ void InitializeSession(InferenceSession* sess) {
   }
 #endif
 
-#if 0  //USE_NUPHAR
+#if USE_NUPHAR
   {
-    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(0, ""));
+    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(true, nuphar_settings.c_str()));
+    nuphar_settings.clear();  // clear nuphar_settings after use to avoid it being accidentally passed on to next session
   }
 #endif
 
@@ -277,6 +285,15 @@ void addGlobalMethods(py::module& m) {
   m.def(
       "get_device", []() -> std::string { return BACKEND_DEVICE; },
       "Return the device used to compute the prediction (CPU, MKL, ...)");
+
+#ifdef USE_NUPHAR
+  m.def("set_nuphar_settings", [](const std::string& str) {
+    nuphar_settings = str;
+  });
+  m.def("get_nuphar_settings", []() -> std::string {
+    return nuphar_settings;
+  });
+#endif
 
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
   m.def(
