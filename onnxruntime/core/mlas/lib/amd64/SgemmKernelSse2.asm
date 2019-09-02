@@ -102,6 +102,8 @@ ENDIF
 ;
 ;   r8 - Supplies the address of matrix C.
 ;
+;   r15 - Stores the ZeroMode argument from the stack frame.
+;
 ;   xmm8-xmm15 - Supplies the block accumulators.
 ;
 
@@ -193,7 +195,6 @@ ProcessCountM MACRO RowCount, Fallthrough
 
 ProcessNextColumnLoop16xN:
         EmitIfCountGE RowCount, 1, <xorps xmm8,xmm8>
-                                            ; clear block accumulators
         EmitIfCountGE RowCount, 1, <xorps xmm9,xmm9>
         EmitIfCountGE RowCount, 1, <xorps xmm10,xmm10>
         EmitIfCountGE RowCount, 1, <xorps xmm11,xmm11>

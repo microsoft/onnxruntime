@@ -450,9 +450,6 @@ Return Value:
 
 --*/
 
-        .globl  C_UNDERSCORE(MlasGemmFloatKernelSse)
-C_UNDERSCORE(MlasGemmFloatKernelSse):
-
         .globl  C_UNDERSCORE(MlasGemmFloatKernelFma3)
 C_UNDERSCORE(MlasGemmFloatKernelFma3):
 
