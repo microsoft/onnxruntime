@@ -78,7 +78,7 @@ static std::vector<float> x_vals_3dims = {
     1.2940853f, 1.0387882f, 1.7437122f, 0.79806274f, 0.02968323f,
     1.0693159f, 0.8907064f, 1.7548862f, 1.4956441f, 1.0693927f};
 
-TEST(LogSoftmaxOperator, ThreeDimsAxis0) {
+TEST(LogSoftmaxOperator, DISABLED_ThreeDimsAxis0) {
   // x = <see x_vals_3dims>
   // node = onnx.helper.make_node('LogSoftmax', inputs = ['x'], outputs = ['y'], axis = 0)
   // y = logsoftmax_2d(x.reshape(1, 60)).reshape(3, 4, 5)
