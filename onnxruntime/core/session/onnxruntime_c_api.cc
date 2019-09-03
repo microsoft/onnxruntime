@@ -17,7 +17,7 @@
 #include "core/framework/tensor.h"
 #include "core/framework/ml_value.h"
 #include "core/session/environment.h"
-#include "core/common/callback.h"
+#include "core/framework/callback.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/inference_session.h"
@@ -67,9 +67,9 @@ struct OrtEnv {
   auto v = reinterpret_cast<const ::OrtValue*>(value); \
   auto& tensor = v->Get<onnxruntime::Tensor>();
 
-#define TENSOR_READWRITE_API_BEGIN               \
-  API_IMPL_BEGIN                                 \
-  auto v = reinterpret_cast<::OrtValue*>(value); \
+#define TENSOR_READWRITE_API_BEGIN \
+  API_IMPL_BEGIN                   \
+  auto v = (value);                \
   auto tensor = v->GetMutable<onnxruntime::Tensor>();
 
 class LoggingWrapper : public ISink {
@@ -416,7 +416,7 @@ ORT_API_STATUS_IMPL(OrtCreateSessionFromArray, _In_ const OrtEnv* env, _In_ cons
 }
 
 ORT_API_STATUS_IMPL(OrtRun, _Inout_ OrtSession* sess,
-                    _In_ const OrtRunOptions* run_options,
+                    _In_opt_ const OrtRunOptions* run_options,
                     _In_ const char* const* input_names, _In_ const OrtValue* const* input, size_t input_len,
                     _In_ const char* const* output_names1, size_t output_names_len, _Outptr_ OrtValue** output) {
   API_IMPL_BEGIN
@@ -449,7 +449,7 @@ ORT_API_STATUS_IMPL(OrtRun, _Inout_ OrtSession* sess,
   std::vector<OrtValue> fetches(output_names_len);
   for (size_t i = 0; i != output_names_len; ++i) {
     if (output[i] != nullptr) {
-      ::OrtValue& value = *reinterpret_cast<::OrtValue*>(output[i]);
+      ::OrtValue& value = *(output[i]);
       if (value.Fence())
         value.Fence()->BeforeUsingAsOutput(onnxruntime::kCpuExecutionProvider, queue_id);
       fetches[i] = value;
@@ -520,58 +520,9 @@ ORT_API_STATUS_IMPL(OrtGetStringTensorContent, _In_ const OrtValue* value,
     if ((!_status.IsOK())) return ToOrtStatus(_status); \
   } while (0)
 
-ORT_API_STATUS_IMPL(OrtTensorProtoToOrtValue, _In_ const void* input, int input_len,
-                    _In_opt_ const ORTCHAR_T* input_file_path, _Inout_ void* preallocated, size_t preallocated_size,
-                    _Outptr_ OrtValue** out, _Outptr_ OrtCallback** deleter) {
-  API_IMPL_BEGIN
-  OrtAllocatorInfo* cpuAllocatorInfo;
-  auto st = OrtCreateCpuAllocatorInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpuAllocatorInfo);
-  if (st != nullptr) return st;
-  ::ONNX_NAMESPACE::TensorProto proto;
-  if (!proto.ParseFromArray(input, input_len)) {
-    return OrtCreateStatus(ORT_FAIL, "parse input tensor proto failed");
-  }
-  auto value = std::make_unique<OrtValue>();
-  std::unique_ptr<OrtCallback> del = std::make_unique<OrtCallback>();
-  auto status =
-      utils::TensorProtoToMLValue(Env::Default(), input_file_path, proto,
-                                  MemBuffer(preallocated, preallocated_size, *cpuAllocatorInfo), *value, *del);
-  OrtReleaseAllocatorInfo(cpuAllocatorInfo);
-  if (!status.IsOK()) {
-    return ToOrtStatus(status);
-  }
-  *out = value.release();
-  if (del->f != nullptr) {
-    *deleter = del.release();
-  } else
-    *deleter = nullptr;
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtGetTensorMemSizeInBytesFromTensorProto, _In_ const void* input, int input_len, size_t alignment,
-                    size_t* out) {
-  API_IMPL_BEGIN
-  ::ONNX_NAMESPACE::TensorProto proto;
-  if (!proto.ParseFromArray(input, input_len)) {
-    return OrtCreateStatus(ORT_FAIL, "parse input tensor proto failed");
-  }
-  switch (alignment) {
-    case 0:
-      ORT_C_API_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(proto, out));
-      break;
-    case 256:
-      ORT_C_API_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<256>(proto, out));
-      break;
-    default:
-      return OrtCreateStatus(ORT_INVALID_ARGUMENT, "Invalid alignment, which can only be 0 or 256");
-  }
-  return nullptr;
-  API_IMPL_END
-}
-#define DEFINE_RELEASE_ORT_OBJECT_FUNCTION(INPUT_TYPE, REAL_TYPE) \
-  ORT_API(void, OrtRelease##INPUT_TYPE, Ort##INPUT_TYPE* value) { \
-    delete reinterpret_cast<REAL_TYPE*>(value);                   \
+#define DEFINE_RELEASE_ORT_OBJECT_FUNCTION(INPUT_TYPE, REAL_TYPE)                 \
+  ORT_API(void, OrtRelease##INPUT_TYPE, _Frees_ptr_opt_ Ort##INPUT_TYPE* value) { \
+    delete reinterpret_cast<REAL_TYPE*>(value);                                   \
   }
 
 ORT_API_STATUS_IMPL(OrtSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {

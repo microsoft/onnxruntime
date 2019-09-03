@@ -22,11 +22,15 @@ IExecutionFrame::IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, cons
                                  const std::unordered_map<int, OrtValue>& initializers,
                                  const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                                  const OrtValueNameIdxMap& ort_value_idx_map, const NodeIndexInfo& node_index_info)
-    : node_index_info_{node_index_info}, fetch_mlvalue_idxs_{fetch_mlvalue_idxs} {
+    : node_index_info_{node_index_info},
+      all_values_size_{static_cast<size_t>(ort_value_idx_map.MaxIdx()) + 1},
+      fetch_mlvalue_idxs_{fetch_mlvalue_idxs} {
   ORT_ENFORCE(feeds.size() == feed_mlvalue_idxs.size());
   ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs_.size());
+  ORT_ENFORCE(node_index_info_.GetMaxMLValueIdx() == ort_value_idx_map.MaxIdx(),
+              "node_index_info and ort_value_idx_map are out of sync and cannot be used");
 
-  Init(feed_mlvalue_idxs, feeds, initializers, fetches, ort_value_idx_map);
+  Init(feed_mlvalue_idxs, feeds, initializers, fetches);
 }
 
 IExecutionFrame::~IExecutionFrame() = default;
@@ -79,7 +83,7 @@ AllocatorPtr IExecutionFrame::GetAllocator(const OrtAllocatorInfo& info) const {
 Status IExecutionFrame::ReleaseMLValue(int ort_value_idx) { return ReleaseMLValueImpl(ort_value_idx); }
 
 Status IExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
-  if (ort_value_idx == NodeIndexInfo::kInvalidEntry || static_cast<size_t>(ort_value_idx) >= all_values_.size()) {
+  if (ort_value_idx == NodeIndexInfo::kInvalidEntry || static_cast<size_t>(ort_value_idx) >= all_values_size_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", ort_value_idx);
   }
 
@@ -95,19 +99,16 @@ Status IExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
 }
 
 int IExecutionFrame::GetNodeIdxToMLValueIdx(int index) const {
+  // the validity of index is checked by GetMLValueIndex
   int ort_value_idx = node_index_info_.GetMLValueIndex(index);
-  ORT_ENFORCE(ort_value_idx == NodeIndexInfo::kInvalidEntry ||
-              (ort_value_idx >= 0 && static_cast<size_t>(ort_value_idx) < all_values_.size()));
-
   return ort_value_idx;
 }
 
 void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
                            const std::unordered_map<int, OrtValue>& initializers,
-                           const std::vector<OrtValue>& fetches,
-                           const OrtValueNameIdxMap& ort_value_idx_map) {
+                           const std::vector<OrtValue>& fetches) {
   // 1. resize the all_value_ vector
-  all_values_.resize(ort_value_idx_map.MaxIdx() + 1);
+  all_values_.resize(all_values_size_);
 
   // 2. Handle non-empty output vector
   if (!fetches.empty()) {
@@ -402,54 +403,54 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
 
   const auto& alloc_info = per_alloc_plan.location;
   const auto* ml_type = per_alloc_plan.value_type;
-  if (ml_type == nullptr)
+  if (ml_type == nullptr) {
     return Status(
         ONNXRUNTIME, INVALID_ARGUMENT,
         "Tried to allocate without valid type information, ort_value index=" + std::to_string(ort_value_index));
+  }
 
-  if (ml_type->IsSparseTensorType()) {
+  if (ml_type->IsTensorType()) {
+    ORT_ENFORCE(shape, "Allocation of tensor types requires a shape.");
+
+    // tensors
+    const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+
+    AllocKind alloc_kind = per_alloc_plan.alloc_kind;
+    switch (alloc_kind) {
+      // Right now for kAllocate and kAllocateOutput we are using same approach.
+      // In the future we may want to have different way to handle it.
+      case AllocKind::kAllocateOutput:
+      case AllocKind::kAllocate: {
+        ORT_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(ort_value, ort_value_index, ml_data_type, alloc_info,
+                                                               *shape, per_alloc_plan.create_fence_if_async));
+        break;
+      }
+      case AllocKind::kReuse: {
+        int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
+        ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
+            ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
+        break;
+      }
+      case AllocKind::kShare: {
+        int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
+        // copy at the OrtValue level so the shared_ptr for the data is shared between the two OrtValue instances
+        ort_value = GetMutableMLValue(reuse_mlvalue_index);
+        break;
+      }
+      default: {
+        std::ostringstream ostr;
+        ostr << "Invalid allocation kind: " << static_cast<std::underlying_type<AllocKind>::type>(alloc_kind);
+        return Status(ONNXRUNTIME, FAIL, ostr.str());
+      }
+    }
+
+    return Status::OK();
+  } else if (ml_type->IsSparseTensorType()) {
     return AllocateSparseTensor(ort_value, *ml_type, GetAllocator(alloc_info),
                                 *shape, nnz, per_alloc_plan.create_fence_if_async, session_state_);
-  }
-  if (!ml_type->IsTensorType()) {
+  } else {
     return AllocateTraditionalMLValue(ort_value, *static_cast<const NonTensorTypeBase*>(ml_type));
   }
-
-  ORT_ENFORCE(shape, "Allocation of tensor types requires a shape.");
-
-  // tensors
-  const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
-
-  AllocKind alloc_kind = per_alloc_plan.alloc_kind;
-  switch (alloc_kind) {
-    // Right now for kAllocate and kAllocateOutput we are using same approach.
-    // In the future we may want to have different way to handle it.
-    case AllocKind::kAllocateOutput:
-    case AllocKind::kAllocate: {
-      ORT_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(ort_value, ort_value_index, ml_data_type, alloc_info,
-                                                             *shape, per_alloc_plan.create_fence_if_async));
-      break;
-    }
-    case AllocKind::kReuse: {
-      int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
-      ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
-          ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
-      break;
-    }
-    case AllocKind::kShare: {
-      int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
-      // copy at the OrtValue level so the shared_ptr for the data is shared between the two OrtValue instances
-      ort_value = GetMutableMLValue(reuse_mlvalue_index);
-      break;
-    }
-    default: {
-      std::ostringstream ostr;
-      ostr << "Invalid allocation kind: " << static_cast<std::underlying_type<AllocKind>::type>(alloc_kind);
-      return Status(ONNXRUNTIME, FAIL, ostr.str());
-    }
-  }
-
-  return Status::OK();
 }
 
 AllocatorPtr ExecutionFrame::GetAllocatorImpl(const OrtAllocatorInfo& info) const {

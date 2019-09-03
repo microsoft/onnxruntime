@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/framework/tensor.h"
 
 namespace onnxruntime {
 
@@ -18,6 +19,27 @@ inline int64_t HandleNegativeAxis(int64_t axis, int64_t tensor_rank) {
               " is not in valid range [-", tensor_rank, ",", tensor_rank - 1, "]");
   // Handle negative axis
   return axis = axis < 0 ? axis + tensor_rank : axis;
+}
+
+/**
+Returns true if given tensor is a scalar or 1D tensor of size 1
+**/
+inline bool IsScalarOr1ElementVector(const Tensor* input) {
+  if (input->Shape().NumDimensions() == 0 ||
+      (input->Shape().NumDimensions() == 1 && input->Shape().GetDims().size() == 1)) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+/**
+Clamps input between provided min and max values
+**/
+inline float clamp(float v, float lo, float hi) {
+  if (v < lo) return lo;
+  if (v > hi) return hi;
+  return v;
 }
 
 }  // namespace onnxruntime

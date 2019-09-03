@@ -39,23 +39,21 @@ struct TypeToTensorType<uint32_t> { static constexpr ONNXTensorElementDataType t
 template <>
 struct TypeToTensorType<uint64_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64; };
 
-inline Allocator Allocator::CreateDefault() {
-  OrtAllocator* p;
-  ORT_THROW_ON_ERROR(OrtCreateDefaultAllocator(&p));
-  return Allocator(p);
+inline AllocatorWithDefaultOptions::AllocatorWithDefaultOptions() {
+  ORT_THROW_ON_ERROR(OrtGetAllocatorWithDefaultOptions(&p_));
 }
 
-inline void* Allocator::Alloc(size_t size) {
+inline void* AllocatorWithDefaultOptions::Alloc(size_t size) {
   void* out;
   ORT_THROW_ON_ERROR(OrtAllocatorAlloc(p_, size, &out));
   return out;
 }
 
-inline void Allocator::Free(void* p) {
+inline void AllocatorWithDefaultOptions::Free(void* p) {
   ORT_THROW_ON_ERROR(OrtAllocatorFree(p_, p));
 }
 
-inline const OrtAllocatorInfo* Allocator::GetInfo() const {
+inline const OrtAllocatorInfo* AllocatorWithDefaultOptions::GetInfo() const {
   const OrtAllocatorInfo* out;
   ORT_THROW_ON_ERROR(OrtAllocatorGetInfo(p_, &out));
   return out;
@@ -93,6 +91,11 @@ inline RunOptions::RunOptions() {
 
 inline RunOptions& RunOptions::SetRunLogVerbosityLevel(int level) {
   ORT_THROW_ON_ERROR(OrtRunOptionsSetRunLogVerbosityLevel(p_, level));
+  return *this;
+}
+
+inline RunOptions& RunOptions::SetRunLogSeverityLevel(int level) {
+  ORT_THROW_ON_ERROR(OrtRunOptionsSetRunLogSeverityLevel(p_, level));
   return *this;
 }
 
@@ -138,8 +141,13 @@ inline SessionOptions& SessionOptions::SetThreadPoolSize(int session_thread_pool
   return *this;
 }
 
-inline SessionOptions& SessionOptions::SetGraphOptimizationLevel(int graph_optimization_level) {
+inline SessionOptions& SessionOptions::SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level) {
   ORT_THROW_ON_ERROR(OrtSetSessionGraphOptimizationLevel(p_, graph_optimization_level));
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::SetOptimizedModelFilePath(const ORTCHAR_T* optimized_model_filepath) {
+  ORT_THROW_ON_ERROR(OrtSetOptimizedModelFilePath(p_, optimized_model_filepath));
   return *this;
 }
 

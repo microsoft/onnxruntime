@@ -74,10 +74,10 @@ class IExecutionFrame {
 
   void Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
             const std::unordered_map<int, OrtValue>& initializers,
-            const std::vector<OrtValue>& fetches, const OrtValueNameIdxMap& ort_value_idx_map);
+            const std::vector<OrtValue>& fetches);
 
   const OrtValue& GetMLValue(int ort_value_index) const {
-    ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_.size());
+    ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_size_);
     return all_values_[ort_value_index];
   }
 
@@ -90,6 +90,9 @@ class IExecutionFrame {
   // All the intermediate values for the entire graph.
   // Input and Output values are passed in by executors
   std::vector<OrtValue> all_values_;
+
+  // perf optimization to avoid calling all_values_.size() repeatedly as the size is fixed once constructed
+  const size_t all_values_size_;
 
   const std::vector<int> fetch_mlvalue_idxs_;
 };
