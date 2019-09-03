@@ -21,6 +21,11 @@ namespace training {
 static SessionOptions SESSION_OPTION = {
     true,                              //enable_sequential_execution
     false,                             //enable_profiling
+#ifdef _WIN32
+    L"",                               //optimized_model_filepath
+#else
+    "",                                //optimized_model_filepath
+#endif
     true,                              //enable_mem_pattern
     true,                              //enable_cpu_mem_arena
     ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix

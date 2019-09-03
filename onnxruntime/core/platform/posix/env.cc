@@ -41,7 +41,7 @@ namespace onnxruntime {
 namespace {
 constexpr int OneMillion = 1000000;
 
-static void ORT_API_CALL DeleteBuffer(void* param) noexcept { ::free(param); }
+static void DeleteBuffer(void* param) noexcept { ::free(param); }
 
 class UnmapFileParam {
  public:
@@ -50,7 +50,7 @@ class UnmapFileParam {
   int fd;
 };
 
-static void ORT_API_CALL UnmapFile(void* param) noexcept {
+static void UnmapFile(void* param) noexcept {
   UnmapFileParam* p = reinterpret_cast<UnmapFileParam*>(param);
   int ret = munmap(p->addr, p->len);
   if (ret != 0) {
@@ -124,7 +124,7 @@ class PosixEnv : public Env {
   }
 
   common::Status ReadFileAsString(const char* fname, off_t offset, void*& p, size_t& len,
-      OrtCallback& deleter) const override {
+                                  OrtCallback& deleter) const override {
     if (!fname) {
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "ReadFileAsString: 'fname' cannot be NULL");
     }
@@ -180,7 +180,7 @@ class PosixEnv : public Env {
     char buf[1024];
     const char* msg = "";
     if (e > 0) {
-#if defined(__GLIBC__) && defined(_GNU_SOURCE) && !defined (__ANDROID__)
+#if defined(__GLIBC__) && defined(_GNU_SOURCE) && !defined(__ANDROID__)
       msg = strerror_r(e, buf, sizeof(buf));
 #else
       // for Mac OS X and Android lower than API 23

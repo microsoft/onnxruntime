@@ -87,7 +87,7 @@ std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th) const
       shape.emplace_back(batch_size);
     }
 
-    size_t memory_size_per_sample = first_tensor.Size();
+    size_t memory_size_per_sample = first_tensor.SizeInBytes();
     size_t buffer_size = memory_size_per_sample * batch_size;
     void* buffer = alloc->Alloc(buffer_size);
     void* origin_buffer = buffer;

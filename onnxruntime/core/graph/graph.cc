@@ -51,13 +51,33 @@ static bool GraphLoadedFromModelFile(const GraphProto* graph_proto) {
                          graph_proto->value_info_size() != 0);
 }
 
-NodeArg::NodeArg(const std::string& name,
-                 const TypeProto* p_node_arg_type) {
+// there are some known invalid usages of dim_param and dim_value. remove them from the TypeProto so that
+// they don't affect shape inferencing or the allocation planner
+static void RemoveInvalidValues(ONNX_NAMESPACE::TypeProto& type) {
+  if (type.has_tensor_type() && type.tensor_type().has_shape()) {
+    auto* shape = type.mutable_tensor_type()->mutable_shape();
+    for (int i = 0, end = shape->dim_size(); i < end; ++i) {
+      auto& dim = *shape->mutable_dim(i);
+      if (dim.has_dim_param()) {
+        if (dim.dim_param().empty()) {
+          dim.clear_dim_param();
+        }
+      } else if (dim.has_dim_value()) {
+        if (dim.dim_value() < 0) {
+          dim.clear_dim_value();
+        }
+      }
+    }
+  }
+}
+
+NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
   node_arg_info_.set_name(name);
   // If the name is empty, it means the arg does not exist.
   exists_ = !(name.empty());
   if (nullptr != p_node_arg_type) {
     (*node_arg_info_.mutable_type()) = *p_node_arg_type;
+    RemoveInvalidValues(*node_arg_info_.mutable_type());
     type_ = DataTypeUtils::ToType(node_arg_info_.type());
   } else {
     type_ = nullptr;
@@ -878,7 +898,7 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
 }
 
 GSL_SUPPRESS(es .84)  // ignoring return value from unordered_map::insert causes noisy complaint
-Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_consumed) {
+Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed) {
   const std::unordered_set<std::string>& outer_scope_node_args = resolve_context_.outer_scope_node_args;
   std::unordered_set<Node*> inner_nodes;
 
@@ -888,7 +908,7 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
 
     for (auto* node : resolve_context_.nodes_with_subgraphs) {
       for (auto& subgraph : node->MutableSubgraphs()) {
-        std::vector<std::string> node_args_consumed;
+        std::unordered_set<std::string> node_args_consumed;
         ORT_RETURN_IF_ERROR(subgraph->BuildConnections(node_args_consumed));
 
         for (auto& node_arg_name : node_args_consumed) {
@@ -898,7 +918,7 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
             // it's a node arg from outside this graph's scope, so add that to the list we return
             // so that we can add the dependency at the next level up. this happens if you have multiple
             // levels of subgraphs between the graph with the original NodeArg and the subgraph with implicit usage.
-            outer_scope_node_args_consumed.push_back(node_arg_name);
+            ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(node_arg_name));
 
             if (!parent_graph_) {
               return ORT_MAKE_STATUS(
@@ -979,26 +999,31 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
         }
 
         node_arg_to_consumer_nodes_[input_arg->Name()].insert(node.Index());
+        const auto& input_arg_name = input_arg->Name();
+        auto output_arg_iter = resolve_context_.output_args.find(input_arg_name);
+        if (resolve_context_.output_args.end() != output_arg_iter) {
+          // The input to this node is an output from a previous node in this graph.
+          // Create relationship between this node (node), and the node providing the output (output_node).
+          Node& output_node = *output_arg_iter->second.first;
+          AddEdge(output_node.Index(), node.Index(), output_arg_iter->second.second, input_slot_index);
 
-        auto output_arg_iter = resolve_context_.output_args.find(input_arg->Name());
-        if (resolve_context_.output_args.end() == output_arg_iter) {
-          // No such output_arg matching this input_arg.
-          // This input arg should be fed when running evaluation.
-          // See if it's present in the outer scope. If so it will be 'fed' by the execution frame
-          // providing access to the OrtValue from the outer scope. Pass the name back up so nodes can
-          // be linked correctly at that level.
-          if (outer_scope_node_args.find(input_arg->Name()) != outer_scope_node_args.cend()) {
-            outer_scope_node_args_consumed.push_back(input_arg->Name());
+          inner_nodes.insert(&output_node);
+        } else {
+          // the value is either an input, an initializer, or coming from outer scope. we only need to take action
+          // if coming from outer scope, so first check if this is a subgraph (otherwise there is no outer scope).
+          if (parent_graph_ != nullptr) {
+            // make sure it's not an input or initializer first as those override any outer scope values
+            if (resolve_context_.inputs_and_initializers.find(input_arg_name) ==
+                resolve_context_.inputs_and_initializers.cend()) {
+              // If it is present in the outer scope it will be 'fed' by the execution frame
+              // providing access to the OrtValue from the outer scope. Pass the name back up so nodes can
+              // be linked correctly at that level.
+              if (outer_scope_node_args.find(input_arg_name) != outer_scope_node_args.cend()) {
+                ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(input_arg_name));
+              }
+            }
           }
-
-          continue;
         }
-
-        // Create relationship between this node (node), and the node providing the output (output_node).
-        Node& output_node = *output_arg_iter->second.first;
-        AddEdge(output_node.Index(), node.Index(), output_arg_iter->second.second, input_slot_index);
-
-        inner_nodes.insert(&output_node);
       }
     } else if (node.OutputDefs().empty()) {
       // This is a useless node.
@@ -1008,7 +1033,7 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
   }
 
   return Status::OK();
-}
+}  // namespace onnxruntime
 
 void Graph::ReverseDFSFrom(const std::vector<NodeIndex>& from,
                            const std::function<void(const Node*)>& enter,
@@ -1547,7 +1572,16 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
       // For mixed precision training, the type mismatch is expected since the model is loaded with float32 first
       // and then transformed to float16.
       // TODO verify that a warning (and not a failure) is ok for cases other than mixed precision
-      output_def->SetType(inferred_type);
+      
+      // The "SetType" call will override the shape information to empty.
+      // If the original tensor has shape information, need to set it back. 
+      if (output_def->Shape()){
+        auto old_shape = *output_def->Shape();
+        output_def->SetType(inferred_type);
+        output_def->SetShape(old_shape);
+      } else {
+        output_def->SetType(inferred_type);
+      }
       LOGS_DEFAULT(WARNING) << "Type Mismatch: Type (" + *existing_type + ") of output arg (" +
                                 output_def->Name() + ") of node (" + node_name +
                                ") does not match expected type (" + *inferred_type + ").";
@@ -1865,7 +1899,7 @@ Status Graph::Resolve(bool no_proto_sync_required) {
   // recursively set the outer scope node args.
   ORT_RETURN_IF_ERROR(SetOuterScopeNodeArgs(resolve_context_.outer_scope_node_args));
 
-  std::vector<std::string> outer_scope_node_args_consumed;
+  std::unordered_set<std::string> outer_scope_node_args_consumed;
 
   // recursively build connections between nodes in this graph and all subgraphs
   ORT_RETURN_IF_ERROR(BuildConnections(outer_scope_node_args_consumed));
@@ -2457,7 +2491,7 @@ Status Graph::SetGraphInputsOutputs() {
 // calling private ctor
 GSL_SUPPRESS(r .11)
 gsl::not_null<Node*> Graph::AllocateNode() {
-  ORT_ENFORCE(nodes_.size() < std::numeric_limits<int>::max());
+  ORT_ENFORCE(nodes_.size() < static_cast<unsigned int>(std::numeric_limits<int>::max()));
   std::unique_ptr<Node> new_node(new Node(nodes_.size(), *this));
   Node* node{new_node.get()};
 

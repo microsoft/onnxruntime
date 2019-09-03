@@ -66,6 +66,9 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   // Execution_plan: represents the nodes in the sequential order to be executed
   std::vector<NodeExecutionPlan> execution_plan;
 
+  // Records whether a given node has fence on its input or output, key is node index.
+  std::vector<bool> node_has_fence;
+
   // to_be_freed: vector elements represent indices of ml-values to be freed (as described above)
   std::vector<OrtValueIndex> to_be_freed;
 
@@ -84,6 +87,12 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
     }
     return locations;
   }
+
+  // Whether a given node needs fence check or not.
+  bool NodeHasFence(onnxruntime::NodeIndex node_index) const {
+    return node_has_fence[node_index];
+  }
+
 };
 
 // Output details of an execution plan:

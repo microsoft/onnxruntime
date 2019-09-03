@@ -179,7 +179,7 @@ static Status UpdateWeightsBeforeSaving(Graph& graph, const NameMLValMap& weight
     }
 
     // Copy from src_data to dst_data.
-    auto data_size = src_tensor.Size();
+    auto data_size = src_tensor.SizeInBytes();
     if (strcmp(src_tensor.Location().name, CPU) == 0) {
       memcpy(dst_data, src_data, data_size);
     }

@@ -11,6 +11,7 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "gsl/gsl_algorithm"
 #include "gsl/gsl_util"
+#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -152,9 +153,11 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
                                   scaledata + i, nullptr);
   }
 
-  math::Gemm<float, CPUMathUtil>(CblasNoTrans, CblasNoTrans, n, d, 1, -1,
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
+  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
+  math::Gemm<float>(CblasNoTrans, CblasNoTrans, n, d, 1, -1,
                                  scaledata, sum_multiplier_.data(), 1,
-                                 dXdata, nullptr);
+                                 dXdata, tp);
 
   math::Mul<float, CPUMathUtil>(gsl::narrow_cast<int>(Y.Shape().Size()), dXdata, Ydata, dXdata, nullptr);
 

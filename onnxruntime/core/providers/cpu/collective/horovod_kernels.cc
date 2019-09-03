@@ -81,7 +81,7 @@ Status HorovodBarrier::Compute(OpKernelContext* context) const {
   void* output_data = output_tensor.MutableDataRaw();
 
   if (output_data != input_data) {
-    memcpy(output_data, input_data, input_tensor.Size());
+    memcpy(output_data, input_data, input_tensor.SizeInBytes());
   }
 
   Tensor& ready_tensor = *context->Output(1, {});

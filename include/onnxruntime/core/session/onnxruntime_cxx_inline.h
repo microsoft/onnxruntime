@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// Don't include this file directly. Please include "onnxruntime_cxx_api.h" instead.
 // These are the inline implementations of the C++ header APIs. They're in this separate file as to not clutter
 // the main C++ file with implementation details.
 
@@ -38,23 +39,21 @@ struct TypeToTensorType<uint32_t> { static constexpr ONNXTensorElementDataType t
 template <>
 struct TypeToTensorType<uint64_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64; };
 
-inline Allocator Allocator::CreateDefault() {
-  OrtAllocator* p;
-  ORT_THROW_ON_ERROR(OrtCreateDefaultAllocator(&p));
-  return Allocator(p);
+inline AllocatorWithDefaultOptions::AllocatorWithDefaultOptions() {
+  ORT_THROW_ON_ERROR(OrtGetAllocatorWithDefaultOptions(&p_));
 }
 
-inline void* Allocator::Alloc(size_t size) {
+inline void* AllocatorWithDefaultOptions::Alloc(size_t size) {
   void* out;
   ORT_THROW_ON_ERROR(OrtAllocatorAlloc(p_, size, &out));
   return out;
 }
 
-inline void Allocator::Free(void* p) {
+inline void AllocatorWithDefaultOptions::Free(void* p) {
   ORT_THROW_ON_ERROR(OrtAllocatorFree(p_, p));
 }
 
-inline const OrtAllocatorInfo* Allocator::GetInfo() const {
+inline const OrtAllocatorInfo* AllocatorWithDefaultOptions::GetInfo() const {
   const OrtAllocatorInfo* out;
   ORT_THROW_ON_ERROR(OrtAllocatorGetInfo(p_, &out));
   return out;
@@ -90,13 +89,18 @@ inline RunOptions::RunOptions() {
   ORT_THROW_ON_ERROR(OrtCreateRunOptions(&p_));
 }
 
-inline RunOptions& RunOptions::SetRunLogVerbosityLevel(unsigned int level) {
+inline RunOptions& RunOptions::SetRunLogVerbosityLevel(int level) {
   ORT_THROW_ON_ERROR(OrtRunOptionsSetRunLogVerbosityLevel(p_, level));
   return *this;
 }
 
-inline unsigned int RunOptions::GetRunLogVerbosityLevel() const {
-  unsigned int out;
+inline RunOptions& RunOptions::SetRunLogSeverityLevel(int level) {
+  ORT_THROW_ON_ERROR(OrtRunOptionsSetRunLogSeverityLevel(p_, level));
+  return *this;
+}
+
+inline int RunOptions::GetRunLogVerbosityLevel() const {
+  int out;
   ORT_THROW_ON_ERROR(OrtRunOptionsGetRunLogVerbosityLevel(p_, &out));
   return out;
 }
@@ -112,8 +116,13 @@ inline const char* RunOptions::GetRunTag() const {
   return out;
 }
 
-inline RunOptions& RunOptions::SetTerminate(bool flag) {
-  ORT_THROW_ON_ERROR(OrtRunOptionsSetTerminate(p_, flag ? 1 : 0));
+inline RunOptions& RunOptions::EnableTerminate() {
+  ORT_THROW_ON_ERROR(OrtRunOptionsEnableTerminate(p_));
+  return *this;
+}
+
+inline RunOptions& RunOptions::DisableTerminate() {
+  ORT_THROW_ON_ERROR(OrtRunOptionsDisableTerminate(p_));
   return *this;
 }
 
@@ -132,8 +141,13 @@ inline SessionOptions& SessionOptions::SetThreadPoolSize(int session_thread_pool
   return *this;
 }
 
-inline SessionOptions& SessionOptions::SetGraphOptimizationLevel(uint32_t graph_optimization_level) {
+inline SessionOptions& SessionOptions::SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level) {
   ORT_THROW_ON_ERROR(OrtSetSessionGraphOptimizationLevel(p_, graph_optimization_level));
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::SetOptimizedModelFilePath(const ORTCHAR_T* optimized_model_filepath) {
+  ORT_THROW_ON_ERROR(OrtSetOptimizedModelFilePath(p_, optimized_model_filepath));
   return *this;
 }
 
@@ -283,7 +297,7 @@ inline Unowned<TensorTypeAndShapeInfo> TypeInfo::GetTensorTypeAndShapeInfo() con
 
 inline ONNXType TypeInfo::GetONNXType() const {
   ONNXType out;
-  ORT_THROW_ON_ERROR(OrtOnnxTypeFromTypeInfo(p_, &out));
+  ORT_THROW_ON_ERROR(OrtGetOnnxTypeFromTypeInfo(p_, &out));
   return out;
 }
 
@@ -390,6 +404,24 @@ template <>
 inline int64_t CustomOpApi::KernelInfoGetAttribute<int64_t>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
   int64_t out;
   ORT_THROW_ON_ERROR(api_.KernelInfoGetAttribute_int64(info, name, &out));
+  return out;
+}
+
+template <>
+inline std::string CustomOpApi::KernelInfoGetAttribute<std::string>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
+  size_t size = 0;
+  std::string out;
+  OrtStatus* status = api_.KernelInfoGetAttribute_string(info, name, nullptr, &size);
+
+  // The status should be ORT_INVALID_ARGUMENT because the size is insufficient to hold the string
+  if (OrtGetErrorCode(status) == ORT_INVALID_ARGUMENT) {
+    OrtReleaseStatus(status);
+    out.resize(size);
+    ORT_THROW_ON_ERROR(api_.KernelInfoGetAttribute_string(info, name, &out[0], &size));
+    out.resize(size - 1);  // remove the terminating character '\0'
+  } else {
+    ORT_THROW_ON_ERROR(status);
+  }
   return out;
 }
 

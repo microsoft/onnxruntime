@@ -9,13 +9,6 @@ steps:
       displayName: Use Nuget 4.9
       inputs:
         versionSpec: 4.9.4
-    - task: NuGetCommand@2
-      displayName: 'NuGet restore'
-      inputs:
-        restoreSolution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        feedsToUse: config
-        nugetConfigPath: '$(Build.SourcesDirectory)\csharp\Nuget.CSharp.config'
-        restoreDirectory: '$(Build.SourcesDirectory)\csharp'
     # - task: UniversalPackages@0
     #   displayName: 'Download python'
     #   inputs:
@@ -27,18 +20,33 @@ steps:
 
     # Temporary bypass of artifacts permission issue
     - task: PowerShell@2
-      displayName: 'Download python'
+      displayName: 'Download AzCopy (used for download test data script)'
       inputs:
         targetType: 'inline'
-        script: 'Invoke-WebRequest -OutFile installer.exe  https://onnxruntimeinstaller.blob.core.windows.net/conda-installer/installer.exe'
-        workingDirectory: '$(Build.BinariesDirectory)'
+        script: |
+          Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\azcopy.exe https://onnxruntimetestdata.blob.core.windows.net/models/azcopy.exe
+
+    # - task: PowerShell@2
+    #   displayName: 'Download Python'
+    #   inputs:
+    #     targetType: 'inline'
+    #     script: |
+    #       Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\Miniconda3-4.7.10-Windows-x86_64.exe https://onnxruntimetestdata.blob.core.windows.net/models/Miniconda3-4.7.10-Windows-x86_64.exe
+
+    - task: CmdLine@1
+      displayName: 'Download Python'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\azcopy.exe'
+        arguments: 'copy https://onnxruntimetestdata.blob.core.windows.net/models/Miniconda3-4.7.10-Windows-x86_64.exe $(Build.BinariesDirectory)\Miniconda3-4.7.10-Windows-x86_64.exe'
+      timeoutInMinutes: 10
 
     - task: CmdLine@1
       displayName: 'Run python installer'
       inputs:
-        filename: '$(Build.BinariesDirectory)\installer.exe'
+        filename: '$(Build.BinariesDirectory)\Miniconda3-4.7.10-Windows-x86_64.exe'
         arguments: '/S /NoRegistry=1 /AddToPath=0 /RegisterPython=0 /D=$(Build.BinariesDirectory)\packages\python'
       timeoutInMinutes: 10
+
     - task: BatchScript@1
       displayName: 'setup env'
       inputs:
@@ -52,24 +60,13 @@ steps:
         arguments: 'install -q --insecure -y pyopenssl setuptools wheel numpy'
       timeoutInMinutes: 10
 
-    - task: CmdLine@1
-      displayName: 'Download cmake'
+    - task: PythonScript@0
+      displayName: 'Download test data'
       inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\download_cmake.py --build_dir $(Build.BinariesDirectory)'
-    
-    - task: PowerShell@2
-      displayName: 'Download OpenCppCoverage installer'
-      continueOnError: true
-      inputs:
-        targetType: 'inline'
-        script: '
-          New-Item -Path "$(Build.BinariesDirectory)\installer" -ItemType "directory"
-
-          New-Item -Path "$(Build.BinariesDirectory)\installer\opencppcoverage" -ItemType "directory"
-
-          Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\installer\opencppcoverage\installer.exe https://onnxruntimeinstaller.blob.core.windows.net/opencppcovergae-installer/OpenCppCoverageSetup-x64-0.9.7.0.exe
-          '
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
+        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
+        pythonInterpreter: '$(Build.BinariesDirectory)\packages\python\python.exe'
+        workingDirectory: $(Build.BinariesDirectory)
 
     - task: CmdLine@1
       continueOnError: true

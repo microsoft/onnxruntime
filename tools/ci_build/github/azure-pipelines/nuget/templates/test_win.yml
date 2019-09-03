@@ -25,7 +25,7 @@ jobs:
 
   - script: |
      @echo "Running build.py --update"
-     $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --config Debug --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe  --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --update --download_test_data  --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)
+     $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --config Debug --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe  --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --update --download_test_data --test_data_url=$(TestDataUrl) --test_data_checksum=$(TestDataChecksum)
 
     displayName: 'Download Test Data'
 

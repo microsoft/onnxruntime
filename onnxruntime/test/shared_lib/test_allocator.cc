@@ -20,7 +20,7 @@ TEST_F(CApiTest, allocation_info) {
 }
 
 TEST_F(CApiTest, DefaultAllocator) {
-  Ort::Allocator default_allocator = Ort::Allocator::CreateDefault();
+  Ort::AllocatorWithDefaultOptions default_allocator;
   char* p = (char*)default_allocator.Alloc(100);
   ASSERT_NE(p, nullptr);
   memset(p, 0, 100);

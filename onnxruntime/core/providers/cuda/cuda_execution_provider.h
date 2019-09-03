@@ -52,11 +52,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return GetPerThreadContext().CurandGenerator();
   }
 
-  cudaStream_t GetStream(int queue_id) const {
-    ORT_ENFORCE(queue_id >= 0 && queue_id < kTotalCudaStreams);
-    return streams_[queue_id];
-  }
-
   template <typename T>
   const T* GetConstOnes(size_t count) {
     return GetPerThreadContext().template GetConstOnes<T>(count);
@@ -84,7 +79,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
  private:
-  cudaStream_t streams_[kTotalCudaStreams];
   int device_id_;
 
   struct DeferredReleaseCPUPtrs {

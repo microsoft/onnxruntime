@@ -125,7 +125,6 @@ Status CreateFeedsFetchesManager(const GraphViewer& subgraph, int num_variadic_i
     feed_names.push_back(entry.first);
   }
 
-  FeedsFetchesInfo ffi(feed_names, subgraph_output_names);
   auto status = FeedsFetchesManager::Create(feed_names, subgraph_output_names, ort_value_name_idx_map, ffm);
 
   return status;

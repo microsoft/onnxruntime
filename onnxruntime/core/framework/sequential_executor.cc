@@ -96,32 +96,34 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
     // sync before compute
     int queue_id = p_op_kernel->KernelDef().ExecQueueId();
-    for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
-      Fence_t fence = op_kernel_context.InputFence(input_index);
-      if (fence) {
-        auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
-        if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
-          execution_provider_type = kCpuExecutionProvider;
+    if (seq_exec_plan.NodeHasFence(node_index)) {
+      for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
+        Fence_t fence = op_kernel_context.InputFence(input_index);
+        if (fence) {
+          auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+          if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+            execution_provider_type = kCpuExecutionProvider;
+          }
+          fence->BeforeUsingAsInput(execution_provider_type, queue_id);
         }
-        fence->BeforeUsingAsInput(execution_provider_type, queue_id);
       }
-    }
 
-    for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
-      Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
-      if (fence) {
-        auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
-        if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
-          execution_provider_type = kCpuExecutionProvider;
+      for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
+        Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
+        if (fence) {
+          auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+          if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+            execution_provider_type = kCpuExecutionProvider;
+          }
+          fence->BeforeUsingAsInput(execution_provider_type, queue_id);
         }
-        fence->BeforeUsingAsInput(execution_provider_type, queue_id);
       }
-    }
 
-    for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
-      Fence_t fence = op_kernel_context.OutputFence(output_index);
-      if (fence) {
-        fence->BeforeUsingAsOutput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
+      for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
+        Fence_t fence = op_kernel_context.OutputFence(output_index);
+        if (fence) {
+          fence->BeforeUsingAsOutput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
+        }
       }
     }
 
@@ -154,7 +156,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
           if (!is_param) {
             p_tensor = &(p_input->Get<Tensor>());
           }
-          size_t tensor_size = p_tensor->Size();
+          size_t tensor_size = p_tensor->SizeInBytes();
 #if defined(TRACE_EXECUTION)
           TensorShape tensor_shape = p_tensor->Shape();
           size_t element_size = p_tensor->DataType()->Size();
@@ -191,7 +193,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
         const OrtValue* p_output = op_kernel_context.GetOutputMLValue(i);
         if (p_output->IsTensor()) {
           const auto& tensor = p_output->Get<Tensor>();
-          size_t tensor_size = tensor.Size();
+          size_t tensor_size = tensor.SizeInBytes();
 #if defined(TRACE_EXECUTION)
           const TensorShape& tensor_shape = tensor.Shape();
           std::cout << node_name << " output[" << i << "]"
@@ -235,24 +237,26 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
     // sync after compute for outputs
-    for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
-      Fence_t fence = op_kernel_context.InputFence(input_index);
-      if (fence) {
-        fence->AfterUsedAsInput(queue_id);
+    if (seq_exec_plan.NodeHasFence(node_index)) {
+      for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
+        Fence_t fence = op_kernel_context.InputFence(input_index);
+        if (fence) {
+          fence->AfterUsedAsInput(queue_id);
+        }
       }
-    }
 
-    for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
-      Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
-      if (fence) {
-        fence->AfterUsedAsInput(queue_id);
+      for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
+        Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
+        if (fence) {
+          fence->AfterUsedAsInput(queue_id);
+        }
       }
-    }
 
-    for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
-      Fence_t fence = op_kernel_context.OutputFence(output_index);
-      if (fence) {
-        fence->AfterUsedAsOutput(queue_id);
+      for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
+        Fence_t fence = op_kernel_context.OutputFence(output_index);
+        if (fence) {
+          fence->AfterUsedAsOutput(queue_id);
+        }
       }
     }
 

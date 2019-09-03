@@ -60,7 +60,7 @@ Status HorovodBarrier::ComputeInternal(OpKernelContext* context) const {
   void* output_data = output_tensor.MutableDataRaw();
 
   if (output_data != input_data) {
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, input_tensor.Size(), cudaMemcpyDeviceToDevice));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, input_tensor.SizeInBytes(), cudaMemcpyDeviceToDevice));
   }
 
   Tensor& ready_tensor = *context->Output(1, {});
