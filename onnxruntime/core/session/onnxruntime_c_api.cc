@@ -98,7 +98,7 @@ ORT_API_STATUS_IMPL(OrtCreateEnvWithCustomLogger, OrtLoggingFunction logging_fun
   std::unique_ptr<ISink> logger = std::make_unique<LoggingWrapper>(logging_function, logger_param);
   auto default_logging_manager = std::make_unique<LoggingManager>(std::move(logger),
                                                                   static_cast<Severity>(default_warning_level), false,
-                                                                  LoggingManager::InstanceType::Default,
+                                                                  LoggingManager::InstanceType::Temporal,
                                                                   &name);
   std::unique_ptr<Environment> env;
   Status status = Environment::Create(env);

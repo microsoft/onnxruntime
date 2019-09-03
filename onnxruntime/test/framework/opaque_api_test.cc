@@ -7,7 +7,6 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
-// #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -19,8 +18,6 @@
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
-
-// #define SAVE_MODEL 1
 
 // Data container used to ferry data through C API
 extern "C" struct ExperimentalDataContainer {
@@ -109,7 +106,7 @@ class OpaqueCApiTestKernel final : public OpKernel {
 
 ONNX_OPERATOR_KERNEL_EX(
     OpaqueCApiTestKernel,
-    kMLDomain,
+    kMSAutoMLDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder()
@@ -133,6 +130,8 @@ static void RegisterCustomKernel() {
   // Registry the schema
   ONNX_TEST_OPERATOR_SCHEMA(OpaqueCApiTestKernel)
       .SetDoc("Replace all of h chars to _ in the original string contained within experimental type")
+      .SetDomain(onnxruntime::kMSAutoMLDomain)
+      .SinceVersion(1)
       .Input(
           0,
           "custom_type_with_string",
@@ -153,10 +152,9 @@ static void RegisterCustomKernel() {
   // Register kernel directly to KernelRegistry
   // because we can not create custom ops with Opaque types
   // as input
-  BuildKernelCreateInfoFn fn = BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMLDomain, 1, OpaqueCApiTestKernel)>;
-  CustomRegistry cust_reg;
-  cust_reg.GetKernelRegistry()->Register(
-      fn());
+  BuildKernelCreateInfoFn fn = BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSAutoMLDomain, 1, OpaqueCApiTestKernel)>;
+  auto kernel_registry = CPUExecutionProvider(CPUExecutionProviderInfo()).GetKernelRegistry();
+  kernel_registry->Register(fn());
 }
 
 namespace test {
@@ -181,7 +179,7 @@ std::string CreateModel() {
     outputs.push_back(&output_arg);
 
     auto& node = graph.AddNode("OpaqueCApiTestKernel", "OpaqueCApiTestKernel", "Replace all h to underscore",
-                               inputs, outputs, nullptr, onnxruntime::kMLDomain);
+                               inputs, outputs, nullptr, onnxruntime::kMSAutoMLDomain);
     node.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
   }
   EXPECT_TRUE(graph.Resolve().IsOK());
@@ -190,51 +188,25 @@ std::string CreateModel() {
   auto model_proto = model.ToProto();
   EXPECT_TRUE(model_proto.SerializeToString(&serialized_model));
   return serialized_model;
+}
 
-#ifdef SAVE_MODEL
-  {
-    std::ofstream os("d:\\Dev\\capi_opaque_test.onnx",
-                     std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
-    os.write(serialized_model.data(), serialized_model.size());
-    os.flush();
-    EXPECT_FALSE(os.fail());
-  }
-#endif
-
-  //std::stringstream sstr(serialized_model);
-  //EXPECT_TRUE(session_object.Load(sstr).IsOK());
-  //EXPECT_TRUE(session_object.Initialize().IsOK());
-
-  //RunOptions run_options;
-
-  //// Prepare inputs
-  //// Create an input value
-  //const time_t date = 217081625;  // 1976_Nov_17__12_27_05
-  //std::vector<int64_t> val_dims = {1};
-  //std::vector<int64_t> values = {date};
-  //// prepare input
-  //// We use a utility function that would create a Tensor
-  //OrtValue ml_value;
-  //CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), val_dims, values, &ml_value);
-  //NameMLValMap feeds;
-  //feeds.insert(std::make_pair("From_TimeT", ml_value));
-
-  //// Prepare outputs
-  //// Output is a custom object
-  //std::vector<std::string> output_names;
-  //output_names.push_back("dtf_TimePoint");
-  //std::vector<OrtValue> fetches;
-
-  //EXPECT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
-  //ASSERT_EQ(1U, fetches.size());
+static void TestLoggingFunction (void* /*param*/, OrtLoggingLevel severity, const char* /*category*/, const char* /*logid*/,
+  const char*code_location, const char* message) {
+  std::cout << "(Severity: " << severity << ") " << code_location << ':' << message << std::endl;
 }
 
 TEST(OpaqueAPITest, TestOrtValues) {
   std::string model_str = CreateModel();
   //*************************************************************************
   // initialize  enviroment...one environment per process
-  // enviroment maintains thread pools and other state info
-  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+  // environment maintains thread pools and other state info
+  // Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+  // This is a google unit test so instead of above we create a custom environment
+  // so the above does not clash with the test environment that already created default logger
+  OrtEnv* v_env = nullptr;
+  ORT_THROW_ON_ERROR(OrtCreateEnvWithCustomLogger(TestLoggingFunction, nullptr, ORT_LOGGING_LEVEL_INFO, "Opaque types C API test", &v_env));
+  // Wrap it
+  Ort::Env env(v_env);
 
   try {
     // initialize session options if needed
@@ -263,28 +235,47 @@ TEST(OpaqueAPITest, TestOrtValues) {
     // Input
     const std::string input_string{"hi, hello, high, highest"};
     // Expected output
-    const std::string expected_output{"_i, _ello, _igh, _ighest"};
+    const std::string expected_output{"_i, _ello, _ig_, _ig_est"};
 
     // Place a string into Tensor OrtValue and assign to the container
     std::vector<int64_t> input_dims{1};
     Ort::Value container_str = Ort::Value::CreateTensor(allocator, input_dims.data(), input_dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+
     // No C++ Api to either create a string Tensor or to fill one with string, so we use C
     const char* const input_char_string[] = {input_string.c_str()};
     ORT_THROW_ON_ERROR(OrtFillStringTensor(static_cast<OrtValue*>(container_str), input_char_string, 1U));
+
     // We put this into our container now
     // This container life-span is supposed to eclipse the model running time
     ExperimentalDataContainer container{static_cast<OrtValue*>(container_str)};
 
     // Now we put our container into OrtValue
-    Ort::Value container_val = Ort::Value::CreateOpaque("com.microsoft.test", "ComplexOpaqueType", container);
+    Ort::Value container_val = Ort::Value::CreateOpaque(kMsTestDomain, kTestOpaqueType, container);
     Ort::Value output_val(nullptr); // empty
 
     Ort::RunOptions run_options;
     session.Run(run_options, input_names, &container_val, num_input_nodes,
                 output_names, &output_val, num_output_nodes);
 
+    ExperimentalDataContainer result;
     // Need to verify that the output match the expected one
+    output_val.GetOpaqueData(kMsTestDomain, kTestOpaqueType, result);
+    // Wrap the resulting OrtValue into Ort::Value for C++ access and automatic cleanup
+    Ort::Value str_tensor_value(result.str_);
+    // Run some checks here
+    ASSERT_TRUE(str_tensor_value.IsTensor());
+    Ort::TypeInfo result_type_info = str_tensor_value.GetTypeInfo();
+    auto tensor_info = result_type_info.GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(tensor_info.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+    ASSERT_EQ(tensor_info.GetDimensionsCount(), 1U);
 
+    // Get the actual value and compare
+    auto str_len = str_tensor_value.GetStringTensorDataLength();
+    ASSERT_EQ(str_len, expected_output.length());
+    std::unique_ptr<char[]> actual_result_string(new char[str_len + 1]);
+    size_t offset = 0;
+    str_tensor_value.GetStringTensorContent(actual_result_string.get(), str_len, &offset, 1);
+    ASSERT_EQ(expected_output.compare(actual_result_string.get()), 0);
   } catch (const std::exception& ex) {
     std::cerr << "Exception: " << ex.what() << std::endl;
   }
