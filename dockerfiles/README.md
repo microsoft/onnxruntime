@@ -8,7 +8,7 @@
 - [OpenVINO](Dockerfile.openvino)
 - [ONNX Runtime Server](Dockerfile.server)
 
-**Preparation step:** download `scripts` to your the local folder before running the `docker build` command for any of the options below. 
+**Preparation step:** download `scripts` to your local folder before running the `docker build` command for any of the options below. 
 
 ## Build from Source
 #### Linux 16.04, CPU, Python Bindings
