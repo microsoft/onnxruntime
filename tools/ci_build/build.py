@@ -981,8 +981,8 @@ def main():
                 mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
 
         # run nuphar python tests last, as it installs ONNX 1.5.0
-        if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
-            nuphar_run_python_tests(build_dir, configs, args.azure_sas_key)
+        #if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
+        #    nuphar_run_python_tests(build_dir, configs, args.azure_sas_key)
 
     if args.build_server:
         split_server_binary_and_symbol(build_dir, configs)

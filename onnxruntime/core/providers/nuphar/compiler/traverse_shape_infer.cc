@@ -82,7 +82,9 @@ Status ShapeInference(
 
   // perform shape inference using the topological order from ORT
   for (const NodeIndex& node_index : graph.GetNodesInTopologicalOrder()) {
-    const Node& node = *graph.GetNode(node_index);
+    const Node* p_node = graph.GetNode(node_index);
+    if(p_node == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "invalid node index");
+    const Node& node = *p_node;
     // initializers
     node.ForEachWithIndex(
         node.InputDefs(),
