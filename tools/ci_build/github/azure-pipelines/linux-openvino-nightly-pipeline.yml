@@ -13,7 +13,15 @@ jobs:
       continueOnError: true
       condition: always()
 
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d openvino-edge -r $(Build.BinariesDirectory) -x "--use_openvino CPU_FP32 --build_wheel"'
+    - task: PythonScript@0
+      displayName: 'Unzip test data'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
+        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory) --edge_device
+        pythonInterpreter: '/usr/bin/python3'
+        workingDirectory: $(Build.BinariesDirectory)
+        
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d openvino -r $(Build.BinariesDirectory) -x "--use_openvino CPU_FP32 --build_wheel"'
       displayName: 'Command Line Script'
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
