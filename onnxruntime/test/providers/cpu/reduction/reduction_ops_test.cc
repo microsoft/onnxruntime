@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <type_traits>
 #include "core/providers/cpu/reduction/reduction_ops.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
@@ -1257,6 +1258,77 @@ TEST(ReductionOpTest, ArgMin_int32) {
                            0, 0});
   test.Run();
 }
+
+#ifdef USE_CUDA
+void test_all_1d_true(size_t size) {
+  std::unique_ptr<bool[]> p_data(new bool[size]);
+  for (size_t i = 0; i < size; ++i) {
+      p_data[i] = true;
+  }
+
+  OpTester test("All", 9);
+  test.AddInput<bool>("data", {static_cast<int64_t>(size)}, p_data.get(), size);
+  test.AddOutput<bool>("result", {}, {true});
+  test.Run();
+}
+
+void test_all_1d_false(size_t size) {
+  std::unique_ptr<bool[]> p_data(new bool[size]);
+  for (size_t i = 0; i < size; ++i) {
+      p_data[i] = false;
+  }
+
+  OpTester test("All", 9);
+  test.AddInput<bool>("data", {static_cast<int64_t>(size)}, p_data.get(), size);
+  test.AddOutput<bool>("result", {}, {false});
+  test.Run();
+}
+
+void test_all_1d_first_false(size_t size) {
+  std::unique_ptr<bool[]> p_data(new bool[size]);
+  for (size_t i = 0; i < size; ++i) {
+      p_data[i] = true;
+  }
+  p_data[0] = false;
+
+  OpTester test("All", 9);
+  test.AddInput<bool>("data", {static_cast<int64_t>(size)}, p_data.get(), size);
+  test.AddOutput<bool>("result", {}, {false});
+  test.Run();
+}
+
+void test_all_1d_last_false(size_t size) {
+  std::unique_ptr<bool[]> p_data(new bool[size]);
+  for (size_t i = 0; i < size; ++i) {
+      p_data[i] = true;
+  }
+  p_data[size - 1] = false;
+
+  OpTester test("All", 9);
+  test.AddInput<bool>("data", {static_cast<int64_t>(size)}, p_data.get(), size);
+  test.AddOutput<bool>("result", {}, {false});
+  test.Run();
+}
+
+TEST(AllOpTest, All_1d_small) {
+  for (size_t i = 1; i < 256; ++i) {
+    test_all_1d_false(i);
+    test_all_1d_first_false(i);
+    test_all_1d_last_false(i);
+    test_all_1d_true(i);
+  }
+}
+
+TEST(AllOpTest, All_1d_large) {
+  std::vector<int> centers = {1228, 8877};
+  for (auto it = centers.begin(); it != centers.end(); ++it) {
+    for (int j = -32; j <= 32; ++j) {
+      test_all_1d_first_false(*it + j);
+      test_all_1d_last_false(*it + j);
+    }
+  }
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

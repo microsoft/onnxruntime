@@ -176,29 +176,10 @@ class OpTester {
     AddData(input_data_, name, dims, values.data(), values.size(), is_initializer);
   }
 
-  // Add other registered types, possibly experimental
   template <typename T>
-  void AddInput(const char* name, const T& val) {
-    auto mltype = DataTypeImpl::GetType<T>();
-    ORT_ENFORCE(mltype != nullptr, "T must be a registered cpp type");
-    auto ptr = std::make_unique<T>(val);
-    OrtValue value;
-    value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
-    ptr.release();
-    input_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>()});
+  void AddInput(const char* name, const std::vector<int64_t>& dims, const T* p_values, const size_t size, bool is_initializer = false) {
+    AddData(input_data_, name, dims, p_values, size, is_initializer);
   }
-
-  template <typename T>
-  void AddInput(const char* name, T&& val) {
-    auto mltype = DataTypeImpl::GetType<T>();
-    ORT_ENFORCE(mltype != nullptr, "T must be a registered cpp type");
-    auto ptr = std::make_unique<T>(std::move(val));
-    OrtValue value;
-    value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
-    ptr.release();
-    input_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>()});
-  }
-
 
   template <typename TKey, typename TVal>
   void AddInput(const char* name, const std::map<TKey, TVal>& val) {

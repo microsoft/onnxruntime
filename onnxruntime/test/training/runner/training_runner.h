@@ -95,19 +95,9 @@ class TrainingRunner {
     bool use_mixed_precision = false;
   };
 
-  TrainingRunner(std::shared_ptr<DataSet> training_data,
-                 std::shared_ptr<DataSet> test_data,
+  TrainingRunner(std::shared_ptr<IDataLoader> training_data_loader,
+                 std::shared_ptr<IDataLoader> test_data_loader,
                  const Parameters& params);
-
-  TrainingRunner(std::shared_ptr<DataLoader> training_data_loader,
-                 std::shared_ptr<DataLoader> test_data_loader,
-                 const Parameters& params)
-      : TrainingRunner(training_data_loader->MutableDataSet(),
-                       test_data_loader->MutableDataSet(),
-                       params) {
-    training_data_loader_ = training_data_loader;
-    test_data_loader_ = test_data_loader;
-  }
 
   common::Status Initialize();
 
@@ -121,10 +111,9 @@ class TrainingRunner {
   Status SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
                               std::unordered_map<std::string, OptimizerInfo>& infos);
 
-  std::shared_ptr<DataLoader> training_data_loader_ = nullptr;
-  std::shared_ptr<DataLoader> test_data_loader_ = nullptr;
-  std::shared_ptr<DataSet> training_data_;
-  std::shared_ptr<DataSet> test_data_;
+  std::shared_ptr<IDataLoader> training_data_loader_ = nullptr;
+  std::shared_ptr<IDataLoader> test_data_loader_ = nullptr;
+
   size_t step_;
 
   Parameters params_;

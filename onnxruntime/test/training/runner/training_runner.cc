@@ -37,11 +37,11 @@ static SessionOptions SESSION_OPTION = {
     0,                                 //session_thread_pool_size
 };
 
-TrainingRunner::TrainingRunner(std::shared_ptr<DataSet> training_data,
-                               std::shared_ptr<DataSet> test_data,
+TrainingRunner::TrainingRunner(std::shared_ptr<IDataLoader> training_data_loader,
+                               std::shared_ptr<IDataLoader> test_data_loader,
                                const Parameters& params)
-    : training_data_(training_data),
-      test_data_(test_data),
+    : training_data_loader_(training_data_loader),
+      test_data_loader_(test_data_loader),
       step_(0),
       params_(params),
       session_(SESSION_OPTION) {
@@ -135,8 +135,8 @@ Status TrainingRunner::Run() {
 
 Status TrainingRunner::TrainingLoop() {
   // Prepare fetches
-  const vector<string>& fetch_names = params_.fetch_names;
-  const vector<string> feed_names = training_data_->TensorNames();
+  const VectorString& fetch_names = params_.fetch_names;
+  const VectorString& feed_names = training_data_loader_->DataSetTensorNames();
 
   double total_time{0};
   //Set the first N batchs as warm-up iterations
@@ -147,16 +147,21 @@ Status TrainingRunner::TrainingLoop() {
     num_shards_to_visit *= training_data_loader_->NumShards();
   }
 
+  size_t total_batch_num = 0;
   for (size_t shard_it = 0; shard_it < num_shards_to_visit; ++shard_it) {
+    auto training_data = training_data_loader_->CurrentDataSet();
+
     // Shuffle the data for each epoch
     if (params_.shuffle_data) {
       printf("Randomly shuffle training data.\n");
-      training_data_->RandomShuffle();
+      training_data->RandomShuffle();
     }
 
     // loop through the data
-    for (size_t batch = 0; batch < training_data_->TotalBatch(params_.batch_size); ++batch) {
-      std::vector<MLValue> feeds = training_data_->GetKthBatch(params_.batch_size, batch);
+    size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
+    total_batch_num += batch_num_cur_shard;
+    for (size_t batch = 0; batch < batch_num_cur_shard; ++batch) {
+      std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch);
       vector<MLValue> fetches;
 
       std::chrono::duration<double> duration_seconds;
@@ -179,7 +184,7 @@ Status TrainingRunner::TrainingLoop() {
       // Print some info when reaching the end of the batch.
       printf("batch: %d/%d, shard_iteration: %d/%d \n",
              static_cast<int>(batch),
-             static_cast<int>(training_data_->TotalBatch(params_.batch_size)),
+             static_cast<int>(batch_num_cur_shard),
              static_cast<int>(shard_it + 1),
              static_cast<int>(num_shards_to_visit));
       printf("Training data range: [%d - %d)\n",
@@ -191,15 +196,15 @@ Status TrainingRunner::TrainingLoop() {
       }
     }
 
-    // Move to next shard of data
-    if (training_data_loader_ != nullptr) {
-      training_data_ = training_data_loader_->NextShard();
+    // Move to next shard of data, except for the last iteration.
+    if (training_data_loader_ != nullptr && shard_it != num_shards_to_visit - 1) {
+      training_data_loader_->MoveToNextDataSet();
     }
   }
 
-  auto total_batchs = num_shards_to_visit * training_data_->TotalBatch(params_.batch_size) - warm_up_iters;
-  std::cout << "Total running time:" << total_time << " seconds" << std::endl
-            << "Average running time per batch:" << total_time / total_batchs * 1000 << " ms" << std::endl
+  auto total_batchs = total_batch_num - warm_up_iters;
+  std::cout << "Total running time:" << total_time << " seconds" << "\n"
+            << "Average running time per batch:" << total_time / total_batchs * 1000 << " ms" << "\n"
             << "Throughput: " << params_.batch_size * total_batchs / total_time << " Examples / second" << std::endl;
 
   return Status::OK();
@@ -210,11 +215,11 @@ Status TrainingRunner::EndTraining() {
     // Write profiler data to disk.
     // We do this first in case there are any problems saving the trained model.
     std::string profile_file = session_.EndProfiling();
-    std::cout << "Profiler data written to file " << profile_file;
+    std::cout << "Profiler data written to file " << profile_file << "\n";
   }
 
   if (params_.mpi_context.world_rank != 0) {
-    printf("Skipping end-training on Device #%d, as it's not the root.", params_.mpi_context.world_rank);
+    printf("Skipping end-training on Device #%d, as it's not the root.\n", params_.mpi_context.world_rank);
     return Status::OK();
   }
 
@@ -249,25 +254,24 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
 
   // A static batch index representing current test batch
   static size_t current_batch = 0;
-
+  const vector<string> feed_names = test_data_loader_->DataSetTensorNames();
+  auto test_data = test_data_loader_->CurrentDataSet();
   if (params_.shuffle_data && current_batch == 0) {
     printf("Randomly shuffle test data.\n");
-    test_data_->RandomShuffle();
+    test_data->RandomShuffle();
   }
 
-  size_t evaluation_batch_size = params_.eval_batch_size;
+  const size_t evaluation_batch_size = params_.eval_batch_size;
 
   printf("Test data range: [%d - %d)\n",
          static_cast<int>(current_batch * evaluation_batch_size),
          static_cast<int>((current_batch + 1) * evaluation_batch_size - 1));
 
-  vector<string> feed_names = test_data_->TensorNames();
-
-  size_t num_batches = size_t(ceil((float)evaluation_batch_size / (float)params_.batch_size));
+  const size_t num_batches = size_t(ceil((float)evaluation_batch_size / (float)params_.batch_size));
   if (evaluation_batch_size % params_.batch_size != 0) {
     printf(
-        "evaluation_batch_size %zu is not an integer multiple of batch_size %zu. "
-        "Using evaluation_batch_size %zu",
+        "WARNING: evaluation_batch_size %zu is not an integer multiple of batch_size %zu. "
+        "Using evaluation_batch_size %zu\n",
         evaluation_batch_size,
         params_.batch_size,
         num_batches * params_.batch_size);
@@ -276,7 +280,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
   RunOptions run_options;
   run_options.only_execute_path_to_fetches = true;
   for (size_t batch_idx = 0; batch_idx < num_batches; ++batch_idx) {
-    std::vector<MLValue> feeds = test_data_->GetKthBatch(params_.batch_size, current_batch);
+    std::vector<MLValue> feeds = test_data->GetKthBatch(params_.batch_size, current_batch);
     vector<MLValue> fetches;
     ORT_RETURN_IF_ERROR(session.Run(run_options,
                                     feed_names,
@@ -290,10 +294,10 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
     }
 
     // Set to next batch
-    if (++current_batch >= test_data_->TotalBatch(params_.batch_size)) {
+    if (++current_batch >= test_data->TotalBatch(params_.batch_size)) {
       if (test_data_loader_ != nullptr) {
         // Move to next shard
-        test_data_ = test_data_loader_->NextShard();
+        test_data = test_data_loader_->MoveToNextDataSet();
       }
       current_batch = 0;
     }

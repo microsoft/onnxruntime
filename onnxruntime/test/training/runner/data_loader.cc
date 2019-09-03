@@ -36,7 +36,6 @@ DataLoader::DataLoader(const MapStringToString& input_name_map,
                        size_t shard_index,
                        size_t total_shard)
     : input_name_map_(input_name_map),
-      active_data_set_index_(0),
       max_num_files_preload_(max_num_files_preload) {
   input_tensor_names_.reserve(input_name_map.size());
 
@@ -62,30 +61,41 @@ DataLoader::DataLoader(const MapStringToString& input_name_map,
     }
     data_files_ = partial_training_files;
   }
-  data_sets_.resize(data_files_.size());
+
+  data_loader_thread_pool_ = std::make_unique<onnxruntime::concurrency::ThreadPool>(
+      "DataLoaderPool", thread_pool_size_);
 }
 
-Status DataLoader::Load() {
+Status DataLoader::InitialPreLoadAsync() {
   for (size_t i = 0; i < max_num_files_preload_; ++i) {
-    ORT_RETURN_IF_ERROR(LoadFile(data_files_[i], data_sets_[i]));
+    PreloadAsync(i);
   }
   return Status::OK();
 }
 
-std::shared_ptr<DataSet> DataLoader::NextShard() {
-  size_t last_active_index = active_data_set_index_;
-  active_data_set_index_ = (active_data_set_index_ + 1) % NumShards();
+std::shared_ptr<DataSet> DataLoader::MoveToNextDataSet() {
+  size_t last_active_index = active_file_index_;
+  active_file_index_ = (active_file_index_ + 1) % NumShards();
 
-  //TODO: Release and Load Next File in another thread
-  data_sets_[last_active_index].reset();
+  buffer_.Remove(last_active_index);
+  size_t index_to_load = (active_file_index_ + max_num_files_preload_ - 1) % NumShards();
+  PreloadAsync(index_to_load);
 
-  size_t index_to_load = (active_data_set_index_ + max_num_files_preload_ - 1) % NumShards();
-  Status s = LoadFile(data_files_[index_to_load], data_sets_[index_to_load]);
-  if (!s.IsOK()) {
-    ORT_THROW("Error Loading file ", data_files_[index_to_load].c_str());
-  }
+  return CurrentDataSet();
+}
 
-  return MutableDataSet();
+common::Status DataLoader::PreloadAsync(size_t index_to_load) {
+  data_loader_thread_pool_->Schedule([this, index_to_load]() {
+    std::shared_ptr<DataSet> data_set = std::make_shared<DataSet>(input_tensor_names_);
+    Status s = LoadFile(data_files_[index_to_load], data_set);
+    if (!s.IsOK()) {
+      ORT_THROW("Error Loading file ", data_files_[index_to_load].c_str());
+    } else {
+      buffer_.Set(index_to_load, data_set);
+    }
+  });
+
+  return Status::OK();
 }
 
 Status DataLoader::LoadFile(const PATH_STRING_TYPE& file_path, std::shared_ptr<DataSet>& data_set) {
@@ -94,10 +104,6 @@ Status DataLoader::LoadFile(const PATH_STRING_TYPE& file_path, std::shared_ptr<D
   FileInputStream f(tensor_fd);
   CodedInputStream coded_in(&f);
   f.SetCloseOnDelete(true);
-
-  if (data_set == nullptr) {
-    data_set = std::make_shared<DataSet>(input_tensor_names_);
-  }
 
   uint32_t sample_size;
   while (coded_in.ReadRaw(&sample_size, SIZEOF_UINT32)) {

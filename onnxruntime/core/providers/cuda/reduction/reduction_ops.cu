@@ -200,8 +200,8 @@ reduce_sum_kernel(
 
   // release x_mean / m_2_n
   auto mean_th = x_mean[0];
-
   // block-wise reduction with shared memory (since reduction cannot be done within a warp)
+
   static __shared__ accscalar_t shmem_mean[MAX_BLOCK_SIZE];
 
   merge_block_vertical(mean_th, shmem_mean);
