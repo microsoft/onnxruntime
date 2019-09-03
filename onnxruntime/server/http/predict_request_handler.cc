@@ -59,8 +59,8 @@ void Predict(const std::string& name,
   // Deserialize the payload
   auto body = context.request.body();
   PredictRequest predict_request{};
-  http::status error_code;
-  std::string error_message;
+  http::status error_code = http::status::unknown;
+  std::string error_message = "";
   bool parse_succeeded = ParseRequestPayload(context, request_type, predict_request, error_code, error_message);
   if (!parse_succeeded) {
     GenerateErrorResponse(logger, error_code, error_message, context);
