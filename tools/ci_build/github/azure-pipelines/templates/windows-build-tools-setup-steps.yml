@@ -9,13 +9,13 @@ steps:
       displayName: Use Nuget 4.3
       inputs:
         versionSpec: 4.3.0
-    - task: NuGetCommand@2
-      displayName: 'NuGet restore'
-      inputs:
-        restoreSolution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        feedsToUse: config
-        nugetConfigPath: '$(Build.SourcesDirectory)\csharp\Nuget.CSharp.config'
-        restoreDirectory: '$(Build.SourcesDirectory)\csharp'
+    # - task: NuGetCommand@2
+    #   displayName: 'NuGet restore'
+    #   inputs:
+    #     restoreSolution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+    #     feedsToUse: config
+    #     nugetConfigPath: '$(Build.SourcesDirectory)\csharp\Nuget.CSharp.config'
+    #     restoreDirectory: '$(Build.SourcesDirectory)\csharp'
     #- task: UniversalPackages@0
     #  displayName: 'Download python'
     #  inputs:
