@@ -48,6 +48,10 @@ if(onnxruntime_USE_NGRAPH)
   set(PROVIDERS_NGRAPH onnxruntime_providers_ngraph)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES ngraph)
 endif()
+if(onnxruntime_USE_NUPHAR)
+  set(PROVIDERS_NUPHAR onnxruntime_providers_nuphar)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES nuphar)
+endif()
 if(onnxruntime_USE_CUDA)
   set(PROVIDERS_CUDA onnxruntime_providers_cuda)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES cuda)
@@ -318,6 +322,43 @@ endif()
   file(COPY ${onnxruntime_providers_openvino_py_srcs} DESTINATION ${onnxruntime_BINARY_DIR})
 endif()
 
+if (onnxruntime_USE_NUPHAR)
+  add_definitions(-DUSE_NUPHAR=1)
+
+  if (NOT onnxruntime_USE_TVM)
+    message(FATAL_ERROR "onnxruntime_USE_TVM required for onnxruntime_USE_NUPHAR")
+  endif()
+
+  if (NOT onnxruntime_USE_LLVM)
+    message(FATAL_ERROR "onnxruntime_USE_LLVM required for onnxruntime_USE_NUPHAR")
+  endif()
+
+  include(onnxruntime_nuphar_extern.cmake)
+
+  file(GLOB_RECURSE onnxruntime_providers_nuphar_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/*.cc"
+  )
+
+  # following files required different build flag for AVX2 in separate onnxruntime_nuphar_extern.cmake file
+  list (REMOVE_ITEM onnxruntime_providers_nuphar_cc_srcs "${ONNXRUNTIME_ROOT}/core/providers/nuphar/extern/igemv_avx2.cc")
+  list (REMOVE_ITEM onnxruntime_providers_nuphar_cc_srcs "${ONNXRUNTIME_ROOT}/core/providers/nuphar/extern/igemv_avx2.h")
+
+  if (onnxruntime_USE_MKLML)
+    add_definitions(-DNUPHAR_USE_MKL)
+  endif()
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nuphar_cc_srcs})
+  add_library(onnxruntime_providers_nuphar ${onnxruntime_providers_nuphar_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_nuphar onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+  set_target_properties(onnxruntime_providers_nuphar PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_nuphar PRIVATE ${ONNXRUNTIME_ROOT} ${TVM_INCLUDES} ${eigen_INCLUDE_DIRS})
+  set_target_properties(onnxruntime_providers_nuphar PROPERTIES LINKER_LANGUAGE CXX)
+  target_compile_options(onnxruntime_providers_nuphar PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
+  add_dependencies(onnxruntime_providers_nuphar ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/nuphar  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+endif()
+ 
 if (onnxruntime_USE_NNAPI)
   add_definitions(-DUSE_NNAPI=1)
   option(DNN_READ_ONNX "" ON)
