@@ -20,9 +20,9 @@ ONNX_CPU_OPERATOR_KERNEL(
 // and the axis that 'GatherElements' is processing for as that requires the corresponding
 // 'indices' value
 // This prevents the need to compute this offset for every element within the same 'inner_dimension' chunk
-// as this value is constant for the entire chunk and we can have this cached and re-use as needed
+// as this value just differs by 1 for the chunk elements and we can have this cached and re-use as needed
 int64_t compute_base_offset(const std::vector<int64_t>& shape, const TensorPitches& pitches, int64_t skip_axis) {
-  // in this context rank can never be < 1, so saving checking overhead
+  // in this context, rank can never be < 1, so saving checking overhead
   auto loop_size = static_cast<int64_t>(shape.size()) - 1;
 
   int64_t base_offset = 0;
@@ -40,10 +40,7 @@ int64_t compute_base_offset(const std::vector<int64_t>& shape, const TensorPitch
 //          input = [3, 2, 4]  output = 3 * 2 = 6
 //          input  = [2]       output = 1
 int64_t calculate_num_inner_dim(const std::vector<int64_t>& dims) {
-  // in this context rank can never be < 1, so saving checking overhead
-  if (dims.size() == 1)
-    return 1;
-
+  // in this context, rank can never be < 1, so saving checking overhead
   int64_t num_inner_dims = 1;
 
   for (int64_t i = 0; i < static_cast<int64_t>(dims.size()) - 1; ++i) {
@@ -61,7 +58,7 @@ int64_t calculate_num_inner_dim(const std::vector<int64_t>& dims) {
 // Example 2: current_dims = [0, 0, 0] tensor_dims = [1, 2, 2], then current_dims = [0, 1, 0]
 //          current_dims = [0, 1, 0] tensor_dims = [1, 2, 2], then current_dims = [0, 0, 0]
 void increment_over_inner_dim(std::vector<int64_t>& current_dims, const std::vector<int64_t>& tensor_dims) {
-  // in this context rank can never be < 1, so saving checking overhead
+  // in this context, rank can never be < 1, so saving checking overhead
   int64_t rank = static_cast<int64_t>(current_dims.size());
 
   // 'reset' innermost dimension value
@@ -84,7 +81,7 @@ void increment_over_inner_dim(std::vector<int64_t>& current_dims, const std::vec
 }
 
 // parse indices_tensor and along the way validate its shape and contents
-const std::vector<int64_t> parse_and_validate_indices_tensor(const Tensor* indices_tensor,
+std::vector<int64_t> parse_and_validate_indices_tensor(const Tensor* indices_tensor,
                                                              int64_t axis, const std::vector<int64_t>& input_shape) {
   const auto& indices_shape = indices_tensor->Shape().GetDims();
   int64_t indices_rank = static_cast<int64_t>(indices_shape.size());

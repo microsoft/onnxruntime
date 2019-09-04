@@ -3,6 +3,7 @@ jinja2
 numpy
 onnx
 onnxmltools
+packaging
 pandas
 protobuf
 pytest
@@ -10,4 +11,5 @@ pytest-cov
 scikit-learn
 scipy
 six
+sympy
 wheel

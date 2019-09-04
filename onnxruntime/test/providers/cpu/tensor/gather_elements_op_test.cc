@@ -7,85 +7,96 @@
 namespace onnxruntime {
 namespace test {
 
-// Some of the tests can't run on TensorrtExecutionProvider because of unsupported data types.
-// Those tests will fallback to other EPs
+template <typename T>
+void RunTypedTest()
+{
+  // int32_t indices - axis 0
+  OpTester test1("GatherElements", 11);
 
-TEST(GatherElementsOpTest, Gather_float_axis0_int32_indices) {
-  OpTester test("GatherElements", 11);
-  test.AddAttribute<int64_t>("axis", 0LL);
-  test.AddInput<float>("data", {2, 3},
-                       {0.0f, 0.1f, 0.2f, 1.0f, 1.1f, 1.2f});
-  test.AddInput<int32_t>("indices", {1, 2}, {0, 1});
-  test.AddOutput<float>("output", {1, 2},
-                        {0.0f, 1.1f});
-  test.Run();
-}
+  test1.AddAttribute<int64_t>("axis", 0LL);
+  test1.AddInput<T>("data", {2, 3},
+                       {0, 1, 2, 3, 4, 5});
+  test1.AddInput<int32_t>("indices", {1, 2}, {0, 1});
+  test1.AddOutput<T>("output", {1, 2},
+                        {0, 4});
+  test1.Run();
 
-TEST(GatherElementsOpTest, Gather_float_axis1_int32_indices) {
-  OpTester test("GatherElements", 11);
-  test.AddAttribute<int64_t>("axis", 1LL);
-  test.AddInput<float>("data", {2, 2},
-                       {1.0f, 2.0f,
-                        3.0f, 4.0f});
-  test.AddInput<int32_t>("indices", {2, 2},
+  // int32_t indices - axis 1
+  OpTester test2("GatherElements", 11);
+  test2.AddAttribute<int64_t>("axis", 1LL);
+  test2.AddInput<T>("data", {2, 2},
+                       {1, 2,
+                        3, 4});
+  test2.AddInput<int32_t>("indices", {2, 2},
                          {0, 0,
                           1, 0});
-  test.AddOutput<float>("output", {2, 2},
-                        {1.0f, 1.0f,
-                         4.0f, 3.0f});
-  test.Run();
+  test2.AddOutput<T>("output", {2, 2},
+                        {1, 1,
+                         4, 3});
+  test2.Run();
+
+  
+  // int64_t indices - axis 1
+  OpTester test3("GatherElements", 11);
+  test3.AddAttribute<int64_t>("axis", 1LL);
+  test3.AddInput<T>("data", {2, 2},
+                       {1, 2,
+                        3, 4});
+  test3.AddInput<int64_t>("indices", {2, 2},
+                         {0, 0,
+                          1, 0});
+  test3.AddOutput<T>("output", {2, 2},
+                        {1, 1,
+                         4, 3});
+  test3.Run();
 }
 
-TEST(GatherElementsOpTest, Gather_string_axis0_int32_indices) {
-  OpTester test("GatherElements", 11);
-  test.AddAttribute<int64_t>("axis", 0LL);
-  test.AddInput<std::string>("data", {2, 3},
+template <>
+void RunTypedTest<std::string>() {
+
+  // non-inner dimension 
+  OpTester test1("GatherElements", 11);
+  test1.AddAttribute<int64_t>("axis", 0LL);
+  test1.AddInput<std::string>("data", {2, 3},
                              {"a", "b", "c", "d", "e", "f"});
-  test.AddInput<int32_t>("indices", {1, 2}, {0, 1});
-  test.AddOutput<std::string>("output", {1, 2},
+  test1.AddInput<int32_t>("indices", {1, 2}, {0, 1});
+  test1.AddOutput<std::string>("output", {1, 2},
                               {"a", "e"});
-  test.Run();
-}
+  test1.Run();
 
-TEST(GatherElementsOpTest, Gather_string_axis1_int32_indices) {
-  OpTester test("GatherElements", 11);
-  test.AddAttribute<int64_t>("axis", 1LL);
-  test.AddInput<std::string>("data", {2, 2},
+  // inner-dimension
+  OpTester test2("GatherElements", 11);
+  test2.AddAttribute<int64_t>("axis", 1LL);
+  test2.AddInput<std::string>("data", {2, 2},
                              {"a", "b",
                               "c", "d"});
-  test.AddInput<int32_t>("indices", {2, 2},
+  test2.AddInput<int32_t>("indices", {2, 2},
                          {0, 0,
                           1, 0});
-  test.AddOutput<std::string>("output", {2, 2},
+  test2.AddOutput<std::string>("output", {2, 2},
                               {"a", "a",
                                "d", "c"});
-  test.Run();
+  test2.Run();
 }
 
-TEST(GatherElementsOpTest, Gather_float_axis0_int64_indices) {
-  OpTester test("GatherElements", 11);
-  test.AddAttribute<int64_t>("axis", 0LL);
-  test.AddInput<float>("data", {2, 3},
-                       {0.0f, 0.1f, 0.2f, 1.0f, 1.1f, 1.2f});
-  test.AddInput<int64_t>("indices", {1, 2}, {0, 1});
-  test.AddOutput<float>("output", {1, 2},
-                        {0.0f, 1.1f});
-  test.Run();
+TEST(GatherElementsOpTest, int8_t) {
+  RunTypedTest<int8_t>();
 }
 
-TEST(GatherElementsOpTest, Gather_float_axis1_int64_indices) {
-  OpTester test("GatherElements", 11);
-  test.AddAttribute<int64_t>("axis", 1LL);
-  test.AddInput<float>("data", {2, 2},
-                       {1.0f, 2.0f,
-                        3.0f, 4.0f});
-  test.AddInput<int64_t>("indices", {2, 2},
-                         {0, 0,
-                          1, 0});
-  test.AddOutput<float>("output", {2, 2},
-                        {1.0f, 1.0f,
-                         4.0f, 3.0f});
-  test.Run();
+TEST(GatherElementsOpTest, int16_t) {
+  RunTypedTest<int16_t>();
+}
+
+TEST(GatherElementsOpTest, int32_t) {
+  RunTypedTest<int32_t>();
+}
+
+TEST(GatherElementsOpTest, int64_t) {
+  RunTypedTest<int64_t>();
+}
+
+TEST(GatherElementsOpTest, string) {
+  RunTypedTest<std::string>();
 }
 
 }  // namespace test

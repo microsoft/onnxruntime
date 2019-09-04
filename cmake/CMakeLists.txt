@@ -81,6 +81,11 @@ option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir"
 option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in language other than cpp" OFF)
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output data to standard output when executing the model." OFF)
 
+if(UNIX AND onnxruntime_USE_LLVM)
+  #prebuilt llmv biniaries use the old GNU C++ ABI
+  add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
+endif()
+
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
@@ -350,8 +355,13 @@ if (onnxruntime_USE_TVM)
   add_definitions(-DUSE_TVM)
 
   set(onnxruntime_tvm_libs onnxruntime_codegen_tvm)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm nnvm_compiler)
-
+  # needs to link with stdc++fs in Linux
+  if(UNIX)
+    if (NOT APPLE)
+      set(FS_STDLIB stdc++fs)
+    endif()
+  endif()
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm nnvm_compiler ${FS_STDLIB})
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm nnvm_compiler)
 endif()
 

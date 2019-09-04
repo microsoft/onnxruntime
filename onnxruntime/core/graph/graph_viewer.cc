@@ -8,6 +8,8 @@
 
 #include "core/graph/graph_viewer.h"
 
+#include "core/graph/graph_utils.h"
+
 namespace onnxruntime {
 
 struct NodeCompare {
@@ -25,12 +27,13 @@ GraphViewer::GraphViewer(const Graph& graph) {
       leaf_nodes.push_back(&node);
     }
   }
-  graph.ReverseDFSFrom(leaf_nodes,
-                       nullptr,
-                       [this](const Node* n) {
-                         nodes_in_topological_order_.push_back(n->Index());
-                       },
-                       NodeCompare());
+  graph.ReverseDFSFrom(
+      leaf_nodes,
+      nullptr,
+      [this](const Node* n) {
+        nodes_in_topological_order_.push_back(n->Index());
+      },
+      NodeCompare());
 
   for (auto& node : graph_->Nodes()) {
     if (node.InputEdgesBegin() == node.InputEdgesEnd()) {
@@ -50,6 +53,10 @@ const std::string& GraphViewer::Description() const noexcept {
 
 bool GraphViewer::GetInitializedTensor(const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) const {
   return graph_->GetInitializedTensor(tensor_name, value);
+}
+
+bool GraphViewer::CanOverrideInitializer() const noexcept {
+  return graph_->CanOverrideInitializer();
 }
 
 // Graph inputs excluding initializers.
@@ -107,6 +114,10 @@ const NodeArg* GraphViewer::GetNodeArg(const std::string& name) const {
 
 bool GraphViewer::IsSubgraph() const {
   return graph_->IsSubgraph();
+}
+
+bool GraphViewer::IsConstantInitializer(const std::string& name, bool check_outer_scope) const {
+  return graph_utils::IsConstantInitializer(*graph_, name, check_outer_scope);
 }
 
 }  // namespace onnxruntime
