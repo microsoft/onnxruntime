@@ -35,7 +35,7 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph' or 'openvino'. "
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph', 'openvino' or 'nuphar'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
@@ -274,7 +274,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_nuphar) {
 #ifdef USE_NUPHAR
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(sf, 0, ""));
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(sf, /*allow_unaligned_buffers*/ 1, ""));
 #else
       fprintf(stderr, "Nuphar is not supported in this build");
       return -1;
@@ -311,7 +311,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     std::unordered_set<std::string> cuda_flaky_tests = {
         "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
-
+    std::unordered_set<std::string> nuphar_flaky_tests = {"logsoftmax_axis_0", "softmax_axis_0"};
 #if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
     //Minimize mem consumption
     LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&stat, &sf, enable_cuda, &cuda_flaky_tests, &env](ITestCase* l) {
@@ -339,7 +339,17 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         }
       }
     }
-
+    if (enable_nuphar) {
+      for (auto it = tests.begin(); it != tests.end();) {
+        auto iter = nuphar_flaky_tests.find((*it)->GetTestCaseName());
+        if (iter != nuphar_flaky_tests.end()) {
+          delete *it;
+          it = tests.erase(it);
+        } else {
+          ++it;
+        }
+      }
+    }
     TestEnv args(tests, stat, env, sf);
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
                          GetDefaultThreadPool(Env::Default()));

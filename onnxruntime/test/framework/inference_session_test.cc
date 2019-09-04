@@ -122,7 +122,7 @@ class FuseExecutionProvider : public IExecutionProvider {
 class InferenceSessionGetGraphWrapper : public InferenceSession {
  public:
   explicit InferenceSessionGetGraphWrapper(const SessionOptions& session_options,
-                                           logging::LoggingManager* logging_manager) : InferenceSession(session_options, logging_manager) {
+                                          logging::LoggingManager* logging_manager) : InferenceSession(session_options, logging_manager) {
   }
 
   const Graph& GetGraph() {
@@ -364,7 +364,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   InferenceSessionGetGraphWrapper session_object{so, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object.Load(test_model).IsOK());
   ASSERT_TRUE(session_object.Initialize().IsOK());
-
+ 
   // Assert that model has been transformed and identity Node is removed.
   const auto& graph = session_object.GetGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -383,7 +383,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   InferenceSession session_object_opt{so_opt, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object_opt.Load(so.optimized_model_filepath).IsOK());
   ASSERT_TRUE(session_object_opt.Initialize().IsOK());
-
+  
   // Assert that re-feed of optimized model with default transform level results
   // in same runtime model as abs-id-max.onnx with TransformLevel-1.
   std::ifstream model_fs_session1(so.optimized_model_filepath, ios::in | ios::binary);
@@ -1480,17 +1480,6 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
 }
 
 #endif
-
-TEST(InferenceSessionTests, ModelWithKOnnxDomainAlias) {
-  SessionOptions so;
-  so.session_logid = "InferenceSessionTests.NoTimeout";
-  InferenceSession session_object{so, &DefaultLoggingManager()};
-  std::string file_name = "testdata/test_model_with_fullonnxdomain.onnx";
-  auto ret_status = session_object.Load(file_name);
-  ASSERT_TRUE(ret_status.IsOK()) << ret_status.ErrorMessage();
-  ret_status = session_object.Initialize();
-  ASSERT_TRUE(ret_status.IsOK()) << ret_status.ErrorMessage();
-}
 
 }  // namespace test
 }  // namespace onnxruntime
