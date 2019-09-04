@@ -80,7 +80,7 @@ Abstract:
 #if defined(_M_AMD64) || defined(__x86_64__)
 #define MLAS_TARGET_AMD64
 #endif
-#if (defined(_M_IX86) && !defined(_M_HYBRID_X86_ARM64)) || defined(__i386__)
+#if defined(_M_IX86) || defined(__i386__)
 #define MLAS_TARGET_IX86
 #endif
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
@@ -560,7 +560,7 @@ MlasGetMaximumThreadCount(
 #if defined(MLAS_TARGET_ARM)
 #define MLAS_NEON_INTRINSICS
 #define MLAS_NEON32_INTRINSICS
-#elif defined(MLAS_TARGET_ARM64) || defined(_M_HYBRID_X86_ARM64)
+#elif defined(MLAS_TARGET_ARM64)
 #define MLAS_NEON_INTRINSICS
 #define MLAS_NEON64_INTRINSICS
 #elif defined(MLAS_TARGET_AMD64_IX86)
