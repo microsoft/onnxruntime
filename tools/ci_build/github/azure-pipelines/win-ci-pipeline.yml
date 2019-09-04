@@ -13,7 +13,7 @@ jobs:
       displayName: 'Download test data and generate cmake config'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --gen_doc --update'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --gen_doc --update'
         workingDirectory: "$(Build.BinariesDirectory)"
 
     - task: VSBuild@1
@@ -32,24 +32,27 @@ jobs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
         arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --gen_doc --test'
         workingFolder: '$(Build.BinariesDirectory)'
-    - task: VSBuild@1
+
+    - task: MSBuild@1
       displayName: 'Build C# Debug'
       inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        platform: 'any cpu'
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        platform: 'Any CPU'
         configuration: 'Debug'
         restoreNugetPackages: false
         msbuildArchitecture: 'x64'
         workingFolder: '$(Build.SourcesDirectory)\csharp'
         msbuildArgs: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
 
-    - task: VSTest@2
-      displayName: 'VsTest - C# Debug'
+    - task: MSBuild@1
+      displayName: 'Test - C# Debug'
       inputs:
-        testAssemblyVer2: '**\bin\Debug\**\*Tests.dll'
-        searchFolder: '$(Build.SourcesDirectory)\csharp\test'
-        runInParallel: true
-        configuration: Debug
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        platform: 'Any CPU'
+        configuration: 'Debug'
+        msbuildArchitecture: 'x64'
+        msbuildArguments: '/t:RunTest'
+        workingFolder: '$(Build.SourcesDirectory)\csharp'
 
     - task: VSBuild@1
       displayName: 'Build Release'
@@ -61,6 +64,7 @@ jobs:
         msbuildArchitecture: 'x64'
         logProjectEvents: true
         workingFolder: '$(Build.BinariesDirectory)\Release'
+
     - task: BatchScript@1
       displayName: 'Test Release'
       inputs:
@@ -68,24 +72,25 @@ jobs:
         arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --test'
         workingFolder: "$(Build.BinariesDirectory)"
 
-    - task: VSBuild@1
-      displayName: 'Build c# Release'
+    - task: MSBuild@1
+      displayName: 'Build C# Release'
       inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        platform: 'any cpu'
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        platform: 'Any CPU'
         configuration: 'Release'
         msbuildArchitecture: 'x64'
-        restoreNugetPackages: false
         workingFolder: '$(Build.SourcesDirectory)\csharp'
         msbuildArgs: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
 
-    - task: VSTest@2
-      displayName: 'VsTest - C# Release'
+    - task: MSBuild@1
+      displayName: 'Test - C# Release'
       inputs:
-        testAssemblyVer2: '**\bin\Release\**\*Tests.dll'
-        searchFolder: '$(Build.SourcesDirectory)\csharp\test'
-        runInParallel: true
-        configuration: Release
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        platform: 'Any CPU'
+        configuration: 'Release'
+        msbuildArchitecture: 'x64'
+        msbuildArguments: '/t:RunTest'
+        workingFolder: '$(Build.SourcesDirectory)\csharp'
 
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'

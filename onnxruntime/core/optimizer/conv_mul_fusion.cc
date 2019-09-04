@@ -16,10 +16,14 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
   const auto& mul_inputs = mul_node.InputDefs();
 
   const ONNX_NAMESPACE::TensorProto* conv_W_tensor_proto = nullptr;
-  graph.GetInitializedTensor(conv_inputs[1]->Name(), conv_W_tensor_proto);
+  if (!graph.GetInitializedTensor(conv_inputs[1]->Name(), conv_W_tensor_proto)) {
+    return Status::OK();
+  }
 
   const ONNX_NAMESPACE::TensorProto* mul_B_tensor_proto = nullptr;
-  graph.GetInitializedTensor(mul_inputs[1]->Name(), mul_B_tensor_proto);
+  if (!graph.GetInitializedTensor(mul_inputs[1]->Name(), mul_B_tensor_proto)) {
+    return Status::OK();
+  }
 
   if (!Initializer::IsSupportedDataType(conv_W_tensor_proto) ||
       !Initializer::IsSupportedDataType(mul_B_tensor_proto) ||
@@ -112,9 +116,21 @@ bool ConvMulFusion::SatisfyCondition(const Graph& graph, const Node& node) {
   }
 
   const auto& next_node = *node.OutputNodesBegin();
-  return !(!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Mul", {7}) ||
-           next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node) ||
-           next_node.GetExecutionProviderType() != node.GetExecutionProviderType());
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Mul", {7}) ||
+      next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node) ||
+      // Make sure the two nodes do not span execution providers.
+      next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
+    return false;
+  }
+
+  // Check that the appropriate inputs to the Conv and Mul nodels are constants.
+  if (!graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[1]) ||
+      (node.InputDefs().size() == 3 && !graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[2])) ||
+      !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[1])) {
+    return false;
+  }
+
+  return true;
 }
 
 }  // namespace onnxruntime
