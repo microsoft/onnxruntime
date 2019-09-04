@@ -311,7 +311,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     std::unordered_set<std::string> cuda_flaky_tests = {
         "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
-
+    std::unordered_set<std::string> nuphar_flaky_tests = {"logsoftmax_axis_0", "softmax_axis_0"};
 #if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
     //Minimize mem consumption
     LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&stat, &sf, enable_cuda, &cuda_flaky_tests, &env](ITestCase* l) {
@@ -339,7 +339,17 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         }
       }
     }
-
+    if (enable_nuphar) {
+      for (auto it = tests.begin(); it != tests.end();) {
+        auto iter = nuphar_flaky_tests.find((*it)->GetTestCaseName());
+        if (iter != nuphar_flaky_tests.end()) {
+          delete *it;
+          it = tests.erase(it);
+        } else {
+          ++it;
+        }
+      }
+    }
     TestEnv args(tests, stat, env, sf);
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
                          GetDefaultThreadPool(Env::Default()));
