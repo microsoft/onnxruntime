@@ -8,7 +8,9 @@
 - [OpenVINO](Dockerfile.openvino)
 - [ONNX Runtime Server](Dockerfile.server)
 
-## Build from Source Version (Preview)
+**Preparation step:** download `scripts` to your local folder before running the `docker build` command for any of the options below. 
+
+## Build from Source
 #### Linux 16.04, CPU, Python Bindings
 
 1. Build the docker image from the Dockerfile in this repository.
@@ -26,7 +28,7 @@
   docker run -it onnxruntime-source
   ```
 
-## CUDA Version (Preview)
+## CUDA
 #### Linux 16.04, CUDA 10.0, CuDNN 7
 
 1. Build the docker image from the Dockerfile in this repository.
@@ -44,7 +46,7 @@
   docker run -it onnxruntime-cuda
   ```
 
-## nGraph Version (Preview)
+## nGraph (Public Preview)
 #### Linux 16.04, Python Bindings
 
 1. Build the docker image from the Dockerfile in this repository.
@@ -62,7 +64,7 @@
   docker run -it onnxruntime-ngraph
   ```
 
-## TensorRT Version (Preview)
+## TensorRT
 #### Linux 16.04, TensorRT 5.0.2
 
 1. Build the docker image from the Dockerfile in this repository.
@@ -80,7 +82,7 @@
   docker run -it onnxruntime-trt
   ```
 
-## OpenVINO Version (Preview)
+## OpenVINO (Public Preview)
 #### Linux 16.04, Python Bindings
 
 1. Build the onnxruntime image for all the accelerators supported as below 
@@ -104,7 +106,7 @@
 	| <code>MYRIAD_FP16</code> | Intel<sup></sup> Movidius<sup>TM</sup> USB sticks |
 	| <code>VAD-M_FP16</code> | Intel<sup></sup> Vision Accelerator Design based on Movidius<sup>TM</sup> MyriadX VPUs |
 
-## CPU Version 
+## CPU 
 
 1. Retrieve your docker image in one of the following ways.
 
@@ -122,7 +124,7 @@
      docker run -it onnxruntime-cpu
     ```
 
-## GPU Version
+## GPU
 
 1. Retrieve your docker image in one of the following ways. 
    - Build the docker image from the DockerFile in this repository.
@@ -138,7 +140,7 @@
     ```
     docker run -it --device /dev/dri:/dev/dri onnxruntime-gpu:latest
     ```
-## Myriad VPU Accelerator Version 
+## Myriad VPU Accelerator 
 
 1. Retrieve your docker image in one of the following ways. 
    - Build the docker image from the DockerFile in this repository.
@@ -155,6 +157,7 @@
     docker run -it --network host --privileged -v /dev:/dev  onnxruntime-myriad:latest
 
     ```
+=======
 ## VAD-M Accelerator Version 
 
 1. Retrieve your docker image in one of the following ways. 
@@ -172,7 +175,7 @@
     docker run -it --device --mount type=bind,source=/var/tmp,destination=/var/tmp --device /dev/ion:/dev/ion  onnxruntime-hddl:latest
 
     ```
-## ONNX Runtime Server (Preview)
+## ONNX Runtime Server (Public Preview)
 #### Linux 16.04
 
 1. Build the docker image from the Dockerfile in this repository
@@ -183,7 +186,7 @@
 2. Run the ONNXRuntime server with the image created in step 1
 
   ```
-  docker run -v {localModelAbsoluteFolder}:{dockerModelAbsoluteFolder} -e MODEL_ABSOLUTE_PATH={dockerModelAbsolutePath} -p {your_local_port}:8001 {imageName}
+  docker run -v {localModelAbsoluteFolder}:{dockerModelAbsoluteFolder} -p {your_local_port}:8001 {imageName} --model_path {dockerModelAbsolutePath}
   ```
 3. Send HTTP requests to the container running ONNX Runtime Server
 

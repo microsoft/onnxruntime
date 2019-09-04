@@ -357,8 +357,8 @@ void MKLDNNExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& grap
                                             std::vector<std::unique_ptr<ComputeCapability>>& result) const {
   std::string graph_fused_nodes;
   std::string node_list;
-  std::string subgraph_id = std::to_string(sub_var.subgraph_index);
-  sub_var.subgraph_index++;
+  std::string subgraph_id = std::to_string(subgraph_index_);
+  subgraph_index_++;
 
   // This is a list of initializers that subgraph considers as constants.
   // Example weights, reshape shape etc.
@@ -378,7 +378,7 @@ void MKLDNNExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& grap
 
   auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
   meta_def->attributes["initializers"] = initializers;
-  meta_def->name = "MkldnnCustomOp" + std::to_string(sub_var.subgraph_index);
+  meta_def->name = "MkldnnCustomOp" + std::to_string(subgraph_index_);
   meta_def->domain = kMSDomain;
   meta_def->since_version = 1;
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;

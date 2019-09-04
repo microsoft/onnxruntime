@@ -21,7 +21,9 @@ tvm::Tensor Abs(const tvm::Tensor& X, const std::string& name) {
 }
 
 tvm::Tensor Affine(const tvm::Tensor& X, float alpha, float beta, const std::string& name) {
-  return Rename(alpha * X + beta, name);
+  tvm::Expr alphaExpr = tvm::make_const(X->dtype, alpha);
+  tvm::Expr betaExpr = tvm::make_const(X->dtype, beta);
+  return Rename(alphaExpr * X + betaExpr, name);
 }
 
 tvm::Tensor Ceil(const tvm::Tensor& X, const std::string& name) {
@@ -39,7 +41,8 @@ tvm::Tensor Clip(const tvm::Tensor& X, float min_value, float max_value, const s
 }
 
 tvm::Tensor Elu(const tvm::Tensor& X, float alpha, const std::string& name) {
-  return Rename(Relu(X) - alpha * Relu(1 - Exp(X)), name);
+  tvm::Expr alphaExpr = tvm::make_const(X->dtype, alpha);
+  return Rename(Relu(X) - alphaExpr * Relu(1 - Exp(X)), name);
 }
 
 tvm::Tensor Exp(const tvm::Tensor& X, const std::string& name) {
@@ -56,11 +59,14 @@ tvm::Tensor Floor(const tvm::Tensor& X, const std::string& name) {
 }
 
 tvm::Tensor HardSigmoid(const tvm::Tensor& X, float alpha, float beta, const std::string& name) {
-  return maximum(0, minimum(1, alpha * X + beta), name);
+  tvm::Expr alphaExpr = tvm::make_const(X->dtype, alpha);
+  tvm::Expr betaExpr = tvm::make_const(X->dtype, beta);
+  return maximum(0, minimum(1, alphaExpr * X + betaExpr), name);
 }
 
 tvm::Tensor LeakyRelu(const tvm::Tensor& X, float alpha, const std::string& name) {
-  return Rename(Relu(X) - alpha * Relu(0 - X), name);
+  tvm::Expr alphaExpr = tvm::make_const(X->dtype, alpha);
+  return Rename(Relu(X) - alphaExpr * Relu(0 - X), name);
 }
 
 tvm::Tensor Log(const tvm::Tensor& X, const std::string& name) {
@@ -77,7 +83,9 @@ tvm::Tensor Neg(const tvm::Tensor& X, const std::string& name) {
 }
 
 tvm::Tensor ParametricSoftplus(const tvm::Tensor& X, float alpha, float beta, const std::string& name) {
-  return Rename(alpha * Softplus(beta * X), name);
+  tvm::Expr alphaExpr = tvm::make_const(X->dtype, alpha);
+  tvm::Expr betaExpr = tvm::make_const(X->dtype, beta);
+  return Rename(alphaExpr * Softplus(betaExpr * X), name);
 }
 
 tvm::Tensor Reciprocal(const tvm::Tensor& X, const std::string& name) {
@@ -89,11 +97,15 @@ tvm::Tensor Relu(const tvm::Tensor& X, const std::string& name) {
 }
 
 tvm::Tensor ScaledTanh(const tvm::Tensor& X, float alpha, float beta, const std::string& name) {
-  return Rename(alpha * Tanh(beta * X), name);
+  tvm::Expr alphaExpr = tvm::make_const(X->dtype, alpha);
+  tvm::Expr betaExpr = tvm::make_const(X->dtype, beta);
+  return Rename(alphaExpr * Tanh(betaExpr * X), name);
 }
 
 tvm::Tensor Selu(const tvm::Tensor& X, float alpha, float gamma, const std::string& name) {
-  return Rename(gamma * (-alpha * Relu(1 - Exp(X)) + Relu(X)), name);
+  tvm::Expr alphaExpr = tvm::make_const(X->dtype, alpha);
+  tvm::Expr gammaExpr = tvm::make_const(X->dtype, gamma);
+  return Rename(gammaExpr * (-alphaExpr * Relu(1 - Exp(X)) + Relu(X)), name);
 }
 
 tvm::Tensor Sigmoid(const tvm::Tensor& X, const std::string& name) {
@@ -135,7 +147,8 @@ tvm::Tensor Tanh(const tvm::Tensor& X, const std::string& name) {
 }
 
 tvm::Tensor ThresholdedRelu(const tvm::Tensor& X, float alpha, const std::string& name) {
-  return topi::where(greater(X, alpha), X, topi::full_like(X, tvm::make_zero(X->dtype)), name);
+  tvm::Expr alphaExpr = tvm::make_const(X->dtype, alpha);
+  return topi::where(greater(X, alphaExpr), X, topi::full_like(X, tvm::make_zero(X->dtype)), name);
 }
 
 }  // namespace tvm_codegen

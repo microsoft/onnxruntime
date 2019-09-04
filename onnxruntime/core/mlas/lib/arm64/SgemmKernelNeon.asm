@@ -6,7 +6,7 @@
 ;
 ; Module Name:
 ;
-;   sgemma.asm
+;   SgemmKernelNeon.asm
 ;
 ; Abstract:
 ;
@@ -18,31 +18,6 @@
 #include "ksarm64.h"
 
         TEXTAREA
-
-;
-; ComputeEffectiveAddress
-;
-; Generates the code to compute the effective address of a matrix element using
-; the instruction template:
-;
-;       add     $DestReg,$BaseReg,$IndexReg lsl #2
-;
-; For native ARM64, the macro generates a 64-bit address calculation. For CHPE
-; targets, the macro generates a 32-bit address calculation to stay within the
-; WOW64 sandbox.
-;
-
-
-        MACRO
-        ComputeEffectiveAddress $DestReg, $BaseReg, $IndexReg
-
-#if defined(_CHPE_X86_ARM64_)
-        DCD     0x0B000800:OR:(:RCONST:$DestReg):OR:((:RCONST:$BaseReg):SHL:5):OR:((:RCONST:$IndexReg):SHL:16)
-#else
-        DCD     0x8B000800:OR:(:RCONST:$DestReg):OR:((:RCONST:$BaseReg):SHL:5):OR:((:RCONST:$IndexReg):SHL:16)
-#endif
-
-        MEND
 
 ;
 ; ClearRowAccumulators
@@ -171,11 +146,11 @@
         ClearBlockAccumulators $Columns, $Rows
 
     IF $Rows >= 2
-        ComputeEffectiveAddress x10,x0,x6   ; compute matrix A plus 1 row
+        add     x10,x0,x6 lsl #2            ; compute matrix A plus 1 row
     ENDIF
     IF $Rows >= 4
-        ComputeEffectiveAddress x11,x10,x6  ; compute matrix A plus 2 rows
-        ComputeEffectiveAddress x12,x11,x6  ; compute matrix A plus 3 rows
+        add     x11,x10,x6 lsl #2           ; compute matrix A plus 2 rows
+        add     x12,x11,x6 lsl #2           ; compute matrix A plus 3 rows
     ENDIF
 
         sub     x9,x3,#4                    ; decrement block count to process
@@ -217,7 +192,7 @@ $Mode.Compute$Columns.x$Rows.BlockBy1Loop
         ldp     v6,v7,[x1,#-8*4]
     ENDIF
         MultiplyAccumulateBlock $Columns,$Rows,0
-        sub     x9,x9,1
+        sub     x9,x9,#1
         cbnz    x9,$Mode.Compute$Columns.x$Rows.BlockBy1Loop
 
 $Mode.Output$Columns.x$Rows.Block
@@ -476,9 +451,9 @@ $Mode.OutputRemaining1x$Rows.Block
         PROLOG_SAVE_REG_PAIR d8,d9,#-32!
         PROLOG_SAVE_REG_PAIR d10,d11,#16
 
-        ComputeEffectiveAddress x13,x2,x7   ; compute matrix C plus 1 row
-        ComputeEffectiveAddress x14,x13,x7  ; compute matrix C plus 2 rows
-        ComputeEffectiveAddress x15,x14,x7  ; compute matrix C plus 3 rows
+        add     x13,x2,x7 lsl #2            ; compute matrix C plus 1 row
+        add     x14,x13,x7 lsl #2           ; compute matrix C plus 2 rows
+        add     x15,x14,x7 lsl #2           ; compute matrix C plus 3 rows
         mov     x8,x0                       ; save matrix A
 
 ;

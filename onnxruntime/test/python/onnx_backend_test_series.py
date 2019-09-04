@@ -86,7 +86,8 @@ def create_backend_test(testname=None):
 
     # Type not supported
     backend_test.exclude(r'(FLOAT16)')
-
+    backend_test.exclude(r'(test_logsoftmax_axis_0)')
+    backend_test.exclude(r'(test_softmax_axis_0)')
     if testname:
         backend_test.include(testname + '.*')
     else:
@@ -110,17 +111,15 @@ def create_backend_test(testname=None):
                                  '^test_cumsum_1d_reverse_exclusive_cpu.*',
                                  '^test_cumsum_2d_axis_0_cpu.*',
                                  '^test_cumsum_2d_axis_1_cpu.*',
-                                 '^test_dynamicquantizelinear*',
                                  '^test_dynamicquantizelinear_expanded*',
-                                 '^test_dynamicquantizelinear_max_adjusted*',
                                  '^test_dynamicquantizelinear_max_adjusted_expanded*',
-                                 '^test_dynamicquantizelinear_min_adjusted*',
                                  '^test_dynamicquantizelinear_min_adjusted_expanded*',
                                  '^test_depthtospace*',
                                  '^test_gather_elements*',
                                  '^test_scatter_elements*',
                                  '^test_top_k*',
                                  '^test_unique_*',
+                                 '^test_mod_float_mixed_sign_example_cpu.*', #onnxruntime::Mod::Compute fmod_ was false. fmod attribute must be true for float, float16 and double types
                                  )
 
         # Example of how to disable tests for a specific provider.

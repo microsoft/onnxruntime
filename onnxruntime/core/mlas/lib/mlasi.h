@@ -56,6 +56,18 @@ Abstract:
 #endif
 
 //
+// Macro to tag globals as internal data shared with kernels written in
+// assembly. These globals are marked with having hidden visibility to avoid
+// needing to access the data through the global object table.
+//
+
+#if defined(_MSC_VER)
+#define MLAS_INTERNAL_DATA extern "C"
+#else
+#define MLAS_INTERNAL_DATA extern "C" __attribute ((visibility("hidden")))
+#endif
+
+//
 // Macro to suppress unreferenced parameter warnings.
 //
 
@@ -68,7 +80,7 @@ Abstract:
 #if defined(_M_AMD64) || defined(__x86_64__)
 #define MLAS_TARGET_AMD64
 #endif
-#if (defined(_M_IX86) && !defined(_M_HYBRID_X86_ARM64)) || defined(__i386__)
+#if defined(_M_IX86) || defined(__i386__)
 #define MLAS_TARGET_IX86
 #endif
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
@@ -170,7 +182,7 @@ void
     size_t CountM,
     size_t CountK,
     int32_t* RowSumVector,
-    uint16_t offb
+    int16_t offb
     );
 
 typedef MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE* PMLAS_GEMM_U8U8_COPY_PACKA_ROUTINE;
@@ -184,7 +196,7 @@ void
     size_t CountN,
     size_t CountK,
     int32_t* ColumnSumVector,
-    uint16_t offa
+    int16_t offa
     );
 
 typedef MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE* PMLAS_GEMM_U8U8_COPY_PACKB_ROUTINE;
@@ -521,9 +533,7 @@ MlasGetMaximumThreadCount(
     }
 #endif
 
-#if defined(MLAS_USE_WIN32_THREADPOOL)
-    return MlasPlatform.MaximumThreadCount;
-#elif _OPENMP
+#if defined(_OPENMP)
     return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
 #else
     return 1;
@@ -550,7 +560,7 @@ MlasGetMaximumThreadCount(
 #if defined(MLAS_TARGET_ARM)
 #define MLAS_NEON_INTRINSICS
 #define MLAS_NEON32_INTRINSICS
-#elif defined(MLAS_TARGET_ARM64) || defined(_M_HYBRID_X86_ARM64)
+#elif defined(MLAS_TARGET_ARM64)
 #define MLAS_NEON_INTRINSICS
 #define MLAS_NEON64_INTRINSICS
 #elif defined(MLAS_TARGET_AMD64_IX86)

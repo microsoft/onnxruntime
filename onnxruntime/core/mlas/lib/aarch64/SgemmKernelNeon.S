@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sgemma.s
+    SgemmKernelNeon.s
 
 Abstract:
 
@@ -88,7 +88,7 @@ Abstract:
 
         .endm
 
-
+//
 // MultiplyAccumulateRow
 //
 // Generates the code to multiply and accumulate a single row of the output
@@ -137,11 +137,11 @@ Abstract:
         ClearBlockAccumulators \Columns\(),\Rows\()
 
 .if \Rows\() >= 2
-        add     x10,x0,x6,uxtw 2            // compute matrix A plus 1 row
+        add     x10,x0,x6,lsl #2            // compute matrix A plus 1 row
 .endif
 .if \Rows\() >= 4
-        add     x11,x10,x6,uxtw 2           // compute matrix A plus 2 rows
-        add     x12,x11,x6,uxtw 2           // compute matrix A plus 3 rows
+        add     x11,x10,x6,lsl #2           // compute matrix A plus 2 rows
+        add     x12,x11,x6,lsl #2           // compute matrix A plus 3 rows
 .endif
 
         sub     x9,x3,#4                    // decrement block count to process
@@ -183,7 +183,7 @@ Abstract:
         ldp     q6,q7,[x1,#-8*4]
 .endif
         MultiplyAccumulateBlock \Columns\(),\Rows\(),0
-        sub     x9,x9,1
+        sub     x9,x9,#1
         cbnz    x9,.L\Mode\().Compute\Columns\().x\Rows\().BlockBy1Loop
 
 .L\Mode\().Output\Columns\().x\Rows\().Block:
@@ -430,12 +430,12 @@ Return Value:
         .type   MlasSgemmKernel\Mode\(),%function
 MlasSgemmKernel\Mode\():
 
-        stp     d8,d9,[sp,-32]!
-        stp     d10,d11,[sp,16]
+        stp     d8,d9,[sp,#-32]!
+        stp     d10,d11,[sp,#16]
 
-        add     x13,x2,x7,uxtw 2            // compute matrix C plus 1 row
-        add     x14,x13,x7,uxtw 2           // compute matrix C plus 2 rows
-        add     x15,x14,x7,uxtw 2           // compute matrix C plus 3 rows
+        add     x13,x2,x7,lsl #2            // compute matrix C plus 1 row
+        add     x14,x13,x7,lsl #2           // compute matrix C plus 2 rows
+        add     x15,x14,x7,lsl #2           // compute matrix C plus 3 rows
         mov     x8,x0                       // save matrix A
 
 //
@@ -452,8 +452,8 @@ MlasSgemmKernel\Mode\():
 
 .L\Mode\().ExitKernel:
         mov     x0,x4
-        ldp     d10,d11,[sp,16]
-        ldp     d8,d9,[sp],32
+        ldp     d10,d11,[sp,#16]
+        ldp     d8,d9,[sp],#32
         ret
 
 //

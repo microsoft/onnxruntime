@@ -29,7 +29,8 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Crop)::Evaluate(
 
   ORT_ENFORCE(attrs.GetAttrs<int64_t>("border", border).IsOK());
   // scale is optional and status is false when omit
-  attrs.GetAttrs<int64_t>("scale", scale);
+  bool is_ok = attrs.GetAttrs<int64_t>("scale", scale).IsOK();
+  ORT_UNUSED_PARAMETER(is_ok);
 
   if (border.size() != 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
