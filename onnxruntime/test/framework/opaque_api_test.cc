@@ -275,6 +275,7 @@ TEST(OpaqueAPITest, TestOrtValues) {
     std::unique_ptr<char[]> actual_result_string(new char[str_len + 1]);
     size_t offset = 0;
     str_tensor_value.GetStringTensorContent(actual_result_string.get(), str_len, &offset, 1);
+    actual_result_string[str_len] = 0;
     ASSERT_EQ(expected_output.compare(actual_result_string.get()), 0);
   } catch (const std::exception& ex) {
     std::cerr << "Exception: " << ex.what() << std::endl;
