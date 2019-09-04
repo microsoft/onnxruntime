@@ -123,7 +123,7 @@ std::vector<int64_t> parse_and_validate_indices_tensor(const Tensor* indices_ten
                 lower_index_limit, " , ", upper_index_limit, "]");
 
     if (indices_data[i] < 0)
-      indices_data[i] += lower_index_limit;
+      indices_data[i] += input_shape[axis];
   }
 
   return indices_data;
