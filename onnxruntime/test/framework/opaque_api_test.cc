@@ -190,7 +190,7 @@ std::string CreateModel() {
   return serialized_model;
 }
 
-static void TestLoggingFunction (void* /*param*/, OrtLoggingLevel severity, const char* /*category*/, const char* /*logid*/,
+static void ORT_API_CALL TestLoggingFunction(void* /*param*/, OrtLoggingLevel severity, const char* /*category*/, const char* /*logid*/,
   const char*code_location, const char* message) {
   std::cout << "(Severity: " << severity << ") " << code_location << ':' << message << std::endl;
 }
@@ -211,9 +211,6 @@ TEST(OpaqueAPITest, TestOrtValues) {
   try {
     // initialize session options if needed
     Ort::SessionOptions session_options;
-    session_options.SetThreadPoolSize(1);
-
-    printf("Using Onnxruntime C++ API\n");
     Ort::Session session(env, model_str.data(), model_str.size(), session_options);
 
     Ort::AllocatorWithDefaultOptions allocator;
@@ -222,12 +219,10 @@ TEST(OpaqueAPITest, TestOrtValues) {
     size_t num_input_nodes = session.GetInputCount();
     EXPECT_EQ(num_input_nodes, 1U);
     const char* input_name = session.GetInputName(0, allocator);
-    std::cout << "Input 0 " << input_name << std::endl;
 
     size_t num_output_nodes = session.GetOutputCount();
     EXPECT_EQ(num_output_nodes, 1U);
     const char* output_name = session.GetOutputName(0, allocator);
-    std::cout << "Output 0 " << output_name << std::endl;
 
     const char* const input_names[] = {input_name};
     const char* const output_names[] = {output_name};

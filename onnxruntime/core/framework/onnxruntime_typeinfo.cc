@@ -16,6 +16,8 @@ using onnxruntime::Tensor;
 using onnxruntime::SparseTensor;
 using onnxruntime::TensorShape;
 
+namespace on = ONNX_NAMESPACE;
+
 OrtTypeInfo::OrtTypeInfo(ONNXType type1, OrtTensorTypeAndShapeInfo* data1) noexcept : type(type1), data(data1) {
 }
 
@@ -49,7 +51,7 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const onnxruntime::DataTypeImpl* input,
   // TensorBase/SparseTensorBase instances, but other types are real MLDataTypes and they do have real protos
   // unless they are primitive data types, in which case we as before return them not implemented
   // however, this way we can support Opaque and we can avoid excessive calls to GetType()
-  if (input == DataTypeImpl::GetType<Tensor>()) {
+  if (input->IsTensorType()) {
     OrtTensorTypeAndShapeInfo* info = nullptr;
     if (tensor_data_type != nullptr) {
       OrtStatus* st = GetTensorShapeAndType(shape, tensor_data_type, &info);
@@ -58,7 +60,7 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const onnxruntime::DataTypeImpl* input,
     *out = new OrtTypeInfo(ONNX_TYPE_TENSOR, info);
     return nullptr;
   }
-  if (input == DataTypeImpl::GetType<SparseTensor>()) {
+  if (input->IsSparseTensorType()) {
     OrtTensorTypeAndShapeInfo* info = nullptr;
     if (tensor_data_type != nullptr) {
       OrtStatus* st = GetTensorShapeAndType(shape, tensor_data_type, &info);
@@ -72,29 +74,35 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const onnxruntime::DataTypeImpl* input,
     // Place Opaque first as tensors will be
     // mostly handled above and maps and sequences
     // are not common
-    if (type_proto->has_opaque_type()) {
-      *out = new OrtTypeInfo(ONNX_TYPE_OPAQUE, nullptr);
-      return nullptr;
-    }
-    if (type_proto->has_map_type()) {
-      *out = new OrtTypeInfo(ONNX_TYPE_MAP, nullptr);
-      return nullptr;
-    }
-    if (type_proto->has_sequence_type()) {
-      *out = new OrtTypeInfo(ONNX_TYPE_SEQUENCE, nullptr);
-      return nullptr;
-    }
-    // Add support for real Tensor Types at the end
-    if (type_proto->has_tensor_type() || type_proto->has_sparse_tensor_type()) {
-      OrtTensorTypeAndShapeInfo* info = nullptr;
-      OrtStatus* st = GetTensorShapeAndType(shape, type_proto, &info);
-      if (st != nullptr) return st;
-      if (type_proto->has_tensor_type()) {
-        *out = new OrtTypeInfo(ONNX_TYPE_TENSOR, info);
-      } else {
-        *out = new OrtTypeInfo(ONNX_TYPE_SPARSETENSOR, nullptr);
-      }
-      return nullptr;
+    switch (type_proto->value_case ()) {
+      case on::TypeProto::kOpaqueType: {
+        *out = new OrtTypeInfo(ONNX_TYPE_OPAQUE, nullptr);
+        return nullptr;
+      } break;
+      case on::TypeProto::kMapType: {
+        *out = new OrtTypeInfo(ONNX_TYPE_MAP, nullptr);
+        return nullptr;
+      } break;
+      case on::TypeProto::kSequenceType: {
+        *out = new OrtTypeInfo(ONNX_TYPE_SEQUENCE, nullptr);
+        return nullptr;
+      } break;
+      // Real Tensor support
+      case on::TypeProto::kTensorType:
+      case on::TypeProto::kSparseTensorType: {
+        OrtTensorTypeAndShapeInfo* info = nullptr;
+        OrtStatus* st = GetTensorShapeAndType(shape, type_proto, &info);
+        if (st != nullptr) return st;
+        if (type_proto->value_case() == on::TypeProto::kTensorType) {
+          *out = new OrtTypeInfo(ONNX_TYPE_TENSOR, info);
+        } else {
+          *out = new OrtTypeInfo(ONNX_TYPE_SPARSETENSOR, nullptr);
+        }
+        return nullptr;
+      } break;
+      default:
+        // NOT_IMPLEMENTED
+        break;
     }
   }
   return OrtCreateStatus(ORT_NOT_IMPLEMENTED, "not implemented");
@@ -137,59 +145,69 @@ const DataTypeImpl* ElementTypeFromProto(int type) {
 }
 
 OrtStatus* OrtTypeInfo::FromDataTypeImpl(const ONNX_NAMESPACE::TypeProto* input, OrtTypeInfo** out) {
-  if (input->has_tensor_type() || input->has_sparse_tensor_type()) {
-
-    const ONNX_NAMESPACE::TypeProto_Tensor* tensor_type = nullptr;
-    const ONNX_NAMESPACE::TypeProto_SparseTensor* sparse_type = nullptr;
-    if (input->has_tensor_type()) { 
-      tensor_type = &input->tensor_type(); 
-    } else if (input->has_sparse_tensor_type()) {
-      sparse_type = &input->sparse_tensor_type();
-    }
-    assert(tensor_type != nullptr || sparse_type != nullptr);
-
-    OrtStatus* st;
-    OrtTensorTypeAndShapeInfo* info = nullptr;
-
-    const ::ONNX_NAMESPACE::TensorShapeProto* sp = nullptr;
-    if (tensor_type != nullptr && tensor_type->has_shape()) {
-      sp = &tensor_type->shape();
-    } else if (sparse_type != nullptr && sparse_type->has_shape()) {
-      sp = &sparse_type->shape();
-    }
-
-    if (sp != nullptr) {
-      const ::ONNX_NAMESPACE::TensorShapeProto& s = *sp;
-      std::vector<int64_t> dims(s.dim_size());
-      TensorShape shape_data(std::move(dims));
-      for (int i = 0; i != s.dim_size(); ++i) {
-        auto& t = s.dim(i);
-        shape_data[i] = t.has_dim_value() ? t.dim_value() : -1;
+  auto value_case = input->value_case();
+  switch (value_case) {
+    case on::TypeProto::kTensorType:
+    case on::TypeProto::kSparseTensorType: {
+      ONNXType ten_type = ONNX_TYPE_UNKNOWN;
+      const on::TypeProto_Tensor* tensor_type = nullptr;
+      const on::TypeProto_SparseTensor* sparse_type = nullptr;
+      const on::TensorShapeProto* sp = nullptr;
+      if (value_case == on::TypeProto::kTensorType) {
+        tensor_type = &input->tensor_type();
+        ten_type = ONNX_TYPE_TENSOR;
+        if (&tensor_type->shape() != &on::TensorShapeProto::default_instance()) {
+          sp = &tensor_type->shape();
+        }
+      } else if (value_case == on::TypeProto::kSparseTensorType) {
+        sparse_type = &input->sparse_tensor_type();
+        ten_type = ONNX_TYPE_SPARSETENSOR;
+        if (&sparse_type->shape() != &on::TensorShapeProto::default_instance()) {
+          sp = &sparse_type->shape();
+        }
       }
-      st = GetTensorShapeAndType(&shape_data, input, &info);
-    } else {
-      st = GetTensorShapeAndType(nullptr, input, &info);
-    }
-
-    if (st != nullptr) return st;
-    if (tensor_type != nullptr) {
-      *out = new OrtTypeInfo(ONNX_TYPE_TENSOR, info);
-    } else {
-      *out = new OrtTypeInfo(ONNX_TYPE_SPARSETENSOR, info);
-    }
-    return nullptr;
-  }
-  if (input->has_sequence_type()) {
-    *out = new OrtTypeInfo(ONNX_TYPE_SEQUENCE, nullptr);
-    return nullptr;
-  }
-  if (input->has_map_type()) {
-    *out = new OrtTypeInfo(ONNX_TYPE_MAP, nullptr);
-    return nullptr;
-  }
-  if (input->has_opaque_type()) {
-    *out = new OrtTypeInfo(ONNX_TYPE_OPAQUE, nullptr);
-    return nullptr;
+      OrtStatus* st = nullptr;
+      OrtTensorTypeAndShapeInfo* info = nullptr;
+      if (sp != nullptr) {
+        const on::TensorShapeProto& s = *sp;
+        std::vector<int64_t> dims(s.dim_size());
+        TensorShape shape_data(std::move(dims));
+        for (int i = 0; i < s.dim_size(); ++i) {
+          auto& t = s.dim(i);
+          switch (t.value_case ()) {
+            case on::TensorShapeProto::Dimension::kDimValue:
+              shape_data[i] = t.dim_value();
+              break;
+            case on::TensorShapeProto::Dimension::kDimParam:
+              shape_data[i] = -1;
+              break;
+            default:
+              assert(false);
+          }
+        }
+        st = GetTensorShapeAndType(&shape_data, input, &info);
+      } else {
+        st = GetTensorShapeAndType(nullptr, input, &info);
+      }
+      if (st != nullptr) return st;
+      *out = new OrtTypeInfo(ten_type, info);
+      return nullptr;
+    } break;
+    case on::TypeProto::kSequenceType: {
+      *out = new OrtTypeInfo(ONNX_TYPE_SEQUENCE, nullptr);
+      return nullptr;
+    } break;
+    case on::TypeProto::kMapType: {
+      *out = new OrtTypeInfo(ONNX_TYPE_MAP, nullptr);
+      return nullptr;
+    } break;
+    case on::TypeProto::kOpaqueType: {
+      *out = new OrtTypeInfo(ONNX_TYPE_OPAQUE, nullptr);
+      return nullptr;
+    } break;
+    default:
+      assert(false);
+      break;
   }
   return OrtCreateStatus(ORT_NOT_IMPLEMENTED, "not implemented");
 }
