@@ -2182,6 +2182,26 @@ Example 4:
           {"tensor(float)"},
           "Constrain except mean and inv_std_var to float tensors.");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BatchNormalizationGrad)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetDoc("BatchNormalization")
+      .Attr("epsilon",
+            "epsilon value",
+            AttributeProto::FLOAT)
+      .Input(0, "dY", "Gradient output from previous node", "T")
+      .Input(1, "X", "Input", "T")
+      .Input(2, "scale", "Scale tensor", "T")
+      .Input(3, "mean", "Mean of X", "T")
+      .Input(4, "variance", "Variance of X", "T")
+      .Output(0, "X_grad", "Gradient of the input", "T")
+      .Output(1, "scale_grad", "Gradient of the scale", "T")
+      .Output(2, "bias_grad", "Gradient of the bias", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(Group)
       .SetDomain(kOnnxDomain)
       .SetDoc("if all the inputs are available, the output will be true")
@@ -2370,6 +2390,7 @@ Return true if all elements are true and false otherwise.
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
       });
+
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
   RegisterInternalSchemas();

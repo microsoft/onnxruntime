@@ -55,6 +55,7 @@ DECLARE_GRADIENT_BUILDER(GetTrainableDropoutGradient)
 DECLARE_GRADIENT_BUILDER_DISABLE_COPY_ATTRIBUTES(GetGatherNDGradient)
 DECLARE_GRADIENT_BUILDER(GetGeluGradient)
 DECLARE_GRADIENT_BUILDER(GetLayerNormalizationGradient)
+DECLARE_GRADIENT_BUILDER_DISABLE_COPY_ATTRIBUTES(GetBatchNormalizationGradient)
 
 }  // namespace training
 }  // namespace onnxruntime

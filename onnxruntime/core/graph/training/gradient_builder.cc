@@ -844,5 +844,23 @@ IMPLEMENT_GRADIENT_BUILDER(GetLayerNormalizationGradient) {
               {SrcNodeAttributes()})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetBatchNormalizationGradient) {
+  auto attributes = SrcNodeAttributes();
+  if (attributes.find("epsilon") != attributes.end()) {
+    float epsilon = attributes.at("epsilon").f();
+    return std::vector<NodeDef>{
+        NodeDef("BatchNormalizationGrad",
+                {GO(0), I(0), I(1), O(3), O(4)},
+                {GI(0), GI(1), GI(2)},
+                {MakeAttribute("epsilon", epsilon)})};
+  } else {
+    return std::vector<NodeDef>{
+        NodeDef("BatchNormalizationGrad",
+                {GO(0), I(0), I(1), O(3), O(4)},
+                {GI(0), GI(1), GI(2)})};
+  }
+  
+}
+
 }  // namespace training
 }  // namespace onnxruntime
