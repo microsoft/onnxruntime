@@ -14,10 +14,9 @@ namespace onnxruntime {
 namespace training {
 
 static const std::unordered_set<std::string> FP32_Nodes = {
-  "ReduceSum",
-  "SparseSoftmaxCrossEntropy",
-  "SparseSoftmaxCrossEntropyGrad"
-};
+    "ReduceSum",
+    "SparseSoftmaxCrossEntropy",
+    "SparseSoftmaxCrossEntropyGrad"};
 
 static bool IsFP32Node(const Node* node) {
   return FP32_Nodes.find(node->OpType()) != FP32_Nodes.cend();
@@ -25,16 +24,16 @@ static bool IsFP32Node(const Node* node) {
 
 // At present, we use these table to identify which input needs to be keep in FP32
 static const std::unordered_map<std::string, std::vector<int>> stage1_fp32_node_args = {
-  {"TrainableDropout", {1}},
-  {"TrainableDropoutGrad", {2}},
+    {"TrainableDropout", {1}},
+    {"TrainableDropoutGrad", {2}},
 };
 
 static const std::unordered_map<std::string, std::vector<int>> stage2_fp32_node_args = {
-  {"TrainableDropout", {1}},
-  {"TrainableDropoutGrad", {2}},
-  {"ReduceSum", {0}},
-  {"SparseSoftmaxCrossEntropy", {0, 2}},
-  {"SparseSoftmaxCrossEntropyGrad", {0, 1, 3}},
+    {"TrainableDropout", {1}},
+    {"TrainableDropoutGrad", {2}},
+    {"ReduceSum", {0}},
+    {"SparseSoftmaxCrossEntropy", {0, 2}},
+    {"SparseSoftmaxCrossEntropyGrad", {0, 1, 3}},
 };
 
 // Seperate the consumer nodes of `arg` into two groups: FP32 vs FP16
@@ -96,7 +95,8 @@ static Status CastNodeArg(onnxruntime::Graph& graph,
     return Status::OK();
   }
   ORT_ENFORCE(elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
-              elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT, "elem_type should be float or float16");
+                  elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+              "elem_type should be float or float16");
 
   // Get consumer nodes of the input `arg`
   std::vector<std::pair<Node*, int>> fp16_inputs;
@@ -182,40 +182,52 @@ static Status CastNodeArg(onnxruntime::Graph& graph,
   return Status::OK();
 }
 
-// TODO we only consider one level of subgraph now, handle this more generally
-static Status HandleFunctionBody(Graph& graph, const std::unordered_map<std::string, std::vector<int>>& fp32_node_args) {
+static Status HandleFunctionBody(Graph& graph, const Function& node_func,
+                                 const std::unordered_map<std::string, std::vector<int>>& fp32_node_args) {
+  const Graph& subgraph = node_func.Body();
+  // TODO: eliminate use of const_casts
+  Graph& sg = const_cast<Graph&>(subgraph);
+  // TODO: The resolve below is likely unnecessary.
+  ORT_RETURN_IF_ERROR(sg.Resolve());
+  GraphViewer subgraph_viewer(subgraph);
+  const auto& subgraph_order = subgraph_viewer.GetNodesInTopologicalOrder();
+  for (auto subgraph_index : subgraph_order) {
+    // TODO can we directly deal with a mutable subgraph instead (no const_cast)? may need an ORT API change
+    Node* subgraph_node = const_cast<Node*>(subgraph.GetNode(subgraph_index));
+    if (subgraph_node->OpType() == "Constant") {
+      for (NodeArg* output : subgraph_node->MutableOutputDefs()) {
+        if (output->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+          ORT_RETURN_IF_ERROR(
+              CastNodeArg(const_cast<Graph&>(subgraph), fp32_node_args, output, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+        }
+      }
+    } else if (IsFP32Node(subgraph_node)) {
+      for (NodeArg* input : subgraph_node->MutableInputDefs()) {
+        if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+          ORT_RETURN_IF_ERROR(CastNodeArg(graph, fp32_node_args, input, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+        }
+      }
+
+      for (NodeArg* output : subgraph_node->MutableOutputDefs()) {
+        ORT_RETURN_IF_ERROR(CastNodeArg(graph, fp32_node_args, output, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+      }
+    }
+    const Function* nested = subgraph_node->GetFunctionBody();
+    if (nested != nullptr) {
+      ORT_RETURN_IF_ERROR(HandleFunctionBody(sg, *nested, fp32_node_args));
+    }
+  }
+  return Status::OK();
+}
+
+static Status HandleFunctionCalls(Graph& graph, const std::unordered_map<std::string, std::vector<int>>& fp32_node_args) {
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
   for (auto index : order) {
     Node* node = graph.GetNode(index);
     const Function* node_func = node->GetFunctionBody();
-    if (nullptr == node_func) {
-      continue;
-    }
-    const Graph& subgraph = node_func->Body();
-    GraphViewer subgraph_viewer(subgraph);
-    const auto& subgraph_order = subgraph_viewer.GetNodesInTopologicalOrder();
-    for (auto subgraph_index : subgraph_order) {
-      // TODO can we directly deal with a mutable subgraph instead (no const_cast)? may need an ORT API change
-      Node* subgraph_node = const_cast<Node*>(subgraph.GetNode(subgraph_index));
-      if (subgraph_node->OpType() == "Constant") {
-        for (NodeArg* output : subgraph_node->MutableOutputDefs()) {
-          if (output->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-            ORT_RETURN_IF_ERROR(
-                CastNodeArg(const_cast<Graph&>(subgraph), fp32_node_args, output, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
-          }
-        }
-      } else if (IsFP32Node(subgraph_node)) {
-        for (NodeArg* input : subgraph_node->MutableInputDefs()) {
-          if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-            ORT_RETURN_IF_ERROR(CastNodeArg(graph, fp32_node_args, input, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-          }
-        }
-
-        for (NodeArg* output : subgraph_node->MutableOutputDefs()) {
-          ORT_RETURN_IF_ERROR(CastNodeArg(graph, fp32_node_args, output, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
-        }
-      }
+    if (nullptr != node_func) {
+      ORT_RETURN_IF_ERROR(HandleFunctionBody(graph, *node_func, fp32_node_args));
     }
   }
   return Status::OK();
@@ -228,7 +240,7 @@ static NodeArg* CreateFP16WeightsAndUpdateComsumers(Graph& graph,
                                                     const NodeArg* arg,
                                                     const ONNX_NAMESPACE::TensorProto* tensor_proto) {
   ORT_ENFORCE(arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-    "data type is not float");
+              "data type is not float");
   // Create FP16 Node Arg
   ONNX_NAMESPACE::TypeProto type_proto;
   type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
@@ -266,7 +278,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
   for (const NodeArg* input : graph.GetInputs()) {
     if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       ORT_RETURN_IF_ERROR(
-        CastNodeArg(graph, stage1_fp32_node_args, graph.GetNodeArg(input->Name()), ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+          CastNodeArg(graph, stage1_fp32_node_args, graph.GetNodeArg(input->Name()), ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
     }
   }
 
@@ -301,7 +313,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
   }
 
   // Handle function body
-  ORT_RETURN_IF_ERROR(HandleFunctionBody(graph, stage1_fp32_node_args));
+  ORT_RETURN_IF_ERROR(HandleFunctionCalls(graph, stage1_fp32_node_args));
 
   // At this point, the model has been transformed to a valid FP16 model.
   ORT_RETURN_IF_ERROR(graph.Resolve(&weights_to_train));
