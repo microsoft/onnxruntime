@@ -80,14 +80,6 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
         .TypeConstraint("y", DataTypeImpl::GetTensorType<int8_t>()),
     QuantizeLinear<int8_t>);
 
-// clamp doesn't exist in the version of <algorithm> that we're using, so
-// make a local one.
-static float clamp(float v, float lo, float hi) {
-  if (v < lo) return lo;
-  if (v > hi) return hi;
-  return v;
-}
-
 static float RoundHalfToEven(float input) {
   std::fesetround(FE_TONEAREST);
   auto result = std::nearbyintf(input);
