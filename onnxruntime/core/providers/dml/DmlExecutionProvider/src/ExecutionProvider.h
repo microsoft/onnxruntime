@@ -156,7 +156,8 @@ namespace Dml
 
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept final;
         std::shared_ptr<onnxruntime::IAllocator> GetGpuAllocator();
-        std::shared_ptr<onnxruntime::IAllocator> GetCpuAllocator();
+        std::shared_ptr<onnxruntime::IAllocator> GetCpuInputAllocator();
+        std::shared_ptr<onnxruntime::IAllocator> GetCpuOutputAllocator();
 
     private:
         void Initialize(ID3D12CommandQueue* queue, ExecutionProvider& executionProvider);
@@ -169,7 +170,8 @@ namespace Dml
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
         std::shared_ptr<BucketizedBufferAllocator> m_allocator;
-        std::shared_ptr<CPUAllocator> m_cpuAllocator;
+        std::shared_ptr<CPUAllocator> m_cpuInputAllocator;
+        std::shared_ptr<CPUAllocator> m_cpuOutputAllocator;
         std::shared_ptr<onnxruntime::KernelRegistry> m_kernelRegistry = std::make_shared<onnxruntime::KernelRegistry>();
         mutable uint64_t m_partitionKernelPrefixVal = 0;
 

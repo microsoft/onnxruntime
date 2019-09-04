@@ -9,11 +9,17 @@
 namespace Dml
 {
     
-    class CPUAllocator : public onnxruntime::IDeviceAllocator {
+    class CPUAllocator : public onnxruntime::IDeviceAllocator
+    {
     public:
+        explicit CPUAllocator(OrtMemType memType);
+
         void* Alloc(size_t size) override;
         void Free(void* p) override;
         const ::OrtAllocatorInfo& Info() const override;
+
+    private:
+        OrtAllocatorInfo m_allocatorInfo;
     };
 
     class BucketizedBufferAllocator;
