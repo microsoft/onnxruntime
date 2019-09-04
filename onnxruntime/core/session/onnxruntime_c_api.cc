@@ -367,8 +367,23 @@ namespace {
 template <typename Loader>
 OrtStatus* CreateSessionImpl(_In_ const OrtEnv* env, _In_ const OrtSessionOptions* options,
                              Loader loader, _Outptr_ OrtSession** out) {
-  auto sess = std::make_unique<::onnxruntime::InferenceSession>(
-      options == nullptr ? onnxruntime::SessionOptions() : options->value, env->loggingManager);
+  // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
+  // byte addressable memory
+  auto session_options = options == nullptr ? onnxruntime::SessionOptions() : options->value;
+  std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
+  if (options) {
+    for (auto& factory : options->provider_factories) {
+      auto provider = factory->CreateProvider();
+      if (provider->Type() == kDmlExecutionProvider) {
+        // TODO decide later if we want to return an error here
+        session_options.enable_mem_pattern = false;  // override for DML
+        LOGS_DEFAULT(WARNING) << "Disabling memory pattern optimization due to the existence of DML execution provider";
+      }
+      provider_list.push_back(std::move(provider));
+    }
+  }
+
+  auto sess = std::make_unique<::onnxruntime::InferenceSession>(session_options, env->loggingManager);
   Status status;
   if (options != nullptr) {
     if (!options->custom_op_domains_.empty()) {
@@ -378,12 +393,13 @@ OrtStatus* CreateSessionImpl(_In_ const OrtEnv* env, _In_ const OrtSessionOption
     }
   }
 
-  if (options != nullptr)
-    for (auto& factory : options->provider_factories) {
-      auto provider = factory->CreateProvider();
-      if (provider)
-        sess->RegisterExecutionProvider(std::move(provider));
+  // register the providers
+  for (auto& provider : provider_list) {
+    if (provider) {
+      sess->RegisterExecutionProvider(std::move(provider));
     }
+  }
+
   status = loader(*sess);
   if (!status.IsOK())
     return ToOrtStatus(status);

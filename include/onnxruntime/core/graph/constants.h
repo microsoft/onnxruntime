@@ -30,5 +30,5 @@ constexpr const char* kNupharExecutionProvider = "NupharExecutionProvider";
 constexpr const char* kBrainSliceExecutionProvider = "BrainSliceExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 constexpr const char* kNnapiExecutionProvider = "NnapiExecutionProvider";
+constexpr const char* kDmlExecutionProvider = "DmlExecutionProvider";
 }  // namespace onnxruntime
-
