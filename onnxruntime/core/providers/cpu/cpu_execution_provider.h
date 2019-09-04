@@ -7,10 +7,6 @@
 #include "core/framework/execution_provider.h"
 #include "core/graph/constants.h"
 
-#ifdef USE_MIMALLOC
-#include <mimalloc.h>
-#endif
-
 namespace onnxruntime {
 
 // Information needed to construct CPU execution providers.
@@ -34,14 +30,9 @@ class CPUExecutionProvider : public IExecutionProvider {
     DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
                                                 [](int) { return std::make_unique<CPUAllocator>(); },
                                                 std::numeric_limits<size_t>::max()};
-#if defined(USE_MIMALLOC)
-    // force the loading of mimalloc
-    mi_version();
-#endif
-
-#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
+#ifdef USE_JEMALLOC
     ORT_UNUSED_PARAMETER(info);
-    //JEMalloc and MiMalloc already have memory pools, so just use device allocator.
+    //JEMalloc already has memory pool, so just use device allocator.
     InsertAllocator(
         std::shared_ptr<IArenaAllocator>(
             std::make_unique<DummyArena>(device_info.factory(0))));
