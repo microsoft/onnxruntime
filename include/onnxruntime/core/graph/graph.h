@@ -472,9 +472,10 @@ class Graph {
       d. Graph is acyclic and sort nodes in topological order.
   2. Check & Setup inner nodes' dependency.
   3. Cleanup function definition lists.
+  Note: the weights for training can't be cleaned during resolve.
   @returns common::Status with success or error information.
   */
-  common::Status Resolve();
+  common::Status Resolve(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
 
   /** Gets the Graph name. */
   const std::string& Name() const noexcept;
@@ -921,7 +922,7 @@ class Graph {
 
   common::Status PerformTypeAndShapeInferencing();
 
-  common::Status Resolve(bool no_proto_sync_required);
+  common::Status Resolve(bool no_proto_sync_required, const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
 
   // Recursively find all subgraphs including nested subgraphs
   void FindAllSubgraphs(std::vector<Graph*>& subgraphs);
@@ -950,7 +951,7 @@ class Graph {
   common::Status SetGraphInputsOutputs();
 
   // Clear all unused initializers
-  void CleanUnusedInitializers();
+  void CleanUnusedInitializers(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
 
   gsl::not_null<Node*> AllocateNode();
 

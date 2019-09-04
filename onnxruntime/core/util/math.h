@@ -398,6 +398,8 @@ constexpr T roundUpPow2(T a) {
 
 uint16_t floatToHalf(float f);
 
+uint16_t doubleToHalf(double f);
+
 float halfToFloat(uint16_t h);
 
 }  // namespace math

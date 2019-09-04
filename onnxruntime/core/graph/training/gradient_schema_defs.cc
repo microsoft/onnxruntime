@@ -140,6 +140,12 @@ void RegisterGradientSchemas() {
           "moment_2",
           "exponentially averaged historical squared gradients.",
           "T4")
+      .Input(
+          6,
+          "fp16_weights",
+          "FP16 weights to optimize.",
+          "T_FP16",
+          OpSchema::Optional)
       .Output(
           0,
           "new_weights",
@@ -160,6 +166,12 @@ void RegisterGradientSchemas() {
           "output_T",
           "New update count.",
           "T2")
+      .Output(
+          4,
+          "new_fp16_weights",
+          "New FP16 weights",
+          "T_FP16",
+          OpSchema::Optional)
       .Attr(
           "alpha",
           "Coefficient of previous gradient in running average.",
@@ -202,7 +214,11 @@ void RegisterGradientSchemas() {
       .TypeConstraint(
           "T_GRAD",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input types to float tensors.");
+          "Constrain input types to float tensors.")
+      .TypeConstraint(
+          "T_FP16",
+          {"tensor(float16)"},
+          "Constrain input types to float16 tensors.");
 
   // TODO: This is copied from onnx schemas. When the change is in and we update this can be removed.
   // For Brevity documentation was not copied

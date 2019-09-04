@@ -1868,11 +1868,11 @@ Status Graph::ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::
   return status;
 }
 
-Status Graph::Resolve() {
-  return Resolve(false);
+Status Graph::Resolve(const std::unordered_set<std::string>* initializer_names_to_preserve) {
+  return Resolve(false, initializer_names_to_preserve);
 }
 
-Status Graph::Resolve(bool no_proto_sync_required) {
+Status Graph::Resolve(bool no_proto_sync_required, const std::unordered_set<std::string>* initializer_names_to_preserve) {
   if (parent_graph_) {
     // Resolve must start at the top level graph in-order to handle outer scope
     // connections correctly, so recurse up to that level to start
@@ -1916,8 +1916,8 @@ Status Graph::Resolve(bool no_proto_sync_required) {
   ORT_RETURN_IF_ERROR(PerformTypeAndShapeInferencing());
 
   // perform the final steps for this graph and all subgraphs
-  auto finalize_func = [&no_proto_sync_required](Graph& graph) {
-            graph.CleanUnusedInitializers();
+  auto finalize_func = [&no_proto_sync_required, &initializer_names_to_preserve](Graph& graph) {
+            graph.CleanUnusedInitializers(initializer_names_to_preserve);
             graph.GraphResolveNeeded(false);
 
             // if we are resolving immediately after loading from a GraphProto, we don't need to
@@ -2257,7 +2257,7 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
   }
 }
 
-void Graph::CleanUnusedInitializers() {
+void Graph::CleanUnusedInitializers(const std::unordered_set<std::string>* initializer_names_to_preserve) {
   std::unordered_set<std::string> used_args;
 
   const auto& inputs = GetInputs();
@@ -2285,7 +2285,9 @@ void Graph::CleanUnusedInitializers() {
   auto end = used_args.end();
   for (const auto& pv : name_to_initial_tensor_) {
     const std::string& name = pv.first;
-    if (used_args.find(name) == end) {
+    if (used_args.find(name) == end &&
+        (initializer_names_to_preserve == nullptr ||
+         initializer_names_to_preserve->find(name) == initializer_names_to_preserve->cend())) {
       // on the first call to Graph::Resolve we are removing unnecessary initializers that should be removed
       // from the model.
       // on later calls we are removing initializers that optimizations have made redundant.

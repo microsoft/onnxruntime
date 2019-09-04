@@ -39,6 +39,7 @@ void AdamOptimizerImpl(
     T4* moment_1_out,
     T4* moment_2_out,
     T2* update_count_out,
+    half* fp16_weights_out,
     size_t count);
 
 template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD>

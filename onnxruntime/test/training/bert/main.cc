@@ -45,6 +45,8 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
       ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
+      ("use_fp16_initializer", "FP16 weights will be created. Otherwise, cast nodes will be inserted for converting weights from FP32 to FP16",
+        cxxopts::value<bool>()->default_value("true"))
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
       ("max_profile_records", "Maximum number of runtime profile data records to collect.",
           cxxopts::value<size_t>()->default_value(to_string(profiling::Profiler::DEFAULT_MAX_PROFILER_EVENTS)))
@@ -90,9 +92,14 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     } else {
       printf("Incorrect command line for mode: it must be one of [perf|train]\n");
     }
+
     params.use_mixed_precision = flags["use_mixed_precision"].as<bool>();
     if (params.use_mixed_precision) {
       printf("Mixed precision training is enabled.\n");
+    }
+    params.use_fp16_initializer = flags["use_fp16_initializer"].as<bool>();
+    if (params.use_mixed_precision && params.use_fp16_initializer) {
+      printf("FP16 initializer is enabled.\n");
     }
 
     std::string optimizer_name = flags["optimizer"].as<std::string>();

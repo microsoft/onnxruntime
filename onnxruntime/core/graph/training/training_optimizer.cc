@@ -121,7 +121,15 @@ Status AdamOptimizerBuilder::Build(const NodeArg* weight_arg,
     accumulated_gradient_name = BuildAllReduceNode(gradient_name, graph_defs);
   }
 
-  std::vector<ArgDef> input_args(num_inputs_);
+  int num_inputs = num_inputs_;
+  int num_outputs = num_outputs_;
+  // When mixed precision is enabled by using FP16 initializer, optimizer consumes fp32 weight tensor and its fp16 copy.
+  // Thus, each optimizer will get one extra input and one extra output.
+  if (opt_info.fp16_weight_arg != nullptr) {
+    num_inputs += 1;
+    num_outputs += 1;
+  }
+  std::vector<ArgDef> input_args(num_inputs);
   input_args[0] = ArgDef(learning_rate_name_);
   input_args[1] = ArgDef(update_count_string);
   input_args[2] = ArgDef(weight_name, weight_type_proto);
@@ -141,13 +149,20 @@ Status AdamOptimizerBuilder::Build(const NodeArg* weight_arg,
     input_args[input_idx++] = ArgDef(gradient_moment_name);
   }
 
-  std::vector<ArgDef> output_args(num_outputs_);
+  std::vector<ArgDef> output_args(num_outputs);
   output_args[0] = ArgDef(weight_name + "_Adam_out", weight_type_proto);
   output_args[1] = ArgDef(gradient_name + "_Moment_1_Out", weight_type_proto);
   output_args[2] = ArgDef(gradient_name + "_Moment_2_Out", weight_type_proto);
 
   TypeProto* type_proto = graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_INT64);
   output_args[3] = ArgDef(gradient_name + "_Step_Out", type_proto);
+
+  if (opt_info.fp16_weight_arg != nullptr) {
+    input_args[input_idx++] = ArgDef(opt_info.fp16_weight_arg->Name(), opt_info.fp16_weight_arg->TypeAsProto());
+
+    std::string output_name = opt_info.fp16_weight_arg->Name() + "_Adam_out";
+    output_args[4] = ArgDef(output_name, opt_info.fp16_weight_arg->TypeAsProto());
+  }
 
   graph_defs.AddNodeDefs({NodeDef(OpType(),
                                   input_args,

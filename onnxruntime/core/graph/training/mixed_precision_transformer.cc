@@ -1,67 +1,109 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/graph/training/mixed_precision_transformer.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/training/attr_proto_util.h"
 #include "core/graph/graph_viewer.h"
-#include "mixed_precision_transformer.h"
 #include "core/graph/training/gradient_builder_base.h"
+#include "core/optimizer/insert_cast_transformer.h"
+#include "core/optimizer/initializer.h"
 
 namespace onnxruntime {
 namespace training {
 
+static const std::unordered_set<std::string> FP32_Nodes = {
+  "ReduceSum",
+  "SparseSoftmaxCrossEntropy",
+  "SparseSoftmaxCrossEntropyGrad"
+};
+
 static bool IsFP32Node(const Node* node) {
-  return node->OpType() == "ReduceMean" ||
-         node->OpType() == "ReduceSum" ||
-         //  node->OpType() == "LayerNormalization" ||
-         // node->OpType() == "LayerNormalizationGrad" ||
-         node->OpType() == "SparseSoftmaxCrossEntropy" ||
-         node->OpType() == "SparseSoftmaxCrossEntropyGrad" ||
-         node->OpType() == "AdamOptimizer";
+  return FP32_Nodes.find(node->OpType()) != FP32_Nodes.cend();
 }
 
-static void SplitNodes(const std::vector<Node*>& nodes, std::vector<Node*>& fp32_nodes, std::vector<Node*>& fp16_nodes) {
-  for (Node* node : nodes) {
-    if (IsFP32Node(node)) {
-      fp32_nodes.push_back(node);
-    } else {
-      fp16_nodes.push_back(node);
-    }
-  }
-}
+// At present, we use these table to identify which input needs to be keep in FP32
+static const std::unordered_map<std::string, std::vector<int>> stage1_fp32_node_args = {
+  {"TrainableDropout", {1}},
+  {"TrainableDropoutGrad", {2}},
+};
 
-static void CastNodeArgHelper(onnxruntime::Graph& graph,
-                              const NodeArg* arg,
-                              const Node* producer_node,
-                              int producer_node_arg_index,
-                              Node* cast_node,
-                              Node* consumer_node) {
-  auto& consumer_inputs = consumer_node->MutableInputDefs();
-  for (int i = 0; i < static_cast<int>(consumer_inputs.size()); i++) {
-    if (arg == consumer_inputs[i]) {
-      if (producer_node != nullptr) {
-        graph.RemoveEdge(producer_node->Index(), consumer_node->Index(), producer_node_arg_index, i);
+static const std::unordered_map<std::string, std::vector<int>> stage2_fp32_node_args = {
+  {"TrainableDropout", {1}},
+  {"TrainableDropoutGrad", {2}},
+  {"ReduceSum", {0}},
+  {"SparseSoftmaxCrossEntropy", {0, 2}},
+  {"SparseSoftmaxCrossEntropyGrad", {0, 1, 3}},
+};
+
+// Seperate the consumer nodes of `arg` into two groups: FP32 vs FP16
+// The argument `fp32_node_args` specifies the cases where the `arg` should be 32-bit float.
+static void GetConsumerNodeInputs(onnxruntime::Graph& graph,
+                                  const std::unordered_map<std::string, std::vector<int>>& fp32_node_args,
+                                  const NodeArg* arg,
+                                  std::vector<std::pair<Node*, int>>& fp16_inputs,
+                                  std::vector<std::pair<Node*, int>>& fp32_inputs) {
+  std::vector<Node*> consumer_nodes = graph.GetMutableConsumerNodes(arg->Name());
+  for (Node* node : consumer_nodes) {
+    int node_arg_slot = -1;
+    for (int i = 0; i < static_cast<int>(node->InputDefs().size()); i++) {
+      if (node->InputDefs()[i] == arg) {
+        node_arg_slot = i;
+        break;
       }
+    }
 
-      consumer_inputs[i] = cast_node->MutableOutputDefs()[0];
-      graph.AddEdge(cast_node->Index(), consumer_node->Index(), 0, i);
-      break;
+    if (node_arg_slot == -1) {
+      continue;
+    }
+
+    auto it = fp32_node_args.find(node->OpType());
+    if (it == fp32_node_args.cend()) {
+      fp16_inputs.push_back({node, node_arg_slot});
+    } else {
+      const auto index_it = std::find(it->second.cbegin(), it->second.cend(), node_arg_slot);
+      if (index_it == it->second.cend()) {
+        fp16_inputs.push_back({node, node_arg_slot});
+      } else {
+        fp32_inputs.push_back({node, node_arg_slot});
+      }
     }
   }
 }
 
-static Status CastNodeArg(onnxruntime::Graph& graph, NodeArg* arg, ONNX_NAMESPACE::TensorProto_DataType elem_type) {
+static void RewireCastedNodeArg(onnxruntime::Graph& graph,
+                                Node* cast_node,
+                                const Node* producer_node,
+                                int producer_node_arg_index,
+                                Node* consumer_node,
+                                int consumer_node_arg_index) {
+  auto& consumer_inputs = consumer_node->MutableInputDefs();
+  if (producer_node != nullptr) {
+    graph.RemoveEdge(producer_node->Index(), consumer_node->Index(), producer_node_arg_index, consumer_node_arg_index);
+  }
+  consumer_inputs[consumer_node_arg_index] = cast_node->MutableOutputDefs()[0];
+  graph.AddEdge(cast_node->Index(), consumer_node->Index(), 0, consumer_node_arg_index);
+}
+
+// This function tries casting `arg` to `element_type`.
+// The argument `fp32_node_args` specifies the cases where the `arg` should be 32-bit float.
+static Status CastNodeArg(onnxruntime::Graph& graph,
+                          const std::unordered_map<std::string, std::vector<int>>& fp32_node_args,
+                          NodeArg* arg,
+                          ONNX_NAMESPACE::TensorProto_DataType elem_type) {
   if (arg == nullptr) {
     return Status::OK();
   }
+  ORT_ENFORCE(elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+              elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT, "elem_type should be float or float16");
 
-  // Check consumer nodes
-  std::vector<Node*> consumer_nodes = graph.GetMutableConsumerNodes(arg->Name());
-  std::vector<Node*> fp32_nodes, fp16_nodes;
-  SplitNodes(consumer_nodes, fp32_nodes, fp16_nodes);
-  if ((elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 && fp16_nodes.empty()) ||
-      (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT && fp32_nodes.empty())) {
+  // Get consumer nodes of the input `arg`
+  std::vector<std::pair<Node*, int>> fp16_inputs;
+  std::vector<std::pair<Node*, int>> fp32_inputs;
+  GetConsumerNodeInputs(graph, fp32_node_args, arg, fp16_inputs, fp32_inputs);
+  if ((elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 && fp16_inputs.empty()) ||
+      (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT && fp32_inputs.empty())) {
     return Status::OK();
   }
 
@@ -91,20 +133,38 @@ static Status CastNodeArg(onnxruntime::Graph& graph, NodeArg* arg, ONNX_NAMESPAC
   }
 
   // Update consumer
-  if (!consumer_nodes.empty()) {
+  if (!fp16_inputs.empty() || !fp32_inputs.empty()) {
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-      for (Node* fp16_node : fp16_nodes) {
-        CastNodeArgHelper(graph, arg, producer_node, producer_node_arg_index, &cast_node, fp16_node);
+      std::vector<Node*> fp16_nodes;
+      fp16_nodes.reserve(fp16_inputs.size());
+      for (const auto& kv : fp16_inputs) {
+        RewireCastedNodeArg(graph, &cast_node, producer_node, producer_node_arg_index, kv.first, kv.second);
+        fp16_nodes.emplace_back(kv.first);
       }
 
-      fp32_nodes.push_back(&cast_node);
+      std::vector<Node*> fp32_nodes;
+      fp32_nodes.reserve(fp32_inputs.size() + 1);
+      fp32_nodes.emplace_back(&cast_node);
+      for (const auto& kv : fp32_inputs) {
+        fp32_nodes.emplace_back(kv.first);
+      }
       graph.UpdateConsumerNodes(arg->Name(), fp32_nodes);
       graph.UpdateConsumerNodes(output_name, fp16_nodes);
     } else {
-      for (Node* fp32_node : fp32_nodes) {
-        CastNodeArgHelper(graph, arg, producer_node, producer_node_arg_index, &cast_node, fp32_node);
+      std::vector<Node*> fp32_nodes;
+      fp32_nodes.reserve(fp32_inputs.size());
+      for (const auto& kv : fp32_inputs) {
+        RewireCastedNodeArg(graph, &cast_node, producer_node, producer_node_arg_index, kv.first, kv.second);
+        fp32_nodes.emplace_back(kv.first);
       }
+
+      std::vector<Node*> fp16_nodes;
+      fp16_nodes.reserve(fp16_inputs.size() + 1);
       fp16_nodes.push_back(&cast_node);
+      for (const auto& kv : fp16_inputs) {
+        fp16_nodes.emplace_back(kv.first);
+      }
+
       graph.UpdateConsumerNodes(arg->Name(), fp16_nodes);
       graph.UpdateConsumerNodes(output_name, fp32_nodes);
     }
@@ -123,7 +183,7 @@ static Status CastNodeArg(onnxruntime::Graph& graph, NodeArg* arg, ONNX_NAMESPAC
 }
 
 // TODO we only consider one level of subgraph now, handle this more generally
-static Status HandleFunctionBody(Graph& graph) {
+static Status HandleFunctionBody(Graph& graph, const std::unordered_map<std::string, std::vector<int>>& fp32_node_args) {
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
   for (auto index : order) {
@@ -142,18 +202,18 @@ static Status HandleFunctionBody(Graph& graph) {
         for (NodeArg* output : subgraph_node->MutableOutputDefs()) {
           if (output->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
             ORT_RETURN_IF_ERROR(
-                CastNodeArg(const_cast<Graph&>(subgraph), output, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+                CastNodeArg(const_cast<Graph&>(subgraph), fp32_node_args, output, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
           }
         }
       } else if (IsFP32Node(subgraph_node)) {
         for (NodeArg* input : subgraph_node->MutableInputDefs()) {
           if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-            ORT_RETURN_IF_ERROR(CastNodeArg(graph, input, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+            ORT_RETURN_IF_ERROR(CastNodeArg(graph, fp32_node_args, input, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
           }
         }
 
         for (NodeArg* output : subgraph_node->MutableOutputDefs()) {
-          ORT_RETURN_IF_ERROR(CastNodeArg(graph, output, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+          ORT_RETURN_IF_ERROR(CastNodeArg(graph, fp32_node_args, output, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
         }
       }
     }
@@ -161,79 +221,114 @@ static Status HandleFunctionBody(Graph& graph) {
   return Status::OK();
 }
 
+// Create FP16 weights based on FP32 weights for mixed precision.
+// And update the inputs of consumer with FP16 weights.
+static NodeArg* CreateFP16WeightsAndUpdateComsumers(Graph& graph,
+                                                    const std::unordered_map<std::string, std::vector<int>>& fp32_node_args,
+                                                    const NodeArg* arg,
+                                                    const ONNX_NAMESPACE::TensorProto* tensor_proto) {
+  ORT_ENFORCE(arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+    "data type is not float");
+  // Create FP16 Node Arg
+  ONNX_NAMESPACE::TypeProto type_proto;
+  type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  type_proto.mutable_tensor_type()->mutable_shape()->CopyFrom(*arg->Shape());
+  std::string arg_name = arg->Name() + "_fp16";
+  NodeArg& new_arg = graph.GetOrCreateNodeArg(arg_name, &type_proto);
+
+  // Check consumer nodes
+  std::vector<std::pair<Node*, int>> fp16_inputs;
+  std::vector<std::pair<Node*, int>> fp32_inputs;
+  GetConsumerNodeInputs(graph, fp32_node_args, arg, fp16_inputs, fp32_inputs);
+  if (fp16_inputs.empty()) {
+    return nullptr;
+  }
+
+  for (auto kv : fp16_inputs) {
+    kv.first->MutableInputDefs()[kv.second] = &new_arg;
+  }
+
+  // copy weights and put them into the graph
+  Initializer initializer(tensor_proto);
+  ONNX_NAMESPACE::TensorProto weight_tensor_proto = initializer.ToFP16(arg_name);
+  graph.AddInitializedTensor(weight_tensor_proto);
+
+  return &new_arg;
+}
+
+// fp16_weights_map stores the map from the name of the original FP32 weight to the coresponding fp16 NodeArg.
 Status TransformGraphForMixedPrecision(Graph& graph,
-                                       const std::unordered_set<std::string>& weights_to_train) {
-  ORT_RETURN_IF_ERROR(graph.Resolve());
-  GraphViewer graph_viewer(graph);
+                                       const std::unordered_set<std::string>& weights_to_train,
+                                       bool use_fp16_initializer,
+                                       std::unordered_map<std::string, NodeArg*>& fp16_weights_map) {
+  // Stag 1: Convert whole graph including forward and backward to FP16
+  // Insert Cast node to convert inputs from FP32 to FP16
+  for (const NodeArg* input : graph.GetInputs()) {
+    if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      ORT_RETURN_IF_ERROR(
+        CastNodeArg(graph, stage1_fp32_node_args, graph.GetNodeArg(input->Name()), ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+    }
+  }
 
+  // Convert initializers including trainable weights from FP32 to FP16
   const auto& initialized_tensors = graph.GetAllInitializedTensors();
+  for (const auto& kv : initialized_tensors) {
+    NodeArg* input = graph.GetNodeArg(kv.first);
+    if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      if (use_fp16_initializer) {
+        NodeArg* fp16_weight_arg = CreateFP16WeightsAndUpdateComsumers(graph, stage1_fp32_node_args, input, kv.second);
+        const auto it = weights_to_train.find(kv.first);
+        if (it != weights_to_train.cend()) {
+          fp16_weights_map[kv.first] = fp16_weight_arg;
+        }
+      } else {
+        ORT_RETURN_IF_ERROR(CastNodeArg(graph, stage1_fp32_node_args, input, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+      }
+    }
+  }
 
-  std::unordered_set<const NodeArg*> node_args_to_exclude_from_initializers;
-
-  // 1. Add cast node for Nodes which will be computed in FP32
-  const auto& order = graph_viewer.GetNodesInTopologicalOrder();
-  for (auto index : order) {
+  // Handle implicit data type casting nodes such as Cast, ConstantOfShape
+  GraphViewer graph_viewer(graph);
+  const auto& nodes_order = graph_viewer.GetNodesInTopologicalOrder();
+  for (auto index : nodes_order) {
     Node* node = graph.GetNode(index);
-    if (IsFP32Node(node) && node->OpType() != "AdamOptimizer") {
+    if (node->OpType() == "Cast" ||
+        node->OpType() == "ConstantOfShape") {
+      if (node->MutableOutputDefs()[0]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        ORT_RETURN_IF_ERROR(CastNodeArg(graph, stage1_fp32_node_args, node->MutableOutputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+      }
+    }
+  }
+
+  // Handle function body
+  ORT_RETURN_IF_ERROR(HandleFunctionBody(graph, stage1_fp32_node_args));
+
+  // At this point, the model has been transformed to a valid FP16 model.
+  ORT_RETURN_IF_ERROR(graph.Resolve(&weights_to_train));
+
+  // Stage 2: Keep nodes such as ReduceSum in FP32
+  // Add cast node for nodes which need to be computed in FP32
+  // Convert fp16 tensor --> Op --> fp16 tensor to
+  // fp16 tensor --> Cast --> fp32 tensor --> Op --> fp32 tensor --> Cast --> fp16 tensor
+  GraphViewer graph_viewer1(graph);
+  const auto& nodes_order1 = graph_viewer.GetNodesInTopologicalOrder();
+  for (auto index : nodes_order1) {
+    Node* node = graph.GetNode(index);
+    if (IsFP32Node(node)) {
       for (NodeArg* input : node->MutableInputDefs()) {
-        if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-          if (initialized_tensors.find(input->Name()) != initialized_tensors.cend()) {
-            node_args_to_exclude_from_initializers.insert(input);
-          } else {
-            ORT_RETURN_IF_ERROR(CastNodeArg(graph, input, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-          }
+        if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+          ORT_RETURN_IF_ERROR(CastNodeArg(graph, stage2_fp32_node_args, input, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
         }
       }
 
       for (NodeArg* output : node->MutableOutputDefs()) {
-        ORT_RETURN_IF_ERROR(CastNodeArg(graph, output, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
-      }
-    } else if (node->OpType() == "TrainableDropout" ||
-               node->OpType() == "TrainableDropoutGrad") {
-      // The ratio of dropout can't be casted to FP16
-      node_args_to_exclude_from_initializers.insert(node->InputDefs()[1]);
-    } else if (node->OpType() == "Cast" ||
-               node->OpType() == "ConstantOfShape") {
-      // Handle implicit data type casting nodes such as Cast, ConstantOfShape
-      if (node->MutableOutputDefs()[0]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-        ORT_RETURN_IF_ERROR(CastNodeArg(graph, node->MutableOutputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+        if (output->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+          ORT_RETURN_IF_ERROR(CastNodeArg(graph, stage2_fp32_node_args, output, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+        }
       }
     }
   }
-
-  // 2. Insert Cast node to convert inputs from FP32 to FP16
-  for (const NodeArg* input : graph.GetInputs()) {
-    if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      ORT_RETURN_IF_ERROR(
-          CastNodeArg(graph, graph.GetNodeArg(input->Name()), ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
-    }
-  }
-
-  // 3. Insert Cast node to convert all initializers including trainable weights from FP32 to FP16
-  for (const auto& it : initialized_tensors) {
-    NodeArg* input = graph.GetNodeArg(it.first);
-    if (node_args_to_exclude_from_initializers.find(input) == node_args_to_exclude_from_initializers.cend() &&
-        input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      ORT_RETURN_IF_ERROR(CastNodeArg(graph, input, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
-    }
-  }
-
-  ORT_RETURN_IF_ERROR(graph.Resolve());
-
-  // 5. Handle function body
-  ORT_RETURN_IF_ERROR(HandleFunctionBody(graph));
-
-  //Insert Cast node to convert gradients of trainable weights from FP16 to FP32
-  for (const auto& weight_to_train : weights_to_train) {
-    std::string gradient_name = GradientBuilderBase::GradientName(weight_to_train);
-    auto nodes = graph.GetMutableConsumerNodes(gradient_name);
-    NodeArg* input = graph.GetNodeArg(gradient_name);
-    if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-      ORT_RETURN_IF_ERROR(CastNodeArg(graph, input, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-    }
-  }
-
-  ORT_RETURN_IF_ERROR(graph.Resolve());
+  ORT_RETURN_IF_ERROR(graph.Resolve(&weights_to_train));
 
   return Status::OK();
 }

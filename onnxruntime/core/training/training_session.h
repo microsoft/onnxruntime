@@ -59,8 +59,12 @@ class TrainingSession : public InferenceSession {
 
   /** Enable mixed precision training
   @param weights_to_train a set of weights to be training.
+  @param use_fp16_initializer specify whether fp16 initialier is created.
+  @param fp16_weights_map, the map between weights and FP16 weights.
   */
-  common::Status EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train);
+  common::Status EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train,
+                                      bool use_fp16_initializer,
+                                      std::unordered_map<std::string, NodeArg*>& fp16_weights_map);
 
   common::Status OverrideGraphOutputs(const std::vector<std::string>& outputs);
 

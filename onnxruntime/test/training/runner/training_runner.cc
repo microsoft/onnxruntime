@@ -78,14 +78,15 @@ Status TrainingRunner::Initialize() {
   // Add gradient graph
   ORT_RETURN_IF_ERROR(session_.BuildGradientGraph(weights_to_train, params_.loss_func_info.loss_name));
 
+  std::unordered_map<std::string, NodeArg*> fp16_weights_map;
+  if (params_.use_mixed_precision) {
+    ORT_RETURN_IF_ERROR(session_.EnableMixedPrecision(weights_to_train, params_.use_fp16_initializer, fp16_weights_map));
+  }
+
   // Add optimizer
   std::unordered_map<std::string, OptimizerInfo> opt_info;
-  ORT_RETURN_IF_ERROR(SetupOptimizerParams(weights_to_train, opt_info));
+  ORT_RETURN_IF_ERROR(SetupOptimizerParams(weights_to_train, fp16_weights_map, opt_info));
   ORT_RETURN_IF_ERROR(session_.BuildOptimizer(opt_info));
-
-  if (params_.use_mixed_precision) {
-    ORT_RETURN_IF_ERROR(session_.EnableMixedPrecision(weights_to_train));
-  }
 
   // Expose all fetches as graph outputs
   ORT_RETURN_IF_ERROR(session_.OverrideGraphOutputs(params_.fetch_names));
@@ -323,11 +324,13 @@ Status TrainingRunner::LoadAndEvaluate(const std::string& model_path) {
 }
 
 Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
+                                            const std::unordered_map<std::string, NodeArg*>& fp16_weights_map,
                                             std::unordered_map<std::string, OptimizerInfo>& opt_infos) {
   // Prepare the weight<->optimizer mapping.
   // All weights use the same type of optimizer
   OptimizerInfo opt_info{
       params_.training_optimizer_name,
+      nullptr,
       params_.learning_rate,
       params_.mpi_context.world_rank,
       params_.mpi_context.world_size,
@@ -335,6 +338,10 @@ Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string
 
   opt_infos.reserve(weights_to_train.size());
   for (const auto& weight_name : weights_to_train) {
+    const auto it = fp16_weights_map.find(weight_name);
+    if (it != fp16_weights_map.cend()) {
+      opt_info.fp16_weight_arg = it->second;
+    }
     opt_infos[weight_name] = opt_info;
   }
 

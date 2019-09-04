@@ -93,6 +93,7 @@ class TrainingRunner {
     VectorString fetch_names;
 
     bool use_mixed_precision = false;
+    bool use_fp16_initializer = true;
   };
 
   TrainingRunner(std::shared_ptr<IDataLoader> training_data_loader,
@@ -109,6 +110,7 @@ class TrainingRunner {
   Status Evaluate(InferenceSession& session);
   Status LoadAndEvaluate(const std::string& model_path);
   Status SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
+                              const std::unordered_map<std::string, NodeArg*>& fp16_weights_map,
                               std::unordered_map<std::string, OptimizerInfo>& infos);
 
   std::shared_ptr<IDataLoader> training_data_loader_ = nullptr;

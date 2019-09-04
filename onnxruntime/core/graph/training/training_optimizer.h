@@ -12,6 +12,7 @@ namespace training {
 
 struct OptimizerInfo {
   std::string name;
+  const NodeArg* fp16_weight_arg;
   float learning_rate;
   int world_rank;
   int world_size;

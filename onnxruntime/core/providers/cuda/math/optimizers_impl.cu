@@ -63,6 +63,7 @@ __global__ void _AdamOptimizer(
     T4* moment_1_out,
     T4* moment_2_out,
     int64_t* update_count_out,
+    half* fp16_weights_out,
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   // Regularize gradient.
@@ -89,6 +90,10 @@ __global__ void _AdamOptimizer(
   weights_out[id] = weights[id] - \
     T3(eta_new * moment_1_out[id] / (_Sqrt(moment_2_out[id]) + epsilon));
   *update_count_out = (*update_count) + 1;
+
+  if (fp16_weights_out != nullptr) {
+    fp16_weights_out[id] = static_cast<half>(weights_out[id]);
+  }
 }
 
 template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD>
@@ -107,6 +112,7 @@ void AdamOptimizerImpl(
     T4* moment_1_out,
     T4* moment_2_out,
     T2* update_count_out,
+    half* fp16_weights_out,
     size_t count) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
@@ -125,6 +131,7 @@ void AdamOptimizerImpl(
       moment_1_out,
       moment_2_out,
       update_count_out,
+      fp16_weights_out,
       N);
 }
 
@@ -144,6 +151,7 @@ template void AdamOptimizerImpl(                              \
     T4* moment_1_out,                                         \
     T4* moment_2_out,                                         \
     T2* update_count_out,                                     \
+    half* fp16_weights_out,                                   \
     size_t count);
 
 SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, float)

@@ -98,13 +98,10 @@ Status TrainingSession::BuildLossFunction(const LossFunctionInfo& loss_func_info
   return DoPostLoadProcessing(*model_);
 }
 
-common::Status TrainingSession::EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train) {
-  bool modified;
-  RuleBasedGraphTransformer rule_based_graph_transformer("rule_based_graph_transformer");
-  rule_based_graph_transformer.Register(make_unique<EliminateIdentity>());
-  ORT_RETURN_IF_ERROR(rule_based_graph_transformer.Apply(model_->MainGraph(), modified));
-
-  ORT_RETURN_IF_ERROR(TransformGraphForMixedPrecision(model_->MainGraph(), weights_to_train));
+common::Status TrainingSession::EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train,
+                                                     bool use_fp16_initializer,
+                                                     std::unordered_map<std::string, NodeArg*>& fp16_weights_map) {
+  ORT_RETURN_IF_ERROR(TransformGraphForMixedPrecision(model_->MainGraph(), weights_to_train, use_fp16_initializer, fp16_weights_map));
   return Status::OK();
 }
 

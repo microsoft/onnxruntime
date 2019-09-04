@@ -50,11 +50,13 @@ Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
           .Alias(2, 0) /* Update weights in-place */                        \
           .Alias(4, 1) /* Update moment-1 in-place */                       \
           .Alias(5, 2) /* Update moment-2 in-place */                       \
+          .Alias(6, 4) /* Update FP16 weights in-place */                   \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())          \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())          \
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())          \
           .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>())          \
-          .TypeConstraint("T_GRAD", DataTypeImpl::GetTensorType<T_GRAD>()), \
+          .TypeConstraint("T_GRAD", DataTypeImpl::GetTensorType<T_GRAD>())  \
+          .TypeConstraint("T_FP16", DataTypeImpl::GetTensorType<MLFloat16>()), \
       AdamOptimizer<T1, T2, T3, T4, T_GRAD>);
 
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, float)
@@ -84,6 +86,13 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD>::ComputeInternal(OpKernelContext* c
   Tensor& NM2 = *ctx->Output(2, M2.Shape());
   Tensor& NS = *ctx->Output(3, S.Shape());
 
+  half* fp16_weights_out = nullptr;
+  if (ctx->InputCount() >= 7 && ctx->OutputCount() >= 5) {
+    const Tensor& W_FP16 = *ctx->Input<Tensor>(6);
+    Tensor& NW_FP16 = *ctx->Output(4, W_FP16.Shape());
+    fp16_weights_out = reinterpret_cast<half*>(NW_FP16.template MutableData<MLFloat16>());
+  }
+
   AdamOptimizerImpl(
       reinterpret_cast<const CudaT1*>(ETA.template Data<T1>()),
       reinterpret_cast<const CudaT2*>(S.template Data<T2>()),
@@ -99,6 +108,7 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD>::ComputeInternal(OpKernelContext* c
       reinterpret_cast<CudaT4*>(NM1.template MutableData<T4>()),
       reinterpret_cast<CudaT4*>(NM2.template MutableData<T4>()),
       reinterpret_cast<CudaT2*>(NS.template MutableData<T2>()),
+      fp16_weights_out,
       W.Shape().Size());
 
   return Status::OK();
