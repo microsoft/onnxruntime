@@ -25,6 +25,8 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 | OpenVino (MYRIAD) | mcr.microsoft.com/azureml/onnxruntime | TBA                                              | TBA              |
 | Server            | mcr.microsoft.com/onnxruntime/server  | :v0.4.0, :v0.5.0                                 | :latest          |
 
+**Preparation step:** download `scripts` to your local folder before running the `docker build` command for any of the options below. 
+
 ## Build from Source
 #### Linux 16.04, CPU, Python Bindings
 
