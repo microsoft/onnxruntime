@@ -10,10 +10,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_ACTIVATION_KERNEL(x, ver, T)                    \
+#define REGISTER_ACTIVATION_KERNEL(x, ver, domain, T)            \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                 \
       x,                                                         \
-      kOnnxDomain,                                               \
+      domain,                                                    \
       ver,                                                       \
       T,                                                         \
       kCudaExecutionProvider,                                    \
@@ -37,23 +37,23 @@ namespace cuda {
     return Status::OK();                                                                                   \
   }
 
-#define UNARY_ACTIVATION_OP_TYPED(name, ver, T) \
-  REGISTER_ACTIVATION_KERNEL(name, ver, T)      \
+#define UNARY_ACTIVATION_OP_TYPED(name, ver, domain, T) \
+  REGISTER_ACTIVATION_KERNEL(name, ver, domain, T)      \
   UNARY_ACTIVATION_COMPUTE(name, T)
 
-#define UNARY_ACTIVATION_OP_HFD(name, ver)        \
-  UNARY_ACTIVATION_OP_TYPED(name, ver, MLFloat16) \
-  UNARY_ACTIVATION_OP_TYPED(name, ver, float)     \
-  UNARY_ACTIVATION_OP_TYPED(name, ver, double)
+#define UNARY_ACTIVATION_OP_HFD(name, ver, domain)        \
+  UNARY_ACTIVATION_OP_TYPED(name, ver, domain, MLFloat16) \
+  UNARY_ACTIVATION_OP_TYPED(name, ver, domain, float)     \
+  UNARY_ACTIVATION_OP_TYPED(name, ver, domain, double)
 
-UNARY_ACTIVATION_OP_HFD(Affine, 1);
-UNARY_ACTIVATION_OP_HFD(ParametricSoftplus, 1);
-UNARY_ACTIVATION_OP_HFD(ScaledTanh, 1);
+UNARY_ACTIVATION_OP_HFD(Affine, 1, kOnnxDomain);
+UNARY_ACTIVATION_OP_HFD(ParametricSoftplus, 1, kOnnxDomain);
+UNARY_ACTIVATION_OP_HFD(ScaledTanh, 1, kOnnxDomain);
+UNARY_ACTIVATION_OP_HFD(Gelu, 1, kMSDomain);
 
-
-REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, MLFloat16)
-REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, float)
-REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, double)
+REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, MLFloat16)
+REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, float)
+REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, double)
 
 }  //namespace cuda
 }  // namespace contrib

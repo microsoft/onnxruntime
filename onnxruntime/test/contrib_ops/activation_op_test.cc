@@ -14,8 +14,9 @@ void TestActivationContribOp(const char* szOp, std::vector<float>& input_vals,
                              std::function<float(float)> expected_func,
                              const std::unordered_map<std::string, float> attribs = {},
                              bool is_tensorrt_supported = true,
-                             int opset_version = 7) {
-  OpTester test(szOp, opset_version);
+                             int opset_version = 7,
+                             const char* domain = kOnnxDomain) {
+  OpTester test(szOp, opset_version, domain);
 
   for (auto attr : attribs)
     test.AddAttribute(attr.first, attr.second);
@@ -45,10 +46,11 @@ std::vector<float> input_values = {
 
 TEST(ActivationContribOpTest, ThresholdedRelu_version_1_to_9) {
   float alpha = 0.1f;
-  TestActivationContribOp("ThresholdedRelu",
-                          input_values,
-                          [alpha](float x) { return (x >= alpha) ? x : 0; },
-                          {{"alpha", alpha}}, true, 1);
+  TestActivationContribOp(
+      "ThresholdedRelu",
+      input_values,
+      [alpha](float x) { return (x >= alpha) ? x : 0; },
+      {{"alpha", alpha}}, true, 1);
 }
 
 TEST(ActivationContribOpTest, ScaledTanh) {
@@ -75,6 +77,14 @@ TEST(ActivationContribOpTest, ParametricSoftplus) {
                               return alpha * logf(expf(bx) + 1);
                           },
                           {{"alpha", alpha}, {"beta", beta}});
+}
+
+TEST(ActivationContribOpTest, Gelu) {
+  TestActivationContribOp(
+      "Gelu",
+      input_values,
+      [](float x) { return x * 0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))); },
+      {}, false, 1, kMSDomain);
 }
 
 }  // namespace test

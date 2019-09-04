@@ -133,7 +133,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) cons
                                     "Gelu",
                                     "fused Gelu subgraphs ",
                                     gelu_input_defs,
-                                    gelu_output_defs);
+                                    gelu_output_defs, {}, kMSDomain);
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     gelu_node.SetExecutionProviderType(node.GetExecutionProviderType());

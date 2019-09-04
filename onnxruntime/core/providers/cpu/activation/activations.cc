@@ -45,9 +45,4 @@ Status Tanh<float>::Compute(OpKernelContext* context) const {
   MlasComputeTanh(X->template Data<float>(), Y->template MutableData<float>(), x_shape.Size());
   return Status::OK();
 }
-
-namespace contrib {
-REGISTER_UNARY_ELEMENTWISE_KERNEL(Gelu, 9);
-}  // namespace contrib
-
 }  // namespace onnxruntime

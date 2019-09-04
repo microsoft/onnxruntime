@@ -12,8 +12,8 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
                             std::function<float(float)> expected_func,
                             const std::unordered_map<std::string, float> attribs = {},
                             bool is_tensorrt_supported = true,
-                            int opset_version = 7) {
-  OpTester test(szOp, opset_version);
+                            int opset_version = 7, const char* domain = kOnnxDomain) {
+  OpTester test(szOp, opset_version, domain);
 
   for (auto attr : attribs)
     test.AddAttribute(attr.first, attr.second);
@@ -209,16 +209,6 @@ TEST(ActivationOpTest, Softsign) {
       no_inf_input_vals,
       [](float x) { return x / (1 + std::abs(x)); }, {}, false);  // Disable TensorRT because result mismatches
 }
-
-#ifndef DISABLE_CONTRIB_OPS
-TEST(ActivationOpTest, Gelu) {
-  TestUnaryElementwiseOp(
-      "Gelu",
-      input_vals,
-      [](float x) { return x * 0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))); },
-      {}, false, 9);
-}
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime
