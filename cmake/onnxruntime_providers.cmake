@@ -25,6 +25,16 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
 )
 
+file(GLOB onnxruntime_cpu_automl_cc_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/automl_ops/cpu_automl_kernels.h"
+  "${ONNXRUNTIME_ROOT}/automl_ops/cpu_automl_kernels.cc"
+  "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.h"
+  "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.cc"
+  "${ONNXRUNTIME_ROOT}/automl_ops/automl_featurizers.h"
+  "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.h"
+  "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.cc"
+)
+
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
@@ -37,6 +47,10 @@ endif()
 if(onnxruntime_USE_NGRAPH)
   set(PROVIDERS_NGRAPH onnxruntime_providers_ngraph)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES ngraph)
+endif()
+if(onnxruntime_USE_NUPHAR)
+  set(PROVIDERS_NUPHAR onnxruntime_providers_nuphar)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES nuphar)
 endif()
 if(onnxruntime_USE_CUDA)
   set(PROVIDERS_CUDA onnxruntime_providers_cuda)
@@ -55,17 +69,30 @@ if(onnxruntime_USE_NNAPI)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
 endif()
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
-# add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
-source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_contrib_ops_srcs})
+
+set(onnxruntime_providers_src ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
 # disable contrib ops conditionally
-if(onnxruntime_DISABLE_CONTRIB_OPS)
-  add_library(onnxruntime_providers ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
-else()
-  add_library(onnxruntime_providers ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs} ${onnxruntime_cpu_contrib_ops_srcs})
+if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
+  source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_contrib_ops_srcs})
+  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_contrib_ops_srcs})
 endif()
 
+if (onnxruntime_USE_AUTOML)
+  source_group(TREE ${ONNXRUNTIME_ROOT}/ FILES ${onnxruntime_cpu_automl_cc_srcs})
+  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_automl_cc_srcs})
+endif()
+
+add_library(onnxruntime_providers ${onnxruntime_providers_src})
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+
+if (onnxruntime_USE_AUTOML)
+  add_dependencies(onnxruntime_providers automl_featurizers)
+  onnxruntime_add_include_to_target(onnxruntime_providers automl_featurizers)
+  target_link_libraries(onnxruntime_providers automl_featurizers)
+endif()
+
 if(HAS_DEPRECATED_COPY)
   #temporarily ignore this warning
   #see: https://en.wikipedia.org/wiki/Rule_of_three_(C%2B%2B_programming)
@@ -355,6 +382,43 @@ endif()
   file(COPY ${onnxruntime_providers_openvino_py_srcs} DESTINATION ${onnxruntime_BINARY_DIR})
 endif()
 
+if (onnxruntime_USE_NUPHAR)
+  add_definitions(-DUSE_NUPHAR=1)
+
+  if (NOT onnxruntime_USE_TVM)
+    message(FATAL_ERROR "onnxruntime_USE_TVM required for onnxruntime_USE_NUPHAR")
+  endif()
+
+  if (NOT onnxruntime_USE_LLVM)
+    message(FATAL_ERROR "onnxruntime_USE_LLVM required for onnxruntime_USE_NUPHAR")
+  endif()
+
+  include(onnxruntime_nuphar_extern.cmake)
+
+  file(GLOB_RECURSE onnxruntime_providers_nuphar_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/*.cc"
+  )
+
+  # following files required different build flag for AVX2 in separate onnxruntime_nuphar_extern.cmake file
+  list (REMOVE_ITEM onnxruntime_providers_nuphar_cc_srcs "${ONNXRUNTIME_ROOT}/core/providers/nuphar/extern/igemv_avx2.cc")
+  list (REMOVE_ITEM onnxruntime_providers_nuphar_cc_srcs "${ONNXRUNTIME_ROOT}/core/providers/nuphar/extern/igemv_avx2.h")
+
+  if (onnxruntime_USE_MKLML)
+    add_definitions(-DNUPHAR_USE_MKL)
+  endif()
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nuphar_cc_srcs})
+  add_library(onnxruntime_providers_nuphar ${onnxruntime_providers_nuphar_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_nuphar onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+  set_target_properties(onnxruntime_providers_nuphar PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_nuphar PRIVATE ${ONNXRUNTIME_ROOT} ${TVM_INCLUDES} ${eigen_INCLUDE_DIRS})
+  set_target_properties(onnxruntime_providers_nuphar PROPERTIES LINKER_LANGUAGE CXX)
+  target_compile_options(onnxruntime_providers_nuphar PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
+  add_dependencies(onnxruntime_providers_nuphar ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/nuphar  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+endif()
+ 
 if (onnxruntime_USE_NNAPI)
   add_definitions(-DUSE_NNAPI=1)
   option(DNN_READ_ONNX "" ON)

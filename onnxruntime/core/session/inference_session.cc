@@ -90,15 +90,23 @@ inline std::basic_string<T> GetCurrentTimeString() {
   OrtStrftime<T>(time_str, sizeof(time_str), GetDateFormatString<T>(), &local_tm);
   return std::basic_string<T>(time_str);
 }
+
+concurrency::ThreadPool* CreateThreadPool(int size) {
+  if (size < 0) size = std::thread::hardware_concurrency() / 2;
+  return size > 0 ? new concurrency::ThreadPool("SESSION", size) : nullptr;
+}
+
 }  // namespace
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    logging::LoggingManager* logging_manager)
     : session_options_{session_options},
-      graph_transformation_mgr_{session_options_.max_num_graph_transformation_steps},
+      graph_transformation_mgr_{session_options.max_num_graph_transformation_steps},
       logging_manager_{logging_manager},
+      thread_pool_(CreateThreadPool(session_options.session_thread_pool_size)),
       session_state_(execution_providers_,
-                     session_options.enable_mem_pattern && session_options.enable_sequential_execution),
+                     session_options.enable_mem_pattern && session_options.enable_sequential_execution,
+                     thread_pool_.get()),
       insert_cast_transformer_{"CastFloat16Transformer"} {
   ORT_ENFORCE(Environment::IsInitialized(),
               "Environment must be initialized before creating an InferenceSession.");
@@ -106,18 +114,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
   InitLogger(logging_manager);
 
   session_state_.SetDataTransferMgr(&data_transfer_mgr_);
-
-  // The threadpool is currently evolving.  We will always create a per session threadpool.
-  // Beyond this, we will create a global thread pool to share across sessions.
-  {
-    int pool_size = session_options_.session_thread_pool_size <= 0
-                        ? std::thread::hardware_concurrency() / 2
-                        : session_options_.session_thread_pool_size;
-
-    thread_pool_ = std::make_unique<onnxruntime::concurrency::ThreadPool>("SESSION", pool_size);
-  }
-
-  session_state_.SetThreadPool(thread_pool_.get());
   session_profiler_.Initialize(session_logger_);
   session_state_.SetProfiler(session_profiler_);
   if (session_options.enable_profiling) {
@@ -398,11 +394,9 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
 
       auto subgraph_session_state =
-          std::make_unique<SessionState>(execution_providers_, session_state.GetEnableMemoryPattern());
+          std::make_unique<SessionState>(execution_providers_, session_state.GetEnableMemoryPattern(), session_state.GetThreadPool());
       subgraph_session_state->SetProfiler(session_profiler_);
       subgraph_session_state->SetLogger(*session_logger_);
-      // Pass threadpool to subgraph
-      subgraph_session_state->SetThreadPool(session_state.GetThreadPool());
       // Pass data transfer manager to subgraph.
       subgraph_session_state->SetDataTransferMgr(&session_state.GetDataTransferMgr());
       // Pass fused function manager to subgraph
@@ -440,8 +434,6 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
       const auto implicit_inputs = node.ImplicitInputDefs();
       ORT_RETURN_IF_ERROR(initializer.CreatePlan(&node, &implicit_inputs,
                                                  session_options_.enable_sequential_execution));
-
-      ORT_RETURN_IF_ERROR(initializer.InitializeAndSave(&implicit_inputs));
 
       // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
       //                                                   &*subgraph_info.session_state);
@@ -534,18 +526,14 @@ common::Status InferenceSession::Initialize() {
         ORT_RETURN_IF_ERROR(Model::Save(*model_, session_options_.optimized_model_filepath));
       } else {
         LOGS(*session_logger_, WARNING) << "Serializing Optimized ONNX model with Graph Optimization"
-                                        " level greater than 2 is not supported.";
+                                           " level greater than 2 is not supported.";
       }
     }
 
     ORT_RETURN_IF_ERROR(session_initializer.CreatePlan(nullptr, nullptr, session_options_.enable_sequential_execution));
-    ORT_RETURN_IF_ERROR(session_initializer.InitializeAndSave(nullptr));
 
     // handle any subgraphs
     ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(graph, session_state_));
-
-    session_state_.CalculateNodeIndexInfo();
-
     is_inited_ = true;
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
@@ -580,8 +568,7 @@ common::Status InferenceSession::CheckShapes(const std::string& input_name,
     ostr << "Invalid rank for input: " << input_name
          << " Got: " << input_shape_sz << " Expected: " << expected_shape_sz
          << " Please fix either the inputs or the model.";
-    LOGS(*session_logger_, WARNING) << ostr.str();
-    return Status::OK();
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
   }
 
   std::vector<int> invalid_dim_indices;
@@ -602,7 +589,7 @@ common::Status InferenceSession::CheckShapes(const std::string& input_name,
       ostr << " index: " << idx << " Got: " << input_shape[idx] << " Expected: " << expected_shape[idx] << "\n";
     }
     ostr << " Please fix either the inputs or the model.";
-    LOGS(*session_logger_, WARNING) << ostr.str();
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
   }
 
   return Status::OK();

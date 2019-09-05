@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/tensor/upsample.h"
 #include <cmath>
+#include <sstream>
 
 using namespace onnxruntime::common;
 using namespace std;
@@ -61,14 +62,18 @@ Status UpsampleNearest(const T* input,
                        T* output,
                        const TensorShape& input_shape,
                        const TensorShape& output_shape,
-                       const vector<float>& scales) {
+                       const vector<float>& scales,
+                       bool is_resize) {
   if (!input || !output)
-    return Status(ONNXRUNTIME, FAIL, "Upsample: input/output value is nullptr");
+    return Status(ONNXRUNTIME, FAIL, is_resize ? "Resize: input/output value is nullptr" : 
+                                                 "Upsample: input/output value is nullptr");
   if (input_shape.NumDimensions() != output_shape.NumDimensions())
-    return Status(ONNXRUNTIME, FAIL, "Upsample: input/output value's dimension mismatch");
+    return Status(ONNXRUNTIME, FAIL, is_resize ? "Resize: input/output value's dimension mismatch" : 
+                                                 "Upsample: input/output value's dimension mismatch");
   if (input_shape.NumDimensions() == 0) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Upsample: input shape needs to be at least a single dimension.");
+                  is_resize ? "Resize: input shape needs to be at least a single dimension" : 
+                              "Upsample: input shape needs to be at least a single dimension.");
   }
 
   int64_t n_dim = static_cast<int64_t>(input_shape.NumDimensions());
@@ -192,11 +197,14 @@ Status upsampleLiner(const T* input,
                      T* output,
                      const TensorShape& input_shape,
                      const TensorShape& output_shape,
-                     const vector<float>& scales) {
+                     const vector<float>& scales,
+                     bool is_resize) {
   if (!input || !output)
-    return Status(ONNXRUNTIME, FAIL, "Upsample: input/output value is nullptr");
+    return Status(ONNXRUNTIME, FAIL, is_resize ? "Resize: input / output value is nullptr" : 
+                                                 "Upsample: input / output value is nullptr");
   if (input_shape.NumDimensions() != output_shape.NumDimensions())
-    return Status(ONNXRUNTIME, FAIL, "Upsample: input/output value's dimension mismatch");
+    return Status(ONNXRUNTIME, FAIL, is_resize ? "Resize: input/output value's dimension mismatch" : 
+                                                 "Upsample: input/output value's dimension mismatch");
   auto n_dim = input_shape.NumDimensions();
   for (size_t i = 0, size = output_shape.Size(); i < size; i++) {
     std::vector<int64_t> val1;
@@ -242,6 +250,11 @@ Status upsampleLiner(const T* input,
   return Status::OK();
 }
 
+// The following method supports a 4-D input in 'Linear mode' 
+// that amounts to 'Bilinear' Upsampling/Resizing in the sense that it assumes
+// the scale values for the outermost 2 dimensions are 1.
+// This is the common use-case where the 4-D input (batched multi-channel images) 
+// is usually of shape [N, C, H, W] and the scales are [1.0, 1.0, height_scale, width_scale]
 template <typename T>
 void upsampleBilinear(
     int64_t batch_size,
@@ -327,9 +340,10 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
   ORT_ENFORCE(X != nullptr);
 
   const std::vector<int64_t>& dims = X->Shape().GetDims();
-  if (dims.size() != scales.size()) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Upsample: input tensor's dimension does not match the scales.");
-  }
+  if (dims.size() != scales.size())
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, 
+                  is_resize ? "Resize: input tensor's dimension does not match the scales." : 
+                              "Upsample: input tensor's dimension does not match the scales.");
 
   bool no_scale = true;
   std::vector<int64_t> Y_dims;
@@ -348,26 +362,33 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
 
   switch (mode_) {
     case UpsampleMode::NN:
-      return UpsampleNearest<T>(X->template Data<T>(), Y->template MutableData<T>(), X->Shape(), Y->Shape(), scales);
+      return UpsampleNearest<T>(X->template Data<T>(), Y->template MutableData<T>(), X->Shape(), Y->Shape(), scales, is_resize);
     case UpsampleMode::LINEAR: {
-      //What's the correct behavior of linear mode is not clear right now,
-      //Only support bilinear with 4D tensor to keep consistent with previous behavior
-      if (dims.size() != 4)
-        return Status(ONNXRUNTIME, FAIL, "Upsample: linear mode upsample only support 4-D tensor with NCHW layout");
+      //The correct behavior of 'linear' mode for an N-D input is not clear right now,
+      //so only support 'bilinear' with 2-D or 4-D input tensor with outermost 2 scales as 1 in the 4-D case 
+      if (dims.size() != 2 && dims.size() != 4) {
+        std::ostringstream oss;
+        oss << "'Linear' mode only support 2-D inputs ('Bilinear') or 4-D inputs "
+               "with the corresponding outermost 2 scale values being 1 in the ";
+        oss << (is_resize ? "Resize operator" : "Upsample operator");
+        return Status(ONNXRUNTIME, FAIL, oss.str());      
+      }
 
-      const int64_t batch_size = dims[0];
-      const int64_t num_channels = dims[1];
-      const int64_t input_height = dims[2];
-      const int64_t input_width = dims[3];
+      bool is_2D = dims.size() == 2;
+      const int64_t batch_size = is_2D ? 1 : dims[0];
+      const int64_t num_channels = is_2D ? 1 : dims[1];
+      const int64_t input_height = is_2D ? dims[0] : dims[2];
+      const int64_t input_width = is_2D ? dims[1] : dims[3];
 
       AllocatorPtr alloc;
       ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
       upsampleBilinear(batch_size, num_channels, input_height, input_width,
-                       scales[2], scales[3], X->template Data<T>(), Y->template MutableData<T>(), alloc);
+                       is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], 
+                       X->template Data<T>(), Y->template MutableData<T>(), alloc);
       return Status::OK();
     }
     default:
-      return Status(ONNXRUNTIME, FAIL, "Upsample: unexpected mode");
+      return Status(ONNXRUNTIME, FAIL, is_resize ? "Resize: unexpected mode" : "Upsample: unexpected mode");
   }
 }
 
@@ -380,9 +401,9 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
   const auto* scales = context->Input<Tensor>(1);
   ORT_ENFORCE(scales != nullptr);
   int64_t scales_size = scales->Shape().Size();
-  std::vector<float> scales_arrary(scales_size);
-  ParseScalesData(scales, scales_arrary);
-  return BaseCompute(context, scales_arrary);
+  std::vector<float> scales_array(scales_size);
+  ParseScalesData(scales, scales_array);
+  return BaseCompute(context, scales_array);
 }
 
 }  // namespace onnxruntime
