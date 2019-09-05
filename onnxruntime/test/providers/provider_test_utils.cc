@@ -505,7 +505,7 @@ void OpTester::Run(ExpectResult expect_result,
     if (execution_providers) {
       for (auto& entry : *execution_providers) {
         if (entry->Type() == kDmlExecutionProvider) {
-          so.enable_cpu_mem_arena = false;
+          so.enable_mem_pattern = false;
           break;
         }
       }
@@ -528,7 +528,7 @@ void OpTester::Run(ExpectResult expect_result,
           continue;
 
         if (provider_type == kDmlExecutionProvider) {
-          so.enable_cpu_mem_arena = false;
+          so.enable_mem_pattern = false;
         }
         InferenceSession session_object{so};
 
