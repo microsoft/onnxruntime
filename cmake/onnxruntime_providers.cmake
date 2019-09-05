@@ -173,7 +173,7 @@ if (onnxruntime_USE_MIMALLOC)
     configure_file(${mimalloc_output_dir}${mimalloc_output_name}.so ${mimalloc_wheel_dir}${mimalloc_output_name}.so COPYONLY)
   endif()
   
-  target_link_libraries(onnxruntime_providers PUBLIC mimalloc)
+  target_link_libraries(onnxruntime_providers mimalloc)
 endif()
 
 if (onnxruntime_USE_CUDA)
