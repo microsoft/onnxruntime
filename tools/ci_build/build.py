@@ -548,30 +548,37 @@ def adb_push(source_dir, src, dest, **kwargs):
 def adb_shell(*args, **kwargs):
     return run_subprocess(['adb', 'shell', *args], **kwargs)
 
+def prepare_android_vm_for_test(args, source_dir, vm_test_dir = '/data/local/tmp/'):
+    if args.android_abi == 'x86_64':
+        run_subprocess(os.path.join(source_dir, 'tools', 'ci_build', 'github', 'android', 'start_android_emulator.sh'))
+        adb_push(source_dir, 'testdata', vm_test_dir, cwd=cwd)
+        adb_push(source_dir, os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'), '/data/local/tmp/', cwd=cwd)
+        adb_push(source_dir, 'onnxruntime_test_all', vm_test_dir, cwd=cwd)
+        adb_push(source_dir, 'onnx_test_runner', vm_test_dir, cwd=cwd)
+
+def run_onnx_tests_on_android(args, vm_test_dir):
+    if args.use_dnnlibrary:
+        adb_shell('cd '+vm_test_dir+' && '+vm_test_dir+'/onnx_test_runner -e nnapi '+vm_test_dir+'/test')
+    else:
+        adb_shell('cd '+vm_test_dir+' && '+vm_test_dir+'/onnx_test_runner '+vm_test_dir+'/test')
+
+
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False, enable_ngraph = False):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
-        android_x86_64 = args.android_abi == 'x86_64'
-        if android_x86_64:
-            run_subprocess(os.path.join(source_dir, 'tools', 'ci_build', 'github', 'android', 'start_android_emulator.sh'))
-            adb_push(source_dir, 'testdata', '/data/local/tmp/', cwd=cwd)
-            adb_push(source_dir, os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'), '/data/local/tmp/', cwd=cwd)
-            adb_push(source_dir, 'onnxruntime_test_all', '/data/local/tmp/', cwd=cwd)
-            adb_push(source_dir, 'onnx_test_runner', '/data/local/tmp/', cwd=cwd)
-            adb_shell('cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
-            if args.use_dnnlibrary:
-                adb_shell('cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')
-            else:
-                adb_shell('cd /data/local/tmp && /data/local/tmp/onnx_test_runner /data/local/tmp/test')
-            continue
+        
         if enable_tvm:
           dll_path = os.path.join(build_dir, config, "external", "tvm", config)
         elif enable_tensorrt:
           dll_path = os.path.join(args.tensorrt_home, 'lib')
         else:
           dll_path = None
-        run_subprocess([ctest_path, "--build-config", config, "--verbose"],
+        if args.android and args.android_abi == 'x86_64':
+            vm_test_dir = '/data/local/tmp' #TODO: parameterize
+            adb_shell('cd '+vm_test_dir+' && '+vm_test_dir+'/onnxruntime_test_all')
+        else:
+            run_subprocess([ctest_path, "--build-config", config, "--verbose"],
                        cwd=cwd, dll_path=dll_path)
 
         if enable_python_tests:
@@ -859,7 +866,7 @@ def main():
         log.debug("Defaulting to running update, build [and test for native builds].")
         args.update = True
         args.build = True
-        if cross_compiling:
+        if args.android: 
             args.test = args.android_abi == 'x86_64'
         else:
             args.test = True
@@ -951,6 +958,10 @@ def main():
         build_targets(cmake_path, build_dir, configs, args.parallel)
 
     if args.test :
+        android_vm_test_dir = '/data/local/tmp/'
+        if args.android:
+            prepare_android_vm_for_test(args, source_dir, android_vm_test_dir)
+
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                               args.enable_pybind and not args.skip_onnx_tests,
                               args.use_tvm, args.use_tensorrt, args.use_ngraph)
@@ -976,6 +987,8 @@ def main():
               # TODO: parallel executor test fails on MacOS
             elif args.use_nuphar:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'nuphar', False, 1)
+            elif args.android and args.android_abi == 'x86_64':
+                run_onnx_tests_on_android(args, android_vm_test_dir)
             else:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 0)
 
