@@ -681,25 +681,36 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
-  if (IsGradientRequiredForSrcNodeInput(0) && IsGradientRequiredForSrcNodeInput(1))
+  if (IsGradientRequiredForSrcNodeInput(0) && IsGradientRequiredForSrcNodeInput(1)) {
     return std::vector<NodeDef>{
         NodeDef("DivGrad",
                 {GO(0), I(0), I(1)},
                 {GI(0), GI(1)})};
-  else if (IsGradientRequiredForSrcNodeInput(0))
-    return std::vector<NodeDef>{
-        NodeDef("DivGrad",
-                {GO(0), I(0), I(1)},
-                {GI(0)})};
-  else if (IsGradientRequiredForSrcNodeInput(1))
+  } else if (IsGradientRequiredForSrcNodeInput(0)) {
+    // Y = A / B, dA = dY / B
+    const ArgDef &a = I(0), b = I(1);
+    std::vector<int64_t> a_axes, b_axes;
+    ComputeBroadcastBackwardAxes(GetShape(a), GetShape(b), &a_axes, &b_axes);
+
+    std::vector<NodeDef> output;
+    ArgDef tmp_grad = IA("PreReduceGrad0", OType(0));
+    output.push_back(NodeDef("Div", {GO(0), I(1)}, {tmp_grad}));
+    if (a_axes.size() > 0) {
+      HandleBroadcasting(tmp_grad, a, GI(0), a_axes, output);
+    } else {
+      output.push_back(NodeDef("Identity", {tmp_grad}, {GI(0)}));
+    }
+    return output;
+  } else if (IsGradientRequiredForSrcNodeInput(1)) {
     return std::vector<NodeDef>{
         NodeDef("DivGrad",
                 {GO(0), I(0), I(1)},
                 // TODO: this IA("") does not cause kernel to know it is unneeded.
                 // Gradient for the first input is still calculated.
                 {IA(""), GI(1)})};
-  else
+  } else {
     return std::vector<NodeDef>{};
+  }
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
