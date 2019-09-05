@@ -124,19 +124,8 @@ def create_backend_test(testname=None):
                                  '^test_range_float_type_positive_delta_expanded_cpu.*',
                                  '^test_range_int32_type_negative_delta_cpu.*',
                                  '^test_range_int32_type_negative_delta_expanded_cpu.*',
-                                 '^test_clip_cpu.*',
-                                 '^test_clip_default_inbounds_cpu.*',
-                                 '^test_clip_default_max_cpu.*',
-                                 '^test_clip_default_min_cpu.*',
-                                 '^test_clip_example_cpu.*',
-                                 '^test_clip_inbounds_cpu.*',
-                                 '^test_clip_outbounds_cpu.*',
-                                 '^test_clip_splitbounds_cpu.*',
                                  '^test_det_2d_cpu.*',
                                  '^test_det_nd_cpu.*',
-                                 '^test_dynamicquantizelinear_cpu.*',
-                                 '^test_dynamicquantizelinear_max_adjusted_cpu.*',
-                                 '^test_dynamicquantizelinear_min_adjusted_cpu.*',
                                  '^test_gathernd_example_float32_cpu.*',
                                  '^test_gathernd_example_int32_cpu.*',
                                  '^test_resize_downsample_scales_cubic_A_n0p5_exclude_outside_cpu.*',
@@ -162,7 +151,6 @@ def create_backend_test(testname=None):
                                  '^test_resize_upsample_sizes_nearest_cpu.*',
                                  '^test_resize_upsample_sizes_nearest_floor_align_corners_cpu.*',
                                  '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu.*',
-                                 '^test_scatternd_cpu.*',
                                  )
 
         # Example of how to disable tests for a specific provider.
