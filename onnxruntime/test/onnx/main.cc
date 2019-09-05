@@ -95,6 +95,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_mem_pattern = true;
   bool enable_openvino = false;
   bool enable_nnapi = false;
+  bool enable_dml = false;
   GraphOptimizationLevel graph_optimization_level = ORT_DISABLE_ALL;
   bool user_graph_optimization_level_set = false;
 
@@ -155,6 +156,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_openvino = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
             enable_nnapi = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
+            enable_dml = true;
           } else {
             usage();
             return -1;
@@ -301,6 +304,16 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf));
 #else
       fprintf(stderr, "DNNLibrary/NNAPI is not supported in this build");
+      return -1;
+#endif
+    }
+    if (enable_dml) {
+#ifdef USE_DML
+      fprintf(stderr, "Disabling mem pattern since DML is used");
+      sf.DisableMemPattern();
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_DML(sf, 0));
+#else
+      fprintf(stderr, "DML is not supported in this build");
       return -1;
 #endif
     }

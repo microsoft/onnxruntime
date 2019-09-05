@@ -77,7 +77,7 @@ namespace Dml
         {
             // We need to predict whether the nodes will be assigned to the DML transformer by Lotus,
             // which occurs in IExecutionProvider::GetCapability.
-            if (!m_registry->TryFindKernel(node, c_executionProviderName))
+            if (!m_registry->TryFindKernel(node, onnxruntime::kDmlExecutionProvider))
             {
                 // Can't fuse nodes that don't belong to this execution provider
                 continue;
@@ -97,7 +97,7 @@ namespace Dml
 
             // We need to predict whether the nodes will be assigned to the DML transformer by Lotus,
             // which occurs in IExecutionProvider::GetCapability.
-            if (!m_registry->TryFindKernel(outputNode, c_executionProviderName))
+            if (!m_registry->TryFindKernel(outputNode, onnxruntime::kDmlExecutionProvider))
             {
                 // Can't fuse nodes that don't belong to this execution provider
                 continue;

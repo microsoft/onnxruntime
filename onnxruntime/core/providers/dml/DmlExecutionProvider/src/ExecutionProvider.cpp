@@ -46,7 +46,7 @@ namespace Dml
         ID3D12CommandQueue* commandQueue,
         std::shared_ptr<GraphNodeFactoryMap>& graphNodeFactoryMap,
         bool enableMetacommands) :
-            IExecutionProvider(Dml::c_executionProviderName),
+            IExecutionProvider(onnxruntime::kDmlExecutionProvider),
             m_graphNodeFactoryMap(graphNodeFactoryMap)
     {
         D3D12_COMMAND_LIST_TYPE queueType = commandQueue->GetDesc().Type;
@@ -700,7 +700,7 @@ namespace Dml
 
     onnxruntime::common::Status RegisterDmlGraphTransformer(onnxruntime::InferenceSession* session, std::shared_ptr<onnxruntime::KernelRegistry> dmlRegistry)
     {
-        auto graphTransformer = std::make_unique<Dml::GraphTransformer>(std::string(Dml::c_executionProviderName), dmlRegistry);
+        auto graphTransformer = std::make_unique<Dml::GraphTransformer>(onnxruntime::kDmlExecutionProvider, dmlRegistry);
         return session->RegisterGraphTransformer(std::move(graphTransformer), onnxruntime::TransformerLevel::Level1);
     }
 

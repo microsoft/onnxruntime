@@ -25,8 +25,6 @@ enum class AllocatorRoundingMode
 
 namespace Dml
 {
-    const char* const c_executionProviderName = "DmlExecutionProvider";
-
     void CreateExecutionProviderObjects(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,

@@ -261,7 +261,7 @@ namespace Dml
         // registration.  Determine if that registration supports usage as a graph node.
         for (auto registry : dmlRegistries) 
         {
-            const onnxruntime::KernelCreateInfo* createInfo = registry->TryFindKernel(node, Dml::c_executionProviderName);
+            const onnxruntime::KernelCreateInfo* createInfo = registry->TryFindKernel(node, onnxruntime::kDmlExecutionProvider);
 
             // Check whether the node uses any data types which are unsupported by the device.
             bool nodeContainsSupportedDataTypes = DoesNodeContainSupportedDataTypes(node, supportedDeviceDataTypeMask);
@@ -496,7 +496,7 @@ namespace Dml
             builder.SetName(def->name)
                 .SetDomain(def->domain)
                 .SinceVersion(def->since_version)
-                .Provider(Dml::c_executionProviderName);
+                .Provider(onnxruntime::kDmlExecutionProvider);
 
             registryForPartitionKernels->Register(builder, fused_kernel_func);
             

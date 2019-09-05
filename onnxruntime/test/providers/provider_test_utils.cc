@@ -214,8 +214,8 @@ void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, OrtValu
 
 void Check(const OpTester::Data& expected_data, OrtValue& ort_value, const std::string& provider_type) {
 #ifdef MICROSOFT_AUTOML
-  CheckDispatch<dtf::TimePoint,VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
-                                                               provider_type);
+  CheckDispatch<dtf::TimePoint, VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
+                                                                               provider_type);
 #else
   CheckDispatch<VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
                                                                provider_type);
@@ -497,11 +497,19 @@ void OpTester::Run(ExpectResult expect_result,
         kBrainSliceExecutionProvider,
         kTensorrtExecutionProvider,
         kOpenVINOExecutionProvider,
+        // kDmlExecutionProvider
     };
 
     bool has_run = false;
 
     if (execution_providers) {
+      for (auto& entry : *execution_providers) {
+        if (entry->Type() == kDmlExecutionProvider) {
+          so.enable_mem_pattern = false;
+          break;
+        }
+      }
+
       InferenceSession session_object{so};
 
       ASSERT_TRUE(!execution_providers->empty()) << "Empty execution providers vector.";
@@ -519,6 +527,9 @@ void OpTester::Run(ExpectResult expect_result,
         if (excluded_provider_types.count(provider_type) > 0)
           continue;
 
+        if (provider_type == kDmlExecutionProvider) {
+          so.enable_mem_pattern = false;
+        }
         InferenceSession session_object{so};
 
         for (auto& custom_session_registry : custom_session_registries_)

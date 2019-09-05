@@ -143,7 +143,14 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for exec provider");
   }
 
-  std::string provider_type = p_exec_provider->Type();
+  const std::string& provider_type = p_exec_provider->Type();
+
+  // DML's memory is not byte addressable and hence mem pattern doesn't work.
+  if (provider_type == onnxruntime::kDmlExecutionProvider &&
+      session_options_.enable_mem_pattern) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Memory pattern must be disabled before registering DMLExecutionProvider");
+  }
+
   VLOGS(*session_logger_, 1) << "Adding execution provider of type: " << provider_type;
   execution_providers_.Add(provider_type, std::move(p_exec_provider));
 
