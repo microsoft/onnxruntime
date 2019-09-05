@@ -2,10 +2,10 @@ OrtAddCustomOpDomain
 OrtAllocatorAlloc
 OrtAllocatorFree
 OrtAllocatorGetInfo
-OrtAllocatorInfoGetId
-OrtAllocatorInfoGetMemType
-OrtAllocatorInfoGetName
-OrtAllocatorInfoGetType
+OrtMemoryInfoGetId
+OrtMemoryInfoGetMemType
+OrtMemoryInfoGetName
+OrtMemoryInfoGetType
 OrtCastTypeInfoToTensorInfo
 OrtCloneSessionOptions
 OrtCompareAllocatorInfo
@@ -51,7 +51,7 @@ OrtGetValueType
 OrtGetVersionString
 OrtIsTensor
 OrtGetOnnxTypeFromTypeInfo
-OrtReleaseAllocatorInfo
+OrtReleaseMemoryInfo
 OrtReleaseCustomOpDomain
 OrtReleaseEnv
 OrtReleaseRunOptions

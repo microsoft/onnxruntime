@@ -378,7 +378,7 @@ ONNXTensorElementDataType GetTensorElementType(const onnx::TensorProto& tensor_p
 
 Status TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuffer& m, Ort::Value& value,
                             OrtCallback& deleter) {
-  const OrtAllocatorInfo& allocator = m.GetAllocInfo();
+  const OrtMemoryInfo& allocator = m.GetAllocInfo();
   ONNXTensorElementDataType ele_type = test::GetTensorElementType(tensor_proto);
   const void* raw_data = nullptr;
   size_t raw_data_len = 0;

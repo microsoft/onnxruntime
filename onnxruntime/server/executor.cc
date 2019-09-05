@@ -25,7 +25,7 @@ namespace protobufutil = google::protobuf::util;
 
 protobufutil::Status Executor::SetMLValue(const onnx::TensorProto& input_tensor,
                                           MemBufferArray& buffers,
-                                          OrtAllocatorInfo* cpu_allocator_info,
+                                          OrtMemoryInfo* cpu_allocator_info,
                                           /* out */ Ort::Value& ml_value) {
   auto logger = env_->GetLogger(request_id_);
 
@@ -57,7 +57,7 @@ protobufutil::Status Executor::SetNameMLValueMap(std::vector<std::string>& input
                                                  MemBufferArray& buffers) {
   auto logger = env_->GetLogger(request_id_);
 
-  OrtAllocatorInfo* allocator_info = nullptr;
+  OrtMemoryInfo* allocator_info = nullptr;
   auto ort_status = OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info);
 
   if (ort_status != nullptr || allocator_info == nullptr) {
@@ -72,7 +72,7 @@ protobufutil::Status Executor::SetNameMLValueMap(std::vector<std::string>& input
     Ort::Value ml_value{nullptr};
     auto status = SetMLValue(input.second, buffers, allocator_info, ml_value);
     if (status != protobufutil::Status::OK) {
-      OrtReleaseAllocatorInfo(allocator_info);
+      OrtReleaseMemoryInfo(allocator_info);
       logger->error("SetMLValue() failed! Input name: {}", input.first);
       return status;
     }
@@ -81,7 +81,7 @@ protobufutil::Status Executor::SetNameMLValueMap(std::vector<std::string>& input
     input_values.push_back(std::move(ml_value));
   }
 
-  OrtReleaseAllocatorInfo(allocator_info);
+  OrtReleaseMemoryInfo(allocator_info);
   return protobufutil::Status::OK;
 }
 
