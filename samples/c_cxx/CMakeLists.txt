@@ -66,6 +66,7 @@ if(onnxruntime_USE_TENSORRT)
   add_definitions(-DUSE_TENSORRT)
 endif()
 if(onnxruntime_USE_DML)
+  message("Enabling DML")
   add_definitions(-DUSE_DML)
 endif()
 

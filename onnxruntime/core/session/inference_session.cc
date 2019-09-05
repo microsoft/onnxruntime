@@ -145,10 +145,10 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
 
   const std::string& provider_type = p_exec_provider->Type();
 
-  // DML's memory is not byte addressable and hence mem arena doesn't work.
+  // DML's memory is not byte addressable and hence mem pattern doesn't work.
   if (provider_type == onnxruntime::kDmlExecutionProvider &&
-      session_options_.enable_cpu_mem_arena) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Memory arena must be disabled before registering DMLExecutionProvider");
+      session_options_.enable_mem_pattern) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Memory pattern must be disabled before registering DMLExecutionProvider");
   }
 
   VLOGS(*session_logger_, 1) << "Adding execution provider of type: " << provider_type;
