@@ -88,7 +88,9 @@ Return Value:
     this->GemmU8U8CopyPackARoutine = MlasGemmU8U8CopyPackASse;
     this->GemmU8U8CopyPackBRoutine = MlasGemmU8U8CopyPackBSse;
     this->GemmU8U8Kernel = MlasGemmU8U8KernelSse;
+
 #if defined(MLAS_TARGET_AMD64)
+
     this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Sse;
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelSse;
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelSse;
@@ -102,6 +104,7 @@ Return Value:
     this->ErfKernelRoutine = MlasErfKernel;
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
+
 #endif
 
     //
@@ -125,13 +128,10 @@ Return Value:
 
         if ((xcr0 & 0x6) == 0x6) {
 
-#if defined(MLAS_TARGET_IX86)
-
-            this->GemmFloatKernel = MlasSgemmKernelZeroAvx;
-
-#else
-
             this->GemmFloatKernel = MlasGemmFloatKernelAvx;
+
+#if defined(MLAS_TARGET_AMD64)
+
             this->KernelM1Routine = MlasSgemmKernelM1Avx;
             this->KernelM1TransposeBRoutine = MlasSgemmKernelM1TransposeBAvx;
             this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Avx;
