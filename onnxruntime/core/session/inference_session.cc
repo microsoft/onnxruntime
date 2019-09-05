@@ -44,6 +44,7 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/transformer_memcpy.h"
+#include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #ifdef USE_CUDA
 #include "core/providers/cuda/gpu_data_transfer.h"
@@ -393,8 +394,9 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       Graph* subgraph = entry.second;
       ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
 
-      auto subgraph_session_state =
-          std::make_unique<SessionState>(execution_providers_, session_state.GetEnableMemoryPattern(), session_state.GetThreadPool());
+      auto subgraph_session_state = std::make_unique<SessionState>(execution_providers_,
+                                                                   session_state.GetEnableMemoryPattern(),
+                                                                   session_state.GetThreadPool());
       subgraph_session_state->SetProfiler(session_profiler_);
       subgraph_session_state->SetLogger(*session_logger_);
       // Pass data transfer manager to subgraph.
@@ -420,6 +422,13 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
 /// @remarks We pass in graph and session_state so we can handled nested subgraphs in the future
 common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, SessionState& session_state) {
   for (auto& node : graph.Nodes()) {
+    // We only need subgraph session state for control flow nodes being handled by the CPU execution provider.
+    // Remove it if it's not needed.
+    if (node.ContainsSubgraph() && node.GetExecutionProviderType() != kCpuExecutionProvider) {
+      session_state.RemoveSubgraphSessionState(node.Index());
+      continue;
+    }
+
     for (const auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       auto& name = entry.first;
       Graph& subgraph = *entry.second;
@@ -437,6 +446,12 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
 
       // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
       //                                                   &*subgraph_info.session_state);
+
+      // setup all the info for handling the feeds and fetches used in subraph execution
+      auto* p_op_kernel = session_state.GetMutableKernel(node.Index());
+      ORT_ENFORCE(p_op_kernel);
+      auto& control_flow_kernel = dynamic_cast<controlflow::IControlFlowKernel&>(*p_op_kernel);
+      ORT_RETURN_IF_ERROR(control_flow_kernel.SetupSubgraphExecutionInfo(session_state, name, *subgraph_session_state));
 
       // recurse
       ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(subgraph, *subgraph_session_state));
@@ -698,8 +713,7 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     ORT_RETURN_IF_ERROR(ValidateInputs(feed_names, feeds));
     ORT_RETURN_IF_ERROR(ValidateOutputs(output_names, p_fetches));
 
-    FeedsFetchesInfo info(feed_names, output_names);
-    ORT_RETURN_IF_ERROR(info.SetMLValueIdxs(session_state_.GetOrtValueNameIdxMap()));
+    FeedsFetchesInfo info(feed_names, output_names, session_state_.GetOrtValueNameIdxMap());
     FeedsFetchesManager feeds_fetches_manager{std::move(info)};
 
     if (!run_options.run_tag.empty()) {
@@ -723,9 +737,8 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
 
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(
-        utils::ExecuteGraph(session_state_, feeds_fetches_manager, feeds, *p_fetches, {},
-                            session_options_.enable_sequential_execution, run_options.terminate, run_logger,
-                            false));
+        utils::ExecuteGraph(session_state_, feeds_fetches_manager, feeds, *p_fetches,
+                            session_options_.enable_sequential_execution, run_options.terminate, run_logger));
 
   } catch (const std::exception& e) {
     retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());

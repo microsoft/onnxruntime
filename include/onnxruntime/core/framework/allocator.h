@@ -76,6 +76,10 @@ inline bool operator==(const OrtDevice& left, const OrtDevice& other) {
   return left.Id() == other.Id() && left.MemType() == other.MemType() && left.Type() == other.Type();
 }
 
+inline bool operator!=(const OrtDevice& left, const OrtDevice& other) {
+  return !(left == other);
+}
+
 struct OrtAllocatorInfo {
   // use string for name, so we could have customized allocator in execution provider.
   const char* name;

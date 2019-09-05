@@ -12,6 +12,7 @@ namespace onnxruntime {
 class ExecutionProviders;
 class IExecutionProvider;
 class OrtValueNameIdxMap;
+class SessionState;
 
 enum class DeviceCopyCheck {
   Unknown,
@@ -28,8 +29,11 @@ struct DeviceCopyChecks {
 struct FeedsFetchesInfo {
   FeedsFetchesInfo() = default;
   FeedsFetchesInfo(const std::vector<std::string>& feed_names_in,
-                   const std::vector<std::string>& output_names_in)
-      : feed_names{feed_names_in}, output_names{output_names_in} {}
+                   const std::vector<std::string>& output_names_in,
+                   const OrtValueNameIdxMap& ort_value_name_idx_map)
+      : feed_names{feed_names_in}, output_names{output_names_in} {
+    ORT_THROW_IF_ERROR(SetMLValueIdxs(ort_value_name_idx_map));
+  }
 
   static Status MapNamesToMLValueIdxs(const std::vector<std::string>& names,
                                       const OrtValueNameIdxMap& ort_value_name_idx_map,
@@ -45,32 +49,30 @@ struct FeedsFetchesInfo {
   std::vector<int> fetches_mlvalue_idxs;
 };
 
+struct MLValueCopyInfo {
+  OrtDevice source_device{};
+  OrtDevice target_device{};
+  const IExecutionProvider* allocation_provider{nullptr};
+};
+
 class FeedsFetchesManager {
  public:
-  struct MLValueCopyInfo {
-    OrtDevice target_device;
-    const IExecutionProvider* allocation_provider = nullptr;
-  };
-
   static Status Create(const std::vector<std::string>& feed_names, const std::vector<std::string>& output_names,
                        const OrtValueNameIdxMap& ort_value_name_idx_map,
                        std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager);
 
-  FeedsFetchesManager(FeedsFetchesInfo&& info) : feeds_fetches_info_{info} {}
+  FeedsFetchesManager(FeedsFetchesInfo&& info);
 
   const FeedsFetchesInfo& GetFeedsFetchesInfo() const { return feeds_fetches_info_; }
 
-  std::vector<MLValueCopyInfo>& GetMutableFeedsDeviceCopiers() { return feeds_device_copiers_; }
-  const std::vector<MLValueCopyInfo>& GetFeedsDeviceCopiers() const { return feeds_device_copiers_; }
+  std::vector<MLValueCopyInfo>& GetMutableFeedsDeviceCopyInfo() { return feeds_device_copy_info_; }
+  const std::vector<MLValueCopyInfo>& GetFeedsDeviceCopyInfo() const { return feeds_device_copy_info_; }
 
-  std::vector<bool>& GetMutableCanUseFetchDuringExecutionFlags() { return can_use_fetch_during_execution_flags_; }
-  const std::vector<bool>& GetCanUseFetchDuringExecutionFlags() const { return can_use_fetch_during_execution_flags_; }
+  std::vector<MLValueCopyInfo>& GetMutableFetchesDeviceCopyInfo() { return fetches_device_copy_info_; }
+  const std::vector<MLValueCopyInfo>& GetFetchesDeviceCopyInfo() const { return fetches_device_copy_info_; }
 
-  std::vector<MLValueCopyInfo>& GetMutableFetchesDeviceCopiers() { return fetches_device_copiers_; }
-  const std::vector<MLValueCopyInfo>& GetFetchesDeviceCopiers() const { return fetches_device_copiers_; }
-
-  DeviceCopyChecks GetDeviceCopyChecks() const { return device_copy_checks_; }
-  void SetDeviceCopyChecks(DeviceCopyChecks checks);
+  const DeviceCopyChecks& GetDeviceCopyChecks() const { return device_copy_checks_; }
+  void SetDeviceCopyChecks(DeviceCopyCheck input_copy_needed, DeviceCopyCheck output_copy_needed);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(FeedsFetchesManager);
@@ -79,8 +81,7 @@ class FeedsFetchesManager {
 
   FeedsFetchesInfo feeds_fetches_info_;
 
-  std::vector<MLValueCopyInfo> feeds_device_copiers_;
-  std::vector<bool> can_use_fetch_during_execution_flags_;
-  std::vector<MLValueCopyInfo> fetches_device_copiers_;
+  std::vector<MLValueCopyInfo> feeds_device_copy_info_;
+  std::vector<MLValueCopyInfo> fetches_device_copy_info_;
 };
 }  // namespace onnxruntime

@@ -18,6 +18,7 @@
 #include "core/framework/sequential_executor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
+#include "core/providers/cpu/controlflow/utils.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -29,6 +30,34 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace scan {
 namespace detail {
+
+Info::Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs_in, bool is_v8)
+    : subgraph{subgraph_in}, num_scan_inputs{num_scan_inputs_in} {
+  num_inputs = static_cast<int>(node.InputDefs().size());
+  num_variadic_inputs = is_v8 ? num_inputs - 1 : num_inputs;  // allow for sequence_lens input in v8
+  num_loop_state_variables = num_variadic_inputs - num_scan_inputs;
+
+  num_outputs = static_cast<int>(node.OutputDefs().size());
+  num_scan_outputs = num_outputs - num_loop_state_variables;
+
+  num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
+
+  auto& graph_inputs = subgraph.GetInputs();
+  auto num_subgraph_inputs = static_cast<int>(graph_inputs.size());
+  ORT_ENFORCE(num_variadic_inputs == num_subgraph_inputs,
+              "The subgraph in 'body' requires ", num_subgraph_inputs,
+              " inputs but Scan was only given ", num_variadic_inputs);
+
+  subgraph_input_names.reserve(num_inputs);
+  subgraph_output_names.reserve(num_outputs);
+  for (const auto& input : graph_inputs) {
+    subgraph_input_names.push_back(input->Name());
+  }
+
+  for (const auto& output : subgraph.GetOutputs()) {
+    subgraph_output_names.push_back(output->Name());
+  }
+}
 
 void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
                     std::vector<int64_t>& directions, int64_t num_entries) {
@@ -96,47 +125,65 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
   return Status::OK();
 }
 
-Status CreateFeedsFetchesManager(const GraphViewer& subgraph, int num_variadic_inputs,
-                                 std::unordered_map<std::string, const OrtValue*>& implicit_inputs,
-                                 std::vector<std::string>& subgraph_output_names,
-                                 const OrtValueNameIdxMap& ort_value_name_idx_map,
-                                 std::unique_ptr<FeedsFetchesManager>& ffm) {
-  auto* graph_inputs = &subgraph.GetInputsIncludingInitializers();
-  if (static_cast<size_t>(num_variadic_inputs) < graph_inputs->size()) {
-    // fallback to just the required inputs.
-    graph_inputs = &subgraph.GetInputs();
-    ORT_ENFORCE(static_cast<size_t>(num_variadic_inputs) == graph_inputs->size(),
-                "Graph::InferAndVerifySubgraphTypes should have already validated that "
-                "num_variadic_inputs matched the subgraph inputs or required inputs.");
-  }
-
-  auto num_implicit_inputs = implicit_inputs.size();
-  auto num_inputs = num_variadic_inputs + num_implicit_inputs;
-
+Status CreateFeedsFetchesManager(const Node& node,
+                                 const Info& info,
+                                 const SessionState& session_state,
+                                 const SessionState& subgraph_session_state,
+                                 bool is_v8,
+                                 std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager) {
+  // we need the names of the Scan inputs to determine what device they are available on,
+  // so first create a list using those value
   std::vector<std::string> feed_names;
-  feed_names.reserve(num_inputs);
+  feed_names.reserve(info.num_variadic_inputs + info.num_implicit_inputs);
 
-  // pass explicit graph inputs first. order doesn't actually matter though
-  for (int input = 0; input < num_variadic_inputs; ++input) {
-    feed_names.push_back((*graph_inputs)[input]->Name());
+  const auto& scan_inputs = node.InputDefs();
+  int start = is_v8 ? 1 : 0;  // skip sequence_lens for v8
+  for (int i = start; i < info.num_inputs; ++i) {
+    feed_names.push_back(scan_inputs[i]->Name());
   }
 
-  for (auto& entry : implicit_inputs) {
-    feed_names.push_back(entry.first);
+  for (auto& entry : node.ImplicitInputDefs()) {
+    feed_names.push_back(entry->Name());
   }
 
-  auto status = FeedsFetchesManager::Create(feed_names, subgraph_output_names, ort_value_name_idx_map, ffm);
+  // find locations. use session_state as they're coming from Scan inputs
+  std::vector<OrtDevice> feed_locations;
+  ORT_RETURN_IF_ERROR(controlflow::detail::FindDevicesForValues(session_state, feed_names, feed_locations));
 
-  return status;
+  // now update the feed names to use the subgraph input names so we know what devices they're needed on
+  for (int i = 0; i < info.num_variadic_inputs; ++i) {
+    feed_names[i] = info.subgraph_input_names[i];
+  }
+
+  std::unique_ptr<FeedsFetchesManager> ffm;
+  ORT_RETURN_IF_ERROR(FeedsFetchesManager::Create(feed_names, info.subgraph_output_names,
+                                                  subgraph_session_state.GetOrtValueNameIdxMap(), ffm));
+  ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(subgraph_session_state, *ffm));
+
+  // we provide fetches using memory allocated by Scan, so provide locations based on the Scan output locations
+  std::vector<const OrtAllocatorInfo*> fetch_locations;
+  fetch_locations.reserve(info.num_outputs);
+
+  for (const auto& output : node.OutputDefs()) {
+    // const auto& alloc_info = controlflow::detail::FindAllocatorInfoForValue(session_state, output->Name());
+    const auto& alloc_info = utils::FindAllocatorInfoForValue(session_state, output->Name());
+    fetch_locations.push_back(&alloc_info);
+  }
+
+  utils::FinalizeFeedFetchCopyInfo(subgraph_session_state, *ffm, feed_locations, fetch_locations);
+
+  feeds_fetches_manager = std::move(ffm);
+
+  return Status::OK();
 }
 
 Status IterateSequence(OpKernelContextInternal& context, const SessionState& session_state,
                        std::vector<LoopStateVariable>& loop_state_variables,
                        std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator>& scan_input_stream_iterators,
                        int64_t seq_length, int num_loop_state_variables, int num_variadic_inputs,
-                       int num_variadic_outputs, std::unordered_map<std::string, const OrtValue*>& implicit_inputs,
-                       std::vector<std::unique_ptr<OutputIterator>>& output_iterators, FeedsFetchesManager* ffm,
-                       const FeedsFetchesManager* cached_ffm) {
+                       int num_variadic_outputs, const std::vector<const OrtValue*>& implicit_inputs,
+                       std::vector<std::unique_ptr<OutputIterator>>& output_iterators,
+                       const FeedsFetchesManager& ffm) {
   Status status = Status::OK();
 
   auto num_implicit_inputs = implicit_inputs.size();
@@ -151,11 +198,8 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 
   // add implicit inputs and pass in implicit inputs as feeds. we're going to pass in the explicit inputs
   // first in each iteration though so offset by num_variadic_inputs
-  int i = 0;
-  for (auto& entry : implicit_inputs) {
-    ORT_ENFORCE(entry.second, "All implicit inputs should have OrtValue instances by now. ", entry.first, " did not.");
-    feeds[num_variadic_inputs + i] = *entry.second;
-    ++i;
+  for (size_t i = 0; i < num_implicit_inputs; ++i) {
+    feeds[num_variadic_inputs + i] = *implicit_inputs[i];
   }
 
   int64_t seq_no = 0;
@@ -200,17 +244,8 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
     }
 
     // Create Executor and run graph.
-    if (cached_ffm) {
-      status = utils::ExecuteGraphWithCachedInfo(session_state, *cached_ffm, feeds, fetches, fetch_allocators,
-                                                 /*sequential_execution*/ true, context.GetTerminateFlag(),
-                                                 context.Logger());
-    } else {
-      status = utils::ExecuteGraph(session_state, *ffm, feeds, fetches, fetch_allocators,
-                                   /*sequential_execution*/ true, context.GetTerminateFlag(), context.Logger(),
-                                   /*cache_copy_info*/ true);
-      // we can now use the cached info
-      cached_ffm = ffm;
-    }
+    status = utils::ExecuteSubgraph(session_state, ffm, feeds, fetches, fetch_allocators,
+                                    /*sequential_execution*/ true, context.GetTerminateFlag(), context.Logger());
 
     ORT_RETURN_IF_ERROR(status);
 
@@ -287,13 +322,14 @@ LoopStateVariable::LoopStateVariable(const OrtValue& original_value, OrtValue& f
   auto& tensor = original_value.Get<Tensor>();
   auto& shape = tensor.Shape();
 
-  // allocate a new Tensor in an OrtValue with the same shape and type as the tensor in original_value.
+  // Allocate a new Tensor in an OrtValue with the same shape and type as the tensor in original_value.
   // the Tensor will own the buffer, and the OrtValue will own the Tensor.
   // the OrtValue returned by Input()/Output() gets copied into the execution frame feeds/fetches
   // with the Tensor being used via a shared_ptr (so remains valid during execution and is cleaned up
   // automatically at the end).
-  // TODO: Could allocate one large chunk for all the loop state variable buffers in ScanImpl, although that
-  // may make it harder to parallelize processing of the batch in the future.
+
+  // TODO: check that the Scan input and output device for the loop state variable is the same, and use the
+  // allocator for that device here instead of the temp allocator. Works currently as everything is on CPU.
 
   // if length is > 1, we need a_ for the first output location. otherwise we use final_value for the output.
   if (sequence_len_ > 1) {
