@@ -205,20 +205,20 @@ common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& in
       // replace existing entry that is for an implicit input with new entry for explicit usage in this graph
       entries[0] = node_info;
     } else {
-      // if the providers match we can add the new entry for completeness (it will be ignored in
+      // if the devices match we can add the new entry for completeness (it will be ignored in
       // utils::CopyOneInputAcrossDevices though).
       // if they don't, we are broken.
-      const auto& current_provider = utils::GetNodeInputProviderType(entries[0]);
-      const auto& new_provider = utils::GetNodeInputProviderType(node_info);
+      const auto& current_device = entries[0].device;
+      const auto& new_device = node_info.device;
 
-      if (current_provider == new_provider) {
+      if (current_device == new_device) {
         entries.push_back(node_info);
       } else {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, NOT_IMPLEMENTED,
             "Using an input in multiple nodes on different devices is not supported currently. Input:", input_name,
-            " is used by node ", existing_entry.p_node->Name(), " (", current_provider, ") and node ",
-            node_info.p_node->Name(), " (", new_provider, ").");
+            " is used by node ", existing_entry.p_node->Name(), " (", current_device->ToString(), ") and node ",
+            node_info.p_node->Name(), " (", new_device->ToString(), ").");
       }
     }
   }
