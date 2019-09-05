@@ -13,10 +13,9 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     SpaceToDepth<float>);
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+ONNX_CPU_OPERATOR_KERNEL(
     DepthToSpace,
     1,
-    4,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     DepthToSpace<float>);
 
