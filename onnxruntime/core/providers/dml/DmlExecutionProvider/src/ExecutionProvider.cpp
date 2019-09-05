@@ -57,7 +57,8 @@ ExecutionProvider::ExecutionProvider(
 
   // Register the allocators with ORT, through concrete ORT methods on the IExecutionProvider base class
   InsertAllocator(m_impl->GetGpuAllocator());
-  InsertAllocator(m_impl->GetCpuAllocator());
+  InsertAllocator(m_impl->GetCpuInputAllocator());
+  InsertAllocator(m_impl->GetCpuOutputAllocator());
 }
 
 std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
@@ -140,7 +141,8 @@ ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device
   m_readbackHeap = std::make_unique<ReadbackHeap>(m_d3d12Device.Get(), m_context);
 
   // CPU Allocator used to create buffers for the MemcpyFromHost operator.
-  m_cpuAllocator = std::make_shared<CPUAllocator>();
+  m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
+  m_cpuOutputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUOutput);
 }
 
 HRESULT __stdcall ExecutionProviderImpl::GetD3DDevice(_COM_Outptr_ ID3D12Device** d3dDevice) const noexcept {
@@ -538,8 +540,12 @@ std::shared_ptr<onnxruntime::IAllocator> ExecutionProviderImpl::GetGpuAllocator(
   return m_allocator;
 }
 
-std::shared_ptr<onnxruntime::IAllocator> ExecutionProviderImpl::GetCpuAllocator() {
-  return m_cpuAllocator;
+std::shared_ptr<onnxruntime::IAllocator> ExecutionProviderImpl::GetCpuInputAllocator() {
+  return m_cpuInputAllocator;
+}
+
+std::shared_ptr<onnxruntime::IAllocator> ExecutionProviderImpl::GetCpuOutputAllocator() {
+  return m_cpuOutputAllocator;
 }
 
 void CreateExecutionProviderObjects(

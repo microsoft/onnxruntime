@@ -49,13 +49,19 @@
 #define BACKEND_OPENVINO ""
 #endif
 
+#ifdef USE_NUPHAR
+#define BACKEND_NUPHAR "-NUPHAR"
+#else
+#define BACKEND_NUPHAR ""
+#endif
+
 #if USE_OPENBLAS
 #define BACKEND_OPENBLAS "-OPENBLAS"
 #else
 #define BACKEND_OPENBLAS ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_MKLDNN BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_OPENBLAS
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_MKLDNN BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -78,6 +84,7 @@
 #endif
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
+std::string nuphar_settings;
 #endif
 #ifdef USE_BRAINSLICE
 #include "core/providers/brainslice/brainslice_provider_factory.h"
@@ -90,7 +97,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(int device_id, const char*);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(uint32_t ip, int, int, bool, const char*, const char*, const char*);
 }  // namespace onnxruntime
 
@@ -254,9 +261,10 @@ void InitializeSession(InferenceSession* sess) {
   }
 #endif
 
-#if 0  //USE_NUPHAR
+#if USE_NUPHAR
   {
-    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(0, ""));
+    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(true, nuphar_settings.c_str()));
+    nuphar_settings.clear();  // clear nuphar_settings after use to avoid it being accidentally passed on to next session
   }
 #endif
 
@@ -277,12 +285,15 @@ void addGlobalMethods(py::module& m) {
   m.def(
       "get_device", []() -> std::string { return BACKEND_DEVICE; },
       "Return the device used to compute the prediction (CPU, MKL, ...)");
-  m.def("set_default_logger_severity", [](int severity) {
-    ORT_ENFORCE(severity >= 0 && severity <= 4,
-                "Invalid logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
-    logging::LoggingManager* default_logging_manager = SessionObjectInitializer::Get();
-    default_logging_manager->SetDefaultLoggerSeverity(static_cast<logging::Severity>(severity));
+
+#ifdef USE_NUPHAR
+  m.def("set_nuphar_settings", [](const std::string& str) {
+    nuphar_settings = str;
   });
+  m.def("get_nuphar_settings", []() -> std::string {
+    return nuphar_settings;
+  });
+#endif
 
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
   m.def(
@@ -474,20 +485,18 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
                      R"pbdoc(Enable the memory pattern optimization. Default is true.)pbdoc")
       .def_readwrite("enable_sequential_execution", &SessionOptions::enable_sequential_execution,
                      R"pbdoc(Enables sequential execution, disables parallel execution. Default is true.)pbdoc")
-      .def_readwrite("max_num_graph_transformation_steps", &SessionOptions::max_num_graph_transformation_steps,
-                     R"pbdoc(Runs optimization steps on the execution graph. Default is 5.)pbdoc")
-      .def_readwrite("session_logid", &SessionOptions::session_logid,
+      .def_readwrite("logid", &SessionOptions::session_logid,
                      R"pbdoc(Logger id to use for session output.)pbdoc")
-      .def_readwrite("session_log_severity_level", &SessionOptions::session_log_severity_level,
+      .def_readwrite("log_severity_level", &SessionOptions::session_log_severity_level,
                      R"pbdoc(Log severity level. Applies to session load, initialization, etc. 
 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.)pbdoc")
-      .def_readwrite("session_log_verbosity_level", &SessionOptions::session_log_verbosity_level,
+      .def_readwrite("log_verbosity_level", &SessionOptions::session_log_verbosity_level,
                      R"pbdoc(VLOG level if DEBUG build and session_log_verbosity_level is 0. 
 Applies to session load, initialization, etc. Default is 0.)pbdoc")
-      .def_readwrite("session_thread_pool_size", &SessionOptions::session_thread_pool_size,
+      .def_readwrite("thread_pool_size", &SessionOptions::session_thread_pool_size,
                      R"pbdoc(How many threads in the session thread pool. Default is 0 to let onnxruntime choose.
 This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
-      .def_property_readonly(
+      .def_property(
           "graph_optimization_level",
           [](const SessionOptions* options) -> GraphOptimizationLevel {
             GraphOptimizationLevel retval = ORT_ENABLE_BASIC;
@@ -511,9 +520,7 @@ This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
             }
             return retval;
           },
-          R"pbdoc(Graph optimization level for this session.)pbdoc")
-      .def(
-          "set_graph_optimization_level",
+          
           [](SessionOptions* options, GraphOptimizationLevel level) -> void {
             switch (level) {
               case ORT_DISABLE_ALL:
@@ -532,14 +539,15 @@ This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
           },
           R"pbdoc(Graph optimization level for this session.)pbdoc");
 
+
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
-      .def_readwrite("run_log_severity_level", &RunOptions::run_log_severity_level,
+      .def_readwrite("log_severity_level", &RunOptions::run_log_severity_level,
                      R"pbdoc(Log severity level for a particular Run() invocation. 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.)pbdoc")
-      .def_readwrite("run_log_verbosity_level", &RunOptions::run_log_verbosity_level,
+      .def_readwrite("log_verbosity_level", &RunOptions::run_log_verbosity_level,
                      R"pbdoc(VLOG level if DEBUG build and run_log_severity_level is 0. 
 Applies to a particular Run() invocation. Default is 0.)pbdoc")
-      .def_readwrite("run_tag", &RunOptions::run_tag,
+      .def_readwrite("logid", &RunOptions::run_tag,
                      "To identify logs generated by a particular Run() invocation.")
       .def_readwrite("terminate", &RunOptions::terminate,
                      R"pbdoc(Set to True to terminate any currently executing calls that are using this

@@ -228,6 +228,11 @@ namespace Dml
         m_defaultRoundingMode = roundingMode;
     }
 
+    CPUAllocator::CPUAllocator(OrtMemType memType)
+        : m_allocatorInfo("DML CPU", ::OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0), 0, memType)
+    {
+    }
+
     void* CPUAllocator::Alloc(size_t size) {
         if (size <= 0)
         {
@@ -242,8 +247,7 @@ namespace Dml
     }
 
     const ::OrtAllocatorInfo& CPUAllocator::Info() const {
-        static ::OrtAllocatorInfo cpuAllocatorInfo("DML CPU", ::OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0), 0, ::OrtMemType::OrtMemTypeCPUOutput);
-        return cpuAllocatorInfo;
+        return m_allocatorInfo;
     }
 
 
