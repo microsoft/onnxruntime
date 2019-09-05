@@ -117,6 +117,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--android_api", type=int, default=27,
             help='Android API Level, e.g. 21')
     parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
+    parser.add_argument("--build_jni", action='store_true', help="Build Java Native Interface for Android")
 
     # Arguments needed by CI
     parser.add_argument("--cmake_path", default="cmake", help="Path to the CMake program.")
@@ -367,6 +368,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
                  "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
                  "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
+                 "-Donnxruntime_BUILD_JNI=" + ("ON" if args.build_jni else "OFF"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
