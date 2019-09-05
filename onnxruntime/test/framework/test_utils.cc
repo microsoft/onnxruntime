@@ -22,7 +22,8 @@ IExecutionProvider* TestCudaExecutionProvider() {
 
 #ifdef USE_TENSORRT
 IExecutionProvider* TestTensorrtExecutionProvider() {
-  static TensorrtExecutionProvider trt_provider;
+  static TensorrtExecutionProviderInfo info;
+  static TensorrtExecutionProvider trt_provider(info);
   return &trt_provider;
 }
 #endif

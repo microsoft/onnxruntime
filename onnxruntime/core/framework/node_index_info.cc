@@ -69,6 +69,10 @@ void NodeIndexInfo::Init(const TValidNodes& nodes, NodeIndex max_node_index,
   // init all to kInvalidEntry
   node_offsets_.resize(GetNodeOffsetsIndex(max_node_index), kInvalidEntry);
   node_values_.resize(total_def_count, kInvalidEntry);
+
+  node_offsets_size_ = node_offsets_.size();
+  node_values_size_ = node_values_.size();
+
   int cur_idx = 0;
 
   for (auto& node : nodes) {

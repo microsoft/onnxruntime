@@ -6,6 +6,10 @@
 #include "core/framework/sparse_tensor.h"
 #include "core/graph/onnx_protobuf.h"
 
+#ifdef MICROSOFT_AUTOML
+#include "automl_ops/automl_types.h"
+#endif
+
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wignored-qualifiers"
@@ -285,6 +289,9 @@ class DataTypeRegistry {
 
   DataTypeRegistry() {
     RegisterAllProtos([this](MLDataType mltype) { RegisterDataType(mltype); });
+#ifdef MICROSOFT_AUTOML
+    automl::RegisterAutoMLTypes([this](MLDataType mltype) { RegisterDataType(mltype); });
+#endif
   }
 
   ~DataTypeRegistry() = default;
@@ -886,6 +893,40 @@ ORT_REGISTER_NON_ONNX_TYPE(uint32_t);
 ORT_REGISTER_NON_ONNX_TYPE(uint64_t);
 ORT_REGISTER_NON_ONNX_TYPE(MLFloat16);
 ORT_REGISTER_NON_ONNX_TYPE(BFloat16);
+
+const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorExceptHalfTypes() {
+  static std::vector<MLDataType> all_fixed_size_tensor_types =
+      {DataTypeImpl::GetTensorType<float>(),
+       DataTypeImpl::GetTensorType<double>(),
+       DataTypeImpl::GetTensorType<int64_t>(),
+       DataTypeImpl::GetTensorType<uint64_t>(),
+       DataTypeImpl::GetTensorType<int32_t>(),
+       DataTypeImpl::GetTensorType<uint32_t>(),
+       DataTypeImpl::GetTensorType<int16_t>(),
+       DataTypeImpl::GetTensorType<uint16_t>(),
+       DataTypeImpl::GetTensorType<int8_t>(),
+       DataTypeImpl::GetTensorType<uint8_t>(),
+       DataTypeImpl::GetTensorType<bool>()};
+
+  return all_fixed_size_tensor_types;
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllIEEEFloatTensorExceptHalfTypes() {
+  static std::vector<MLDataType> all_IEEE_float_tensor_except_half_types =
+      {DataTypeImpl::GetTensorType<float>(),
+       DataTypeImpl::GetTensorType<double>()};
+
+  return all_IEEE_float_tensor_except_half_types;
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllIEEEFloatTensorTypes() {
+  static std::vector<MLDataType> all_IEEE_float_tensor_types =
+      {DataTypeImpl::GetTensorType<float>(),
+       DataTypeImpl::GetTensorType<double>(),
+       DataTypeImpl::GetTensorType<MLFloat16>()};
+
+  return all_IEEE_float_tensor_types;
+}
 
 const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypes() {
   static std::vector<MLDataType> all_fixed_size_tensor_types =

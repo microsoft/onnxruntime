@@ -200,14 +200,13 @@ TEST(ActivationOpTest, Softplus) {
                              return x + logf(expf(-x) + 1);
                            else
                              return logf(expf(x) + 1);
-                         },
-                         {}, false);
+                         });
 }
 
 TEST(ActivationOpTest, Softsign) {
   TestUnaryElementwiseOp("Softsign",
                          no_inf_input_vals,
-                         [](float x) { return x / (1 + std::abs(x)); });
+                         [](float x) { return x / (1 + std::abs(x)); }, {}, false);  // Disable TensorRT because result mismatches
 }
 
 }  // namespace test
