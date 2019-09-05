@@ -57,6 +57,7 @@ Currently ONNX Runtime supports the following accelerators:
 * CUDA
 * [TensorRT](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/TensorRT-ExecutionProvider.md)
 * [OpenVINO](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/OpenVINO-ExecutionProvider.md)
+* [Nuphar](docs/execution_providers/Nuphar-ExecutionProvider.md)
 
 Not all variations are supported in the [official release builds](#apis-and-official-builds), but can be built from source following [these instructions](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md). Find Dockerfiles [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles).
 

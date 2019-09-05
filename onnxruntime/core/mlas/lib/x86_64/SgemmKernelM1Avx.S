@@ -80,10 +80,9 @@ C_UNDERSCORE(MlasSgemmKernelM1Avx):
         mov     eax,r8d
         and     eax,7
         vmovd   xmm7,eax
-        mov     rbx,QWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOTPCREL[rip]
         vshufps xmm7,xmm7,xmm7,0
-        vpcmpgtd xmm6,xmm7,XMMWORD PTR [rbx+16]
-        vpcmpgtd xmm7,xmm7,XMMWORD PTR [rbx]
+        vpcmpgtd xmm6,xmm7,XMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip+16]
+        vpcmpgtd xmm7,xmm7,XMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip]
         vinsertf128 ymm7,ymm7,xmm6,1
 
 //
