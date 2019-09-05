@@ -45,6 +45,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
       ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
+      ("use_fp16_moments", "Whether to use fp16 version of moments.", cxxopts::value<bool>()->default_value("false"))
       ("use_fp16_initializer", "FP16 weights will be created. Otherwise, cast nodes will be inserted for converting weights from FP32 to FP16",
         cxxopts::value<bool>()->default_value("true"))
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
@@ -97,6 +98,10 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     if (params.use_mixed_precision) {
       printf("Mixed precision training is enabled.\n");
     }
+    params.use_fp16_moments = flags["use_fp16_moments"].as<bool>();
+    if (params.use_fp16_moments) {
+      printf("Using fp16 version of moments.\n");
+    }
     params.use_fp16_initializer = flags["use_fp16_initializer"].as<bool>();
     if (params.use_mixed_precision && params.use_fp16_initializer) {
       printf("FP16 initializer is enabled.\n");
@@ -109,7 +114,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       params.training_optimizer_name = "LambOptimizer";
     } else {
       printf("Incorrect optimizer type: it must be one of [Adam|Lamb]\n");
-    }    
+    }
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
     cerr << msg << ": " << e.what() << "\n"

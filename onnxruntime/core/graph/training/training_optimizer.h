@@ -17,6 +17,7 @@ struct OptimizerInfo {
   int world_rank;
   int world_size;
   std::unordered_map<std::string, float> attributes;
+  bool use_fp16_moments;
 };
 
 // Utils for Constant Node Creation - Currently Used only in in_graph_training_optimizer
@@ -24,6 +25,13 @@ struct OptimizerInfo {
 // TODO: Add more types as necessary
 template <typename T>
 inline void SetTypedDataToTensor(T val, TensorProto& tensor, int64_t count);
+
+template <>
+inline void SetTypedDataToTensor<MLFloat16>(MLFloat16 val, TensorProto& tensor, int64_t count) {
+  for (int64_t i = 0; i < count; i++) {
+    tensor.add_int32_data(val.val);
+  }
+}
 
 template <>
 inline void SetTypedDataToTensor<float>(float val, TensorProto& tensor, int64_t count) {

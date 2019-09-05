@@ -32,10 +32,16 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
 
       if (mem_patterns_.patterns[i].PeakSize() > 0) {
         void* buffer;
-        if (alloc->Info().type == OrtArenaAllocator)
+        if (alloc->Info().type == OrtArenaAllocator) {
           buffer = static_cast<IArenaAllocator*>(alloc.get())->Reserve(mem_patterns_.patterns[i].PeakSize());
-        else
+        }
+        else {
           buffer = alloc->Alloc(mem_patterns_.patterns[i].PeakSize());
+        }
+
+        // comment out following line to see the size of initalizer 
+        // printf("Allocated memory for initalizer, size: %zu\n", mem_patterns_.patterns[i].PeakSize());
+
         weights_buffers_.push_back(BufferUniquePtr(buffer, alloc));
         auto kvp = buffers_.insert(std::make_pair(location, buffer));
         if (!kvp.second) {

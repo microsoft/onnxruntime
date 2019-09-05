@@ -219,6 +219,9 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
                              ? alloc->Alloc(mem_patterns_->patterns[i].PeakSize())
                              : nullptr;
           buffers_[mem_patterns_->locations[i]] = BufferUniquePtr(buffer, alloc);
+
+          // comment out following line to see the size of activation 
+          // printf("Allocated memory for activations, size: %zu\n", mem_patterns_->patterns[i].PeakSize());
         }
       }
     }

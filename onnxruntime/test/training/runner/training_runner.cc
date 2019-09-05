@@ -334,7 +334,8 @@ Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string
       params_.learning_rate,
       params_.mpi_context.world_rank,
       params_.mpi_context.world_size,
-      params_.optimizer_attributes};
+      params_.optimizer_attributes,
+      params_.use_fp16_moments};
 
   opt_infos.reserve(weights_to_train.size());
   for (const auto& weight_name : weights_to_train) {

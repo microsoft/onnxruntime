@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/onnx_protobuf.h"
+#include "core/util/math.h"
 #include "core/graph/training/training_optimizer.h"
 #include "core/graph/training/gradient_builder_base.h"
 #include "core/graph/training/graph_augmenter.h"
@@ -103,8 +104,9 @@ Status AdamOptimizerBuilder::Build(const NodeArg* weight_arg,
                                    const OptimizerInfo& opt_info,
                                    GraphAugmenter::GraphDefs& graph_defs) const {
   const std::string weight_name = weight_arg->Name();
-  const TypeProto* weight_type_proto = weight_arg->TypeAsProto();
   const std::string gradient_name = GradientBuilderBase::GradientName(weight_name);
+
+  const TypeProto* weight_type_proto = weight_arg->TypeAsProto();
 
   // Initialized tensor for Learning Rate
   TensorProto lr_tensor_proto = CreateTensorProto<float>(learning_rate_name_, opt_info.learning_rate);
@@ -134,9 +136,13 @@ Status AdamOptimizerBuilder::Build(const NodeArg* weight_arg,
   input_args[1] = ArgDef(update_count_string);
   input_args[2] = ArgDef(weight_name, weight_type_proto);
   input_args[3] = ArgDef(accumulated_gradient_name, weight_type_proto);
-  int input_idx = 4;
+
+  std::vector<ArgDef> output_args(num_outputs);
+  output_args[0] = ArgDef(weight_name + "_Adam_out", weight_type_proto);
 
   // The tensor proto for first and second moments of grad
+  int input_idx = 4;
+  int output_idx = 1;
   std::vector<std::string> moments_prefixes({"Moment_1_", "Moment_2_"});
   for (auto moments_prefix : moments_prefixes) {
     std::string gradient_moment_name = moments_prefix + gradient_name;
@@ -144,15 +150,20 @@ Status AdamOptimizerBuilder::Build(const NodeArg* weight_arg,
     for (auto dim : weight_arg->Shape()->dim()) {
       dims.push_back(dim.dim_value());
     }
-    TensorProto moment_tensor_proto = CreateTensorProto<float>(gradient_moment_name, 0.f, dims);
-    graph_defs.AddInitializers({moment_tensor_proto});
-    input_args[input_idx++] = ArgDef(gradient_moment_name);
-  }
 
-  std::vector<ArgDef> output_args(num_outputs);
-  output_args[0] = ArgDef(weight_name + "_Adam_out", weight_type_proto);
-  output_args[1] = ArgDef(gradient_name + "_Moment_1_Out", weight_type_proto);
-  output_args[2] = ArgDef(gradient_name + "_Moment_2_Out", weight_type_proto);
+    TensorProto moment_tensor_proto;
+    TypeProto* moment_type_proto = graph_defs.CopyTypeProto(weight_arg);
+    if (opt_info.use_fp16_moments) {
+      moment_tensor_proto = CreateTensorProto<MLFloat16>(gradient_moment_name, MLFloat16(math::floatToHalf(0.f)), dims);
+      moment_type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16);
+    } else {
+      moment_tensor_proto = CreateTensorProto<float>(gradient_moment_name, 0.f, dims);
+    }
+
+    graph_defs.AddInitializers({moment_tensor_proto});
+    input_args[input_idx++] = ArgDef(gradient_moment_name, moment_type_proto);
+    output_args[output_idx++] = ArgDef(gradient_moment_name + "_Out", moment_type_proto);
+  }
 
   TypeProto* type_proto = graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_INT64);
   output_args[3] = ArgDef(gradient_name + "_Step_Out", type_proto);
@@ -176,8 +187,9 @@ Status LambOptimizerBuilder::Build(const NodeArg* weight_arg,
                                    const OptimizerInfo& opt_info,
                                    GraphAugmenter::GraphDefs& graph_defs) const {
   const std::string weight_name = weight_arg->Name();
-  const TypeProto* weight_type_proto = weight_arg->TypeAsProto();
   const std::string gradient_name = GradientBuilderBase::GradientName(weight_name);
+
+  const TypeProto* weight_type_proto = weight_arg->TypeAsProto();
 
   // Initialized tensor for Learning Rate
   TensorProto lr_tensor_proto = CreateTensorProto<float>(learning_rate_name_, opt_info.learning_rate);
@@ -192,9 +204,13 @@ Status LambOptimizerBuilder::Build(const NodeArg* weight_arg,
   input_args[0] = ArgDef(learning_rate_name_);
   input_args[1] = ArgDef(weight_name, weight_type_proto);
   input_args[2] = ArgDef(accumulated_gradient_name, weight_type_proto);
-  int input_idx = 3;
+
+  std::vector<ArgDef> output_args(num_outputs_);
+  output_args[0] = ArgDef(weight_name + "_Lamb_out", weight_type_proto);
 
   // The tensor proto for first and second moments of grad
+  int input_idx = 3;
+  int output_idx = 1;
   std::vector<std::string> moments_prefixes({"Moment_1_", "Moment_2_"});
   for (auto moment_prefix : moments_prefixes) {
     std::string gradient_moment_name = moment_prefix + gradient_name;
@@ -202,15 +218,20 @@ Status LambOptimizerBuilder::Build(const NodeArg* weight_arg,
     for (auto dim : weight_arg->Shape()->dim()) {
       dims.push_back(dim.dim_value());
     }
-    TensorProto moment_tensor_proto = CreateTensorProto<float>(gradient_moment_name, 0.f, dims);
-    graph_defs.AddInitializers({moment_tensor_proto});
-    input_args[input_idx++] = ArgDef(gradient_moment_name);
-  }
 
-  std::vector<ArgDef> output_args(num_outputs_);
-  output_args[0] = ArgDef(weight_name + "_Lamb_out", weight_type_proto);
-  output_args[1] = ArgDef(gradient_name + "_Moment_1_Out", weight_type_proto);
-  output_args[2] = ArgDef(gradient_name + "_Moment_2_Out", weight_type_proto);
+    TensorProto moment_tensor_proto;
+    TypeProto* moment_type_proto = graph_defs.CopyTypeProto(weight_arg);
+    if (opt_info.use_fp16_moments) {
+      moment_tensor_proto = CreateTensorProto<MLFloat16>(gradient_moment_name, MLFloat16(math::floatToHalf(0.f)), dims);
+      moment_type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16);
+    } else {
+      moment_tensor_proto = CreateTensorProto<float>(gradient_moment_name, 0.f, dims);
+    }
+
+    graph_defs.AddInitializers({moment_tensor_proto});
+    input_args[input_idx++] = ArgDef(gradient_moment_name, moment_type_proto);
+    output_args[output_idx++] = ArgDef(gradient_moment_name + "_Out", moment_type_proto);
+  }
 
   graph_defs.AddNodeDefs({NodeDef(OpType(),
                                   input_args,
