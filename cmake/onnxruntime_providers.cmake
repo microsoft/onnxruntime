@@ -157,6 +157,7 @@ if (onnxruntime_USE_MIMALLOC)
     add_dependencies(mimalloc mimalloc_override)
     set_target_properties(mimalloc PROPERTIES IMPORTED_LOCATION "${mimalloc_output_dir}${mimalloc_output}.lib")
 
+    # copy the dll into the directory where setup.py will look for it
     add_custom_command(TARGET mimalloc_override POST_BUILD
                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
                        ${mimalloc_output_dir}/${mimalloc_output}.dll
@@ -166,7 +167,10 @@ if (onnxruntime_USE_MIMALLOC)
   else()
     add_subdirectory(${mimalloc_root_dir} EXCLUDE_FROM_ALL)
     set_target_properties(mimalloc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
-    configure_file(${mimalloc_output_dir}mimalloc.so ${mimalloc_wheel_dir}mimalloc.so COPYONLY)
+
+    # copy the dll into the directory where setup.py will look for it
+    get_target_property(mimalloc_output_name mimalloc OUTPUT_NAME)
+    configure_file(${mimalloc_output_dir}${mimalloc_output_name}.so ${mimalloc_wheel_dir}${mimalloc_output_name}.so COPYONLY)
   endif()
   
   target_link_libraries(onnxruntime_providers PUBLIC mimalloc)
