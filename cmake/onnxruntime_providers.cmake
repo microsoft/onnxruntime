@@ -115,7 +115,7 @@ set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
 
 if (onnxruntime_USE_MIMALLOC)
   set(mimalloc_root_dir ${PROJECT_SOURCE_DIR}/external/mimalloc)
-  set(mimalloc_output_dir ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/)
+  set(mimalloc_output_dir ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE})
   set(mimalloc_wheel_dir ${mimalloc_output_dir}/onnxruntime/capi/)
 
   add_definitions(
@@ -127,7 +127,7 @@ if (onnxruntime_USE_MIMALLOC)
     file(MAKE_DIRECTORY ${mimalloc_wheel_dir})
   endif()
   
-  if (WIN32) 
+  if (WIN32)
     # The generic MiMalloc CMakeLists.txt project lacks 
     # the needed hooks to override malloc at runtime on Windows
     # so we fall back to the specially provided VS solutions (which
@@ -137,25 +137,25 @@ if (onnxruntime_USE_MIMALLOC)
     if(NOT ${CMAKE_GENERATOR_PLATFORM} MATCHES "x64|Win32")
       message(FATAL_ERROR "MiMalloc doesn't support ARM/ARM64 targets")
     endif()
-
+    
     set(vs_version "vs2019")
     if (${CMAKE_GENERATOR} MATCHES "Visual Studio [1-5]+ [0-9]+")
       set(vs_version "vs2017")
     endif()
-
+    
     set(mimalloc_config "Release")
     if(${CMAKE_BUILD_TYPE} MATCHES "Debug")
       set(mimalloc_config, "Debug")
     endif()
 
-    add_custom_command(OUTPUT ${mimalloc_output} 
-    COMMAND msbuild ${mimalloc_root_dir}/ide/${vs_version}/mimalloc-override.vcxproj /p:OutDir=${mimalloc_output_dir} 
-      /p:Platform=${CMAKE_GENERATOR_PLATFORM} /p:Configuration=${mimalloc_config})
+    add_custom_command(OUTPUT ${mimalloc_output} COMMAND msbuild ${mimalloc_root_dir}/ide/${vs_version}/mimalloc-override.vcxproj 
+                      /p:OutDir=${mimalloc_output_dir} /p:Platform=${CMAKE_GENERATOR_PLATFORM} /p:Configuration=${mimalloc_config} 
+                      /p:WindowsTargetPlatformVersion=${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION})
     add_custom_target(mimalloc_override ALL DEPENDS ${mimalloc_output})
 
     add_library(mimalloc IMPORTED SHARED STATIC)
     add_dependencies(mimalloc mimalloc_override)
-    set_target_properties(mimalloc PROPERTIES IMPORTED_LOCATION "${mimalloc_output_dir}${mimalloc_output}.lib")
+    set_target_properties(mimalloc PROPERTIES IMPORTED_LOCATION "${mimalloc_output_dir}/${mimalloc_output}.lib")
 
     # copy the dll into the directory where setup.py will look for it
     add_custom_command(TARGET mimalloc_override POST_BUILD
