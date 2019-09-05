@@ -46,7 +46,7 @@ class OpKernel {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
-  const OrtAllocatorInfo& Allocator(int id, OrtMemType mem_type) const {
+  const OrtMemoryInfo& Allocator(int id, OrtMemType mem_type) const {
     return op_kernel_info_.GetAllocatorInfo(id, mem_type);
   }
 

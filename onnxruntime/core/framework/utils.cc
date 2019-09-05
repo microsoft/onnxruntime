@@ -45,7 +45,7 @@ void DefaultFree(void* p) {
 #endif
 }
 
-AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info) {
+AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo& allocator_info) {
   return session_state.GetExecutionProviders().GetAllocator(allocator_info);
 }
 
@@ -134,9 +134,9 @@ static bool HaveCpuExecutionProvidersOnly(const ExecutionProviders& execution_pr
   return true;
 }
 
-static const OrtAllocatorInfo& FindAllocatorInfoForValue(const OrtValueNameIdxMap& map,
-                                                         const SequentialExecutionPlan& plan,
-                                                         const std::string& name) {
+static const OrtMemoryInfo& FindMemoryInfoForValue(const OrtValueNameIdxMap& map,
+                                                   const SequentialExecutionPlan& plan,
+                                                   const std::string& name) {
   int idx = -1;
   auto status = map.GetIdx(name, idx);
   ORT_THROW_IF_ERROR(status);
@@ -145,12 +145,12 @@ static const OrtAllocatorInfo& FindAllocatorInfoForValue(const OrtValueNameIdxMa
   return location;
 }
 
-const OrtAllocatorInfo& FindAllocatorInfoForValue(const SessionState& session_state,
-                                                  const std::string& name) {
+const OrtMemoryInfo& FindMemoryInfoForValue(const SessionState& session_state,
+                                            const std::string& name) {
   const auto* exec_plan_ptr = session_state.GetExecutionPlan();
   ORT_ENFORCE(exec_plan_ptr);
 
-  return FindAllocatorInfoForValue(session_state.GetOrtValueNameIdxMap(), *exec_plan_ptr, name);
+  return FindMemoryInfoForValue(session_state.GetOrtValueNameIdxMap(), *exec_plan_ptr, name);
 }
 
 // get the target device info for the node consuming each input provided in the feeds
@@ -194,7 +194,7 @@ static common::Status CalculateStaticCopyInfoForFetches(const SessionState& sess
   for (size_t idx = 0, end = fetch_names.size(); idx < end; ++idx) {
     const std::string& output_name = fetch_names[idx];
 
-    const auto& info = FindAllocatorInfoForValue(session_state, output_name);
+    const auto& info = FindMemoryInfoForValue(session_state, output_name);
     copy_info[idx].source_device = info.device;
 
     // If for some reason using just the device from the allocation plan isn't enough, the following
@@ -207,7 +207,7 @@ static common::Status CalculateStaticCopyInfoForFetches(const SessionState& sess
     //  copy_info[idx].source_device = *node_info.device;
     //} else {
     //  // edge case where an initializer directly provides output so no NodeInfo involved
-    //  const auto& info = FindAllocatorInfoForValue(session_state, output_name);
+    //  const auto& info = FindMemoryInfoForValue(session_state, output_name);
     //  copy_info[idx].source_device = info.device;
     //}
   }
@@ -252,7 +252,7 @@ static bool FinalizeCopyInfoForFeeds(const std::vector<OrtDevice>& feed_location
 }
 
 static bool FinalizeCopyInfoForFetches(const SessionState& session_state,
-                                       const std::vector<const OrtAllocatorInfo*>& fetch_alloc_info,
+                                       const std::vector<const OrtMemoryInfo*>& fetch_alloc_info,
                                        std::vector<MLValueCopyInfo>& copy_info) {
   ORT_ENFORCE(fetch_alloc_info.size() == copy_info.size());
   bool copy_needed = false;
@@ -279,12 +279,12 @@ static bool FinalizeCopyInfoForFetches(const SessionState& session_state,
   return copy_needed;
 }
 
-// Finalize the copy info using the OrtDevice and OrtAllocatorInfo for the feeds and fetches
+// Finalize the copy info using the OrtDevice and OrtMemoryInfo for the feeds and fetches
 // This can be used by control flow nodes prior to the execution of the overall graph.
 void FinalizeFeedFetchCopyInfo(const SessionState& session_state,
                                FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtDevice>& feed_locations,
-                               const std::vector<const OrtAllocatorInfo*>& fetch_alloc_info) {
+                               const std::vector<const OrtMemoryInfo*>& fetch_alloc_info) {
   if (feeds_fetches_manager.GetDeviceCopyChecks().status == DeviceCopyCheck::NoCopy)
     return;
 
@@ -310,7 +310,7 @@ static void FinalizeFeedFetchCopyInfo(const SessionState& session_state,
   auto num_outputs = feeds_fetches_manager.GetFeedsFetchesInfo().output_names.size();
 
   std::vector<OrtDevice> feed_locations(num_inputs);
-  std::vector<const OrtAllocatorInfo*> fetch_alloc_info(num_outputs, nullptr);
+  std::vector<const OrtMemoryInfo*> fetch_alloc_info(num_outputs, nullptr);
 
   for (size_t i = 0; i < num_inputs; ++i) {
     const auto& feed = feeds[i];

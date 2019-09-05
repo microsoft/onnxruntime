@@ -30,7 +30,7 @@ namespace utils {
 void* DefaultAlloc(size_t size);
 void DefaultFree(void* p);
 
-AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info);
+AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo& allocator_info);
 
 common::Status AllocateHelper(const IExecutionProvider& execution_provider, int device_id, const Tensor& fetched_tensor,
                               OrtValue& output_mlvalue);
@@ -40,9 +40,9 @@ const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info);
 common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
                                          const OrtValue& orig_mlvalue, OrtValue& new_mlvalue);
 
-// Searches the allocation plan from the session_state to find the OrtAllocatorInfo for the value 'name'.
-const OrtAllocatorInfo& FindAllocatorInfoForValue(const SessionState& session_state,
-                                                  const std::string& name);
+// Searches the allocation plan from the session_state to find the OrtMemoryInfo for the value 'name'.
+const OrtMemoryInfo& FindMemoryInfoForValue(const SessionState& session_state,
+                                            const std::string& name);
 
 // Initialize the feed and fetch copy info using session_state.
 // Determines the device that each graph input that will be fed will be consumed on,
@@ -55,7 +55,7 @@ common::Status InitializeFeedFetchCopyInfo(const SessionState& session_state,
 void FinalizeFeedFetchCopyInfo(const SessionState& session_state,
                                FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtDevice>& feed_locations,
-                               const std::vector<const OrtAllocatorInfo*>& fetch_alloc_info);
+                               const std::vector<const OrtMemoryInfo*>& fetch_alloc_info);
 
 // Execute the main graph. The feed_fetches_manager will be finalized based on the provided feeds and fetches.
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,

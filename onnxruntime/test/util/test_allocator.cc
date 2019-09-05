@@ -12,7 +12,7 @@ MockedOrtAllocator::MockedOrtAllocator() {
 }
 
 MockedOrtAllocator::~MockedOrtAllocator() {
-  OrtReleaseAllocatorInfo(cpuAllocatorInfo);
+  OrtReleaseMemoryInfo(cpuAllocatorInfo);
 }
 
 void* MockedOrtAllocator::Alloc(size_t size) {
@@ -32,7 +32,7 @@ void MockedOrtAllocator::Free(void* p) {
   return ::free(p);
 }
 
-const OrtAllocatorInfo* MockedOrtAllocator::Info() const {
+const OrtMemoryInfo* MockedOrtAllocator::Info() const {
   return cpuAllocatorInfo;
 }
 

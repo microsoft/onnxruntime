@@ -6,7 +6,7 @@
 
 namespace onnxruntime {
 
-AllocatorPtr ITensorAllocator::GetAllocator(const OrtAllocatorInfo& allocator_info) {
+AllocatorPtr ITensorAllocator::GetAllocator(const OrtMemoryInfo& allocator_info) {
   return exec_providers_.GetAllocator(allocator_info);
 }
 

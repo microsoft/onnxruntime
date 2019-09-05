@@ -161,12 +161,12 @@ Status CreateFeedsFetchesManager(const Node& node,
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(subgraph_session_state, *ffm));
 
   // we provide fetches using memory allocated by Scan, so provide locations based on the Scan output locations
-  std::vector<const OrtAllocatorInfo*> fetch_locations;
+  std::vector<const OrtMemoryInfo*> fetch_locations;
   fetch_locations.reserve(info.num_outputs);
 
   for (const auto& output : node.OutputDefs()) {
-    // const auto& alloc_info = controlflow::detail::FindAllocatorInfoForValue(session_state, output->Name());
-    const auto& alloc_info = utils::FindAllocatorInfoForValue(session_state, output->Name());
+    // const auto& alloc_info = controlflow::detail::FindMemoryInfoForValue(session_state, output->Name());
+    const auto& alloc_info = utils::FindMemoryInfoForValue(session_state, output->Name());
     fetch_locations.push_back(&alloc_info);
   }
 

@@ -238,7 +238,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
 
   // we don't provide pre-allocated fetches for Loop subgraph execution.
   // use nullptr for all the fetch locations to represent that
-  std::vector<const OrtAllocatorInfo*> fetch_locations(info_->num_subgraph_outputs, nullptr);
+  std::vector<const OrtMemoryInfo*> fetch_locations(info_->num_subgraph_outputs, nullptr);
   utils::FinalizeFeedFetchCopyInfo(subgraph_session_state, *ffm, feed_locations, fetch_locations);
 
   feeds_fetches_manager_ = std::move(ffm);

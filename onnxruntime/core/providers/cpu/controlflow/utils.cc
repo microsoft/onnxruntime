@@ -7,30 +7,12 @@
 #include "core/common/common.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/session_state.h"
+#include "core/framework/utils.h"
 #include "core/graph/graph.h"
 
 namespace onnxruntime {
 namespace controlflow {
 namespace detail {
-
-static const OrtAllocatorInfo& FindAllocatorInfoForValue(const OrtValueNameIdxMap& map,
-                                                         const SequentialExecutionPlan& plan,
-                                                         const std::string& name) {
-  int idx = -1;
-  auto status = map.GetIdx(name, idx);
-  ORT_THROW_IF_ERROR(status);
-
-  const auto& location = plan.GetLocation(idx);
-  return location;
-}
-
-const OrtAllocatorInfo& FindAllocatorInfoForValue(const SessionState& session_state,
-                                                  const std::string& name) {
-  const auto* exec_plan_ptr = session_state.GetExecutionPlan();
-  ORT_ENFORCE(exec_plan_ptr);
-
-  return FindAllocatorInfoForValue(session_state.GetOrtValueNameIdxMap(), *exec_plan_ptr, name);
-}
 
 common::Status FindDevicesForValues(const SessionState& session_state,
                                     const std::vector<std::string>& names,
@@ -38,12 +20,8 @@ common::Status FindDevicesForValues(const SessionState& session_state,
                                     size_t start_at) {
   devices.resize(names.size());
 
-  const auto& map = session_state.GetOrtValueNameIdxMap();
-  const auto* exec_plan_ptr = session_state.GetExecutionPlan();
-  ORT_ENFORCE(exec_plan_ptr);
-
   for (size_t i = start_at, end = names.size(); i < end; ++i) {
-    const auto& location = FindAllocatorInfoForValue(map, *exec_plan_ptr, names[i]);
+    const auto& location = utils::FindMemoryInfoForValue(session_state, names[i]);
     devices[i] = location.device;
   }
 
