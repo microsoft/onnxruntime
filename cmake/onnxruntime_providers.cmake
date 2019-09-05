@@ -176,7 +176,7 @@ if (onnxruntime_USE_MIMALLOC)
 
     # copy the dll into the directory where setup.py will look for it
     get_target_property(mimalloc_output_name mimalloc OUTPUT_NAME)
-    configure_file(${mimalloc_output_dir}${mimalloc_output_name}.so ${mimalloc_wheel_dir}${mimalloc_output_name}.so COPYONLY)
+    install(TARGETS mimalloc DESTINATION ${mimalloc_wheel_dir})
   endif()
   
   target_link_libraries(onnxruntime_providers mimalloc)
