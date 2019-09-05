@@ -274,11 +274,11 @@ Note: For 32-bit devices, replace `-DANDROID_ABI=arm64-v8a` to `-DANDROID_ABI=ar
 ### Nuphar
 ONNX Runtime supports Nuphar execution provider (released as preview). It is an execution provider built on top of [TVM](https://github.com/dmlc/tvm) and [LLVM](https://llvm.org). Currently it targets to X64 CPU.
 
-The Nuphar execution provider for ONNX Runtime is built and tested with LLVM 7.1.0. Because of TVM's requirement when building with LLVM, you need to build LLVM from source:
+The Nuphar execution provider for ONNX Runtime is built and tested with LLVM 6.0.1. Because of TVM's requirement when building with LLVM, you need to build LLVM from source:
 
 Window with Visual Studio 2017: (Note here builds release flavor. Debug build of LLVM would be needed to build with Debug flavor of ONNX Runtime)
 ```
-REM download llvm source code and unzip to \llvm\source\path, then install to \llvm\install\path
+REM download llvm source code 6.0.1 and unzip to \llvm\source\path, then install to \llvm\install\path
 cd \llvm\source\path
 mkdir build
 cd build
@@ -289,7 +289,7 @@ cmake -DCMAKE_INSTALL_PREFIX=\llvm\install\path -DBUILD_TYPE=Release -P cmake_in
 
 Linux:
 ```
-# download llvm source code and unzip to /llvm/source/path, then install to /llvm/install/path
+# download llvm source code 6.0.1 and unzip to /llvm/source/path, then install to /llvm/install/path
 cd /llvm/source/path
 mkdir build
 cd build

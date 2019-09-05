@@ -79,5 +79,5 @@ fi
 /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall sympy==1.1.1
 rm -rf /var/lib/apt/lists/*
 
-aria2c -q -d /tmp -o llvm.tar.xz https://github.com/llvm/llvm-project/releases/download/llvmorg-7.1.0/clang+llvm-7.1.0-x86_64-linux-gnu-ubuntu-14.04.tar.xz
+aria2c -q -d /tmp -o llvm.tar.xz http://releases.llvm.org/6.0.1/clang+llvm-6.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz
 tar --strip 1 -Jxf /tmp/llvm.tar.xz -C /usr
