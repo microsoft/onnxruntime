@@ -115,7 +115,7 @@ set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
 
 if (onnxruntime_USE_MIMALLOC)
   set(mimalloc_root_dir ${PROJECT_SOURCE_DIR}/external/mimalloc)
-  set(mimalloc_output_dir ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE})
+  set(mimalloc_output_dir ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/)
   set(mimalloc_wheel_dir ${mimalloc_output_dir}/onnxruntime/capi/)
 
   add_definitions(
@@ -155,12 +155,12 @@ if (onnxruntime_USE_MIMALLOC)
 
     add_library(mimalloc IMPORTED SHARED STATIC)
     add_dependencies(mimalloc mimalloc_override)
-    set_target_properties(mimalloc PROPERTIES IMPORTED_LOCATION "${mimalloc_output_dir}/${mimalloc_output}.lib")
+    set_target_properties(mimalloc PROPERTIES IMPORTED_LOCATION "${mimalloc_output_dir}${mimalloc_output}.lib")
 
     # copy the dll into the directory where setup.py will look for it
     add_custom_command(TARGET mimalloc_override POST_BUILD
                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                       ${mimalloc_output_dir}/${mimalloc_output}.dll
+                       ${mimalloc_output_dir}${mimalloc_output}.dll
                        ${mimalloc_wheel_dir}
                    )
 
