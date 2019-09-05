@@ -148,9 +148,15 @@ if (onnxruntime_USE_MIMALLOC)
       set(mimalloc_config, "Debug")
     endif()
 
+    if(DEFINED ENV{WindowsSDKVersion})
+      set(mimalloc_target_winsdk $ENV{WindowsSDKVersion})
+    else()
+      set(mimalloc_target_winsdk ${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION})
+    endif()
+
     add_custom_command(OUTPUT ${mimalloc_output} COMMAND msbuild ${mimalloc_root_dir}/ide/${vs_version}/mimalloc-override.vcxproj 
                       /p:OutDir=${mimalloc_output_dir} /p:Platform=${CMAKE_GENERATOR_PLATFORM} /p:Configuration=${mimalloc_config} 
-                      /p:WindowsTargetPlatformVersion=${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION})
+                      /p:WindowsTargetPlatformVersion=${mimalloc_target_winsdk})
     add_custom_target(mimalloc_override ALL DEPENDS ${mimalloc_output})
 
     add_library(mimalloc IMPORTED SHARED STATIC)
