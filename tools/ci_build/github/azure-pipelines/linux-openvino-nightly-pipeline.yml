@@ -17,7 +17,7 @@ jobs:
       displayName: 'Unzip test data'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
-        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory) --edge_device
+        arguments: --build_dir $(Build.BinariesDirectory) --edge_device
         pythonInterpreter: '/usr/bin/python3'
         workingDirectory: $(Build.BinariesDirectory)
         
