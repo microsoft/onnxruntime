@@ -30,6 +30,10 @@ if (onnxruntime_USE_NGRAPH)
   STRING(APPEND CSHARP_PREPROCESSOR_DEFINES "USE_NGRAPH,")
 endif()
 
+if (onnxruntime_USE_NUPHAR)
+  STRING(APPEND CSHARP_PREPROCESSOR_DEFINES "USE_NUPHAR,")
+endif()
+
 include(CSharpUtilities)
 
 include_external_msproject(${CSHARP_MASTER_TARGET}
