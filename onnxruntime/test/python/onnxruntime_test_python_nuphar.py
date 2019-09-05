@@ -56,20 +56,14 @@ class TestNuphar(unittest.TestCase):
         nuphar_settings = 'nuphar_cache_path:{}'.format(cache_dir)
         onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings)
 
-        non_jit_repeats = 1
-        jit_repeats = 10
-
         # prepare feed
         feed = {}
         for i in range(4):
             tp = onnx.load_tensor(os.path.join(bidaf_dir, 'test_data_set_0', 'input_{}.pb'.format(i)))
             feed[tp.name] = numpy_helper.to_array(tp)
 
-        start = timer()
         sess = onnxrt.InferenceSession(bidaf_int8_scan_only_model) # JIT cache happens when initializing session
-        for i in range(non_jit_repeats):
-            output = sess.run([], feed)
-        non_jit_time = timer() - start
+        output = sess.run([], feed)
 
         cache_dir_content = os.listdir(cache_dir)
         assert len(cache_dir_content) == 1
@@ -84,12 +78,8 @@ class TestNuphar(unittest.TestCase):
         nuphar_settings = 'nuphar_cache_path:{}'.format(cache_dir) + ', nuphar_cache_force_no_jit:{}'.format('on')
         onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings)
         sess = onnxrt.InferenceSession(bidaf_int8_scan_only_model) # JIT cache happens when initializing session
-        start = timer()
-        for i in range(jit_repeats):
-            sess.run([], feed)
-        jit_time = timer() - start
+        sess.run([], feed)
 
-        self.assertLess(jit_time, non_jit_time)
 
     def test_rnn_benchmark(self):
         # make sure benchmarking scripts works
