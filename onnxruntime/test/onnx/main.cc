@@ -404,8 +404,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"round", "not implemented yet"},
       {"gather_elements_1", "not implemented yet"},
       {"gather_elements_0", "not implemented yet"},
-      {"depthtospace_crd_mode_example", "not implemented yet"},
-      {"depthtospace_crd_mode", "not implemented yet"},
       {"cumsum_2d_axis_1", "not implemented yet"},
       {"cumsum_2d_axis_0", "not implemented yet"},
       {"cumsum_1d_reverse_exclusive", "not implemented yet"},
