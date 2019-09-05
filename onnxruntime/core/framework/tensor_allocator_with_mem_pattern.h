@@ -16,7 +16,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
   OrtValuePatternPlanner planner_;
   MemoryPatternGroup mem_patterns_;
   std::vector<BufferUniquePtr>& weights_buffers_;
-  std::map<OrtAllocatorInfo, void*> buffers_;
+  std::map<OrtMemoryInfo, void*> buffers_;
   bool is_sealed_ = false;
   const ExecutionPlanBase& seq_plan_;
 
@@ -62,7 +62,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
     if (!is_sealed_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error.");
     }
-    const struct OrtAllocatorInfo& location = seq_plan_.GetLocation(ort_value_index);
+    const struct OrtMemoryInfo& location = seq_plan_.GetLocation(ort_value_index);
     auto pattern = mem_patterns_.GetPatterns(location);
     if (pattern == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Mem pattern for initializer ", name, " is not found");
