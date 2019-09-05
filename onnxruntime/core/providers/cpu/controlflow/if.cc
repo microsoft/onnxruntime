@@ -276,12 +276,10 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
   feeds.reserve(num_inputs);
 
   // order of implicit_inputs_ matches order of feed names. skip implicit inputs that don't apply to this subgraph
-  int i = 0;
-  for (bool use : info_.used_implicit_inputs) {
-    if (use) {
+  for (size_t i = 0, end = info_.used_implicit_inputs.size(); i < end; ++i) {
+    if (info_.used_implicit_inputs[i]) {
       feeds.push_back(*implicit_inputs_[i]);
     }
-    ++i;
   }
 
   std::vector<OrtValue> fetches;
