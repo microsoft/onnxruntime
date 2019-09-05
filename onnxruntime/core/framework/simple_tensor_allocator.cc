@@ -20,7 +20,7 @@ common::Status SimpleTensorAllocator::GetPreallocatedBuffer(int ort_value_index,
   size_t len = 0;
   static constexpr int alignment = 256;
   ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<alignment>(*iter->second, &len));
-  const struct OrtAllocatorInfo& location = seq_plan_.GetLocation(ort_value_index);
+  const struct OrtMemoryInfo& location = seq_plan_.GetLocation(ort_value_index);
   if (len == 0) {
     out = std::make_unique<MemBuffer>(nullptr, 0, location);
     return Status::OK();
