@@ -70,7 +70,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   InsertAllocator(CreateAllocator(default_allocator_info, device_id_));
 
   DeviceAllocatorRegistrationInfo pinned_allocator_info(
-      {OrtMemTypeCPUOutput, [](int) { return std::make_unique<CUDAPinnedAllocator>(0, CUDA_PINNED); }, std::numeric_limits<size_t>::max()});
+      {OrtMemTypeCPUOutput, [](int id) { return std::make_unique<CUDAPinnedAllocator>(id, CUDA_PINNED); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_));
 
   // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
@@ -80,7 +80,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
-  auto cpu_alloc = GetAllocator(0, OrtMemTypeCPU);
+  auto cpu_alloc = GetAllocator(device_id_, OrtMemTypeCPU);
   std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
   auto it = deferred_release_cpu_ptr_.begin();
   while (it != deferred_release_cpu_ptr_.end()) {
