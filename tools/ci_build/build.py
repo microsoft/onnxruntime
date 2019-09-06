@@ -549,12 +549,14 @@ def adb_shell(*args, **kwargs):
     return run_subprocess(['adb', 'shell', *args], **kwargs)
 
 def prepare_android_vm_for_test(args, source_dir, vm_test_dir = '/data/local/tmp/'):
+    cwd = get_config_build_dir(args.build_dir, args.config)
     if args.android_abi == 'x86_64':
         run_subprocess(os.path.join(source_dir, 'tools', 'ci_build', 'github', 'android', 'start_android_emulator.sh'))
         adb_push(source_dir, 'testdata', vm_test_dir, cwd=cwd)
         adb_push(source_dir, os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'), '/data/local/tmp/', cwd=cwd)
         adb_push(source_dir, 'onnxruntime_test_all', vm_test_dir, cwd=cwd)
         adb_push(source_dir, 'onnx_test_runner', vm_test_dir, cwd=cwd)
+        adb_push(source_dir, '*.dll', vm_test_dir, cwd=cwd)
 
 def run_onnx_tests_on_android(args, vm_test_dir):
     if args.use_dnnlibrary:
