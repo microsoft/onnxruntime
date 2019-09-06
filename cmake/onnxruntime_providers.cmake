@@ -173,13 +173,15 @@ if (onnxruntime_USE_MIMALLOC)
   else()
     add_subdirectory(${mimalloc_root_dir} EXCLUDE_FROM_ALL)
     set_target_properties(mimalloc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+    target_compile_definitions(mimalloc PUBLIC MI_USE_CXX=ON)
 
     # copy the dll into the directory where setup.py will look for it
     get_target_property(mimalloc_output_name mimalloc OUTPUT_NAME)
     install(TARGETS mimalloc DESTINATION ${mimalloc_wheel_dir})
   endif()
   
-  target_link_libraries(onnxruntime_providers mimalloc)
+  # TODO: enable linking once mimalloc has been integrated with an allocator class
+  # target_link_libraries(onnxruntime_providers mimalloc)
 endif()
 
 if (onnxruntime_USE_CUDA)
