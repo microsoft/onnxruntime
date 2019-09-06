@@ -559,6 +559,8 @@ def prepare_android_vm_for_test(args, source_dir, vm_test_dir = '/data/local/tmp
             adb_push(source_dir, 'onnxruntime_test_all', vm_test_dir, cwd=cwd)
             adb_push(source_dir, 'onnx_test_runner', vm_test_dir, cwd=cwd)
             adb_push(source_dir, '*.dll', vm_test_dir, cwd=cwd)
+            adb_push(source_dir, '*.so', vm_test_dir, cwd=cwd)
+            adb_push(source_dir, '*.dylib', vm_test_dir, cwd=cwd)
 
 def run_onnx_tests_on_android(args, vm_test_dir):
     if args.use_dnnlibrary:
