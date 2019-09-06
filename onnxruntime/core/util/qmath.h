@@ -1,5 +1,14 @@
 #pragma once
-//#define USE_GEMMLOWP
+
+// default to gemmlowp when building for arm devices
+#ifndef USE_GEMMLOWP
+#if defined(_M_ARM64) || defined(__aarch64__)
+#define USE_GEMMLOWP
+#endif
+#if defined(_M_ARM) || defined(__arm__)
+#define USE_GEMMLOWP
+#endif
+#endif
 
 #ifdef USE_GEMMLOWP
 #include "core/util/gemmlowp_common.h"

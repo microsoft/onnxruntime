@@ -117,21 +117,30 @@ tvm::Tensor MatMul(const tvm::Tensor& A, const tvm::Tensor& B, const std::string
       return tvm::sum(A(a_indices) * B(b_indices), {k});
     };
 
-    tvm::Array<tvm::Expr> output_shape;
-    int64_t output_rank = std::max(a_rank, b_rank);
-    MTI_ASSERT(tvm::ir::Equal(A_shape[a_rank - 1], B_shape[b_rank - 2]));
-    for (int64_t i = 0; i < output_rank - 2; i++) {
-      tvm::Expr broadcasted_dim = tvm::make_const(HalideIR::Int(32), 1);
-      bool broadcasted =
-          BroadcastDim(A_shape, i, output_rank, broadcasted_dim) &&
-          BroadcastDim(B_shape, i, output_rank, broadcasted_dim);
-      MTI_ASSERT(broadcasted);
-      output_shape.push_back(broadcasted_dim);
-    }
-    output_shape.push_back(A_shape[a_rank - 2]);
-    output_shape.push_back(B_shape[b_rank - 1]);
-    return tvm::compute(output_shape, l, name);
+    return tvm::compute(ComputeMatMulShape(A_shape, B_shape), l, name);
   }
+}
+
+tvm::Array<tvm::Expr>
+ComputeMatMulShape(
+    const tvm::Array<tvm::Expr>& A_shape,
+    const tvm::Array<tvm::Expr>& B_shape) {
+  auto a_rank = A_shape.size();
+  auto b_rank = B_shape.size();
+  tvm::Array<tvm::Expr> output_shape;
+  int64_t output_rank = std::max(a_rank, b_rank);
+  MTI_ASSERT(tvm::ir::Equal(A_shape[a_rank - 1], B_shape[b_rank - 2]));
+  for (int64_t i = 0; i < output_rank - 2; i++) {
+    tvm::Expr broadcasted_dim = tvm::make_const(HalideIR::Int(32), 1);
+    bool broadcasted =
+        BroadcastDim(A_shape, i, output_rank, broadcasted_dim) &&
+        BroadcastDim(B_shape, i, output_rank, broadcasted_dim);
+    MTI_ASSERT(broadcasted);
+    output_shape.push_back(broadcasted_dim);
+  }
+  output_shape.push_back(A_shape[a_rank - 2]);
+  output_shape.push_back(B_shape[b_rank - 1]);
+  return output_shape;
 }
 
 }  // namespace tvm_codegen

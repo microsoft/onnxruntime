@@ -13,6 +13,8 @@
 ;   This module implements the kernels for the quantized integer matrix/matrix
 ;   multiply operation (QGEMM).
 ;
+;   This implementation uses AVX2 instructions.
+;
 ;--
 
         .xlist

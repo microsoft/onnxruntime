@@ -127,14 +127,14 @@ int main(int argc, char* argv[]) {
     input_tensor_values[i] = (float)i / (input_tensor_size + 1);
 
   // create input tensor object from data values
-  OrtAllocatorInfo* allocator_info;
+  OrtMemoryInfo* allocator_info;
   CHECK_STATUS(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
   OrtValue* input_tensor = NULL;
   CHECK_STATUS(OrtCreateTensorWithDataAsOrtValue(allocator_info, input_tensor_values.data(), input_tensor_size * sizeof(float), input_node_dims.data(), 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
   int is_tensor;
   CHECK_STATUS(OrtIsTensor(input_tensor, &is_tensor));
   assert(is_tensor);
-  OrtReleaseAllocatorInfo(allocator_info);
+  OrtReleaseMemoryInfo(allocator_info);
 
   // score model & input tensor, get back output tensor
   OrtValue* output_tensor = NULL;

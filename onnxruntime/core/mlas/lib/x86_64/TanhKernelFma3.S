@@ -72,7 +72,7 @@ Return Value:
         .globl  C_UNDERSCORE(MlasTanhKernelFma3)
 C_UNDERSCORE(MlasTanhKernelFma3):
 
-        mov     rax,C_UNDERSCORE(MlasTanhConstants)@GOTPCREL[rip]
+        lea     rax,C_UNDERSCORE(MlasTanhConstants)[rip]
         vbroadcastss ymm4,TanhConstants_LowerRange[rax]
         vbroadcastss ymm5,TanhConstants_UpperRange[rax]
         vbroadcastss ymm6,TanhConstants_alpha_13[rax]
@@ -116,9 +116,8 @@ C_UNDERSCORE(MlasTanhKernelFma3):
         add     rdx,8                           # correct for over-subtract above
         jz      .LExitKernel
         mov     DWORD PTR TanhKernelFrame_CountN[rsp],edx
-        mov     rcx,QWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOTPCREL[rip]
         vbroadcastss ymm2,DWORD PTR TanhKernelFrame_CountN[rsp]
-        vpcmpgtd ymm2,ymm2,YMMWORD PTR [rcx]
+        vpcmpgtd ymm2,ymm2,YMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip]
         vmaskmovps ymm0,ymm2,YMMWORD PTR [rdi]
         vmaxps  ymm0,ymm4,ymm0                  # clamp lower bound
         vminps  ymm0,ymm5,ymm0                  # clamp upper bound

@@ -43,7 +43,7 @@ struct Exception : std::exception {
 #define ORT_DEFINE_RELEASE(NAME) \
   inline void OrtRelease(Ort##NAME* ptr) { OrtRelease##NAME(ptr); }
 
-ORT_DEFINE_RELEASE(AllocatorInfo);
+ORT_DEFINE_RELEASE(MemoryInfo);
 ORT_DEFINE_RELEASE(CustomOpDomain);
 ORT_DEFINE_RELEASE(Env);
 ORT_DEFINE_RELEASE(RunOptions);
@@ -202,8 +202,8 @@ struct TypeInfo : Base<OrtTypeInfo> {
 
 struct Value : Base<OrtValue> {
   template <typename T>
-  static Value CreateTensor(const OrtAllocatorInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len);
-  static Value CreateTensor(const OrtAllocatorInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
+  static Value CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len);
+  static Value CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
                             ONNXTensorElementDataType type);
   template <typename T>
   static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len);
@@ -238,19 +238,19 @@ struct AllocatorWithDefaultOptions {
   void* Alloc(size_t size);
   void Free(void* p);
 
-  const OrtAllocatorInfo* GetInfo() const;
+  const OrtMemoryInfo* GetInfo() const;
 
  private:
   OrtAllocator* p_{};
 };
 
-struct AllocatorInfo : Base<OrtAllocatorInfo> {
+struct AllocatorInfo : Base<OrtMemoryInfo> {
   static AllocatorInfo CreateCpu(OrtAllocatorType type, OrtMemType mem_type1);
 
   explicit AllocatorInfo(nullptr_t) {}
   AllocatorInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type);
 
-  explicit AllocatorInfo(OrtAllocatorInfo* p) : Base<OrtAllocatorInfo>{p} {}
+  explicit AllocatorInfo(OrtMemoryInfo* p) : Base<OrtMemoryInfo>{p} {}
 };
 
 //
