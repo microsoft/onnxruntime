@@ -1053,6 +1053,119 @@ activation and leaky_relu_alpha.)DOC")
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
+  static const char* QuantizeLinear_ver1_doc = R"DOC(
+The linear quantization operator. It consumes a full precision data, a scale, a zero point and computes the quantized data. 
+The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale), it computes the nearest integer value to arg (in floating-point format), 
+ rounding halfway cases away from zero. Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QuantizeLinear)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr(
+          "axis", 
+          "The axis along which same quantization parameters are applied. It's optional." 
+          "If it's not specified, it means per-tensor quantization and input 'x_scale' and 'x_zero_point' must be scalars." 
+          "If it's specified, it means per 'axis' quantization and input 'x_scale' and 'x_zero_point' must be 1-D tensors.",
+          AttributeProto::INT,
+          false)
+      .Input(
+          0, 
+          "x", 
+          "N-D full precision Input tensor to be quantized.", 
+          "T1")
+      .Input(
+          1, 
+          "y_scale", 
+          "Scale for doing quantization to get 'y'. It could be a scalar or a 1-D tensor," 
+          "which means a per-tensor or per-axis quantization. If it's a 1-D tensor, "
+          "its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
+          "T1")
+      .Input(
+          2, 
+          "y_zero_point", 
+          "Zero point for doing quantization to get 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor" 
+          "or per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
+          "T2")
+      .Output(
+          0, 
+          "y", 
+          "N-D quantized output tensor. It has same shape as input 'x'.", 
+          "T2")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float)"},
+          "Constrain 'x', 'y_scale' to float tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(int8)", "tensor(uint8)"},
+          "Constrain 'y_zero_point' and 'y' to 8-bit integer tensors.")
+      .SetDoc(QuantizeLinear_ver1_doc)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 2, 0);
+
+        if (!hasInputShape(ctx, 0))
+          return;
+
+        auto& input_shape = getInputShape(ctx, 0);
+        updateOutputShape(ctx, 0, input_shape);
+      });
+
+  static const char* DequantizeLinear_ver1_doc = R"DOC(
+The linear dequantization operator. It consumes a quantized data, a scale, a zero point and computes the full precision data. 
+The dequantization formula is y = (x - x_zero_point) * x_scale. 
+Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DequantizeLinear)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("axis", 
+          "The axis along which same quantization parameters are applied. It's optional." 
+          "If it's not specified, it means per-tensor quantization and input 'x_scale' and 'x_zero_point' must be scalars." 
+          "If it's specified, it means per 'axis' quantization and input 'x_scale' and 'x_zero_point' must be 1-D tensors.", 
+          AttributeProto::INT, 
+          false)
+      .Input(0,
+          "x", 
+          "N-D quantized Input tensor to be de-quantized.", 
+          "T2")
+      .Input(
+          1, 
+          "x_scale", 
+          "Scale for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization." 
+          "If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
+          "T1")
+      .Input(
+          2,
+          "x_zero_point", 
+          "Zero point for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization." 
+          "If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
+          "T2")
+      .Output(
+          0, 
+          "y",
+          "N-D full precision output tensor. It has same shape as input 'x'.", 
+          "T1")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float)"},
+          "Constrain 'y', 'x_scale' to float tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(int8)", "tensor(uint8)"},
+          "Constrain 'x_zero_point' and 'x' to 8-bit integer tensors.")
+      .SetDoc(DequantizeLinear_ver1_doc)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto y_type = ctx.getOutputType(0);
+        // only float is supported
+        y_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+
+        if (!hasInputShape(ctx, 0))
+          return;
+
+        auto& input_shape = getInputShape(ctx, 0);
+        updateOutputShape(ctx, 0, input_shape);
+      });
+
   static const char* Tokenizer_ver1_doc = R"DOC(
   Tokenizer divides each string in X into a vector of strings along the last axis. Allowed input shapes are [C] and [N, C].
   If the maximum number of tokens found per input string is D, the output shape would be [N, C, D] when input shape is [N, C].

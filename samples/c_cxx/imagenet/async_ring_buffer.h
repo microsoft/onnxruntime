@@ -222,7 +222,7 @@ class AsyncRingBuffer {
         buffer_(capacity_, CalcItemSize(p->GetOutputShape(1))),
         input_begin_(input_begin),
         input_end_(input_end) {
-    OrtAllocatorInfo* allocator_info;
+    OrtMemoryInfo* allocator_info;
     ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
     uint8_t* output_data = buffer_.Begin();
     std::vector<int64_t> input_shape = p_->GetOutputShape(batch_size_);
@@ -233,7 +233,7 @@ class AsyncRingBuffer {
                                                            &e.value));
       output_data += off;
     });
-    OrtReleaseAllocatorInfo(allocator_info);
+    OrtReleaseMemoryInfo(allocator_info);
   }
 
   void ProcessRemain() {
@@ -243,7 +243,7 @@ class AsyncRingBuffer {
     uint8_t* output_data;
     std::vector<InputType> task_id_list;
     if (!buffer_.TakeAllRemain(&output_data, task_id_list)) return;
-    OrtAllocatorInfo* allocator_info;
+    OrtMemoryInfo* allocator_info;
     ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
     size_t count = task_id_list.size();
     assert(count != 0);
@@ -254,7 +254,7 @@ class AsyncRingBuffer {
                                                          input_shape.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
                                                          &input_tensor));
     (*c_)(task_id_list, input_tensor);
-    OrtReleaseAllocatorInfo(allocator_info);
+    OrtReleaseMemoryInfo(allocator_info);
     OrtReleaseValue(input_tensor);
   }
 
