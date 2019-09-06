@@ -87,7 +87,7 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
 
   DeviceAllocatorRegistrationInfo allocator_info(
       {OrtMemTypeDefault,
-       [](int /*id*/) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>("Nuphar", OrtAllocatorType::OrtDeviceAllocator)); },
+       [](int /*id*/) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>("Nuphar", OrtAllocatorType::OrtDeviceAllocator)); },
        std::numeric_limits<size_t>::max()});
 
   InsertAllocator(CreateAllocator(allocator_info, tvm_ctx_.device_id));

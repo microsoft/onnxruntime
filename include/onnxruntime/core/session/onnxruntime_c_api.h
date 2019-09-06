@@ -146,7 +146,7 @@ typedef enum OrtErrorCode {
 ORT_RUNTIME_CLASS(Env);
 ORT_RUNTIME_CLASS(Status);  // nullptr for Status* indicates success
 ORT_RUNTIME_CLASS(Provider);
-ORT_RUNTIME_CLASS(AllocatorInfo);
+ORT_RUNTIME_CLASS(MemoryInfo);
 ORT_RUNTIME_CLASS(Session);  //Don't call OrtReleaseSession from Dllmain (because session owns a thread pool)
 ORT_RUNTIME_CLASS(Value);
 ORT_RUNTIME_CLASS(RunOptions);
@@ -161,7 +161,7 @@ typedef struct OrtAllocator {
   uint32_t version;  // Initialize to ORT_API_VERSION
   void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);
   void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);
-  const struct OrtAllocatorInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
+  const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
@@ -319,7 +319,7 @@ ORT_API_STATUS(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
  * p_data is owned by caller. OrtReleaseValue won't release p_data.
  * \param out Should be freed by calling OrtReleaseValue
  */
-ORT_API_STATUS(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorInfo* info,
+ORT_API_STATUS(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtMemoryInfo* info,
                _Inout_ void* p_data, size_t p_data_len, _In_ const int64_t* shape, size_t shape_len,
                ONNXTensorElementDataType type, _Outptr_ OrtValue** out);
 
@@ -421,32 +421,32 @@ typedef enum OrtMemType {
   OrtMemTypeDefault = 0,                // the default allocator for execution provider
 } OrtMemType;
 
-ORT_API_STATUS(OrtCreateAllocatorInfo, _In_ const char* name1, enum OrtAllocatorType type, int id1, enum OrtMemType mem_type1, _Outptr_ OrtAllocatorInfo** out);
+ORT_API_STATUS(OrtCreateAllocatorInfo, _In_ const char* name1, enum OrtAllocatorType type, int id1, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out);
 
 /**
  * Convenience function for special case of OrtCreateAllocatorInfo, for the CPU allocator. Uses name = "Cpu" and id = 0.
  */
-ORT_API_STATUS(OrtCreateCpuAllocatorInfo, enum OrtAllocatorType type, enum OrtMemType mem_type1, _Outptr_ OrtAllocatorInfo** out)
+ORT_API_STATUS(OrtCreateCpuAllocatorInfo, enum OrtAllocatorType type, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out)
 ORT_ALL_ARGS_NONNULL;
 
 /**
  * Test if two allocation info are equal
  * \Sets 'out' to 0 if equal, -1 if not equal
  */
-ORT_API_STATUS(OrtCompareAllocatorInfo, _In_ const OrtAllocatorInfo* info1, _In_ const OrtAllocatorInfo* info2, _Out_ int* out)
+ORT_API_STATUS(OrtCompareAllocatorInfo, _In_ const OrtMemoryInfo* info1, _In_ const OrtMemoryInfo* info2, _Out_ int* out)
 ORT_ALL_ARGS_NONNULL;
 
 /**
  * Do not free the returned value
  */
-ORT_API_STATUS(OrtAllocatorInfoGetName, _In_ const OrtAllocatorInfo* ptr, _Out_ const char** out);
-ORT_API_STATUS(OrtAllocatorInfoGetId, _In_ const OrtAllocatorInfo* ptr, _Out_ int* out);
-ORT_API_STATUS(OrtAllocatorInfoGetMemType, _In_ const OrtAllocatorInfo* ptr, _Out_ OrtMemType* out);
-ORT_API_STATUS(OrtAllocatorInfoGetType, _In_ const OrtAllocatorInfo* ptr, _Out_ OrtAllocatorType* out);
+ORT_API_STATUS(OrtMemoryInfoGetName, _In_ const OrtMemoryInfo* ptr, _Out_ const char** out);
+ORT_API_STATUS(OrtMemoryInfoGetId, _In_ const OrtMemoryInfo* ptr, _Out_ int* out);
+ORT_API_STATUS(OrtMemoryInfoGetMemType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtMemType* out);
+ORT_API_STATUS(OrtMemoryInfoGetType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtAllocatorType* out);
 
 ORT_API_STATUS(OrtAllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size, _Outptr_ void** out);
 ORT_API_STATUS(OrtAllocatorFree, _Inout_ OrtAllocator* ptr, void* p);
-ORT_API_STATUS(OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr, _Out_ const OrtAllocatorInfo** out);
+ORT_API_STATUS(OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr, _Out_ const OrtMemoryInfo** out);
 
 // The returned pointer doesn't have to be freed.
 // Always returns the same instance on every invocation.
