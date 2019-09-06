@@ -156,13 +156,13 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const ONNX_NAMESPACE::TypeProto* input,
       if (value_case == on::TypeProto::kTensorType) {
         tensor_type = &input->tensor_type();
         ten_type = ONNX_TYPE_TENSOR;
-        if (&tensor_type->shape() != &on::TensorShapeProto::default_instance()) {
+        if (tensor_type->has_shape()) {
           sp = &tensor_type->shape();
         }
       } else if (value_case == on::TypeProto::kSparseTensorType) {
         sparse_type = &input->sparse_tensor_type();
         ten_type = ONNX_TYPE_SPARSETENSOR;
-        if (&sparse_type->shape() != &on::TensorShapeProto::default_instance()) {
+        if (sparse_type->has_shape()) {
           sp = &sparse_type->shape();
         }
       }

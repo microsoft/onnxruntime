@@ -190,28 +190,22 @@ std::string CreateModel() {
   return serialized_model;
 }
 
-static void ORT_API_CALL TestLoggingFunction(void* /*param*/, OrtLoggingLevel severity, const char* /*category*/, const char* /*logid*/,
-  const char*code_location, const char* message) {
-  std::cout << "(Severity: " << severity << ") " << code_location << ':' << message << std::endl;
-}
+class OpaqueApiTest : public ::testing::Test {
+ protected:
+  Ort::Env env_{nullptr};
 
-TEST(OpaqueAPITest, TestOrtValues) {
+  void SetUp() override {
+    env_ = Ort::Env(ORT_LOGGING_LEVEL_INFO, "Default");
+  }
+};
+
+TEST_F(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
   std::string model_str = CreateModel();
-  //*************************************************************************
-  // initialize  enviroment...one environment per process
-  // environment maintains thread pools and other state info
-  // Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
-  // This is a google unit test so instead of above we create a custom environment
-  // so the above does not clash with the test environment that already created default logger
-  OrtEnv* v_env = nullptr;
-  ORT_THROW_ON_ERROR(OrtCreateEnvWithCustomLogger(TestLoggingFunction, nullptr, ORT_LOGGING_LEVEL_INFO, "Opaque types C API test", &v_env));
-  // Wrap it
-  Ort::Env env(v_env);
 
   try {
     // initialize session options if needed
     Ort::SessionOptions session_options;
-    Ort::Session session(env, model_str.data(), model_str.size(), session_options);
+    Ort::Session session(env_, model_str.data(), model_str.size(), session_options);
 
     Ort::AllocatorWithDefaultOptions allocator;
 
@@ -274,8 +268,13 @@ TEST(OpaqueAPITest, TestOrtValues) {
     ASSERT_EQ(expected_output.compare(actual_result_string.get()), 0);
   } catch (const std::exception& ex) {
     std::cerr << "Exception: " << ex.what() << std::endl;
+    ASSERT_TRUE(false);
   }
 }
-
 }  // namespace test
 }  // namespace onnxruntime
+
+int main(int argc, char** argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}

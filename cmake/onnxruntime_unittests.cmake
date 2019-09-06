@@ -620,6 +620,18 @@ if (onnxruntime_USE_TVM)
   endif()
 endif()
 
+# Opaque API test can not be a part of the shared lib tests since it is using
+# C++ internals apis to register custom type, kernel and schema. It also can not
+# a part of providers unit tests since it requires its own environment.
+set(opaque_api_test_srcs ${ONNXRUNTIME_ROOT}/test/opaque_api/test_opaque_api.cc)
+
+AddTest(
+  TARGET opaque_api_test
+  SOURCES ${opaque_api_test_srcs}
+  LIBS ${onnxruntime_test_common_libs} ${onnxruntime_test_providers_libs}
+  DEPENDS ${onnxruntime_test_providers_dependencies}
+)
+
 # shared lib
 if (onnxruntime_BUILD_SHARED_LIB)
   add_library(onnxruntime_mocked_allocator ${ONNXRUNTIME_ROOT}/test/util/test_allocator.cc)
