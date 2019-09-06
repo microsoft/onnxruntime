@@ -88,7 +88,6 @@ namespace Dml
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
         GetCapability(
             const onnxruntime::GraphViewer& graph,
-            const winrt::Windows::AI::MachineLearning::implementation::GraphNodeFactoryMap& graphNodeFactoryMap,
             const std::vector<const onnxruntime::KernelRegistry*>& registries
             ) const;
 
@@ -172,7 +171,8 @@ namespace Dml
         std::shared_ptr<BucketizedBufferAllocator> m_allocator;
         std::shared_ptr<CPUAllocator> m_cpuInputAllocator;
         std::shared_ptr<CPUAllocator> m_cpuOutputAllocator;
-        std::shared_ptr<onnxruntime::KernelRegistry> m_kernelRegistry = std::make_shared<onnxruntime::KernelRegistry>();
+        std::shared_ptr<onnxruntime::KernelRegistry> m_kernelRegistry;
+        std::shared_ptr<const winrt::Windows::AI::MachineLearning::implementation::GraphNodeFactoryMap> m_graphNodeFactoryMap;
         mutable uint64_t m_partitionKernelPrefixVal = 0;
 
         bool m_closed = false;
@@ -217,7 +217,6 @@ namespace Dml
         explicit ExecutionProvider(
             IDMLDevice* dmlDevice,
             ID3D12CommandQueue* commandQueue,
-            std::shared_ptr<winrt::Windows::AI::MachineLearning::implementation::GraphNodeFactoryMap>& graphNodeFactoryMap,
             bool enableMetacommands = true
         );
         
@@ -277,7 +276,6 @@ namespace Dml
 
     private:
         ComPtr<ExecutionProviderImpl> m_impl;
-        std::shared_ptr<const winrt::Windows::AI::MachineLearning::implementation::GraphNodeFactoryMap> m_graphNodeFactoryMap;
     };
 
 } // namespace Dml

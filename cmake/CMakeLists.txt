@@ -645,6 +645,14 @@ if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   add_definitions(-DMICROSOFT_INTERNAL)
 endif()
 
+if (onnxruntime_USE_DML)
+  if(NOT WIN32)
+    message(FATAL_ERROR "The DirectML execution provider is only supported when building for Windows.")
+  endif()
+
+  add_definitions(-DUSE_DML=1)
+endif()
+
 #names in this var must match the directory names under onnxruntime/core/providers
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 

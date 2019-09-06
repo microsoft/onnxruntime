@@ -11,6 +11,7 @@
 #include "BucketizedBufferAllocator.h"
 #include "MLOperatorAuthorImpl.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorHelper.h"
+#include "AbiCustomRegistry.h"
 #include "GraphPartitioner.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/framework/compute_capability.h"
@@ -41,13 +42,25 @@ namespace Dml
         }
     }
 
+    static void CreateDmlKernelRegistry(
+        _Outptr_ std::shared_ptr<onnxruntime::KernelRegistry>* registry,
+        _Outptr_ std::shared_ptr<const GraphNodeFactoryMap>* graphNodeFactoryMap)
+    {
+        ComPtr<AbiCustomRegistry> abiRegistry = wil::MakeOrThrow<AbiCustomRegistry>();
+        Dml::RegisterDmlOperators(abiRegistry.Get());
+
+        assert(abiRegistry->GetRegistries().size() == 1);
+        
+        const auto& customRegistry = *abiRegistry->GetRegistries().begin();
+        *registry = customRegistry->GetKernelRegistry();
+        *graphNodeFactoryMap = abiRegistry->GetGraphNodeFactoryMap();
+    }
+
     ExecutionProvider::ExecutionProvider(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
-        std::shared_ptr<GraphNodeFactoryMap>& graphNodeFactoryMap,
         bool enableMetacommands) :
-            IExecutionProvider(onnxruntime::kDmlExecutionProvider),
-            m_graphNodeFactoryMap(graphNodeFactoryMap)
+            IExecutionProvider(onnxruntime::kDmlExecutionProvider)
     {
         D3D12_COMMAND_LIST_TYPE queueType = commandQueue->GetDesc().Type;
         if (queueType != D3D12_COMMAND_LIST_TYPE_DIRECT && queueType != D3D12_COMMAND_LIST_TYPE_COMPUTE)
@@ -73,7 +86,7 @@ namespace Dml
         const std::vector<const onnxruntime::KernelRegistry*>& kernel_registries) const
     {
 #ifdef ENABLE_GRAPH_COMPILATION
-        return m_impl->GetCapability(graph, *m_graphNodeFactoryMap.get(), kernel_registries);
+        return m_impl->GetCapability(graph, kernel_registries);
 #endif
         return onnxruntime::IExecutionProvider::GetCapability(graph, kernel_registries);
     }
@@ -161,6 +174,8 @@ namespace Dml
         // CPU Allocator used to create buffers for the MemcpyFromHost operator.
         m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
         m_cpuOutputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUOutput);
+		
+        CreateDmlKernelRegistry(&m_kernelRegistry, &m_graphNodeFactoryMap);
     }
 
     HRESULT __stdcall ExecutionProviderImpl::GetD3DDevice(_COM_Outptr_ ID3D12Device** d3dDevice) const noexcept
@@ -438,12 +453,11 @@ namespace Dml
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
     ExecutionProviderImpl::GetCapability(
         const onnxruntime::GraphViewer& graph,
-        const GraphNodeFactoryMap& graphNodeFactoryMap,
         const std::vector<const onnxruntime::KernelRegistry*>& registries) const
     {
         std::string partitionKernelPrefix = std::to_string(m_partitionKernelPrefixVal++) + "_";
         uint32_t deviceDataTypeMask = GetSuppportedDeviceDataTypeMask();
-        return PartitionGraph(graph, graphNodeFactoryMap, registries, deviceDataTypeMask, m_kernelRegistry.get(), partitionKernelPrefix);
+        return PartitionGraph(graph, *m_graphNodeFactoryMap, registries, deviceDataTypeMask, m_kernelRegistry.get(), partitionKernelPrefix);
     }
 
     Status ExecutionProviderImpl::CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const
@@ -635,13 +649,12 @@ namespace Dml
     void CreateExecutionProviderObjects(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
-        std::shared_ptr<winrt::Windows::AI::MachineLearning::implementation::GraphNodeFactoryMap>& graphNodeFactoryMap,
         std::unique_ptr<onnxruntime::IExecutionProvider>& ortProvider,
         std::unique_ptr<onnxruntime::IDataTransfer>& dataTransfer,
         bool enableMetacommands
     )
     {
-        auto provider = std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, graphNodeFactoryMap, enableMetacommands);
+        auto provider = std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands);
         dataTransfer = std::move(provider->GetDataTransfer());
         ortProvider = std::move(provider);
     }
@@ -700,7 +713,7 @@ namespace Dml
 
     onnxruntime::common::Status RegisterDmlGraphTransformer(onnxruntime::InferenceSession* session, std::shared_ptr<onnxruntime::KernelRegistry> dmlRegistry)
     {
-        auto graphTransformer = std::make_unique<Dml::GraphTransformer>(onnxruntime::kDmlExecutionProvider, dmlRegistry);
+        auto graphTransformer = std::make_unique<Dml::GraphTransformer>(std::string(onnxruntime::kDmlExecutionProvider), dmlRegistry);
         return session->RegisterGraphTransformer(std::move(graphTransformer), onnxruntime::TransformerLevel::Level1);
     }
 

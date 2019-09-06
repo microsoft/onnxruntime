@@ -141,38 +141,37 @@ namespace Dml
 
         static const OperatorInfo c_fusableOps[] =
         {
-            OperatorInfo{ "Conv",                      onnxDomain, OnnxOperatorSet7::sc_sinceVer_Conv },
-            OperatorInfo{ "ConvTranspose",             onnxDomain, OnnxOperatorSet7::sc_sinceVer_ConvTranspose },
-            OperatorInfo{ "BatchNormalization",        onnxDomain, OnnxOperatorSet7::sc_sinceVer_BatchNormalization },
-            OperatorInfo{ "InstanceNormalization",     onnxDomain, OnnxOperatorSet7::sc_sinceVer_InstanceNormalization },
-            OperatorInfo{ "MeanVarianceNormalization", onnxDomain, OnnxOperatorSet7::sc_sinceVer_MeanVarianceNormalization },
-            OperatorInfo{ "Gemm",                      onnxDomain, OnnxOperatorSet7::sc_sinceVer_Gemm },
-            OperatorInfo{ "MatMul",                    onnxDomain, OnnxOperatorSet7::sc_sinceVer_MatMul },
+            OperatorInfo{ "Conv",                      onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Conv },
+            OperatorInfo{ "ConvTranspose",             onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_ConvTranspose },
+            OperatorInfo{ "BatchNormalization",        onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_BatchNormalization },
+            OperatorInfo{ "InstanceNormalization",     onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_InstanceNormalization },
+            OperatorInfo{ "MeanVarianceNormalization", onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_MeanVarianceNormalization },
+            OperatorInfo{ "Gemm",                      onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Gemm },
+            OperatorInfo{ "MatMul",                    onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_MatMul },
 
             // The filter for activation functions maps to what DML's fused op internally fuses at the shader level.
-            OperatorInfo{ "Add",                       onnxDomain, OnnxOperatorSet7::sc_sinceVer_Add, {"Relu", "LeakyRelu"} },
-            OperatorInfo{ "Sum",                       onnxDomain, OnnxOperatorSet7::sc_sinceVer_Sum, {"Relu", "LeakyRelu"}, 2 },
-            OperatorInfo{ "Sum",                       onnxDomain, OnnxOperatorSet8::sc_sinceVer_Sum, {"Relu", "LeakyRelu"}, 2 },
+            OperatorInfo{ "Add",                       onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Add, {"Relu", "LeakyRelu"} },
+            OperatorInfo{ "Sum",                       onnxruntime::kOnnxDomain, OnnxOperatorSet8::sc_sinceVer_Sum, {"Relu", "LeakyRelu"}, 2 },
         };
 
         // Not all activations can be fused - only simple elementwise activations (i.e. activation functions which
         // don't require a reduction pass) can be fused.
         static const OperatorInfo c_activationOps[] =
         {
-            OperatorInfo{ "Sigmoid",            onnxDomain, OnnxOperatorSet7::sc_sinceVer_Sigmoid },
-            OperatorInfo{ "HardSigmoid",        onnxDomain, OnnxOperatorSet7::sc_sinceVer_HardSigmoid },
-            OperatorInfo{ "Tanh",               onnxDomain, OnnxOperatorSet7::sc_sinceVer_Tanh },
-            OperatorInfo{ "ScaledTanh",         onnxDomain, OnnxOperatorSet7::sc_sinceVer_ScaledTanh },
-            OperatorInfo{ "Relu",               onnxDomain, OnnxOperatorSet7::sc_sinceVer_Relu },
-            OperatorInfo{ "LeakyRelu",          onnxDomain, OnnxOperatorSet7::sc_sinceVer_LeakyRelu },
-            OperatorInfo{ "PRelu",              onnxDomain, OnnxOperatorSet7::sc_sinceVer_PRelu },
-            OperatorInfo{ "ThresholdedRelu",    onnxDomain, OnnxOperatorSet7::sc_sinceVer_ThresholdedRelu },
-            OperatorInfo{ "Elu",                onnxDomain, OnnxOperatorSet7::sc_sinceVer_Elu },
-            OperatorInfo{ "Selu",               onnxDomain, OnnxOperatorSet7::sc_sinceVer_Selu },
-            OperatorInfo{ "Softsign",           onnxDomain, OnnxOperatorSet7::sc_sinceVer_Softsign },
-            OperatorInfo{ "Softplus",           onnxDomain, OnnxOperatorSet7::sc_sinceVer_Softplus },
-            OperatorInfo{ "ParametricSoftplus", onnxDomain, OnnxOperatorSet7::sc_sinceVer_ParametricSoftplus },
-            OperatorInfo{ "Dropout",            onnxDomain, OnnxOperatorSet7::sc_sinceVer_Dropout },
+            OperatorInfo{ "Sigmoid",            onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Sigmoid },
+            OperatorInfo{ "HardSigmoid",        onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_HardSigmoid },
+            OperatorInfo{ "Tanh",               onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Tanh },
+            OperatorInfo{ "ScaledTanh",         onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_ScaledTanh },
+            OperatorInfo{ "Relu",               onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Relu },
+            OperatorInfo{ "LeakyRelu",          onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_LeakyRelu },
+            OperatorInfo{ "PRelu",              onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_PRelu },
+            OperatorInfo{ "ThresholdedRelu",    onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_ThresholdedRelu },
+            OperatorInfo{ "Elu",                onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Elu },
+            OperatorInfo{ "Selu",               onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Selu },
+            OperatorInfo{ "Softsign",           onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Softsign },
+            OperatorInfo{ "Softplus",           onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Softplus },
+            OperatorInfo{ "ParametricSoftplus", onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_ParametricSoftplus },
+            OperatorInfo{ "Dropout",            onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Dropout },
         };
 
         std::optional<FusedOpProperties> TryGetFusedOp(
@@ -218,7 +217,7 @@ namespace Dml
             // All fused ops just have "Fused" prepended to their name
             std::string fusedOpType = std::string("Fused").append(candidateOpType);
 
-            return FusedOpProperties{ std::move(fusedOpType), msftDomain };
+            return FusedOpProperties{ std::move(fusedOpType), onnxruntime::kMSDmlDomain };
         }
 
         bool IsFusableActivationOperator(std::string_view opType, std::string_view domain, int sinceVersion)

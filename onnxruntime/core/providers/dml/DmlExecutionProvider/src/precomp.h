@@ -51,6 +51,7 @@ using Microsoft::WRL::ComPtr;
 #include "core/providers/dml/OperatorAuthorHelper/Common.h"
 
 #include "DmlCommon.h"
+#include "ErrorHandling.h"
 #include "TensorDesc.h"
 #include "DescriptorPool.h"
 #include "IExecutionProvider.h"

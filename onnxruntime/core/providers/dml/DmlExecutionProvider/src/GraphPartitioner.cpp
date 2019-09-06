@@ -18,8 +18,6 @@
   
 using namespace winrt::Windows::AI::MachineLearning::implementation;
 
-HRESULT MapLotusErrorToHRESULT(onnxruntime::common::Status status);
-
 namespace Dml
 {
     GraphPartition* GraphPartition::GetRootMergedPartition()

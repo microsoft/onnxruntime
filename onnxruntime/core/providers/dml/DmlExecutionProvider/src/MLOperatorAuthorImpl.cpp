@@ -11,17 +11,6 @@
 #include "MLOperatorAuthorImpl.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorPrivate.h"
 
-HRESULT MapLotusErrorToHRESULT(onnxruntime::common::Status status);
-
-#define THROW_IF_NOT_OK(status)                                                                                 \
-    do {                                                                                                        \
-        auto _status = status;                                                                                  \
-        if (!_status.IsOK())                                                                                    \
-        {                                                                                                       \
-            THROW_HR(MapLotusErrorToHRESULT(_status));                                                          \
-        }                                                                                                       \
-    } while (0)
-
 using namespace Microsoft::WRL;
 
 namespace winrt::Windows::AI::MachineLearning::implementation

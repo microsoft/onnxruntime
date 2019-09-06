@@ -13,22 +13,6 @@
 #include <mutex>
 using namespace Microsoft::WRL;
 
-// This re-exposes the MeanVarianceNormalization schema as needed for RegisterDmlOperatorSchema 
-// to use it as a template to construct fused schema.  The schema within the ONNX registry can't
-// be used due to the Finalize step which occurs during registration.
-namespace onnx
-{
-    ONNX_OPERATOR_SET_SCHEMA_EX(MeanVarianceNormalization, Onnx, ONNX_DOMAIN, 1, false, OpSchema()
-        .SetDoc("")
-        .Attr("", "", AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("", "", AttributeProto::INT, static_cast<int64_t>(1))
-        .Input(0, "input", "", "T")
-        .Output(0, "output", "", "T")
-        .TypeConstraint("T", { "tensor(float16)", "tensor(float)", "tensor(double)" }, "")
-        .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
-    );
-}
-
 namespace Dml
 {
 
@@ -246,18 +230,18 @@ const static SupportedTensorDataTypes supportedTypeListLogicalComparison[2] = /*
 
 // Define a single row of registration information.
 #define REG_INFO(version, operatorName, ...) \
-    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, false, ##__VA_ARGS__, 
+    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, false, ##__VA_ARGS__, 
 
 // Identity operators use Copy, alias their first input, and require floating point formats
 // for usage in the graph, besides constant inputs.  This is because they currently use 
 // element-wise identity operators  in the graph for striding support, but issue actual copies 
 // outside the graph.  Element-wise identity currently only supports floating point types.  
 #define REG_INFO_ID(version, operatorName, ...) \
-    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxDomain, CreateCopy, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, true, true, ##__VA_ARGS__, 
+    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, CreateCopy, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, true, true, ##__VA_ARGS__, 
 
 // MS-domain operators
 #define REG_INFO_MS(version, operatorName, ...) \
-    #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, msftDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, false, ##__VA_ARGS__, 
+    #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kMSDmlDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, false, ##__VA_ARGS__, 
 
 const static OperatorRegistrationInformation operatorRegistrationInformationTable[] =
 {
@@ -523,55 +507,6 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
             static_cast<uint32_t>(information.requiresFloatFormatsExceptConstInputs.size())
         ));
     }
-}
-
-static onnx::OpSchema CopyOperatorSchema(
-    onnx::OpSchema newSchema,
-    const char* newName,
-    const char* newDomain,
-    int newMaxInclusiveVersion
-    )
-{
-    newSchema.SetName(newName);
-    newSchema.SetDomain(newDomain);
-    newSchema.SinceVersion(newMaxInclusiveVersion);
-    newSchema.Attr(AttrName::FusedActivation, "", onnx::AttributeProto::STRING);
-    newSchema.Attr(AttrName::FusedActivationDomain, "", onnx::AttributeProto::STRING);
-    newSchema.Attr(AttrName::FusedActivationSinceVersion, "", onnx::AttributeProto::INT);
-    newSchema.Attr(AttrName::FusedAlpha, "", onnx::AttributeProto::FLOAT, false);
-    newSchema.Attr(AttrName::FusedBeta, "", onnx::AttributeProto::FLOAT, false);
-    newSchema.Attr(AttrName::FusedGamma, "", onnx::AttributeProto::FLOAT, false);
-    newSchema.Attr(AttrName::FusedRatio, "", onnx::AttributeProto::FLOAT, false);
-    return std::move(newSchema);
-}
-
-void RegisterDmlOperatorSchema(onnxruntime::CustomRegistry* registry)
-{
-    using namespace onnx;
-
-    std::vector<onnx::OpSchema> schemas;
-    
-#pragma push_macro("REGISTER_FUSED_OP_SCHEMA")
-#define REGISTER_FUSED_OP_SCHEMA(_name, _opsetVer, _sinceVer) \
-    static_assert(OnnxOperatorSet##_opsetVer::sc_sinceVer_ ## _name == _sinceVer, "Operator version doesn't match OnnxOperatorSet7"); \
-    schemas.push_back(CopyOperatorSchema(onnx::GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Onnx, _sinceVer, _name)>(), "Fused" #_name, msftDomain, MsftOperatorSet1::sc_sinceVer_Fused ## _name));
-
-    // Operators with SinceVersion as the latest preceding Opset 7, which is the earlier supported by Winml:
-    REGISTER_FUSED_OP_SCHEMA(Conv, 7, 1);
-    REGISTER_FUSED_OP_SCHEMA(ConvTranspose, 7, 1);
-    REGISTER_FUSED_OP_SCHEMA(InstanceNormalization, 7, 6);
-    REGISTER_FUSED_OP_SCHEMA(BatchNormalization, 7, 7);
-    REGISTER_FUSED_OP_SCHEMA(MeanVarianceNormalization, 7, 1);
-    REGISTER_FUSED_OP_SCHEMA(Gemm, 7, 7);
-    REGISTER_FUSED_OP_SCHEMA(MatMul, 7, 1);
-    REGISTER_FUSED_OP_SCHEMA(Add, 7, 7);
-    REGISTER_FUSED_OP_SCHEMA(Sum, 7, 6);
-    
-    // Operators with subsequent SinceVersion:
-    REGISTER_FUSED_OP_SCHEMA(Sum, 8, 8);
-#pragma pop_macro("REGISTER_FUSED_OP_SCHEMA")
-
-    registry->RegisterOpSet(schemas, msftDomain, 0, 1);
 }
 
 } // namespace Dml

@@ -28,7 +28,6 @@ namespace Dml
     void CreateExecutionProviderObjects(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
-        std::shared_ptr<winrt::Windows::AI::MachineLearning::implementation::GraphNodeFactoryMap>& graphNodeFactoryMap,
         std::unique_ptr<onnxruntime::IExecutionProvider>& provider,
         std::unique_ptr<onnxruntime::IDataTransfer>& dataTransfer,
         bool enableMetacommands = true
@@ -49,7 +48,6 @@ namespace Dml
     void FreeGPUAllocation(void* ptr);
 
     void RegisterDmlOperators(IMLOperatorRegistry* registry);
-    void RegisterDmlOperatorSchema(onnxruntime::CustomRegistry* registry);
 
     onnxruntime::common::Status RegisterDmlGraphTransformer(
         onnxruntime::InferenceSession* session, 

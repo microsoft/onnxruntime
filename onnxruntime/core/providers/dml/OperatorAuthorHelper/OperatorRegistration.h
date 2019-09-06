@@ -5,9 +5,6 @@
 
 namespace OperatorHelper
 {
-    static const char* const onnxDomain = "";
-    static const char* const msftDomain = "com.microsoft";
-
     // The since version of each operator in version 7 of the ONNX domain
     namespace OnnxOperatorSet7
     {
