@@ -390,9 +390,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
       {"tf_inception_v2", "result mismatch"},
       {"mxnet_arcface", "result mismatch"},
-      {"dynamicquantizelinear_expanded", "Round(11) not implemented yet"},
-      {"dynamicquantizelinear_max_adjusted_expanded", "Round(11) not implemented yet"},
-      {"dynamicquantizelinear_min_adjusted_expanded", "Round(11) not implemented yet"},
       {"top_k", "not implemented yet for opset 11", {"onnxtip"}},
       {"top_k_smallest", "not implemented yet for opset 11", {"onnxtip"}},
       {"unique_not_sorted_without_axis", "not implemented yet"},
@@ -401,17 +398,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"unique_sorted_without_axis", "not implemented yet"},
       {"scatter_elements_with_axis", "not implemented yet"},
       {"scatter_elements_without_axis", "not implemented yet"},
-      {"round", "not implemented yet"},
       {"gather_elements_1", "not implemented yet"},
       {"gather_elements_0", "not implemented yet"},
       {"depthtospace_crd_mode_example", "not implemented yet"},
       {"depthtospace_crd_mode", "not implemented yet"},
-      {"cumsum_2d_axis_1", "not implemented yet"},
-      {"cumsum_2d_axis_0", "not implemented yet"},
-      {"cumsum_1d_reverse_exclusive", "not implemented yet"},
-      {"cumsum_1d_reverse", "not implemented yet"},
-      {"cumsum_1d_exclusive", "not implemented yet"},
-      {"cumsum_1d", "not implemented yet"},
   };
 
 #ifdef USE_NGRAPH
