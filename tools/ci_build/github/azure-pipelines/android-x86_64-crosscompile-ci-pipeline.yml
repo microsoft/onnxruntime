@@ -10,7 +10,7 @@ jobs:
       displayName: Clone submodules
     - script: echo "y" | $ANDROID_HOME/tools/bin/sdkmanager --install 'ndk-bundle'
       displayName: Install Android NDK
-    - template: set-test-data-variables-step.yml
+    - template: templates/set-test-data-variables-step.yml
     - script: tools/ci_build/build.py --android --build_dir build --android_ndk $ANDROID_HOME/ndk-bundle --android_abi=x86_64 --skip_submodule_sync --parallel --use_dnnlibrary --enable_onnx_tests --test_data_url=$(TestDataUrl) --test_data_checksum=$(TestDataChecksum)
       displayName: Build and Test on Android Emulator
 
