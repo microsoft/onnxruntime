@@ -628,7 +628,7 @@ set(opaque_api_test_srcs ${ONNXRUNTIME_ROOT}/test/opaque_api/test_opaque_api.cc)
 AddTest(
   TARGET opaque_api_test
   SOURCES ${opaque_api_test_srcs}
-  LIBS onnxruntime_common onnx_proto ${onnxruntime_test_common_libs} ${onnxruntime_test_providers_libs}
+  LIBS onnxruntime_common onnx_proto ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
   DEPENDS ${onnxruntime_test_providers_dependencies}
 )
 
