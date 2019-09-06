@@ -62,6 +62,18 @@ namespace Microsoft.ML.OnnxRuntime
             return options;
         }
 
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for Nuphar execution
+        /// </summary>
+        /// <param name="settings">settings string, comprises of comma separated key:value pairs. default is empty</param>
+        /// <returns>A SessionsOptions() object configured for execution with Nuphar</returns>
+        public static SessionOptions MakeSessionOptionWithNupharProvider(String settings = "")
+        {
+            SessionOptions options = new SessionOptions();
+            NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(options._nativePtr, 1, settings);
+            return options;
+        }
+
         #endregion
 
         #region Public Properties

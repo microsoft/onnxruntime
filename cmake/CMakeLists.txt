@@ -350,8 +350,13 @@ if (onnxruntime_USE_TVM)
   add_definitions(-DUSE_TVM)
 
   set(onnxruntime_tvm_libs onnxruntime_codegen_tvm)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm nnvm_compiler)
-
+  # needs to link with stdc++fs in Linux
+  if(UNIX)
+    if (NOT APPLE)
+      set(FS_STDLIB stdc++fs)
+    endif()
+  endif()
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm nnvm_compiler ${FS_STDLIB})
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm nnvm_compiler)
 endif()
 

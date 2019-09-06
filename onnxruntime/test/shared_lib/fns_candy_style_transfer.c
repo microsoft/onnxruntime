@@ -146,7 +146,7 @@ int run_inference(OrtSession* session, const char* input_file, const char* outpu
     free(model_input);
     return -1;
   }
-  OrtAllocatorInfo* allocator_info;
+  OrtMemoryInfo* allocator_info;
   ORT_ABORT_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
   const int64_t input_shape[] = {1, 3, 720, 720};
   const size_t input_shape_len = sizeof(input_shape) / sizeof(input_shape[0]);
@@ -158,7 +158,7 @@ int run_inference(OrtSession* session, const char* input_file, const char* outpu
   int is_tensor;
   ORT_ABORT_ON_ERROR(OrtIsTensor(input_tensor, &is_tensor));
   assert(is_tensor);
-  OrtReleaseAllocatorInfo(allocator_info);
+  OrtReleaseMemoryInfo(allocator_info);
   const char* input_names[] = {"inputImage"};
   const char* output_names[] = {"outputImage"};
   OrtValue* output_tensor = NULL;

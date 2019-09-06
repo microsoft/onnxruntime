@@ -21,7 +21,7 @@ struct OrtDefaultAllocator : OrtAllocatorImpl {
     ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpuAllocatorInfo));
   }
 
-  ~OrtDefaultAllocator() override { OrtReleaseAllocatorInfo(cpuAllocatorInfo); }
+  ~OrtDefaultAllocator() override { OrtReleaseMemoryInfo(cpuAllocatorInfo); }
 
   void* Alloc(size_t size) {
     return onnxruntime::utils::DefaultAlloc(size);
@@ -29,7 +29,7 @@ struct OrtDefaultAllocator : OrtAllocatorImpl {
   void Free(void* p) {
     onnxruntime::utils::DefaultFree(p);
   }
-  const OrtAllocatorInfo* Info() const {
+  const OrtMemoryInfo* Info() const {
     return cpuAllocatorInfo;
   }
 
@@ -37,7 +37,7 @@ struct OrtDefaultAllocator : OrtAllocatorImpl {
   OrtDefaultAllocator(const OrtDefaultAllocator&) = delete;
   OrtDefaultAllocator& operator=(const OrtDefaultAllocator&) = delete;
 
-  OrtAllocatorInfo* cpuAllocatorInfo;
+  OrtMemoryInfo* cpuAllocatorInfo;
 };
 
 #define API_IMPL_BEGIN try {
