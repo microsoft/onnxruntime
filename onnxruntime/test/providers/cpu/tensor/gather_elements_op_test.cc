@@ -77,6 +77,19 @@ void RunTypedTest()
                      {1, 1,
                       4, 4});
   test5.Run(OpTester::ExpectResult::kExpectFailure, "GatherElements op: Value in indices must be within bounds [-2 , 1]");
+
+  // 3D input - axis 1
+  OpTester test6("GatherElements", 11);
+  test6.AddAttribute<int64_t>("axis", 1LL);
+  test6.AddInput<T>("data", {2, 2, 2},
+                    {1, 2,
+                     3, 4,
+                     5, 6,
+                     7, 8});
+  test6.AddInput<int64_t>("indices", {1, 2, 1},
+                          {0, 1});
+  test6.AddOutput<T>("output", {1, 2, 1}, {1, 3});
+  test6.Run();
 }
 
 template <>
@@ -133,6 +146,20 @@ void RunTypedTest<std::string>() {
                                {"a", "a",
                                 "d", "d"});
   test4.Run(OpTester::ExpectResult::kExpectFailure, "GatherElements op: Value in indices must be within bounds [-2 , 1]");
+
+  // 3D input - axis 1
+  OpTester test5("GatherElements", 11);
+  test5.AddAttribute<int64_t>("axis", 1LL);
+  test5.AddInput<std::string>("data", {2, 2, 2},
+                              {"a", "b",
+                               "c", "d",
+                               "e", "f",
+                               "g", "h"});
+  test5.AddInput<int32_t>("indices", {1, 2, 1},
+                          {0, 1});
+  test5.AddOutput<std::string>("output", {1, 2, 1},
+                               {"a", "c"});
+  test5.Run();
 }
 
 TEST(GatherElementsOpTest, int8_t) {
