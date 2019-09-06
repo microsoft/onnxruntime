@@ -126,7 +126,7 @@ def create_backend_test(testname=None):
         #    current_failing_tests = current_failing_tests + ('|^test_operator_repeat_dim_overflow_cpu.*',)
         if c2.supports_device('NGRAPH'):
             current_failing_tests = current_failing_tests + ('|^test_clip*',)
-            current_failing_tests = current_failing_tests + ('|^test_depthtospace_crd*',)
+            current_failing_tests = current_failing_tests + ('|^test_depthtospace*',)
 
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \
