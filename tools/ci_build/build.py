@@ -550,8 +550,8 @@ def adb_shell(*args, **kwargs):
 
 def prepare_android_vm_for_test(args, source_dir, vm_test_dir = '/data/local/tmp/'):
     for config in args.config:
-       print('Setting up android test for Config = '+config) 
-       cwd = get_config_build_dir(args.build_dir, config)
+        print('Setting up android test for Config = '+config) 
+        cwd = get_config_build_dir(args.build_dir, config)
         if args.android_abi == 'x86_64':
             run_subprocess(os.path.join(source_dir, 'tools', 'ci_build', 'github', 'android', 'start_android_emulator.sh'))
             adb_push(source_dir, 'testdata', vm_test_dir, cwd=cwd)
