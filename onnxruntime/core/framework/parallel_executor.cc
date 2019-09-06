@@ -25,8 +25,6 @@ ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool
   for (auto& node : graph_viewer->Nodes()) {
     node_refs_[node.Index()] = node.GetInputEdgesCount();
   }
-
-  executor_pool_ = std::make_unique<onnxruntime::concurrency::ThreadPool>("EXECUTOR", 32);
 }
 
 Status ParallelExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
@@ -282,7 +280,7 @@ void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& sess
     out_standings_++;
   }
 
-  executor_pool_->Schedule([this, p_node_index, &session_state, &logger]() {
+  session_state.GetThreadPool()->Schedule([this, p_node_index, &session_state, &logger]() {
     auto create_exception_message = [p_node_index, &session_state](const std::exception* ex) {
       const auto* node = session_state.GetGraphViewer()->GetNode(p_node_index);
 

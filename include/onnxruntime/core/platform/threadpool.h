@@ -61,7 +61,22 @@ class ThreadPool {
   Eigen::ThreadPool& GetHandler() { return impl_; }
 
  private:
-  Eigen::ThreadPool impl_;
+  class EigenExtendedBarrier : public Eigen::Barrier {
+  public:
+   EigenExtendedBarrier(unsigned int count) : Eigen::Barrier(count) {}
+   bool Done();
+  };
+
+  class EigenExtendedThreadPool : public Eigen::ThreadPool {
+  public:
+   EigenExtendedThreadPool(int num_threads, Eigen::StlThreadEnvironment env = Eigen::StlThreadEnvironment())
+       : Eigen::ThreadPool(num_threads, env) {}
+   EigenExtendedThreadPool(int num_threads, bool allow_spinning, Eigen::StlThreadEnvironment env = Eigen::StlThreadEnvironment())
+       : Eigen::ThreadPool(num_threads, allow_spinning, env) {}
+   void Help(int thread_id);
+  };
+
+  EigenExtendedThreadPool impl_;
 };
 
 }  // namespace concurrency

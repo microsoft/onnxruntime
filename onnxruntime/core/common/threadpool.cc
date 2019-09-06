@@ -20,8 +20,6 @@
 #pragma warning(pop)
 #endif
 
-using Eigen::Barrier;
-
 namespace onnxruntime {
 
 namespace concurrency {
@@ -42,17 +40,24 @@ void ThreadPool::ParallelFor(int32_t total, std::function<void(int32_t)> fn) {
 
   // TODO: Eigen supports a more efficient ThreadPoolDevice mechanism
   // We will simply rely on the work queue and stealing in the short term.
-  Barrier barrier(static_cast<unsigned int>(total - 1));
+  EigenExtendedBarrier barrier(static_cast<unsigned int>(total));
   std::function<void(int32_t)> handle_iteration = [&barrier, &fn](int iteration) {
     fn(iteration);
     barrier.Notify();
   };
 
-  for (int32_t id = 1; id < total; ++id) {
+  for (int32_t id = 0; id < total; ++id) {
     Schedule([=, &handle_iteration]() { handle_iteration(id); });
   }
 
-  fn(0);
+  if (impl_.CurrentThreadId() != -1) {
+    // A thread in the threadpool can't wait or it will cause deadlocks.
+    while (!barrier.Done()) {
+      impl_.Help(impl_.CurrentThreadId());
+      std::this_thread::sleep_for(std::chrono::milliseconds(barrier.Done() ? 0 : 1));
+    }
+  }
+
   barrier.Wait();
 }
 
@@ -65,17 +70,24 @@ void ThreadPool::ParallelForRange(int64_t first, int64_t last, std::function<voi
 
   // TODO: Eigen supports a more efficient ThreadPoolDevice mechanism
   // We will simply rely on the work queue and stealing in the short term.
-  Barrier barrier(static_cast<unsigned int>(last - first));
+  EigenExtendedBarrier barrier(static_cast<unsigned int>(last - first));
   std::function<void(int64_t, int64_t)> handle_range = [&barrier, &fn](int64_t first, int64_t last) {
     fn(first, last);
     barrier.Notify();
   };
 
-  for (int64_t id = first + 1; id <= last; ++id) {
+  for (int64_t id = first; id <= last; ++id) {
     Schedule([=, &handle_range]() { handle_range(id, id + 1); });
   }
 
-  fn(first, first + 1);
+  if (impl_.CurrentThreadId() != -1) {
+    // A thread in the threadpool can't wait or it will cause deadlocks.
+    while (!barrier.Done()) {
+      impl_.Help(impl_.CurrentThreadId());
+      std::this_thread::sleep_for(std::chrono::milliseconds(barrier.Done() ? 0 : 1));
+    }
+  }
+
   barrier.Wait();
 }
 
@@ -86,5 +98,31 @@ void ThreadPool::ParallelForRange(int64_t first, int64_t last, std::function<voi
 int ThreadPool::NumThreads() const { return impl_.NumThreads(); }
 
 int ThreadPool::CurrentThreadId() const { return impl_.CurrentThreadId(); }
+
+
+bool ThreadPool::EigenExtendedBarrier::Done() {
+  return (state_.fetch_or(1, std::memory_order_acq_rel) >> 1) == 0;
+}
+
+
+void ThreadPool::EigenExtendedThreadPool::Help(int thread_id) {
+  Queue& q = thread_data_[thread_id].queue;
+  if (!cancelled_) {
+    Task t = q.PopFront();
+    if (!t.f) {
+      t = LocalSteal();
+      if (!t.f) {
+        t = GlobalSteal();
+        if (!t.f) {
+          return;
+        }
+      }
+    }
+    if (t.f) {
+      env_.ExecuteTask(t);
+    }
+  }
+}
+
 }  // namespace concurrency
 }  // namespace onnxruntime
