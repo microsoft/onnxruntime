@@ -66,7 +66,7 @@ class CudaKernel : public OpKernel {
   template <typename T>
   class CudaAsyncBuffer {
    public:
-    CudaAsyncBuffer(const CudaKernel* op_kernel, int device_id, size_t count) : CudaAsyncBuffer(op_kernel) {
+    CudaAsyncBuffer(const CudaKernel* op_kernel, int device_id, size_t count) : op_kernel_(op_kernel) {
       AllocCpuPtr(device_id, count);
     }
 

@@ -23,9 +23,9 @@ struct BinaryElementwisePreparation {
   fast_divmod fdm_H;
   fast_divmod fdm_C;
 
-  BinaryElementwisePreparation(const CudaKernel* op_kernel) : lhs_padded_strides(op_kernel),
-                                                              rhs_padded_strides(op_kernel),
-                                                              fdm_output_strides(op_kernel) {}
+  BinaryElementwisePreparation(const CudaKernel* op_kernel, int device_id) : lhs_padded_strides(op_kernel, device_id, 0),
+                                                                             rhs_padded_strides(op_kernel, device_id, 0),
+                                                                             fdm_output_strides(op_kernel, device_id, 0) {}
 
   Status CopyToGpu() {
     ORT_RETURN_IF_ERROR(lhs_padded_strides.CopyToGpu());

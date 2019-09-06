@@ -12,7 +12,7 @@
 #include "core/framework/func_kernel.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
-#define COUNT_NON_CUDA_OPS
+//#define COUNT_NON_CUDA_OPS
 
 #ifdef COUNT_NON_CUDA_OPS
 class NonCudaOps {

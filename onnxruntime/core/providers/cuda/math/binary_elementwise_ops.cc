@@ -117,7 +117,8 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, int
 #define BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                         \
   template <>                                                                                                    \
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
-    BinaryElementwisePreparation prepare(this);                                                                  \
+    int device_id = GetDeviceId();                                                                               \
+    BinaryElementwisePreparation prepare(this, device_id);                                                                  \
     Prepare(context, 0, &prepare);                                                                               \
     ORT_RETURN_IF_ERROR(prepare.CopyToGpu());                                                                    \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
@@ -245,7 +246,8 @@ Status Sum<T>::ComputeInternal(OpKernelContext* context) const {
       ORT_RETURN_IF_ERROR(ComputeOutputShape(node_name, previous_output_shape, context->Input<Tensor>(index)->Shape(), output_shape));
     }
     Tensor* output_tensor = context->Output(0, output_shape);
-    BinaryElementwisePreparation prepare(this);
+    int device_id = GetDeviceId();
+    BinaryElementwisePreparation prepare(this, device_id);
     if (input_count == 2) {
       // special case for 2 tensors to avoid memset zero
       ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(0, context->Input<Tensor>(0), context->Input<Tensor>(1), output_tensor, &prepare));
@@ -304,7 +306,8 @@ Status Max<T>::ComputeInternal(OpKernelContext* context) const {
       ORT_RETURN_IF_ERROR(ComputeOutputShape(node_name, previous_output_shape, context->Input<Tensor>(index)->Shape(), output_shape));
     }
     Tensor* output_tensor = context->Output(0, output_shape);
-    BinaryElementwisePreparation prepare(this);
+    int device_id = GetDeviceId();
+    BinaryElementwisePreparation prepare(this, device_id);
 
     // More than 2 inputs, set output to 0, add input0 to output, so that input0 can be broadcast with output shape correctly
     CUDA_RETURN_IF_ERROR(cudaMemset(output_tensor->MutableDataRaw(), 0, output_shape.Size() * sizeof(CudaT)));
@@ -360,7 +363,8 @@ Status Min<T>::ComputeInternal(OpKernelContext* context) const {
       ORT_RETURN_IF_ERROR(ComputeOutputShape(node_name, previous_output_shape, context->Input<Tensor>(index)->Shape(), output_shape));
     }
     Tensor* output_tensor = context->Output(0, output_shape);
-    BinaryElementwisePreparation prepare(this);
+    int device_id = GetDeviceId();
+    BinaryElementwisePreparation prepare(this, device_id);
 
     // More than 2 inputs, set output to 0, add input0 to output, so that input0 can be broadcast with output shape correctly
     CUDA_RETURN_IF_ERROR(cudaMemset(output_tensor->MutableDataRaw(), 0, output_shape.Size() * sizeof(CudaT)));
@@ -409,7 +413,8 @@ Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
   size_t output_size = output_shape.Size();
   Tensor* output_tensor = context->Output(0, output_shape);
 
-  BinaryElementwisePreparation prepare(this);
+  int device_id = GetDeviceId(); 
+  BinaryElementwisePreparation prepare(this, device_id);
   ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(0, input0, input1, output_tensor, &prepare));
 
   IAllocatorUniquePtr<T> output_buffer = GetScratchBuffer<T>(output_size);
@@ -445,7 +450,8 @@ Status Equal<T>::ComputeInternal(OpKernelContext* context) const {
   size_t output_size = output_shape.Size();
   Tensor* output_tensor = context->Output(0, output_shape);
 
-  BinaryElementwisePreparation prepare(this);
+  int device_id = GetDeviceId();
+  BinaryElementwisePreparation prepare(this, device_id);
   ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(0, input0, input1, output_tensor, &prepare));
 
   IAllocatorUniquePtr<T> output_buffer = GetScratchBuffer<T>(output_size);

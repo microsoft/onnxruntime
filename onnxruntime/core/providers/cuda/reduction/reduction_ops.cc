@@ -158,7 +158,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
       const TensorShape output_shape(output_dims);
       auto exp_result = GetScratchBuffer<T>(input_count).get();
       auto log_sum_result = GetScratchBuffer<T>(output_count).get();
-      BinaryElementwisePreparation prepare(this);
+      int device_id = GetDeviceId();
+      BinaryElementwisePreparation prepare(this, device_id);
       prepare.BinaryElementwiseBroadcastPrepareHelper(0, input_shape, output_shape, input_shape);
       prepare.CopyToGpu();
       Impl_Sub<CudaT>(prepare.output_rank_or_simple_broadcast,
