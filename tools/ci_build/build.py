@@ -579,7 +579,6 @@ def run_onnx_tests_on_android(args, vm_test_dir='/data/local/tmp'):
         else:
             adb_shell('cd '+vm_working_dir+' && '+vm_working_dir+'/onnx_test_runner '+vm_working_dir+'/testdata/data')
 
-
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False, enable_ngraph = False):
     for config in configs:
         log.info("Running tests for %s configuration", config)
@@ -592,8 +591,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
         else:
           dll_path = None
         if args.android and args.android_abi == 'x86_64':
-            vm_test_dir = '/data/local/tmp' #TODO: parameterize
-            adb_shell('cd '+vm_test_dir+' && '+vm_test_dir+'/onnxruntime_test_all')
+            vm_working_dir = '/data/local/tmp/'+config #TODO: parameterize
+            adb_shell('cd '+vm_working_dir+' && '+vm_working_dir+'/onnxruntime_test_all')
         else:
             run_subprocess([ctest_path, "--build-config", config, "--verbose"],
                        cwd=cwd, dll_path=dll_path)
@@ -957,6 +956,7 @@ def main():
             update_submodules(source_dir)
 
         if args.enable_onnx_tests or args.download_test_data:
+            log.info('Downloading Test Data')
             if args.download_test_data:
                 if not args.test_data_url or not args.test_data_checksum:
                    raise UsageError("The test_data_url and test_data_checksum arguments are required.")
