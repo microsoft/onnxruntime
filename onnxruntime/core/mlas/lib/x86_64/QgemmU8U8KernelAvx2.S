@@ -158,7 +158,7 @@ C_UNDERSCORE(MlasGemmU8U8CopyPackAAvx2):
         mov     rdx,rsi
         mov     rcx,rdi
         lea     rsi,[rsi+r10*4]             # advance next matrix A by 4 rows
-        lea     rdi,[rdi+r12*(2*4)]         # advance next matrix D by 4 rows
+        lea     rdi,[rdi+r12*8]             # advance next matrix D by 4 rows
         mov     rbx,r8                      # reload columns remaining
         sub     rbx,16
         jb      .LCopyPackA.ProcessRemainingColumnsM4
