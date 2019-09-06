@@ -227,7 +227,6 @@ OutputBlock:
 
 cPublicProc _MlasGemmFloatKernelAvx,10
 
-        vzeroall
         SgemmKernelEntry
 
 ;

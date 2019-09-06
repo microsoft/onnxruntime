@@ -178,8 +178,6 @@ OutputBlock:
 ;   This routine is an inner kernel to compute matrix multiplication for a
 ;   set of rows.
 ;
-;   This implementation uses SSE2 instructions.
-;
 ; Arguments:
 ;
 ;   A - Supplies the address of matrix A.
@@ -203,7 +201,7 @@ OutputBlock:
 ;
 ;   ldc - Supplies the first dimension of matrix C.
 ;
-;   Alpha - Supplies the scaler alpha multiplier (see SGEMM definition).
+;   Alpha - Supplies the scalar alpha multiplier (see SGEMM definition).
 ;
 ;   ZeroMode - Supplies true if the output matrix must be zero initialized,
 ;       else false if the output matrix is accumulated into.
@@ -241,23 +239,23 @@ ProcessNextColumnLoop16x1:
         mulps   xmm5,xmm2
         mulps   xmm6,xmm2
         mulps   xmm7,xmm2
-IFIDNI <Mode>, <Add>
+        sub     ebp,16
+        jb      OutputMasked16x1Block
+        cmp     BYTE PTR SgemmKernelFrame.ZeroMode[esp],0
+        jnz     SkipAccumulateOutput16x1
         movups  xmm0,XMMWORD PTR [esi]
         movups  xmm1,XMMWORD PTR [esi+16]
         movups  xmm2,XMMWORD PTR [esi+32]
+        movups  xmm3,XMMWORD PTR [esi+48]
         addps   xmm4,xmm0
         addps   xmm5,xmm1
         addps   xmm6,xmm2
-ENDIF
+        addps   xmm7,xmm3
+
+SkipAccumulateOutput16x1:
         movups  XMMWORD PTR [esi],xmm4
         movups  XMMWORD PTR [esi+16],xmm5
         movups  XMMWORD PTR [esi+32],xmm6
-        sub     ebp,16
-        jb      OutputMasked16x1Block
-IFIDNI <Mode>, <Add>
-        movups  xmm3,XMMWORD PTR [esi+48]
-        addps   xmm7,xmm3
-ENDIF
         movups  XMMWORD PTR [esi+48],xmm7
         add     esi,16*4                    ; advance matrix C by 16 columns
         cmp     ebp,12
@@ -296,12 +294,14 @@ ProcessRemainingCountN12OrLess:
         mulps   xmm5,xmm4                   ; multiply by alpha
         mulps   xmm6,xmm4
         mulps   xmm7,xmm4
-IFIDNI <Mode>, <Add>
+        cmp     BYTE PTR SgemmKernelFrame.ZeroMode[esp],0
+        jnz     SkipAccumulateLeadingN12OrLess
         movups  xmm0,XMMWORD PTR [esi]
         movups  xmm1,XMMWORD PTR [esi+16]
         addps   xmm5,xmm0
         addps   xmm6,xmm1
-ENDIF
+
+SkipAccumulateLeadingN12OrLess:
         movups  XMMWORD PTR [esi],xmm5
         movups  XMMWORD PTR [esi+16],xmm6
         add     esi,8*4                     ; advance matrix C by 8 columns
@@ -311,10 +311,12 @@ ProcessRemainingCountN8OrLess:
         ComputeBlockSseLoop 2
         mulps   xmm6,xmm4                   ; multiply by alpha
         mulps   xmm7,xmm4
-IFIDNI <Mode>, <Add>
+        cmp     BYTE PTR SgemmKernelFrame.ZeroMode[esp],0
+        jnz     SkipAccumulateLeadingN8OrLess
         movups  xmm0,XMMWORD PTR [esi]
         addps   xmm6,xmm0
-ENDIF
+
+SkipAccumulateLeadingN8OrLess:
         movups  XMMWORD PTR [esi],xmm6
         add     esi,4*4                     ; advance matrix C by 4 columns
         jmp     OutputTrailingBlock
@@ -325,6 +327,19 @@ ProcessRemainingCountN4OrLess:
         jmp     OutputTrailingBlock
 
 OutputMasked16x1Block:
+        cmp     BYTE PTR SgemmKernelFrame.ZeroMode[esp],0
+        jnz     SkipAccumulateLeading16x1Block
+        movups  xmm0,XMMWORD PTR [esi]
+        movups  xmm1,XMMWORD PTR [esi+16]
+        movups  xmm2,XMMWORD PTR [esi+32]
+        addps   xmm4,xmm0
+        addps   xmm5,xmm1
+        addps   xmm6,xmm2
+
+SkipAccumulateLeading16x1Block:
+        movups  XMMWORD PTR [esi],xmm4
+        movups  XMMWORD PTR [esi+16],xmm5
+        movups  XMMWORD PTR [esi+32],xmm6
         add     esi,12*4                    ; advance matrix C by 12 columns
 
 OutputTrailingBlock:
@@ -334,10 +349,12 @@ OutputTrailingBlock:
         jz      OutputTrailingBlock1Element
 
 OutputTrailingBlock2Elements:
-IFIDNI <Mode>, <Add>
+        cmp     BYTE PTR SgemmKernelFrame.ZeroMode[esp],0
+        jnz     SkipAccumulateTrailingBlock2Elements
         movsd   xmm0,MMWORD PTR [esi]
         addps   xmm7,xmm0
-ENDIF
+
+SkipAccumulateTrailingBlock2Elements:
         movsd   MMWORD PTR [esi],xmm7
         test    ebp,1
         jz      ExitKernel
@@ -345,18 +362,22 @@ ENDIF
         add     esi,2*4                     ; advance matrix C by 2 columns
 
 OutputTrailingBlock1Element:
-IFIDNI <Mode>, <Add>
+        cmp     BYTE PTR SgemmKernelFrame.ZeroMode[esp],0
+        jnz     SkipAccumulateTrailingBlock1Element
         movss   xmm0,DWORD PTR [esi]
         addss   xmm7,xmm0
-ENDIF
+
+SkipAccumulateTrailingBlock1Element:
         movss   DWORD PTR [esi],xmm7
         jmp     ExitKernel
 
 OutputTrailingBlock4Elements:
-IFIDNI <Mode>, <Add>
+        cmp     BYTE PTR SgemmKernelFrame.ZeroMode[esp],0
+        jnz     SkipAccumulateTrailingBlock4Elements
         movups  xmm0,XMMWORD PTR [esi]
         addps   xmm7,xmm0
-ENDIF
+
+SkipAccumulateTrailingBlock4Elements:
         movups  XMMWORD PTR [esi],xmm7
         jmp     ExitKernel
 
