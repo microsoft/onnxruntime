@@ -152,6 +152,11 @@ class OpKernelContext {
   */
   Fence_t OutputFence(int index) const;
 
+  /**
+  Returns the opset domain of the underlying kernel
+  **/
+  const std::string& GetOpDomain() const;
+
  protected:
   onnxruntime::NodeIndex GetNodeIndex() const;
 
