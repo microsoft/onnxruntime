@@ -300,10 +300,11 @@ ORT_API_STATUS(OrtRunOptionsGetRunLogVerbosityLevel, _In_ const OrtRunOptions* o
 ORT_API_STATUS(OrtRunOptionsGetRunLogSeverityLevel, _In_ const OrtRunOptions* options, _Out_ int* out);
 ORT_API_STATUS(OrtRunOptionsGetRunTag, _In_ const OrtRunOptions*, _Out_ const char** out);
 
-// Set a flag so that any running OrtRun* calls that are using this instance of OrtRunOptions
-// will exit as soon as possible if the flag is true.
-ORT_API_STATUS(OrtRunOptionsEnableTerminate, _Inout_ OrtRunOptions* options);
-ORT_API_STATUS(OrtRunOptionsDisableTerminate, _Inout_ OrtRunOptions* options);
+// Set a flag so that ALL incomplete OrtRun calls that are using this instance of OrtRunOptions
+// will exit as soon as possible.
+ORT_API_STATUS(OrtRunOptionsSetTerminate, _Inout_ OrtRunOptions* options);
+// Unset the terminate flag to enable this OrtRunOptions instance being used in new OrtRun calls.
+ORT_API_STATUS(OrtRunOptionsUnsetTerminate, _Inout_ OrtRunOptions* options);
 
 /**
  * Create a tensor from an allocator. OrtReleaseValue will also release the buffer inside the output value
