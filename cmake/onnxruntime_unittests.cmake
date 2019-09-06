@@ -632,6 +632,11 @@ AddTest(
   DEPENDS ${onnxruntime_test_providers_dependencies}
 )
 
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  target_link_libraries(opaque_api_test PRIVATE onnxruntime_language_interop onnxruntime_pyop)
+endif()
+
+
 # shared lib
 if (onnxruntime_BUILD_SHARED_LIB)
   add_library(onnxruntime_mocked_allocator ${ONNXRUNTIME_ROOT}/test/util/test_allocator.cc)
