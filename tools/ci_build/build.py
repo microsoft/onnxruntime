@@ -548,25 +548,36 @@ def adb_push(source_dir, src, dest, **kwargs):
 def adb_shell(*args, **kwargs):
     return run_subprocess(['adb', 'shell', *args], **kwargs)
 
-def prepare_android_vm_for_test(args, source_dir, vm_test_dir = '/data/local/tmp/'):
+def prepare_android_vm_for_test(args, source_dir, vm_test_dir = '/data/local/tmp'):
     for config in args.config:
         print('Setting up android test for Config = '+config) 
-        cwd = get_config_build_dir(args.build_dir, config)
+        #cwd = get_config_build_dir(args.build_dir, config)
         if args.android_abi == 'x86_64':
             run_subprocess(os.path.join(source_dir, 'tools', 'ci_build', 'github', 'android', 'start_android_emulator.sh'))
-            adb_push(source_dir, 'testdata', vm_test_dir, cwd=cwd)
-            adb_push(source_dir, os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'), '/data/local/tmp/', cwd=cwd)
-            adb_push(source_dir, 'onnxruntime_test_all', vm_test_dir, cwd=cwd)
-            adb_push(source_dir, 'onnx_test_runner', vm_test_dir, cwd=cwd)
-            adb_push(source_dir, '*.dll', vm_test_dir, cwd=cwd)
-            adb_push(source_dir, '*.so', vm_test_dir, cwd=cwd)
-            adb_push(source_dir, '*.dylib', vm_test_dir, cwd=cwd)
+            vm_working_dir = vm_test_dir+'/'+config
+            host_working_dir = get_config_build_dir(args.build_dir, config)
+            adb_shell('mkdir '+vm_working_dir)
+            adb_shell('mkdir '+vm_test_dir+'/models')
+            adb_push(source_dir, 'testdata', vm_working_dir, cwd=host_working_dir)
+            adb_push(source_dir, 
+                     os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'), 
+                     vm_working_dir+'/testdata', 
+                     cwd=host_working_dir)
+            adb_push(source_dir, 'models', vm_test_dir+'/models', cwd=args.build_dir)
 
-def run_onnx_tests_on_android(args, vm_test_dir):
-    if args.use_dnnlibrary:
-        adb_shell('cd '+vm_test_dir+' && '+vm_test_dir+'/onnx_test_runner -e nnapi '+vm_test_dir+'/test')
-    else:
-        adb_shell('cd '+vm_test_dir+' && '+vm_test_dir+'/onnx_test_runner '+vm_test_dir+'/test')
+            adb_push(source_dir, 'onnxruntime_test_all', vm_working_dir, cwd=host_working_dir)
+            adb_push(source_dir, 'onnx_test_runner', vm_working_dir, cwd=host_working_dir)
+            adb_push(source_dir, '*.dll', vm_working_dir, cwd=host_working_dir)
+            adb_push(source_dir, '*.so', vm_working_dir, cwd=host_working_dir)
+            adb_push(source_dir, '*.dylib', vm_working_dir, cwd=host_working_dir)
+
+def run_onnx_tests_on_android(args, vm_test_dir='/data/local/tmp'):
+    for config in args.config:
+        vm_working_dir = vm_test_dir+'/'+config
+        if args.use_dnnlibrary:
+            adb_shell('cd '+vm_working_dir+' && '+vm_working_dir+'/onnx_test_runner -e nnapi '+vm_working_dir+'/testdata/data')
+        else:
+            adb_shell('cd '+vm_working_dir+' && '+vm_working_dir+'/onnx_test_runner '+vm_working_dir+'/testdata/data')
 
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False, enable_ngraph = False):
