@@ -46,7 +46,7 @@ apt-get update && apt-get install -y --no-install-recommends \
         rsync libunwind8 libpng16-dev libexpat1-dev \
         python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest \
         libprotobuf-dev libprotobuf9v5 protobuf-compiler \
-        libedit-dev libxml2-dev python3-sympy python3-packaging
+        libedit-dev libxml2-dev python3-packaging
 
 locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
@@ -76,7 +76,8 @@ fi
 
 /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall numpy==1.15.0
 /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall requests==2.21.0
+/usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall sympy==1.1.1
 rm -rf /var/lib/apt/lists/*
 
-aria2c -q -d /tmp -o llvm.tar.xz https://github.com/llvm/llvm-project/releases/download/llvmorg-8.0.1/clang+llvm-8.0.1-x86_64-linux-gnu-ubuntu-14.04.tar.xz
+aria2c -q -d /tmp -o llvm.tar.xz http://releases.llvm.org/6.0.1/clang+llvm-6.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz
 tar --strip 1 -Jxf /tmp/llvm.tar.xz -C /usr

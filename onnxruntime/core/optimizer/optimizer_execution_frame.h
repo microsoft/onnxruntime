@@ -26,7 +26,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
         kvp.second.f(kvp.second.param);
       }
     }
-    AllocatorPtr GetAllocator(const OrtAllocatorInfo& info) const {
+    AllocatorPtr GetAllocator(const OrtMemoryInfo& info) const {
       return cpu_execution_provider_->GetAllocator(info.id, info.mem_type);
     }
 
@@ -79,7 +79,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OptimizerExecutionFrame);
 
-  AllocatorPtr GetAllocatorImpl(const OrtAllocatorInfo& info) const override;
+  AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const override;
 
   Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape, size_t nnz) override;
 
