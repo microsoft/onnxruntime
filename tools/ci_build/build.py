@@ -557,7 +557,7 @@ def prepare_android_vm_for_test(args, source_dir, vm_test_dir = '/data/local/tmp
             vm_working_dir = vm_test_dir+'/'+config
             host_working_dir = get_config_build_dir(args.build_dir, config)
             log.info('Content of Host working dir:')
-            run_subprocess('ls -R '+host_working_dir)
+            run_subprocess('ls '+host_working_dir, cwd=host_working_dir)
 
             adb_shell('mkdir '+vm_working_dir)
             adb_push(source_dir, 'testdata', vm_working_dir, cwd=host_working_dir)
