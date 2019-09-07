@@ -5,6 +5,7 @@
 
 #include "core/codegen/common/common.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/providers/nuphar/common/analysis/subgraph_partition_stats.h"
 #include "core/providers/nuphar/common/nuphar_settings.h"
 #include "core/providers/nuphar/common/utils.h"
