@@ -582,7 +582,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         } else {
           res << "[";
           for (int i = 0; i < shape->dim_size(); ++i) {
-            if (utils::HasDimvalue(shape->dim(i))) {
+            if (utils::HasDimValue(shape->dim(i))) {
               res << shape->dim(i).dim_value();
             } else if (utils::HasDimParam(shape->dim(i))) {
               res << "'" << shape->dim(i).dim_param() << "'";
@@ -610,7 +610,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
         arr.resize(shape->dim_size());
         for (int i = 0; i < shape->dim_size(); ++i) {
-          if (utils:HasDimValue(shape->dim(i))) {
+          if (utils::HasDimValue(shape->dim(i))) {
             arr[i] = py::cast(shape->dim(i).dim_value());
           } else if (utils::HasDimParam(shape->dim(i))) {
             arr[i] = py::cast(shape->dim(i).dim_param());

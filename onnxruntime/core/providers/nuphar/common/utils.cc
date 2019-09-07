@@ -14,7 +14,7 @@ bool NodeArgShapeUnknownOnAxis(const NodeArg* def, int64_t axis) {
   axis = HandleNegativeAxis(axis, shape->dim_size());
   ORT_ENFORCE(axis < shape->dim_size());
   auto dim = shape->dim(axis);
-  return utils::HasDimParam(dim) || (!utils::HasDimParam(dim) && !utils::HasDimvalue(dim));
+  return utils::HasDimParam(dim) || (!utils::HasDimParam(dim) && !utils::HasDimValue(dim));
 }
 
 bool HasUnknownShapeOnAxis(const ConstPointerContainer<std::vector<NodeArg*>>& defs, int64_t axis) {
