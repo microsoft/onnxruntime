@@ -441,8 +441,7 @@ class SymbolicShapeInference:
             idx = self._get_value(node, 1)
             data = self.sympy_data_[node.input[0]]
             if type(data) == list:
-                if type(idx) == np.ndarray:
-                    assert len(idx.shape) == 1
+                if type(idx) == np.ndarray and len(idx.shape) == 1:
                     self.sympy_data_[node.output[0]] = [data[int(i)] for i in idx]
                 else:
                     self.sympy_data_[node.output[0]] = data[int(idx)]
@@ -716,23 +715,23 @@ class SymbolicShapeInference:
                     if self.auto_merge_:
                         if node.op_type in ['Add', 'Sub', 'Mul', 'Div', 'MatMul', 'Concat']:
                             shapes = [self._get_shape(node, i) for i in range(len(node.input))]
-                            idx = out_shape.index(None)
-                            dim_idx = [len(s) - len(out_shape) + idx for s in shapes]
-                            assert dim_idx[0] >= 0 and dim_idx[1] >= 0
                             if node.op_type == 'MatMul':
                                 # only support auto merge for MatMul for dim < rank-2 when rank > 2
                                 assert len(shapes[0]) > 2 and dim_idx[0] < len(shapes[0]) - 2
                                 assert len(shapes[1]) > 2 and dim_idx[1] < len(shapes[1]) - 2
-                            self._add_suggested_merge([s[i] for s, i in zip(shapes, dim_idx)])
-                            self.run_ = True
                         elif node.op_type == 'Expand':
                             # auto merge for cases like Expand([min(batch, 1), min(seq, 512)], [batch, seq])
-                            input_shape = self._get_shape(node, 0)
-                            expand_shape = self._get_value(node, 1)
-                            for reverse_idx in range(min(len(input_shape), len(expand_shape))):
-                                dim0 = input_shape[len(input_shape) - 1 - reverse_idx]
-                                dim1 = expand_shape[len(expand_shape) - 1 - reverse_idx]
-                                self._add_suggested_merge([str(dim0), str(dim1)])
+                            shapes = [self._get_shape(node, 0), self._get_value(node, 1)]
+                        else:
+                            shapes = []
+
+                        if shapes:
+                            for idx in range(len(out_shape)):
+                                if out_shape[idx] is not None:
+                                    continue
+                                dim_idx = [len(s) - len(out_shape) + idx for s in shapes]
+                                assert all([d >= 0 for d in dim_idx])
+                                self._add_suggested_merge([str(s[i]) for s, i in zip(shapes, dim_idx)])
                             self.run_ = True
                         else:
                             self.run_ = False
