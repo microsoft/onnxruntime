@@ -9,6 +9,7 @@
 #include "serializing/mem_buffer.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/tensor.h"
+#include "core/framework/tensorprotoutils.h"
 #include "serializing/tensorprotoutils.h"
 
 #include "onnx-ml.pb.h"
@@ -67,7 +68,7 @@ protobufutil::Status Executor::SetNameMLValueMap(std::vector<std::string>& input
 
   // Prepare the Value object
   for (const auto& input : request.inputs()) {
-    using_raw_data_ = using_raw_data_ && input.second.has_raw_data();
+    using_raw_data_ = using_raw_data_ && utils::HasRawData(input);
 
     Ort::Value ml_value{nullptr};
     auto status = SetMLValue(input.second, buffers, allocator_info, ml_value);

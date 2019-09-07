@@ -7,6 +7,7 @@
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
 
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
@@ -581,9 +582,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         } else {
           res << "[";
           for (int i = 0; i < shape->dim_size(); ++i) {
-            if (shape->dim(i).has_dim_value()) {
+            if (utils::HasDimvalue(shape->dim(i))) {
               res << shape->dim(i).dim_value();
-            } else if (shape->dim(i).has_dim_param()) {
+            } else if (utils::HasDimParam(shape->dim(i))) {
               res << "'" << shape->dim(i).dim_param() << "'";
             } else {
               res << "None";
@@ -609,9 +610,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
         arr.resize(shape->dim_size());
         for (int i = 0; i < shape->dim_size(); ++i) {
-          if (shape->dim(i).has_dim_value()) {
+          if (utils:HasDimValue(shape->dim(i))) {
             arr[i] = py::cast(shape->dim(i).dim_value());
-          } else if (shape->dim(i).has_dim_param()) {
+          } else if (utils::HasDimParam(shape->dim(i))) {
             arr[i] = py::cast(shape->dim(i).dim_param());
           } else {
             arr[i] = py::none();
