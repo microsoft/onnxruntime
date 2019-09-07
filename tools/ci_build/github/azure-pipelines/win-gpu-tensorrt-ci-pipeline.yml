@@ -6,12 +6,9 @@ jobs:
     buildDirectory: '$(Build.BinariesDirectory)'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     CUDA_VERSION: '10.0'
-    # There are some tests in 20190130.zip that TensorRT can't run. Instead here use 20181210 opset8 for TensorRT test.
-    TestDataUrl: https://onnxruntimetestdata.blob.core.windows.net/models/20181210.zip
-    TestDataChecksum: a966def7447f4ff04f5665bca235b3f3
 
   steps:
-    # - template: templates/set-test-data-variables-step.yml
+    - template: templates/set-test-data-variables-step.yml
     - template: templates/windows-build-tools-setup-steps.yml
       parameters:
         EnvSetupScript: 'setup_env_cuda.bat'

@@ -52,6 +52,7 @@ option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" OFF)
 option(onnxruntime_USE_MKLDNN "Build with MKL-DNN support" OFF)
 option(onnxruntime_USE_MKLML "Build MKL-DNN with MKL-ML binary dependency" OFF)
+option(onnxruntime_USE_GEMMLOWP "Build with gemmlowp for quantized gemm" OFF)
 option(onnxruntime_USE_AUTOML "Build AutoML support" ON)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
@@ -349,8 +350,13 @@ if (onnxruntime_USE_TVM)
   add_definitions(-DUSE_TVM)
 
   set(onnxruntime_tvm_libs onnxruntime_codegen_tvm)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm nnvm_compiler)
-
+  # needs to link with stdc++fs in Linux
+  if(UNIX)
+    if (NOT APPLE)
+      set(FS_STDLIB stdc++fs)
+    endif()
+  endif()
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm nnvm_compiler ${FS_STDLIB})
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm nnvm_compiler)
 endif()
 
@@ -470,6 +476,10 @@ include_directories(
 
 if (onnxruntime_USE_MKLDNN OR onnxruntime_USE_MKLML)
   include(mkldnn)
+endif()
+
+if(onnxruntime_USE_GEMMLOWP)
+  add_definitions(-DUSE_GEMMLOWP=1)
 endif()
 
 if (onnxruntime_USE_MKLML)

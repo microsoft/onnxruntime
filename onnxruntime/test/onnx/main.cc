@@ -35,14 +35,11 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph' or 'openvino'. "
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph', 'openvino' or 'nuphar'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
-      "\t-o [optimization level]: Specifies the graph optimization level to enable. Valid values are 0 through 3. Default is 1.\n"
-      "\t\t0 -> Disable all optimizations\n"
-      "\t\t1 -> Enable basic optimizations\n"
-      "\t\t2 -> Enable extended optimizations\n"
-      "\t\t3 -> Enable extended+layout optimizations\n"
+      "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
+      "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. \n"
       "\t-h: help\n"
       "\n"
       "onnxruntime version: %s\n",
@@ -181,10 +178,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             case ORT_ENABLE_ALL:
               graph_optimization_level = ORT_ENABLE_ALL;
               break;
-            default:
-              fprintf(stderr, "See usage for valid values of graph optimization level\n");
-              usage();
-              return -1;
+            default: {
+              if (tmp > ORT_ENABLE_ALL) {  // relax constraint
+                graph_optimization_level = ORT_ENABLE_ALL;
+              } else {
+                fprintf(stderr, "See usage for valid values of graph optimization level\n");
+                usage();
+                return -1;
+              }
+            }
           }
           user_graph_optimization_level_set = true;
           break;
@@ -272,7 +274,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_nuphar) {
 #ifdef USE_NUPHAR
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(sf, 0, ""));
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(sf, /*allow_unaligned_buffers*/ 1, ""));
 #else
       fprintf(stderr, "Nuphar is not supported in this build");
       return -1;
@@ -309,7 +311,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     std::unordered_set<std::string> cuda_flaky_tests = {
         "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
-
+    std::unordered_set<std::string> nuphar_flaky_tests = {"logsoftmax_axis_0", "softmax_axis_0"};
 #if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
     //Minimize mem consumption
     LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&stat, &sf, enable_cuda, &cuda_flaky_tests, &env](ITestCase* l) {
@@ -337,7 +339,17 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         }
       }
     }
-
+    if (enable_nuphar) {
+      for (auto it = tests.begin(); it != tests.end();) {
+        auto iter = nuphar_flaky_tests.find((*it)->GetTestCaseName());
+        if (iter != nuphar_flaky_tests.end()) {
+          delete *it;
+          it = tests.erase(it);
+        } else {
+          ++it;
+        }
+      }
+    }
     TestEnv args(tests, stat, env, sf);
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
                          GetDefaultThreadPool(Env::Default()));
@@ -378,12 +390,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
       {"tf_inception_v2", "result mismatch"},
       {"mxnet_arcface", "result mismatch"},
-      {"dynamicquantizelinear", "not implemented yet"},
-      {"dynamicquantizelinear_expanded", "not implemented yet"},
-      {"dynamicquantizelinear_max_adjusted", "not implemented yet"},
-      {"dynamicquantizelinear_max_adjusted_expanded", "not implemented yet"},
-      {"dynamicquantizelinear_min_adjusted", "not implemented yet"},
-      {"dynamicquantizelinear_min_adjusted_expanded", "not implemented yet"},
+      {"dynamicquantizelinear_expanded", "Round(11) not implemented yet"},
+      {"dynamicquantizelinear_max_adjusted_expanded", "Round(11) not implemented yet"},
+      {"dynamicquantizelinear_min_adjusted_expanded", "Round(11) not implemented yet"},
       {"top_k", "not implemented yet for opset 11", {"onnxtip"}},
       {"top_k_smallest", "not implemented yet for opset 11", {"onnxtip"}},
       {"unique_not_sorted_without_axis", "not implemented yet"},
@@ -402,19 +411,19 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"cumsum_1d_reverse_exclusive", "not implemented yet"},
       {"cumsum_1d_reverse", "not implemented yet"},
       {"cumsum_1d_exclusive", "not implemented yet"},
-      {"cumsum_1d", "not implemented yet"},
-      {"clip_splitbounds", "not implemented yet for opset 11"},
-      {"clip_outbounds", "not implemented yet for opset 11"},
-      {"clip_example", "not implemented yet for opset 11"},
-      {"clip_default_min", "not implemented yet for opset 11"},
-      {"clip_default_max", "not implemented yet for opset 11"},
-      {"clip", "not implemented yet for opset 11"},
+      {"cumsum_1d", "not implemented yet"},      
   };
 
 #ifdef USE_NGRAPH
   broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
   broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
   broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
+  broken_tests.insert({"clip_splitbounds", "not implemented yet for opset 11"});
+  broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});	
+  broken_tests.insert({"clip_example", "not implemented yet for opset 11"});	
+  broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});	
+  broken_tests.insert({"clip_default_max", "not implemented yet for opset 11"});
+  broken_tests.insert({"clip", "not implemented yet for opset 11"});
 #endif
 
 #ifdef USE_MKLDNN
@@ -433,7 +442,21 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 #endif
 
-
+#ifdef USE_TENSORRT
+  broken_tests.insert({"fp16_shufflenet", "TRT EP bug"});
+  broken_tests.insert({"fp16_inception_v1", "TRT EP bug"});
+  broken_tests.insert({"fp16_tiny_yolov2", "TRT EP bug"});
+  broken_tests.insert({"tf_inception_v3", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_mobilenet_v1_1.0_224", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_mobilenet_v2_1.0_224", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_mobilenet_v2_1.4_224", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v1_101", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v1_152", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v1_50", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v2_101", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v2_152", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v2_50", "TRT Engine couldn't be created"});
+#endif
 
 #ifdef USE_CUDA
   broken_tests.insert({"mxnet_arcface", "result mismatch"});

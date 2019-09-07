@@ -257,9 +257,15 @@ Arguments:
         .macro PostProcessBlock FilterCount, OutputCount
 
         .globl  MlasConvPostProcessFloatAvxFilter\FilterCount\()Output\OutputCount\()
+#if !defined(__APPLE__)
+        .hidden MlasConvPostProcessFloatAvxFilter\FilterCount\()Output\OutputCount\()
+#endif
 MlasConvPostProcessFloatAvxFilter\FilterCount\()Output\OutputCount\():
 
         .globl  MlasConvPostProcessFloatFma3Filter\FilterCount\()Output\OutputCount\()
+#if !defined(__APPLE__)
+        .hidden MlasConvPostProcessFloatFma3Filter\FilterCount\()Output\OutputCount\()
+#endif
 MlasConvPostProcessFloatFma3Filter\FilterCount\()Output\OutputCount\():
 
 .if \FilterCount\() > 2

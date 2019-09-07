@@ -92,8 +92,7 @@ inline std::basic_string<T> GetCurrentTimeString() {
 }
 
 concurrency::ThreadPool* CreateThreadPool(int size) {
-  if (size <= 0)
-    size = std::thread::hardware_concurrency() / 2;
+  if (size < 0) size = std::thread::hardware_concurrency() / 2;
   return size > 0 ? new concurrency::ThreadPool("SESSION", size) : nullptr;
 }
 
@@ -436,8 +435,6 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
       ORT_RETURN_IF_ERROR(initializer.CreatePlan(&node, &implicit_inputs,
                                                  session_options_.enable_sequential_execution));
 
-      ORT_RETURN_IF_ERROR(initializer.InitializeAndSave(&implicit_inputs));
-
       // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
       //                                                   &*subgraph_info.session_state);
 
@@ -534,13 +531,9 @@ common::Status InferenceSession::Initialize() {
     }
 
     ORT_RETURN_IF_ERROR(session_initializer.CreatePlan(nullptr, nullptr, session_options_.enable_sequential_execution));
-    ORT_RETURN_IF_ERROR(session_initializer.InitializeAndSave(nullptr));
 
     // handle any subgraphs
     ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(graph, session_state_));
-
-    session_state_.CalculateNodeIndexInfo();
-
     is_inited_ = true;
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
@@ -575,8 +568,7 @@ common::Status InferenceSession::CheckShapes(const std::string& input_name,
     ostr << "Invalid rank for input: " << input_name
          << " Got: " << input_shape_sz << " Expected: " << expected_shape_sz
          << " Please fix either the inputs or the model.";
-    LOGS(*session_logger_, WARNING) << ostr.str();
-    return Status::OK();
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
   }
 
   std::vector<int> invalid_dim_indices;
@@ -597,7 +589,7 @@ common::Status InferenceSession::CheckShapes(const std::string& input_name,
       ostr << " index: " << idx << " Got: " << input_shape[idx] << " Expected: " << expected_shape[idx] << "\n";
     }
     ostr << " Please fix either the inputs or the model.";
-    LOGS(*session_logger_, WARNING) << ostr.str();
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
   }
 
   return Status::OK();
