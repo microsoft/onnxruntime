@@ -205,7 +205,10 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         SubGraphCollection_t parser_nodes_list;
         TensorrtLogger& trt_logger = GetTensorrtLogger();
         auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
-        auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
+        ///auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
+        const auto explicitBatch = 0U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+        auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));//trt6
+
         auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
         trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list);
 
@@ -263,7 +266,9 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   SubGraphCollection_t parser_nodes_vector;
   TensorrtLogger& trt_logger = GetTensorrtLogger();
   auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
-  auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
+  ///auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
+  const auto explicitBatch = 0U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+  auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));//trt6
   auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
   trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_vector);
 
@@ -273,6 +278,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   bool early_termination = false;
   supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_iterations, graph, &early_termination);
   if (early_termination) {
+    std::cout << "Early termination: no graph is running on TRT!" << std::endl; //slx
     supported_nodes_vector.clear();
   }
 
@@ -331,7 +337,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     // Create TensorRT engine
     TensorrtLogger& trt_logger = GetTensorrtLogger();
     auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
-    auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
+    ///auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
+    const auto explicitBatch = 0U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+    auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));//trt6
+
     auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
     trt_parser->parse(string_buf.data(), string_buf.size());
 
@@ -348,8 +357,30 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     }
 
     trt_builder->setMaxBatchSize(max_batch_size_);
-    trt_builder->setMaxWorkspaceSize(max_workspace_size_);
-    auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildCudaEngine(*trt_network.get()));
+    ///trt_builder->setMaxWorkspaceSize(max_workspace_size_);
+
+    //trt6 build engine
+/*
+    for (unsigned int i = 0, n = trt_network->getNbInputs(); i < n; i++)
+    {
+        // Set formats and data types of inputs
+        auto input = trt_network->getInput(i);
+        input->setType(nvinfer1::DataType::kFLOAT);
+        input->setAllowedFormats(1U << static_cast<int>(nvinfer1::TensorFormat::kLINEAR));
+    }
+
+    for (unsigned int i = 0, n = trt_network->getNbOutputs(); i < n; i++)
+    {
+        // Set formats and data types of outputs
+        auto output = trt_network->getOutput(i);
+        output->setType(nvinfer1::DataType::kFLOAT);
+        output->setAllowedFormats(1U << static_cast<int>(nvinfer1::TensorFormat::kLINEAR));
+    }
+*/
+    auto config = unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
+    config->setMaxWorkspaceSize(max_workspace_size_);
+    auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *config));
+    ///auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildCudaEngine(*trt_network.get()));
     ORT_ENFORCE(trt_engine != nullptr);
 
     // Build TensorRT context
@@ -401,10 +432,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       const auto& tensor_type = graph_output[i].type().tensor_type();
       output_types[bindingIndex] = tensor_type.elem_type();
 
-      const auto& tensor_shape = tensor_type.shape();
-      if (tensor_shape.dim_size() == 1 && output_shapes[bindingIndex].back() == 1) {
-        output_shapes[bindingIndex].pop_back();
-      }
+      ///const auto& tensor_shape = tensor_type.shape();
+      ///if (tensor_shape.dim_size() == 1 && output_shapes[bindingIndex].back() == 1) {
+      ///  output_shapes[bindingIndex].pop_back();
+      ///}
     }
 
     ORT_ENFORCE(trt_engine->getNbBindings() == (num_inputs + num_outputs));
@@ -480,7 +511,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       // Allocate cuda memory for outputs
       for (int i = 0, end = num_binding_outputs; i < end; ++i) {
         int output_index = output_indexes[i];
-        output_shapes[i].insert(output_shapes[i].begin(), batch_size);
+        ///output_shapes[i].insert(output_shapes[i].begin(), batch_size);
 
         OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, output_shapes[i].data(), output_shapes[i].size());
         if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
