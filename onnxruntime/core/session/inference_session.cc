@@ -143,10 +143,13 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
   std::string provider_type = p_exec_provider->Type();
   VLOGS(*session_logger_, 1) << "Adding execution provider of type: " << provider_type;
   auto p_data_xfr = p_exec_provider->GetDataTransfer();
-  execution_providers_.Add(provider_type, std::move(p_exec_provider));
   if (p_data_xfr) {
-    data_transfer_mgr_.RegisterDataTransfer(std::move(p_data_xfr));
+    auto st = data_transfer_mgr_.RegisterDataTransfer(std::move(p_data_xfr));
+    if (!st.IsOK()) {
+      return st;
+    }
   }
+  execution_providers_.Add(provider_type, std::move(p_exec_provider));
 
   return Status::OK();
 }
