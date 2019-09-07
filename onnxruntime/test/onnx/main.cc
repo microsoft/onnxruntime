@@ -309,6 +309,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.SetGraphOptimizationLevel(graph_optimization_level);
     }
 
+    // do not run the below cpu tests because they crash onnx_test_runner.
+    std::unordered_set<std::string> cpu_flaky_tests = {
+        "range_float_type_positive_delta",
+        "range_float_type_positive_delta_expanded",
+        "range_int32_type_negative_delta", 
+        "range_int32_type_negative_delta_expanded"};
     std::unordered_set<std::string> cuda_flaky_tests = {
         "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
     std::unordered_set<std::string> nuphar_flaky_tests = {"logsoftmax_axis_0", "softmax_axis_0"};
@@ -328,6 +334,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #else
     std::vector<ITestCase*> tests;
     LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&tests](ITestCase* l) { tests.push_back(l); });
+    for (auto it = tests.begin(); it != tests.end();) {
+      auto iter = cpu_flaky_tests.find((*it)->GetTestCaseName());
+      if (iter != cpu_flaky_tests.end()) {
+        delete *it;
+        it = tests.erase(it);
+      } else {
+        ++it;
+      }
+    }
     if (enable_cuda) {
       for (auto it = tests.begin(); it != tests.end();) {
         auto iter = cuda_flaky_tests.find((*it)->GetTestCaseName());
