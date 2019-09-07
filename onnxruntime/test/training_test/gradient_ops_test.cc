@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cmath>
-#include <random>
 #include <algorithm>
 #include <bitset>
+#include <cmath>
+#include <random>
 
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -1943,6 +1943,34 @@ TEST(OptimizerTest, LambOptimizerTestScalarMixPrecision32_16) {
   run_lamb_mix_precision_test(
       shape, eta, w, g, m, v,
       lambda, alpha, beta, epsilon);
+}
+
+TEST(OptimizerTest, LambOptimizerTestLarge) {
+  // Input tensors and attributes.
+  const size_t size = 55667;
+  const std::vector<int64_t> shape = {static_cast<int64_t>(size)};
+  const std::vector<float> eta = {0.5f};
+  std::vector<float> w(size);
+  std::vector<float> g(size);
+  std::vector<float> m(size);
+  std::vector<float> v(size);
+
+  std::random_device random_device;
+  std::mt19937 random_engine(random_device());
+  std::uniform_real_distribution<float> dist(0.1f, 1.0f);
+  for (size_t i = 0; i < size; ++i) {
+    w[i] = dist(random_engine);
+    g[i] = dist(random_engine);
+    m[i] = dist(random_engine);
+    v[i] = dist(random_engine);
+  }
+
+  const float lambda = 0.5f;
+  const float alpha = 0.2f;
+  const float beta = 0.8f;
+  const float epsilon = 1e-6f;
+
+  run_lamb_test(shape, eta, w, g, m, v, lambda, alpha, beta, epsilon);
 }
 
 static void TestLayerNormGradient(const std::vector<int64_t>& X_dims,

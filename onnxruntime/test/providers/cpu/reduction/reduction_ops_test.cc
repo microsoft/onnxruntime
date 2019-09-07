@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include <type_traits>
-#include "core/providers/cpu/reduction/reduction_ops.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/cpu/reduction/reduction_test_cases.h"
@@ -1328,6 +1327,7 @@ TEST(AllOpTest, All_1d_large) {
     }
   }
 }
+
 #endif
 
 }  // namespace test

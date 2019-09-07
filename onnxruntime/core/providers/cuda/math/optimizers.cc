@@ -3,7 +3,7 @@
 
 #include "optimizers.h"
 #include "binary_elementwise_ops.h"
-#include "core/providers/cuda/reduction/reduction_ops.h"
+#include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/cuda_allocator.h"
 
 namespace onnxruntime {
@@ -153,7 +153,6 @@ Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) cons
   const Tensor& moment_2_tensor = *ctx->Input<Tensor>(4);
 
   const TensorShape& weight_tensor_shape = weights_tensor.Shape();
-  const size_t weight_tensor_rank = weight_tensor_shape.NumDimensions();
   const auto weight_tensor_size = weights_tensor.Shape().Size();
 
   ORT_ENFORCE(weight_tensor_shape == gradients_tensor.Shape());
@@ -191,142 +190,29 @@ Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) cons
   // and T2=float.
   IAllocatorUniquePtr<T2> weights_norm_buffer = GetScratchBuffer<T2>(1);
 
-  // Do reduction to compute the 2-norm of the weight tensor and
-  // the 2-norm of the update direction. They will be used to
-  // adjust the learning rate.
-  if (weight_tensor_size > 1) {
-    std::vector<int64_t> cudnn_reduction_input_dims = weight_tensor_shape.GetDims();
-    std::vector<int64_t> cudnn_reduction_output_dims(weight_tensor_rank, 1);
+  auto buffer_size = static_cast<size_t>(
+      compute_reduction_buffer_size(
+          static_cast<int>(sizeof(T2)), static_cast<int>(weight_tensor_size)));
 
-    if (weight_tensor_rank > 8)
-      return ORT_MAKE_STATUS(
-          ONNXRUNTIME, FAIL,
-          "CUDNN only supports up to 8-D tensors in reduction, \
-          so the current LAMB optimizer cannot update tensors with more than 8 axes.");
+  IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(buffer_size);
 
-    // CUDNN's reduction doesn't work with 1-D and 2-D tensors.
-    if (weight_tensor_rank < 3) {
-      std::vector<int64_t> pads(3 - weight_tensor_rank, 1);
-      cudnn_reduction_input_dims.insert(cudnn_reduction_input_dims.end(), pads.begin(), pads.end());
-      cudnn_reduction_output_dims.insert(cudnn_reduction_output_dims.end(), pads.begin(), pads.end());
-    }
+  // We should throw for overflow in reduction APIs.
+  // The index in CUDA system is integer.
+  ORT_ENFORCE(
+      weight_tensor_size <
+      static_cast<int64_t>(std::numeric_limits<int>::max()));
 
-    // The reduction should be as precise as the weight, so T2 is the type
-    // that subsequent tensors reduced to.
-    const cudnnDataType_t cudnn_reduction_type_T2 = CudnnTensor::GetDataType<CudaT2>();
-    const cudnnDataType_t cudnn_reduction_type_T3 = CudnnTensor::GetDataType<CudaT3>();
+  reduce_square_sum(
+      reinterpret_cast<const CudaT2*>(weights_tensor.template Data<T2>()),
+      weights_norm_buffer.get(),
+      static_cast<int>(weight_tensor_size),
+      reinterpret_cast<CudaT2*>(reduction_buffer.get()));
 
-    // Create shape and type information for input tensor and output tensor
-    // for CUDNN reduction computation. It's useful when allocating memory.
-    CudnnTensor cudnn_input_tensor_desc_T2;
-    CudnnTensor cudnn_input_tensor_desc_T3;
-    CudnnTensor cudnn_output_tensor_desc;
-    cudnn_input_tensor_desc_T2.Set(cudnn_reduction_input_dims, cudnn_reduction_type_T2);
-    cudnn_input_tensor_desc_T3.Set(cudnn_reduction_input_dims, cudnn_reduction_type_T3);
-    cudnn_output_tensor_desc.Set(cudnn_reduction_output_dims, cudnn_reduction_type_T2);
-
-    // Create a wrapper of cudnnReduceTensorDescriptor_t, which controls
-    // the configuration of CUDA reduction.
-    // Subsequently, there will be two reductions. One reduces T2 tensor to T2 scalar
-    // and the other one is T3-to-T2 reduction. Because in general, T2's precision
-    // is higher than T3, T2 is the type that subsequent tensors reduced to.
-    CudnnReduceDescriptor cudnn_reduction_desc;
-    cudnn_reduction_desc.Set(
-        CUDNN_REDUCE_TENSOR_NORM2,
-        cudnn_reduction_type_T2,
-        CUDNN_REDUCE_TENSOR_NO_INDICES);
-
-    // Pre-allocate memory needed in CUDNN reduction.
-    size_t cudnn_workspace_bytes_T2 = 0;
-    CUDNN_RETURN_IF_ERROR(
-        cudnnGetReductionWorkspaceSize(
-            CudnnHandle(),
-            cudnn_reduction_desc,
-            cudnn_input_tensor_desc_T2,
-            cudnn_output_tensor_desc,
-            &cudnn_workspace_bytes_T2));
-
-    auto cudnn_workspace_T2 = GetScratchBuffer<T2>(cudnn_workspace_bytes_T2);
-
-    // Compute pre-allocated memory amount needed in CUDNN reduction.
-    size_t cudnn_indices_bytes_T2 = 0;
-    CUDNN_RETURN_IF_ERROR(
-        cudnnGetReductionIndicesSize(
-            CudnnHandle(),
-            cudnn_reduction_desc,
-            cudnn_input_tensor_desc_T2,
-            cudnn_output_tensor_desc,
-            &cudnn_indices_bytes_T2));
-
-    auto cudnn_indices_workspace_T2 = GetScratchBuffer<uint32_t>(cudnn_indices_bytes_T2);
-
-    // Pre-allocate memory needed in CUDNN reduction.
-    size_t cudnn_workspace_bytes_T3 = 0;
-    CUDNN_RETURN_IF_ERROR(
-        cudnnGetReductionWorkspaceSize(
-            CudnnHandle(),
-            cudnn_reduction_desc,
-            cudnn_input_tensor_desc_T3,
-            cudnn_output_tensor_desc,
-            &cudnn_workspace_bytes_T3));
-
-    auto cudnn_workspace_T3 = GetScratchBuffer<T3>(cudnn_workspace_bytes_T3);
-
-    // Compute pre-allocated memory amount needed in CUDNN reduction.
-    size_t cudnn_indices_bytes_T3 = 0;
-    CUDNN_RETURN_IF_ERROR(
-        cudnnGetReductionIndicesSize(
-            CudnnHandle(),
-            cudnn_reduction_desc,
-            cudnn_input_tensor_desc_T3,
-            cudnn_output_tensor_desc,
-            &cudnn_indices_bytes_T3));
-
-    auto cudnn_indices_workspace_T3 = GetScratchBuffer<uint32_t>(cudnn_indices_bytes_T3);
-
-    // Allocate constants needed in the CUDNN reduction.
-    const auto one = Consts<T2>::One;
-    const auto zero = Consts<T2>::Zero;
-
-    // Compute reductions of the update direction and the weight tensor. Note that
-    // we reuse cudnn_reduction_desc because the two reductions have the same shapes.
-    CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-        CudnnHandle(),
-        cudnn_reduction_desc,
-        cudnn_indices_workspace_T3.get(),
-        cudnn_indices_bytes_T3,
-        cudnn_workspace_T3.get(),
-        cudnn_workspace_bytes_T3,
-        &one,
-        cudnn_input_tensor_desc_T3,
-        update_direction_buffer.get(),
-        &zero,
-        cudnn_output_tensor_desc,
-        direction_norm_buffer.get()));
-
-    CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-        CudnnHandle(),
-        cudnn_reduction_desc,
-        cudnn_indices_workspace_T2.get(),
-        cudnn_indices_bytes_T2,
-        cudnn_workspace_T2.get(),
-        cudnn_workspace_bytes_T2,
-        &one,
-        cudnn_input_tensor_desc_T2,
-        weights_tensor.template Data<T2>(),
-        &zero,
-        cudnn_output_tensor_desc,
-        weights_norm_buffer.get()));
-  } else {
-    // CUDA reduction doesn't support one-element case, so we do it
-    // by our own CUDA kernel.
-    LambScalarL2NormReductionImpl(
-        reinterpret_cast<const CudaT3*>(update_direction_buffer.get()),
-        direction_norm_buffer.get());
-    LambScalarL2NormReductionImpl(
-        weights_tensor.template Data<T2>(),
-        weights_norm_buffer.get());
-  }
+  reduce_square_sum(
+      reinterpret_cast<CudaT3*>(update_direction_buffer.get()),
+      direction_norm_buffer.get(),
+      static_cast<int>(weight_tensor_size),
+      reinterpret_cast<CudaT2*>(reduction_buffer.get()));
 
   // Use the update direction and the computed norms to compute
   // the new weights.

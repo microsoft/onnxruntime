@@ -257,7 +257,7 @@ __global__ void _LambUpdate(
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   // Compute new weight using the saved update direction.
   weights_out[id] = weights[id] - \
-    (*w_norm) / (*r_norm) * T2((*eta) * update_direction[id]);
+    _Sqrt((*w_norm) / (*r_norm)) * T2((*eta) * update_direction[id]);
 }
 
 template <typename T1, typename T2>
@@ -295,31 +295,6 @@ template void LambUpdateImpl(               \
 SPECIALIZED_IMPL_LambUpdate(float, float)
 SPECIALIZED_IMPL_LambUpdate(double, double)
 SPECIALIZED_IMPL_LambUpdate(half, float)
-
-template <typename T1, typename T2>
-__global__ void _LambScalarL2NormReduction(
-    const T1* value,
-    T2* value_out) {
-  *value_out = _Abs(*value);
-}
-
-template <typename T1, typename T2>
-void LambScalarL2NormReductionImpl(
-    const T1* value,
-    T2* value_out) {
-  _LambScalarL2NormReduction<T1, T2><<<1, 1, 0>>>(
-      value,
-      value_out);
-}
-
-#define SPECIALIZED_IMPL_LambScalarL2NormReduction(T1, T2) \
-template void LambScalarL2NormReductionImpl(               \
-    const T1* value,                                       \
-    T2* value_out);
-
-SPECIALIZED_IMPL_LambScalarL2NormReduction(float, float)
-SPECIALIZED_IMPL_LambScalarL2NormReduction(double, double)
-SPECIALIZED_IMPL_LambScalarL2NormReduction(half, float)
 
 }  // namespace cuda
 }  // namespace onnxruntime
