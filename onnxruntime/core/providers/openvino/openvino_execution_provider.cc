@@ -29,7 +29,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(OpenVINOExecutionProviderIn
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider} {
   ORT_UNUSED_PARAMETER(info);
 
-  DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(OPENVINO, OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(OPENVINO, OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(device_info));
 }
 
@@ -180,7 +180,9 @@ bool IsOpSupported(std::string name) {
       "Unsqueeze",
       "ImageScaler",
       "LeakyRelu",
-      "GlobalMaxPool"};
+      "GlobalMaxPool",
+      "Div",
+      "Sub"};
 
   auto iter = supported_ops.find(name);
   return iter != supported_ops.end();
@@ -237,7 +239,10 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
 
     //Zero dimension check
     for (size_t i = 0; i < node_inputs.size(); i++) {
-      if (node_inputs[i]->Shape() != nullptr) {
+
+      auto name = node_inputs[i]->Name();
+      auto it = initializers.find(name);
+      if(it == initializers.end() && node_inputs[i]->Shape() != nullptr){
         if (node_inputs[i]->Shape()->dim_size() == 0) {
           throw "Node_input is zero dimension";
         }

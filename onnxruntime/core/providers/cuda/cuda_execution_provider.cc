@@ -75,7 +75,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
 
   // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
   // This will be refactored/removed when allocator and execution provider are decoupled.
-  DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUInput, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUInput)); }, std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUInput, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUInput)); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(cpu_allocator_info));
 }
 
@@ -820,7 +820,7 @@ static void RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 9, int32_t, Slice)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 9, int64_t, Slice)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 10, int32_t, Slice)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 10, int64_t, Slice)>,      
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 10, int64_t, Slice)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 9, Compress)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 9, Flatten)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 9, float, Upsample)>,
@@ -875,7 +875,7 @@ std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetKernelRegistry() const
 static bool RNNNeedFallbackToCPU(const onnxruntime::Node& node,
                                  const std::vector<std::string> activations_supported,
                                  const std::string& op_type) {
-  auto node_attributes = node.GetAttributes();
+  const auto& node_attributes = node.GetAttributes();
   // Check attributes
   for (auto& attr : node_attributes) {
     auto attr_name = attr.first;
@@ -929,7 +929,7 @@ static bool RNNNeedFallbackToCPU(const onnxruntime::Node& node,
 }
 
 static bool ConvNeedFallbackToCPU(const onnxruntime::Node& node) {
-  auto node_attributes = node.GetAttributes();
+  const auto& node_attributes = node.GetAttributes();
   // Check attributes
   for (auto& attr : node_attributes) {
     auto attr_name = attr.first;
@@ -953,7 +953,7 @@ static bool ConvNeedFallbackToCPU(const onnxruntime::Node& node) {
 }
 
 static bool CastNeedFallbackToCPU(const onnxruntime::Node& node) {
-  auto node_attributes = node.GetAttributes();
+  const auto& node_attributes = node.GetAttributes();
   // Check attributes
   for (auto& attr : node_attributes) {
     auto attr_name = attr.first;
@@ -1018,6 +1018,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       // Note that nodes with only inputs from initializer would not be place on CUDA
       // Ideally, those nodes should be eliminated in constant folding
       bool should_force_outside = true;
+      bool all_input_are_initializer = true;
       node.ForEachWithIndex(
           node.InputDefs(),
           [&](const NodeArg& def, size_t index) {
@@ -1025,12 +1026,17 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
             // The input is not a initializer and the input is from CPU
             // or the input declared as CPU memory and is from CPU
             // in that case we should still keep the node on CUDA
-            if ((!graph.GetInitializedTensor(def.Name(), initializer) && !defs_outside_cuda.count(&def)) ||
+            bool initializer_input = graph.GetInitializedTensor(def.Name(), initializer);
+            if ((!initializer_input && !defs_outside_cuda.count(&def)) ||
                 (defs_outside_cuda.count(&def) && cuda_kernel_def->kernel_def->IsInputOnCpu(index)))
               should_force_outside = false;
+            if (!initializer_input) {
+              all_input_are_initializer = false;
+            }
             return Status::OK();
           });
-      if (should_force_outside) {
+      // If all the inputs are initialier, we shouldn't force it to CPU
+      if (should_force_outside && !all_input_are_initializer) {
         force_outside = true;
       }
     }

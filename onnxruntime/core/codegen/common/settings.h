@@ -26,6 +26,7 @@ class CodeGenSettings {
   std::string GetOptionValue(const std::string& key) const;
   bool HasOption(const std::string& key) const;
   bool OptionMatches(const std::string& key, const std::string& value) const;
+  void Clear();
   static CodeGenSettings& Instance();
 
  private:
