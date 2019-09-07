@@ -570,6 +570,8 @@ def prepare_android_vm_for_test(args, source_dir, vm_test_dir = '/data/local/tmp
             adb_push(source_dir, '*.dll', vm_working_dir, cwd=host_working_dir)
             adb_push(source_dir, '*.so', vm_working_dir, cwd=host_working_dir)
             adb_push(source_dir, '*.dylib', vm_working_dir, cwd=host_working_dir)
+            log.info('After copying the files to VM:')
+            adb_shell('ls -R '+vm_test_dir)
 
 def run_onnx_tests_on_android(args, vm_test_dir='/data/local/tmp'):
     for config in args.config:
@@ -592,7 +594,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
           dll_path = None
         if args.android and args.android_abi == 'x86_64':
             vm_working_dir = '/data/local/tmp/'+config #TODO: parameterize
-            adb_shell('cd '+vm_working_dir+' && '+vm_working_dir+'/onnxruntime_test_all')
+            adb_shell('cd '+vm_working_dir+' && ls -al && '+vm_working_dir+'/onnxruntime_test_all')
         else:
             run_subprocess([ctest_path, "--build-config", config, "--verbose"],
                        cwd=cwd, dll_path=dll_path)
