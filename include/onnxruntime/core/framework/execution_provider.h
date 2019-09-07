@@ -9,6 +9,7 @@
 #include "core/common/status.h"
 #include "core/framework/tensor.h"
 #include "core/framework/func_api.h"
+#include "core/framework/data_transfer.h"
 
 namespace onnxruntime {
 class GraphViewer;
@@ -55,6 +56,10 @@ class IExecutionProvider {
    * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
    */
   virtual AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const;
+
+  virtual std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const {
+    return nullptr;
+  }
 
   /**
      Get execution provider's capability for the specified <graph>.

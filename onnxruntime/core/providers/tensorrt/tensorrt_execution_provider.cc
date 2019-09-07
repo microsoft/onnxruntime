@@ -18,6 +18,7 @@
 #include "gsl/pointers"
 #include "core/graph/model.h"
 #include "cuda_runtime_api.h"
+#include "core/providers/cuda/gpu_data_transfer.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -53,6 +54,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {}
+
+std::unique_ptr<onnxruntime::IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
+  return std::make_unique<onnxruntime::GPUDataTransfer>();
+}
 
 std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index, const onnxruntime::GraphViewer& graph) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
@@ -499,8 +504,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       bool ret = trt_state->context->enqueue(batch_size, &buffers[0], nullptr, nullptr);
       if (!ret) {
         if (trt_state->context->getEngine().getMaxBatchSize() < batch_size) {
-	  return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-			        "TRT enqueue failed: Set ORT_TENSORRT_MAX_BATCH_SIZE environment variable to at least " + to_string(batch_size));
+          return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                                "TRT enqueue failed: Set ORT_TENSORRT_MAX_BATCH_SIZE environment variable to at least " + to_string(batch_size));
         }
         return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to enqueue to TRT execution context.");
       }

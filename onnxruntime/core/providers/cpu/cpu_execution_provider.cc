@@ -733,4 +733,8 @@ std::shared_ptr<KernelRegistry> CPUExecutionProvider::GetKernelRegistry() const 
   static std::shared_ptr<KernelRegistry> kernel_registry = GetCpuKernelRegistry();
   return kernel_registry;
 }
+
+std::unique_ptr<IDataTransfer> CPUExecutionProvider::GetDataTransfer() const {
+  return std::make_unique<CPUDataTransfer>();
+}
 }  // namespace onnxruntime
