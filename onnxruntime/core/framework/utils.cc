@@ -45,7 +45,7 @@ void DefaultFree(void* p) {
 #endif
 }
 
-AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info) {
+AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo& allocator_info) {
   return session_state.GetExecutionProviders().GetAllocator(allocator_info);
 }
 

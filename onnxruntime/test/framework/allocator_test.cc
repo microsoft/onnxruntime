@@ -48,8 +48,8 @@ class TestAllocator : public IAllocator {
     delete p_sizet;
   }
 
-  virtual const OrtAllocatorInfo& Info() const override {
-    static OrtAllocatorInfo info("test", OrtDeviceAllocator);
+  virtual const OrtMemoryInfo& Info() const override {
+    static OrtMemoryInfo info("test", OrtDeviceAllocator);
     return info;
   }
 

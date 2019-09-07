@@ -28,7 +28,7 @@ namespace utils {
 void* DefaultAlloc(size_t size);
 void DefaultFree(void* p);
 
-AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info);
+AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo& allocator_info);
 
 common::Status AllocateHelper(const IExecutionProvider& execution_provider, int device_id, const Tensor& fetched_tensor,
                               OrtValue& output_mlvalue);

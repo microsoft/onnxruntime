@@ -37,7 +37,7 @@ NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderIn
   ORT_ENFORCE(info.ng_backend_type == "CPU", "nGraph Execution Provider for onnxruntime currently is only supported for CPU backend.");
 
   auto default_allocator_factory = [](int) {
-    auto allocator_info = std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator);
+    auto allocator_info = std::make_unique<OrtMemoryInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator);
     return std::make_unique<CPUAllocator>(std::move(allocator_info));
   };
 
@@ -51,7 +51,7 @@ NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderIn
 
 
   auto cpu_allocator_factory = [](int) {
-    auto allocator_info = std::make_unique<OrtAllocatorInfo>(
+    auto allocator_info = std::make_unique<OrtMemoryInfo>(
       NGRAPH, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput);
     return std::make_unique<CPUAllocator>(std::move(allocator_info));
   };

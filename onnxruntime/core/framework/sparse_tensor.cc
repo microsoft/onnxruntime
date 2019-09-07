@@ -13,7 +13,7 @@ SparseTensor::SparseTensor(MLDataType elt_type,
                            size_t nnz,
                            void* values_data,
                            void* indices_data,
-                           const OrtAllocatorInfo& allocator_info)
+                           const OrtMemoryInfo& allocator_info)
     : values_(elt_type, TensorShape({static_cast<int64_t>(nnz)}), values_data, allocator_info, 0),
       indices_(DataTypeImpl::GetType<int64_t>(),
                TensorShape({static_cast<int64_t>(nnz), static_cast<int64_t>(shape.NumDimensions())}),

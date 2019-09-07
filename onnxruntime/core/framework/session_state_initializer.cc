@@ -27,7 +27,6 @@
 
 namespace onnxruntime {
 
-
 // T should have signature of '(int idx, const OrtValue& value, const OrtCallback& d) -> Status'
 template <typename T>
 static common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
@@ -110,13 +109,12 @@ common::Status SessionStateInitializer::CreatePlan(
   return Status::OK();
 }
 
-
 static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m,
                                              const ExecutionProviders& exec_providers, OrtValue& ort_value,
                                              OrtCallback& deleter,
                                              const DataTransferManager& data_transfer_mgr) {
-  const OrtAllocatorInfo& alloc_info = m.GetAllocInfo();
+  const OrtMemoryInfo& alloc_info = m.GetAllocInfo();
   if (strcmp(alloc_info.name, CPU) == 0 || alloc_info.mem_type == OrtMemTypeCPUOutput) {
     // deserialize directly to CPU tensor
     return utils::TensorProtoToMLValue(env, proto_path.c_str(), tensor_proto, m, ort_value, deleter);
@@ -142,7 +140,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error. The preallocated buffer is too small. Requires ",
                            cpu_tensor_length, ", Got ", m.GetLen());
   }
-  OrtAllocatorInfo info = exec_providers.GetDefaultCpuAllocatorInfo();
+  OrtMemoryInfo info = exec_providers.GetDefaultCpuAllocatorInfo();
   std::unique_ptr<char[]> data(new char[cpu_tensor_length]);
   std::unique_ptr<Tensor> p_tensor;
   OrtValue tmp_ort_value;
