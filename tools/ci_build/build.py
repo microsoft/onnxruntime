@@ -975,7 +975,7 @@ def main():
         build_targets(cmake_path, build_dir, configs, args.parallel)
 
     if args.test :
-        android_vm_test_dir = '/data/local/tmp/'
+        android_vm_test_dir = '/data/local/tmp'
         if args.android:
             prepare_android_vm_for_test(args, source_dir, android_vm_test_dir)
 
