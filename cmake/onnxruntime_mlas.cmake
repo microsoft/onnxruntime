@@ -70,7 +70,8 @@ if(MSVC)
     set(CMAKE_ASM_MASM_FLAGS "${CMAKE_ASM_MASM_FLAGS} /safeseh")
 
     set(mlas_platform_srcs
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/i386/sgemma.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/i386/SgemmKernelSse2.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/i386/SgemmKernelAvx.asm
     )
   endif()
 else()
