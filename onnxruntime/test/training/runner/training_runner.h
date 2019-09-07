@@ -2,14 +2,16 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include <utility>
 #include <vector>
+
 #include "core/framework/ml_value.h"
-#include "core/training/training_session.h"
-#include "test/training/runner/training_util.h"
-#include "core/graph/training/training_optimizer.h"
-#include "test/training/runner/data_loader.h"
+#include "core/training/optimizer_config.h"
 #include "core/training/mpi_setup.h"
+#include "core/training/training_session.h"
+#include "test/training/runner/data_loader.h"
+#include "test/training/runner/training_util.h"
 
 namespace onnxruntime {
 namespace training {
@@ -112,7 +114,8 @@ class TrainingRunner {
   Status LoadAndEvaluate(const std::string& model_path);
   Status SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
                               const std::unordered_map<std::string, NodeArg*>& fp16_weights_map,
-                              std::unordered_map<std::string, OptimizerInfo>& infos);
+                              OptimizerGraphConfig& opt_graph_config,
+                              std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs);
 
   std::shared_ptr<IDataLoader> training_data_loader_ = nullptr;
   std::shared_ptr<IDataLoader> test_data_loader_ = nullptr;

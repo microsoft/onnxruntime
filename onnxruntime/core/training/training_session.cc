@@ -5,6 +5,7 @@
 #include "core/graph/training/loss_function_builder.h"
 #include "core/graph/training/training_optimizer.h"
 #include "core/training/gradient_graph_builder.h"
+#include "core/training/optimizer_graph_builder.h"
 #include "core/training/training_session.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/identity_elimination.h"
@@ -44,26 +45,14 @@ static Status BuildGradientGraphInternal(Graph& graph,
 }
 
 static Status BuildOptimizerInternal(Graph& graph,
-                                     const unordered_map<string, OptimizerInfo>& opt_info) {
-  GraphAugmenter::GraphDefs graph_defs;
+                                     const OptimizerGraphConfig& opt_graph_config,
+                                     const unordered_map<string, OptimizerNodeConfig>& opt_configs) {
+  OptimizerGraphBuilder optimizer_graph_builder{
+      OptimizerBuilderRegistry::GetInstance(), opt_graph_config, opt_configs};
 
-  // Add optimizer nodes
-  // Every weight currently has its own optimizer node.
-  for (auto it = opt_info.begin(); it != opt_info.end(); it++) {
-    auto weight_name = it->first;
-    const NodeArg* weight_arg = graph.GetNodeArg(weight_name);
-    ORT_RETURN_IF_NOT(weight_arg, "Node arg ", weight_name, " is not found in the graph.");
+  ORT_RETURN_IF_ERROR(optimizer_graph_builder.Build(graph));
 
-    auto optimizer_info = it->second;
-    auto opt_builder = OptimizerBuilderRegistry::GetInstance().MakeUnique(optimizer_info.name);
-    ORT_RETURN_IF_NOT(opt_builder);
-
-    ORT_RETURN_IF_ERROR(opt_builder->Build(weight_arg,
-                                           optimizer_info,
-                                           graph_defs));
-  }
-
-  return GraphAugmenter::AugmentGraph(graph, graph_defs);
+  return Status::OK();
 }
 
 Status TrainingSession::AddGistEncoding() {
@@ -119,26 +108,31 @@ Status TrainingSession::BuildGradientGraph(const unordered_set<string>& weights_
   return DoPostLoadProcessing(*model_);
 }
 
-Status TrainingSession::BuildOptimizer(const unordered_map<string, OptimizerInfo>& opt_info) {
-  ORT_RETURN_IF_NOT(!opt_info.empty(), "Cannot build optimizer due to the empty opt_info");
+Status TrainingSession::BuildOptimizer(
+    const OptimizerGraphConfig& opt_graph_config,
+    const unordered_map<string, OptimizerNodeConfig>& opt_configs) {
+  ORT_RETURN_IF_NOT(
+      opt_configs.size() == weights_to_train_.size(),
+      "Number of optimizer configurations does not match number of weights to train.")
 
-  std::unordered_set<std::string> weights_in_map;
-  for (auto it = opt_info.begin(); it != opt_info.end(); it++) {
-    weights_in_map.insert(it->first);
+  for (const auto& weight_name : weights_to_train_) {
+    ORT_RETURN_IF_NOT(
+        opt_configs.find(weight_name) != opt_configs.end(),
+        "Optimizer configuration was not found for weight to train: ", weight_name);
   }
-  ORT_RETURN_IF_NOT(weights_in_map == weights_to_train_, "the opt_info does not match weights_to_train_");
 
-  opt_info_ = opt_info;
+  opt_graph_config_ = opt_graph_config;
+  opt_configs_ = opt_configs;
 
   ORT_RETURN_IF_ERROR(BuildOptimizerInternal(model_->MainGraph(),
-                                             opt_info_));
+                                             opt_graph_config_,
+                                             opt_configs_));
 
   return DoPostLoadProcessing(*model_);
 }
 
 Status TrainingSession::OverrideGraphOutputs(const std::vector<std::string>& outputs) {
-  std::unordered_set<std::string> outputs_set(outputs.begin(), outputs.end());
-  ORT_RETURN_IF_ERROR(GraphAugmenter::OverrideGraphOutputs(model_->MainGraph(), outputs_set));
+  ORT_RETURN_IF_ERROR(GraphAugmenter::OverrideGraphOutputs(model_->MainGraph(), outputs));
   return DoPostLoadProcessing(*model_);
 }
 
@@ -222,7 +216,8 @@ Status TrainingSession::Save(const string& model_uri, TrainingSession::SaveOptio
                                                    weights_to_train_,
                                                    false));
     ORT_RETURN_IF_ERROR(BuildOptimizerInternal(new_model->MainGraph(),
-                                               opt_info_));
+                                               opt_graph_config_,
+                                               opt_configs_));
   }
 
   auto status = Model::Save(*new_model, model_uri);

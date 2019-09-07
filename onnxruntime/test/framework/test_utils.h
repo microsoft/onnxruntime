@@ -95,7 +95,7 @@ void AllocateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, OrtVa
 
 // Returns a map with the number of occurrences of each operator in the graph.
 // Helper function to check that the graph transformations have been successfully applied.
-std::map<std::string, int> CountOpsInGraph(const Graph& graph);
+std::map<std::string, int> CountOpsInGraph(const Graph& graph, bool recurse_into_subgraphs = true);
 
 }  // namespace test
 }  // namespace onnxruntime

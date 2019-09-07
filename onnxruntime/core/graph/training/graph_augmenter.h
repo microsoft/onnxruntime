@@ -153,6 +153,13 @@ class GraphAugmenter {
       return type_proto;
     }
 
+    TypeProto* CopyTypeProto(const ArgDef& argdef) {
+      ORT_ENFORCE(argdef.type_proto, "CopyTypeProto's argdef.type_proto is null.");
+      TypeProto* type_proto = CreateTypeProto();
+      type_proto->CopyFrom(*argdef.type_proto);
+      return type_proto;
+    }
+
    private:
     std::vector<NodeDef> node_defs_;
     std::vector<std::string> graph_output_names_;
@@ -165,7 +172,8 @@ class GraphAugmenter {
   // Augment the graph with new_graph_elements which defines new nodes, outputs, initializers.
   static common::Status AugmentGraph(Graph& graph, const GraphDefs& graph_element_defs);
 
-  static common::Status OverrideGraphOutputs(Graph& graph, const std::unordered_set<std::string>& graph_outputs);
+  // Manually set the graph outputs
+  static common::Status OverrideGraphOutputs(Graph& graph, const std::vector<std::string>& graph_outputs);
 };
 }  // namespace training
 }  // namespace onnxruntime

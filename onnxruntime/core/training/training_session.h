@@ -45,22 +45,24 @@ class TrainingSession : public InferenceSession {
   /** Perform auto-diff to add backward graph into the model.
   @param weights_to_train a set of weights to be training.
   @param loss_function_output_name the name of the loss function's output.
-  @param set_gradient_as_graph_output, if it is true, set gradient of trainable weight as graph output
+  @param set_gradient_as_graph_output if it is true, set gradient of trainable weight as graph output
   */
   common::Status BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,
                                     const std::string& loss_function_output_name,
                                     const bool set_gradient_as_graph_output = false);
 
   /** Add optimizer into the model. Each trainable weight will have an optimizer
-  @param opt_info, specify the optimizers used by each weight in weights_to_train, 1-1 mapping to weights_to_train.
-  @remarks the input param opt_info cannot be empty, otherwise, this function will return FAIL.
+  @param opt_graph_config The configuration that applies to all optimizers.
+  @param opt_configs specify the optimizers used by each weight in weights_to_train, 1-1 mapping to weights_to_train.
   */
-  common::Status BuildOptimizer(const std::unordered_map<std::string, OptimizerInfo>& opt_info);
+  common::Status BuildOptimizer(
+      const OptimizerGraphConfig& opt_graph_config,
+      const std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs);
 
   /** Enable mixed precision training
   @param weights_to_train a set of weights to be training.
   @param use_fp16_initializer specify whether fp16 initialier is created.
-  @param fp16_weights_map, the map between weights and FP16 weights.
+  @param fp16_weights_map the map between weights and FP16 weights.
   */
   common::Status EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train,
                                       bool use_fp16_initializer,
@@ -118,7 +120,8 @@ class TrainingSession : public InferenceSession {
   std::shared_ptr<ILossFunction> loss_graph_builder_;
   LossFunctionInfo loss_func_info_;
 
-  std::unordered_map<std::string, OptimizerInfo> opt_info_;
+  OptimizerGraphConfig opt_graph_config_;
+  std::unordered_map<std::string, OptimizerNodeConfig> opt_configs_;
 };
 }  // namespace training
 }  // namespace onnxruntime

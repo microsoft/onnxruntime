@@ -642,7 +642,7 @@ if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
 endif()
 
 if (onnxruntime_USE_HOROVOD)
-  if (Win32)
+  if (WIN32)
     message( FATAL_ERROR "Horovod is not supported on Windows." )
   elseif(UNIX)
     find_package(MPI REQUIRED)

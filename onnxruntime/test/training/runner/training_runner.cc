@@ -1,12 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "test/training/runner/training_runner.h"
+
 #include <algorithm>
 #include <memory>
+
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/session/environment.h"
-#include "test/training/runner/training_runner.h"
 #include "test/training/runner/training_util.h"
 
 #ifdef USE_CUDA
@@ -21,11 +23,7 @@ namespace training {
 static SessionOptions SESSION_OPTION = {
     true,                              //enable_sequential_execution
     false,                             //enable_profiling
-#ifdef _WIN32
-    L"",                               //optimized_model_filepath
-#else
-    "",                                //optimized_model_filepath
-#endif
+    ORT_TSTR(""),                      //optimized_model_filepath
     true,                              //enable_mem_pattern
     true,                              //enable_cpu_mem_arena
     ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
@@ -84,9 +82,10 @@ Status TrainingRunner::Initialize() {
   }
 
   // Add optimizer
-  std::unordered_map<std::string, OptimizerInfo> opt_info;
-  ORT_RETURN_IF_ERROR(SetupOptimizerParams(weights_to_train, fp16_weights_map, opt_info));
-  ORT_RETURN_IF_ERROR(session_.BuildOptimizer(opt_info));
+  OptimizerGraphConfig opt_graph_config{};
+  std::unordered_map<std::string, OptimizerNodeConfig> opt_configs;
+  ORT_RETURN_IF_ERROR(SetupOptimizerParams(weights_to_train, fp16_weights_map, opt_graph_config, opt_configs));
+  ORT_RETURN_IF_ERROR(session_.BuildOptimizer(opt_graph_config, opt_configs));
 
   // Expose all fetches as graph outputs
   ORT_RETURN_IF_ERROR(session_.OverrideGraphOutputs(params_.fetch_names));
@@ -204,9 +203,9 @@ Status TrainingRunner::TrainingLoop() {
   }
 
   auto total_batchs = total_batch_num - warm_up_iters;
-  std::cout << "Total running time:" << total_time << " seconds" << "\n"
-            << "Average running time per batch:" << total_time / total_batchs * 1000 << " ms" << "\n"
-            << "Throughput: " << params_.batch_size * total_batchs / total_time << " Examples / second" << std::endl;
+  std::cout << "Total running time:" << total_time << " seconds\n"
+            << "Average running time per batch:" << total_time / total_batchs * 1000 << " ms\n"
+            << "Throughput: " << params_.batch_size * total_batchs / total_time << " Examples / second\n";
 
   return Status::OK();
 }
@@ -325,26 +324,33 @@ Status TrainingRunner::LoadAndEvaluate(const std::string& model_path) {
 
 Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
                                             const std::unordered_map<std::string, NodeArg*>& fp16_weights_map,
-                                            std::unordered_map<std::string, OptimizerInfo>& opt_infos) {
+                                            OptimizerGraphConfig& opt_graph_config_result,
+                                            std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs) {
   // Prepare the weight<->optimizer mapping.
   // All weights use the same type of optimizer
-  OptimizerInfo opt_info{
+  OptimizerNodeConfig opt_config{
       params_.training_optimizer_name,
       nullptr,
       params_.learning_rate,
-      params_.mpi_context.world_rank,
-      params_.mpi_context.world_size,
       params_.optimizer_attributes,
       params_.use_fp16_moments};
 
-  opt_infos.reserve(weights_to_train.size());
+  opt_configs.reserve(weights_to_train.size());
   for (const auto& weight_name : weights_to_train) {
     const auto it = fp16_weights_map.find(weight_name);
     if (it != fp16_weights_map.cend()) {
-      opt_info.fp16_weight_arg = it->second;
+      opt_config.fp16_weight_arg = it->second;
     }
-    opt_infos[weight_name] = opt_info;
+    opt_configs[weight_name] = opt_config;
   }
+
+  // set up optimizer graph config
+  OptimizerGraphConfig opt_graph_config{};
+  opt_graph_config.use_mixed_precision = false;  //params_.use_mixed_precision;  // TODO enable when fully implemented
+  opt_graph_config.world_rank = params_.mpi_context.world_rank;
+  opt_graph_config.world_size = params_.mpi_context.world_size;
+
+  opt_graph_config_result = std::move(opt_graph_config);
 
   return Status::OK();
 }

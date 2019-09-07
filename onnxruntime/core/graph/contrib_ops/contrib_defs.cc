@@ -2206,7 +2206,7 @@ Example 4:
       .SetDomain(kOnnxDomain)
       .SetDoc("if all the inputs are available, the output will be true")
       .SinceVersion(9)
-      .Input(0, "input_tensors", "list of dependency tensors", "T", OpSchema::Variadic)
+      .Input(0, "input_tensors", "list of dependency tensors", "T", OpSchema::Variadic, false)
       .Output(0, "done", "all the dependency tensors are ready", "B")
       .TypeConstraint("T", OpSchema::all_tensor_types(), "All Tensor types")
       .TypeConstraint("B", {"tensor(bool)"}, "Only bool");

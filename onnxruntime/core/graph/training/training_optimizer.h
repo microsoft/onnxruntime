@@ -2,23 +2,14 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "core/graph/training/attr_proto_util.h"
 #include "core/graph/training/generic_registry.h"
 #include "core/graph/training/graph_augmenter.h"
-#include "core/graph/training/attr_proto_util.h"
 #include "core/framework/data_types.h"
+#include "core/training/optimizer_config.h"
 
 namespace onnxruntime {
 namespace training {
-
-struct OptimizerInfo {
-  std::string name;
-  const NodeArg* fp16_weight_arg;
-  float learning_rate;
-  int world_rank;
-  int world_size;
-  std::unordered_map<std::string, float> attributes;
-  bool use_fp16_moments;
-};
 
 // Utils for Constant Node Creation - Currently Used only in in_graph_training_optimizer
 // TODO: Move to an appropriate place if need arises
@@ -47,6 +38,13 @@ inline void SetTypedDataToTensor<int64_t>(int64_t val, TensorProto& tensor, int6
   }
 }
 
+// TODO clean up if not needed - temporarily used in OptimizerGraphBuilder to set the mixed precision conditional optimizer condition to a hard-coded value
+template <>
+inline void SetTypedDataToTensor<bool>(bool val, TensorProto& tensor, int64_t count) {
+  std::vector<char> value_bytes(count, val ? '\1' : '\0');
+  tensor.set_raw_data(value_bytes.data(), count);
+}
+
 template <class T>
 TensorProto CreateTensorProto(
     std::string name,
@@ -71,9 +69,37 @@ class OptimizerBuilder {
 
   virtual ~OptimizerBuilder() {}
 
-  virtual Status Build(const NodeArg* weight_arg,
-                       const OptimizerInfo& opt_info,
-                       GraphAugmenter::GraphDefs& graph_defs) const = 0;
+  /**
+   * Adds the optimizer node to the graph.
+   * This component may be placed into an If node subgraph to enable
+   * conditional execution.
+   *
+   * @param weight_argdef The ArgDef of the weight to optimize.
+   * @param gradient_argdef The ArgDef of the gradient of the weight to
+            optimize.
+   * @param opt_config The optimizer configuration.
+   * @param[out] graph_defs The GraphDefs corresponding to the graph (possibly
+   *             a subgraph) that the component is to be added to.
+   * @param[out] external_inputs_including_initializers Any inputs that should
+   *             come from the parent graph, if there is one.
+   *             Other inputs are treated as local to the current (sub)graph.
+   * @param[out] new_external_initializers Any initializers that should be
+   *             placed in the parent graph, if there is one.
+   *             Other initializers are treated as local to the current
+   *             (sub)graph.
+   * @param[out] output_weight_argdef The output weight ArgDef. All optimizers
+                 should have this output.
+   *
+   * @return The status of the optimizer node addition.
+   */
+  virtual Status Build(
+      const ArgDef& weight_argdef,
+      const ArgDef& gradient_argdef,
+      const OptimizerNodeConfig& opt_config,
+      GraphAugmenter::GraphDefs& graph_defs,
+      std::vector<ArgDef>& external_inputs_including_initializers,
+      std::vector<TensorProto>& new_external_initializers,
+      ArgDef& output_weight_argdef) const = 0;
 
   const std::string& OpType() const { return name_; }
 
@@ -86,11 +112,11 @@ class OptimizerBuilder {
     return name_ + "_" + weight_name;
   }
 
-  std::vector<AttributeProto> BuildAttributeProto(const OptimizerInfo& opt_info) const {
+  std::vector<AttributeProto> BuildAttributeProto(const OptimizerNodeConfig& opt_config) const {
     std::vector<AttributeProto> attribute_protos;
     for (auto attr_name : attr_names_) {
-      if (opt_info.attributes.count(attr_name)) {
-        attribute_protos.push_back(MakeAttribute(attr_name, opt_info.attributes.at(attr_name)));
+      if (opt_config.attributes.count(attr_name)) {
+        attribute_protos.push_back(MakeAttribute(attr_name, opt_config.attributes.at(attr_name)));
       }
     }
     return attribute_protos;
@@ -105,9 +131,14 @@ class SGDOptimizerBuilder final : public OptimizerBuilder {
  public:
   SGDOptimizerBuilder() : OptimizerBuilder("SGDOptimizer", 3, 1) {}
 
-  virtual Status Build(const NodeArg* weight_arg,
-                       const OptimizerInfo& opt_info,
-                       GraphAugmenter::GraphDefs& graph_defs) const override;
+  virtual Status Build(
+      const ArgDef& weight_argdef,
+      const ArgDef& gradient_argdef,
+      const OptimizerNodeConfig& opt_config,
+      GraphAugmenter::GraphDefs& graph_defs,
+      std::vector<ArgDef>& external_inputs_including_initializers,
+      std::vector<TensorProto>& new_external_initializers,
+      ArgDef& output_weight_argdef) const override;
 };
 
 class AdamOptimizerBuilder final : public OptimizerBuilder {
@@ -115,9 +146,14 @@ class AdamOptimizerBuilder final : public OptimizerBuilder {
   AdamOptimizerBuilder() : OptimizerBuilder("AdamOptimizer", 6, 4,
                                             {"alpha", "beta", "lambda", "epsilon"}) {}
 
-  virtual Status Build(const NodeArg* weight_arg,
-                       const OptimizerInfo& opt_info,
-                       GraphAugmenter::GraphDefs& graph_defs) const override;
+  virtual Status Build(
+      const ArgDef& weight_argdef,
+      const ArgDef& gradient_argdef,
+      const OptimizerNodeConfig& opt_config,
+      GraphAugmenter::GraphDefs& graph_defs,
+      std::vector<ArgDef>& external_inputs_including_initializers,
+      std::vector<TensorProto>& new_external_initializers,
+      ArgDef& output_weight_argdef) const override;
 };
 
 class LambOptimizerBuilder final : public OptimizerBuilder {
@@ -125,9 +161,14 @@ class LambOptimizerBuilder final : public OptimizerBuilder {
   LambOptimizerBuilder() : OptimizerBuilder("LambOptimizer", 5, 3,
                                             {"alpha", "beta", "lambda", "epsilon"}) {}
 
-  virtual Status Build(const NodeArg* weight_arg,
-                       const OptimizerInfo& opt_info,
-                       GraphAugmenter::GraphDefs& graph_defs) const override;
+  virtual Status Build(
+      const ArgDef& weight_argdef,
+      const ArgDef& gradient_argdef,
+      const OptimizerNodeConfig& opt_config,
+      GraphAugmenter::GraphDefs& graph_defs,
+      std::vector<ArgDef>& external_inputs_including_initializers,
+      std::vector<TensorProto>& new_external_initializers,
+      ArgDef& output_weight_argdef) const override;
 };
 
 class OptimizerBuilderRegistry : public GenericRegistry<OptimizerBuilder> {
