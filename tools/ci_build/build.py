@@ -567,8 +567,9 @@ def prepare_android_vm_for_test(args, source_dir, vm_test_dir = '/data/local/tmp
                      cwd=host_working_dir)
             adb_push(source_dir, 'models', vm_test_dir, cwd=args.build_dir)
 
-            adb_push(source_dir, 'onnxruntime_test_all', vm_working_dir, cwd=host_working_dir)
-            adb_push(source_dir, 'onnx_test_runner', vm_working_dir, cwd=host_working_dir)
+            subprocess.run([ 'adb','push','onnxruntime_test_all',vm_working_dir], cwd=host_working_dir)
+            subprocess.run([ 'adb','push','onnx_test_runner',vm_working_dir], cwd=host_working_dir)
+            #adb_push(source_dir, 'onnx_test_runner', vm_working_dir, cwd=host_working_dir)
             adb_push(source_dir, '*.dll', vm_working_dir, cwd=host_working_dir)
             adb_push(source_dir, '*.so', vm_working_dir, cwd=host_working_dir)
             adb_push(source_dir, '*.dylib', vm_working_dir, cwd=host_working_dir)
