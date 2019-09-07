@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cstring>
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 
@@ -16,11 +17,11 @@ bool TypeUtils::IsValidAttribute(const AttributeProto& attr) {
 
   if (attr.type() == AttributeProto_AttributeType_UNDEFINED) {
     const int num_fields =
-        attr.has_f() +
-        attr.has_i() +
-        attr.has_s() +
-        attr.has_t() +
-        attr.has_g() +
+        utils::HasFloat(attr) +
+        utils::HasInt(attr) +
+        utils::HasString(attr) +
+        utils::HasTensor(attr) +
+        utils::HasGraph(attr) +
         (attr.floats_size() > 0) +
         (attr.ints_size() > 0) +
         (attr.strings_size() > 0) +

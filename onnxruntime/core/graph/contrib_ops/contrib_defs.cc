@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
@@ -643,8 +644,8 @@ and op)DOC";
           *output_shape->mutable_dim(static_cast<int>(1)) = input_shape.dim(static_cast<int>(1));
 
           // process 'H' and 'W'
-          if (!input_shape.dim(static_cast<int>(2)).has_dim_value() ||
-              !input_shape.dim(static_cast<int>(3)).has_dim_value()) {
+          if (!utils::HasDimValue(input_shape.dim(static_cast<int>(2))) ||
+              !utils::HasDimValue(input_shape.dim(static_cast<int>(3)))) {
             // either height and width input has symbolic dims, so can't proceed further
             // add two dims as placeholders for output_H and output_W and return
             output_shape->add_dim();
@@ -1141,7 +1142,7 @@ of [N, 0] then [N, 0].
 
         int64_t size = 1;
         for (auto& dim : dims) {
-          if (dim.has_dim_value()) {
+          if (utils::HasDimValue(dim)) {
             size *= dim.dim_value();
           }
         }
@@ -1417,7 +1418,7 @@ Example 4:
           // make a copy of the returned const vector - may have to resize
           // this in next step
           std::vector<int64_t> pads_data;
-          if (pads_initializer->has_raw_data())
+          if (utils::HasRawData(*pads_initializer))
             return;
           else
             pads_data.insert(
@@ -1434,7 +1435,7 @@ Example 4:
           for (size_t i = 0; static_cast<int64_t>(i) < input_rank; ++i) {
             const auto& input_dim = input_shape.dim(static_cast<int>(i));
             auto* output_dim = output_shape->add_dim();
-            if (input_dim.has_dim_value()) {
+            if (utils::HasDimValue(input_dim)) {
               output_dim->set_dim_value(
                   input_dim.dim_value() + pads_data[i] + pads_data[i + input_rank]);
             } else if (pads_data[i] + pads_data[i + input_rank] == 0) {

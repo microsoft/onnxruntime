@@ -236,7 +236,7 @@ void NchwcTransformerImpl::ConvPoolShapeInference(const Node& node,
 
   auto* auto_pad_attr = graph_utils::GetNodeAttribute(node, "auto_pad");
   bool auto_pad_same_shape = false;
-  if (auto_pad_attr != nullptr && auto_pad_attr->has_s()) {
+  if (auto_pad_attr != nullptr && utils::HasString(*auto_pad_attr)) {
     auto& auto_pad = auto_pad_attr->s();
     if (auto_pad != "NOTSET") {
       if (auto_pad == "SAME_UPPER" || auto_pad == "SAME_LOWER") {
@@ -303,7 +303,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
   int64_t group_count;
   auto* group_attr = graph_utils::GetNodeAttribute(node, "group");
-  if (group_attr != nullptr && group_attr->has_i()) {
+  if (group_attr != nullptr && utils::HasInt(*group_attr)) {
     group_count = group_attr->i();
   } else {
     group_count = 1;
@@ -471,7 +471,7 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
     return;
   }
   auto& channels_dim = input_shape->dim(1);
-  if (!channels_dim.has_dim_value()) {
+  if (!utils::HasDimValue(channels_dim)) {
     return;
   }
   const int64_t channels = channels_dim.dim_value();
@@ -539,8 +539,8 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
         }
         auto& nchwc_input_0_dim = nchwc_input_0_shape->dim(i);
         auto& nchwc_input_n_dim = nchwc_input_n_shape->dim(i);
-        if (!nchwc_input_0_dim.has_dim_value() ||
-            !nchwc_input_n_dim.has_dim_value() ||
+        if (!utils::HasDimValue(nchwc_input_0_dim) ||
+            !utils::HasDimValue(nchwc_input_n_dim) ||
             (nchwc_input_0_dim.dim_value() <= 0) ||
             (nchwc_input_0_dim.dim_value() != nchwc_input_n_dim.dim_value())) {
           return;
@@ -594,7 +594,7 @@ void NchwcTransformerImpl::TransformConcat(Node& node) {
 
   // Verify that this is a concatenation along the channel axis.
   auto* axis_attr = graph_utils::GetNodeAttribute(node, "axis");
-  if (axis_attr == nullptr || !axis_attr->has_i() || axis_attr->i() != 1) {
+  if (axis_attr == nullptr || !utils::HasInt(*axis_attr) || axis_attr->i() != 1) {
     return;
   }
 

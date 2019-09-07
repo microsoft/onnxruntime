@@ -23,12 +23,17 @@
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
-
 // Return the MLDataType used for a generic Tensor
 template <>
 MLDataType DataTypeImpl::GetType<Tensor>() {
   return TensorTypeBase::Type();
 }
+} // namespace onnxruntime
+
+// This conflics with the above GetType<>() specialization
+#include "core/framework/tensorprotoutils.h"
+
+namespace onnxruntime {
 
 // Return the MLDataType used for a generic SparseTensor
 template <>
@@ -180,8 +185,7 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Opaque& opaque_proto,
 
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_proto,
                   const ONNX_NAMESPACE::TypeProto_Tensor& type_proto) {
-  return type_proto.has_elem_type() &&
-         type_proto.elem_type() == tensor_proto.elem_type();
+  return type_proto.elem_type() == tensor_proto.elem_type();
   /* Currently all Tensors with all kinds of shapes
      are mapped into the same MLDataType (same element type)
      so we omit shape from IsCompatible consideration
@@ -190,10 +194,6 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_proto,
 
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Map& map_proto,
                   const ONNX_NAMESPACE::TypeProto_Map& type_proto) {
-  if (!(type_proto.has_key_type() &&
-        type_proto.key_type() == map_proto.key_type())) {
-    return false;
-  }
   const auto& lhs = map_proto;
   const auto& rhs = type_proto;
   bool result = true;
@@ -230,8 +230,7 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Sequence& sequence_proto,
   bool result = true;
   const auto& lhs = sequence_proto;
   const auto& rhs = type_proto;
-  if (rhs.has_elem_type() &&
-      lhs.elem_type().value_case() == rhs.elem_type().value_case()) {
+  if (lhs.elem_type().value_case() == rhs.elem_type().value_case()) {
     switch (lhs.elem_type().value_case()) {
       case TypeProto::ValueCase::kTensorType:
         result = IsCompatible(lhs.elem_type().tensor_type(), rhs.elem_type().tensor_type());
@@ -260,16 +259,16 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Sequence& sequence_proto,
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Opaque& opaque_proto, const ONNX_NAMESPACE::TypeProto_Opaque& type_proto) {
   const auto& lhs = opaque_proto;
   const auto& rhs = type_proto;
-  bool lhs_domain = lhs.has_domain() && !lhs.domain().empty();
-  bool rhs_domain = rhs.has_domain() && !rhs.domain().empty();
+  bool lhs_domain = !lhs.domain().empty();
+  bool rhs_domain = !rhs.domain().empty();
 
   if ((lhs_domain != rhs_domain) ||
       (lhs_domain && rhs_domain && lhs.domain() != lhs.domain())) {
     return false;
   }
 
-  bool lhs_name = lhs.has_name() && !lhs.name().empty();
-  bool rhs_name = rhs.has_name() && !rhs.name().empty();
+  bool lhs_name = !lhs.name().empty();
+  bool rhs_name = !rhs.name().empty();
 
   return !((lhs_name != rhs_name) ||
            (lhs_name && rhs_name && lhs.name() != rhs.name()));
@@ -277,9 +276,7 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Opaque& opaque_proto, const ON
 
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_SparseTensor& tensor_proto,
                   const ONNX_NAMESPACE::TypeProto_SparseTensor& type_proto) {
-  return type_proto.has_elem_type() &&
-         type_proto.elem_type() == tensor_proto.elem_type();
-  // XXX: Ignoring shape for now
+  return type_proto.elem_type() == tensor_proto.elem_type();
 }
 
 void RegisterAllProtos(const std::function<void(MLDataType)>& /*reg_fn*/);
@@ -370,15 +367,16 @@ ONNX_NAMESPACE::TypeProto& TensorTypeBase::mutable_type_proto() {
 
 bool TensorTypeBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const {
   const auto* thisProto = GetTypeProto();
+  ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kTensorType);
+  ORT_ENFORCE(utils::HasElemType(thisProto->tensor_type()));
+
   if (&type_proto == thisProto) {
     return true;
   }
+
   if (type_proto.value_case() != TypeProto::ValueCase::kTensorType) {
     return false;
   }
-
-  ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kTensorType);
-  ORT_ENFORCE(thisProto->tensor_type().has_elem_type());
 
   return data_types_internal::IsCompatible(thisProto->tensor_type(), type_proto.tensor_type());
 }
@@ -408,7 +406,7 @@ bool SparseTensorTypeBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_pr
   }
 
   ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kSparseTensorType);
-  ORT_ENFORCE(thisProto->sparse_tensor_type().has_elem_type());
+  ORT_ENFORCE(utils::HasElemType(thisProto->sparse_tensor_type()));
 
   return data_types_internal::IsCompatible(thisProto->sparse_tensor_type(), type_proto.sparse_tensor_type());
 }
@@ -461,8 +459,8 @@ bool NonTensorTypeBase::IsMapCompatible(const ONNX_NAMESPACE::TypeProto& type_pr
     return false;
   }
   ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kMapType);
-  ORT_ENFORCE(thisProto->map_type().has_key_type());
-  ORT_ENFORCE(thisProto->map_type().has_value_type());
+  ORT_ENFORCE(utils::HasKeyType(thisProto->map_type()));
+  ORT_ENFORCE(utils::HasKeyType(thisProto->map_type()));
   return data_types_internal::IsCompatible(thisProto->map_type(), type_proto.map_type());
 }
 
@@ -475,7 +473,7 @@ bool NonTensorTypeBase::IsSequenceCompatible(const ONNX_NAMESPACE::TypeProto& ty
     return false;
   }
   ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kSequenceType);
-  ORT_ENFORCE(thisProto->sequence_type().has_elem_type());
+  ORT_ENFORCE(utils::HasElemType(thisProto->sequence_type()));
   return data_types_internal::IsCompatible(thisProto->sequence_type(), type_proto.sequence_type());
 }
 
@@ -488,8 +486,8 @@ bool NonTensorTypeBase::IsOpaqueCompatible(const ONNX_NAMESPACE::TypeProto& type
     return false;
   }
   ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kOpaqueType);
-  ORT_ENFORCE(thisProto->opaque_type().has_domain());
-  ORT_ENFORCE(thisProto->opaque_type().has_name());
+  ORT_ENFORCE(utils::HasDomain(thisProto->opaque_type()));
+  ORT_ENFORCE(utils::HasName(thisProto->opaque_type()));
   return data_types_internal::IsCompatible(thisProto->opaque_type(), type_proto.opaque_type());
 }
 
@@ -743,12 +741,12 @@ MLDataType DataTypeImpl::TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto) {
   switch (proto.value_case()) {
     case TypeProto::ValueCase::kTensorType: {
       const auto& tensor_type = proto.tensor_type();
-      ORT_ENFORCE(tensor_type.has_elem_type());
+      ORT_ENFORCE(utils::HasElemType(tensor_type));
       return TensorTypeFromONNXEnum(tensor_type.elem_type());
     } break;  // kTensorType
     case TypeProto::ValueCase::kSparseTensorType: {
       const auto& sparse_tensor_type = proto.sparse_tensor_type();
-      ORT_ENFORCE(sparse_tensor_type.has_elem_type());
+      ORT_ENFORCE(utils::HasElemType(sparse_tensor_type));
       return SparseTensorTypeFromONNXEnum(sparse_tensor_type.elem_type());
     } break;  // kSparseTensorType
     case TypeProto::ValueCase::kMapType: {

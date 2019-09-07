@@ -4,6 +4,7 @@
 #include "core/framework/tensor_shape.h"
 #include <iostream>
 #include "core/common/common.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
@@ -104,9 +105,9 @@ std::ostream& operator<<(std::ostream& out, const ONNX_NAMESPACE::TensorShapePro
       result.append(",");
     }
 
-    if (dim.has_dim_value())
+    if (utils::HasDimValue(dim))
       result.append(std::to_string(dim.dim_value()));
-    else if (dim.has_dim_param())
+    else if (utils::HasDimParam(dim))
       result.append(dim.dim_param());
 
     first = false;

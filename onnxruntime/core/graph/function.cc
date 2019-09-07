@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/function_impl.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
@@ -56,7 +57,7 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto
     // type attribute, we add its referenced attribute
     // into the op's schema
     for (auto& attr : node.attribute()) {
-      if (attr.has_ref_attr_name() && attr.has_type())
+      if (!attr.ref_attr_name().empty() && utils::HasType(attr))
         attribute_type_map[attr.ref_attr_name()] = attr.type();
     }
   }
@@ -230,7 +231,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     std::vector<onnxruntime::NodeArg*> inputs;
     std::vector<onnxruntime::NodeArg*> outputs;
     std::string uniq_identifier = node.name();
-    if (!node.has_name()) {
+    if (!utils::HasName(node)) {
       std::stringstream ss;
       ss << static_cast<const void*>(&node);
       uniq_identifier = ss.str();
@@ -273,7 +274,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
 
     onnxruntime::NodeAttributes new_attr_map;
     for (auto& attr : node.attribute()) {
-      if (attr.has_ref_attr_name()) {
+      if (!attr.ref_attr_name().empty()) {
         if (attr_map.count(attr.ref_attr_name())) {
           new_attr_map[attr.name()] = attr_map[attr.ref_attr_name()];
         }

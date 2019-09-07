@@ -13,6 +13,7 @@
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 
 using namespace onnxruntime::common;
@@ -250,14 +251,16 @@ class PlannerImpl {
 
   static bool SameShape(const TensorShapeProto& shape1, const TensorShapeProto& shape2) {
     // TODO: This should probably be defined to be the equality operator on TensorShapeProto.
+    namespace on = ONNX_NAMESPACE;
     int rank1 = shape1.dim_size();
     if (shape2.dim_size() != rank1) return false;
     for (int i = 0; i < rank1; i++) {
       const auto& val1 = shape1.dim(i);
       const auto& val2 = shape2.dim(i);
-      if (val1.has_dim_value() && val2.has_dim_value() && (val1.dim_value() == val2.dim_value()))
+      if (utils::HasDimValue(val1) && utils::HasDimValue(val2) &&
+         (val1.dim_value() == val2.dim_value()))
         continue;  // same known dimension
-      if (val1.has_dim_param() && val2.has_dim_param()) {
+      if (utils::HasDimParam(val1) && utils::HasDimParam(val2)) {
         const auto& val1_param = val1.dim_param();
         if (val1_param == val2.dim_param() && !val1_param.empty())
           continue;  // same unknown dimension
@@ -677,7 +680,7 @@ class PlannerImpl {
     // TODO: unclear why we should go through a string-representation of type
     auto ptype = nodearg.Type();
     auto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(ptype);
-    return !type_proto.has_tensor_type();
+    return !utils::HasTensorType(type_proto);
   }
 };  // namespace onnxruntime
 

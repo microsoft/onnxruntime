@@ -68,7 +68,7 @@ bool ShapeToInitializer::SatisfyCondition(const Graph& graph, const Node& node) 
 
   for (int i = 0, num_dims = input_shape->dim_size(); i < num_dims; i++) {
     const auto& input_dim = input_shape->dim(i);
-    if (!input_dim.has_dim_value() || input_dim.dim_value() < 0) {
+    if (!utils::HasDimValue(input_dim) || input_dim.dim_value() < 0) {
       return false;
     }
   }

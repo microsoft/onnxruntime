@@ -28,9 +28,9 @@ static bool CreateInput(const NodeArg* def,
   input = ShapeExpr(rank);
   for (int i = 0; i < rank; ++i) {
     const auto& dim = def_shape->dim()[i];
-    if (dim.has_dim_value())
+    if (utils::HasDimValue(dim))
       input[i] = DimExpr(dim.dim_value());
-    else if (dim.has_dim_param())
+    else if (utils::HasDimParam(dim))
       input[i] = DimExpr(dim.dim_param());
     else {
       input[i] = DimExpr(NormalizeNodeArgName(def) + "_dim" + std::to_string(i));
@@ -56,7 +56,7 @@ static Status CreateOutputs(
             if (shape[d] > 0) {
               output_shape[d] = DimExpr(shape[d]);
             } else {
-              ORT_RETURN_IF_NOT(shape_proto->dim_size() > d && shape_proto->dim(d).has_dim_param());
+              ORT_RETURN_IF_NOT(shape_proto->dim_size() > d && utils::HasDimParam(shape_proto->dim(d)));
               output_shape[d] = DimExpr(shape_proto->dim(d).dim_param());
             }
           }
