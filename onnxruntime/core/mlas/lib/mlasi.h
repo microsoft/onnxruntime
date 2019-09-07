@@ -133,6 +133,8 @@ Abstract:
 // Define the prototypes of the platform optimized routines.
 //
 
+#if defined(MLAS_TARGET_AMD64_IX86)
+
 typedef
 size_t
 (MLASCALL MLAS_GEMM_FLOAT_KERNEL)(
@@ -147,6 +149,24 @@ size_t
     float alpha,
     bool ZeroMode
     );
+
+#else
+
+typedef
+size_t
+(MLASCALL MLAS_GEMM_FLOAT_KERNEL)(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t CountK,
+    size_t CountM,
+    size_t CountN,
+    size_t lda,
+    size_t ldc,
+    float alpha
+    );
+
+#endif
 
 typedef MLAS_GEMM_FLOAT_KERNEL* PMLAS_GEMM_FLOAT_KERNEL;
 
