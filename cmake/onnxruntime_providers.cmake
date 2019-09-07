@@ -154,8 +154,10 @@ if (onnxruntime_USE_MIMALLOC)
       set(mimalloc_target_winsdk ${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION})
     endif()
 
-    add_custom_command(OUTPUT ${mimalloc_output} COMMAND msbuild ${mimalloc_root_dir}/ide/${vs_version}/mimalloc-override.vcxproj 
-                      /p:OutDir=${mimalloc_output_dir} /p:Platform=${CMAKE_GENERATOR_PLATFORM} /p:Configuration=${mimalloc_config} 
+    # msbuild throws a fit during a postbuild step when copying files if the source uses backslashes and the destination uses forward slashes
+    STRING(REGEX REPLACE "/" "\\\\" msbuild_converted_output_dir ${mimalloc_output_dir})
+    add_custom_command(OUTPUT ${mimalloc_output} COMMAND msbuild ${mimalloc_root_dir}/ide/${vs_version}/mimalloc.sln
+                      /p:OutDir=${msbuild_converted_output_dir} /p:Platform=${CMAKE_GENERATOR_PLATFORM} /p:Configuration=${mimalloc_config}
                       /p:WindowsTargetPlatformVersion=${mimalloc_target_winsdk})
     add_custom_target(mimalloc_override ALL DEPENDS ${mimalloc_output})
 
@@ -163,16 +165,23 @@ if (onnxruntime_USE_MIMALLOC)
     add_dependencies(mimalloc mimalloc_override)
     set_target_properties(mimalloc PROPERTIES IMPORTED_LOCATION "${mimalloc_output_dir}${mimalloc_output}.lib")
 
-    # copy the dll into the directory where setup.py will look for it
+    # copy the dlls into the directory where setup.py will look for them
+    if(${CMAKE_GENERATOR_PLATFORM} MATCHES "Win32")
+      set(mimalloc_deps ${mimalloc_output_dir}mimalloc-override32.dll)
+    else()
+      set(mimalloc_deps ${mimalloc_output_dir}mimalloc-override.dll)
+    endif()
     add_custom_command(TARGET mimalloc_override POST_BUILD
                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                       ${mimalloc_output_dir}${mimalloc_output}.dll
+                       ${mimalloc_output_dir}mimalloc-override.dll ${mimalloc_deps}
                        ${mimalloc_wheel_dir}
                    )
 
   else()
+    set(MI_BUILD_TESTS OFF CACHE BOOL "Build mimalloc tests" FORCE)
     add_subdirectory(${mimalloc_root_dir} EXCLUDE_FROM_ALL)
     set_target_properties(mimalloc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
     target_compile_definitions(mimalloc PUBLIC MI_USE_CXX=ON)
 
     # copy the dll into the directory where setup.py will look for it

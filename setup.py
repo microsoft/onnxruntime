@@ -124,7 +124,7 @@ elif platform.system() == "Darwin":
   libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.0.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
 else:
   libs = ['onnxruntime_pybind11_state.pyd', 'mkldnn.dll', 'mklml.dll', 'libiomp5md.dll']
-  libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll', 'mimalloc-override.dll'])
+  libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll', 'mimalloc-override.dll', 'mimalloc-redirect.dll', 'mimalloc-redirect32.dll'])
   # Nuphar Libs
   libs.extend(['tvm.dll'])
 
