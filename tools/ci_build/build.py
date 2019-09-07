@@ -560,15 +560,15 @@ def prepare_android_vm_for_test(args, source_dir, vm_test_dir = '/data/local/tmp
             # run_subprocess('ls '+host_working_dir, cwd=host_working_dir)
             subprocess.run(['ls'], cwd=host_working_dir, check=True, shell=True)
             adb_shell('mkdir '+vm_working_dir)
-            adb_push(source_dir, 'testdata', vm_working_dir, cwd=host_working_dir)
+#            adb_push(source_dir, 'testdata', vm_working_dir, cwd=host_working_dir)
             adb_push(source_dir, 
                      os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'), 
                      vm_working_dir+'/testdata', 
                      cwd=host_working_dir)
-            adb_push(source_dir, 'models', vm_test_dir, cwd=args.build_dir)
 
             subprocess.run([ 'adb','push','onnxruntime_test_all',vm_working_dir], cwd=host_working_dir)
             subprocess.run([ 'adb','push','onnx_test_runner',vm_working_dir], cwd=host_working_dir)
+            adb_push(source_dir, 'models', vm_test_dir, cwd=args.build_dir)
             #adb_push(source_dir, 'onnx_test_runner', vm_working_dir, cwd=host_working_dir)
             adb_push(source_dir, '*.dll', vm_working_dir, cwd=host_working_dir)
             adb_push(source_dir, '*.so', vm_working_dir, cwd=host_working_dir)
