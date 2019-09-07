@@ -259,16 +259,16 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Sequence& sequence_proto,
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Opaque& opaque_proto, const ONNX_NAMESPACE::TypeProto_Opaque& type_proto) {
   const auto& lhs = opaque_proto;
   const auto& rhs = type_proto;
-  bool lhs_domain = !lhs.domain().empty();
-  bool rhs_domain = !rhs.domain().empty();
+  bool lhs_domain = utils::HasDomain(lhs);
+  bool rhs_domain = utils::HasDomain(rhs);
 
   if ((lhs_domain != rhs_domain) ||
       (lhs_domain && rhs_domain && lhs.domain() != lhs.domain())) {
     return false;
   }
 
-  bool lhs_name = !lhs.name().empty();
-  bool rhs_name = !rhs.name().empty();
+  bool lhs_name = utils::HasName(lhs);
+  bool rhs_name = utils::HasName(rhs);
 
   return !((lhs_name != rhs_name) ||
            (lhs_name && rhs_name && lhs.name() != rhs.name()));
@@ -486,8 +486,6 @@ bool NonTensorTypeBase::IsOpaqueCompatible(const ONNX_NAMESPACE::TypeProto& type
     return false;
   }
   ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kOpaqueType);
-  ORT_ENFORCE(utils::HasDomain(thisProto->opaque_type()));
-  ORT_ENFORCE(utils::HasName(thisProto->opaque_type()));
   return data_types_internal::IsCompatible(thisProto->opaque_type(), type_proto.opaque_type());
 }
 
