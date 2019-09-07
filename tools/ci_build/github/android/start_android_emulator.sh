@@ -5,7 +5,7 @@ set -e
 
 echo "y" | $ANDROID_HOME/tools/bin/sdkmanager --install 'system-images;android-28;google_apis;x86_64'
 
-echo "no" | $ANDROID_HOME/tools/bin/avdmanager create avd -n android_emulator --sdcard $1 -k 'system-images;android-28;google_apis;x86_64' --force
+echo "no" | $ANDROID_HOME/tools/bin/avdmanager create avd -n android_emulator -k 'system-images;android-28;google_apis;x86_64' --force
 
 echo "Starting emulator"
 

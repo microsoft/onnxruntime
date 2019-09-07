@@ -551,22 +551,11 @@ def adb_shell(*args, **kwargs):
 def prepare_android_vm_for_test(args, source_dir, vm_test_dir = '/data/local/tmp'):
     for config in args.config:
         log.info('Setting up android test for Config = '+config) 
-        #cwd = get_config_build_dir(args.build_dir, config)
         if args.android_abi == 'x86_64':
             vm_working_dir = vm_test_dir+'/'+config
             host_working_dir = get_config_build_dir(args.build_dir, config)
-            log.info('Content of Host working dir:')
-            subprocess.run(['ls'], cwd=host_working_dir, check=True, shell=True)
 
-            run_subprocess([os.path.join(source_dir, 'tools', 'ci_build', 'github', 'android', 'start_android_emulator.sh')
-                            , args.build_dir
-                            ])
-            adb_shell('mount')
-            adb_shell(['echo','$EXTERNAL_STORAGE'])
-            adb_shell(['ls', '$EXTERNAL_STORAGE'])
-            adb_shell(['ls', '/mnt/external_sd'])
-
-            # run_subprocess('ls '+host_working_dir, cwd=host_working_dir)
+            run_subprocess(os.path.join(source_dir, 'tools', 'ci_build', 'github', 'android', 'start_android_emulator.sh'))
             adb_shell('mkdir '+vm_working_dir)
             adb_push(source_dir, 'testdata', vm_working_dir, cwd=host_working_dir)
             adb_push(source_dir, 
@@ -576,12 +565,13 @@ def prepare_android_vm_for_test(args, source_dir, vm_test_dir = '/data/local/tmp
 
             adb_push(source_dir, 'onnxruntime_test_all', vm_working_dir, cwd=host_working_dir)
             adb_push(source_dir, 'onnx_test_runner', vm_working_dir, cwd=host_working_dir)
-            adb_push(source_dir, 'models', vm_test_dir, cwd=args.build_dir)
-            adb_push(source_dir, '*.dll', vm_working_dir, cwd=host_working_dir)
-            adb_push(source_dir, '*.so', vm_working_dir, cwd=host_working_dir)
-            adb_push(source_dir, '*.dylib', vm_working_dir, cwd=host_working_dir)
-            log.info('After copying the files to VM:')
-            adb_shell('ls -R '+vm_test_dir)
+            # TODO: currently copying the models runs out of space in the AVD 
+            # adb_push(source_dir, 'models', vm_test_dir, cwd=args.build_dir)
+        
+            # TODO: shared_lib build does not work on android yet
+            # adb_push(source_dir, '*.dll', vm_working_dir, cwd=host_working_dir)
+            # adb_push(source_dir, '*.so', vm_working_dir, cwd=host_working_dir)
+            # adb_push(source_dir, '*.dylib', vm_working_dir, cwd=host_working_dir)
 
 def run_onnx_tests_on_android(args, vm_test_dir='/data/local/tmp'):
     for config in args.config:
