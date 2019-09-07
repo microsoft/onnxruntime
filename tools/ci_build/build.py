@@ -550,20 +550,22 @@ def adb_shell(*args, **kwargs):
 
 def prepare_android_vm_for_test(args, source_dir, vm_test_dir = '/data/local/tmp'):
     for config in args.config:
-        print('Setting up android test for Config = '+config) 
+        log.info('Setting up android test for Config = '+config) 
         #cwd = get_config_build_dir(args.build_dir, config)
         if args.android_abi == 'x86_64':
             run_subprocess(os.path.join(source_dir, 'tools', 'ci_build', 'github', 'android', 'start_android_emulator.sh'))
             vm_working_dir = vm_test_dir+'/'+config
             host_working_dir = get_config_build_dir(args.build_dir, config)
+            log.info('Content of Host working dir:')
+            run_subprocess('ls -R '+host_working_dir)
+
             adb_shell('mkdir '+vm_working_dir)
-            adb_shell('mkdir '+vm_test_dir+'/models')
             adb_push(source_dir, 'testdata', vm_working_dir, cwd=host_working_dir)
             adb_push(source_dir, 
                      os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'), 
                      vm_working_dir+'/testdata', 
                      cwd=host_working_dir)
-            adb_push(source_dir, 'models', vm_test_dir+'/models', cwd=args.build_dir)
+            adb_push(source_dir, 'models', vm_test_dir, cwd=args.build_dir)
 
             adb_push(source_dir, 'onnxruntime_test_all', vm_working_dir, cwd=host_working_dir)
             adb_push(source_dir, 'onnx_test_runner', vm_working_dir, cwd=host_working_dir)
