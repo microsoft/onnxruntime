@@ -553,12 +553,20 @@ def prepare_android_vm_for_test(args, source_dir, vm_test_dir = '/data/local/tmp
         log.info('Setting up android test for Config = '+config) 
         #cwd = get_config_build_dir(args.build_dir, config)
         if args.android_abi == 'x86_64':
-            run_subprocess(os.path.join(source_dir, 'tools', 'ci_build', 'github', 'android', 'start_android_emulator.sh'))
             vm_working_dir = vm_test_dir+'/'+config
             host_working_dir = get_config_build_dir(args.build_dir, config)
             log.info('Content of Host working dir:')
-            # run_subprocess('ls '+host_working_dir, cwd=host_working_dir)
             subprocess.run(['ls'], cwd=host_working_dir, check=True, shell=True)
+
+            run_subprocess([os.path.join(source_dir, 'tools', 'ci_build', 'github', 'android', 'start_android_emulator.sh')
+                            , args.build_dir
+                            ])
+            adb_shell('mount')
+            adb_shell(['echo','$EXTERNAL_STORAGE'])
+            adb_shell(['ls', '$EXTERNAL_STORAGE'])
+            adb_shell(['ls', '/mnt/external_sd'])
+
+            # run_subprocess('ls '+host_working_dir, cwd=host_working_dir)
             adb_shell('mkdir '+vm_working_dir)
             adb_push(source_dir, 'testdata', vm_working_dir, cwd=host_working_dir)
             adb_push(source_dir, 
