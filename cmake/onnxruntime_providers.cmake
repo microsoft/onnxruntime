@@ -122,7 +122,7 @@ if (onnxruntime_USE_MIMALLOC)
     -DUSE_MIMALLOC=1 # used in ONNXRuntime
     -DMI_OVERRIDE=ON) # used in building MiMalloc
   include_directories(${mimalloc_root_dir}/include)
-
+  
   if(NOT IS_DIRECTORY ${mimalloc_wheel_dir})
     file(MAKE_DIRECTORY ${mimalloc_wheel_dir})
   endif()
@@ -148,16 +148,22 @@ if (onnxruntime_USE_MIMALLOC)
       set(mimalloc_config, "Debug")
     endif()
 
+    set(mimalloc_target_winsdk ${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION})
     if(DEFINED ENV{WindowsSDKVersion})
       set(mimalloc_target_winsdk $ENV{WindowsSDKVersion})
-    else()
-      set(mimalloc_target_winsdk ${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION})
+    endif()
+    
+    set(mimalloc_deps ${mimalloc_output_dir}mimalloc-override.dll)
+    set(mimalloc_platform ${CMAKE_GENERATOR_PLATFORM})
+    if(${CMAKE_GENERATOR_PLATFORM} MATCHES "Win32")
+      set(mimalloc_deps ${mimalloc_output_dir}mimalloc-override32.dll)
+      set(mimalloc_platform x86)
     endif()
 
     # msbuild throws a fit during a postbuild step when copying files if the source uses backslashes and the destination uses forward slashes
     STRING(REGEX REPLACE "/" "\\\\" msbuild_converted_output_dir ${mimalloc_output_dir})
     add_custom_command(OUTPUT ${mimalloc_output} COMMAND msbuild ${mimalloc_root_dir}/ide/${vs_version}/mimalloc.sln
-                      /p:OutDir=${msbuild_converted_output_dir} /p:Platform=${CMAKE_GENERATOR_PLATFORM} /p:Configuration=${mimalloc_config}
+                      /p:OutDir=${msbuild_converted_output_dir} /p:Platform=${mimalloc_platform} /p:Configuration=${mimalloc_config}
                       /p:WindowsTargetPlatformVersion=${mimalloc_target_winsdk})
     add_custom_target(mimalloc_override ALL DEPENDS ${mimalloc_output})
 
@@ -166,11 +172,6 @@ if (onnxruntime_USE_MIMALLOC)
     set_target_properties(mimalloc PROPERTIES IMPORTED_LOCATION "${mimalloc_output_dir}${mimalloc_output}.lib")
 
     # copy the dlls into the directory where setup.py will look for them
-    if(${CMAKE_GENERATOR_PLATFORM} MATCHES "Win32")
-      set(mimalloc_deps ${mimalloc_output_dir}mimalloc-override32.dll)
-    else()
-      set(mimalloc_deps ${mimalloc_output_dir}mimalloc-override.dll)
-    endif()
     add_custom_command(TARGET mimalloc_override POST_BUILD
                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
                        ${mimalloc_output_dir}mimalloc-override.dll ${mimalloc_deps}
