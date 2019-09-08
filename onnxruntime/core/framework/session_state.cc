@@ -240,9 +240,6 @@ const SessionState::NameNodeInfoMapType& SessionState::GetInputNodeInfoMap() con
 
 void SessionState::AddOutputNameToNodeInfoMapping(const std::string& output_name, const NodeInfo& node_info) {
   auto& output_names_to_nodeinfo = output_names_to_nodeinfo_mapping_[output_name];
-  if (!output_names_to_nodeinfo.empty())
-    std::cout << output_name;
-
   ORT_ENFORCE(output_names_to_nodeinfo.empty(), "Only one node should produce an output. Existing entry for ",
               output_name);
 
