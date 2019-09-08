@@ -211,10 +211,10 @@ namespace Microsoft.ML.OnnxRuntime
         // Set a flag so that any running OrtRun* calls that are using this instance of OrtRunOptions
         // will exit as soon as possible if the flag is true.
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtRunOptionsEnableTerminate(IntPtr /* OrtRunOptions* */ options);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtRunOptionsSetTerminate(IntPtr /* OrtRunOptions* */ options);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtRunOptionsDisableTerminate(IntPtr /* OrtRunOptions* */ options);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtRunOptionsUnsetTerminate(IntPtr /* OrtRunOptions* */ options);
 
 
 
