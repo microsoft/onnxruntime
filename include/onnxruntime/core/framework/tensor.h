@@ -64,7 +64,7 @@ class Tensor final {
    *              Tensor does not own the data and will not delete it
    * \param alloc Where the buffer('data') was allocated from
    */
-  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtAllocatorInfo& alloc,
+  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
          int64_t offset = 0);
 
   /**
@@ -95,7 +95,7 @@ class Tensor final {
   /**
      Returns the location of the tensor's memory
   */
-  const OrtAllocatorInfo& Location() const { return alloc_info_; }
+  const OrtMemoryInfo& Location() const { return alloc_info_; }
 
   /**
      May return nullptr if tensor size is zero
@@ -202,7 +202,7 @@ class Tensor final {
 
   TensorShape shape_;
   MLDataType dtype_;
-  OrtAllocatorInfo alloc_info_;
+  OrtMemoryInfo alloc_info_;
   int64_t byte_offset_;
 };
 #ifdef __GNUC__

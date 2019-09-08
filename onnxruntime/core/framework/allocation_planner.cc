@@ -448,7 +448,7 @@ class PlannerImpl {
     return Status::OK();
   }
 
-  OrtAllocatorInfo GetLocationForNodeInput(size_t input_index, const Node& node) {
+  OrtMemoryInfo GetLocationForNodeInput(size_t input_index, const Node& node) {
     auto* p_provider = execution_providers_.Get(node);
     ORT_ENFORCE(p_provider);
 
@@ -464,7 +464,7 @@ class PlannerImpl {
 
   Status GeneratePlanForWeights() {
     auto& weights = graph_viewer_.GetAllInitializedTensors();
-    std::vector<std::vector<OrtAllocatorInfo>> locations(plan_.allocation_plan.size());
+    std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
     for (auto& node : graph_viewer_.Nodes()) {
       ORT_RETURN_IF_ERROR(onnxruntime::Node::ForEachWithIndex(
           node.InputDefs(), [this, &locations, &node, &weights](const onnxruntime::NodeArg& def, size_t index) {
@@ -480,7 +480,7 @@ class PlannerImpl {
           }));
     }
     for (size_t i = 0; i != locations.size(); ++i) {
-      const std::vector<OrtAllocatorInfo>& loc = locations[i];
+      const std::vector<OrtMemoryInfo>& loc = locations[i];
       if (loc.empty()) continue;
       plan_.allocation_plan[i].alloc_kind = AllocKind::kAllocateStatically;
       plan_.allocation_plan[i].location = loc[0];
@@ -607,8 +607,7 @@ class PlannerImpl {
       AllocPlanPerValue& value_plan = AllocPlan(index);
 
       has_fence = value_plan.create_fence_if_async;
-      if (value_plan.alloc_kind == AllocKind::kReuse)
-      {
+      if (value_plan.alloc_kind == AllocKind::kReuse) {
         // Buffer reused, check original buffer to see if fence is shared.
         has_fence = has_fence || AllocPlan(value_plan.reused_buffer).create_fence_if_async;
       }
@@ -619,7 +618,6 @@ class PlannerImpl {
 
   // Compute fence check. Set has_fence flag if either one of inputs, implicit inputs or outputs of a given node has fence.
   Status ComputeFenceCheck() {
-
     for (SequentialExecutionPlan::NodeExecutionPlan& step : plan_.execution_plan) {
       auto pnode = graph_viewer_.GetNode(step.node_index);
       if (pnode == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Can not find the node ", step.node_index);
