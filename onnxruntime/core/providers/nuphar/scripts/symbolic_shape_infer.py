@@ -39,6 +39,15 @@ def get_opset(mp, domain=['', 'onnx']):
             return opset.version
     return None
 
+def as_scalar(x):
+    if type(x) == list:
+        assert len(x) == 1
+        return x[0]
+    elif type(x) == np.ndarray:
+        return np.asscalar(x)
+    else:
+        return x
+
 class SymbolicShapeInference:
     def __init__(self, auto_merge, verbose):
         self.dispatcher_ = {
@@ -60,6 +69,7 @@ class SymbolicShapeInference:
             'NonZero'           : self._infer_NonZero,
             'OneHot'            : self._infer_OneHot,
             'Pad'               : self._infer_Pad,
+            'Range'             : self._infer_Range,
             'ReduceProd'        : self._infer_ReduceProd,
             'Reshape'           : self._infer_Reshape,
             'Round'             : self._pass_on_shape_and_type,
@@ -325,7 +335,7 @@ class SymbolicShapeInference:
         if pads is None:
             pads = [0]*(2*rank)
             auto_pad = get_attribute(node, 'auto_pad', b'NOTSET').decode('utf-8')
-            if auto_pad != 'VALID':
+            if auto_pad != 'VALID' and auto_pad != 'NOTSET':
                 try:
                     residual = [sympy.Mod(d, s) for d, s in zip(sympy_shape[-rank:], strides)]
                     total_pads = [max(0, (k - s) if r == 0 else (k - r)) for k, s, r in zip(effective_kernel_shape, strides, residual)]
@@ -502,6 +512,19 @@ class SymbolicShapeInference:
             new_shape = [d + pad_up + pad_down for d, pad_up, pad_down in zip(sympy_shape, pads[:rank], pads[rank:])]
             self._update_computed_dims(new_shape)
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0], vi.type.tensor_type.elem_type, get_shape_from_sympy_shape(new_shape)))
+
+    def _infer_Range(self, node):
+        vi = self.known_vi_[node.output[0]]
+        input_data = self._get_int_values(node)
+        if all([i is not None for i in input_data]):
+            start = as_scalar(input_data[0])
+            limit = as_scalar(input_data[1])
+            delta = as_scalar(input_data[2])
+            new_shape = [sympy.Max(sympy.ceiling((limit - start)/delta), 0)]
+        else:
+            new_dim = self._new_symbolic_dim_from_output(node)
+            new_shape = [self.symbolic_dims_[new_dim]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, get_shape_from_sympy_shape(new_shape)))
 
     def _infer_ReduceProd(self, node):
         axes = get_attribute(node, 'axes')
@@ -706,12 +729,14 @@ class SymbolicShapeInference:
             if self.verbose_ > 2:
                 print(node.op_type + ': ' + node.name)
             for i_o in range(len(node.output)):
+                out_type = self.known_vi_[node.output[i_o]].type
                 out_shape = get_shape_from_type_proto(self.known_vi_[node.output[i_o]].type)
+                out_type_undefined = out_type.tensor_type.elem_type == onnx.TensorProto.UNDEFINED
                 if self.verbose_ > 2:
                     print('  {}: {} {}'.format(node.output[i_o], str(out_shape), self.known_vi_[node.output[i_o]].type.tensor_type.elem_type))
                     if node.output[i_o] in self.sympy_data_:
                         print('  Sympy Data: ' + str(self.sympy_data_[node.output[i_o]]))
-                if None in out_shape:
+                if None in out_shape or out_type_undefined:
                     if self.auto_merge_:
                         if node.op_type in ['Add', 'Sub', 'Mul', 'Div', 'MatMul', 'Concat']:
                             shapes = [self._get_shape(node, i) for i in range(len(node.input))]
@@ -738,11 +763,11 @@ class SymbolicShapeInference:
                     else:
                         self.run_ = False
 
-                    if self.verbose_ > 0 or not self.auto_merge_:
+                    if self.verbose_ > 0 or not self.auto_merge_ or out_type_undefined:
                         print('Stopping at incomplete shape inference at ' + node.op_type + ': ' + node.name)
                         for o in node.output:
                             print(self.known_vi_[o])
-                        if self.auto_merge_:
+                        if self.auto_merge_ and not out_type_undefined:
                             print('Merging: ' + str(self.suggested_merge_))
                     return False
 
