@@ -85,13 +85,17 @@ else
     RUNTIME="--runtime=nvidia"
 fi
 
+DOCKER_RUN_PARAMETER="--name onnxruntime-$BUILD_DEVICE \
+                      --volume $SOURCE_ROOT:/onnxruntime_src \
+                      --volume $BUILD_DIR:/build \
+                      --volume $HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime \
+                      --volume $HOME/.onnx:/home/onnxruntimedev/.onnx"
+if [ $BUILD_DEVICE = "openvino" ]; then
+DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --device /dev/dri:/dev/dri"
+fi
+
 docker rm -f "onnxruntime-$BUILD_DEVICE" || true
-docker run $RUNTIME -h $HOSTNAME \
-    --name "onnxruntime-$BUILD_DEVICE" \
-    --volume "$SOURCE_ROOT:/onnxruntime_src" \
-    --volume "$BUILD_DIR:/build" \
-    --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
-    --volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" \
+docker run $RUNTIME -h $HOSTNAME $DOCKER_RUN_PARAMETER \
     -e NIGHTLY_BUILD \
     "onnxruntime-$IMAGE" \
     /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
