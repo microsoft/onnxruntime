@@ -195,7 +195,7 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
   //3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {
     int ort_value_index = entry.first;
-    const char* name = entry.second->has_name() ? entry.second->name().c_str() : "";
+    const char* name = (entry.second->name().empty()) ? "" : entry.second->name().c_str();
     const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
 
     std::unique_ptr<MemBuffer> m;
