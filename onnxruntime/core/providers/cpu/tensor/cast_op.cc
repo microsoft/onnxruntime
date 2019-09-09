@@ -352,7 +352,7 @@ Status Cast<MLFloat16>::Compute(OpKernelContext* context) const {
       st = CastFloat16Data<MLFloat16, int8_t>(X, Y, shape, context);
       break;
     case TensorProto_DataType_STRING:
-      ORT_THROW("Casting to and from strings is not supported yet."); /*break;*/
+      ORT_THROW("Casting from 'float16' to 'string' is not supported yet."); /*break;*/
     case TensorProto_DataType_UNDEFINED:
       ORT_THROW("Cast op must have 'to' argument of type DataType"); /*break;*/
     default:
