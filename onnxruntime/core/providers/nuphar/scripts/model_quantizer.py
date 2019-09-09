@@ -248,10 +248,6 @@ def convert_matmul_model(input_model, output_model, only_for_scan=False, share_i
         if upgrade_op(nf, in_n):
             continue
 
-        if in_n.op_type == 'TopK' and len(in_n.input) == 1:
-            upgrade_topk_op(nf, in_n)
-            continue
-
         if in_n.op_type == 'MatMul' and not only_for_scan:
             if quantize_matmul_2d_with_weight(in_n, in_mp.graph, nf, converted_weights, quantized_inputs, qcfg_dict, export_qcfg_json, default_qcfg):
                 continue
