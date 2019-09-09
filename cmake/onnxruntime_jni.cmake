@@ -3,7 +3,13 @@ if(onnxruntime_BUILD_JNI)
       SHARED
       ${REPO_ROOT}/java/java_api.cpp
       ${REPO_ROOT}/java/jni_helper.h)
+  
   if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+    set(JAVA_HOME "C:/Program Files/Java/openjdk-11")
+#    set(JAVA_AWT_LIBRARY NotNeeded)
+#    set(JAVA_JVM_LIBRARY NotNeeded)
+#    set(JAVA_INCLUDE_PATH2 NotNeeded)
+#    set(JAVA_AWT_INCLUDE_PATH NotNeeded)
     find_package(JNI REQUIRED)
     target_include_directories(onnxruntime-jni
         PUBLIC
