@@ -59,13 +59,13 @@ Currently ONNX Runtime supports the following accelerators:
 * [OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)
 * [Nuphar](./docs/execution_providers/Nuphar-ExecutionProvider.md)
 
-Not all variations are supported in the [official release builds](#apis-and-official-builds), but can be built from source following [these instructions](./BUILD.md). Find Dockerfiles [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles).
+Not all variations are supported in the [official release builds](#apis-and-official-builds), but can be built from source following [these instructions](./BUILD.md). Find Dockerfiles [here](./dockerfiles).
 
 We are continuously working to integrate new execution providers for further improvements in latency and efficiency. If you are interested in contributing a new execution provider, please see [this page](docs/AddingExecutionProvider.md).
 
 
 ## Cross Platform
-[API documentation and package installation](https://github.com/microsoft/onnxruntime#installation)
+[API documentation and package installation](#installation)
 
 ONNX Runtime is currently available for Linux, Windows, and Mac with Python, C#, C++, and C APIs.
 If you have specific scenarios that are not supported, please share your suggestions and scenario details via [Github Issues](https://github.com/microsoft/onnxruntime/issues).
@@ -73,7 +73,7 @@ If you have specific scenarios that are not supported, please share your suggest
 # Installation
 **Quick Start:** The [ONNX-Ecosystem Docker container image](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem) is available on Dockerhub and includes ONNX Runtime (CPU, Python), dependencies, tools to convert from various frameworks, and Jupyter notebooks to help get started.
 
-Additional dockerfiles for some features can be found [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles).
+Additional dockerfiles for some features can be found [here](./dockerfiles).
 
 ## APIs and Official Builds
 
