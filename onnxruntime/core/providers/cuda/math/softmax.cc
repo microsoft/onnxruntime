@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "softmax.h"
+#include "softmax_impl.h"
 #include "core/providers/common.h"
 #include "core/providers/cuda/cudnn_common.h"
 
@@ -35,14 +36,17 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
   auto x_data = reinterpret_cast<const CudaT*>(X.template Data<T>());
 
-  const auto alpha = Consts<CudaT>::One;
-  const auto beta = Consts<CudaT>::Zero;
-  CudnnTensor input_tensor;
-  CudnnTensor output_tensor;
-  ORT_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
-  ORT_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
-  CUDNN_RETURN_IF_ERROR(cudnnSoftmaxForward(CudnnHandle(), CUDNN_SOFTMAX_ACCURATE, CUDNN_SOFTMAX_MODE_INSTANCE, &alpha, input_tensor, x_data, &beta, output_tensor, y_data));
-
+  if (D <= 128) {
+    launchSoftmaxKernel(x_data, y_data, static_cast<int>(N), static_cast<int>(D));
+  } else {
+    const auto alpha = Consts<CudaT>::One;
+    const auto beta = Consts<CudaT>::Zero;
+    CudnnTensor input_tensor;
+    CudnnTensor output_tensor;
+    ORT_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
+    ORT_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
+    CUDNN_RETURN_IF_ERROR(cudnnSoftmaxForward(CudnnHandle(), CUDNN_SOFTMAX_FAST, CUDNN_SOFTMAX_MODE_INSTANCE, &alpha, input_tensor, x_data, &beta, output_tensor, y_data));
+  }
   return Status::OK();
 }
 
