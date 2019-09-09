@@ -153,10 +153,10 @@ if (onnxruntime_USE_MIMALLOC)
       set(mimalloc_target_winsdk $ENV{WindowsSDKVersion})
     endif()
     
-    set(mimalloc_deps ${mimalloc_output_dir}mimalloc-override.dll)
+    set(mimalloc_deps ${mimalloc_output_dir}mimalloc-redirect.dll)
     set(mimalloc_platform ${CMAKE_GENERATOR_PLATFORM})
     if(${CMAKE_GENERATOR_PLATFORM} MATCHES "Win32")
-      set(mimalloc_deps ${mimalloc_output_dir}mimalloc-override32.dll)
+      set(mimalloc_deps ${mimalloc_output_dir}mimalloc-redirect32.dll)
       set(mimalloc_platform x86)
     endif()
 
