@@ -1,11 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-
 #include "core/providers/cpu/nn/conv_integer.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include "core/util/gemmlowp_common.h"
+#include "core/util/qmath.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {
@@ -22,11 +21,12 @@ ONNX_OPERATOR_KERNEL_EX(
     ConvInteger);
 
 Status ConvInteger::Compute(OpKernelContext* context) const {
+
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const auto* X = context->Input<Tensor>(0);
   const auto* W = context->Input<Tensor>(1);
   uint8_t input_offset = 0;
-  uint8_t filter_offset = 0;  
+  uint8_t filter_offset = 0;
   if (num_inputs >= 3) {
     const auto* X_Zero_Point = context->Input<Tensor>(2);
     ORT_ENFORCE(IsScalarOr1ElementVector(X_Zero_Point), "Must be a scalar or 1D tensor or size 1.");
@@ -35,7 +35,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   if (num_inputs >= 4) {
     const auto* W_Zero_Point = context->Input<Tensor>(3);
     ORT_ENFORCE(IsScalarOr1ElementVector(W_Zero_Point), "Non per-tensor quantization is not supported now.");
-    filter_offset = *(W_Zero_Point->Data<uint8_t>());    
+    filter_offset = *(W_Zero_Point->Data<uint8_t>());
   }
 
   const int64_t N = X->Shape()[0];
@@ -108,14 +108,18 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
           false,
           input_offset);
 
-      GemmlowpMultiplyu8u8_s32(W->template Data<uint8_t>() + group_id * W_offset,
-                               col_buffer_data,
-                               Ydata + group_id * Y_offset,
-                               filter_offset,
-                               input_offset,
-                               static_cast<int>(M / group_),
-                               static_cast<int>(output_image_size),
-                               static_cast<int>(kernel_dim));
+      QGemmu8u8_s32(static_cast<int>(M / group_),
+                    static_cast<int>(output_image_size),
+                    static_cast<int>(kernel_dim),
+                    W->template Data<uint8_t>() + group_id * W_offset,
+                    static_cast<int>(kernel_dim),
+                    filter_offset,
+                    col_buffer_data,
+                    static_cast<int>(output_image_size),
+                    input_offset,
+                    Ydata + group_id * Y_offset,
+                    static_cast<int>(output_image_size),
+                    nullptr);
     }
 
     Xdata += X_offset * group_;

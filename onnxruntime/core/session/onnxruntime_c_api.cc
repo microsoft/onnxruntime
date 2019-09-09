@@ -179,7 +179,7 @@ OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, OrtAllocator
  * this function will create a copy of the allocator info
  */
 template <typename T>
-OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, const OrtAllocatorInfo* info,
+OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, const OrtMemoryInfo* info,
                             void* p_data, size_t p_data_len, std::unique_ptr<Tensor>* out) {
   size_t elem_count = 1;
   std::vector<int64_t> shapes(shape_len);
@@ -204,7 +204,7 @@ OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, const OrtAll
 /**
  * this function will create a copy of the allocator info
  */
-ORT_API_STATUS_IMPL(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorInfo* info,
+ORT_API_STATUS_IMPL(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtMemoryInfo* info,
                     _Inout_ void* p_data, size_t p_data_len, _In_ const int64_t* shape, size_t shape_len,
                     ONNXTensorElementDataType type, _Outptr_ OrtValue** out) {
   API_IMPL_BEGIN
@@ -615,7 +615,7 @@ ORT_API_STATUS_IMPL(OrtAllocatorFree, _Inout_ OrtAllocator* ptr, void* p) {
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr, _Outptr_ const struct OrtAllocatorInfo** out) {
+ORT_API_STATUS_IMPL(OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr, _Outptr_ const struct OrtMemoryInfo** out) {
   API_IMPL_BEGIN
   *out = ptr->Info(ptr);
   return nullptr;

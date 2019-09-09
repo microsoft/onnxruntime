@@ -177,6 +177,15 @@ jobs:
       downloadPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
       gitCommitHash: $(OnnxRuntimeGitCommitHashShort)  
 
+
+  - task: PowerShell@2
+    displayName: 'Get Current Date'
+    inputs:
+      targetType: 'inline'
+      script: |
+          $date = $(Get-Date -Format "yyyy-MM-dd")
+          Write-Host "##vso[task.setvariable variable=CurrentDate]$date"
+
   - task: AzureFileCopy@3
     displayName: 'Copy Signed NuGet Package to Blob Store'
     condition: ne(variables['IsReleaseBuild'], 'true') # rlease build has a different package naming scheme
@@ -186,4 +195,5 @@ jobs:
       destination: azureBlob
       storage: ortpackages
       containerName: ortpackages
+      blobPrefix: '$(CurrentDate)/'
 

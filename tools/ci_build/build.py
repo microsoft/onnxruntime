@@ -127,6 +127,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_openblas", action='store_true', help="Build with OpenBLAS.")
     parser.add_argument("--use_mkldnn", action='store_true', help="Build with MKLDNN.")
     parser.add_argument("--use_mklml", action='store_true', help="Build with MKLML.")
+    parser.add_argument("--use_gemmlowp", action='store_true', help="Build with gemmlowp for quantized gemm.")
     parser.add_argument("--use_automl", action='store_true', help="Build with AutoML support.")
     parser.add_argument("--use_ngraph", action='store_true', help="Build with nGraph.")
     parser.add_argument("--use_openvino", nargs="?", const="CPU_FP32",
@@ -175,7 +176,7 @@ def get_config_build_dir(build_dir, config):
     # build directory per configuration
     return os.path.join(build_dir, config)
 
-def run_subprocess(args, cwd=None, capture=False, dll_path=None, shell=False):
+def run_subprocess(args, cwd=None, capture=False, dll_path=None, shell=False, env={}):
     log.debug("Running subprocess in '{0}'\n{1}".format(cwd or os.getcwd(), args))
     my_env = os.environ.copy()
     if dll_path:
@@ -188,6 +189,7 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None, shell=False):
                 my_env["LD_LIBRARY_PATH"] = dll_path
 
     stdout, stderr = (subprocess.PIPE, subprocess.STDOUT) if capture else (None, None)
+    my_env.update(env)
     return subprocess.run(args, cwd=cwd, check=True, stdout=stdout, stderr=stderr, env=my_env, shell=shell)
 
 def update_submodules(source_dir):
@@ -232,8 +234,10 @@ def install_ubuntu_deps(args):
             raise BuildError("Error setting up required APT packages. {}".format(str(e)))
 
 def install_python_deps(numpy_version=""):
-    dep_packages = ['setuptools', 'wheel']
+    dep_packages = ['setuptools', 'wheel', 'pytest']
     dep_packages.append('numpy=={}'.format(numpy_version) if numpy_version else 'numpy>=1.15.0')
+    dep_packages.append('sympy>=1.1')
+    dep_packages.append('packaging')
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
 def check_md5(filename, expected_md5):
@@ -334,6 +338,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_OPENBLAS=" + ("ON" if args.use_openblas else "OFF"),
                  "-Donnxruntime_USE_MKLDNN=" + ("ON" if args.use_mkldnn else "OFF"),
                  "-Donnxruntime_USE_MKLML=" + ("ON" if args.use_mklml else "OFF"),
+                 "-Donnxruntime_USE_GEMMLOWP=" + ("ON" if args.use_gemmlowp else "OFF"),
                  "-Donnxruntime_USE_NGRAPH=" + ("ON" if args.use_ngraph else "OFF"),
                  "-Donnxruntime_USE_OPENVINO=" + ("ON" if args.use_openvino else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_BINARY=" + ("ON" if args.use_openvino else "OFF"),
@@ -599,7 +604,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 if onnxml_test:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
 
-
 def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_parallel_executor_test, num_parallel_models):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -616,6 +620,8 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
              cmd += ['-c', '1']
           if provider == 'openvino':
              cmd += ['-c', '1']
+          if provider == 'nuphar':
+             cmd += ['-c', '1']
 
         if num_parallel_models > 0:
           cmd += ["-j", str(num_parallel_models)]
@@ -626,6 +632,9 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
           cmd.append(model_dir)
         if os.path.exists(onnx_test_data_dir):
           cmd.append(onnx_test_data_dir)
+
+        if config == 'Debug' and provider == 'nuphar':
+          return
 
         run_subprocess([exe] + cmd, cwd=cwd)
         if enable_parallel_executor_test:
@@ -663,6 +672,21 @@ def mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
           run_subprocess([exe, '-x'] + opset8_cmd, cwd=cwd)
           run_subprocess([exe] + opset9_cmd, cwd=cwd)
           run_subprocess([exe, '-x'] + opset9_cmd, cwd=cwd)
+
+
+# nuphar temporary function for running python tests separately as it requires ONNX 1.5.0
+def nuphar_run_python_tests(build_dir, configs, azure_sas_key):
+    for config in configs:
+        if config == 'Debug':
+            continue
+        cwd = get_config_build_dir(build_dir, config)
+        if is_windows():
+            cwd = os.path.join(cwd, config)
+        dll_path = os.path.join(build_dir, config, "external", "tvm", config)
+        # install onnx for shape inference in testing Nuphar scripts
+        # this needs to happen after onnx_test_data preparation which uses onnx 1.3.0
+        run_subprocess([sys.executable, '-m', 'pip', 'install', '--user', 'onnx==1.5.0'])
+        run_subprocess([sys.executable, 'onnxruntime_test_python_nuphar.py'], cwd=cwd, dll_path=dll_path)
 
 
 def split_server_binary_and_symbol(build_dir, configs):
@@ -727,7 +751,7 @@ def run_server_model_tests(build_dir, configs):
         run_subprocess([sys.executable, 'model_zoo_tests.py', server_app_path, test_raw_data_folder, server_test_data_folder, python_package_path, server_test_folder], cwd=server_test_folder, dll_path=None)
 
 
-def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, use_openvino, nightly_build = False):
+def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, use_openvino, use_nuphar, nightly_build = False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -743,6 +767,8 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use
             args.append('--use_ngraph')
         elif use_openvino:
             args.append('--use_openvino')
+        elif use_nuphar:
+            args.append('--use_nuphar')
         run_subprocess(args, cwd=cwd)
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
@@ -946,13 +972,19 @@ def main():
             elif args.use_ngraph:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'ngraph', True, 1)
             elif args.use_openvino:
-               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'openvino', False,1)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'openvino', False, 1)
               # TODO: parallel executor test fails on MacOS
+            elif args.use_nuphar:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'nuphar', False, 1)
             else:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 0)
 
               if args.use_mkldnn:
                 mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
+
+        # run nuphar python tests last, as it installs ONNX 1.5.0
+        if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
+            nuphar_run_python_tests(build_dir, configs, args.azure_sas_key)
 
     if args.build_server:
         split_server_binary_and_symbol(build_dir, configs)
@@ -964,7 +996,7 @@ def main():
     if args.build:
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
-            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_ngraph, args.use_tensorrt, args.use_openvino, nightly_build)
+            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_ngraph, args.use_tensorrt, args.use_openvino, args.use_nuphar, nightly_build)
 
     if args.gen_doc and (args.build or args.test):
         generate_documentation(source_dir, build_dir, configs)

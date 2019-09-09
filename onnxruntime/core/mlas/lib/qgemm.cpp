@@ -36,7 +36,7 @@ MlasGemmU8U8CopyPackASse(
     size_t CountM,
     size_t CountK,
     int32_t* RowSumVector,
-    uint16_t offb
+    int16_t offb
     )
 /*++
 
@@ -165,7 +165,7 @@ MlasGemmU8U8CopyPackBSse(
     size_t CountN,
     size_t CountK,
     int32_t* ColumnSumVector,
-    uint16_t offa
+    int16_t offa
     )
 /*++
 
@@ -558,7 +558,7 @@ MlasQgemm(
                 CountN = N - n;
             }
 
-            MlasPlatform.GemmU8U8CopyPackBRoutine(PanelB, B + n + k * ldb, ldb, CountN, CountK, ColumnSumVector, offa);
+            MlasPlatform.GemmU8U8CopyPackBRoutine(PanelB, B + n + k * ldb, ldb, CountN, CountK, ColumnSumVector, -int16_t(offa));
 
             size_t CountM;
 
@@ -570,7 +570,7 @@ MlasQgemm(
                     CountM = M - m;
                 }
 
-                MlasPlatform.GemmU8U8CopyPackARoutine(PanelA, A + k + m * lda, lda, CountM, CountK, RowSumVector, offb);
+                MlasPlatform.GemmU8U8CopyPackARoutine(PanelA, A + k + m * lda, lda, CountM, CountK, RowSumVector, -int16_t(offb));
 
                 int16_t* pa = PanelA;
                 int32_t* c = C + n + m * ldc;

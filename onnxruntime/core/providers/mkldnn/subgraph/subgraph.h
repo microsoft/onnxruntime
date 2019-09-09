@@ -48,12 +48,8 @@ struct Subgraph {
     std::vector<std::string> outputs;
     std::vector<std::string> outputs_as_input_other_node;
     std::vector<onnxruntime::NodeIndex> subgraph_node_indexes;
-    int subgraph_index = 0;
 
-    SubgraphVariables() {
-      subgraph_index = 0;
-    }
-    void Reset() {
+	void Reset() {
       subgraph_node_indexes.clear();
       inputs.clear();
       outputs.clear();

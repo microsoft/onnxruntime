@@ -20,10 +20,10 @@ constexpr const char* MKLDNN_CPU = "MklDnnCpu";
 MKLDNNExecutionProvider::MKLDNNExecutionProvider(const MKLDNNExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kMklDnnExecutionProvider} {
   DeviceAllocatorRegistrationInfo default_allocator_info({OrtMemTypeDefault,
-                                                          [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(MKLDNN, OrtAllocatorType::OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
+                                                          [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(MKLDNN, OrtAllocatorType::OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
 
   DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUOutput,
-                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(MKLDNN_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); }, std::numeric_limits<size_t>::max()});
+                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(MKLDNN_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); }, std::numeric_limits<size_t>::max()});
 
   if (info.create_arena) {
     InsertAllocator(CreateAllocator(default_allocator_info));
@@ -357,8 +357,8 @@ void MKLDNNExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& grap
                                             std::vector<std::unique_ptr<ComputeCapability>>& result) const {
   std::string graph_fused_nodes;
   std::string node_list;
-  std::string subgraph_id = std::to_string(sub_var.subgraph_index);
-  sub_var.subgraph_index++;
+  std::string subgraph_id = std::to_string(subgraph_index_);
+  subgraph_index_++;
 
   // This is a list of initializers that subgraph considers as constants.
   // Example weights, reshape shape etc.
@@ -378,7 +378,7 @@ void MKLDNNExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& grap
 
   auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
   meta_def->attributes["initializers"] = initializers;
-  meta_def->name = "MkldnnCustomOp" + std::to_string(sub_var.subgraph_index);
+  meta_def->name = "MkldnnCustomOp" + std::to_string(subgraph_index_);
   meta_def->domain = kMSDomain;
   meta_def->since_version = 1;
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;

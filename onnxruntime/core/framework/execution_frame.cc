@@ -76,7 +76,7 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShap
   return status;
 }
 
-AllocatorPtr IExecutionFrame::GetAllocator(const OrtAllocatorInfo& info) const {
+AllocatorPtr IExecutionFrame::GetAllocator(const OrtMemoryInfo& info) const {
   return GetAllocatorImpl(info);
 }
 
@@ -228,7 +228,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
 ExecutionFrame::~ExecutionFrame() = default;
 
 Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, int ort_value_index,
-                                                          MLDataType element_type, const OrtAllocatorInfo& location,
+                                                          MLDataType element_type, const OrtMemoryInfo& location,
                                                           const TensorShape& shape, bool create_fence) {
   return AllocateMLValueTensorSelfOwnBufferHelper(ort_value, ort_value_index, element_type, location, shape,
                                                   create_fence);
@@ -236,7 +236,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, i
 
 Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_value, int ort_value_index,
                                                                 MLDataType element_type,
-                                                                const OrtAllocatorInfo& location,
+                                                                const OrtMemoryInfo& location,
                                                                 const TensorShape& shape, bool create_fence) {
   if (ort_value_index == NodeIndexInfo::kInvalidEntry) {
     return Status(ONNXRUNTIME, FAIL, "Trying to allocate memory for unused optional inputs/outputs");
@@ -312,7 +312,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
 }
 
 Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse,
-                                                              MLDataType element_type, const OrtAllocatorInfo& location,
+                                                              MLDataType element_type, const OrtMemoryInfo& location,
                                                               const TensorShape& shape, bool create_fence) {
   OrtValue& ort_value_reuse = GetMutableMLValue(ort_value_index_reuse);
 
@@ -354,7 +354,7 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
 
 Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_value, void* pBuffer,
                                                                  MLDataType element_type,
-                                                                 const OrtAllocatorInfo& location,
+                                                                 const OrtMemoryInfo& location,
                                                                  const TensorShape& shape) {
   auto p_tensor = std::make_unique<Tensor>(element_type, shape, pBuffer, location);
   ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
@@ -453,7 +453,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
   }
 }
 
-AllocatorPtr ExecutionFrame::GetAllocatorImpl(const OrtAllocatorInfo& info) const {
+AllocatorPtr ExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {
   return utils::GetAllocator(session_state_, info);
 }
 

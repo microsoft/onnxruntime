@@ -558,7 +558,8 @@ void OpTester::Run(ExpectResult expect_result,
           node.SetExecutionProviderType(provider_type);
           if (provider_type == onnxruntime::kNGraphExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
-              provider_type == onnxruntime::kOpenVINOExecutionProvider)
+              provider_type == onnxruntime::kOpenVINOExecutionProvider ||
+              provider_type == onnxruntime::kNupharExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();
           const KernelCreateInfo* kci = reg->TryFindKernel(node, execution_provider->Type());

@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    QgemmU8U8KernelAvx512BW.S
+    QgemmU8U8KernelAvx512BW.s
 
 Abstract:
 

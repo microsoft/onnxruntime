@@ -251,6 +251,21 @@ def driver_R5(onnx_modelproto_bytes, precision: str, output_model_name: str, out
     convert_batch_norm(graph)
     graph_clean_up(graph)
 
+    convert_scale_shift_to_mul_add(graph)
+    graph_clean_up(graph)
+
+    fuse_mul_add_sequence(graph)
+    graph_clean_up(graph)
+
+    fuse_linear_ops(graph)
+    graph_clean_up(graph)
+
+    grouped_convolutions_fusing(graph)
+    graph_clean_up(graph)
+
+    fuse_linear_ops(graph)
+    graph_clean_up(graph)
+
     convert_muladd_to_scaleshift_or_power(graph)
     graph_clean_up(graph)
 
@@ -308,9 +323,7 @@ def driver_R1(onnx_modelproto_bytes, precision: str, output_model_name: str, out
                                                        input=None, input_model=None, input_shape=None, keep_shape_ops=False, log_level='ERROR', mean_scale_values={}, mean_values=(), model_name=None, move_to_preprocess=False, output=None, output_dir='.', placeholder_shapes=None, reverse_input_channels=False, scale=None, scale_values=(), silent=False, version=False)
         graph.graph['fw'] = 'onnx'
         graph.graph['feature_dim'] = 1 if graph.graph['layout'] == 'NCHW' else 3
-        graph.graph['ir_version'] = 4
-        extract_node_attrs(graph, lambda node: (
-            True, common_onnx_fields(node)))
+        graph.graph['ir_version'] = 5
     except Exception as e:
         raise Error(
             'Cannot pre-process ONNX graph after reading from model file "{}". '
@@ -327,8 +340,6 @@ def driver_R1(onnx_modelproto_bytes, precision: str, output_model_name: str, out
     # --------------------------------- LOAD END ------------------------------------------------------
     class_registration.apply_replacements(
         graph, class_registration.ClassType.FRONT_REPLACER)
-    partial_infer(graph)
-    graph.check_empty_graph('partial_infer')
     class_registration.apply_replacements(
         graph, class_registration.ClassType.MIDDLE_REPLACER)
 
@@ -337,6 +348,21 @@ def driver_R1(onnx_modelproto_bytes, precision: str, output_model_name: str, out
 
     mark_unfused_nodes(graph, 'False')
     convert_batch_norm(graph)
+    graph_clean_up_onnx(graph)
+
+    convert_scale_shift_to_mul_add(graph)
+    graph_clean_up_onnx(graph)
+
+    fuse_mul_add_sequence(graph)
+    graph_clean_up_onnx(graph)
+
+    fuse_linear_ops(graph)
+    graph_clean_up_onnx(graph)
+
+    grouped_convolutions_fusing(graph)
+    graph_clean_up_onnx(graph)
+
+    fuse_linear_ops(graph)
     graph_clean_up_onnx(graph)
 
     convert_muladd_to_scaleshift_or_power(graph)

@@ -229,6 +229,13 @@ file(GLOB_RECURSE onnxruntime_test_openvino_src
   "${ONNXRUNTIME_ROOT}/test/openvino/*.cc"
  )
 
+if(onnxruntime_USE_NUPHAR)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/nuphar/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nuphar)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nuphar)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nuphar)
+endif()
+
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   include(onnxruntime_unittests_internal.cmake)
 endif()
@@ -241,6 +248,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
+    ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
     onnxruntime_optimizer
     onnxruntime_providers
@@ -520,6 +528,12 @@ onnxruntime_add_include_to_target(onnx_test_runner gsl)
 target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
 set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
 
+if (onnxruntime_USE_TVM)
+  if (WIN32)
+    target_link_options(onnx_test_runner PRIVATE "/STACK:4000000")
+  endif()
+endif()
+
 install(TARGETS onnx_test_runner
         ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -598,6 +612,12 @@ set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS AND NOT onnxruntime_BUILD_SHARED_LIB)
   target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_language_interop onnxruntime_pyop)
+endif()
+
+if (onnxruntime_USE_TVM)
+  if (WIN32)
+    target_link_options(onnxruntime_perf_test PRIVATE "/STACK:4000000")
+  endif()
 endif()
 
 # shared lib

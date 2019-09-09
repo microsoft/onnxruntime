@@ -6,7 +6,8 @@
 FROM ubuntu:16.04
 
 RUN apt update && \
-    apt -y install python3.5 python3-pip zip x11-apps lsb-core wget cpio sudo libboost-python-dev libpng-dev zlib1g-dev git libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.58.0 libboost-thread1.58.0 protobuf-compiler libprotoc-dev libusb-1.0-0-dev && pip3 install numpy networkx opencv-python pytest && locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8
+    apt -y install git sudo wget \
+    zip x11-apps lsb-core cpio libboost-python-dev libpng-dev zlib1g-dev libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.58.0 libboost-thread1.58.0 protobuf-compiler libprotoc-dev libusb-1.0-0-dev
 
 ARG DEVICE=CPU_FP32
 ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime
@@ -39,7 +40,7 @@ ENV OpenCV_DIR=${INTEL_OPENVINO_DIR}/opencv/share/OpenCV
 ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/opencv/lib:${INTEL_OPENVINO_DIR}/opencv/share/OpenCV/3rdparty/lib:${LD_LIBRARY_PATH}
 ENV PATH=${INTEL_CVSDK_DIR}/deployment_tools/model_optimizer:$PATH
 ENV PYTHONPATH=${INTEL_CVSDK_DIR}/deployment_tools/model_optimizer:$PYTHONPATH
-ENV PYTHONPATH=$INTEL_CVSDK_DIR/python/python3.5:${INTEL_CVSDK_DIR}/python/python3.5/ubuntu16:${PYTHONPATH}
+# ENV PYTHONPATH=$INTEL_CVSDK_DIR/python/python3.5:${INTEL_CVSDK_DIR}/python/python3.5/ubuntu16:${PYTHONPATH}
 ENV HDDL_INSTALL_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl
 ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl/lib:$LD_LIBRARY_PATH
 
@@ -51,20 +52,15 @@ RUN wget https://github.com/intel/compute-runtime/releases/download/19.15.12831/
 
 RUN sudo dpkg -i *.deb && rm -rf *.deb
 
-
-RUN mkdir -p /opt/cmake/bin
-
-ENV PATH /opt/cmake/bin:/opt/miniconda/bin:$PATH
-
 ENV LANG en_US.UTF-8
-RUN wget https://github.com/Kitware/CMake/releases/download/v3.13.2/cmake-3.13.2-Linux-x86_64.tar.gz && \
-    tar -xf cmake-3.13.2-Linux-x86_64.tar.gz --strip 1 -C /opt/cmake && rm -rf /cmake-3.13.2-Linux-x86_64.tar.gz
+WORKDIR /code
+ENV PATH /opt/miniconda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:$PATH
 
-RUN git clone --recursive -b $ONNXRUNTIME_BRANCH $ONNXRUNTIME_REPO /onnxruntime && \
+ADD scripts /tmp/scripts
+RUN /bin/sh /tmp/scripts/install_common_deps.sh && \
+    git clone --recursive -b $ONNXRUNTIME_BRANCH $ONNXRUNTIME_REPO /onnxruntime && \
     cd /onnxruntime/cmake/external/onnx && python3 setup.py install && \
-    /bin/sh onnxruntime/dockerfiles/install_common_deps.sh &&\
-    cp onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt &&\
-    cp onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt &&\
-    cd /onnxruntime && ./build.sh --config RelWithDebInfo --update --build --parallel --use_openvino $DEVICE --build_wheel && pip3 install /onnxruntime/build/Linux/RelWithDebInfo/dist/*-linux_x86_64.whl && rm -rf /onnxruntime
-
-
+    cp /onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt && \
+    cp /onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt && \
+    cd /onnxruntime && ./build.sh --config RelWithDebInfo --update --build --parallel --use_openvino $DEVICE --build_wheel && \
+    pip install /onnxruntime/build/Linux/RelWithDebInfo/dist/*-linux_x86_64.whl && rm -rf /onnxruntime cmake-3.14.3-Linux-x86_64
