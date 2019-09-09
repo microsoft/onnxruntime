@@ -46,7 +46,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Log tag to be used during the run. default = ""
         /// </summary>
-        public string LogTag 
+        public string LogId 
         {
             get
             {
