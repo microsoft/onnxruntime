@@ -6,6 +6,7 @@
 #include <cassert>
 #include "onnxruntime_typeinfo.h"
 #include "core/framework/tensor.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/graph/onnx_protobuf.h"
 
@@ -156,13 +157,13 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const ONNX_NAMESPACE::TypeProto* input,
       if (value_case == on::TypeProto::kTensorType) {
         tensor_type = &input->tensor_type();
         ten_type = ONNX_TYPE_TENSOR;
-        if (tensor_type->has_shape()) {
+        if (onnxruntime::utils::HasShape(*tensor_type)) {
           sp = &tensor_type->shape();
         }
       } else if (value_case == on::TypeProto::kSparseTensorType) {
         sparse_type = &input->sparse_tensor_type();
         ten_type = ONNX_TYPE_SPARSETENSOR;
-        if (sparse_type->has_shape()) {
+        if (onnxruntime::utils::HasShape(*sparse_type)) {
           sp = &sparse_type->shape();
         }
       }
@@ -179,6 +180,7 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const ONNX_NAMESPACE::TypeProto* input,
               shape_data[i] = t.dim_value();
               break;
             case on::TensorShapeProto::Dimension::kDimParam:
+            case on::TensorShapeProto::Dimension::VALUE_NOT_SET:
               shape_data[i] = -1;
               break;
             default:
@@ -205,8 +207,10 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const ONNX_NAMESPACE::TypeProto* input,
       *out = new OrtTypeInfo(ONNX_TYPE_OPAQUE, nullptr);
       return nullptr;
     } break;
+    case on::TypeProto::VALUE_NOT_SET:
+      break;
     default:
-      assert(false);
+     // Not implemented
       break;
   }
   return OrtCreateStatus(ORT_NOT_IMPLEMENTED, "not implemented");
