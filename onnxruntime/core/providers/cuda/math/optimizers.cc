@@ -190,10 +190,12 @@ Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) cons
   // and T2=float.
   IAllocatorUniquePtr<T2> weights_norm_buffer = GetScratchBuffer<T2>(1);
 
-  auto buffer_size = static_cast<size_t>(
+  // Compute buffer size in byte for reduction APIs.
+  const auto buffer_size = static_cast<size_t>(
       compute_reduction_buffer_size(
           static_cast<int>(sizeof(T2)), static_cast<int>(weight_tensor_size)));
 
+  // Allocate reduction buffer whose size is buffer_size bytes.
   IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(buffer_size);
 
   // We should throw for overflow in reduction APIs.

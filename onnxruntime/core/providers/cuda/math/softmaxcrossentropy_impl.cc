@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/cuda/reduction/reduction_functions.h"
 #include "softmaxcrossentropy_impl.h"
 
 namespace onnxruntime {
@@ -170,14 +171,17 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
       const T normalize_factor = static_cast<T>(N);
       cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
     } else {
-      std::vector<int64_t> output_dims(1, 1);
-      ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
-          weight_data,
-          TensorShape({N}),
-          normalize_factor_data.get(),
-          TensorShape({}),
-          CUDNN_REDUCE_TENSOR_ADD,
-          output_dims);
+      // Compute buffer size in byte for reduction APIs.
+      const auto buffer_size = static_cast<size_t>(
+          compute_reduction_buffer_size(
+              static_cast<int>(sizeof(T)), static_cast<int>(N)));
+      // Allocate reduction buffer whose size is buffer_size bytes.
+      IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(
+          buffer_size);
+      reduce_sum(weight_data,
+                 normalize_factor_data.get(),
+                 static_cast<int>(N),
+                 reinterpret_cast<T*>(reduction_buffer.get()));
     }
   }
 
@@ -243,14 +247,17 @@ Status SparseSoftmaxCrossEntropyGrad<T, Tin>::ComputeInternal(OpKernelContext* c
       const T normalize_factor = static_cast<T>(N);
       cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
     } else {
-      std::vector<int64_t> output_dims(1, 1);
-      ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
-          weight_data,
-          TensorShape({N}),
-          normalize_factor_data.get(),
-          TensorShape({}),
-          CUDNN_REDUCE_TENSOR_ADD,
-          output_dims);
+      // Compute buffer size in byte for reduction APIs.
+      const auto buffer_size = static_cast<size_t>(
+          compute_reduction_buffer_size(
+              static_cast<int>(sizeof(T)), static_cast<int>(N)));
+      // Allocate reduction buffer whose size is buffer_size bytes.
+      IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(
+          buffer_size);
+      reduce_sum(weight_data,
+                 normalize_factor_data.get(),
+                 static_cast<int>(N),
+                 reinterpret_cast<T*>(reduction_buffer.get()));
     }
   }
 

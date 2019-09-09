@@ -58,7 +58,7 @@ __forceinline__ __device__ int least_pow2_bound(int value) {
   return static_cast<unsigned int>(++value_);
 }
 
-template<typename TIn, typename TOut, typename TOp>
+template<typename TIn, typename TOut, typename TOp, bool DivideResultBySize>
 __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output, TOut* buffer) {
   extern __shared__ unsigned char shared_memory_[];
   TOut* shared_memory = reinterpret_cast<TOut*>(shared_memory_);
@@ -113,7 +113,13 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
   // If we have less than ONE_THREAD_LOAD_COUNT elements, the task is done.
   if (size <= ONE_THREAD_LOAD_COUNT) {
     if (tid_in_grid == 0) {
-      output[0] = value;
+      // Compilation time if-else branch controlled by template argument can be
+      // optimized out, so there will be no branch in real computation phase.
+      if (DivideResultBySize) {
+        output[0] = value / TOut(size);
+      } else {
+        output[0] = value;
+      }
     }
     return;
   }
@@ -135,7 +141,13 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
   // ONE_THREAD_LOAD_COUNT * WARP_THREAD_COUNT values.
   if (size <= ONE_THREAD_LOAD_COUNT * WARP_THREAD_COUNT) {
     if (tid_in_grid == 0) {
-      output[0] = value_;
+      // Compilation time if-else branch controlled by template argument can be
+      // optimized out, so there will be no branch in real computation phase.
+      if (DivideResultBySize) {
+        output[0] = value_ / TOut(size);
+      } else {
+        output[0] = value_;
+      }
     }
     return;
   }
@@ -166,13 +178,25 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
   // ONE_THREAD_LOAD_COUNT * thread_count_in_block values.
   if (size <= ONE_THREAD_LOAD_COUNT * thread_count_in_block) {
     if (tid_in_grid == 0) {
-      output[0] = shared_memory[0];
+      // Compilation time if-else branch controlled by template argument can be
+      // optimized out, so there will be no branch in real computation phase.
+      if (DivideResultBySize) {
+        output[0] = shared_memory[0] / TOut(size);
+      } else {
+        output[0] = shared_memory[0];
+      }
     }
     return;
   }
 
   if (tid_in_block == 0) {
-    buffer[bid_in_grid] = shared_memory[0];
+    // Compilation time if-else branch controlled by template argument can be
+    // optimized out, so there will be no branch in real computation phase.
+    if (DivideResultBySize) {
+      buffer[bid_in_grid] = shared_memory[0];
+    } else {
+      buffer[bid_in_grid] = shared_memory[0];
+    }
   }
 
   __threadfence();
@@ -204,30 +228,42 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
 
     // The first thread in the last block assigns the final output.
     if (tid_in_block == 0) {
-      output[0] = buffer[0];
+      // Compilation time if-else branch controlled by template argument can be
+      // optimized out, so there will be no branch in real computation phase.
+      if (DivideResultBySize) {
+        output[0] = buffer[0] / TOut(size);
+      } else {
+        output[0] = buffer[0];
+      }
     }
   }
 }
 
-template<typename TIn, typename TOut, typename TOp>
+template<typename TIn, typename TOut, typename TOp, bool DivideResultBySize>
 void call_reduce_all_kernel(const TIn *data, TOut *output, int size, TOut *buffer)
 {
   const int block_count = compute_block_number(size);
   cudaMemset(buffer + block_count, 0, sizeof(int));
   const dim3 grid(block_count, 1, 1);
   const dim3 block(WARP_THREAD_COUNT, MAX_BLOCK_WARP_COUNT, 1);
-  reduce_all_kernel<TIn, TOut, TOp><<<grid, block, MAX_BLOCK_WARP_COUNT * sizeof(TOut)>>>(size, data, output, buffer);
+  reduce_all_kernel<TIn, TOut, TOp, DivideResultBySize><<<grid, block, MAX_BLOCK_WARP_COUNT * sizeof(TOut)>>>(size, data, output, buffer);
 }
 
 template<typename TIn, typename TOut>
 void reduce_sum(const TIn* data, TOut* output, int size, TOut* buffer) {
-  call_reduce_all_kernel<TIn, TOut, Identity<TOut, TIn>>(
+  call_reduce_all_kernel<TIn, TOut, Identity<TOut, TIn>, false>(
     data, output, size, buffer);
 }
 
 template<typename TIn, typename TOut>
 void reduce_square_sum(const TIn* data, TOut* output, int size, TOut* buffer) {
-  call_reduce_all_kernel<TIn, TOut, Square<TOut, TIn>>(
+  call_reduce_all_kernel<TIn, TOut, Square<TOut, TIn>, false>(
+    data, output, size, buffer);
+}
+
+template<typename TIn, typename TOut>
+void reduce_mean(const TIn* data, TOut* output, int size, TOut* buffer) {
+  call_reduce_all_kernel<TIn, TOut, Identity<TOut, TIn>, true>(
     data, output, size, buffer);
 }
 
@@ -243,6 +279,13 @@ template void reduce_square_sum<half, float>(
 template void reduce_square_sum<float, float>(
   const float* data, float* output, int size, float* buffer);
 template void reduce_square_sum<double, double>(
+  const double* data, double* output, int size, double* buffer);
+
+template void reduce_mean<half, float>(
+  const half* data, float* output, int size, float* buffer);
+template void reduce_mean<float, float>(
+  const float* data, float* output, int size, float* buffer);
+template void reduce_mean<double, double>(
   const double* data, double* output, int size, double* buffer);
 
 }  // namespace cuda

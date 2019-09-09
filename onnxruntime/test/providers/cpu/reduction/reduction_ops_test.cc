@@ -1,10 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <random>
 #include <type_traits>
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/cpu/reduction/reduction_test_cases.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/reduction/reduction_functions.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -31,7 +35,7 @@ void TestReduceOp(const std::string& op,
   test.AddAttribute("keepdims", keepdims);
   test.AddInput<float>("data", input_dims, data);
   test.AddOutput<OutT>("reduced", expected_dims, expected_data);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider}); //TensorRT: result differs
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});  //TensorRT: result differs
 }
 
 TEST(ReductionOpTest, ReductionVariationTest) {
@@ -468,7 +472,7 @@ TEST(ReductionOpTest, ReduceMax_int32) {
                           9, 10,
                           11, 12});
   test.AddOutput<int32_t>("reduced", {3, 1, 1}, {4, 8, 12});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
 }
 
 TEST(ReductionOpTest, ReduceMax_int64) {
@@ -698,14 +702,14 @@ TEST(ReductionOpTest, ReduceSum_double) {
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<double>("data", {3, 2, 2},
-                       {1.0, 2.0,
-                        3.0, 4.0,
+                        {1.0, 2.0,
+                         3.0, 4.0,
 
-                        5.0, 6.0,
-                        7.0, 8.0,
+                         5.0, 6.0,
+                         7.0, 8.0,
 
-                        9.0, 10.0,
-                        11.0, 12.0});
+                         9.0, 10.0,
+                         11.0, 12.0});
   test.AddOutput<double>("reduced", {1, 2, 1}, {33.0, 45.0});
   test.Run();
 }
@@ -779,7 +783,7 @@ TEST(ReductionOpTest, ReduceSum_apex_reduction) {
 }
 
 void test_apex_reduce_sum(
-  int64_t m, int64_t n) {
+    int64_t m, int64_t n) {
   OpTester test("ReduceSum");
   // Input tensor.
   std::vector<float> X(m * n, 0.0f);
@@ -788,7 +792,7 @@ void test_apex_reduce_sum(
   for (int64_t i = 0; i < m; ++i) {
     for (int64_t j = 0; j < n; ++j) {
       const float value = float(i + j);
-      X[i * n + j] = value; 
+      X[i * n + j] = value;
       Y[j] += value;
     }
   }
@@ -803,7 +807,7 @@ void test_apex_reduce_sum(
 
 TEST(ReductionOpTest, ReduceSum_apex_matrix) {
   for (int64_t m = 1; m < 2048; m *= 8) {
-    for (int64_t n = 1; n < 2048; n *= 8)  {
+    for (int64_t n = 1; n < 2048; n *= 8) {
       if (m * n <= 32768) {
         test_apex_reduce_sum(m, n);
       }
@@ -823,32 +827,31 @@ TEST(ReductionOpTest, ReduceSum_apex_bert) {
 }
 
 TEST(ReductionOpTest, ReduceSum_apex_more) {
-	std::srand(0);
-	for (int64_t m = 1; m < 16; ++m) {
-		for (int64_t n = 1; n < 16; ++n) {
-			const auto m_ = 2 * m;
-			const auto n_ = 2 * n;
-			test_apex_reduce_sum(m_, n_);
-		}
-	}
+  std::srand(0);
+  for (int64_t m = 1; m < 16; ++m) {
+    for (int64_t n = 1; n < 16; ++n) {
+      const auto m_ = 2 * m;
+      const auto n_ = 2 * n;
+      test_apex_reduce_sum(m_, n_);
+    }
+  }
 }
 
-TEST( ReductionOpTest, ReduceSum_int64 )
-{
-   OpTester test( "ReduceSum" );
-   test.AddAttribute( "axes", std::vector<int64_t>{0, 2} );
-   test.AddAttribute( "keepdims", ( int64_t ) 1 );
-   test.AddInput<int64_t>( "data", { 3, 2, 2 },
-      { 1, 2,
-       3, 4,
+TEST(ReductionOpTest, ReduceSum_int64) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int64_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
 
-       5, 6,
-       7, 8,
+                          5, 6,
+                          7, 8,
 
-       9, 10,
-       11, 12 } );
-   test.AddOutput<int64_t>( "reduced", { 1, 2, 1 }, { 33, 45 } );
-   test.Run();
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {1, 2, 1}, {33, 45});
+  test.Run();
 }
 
 TEST(ReductionOpTest, ReduceSum_default_axes_keepdims) {
@@ -927,14 +930,14 @@ TEST(ReductionOpTest, ReduceSumSquare_double) {
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<double>("data", {3, 2, 2},
-                       {1.0, 2.0,
-                        3.0, 4.0,
+                        {1.0, 2.0,
+                         3.0, 4.0,
 
-                        5.0, 6.0,
-                        7.0, 8.0,
+                         5.0, 6.0,
+                         7.0, 8.0,
 
-                        9.0, 10.0,
-                        11.0, 12.0});
+                         9.0, 10.0,
+                         11.0, 12.0});
   test.AddOutput<double>("reduced", {1, 2, 1}, {247.0, 403.});
   test.Run();
 }
@@ -1124,7 +1127,7 @@ TEST(ReductionOpTest, ArgMax) {
                           {1, 1,
                            1, 1,
                            1, 1});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
 }
 
 TEST(ReductionOpTest, ArgMax_do_not_keepdims) {
@@ -1144,7 +1147,7 @@ TEST(ReductionOpTest, ArgMax_do_not_keepdims) {
                           {1, 1,
                            1, 1,
                            1, 1});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
 }
 
 TEST(ReductionOpTest, ArgMax_do_not_keepdims_2) {
@@ -1188,7 +1191,7 @@ TEST(ReductionOpTest, ArgMax2D) {
                         9.0f, 10.0f});
   test.AddOutput<int64_t>("reduced", {3, 1},
                           {1, 0, 1});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
 }
 
 TEST(ReductionOpTest, ArgMin) {
@@ -1262,7 +1265,7 @@ TEST(ReductionOpTest, ArgMin_int32) {
 void test_all_1d_true(size_t size) {
   std::unique_ptr<bool[]> p_data(new bool[size]);
   for (size_t i = 0; i < size; ++i) {
-      p_data[i] = true;
+    p_data[i] = true;
   }
 
   OpTester test("All", 9);
@@ -1274,7 +1277,7 @@ void test_all_1d_true(size_t size) {
 void test_all_1d_false(size_t size) {
   std::unique_ptr<bool[]> p_data(new bool[size]);
   for (size_t i = 0; i < size; ++i) {
-      p_data[i] = false;
+    p_data[i] = false;
   }
 
   OpTester test("All", 9);
@@ -1286,7 +1289,7 @@ void test_all_1d_false(size_t size) {
 void test_all_1d_first_false(size_t size) {
   std::unique_ptr<bool[]> p_data(new bool[size]);
   for (size_t i = 0; i < size; ++i) {
-      p_data[i] = true;
+    p_data[i] = true;
   }
   p_data[0] = false;
 
@@ -1299,7 +1302,7 @@ void test_all_1d_first_false(size_t size) {
 void test_all_1d_last_false(size_t size) {
   std::unique_ptr<bool[]> p_data(new bool[size]);
   for (size_t i = 0; i < size; ++i) {
-      p_data[i] = true;
+    p_data[i] = true;
   }
   p_data[size - 1] = false;
 
@@ -1326,6 +1329,78 @@ TEST(AllOpTest, All_1d_large) {
       test_all_1d_last_false(*it + j);
     }
   }
+}
+
+void test_reduce_apis(size_t size) {
+  float output_sum = 0;
+  float output_square_sum = 0;
+  float output_mean = 0;
+  float expected_output_sum = 0;
+  float expected_output_square_sum = 0;
+  float expected_output_mean = 0;
+  const std::vector<int64_t> shape = {static_cast<int64_t>(size)};
+  std::random_device random_device;
+  std::mt19937 random_engine(random_device());
+  std::uniform_real_distribution<float> dist(0.1f, 1.0f);
+  std::vector<float> input(size);
+  for (size_t i = 0; i < size; ++i) {
+    input[i] = dist(random_engine);
+    expected_output_sum += input[i];
+    expected_output_square_sum += input[i] * input[i];
+    expected_output_mean += input[i] / float(size);
+  }
+  const int buffer_size_in_byte = onnxruntime::cuda::compute_reduction_buffer_size(
+      static_cast<int>(sizeof(float)), static_cast<int>(size));
+
+  float* device_input = NULL;
+  float* device_output_sum = NULL;
+  float* device_output_square_sum = NULL;
+  float* device_output_mean = NULL;
+  float* buffer = NULL;
+
+  cudaMalloc((void**)&device_input, size * sizeof(float));
+  cudaMalloc((void**)&device_output_sum, 1 * sizeof(float));
+  cudaMalloc((void**)&device_output_square_sum, 1 * sizeof(float));
+  cudaMalloc((void**)&device_output_mean, 1 * sizeof(float));
+  cudaMalloc((void**)&buffer, buffer_size_in_byte);
+
+  cudaMemcpy(device_input, input.data(), size * sizeof(float), cudaMemcpyHostToDevice);
+
+  onnxruntime::cuda::reduce_sum(device_input,
+                                device_output_sum,
+                                static_cast<int>(size),
+                                buffer);
+  onnxruntime::cuda::reduce_square_sum(device_input,
+                                       device_output_square_sum,
+                                       static_cast<int>(size), buffer);
+  onnxruntime::cuda::reduce_mean(
+      device_input,
+      device_output_mean,
+      static_cast<int>(size),
+      buffer);
+
+  cudaMemcpy(&output_sum, device_output_sum, 1 * sizeof(float), cudaMemcpyDeviceToHost);
+  cudaMemcpy(&output_square_sum, device_output_square_sum, 1 * sizeof(float), cudaMemcpyDeviceToHost);
+  cudaMemcpy(&output_mean, device_output_mean, 1 * sizeof(float), cudaMemcpyDeviceToHost);
+
+  cudaFree(device_input);
+  cudaFree(buffer);
+  cudaFree(device_output_sum);
+  cudaFree(device_output_square_sum);
+  cudaFree(device_output_mean);
+
+  EXPECT_TRUE(std::abs(output_sum - expected_output_sum) / expected_output_sum < 1e-4f);
+  EXPECT_TRUE(std::abs(output_square_sum - expected_output_square_sum) / expected_output_square_sum < 1e-4);
+  EXPECT_TRUE(std::abs(output_mean - expected_output_mean) / expected_output_mean < 1e-4f);
+}
+
+TEST(ReduceApiTest, Sum) {
+  test_reduce_apis(3);
+  test_reduce_apis(19);
+  test_reduce_apis(123);
+  test_reduce_apis(1128);
+  test_reduce_apis(5566);
+  test_reduce_apis(941736);
 }
 
 #endif
