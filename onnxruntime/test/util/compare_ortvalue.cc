@@ -291,8 +291,12 @@ bool AreShapesEqual(const std::vector<int64_t>& real_shape, const ::ONNX_NAMESPA
         break;
       case ONNX_NAMESPACE::TensorShapeProto::Dimension::kDimParam:
         // symbolic shape, cannot validate it right now, assume it matches every thing
+        // fall through
+      case ONNX_NAMESPACE::TensorShapeProto::Dimension::VALUE_NOT_SET:
+        // Value not set is treated as can not be validated
         continue;
         break;
+      // This is for unlikely case when we add new oneof value
       default : assert(false);
         break;
     }
