@@ -141,9 +141,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
                 graph_viewer->GetNode(node_index)->Name());
     }
 
-    OpKernelContextInternal op_kernel_context(session_state, *root_frame_, *p_op_kernel, logger,
-                                              p_op_kernel->Node().ImplicitInputDefs(),
-                                              terminate_flag_);
+    OpKernelContextInternal op_kernel_context(session_state, *root_frame_, *p_op_kernel, logger, terminate_flag_);
 
     if (f_profiler_enabled) {
       sync_time_begin = session_state.Profiler().StartTime();
