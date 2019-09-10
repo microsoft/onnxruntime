@@ -1607,14 +1607,7 @@ Example 4:
               "A 1-D tensor of the same type as 'x' with cumulative sums of the input",
               "T")
       .TypeConstraint("T", OpSchema::all_tensor_types(), "Input can be of any tensor type.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        // Type inference
-        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        // Output has the same shape as input
-        ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 0);
-
-        return;
-      })
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
       .SetDoc(R"DOC(
               Peforms cumulative sum of the input elements along the given axis.
 			  By default it will do the sum inclusively meaning the first element is copied as is.
