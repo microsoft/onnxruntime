@@ -348,15 +348,6 @@
       {
          "component": {
             "git": {
-               "commitHash": "cc4bed2d74f7c8717e31f9579214ab52a9c9c610",
-               "repositoryUrl": "https://github.com/abseil/abseil-cpp"
-            },
-            "type": "git"
-         }
-      },
-      {
-         "component": {
-            "git": {
                "commitHash": "b29b21a81b32ec273f118f589f46d56ad3332420",
                "repositoryUrl": "https://github.com/google/boringssl.git"
             },
@@ -411,11 +402,22 @@
       },
       {
          "component": {
+            "git": {
+               "commitHash": "cc4bed2d74f7c8717e31f9579214ab52a9c9c610",
+               "repositoryUrl": "https://github.com/abseil/abseil-cpp"
+            },
+            "type": "git",
+            "comments": "used by onnxruntime server"
+         }
+      },
+      {
+         "component": {
             "type": "git",
             "git": {
                "commitHash": "256be563447a315f2a7993ec669460ba475fa86a",
                "repositoryUrl": "https://github.com/abseil/abseil-cpp"
-            }
+            },
+            "comments": "used by onnxruntime"
          }
       }
    ],
