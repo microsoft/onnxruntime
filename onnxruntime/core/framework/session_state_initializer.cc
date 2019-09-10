@@ -276,10 +276,11 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
                 }
               }
 
-              if (IsArgNameInInputsOutputs(arg.Name(), graph_outputs)) {
-                session_state.AddOutputNameToNodeInfoMapping(arg.Name(), node_info);
-                return Status::OK();
-              }
+              // ??? Why are we checking if an input to a node is also in the graph output
+              //if (IsArgNameInInputsOutputs(arg.Name(), graph_outputs)) {
+              //  session_state.AddOutputNameToNodeInfoMapping(arg.Name(), node_info);
+              //  return Status::OK();
+              //}
 
               return Status::OK();
             }));
@@ -296,14 +297,34 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
       // copy to a different device is required
       for (const auto& input_def : node_implicit_inputs) {
         int arg_index;
-        //Question: the implicit input may not be found in this session state name to id map, but in parent session state name to id map.
-        //@Scott
         ORT_RETURN_IF_ERROR(name_to_id.GetIdx(input_def->Name(), arg_index));
         auto& device = exec_plan->GetLocation(arg_index).device;
         SessionState::NodeInfo node_info(std::numeric_limits<size_t>::max(), &node, kci, device);
         ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(input_def->Name(), node_info));
       }
     }
+
+    ORT_RETURN_IF_ERROR(
+        onnxruntime::Node::ForEachWithIndex(
+            node.OutputDefs(),
+            [&](const onnxruntime::NodeArg& arg, size_t index) {
+              if (arg.Name().empty()) {
+                return Status::OK();
+              }
+
+              int arg_index;
+              ORT_RETURN_IF_ERROR(name_to_id.GetIdx(arg.Name(), arg_index));
+              const auto& device = exec_plan->GetLocation(arg_index).device;
+
+              SessionState::NodeInfo node_info(index, &node, kci, device);
+
+              if (IsArgNameInInputsOutputs(arg.Name(), graph_outputs)) {
+                session_state.AddOutputNameToNodeInfoMapping(arg.Name(), node_info);
+                return Status::OK();
+              }
+
+              return Status::OK();
+            }));
   }
 
   // It's possible (although assumably rare) for a graph to have inputs that aren't used. one reasonable occurrence
