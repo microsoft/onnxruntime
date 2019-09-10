@@ -13,17 +13,30 @@ class Scatter final : public OpKernel {
   Scatter(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK(),
                 "Missing/Invalid 'axis' attribute value");
+
+    if (OpKernel::Node().OpType() == "ScatterElements")
+      is_scatter_elements = true;
   }
   ~Scatter() = default;
   Status Compute(OpKernelContext* context) const override;
 
  private:
   int64_t axis_;
+  bool is_scatter_elements = false;
 };
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Scatter,
-    9,
+    9, 10,
+    KernelDefBuilder()
+        .MayInplace(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
+    Scatter);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    ScatterElements,
+    11,
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
@@ -32,16 +45,29 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 template <class Tin, class Tdata>
 Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, const Tensor* updates_input,
-                       const int64_t axis, Tensor* data_output) {
+                       const int64_t axis, Tensor* data_output, bool is_scatter_elements) {
   const TensorShape& input_data_shape = data_input->Shape();
-  const Tin* indices_data = indices_input->template Data<Tin>();
+  const Tin* indices_data_raw= indices_input->template Data<Tin>();
   const auto num_indices = indices_input->Shape().Size();
+
+  std::vector<Tin> indices_data;
+  indices_data.reserve(num_indices);
+
+  auto axis_dim_limit = input_data_shape[axis];
+
   for (int64_t i = 0; i < num_indices; ++i) {
-    Tin idx = indices_data[i];
-    if (idx < 0 || idx >= input_data_shape[axis]) {
+    Tin idx = indices_data_raw[i];
+
+    if ((idx >= axis_dim_limit) ||  
+        // 'Scatter' does not support negative indices
+        (idx < 0 && !is_scatter_elements) ||
+        // 'ScatterElements' supports valid negative indices in range [-axis_dim_limit, -1]
+        (idx < -axis_dim_limit)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices element out of data bounds, idx=", idx,
-                             " data_dim=", input_data_shape[axis]);
+                             " must be within the inclusive range [", (is_scatter_elements ? -axis_dim_limit : 0), ",", axis_dim_limit - 1, "]");
     }
+
+    indices_data.push_back(idx < 0 ? idx + static_cast<Tin>(axis_dim_limit) : idx);
   }
 
   const auto input_elements = input_data_shape.Size();
@@ -228,9 +254,9 @@ Status Scatter::Compute(OpKernelContext* context) const {
   MLDataType Tdata_type = data_input->DataType();
   Status status;
   if (Tind_type == DataTypeImpl::GetType<int32_t>()) {
-    DispatchOnIndexTypeAndTensorType(int32_t, Tdata_type, status, CopyScatterData, data_input, indices_input, updates_input, axis, data_output);
+    DispatchOnIndexTypeAndTensorType(int32_t, Tdata_type, status, CopyScatterData, data_input, indices_input, updates_input, axis, data_output, is_scatter_elements);
   } else if (Tind_type == DataTypeImpl::GetType<int64_t>()) {
-    DispatchOnIndexTypeAndTensorType(int64_t, Tdata_type, status, CopyScatterData, data_input, indices_input, updates_input, axis, data_output);
+    DispatchOnIndexTypeAndTensorType(int64_t, Tdata_type, status, CopyScatterData, data_input, indices_input, updates_input, axis, data_output, is_scatter_elements);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expecting indices to be either int32_t or int64_t");
   }
