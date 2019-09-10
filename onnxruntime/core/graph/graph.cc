@@ -20,6 +20,10 @@
 #include "core/common/logging/logging.h"
 #include "onnx/checker.h"
 #include "core/graph/schema_registry.h"
+
+// TODO: Should GetConstantInitializer move into graph.h?
+#include "core/graph/graph_utils.h"
+
 using namespace ONNX_NAMESPACE;
 using namespace ONNX_NAMESPACE::Utils;
 using namespace ONNX_NAMESPACE::checker;
@@ -1248,10 +1252,10 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
  public:
   InferenceContextImpl(Node& node,
                        SubgraphInferencingFunc subgraph_inferencing_func,
-                       const InitializedTensorSet& initialized_tensor_set = {}) noexcept
+                       const Graph& graph) noexcept
       : node_(node),
         subgraph_inferencing_func_(subgraph_inferencing_func),
-        initialized_tensor_set_(initialized_tensor_set) {
+        graph_(graph) {
     node_output_types_.resize(node.OutputDefs().size());
   }
 
@@ -1278,15 +1282,13 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   }
 
   const TypeProto* getInputType(size_t index) const override {
+    const TypeProto* type = nullptr;
     auto p_node_arg = node_.InputDefs().at(index);
     if ((nullptr != p_node_arg) && p_node_arg->Exists()) {
-      return p_node_arg->TypeAsProto();
-      // auto p_type_proto = p_node_arg->TypeAsProto();
-      //if ((p_type_proto != nullptr) && p_type_proto->has_tensor_type()) {
-      //  return &p_type_proto->tensor_type();
-      //}
+      type = p_node_arg->TypeAsProto();
     }
-    return nullptr;
+
+    return type;
   }
 
   size_t getNumOutputs() const noexcept override {
@@ -1301,9 +1303,11 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     auto def = node_.InputDefs()[index];
     if (!def)
       return nullptr;
-    if (initialized_tensor_set_.count(def->Name()) == 0)
-      return nullptr;
-    return initialized_tensor_set_.at(def->Name());
+
+    // we only have immutable type/shape info for a constant initializer providing a node input.
+    // initializer could also come from outer scope so check there if applicable
+    const TensorProto* initializer = graph_utils::GetConstantInitializer(graph_, def->Name(), true);
+    return initializer;
   }
 
   GraphInferencer* getGraphAttributeInferencer(const std::string& attribute_name) override {
@@ -1329,7 +1333,8 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   std::vector<TypeProto> node_output_types_;
   SubgraphInferencingFunc subgraph_inferencing_func_;
   std::vector<std::unique_ptr<GraphInferencerImpl>> graph_inferencers_;
-  const InitializedTensorSet& initialized_tensor_set_;
+  // const InitializedTensorSet& initialized_tensor_set_;
+  const Graph& graph_;
 };
 
 Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
@@ -1505,7 +1510,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
   // Once that completes, the outputs from the node containing the subgraph will be updated, and the final values
   // returned here.
   SubgraphInferencingFunc func(Graph::InferAndVerifySubgraphTypes);
-  InferenceContextImpl context(node, func, name_to_initial_tensor_);
+  InferenceContextImpl context(node, func, *this);
 
   try {
     context.RunInferencing();

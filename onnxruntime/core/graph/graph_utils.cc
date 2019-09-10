@@ -391,7 +391,11 @@ const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, co
       }
     }
   } else if (check_outer_scope && graph.IsSubgraph()) {
-    initializer = GetConstantInitializer(*graph.ParentGraph(), initializer_name);
+    // make sure there's not a local value with the same name.
+    // if there is it shadows the any initializer in outer scope
+    if (graph.GetNodeArg(initializer_name) == nullptr) {
+      initializer = GetConstantInitializer(*graph.ParentGraph(), initializer_name);
+    }
   }
 
   return initializer;
