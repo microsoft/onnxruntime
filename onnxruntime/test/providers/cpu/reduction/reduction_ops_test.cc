@@ -761,6 +761,24 @@ TEST(ReductionOpTest, ReduceSum_int32) {
   test.Run();
 }
 
+TEST( ReductionOpTest, ReduceSum_int64 )
+{
+   OpTester test( "ReduceSum" );
+   test.AddAttribute( "axes", std::vector<int64_t>{0, 2} );
+   test.AddAttribute( "keepdims", ( int64_t ) 1 );
+   test.AddInput<int64_t>( "data", { 3, 2, 2 },
+      { 1, 2,
+       3, 4,
+
+       5, 6,
+       7, 8,
+
+       9, 10,
+       11, 12 } );
+   test.AddOutput<int64_t>( "reduced", { 1, 2, 1 }, { 33, 45 } );
+   test.Run();
+}
+
 TEST(ReductionOpTest, ReduceSum_default_axes_keepdims) {
   OpTester test("ReduceSum");
   test.AddAttribute("keepdims", (int64_t)1);

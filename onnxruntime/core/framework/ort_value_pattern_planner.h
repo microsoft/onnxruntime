@@ -26,7 +26,7 @@ class OrtValuePatternPlanner {
 
  private:
   // This map itself is const after the construction
-  std::map<OrtAllocatorInfo, std::unique_ptr<MemPatternPlanner>> planner_map_;
+  std::map<OrtMemoryInfo, std::unique_ptr<MemPatternPlanner>> planner_map_;
   const ExecutionPlanBase& execution_planner_;
 };
 }  // namespace onnxruntime

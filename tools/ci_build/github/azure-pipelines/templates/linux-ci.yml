@@ -5,9 +5,11 @@ parameters:
   DoNugetPack: 'false'
   NuPackScript: ''
   ArtifactName: 'drop-linux'
+  TimeoutInMinutes: 60
 
 jobs:
 - job: ${{ parameters.JobName }}
+  timeoutInMinutes:  ${{ parameters.TimeoutInMinutes }}
   pool: ${{ parameters.AgentPool }}
   steps:
     - template: linux-set-variables-and-download.yml

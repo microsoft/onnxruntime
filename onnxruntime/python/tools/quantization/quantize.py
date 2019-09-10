@@ -226,7 +226,7 @@ def _find_nodes_using_initializer(graph, initializer):
 
 class ONNXQuantizer:
     def __init__(self, model, per_channel, mode, static, weight_qType, input_qType,
-            input_quantization_params, output_quantization_params):
+            input_quantization_params, output_quantization_params, nodes_to_quantize):
         self.model = model
         self.per_channel = per_channel # weight-pack per channel
         self.weight_qType = weight_qType  # quantize data type
@@ -235,6 +235,7 @@ class ONNXQuantizer:
         self.input_qType = input_qType # quantize input type
         self.input_quantization_params = input_quantization_params # zero point and scale values for node inputs.
         self.output_quantization_params = output_quantization_params # zero point and scale values for node outputs.
+        self.nodes_to_quantize = nodes_to_quantize # specific nodes to quantize
 
         if not self.mode in quantization_modes:
             raise ValueError('unsupported quantization mode {}'.format(self.mode))
@@ -250,17 +251,22 @@ class ONNXQuantizer:
 
         # List of weights quantized.
         self._quantized_weights = []
-
+    
     def quantize_model(self):
         # Create a new topologically sorted list for quantizing a model
         new_list = []
         for node in self.model.graph.node:
-            if node.op_type == 'Conv':
-                new_list += self._quantize_convolution(node, new_list)
-            elif node.op_type == 'MatMul':
-                new_list += self._quantize_matmul(node, new_list)
-            else:
+            if self.nodes_to_quantize is not None and node.name not in self.nodes_to_quantize:
                 new_list.append(node)
+            else:
+                if node.op_type == 'Conv' and len(node.input) == 2:
+                    new_list += self._quantize_convolution(node, new_list)
+                elif node.op_type == 'MatMul':
+                    new_list += self._quantize_matmul(node, new_list)
+                elif node.op_type == 'Gather':
+                    new_list += self._quantize_gather_ops(node, new_list)
+                else:
+                    new_list.append(node)
 
         # extend is used to append to the list for a protobuf fields
         # https://developers.google.com/protocol-buffers/docs/reference/python-generated?csw=1#fields
@@ -648,7 +654,7 @@ class ONNXQuantizer:
             [output_name], input_name + "_QuantizeLinear")
         return nodes + [qlinear_node]
 
-    def _update_unsupported_nodes_using_weight(self, weight, new_nodes_list):
+    def _update_unsupported_nodes_using_weight(self, weight, new_nodes_list):        
         '''Find all nodes using a weight that do not support quantization and
         add a DequantizeLinear node before those nodes. This includes all nodes except Conv, MatMul.
 
@@ -657,7 +663,7 @@ class ONNXQuantizer:
             return: List of new nodes created.
         '''
         nodes_using_weight = _find_nodes_using_initializer(self.model.graph, weight.initializer)
-        unsupported_nodes = [node for node in nodes_using_weight if node.op_type not in ["Conv", "MatMul"]]
+        unsupported_nodes = [node for node in nodes_using_weight if node.op_type not in ["Conv", "MatMul", "Gather"]]
 
         nodes_list = []
         dequantize_linear_name = weight.name + "_DequantizeLinear"
@@ -725,7 +731,7 @@ class ONNXQuantizer:
                      List of scale names used for input quantization,
                      List of new QuantizeLinear nodes created)
         '''
-        assert (node.op_type == "Conv" or node.op_type == "MatMul")
+        assert (node.op_type == "Conv" or node.op_type == "MatMul" or node.op_type == "Gather")
 
         quantized_input_names = []
         zero_point_names = []
@@ -764,6 +770,25 @@ class ONNXQuantizer:
                 zero_point_names.append(qlinear_node.input[2])
 
         return (quantized_input_names, zero_point_names, scale_names, nodes)
+
+    def _quantize_gather_ops(self, node, new_nodes_list):
+        assert (node.op_type == "Gather")
+        (quantized_input_names, zero_point_names, scale_names, nodes) = \
+            self._quantize_inputs(node, [0], 0, new_nodes_list)
+        
+        gather_new_output = node.output[0] + "_quantized"
+        gather_original_output = node.output[0]
+        node.output[0] = gather_new_output
+        node.input[0] = quantized_input_names[0]
+        nodes.append(node)
+
+        # Add DequantizeLinear node.
+        dqlinear_name = node.output[0] + "_DequantizeLinear"
+        dqlinear_inputs = [gather_new_output, scale_names[0], zero_point_names[0]]
+        dqlinear_node = onnx.helper.make_node("DequantizeLinear", dqlinear_inputs, [gather_original_output], dqlinear_name)
+        print(dqlinear_node.name)
+        nodes.append(dqlinear_node)
+        return nodes        
 
     def _quantize_convolution_integer_ops(self, node, new_nodes_list):
         '''
@@ -991,7 +1016,7 @@ class ONNXQuantizer:
 
 
 def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMode.IntegerOps,
-    static=False, asymmetric_input_types=False, input_quantization_params=None, output_quantization_params=None):
+    static=False, asymmetric_input_types=False, input_quantization_params=None, output_quantization_params=None, nodes_to_quantize=None):
     '''
         Given an onnx model, create a quantized onnx model and save it into a file
 
@@ -1038,6 +1063,14 @@ def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMo
                 'resnet_model/Relu_4:0': [np.uint8(0), np.float32(0.011359662748873234)]
             }
     :return: ModelProto with quantization
+    :param nodes_to quantize:
+        List of nodes names to quantize. When this list is not None only the nodes in this list
+        are quantized.
+        exmaple:
+        [
+            'Cov__224',
+            'Conv__252'
+        ]
     '''
     if nbits == 8:
         input_qType = onnx_proto.TensorProto.UINT8
@@ -1046,7 +1079,7 @@ def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMo
         copy_model = onnx_proto.ModelProto()
         copy_model.CopyFrom(model)
         quantizer = ONNXQuantizer(copy_model, per_channel, mode, static, weight_qType, input_qType,
-                        input_quantization_params, output_quantization_params)
+                        input_quantization_params, output_quantization_params, nodes_to_quantize)
         quantizer.quantize_model()
         quantizer.model.producer_name = __producer__
         quantizer.model.producer_version = __version__

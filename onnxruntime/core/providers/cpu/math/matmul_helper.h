@@ -34,7 +34,8 @@ class MatMulComputeHelper {
       output_offsets_ = {0};
       left_offsets_ = {0};
       right_offsets_ = {0};
-      ORT_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2], "MatMul dimension mismatch");
+      ORT_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2],
+                        "MatMul dimension mismatch, Left:", left_shape, " Right:", right_shape);
       return Status::OK();
     }
 

@@ -38,10 +38,21 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
   const std::vector<int64_t>& X_dims = X->Shape().GetDims();
   auto rank = X_dims.size();
   if (rank == 0)
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Upsample: input tensor cannot be scalar.");
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, 
+                 is_resize ? "Resize: input tensor cannot be scalar." : "Upsample: input tensor cannot be scalar.");
 
   if (rank != scales.size())
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Upsample: input tensor's dimension does not match the scales.");
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, 
+                 is_resize ? "Resize: input tensor's dimension does not match the scales." : 
+                             "Upsample: input tensor's dimension does not match the scales.");
+
+  if (UpsampleMode::LINEAR == mode_ && rank != 4 && rank != 2) {
+       std::ostringstream oss;
+       oss << "'Linear' mode only support 2-D inputs ('Bilinear') or 4-D inputs "
+              "with the corresponding outermost 2 scale values being 1 in the ";
+       oss << (is_resize ? "Resize operator" : "Upsample operator");
+       return Status(ONNXRUNTIME, FAIL, oss.str());    
+  }
 
   std::vector<int64_t> Y_dims;
   for (std::size_t i = 0; i < rank; i++) {
@@ -69,21 +80,12 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
 
   size_t output_count = Y->Shape().Size();
 
-  if (UpsampleMode::LINEAR == mode_) {
-    if (rank != 4)
-      if (is_resize) {
-        return Status(ONNXRUNTIME, FAIL, "Resize: linear mode only supports 4-D tensor with NCHW layout");
-      } else {
-        return Status(ONNXRUNTIME, FAIL, "Upsample: linear mode only supports 4-D tensor with NCHW layout");
-      }
-  }
-
   if (is_resize) {
     CudaAsyncBuffer<float> scales_vals(this, device_id, scales);
     scales_vals.CopyToGpu();
     ResizeImpl(mode_,
                rank,
-               (UpsampleMode::LINEAR == mode_) ? X_dims[2] : 0,
+               (UpsampleMode::LINEAR == mode_) ? (rank == 2 ? X_dims[0] : X_dims[2]) : 0,
                input_strides.GpuPtr(),
                output_div_pitches.GpuPtr(),
                scales_vals.GpuPtr(),
@@ -101,7 +103,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
 
     UpampleImpl(mode_,
                 rank,
-                (UpsampleMode::LINEAR == mode_) ? X_dims[2] : 0,
+                (UpsampleMode::LINEAR == mode_) ? (rank  == 2 ? X_dims[0] : X_dims[2]) : 0,
                 input_strides.GpuPtr(),
                 output_div_pitches.GpuPtr(),
                 scales_div.GpuPtr(),

@@ -40,7 +40,7 @@ void CUDAAllocator::Free(void* p) {
   cudaFree(p);  // do not throw error since it's OK for cudaFree to fail during shutdown
 }
 
-const OrtAllocatorInfo& CUDAAllocator::Info() const {
+const OrtMemoryInfo& CUDAAllocator::Info() const {
   return info_;
 }
 
@@ -60,7 +60,7 @@ void CUDAPinnedAllocator::Free(void* p) {
   CUDA_CALL_THROW(cudaFreeHost(p));
 }
 
-const OrtAllocatorInfo& CUDAPinnedAllocator::Info() const {
+const OrtMemoryInfo& CUDAPinnedAllocator::Info() const {
   return info_;
 }
 

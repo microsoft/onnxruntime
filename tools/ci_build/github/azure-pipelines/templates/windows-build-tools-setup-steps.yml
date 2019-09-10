@@ -19,18 +19,27 @@ steps:
     #     downloadDirectory: '$(Build.BinariesDirectory)\python'
 
     # Temporary bypass of artifacts permission issue
-    - task: CmdLine@1
-      displayName: 'Download azcopy'
+    - task: PowerShell@2
+      displayName: 'Download AzCopy (used for download test data script)'
       inputs:
-        filename: 'AzCopy.exe'
-        arguments: '/Y /Source:https://onnxruntimetestdata.blob.core.windows.net/models/azcopy.exe /Dest:$(Build.BinariesDirectory)\azcopy.exe'
-        
+        targetType: 'inline'
+        script: |
+          Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\azcopy.exe https://onnxruntimetestdata.blob.core.windows.net/models/azcopy.exe
+
+    # - task: PowerShell@2
+    #   displayName: 'Download Python'
+    #   inputs:
+    #     targetType: 'inline'
+    #     script: |
+    #       Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\Miniconda3-4.7.10-Windows-x86_64.exe https://onnxruntimetestdata.blob.core.windows.net/models/Miniconda3-4.7.10-Windows-x86_64.exe
+
     - task: CmdLine@1
-      displayName: 'Download python'
+      displayName: 'Download Python'
       inputs:
-        filename: 'AzCopy.exe'
-        arguments: '/Y /Source:https://onnxruntimetestdata.blob.core.windows.net/models/Miniconda3-4.7.10-Windows-x86_64.exe /Dest:$(Build.BinariesDirectory)\Miniconda3-4.7.10-Windows-x86_64.exe'               
-  
+        filename: '$(Build.BinariesDirectory)\azcopy.exe'
+        arguments: 'copy https://onnxruntimetestdata.blob.core.windows.net/models/Miniconda3-4.7.10-Windows-x86_64.exe $(Build.BinariesDirectory)\Miniconda3-4.7.10-Windows-x86_64.exe'
+      timeoutInMinutes: 10
+
     - task: CmdLine@1
       displayName: 'Run python installer'
       inputs:

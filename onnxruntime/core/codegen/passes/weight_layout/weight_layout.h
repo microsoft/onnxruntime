@@ -30,7 +30,7 @@ class WeightLayout {
       int input_dim,
       float pad_zero);
 
-  ~WeightLayout() = default;
+  virtual ~WeightLayout() = default;
 
   // Return a CoordTransFunc from actual (transformed) coordinate to normial (original) coordinate
   virtual CoordTransFunc ToNominal(const tvm::Tensor& X) const = 0;

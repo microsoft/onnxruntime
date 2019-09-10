@@ -39,30 +39,28 @@ struct TypeToTensorType<uint32_t> { static constexpr ONNXTensorElementDataType t
 template <>
 struct TypeToTensorType<uint64_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64; };
 
-inline Allocator Allocator::CreateDefault() {
-  OrtAllocator* p;
-  ORT_THROW_ON_ERROR(OrtCreateDefaultAllocator(&p));
-  return Allocator(p);
+inline AllocatorWithDefaultOptions::AllocatorWithDefaultOptions() {
+  ORT_THROW_ON_ERROR(OrtGetAllocatorWithDefaultOptions(&p_));
 }
 
-inline void* Allocator::Alloc(size_t size) {
+inline void* AllocatorWithDefaultOptions::Alloc(size_t size) {
   void* out;
   ORT_THROW_ON_ERROR(OrtAllocatorAlloc(p_, size, &out));
   return out;
 }
 
-inline void Allocator::Free(void* p) {
+inline void AllocatorWithDefaultOptions::Free(void* p) {
   ORT_THROW_ON_ERROR(OrtAllocatorFree(p_, p));
 }
 
-inline const OrtAllocatorInfo* Allocator::GetInfo() const {
-  const OrtAllocatorInfo* out;
+inline const OrtMemoryInfo* AllocatorWithDefaultOptions::GetInfo() const {
+  const OrtMemoryInfo* out;
   ORT_THROW_ON_ERROR(OrtAllocatorGetInfo(p_, &out));
   return out;
 }
 
 inline AllocatorInfo AllocatorInfo::CreateCpu(OrtAllocatorType type, OrtMemType mem_type) {
-  OrtAllocatorInfo* p;
+  OrtMemoryInfo* p;
   ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(type, mem_type, &p));
   return AllocatorInfo(p);
 }
@@ -96,6 +94,11 @@ inline RunOptions& RunOptions::SetRunLogVerbosityLevel(int level) {
   return *this;
 }
 
+inline RunOptions& RunOptions::SetRunLogSeverityLevel(int level) {
+  ORT_THROW_ON_ERROR(OrtRunOptionsSetRunLogSeverityLevel(p_, level));
+  return *this;
+}
+
 inline int RunOptions::GetRunLogVerbosityLevel() const {
   int out;
   ORT_THROW_ON_ERROR(OrtRunOptionsGetRunLogVerbosityLevel(p_, &out));
@@ -113,13 +116,13 @@ inline const char* RunOptions::GetRunTag() const {
   return out;
 }
 
-inline RunOptions& RunOptions::EnableTerminate() {
-  ORT_THROW_ON_ERROR(OrtRunOptionsEnableTerminate(p_));
+inline RunOptions& RunOptions::SetTerminate() {
+  ORT_THROW_ON_ERROR(OrtRunOptionsSetTerminate(p_));
   return *this;
 }
 
-inline RunOptions& RunOptions::DisableTerminate() {
-  ORT_THROW_ON_ERROR(OrtRunOptionsDisableTerminate(p_));
+inline RunOptions& RunOptions::UnsetTerminate() {
+  ORT_THROW_ON_ERROR(OrtRunOptionsUnsetTerminate(p_));
   return *this;
 }
 
@@ -299,11 +302,11 @@ inline ONNXType TypeInfo::GetONNXType() const {
 }
 
 template <typename T>
-inline Value Value::CreateTensor(const OrtAllocatorInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len) {
+inline Value Value::CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len) {
   return CreateTensor(info, p_data, p_data_element_count * sizeof(T), shape, shape_len, TypeToTensorType<T>::type);
 }
 
-inline Value Value::CreateTensor(const OrtAllocatorInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
+inline Value Value::CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
                                  ONNXTensorElementDataType type) {
   OrtValue* out;
   ORT_THROW_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(info, p_data, p_data_byte_count, shape, shape_len, type, &out));

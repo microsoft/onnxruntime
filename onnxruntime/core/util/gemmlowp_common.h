@@ -2,8 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 #include "core/util/gemmlowp_common_wrapper.h"
-#include "core/util/math.h"
-
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 
@@ -56,11 +55,11 @@ MakeOutputPipelineWithOutBias(std::int32_t result_offset,
   return std::make_tuple(quantize_down_stage, saturating_cast_stage);
 }
 
-Status GemmlowpMultiplyu8u8_u8(const uint8_t* lhs_data, const uint8_t* rhs_data, uint8_t* result_data,
+void GemmlowpMultiplyu8u8_u8(const uint8_t* lhs_data, const uint8_t* rhs_data, uint8_t* result_data,
                         const int lhs_offset, const int rhs_offset, const int result_offset,
                         int m, int n, int k, int32_t int_multiplier, int32_t right_shift, const int32_t* bias = nullptr);
 
-Status GemmlowpMultiplyu8u8_s32(const uint8_t* lhs_data, const uint8_t* rhs_data, int32_t* result_data,
-                             const int lhs_offset, const int rhs_offset, int m, int n, int k);
+void GemmlowpMultiplyu8u8_s32(const uint8_t* lhs_data, const uint8_t* rhs_data, int32_t* result_data,
+                             const int lhs_offset, const int rhs_offset, int m, int n, int k, concurrency::ThreadPool*);
 
 }  // namespace onnxruntime

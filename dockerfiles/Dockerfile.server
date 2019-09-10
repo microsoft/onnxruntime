@@ -32,9 +32,8 @@ RUN mkdir -p /onnxruntime/build && \
 
 FROM minimal AS final
 WORKDIR /onnxruntime/server/
-ENV MODEL_ABSOLUTE_PATH /onnxruntime/model/model.onnx
 COPY --from=build /onnxruntime/build/Release/onnxruntime_server /onnxruntime/server/
 COPY --from=build /onnxruntime/build/Release/libonnxruntime.so.* /lib/
 RUN apt-get update \
     && apt-get install -y libgomp1
-ENTRYPOINT /onnxruntime/server/onnxruntime_server --model_path $MODEL_ABSOLUTE_PATH
+ENTRYPOINT ["/onnxruntime/server/onnxruntime_server"]

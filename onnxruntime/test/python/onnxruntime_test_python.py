@@ -35,8 +35,8 @@ class TestInferenceSession(unittest.TestCase):
 
     def testModelSerialization(self):
         so = onnxrt.SessionOptions()
-        so.session_log_verbosity_level = 1
-        so.session_logid = "TestModelSerialization"
+        so.log_verbosity_level = 1
+        so.logid = "TestModelSerialization"
         so.optimized_model_filepath = "./PythonApiTestOptimizedModel.onnx"
         onnxrt.InferenceSession(self.get_name("mul_1.onnx"), sess_options=so)
         self.assertTrue(os.path.isfile(so.optimized_model_filepath))
@@ -95,15 +95,15 @@ class TestInferenceSession(unittest.TestCase):
 
     def testRunModelMultipleThreads(self):
         so = onnxrt.SessionOptions()
-        so.session_log_verbosity_level = 1
-        so.session_logid = "MultiThreadsTest"
+        so.log_verbosity_level = 1
+        so.logid = "MultiThreadsTest"
         sess = onnxrt.InferenceSession(
             self.get_name("mul_1.onnx"), sess_options=so)
         ro1 = onnxrt.RunOptions()
-        ro1.run_tag = "thread1"
+        ro1.logid = "thread1"
         t1 = threading.Thread(target=self.run_model, args=(sess, ro1))
         ro2 = onnxrt.RunOptions()
-        ro2.run_tag = "thread2"
+        ro2.logid = "thread2"
         t2 = threading.Thread(target=self.run_model, args=(sess, ro2))
         t1.start()
         t2.start()
@@ -494,10 +494,16 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(total, 0)
 
     def testGraphOptimizationLevel(self):
-        sess = onnxrt.InferenceSession(self.get_name("logicaland.onnx"))
-        sess.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL
-        self.assertEqual(sess.graph_optimization_level,
-                         onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL)
+        opt = onnxrt.SessionOptions()
+        self.assertEqual(opt.graph_optimization_level, onnxrt.GraphOptimizationLevel.ORT_ENABLE_BASIC)
+            # default should be basic optimization
+        opt.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL
+        self.assertEqual(opt.graph_optimization_level, onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL)
+        sess = onnxrt.InferenceSession(self.get_name("logicaland.onnx"), sess_options=opt)
+        a = np.array([[True, True], [False, False]], dtype=np.bool)
+        b = np.array([[True, False], [True, False]], dtype=np.bool)
+
+        res = sess.run([], {'input1:0': a, 'input:0':b})
 
 
 if __name__ == '__main__':

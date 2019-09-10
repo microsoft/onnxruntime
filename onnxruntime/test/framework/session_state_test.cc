@@ -53,19 +53,28 @@ TEST(SessionStateTest, AddGetKernelTest) {
   outputs.push_back(&output_arg);
   onnxruntime::Node& node = graph.AddNode("node_1", "Variable", "node 1.", inputs, outputs);
   auto status = graph.Resolve();
-  EXPECT_TRUE(status.IsOK());
-  KernelDef kernel_def;
-  CPUExecutionProvider execution_provider{CPUExecutionProviderInfo{"CPUExecutionProvider"}};
+  ASSERT_TRUE(status.IsOK());
+  auto kernel_def = KernelDefBuilder().SetName("Variable").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
+  auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
 
-  OpKernelInfo p_info(node, kernel_def, execution_provider, s.GetConstantInitializedTensors(),
+  OpKernelInfo p_info(node, *kernel_def, *cpu_execution_provider.get(), s.GetConstantInitializedTensors(),
                       s.GetOrtValueNameIdxMap(), s.GetFuncMgr(), s.GetDataTransferMgr());
   unique_ptr<TestOpKernel> p_kernel;
   p_kernel.reset(new TestOpKernel(p_info));
   size_t orig_num_outputs = p_kernel->Node().OutputDefs().size();
   std::cout << "node_idx: " << node.Index() << std::endl;
 
-  s.SetGraphViewer(std::make_unique<GraphViewer>(graph));
-  s.AddKernel(node.Index(), std::move(p_kernel));
+  execution_providers.Add(kCpuExecutionProvider, std::move(cpu_execution_provider));
+  KernelRegistryManager kernel_registry_manager;
+  status = kernel_registry_manager.RegisterKernels(execution_providers);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  node.SetExecutionProviderType(kCpuExecutionProvider);
+  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
+  kernel_registry->Register(KernelCreateInfo(
+      std::move(kernel_def), [](const OpKernelInfo& info) -> OpKernel* { return new TestOpKernel(info); }));
+  kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
+  status = s.SetGraphAndCreateKernels(graph, kernel_registry_manager);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
   auto test_kernel = s.GetKernel(node.Index());
   std::cout << "orig: " << orig_num_outputs << " new: " << test_kernel->Node().OutputDefs().size() << std::endl;
   EXPECT_EQ(orig_num_outputs, test_kernel->Node().OutputDefs().size());
@@ -79,8 +88,7 @@ class TestParam {
 };
 TestParam param_list[] = {{3, true}, {4, true}, {3, false}, {4, false}};
 }  // namespace
-class SessionStateTestP : public testing::TestWithParam<TestParam> {
-};
+class SessionStateTestP : public testing::TestWithParam<TestParam> {};
 // Test that we separate out constant and non-constant initializers correctly
 TEST_P(SessionStateTestP, TestInitializerProcessing) {
   const TestParam& param = GetParam();
@@ -104,17 +112,14 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   ASSERT_TRUE(status.IsOK()) << status;
 
   SessionState session_state(execution_providers, param.enable_mem_pattern, &tp);
-  SessionStateInitializer session_initializer(param.enable_mem_pattern, ToWideString(model_path), graph,
-                                              session_state, execution_providers, krm);
+  SessionStateInitializer session_initializer(param.enable_mem_pattern, ToWideString(model_path), graph, session_state,
+                                              execution_providers, krm);
 
   GraphPartitioner partitioner(krm, execution_providers);
   status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr());
   ASSERT_TRUE(status.IsOK()) << status;
 
   status = session_initializer.CreatePlan(nullptr, nullptr, true);
-  ASSERT_TRUE(status.IsOK()) << status;
-
-  status = session_initializer.InitializeAndSave(nullptr);
   ASSERT_TRUE(status.IsOK()) << status;
 
   const auto& initialized_tensors = session_state.GetInitializedTensors();
@@ -144,7 +149,6 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   }
 }
 
-INSTANTIATE_TEST_CASE_P(SessionStateTests, SessionStateTestP,
-                        testing::ValuesIn(param_list));
+INSTANTIATE_TEST_CASE_P(SessionStateTests, SessionStateTestP, testing::ValuesIn(param_list));
 }  // namespace test
 }  // namespace onnxruntime

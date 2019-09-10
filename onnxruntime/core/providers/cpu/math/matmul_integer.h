@@ -9,14 +9,14 @@
 
 namespace onnxruntime {
 
-template <typename T1, typename T2, typename T3>
+template <typename T1, typename T2>
 class MatMulInteger final : public OpKernel {
  public:
   MatMulInteger(const OpKernelInfo& info) : OpKernel(info) {
     has_a_zero_point_ = false;
     has_b_zero_point_ = false;
     if (info.GetInputCount() > 2) {
-      has_a_zero_point_ = true;      
+      has_a_zero_point_ = true;
     }
     if (info.GetInputCount() > 3) {
       has_b_zero_point_ = true;
