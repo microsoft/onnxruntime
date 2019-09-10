@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/model.h"
 #include <memory>
 #include "core/common/logging/logging.h"
@@ -81,7 +82,7 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
     throw std::invalid_argument("ModelProto was null.");
   }
 
-  if (!model_proto->has_graph()) {
+  if (!utils::HasGraph(*model_proto)) {
     throw std::invalid_argument("ModelProto does not have a graph.");
   }
 
@@ -150,7 +151,7 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
 }
 
 Version Model::IrVersion() const {
-  if (model_proto_->has_ir_version()) {
+  if (utils::HasIrVersion(*model_proto_)) {
     return model_proto_->ir_version();
   }
   return kNoVersion;
@@ -181,7 +182,7 @@ void Model::SetDomain(const std::string& domain) {
 }
 
 Version Model::ModelVersion() const {
-  if (model_proto_->has_model_version()) {
+  if (utils::HasModelVersion(*model_proto_)) {
     return model_proto_->model_version();
   }
   return kNoVersion;
@@ -239,7 +240,7 @@ Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
 
 Status Model::Load(const ModelProto& model_proto, std::shared_ptr<Model>& model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
   // we expect a graph to be present
-  if (!model_proto.has_graph()) {
+  if (!utils::HasGraph(model_proto)) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No graph was found in the protobuf.");
   }
 
@@ -258,7 +259,7 @@ Status Model::Load(const ModelProto& model_proto, std::shared_ptr<Model>& model,
 
 Status Model::Load(std::unique_ptr<ModelProto> p_model_proto, std::shared_ptr<Model>& model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
   // we expect a graph to be present
-  if (!p_model_proto->has_graph()) {
+  if (!utils::HasGraph(*p_model_proto)) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No graph was found in the protobuf.");
   }
 
