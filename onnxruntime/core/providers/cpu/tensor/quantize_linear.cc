@@ -30,6 +30,18 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
         .TypeConstraint("y", DataTypeImpl::GetTensorType<float>()),
     DequantizeLinear<int8_t>);
 
+/**
+Returns true if given tensor is a scalar or 1D tensor of size 1
+**/
+static bool IsScalarOr1ElementVector(const Tensor* input) {
+  if (input->Shape().NumDimensions() == 0 ||
+      (input->Shape().NumDimensions() == 1 && input->Shape().GetDims().size() == 1)) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
 template <typename T>
 // formula is Y = (X - ZeroPoint) * Scale
 Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
@@ -104,6 +116,15 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
         .TypeConstraint("y_zero_point", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("y", DataTypeImpl::GetTensorType<int8_t>()),
     QuantizeLinear<int8_t>);
+
+/**
+Clamps input between provided min and max values
+**/
+static float clamp(float v, float lo, float hi) {
+  if (v < lo) return lo;
+  if (v > hi) return hi;
+  return v;
+}
 
 static float RoundHalfToEven(float input) {
   std::fesetround(FE_TONEAREST);
