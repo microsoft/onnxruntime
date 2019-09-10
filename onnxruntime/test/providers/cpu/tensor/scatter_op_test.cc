@@ -272,7 +272,7 @@ TEST(ScatterOpTest, InvalidIndex) {
   test.AddInput<int64_t>("indices", {1, 1, 1}, {4});
   test.AddInput<float>("updates", {1, 1, 1}, {5.0f});
   test.AddOutput<float>("y", {4, 2, 1}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "indices element out of data bounds, idx=4 must be within the inclusive range [0,3]");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Scatter: indices element out of data bounds, idx=4 must be within the inclusive range [0,3]");
 }
 
 TEST(ScatterElementsOpTest, InvalidIndex) {
@@ -283,7 +283,7 @@ TEST(ScatterElementsOpTest, InvalidIndex) {
   test.AddInput<int64_t>("indices", {1, 1, 1}, {4});
   test.AddInput<float>("updates", {1, 1, 1}, {5.0f});
   test.AddOutput<float>("y", {4, 2, 1}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "indices element out of data bounds, idx=4 must be within the inclusive range [-4,3]");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "ScatterElements: indices element out of data bounds, idx=4 must be within the inclusive range [-4,3]");
 }
 
 TEST(ScatterOpTest, NegativeIndex) {
@@ -294,7 +294,7 @@ TEST(ScatterOpTest, NegativeIndex) {
   test.AddInput<int64_t>("indices", {1, 1, 1}, {-1});
   test.AddInput<float>("updates", {1, 1, 1}, {5.0f});
   test.AddOutput<float>("y", {4, 2, 1}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "indices element out of data bounds, idx=-1 must be within the inclusive range [0,3]");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Scatter: indices element out of data bounds, idx=-1 must be within the inclusive range [0,3]");
 }
 
 TEST(ScatterElementsOpTest, NegativeValidIndex) {

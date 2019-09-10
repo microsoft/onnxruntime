@@ -10,12 +10,17 @@ namespace onnxruntime {
 
 class Scatter final : public OpKernel {
  public:
-  Scatter(const OpKernelInfo& info) : OpKernel(info) {
+  explicit Scatter(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK(),
                 "Missing/Invalid 'axis' attribute value");
 
-    if (OpKernel::Node().OpType() == "ScatterElements")
-      is_scatter_elements = true;
+    int start_ver, end_ver;
+    OpKernel::KernelDef().SinceVersion(&start_ver, &end_ver);
+
+    // ScatterElements exists from opset-11 onwards
+    // Scatter exists only for opsets 9 and 10
+    if (start_ver >= 11)
+        is_scatter_elements = true;
   }
   ~Scatter() = default;
   Status Compute(OpKernelContext* context) const override;
@@ -63,8 +68,10 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
         (idx < 0 && !is_scatter_elements) ||
         // 'ScatterElements' supports valid negative indices in range [-axis_dim_limit, -1]
         (idx < -axis_dim_limit)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices element out of data bounds, idx=", idx,
-                             " must be within the inclusive range [", (is_scatter_elements ? -axis_dim_limit : 0), ",", axis_dim_limit - 1, "]");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, (is_scatter_elements ? "ScatterElements: " : "Scatter: "),
+                             "indices element out of data bounds, idx=", idx,
+                             " must be within the inclusive range [", (is_scatter_elements ? -axis_dim_limit : 0), 
+                             ",", axis_dim_limit - 1, "]");
     }
 
     indices_data.push_back(idx < 0 ? idx + static_cast<Tin>(axis_dim_limit) : idx);
