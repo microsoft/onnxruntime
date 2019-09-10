@@ -1,0 +1,1 @@
+The microsofttelemetry.h header file was taken from https://github.com/microsoft/microsoft-ui-xaml/blob/master/dev/Telemetry/MicrosoftTelemetry.h.

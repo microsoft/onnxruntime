@@ -76,7 +76,7 @@ public:
         uint32_t elementIndex) const;
 
     std::string name;
-    MLOperatorAttributeType type;
+    MLOperatorAttributeType type = MLOperatorAttributeType::Undefined;
 
     std::vector<int64_t> ints;
     std::vector<std::string> strings;

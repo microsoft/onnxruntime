@@ -1,0 +1,14 @@
+//
+// Copyright (c) Microsoft Corporation. All rights reserved.
+//
+
+#include <windows.h>
+#include <ntverp.h>
+
+#define VER_FILETYPE             VFT_DLL
+#define VER_FILESUBTYPE          VFT_UNKNOWN
+#define VER_FILEDESCRIPTION_STR  "Windows Machine Learning Runtime"
+#define VER_INTERNALNAME_STR     "Windows.AI.MachineLearning.Runtime"
+#define VER_ORIGINALFILENAME_STR "windows.ai.machinelearning.dll"
+
+#include <common.ver>
