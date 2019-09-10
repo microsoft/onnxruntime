@@ -9,45 +9,56 @@
 
 namespace onnxruntime {
 
-class ConstantOfShape final : public OpKernel {
- public:
-  explicit ConstantOfShape(const OpKernelInfo& info);
+class ConstantOfShapeBase {
 
-  Status Compute(OpKernelContext* ctx) const override;
+ protected:
+  ConstantOfShapeBase(const OpKernelInfo& info);
+
+  Status PrepareCompute(OpKernelContext* ctx, Tensor** output_tensor) const;
+
+  void* GetValuePtr() const { return p_value_; }
 
  private:
-  ONNX_NAMESPACE::TensorProto_DataType tensor_type_;
-  union Value {
-    float fl_;
-    MLFloat16 fl16_;
-    double dbl_;
-    int64_t i64_;
-    uint64_t ui64_;
-    Value() : ui64_(0) {}
+  union SizeBasedValue {
+    int8_t int8_;
+    int16_t int16_;
+    int32_t int32_;
+    int64_t int64_;
+  } s_value_;
+  void* p_value_;
 
-    float GetFloat() const {
-      return fl_;
+  void SetValue(size_t size, void* value) {
+    switch (size) {
+      case sizeof(int8_t):
+        s_value_.int8_ = *(reinterpret_cast<int8_t*>(value));
+        p_value_ = reinterpret_cast<void*>(&(s_value_.int8_));
+        break;
+      case sizeof(int16_t):
+        s_value_.int16_ = *(reinterpret_cast<int16_t*>(value));
+        p_value_ = reinterpret_cast<void*>(&(s_value_.int16_));
+        break;
+      case sizeof(int32_t):
+        s_value_.int32_ = *(reinterpret_cast<int32_t*>(value));
+        p_value_ = reinterpret_cast<void*>(&(s_value_.int32_));
+        break;
+      case sizeof(int64_t):
+        s_value_.int64_ = *(reinterpret_cast<int64_t*>(value));
+        p_value_ = reinterpret_cast<void*>(&(s_value_.int64_));
+        break;
+      default:
+        ORT_THROW("Unsupported value attribute datatype with sizeof=: ", size);
+        break;
     }
+  }
 
-    MLFloat16 GetFloat16() const {
-      return fl16_;
-    }
+  void SetValueFromTensorProto(const ONNX_NAMESPACE::TensorProto&);
+};
 
-    double GetDouble() const {
-      return dbl_;
-    }
+class ConstantOfShape final : public ConstantOfShapeBase, public OpKernel {
+ public:
+  explicit ConstantOfShape(const OpKernelInfo& info) : ConstantOfShapeBase(info), OpKernel(info) {};
 
-    template <class T>
-    T GetFromSigned() const;
-
-    template <class T>
-    T GetFromUnsigned() const;
-
-  } value_;
-
-  void SetValue(const ONNX_NAMESPACE::TensorProto&);
-
-  void DispatchTypeAndFillOutput(Tensor* output_tensor) const;
+  Status Compute(OpKernelContext* ctx) const override;
 };
 
 }  // namespace onnxruntime

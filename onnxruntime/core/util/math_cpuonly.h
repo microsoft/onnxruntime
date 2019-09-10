@@ -17,16 +17,20 @@
 
 #pragma once
 
+#include "onnxruntime_config.h"
 // external/eigen/Eigen/src/Core/AssignEvaluator.h:86:63:
 // error: enum constant in boolean context [-Werror=int-in-bool-context]
-#if defined(__GNUC__) && __GNUC__>=7
+#if defined(__GNUC__) && __GNUC__ >= 7
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wint-in-bool-context"
+#ifdef HAS_DEPRECATED_COPY
+#pragma GCC diagnostic ignored "-Wdeprecated-copy"
+#endif
 #endif
 
 #include "Eigen/Core"
 
-#if defined(__GNUC__) && __GNUC__>=7
+#if defined(__GNUC__) && __GNUC__ >= 7
 #pragma GCC diagnostic pop
 #endif
 
@@ -95,6 +99,16 @@ void FuseActivation(const std::string& activation, T* y_data, size_t size, float
   } else {
     ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", activation);
   }
+}
+
+// cast TA and TB to TC, and do matrix multiply in Eigen
+// note that inputs/outputs is row-major, while Eigen is col-major
+// so (M, K) x (K, N) -> (M, N) becomes (N, K) x (K, M) -> (N, M) in Eigen
+template <typename TA, typename TB, typename TY>
+void EigenCastGEMM(const TA* A_data, const TB* B_data, TY* Y_data, int M, int N, int K) {
+  auto A = ConstEigenMatrixMap<TA>(A_data, K, M);
+  auto B = ConstEigenMatrixMap<TB>(B_data, N, K);
+  EigenMatrixMap<TY>(Y_data, N, M) = B.template cast<TY>() * A.template cast<TY>();
 }
 
 }  // namespace onnxruntime

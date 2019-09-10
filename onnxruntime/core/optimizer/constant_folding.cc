@@ -5,7 +5,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "core/framework/op_kernel.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/tensorprotoutils.h"
 
 using namespace onnxruntime::common;
 
@@ -23,21 +23,24 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
 
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
 
+    InitializedTensorSet constant_inputs;
+
     // Check if constant folding can be applied on this node.
     if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders()) ||
         excluded_op_types_.find(node->OpType()) != excluded_op_types_.end() ||
-        // constant folding is not currently supported for nodes that include subgraphs (control flow operators,
-        // such as If/Loop/Scan, fall into this category).
+        // constant folding does not support executing a node that includes subgraphs (control flow operators,
+        // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
+        // by the Recurse call above
         node->ContainsSubgraph() ||
         // if the node output is in the graph output, we will get a graph with no nodes.
         // TODO check if this is allowed in ONNX and ORT.
         graph.IsNodeOutputsInGraphOutputs(*node) ||
-        !graph_utils::AllNodeInputsAreConstant(graph, *node)) {
+        !graph_utils::AllNodeInputsAreConstant(graph, *node, constant_inputs)) {
       continue;
     }
 
     // Create execution frame for executing constant nodes.
-    OptimizerExecutionFrame::Info info({node}, graph.GetAllInitializedTensors());
+    OptimizerExecutionFrame::Info info({node}, constant_inputs);
 
     std::vector<int> fetch_mlvalue_idxs;
     for (const auto* node_out : node->OutputDefs()) {
@@ -49,7 +52,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     auto* kernel = info.GetKernel(node->Index());
     OpKernelContext op_kernel_context(&frame, kernel, ::onnxruntime::logging::LoggingManager::DefaultLogger());
 
-    kernel->Compute(&op_kernel_context);
+    ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
 
     std::vector<OrtValue> fetches;
     frame.GetOutputs(fetches);
@@ -61,9 +64,11 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       OrtValue& ort_value = fetches[fetch_idx];
 
       // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
-      ONNX_NAMESPACE::TensorProto out_tensorproto;
       const auto* constant_arg_out = node->OutputDefs()[fetch_idx];
-      BuildTensorProtoForInitializer(ort_value, *constant_arg_out, out_tensorproto);
+      ORT_ENFORCE(ort_value.IsTensor());
+      const Tensor& out_tensor = ort_value.Get<Tensor>();
+      ONNX_NAMESPACE::TensorProto out_tensorproto =
+          utils::TensorToTensorProto(out_tensor, constant_arg_out->Name(), *constant_arg_out->TypeAsProto());
 
       graph.AddInitializedTensor(out_tensorproto);
     }
@@ -80,24 +85,5 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
 
   return Status::OK();
 }  // namespace onnxruntime
-
-void ConstantFolding::BuildTensorProtoForInitializer(const OrtValue& ort_value, const NodeArg& constant_node_arg,
-                                                     ONNX_NAMESPACE::TensorProto& tensorproto) const {
-  ORT_ENFORCE(ort_value.IsTensor());
-  const Tensor& out_tensor = ort_value.Get<Tensor>();
-
-  // Set name, dimensions, type, and data of the TensorProto.
-  tensorproto.set_name(constant_node_arg.Name());
-
-  for (auto& dim : out_tensor.Shape().GetDims()) {
-    tensorproto.add_dims(dim);
-  }
-  auto tensorproto_type = constant_node_arg.TypeAsProto()->tensor_type().elem_type();
-
-  tensorproto.set_data_type(tensorproto_type);
-  auto tensor_shape_size = out_tensor.Shape().Size();
-  auto data_size = out_tensor.DataType()->Size() * tensor_shape_size;
-  tensorproto.set_raw_data(out_tensor.DataRaw(out_tensor.DataType()), data_size);
-}
 
 }  // namespace onnxruntime

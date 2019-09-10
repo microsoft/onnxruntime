@@ -106,6 +106,18 @@ template <>
 __device__ __inline__ half _Sqrt(half a) { return half(sqrtf((float)a)); }
 
 template <typename T>
+__device__ __inline__ T _Erf(T a);
+
+template <>
+__device__ __inline__ float _Erf(float a) { return erff(a); }
+
+template <>
+__device__ __inline__ double _Erf(double a) { return erf(a); }
+
+template <>
+__device__ __inline__ half _Erf(half a) { return half(erff((float)a)); }
+
+template <typename T>
 __device__ __inline__ T _Exp(T a);
 
 template <>

@@ -24,9 +24,12 @@ class KernelRegistry {
   // for its clients unless the factory is managing the lifecycle of the pointer
   // itself.
   // TODO(Task:132) Make usage of unique_ptr/shared_ptr as out param consistent
-  Status TryCreateKernel(const onnxruntime::Node& node, const IExecutionProvider& execution_provider,
-                         const std::unordered_map<int, OrtValue>& initialized_tensors,
-                         const MLValueNameIdxMap& mlvalue_name_idx_map, const FuncManager& funcs_mgr,
+  Status TryCreateKernel(const onnxruntime::Node& node,
+                         const IExecutionProvider& execution_provider,
+                         const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
+                         const OrtValueNameIdxMap& mlvalue_name_idx_map,
+                         const FuncManager& funcs_mgr,
+                         const DataTransferManager& data_transfer_mgr,
                          std::unique_ptr<OpKernel>& op_kernel) const;
 
   // Check if an execution provider can create kernel for a node and return
@@ -35,6 +38,14 @@ class KernelRegistry {
                                         onnxruntime::ProviderType exec_provider) const;
 
   bool IsEmpty() const { return kernel_creator_fn_map_.empty(); }
+
+#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
+// This is used by the opkernel doc generator to enlist all registered operators for a given provider's opkernel
+  const KernelCreateMap& GetKernelCreateMap() const
+  {
+    return kernel_creator_fn_map_;
+  }
+#endif
 
  private:
   // Check whether the types of inputs/outputs of the given node match the extra

@@ -12,7 +12,7 @@
 //
 #ifndef NDEBUG
 // TVM need to run with shared CRT, so won't work with debug heap alloc
-#ifndef USE_TVM
+#if !(defined USE_TVM || (defined USE_NGRAPH && defined _WIN32))
 constexpr int c_callstack_limit = 16;  // Maximum depth of callstack in leak trace
 #define VALIDATE_HEAP_EVERY_ALLOC 0    // Call HeapValidate on every new/delete
 

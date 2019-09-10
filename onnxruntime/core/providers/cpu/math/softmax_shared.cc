@@ -31,6 +31,7 @@
 #endif
 
 #include "core/providers/cpu/math/softmax_shared.h"
+
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
@@ -46,7 +47,7 @@ common::Status SoftmaxCPU(const int64_t N,
                           float* scale,
                           const float* sum_multiplier,
                           bool logarithmic,
-                          float* rowmax) {
+                          float* rowmax, onnxruntime::concurrency::ThreadPool* tp) {
   // the Math functions SoftmaxCPU uses only support int32_t as input, so enforce that
   if (N * D > INT32_MAX || N > INT32_MAX || D > INT32_MAX) {
     std::ostringstream ss;
@@ -65,7 +66,7 @@ common::Status SoftmaxCPU(const int64_t N,
   // Put the intermediate result X - max(X) into Y by first copying X to Y, and then subtracting max from each entry
   gsl::copy(gsl::make_span(Xdata, nd), gsl::make_span(Ydata, nd));
 
-  math::Gemm<float, CPUMathUtil>(CblasNoTrans, CblasNoTrans, n, d, 1, -1, rowmax, sum_multiplier, 1, Ydata, nullptr);
+  math::Gemm<float>(CblasNoTrans, CblasNoTrans, n, d, 1, -1, rowmax, sum_multiplier, 1, Ydata, tp);
 
   // Exponentiation
   math::Exp<float, CPUMathUtil>(nd, Ydata, Ydata, nullptr);

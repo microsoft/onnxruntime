@@ -21,7 +21,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
   const size_t inputs_0_rank = inputs_0_dims.size();
   ORT_RETURN_IF_NOT(inputs_0_rank > 0, "Cannot concatenate scalars");
 
-  uint64_t axis = static_cast<uint64_t>(HandleNegativeAxis(axis_, inputs_0.Shape().NumDimensions()));
+  p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis_, inputs_0.Shape().NumDimensions()));
 
   // cache num of elements in tensor for later use
   // as it's expensive to call Size() on TensorShape over and over
@@ -34,16 +34,17 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
     auto& inputs_n = *tensor_pointer;
     const auto& inputs_n_dims = inputs_n.Shape().GetDims();
     const size_t inputs_n_rank = inputs_n_dims.size();
-    ORT_ENFORCE(inputs_n_rank == inputs_0_rank, "Ranks of input data are different, cannot concatenate them, "
-                "expected rank: ", std::to_string(inputs_0_rank), " got: ", std::to_string(inputs_n_rank));
+    ORT_ENFORCE(inputs_n_rank == inputs_0_rank,
+                "Ranks of input data are different, cannot concatenate them. expected rank: ",
+                inputs_0_rank, " got: ", inputs_n_rank);
     // Ensure all the other (non-concat) axes match
     for (size_t axis_index = 0; axis_index < inputs_0_rank; ++axis_index) {
       num_elements *= inputs_n_dims[axis_index];
-      if (axis_index == axis)
+      if (axis_index == p.axis)
         continue;
       ORT_RETURN_IF_NOT(inputs_n_dims[axis_index] == inputs_0_dims[axis_index],
-                        "Non concat axis dimensions must match: Axis ", 
-                        axis_index, " has mismatched dimensions of ", inputs_n_dims[axis_index], 
+                        "Non concat axis dimensions must match: Axis ",
+                        axis_index, " has mismatched dimensions of ", inputs_n_dims[axis_index],
                         " and ", inputs_0_dims[axis_index]);
     }
     tensor_num_elements[index] = num_elements;
@@ -53,20 +54,20 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
   size_t concat_axis_size = 0;
   for (int index = 0; index < input_count; index++) {
     tensor_pointer = ctx->Input<Tensor>(index);
-    concat_axis_size += tensor_pointer->Shape()[int(axis)];
+    concat_axis_size += tensor_pointer->Shape()[int(p.axis)];
   }
 
   // Calculate the shape of the output tensor
   std::vector<int64_t> dims(inputs_0_rank);
-  size_t num_elements = 1; // cache size of the first input along the way
+  size_t num_elements = 1;  // cache size of the first input along the way
   for (size_t dimension_index = 0; dimension_index < inputs_0_rank; dimension_index++) {
     dims[dimension_index] = inputs_0_dims[dimension_index];
     num_elements *= inputs_0_dims[dimension_index];
   }
   tensor_num_elements[0] = num_elements;
-  dims[axis] = concat_axis_size;
+  dims[p.axis] = concat_axis_size;
   TensorShape output_shape(dims);
- 
+
   auto& concat_result = *ctx->Output(0, output_shape);
   p.output_tensor = &concat_result;
   p.output_num_elements = output_shape.Size();
@@ -75,11 +76,12 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
   // there is no need to proceed further
   if (p.output_num_elements == 0)
     return Status::OK();
-    
+
   // The output_axis_pitch is the number of elements to add to move to the next split axis in the output
   p.output_axis_pitch = 1;
-  for (size_t i = inputs_0_rank; i-- > axis;) p.output_axis_pitch *= dims[i];
+  for (size_t i = inputs_0_rank; i-- > p.axis;) p.output_axis_pitch *= dims[i];
 
+  p.inputs.reserve(input_count);
   for (int input_index = 0; input_index < input_count; input_index++) {
     const Tensor* data_n_ptr = ctx->Input<Tensor>(input_index);
     auto& data_n = *data_n_ptr;
@@ -89,7 +91,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
     // The input_axis_pitch is the number of elements to add to move to the next split axis in the input
     int64_t input_axis_pitch = 1;
     const auto& data_dims = data_n.Shape().GetDims();
-    for (size_t i = inputs_0_rank; i-- > axis;) input_axis_pitch *= data_dims[i];
+    for (size_t i = inputs_0_rank; i-- > p.axis;) input_axis_pitch *= data_dims[i];
 
     p.inputs.push_back({&data_n, tensor_num_elements[input_index], input_axis_pitch});
   }
@@ -109,7 +111,7 @@ Status Concat::Compute(OpKernelContext* ctx) const {
 
   auto is_string_type = ctx->Input<Tensor>(0)->DataType() == DataTypeImpl::GetType<std::string>();
 
-  int64_t output_offset = 0;
+  int64_t initial_output_offset = 0;  // initial offset for each input
   auto element_bytes = p.output_tensor->DataType()->Size();
   for (int input_index = 0; input_index < input_count; input_index++) {
     const auto& prep = p.inputs[input_index];
@@ -123,19 +125,29 @@ Status Concat::Compute(OpKernelContext* ctx) const {
 
     // Copy the data across. For every 'input_axis_pitch' values copied, we move over by the 'output_axis_pitch'
     uint8_t* output = static_cast<uint8_t*>(p.output_tensor->MutableDataRaw());
-    for (size_t idxCopy = 0; idxCopy < input_size / input_axis_pitch; ++idxCopy) {
+    int64_t cur_out_offset = 0;
+    int64_t cur_in_offset = 0;
+    for (size_t idx_copy = 0, end = input_size / input_axis_pitch; idx_copy < end; ++idx_copy) {
       if (is_string_type) {
-        for (int idxItem = 0; idxItem < input_axis_pitch; ++idxItem)
-          reinterpret_cast<std::string*>(output)[output_offset + idxCopy * p.output_axis_pitch + idxItem] =
-              reinterpret_cast<const std::string*>(input)[idxCopy * input_axis_pitch + idxItem];
-      } else
+        size_t out = initial_output_offset + cur_out_offset;
+        for (int idx_item = 0; idx_item < input_axis_pitch; ++idx_item) {
+          reinterpret_cast<std::string*>(output)[out + idx_item] =
+              reinterpret_cast<const std::string*>(input)[cur_in_offset + idx_item];
+        }
+      } else {
         memcpy(
-            output + (output_offset + idxCopy * p.output_axis_pitch) * element_bytes,
-            input + idxCopy * input_axis_pitch * element_bytes,
+            output + (initial_output_offset + cur_out_offset) * element_bytes,
+            input + cur_in_offset * element_bytes,
             input_axis_pitch * element_bytes);
+      }
+
+      cur_out_offset += p.output_axis_pitch;
+      cur_in_offset += input_axis_pitch;
     }
-    output_offset += input_axis_pitch;
+
+    initial_output_offset += input_axis_pitch;
   }
+
   return Status::OK();
 }
 

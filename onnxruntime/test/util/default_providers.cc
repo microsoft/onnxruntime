@@ -12,9 +12,11 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(in
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(int device_id, const char*);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(uint32_t ip, int, int, bool, const char*, const char*, const char*);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt();
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi();
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_id);
 
 namespace test {
 
@@ -24,7 +26,15 @@ std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_aren
 
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
 #ifdef USE_TENSORRT
-  return CreateExecutionProviderFactory_Tensorrt()->CreateProvider();
+  return CreateExecutionProviderFactory_Tensorrt(0)->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
+#ifdef USE_OPENVINO
+  return CreateExecutionProviderFactory_OpenVINO("CPU")->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -55,10 +65,11 @@ std::unique_ptr<IExecutionProvider> DefaultNGraphExecutionProvider() {
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider() {
+std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider(bool allow_unaligned_buffers) {
 #ifdef USE_NUPHAR
-  return CreateExecutionProviderFactory_Nuphar(0, "")->CreateProvider();
+  return CreateExecutionProviderFactory_Nuphar(allow_unaligned_buffers, "")->CreateProvider();
 #else
+  ORT_UNUSED_PARAMETER(allow_unaligned_buffers);
   return nullptr;
 #endif
 }
@@ -66,6 +77,14 @@ std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider() {
 std::unique_ptr<IExecutionProvider> DefaultBrainSliceExecutionProvider() {
 #ifdef USE_BRAINSLICE
   return CreateExecutionProviderFactory_BrainSlice(0, 1, -1, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin")->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
+#ifdef USE_NNAPI
+  return CreateExecutionProviderFactory_Nnapi()->CreateProvider();
 #else
   return nullptr;
 #endif

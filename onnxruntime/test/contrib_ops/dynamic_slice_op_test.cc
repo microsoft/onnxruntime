@@ -79,8 +79,8 @@ TEST(DynamicSliceTest, dynamic_slice_with_negative_axes) {
 
   OpTester test2 ("DynamicSlice", 1);
   test2.AddInput  <int32_t> ("data",   {3,3,3}, {1, 2, 3, 4, 5, 6, 7, 8, 9,
-					       10,11,12,13,14,15,16,17,18,
-					       19,20,21,22,23,24,25,26,27});
+                           10,11,12,13,14,15,16,17,18,
+                           19,20,21,22,23,24,25,26,27});
   test2.AddInput  <int32_t> ("starts", {2},     {-3,0});
   test2.AddInput  <int32_t> ("ends",   {2},     {-1,2});
   test2.AddInput  <int32_t> ("axes",   {2},     {0,2});

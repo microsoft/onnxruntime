@@ -73,7 +73,7 @@ struct PerformanceResult {
 
 class PerformanceRunner {
  public:
-  PerformanceRunner(OrtEnv* env, const PerformanceTestConfig& test_config, std::random_device& rd);
+  PerformanceRunner(Ort::Env& env, const PerformanceTestConfig& test_config, std::random_device& rd);
 
   ~PerformanceRunner();
   Status Run();
@@ -128,7 +128,7 @@ class PerformanceRunner {
   PerformanceTestConfig performance_test_config_;
   TestModelInfo* test_model_info_;
   std::unique_ptr<TestSession> session_;
-  HeapBuffer b_;
+  onnxruntime::test::HeapBuffer b_;
   std::unique_ptr<ITestCase> test_case_;
 
   // TODO: Convert to OrtMutex

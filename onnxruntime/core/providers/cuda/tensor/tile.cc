@@ -17,7 +17,8 @@ namespace cuda {
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
           .InputMemoryType<OrtMemTypeCPUInput>(1)                 \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()), \
       Tile<T>);
 
 template <typename T>
@@ -42,7 +43,7 @@ Status Tile<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   T* output_data = output_tensor.template MutableData<T>();
   const T* input_data = input_tensor.template Data<T>();
-  int device_id = 0;
+  int device_id = GetDeviceId();
   CudaAsyncBuffer<int64_t> input_strides(this, device_id, rank);
   CudaAsyncBuffer<fast_divmod> fdm_input_shape(this, device_id, rank);
   CudaAsyncBuffer<fast_divmod> fdm_output_strides(this, device_id, rank);

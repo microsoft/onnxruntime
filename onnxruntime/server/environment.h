@@ -6,38 +6,35 @@
 #include <memory>
 #include <vector>
 
-#include "core/framework/environment.h"
-#include "core/common/logging/logging.h"
-#include "core/session/inference_session.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include <spdlog/spdlog.h>
 
 namespace onnxruntime {
 namespace server {
 
-namespace logging = logging;
-
 class ServerEnvironment {
  public:
-  explicit ServerEnvironment(logging::Severity severity, logging::LoggingManager::InstanceType instance_type = logging::LoggingManager::Default, bool env_init = true);
+  explicit ServerEnvironment(OrtLoggingLevel severity, spdlog::sinks_init_list sink);
   ~ServerEnvironment() = default;
   ServerEnvironment(const ServerEnvironment&) = delete;
 
-  const logging::Logger& GetAppLogger() const;
-  std::unique_ptr<logging::Logger> GetLogger(const std::string& id);
-  logging::Severity GetLogSeverity() const;
+  OrtLoggingLevel GetLogSeverity() const;
 
-  onnxruntime::InferenceSession* GetSession() const;
-  common::Status InitializeModel(const std::string& model_path);
+  const Ort::Session& GetSession() const;
+  void InitializeModel(const std::string& model_path);
   const std::vector<std::string>& GetModelOutputNames() const;
-
+  std::shared_ptr<spdlog::logger> GetLogger(const std::string& request_id) const;
+  std::shared_ptr<spdlog::logger> GetAppLogger() const;
 
  private:
-  const logging::Severity severity_;
+  const OrtLoggingLevel severity_;
   const std::string logger_id_;
-  logging::LoggingManager default_logging_manager_;
+  const std::vector<spdlog::sink_ptr> sink_;
+  const std::shared_ptr<spdlog::logger> default_logger_;
 
-  std::unique_ptr<onnxruntime::Environment> runtime_environment_;
-  onnxruntime::SessionOptions options_;
-  std::unique_ptr<onnxruntime::InferenceSession> session;
+  Ort::Env runtime_environment_;
+  Ort::SessionOptions options_;
+  Ort::Session session;
   std::vector<std::string> model_output_names_;
 };
 

@@ -14,6 +14,7 @@ void MaxPoolWithIndex(
     const std::vector<int64_t>& kernel_shape,
     const std::vector<int64_t>& stride_shape,
     const std::vector<int64_t>& pads,
+    const std::vector<int64_t>& dilations,
     int64_t storage_order,
     const T* p_input,
     T* p_output,

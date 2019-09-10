@@ -45,7 +45,7 @@ UniDirectionalAttnLstm<T>::UniDirectionalAttnLstm(AllocatorPtr allocator,
                                                   const ActivationFuncs::Entry& activation_func_g,
                                                   const ActivationFuncs::Entry& activation_func_h,
                                                   const float clip,
-                                                  onnxruntime::concurrency::ThreadPool& ttp)
+                                                  onnxruntime::concurrency::ThreadPool* ttp)
     : allocator_(allocator),
       logger_(logger),
       seq_length_(seq_length),
@@ -254,7 +254,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
               input_weights.cbegin(), input_weights.cend(),  // W[iofc]^T
               input_size_ + attention_size_, T{0.0},
               output_iofc_.begin(), output_iofc_.end(),
-              hidden_size_x4);
+              hidden_size_x4, ttp_);
 
   DumpMatrix("Xt*(W[iofc]^T)", output_iofc_.data(), total_rows, hidden_size_x4);
 
@@ -296,7 +296,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                   input_weights.cbegin() + input_size_, input_weights.cend(),  // WA[iofc]
                   input_size_ + attention_size_, T{1.0},
                   step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
-                  hidden_size_x4);
+                  hidden_size_x4, ttp_);
 
       // calculate Xt*(W[iofc]^T) + Ht-1*R[iofc]
       ComputeGemm(batch_size_, hidden_size_x4, hidden_size_, T{1.0},
@@ -305,7 +305,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                   recurrent_weights.cbegin(), recurrent_weights.cend(),  // R[iofc]
                   hidden_size_, T{1.0},
                   step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
-                  hidden_size_x4);
+                  hidden_size_x4, ttp_);
 
       span_T_iter batched_output, batched_output_end;
       if (output_sequence) {

@@ -28,7 +28,7 @@ typedef std::map<int, AllocatorPtr> AllocatorMap;
 // if we are export the fused function to dll, the function will still in the same binary as lotus
 // use std function to give execution provider some chance to capture some state.
 using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
-using ComputeFunc = std::function<int(FunctionState, const OrtCustomOpApi*, OrtKernelContext*)>;
+using ComputeFunc = std::function<Status(FunctionState, const OrtCustomOpApi*, OrtKernelContext*)>;
 using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
 
 struct NodeComputeInfo {
@@ -82,21 +82,7 @@ class IExecutionProvider {
      3. onnxruntime (framework/session) does not depend on any specific
      execution provider lib.
   */
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const = 0;
-
-  /**
-   * Copy tensor between execution providers.  It's always a deep copy
-   * Either src.location is CPU, or dst.location is CPU. They can't be both on CPU.
-   */
-  virtual common::Status CopyTensor(const Tensor& src, Tensor& dst) const = 0;
-
-  /**
-   * Copy tensor between execution providers on specified exec queue
-   * It's always a deep copy
-   * Either src.location is CPU, or dst.location is CPU. They can't be both on CPU.
-   */
-  virtual common::Status CopyTensor(const Tensor& src, Tensor& dst,
-                                    int exec_queue_id) const;
+  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const;
 
   /**
      Returns an opaque handle whose exact type varies based on the provider
@@ -104,7 +90,9 @@ class IExecutionProvider {
      For Direct3D operator kernels, this may return an IUnknown supporting
      QueryInterface to ID3D12GraphicsCommandList1.
   */
-  virtual const void* GetExecutionHandle() const noexcept = 0;
+  virtual const void* GetExecutionHandle() const noexcept {
+    return nullptr;
+  }
 
   /**
      @return type of the execution provider; should match that set in the node

@@ -16,6 +16,8 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cpu/nn/conv_transpose.h"
+#include "core/framework/op_kernel_context_internal.h"
+
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
@@ -53,30 +55,31 @@ inline void ComputeTransposePadAndOutputShape(
     }
     return;
   }
-    if (pad_type != AutoPadType::NOTSET) {
-      switch (pad_type) {
-          // We handle cases of AutoPadType::VALID and AutoPadType::SAME_UPPER/LOWER,
-          // the same way
-        case AutoPadType::VALID:
-        case AutoPadType::SAME_UPPER:
-        case AutoPadType::SAME_LOWER:
-          *pad_head = 0;
-          *pad_tail = 0;
-          *out_size = (in_size - 1) * stride + kernel + dilation - 1 + adj;
-          break;
-        default:
-          throw NotImplementedException("pad type not supported");
-      }
-    } else {
-      *out_size =
-          (in_size - 1) * stride + kernel + dilation - 1 + adj - *pad_head - *pad_tail;
+  if (pad_type != AutoPadType::NOTSET) {
+    switch (pad_type) {
+        // We handle cases of AutoPadType::VALID and AutoPadType::SAME_UPPER/LOWER,
+        // the same way
+      case AutoPadType::VALID:
+      case AutoPadType::SAME_UPPER:
+      case AutoPadType::SAME_LOWER:
+        *pad_head = 0;
+        *pad_tail = 0;
+        *out_size = (in_size - 1) * stride + kernel + dilation - 1 + adj;
+        break;
+      default:
+        throw NotImplementedException("pad type not supported");
     }
+  } else {
+    *out_size =
+        (in_size - 1) * stride + kernel + dilation - 1 + adj - *pad_head - *pad_tail;
+  }
 }
 
-Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_bias, ConvTransposeBase::Prepare& p) const {
-  const auto* X = context->Input<Tensor>(0);
-  const auto* F = context->Input<Tensor>(1);
-  const Tensor* B = has_bias ? context->Input<Tensor>(2) : nullptr;
+Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_bias, ConvTransposeBase::Prepare& p, bool dynamic_padding) const {
+  const Tensor* X = context->Input<Tensor>(0);
+  const Tensor* F = context->Input<Tensor>(1);
+  const Tensor* Pads = dynamic_padding ? context->Input<Tensor>(2) : nullptr;
+  const Tensor* B = has_bias ? (dynamic_padding ? context->Input<Tensor>(3) : context->Input<Tensor>(2)) : nullptr;
   const TensorShape& input_shape = X->Shape();
 
   // input validations
@@ -129,7 +132,15 @@ Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_b
   if (output_padding.empty()) {
     output_padding.resize(kernel_shape.size(), 0);
   }
-  std::vector<int64_t> pads(pads_);
+  std::vector<int64_t> pads;
+  pads.reserve(2 * (input_shape.NumDimensions() - 2));
+  if (dynamic_padding) {
+    for (int64_t i = 0; i < Pads->Shape().SizeFromDimension(0); ++i) {
+      pads.push_back(Pads->Data<int64_t>()[i]);
+    }
+  } else {
+    pads.assign(pads_.begin(), pads_.end());
+  }
   if (pads.empty()) {
     pads.resize(kernel_shape.size() * 2, 0);
   }
@@ -214,9 +225,18 @@ void ConvTransposeBase::ComputePadsAndOutputShape(
 
 template <typename T>
 Status ConvTranspose<T>::Compute(OpKernelContext* context) const {
+  return ConvTranspose<T>::DoConvTranspose(context, false);
+}
+
+template <typename T>
+Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
+  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
+
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   Prepare p;
-  ORT_RETURN_IF_ERROR(PrepareForCompute(context, num_inputs == 3, p));
+  bool has_bias = dynamic_padding ? num_inputs == 4 : num_inputs == 3;
+  ORT_RETURN_IF_ERROR(PrepareForCompute(context, has_bias, p, dynamic_padding));
 
   const int64_t input_image_size = p.H * p.W;
   const int64_t X_offset = p.num_input_channels / group_ * input_image_size;
@@ -239,7 +259,7 @@ Status ConvTranspose<T>::Compute(OpKernelContext* context) const {
   for (auto image_id = 0; image_id < p.N; ++image_id) {
     for (int group_id = 0; group_id < group_; ++group_id) {
       // Weight term
-      math::Gemm<T, CPUMathUtil>(
+      math::Gemm<T>(
           CblasTrans,
           CblasNoTrans,
           kernel_dim,
@@ -250,7 +270,7 @@ Status ConvTranspose<T>::Compute(OpKernelContext* context) const {
           Xdata + group_id * X_offset,
           0,
           col_buffer_data,
-          &CPUMathUtil::Instance());
+          tp);
 
       // Col2im
       math::Col2im<T, CPUMathUtil, StorageOrder::NCHW>(

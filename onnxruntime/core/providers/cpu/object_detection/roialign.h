@@ -7,6 +7,9 @@
 #include <cctype>
 
 namespace onnxruntime {
+
+Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_ptr, const Tensor* batch_indices_ptr);
+
 template <typename T>
 class RoiAlign final : public OpKernel {
  public:

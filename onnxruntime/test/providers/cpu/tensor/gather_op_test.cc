@@ -7,7 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
-// Disable TensorRT on some of the tests because of unsupported data types
+// Some of the tests can't run on TensorrtExecutionProvider because of unsupported data types.
+// Those tests will fallback to other EPs
 
 TEST(GatherOpTest, Gather_axis0) {
   OpTester test("Gather");
@@ -24,7 +25,7 @@ TEST(GatherOpTest, Gather_axis0) {
                         {10.0f, 10.1f, 10.2f, 10.3f,
                          11.0f, 11.1f, 11.2f, 11.3f,
                          12.0f, 12.1f, 12.2f, 12.3f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(GatherOpTest, Gather_negative_axis) {
@@ -42,7 +43,7 @@ TEST(GatherOpTest, Gather_negative_axis) {
                         {10.0f, 10.1f, 10.2f, 10.3f,
                          11.0f, 11.1f, 11.2f, 11.3f,
                          12.0f, 12.1f, 12.2f, 12.3f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(GatherOpTest, Gather_invalid_axis) {
@@ -114,7 +115,7 @@ TEST(GatherOpTest, Gather_axis1) {
                          0.0f, 0.1f, 0.2f, 0.3f,
                          12.0f, 12.1f, 12.2f, 12.3f,
                          10.0f, 10.1f, 10.2f, 10.3f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(GatherOpTest, Gather_axis2) {
@@ -135,7 +136,7 @@ TEST(GatherOpTest, Gather_axis2) {
                          10.1f, 10.0f, 10.2f,
                          11.1f, 11.0f, 11.2f,
                          12.1f, 12.0f, 12.2f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(GatherOpTest, Gather_axis0_indices2d) {
@@ -151,7 +152,7 @@ TEST(GatherOpTest, Gather_axis0_indices2d) {
   test.AddOutput<float>("output", {2, 2, 3},
                         {1.0f, 1.1f, 1.2f, 0.0f, 0.1f, 0.2f,
                          2.0f, 2.1f, 2.2f, 1.0f, 1.1f, 1.2f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d) {
@@ -168,7 +169,7 @@ TEST(GatherOpTest, Gather_axis1_indices2d) {
                         {0.1f, 0.0f, 0.2f, 0.1f,
                          1.1f, 1.0f, 1.2f, 1.1f,
                          2.1f, 2.0f, 2.2f, 2.1f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_int32) {
@@ -185,7 +186,7 @@ TEST(GatherOpTest, Gather_axis1_indices2d_int32) {
                           {1, 0, 2, 1,
                            11, 10, 12, 11,
                            21, 20, 22, 21});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: Input batch size is inconsistent
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_uint32) {
@@ -202,7 +203,7 @@ TEST(GatherOpTest, Gather_axis1_indices2d_uint32) {
                            {1, 0, 2, 1,
                             11, 10, 12, 11,
                             21, 20, 22, 21});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_int16) {
@@ -219,7 +220,7 @@ TEST(GatherOpTest, Gather_axis1_indices2d_int16) {
                           {1, 0, 2, 1,
                            11, 10, 12, 11,
                            21, 20, 22, 21});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_uint16) {
@@ -236,7 +237,7 @@ TEST(GatherOpTest, Gather_axis1_indices2d_uint16) {
                            {1, 0, 2, 1,
                             11, 10, 12, 11,
                             21, 20, 22, 21});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_int8) {
@@ -253,7 +254,7 @@ TEST(GatherOpTest, Gather_axis1_indices2d_int8) {
                          {1, 0, 2, 1,
                           11, 10, 12, 11,
                           21, 20, 22, 21});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_string) {
@@ -270,7 +271,7 @@ TEST(GatherOpTest, Gather_axis1_indices2d_string) {
                               {"1", "0", "2", "1",
                                "11", "10", "12", "11",
                                "21", "20", "22", "21"});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_bool) {
@@ -287,7 +288,7 @@ TEST(GatherOpTest, Gather_axis1_indices2d_bool) {
                        {false, true, true, false,
                         true, true, false, true,
                         true, false, false, true});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(GatherOpTest, Gather_perf) {
@@ -302,7 +303,7 @@ TEST(GatherOpTest, Gather_perf) {
   test.AddInput<int32_t>("data", {50000, 100}, input);
   test.AddInput<int32_t>("indices", {800, 1}, indices);
   test.AddOutput<int32_t>("output", {800, 1, 100}, output);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 }  // namespace test
 }  // namespace onnxruntime

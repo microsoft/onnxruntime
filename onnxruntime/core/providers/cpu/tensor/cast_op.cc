@@ -10,7 +10,7 @@
 #include "Eigen/src/Core/arch/GPU/Half.h"
 #include "core/common/common.h"
 
-#if defined(USE_MLAS) && defined(_M_AMD64)
+#if defined(_M_AMD64)
 #include "core/mlas/inc/mlas.h"
 #endif
 
@@ -40,7 +40,7 @@ inline void CastData<MLFloat16, float>(const Tensor* in, Tensor* out, const Tens
   auto out_data = out->template MutableData<float>();
   auto in_data = in->template Data<MLFloat16>();
   auto shape_size = shape.Size();
-#if defined(USE_MLAS) && defined(_M_AMD64)
+#if defined(_M_AMD64)
   MlasConvertHalfToFloatBuffer(&in_data[0].val, out_data, shape_size);
 #else
   auto in_vector = ConstEigenVectorMap<Eigen::half>(static_cast<const Eigen::half*>(static_cast<const void*>(in_data)), shape_size);

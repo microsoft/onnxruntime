@@ -26,7 +26,7 @@ class IArenaAllocator : public IAllocator {
   void Free(void* p) override = 0;
   virtual size_t Used() const = 0;
   virtual size_t Max() const = 0;
-  const OrtAllocatorInfo& Info() const override = 0;
+  const OrtMemoryInfo& Info() const override = 0;
   // allocate host pinned memory?
 };
 
@@ -37,7 +37,7 @@ class DummyArena : public IArenaAllocator {
  public:
   explicit DummyArena(std::unique_ptr<IDeviceAllocator> resource_allocator)
       : allocator_(std::move(resource_allocator)),
-        info_(allocator_->Info().name, OrtAllocatorType::OrtArenaAllocator, allocator_->Info().id) {
+        info_(allocator_->Info().name, OrtAllocatorType::OrtArenaAllocator, allocator_->Info().device, allocator_->Info().id) {
   }
 
   ~DummyArena() override = default;
@@ -64,7 +64,7 @@ class DummyArena : public IArenaAllocator {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
-  const OrtAllocatorInfo& Info() const override {
+  const OrtMemoryInfo& Info() const override {
     return info_;
   }
 
@@ -72,6 +72,6 @@ class DummyArena : public IArenaAllocator {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(DummyArena);
 
   std::unique_ptr<IDeviceAllocator> allocator_;
-  OrtAllocatorInfo info_;
+  OrtMemoryInfo info_;
 };
 }  // namespace onnxruntime

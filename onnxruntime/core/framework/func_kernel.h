@@ -40,10 +40,7 @@ class FunctionKernel : public OpKernel {
 
   virtual Status Compute(OpKernelContext* context) const override {
     auto* context_internal = static_cast<OpKernelContextInternal*>(context);
-    int ret = func_(func_state_, &GetCustomOpApi(), reinterpret_cast<OrtKernelContext*>(context_internal));
-    if (ret != 0)
-      return Status(common::ONNXRUNTIME, common::FAIL, "FuncKernel call failed with error code: " + std::to_string(ret));
-    return Status::OK();
+    return func_(func_state_, &GetCustomOpApi(), reinterpret_cast<OrtKernelContext*>(context_internal));
   }
 
  private:

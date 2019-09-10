@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics.Tensors;
+using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Runtime.InteropServices;
 
 
@@ -77,7 +77,11 @@ namespace Microsoft.ML.OnnxRuntime
             try
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(nativeOnnxValue, out typeAndShape));
-                elemType = NativeMethods.OrtGetTensorElementType(typeAndShape);
+                unsafe
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(typeAndShape, new IntPtr(&elemType)));
+                }
+
             }
             finally
             {
@@ -116,8 +120,14 @@ namespace Microsoft.ML.OnnxRuntime
                 case TensorElementType.UInt8:
                     result = DisposableNamedOnnxValueFromNativeTensor<byte>(name, nativeOnnxValue);
                     break;
+                case TensorElementType.Int8:
+                    result = DisposableNamedOnnxValueFromNativeTensor<sbyte>(name, nativeOnnxValue);
+                    break;
                 case TensorElementType.String:
                     result = DisposableNamedOnnxValueFromNativeTensor<string>(name, nativeOnnxValue);
+                    break;
+                case TensorElementType.Bool:
+                    result = DisposableNamedOnnxValueFromNativeTensor<bool>(name, nativeOnnxValue);
                     break;
                 default:
                     throw new NotSupportedException("Tensor of element type: " + elemType + " is not supported");
@@ -130,15 +140,18 @@ namespace Microsoft.ML.OnnxRuntime
         internal static DisposableNamedOnnxValue CreateFromOnnxValue(string name, IntPtr nativeOnnxValue)
         {
             IntPtr allocator = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateDefaultAllocator(out allocator));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetAllocatorWithDefaultOptions(out allocator));
             var ret = CreateFromOnnxValue(name, nativeOnnxValue, allocator);
-            NativeMethods.OrtReleaseAllocator(allocator);
             return (DisposableNamedOnnxValue)ret;
         }
 
         internal static DisposableNamedOnnxValue CreateFromOnnxValue(string name, IntPtr nativeOnnxValue, IntPtr allocator)
         {
-            var onnxValueType = NativeMethods.OrtGetValueType(nativeOnnxValue);
+            OnnxValueType onnxValueType;
+            unsafe
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValueType(nativeOnnxValue, new IntPtr(&onnxValueType)));
+            }
             switch (onnxValueType)
             {
                 case OnnxValueType.ONNX_TYPE_TENSOR:
@@ -166,7 +179,10 @@ namespace Microsoft.ML.OnnxRuntime
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValue(nativeOnnxValue, 1, allocator, out nativeOnnxValueMapValues));
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(nativeOnnxValueMapKeys, out typeAndShape));
 
-                    elemType = NativeMethods.OrtGetTensorElementType(typeAndShape);
+                    unsafe
+                    {
+                        NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(typeAndShape, new IntPtr(&elemType)));
+                    }
                     if (typeAndShape != IntPtr.Zero)
                     {
                         NativeMethods.OrtReleaseTensorTypeAndShapeInfo(typeAndShape);

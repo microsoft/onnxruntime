@@ -21,12 +21,14 @@ OrtTypeInfo::~OrtTypeInfo() {
   OrtReleaseTensorTypeAndShapeInfo(data);
 }
 
-ORT_API(enum ONNXType, OrtOnnxTypeFromTypeInfo, _In_ const struct OrtTypeInfo* input) {
-  return input->type;
+ORT_API_STATUS_IMPL(OrtGetOnnxTypeFromTypeInfo, _In_ const struct OrtTypeInfo* input, ONNXType* out) {
+  *out = input->type;
+  return nullptr;
 }
 
-ORT_API(const struct OrtTensorTypeAndShapeInfo*, OrtCastTypeInfoToTensorInfo, _In_ struct OrtTypeInfo* input) {
-  return input->type == ONNX_TYPE_TENSOR ? input->data : nullptr;
+ORT_API_STATUS_IMPL(OrtCastTypeInfoToTensorInfo, _In_ const struct OrtTypeInfo* input, const struct OrtTensorTypeAndShapeInfo** out) {
+  *out = input->type == ONNX_TYPE_TENSOR ? input->data : nullptr;
+  return nullptr;
 }
 
 ORT_API(void, OrtReleaseTypeInfo, _Frees_ptr_opt_ OrtTypeInfo* ptr) {

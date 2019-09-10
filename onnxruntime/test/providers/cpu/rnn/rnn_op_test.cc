@@ -345,7 +345,7 @@ TEST(RNNTest, RNN_forward_direction_zigged_batch) {
   test.Run();
 }
 
-TEST(RNNTest, RNN_bidirectional) {
+TEST(RNNTest, RNN_bidirectional_0) {
   OpTester test("RNN");
   int64_t num_directions = 2, input_size = 2, hidden_size = 3, batch_size = 1, seq_length = 5;
 
@@ -402,6 +402,58 @@ TEST(RNNTest, RNN_bidirectional) {
 
   std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
   std::vector<float> Y_h_data({-0.74539614F, 0.93210655F, -0.63887376F, 0.89708149F, -0.50691134F, 0.10560472F});
+  test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
+
+  test.Run();
+}
+
+TEST(RNNTest, RNN_bidirectional_1) {
+  OpTester test("RNN");
+  int64_t num_directions = 2, input_size = 2, hidden_size = 2, batch_size = 1, seq_length = 1;
+
+  test.AddAttribute("activations", vector<string>(num_directions, "Tanh"));
+  test.AddAttribute("direction", "bidirectional");
+  test.AddAttribute("hidden_size", hidden_size);
+
+  std::vector<int64_t> X_dims = {seq_length, batch_size, input_size};
+  std::vector<float> X_data({1.0F, 1.0F});
+
+  test.AddInput<float>("X", X_dims, X_data);
+
+  std::vector<int64_t> W_dims = {num_directions, hidden_size, input_size};
+  std::vector<float> W_data({1.0F, 1.0F, 1.0F, 1.0F,
+                             1.0F, 1.0F, 1.0F, 1.0F});
+
+  test.AddInput<float>("W", W_dims, W_data);
+
+  std::vector<int64_t> R_dims = {num_directions, hidden_size, hidden_size};
+  std::vector<float> R_data({// forward
+                             1.0F, 1.0F,
+                             1.0F, 1.0F, 
+                             // reverse
+                             1.0F, 1.0F,
+                             1.0F, 1.0F});
+  test.AddInput<float>("R", R_dims, R_data);
+
+  std::vector<int64_t> B_dims = {num_directions, 2 * hidden_size};
+  std::vector<float> B_data({0.0F, 0.0F, 0.0F, 0.0F,
+                             0.0F, 0.0F, 0.0F, 0.0F});
+  test.AddInput<float>("B", B_dims, B_data);
+
+  std::vector<int64_t> sequence_lens_dims({batch_size});
+  std::vector<int> sequence_lens_data(batch_size, (int)seq_length);
+  test.AddInput<int>("sequence_lens", sequence_lens_dims, sequence_lens_data);
+
+  std::vector<int64_t> initial_h_dims = {num_directions, batch_size, hidden_size};
+  std::vector<float> initial_h_data({0.1F, 0.2F, 0.3F, 0.4F});
+  test.AddInput<float>("initial_h", initial_h_dims, initial_h_data);
+
+  std::vector<int64_t> Y_dims = {seq_length, num_directions, batch_size, hidden_size};
+  std::vector<float> Y_data({0.98009639F, 0.98009639F, 0.99100745F, 0.99100745F});
+  test.AddOutput<float>("Y", Y_dims, Y_data);
+
+  std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
+  std::vector<float> Y_h_data({0.98009639F, 0.98009639F, 0.99100745F, 0.99100745F});
   test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
 
   test.Run();

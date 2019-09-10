@@ -33,27 +33,38 @@ namespace Microsoft.ML.OnnxRuntime
                 _onnxValueHandle = onnxValueHandle;
 
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(onnxValueHandle, out typeAndShape));
-                TensorElementType elemType = NativeMethods.OrtGetTensorElementType(typeAndShape);
+                TensorElementType elemType;
+                unsafe
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(typeAndShape, new IntPtr(&elemType)));
+                }
                 TensorElementTypeConverter.GetTypeAndWidth(elemType, out type, out width);
 
                 if (typeof(T) != type)
                     throw new NotSupportedException(nameof(NativeOnnxTensorMemory<T>) + " does not support T = " + nameof(T));
 
                 _elementWidth = width;
-
-                var dimension = NativeMethods.OrtGetDimensionsCount(typeAndShape).ToUInt64();
-                long count = NativeMethods.OrtGetTensorShapeElementCount(typeAndShape);  // count can be negative. 
+                UIntPtr dimension;
+                long count;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensionsCount(typeAndShape, out dimension));
+                unsafe
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeElementCount(typeAndShape, new IntPtr(&count)));  // count can be negative. 
+                }
                 if (count < 0)
                 {
                     throw new NotSupportedException("Symbolic dimensions in the tensor is not supported");
                 }
 
-                long[] shape = new long[dimension];
-                NativeMethods.OrtGetDimensions(typeAndShape, shape, (UIntPtr) dimension); //Note: shape must be alive during the call
+                long[] shape = new long[dimension.ToUInt64()];
+                unsafe
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensions(typeAndShape, shape, new UIntPtr(&dimension))); //Note: shape must be alive during the call
+                }
 
                 _elementCount = (int)count;
-                _dimensions = new int[dimension];
-                for (ulong i = 0; i < dimension; i++)
+                _dimensions = new int[dimension.ToUInt64()];
+                for (ulong i = 0; i < dimension.ToUInt64(); i++)
                 {
                     _dimensions[i] = (int)shape[i];
                 }

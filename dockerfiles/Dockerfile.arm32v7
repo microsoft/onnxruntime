@@ -1,5 +1,8 @@
 FROM balenalib/raspberrypi3-python:latest-stretch-build
 
+ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
+ARG ONNXRUNTIME_SERVER_BRANCH=master
+
 #Enforces cross-compilation through Quemu
 RUN [ "cross-build-start" ]
 
@@ -14,7 +17,8 @@ RUN install_packages \
     python3-pip \
     python3-dev \
     git \
-    tar
+    tar \
+    libatlas-base-dev
 
 RUN pip3 install --upgrade pip
 RUN pip3 install --upgrade setuptools
@@ -37,7 +41,7 @@ ARG BUILDARGS="--config ${BUILDTYPE} --arm"
 
 # Prepare onnxruntime Repo
 WORKDIR /code
-RUN git clone --recursive https://github.com/Microsoft/onnxruntime
+RUN git clone --single-branch --branch ${ONNXRUNTIME_SERVER_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime
 
 # Start the basic build
 WORKDIR /code/onnxruntime

@@ -1,49 +1,40 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef _MSC_VER
-#pragma warning(disable : 4244)
-#pragma warning(disable : 4267)
-#endif
-
 #include "core/providers/cpu/math/matmul_integer.h"
 #include "core/providers/cpu/math/matmul_helper.h"
-#include "core/util/gemmlowp_common_wrapper.h"
+#include "core/util/qmath.h"
+#include "core/providers/common.h"
 
 namespace onnxruntime {
 
 // only register this operator if low precision computation is enabled.
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_TYPED_KERNEL_EX(
     MatMulInteger,
     kOnnxDomain,
     10,
+    uint8_t,
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
-    MatMulInteger<uint8_t, uint8_t, int32_t>);
+    MatMulInteger<uint8_t, uint8_t>);
 
-Status GemmlowpMultiply(const uint8_t* lhs_data, const uint8_t* rhs_data,
-                        int32_t* result_data, const int lhs_offset, const int rhs_offset,
-                        int m, int n, int k) {
-  const std::tuple<> empty_pipeline = {};
-  // TODO exp ColMajor order for rhs and result. That may be faster
-  const auto matOrder = gemmlowp::MapOrder::RowMajor;
-  gemmlowp::MatrixMap<const std::uint8_t, matOrder> lhs(lhs_data, m, k);
-  gemmlowp::MatrixMap<const std::uint8_t, matOrder> rhs(rhs_data, k, n);
-  gemmlowp::MatrixMap<std::int32_t, matOrder> result(result_data, m, n);
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    MatMulInteger,
+    kOnnxDomain,
+    10,
+    int8_t,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
+    MatMulInteger<uint8_t, int8_t>);
 
-  gemmlowp::GemmContext gemm_context;
-  gemmlowp::GemmWithOutputPipeline<std::uint8_t, std::int32_t,
-                                   gemmlowp::DefaultL8R8BitDepthParams>(
-      &gemm_context, lhs, rhs, &result, -lhs_offset, -rhs_offset, empty_pipeline);
-
-  return Status::OK();
-}
-
-template<>
-Status MatMulInteger<uint8_t, uint8_t, int32_t>::Compute(OpKernelContext* ctx) const {
+template <>
+Status MatMulInteger<uint8_t, uint8_t>::Compute(OpKernelContext* ctx) const {
   auto a = ctx->Input<Tensor>(0);
   auto b = ctx->Input<Tensor>(1);
   ORT_ENFORCE(a != nullptr && b != nullptr);
@@ -53,34 +44,79 @@ Status MatMulInteger<uint8_t, uint8_t, int32_t>::Compute(OpKernelContext* ctx) c
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
   // validate zero points
-  int32_t a_offset = 0;
-  int32_t b_offset = 0;
+  uint8_t a_offset = 0;
+  uint8_t b_offset = 0;
   if (has_a_zero_point_) {
     auto a_zero_point = ctx->Input<Tensor>(2);
-    ORT_ENFORCE(a_zero_point->Shape().NumDimensions() == 0 ||
-        (a_zero_point->Shape().NumDimensions() == 1 && a_zero_point->Shape().GetDims().size() == 1),
-        "Currently only scalar zero_point is supported. TODO: add per channel zero point support.");
+    ORT_ENFORCE(IsScalarOr1ElementVector(a_zero_point),
+                "MatmulInteger : input1 zero point must be a scalar or 1D tensor of size 1");
     a_offset = static_cast<int32_t>(*a_zero_point->template Data<uint8_t>());
   }
   if (has_b_zero_point_) {
     auto b_zero_point = ctx->Input<Tensor>(3);
-    ORT_ENFORCE(b_zero_point->Shape().NumDimensions() == 0 ||
-        (b_zero_point->Shape().NumDimensions() == 1 && b_zero_point->Shape().GetDims().size() == 1),
-        "Currently only scalar zero_point is supported. TODO: add per channel zero point support.");
+    ORT_ENFORCE(IsScalarOr1ElementVector(b_zero_point),
+                "MatmulInteger : input2 zero point must be a scalar or 1D tensor of size 1");
     b_offset = static_cast<int32_t>(*b_zero_point->template Data<uint8_t>());
   }
 
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
-    GemmlowpMultiply(a->template Data<uint8_t>() + helper.LeftOffsets()[i],
-                     b->template Data<uint8_t>() + helper.RightOffsets()[i],
-                     y->template MutableData<int32_t>() + helper.OutputOffsets()[i],
-                     a_offset,
-                     b_offset,
-                     static_cast<int>(helper.M()),
-                     static_cast<int>(helper.N()),
-                     static_cast<int>(helper.K()));
+    QGemmu8u8_s32(static_cast<int>(helper.M()),
+                  static_cast<int>(helper.N()),
+                  static_cast<int>(helper.K()),
+                  a->template Data<uint8_t>() + helper.LeftOffsets()[i],
+                  static_cast<int>(helper.K()),
+                  a_offset,
+                  b->template Data<uint8_t>() + helper.RightOffsets()[i],
+                  static_cast<int>(helper.N()),
+                  b_offset,
+                  y->template MutableData<int32_t>() + helper.OutputOffsets()[i],
+                  static_cast<int>(helper.N()),
+                  nullptr);
+  }
+  return Status::OK();
+}
+
+template <>
+Status MatMulInteger<uint8_t, int8_t>::Compute(OpKernelContext* ctx) const {
+  auto a = ctx->Input<Tensor>(0);
+  auto b = ctx->Input<Tensor>(1);
+  ORT_ENFORCE(a != nullptr && b != nullptr);
+
+  MatMulComputeHelper helper;
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
+  Tensor* y = ctx->Output(0, helper.OutputShape());
+
+  if (has_a_zero_point_ || has_b_zero_point_) {
+    // currently zero point is only supported in Gemmlowp path above
+    // in future, the selection of Eigen/Gemmlowp/mklml/etc. should be in a common math library like SGEMM
+
+    auto IsZeroPointTensorAllZero = [](OpKernelContext* ctx, int input_idx) -> bool {
+      auto t = ctx->Input<Tensor>(input_idx);
+      ORT_ENFORCE(t->Shape().NumDimensions() <= 1 && t->Shape().Size() == 1,
+                  "Currently only scalar zero_point is supported. TODO: add per channel zero point support.");
+      ORT_ENFORCE(t->DataType() == DataTypeImpl::GetType<int8_t>() ||
+                  t->DataType() == DataTypeImpl::GetType<uint8_t>());
+      auto data = reinterpret_cast<const int8_t*>(t->DataRaw());
+      auto vec = std::vector<int8_t>(data, data + t->Shape().Size());
+      return std::all_of(vec.begin(), vec.end(), [](int8_t v) { return v == 0; });
+    };
+
+    if ((has_a_zero_point_ && !IsZeroPointTensorAllZero(ctx, 2)) ||
+        (has_b_zero_point_ && !IsZeroPointTensorAllZero(ctx, 3))) {
+      ORT_NOT_IMPLEMENTED("MatMulInteger: Unsupported input types with zero point");
+    }
   }
 
+  // NOTE: Eigen based implementation is a reference implementation for accuracy only
+  for (int i = 0; i < static_cast<int>(helper.OutputOffsets().size()); i++) {
+    EigenCastGEMM<uint8_t, int8_t, int32_t>(
+        a->template Data<uint8_t>() + helper.LeftOffsets()[i],
+        b->template Data<int8_t>() + helper.RightOffsets()[i],
+        y->template MutableData<int32_t>() + helper.OutputOffsets()[i],
+        static_cast<int>(helper.M()),
+        static_cast<int>(helper.N()),
+        static_cast<int>(helper.K()));
+  }
   return Status::OK();
 }
 }  // namespace onnxruntime

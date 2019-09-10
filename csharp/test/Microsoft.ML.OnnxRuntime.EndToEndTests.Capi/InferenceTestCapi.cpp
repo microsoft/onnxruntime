@@ -44,7 +44,7 @@ namespace UnitTest1
             for (unsigned int i = 0; i < model_input_ele_count; i++)
                 model_input[i] = (float)i / (float)(model_input_ele_count + 1);
 
-            OrtAllocatorInfo* allocator_info;
+            OrtMemoryInfo* allocator_info;
             ORT_ABORT_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
             const size_t input_shape[] = { 1, 3, 224, 224 };
             const size_t input_shape_len = sizeof(input_shape) / sizeof(input_shape[0]);
@@ -54,7 +54,7 @@ namespace UnitTest1
             ORT_ABORT_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(allocator_info, model_input, model_input_len, input_shape, input_shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
             assert(input_tensor != NULL);
             assert(OrtIsTensor(input_tensor));
-            OrtReleaseAllocatorInfo(allocator_info);
+            OrtReleaseMemoryInfo(allocator_info);
             const char* input_names[] = { "data_0" };
             const char* output_names[] = { "softmaxout_1" };
             OrtValue* output_tensor = NULL;

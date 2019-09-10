@@ -84,7 +84,7 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
       default_filter_user_data_{filter_user_data},
       default_max_vlog_level_{default_max_vlog_level},
       owns_default_logger_{false} {
-  if (!sink_) {
+  if (sink_ == nullptr) {
     throw std::logic_error("ISink must be provided.");
   }
 
@@ -126,7 +126,6 @@ LoggingManager::~LoggingManager() {
 
 void LoggingManager::CreateDefaultLogger(const std::string& logger_id) {
   // this method is only called from ctor in scope where DefaultLoggerMutex() is already locked
-
   if (s_default_logger_ != nullptr) {
     throw std::logic_error("Default logger already set. ");
   }
@@ -186,7 +185,8 @@ std::exception LoggingManager::LogFatalAndCreateException(const char* category,
   // create Capture in separate scope so it gets destructed (leading to log output) before we throw.
   {
     ::onnxruntime::logging::Capture c{::onnxruntime::logging::LoggingManager::DefaultLogger(),
-                                      ::onnxruntime::logging::Severity::kFATAL, category, ::onnxruntime::logging::DataType::SYSTEM, location};
+                                      ::onnxruntime::logging::Severity::kFATAL, category, 
+									  ::onnxruntime::logging::DataType::SYSTEM, location};
     va_list args;
     va_start(args, format_str);
 

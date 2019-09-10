@@ -7,6 +7,10 @@ if (onnxruntime_USE_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()
 
+if (onnxruntime_USE_OPENVINO)
+    list(APPEND TEST_INC_DIR ${OPENVINO_INCLUDE_DIR})
+endif()
+
 set(disabled_warnings)
 set(extra_includes)
 function(AddTest)
@@ -113,11 +117,19 @@ set(onnxruntime_test_providers_src_patterns
   "${TEST_SRC_DIR}/providers/*.cc"
   "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
   "${TEST_SRC_DIR}/framework/TestAllocatorManager.h"
+  "${TEST_SRC_DIR}/framework/test_utils.cc"
+  "${TEST_SRC_DIR}/framework/test_utils.h"
   )
 if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   list(APPEND onnxruntime_test_providers_src_patterns
     "${TEST_SRC_DIR}/contrib_ops/*.h"
     "${TEST_SRC_DIR}/contrib_ops/*.cc")
+endif()
+
+if(onnxruntime_USE_AUTOML)
+  list(APPEND onnxruntime_test_providers_src_patterns
+    "${TEST_SRC_DIR}/automl_ops/*.h"
+    "${TEST_SRC_DIR}/automl_ops/*.cc")
 endif()
 
 file(GLOB onnxruntime_test_providers_src CONFIGURE_DEPENDS
@@ -132,6 +144,13 @@ if (onnxruntime_USE_NGRAPH)
     "${TEST_SRC_DIR}/providers/ngraph/*"
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_ngraph_src})
+endif()
+
+if (onnxruntime_USE_NNAPI)
+  file(GLOB_RECURSE onnxruntime_test_providers_nnapi_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/nnapi/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_nnapi_src})
 endif()
 
 # tests from lowest level library up.
@@ -188,10 +207,34 @@ if(onnxruntime_USE_NGRAPH)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_ngraph)
 endif()
 
+if(onnxruntime_USE_OPENVINO)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino)
+endif()
+
+if(onnxruntime_USE_NNAPI)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
+endif()
+
+if(onnxruntime_USE_AUTOML)
+   list(APPEND onnxruntime_test_providers_dependencies automl_featurizers)
+endif()
+
 file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/test/tvm/*.h"
   "${ONNXRUNTIME_ROOT}/test/tvm/*.cc"
   )
+
+file(GLOB_RECURSE onnxruntime_test_openvino_src
+  "${ONNXRUNTIME_ROOT}/test/openvino/*.h"
+  "${ONNXRUNTIME_ROOT}/test/openvino/*.cc"
+ )
+
+if(onnxruntime_USE_NUPHAR)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/nuphar/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nuphar)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nuphar)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nuphar)
+endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   include(onnxruntime_unittests_internal.cmake)
@@ -204,6 +247,9 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_MKLDNN}
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NGRAPH}
+    ${PROVIDERS_OPENVINO}
+    ${PROVIDERS_NUPHAR}
+    ${PROVIDERS_NNAPI}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -225,6 +271,13 @@ if(onnxruntime_USE_TENSORRT)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_tensorrt)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_tensorrt)
+endif()
+
+if(onnxruntime_USE_NNAPI)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/nnapi/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nnapi)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nnapi)
 endif()
 
 if(WIN32)
@@ -272,6 +325,9 @@ if (SingleUnitTestProject)
   if (onnxruntime_USE_TVM)
     list(APPEND all_tests ${onnxruntime_test_tvm_src})
   endif()
+  if (onnxruntime_USE_OPENVINO)
+    list(APPEND all_tests ${onnxruntime_test_openvino_src})
+  endif()
   # we can only have one 'main', so remove them all and add back the providers test_main as it sets
   # up everything we need for all tests
   file(GLOB_RECURSE test_mains CONFIGURE_DEPENDS
@@ -297,6 +353,10 @@ if (SingleUnitTestProject)
   # the default logger tests conflict with the need to have an overall default logger
   # so skip in this type of
   target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
+
+  if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+    target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
+  endif()
 
   set(test_data_target onnxruntime_test_all)
 else()
@@ -387,6 +447,12 @@ if(WIN32)
       $<TARGET_FILE_DIR:${test_data_target}>
     )
   endif()
+  if (onnxruntime_USE_TVM)
+    add_custom_command(
+      TARGET ${test_data_target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:tvm> $<TARGET_FILE_DIR:${test_data_target}>
+      )
+  endif()
 endif()
 
 add_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
@@ -423,7 +489,12 @@ set(onnx_test_runner_common_srcs
   ${onnx_test_runner_src_dir}/TestCase.h
   ${onnx_test_runner_src_dir}/onnxruntime_event.h
   ${onnx_test_runner_src_dir}/sync_api.h
-  ${onnx_test_runner_src_dir}/sync_api.cc)
+  ${onnx_test_runner_src_dir}/sync_api.cc
+  ${onnx_test_runner_src_dir}/callback.h
+  ${onnx_test_runner_src_dir}/callback.cc
+  ${onnx_test_runner_src_dir}/mem_buffer.h
+  ${onnx_test_runner_src_dir}/tensorprotoutils.h
+  ${onnx_test_runner_src_dir}/tensorprotoutils.cc)
 
 if(WIN32)
   set(wide_get_opt_src_dir ${TEST_SRC_DIR}/win_getopt/wide)
@@ -447,11 +518,21 @@ set(onnx_test_libs
 
 list(APPEND onnx_test_libs ${onnxruntime_EXTERNAL_LIBRARIES} libprotobuf) # test code uses delimited parsing and hence needs to link with the full protobuf
 
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  list(APPEND onnx_test_libs onnxruntime_language_interop onnxruntime_pyop)
+endif()
+
 add_executable(onnx_test_runner ${onnx_test_runner_src_dir}/main.cc)
 target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
 onnxruntime_add_include_to_target(onnx_test_runner gsl)
 target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
 set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
+
+if (onnxruntime_USE_TVM)
+  if (WIN32)
+    target_link_options(onnx_test_runner PRIVATE "/STACK:4000000")
+  endif()
+endif()
 
 install(TARGETS onnx_test_runner
         ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -459,7 +540,7 @@ install(TARGETS onnx_test_runner
         RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if(onnxruntime_BUILD_BENCHMARKS)
-  add_executable(onnxruntime_benchmark ${TEST_SRC_DIR}/onnx/microbenchmark/main.cc ${TEST_SRC_DIR}/onnx/microbenchmark/modeltest.cc ${TEST_SRC_DIR}/onnx/microbenchmark/model_init.cc)
+  add_executable(onnxruntime_benchmark ${TEST_SRC_DIR}/onnx/microbenchmark/main.cc ${TEST_SRC_DIR}/onnx/microbenchmark/modeltest.cc)
   target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} benchmark)
   onnxruntime_add_include_to_target(onnxruntime_benchmark gsl)
   if(WIN32)
@@ -511,9 +592,13 @@ endif()
 onnxruntime_add_include_to_target(onnxruntime_perf_test gsl)
 
 if (onnxruntime_BUILD_SHARED_LIB)
-  target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_test_utils onnx_test_runner_common onnxruntime_common
+  set(onnxruntime_perf_test_libs onnxruntime_test_utils onnx_test_runner_common onnxruntime_common
           onnx_test_data_proto onnx_proto libprotobuf ${GETOPT_LIB_WIDE} onnxruntime
-          ${SYS_PATH_LIB} ${CMAKE_DL_LIBS} Threads::Threads)
+          ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
+  if(onnxruntime_USE_NSYNC)
+    list(APPEND onnxruntime_perf_test_libs nsync_cpp)
+  endif()
+  target_link_libraries(onnxruntime_perf_test PRIVATE ${onnxruntime_perf_test_libs} Threads::Threads)
   if(tensorflow_C_PACKAGE_PATH)
     target_include_directories(onnxruntime_perf_test PRIVATE ${tensorflow_C_PACKAGE_PATH}/include)
     target_link_directories(onnxruntime_perf_test PRIVATE ${tensorflow_C_PACKAGE_PATH}/lib)
@@ -524,6 +609,16 @@ else()
   target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
 endif()
 set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
+
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS AND NOT onnxruntime_BUILD_SHARED_LIB)
+  target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_language_interop onnxruntime_pyop)
+endif()
+
+if (onnxruntime_USE_TVM)
+  if (WIN32)
+    target_link_options(onnxruntime_perf_test PRIVATE "/STACK:4000000")
+  endif()
+endif()
 
 # shared lib
 if (onnxruntime_BUILD_SHARED_LIB)
@@ -546,7 +641,6 @@ if (onnxruntime_BUILD_SHARED_LIB)
   endif()
   if (NOT(${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))
     #for some reason, these tests are failing. Need investigation.
-    list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_tensor_loader.cc)
     if (onnxruntime_USE_FULL_PROTOBUF)
       list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc)
     endif()
@@ -563,15 +657,6 @@ if (onnxruntime_BUILD_SHARED_LIB)
           protobuf::libprotobuf
           DEPENDS ${all_dependencies}
   )
-  #demo
-  message("PNG Lib Dir = ${PNG_LIBRARIES}")
-  message("PNG Include Dir = ${PNG_INCLUDE_DIRS}")
-  if(PNG_FOUND AND NOT WIN32) # for some reason some symbols are not found in Win32 PNG module
-    add_executable(fns_candy_style_transfer "${ONNXRUNTIME_ROOT}/test/shared_lib/fns_candy_style_transfer.c")
-    target_include_directories(fns_candy_style_transfer PRIVATE "${TEST_SRC_DIR}/util/include" ${PNG_INCLUDE_DIRS})
-    target_link_libraries(fns_candy_style_transfer PRIVATE onnxruntime ${PNG_LIBRARIES})
-    set_target_properties(fns_candy_style_transfer PROPERTIES FOLDER "ONNXRuntimeTest")
-  endif()
 endif()
 
 if (onnxruntime_BUILD_SERVER)
@@ -588,25 +673,26 @@ if (onnxruntime_BUILD_SERVER)
       set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/json_handling_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
       set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/converter_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
       set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/util_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+      set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/prediction_service_impl_test.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
       set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/executor_test.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     endif()
   endif()
 
   add_library(onnxruntime_test_utils_for_server ${onnxruntime_test_server_src})
-  onnxruntime_add_include_to_target(onnxruntime_test_utils_for_server onnxruntime_test_utils_for_framework gtest gmock gsl onnx onnx_proto server_proto)
+  onnxruntime_add_include_to_target(onnxruntime_test_utils_for_server onnxruntime_test_utils_for_framework gtest gmock gsl onnx onnx_proto server_proto server_grpc_proto)
   add_dependencies(onnxruntime_test_utils_for_server onnxruntime_server_lib onnxruntime_server_http_core_lib Boost ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_include_directories(onnxruntime_test_utils_for_server PUBLIC ${Boost_INCLUDE_DIR} ${REPO_ROOT}/cmake/external/re2 ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT}/server/http ${ONNXRUNTIME_ROOT}/server/http/core PRIVATE ${ONNXRUNTIME_ROOT} )
+  target_include_directories(onnxruntime_test_utils_for_server PUBLIC ${Boost_INCLUDE_DIR} ${REPO_ROOT}/cmake/external/re2 ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT}/server ${ONNXRUNTIME_ROOT}/server/http ${ONNXRUNTIME_ROOT}/server/http/core  ${ONNXRUNTIME_ROOT}/server/grpc ${ONNXRUNTIME_ROOT}/server ${ONNXRUNTIME_ROOT}/server/core PRIVATE ${ONNXRUNTIME_ROOT} )
   if(UNIX)
     target_compile_options(onnxruntime_test_utils_for_server PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
   endif()
-  target_link_libraries(onnxruntime_test_utils_for_server ${Boost_LIBRARIES})
+  target_link_libraries(onnxruntime_test_utils_for_server ${Boost_LIBRARIES} spdlog::spdlog server_grpc_proto)
 
 
   AddTest(
     TARGET onnxruntime_server_tests
     SOURCES ${onnxruntime_test_server_src}
-    LIBS ${onnxruntime_test_server_libs} server_proto onnxruntime_server_lib ${onnxruntime_test_providers_libs}
+    LIBS ${onnxruntime_test_server_libs} server_proto server_grpc_proto onnxruntime_server_lib ${onnxruntime_test_providers_libs}
     DEPENDS ${onnxruntime_EXTERNAL_DEPENDENCIES}
   )
 
@@ -616,6 +702,20 @@ if (onnxruntime_BUILD_SERVER)
           LANGUAGE python
           TARGET onnxruntime_server_tests
           OUT_VAR server_test_py)
+          
+  set(grpc_py "${CMAKE_CURRENT_BINARY_DIR}/prediction_service_pb2_grpc.py")
+
+  add_custom_command(
+    TARGET onnxruntime_server_tests
+    COMMAND $<TARGET_FILE:protobuf::protoc>
+    ARGS 
+      --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
+      --plugin=protoc-gen-grpc="${_GRPC_PY_PLUGIN_EXECUTABLE}"
+      -I ${grpc_proto_path}
+      "${grpc_proto}"
+    DEPENDS "${grpc_proto}"
+    COMMENT "Running ${_GRPC_PY_PLUGIN_EXECUTABLE} on ${grpc_proto}"
+    )
 
   add_custom_command(
     TARGET onnxruntime_server_tests POST_BUILD
@@ -629,11 +729,19 @@ if (onnxruntime_BUILD_SERVER)
     COMMAND ${CMAKE_COMMAND} -E copy
       ${CMAKE_CURRENT_BINARY_DIR}/predict_pb2.py
       ${CMAKE_CURRENT_BINARY_DIR}/server_test/
+    COMMAND ${CMAKE_COMMAND} -E copy
+      ${grpc_py}
+      ${CMAKE_CURRENT_BINARY_DIR}/server_test/
   )
 
 endif()
 
 add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
 target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
-target_link_libraries(onnxruntime_mlas_test PRIVATE onnxruntime_mlas onnxruntime_common Threads::Threads)
+set(onnxruntime_mlas_test_libs onnxruntime_mlas onnxruntime_common)
+if(onnxruntime_USE_NSYNC)
+  list(APPEND onnxruntime_mlas_test_libs nsync_cpp)
+endif()
+list(APPEND onnxruntime_mlas_test_libs Threads::Threads)
+target_link_libraries(onnxruntime_mlas_test PRIVATE ${onnxruntime_mlas_test_libs})
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")

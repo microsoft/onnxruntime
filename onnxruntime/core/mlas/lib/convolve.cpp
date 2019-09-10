@@ -602,7 +602,7 @@ Return Value:
         //
 
         MlasActivation(Parameters->Activation, SegmentOutput, Bias, FilterCount,
-            SegmentOutput, CountN, OutputSize);
+            CountN, OutputSize);
     }
 }
 
@@ -731,7 +731,7 @@ Return Value:
             bias += group * FilterCount;
         }
 
-        MlasActivation(Parameters->Activation, output, bias, FilterCount, output,
+        MlasActivation(Parameters->Activation, output, bias, FilterCount,
             OutputSize, OutputSize);
     }
 }
@@ -941,7 +941,7 @@ Return Value:
                     // Apply the activation with optional bias.
                     //
 
-                    MlasActivation(Parameters->Activation, Output, bias, FilterCount, Output,
+                    MlasActivation(Parameters->Activation, Output, bias, FilterCount,
                         OutputSize, OutputSize);
 
                     break;
@@ -967,7 +967,7 @@ Return Value:
                     // Apply the activation with optional bias.
                     //
 
-                    MlasActivation(Parameters->Activation, Output, bias, FilterCount, Output,
+                    MlasActivation(Parameters->Activation, Output, bias, FilterCount,
                         OutputSize, OutputSize);
 
                     break;

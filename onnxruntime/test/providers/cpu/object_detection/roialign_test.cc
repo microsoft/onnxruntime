@@ -258,7 +258,7 @@ TEST(RoiAlignTest, AvgModeNegativeInvalidNumRoiDims) {
                                          35.1354f,56.7708f,56.7708f,56.7708f,56.8021f,58.4375f,58.4375f,58.4375f,58.4688f,60.1042f,
                                          60.1042f,60.1042f,60.1354f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "[ShapeInferenceError] rois input tensor has wrong dimension");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "[ShapeInferenceError] Input 1 expected to have rank 2 but has rank 3");
 }
 
 TEST(RoiAlignTest, AvgModeNegativeInvalidSecondRoiDims) {
@@ -341,7 +341,7 @@ TEST(RoiAlignTest, MismatchNumRois) {
                                          35.1354f,56.7708f,56.7708f,56.7708f,56.8021f,58.4375f,58.4375f,58.4375f,58.4688f,60.1042f,
                                          60.1042f,60.1042f,60.1354f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "First dimension (num_rois) of batch_indices and rois don't match");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "[ShapeInferenceError] Dimension mismatch in unification between 4 and 5");
 }
 }  // namespace test
 }  // namespace onnxruntime

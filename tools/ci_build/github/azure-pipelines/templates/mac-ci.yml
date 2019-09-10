@@ -1,0 +1,32 @@
+parameters:
+  AgentPool : 'Hosted macOS High Sierra'
+  JobName: 'MacOS_CI_Dev'
+  BuildCommand: ''
+  DoNugetPack: 'false'
+  NuPackScript: ''
+
+jobs:
+- job: ${{ parameters.JobName }}
+  pool: ${{ parameters.AgentPool }}
+  variables:
+    BuildCommand: ${{ parameters.BuildCommand }}
+  steps:
+    - template: mac-set-variables-and-download.yml
+    - script: |
+        sudo python3 -m pip install numpy==1.15.0
+        sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
+        ${{ parameters.BuildCommand }}
+      displayName: 'Build and Test OnnxRuntime lib for MacOS'
+    - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
+      - script: |
+         ${{ parameters.NuPackScript }}
+        displayName: 'Copy MacOS libs to Artifact Staging'
+      - task: PublishPipelineArtifact@0
+        displayName: 'Publish Pipeline Artifact'
+        inputs:
+          artifactName: 'drop-osx'
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: succeeded()
+    - template: clean-agent-build-directory-step.yml

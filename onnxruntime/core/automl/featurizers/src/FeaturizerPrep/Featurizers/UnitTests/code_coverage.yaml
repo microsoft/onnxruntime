@@ -1,0 +1,5 @@
+filter:
+  includes:
+    - Microsoft::Featurizer::*
+  excludes:
+    - std::*
