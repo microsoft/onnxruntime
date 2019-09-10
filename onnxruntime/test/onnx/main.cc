@@ -444,6 +444,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"resize_upsample_sizes_nearest_floor_align_corners", "not implemented yet"},
       {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "not implemented yet"},
       {"scatternd", "not implemented yet"},
+      {"yolov3", "regression in resize opset 10 shape inference"},
   };
 
 #ifdef USE_NGRAPH
