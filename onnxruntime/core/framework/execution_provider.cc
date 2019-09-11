@@ -50,7 +50,7 @@ common::Status IExecutionProvider::OnRunStart() { return Status::OK(); }
 common::Status IExecutionProvider::OnRunEnd() { return Status::OK(); }
 
 void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
-  const OrtAllocatorInfo& info = allocator->Info();
+  const OrtMemoryInfo& info = allocator->Info();
   const int key = MakeKey(info.id, info.mem_type);
   auto iter = allocators_.find(key);
   if (iter != allocators_.end()) {

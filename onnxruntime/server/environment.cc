@@ -48,7 +48,7 @@ void ServerEnvironment::InitializeModel(const std::string& model_path) {
 
   auto output_count = session.GetOutputCount();
 
-  auto allocator = Ort::Allocator::CreateDefault();
+  Ort::AllocatorWithDefaultOptions allocator;
   for (size_t i = 0; i < output_count; i++) {
     auto name = session.GetOutputName(i, allocator);
     model_output_names_.push_back(name);

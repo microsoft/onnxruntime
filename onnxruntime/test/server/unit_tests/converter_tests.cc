@@ -304,7 +304,7 @@ TEST(MLValueToTensorProtoTests, UInt8ProtoRoundTrip) {
   tp.set_data_type(onnx::TensorProto_DataType_UINT8);
   Ort::Value ml_value{nullptr};
   char buf[1000];
-  auto allocator = Ort::Allocator::CreateDefault();
+  Ort::AllocatorWithDefaultOptions allocator;
   auto info = allocator.GetInfo();
   MemBuffer buffer((void*)&buf, tp.ByteSizeLong(), *info);
   onnxruntime::server::TensorProtoToMLValue(tp, buffer, ml_value);

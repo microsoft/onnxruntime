@@ -4,20 +4,13 @@
 #include "core/framework/tensor_shape.h"
 #include <iostream>
 #include "core/common/common.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
 
-TensorShape::TensorShape(const std::vector<int64_t>& dims) : std::vector<int64_t>(dims) {
-}
-
-TensorShape::TensorShape(std::vector<int64_t>&& dims) : std::vector<int64_t>(std::move(dims)) {
-}
-
-TensorShape::TensorShape(const std::initializer_list<int64_t>& dims) : std::vector<int64_t>(dims) {
-}
-
-TensorShape::TensorShape(const int64_t* dimension_sizes, size_t dimension_count) : std::vector<int64_t>(dimension_count) {
+TensorShape::TensorShape(const int64_t* dimension_sizes, size_t dimension_count)
+    : std::vector<int64_t>(dimension_count) {
   for (size_t i = 0; i < dimension_count; ++i) {
     (*this)[i] = dimension_sizes[i];
   }
@@ -112,9 +105,9 @@ std::ostream& operator<<(std::ostream& out, const ONNX_NAMESPACE::TensorShapePro
       result.append(",");
     }
 
-    if (dim.has_dim_value())
+    if (utils::HasDimValue(dim))
       result.append(std::to_string(dim.dim_value()));
-    else if (dim.has_dim_param())
+    else if (utils::HasDimParam(dim))
       result.append(dim.dim_param());
 
     first = false;

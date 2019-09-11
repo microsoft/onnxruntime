@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using System.Numerics.Tensors;
+using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Buffers;
 using System.Collections;
 using System.Diagnostics;
@@ -162,6 +162,15 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
+            else if (TryPinAsTensor<sbyte>(out pinnedMemoryHandle,
+                                      out dataBufferPointer,
+                                      out dataBufferLength,
+                                      out shape,
+                                      out rank,
+                                      out nativeElementType
+                                    ))
+            {
+            }
             else if (TryPinAsTensor<bool>(out pinnedMemoryHandle,
                                       out dataBufferPointer,
                                       out dataBufferLength,
@@ -171,41 +180,93 @@ namespace Microsoft.ML.OnnxRuntime
                                     ))
             {
             }
-
             //TODO: add other types
-            else
+            // special case for string Tensor, data needs to be copied to the native buffer
+            else if (!(_value is Tensor<string>))
             {
                 // nothing to cleanup here, since no memory has been pinned
                 throw new NotSupportedException("The inference value " + nameof(_value) + " is not of a supported type");
             }
 
 
-            Debug.Assert(dataBufferPointer != IntPtr.Zero, "dataBufferPointer must be non-null after obtaining the pinned buffer");
+            if (_value is Tensor<string>)
+            {
+                // calculate native tensor length (sum of string lengths in utf-8)
+                var tensorValue = _value as Tensor<string>;
+                int totalLength = 0;
+                for (int i = 0; i < tensorValue.Length; i++)
+                {
+                    totalLength += Encoding.UTF8.GetByteCount(tensorValue.GetValue(i));
+                }
 
-            // copy to an ulong[] shape to match size_t[]
-            long[] longShape = new long[rank];
-            for (int i = 0; i < rank; i++)
-            {
-                longShape[i] = shape[i];
-            }
+                long[] longShape = new long[tensorValue.Dimensions.Length];
+                for (int i = 0; i < tensorValue.Dimensions.Length; i++)
+                {
+                    longShape[i] = tensorValue.Dimensions[i];
+                }
 
-            IntPtr status = NativeMethods.OrtCreateTensorWithDataAsOrtValue(
-                    NativeMemoryAllocatorInfo.DefaultInstance.Handle,
-                    dataBufferPointer,
-                    (UIntPtr)(dataBufferLength),
-                    longShape,
-                    (UIntPtr)rank,
-                    nativeElementType,
-                    out onnxValue
-                );
-            try
-            {
-                NativeApiStatus.VerifySuccess(status);
+                // allocate the native tensor
+                IntPtr nativeTensor = IntPtr.Zero;
+                try
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateTensorAsOrtValue(
+                                                    NativeMemoryAllocator.DefaultInstance.Handle,
+                                                    longShape,
+                                                    (UIntPtr)(longShape.Length),
+                                                    TensorElementType.String,
+                                                    out nativeTensor
+                                                    ));
+
+                    // fill the native tensor, using GetValue(index) from the Tensor<string>
+                    string[] stringsInTensor = new string[tensorValue.Length];
+                    for (int i = 0; i < tensorValue.Length; i++)
+                    {
+                        stringsInTensor[i] = tensorValue.GetValue(i);
+                    }
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtFillStringTensor(nativeTensor, stringsInTensor, (UIntPtr)tensorValue.Length));
+                }
+                catch (OnnxRuntimeException e)
+                {
+                    if (nativeTensor != IntPtr.Zero)
+                    {
+                        NativeMethods.OrtReleaseValue(nativeTensor);
+                        throw e;
+                    }
+                }
+
+                onnxValue = nativeTensor; // set the output
+                pinnedMemoryHandle = default; // dummy value for the output
             }
-            catch (OnnxRuntimeException e)
+            else
             {
-                pinnedMemoryHandle.Dispose();
-                throw e;
+                Debug.Assert(dataBufferPointer != IntPtr.Zero, "dataBufferPointer must be non-null after obtaining the pinned buffer");
+
+                // copy to an ulong[] shape to match size_t[]
+                long[] longShape = new long[rank];
+                for (int i = 0; i < rank; i++)
+                {
+                    longShape[i] = shape[i];
+                }
+
+                IntPtr status = NativeMethods.OrtCreateTensorWithDataAsOrtValue(
+                        NativeMemoryAllocatorInfo.DefaultInstance.Handle,
+                        dataBufferPointer,
+                        (UIntPtr)(dataBufferLength),
+                        longShape,
+                        (UIntPtr)rank,
+                        nativeElementType,
+                        out onnxValue
+                    );
+                try
+                {
+                    NativeApiStatus.VerifySuccess(status);
+                }
+                catch (OnnxRuntimeException e)
+                {
+                    pinnedMemoryHandle.Dispose();
+                    throw e;
+                }
+
             }
 
         }
@@ -224,7 +285,9 @@ namespace Microsoft.ML.OnnxRuntime
             dataBufferLength = 0;
             shape = null;
             rank = 0;
-            pinnedMemoryHandle = default(MemoryHandle);
+            pinnedMemoryHandle = default;
+
+            Debug.Assert(typeof(T) != typeof(string), "NamedOnnxValue.TryPinAsTensor() must not be called with a string Tensor value");
 
             if (_value is Tensor<T>)
             {
@@ -299,15 +362,21 @@ namespace Microsoft.ML.OnnxRuntime
                     nativeElementType = TensorElementType.UInt8;
                     dataBufferLength = dt.Buffer.Length * sizeof(byte);
                 }
+                else if (typeof(T) == typeof(sbyte))
+                {
+                    nativeElementType = TensorElementType.Int8;
+                    dataBufferLength = dt.Buffer.Length * sizeof(sbyte);
+                }
                 else if (typeof(T) == typeof(string))
                 {
                     nativeElementType = TensorElementType.String;
                     dataBufferLength = dt.Buffer.Length * IntPtr.Size;
                 }
-                //TODO: Not supporting boolean for now. bool is non-blittable, the interop needs some care, and possibly need to copy
-                //else if (typeof(T) == typeof(bool))
-                //{
-                //}
+                else if (typeof(T) == typeof(bool))
+                {
+                    nativeElementType = TensorElementType.Bool;
+                    dataBufferLength = dt.Buffer.Length * sizeof(bool); // Assumes sizeof(BOOL) is always 1 byte in native
+                }
                 else
                 {
                     //TODO: may extend the supported types
@@ -397,9 +466,17 @@ namespace Microsoft.ML.OnnxRuntime
                     type = typeof(byte);
                     width = sizeof(byte);
                     break;
+                case TensorElementType.Int8:
+                    type = typeof(sbyte);
+                    width = sizeof(sbyte);
+                    break;
                 case TensorElementType.String:
                     type = typeof(byte);
                     width = sizeof(byte);
+                    break;
+                case TensorElementType.Bool:
+                    type = typeof(bool);
+                    width = sizeof(bool);
                     break;
                 default:
                     type = null;

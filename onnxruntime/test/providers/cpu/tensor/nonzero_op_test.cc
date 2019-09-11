@@ -48,6 +48,25 @@ TEST(NonZeroOpTest, BasicBool) {
   test.Run();
 }
 
+TEST(NonZeroOpTest, ThreeDims) {
+  OpTester test{kOpName, kOpVersion};
+
+  std::vector<int64_t> X_dims{2, 2, 2};
+  std::vector<int64_t> X{0, 1,
+                         1, 0,
+
+                         1, 0,
+                         1, 0};
+  test.AddInput<int64_t>("X", X_dims, std::vector<int64_t>{X.begin(), X.end()});
+  test.AddOutput<int64_t>(
+      "Y", {3, 4},
+      {0, 0, 1, 1,
+       0, 1, 0, 1,
+       1, 0, 0, 0});
+
+  test.Run();
+}
+
 TEST(NonZeroOpTest, Scalar) {
   {
     OpTester test{kOpName, kOpVersion};

@@ -40,7 +40,7 @@ void CUDAAllocator::Free(void* p) {
   cudaFree(p);  // do not throw error since it's OK for cudaFree to fail during shutdown
 }
 
-const OrtAllocatorInfo& CUDAAllocator::Info() const {
+const OrtMemoryInfo& CUDAAllocator::Info() const {
   return info_;
 }
 
@@ -60,9 +60,8 @@ void CUDAPinnedAllocator::Free(void* p) {
   CUDA_CALL_THROW(cudaFreeHost(p));
 }
 
-const OrtAllocatorInfo& CUDAPinnedAllocator::Info() const {
-  static constexpr OrtAllocatorInfo cuda_allocator_info(CUDA_PINNED, OrtDeviceAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0), 0, OrtMemTypeCPUOutput);
-  return cuda_allocator_info;
+const OrtMemoryInfo& CUDAPinnedAllocator::Info() const {
+  return info_;
 }
 
 FencePtr CUDAPinnedAllocator::CreateFence(const SessionState* session_state) {

@@ -240,6 +240,7 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShapeWithBatchSize) {
   TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 }
 
+#ifndef USE_NGRAPH
 TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{1, 1, 1, 5},   // invalid kernel_shape, should be [1, 5]
@@ -264,6 +265,7 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
                       OpTester::ExpectResult::kExpectFailure,
                       "kernel_shape num_dims is not compatible with W num_dims. kernel_shape: {1,1,1,5} W: {1,1,1,5}");
 }
+#endif
 
 TEST(ConvTransposeTest, ConvTranspose_onnx) {
   ConvTransposeOpAttributes attrs = {

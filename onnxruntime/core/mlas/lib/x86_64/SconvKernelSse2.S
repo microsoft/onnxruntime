@@ -249,6 +249,9 @@ Arguments:
         .macro PostProcessBlock FilterCount, OutputCount
 
         .globl  MlasConvPostProcessFloatSseFilter\FilterCount\()Output\OutputCount\()
+#if !defined(__APPLE__)
+        .hidden MlasConvPostProcessFloatSseFilter\FilterCount\()Output\OutputCount\()
+#endif
 MlasConvPostProcessFloatSseFilter\FilterCount\()Output\OutputCount\():
 
 .if \FilterCount\() > 2

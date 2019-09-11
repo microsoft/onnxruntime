@@ -21,7 +21,6 @@ class ExecutionFrame;
 
 class ParallelExecutor : public IExecutor {
  public:
-  ParallelExecutor(const bool& terminate_flag = false) : terminate_flag_{terminate_flag} {}
   ParallelExecutor(const SessionState& session_state, const bool& terminate_flag = false);
 
   common::Status Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,

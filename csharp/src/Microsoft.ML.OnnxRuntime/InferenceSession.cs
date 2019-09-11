@@ -19,6 +19,8 @@ namespace Microsoft.ML.OnnxRuntime
     {
         protected IntPtr _nativeHandle;
         protected Dictionary<string, NodeMetadata> _inputMetadata, _outputMetadata;
+        private SessionOptions _builtInSessionOptions = null;
+        private RunOptions _builtInRunOptions = null;
 
 
         #region Public API
@@ -28,9 +30,11 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="modelPath"></param>
         public InferenceSession(string modelPath)
-            : this(modelPath, SessionOptions.Default)
         {
+            _builtInSessionOptions = new SessionOptions(); // need to be disposed
+            Init(modelPath, _builtInSessionOptions);
         }
+
 
         /// <summary>
         /// Constructs an InferenceSession from a model file, with some additional session options
@@ -39,52 +43,13 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options"></param>
         public InferenceSession(string modelPath, SessionOptions options)
         {
-            var envHandle = OnnxRuntime.Handle;
-
-            _nativeHandle = IntPtr.Zero;
-            try
-            {
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.Unicode.GetBytes(modelPath), options._nativePtr, out _nativeHandle));
-                else
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.UTF8.GetBytes(modelPath), options._nativePtr, out _nativeHandle));
-
-                // Initialize input/output metadata
-                _inputMetadata = new Dictionary<string, NodeMetadata>();
-                _outputMetadata = new Dictionary<string, NodeMetadata>();
-
-                // get input count
-                UIntPtr inputCount = UIntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputCount(_nativeHandle, out inputCount));
-
-                // get all the output names
-                for (ulong i = 0; i < (ulong)inputCount; i++)
-                {
-                    var iname = GetInputName(i);
-                    _inputMetadata[iname] = GetInputMetadata(i);
-                }
-                // get output count
-                UIntPtr outputCount = UIntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputCount(_nativeHandle, out outputCount));
-
-                // get all the output names
-                for (ulong i = 0; i < (ulong)outputCount; i++)
-                {
-                    _outputMetadata[GetOutputName(i)] = GetOutputMetadata(i);
-                }
-
-            }
-            catch (OnnxRuntimeException e)
-            {
-                if (_nativeHandle != IntPtr.Zero)
-                {
-                    NativeMethods.OrtReleaseSession(_nativeHandle);
-                    _nativeHandle = IntPtr.Zero;
-                }
-                throw e;
-            }
+            Init(modelPath, options);
         }
 
+
+        /// <summary>
+        /// Meta data regarding the input nodes, keyed by input names
+        /// </summary>
         public IReadOnlyDictionary<string, NodeMetadata> InputMetadata
         {
             get
@@ -93,6 +58,9 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Metadata regarding the output nodes, keyed by output names
+        /// </summary>
         public IReadOnlyDictionary<string, NodeMetadata> OutputMetadata
         {
             get
@@ -101,11 +69,12 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+
         /// <summary>
         /// Runs the loaded model for the given inputs, and fetches all the outputs.
         /// </summary>
         /// <param name="inputs"></param>
-        /// <returns>Output Tensors in a Collection of NamedOnnxValue</returns>
+        /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs)
         {
             string[] outputNames = new string[_outputMetadata.Count];
@@ -118,21 +87,22 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="inputs"></param>
         /// <param name="outputNames"></param>
-        /// <returns>Output Tensors in a Collection of NamedOnnxValue</returns>
+        /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames)
         {
-            return Run(inputs, outputNames, RunOptions.Default);
+            IDisposableReadOnlyCollection<DisposableNamedOnnxValue> result = null;
+            result = Run(inputs, outputNames, _builtInRunOptions);
+            return result;
         }
 
         /// <summary>
-        /// Runs the loaded model for the given inputs, and fetches the specified outputs in <paramref name="outputNames"/>.
+        /// Runs the loaded model for the given inputs, and fetches the specified outputs in <paramref name="outputNames". Uses the given RunOptions for this run./>.
         /// </summary>
         /// <param name="inputs"></param>
         /// <param name="outputNames"></param>
         /// <param name="options"></param>
-        /// <returns>Output Tensors in a Collection of NamedOnnxValue</returns>
-        //TODO: kept internal until RunOptions is made public
-        internal IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames, RunOptions options)
+        /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
+        public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames, RunOptions options)
         {
             var inputNames = new string[inputs.Count];
             var inputTensors = new IntPtr[inputs.Count];
@@ -154,8 +124,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             IntPtr status = NativeMethods.OrtRun(
                                                 this._nativeHandle,
-                                                IntPtr.Zero,  // TODO: use Run options when Run options creation API is available
-                                                              // Passing null uses the default run options in the C-api
+                                                options.Handle,
                                                 inputNames,
                                                 inputTensors,
                                                 (UIntPtr)(inputTensors.Length),
@@ -192,7 +161,8 @@ namespace Microsoft.ML.OnnxRuntime
                 // always unpin the input buffers, and delete the native Onnx value objects
                 for (int i = 0; i < inputs.Count; i++)
                 {
-                    NativeMethods.OrtReleaseValue(inputTensors[i]); // this should not release the buffer, but should delete the native tensor object
+                    NativeMethods.OrtReleaseValue(inputTensors[i]); // For elementary type Tensors, this should not release the buffer, but should delete the native tensor object.
+                                                                    // For string tensors, this releases the native memory allocated for the tensor, including the buffer
                     pinnedBufferHandles[i].Dispose();
                 }
             }
@@ -211,6 +181,58 @@ namespace Microsoft.ML.OnnxRuntime
         #endregion
 
         #region private methods
+
+        protected void Init(string modelPath, SessionOptions options)
+        {
+            var envHandle = OnnxRuntime.Handle;
+
+            _nativeHandle = IntPtr.Zero;
+            try
+            {
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.Unicode.GetBytes(modelPath), options.Handle, out _nativeHandle));
+                else
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.UTF8.GetBytes(modelPath), options.Handle, out _nativeHandle));
+
+                // Initialize input/output metadata
+                _inputMetadata = new Dictionary<string, NodeMetadata>();
+                _outputMetadata = new Dictionary<string, NodeMetadata>();
+
+                // get input count
+                UIntPtr inputCount = UIntPtr.Zero;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputCount(_nativeHandle, out inputCount));
+
+                // get all the output names
+                for (ulong i = 0; i < (ulong)inputCount; i++)
+                {
+                    var iname = GetInputName(i);
+                    _inputMetadata[iname] = GetInputMetadata(i);
+                }
+                // get output count
+                UIntPtr outputCount = UIntPtr.Zero;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputCount(_nativeHandle, out outputCount));
+
+                // get all the output names
+                for (ulong i = 0; i < (ulong)outputCount; i++)
+                {
+                    _outputMetadata[GetOutputName(i)] = GetOutputMetadata(i);
+                }
+
+            }
+            catch (OnnxRuntimeException e)
+            {
+                if (_nativeHandle != IntPtr.Zero)
+                {
+                    NativeMethods.OrtReleaseSession(_nativeHandle);
+                    _nativeHandle = IntPtr.Zero;
+                }
+                throw e;
+            }
+
+            _builtInRunOptions = new RunOptions();  // create a default built-in run option, and avoid creating a new one every run() call
+        }
+
+
         private string GetOutputName(ulong index)
         {
             IntPtr nameHandle = IntPtr.Zero;
@@ -358,6 +380,15 @@ namespace Microsoft.ML.OnnxRuntime
             if (disposing)
             {
                 // cleanup managed resources
+                if (_builtInSessionOptions != null)
+                {
+                    _builtInSessionOptions.Dispose();
+                }
+
+                if (_builtInRunOptions != null)
+                {
+                    _builtInRunOptions.Dispose();
+                }
             }
 
             // cleanup unmanaged resources
@@ -426,24 +457,5 @@ namespace Microsoft.ML.OnnxRuntime
         //TODO: placeholder for Model metadata. Currently C-API does not expose this.
     }
 
-    /// Sets various runtime options. 
-    /// TODO: currently uses Default options only. kept internal until fully implemented
-    internal class RunOptions
-    {
-        protected static readonly Lazy<RunOptions> _default = new Lazy<RunOptions>(() => new RunOptions());
-
-        public static RunOptions Default
-        {
-            get
-            {
-                return _default.Value;
-            }
-        }
-
-        private void RuntOptions()
-        {
-
-        }
-    }
 
 }

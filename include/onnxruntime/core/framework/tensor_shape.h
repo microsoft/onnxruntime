@@ -34,12 +34,13 @@ class TensorShape : private std::vector<int64_t> {
   TensorShape(TensorShape&& /*other*/) = default;
   TensorShape& operator=(TensorShape&& /*other*/) = default;
 
+  TensorShape(const std::vector<int64_t>& dims) : std::vector<int64_t>(dims) {}
+
+  TensorShape(std::vector<int64_t>&& dims) : std::vector<int64_t>(std::move(dims)) {}
+
+  TensorShape(const std::initializer_list<int64_t>& dims) : std::vector<int64_t>(dims) {}
+
   TensorShape(const int64_t* dimension_sizes, size_t dimension_count);
-
-  TensorShape(const std::vector<int64_t>& dims);
-  TensorShape(std::vector<int64_t>&& dims);
-
-  TensorShape(const std::initializer_list<int64_t>& dims);
 
   TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end);
 

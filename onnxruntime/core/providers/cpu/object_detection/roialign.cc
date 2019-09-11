@@ -268,7 +268,7 @@ void RoiAlignForward(
       }    // for ph
     }      // for c
   };       // for n
-  const_cast<ThreadPool*>(ttp)->ParallelFor(static_cast<int32_t>(n_rois), work_object);
+  if (ttp != nullptr) const_cast<ThreadPool*>(ttp)->ParallelFor(static_cast<int32_t>(n_rois), work_object);
 }
 }  // namespace
 

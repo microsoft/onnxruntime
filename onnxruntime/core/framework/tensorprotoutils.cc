@@ -14,7 +14,7 @@
 #include "core/framework/tensor.h"
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/allocator.h"
-#include "core/common/callback.h"
+#include "core/framework/callback.h"
 #include "core/framework/data_types.h"
 #include "core/framework/path_lib.h"
 
@@ -278,7 +278,7 @@ TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShape
   const auto& dims = tensor_shape_proto.dim();
   std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
   for (int i = 0; i < dims.size(); ++i) {
-    tensor_shape_vec[i] = dims[i].has_dim_value() ? dims[i].dim_value()
+    tensor_shape_vec[i] = HasDimValue(dims[i]) ? dims[i].dim_value()
                                                   : -1; /* symbolic dimensions are represented as -1 in onnxruntime*/
   }
   return TensorShape(std::move(tensor_shape_vec));
@@ -304,7 +304,7 @@ ORT_API_STATUS(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t input_
  */
 ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enum ONNXTensorElementDataType type);
 
-static void ORT_API_CALL UnInitTensor(void* param) noexcept {
+static void UnInitTensor(void* param) noexcept {
   UnInitializeParam* p = reinterpret_cast<UnInitializeParam*>(param);
   OrtUninitializeBuffer(p->preallocated, p->preallocated_size, p->ele_type);
   delete p;
@@ -363,7 +363,7 @@ static void MoveOrtCallback(OrtCallback& from, OrtCallback& to) {
 Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
                             const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, OrtValue& value,
                             OrtCallback& deleter) {
-  const OrtAllocatorInfo& allocator = m.GetAllocInfo();
+  const OrtMemoryInfo& allocator = m.GetAllocInfo();
   ONNXTensorElementDataType ele_type = utils::GetTensorElementType(tensor_proto);
   deleter.f = nullptr;
   deleter.param = nullptr;
@@ -394,7 +394,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
                                                  file_data, raw_data_len, deleter_for_file_data.d));
         raw_data = file_data;
       }
-    } else if (tensor_proto.has_raw_data()) {
+    } else if (utils::HasRawData(tensor_proto)) {
       if (ele_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not have raw data");
       raw_data = tensor_proto.raw_data().data();

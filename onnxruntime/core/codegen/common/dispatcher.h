@@ -16,6 +16,7 @@ namespace codegen {
 //           2) dump corresponding name
 // DispatcherBase may or may not keep ownership,
 // depending on the template parameter, CONTENT_TYPE.
+// Note DispatcherBase has a protected destructor
 
 template <typename CONTENT_TYPE>
 class DispatcherBase {
@@ -68,6 +69,7 @@ class DispatcherBase {
   std::string name_;
   std::unordered_map<std::string, CONTENT_TYPE> contents_;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(DispatcherBase);
+  ~DispatcherBase() = default;
 };
 
 }  // namespace codegen

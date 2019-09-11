@@ -806,6 +806,14 @@ TEST(MathOpTest, Less_Scalar1) {
   test.Run();
 }
 
+TEST(MathOpTest, Less_int64_Scalar1) {
+  OpTester test("Less", 9);
+  test.AddInput<int64_t>("A", {4}, {1, 0, 2, -1});
+  test.AddInput<int64_t>("B", {1}, {1});
+  test.AddOutput<bool>("C", {4}, {false, true, false, true});
+  test.Run();
+}
+
 TEST(MathOpTest, Greater_7) {
   OpTester test("Greater");
   std::vector<int64_t> dims{4};

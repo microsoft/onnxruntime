@@ -46,7 +46,7 @@ class OpKernel {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
-  const OrtAllocatorInfo& Allocator(int id, OrtMemType mem_type) const {
+  const OrtMemoryInfo& Allocator(int id, OrtMemType mem_type) const {
     return op_kernel_info_.GetAllocatorInfo(id, mem_type);
   }
 
@@ -158,6 +158,11 @@ class OpKernelContext {
   */
   Fence_t OutputFence(int index) const;
 
+  /**
+  Returns the opset domain of the underlying kernel
+  **/
+  const std::string& GetOpDomain() const;
+
  protected:
   onnxruntime::NodeIndex GetNodeIndex() const;
 
@@ -210,7 +215,7 @@ struct KernelCreateInfo {
       : kernel_def(std::move(definition)),
         kernel_create_func(create_func) {}
 
-  KernelCreateInfo(KernelCreateInfo&& other)
+  KernelCreateInfo(KernelCreateInfo&& other) noexcept
       : kernel_def(std::move(other.kernel_def)),
         kernel_create_func(std::move(other.kernel_create_func)) {}
 };
@@ -230,6 +235,11 @@ namespace contrib {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace contrib
+
+namespace automl {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}  // namespace automl
 
 namespace contrib {
 namespace cuda {

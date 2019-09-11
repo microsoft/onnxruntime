@@ -11,7 +11,7 @@ TestModelInfo* TFModelInfo::Create(_In_ const PATH_CHAR_TYPE* model_url) {
   meta_file_path.append(ORT_TSTR(".meta"));
   void* p = nullptr;
   size_t len = 0;
-  OrtCallback b;
+  onnxruntime::OrtCallback b;
   auto st = onnxruntime::Env::Default().ReadFileAsString(meta_file_path.c_str(), 0, p, len, b);
   if (!st.IsOK()) {
     ORT_THROW(st.ErrorMessage());

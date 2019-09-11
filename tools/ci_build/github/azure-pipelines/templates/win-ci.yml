@@ -57,8 +57,9 @@ jobs:
           solution: '$(Build.BinariesDirectory)\Debug\onnxruntime.sln'
           platform: 'x64'
           configuration: 'Debug'
-          msbuildArguments: ${{ parameters.MsbuildArguments }}
+          msbuildArgs: ${{ parameters.MsbuildArguments }}
           msbuildArchitecture: 'x64'
+          maximumCpuCount: true
           logProjectEvents: true
           workingFolder: '$(Build.BinariesDirectory)\Debug'
           createLogFile: true
@@ -70,23 +71,24 @@ jobs:
           arguments: '$(BuildCommand) --test --config Debug'
           workingFolder: '$(Build.BinariesDirectory)'
 
-      - task: VSBuild@1
+      - task: MSBuild@1
         displayName: 'Build C# Debug'
         inputs:
-          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-          platform: 'any cpu'
+          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+          platform: 'Any CPU'
           configuration: 'Debug'
-          restoreNugetPackages: false
           msbuildArchitecture: 'x64'
           workingFolder: '$(Build.SourcesDirectory)\csharp'
-          msbuildArguments: '/m'
 
-      - task: CmdLine@2
+      - task: MSBuild@1
         displayName: 'Test C# Debug'
         inputs:
-          script: |
-           FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
-          workingDirectory: '$(Build.SourcesDirectory)\csharp'
+          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+          platform: 'Any CPU'
+          configuration: 'Debug'
+          msbuildArchitecture: 'x64'
+          msbuildArguments: '/t:RunTest'
+          workingFolder: '$(Build.SourcesDirectory)\csharp'
 
     # Run test coverage report
     - ${{ if eq(parameters['DoTestCoverage'], 'true') }}:
@@ -104,7 +106,7 @@ jobs:
         solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
         platform: 'x64'
         configuration: 'RelWithDebInfo'
-        msbuildArguments: ${{ parameters.MsbuildArguments }}
+        msbuildArgs: ${{ parameters.MsbuildArguments }}
         msbuildArchitecture: 'x64'
         logProjectEvents: true
         workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
@@ -116,23 +118,24 @@ jobs:
         arguments: '$(BuildCommand) --test --config RelWithDebInfo'
         workingFolder: "$(Build.BinariesDirectory)"
 
-    - task: VSBuild@1
-      displayName: 'Build c# RelWithDebInfo'
+    - task: MSBuild@1
+      displayName: 'Build C# RelWithDebInfo'
       inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        platform: 'any cpu'
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        platform: 'Any CPU'
         configuration: 'RelWithDebInfo'
         msbuildArchitecture: 'x64'
-        restoreNugetPackages: false
         workingFolder: '$(Build.SourcesDirectory)\csharp'
-        msbuildArguments: '/m'
 
-    - task: CmdLine@2
+    - task: MSBuild@1
       displayName: 'Test C# RelWithDebInfo'
       inputs:
-        script: |
-         FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        platform: 'Any CPU'
+        configuration: 'RelWithDebInfo'
+        msbuildArchitecture: 'x64'
+        msbuildArguments: '/t:RunTest'
+        workingfolder: '$(Build.SourcesDirectory)\csharp'
 
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'

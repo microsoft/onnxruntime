@@ -77,7 +77,7 @@ void TestInference(Ort::Env& env, T model_uri,
 #endif
   } else if (provider_type == 3) {
 #ifdef USE_NUPHAR
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, 0, ""));
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, /*allow_unaligned_buffers*/ 1, ""));
     std::cout << "Running simple inference with nuphar provider" << std::endl;
 #else
     return;
@@ -218,7 +218,7 @@ TEST_F(CApiTest, custom_op_handler) {
   TestInference<PATH_TYPE>(env_, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain);
 }
 
-#if defined(ENABLE_LANGUAGE_INTEROP_OPS) && !defined(_WIN32) // on windows, PYTHONHOME must be set explicitly
+#if defined(ENABLE_LANGUAGE_INTEROP_OPS) && !defined(_WIN32)  // on windows, PYTHONHOME must be set explicitly
 TEST_F(CApiTest, test_pyop) {
   std::cout << "Test model with pyop" << std::endl;
   std::ofstream module("mymodule.py");

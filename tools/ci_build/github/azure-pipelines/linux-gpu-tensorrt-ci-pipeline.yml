@@ -15,8 +15,7 @@ jobs:
       displayName: 'Download test data'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
-        # There are some tests in 20190130.zip that TensorRT can't run. Instead here use 20181210 opset8 for TensorRT test.
-        arguments: --test_data_url https://onnxruntimetestdata.blob.core.windows.net/models/20181210.zip --build_dir $(Build.BinariesDirectory)
+        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
         pythonInterpreter: '/usr/bin/python3'
         workingDirectory: $(Build.BinariesDirectory)
     

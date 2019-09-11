@@ -56,6 +56,9 @@ struct SessionOptions {
   // enable profiling for this session.
   bool enable_profiling = false;
 
+  // non empty filepath enables serialization of the transformed optimized model to the specified filepath.
+  std::basic_string<ORTCHAR_T> optimized_model_filepath;
+
   // enable the memory pattern optimization.
   // The idea is if the input shapes are the same, we could trace the internal memory allocation
   // and generate a memory pattern for future request. So next time we could just do one allocation
@@ -85,7 +88,7 @@ struct SessionOptions {
   TransformerLevel graph_optimization_level = TransformerLevel::Level1;
 
   // How many threads in the session thread pool.
-  int session_thread_pool_size = 0;
+  int session_thread_pool_size = -1;
 };
 
 /**
@@ -404,6 +407,10 @@ class InferenceSession {
   // The list of execution providers.
   ExecutionProviders execution_providers_;
 
+ private:
+  // Threadpool for this session
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
+
  protected:
   // Immutable state for each op in the model. Shared by all executors.
   // It has a dependency on execution_providers_.
@@ -430,8 +437,6 @@ class InferenceSession {
   std::unordered_map<std::string, InputDefMetaData> input_def_map_;
   OutputDefList output_def_list_;
 
-  // Threadpool for this session
-  std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   // Data transfer manager.
   DataTransferManager data_transfer_mgr_;
 
