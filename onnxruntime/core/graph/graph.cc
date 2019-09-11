@@ -51,9 +51,8 @@ static Status MergeShapeInfo(const std::string& output_name,
 }
 
 static bool GraphLoadedFromModelFile(const GraphProto* graph_proto) {
-  return graph_proto && (graph_proto->input_size() != 0 ||
-                         graph_proto->output_size() != 0 ||
-                         graph_proto->value_info_size() != 0);
+  return graph_proto && (graph_proto->node_size() != 0 ||
+                         graph_proto->output_size() != 0);
 }
 
 // there are some known invalid usages of dim_param and dim_value. remove them from the TypeProto so that
@@ -419,7 +418,7 @@ void Node::CreateSubgraph(const std::string& attr_name) {
 
   if (attr != attributes_.cend() && utils::HasGraph(attr->second)) {
     GraphProto& mutable_graph = *attr->second.mutable_g();
-    std::unique_ptr<Graph> subgraph{new Graph(*graph_, mutable_graph)};
+    std::unique_ptr<Graph> subgraph{new Graph(*graph_, *this, mutable_graph)};
     attr_to_subgraph_map_.insert({std::string{attr_name}, gsl::not_null<Graph*>{subgraph.get()}});
     subgraphs_.push_back(std::move(subgraph));
   }
@@ -628,19 +627,20 @@ Graph::Graph(GraphProto* graph_proto,
              const std::unordered_map<std::string, int>& domain_to_version,
              Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-             const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions) : Graph(graph_proto, domain_to_version, ir_version, schema_registry, nullptr, model_functions) {}
+             const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
+    : Graph(graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, model_functions) {}
 
 Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
-             IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph,
+             IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
              const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
     : graph_proto_{graph_proto},
       schema_registry_(schema_registry),
       graph_resolve_needed_(true),
-
       domain_to_version_(domain_to_version),
       model_functions_(model_functions),
       ir_version_(ir_version),
-      parent_graph_{parent_graph} {
+      parent_graph_{parent_graph},
+      parent_node_{parent_node} {
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
   ArgNameToTypeMap name_to_type_map;
 
@@ -713,10 +713,11 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
   }
 }
 
-Graph::Graph(Graph& parent_graph, ONNX_NAMESPACE::GraphProto& subgraph_proto)
+Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::GraphProto& subgraph_proto)
     : Graph(&subgraph_proto,
             parent_graph.DomainToVersionMap(), parent_graph.IrVersion(), parent_graph.schema_registry_,
-            &parent_graph) {
+            &parent_graph,
+            &parent_node) {
 }
 
 Status Graph::VerifyNoDuplicateName() {
@@ -1358,7 +1359,7 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
                              " inputs and requires ", num_required_subgraph_inputs,
                              " inputs. Either provide all subgraph inputs, or just the required inputs.");
     }
-
+    
     subgraph_inputs = &required_subgraph_inputs;
     num_subgraph_inputs = num_required_subgraph_inputs;
   }
