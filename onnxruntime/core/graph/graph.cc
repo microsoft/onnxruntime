@@ -12,18 +12,17 @@
 #include <stack>
 
 #include "gsl/pointers"
+#include "core/common/logging/logging.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/function.h"
 #include "core/graph/function_impl.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/indexed_sub_graph.h"
-#include "core/graph/op.h"
-#include "core/common/logging/logging.h"
-#include "onnx/checker.h"
 #include "core/graph/schema_registry.h"
+#include "core/graph/op.h"
 
-// TODO: Should GetConstantInitializer move into graph.h?
-#include "core/graph/graph_utils.h"
+#include "onnx/checker.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ONNX_NAMESPACE::Utils;

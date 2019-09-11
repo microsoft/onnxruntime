@@ -115,18 +115,6 @@ TEST(GraphTransformationTests, ConstantFolding) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 
-class InferenceSessionGetGraphWrapper : public InferenceSession {
- public:
-  explicit InferenceSessionGetGraphWrapper(const SessionOptions& session_options,
-                                           logging::LoggingManager* logging_manager)
-      : InferenceSession(session_options, logging_manager) {
-  }
-
-  const Graph& GetGraph() {
-    return model_->MainGraph();
-  }
-};
-
 TEST(GraphTransformationTests, ConstantFoldingSubgraph) {
   TensorProto value_tensor;
   value_tensor.add_dims(1);
@@ -187,33 +175,16 @@ TEST(GraphTransformationTests, ConstantFoldingSubgraph) {
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status;
 
-  std::string s1;
-  const bool rc = model.ToProto().SerializeToString(&s1);
-  if (!rc) {
-    LOGS_DEFAULT(ERROR) << "Failed to serialize proto to string";
-    return;
-  }
-
-  std::stringstream sstr(s1);
-  InferenceSessionGetGraphWrapper session_object({}, nullptr);
-  status = session_object.Load(sstr);
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << "Load failed with status: " << status.ErrorMessage();
-    return;
-  }
-
-  auto& graph2 = const_cast<Graph&>(session_object.GetGraph());
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph2);
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 2);  // one in each subgraph
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::make_unique<ConstantFolding>(), TransformerLevel::Level1);
 
-  status = graph_transformation_mgr.ApplyTransformers(graph2, TransformerLevel::Level1);
+  status = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1);
   ASSERT_TRUE(status.IsOK()) << status;
 
-  op_to_count = CountOpsInGraph(graph2);
+  op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 0)
       << "Constant folding should have been able to remove the Add node in both subgraphs";
 }
@@ -566,6 +537,7 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
 }
 
 TEST(GraphTransformationTests, ReluClipFusion) {
+
   // Clip op schema changed for opset version 11. Until Clip op is updated in ORT hard coding this model to use
   // older opset.
   Model model("ReluClipFusion", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 10}}, {});
