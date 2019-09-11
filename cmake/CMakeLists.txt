@@ -518,9 +518,9 @@ endif()
 
 if(onnxruntime_USE_OPENVINO)
 
-    if(WIN32)
-        message(FATAL_ERROR "Building on Windows using OpenVINO execution provider is not supported")
-    endif()
+  #  if(WIN32)
+     #   message(FATAL_ERROR "Building on Windows using OpenVINO execution provider is not supported")
+   # endif()
 
     add_definitions(-DUSE_OPENVINO=1)
 

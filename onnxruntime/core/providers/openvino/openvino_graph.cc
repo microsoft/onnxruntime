@@ -11,6 +11,11 @@
 #include <Python.h>
 
 #include <inference_engine.hpp>
+#ifdef OPTIONAL
+#undef OPTIONAL
+
+#endif
+
 #include <ie_builders.hpp>
 
 #include "core/graph/graph.h"
@@ -99,12 +104,9 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
   // Create hardware specific OpenVINO network representation
   GetExecutableHandle(openvino_network_);
 
-  std::vector<std::string> plugin_path = GetEnvLdLibraryPath();
-  plugin_path.push_back("");
-  plugin_ = InferenceEngine::PluginDispatcher(
-                plugin_path)
-                .getPluginByDevice(device_id_);
+  
 
+   plugin_ = InferenceEngine::PluginDispatcher().getPluginByDevice(device_id_);
   //Loading model to the plugin
   InferenceEngine::ExecutableNetwork exeNetwork = plugin_.LoadNetwork(*openvino_network_, {});
 
@@ -140,7 +142,11 @@ void OpenVINOGraph::ConvertONNXModelToOpenVINOIR(const std::string& onnx_model,
   }
 
   PyObject* pModule = NULL;
-  pModule = PyImport_ImportModule("openvino_mo");
+  PyObject* pName;
+  pName = PyUnicode_FromString("openvino_mo");
+
+
+  pModule = PyImport_Import(pName);
   if (pModule == NULL) {
     throw "Python module import failure";
   }
