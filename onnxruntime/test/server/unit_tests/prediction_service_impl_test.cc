@@ -28,11 +28,25 @@ PredictRequest GetRequest() {
   return req;
 }
 
-std::shared_ptr<onnxruntime::server::ServerEnvironment> GetEnvironment() {
+
+
+class PredictionServiceImplTest : public ::testing::Test{
+  protected:
+  void SetUp() override {
+  const static auto model_file = "testdata/mul_1.onnx";
+  
+  onnxruntime::server::ServerEnvironment* env = ServerEnv();
+  env->InitializeModel(model_file, "Name", "version");
+  }
+  void TearDown() override {
+    env -> UnloadModel("Name", "version");
+  }
+  std::shared_ptr<onnxruntime::server::ServerEnvironment> GetEnvironment() {
   return std::shared_ptr<onnxruntime::server::ServerEnvironment>(onnxruntime::server::test::ServerEnv(), [](onnxruntime::server::ServerEnvironment *){});
 }
+}
 
-TEST(PredictionServiceImplTests, HappyPath) {
+TESTF(PredictionServiceImplTests, HappyPath) {
   auto env = GetEnvironment();
   PredictionServiceImpl test{env};
   auto request = GetRequest();
@@ -42,7 +56,7 @@ TEST(PredictionServiceImplTests, HappyPath) {
   EXPECT_TRUE(status.ok());
 }
 
-TEST(PredictionServiceImplTests, InvalidInput) {
+TESTF(PredictionServiceImplTests, InvalidInput) {
   auto env = GetEnvironment();
   PredictionServiceImpl test{env};
   auto request = GetRequest();
@@ -53,7 +67,7 @@ TEST(PredictionServiceImplTests, InvalidInput) {
   EXPECT_EQ(status.error_code(), ::grpc::INVALID_ARGUMENT);
 }
 
-TEST(PredictionServiceImplTests, SuccessRequestID) {
+TESTF(PredictionServiceImplTests, SuccessRequestID) {
   auto env = GetEnvironment();
   PredictionServiceImpl test{env};
   auto request = GetRequest();
@@ -66,7 +80,7 @@ TEST(PredictionServiceImplTests, SuccessRequestID) {
   EXPECT_TRUE(status.ok());
 }
 
-TEST(PredictionServiceImplTests, InvalidInputRequestID) {
+TESTF(PredictionServiceImplTests, InvalidInputRequestID) {
   auto env = GetEnvironment();
   PredictionServiceImpl test{env};
   auto request = GetRequest();
@@ -81,7 +95,7 @@ TEST(PredictionServiceImplTests, InvalidInputRequestID) {
   EXPECT_FALSE(status.ok());
 }
 
-TEST(PredictionServiceImplTests, SuccessClientID) {
+TESTF(PredictionServiceImplTests, SuccessClientID) {
   auto env = GetEnvironment();
   PredictionServiceImpl test{env};
   auto request = GetRequest();
@@ -96,7 +110,7 @@ TEST(PredictionServiceImplTests, SuccessClientID) {
   EXPECT_TRUE(status.ok());
 }
 
-TEST(PredictionServiceImplTests, InvalidInputClientID) {
+TESTF(PredictionServiceImplTests, InvalidInputClientID) {
   auto env = GetEnvironment();
   PredictionServiceImpl test{env};
   auto request = GetRequest();

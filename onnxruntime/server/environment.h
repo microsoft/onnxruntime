@@ -20,11 +20,12 @@ class ServerEnvironment {
 
   OrtLoggingLevel GetLogSeverity() const;
 
-  const Ort::Session& GetSession() const;
-  void InitializeModel(const std::string& model_path);
-  const std::vector<std::string>& GetModelOutputNames() const;
+  const Ort::Session& GetSession(const std::string& model_name, const std::string& model_version) const;
+  void InitializeModel(const std::string& model_path, const std::string& model_name, const std::string& model_version);
+  const std::vector<std::string>& GetModelOutputNames(const std::string& model_name, const std::string& model_version) const;
   std::shared_ptr<spdlog::logger> GetLogger(const std::string& request_id) const;
   std::shared_ptr<spdlog::logger> GetAppLogger() const;
+  void UnloadModel(const std::string& model_name, const std::string& model_version);
 
  private:
   const OrtLoggingLevel severity_;
@@ -34,8 +35,20 @@ class ServerEnvironment {
 
   Ort::Env runtime_environment_;
   Ort::SessionOptions options_;
-  Ort::Session session;
-  std::vector<std::string> model_output_names_;
+
+  struct SesssionHolder {
+      Ort::Session session;
+      std::vector<std::string> output_names;
+      explicit SessionHolder(Ort::Session in_session) : session(in_session)
+      {
+      };
+      ~SessionHolder() = default;
+      SessionHolder(const SessionHolder&) = delete;
+      SessionHolder(const SessionHolder&&) = delete;
+      SessionHolder& operator=(const SessionHolder&) = delete; 
+  };
+
+  std::map<std::string, SessionHolder> sessions_;
 };
 
 }  // namespace server

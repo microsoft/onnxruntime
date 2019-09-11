@@ -37,35 +37,55 @@ ServerEnvironment::ServerEnvironment(OrtLoggingLevel severity, spdlog::sinks_ini
                                                                                                sink_(sink),
                                                                                                default_logger_(std::make_shared<spdlog::logger>(logger_id_, sink)),
                                                                                                runtime_environment_(severity, logger_id_.c_str(), Log, default_logger_.get()),
-                                                                                               session(nullptr) {
+                                                                                               {
   spdlog::set_automatic_registration(false);
   spdlog::set_level(Convert(severity_));
   spdlog::initialize_logger(default_logger_);
 }
 
-void ServerEnvironment::InitializeModel(const std::string& model_path) {
-  session = Ort::Session(runtime_environment_, model_path.c_str(), Ort::SessionOptions());
+void ServerEnvironment::InitializeModel(const std::string& model_path, const std::string& model_name, const std::string& model_version) {
+  result = sessions_.try_emplace(std::make_pair(model_name, model_version), SesssionHolder{
+    Ort::Session(runtime_environment_, model_path.c_str(), Ort::SessionOptions())
+  });
 
-  auto output_count = session.GetOutputCount();
+  if (!result.second){
+    throw Ort::Exception("Model of that name already loaded.", ORT_INVALID_ARGUMENT)
+  }
+
+  auto iterator = result.first;
+  auto sessionDetails = iterator -> second; 
+  auto output_count = sessionDetails.session.GetOutputCount();
 
   Ort::AllocatorWithDefaultOptions allocator;
   for (size_t i = 0; i < output_count; i++) {
     auto name = session.GetOutputName(i, allocator);
-    model_output_names_.push_back(name);
+    sessionDetails.output_names.push_back(name);
     allocator.Free(name);
   }
 }
 
-const std::vector<std::string>& ServerEnvironment::GetModelOutputNames() const {
-  return model_output_names_;
+const std::vector<std::string>& ServerEnvironment::GetModelOutputNames(const std::string& model_name, const std::string& model_version) const {
+  auto identifier = std::make_pair(model_name, model_version);
+  it = sessions_.find(identifier);
+    if (it == sessions_.end()){
+      throw Ort::Exception("No model loaded of that name.", ORT_NO_MODEL)
+    } 
+  
+  return it->second.output_names;
 }
 
 OrtLoggingLevel ServerEnvironment::GetLogSeverity() const {
   return severity_;
 }
 
-const Ort::Session& ServerEnvironment::GetSession() const {
-  return session;
+const Ort::Session& ServerEnvironment::GetSession(const std::string& model_name, const std::string& model_version) const {
+  auto identifier = std::make_pair(model_name, model_version);
+  it = sessions_.find(model_name);
+    if (it == sessions_.end()){
+      throw Ort::Exception("No model loaded of that name.", ORT_NO_MODEL)
+    } 
+  
+  return it->second.session;
 }
 
 std::shared_ptr<spdlog::logger> ServerEnvironment::GetLogger(const std::string& request_id) const {
@@ -76,6 +96,16 @@ std::shared_ptr<spdlog::logger> ServerEnvironment::GetLogger(const std::string& 
 
 std::shared_ptr<spdlog::logger> ServerEnvironment::GetAppLogger() const {
   return default_logger_;
+}
+
+const void ServerEnvironment::UnloadModel(const std::string& model_name, const std::string& model_version) {
+  auto identifier = std::make_pair(model_name, model_version);
+  it = sessions_.find(model_name);
+    if (it == sessions_.end()){
+      throw Ort::Exception("No model loaded of that name.", ORT_NO_MODEL)
+    } 
+  
+  sessions.erase(it);
 }
 
 }  // namespace server
