@@ -116,13 +116,13 @@ inline const char* RunOptions::GetRunTag() const {
   return out;
 }
 
-inline RunOptions& RunOptions::EnableTerminate() {
-  ORT_THROW_ON_ERROR(OrtRunOptionsEnableTerminate(p_));
+inline RunOptions& RunOptions::SetTerminate() {
+  ORT_THROW_ON_ERROR(OrtRunOptionsSetTerminate(p_));
   return *this;
 }
 
-inline RunOptions& RunOptions::DisableTerminate() {
-  ORT_THROW_ON_ERROR(OrtRunOptionsDisableTerminate(p_));
+inline RunOptions& RunOptions::UnsetTerminate() {
+  ORT_THROW_ON_ERROR(OrtRunOptionsUnsetTerminate(p_));
   return *this;
 }
 
