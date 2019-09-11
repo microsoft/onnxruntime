@@ -31,6 +31,14 @@ inline std::string javaStringtoStdString(JNIEnv* env, jstring j_str) {
   return native_str;
 }
 
+inline std::string javaStringtoStdWString(JNIEnv* env, jstring j_str) {
+  const wchar_t* native_char_ptr = env->GetStringChars(j_str, nullptr);
+  std::wstring native_str(native_char_ptr);
+  env->ReleaseStringChars(j_str, native_char_ptr);
+  return native_str;
+}
+
+
 template <typename T>
 T javaEnumToCEnum(JNIEnv* env, jobject enum_obj, const char* class_name) {
   return static_cast<T>(env->CallIntMethod(enum_obj,

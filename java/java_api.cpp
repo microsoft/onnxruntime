@@ -30,7 +30,8 @@ Java_ml_microsoft_onnxruntime_Env_initHandle(JNIEnv* env, jobject obj /* this */
   OrtEnv* ort_env;
   const auto logging_level_value = javaEnumToCEnum<OrtLoggingLevel>(env, j_logging_level, "ml/microsoft/onnxruntime/LoggingLevel");
   ORT_THROW_ON_ERROR(OrtCreateEnv(logging_level_value,
-                                  javaStringtoStdString(env, logid).c_str(), &ort_env));
+                                  javaStringtoStdString(env, logid).c_str(), 
+                                  &ort_env));
   setHandle(env, obj, ort_env);
   ORT_JAVA_API_IMPL_END
 }
@@ -54,7 +55,9 @@ Java_ml_microsoft_onnxruntime_Session_initHandle(JNIEnv* env, jobject obj /* thi
   const auto* options = getHandle<OrtSessionOptions>(env, j_options);
   OrtSession* session;
   ORT_THROW_ON_ERROR(OrtCreateSession(ort_env,
-                                      javaStringtoStdString(env, j_model_path).c_str(), options, &session));
+//                                      javaStringtoStdString(env, j_model_path).c_str(), 
+                                      javaStringtoStdWString(env, j_model_path).c_str(), 
+                                      options, &session));
   setHandle(env, obj, session);
   ORT_JAVA_API_IMPL_END
 }
@@ -99,7 +102,7 @@ Java_ml_microsoft_onnxruntime_SessionOptions_setGraphOptimizationLevel(JNIEnv* e
                                                                        jint graph_optimization_level) {
   ORT_JAVA_API_IMPL_BEGIN
   auto* session_options = getHandle<OrtSessionOptions>(env, obj);
-  ORT_THROW_ON_ERROR(OrtSetSessionGraphOptimizationLevel(session_options, graph_optimization_level));
+  ORT_THROW_ON_ERROR(OrtSetSessionGraphOptimizationLevel(session_options, static_cast<GraphOptimizationLevel>(graph_optimization_level)));
   ORT_JAVA_API_IMPL_END
 }
 
