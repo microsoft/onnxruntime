@@ -22,5 +22,5 @@ struct MockedOrtAllocator : OrtAllocator {
   MockedOrtAllocator& operator=(const MockedOrtAllocator&) = delete;
 
   std::atomic<size_t> memory_inuse{0};
-  OrtMemoryInfo* cpuMemoryInfo;
+  OrtMemoryInfo* cpu_memory_info;
 };

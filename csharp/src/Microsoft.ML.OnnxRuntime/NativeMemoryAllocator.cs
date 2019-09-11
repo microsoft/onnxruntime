@@ -8,11 +8,11 @@ using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
-    internal class NativeMemoryMemoryInfo : SafeHandle
+    internal class NativeMemoryInfo : SafeHandle
     {
-        protected static readonly Lazy<NativeMemoryMemoryInfo> _defaultCpuAllocInfo = new Lazy<NativeMemoryMemoryInfo>(CreateCpuMemoryInfo);
+        protected static readonly Lazy<NativeMemoryInfo> _defaultCpuAllocInfo = new Lazy<NativeMemoryInfo>(CreateCpuMemoryInfo);
 
-        private static NativeMemoryMemoryInfo CreateCpuMemoryInfo()
+        private static NativeMemoryInfo CreateCpuMemoryInfo()
         {
             IntPtr allocInfo = IntPtr.Zero;
             try
@@ -28,10 +28,10 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 throw e;
             }
-            return new NativeMemoryMemoryInfo(allocInfo);
+            return new NativeMemoryInfo(allocInfo);
         }
 
-        internal static NativeMemoryMemoryInfo DefaultInstance
+        internal static NativeMemoryInfo DefaultInstance
         {
             get
             {
@@ -55,7 +55,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        private NativeMemoryMemoryInfo(IntPtr allocInfo)
+        private NativeMemoryInfo(IntPtr allocInfo)
             : base(IntPtr.Zero, true)   //set 0 as invalid pointer
         {
             handle = allocInfo;
