@@ -342,6 +342,18 @@ inline Value Value::CreateSequence(std::vector<Value>& values) {
   return Value{out};
 }
 
+template <typename T>
+inline Value Value::CreateOpaque (const char* domain, const char* type_name, const T& data_container) {
+  OrtValue* out;
+  ORT_THROW_ON_ERROR(OrtCreateOpaqueValue(domain, type_name, &data_container, sizeof(T), &out));
+  return Value{out};
+}
+
+template <typename T>
+inline void Value::GetOpaqueData (const char* domain, const char* type_name, T& out) {
+  ORT_THROW_ON_ERROR(OrtGetOpaqueValue(domain, type_name, p_, &out, sizeof(T)));
+}
+
 inline bool Value::IsTensor() const {
   int out;
   ORT_THROW_ON_ERROR(OrtIsTensor(p_, &out));
