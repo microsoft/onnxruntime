@@ -1283,6 +1283,16 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     auto p_node_arg = node_.InputDefs().at(index);
     if ((nullptr != p_node_arg) && p_node_arg->Exists()) {
       type = p_node_arg->TypeAsProto();
+
+      // if the input is an initializer that is not const we have to strip out the shape as an
+      // override via a graph input may change it
+      if (type != nullptr && graph_utils::IsInitializer(graph_, p_node_arg->Name(), true) &&
+          !graph_utils::IsConstantInitializer(graph_, p_node_arg->Name(), true)) {
+        TypeProto temp_type(*type);
+        temp_type.mutable_tensor_type()->clear_shape();
+        temp_types_.push_back(std::move(temp_type));
+        type = &temp_types_.back();
+      }
     }
 
     return type;
@@ -1301,9 +1311,8 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     if (!def)
       return nullptr;
 
-    // we only have immutable type/shape info for a constant initializer providing a node input.
-    // initializer could also come from outer scope so check there if applicable. returns nullptr
-    // if a constant initializer was not found.
+    // only return data if it's for a constant initializer. checks for outer scope initializers
+    // if this is a subgraph and the name isn't found locally.
     const TensorProto* initializer = graph_utils::GetConstantInitializer(graph_, def->Name(), true);
     return initializer;
   }
@@ -1331,8 +1340,9 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   std::vector<TypeProto> node_output_types_;
   SubgraphInferencingFunc subgraph_inferencing_func_;
   std::vector<std::unique_ptr<GraphInferencerImpl>> graph_inferencers_;
-  // const InitializedTensorSet& initialized_tensor_set_;
   const Graph& graph_;
+  // temporary copies of types where we had to remove the shape
+  mutable std::vector<TypeProto> temp_types_;
 };
 
 Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
@@ -1359,7 +1369,7 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
                              " inputs and requires ", num_required_subgraph_inputs,
                              " inputs. Either provide all subgraph inputs, or just the required inputs.");
     }
-    
+
     subgraph_inputs = &required_subgraph_inputs;
     num_subgraph_inputs = num_required_subgraph_inputs;
   }
@@ -1940,7 +1950,7 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
   name_to_initial_tensor_[tensor.name()] = tensor_added;
 
   if (!GraphLoadedFromModelFile(graph_proto_)) {
-    // make sure there is a NodeArg for the initializer as SetGraphInputsOutputs will add it to the graph inputs
+    // make sure there is a NodeArg for the initializer as SetGraphInputsOutputs may add it to the graph inputs
     TypeProto t;
     t.mutable_tensor_type()->set_elem_type(tensor.data_type());
     auto shape = t.mutable_tensor_type()->mutable_shape();

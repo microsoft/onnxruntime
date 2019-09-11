@@ -814,6 +814,39 @@ TEST(TypeInferenceTest, VariadicOutput) {
   CheckTensorEltType(Z.TypeAsProto(), TensorProto_DataType_FLOAT);
 }
 
+// test that we don't apply the shape from a non-const initializer
+TEST(TypeInferenceTest, NonConstInitializer) {
+  Model model("graph_1");
+  auto& graph = model.MainGraph();
+
+  TensorProto t;
+  t.set_data_type(TensorProto_DataType_FLOAT);
+  t.add_float_data(0.1f);
+  t.add_float_data(0.2f);
+  t.add_dims(2);
+  t.set_name("Y_Initializer");
+  graph.AddInitializedTensor(t);
+
+  TypeProto tensor_type;
+  tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+
+  auto& X = graph.GetOrCreateNodeArg("X", &tensor_type);
+  auto& Y = graph.GetOrCreateNodeArg("Y_Initializer", nullptr);
+  auto& Z = graph.GetOrCreateNodeArg("Z", nullptr);
+
+  graph.AddNode("node_1", "Add", "node 1.", {&X, &Y}, {&Z});
+
+  // 2 graph inputs, both with shapes, but Y_Initializer can be overridden
+  // When running shape inferencing we should NOT be able to determine the shape of Z due to the latter.
+  graph.SetInputs({&X, &Y});
+
+  auto status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  EXPECT_TRUE(Z.Shape() == nullptr);
+}
+
 // Test that Graph::Resolve identifies name-duplication across initializer and node-output-arg
 TEST(NameResolutionTest, DuplicateName) {
   Model model("graph_1");
