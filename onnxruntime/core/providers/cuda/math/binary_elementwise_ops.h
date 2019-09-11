@@ -34,7 +34,7 @@ struct BinaryElementwisePreparation {
     return Status::OK();
   }
 
-  Status BinaryElementwiseBroadcastPrepareHelper(int device_id, const TensorShape& lhs_shape,
+  Status BinaryElementwiseBroadcastPrepareHelper(const TensorShape& lhs_shape,
                                                  const TensorShape& rhs_shape,
                                                  const TensorShape& output_shape) {
     size_t lhs_rank = lhs_shape.NumDimensions();
@@ -82,20 +82,20 @@ struct BinaryElementwisePreparation {
     if (lhs_shape != output_shape) {
       // compute strides with 1 more dim than out_rank, and use strides[0] == strides[1]
       // to decide if dim0 needs broadcast
-      lhs_padded_strides.AllocCpuPtr(device_id, out_rank + 1);
+      lhs_padded_strides.AllocCpuPtr(out_rank + 1);
       ORT_RETURN_IF_NOT(TensorPitches::Calculate(lhs_padded_strides.CpuSpan(), lhs_shape.GetDims()));
       if (lhs_shape[0] > 1 && lhs_rank == out_rank)
         lhs_padded_strides.CpuPtr()[0] = 0;
     }
 
     if (rhs_shape != output_shape) {
-      rhs_padded_strides.AllocCpuPtr(device_id, out_rank + 1);
+      rhs_padded_strides.AllocCpuPtr(out_rank + 1);
       ORT_RETURN_IF_NOT(TensorPitches::Calculate(rhs_padded_strides.CpuSpan(), rhs_shape.GetDims()));
       if (rhs_shape[0] > 1 && rhs_rank == out_rank)
         rhs_padded_strides.CpuPtr()[0] = 0;
     }
 
-    fdm_output_strides.AllocCpuPtr(device_id, out_rank);
+    fdm_output_strides.AllocCpuPtr(out_rank);
     ORT_RETURN_IF_NOT(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_shape.GetDims()));
     return Status::OK();
   }
@@ -117,7 +117,7 @@ class BinaryElementwise : public CudaKernel {
   Status ComputeInternal(OpKernelContext*) const override {
     return Status(common::ONNXRUNTIME, common::FAIL);  // should not reach here
   }
-  Status Prepare(OpKernelContext* context, int device_id, BinaryElementwisePreparation* p) const;
+  Status Prepare(OpKernelContext* context, BinaryElementwisePreparation* p) const;
 };
 
 template <typename T>
