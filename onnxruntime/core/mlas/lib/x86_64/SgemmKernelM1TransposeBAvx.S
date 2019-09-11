@@ -48,7 +48,7 @@ Arguments:
 
     ldb (r9) - Supplies the first dimension of matrix B.
 
-    Beta (xmm0) - Supplies the scaler multiplier (see SGEMM definition).
+    Beta (xmm0) - Supplies the scalar beta multiplier (see SGEMM definition).
 
 Return Value:
 

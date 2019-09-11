@@ -39,7 +39,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
       size_t cpu_tensor_length;
       ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &cpu_tensor_length));
       OrtValue ort_value;
-      const OrtAllocatorInfo& info = cpu_execution_provider_->GetAllocator(0, OrtMemTypeDefault)->Info();
+      const OrtMemoryInfo& info = cpu_execution_provider_->GetAllocator(0, OrtMemTypeDefault)->Info();
       std::unique_ptr<char[]> data(new char[cpu_tensor_length]);
       std::unique_ptr<Tensor> p_tensor;
       OrtCallback d;
@@ -88,7 +88,7 @@ OptimizerExecutionFrame::OptimizerExecutionFrame(const Info& info, const std::ve
                       std::vector<OrtValue>(), info.GetMLValueNameIdxMap(), info.GetNodeIndexInfo()),
       info_(info) {}
 
-AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtAllocatorInfo& info) const {
+AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {
   return info_.GetAllocator(info);
 }
 

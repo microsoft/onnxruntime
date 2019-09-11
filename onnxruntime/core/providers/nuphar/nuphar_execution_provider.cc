@@ -87,7 +87,7 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
 
   DeviceAllocatorRegistrationInfo allocator_info(
       {OrtMemTypeDefault,
-       [](int /*id*/) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>("Nuphar", OrtAllocatorType::OrtDeviceAllocator)); },
+       [](int /*id*/) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>("Nuphar", OrtAllocatorType::OrtDeviceAllocator)); },
        std::numeric_limits<size_t>::max()});
 
   InsertAllocator(CreateAllocator(allocator_info, tvm_ctx_.device_id));
@@ -180,7 +180,7 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         all_shape_defined = false;
       } else {
         for (const auto& dim : def.Shape()->dim()) {
-          if (!((dim.has_dim_value() && dim.dim_value() > 0) || dim.has_dim_param()))
+          if (!((utils::HasDimValue(dim) && dim.dim_value() > 0) || utils::HasDimParam(dim)))
             all_shape_defined = false;
         }
       }

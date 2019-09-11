@@ -7,6 +7,7 @@
 - [TensorRT](Dockerfile.tensorrt)
 - [OpenVINO](Dockerfile.openvino)
 - [ONNX Runtime Server](Dockerfile.server)
+- [Nuphar](Dockerfile.nuphar)
 
 **Preparation step:** download `scripts` to your local folder before running the `docker build` command for any of the options below. 
 
@@ -195,3 +196,20 @@
   curl  -X POST -d "@request.json" -H "Content-Type: application/json" http://0.0.0.0:{your_local_port}/v1/models/mymodel/versions/3:predict  
   ```
 
+## Nuphar (Public Preview)
+#### Linux 16.04, Python Bindings
+
+1. Build the docker image from the Dockerfile in this repository.
+  ```
+  # If you have a Linux machine, preface this command with "sudo"
+
+  docker build -t onnxruntime-nuphar -f Dockerfile.nuphar .
+  ```
+
+2. Run the Docker image
+
+  ```
+  # If you have a Linux machine, preface this command with "sudo"
+
+  docker run -it onnxruntime-nuphar
+  ```

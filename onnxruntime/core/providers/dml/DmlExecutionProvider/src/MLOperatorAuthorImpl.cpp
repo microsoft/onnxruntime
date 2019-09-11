@@ -89,7 +89,7 @@ const std::string* AttributeValue::GetStringAttribute(
     return &strings.data()[elementIndex];
 }
 
-bool IsAllocationInterface(const ::OrtAllocatorInfo& info)
+bool IsAllocationInterface(const ::OrtMemoryInfo& info)
 {
     return strcmp(info.name, onnxruntime::CPU) && !(info.mem_type == ::OrtMemType::OrtMemTypeCPUOutput  || info.mem_type == ::OrtMemType::OrtMemTypeCPUInput);
 }
@@ -100,7 +100,7 @@ bool IsAllocationInterface(const ::OrtAllocatorInfo& info)
 void TranslateAllocationDataToAbi(
     winrt::Windows::AI::MachineLearning::implementation::IWinmlExecutionProvider* winmlProvider, 
     bool isInternalOperator, 
-    const ::OrtAllocatorInfo& allocInfo,
+    const ::OrtMemoryInfo& allocInfo,
     IUnknown* allocation, 
     IUnknown** abiAllocation)
 {

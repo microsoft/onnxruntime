@@ -5,6 +5,7 @@
 
 #include "core/codegen/common/common.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/providers/nuphar/common/analysis/subgraph_partition_stats.h"
 #include "core/providers/nuphar/common/nuphar_settings.h"
 #include "core/providers/nuphar/common/utils.h"
@@ -41,10 +42,10 @@ bool GraphPartitioner::IsNodeSupported(const Node& node) const {
       node.ForEachDef([&](const NodeArg& def, bool is_input) {
         if (is_input == check_input && def.Shape() != nullptr) {
           for (const auto& dim : def.Shape()->dim()) {
-            if (dim.has_dim_param())
+            if (utils::HasDimParam(dim))
               symbolic_dimensions.insert(dim.dim_param());
             else
-              ORT_ENFORCE(dim.has_dim_value() && dim.dim_value() > 0);
+              ORT_ENFORCE(utils::HasDimValue(dim) && dim.dim_value() > 0);
           }
         }
       });

@@ -82,11 +82,6 @@ option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in l
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output data to standard output when executing the model." OFF)
 option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 
-if(UNIX AND onnxruntime_USE_LLVM)
-  #prebuilt llmv biniaries use the old GNU C++ ABI
-  add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
-endif()
-
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
