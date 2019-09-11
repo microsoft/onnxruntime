@@ -149,7 +149,7 @@ Status PerformanceRunner::ForkJoinRepeat() {
   for (size_t i = 0; i != run_config.concurrent_session_runs; ++i) {
     counter++;
     tpool->Schedule([this, &counter, &requests, &m, &cv, &run_config]() {
-      while (requests++ < run_config.repeated_times) {
+      while (requests++ < static_cast<int>(run_config.repeated_times)) {
         auto status = RunOneIteration<false>();
         if (!status.IsOK())
           std::cerr << status.ErrorMessage();
