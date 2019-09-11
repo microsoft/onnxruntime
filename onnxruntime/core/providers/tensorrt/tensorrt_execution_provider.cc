@@ -43,13 +43,13 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider}, device_id_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
-  DeviceAllocatorRegistrationInfo default_allocator_info(
+  DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault, [](int id) { return std::make_unique<CUDAAllocator>(id, TRT); }, std::numeric_limits<size_t>::max()});
-  InsertAllocator(CreateAllocator(default_allocator_info, device_id_));
+  InsertAllocator(CreateAllocator(default_memory_info, device_id_));
 
-  DeviceAllocatorRegistrationInfo pinned_allocator_info(
+  DeviceAllocatorRegistrationInfo pinned_memory_info(
       {OrtMemTypeCPUOutput, [](int) { return std::make_unique<CUDAPinnedAllocator>(0, TRT_PINNED); }, std::numeric_limits<size_t>::max()});
-  InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_));
+  InsertAllocator(CreateAllocator(pinned_memory_info, device_id_));
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {}
@@ -499,8 +499,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       bool ret = trt_state->context->enqueue(batch_size, &buffers[0], nullptr, nullptr);
       if (!ret) {
         if (trt_state->context->getEngine().getMaxBatchSize() < batch_size) {
-	  return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-			        "TRT enqueue failed: Set ORT_TENSORRT_MAX_BATCH_SIZE environment variable to at least " + to_string(batch_size));
+          return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                                "TRT enqueue failed: Set ORT_TENSORRT_MAX_BATCH_SIZE environment variable to at least " + to_string(batch_size));
         }
         return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to enqueue to TRT execution context.");
       }

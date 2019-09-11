@@ -8,16 +8,16 @@ using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
-    internal class NativeMemoryAllocatorInfo : SafeHandle
+    internal class NativeMemoryMemoryInfo : SafeHandle
     {
-        protected static readonly Lazy<NativeMemoryAllocatorInfo> _defaultCpuAllocInfo = new Lazy<NativeMemoryAllocatorInfo>(CreateCpuAllocatorInfo);
+        protected static readonly Lazy<NativeMemoryMemoryInfo> _defaultCpuAllocInfo = new Lazy<NativeMemoryMemoryInfo>(CreateCpuMemoryInfo);
 
-        private static NativeMemoryAllocatorInfo CreateCpuAllocatorInfo()
+        private static NativeMemoryMemoryInfo CreateCpuMemoryInfo()
         {
             IntPtr allocInfo = IntPtr.Zero;
             try
             {
-                IntPtr status = NativeMethods.OrtCreateCpuAllocatorInfo(NativeMethods.AllocatorType.DeviceAllocator, NativeMethods.MemoryType.Cpu, out allocInfo);
+                IntPtr status = NativeMethods.OrtCreateCpuMemoryInfo(NativeMethods.AllocatorType.DeviceAllocator, NativeMethods.MemoryType.Cpu, out allocInfo);
                 NativeApiStatus.VerifySuccess(status);
             }
             catch (Exception e)
@@ -28,10 +28,10 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 throw e;
             }
-            return new NativeMemoryAllocatorInfo(allocInfo);
+            return new NativeMemoryMemoryInfo(allocInfo);
         }
 
-        internal static NativeMemoryAllocatorInfo DefaultInstance
+        internal static NativeMemoryMemoryInfo DefaultInstance
         {
             get
             {
@@ -55,7 +55,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        private NativeMemoryAllocatorInfo(IntPtr allocInfo)
+        private NativeMemoryMemoryInfo(IntPtr allocInfo)
             : base(IntPtr.Zero, true)   //set 0 as invalid pointer
         {
             handle = allocInfo;

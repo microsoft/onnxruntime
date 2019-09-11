@@ -249,7 +249,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
 
                 IntPtr status = NativeMethods.OrtCreateTensorWithDataAsOrtValue(
-                        NativeMemoryAllocatorInfo.DefaultInstance.Handle,
+                        NativeMemoryMemoryInfo.DefaultInstance.Handle,
                         dataBufferPointer,
                         (UIntPtr)(dataBufferLength),
                         longShape,

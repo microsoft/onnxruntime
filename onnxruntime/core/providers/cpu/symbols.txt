@@ -8,9 +8,9 @@ OrtMemoryInfoGetName
 OrtMemoryInfoGetType
 OrtCastTypeInfoToTensorInfo
 OrtCloneSessionOptions
-OrtCompareAllocatorInfo
-OrtCreateAllocatorInfo
-OrtCreateCpuAllocatorInfo
+OrtCompareMemoryInfo
+OrtCreateMemoryInfo
+OrtCreateCpuMemoryInfo
 OrtCreateCustomOpDomain
 OrtGetAllocatorWithDefaultOptions
 OrtCreateEnv

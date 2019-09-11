@@ -85,12 +85,12 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
 
   whole_graph_shape_infer_ = std::make_shared<ShapeExprContext>();
 
-  DeviceAllocatorRegistrationInfo allocator_info(
+  DeviceAllocatorRegistrationInfo memory_info(
       {OrtMemTypeDefault,
        [](int /*id*/) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>("Nuphar", OrtAllocatorType::OrtDeviceAllocator)); },
        std::numeric_limits<size_t>::max()});
 
-  InsertAllocator(CreateAllocator(allocator_info, tvm_ctx_.device_id));
+  InsertAllocator(CreateAllocator(memory_info, tvm_ctx_.device_id));
 
   // TODO add multi-target support
   tvm_codegen_manager_ = std::make_unique<TVMCodeGenManager>();

@@ -47,7 +47,7 @@ class OpKernel {
   }
 
   const OrtMemoryInfo& Allocator(int id, OrtMemType mem_type) const {
-    return op_kernel_info_.GetAllocatorInfo(id, mem_type);
+    return op_kernel_info_.GetMemoryInfo(id, mem_type);
   }
 
   const OpKernelInfo& Info() const { return op_kernel_info_; }

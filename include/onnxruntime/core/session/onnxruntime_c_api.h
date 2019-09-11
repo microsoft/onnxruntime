@@ -422,19 +422,19 @@ typedef enum OrtMemType {
   OrtMemTypeDefault = 0,                // the default allocator for execution provider
 } OrtMemType;
 
-ORT_API_STATUS(OrtCreateAllocatorInfo, _In_ const char* name1, enum OrtAllocatorType type, int id1, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out);
+ORT_API_STATUS(OrtCreateMemoryInfo, _In_ const char* name1, enum OrtAllocatorType type, int id1, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out);
 
 /**
- * Convenience function for special case of OrtCreateAllocatorInfo, for the CPU allocator. Uses name = "Cpu" and id = 0.
+ * Convenience function for special case of OrtCreateMemoryInfo, for the CPU allocator. Uses name = "Cpu" and id = 0.
  */
-ORT_API_STATUS(OrtCreateCpuAllocatorInfo, enum OrtAllocatorType type, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out)
+ORT_API_STATUS(OrtCreateCpuMemoryInfo, enum OrtAllocatorType type, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out)
 ORT_ALL_ARGS_NONNULL;
 
 /**
  * Test if two allocation info are equal
  * \Sets 'out' to 0 if equal, -1 if not equal
  */
-ORT_API_STATUS(OrtCompareAllocatorInfo, _In_ const OrtMemoryInfo* info1, _In_ const OrtMemoryInfo* info2, _Out_ int* out)
+ORT_API_STATUS(OrtCompareMemoryInfo, _In_ const OrtMemoryInfo* info1, _In_ const OrtMemoryInfo* info2, _Out_ int* out)
 ORT_ALL_ARGS_NONNULL;
 
 /**
