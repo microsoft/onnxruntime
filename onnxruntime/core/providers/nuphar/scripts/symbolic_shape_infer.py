@@ -173,7 +173,17 @@ class SymbolicShapeInference:
         self.known_vi_.update(dict([(i.name, helper.make_tensor_value_info(i.name, i.data_type, list(i.dims))) for i in self.out_mp_.graph.initializer]))
 
     def _merge_symbols(self, dims):
-        assert all([type(d) == str for d in dims])
+        if not all([type(d) == str for d in dims]):
+            if self.auto_merge_:
+                assert len(dims) == 2 # only allow symbol->int merge in binary ops for now
+                is_int = [int(type(d) == int) for d in dims]
+                assert sum(is_int) == 1
+                int_dim = is_int.index(1)
+                if self.verbose_ > 0:
+                    print('dim {} has been merged with value {}'.format(dims[1 - int_dim], dims[int_dim]))
+                return dims[int_dim]
+            else:
+                return None
         if all([d == dims[0] for d in dims]):
             return dims[0]
         merged = [self.suggested_merge_[d] if d in self.suggested_merge_ else d for d in dims]
@@ -265,6 +275,8 @@ class SymbolicShapeInference:
             self.known_vi_[vi.name] = vi
 
     def _onnx_infer_subgraph(self, node, subgraph):
+        if self.verbose_ > 2:
+            print('Inferencing subgraph of node {} with output({}...): {}'.format(node.name, node.output[0], node.op_type))
         assert len(node.input) == len(subgraph.input)
         subgraph_implicit_input = set()
         for sn in subgraph.node:
@@ -451,7 +463,10 @@ class SymbolicShapeInference:
             if all([d == dims[0] for d in dims]):
                 continue
             merged = self._merge_symbols(dims)
-            sympy_shape[d] = self.symbolic_dims_[merged] if merged else None
+            if type(merged) == str:
+                sympy_shape[d] = self.symbolic_dims_[merged] if merged else None
+            else:
+                sympy_shape[d] = merged
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, get_shape_from_sympy_shape(sympy_shape)))
 
@@ -849,6 +864,10 @@ class SymbolicShapeInference:
 
                     if self.verbose_ > 0 or not self.auto_merge_ or out_type_undefined:
                         print('Stopping at incomplete shape inference at ' + node.op_type + ': ' + node.name)
+                        print('node inputs:')
+                        for i in node.input:
+                            print(self.known_vi_[i])
+                        print('node outputs:')
                         for o in node.output:
                             print(self.known_vi_[o])
                         if self.auto_merge_ and not out_type_undefined:
