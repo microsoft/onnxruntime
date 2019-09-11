@@ -131,7 +131,6 @@ const TensorShapeProto* NodeArg::Shape() const {
 }
 
 void NodeArg::SetShape(const TensorShapeProto& shape) {
-
   const auto type_case = node_arg_info_.type().value_case();
   switch (type_case) {
     case TypeProto::kTensorType:
@@ -1221,7 +1220,7 @@ class GraphInferencerImpl : public ONNX_NAMESPACE::GraphInferencer {
 
   // Perform inferencing on the graph contained in GraphInferencer.
   // Returns the graph output types post-inferencing.
-  // We ignore input_data currently. Re-consider if InferenceContextImpl::getInputData gets implemented
+  // We ignore input_data currently as the inferencing happens prior to receiving user input.
   std::vector<const TypeProto*> doInferencing(const std::vector<const TypeProto*>& input_types,
                                               const std::vector<const TensorProto*>& /*input_data*/) override {
     std::vector<const TypeProto*> output_types;
@@ -1302,7 +1301,8 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
       return nullptr;
 
     // we only have immutable type/shape info for a constant initializer providing a node input.
-    // initializer could also come from outer scope so check there if applicable
+    // initializer could also come from outer scope so check there if applicable. returns nullptr
+    // if a constant initializer was not found.
     const TensorProto* initializer = graph_utils::GetConstantInitializer(graph_, def->Name(), true);
     return initializer;
   }
