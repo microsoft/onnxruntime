@@ -232,6 +232,33 @@ is applied to the tensor elementwise.
            {{"X_3"}, "Erf", {"X_2"}},
            {{"X_4"}, "Add", {"X_3", "One"}},
            {{"Y"}, "Mul", {"X_1", "X_4"}}}));
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Multi-Head Self Attention")
+      .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+      .Attr("head_size", "Size per attention head", AttributeProto::INT)
+      .Attr("batch_size", "batch size", AttributeProto::INT)
+      .Attr("sequence_length", "max sequence length", AttributeProto::INT)
+      .Input(0, "input", "3D input tensor with Shape (B, S, N * H), B is batch size, S is max sequence length, N is number of heads, H is size per head", "T")
+      .Input(1, "mask", "attention mask with shape (B, S)", "Tm")
+      .Output(0, "output", "3D output tensor with same shape as input", "T")
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
+      .TypeConstraint("Tm", {"tensor(int32)"},
+                      "Constrain mask to integer types")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasInputShape(ctx, 0))
+          return;
+        auto& input_shape = getInputShape(ctx, 0);
+
+        ONNX_NAMESPACE::TensorShapeProto output_shape;
+        output_shape.add_dim();
+        output_shape.mutable_dim(0)->set_dim_value(input_shape.dim(0).dim_value() / 3);
+        updateOutputShape(ctx, 0, output_shape);
+      });
 }
 
 void RegisterContribSchemas() {
