@@ -180,7 +180,7 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         all_shape_defined = false;
       } else {
         for (const auto& dim : def.Shape()->dim()) {
-          if (!((dim.has_dim_value() && dim.dim_value() > 0) || dim.has_dim_param()))
+          if (!((utils::HasDimValue(dim) && dim.dim_value() > 0) || utils::HasDimParam(dim)))
             all_shape_defined = false;
         }
       }
