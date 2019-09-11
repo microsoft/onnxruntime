@@ -14,6 +14,13 @@ using namespace cub;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+/*
+ The implementation of this file is based on qkvToContext plugin in TensorRT demo:
+ https://github.com/NVIDIA/TensorRT/tree/release/5.1/demo/BERT/
+ The code is distribued under Apache License Version 2.0.
+*/
+
 const size_t kAlignment = 256;
 
 template <typename IntType>
@@ -33,24 +40,6 @@ size_t getAttentionWorkspaceSize(size_t wordSize, int batchsize, int numHeads, i
   return 2 * scratchSize(wordSize, batchsize, numHeads, sequenceLength) \
       + 3 * batchsize * sequenceLength * numHeads * headSize * wordSize;
 }
-
-
-struct CublasConfigHelper {
-  cublasPointerMode_t pm;
-  cublasMath_t mm;
-  cublasHandle_t cublas;
-  CublasConfigHelper(cublasHandle_t cublas_)
-      : cublas(cublas_) {
-    cublasGetPointerMode(cublas, &pm);
-    cublasGetMathMode(cublas, &mm);
-    cublasSetPointerMode(cublas, CUBLAS_POINTER_MODE_HOST);
-    cublasSetMathMode(cublas, CUBLAS_TENSOR_OP_MATH);
-  }
-  ~CublasConfigHelper() {
-    cublasSetMathMode(cublas, mm);
-    cublasSetPointerMode(cublas, pm);
-  }
-};
 
 
 template <typename T, unsigned TPB>
@@ -347,6 +336,23 @@ void launchTransQkv(cudaStream_t stream, const int S, const int B, const int hea
   }
   CUDA_CALL(cudaPeekAtLastError());
 }
+
+struct CublasConfigHelper {
+  cublasPointerMode_t pm;
+  cublasMath_t mm;
+  cublasHandle_t cublas;
+  CublasConfigHelper(cublasHandle_t cublas_)
+      : cublas(cublas_) {
+    cublasGetPointerMode(cublas, &pm);
+    cublasGetMathMode(cublas, &mm);
+    cublasSetPointerMode(cublas, CUBLAS_POINTER_MODE_HOST);
+    cublasSetMathMode(cublas, CUBLAS_TENSOR_OP_MATH);
+  }
+  ~CublasConfigHelper() {
+    cublasSetMathMode(cublas, mm);
+    cublasSetPointerMode(cublas, pm);
+  }
+};
 
 template <typename T>
 int qkvToCtx(cublasHandle_t& cublas, cudaStream_t stream,
