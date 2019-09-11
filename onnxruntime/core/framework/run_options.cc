@@ -43,12 +43,12 @@ ORT_API_STATUS_IMPL(OrtRunOptionsGetRunTag, _In_ const OrtRunOptions* options, c
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtRunOptionsEnableTerminate, _Inout_ OrtRunOptions* options) {
+ORT_API_STATUS_IMPL(OrtRunOptionsSetTerminate, _Inout_ OrtRunOptions* options) {
   options->terminate = true;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtRunOptionsDisableTerminate, _Inout_ OrtRunOptions* options) {
+ORT_API_STATUS_IMPL(OrtRunOptionsUnsetTerminate, _Inout_ OrtRunOptions* options) {
   options->terminate = false;
   return nullptr;
 }

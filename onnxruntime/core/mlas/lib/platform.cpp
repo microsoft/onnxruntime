@@ -84,12 +84,13 @@ Return Value:
     // Default to the baseline SSE2 support.
     //
 
-    this->KernelZeroRoutine = MlasSgemmKernelZeroSse;
-    this->KernelAddRoutine = MlasSgemmKernelAddSse;
+    this->GemmFloatKernel = MlasGemmFloatKernelSse;
     this->GemmU8U8CopyPackARoutine = MlasGemmU8U8CopyPackASse;
     this->GemmU8U8CopyPackBRoutine = MlasGemmU8U8CopyPackBSse;
     this->GemmU8U8Kernel = MlasGemmU8U8KernelSse;
+
 #if defined(MLAS_TARGET_AMD64)
+
     this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Sse;
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelSse;
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelSse;
@@ -103,6 +104,7 @@ Return Value:
     this->ErfKernelRoutine = MlasErfKernel;
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
+
 #endif
 
     //
@@ -126,15 +128,10 @@ Return Value:
 
         if ((xcr0 & 0x6) == 0x6) {
 
-#if defined(MLAS_TARGET_IX86)
+            this->GemmFloatKernel = MlasGemmFloatKernelAvx;
 
-            this->KernelZeroRoutine = MlasSgemmKernelZeroAvx;
-            this->KernelAddRoutine = MlasSgemmKernelAddAvx;
+#if defined(MLAS_TARGET_AMD64)
 
-#else
-
-            this->KernelZeroRoutine = MlasSgemmKernelZeroAvx;
-            this->KernelAddRoutine = MlasSgemmKernelAddAvx;
             this->KernelM1Routine = MlasSgemmKernelM1Avx;
             this->KernelM1TransposeBRoutine = MlasSgemmKernelM1TransposeBAvx;
             this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Avx;
@@ -166,8 +163,7 @@ Return Value:
 
                 if (((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
 
-                    this->KernelZeroRoutine = MlasSgemmKernelZeroAvx512F;
-                    this->KernelAddRoutine = MlasSgemmKernelAddAvx512F;
+                    this->GemmFloatKernel = MlasGemmFloatKernelAvx512F;
                     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelAvx512F;
                     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelAvx512F;
                     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelAvx512F;
@@ -197,8 +193,7 @@ Return Value:
 
                 } else {
 
-                    this->KernelZeroRoutine = MlasSgemmKernelZeroFma3;
-                    this->KernelAddRoutine = MlasSgemmKernelAddFma3;
+                    this->GemmFloatKernel = MlasGemmFloatKernelFma3;
                     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelFma3;
                     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelFma3;
                     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelFma3;
@@ -216,6 +211,7 @@ Return Value:
     }
 
 #endif
+
 }
 
 size_t

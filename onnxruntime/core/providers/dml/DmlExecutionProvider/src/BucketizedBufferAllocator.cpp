@@ -202,9 +202,9 @@ namespace Dml
         // The allocation info is already destructing at this point
     }
 
-    const ::OrtAllocatorInfo& BucketizedBufferAllocator::Info() const
+    const ::OrtMemoryInfo& BucketizedBufferAllocator::Info() const
     {
-        static const ::OrtAllocatorInfo sc_info("DML allocator", ::OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
+        static const ::OrtMemoryInfo sc_info("DML allocator", ::OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
         return sc_info;
     }
 
@@ -246,7 +246,7 @@ namespace Dml
         free(p);
     }
 
-    const ::OrtAllocatorInfo& CPUAllocator::Info() const {
+    const ::OrtMemoryInfo& CPUAllocator::Info() const {
         return m_allocatorInfo;
     }
 

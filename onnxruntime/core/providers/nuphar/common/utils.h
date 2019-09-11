@@ -5,7 +5,7 @@
 #include "core/graph/graph.h"
 
 // forward declaration
-struct OrtAllocatorInfo;
+struct OrtMemoryInfo;
 
 namespace onnxruntime {
 namespace nuphar {
