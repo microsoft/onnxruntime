@@ -277,10 +277,14 @@ class SymbolicShapeInference:
     def _onnx_infer_subgraph(self, node, subgraph):
         if self.verbose_ > 2:
             print('Inferencing subgraph of node {} with output({}...): {}'.format(node.name, node.output[0], node.op_type))
-        assert len(node.input) == len(subgraph.input)
+        # node inputs are not passed directly to the subgraph
+        # it's up to the node dispatcher to prepare subgraph input
+        # for example, with Scan/Loop, subgraph input shape would be trimmed from node input shape
+        # besides, inputs in subgraph could shadow implicit inputs
+        subgraph_inputs = set([i.name for i in list(subgraph.initializer) + list(subgraph.input)])
         subgraph_implicit_input = set()
         for sn in subgraph.node:
-            subgraph_implicit_input.update([i for i in sn.input if i in self.known_vi_])
+            subgraph_implicit_input.update([i for i in sn.input if i in self.known_vi_ and i not in subgraph_inputs])
         tmp_graph = helper.make_graph(list(subgraph.node),
                                       'tmp',
                                       list(subgraph.input) + [self.known_vi_[i] for i in subgraph_implicit_input],
@@ -300,6 +304,10 @@ class SymbolicShapeInference:
         subgraph.input.extend(symbolic_shape_inference.out_mp_.graph.input[:len(node.input)])
         subgraph.ClearField('output')
         subgraph.output.extend(symbolic_shape_inference.out_mp_.graph.output)
+        # for new symbolic dims from subgraph output, add to main graph symbolic dims
+        subgraph_shapes = [get_shape_from_type_proto(o.type) for o in symbolic_shape_inference.out_mp_.graph.output]
+        subgraph_new_symbolic_dims = set([d for s in subgraph_shapes if s for d in s if type(d) == str and not d in self.symbolic_dims_])
+        self.symbolic_dims_.update({d:symbolic_shape_inference[d] for d in subgraph_new_symbolic_dims})
 
     def _get_int_values(self, node, broadcast=False):
         values = [self._try_get_value(node, i) for i in range(len(node.input))]
@@ -494,8 +502,8 @@ class SymbolicShapeInference:
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, new_shape))
 
     def _infer_Gather(self, node):
-        axis = get_attribute(node, 'axis', 0)
         data_shape = self._get_shape(node, 0)
+        axis = handle_negative_axis(get_attribute(node, 'axis', 0), len(data_shape))
         indices_shape = self._get_shape(node, 1)
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0],
@@ -604,7 +612,8 @@ class SymbolicShapeInference:
         keep_dims = get_attribute(node, 'keepdims')
         if keep_dims == 0 and axes == [0]:
             data = self._get_int_values(node)[0]
-            self.sympy_data_[node.output[0]] = sympy_reduce_product(data)
+            if data is not None:
+                self.sympy_data_[node.output[0]] = sympy_reduce_product(data)
 
     def _infer_Reshape(self, node):
         shape_value = self._get_value(node, 1)
@@ -646,6 +655,7 @@ class SymbolicShapeInference:
         num_scan_inputs = get_attribute(node, 'num_scan_inputs')
         scan_input_axes = get_attribute(node, 'scan_input_axes', [0]*num_scan_inputs)
         num_scan_states = len(node.input) - num_scan_inputs
+        scan_input_axes = [handle_negative_axis(ax, self._get_shape_rank(node, i + num_scan_states)) for i, ax in enumerate(scan_input_axes)]
         for i, si in enumerate(subgraph.input):
             subgraph_name = si.name
             si.CopyFrom(self.known_vi_[node.input[i]])
@@ -660,8 +670,8 @@ class SymbolicShapeInference:
         for i, o in enumerate(node.output):
             vi = self.known_vi_[o]
             if i >= num_scan_states:
-                new_dim = scan_output_axes[i - num_scan_states]
                 shape = get_shape_from_type_proto(subgraph.output[i].type)
+                new_dim = handle_negative_axis(scan_output_axes[i - num_scan_states], len(shape) + 1)
                 shape = shape[:new_dim] + [scan_input_dim] + shape[new_dim:]
                 vi.CopyFrom(helper.make_tensor_value_info(o, subgraph.output[i].type.tensor_type.elem_type, shape))
             else:
