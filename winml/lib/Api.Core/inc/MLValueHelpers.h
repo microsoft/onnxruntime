@@ -1,31 +1,31 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
-namespace Windows::AI::MachineLearning
-{
-    class MLValueHelpers
-    {
-    public:
-        static auto CreateMLValue(onnxruntime::TensorShape shape, onnxruntime::MLDataType dataType, onnxruntime::BufferNakedPtr buffer)
-        {
-            auto registrations = onnxruntime::DeviceAllocatorRegistry::Instance().AllRegistrations();
-            auto pAlloc = registrations[onnxruntime::CPU].factory(0);
+namespace Windows::AI::MachineLearning {
+class MLValueHelpers {
+ public:
+  static auto CreateMLValue(onnxruntime::TensorShape shape, onnxruntime::MLDataType data_type, onnxruntime::BufferNakedPtr buffer) {
+    auto registrations = onnxruntime::DeviceAllocatorRegistry::Instance().AllRegistrations();
+    auto alloc = registrations[onnxruntime::CPU].factory(0);
 
-            // Unowned raw tensor pointer passed to engine
-            auto pTensor = new onnxruntime::Tensor(
-                dataType,
-                shape,
-                buffer,
-                pAlloc->Info());
+    // Unowned raw tensor pointer passed to engine
+    auto tensor = new onnxruntime::Tensor(
+        data_type,
+        shape,
+        buffer,
+        alloc->Info());
 
-            OrtValue value;
-            value.Init(pTensor,
-                onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>(),
-                onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>()->GetDeleteFunc());
+    OrtValue value;
+    value.Init(tensor,
+               onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>(),
+               onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>()->GetDeleteFunc());
 
-            return value;
-        }
+    return value;
+  }
 
-    private:
-        MLValueHelpers();
-    };
-}
+ private:
+  MLValueHelpers();
+};
+}  // namespace Windows::AI::MachineLearning

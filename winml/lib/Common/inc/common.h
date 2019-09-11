@@ -1,4 +1,7 @@
-﻿#pragma once
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#pragma once
 
 // STL
 #define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING
@@ -31,19 +34,19 @@
 #undef OPTIONAL
 #endif
 
-#pragma warning(disable:4100)
+#pragma warning(disable : 4100)
 
 // Telemetry
 #include "WinMLTelemetryHelper.h"
 // Declare global telemetry helper
-extern WinMLTelemetryHelper g_Telemetry;
+extern WinMLTelemetryHelper telemetry_helper;
 #ifndef WINML_TELEMETRY_DISABLED
 // Declare TraceLogging provider
-TRACELOGGING_DECLARE_PROVIDER(g_hWinMLTraceLoggingProvider);
-#endif //WINML_TELEMETRY_DISABLED
+TRACELOGGING_DECLARE_PROVIDER(winml_trace_logging_provider);
+#endif  //WINML_TELEMETRY_DISABLED
 
 // WinML
-#include "errors.h" 
+#include "errors.h"
 #include "NamespaceAliases.h"
 #include "StringHelpers.h"
 #include "WinML_Lock.h"

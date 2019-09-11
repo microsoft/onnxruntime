@@ -1,88 +1,81 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 //
 //  Simple CRITICAL_SECTION based locks
 //
-class CWinML_Lock
-{
-private:
-    // make copy constructor and assignment operator inaccessible
+class CWinMLLock {
+ private:
+  // make copy constructor and assignment operator inaccessible
 
-    CWinML_Lock(const CWinML_Lock &refCritSec);
-    CWinML_Lock &operator=(const CWinML_Lock &refCritSec);
+  CWinMLLock(const CWinMLLock& critical_section);
+  CWinMLLock& operator=(const CWinMLLock& critical_section);
 
-    CRITICAL_SECTION m_CritSec;
+  CRITICAL_SECTION critical_section_;
 
-public:
-    CWinML_Lock() {
-        InitializeCriticalSection(&m_CritSec);
-    };
+ public:
+  CWinMLLock() {
+    InitializeCriticalSection(&critical_section_);
+  };
 
-    ~CWinML_Lock() {
-        DeleteCriticalSection(&m_CritSec);
-    };
+  ~CWinMLLock() {
+    DeleteCriticalSection(&critical_section_);
+  };
 
-    void Lock() {
-        EnterCriticalSection(&m_CritSec);
-    };
-    void Unlock() {
-        LeaveCriticalSection(&m_CritSec);
-    };
-    void LockExclusive() {
-        EnterCriticalSection(&m_CritSec);
-    };
-    void UnlockExclusive() {
-        LeaveCriticalSection(&m_CritSec);
-    };
-    BOOL IsLockHeldByCurrentThread()
-    {
-        return GetCurrentThreadId() == static_cast<DWORD>(reinterpret_cast<ULONG_PTR>(m_CritSec.OwningThread));
-    };
-    BOOL IsLockHeld()
-    {
-        return m_CritSec.OwningThread != 0;
-    };
-    BOOL TryLock()
-    {
-        return TryEnterCriticalSection(&m_CritSec);
-    };
-    // aliased methods to help code compat so that CriticalSections can be passed to ReaderWriter templates
-    void LockShared() {
-        EnterCriticalSection(&m_CritSec);
-    };
-    void UnlockShared() {
-        LeaveCriticalSection(&m_CritSec);
-    };
+  void Lock() {
+    EnterCriticalSection(&critical_section_);
+  };
+  void Unlock() {
+    LeaveCriticalSection(&critical_section_);
+  };
+  void LockExclusive() {
+    EnterCriticalSection(&critical_section_);
+  };
+  void UnlockExclusive() {
+    LeaveCriticalSection(&critical_section_);
+  };
+  BOOL IsLockHeldByCurrentThread() {
+    return GetCurrentThreadId() == static_cast<DWORD>(reinterpret_cast<ULONG_PTR>(critical_section_.OwningThread));
+  };
+  BOOL IsLockHeld() {
+    return critical_section_.OwningThread != 0;
+  };
+  BOOL TryLock() {
+    return TryEnterCriticalSection(&critical_section_);
+  };
+  // aliased methods to help code compat so that CriticalSections can be passed to ReaderWriter templates
+  void LockShared() {
+    EnterCriticalSection(&critical_section_);
+  };
+  void UnlockShared() {
+    LeaveCriticalSection(&critical_section_);
+  };
 };
-
 
 // locks a critical section, and unlocks it automatically
 // when the lock goes out of scope
-class CWinML_AutoLock {
+class CWinMLAutoLock {
+  // make copy constructor and assignment operator inaccessible
 
-    // make copy constructor and assignment operator inaccessible
+  CWinMLAutoLock(const CWinMLAutoLock& auto_lock);
+  CWinMLAutoLock& operator=(const CWinMLAutoLock& auto_lock);
 
-    CWinML_AutoLock(const CWinML_AutoLock &refAutoLock);
-    CWinML_AutoLock &operator=(const CWinML_AutoLock &refAutoLock);
+ protected:
+  CWinMLLock* winml_lock_;
 
-protected:
-    CWinML_Lock * m_pLock;
+ public:
+  CWinMLAutoLock(CWinMLLock* lock) {
+    winml_lock_ = lock;
+    if (winml_lock_ != nullptr) {
+      winml_lock_->Lock();
+    }
+  };
 
-public:
-    CWinML_AutoLock(CWinML_Lock * plock)
-    {
-        m_pLock = plock;
-        if (m_pLock != nullptr)
-        {
-            m_pLock->Lock();
-        }
-    };
-
-    ~CWinML_AutoLock() 
-    {
-        if (m_pLock != nullptr)
-        {
-            m_pLock->Unlock();
-        }
-    };
+  ~CWinMLAutoLock() {
+    if (winml_lock_ != nullptr) {
+      winml_lock_->Unlock();
+    }
+  };
 };

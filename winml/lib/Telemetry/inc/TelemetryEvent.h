@@ -1,44 +1,41 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 #pragma once
 
 #include "WinMLProfiler.h"
 
-namespace Windows::AI::MachineLearning::Telemetry
-{
+namespace Windows::AI::MachineLearning::Telemetry {
 
-enum class EventCategory
-{
-    ModelLoad = 0,
-    SessionCreation,
-    Binding,
-    Evaluation,
+enum class EventCategory {
+  kModelLoad = 0,
+  kSessionCreation,
+  kBinding,
+  kEvaluation,
 };
 
-class TelemetryEvent
-{
-public:
-    TelemetryEvent(
-        EventCategory eventCategory
-    );
+class TelemetryEvent {
+ public:
+  TelemetryEvent(
+      EventCategory eventCategory);
 
-    ~TelemetryEvent();
+  ~TelemetryEvent();
 
-private:
-    EventCategory category_;
-    std::optional<int64_t> event_id_;
+ private:
+  EventCategory category_;
+  std::optional<int64_t> event_id_;
 };
 
 // Wrapper to telemetry event. if the call throws the destructor is still called
-class PerformanceTelemetryEvent : public TelemetryEvent
-{
-public:
-    PerformanceTelemetryEvent(
-        WINML_RUNTIME_PERF mode
-    );
+class PerformanceTelemetryEvent : public TelemetryEvent {
+ public:
+  PerformanceTelemetryEvent(
+      WinMLRuntimePerf mode);
 
-    ~PerformanceTelemetryEvent();
+  ~PerformanceTelemetryEvent();
 
-private:
-    WINML_RUNTIME_PERF mode_;
+ private:
+  WinMLRuntimePerf mode_;
 };
 
-}
+}  // namespace Windows::AI::MachineLearning::Telemetry

@@ -1,13 +1,13 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 #include "TimerHelper.h"
 
-
-enum WINML_RUNTIME_PERF
-{
-    LOAD_MODEL = 0,
-    EVAL_MODEL,
-    COUNT
+enum WinMLRuntimePerf {
+  kLoadModel = 0,
+  kEvaluateModel,
+  kCount
 };
 
-
-extern Profiler<WINML_RUNTIME_PERF> g_Profiler;
+extern Profiler<WinMLRuntimePerf> profiler;

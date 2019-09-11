@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 #pragma once
 
 #include "pch.h"
@@ -6,112 +9,110 @@
 // Exception information
 //
 #ifndef FACILITY_VISUALCPP
-#define FACILITY_VISUALCPP  ((LONG)0x6d)
+#define FACILITY_VISUALCPP ((LONG)0x6d)
 #endif
 
-#define VcppException(sev,err)  ((sev) | (FACILITY_VISUALCPP<<16) | err)
+#define VcppException(sev, err) ((sev) | (FACILITY_VISUALCPP << 16) | err)
 
-namespace winrt::Windows::AI::MachineLearning::implementation
-{
-    enum class PipelineStateCacheType : unsigned char {
-        Float32 = 0,
-        Float16 = 1,
-        Count = 2
-    };
-    
-    enum class PipelineStateCacheFormat : unsigned char {
-        RGB8 = 0,
-        BGR8 = 1,
-        GRAY8 = 2,
-        Count = 3
-    };
+namespace winrt::Windows::AI::MachineLearning::implementation {
+enum class PipelineStateCacheType : unsigned char {
+  kFloat32 = 0,
+  kFloat16 = 1,
+  kCount = 2
+};
 
-    enum class PipelineStateCacheOperation : unsigned char {
-        Tensorize = 0,
-        Detensorize = 1,
-        Count = 2
-    };
+enum class PipelineStateCacheFormat : unsigned char {
+  kRGB8 = 0,
+  kBGR8 = 1,
+  kGRAY8 = 2,
+  kCount = 3
+};
 
-    class D3DDeviceCache 
-    {
-    public:
-        ~D3DDeviceCache();
-        D3DDeviceCache(Windows::AI::MachineLearning::LearningModelDeviceKind const& deviceKind);
-        D3DDeviceCache(Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice const& device);
-        D3DDeviceCache(ID3D12CommandQueue* queue);
+enum class PipelineStateCacheOperation : unsigned char {
+  kTensorize = 0,
+  kDetensorize = 1,
+  kCount = 2
+};
 
-        ID3D11Device* GetD3D11Device();
-        ID3D11DeviceContext4* GetD3D11DeviceContext();
+class D3DDeviceCache {
+ public:
+  ~D3DDeviceCache();
+  D3DDeviceCache(Windows::AI::MachineLearning::LearningModelDeviceKind const& device_kind);
+  D3DDeviceCache(Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice const& device);
+  D3DDeviceCache(ID3D12CommandQueue* queue);
 
-        ID3D12Device1* GetD3D12Device() { return m_device.get(); }
-        ID3D12CommandQueue* GetCommandQueue() { return m_commandQueue.get(); }
+  ID3D11Device* GetD3D11Device();
+  ID3D11DeviceContext4* GetD3D11DeviceContext();
 
-        Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice GetWinrtDevice();
+  ID3D12Device1* GetD3D12Device() { return device_.get(); }
+  ID3D12CommandQueue* GetCommandQueue() { return command_queue_.get(); }
 
-        ID3D12RootSignature* GetTensorizeRootSignature();
-        ID3D12RootSignature* GetDetensorizeRootSignature();
-        ID3D12PipelineState* GetCachedPipelineState(PipelineStateCacheType type, PipelineStateCacheFormat formatFrom, PipelineStateCacheFormat formatTo, PipelineStateCacheOperation operation);
+  Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice GetWinrtDevice();
 
-        ID3D12Resource* GetDetensorizeVertexBuffer(_Out_ UINT *vertexBufferSize);
+  ID3D12RootSignature* GetTensorizeRootSignature();
+  ID3D12RootSignature* GetDetensorizeRootSignature();
+  ID3D12PipelineState* GetCachedPipelineState(PipelineStateCacheType type, PipelineStateCacheFormat format_from, PipelineStateCacheFormat format_to, PipelineStateCacheOperation operation);
 
-        HANDLE GetConverterFenceHandle();
+  ID3D12Resource* GetDetensorizeVertexBuffer(_Out_ UINT* vertex_buffer_size);
 
-        const GUID& GetFenceGuid() const;
+  HANDLE GetConverterFenceHandle();
 
-        void GPUSyncD3D11ToD3D12();
-        void GPUSyncD3D12ToD3D11();
-        void SyncD3D12ToCPU();
+  const GUID& GetFenceGuid() const;
 
-        void SyncConverterToD3D11Device(_In_ ID3D11Fence* pD3D11Fence);
-        void SyncD3D11DeviceToConverter(_In_ ID3D11Fence* pD3D11Fence);
-        
-        UINT64 QueueFenceToD3D12();
-        void WaitForFenceValue(UINT64 fenceValue);
+  void GPUSyncD3D11ToD3D12();
+  void GPUSyncD3D12ToD3D11();
+  void SyncD3D12ToCPU();
 
-        const LUID& GetDeviceLuid() { return m_deviceLuid; };
+  void SyncConverterToD3D11Device(_In_ ID3D11Fence* d3d11_fence_);
+  void SyncD3D11DeviceToConverter(_In_ ID3D11Fence* d3d11_fence_);
 
-        bool IsFloat16Supported();
-        bool SharedHandleInitialized();
+  UINT64 QueueFenceToD3D12();
+  void WaitForFenceValue(UINT64 fence_value);
 
-    private:
-        void EnsureD3D11FromD3D12();
-        void EnsureD3D12Fence();
-        void EnsureSharedFences();
-        void InitializeCommandQueue(ID3D12Device1* device);
+  const LUID& GetDeviceLuid() { return device_luid_; };
 
-        ID3D12PipelineState* CreateTensorizePipelineState(PipelineStateCacheType type, PipelineStateCacheFormat formatFrom, PipelineStateCacheFormat formatTo);
-        ID3D12PipelineState* CreateDetensorizePipelineState(PipelineStateCacheType type, PipelineStateCacheFormat formatFrom, PipelineStateCacheFormat formatTo);
-        
-        com_ptr<ID3D12Device1> m_device;
-        com_ptr<ID3D12CommandQueue> m_commandQueue;
-        com_ptr<ID3D12SharingContract> m_sharingContract;
+  bool IsFloat16Supported();
+  bool SharedHandleInitialized();
 
-        com_ptr<ID3D11Device> m_device11;
-        Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice m_winrtDevice;
-        com_ptr<ID3D11DeviceContext4> m_deviceContext11;
+ private:
+  void EnsureD3D11FromD3D12();
+  void EnsureD3D12Fence();
+  void EnsureSharedFences();
+  void InitializeCommandQueue(ID3D12Device1* device);
 
-        com_ptr<ID3D12RootSignature> m_spTensorizeRootSignature;
-        com_ptr<ID3D12RootSignature> m_spDetensorizeRootSignature;
+  ID3D12PipelineState* CreateTensorizePipelineState(PipelineStateCacheType type, PipelineStateCacheFormat format_from, PipelineStateCacheFormat format_to);
+  ID3D12PipelineState* CreateDetensorizePipelineState(PipelineStateCacheType type, PipelineStateCacheFormat format_from, PipelineStateCacheFormat format_to);
 
-        com_ptr<ID3D12PipelineState> m_spCachedPipelineState[PipelineStateCacheType::Count][PipelineStateCacheFormat::Count][PipelineStateCacheFormat::Count][PipelineStateCacheOperation::Count];
+  com_ptr<ID3D12Device1> device_;
+  com_ptr<ID3D12CommandQueue> command_queue_;
+  com_ptr<ID3D12SharingContract> sharing_contract_;
 
-        com_ptr<ID3D12Resource> m_detensorizeVertexBuffer;
-        
-        com_ptr<ID3D11Fence> m_d3d11Fence;
-        com_ptr<ID3D12Fence> m_d3d12Fence;
-        std::atomic<UINT64> m_fenceValue = 1;
+  com_ptr<ID3D11Device> device_11_;
+  Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice winrt_device_;
+  com_ptr<ID3D11DeviceContext4> device_context11_;
 
-        GUID m_fenceGuid;
+  com_ptr<ID3D12RootSignature> tensorize_root_signature_;
+  com_ptr<ID3D12RootSignature> detensorize_root_signature_;
 
-        com_ptr<ID3D12Fence> m_converterFence;
-        wil::unique_handle m_converterFenceHandle;
-        std::atomic<UINT64> m_converterFenceValue = 1;
+  com_ptr<ID3D12PipelineState> cached_pipeline_state[PipelineStateCacheType::kCount][PipelineStateCacheFormat::kCount][PipelineStateCacheFormat::kCount][PipelineStateCacheOperation::kCount];
 
-        LUID m_deviceLuid;
-        static const UINT sc_vertexBufferSize = sizeof(DirectX::XMFLOAT3) * 4;
+  com_ptr<ID3D12Resource> detensorize_vertex_buffer_;
 
-        // added a lock when we added delay loading to the device cache.   Since parts of 
-        // initialization happen later, we need make it thread safe.
-        CWinML_Lock m_lock;
-    };
-}
+  com_ptr<ID3D11Fence> d3d11_fence_;
+  com_ptr<ID3D12Fence> d3d12_fence_;
+  std::atomic<UINT64> fence_value_ = 1;
+
+  GUID fence_guid_;
+
+  com_ptr<ID3D12Fence> converter_fence_;
+  wil::unique_handle converter_fence_handle_;
+  std::atomic<UINT64> converter_fence_value_ = 1;
+
+  LUID device_luid_;
+  static const UINT sc_vertexBufferSize = sizeof(DirectX::XMFLOAT3) * 4;
+
+  // added a lock when we added delay loading to the device cache.   Since parts of
+  // initialization happen later, we need make it thread safe.
+  CWinMLLock lock_;
+};
+}  // namespace winrt::Windows::AI::MachineLearning::implementation

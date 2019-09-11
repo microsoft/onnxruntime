@@ -1,38 +1,33 @@
-//
-//  Copyright (c) Microsoft Corporation.  All rights reserved.
-//
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 #pragma once
 
-namespace Windows::AI::MachineLearning::Internal
-{
-    const UINT IMG_TENSOR_DIMENSION_COUNT_MAX = 4; // NCHW format
+namespace Windows::AI::MachineLearning::Internal {
+const UINT kImageTensorDimensionCountMax = 4;  // NCHW format
 
-    enum IMG_TENSOR_DATA_TYPE
-    {
-        IMG_TENSOR_DATA_TYPE_FLOAT32,
-        IMG_TENSOR_DATA_TYPE_FLOAT16,
-        IMG_TENSOR_DATA_TYPE_UINT32,
-        IMG_TENSOR_DATA_TYPE_UINT16,
-        IMG_TENSOR_DATA_TYPE_UINT8,
-        IMG_TENSOR_DATA_TYPE_INT32,
-        IMG_TENSOR_DATA_TYPE_INT16,
-        IMG_TENSOR_DATA_TYPE_INT8,
-        IMG_TENSOR_DATA_TYPE_COUNT
-    };
+enum ImageTensorDataType {
+  kImageTensorDataTypeFloat32,
+  kImageTensorDataTypeFloat16,
+  kImageTensorDataTypeUInt32,
+  kImageTensorDataTypeUInt16,
+  kImageTensorDataTypeUInt8,
+  kImageTensorDataTypeInt32,
+  kImageTensorDataTypeInt16,
+  kImageTensorDataTypeInt8,
+  kImageTensorDataTypeCount
+};
 
-    enum IMG_TENSOR_CHANNEL_TYPE
-    {
-        IMG_TENSOR_CHANNEL_TYPE_RGB_8,
-        IMG_TENSOR_CHANNEL_TYPE_BGR_8,
-        IMG_TENSOR_CHANNEL_TYPE_GRAY_8,
-        IMG_TENSOR_CHANNEL_TYPE_COUNT
-    };
+enum ImageTensorChannelType {
+  kImageTensorChannelTypeRGB8,
+  kImageTensorChannelTypeBGR8,
+  kImageTensorChannelTypeGRAY8,
+  ImageTensorChannelType_COUNT
+};
 
-    struct IMG_TENSOR_DESC
-    {
-        IMG_TENSOR_DATA_TYPE dataType;
-        IMG_TENSOR_CHANNEL_TYPE channelType;
-        UINT sizes[IMG_TENSOR_DIMENSION_COUNT_MAX];
-    };
-}
+struct ImageTensorDescription {
+  ImageTensorDataType dataType;
+  ImageTensorChannelType channelType;
+  UINT sizes[kImageTensorDimensionCountMax];
+};
+}  // namespace Windows::AI::MachineLearning::Internal

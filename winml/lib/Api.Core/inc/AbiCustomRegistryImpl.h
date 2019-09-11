@@ -1,44 +1,39 @@
-//-----------------------------------------------------------------------------
-//
-//    Copyright (c) Microsoft Corporation. All rights reserved.
-//
-//-----------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 #pragma once
 
 #include "core/providers/dml/DmlExecutionProvider/src/AbiCustomRegistry.h"
 
-namespace winrt::Windows::AI::MachineLearning::implementation
-{ 
+namespace winrt::Windows::AI::MachineLearning::implementation {
 
 // An implementation of AbiCustomRegistry that emits telemetry events when operator kernels or schemas are registered.
-class AbiCustomRegistryImpl : public AbiCustomRegistry
-{
+class AbiCustomRegistryImpl : public AbiCustomRegistry {
  public:
-    HRESULT STDMETHODCALLTYPE RegisterOperatorSetSchema(
-        const MLOperatorSetId* opSetId,
-        int baseline_version,
-        const MLOperatorSchemaDescription* const* schema,
-        uint32_t schemaCount,
-        _In_opt_ IMLOperatorTypeInferrer* typeInferrer,
-        _In_opt_ IMLOperatorShapeInferrer* shapeInferrer) const noexcept override;
+  HRESULT STDMETHODCALLTYPE RegisterOperatorSetSchema(
+      const MLOperatorSetId* op_set_id,
+      int baseline_version,
+      const MLOperatorSchemaDescription* const* schema,
+      uint32_t schema_count,
+      _In_opt_ IMLOperatorTypeInferrer* type_inferrer,
+      _In_opt_ IMLOperatorShapeInferrer* shape_inferrer) const noexcept override;
 
-    HRESULT STDMETHODCALLTYPE RegisterOperatorKernel(
-        const MLOperatorKernelDescription* operatorKernel,
-        IMLOperatorKernelFactory* operatorKernelFactory,
-        _In_opt_ IMLOperatorShapeInferrer* shapeInferrer,
-        bool isInternalOperator,
-        bool canAliasFirstInput,
-        bool supportsGraph,
-        const uint32_t* requiredInputCountForGraph = nullptr,
-        bool requiresFloatFormatsForGraph = false,
-        _In_reads_(constantCpuInputCount) const uint32_t* requiredConstantCpuInputs = nullptr,
-        uint32_t constantCpuInputCount = 0) const noexcept override;
+  HRESULT STDMETHODCALLTYPE RegisterOperatorKernel(
+      const MLOperatorKernelDescription* operator_kernel,
+      IMLOperatorKernelFactory* operator_kernel_factory,
+      _In_opt_ IMLOperatorShapeInferrer* shape_inferrer,
+      bool is_internal_operator,
+      bool can_alias_first_input,
+      bool supports_graph,
+      const uint32_t* required_input_count_for_graph = nullptr,
+      bool requires_float_formats_for_graph = false,
+      _In_reads_(constant_cpu_input_count) const uint32_t* required_constant_cpu_inputs = nullptr,
+      uint32_t constant_cpu_input_count = 0) const noexcept override;
 
-    HRESULT STDMETHODCALLTYPE RegisterOperatorKernel(
-        const MLOperatorKernelDescription* opKernel,
-        IMLOperatorKernelFactory* operatorKernelFactory,
-        _In_opt_ IMLOperatorShapeInferrer* shapeInferrer) const noexcept override;
+  HRESULT STDMETHODCALLTYPE RegisterOperatorKernel(
+      const MLOperatorKernelDescription* op_kernel,
+      IMLOperatorKernelFactory* operator_kernel_factory,
+      _In_opt_ IMLOperatorShapeInferrer* shape_inferrer) const noexcept override;
 };
 
-}    // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace winrt::Windows::AI::MachineLearning::implementation

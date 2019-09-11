@@ -2,103 +2,93 @@
 
 #include "LearningModelDevice.g.h"
 
-namespace Windows::AI::MachineLearning
-{
+namespace Windows::AI::MachineLearning {
 class ConverterResourceStore;
 }
 
-namespace winrt::Windows::AI::MachineLearning::implementation
-{
-    class D3DDeviceCache;
+namespace winrt::Windows::AI::MachineLearning::implementation {
+class D3DDeviceCache;
 
-    struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, IMetacommandsController, IDeviceFenceValidator>
-    {
-    public:
-        LearningModelDevice() = delete;
+struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, IMetacommandsController, IDeviceFenceValidator> {
+ public:
+  LearningModelDevice() = delete;
 
-        LearningModelDevice(
-            winml::LearningModelDeviceKind const& deviceKind
-        );
+  LearningModelDevice(
+      winml::LearningModelDeviceKind const& deviceKind);
 
-        LearningModelDevice(
-            wgdx::Direct3D11::IDirect3DDevice const& device
-        );
+  LearningModelDevice(
+      wgdx::Direct3D11::IDirect3DDevice const& device);
 
-        LearningModelDevice(
-            ID3D12CommandQueue* queue
-        );
+  LearningModelDevice(
+      ID3D12CommandQueue* queue);
 
-        ~LearningModelDevice();
+  ~LearningModelDevice();
 
-        wg::DisplayAdapterId
-        AdapterId();
+  wg::DisplayAdapterId
+  AdapterId();
 
-        static
-        winml::LearningModelDevice CreateFromDirect3D11Device(
-            wgdx::Direct3D11::IDirect3DDevice const& device
-        );
+  static winml::LearningModelDevice CreateFromDirect3D11Device(
+      wgdx::Direct3D11::IDirect3DDevice const& device);
 
-        // internal:
-        STDMETHOD(SetMetacommandsEnabled)(
-            boolean enabled
-            ) final;
-        
-        // internal:
-        STDMETHOD_(boolean, SharedHandleInitialized)();
+  // internal:
+  STDMETHOD(SetMetacommandsEnabled)
+  (
+      boolean enabled) final;
 
-        // internal:
+  // internal:
+  STDMETHOD_(boolean, SharedHandleInitialized)
+  ();
 
-        winml::LearningModelDeviceKind
-        GetDeviceKind();
+  // internal:
 
-        bool
-        MetacommandsEnabled();
+  winml::LearningModelDeviceKind
+  GetDeviceKind();
 
-        bool
-        IsCpuDevice();
+  bool
+  MetacommandsEnabled();
 
-        const LUID&
-        GetDeviceLuid();
+  bool
+  IsCpuDevice();
 
-        D3DDeviceCache*
-        GetD3DDeviceCache();
+  const LUID&
+  GetDeviceLuid();
 
-        wgdx::Direct3D11::IDirect3DDevice
-        Direct3D11Device();
+  D3DDeviceCache*
+  GetD3DDeviceCache();
 
-        ID3D12Device*
-        GetD3DDevice();
+  wgdx::Direct3D11::IDirect3DDevice
+  Direct3D11Device();
 
-        ID3D12CommandQueue*
-        GetDeviceQueue();
+  ID3D12Device*
+  GetD3DDevice();
 
-        static
-        void
-        DllUnload();
+  ID3D12CommandQueue*
+  GetDeviceQueue();
 
-        std::shared_ptr<WinML::ConverterResourceStore>
-        TensorizerStore();
+  static void
+  DllUnload();
 
-        std::shared_ptr<WinML::ConverterResourceStore>
-        DetensorizerStore();
+  std::shared_ptr<WinML::ConverterResourceStore>
+  TensorizerStore();
 
-    private:
-        // stores the device kind that was originally chosen in the constructor
-        winml::LearningModelDeviceKind m_deviceKind;
-        // if the user asked us to run on the cpu, or asked us to choose and we chose cpu 
-        bool m_isCpuDevice;
-        bool m_areMetacommandsEnabled = true;
-        std::shared_ptr<WinML::ConverterResourceStore> m_detensorizerStore;
-        std::shared_ptr<WinML::ConverterResourceStore> m_tensorizerStore;
+  std::shared_ptr<WinML::ConverterResourceStore>
+  DetensorizerStore();
 
-        std::unique_ptr<D3DDeviceCache> m_deviceCache;
-    };
-}
+ private:
+  // stores the device kind that was originally chosen in the constructor
+  winml::LearningModelDeviceKind m_deviceKind;
+  // if the user asked us to run on the cpu, or asked us to choose and we chose cpu
+  bool m_isCpuDevice;
+  bool m_areMetacommandsEnabled = true;
+  std::shared_ptr<WinML::ConverterResourceStore> m_detensorizerStore;
+  std::shared_ptr<WinML::ConverterResourceStore> m_tensorizerStore;
 
-namespace winrt::Windows::AI::MachineLearning::factory_implementation
-{
-    struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, implementation::LearningModelDevice, ILearningModelDeviceFactoryNative>
-    {
-        HRESULT __stdcall CreateFromD3D12CommandQueue(ID3D12CommandQueue * queue, IUnknown **device) noexcept final;
-    };
-}
+  std::unique_ptr<D3DDeviceCache> m_deviceCache;
+};
+}  // namespace winrt::Windows::AI::MachineLearning::implementation
+
+namespace winrt::Windows::AI::MachineLearning::factory_implementation {
+struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, implementation::LearningModelDevice, ILearningModelDeviceFactoryNative> {
+  HRESULT __stdcall CreateFromD3D12CommandQueue(ID3D12CommandQueue* queue, IUnknown** device) noexcept final;
+};
+}  // namespace winrt::Windows::AI::MachineLearning::factory_implementation

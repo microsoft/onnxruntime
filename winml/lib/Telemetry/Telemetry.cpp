@@ -1,15 +1,14 @@
 #include "pch.h"
 
-WinMLTelemetryHelper g_Telemetry;
+WinMLTelemetryHelper telemetry_helper;
 
 TRACELOGGING_DEFINE_PROVIDER(
-    g_hWinMLTraceLoggingProvider,
+    winml_trace_logging_provider,
     WINML_PROVIDER_DESC,
     WINML_PROVIDER_GUID,
-    TraceLoggingOptionMicrosoftTelemetry()
-);
+    TraceLoggingOptionMicrosoftTelemetry());
 
 //
 // Perf profiling support
 //
-Profiler<WINML_RUNTIME_PERF> g_Profiler;
+Profiler<WinMLRuntimePerf> profiler;

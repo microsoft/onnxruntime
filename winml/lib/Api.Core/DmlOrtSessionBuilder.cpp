@@ -4,7 +4,7 @@
 #ifdef ERROR
 #undef ERROR
 #endif
-    #include "core/session/inference_session.h"
+#include "core/session/inference_session.h"
 // Restore ERROR define
 #define ERROR 0
 
@@ -26,154 +26,139 @@
 using namespace Windows::AI::MachineLearning;
 
 DmlOrtSessionBuilder::DmlOrtSessionBuilder(
-    winml::LearningModelDevice const& device) :
-        device_(device)
-{}
+    winml::LearningModelDevice const& device) : device_(device) {}
 
 HRESULT
 DmlOrtSessionBuilder::CreateSessionOptions(
-    onnxruntime::SessionOptions* p_options)
-{
-    RETURN_HR_IF_NULL(E_POINTER, p_options);
+    onnxruntime::SessionOptions* p_options) {
+  RETURN_HR_IF_NULL(E_POINTER, p_options);
 
-    *p_options = onnxruntime::SessionOptions();
+  *p_options = onnxruntime::SessionOptions();
 
-    // Currently the only transformer in Lotus's transform manager will be the DML transformer.
-    // Lotus applies these transformers a certain number of times (currently 5) unless overridden here.
-    p_options->max_num_graph_transformation_steps = 1;
+  // Currently the only transformer in Lotus's transform manager will be the DML transformer.
+  // Lotus applies these transformers a certain number of times (currently 5) unless overridden here.
+  p_options->max_num_graph_transformation_steps = 1;
 
-    // Disable the mem pattern session option for DML. It will cause problems with how memory is allocated.
-    p_options->enable_mem_pattern = false;
+  // Disable the mem pattern session option for DML. It will cause problems with how memory is allocated.
+  p_options->enable_mem_pattern = false;
 
-    // Disable automatic graph optimization pass control; see comments below.
-    // TODO: Remove this when these issues are addressed.
-    static_assert(
-        static_cast<int>(onnxruntime::TransformerLevel::Default) == 0,
-        "Ensure default graph optimization level is unoptimized");
+  // Disable automatic graph optimization pass control; see comments below.
+  // TODO: Remove this when these issues are addressed.
+  static_assert(
+      static_cast<int>(onnxruntime::TransformerLevel::Default) == 0,
+      "Ensure default graph optimization level is unoptimized");
 
-    p_options->graph_optimization_level = onnxruntime::TransformerLevel::Default;
+  p_options->graph_optimization_level = onnxruntime::TransformerLevel::Default;
 
-    return S_OK;
+  return S_OK;
 }
 
-static
-HRESULT
+static HRESULT
 RegisterCustomRegistry(
     onnxruntime::InferenceSession* p_session,
-    IMLOperatorRegistry* registry)
-{
-    if (registry != nullptr)
-    {
-        RETURN_HR_IF_NULL(E_POINTER, p_session);
+    IMLOperatorRegistry* registry) {
+  if (registry != nullptr) {
+    RETURN_HR_IF_NULL(E_POINTER, p_session);
 
-        auto custom_registries = GetLotusCustomRegistries(registry);
+    auto custom_registries = GetLotusCustomRegistries(registry);
 
-        // Register
-        for (auto& custom_registry : custom_registries)
-        {
-            WINML_THROW_IF_NOT_OK(p_session->RegisterCustomRegistry(custom_registry));
-        }
+    // Register
+    for (auto& custom_registry : custom_registries) {
+      WINML_THROW_IF_NOT_OK(p_session->RegisterCustomRegistry(custom_registry));
     }
+  }
 
-    return S_OK;
+  return S_OK;
 }
 
 // Lotus intentionally requires providers which do not use singleton devices for copying tensors
 // to derive from their session.
-class InferenceSessionRegisterDataTransferAccessor :
-    public onnxruntime::InferenceSession
-{
-public:
-    onnxruntime::common::Status
-    RegisterDataTransfer(std::unique_ptr<onnxruntime::IDataTransfer> data_transfer)
-    {
-        return const_cast<onnxruntime::DataTransferManager&>(session_state_.GetDataTransferMgr()).RegisterDataTransfer(std::move(data_transfer));
-    }
+class InferenceSessionRegisterDataTransferAccessor : public onnxruntime::InferenceSession {
+ public:
+  onnxruntime::common::Status
+  RegisterDataTransfer(std::unique_ptr<onnxruntime::IDataTransfer> data_transfer) {
+    return const_cast<onnxruntime::DataTransferManager&>(session_state_.GetDataTransferMgr()).RegisterDataTransfer(std::move(data_transfer));
+  }
 };
 
-Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device)
-{
-    // Dynamically load DML to avoid WinML taking a static dependency on DirectML.dll
-    wil::unique_hmodule dmlDll(LoadLibraryW(L"DirectML.dll"));
-    THROW_LAST_ERROR_IF(!dmlDll);
+Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
+  // Dynamically load DML to avoid WinML taking a static dependency on DirectML.dll
+  wil::unique_hmodule dmlDll(LoadLibraryW(L"DirectML.dll"));
+  THROW_LAST_ERROR_IF(!dmlDll);
 
-    auto dmlCreateDevice1Fn = reinterpret_cast<decltype(&DMLCreateDevice1)>(
-        GetProcAddress(dmlDll.get(), "DMLCreateDevice1")
-        );
-    THROW_LAST_ERROR_IF(!dmlCreateDevice1Fn);
+  auto dmlCreateDevice1Fn = reinterpret_cast<decltype(&DMLCreateDevice1)>(
+      GetProcAddress(dmlDll.get(), "DMLCreateDevice1"));
+  THROW_LAST_ERROR_IF(!dmlCreateDevice1Fn);
 
-    DML_CREATE_DEVICE_FLAGS dmlFlags = DML_CREATE_DEVICE_FLAG_NONE;
+  DML_CREATE_DEVICE_FLAGS dmlFlags = DML_CREATE_DEVICE_FLAG_NONE;
 
-    // Enable the DML debug layer in DEBUG builds, if the D3D12 debug layer is also enabled
+  // Enable the DML debug layer in DEBUG builds, if the D3D12 debug layer is also enabled
 #if _DEBUG
-    Microsoft::WRL::ComPtr<ID3D12DebugDevice> d3d12DebugDevice;
-    if (SUCCEEDED(d3d12Device->QueryInterface(IID_PPV_ARGS(&d3d12DebugDevice))))
-    {
-        d3d12DebugDevice = nullptr;
-        dmlFlags |= DML_CREATE_DEVICE_FLAG_DEBUG;
-    }
+  Microsoft::WRL::ComPtr<ID3D12DebugDevice> d3d12DebugDevice;
+  if (SUCCEEDED(d3d12Device->QueryInterface(IID_PPV_ARGS(&d3d12DebugDevice)))) {
+    d3d12DebugDevice = nullptr;
+    dmlFlags |= DML_CREATE_DEVICE_FLAG_DEBUG;
+  }
 #endif
 
-    Microsoft::WRL::ComPtr<IDMLDevice> dmlDevice;
-    THROW_IF_FAILED(dmlCreateDevice1Fn(d3d12Device, dmlFlags, DML_FEATURE_LEVEL_2_0, IID_PPV_ARGS(&dmlDevice)));
+  Microsoft::WRL::ComPtr<IDMLDevice> dmlDevice;
+  THROW_IF_FAILED(dmlCreateDevice1Fn(d3d12Device, dmlFlags, DML_FEATURE_LEVEL_2_0, IID_PPV_ARGS(&dmlDevice)));
 
-    // Keep DirectML.dll loaded by leaking the handle. This is equivalent behavior to if we delay-loaded the DLL.
-    dmlDll.release();
+  // Keep DirectML.dll loaded by leaking the handle. This is equivalent behavior to if we delay-loaded the DLL.
+  dmlDll.release();
 
-    return dmlDevice;
+  return dmlDevice;
 }
 
 HRESULT DmlOrtSessionBuilder::CreateSession(
     const onnxruntime::SessionOptions& options,
     std::unique_ptr<onnxruntime::InferenceSession>* p_session,
-    onnxruntime::IExecutionProvider** pp_provider)
-{
-    RETURN_HR_IF_NULL(E_POINTER, p_session);
-    RETURN_HR_IF_NULL(E_POINTER, pp_provider);
-    RETURN_HR_IF(E_POINTER, *pp_provider != nullptr);
+    onnxruntime::IExecutionProvider** pp_provider) {
+  RETURN_HR_IF_NULL(E_POINTER, p_session);
+  RETURN_HR_IF_NULL(E_POINTER, pp_provider);
+  RETURN_HR_IF(E_POINTER, *pp_provider != nullptr);
 
-    auto device = device_.as<winmlp::LearningModelDevice>();
-    auto p_d3d_device = device->GetD3DDevice();
-    auto p_queue = device->GetDeviceQueue();
+  auto device = device_.as<winmlp::LearningModelDevice>();
+  auto p_d3d_device = device->GetD3DDevice();
+  auto p_queue = device->GetDeviceQueue();
 
-    std::unique_ptr<onnxruntime::IExecutionProvider> gpu_provider;
-    std::unique_ptr<onnxruntime::IDataTransfer> data_transfer;
-    
-    Microsoft::WRL::ComPtr<IDMLDevice> dmlDevice = CreateDmlDevice(p_d3d_device);
+  std::unique_ptr<onnxruntime::IExecutionProvider> gpu_provider;
+  std::unique_ptr<onnxruntime::IDataTransfer> data_transfer;
 
-    Dml::CreateExecutionProviderObjects(dmlDevice.Get(), p_queue, gpu_provider, data_transfer);
-    auto session = std::make_unique<onnxruntime::InferenceSession>(options);
+  Microsoft::WRL::ComPtr<IDMLDevice> dmlDevice = CreateDmlDevice(p_d3d_device);
 
-    // Cache the provider's raw pointer
-    *pp_provider = gpu_provider.get();
-    
-    WINML_THROW_IF_NOT_OK(static_cast<InferenceSessionRegisterDataTransferAccessor*>(session.get())->RegisterDataTransfer(std::move(data_transfer)));
-    WINML_THROW_IF_NOT_OK(session->RegisterExecutionProvider(std::move(gpu_provider)));
+  Dml::CreateExecutionProviderObjects(dmlDevice.Get(), p_queue, gpu_provider, data_transfer);
+  auto session = std::make_unique<onnxruntime::InferenceSession>(options);
 
-    // return the session
-    *p_session = std::move(session);
+  // Cache the provider's raw pointer
+  *pp_provider = gpu_provider.get();
 
-    return S_OK;
+  WINML_THROW_IF_NOT_OK(static_cast<InferenceSessionRegisterDataTransferAccessor*>(session.get())->RegisterDataTransfer(std::move(data_transfer)));
+  WINML_THROW_IF_NOT_OK(session->RegisterExecutionProvider(std::move(gpu_provider)));
+
+  // return the session
+  *p_session = std::move(session);
+
+  return S_OK;
 }
 
 HRESULT DmlOrtSessionBuilder::Initialize(
     onnxruntime::InferenceSession* p_session,
-    onnxruntime::IExecutionProvider* p_provider)
-{
-    RETURN_HR_IF_NULL(E_INVALIDARG, p_session);
-    RETURN_HR_IF_NULL(E_INVALIDARG, p_provider);
+    onnxruntime::IExecutionProvider* p_provider) {
+  RETURN_HR_IF_NULL(E_INVALIDARG, p_session);
+  RETURN_HR_IF_NULL(E_INVALIDARG, p_provider);
 
-    // OnnxRuntime uses the default rounding mode when calling the session's allocator.
-    // During initialization, OnnxRuntime allocates weights, which are permanent across session
-    // lifetime and can be large, so shouldn't be rounded.
-    Dml::SetDefaultRoundingMode(p_provider, AllocatorRoundingMode::Disabled);
-    
-    WINML_THROW_IF_NOT_OK(p_session->Initialize());
-    
-    Dml::SetDefaultRoundingMode(p_provider, AllocatorRoundingMode::Enabled);
+  // OnnxRuntime uses the default rounding mode when calling the session's allocator.
+  // During initialization, OnnxRuntime allocates weights, which are permanent across session
+  // lifetime and can be large, so shouldn't be rounded.
+  Dml::SetDefaultRoundingMode(p_provider, AllocatorRoundingMode::Disabled);
 
-    // Flush the D3D12 work from the DML execution provider
-    Dml::FlushContext(p_provider);
+  WINML_THROW_IF_NOT_OK(p_session->Initialize());
 
-    return S_OK;
+  Dml::SetDefaultRoundingMode(p_provider, AllocatorRoundingMode::Enabled);
+
+  // Flush the D3D12 work from the DML execution provider
+  Dml::FlushContext(p_provider);
+
+  return S_OK;
 }

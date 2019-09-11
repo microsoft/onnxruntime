@@ -1,6 +1,9 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
-namespace winrt::Windows::Foundation{}
+namespace winrt::Windows::Foundation {}
 namespace wf = ::winrt::Windows::Foundation;
 
 namespace winrt::Windows::Foundation::Collections {}

@@ -2,51 +2,47 @@
 
 #include "SequenceFeatureDescriptor.g.h"
 
-namespace winrt::Windows::AI::MachineLearning::implementation
-{
-    struct SequenceFeatureDescriptor :
-        SequenceFeatureDescriptorT<
-            SequenceFeatureDescriptor,
-            ILearningModelFeatureDescriptorNative>
-    {
-        SequenceFeatureDescriptor() = delete;
-        SequenceFeatureDescriptor(
-            const char* name,
-            const char* description,
-            bool is_required,
-            winml::ILearningModelFeatureDescriptor element_descriptor
-        );
+namespace winrt::Windows::AI::MachineLearning::implementation {
+struct SequenceFeatureDescriptor : SequenceFeatureDescriptorT<
+                                       SequenceFeatureDescriptor,
+                                       ILearningModelFeatureDescriptorNative> {
+  SequenceFeatureDescriptor() = delete;
+  SequenceFeatureDescriptor(
+      const char* name,
+      const char* description,
+      bool is_required,
+      winml::ILearningModelFeatureDescriptor element_descriptor);
 
-        winml::ILearningModelFeatureDescriptor
-        ElementDescriptor();
+  winml::ILearningModelFeatureDescriptor
+  ElementDescriptor();
 
-        // IFeatureDescriptor
-        hstring
-        Name();
+  // IFeatureDescriptor
+  hstring
+  Name();
 
-        hstring
-        Description();
+  hstring
+  Description();
 
-        winml::LearningModelFeatureKind
-        Kind();
+  winml::LearningModelFeatureKind
+  Kind();
 
-        bool
-        IsRequired();
+  bool
+  IsRequired();
 
-        STDMETHOD(GetName)(
-            const wchar_t** name,
-            uint32_t *cchName
-        ) override;
+  STDMETHOD(GetName)
+  (
+      const wchar_t** name,
+      uint32_t* cchName) override;
 
-        STDMETHOD(GetDescription)(
-            const wchar_t** description,
-            uint32_t *cchDescription
-        ) override;
+  STDMETHOD(GetDescription)
+  (
+      const wchar_t** description,
+      uint32_t* cchDescription) override;
 
-    private:
-        winrt::hstring name_;
-        winrt::hstring description_;
-        bool is_required_;
-        winml::ILearningModelFeatureDescriptor element_descriptor_;
-    };
-}
+ private:
+  winrt::hstring name_;
+  winrt::hstring description_;
+  bool is_required_;
+  winml::ILearningModelFeatureDescriptor element_descriptor_;
+};
+}  // namespace winrt::Windows::AI::MachineLearning::implementation

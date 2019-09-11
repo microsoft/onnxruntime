@@ -4,7 +4,7 @@
 #ifdef ERROR
 #undef ERROR
 #endif
-    #include "core/session/inference_session.h"
+#include "core/session/inference_session.h"
 // Restore ERROR define
 #define ERROR 0
 
@@ -22,60 +22,57 @@ using namespace Windows::AI::MachineLearning;
 
 HRESULT
 CpuOrtSessionBuilder::CreateSessionOptions(
-    onnxruntime::SessionOptions* p_options)
-{
-    RETURN_HR_IF_NULL(E_POINTER, p_options);
+    onnxruntime::SessionOptions* p_options) {
+  RETURN_HR_IF_NULL(E_POINTER, p_options);
 
-    *p_options = onnxruntime::SessionOptions();
-    p_options->graph_optimization_level = onnxruntime::TransformerLevel::Level3;
+  *p_options = onnxruntime::SessionOptions();
+  p_options->graph_optimization_level = onnxruntime::TransformerLevel::Level3;
 
-    // Onnxruntime will use half the number of concurrent threads supported on the system
-    // by default. This causes MLAS to not exercise every logical core.
-    // We force the thread pool size to be maxxed out to ensure that WinML always
-    // runs the fastest.
-    p_options->session_thread_pool_size = std::thread::hardware_concurrency();
+  // Onnxruntime will use half the number of concurrent threads supported on the system
+  // by default. This causes MLAS to not exercise every logical core.
+  // We force the thread pool size to be maxxed out to ensure that WinML always
+  // runs the fastest.
+  p_options->session_thread_pool_size = std::thread::hardware_concurrency();
 
-    return S_OK;
+  return S_OK;
 }
 
 HRESULT
 CpuOrtSessionBuilder::CreateSession(
     const onnxruntime::SessionOptions& options,
     std::unique_ptr<onnxruntime::InferenceSession>* p_session,
-    onnxruntime::IExecutionProvider** pp_provider)
-{
-    RETURN_HR_IF_NULL(E_POINTER, p_session);
-    RETURN_HR_IF_NULL(E_POINTER, pp_provider);
-    RETURN_HR_IF(E_POINTER, *pp_provider != nullptr);
+    onnxruntime::IExecutionProvider** pp_provider) {
+  RETURN_HR_IF_NULL(E_POINTER, p_session);
+  RETURN_HR_IF_NULL(E_POINTER, pp_provider);
+  RETURN_HR_IF(E_POINTER, *pp_provider != nullptr);
 
-    // Create the inference session
-    auto session = std::make_unique<onnxruntime::InferenceSession>(options);
+  // Create the inference session
+  auto session = std::make_unique<onnxruntime::InferenceSession>(options);
 
-    // Create the cpu execution provider
-    onnxruntime::CPUExecutionProviderInfo xpInfo;
+  // Create the cpu execution provider
+  onnxruntime::CPUExecutionProviderInfo xpInfo;
 #ifndef _WIN64
-    xpInfo.create_arena = false;
+  xpInfo.create_arena = false;
 #endif
-    auto cpu_provider = std::make_unique<onnxruntime::CPUExecutionProvider>(xpInfo);
+  auto cpu_provider = std::make_unique<onnxruntime::CPUExecutionProvider>(xpInfo);
 
-    // Cache the provider's raw pointer
-    *pp_provider = cpu_provider.get();
+  // Cache the provider's raw pointer
+  *pp_provider = cpu_provider.get();
 
-    // Register the cpu xp
-    WINML_THROW_IF_NOT_OK(session->RegisterExecutionProvider(std::move(cpu_provider)));
+  // Register the cpu xp
+  WINML_THROW_IF_NOT_OK(session->RegisterExecutionProvider(std::move(cpu_provider)));
 
-    // assign the session to the out parameter
-    *p_session = std::move(session);
+  // assign the session to the out parameter
+  *p_session = std::move(session);
 
-    return S_OK;
+  return S_OK;
 }
 
 HRESULT
 CpuOrtSessionBuilder::Initialize(
     onnxruntime::InferenceSession* p_session,
     onnxruntime::IExecutionProvider* /*p_provider*/
-)
-{
-    WINML_THROW_IF_NOT_OK(p_session->Initialize());
-    return S_OK;
+) {
+  WINML_THROW_IF_NOT_OK(p_session->Initialize());
+  return S_OK;
 }
