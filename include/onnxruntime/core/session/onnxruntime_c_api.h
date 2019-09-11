@@ -431,7 +431,7 @@ ORT_API_STATUS(OrtCreateCpuMemoryInfo, enum OrtAllocatorType type, enum OrtMemTy
 ORT_ALL_ARGS_NONNULL;
 
 /**
- * Test if two allocation info are equal
+ * Test if two memory info objects are equal
  * \Sets 'out' to 0 if equal, -1 if not equal
  */
 ORT_API_STATUS(OrtCompareMemoryInfo, _In_ const OrtMemoryInfo* info1, _In_ const OrtMemoryInfo* info2, _Out_ int* out)
