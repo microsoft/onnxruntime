@@ -79,8 +79,8 @@ ONNX_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction(LoopInferenceFunction));
 */
 
-ONNX_CPU_OPERATOR_KERNEL(Loop,
-                         1,
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
+                         1, 11,
                          KernelDefBuilder()
                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
