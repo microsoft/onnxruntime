@@ -46,6 +46,12 @@ namespace logging {
 class LoggingManager;
 }
 
+struct FreeDimensionOverride
+{
+  std::string dimension_denotation;
+  int64_t dimension_override;
+};
+
 /**
   * Configuration information for a session.
   */
@@ -89,6 +95,10 @@ struct SessionOptions {
 
   // How many threads in the session thread pool.
   int session_thread_pool_size = -1;
+
+  // For models with free input dimensions (most commonly batch size), specifies a set of values to override those
+  // free dimensions with, keyed by dimension denotation.
+  std::vector<FreeDimensionOverride> free_dimension_overrides;
 };
 
 /**
