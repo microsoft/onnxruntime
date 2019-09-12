@@ -26,7 +26,7 @@ class SparseTensor final {
                size_t nnz,
                void* values_data,
                void* indices_data,
-               const OrtMemoryInfo& allocator_info);
+               const OrtMemoryInfo& memory_info);
 
   SparseTensor(MLDataType elt_type,
                const TensorShape& shape,
