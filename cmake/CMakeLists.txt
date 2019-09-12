@@ -648,6 +648,7 @@ if (onnxruntime_USE_DML)
   endif()
 
   add_definitions(-DUSE_DML=1)
+  include(dml)
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers

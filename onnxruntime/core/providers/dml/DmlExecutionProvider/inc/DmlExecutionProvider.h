@@ -25,13 +25,10 @@ enum class AllocatorRoundingMode
 
 namespace Dml
 {
-    void CreateExecutionProviderObjects(
+    std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
-        std::unique_ptr<onnxruntime::IExecutionProvider>& provider,
-        std::unique_ptr<onnxruntime::IDataTransfer>& dataTransfer,
-        bool enableMetacommands = true
-    );
+        bool enableMetacommands = true);
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr);
     void FlushContext(onnxruntime::IExecutionProvider* provider);    

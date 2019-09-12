@@ -497,7 +497,7 @@ void OpTester::Run(ExpectResult expect_result,
         kBrainSliceExecutionProvider,
         kTensorrtExecutionProvider,
         kOpenVINOExecutionProvider,
-        // kDmlExecutionProvider
+        kDmlExecutionProvider
     };
 
     bool has_run = false;

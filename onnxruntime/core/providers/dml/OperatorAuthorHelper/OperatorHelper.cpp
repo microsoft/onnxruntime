@@ -898,7 +898,7 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         }
         else
         {
-            ML_CHECK_VALID_ARGUMENT(m_axis > 0 && m_axis < gsl::narrow_cast<int>(inputDimensions.size()));
+            ML_CHECK_VALID_ARGUMENT(m_axis > 0 && m_axis <= gsl::narrow_cast<int>(inputDimensions.size()));
             gsl::span<const DimensionType> outputDimensionsSpan(inputDimensions);
             DimensionType elementsToAxis = ComputeElementCountFromDimensions(outputDimensionsSpan.subspan(0, m_axis));
             DimensionType elementsFromAxis = ComputeElementCountFromDimensions(outputDimensionsSpan.subspan(m_axis, inputDimensions.size() - m_axis));

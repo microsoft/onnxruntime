@@ -401,6 +401,9 @@ if (onnxruntime_USE_DML)
   onnxruntime_add_include_to_target(onnxruntime_providers_dml onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
   add_dependencies(onnxruntime_providers_dml ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dml PRIVATE ${ONNXRUNTIME_ROOT} ${ONNXRUNTIME_ROOT}/../cmake/external/wil/include)
+  
+  target_link_libraries(onnxruntime_providers_dml DirectML.lib d3d12.lib dxgi.lib)
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll")
 
   # The DML EP requires C++17
   set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD 17)
@@ -411,17 +414,9 @@ if (onnxruntime_USE_DML)
   if (MSVC)
     target_compile_definitions(onnxruntime_providers_dml PRIVATE _SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING)
     target_compile_options(onnxruntime_providers_dml PRIVATE "/W3")
-
-    # TODO: precompiled headers
-    #foreach(src_file ${onnxruntime_providers_dml_cc_srcs})
-    #  set_source_files_properties(${src_file}
-    #    PROPERTIES
-    #    COMPILE_FLAGS "/Yuprecomp.h /FIprecomp.h")
-    #endforeach()
   endif()
   
-  # TODO
-  #install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dml  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dml  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 
   set_target_properties(onnxruntime_providers_dml PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_dml PROPERTIES FOLDER "ONNXRuntime")

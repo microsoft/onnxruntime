@@ -220,7 +220,7 @@ namespace Dml
             bool enableMetacommands = true
         );
         
-        std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer()
+        std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const final
         {
             return std::make_unique<DataTransfer>(m_impl.Get());
         }

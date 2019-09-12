@@ -15,7 +15,7 @@
 // Restore ERROR define
 #define ERROR 0
 
-#include "core/providers/dml/DmlExecutionProvider/src/External/DirectML/DirectML.h"
+#include <DirectML.h>
 
 #include "core/framework/customregistry.h"
 #include "core/framework/allocatormgr.h"

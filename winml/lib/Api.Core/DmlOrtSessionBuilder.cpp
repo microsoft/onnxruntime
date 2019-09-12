@@ -71,16 +71,6 @@ RegisterCustomRegistry(
   return S_OK;
 }
 
-// Lotus intentionally requires providers which do not use singleton devices for copying tensors
-// to derive from their session.
-class InferenceSessionRegisterDataTransferAccessor : public onnxruntime::InferenceSession {
- public:
-  onnxruntime::common::Status
-  RegisterDataTransfer(std::unique_ptr<onnxruntime::IDataTransfer> data_transfer) {
-    return const_cast<onnxruntime::DataTransferManager&>(session_state_.GetDataTransferMgr()).RegisterDataTransfer(std::move(data_transfer));
-  }
-};
-
 Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
   // Dynamically load DML to avoid WinML taking a static dependency on DirectML.dll
   wil::unique_hmodule dmlDll(LoadLibraryW(L"DirectML.dll"));
@@ -122,18 +112,14 @@ HRESULT DmlOrtSessionBuilder::CreateSession(
   auto p_d3d_device = device->GetD3DDevice();
   auto p_queue = device->GetDeviceQueue();
 
-  std::unique_ptr<onnxruntime::IExecutionProvider> gpu_provider;
-  std::unique_ptr<onnxruntime::IDataTransfer> data_transfer;
-
   Microsoft::WRL::ComPtr<IDMLDevice> dmlDevice = CreateDmlDevice(p_d3d_device);
 
-  Dml::CreateExecutionProviderObjects(dmlDevice.Get(), p_queue, gpu_provider, data_transfer);
+  std::unique_ptr<onnxruntime::IExecutionProvider> gpu_provider = Dml::CreateExecutionProvider(dmlDevice.Get(), p_queue);
   auto session = std::make_unique<onnxruntime::InferenceSession>(options);
 
   // Cache the provider's raw pointer
   *pp_provider = gpu_provider.get();
 
-  WINML_THROW_IF_NOT_OK(static_cast<InferenceSessionRegisterDataTransferAccessor*>(session.get())->RegisterDataTransfer(std::move(data_transfer)));
   WINML_THROW_IF_NOT_OK(session->RegisterExecutionProvider(std::move(gpu_provider)));
 
   // return the session

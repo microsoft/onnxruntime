@@ -1,6 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma warning(push)
+#pragma warning(disable : 4201) // nonstandard extension used: nameless struct/union
+#include <d3d12.h>
+#pragma warning(pop)
+
+#ifdef __cplusplus
+  #include <DirectML.h>
+#else
+  struct IDMLDevice;
+  typedef struct IDMLDevice IDMLDevice;
+#endif
+
+// Windows pollutes the macro space, causing a build break in constants.h.
+#undef OPTIONAL
+
 #include "onnxruntime_c_api.h"
 
 #ifdef __cplusplus
@@ -15,10 +30,6 @@ extern "C" {
 */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOptions* options, int device_id);
 
-struct IDMLDevice;
-typedef struct IDMLDevice IDMLDevice;
-struct ID3D12CommandQueue;
-typedef struct ID3D12CommandQueue ID3D12CommandQueue;
 /**
  * Creates a DirectML Execution Provider using the given DirectML device, and which executes work on the supplied D3D12
  * command queue. The DirectML device and D3D12 command queue must have the same parent ID3D12Device, or an error will

@@ -646,17 +646,12 @@ namespace Dml
         return m_cpuOutputAllocator;
     }
 
-    void CreateExecutionProviderObjects(
+    std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
-        std::unique_ptr<onnxruntime::IExecutionProvider>& ortProvider,
-        std::unique_ptr<onnxruntime::IDataTransfer>& dataTransfer,
-        bool enableMetacommands
-    )
+        bool enableMetacommands)
     {
-        auto provider = std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands);
-        dataTransfer = std::move(provider->GetDataTransfer());
-        ortProvider = std::move(provider);
+        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands);
     }
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr)
