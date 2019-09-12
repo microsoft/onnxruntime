@@ -21,9 +21,6 @@ class InferenceSession:
         self._path_or_bytes = path_or_bytes
         self._sess_options = sess_options
         self._load_model()
-        self._inputs_meta = self._sess.inputs_meta
-        self._outputs_meta = self._sess.outputs_meta
-        self._model_meta = self._sess.model_meta
 
     def _load_model(self, providers=[]):
         if self._sess_options:
@@ -43,6 +40,19 @@ class InferenceSession:
         else:
             raise TypeError("Unable to load from type '{0}'".format(type(self._path_or_bytes)))
 
+        self._inputs_meta = self._sess.inputs_meta
+        self._outputs_meta = self._sess.outputs_meta
+        self._model_meta = self._sess.model_meta
+
+    def _reset_session(self):
+        "release underlying session object."
+        # meta data references session internal structures
+        # so they must be set to None to decrement _sess reference count.
+        self._inputs_meta = None
+        self._outputs_meta = None
+        self._model_meta = None
+        self._sess = None
+
     def get_inputs(self):
         "Return the inputs metadata as a list of :class:`onnxruntime.NodeArg`."
         return self._inputs_meta
@@ -61,7 +71,7 @@ class InferenceSession:
 
     def set_providers(self, providers):
         "Register the input list of execution providers. The underlying session is re-created."
-        self._sess = None
+        self._reset_session()
         self._load_model(providers)
 
     def run(self, output_names, input_feed, run_options=None):
