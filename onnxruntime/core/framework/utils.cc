@@ -569,7 +569,7 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
       if (type) {
         if (type->IsTensorType()) {
           const auto& tensor = *context.Output<Tensor>(i);
-          const auto data_type = tensor.DataType();
+          //const auto data_type = tensor.DataType();
           const auto& shape = tensor.Shape();
 
           std::cout << " Shape: " << shape << "\n";
@@ -579,12 +579,6 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
           auto* provider = execution_providers.Get(tensor_location);
           if (!provider) {
             provider = cpu_execution_provider;
-          }
-
-          if (provider == cpu_execution_provider || tensor_location.mem_type == OrtMemTypeCPUOutput) {
-            DispatchOnTensorType(data_type, DumpTensor, tensor, shape);
-          } else {
-            std::cout << " is not on CPU. Provider=" << provider->Type() << "\n";
           }
         } else {
           std::cout << " is non-tensor type.\n";

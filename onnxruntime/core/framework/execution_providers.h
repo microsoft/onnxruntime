@@ -48,6 +48,7 @@ class ExecutionProviders {
     }
 
     exec_providers_.push_back(std::move(p_exec_provider));
+    exec_provider_ids_.push_back(provider_id);
 
     return Status::OK();
   }
@@ -95,8 +96,11 @@ class ExecutionProviders {
     return Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault)->Info();
   }
 
+  const std::vector<std::string>& GetIds() const { return exec_provider_ids_; }
+
  private:
   std::vector<std::unique_ptr<IExecutionProvider>> exec_providers_;
+  std::vector<std::string> exec_provider_ids_;
 
   // maps for fast lookup of an index into exec_providers_
   std::unordered_map<std::string, size_t> provider_idx_map_;
