@@ -110,7 +110,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_ml_microsoft_onnxruntime_SessionOptions_enableProfiling(JNIEnv* env, jobject obj /* this */) {
   ORT_JAVA_API_IMPL_BEGIN
   auto* session_options = getHandle<OrtSessionOptions>(env, obj);
-  ORT_THROW_ON_ERROR(OrtEnableProfiling(session_options, ""));
+  ORT_THROW_ON_ERROR(OrtEnableProfiling(session_options, L""));
   ORT_JAVA_API_IMPL_END
 }
 

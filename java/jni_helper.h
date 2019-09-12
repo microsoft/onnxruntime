@@ -31,10 +31,10 @@ inline std::string javaStringtoStdString(JNIEnv* env, jstring j_str) {
   return native_str;
 }
 
-inline std::string javaStringtoStdWString(JNIEnv* env, jstring j_str) {
-  const wchar_t* native_char_ptr = env->GetStringChars(j_str, nullptr);
+inline std::wstring javaStringtoStdWString(JNIEnv* env, jstring j_str) {
+  const wchar_t* native_char_ptr = reinterpret_cast<const wchar_t*>(env->GetStringChars(j_str, nullptr));
   std::wstring native_str(native_char_ptr);
-  env->ReleaseStringChars(j_str, native_char_ptr);
+  env->ReleaseStringChars(j_str, reinterpret_cast<const jchar*>(native_char_ptr));
   return native_str;
 }
 
