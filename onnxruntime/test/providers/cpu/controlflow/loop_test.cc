@@ -630,7 +630,7 @@ TEST(Loop, SubgraphInputShadowsOuterScopeValue) {
   }
 }
 
-TEST(Loop, Opset11) {
+TEST(Loop, Opset11WithNoVariadicInputsAndOutputs) {
   auto create_subgraph = []() {
     Model model("Loop opset 11 op body graph");
     auto& graph = model.MainGraph();
