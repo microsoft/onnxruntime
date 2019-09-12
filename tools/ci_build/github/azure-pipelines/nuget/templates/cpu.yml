@@ -23,20 +23,20 @@ jobs:
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
 
 
-- template: ../../templates/win-x86-ci.yml
-  parameters:
-    AgentPool : $(AgentPoolWin)
-    JobName: 'Windows_CI_Dev_x86'
-    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib  --build_csharp --enable_onnx_tests --x86'
-    DoDebugBuild: 'false'
-    DoNugetPack : 'true'
-    DoCompliance: 'false'
-    DoEsrp: ${{ parameters.DoEsrp }}
-    NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage
-     cd $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\
-     ren *.nupkg win-x86.zip
-     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
+# - template: ../../templates/win-x86-ci.yml
+#   parameters:
+#     AgentPool : $(AgentPoolWin)
+#     JobName: 'Windows_CI_Dev_x86'
+#     BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib  --build_csharp --enable_onnx_tests --x86'
+#     DoDebugBuild: 'false'
+#     DoNugetPack : 'true'
+#     DoCompliance: 'false'
+#     DoEsrp: ${{ parameters.DoEsrp }}
+#     NuPackScript: |
+#      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage
+#      cd $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\
+#      ren *.nupkg win-x86.zip
+#      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
 
 - template: ../../templates/linux-ci.yml
   parameters:
@@ -54,21 +54,21 @@ jobs:
      cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
      ls -al $(Build.ArtifactStagingDirectory)
 
-- template: ../../templates/linux-ci.yml
-  parameters:
-    AgentPool : $(AgentPoolLinux)
-    JobName: 'Linux_CI_Dev_x86'
-    BuildCommand : 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -a x86 -x "--x86"'
-    DoNugetPack : 'true'
-    ArtifactName: 'drop-linux-x86'
-    NuPackScript: |
-     set -e -x
-     mkdir $(Build.BinariesDirectory)/linux-x86
-     cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x86
-     cd $(Build.BinariesDirectory)
-     zip -r linux-x86.zip linux-x86
-     cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
-     ls -al $(Build.ArtifactStagingDirectory)
+# - template: ../../templates/linux-ci.yml
+#   parameters:
+#     AgentPool : $(AgentPoolLinux)
+#     JobName: 'Linux_CI_Dev_x86'
+#     BuildCommand : 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -a x86 -x "--x86"'
+#     DoNugetPack : 'true'
+#     ArtifactName: 'drop-linux-x86'
+#     NuPackScript: |
+#      set -e -x
+#      mkdir $(Build.BinariesDirectory)/linux-x86
+#      cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x86
+#      cd $(Build.BinariesDirectory)
+#      zip -r linux-x86.zip linux-x86
+#      cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
+#      ls -al $(Build.ArtifactStagingDirectory)
 
 - template: ../../templates/mac-ci.yml
   parameters:
