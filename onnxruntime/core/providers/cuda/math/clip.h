@@ -11,8 +11,14 @@ template <typename T>
 class Clip final : public CudaKernel {
  public:
   Clip(const OpKernelInfo& info) : CudaKernel{info} {
-    ORT_ENFORCE(info.GetAttr<T>("max", &max_).IsOK());
-    ORT_ENFORCE(info.GetAttr<T>("min", &min_).IsOK());
+    auto min_val = -std::numeric_limits<T>::infinity();
+    auto max_val = std::numeric_limits<T>::infinity();
+
+    info.GetAttrOrDefault("min", &min_, min_val);
+    info.GetAttrOrDefault("max", &max_, max_val);
+
+    // Make sure the range of interval is sensible 
+    ORT_ENFORCE(min_val <= max_val);
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;

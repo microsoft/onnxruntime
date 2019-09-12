@@ -10,7 +10,7 @@ namespace cuda {
 template <typename T>
 __global__ void _Clip(const T* input, T* output, T min, T max, size_t N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  output[id] = (input[id] < min ? min : input[id]) > max ? max : input[id];
+  output[id] = (input[id] < min) ? min : ((input[id] > max) ? max : input[id]);
 }
 
 template <typename T>
