@@ -246,7 +246,7 @@ namespace Microsoft.ML.OnnxRuntime
 
 #endregion
 
-#region Allocator/AllocatorInfo API
+#region Allocator/MemoryInfo API
 
         //TODO: consider exposing them publicly, when allocator API is exposed
         public enum AllocatorType
@@ -266,7 +266,7 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /* (OrtStatus*)*/ OrtCreateAllocatorInfo(
+        public static extern IntPtr /* (OrtStatus*)*/ OrtCreateMemoryInfo(
                                                             IntPtr /*(const char*) */name,
                                                             AllocatorType allocatorType,
                                                             int identifier,
@@ -274,9 +274,9 @@ namespace Microsoft.ML.OnnxRuntime
                                                             out IntPtr /*(OrtMemoryInfo*)*/ allocatorInfo    // memory ownership transfered to caller
                                                        );
 
-        //ORT_API_STATUS(OrtCreateCpuAllocatorInfo, enum OrtAllocatorType type, enum OrtMemType mem_type1, _Out_ OrtMemoryInfo** out)
+        //ORT_API_STATUS(OrtCreateCpuMemoryInfo, enum OrtAllocatorType type, enum OrtMemType mem_type1, _Out_ OrtMemoryInfo** out)
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /* (OrtStatus*)*/ OrtCreateCpuAllocatorInfo(
+        public static extern IntPtr /* (OrtStatus*)*/ OrtCreateCpuMemoryInfo(
                                                             AllocatorType allocatorType,
                                                             MemoryType memoryType,
                                                             out IntPtr /*(OrtMemoryInfo*)*/ allocatorInfo
@@ -299,7 +299,7 @@ namespace Microsoft.ML.OnnxRuntime
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/OrtAllocatorGetInfo(IntPtr /*(const OrtAllocator*)*/ ptr, out IntPtr /*(const struct OrtMemoryInfo**)*/info);
 
-#endregion Allocator/AllocatorInfo API
+#endregion Allocator/MemoryInfo API
 
 #region Tensor/OnnxValue API
 

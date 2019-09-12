@@ -45,8 +45,8 @@ void DefaultFree(void* p) {
 #endif
 }
 
-AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo& allocator_info) {
-  return session_state.GetExecutionProviders().GetAllocator(allocator_info);
+AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo& memory_info) {
+  return session_state.GetExecutionProviders().GetAllocator(memory_info);
 }
 
 bool ProviderIsCpuBased(const std::string& provider_type) {
