@@ -164,7 +164,8 @@ jobs:
     # So, all the copy/publish jobs are being run on hosted agent
     # TODO: install the desired azureps on our VMs or use later bugfixed version of AzureFileCopy   
     demands: azureps
-  condition: and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+  # condition: and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+  condition: ${{ parameters.DoEsrp }}
   dependsOn:
   - NuGet_Test_Win
   - NuGet_Test_Linux
@@ -186,16 +187,16 @@ jobs:
           $date = $(Get-Date -Format "yyyy-MM-dd")
           Write-Host "##vso[task.setvariable variable=CurrentDate]$date"
 
-  - task: AzureFileCopy@3
-    displayName: 'Copy Signed NuGet Package to Blob Store'
-    condition: ne(variables['IsReleaseBuild'], 'true') # rlease build has a different package naming scheme
-    inputs:
-      sourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
-      azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
-      destination: azureBlob
-      storage: ortpackages
-      containerName: ortpackages
-      blobPrefix: '$(CurrentDate)/'
+  # - task: AzureFileCopy@3
+  #   displayName: 'Copy Signed NuGet Package to Blob Store'
+  #   condition: ne(variables['IsReleaseBuild'], 'true') # rlease build has a different package naming scheme
+  #   inputs:
+  #     sourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
+  #     azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+  #     destination: azureBlob
+  #     storage: ortpackages
+  #     containerName: ortpackages
+  #     blobPrefix: '$(CurrentDate)/'
 
   - task: DotNetCoreCLI@2
     displayName: 'Copy Signed NuGet Package to Internal NuGet Feed'
