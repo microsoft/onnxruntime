@@ -77,11 +77,11 @@ common::Status IOBinding::BindOutput(const std::string& name, const OrtValue& ml
   auto rc = Contains(output_names_, name);
   if (rc.first) {
     outputs_[rc.second] = ml_value;
-  } else {
-    output_names_.push_back(name);
-    outputs_.push_back(ml_value);
+    return Status::OK();
   }
 
+  output_names_.push_back(name);
+  outputs_.push_back(ml_value);
   return Status::OK();
 }
 
