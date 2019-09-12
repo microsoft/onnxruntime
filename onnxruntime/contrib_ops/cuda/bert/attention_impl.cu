@@ -18,7 +18,6 @@ namespace cuda {
 /*
  The implementation of this file is based on qkvToContext plugin in TensorRT demo:
  https://github.com/NVIDIA/TensorRT/tree/release/5.1/demo/BERT/
- The code is distribued under Apache License Version 2.0.
 */
 
 template <typename IntType>
@@ -36,7 +35,8 @@ size_t scratchSize(size_t element_size, int batchsize, int num_heads, int sequen
 }
 
 size_t getAttentionWorkspaceSize(size_t element_size, int batchsize, int num_heads, int head_size, int sequence_length) {
-  return 2 * scratchSize(element_size, batchsize, num_heads, sequence_length) + 3 * batchsize * sequence_length * num_heads * head_size * element_size;
+  size_t qkv_size = 3 * batchsize * sequence_length * num_heads * head_size * element_size;
+  return qkv_size + 2 * scratchSize(element_size, batchsize, num_heads, sequence_length);
 }
 
 template <typename T, unsigned TPB>
@@ -163,24 +163,25 @@ int computeMaskedScaledSoftmax(cudaStream_t stream, const int ld, const int batc
 }
 
 template <typename T>
-cublasStatus_t inline cublasGemmStridedBatched(cublasHandle_t handle, cublasOperation_t transa,
-                                               cublasOperation_t transb, int m, int n, int k, const T alpha, const T* A, int lda, long long int strideA,
-                                               const T* B, int ldb, long long int strideB, const T beta, T* C, int ldc, long long int strideC, int batchCount);
+cublasStatus_t inline cublasGemmStridedBatched(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+                                               int m, int n, int k, const T alpha,
+                                               const T* A, int lda, long long int strideA, const T* B, int ldb, long long int strideB,
+                                               const T beta, T* C, int ldc, long long int strideC, int batchCount);
 
 template <>
-cublasStatus_t inline cublasGemmStridedBatched(cublasHandle_t handle, cublasOperation_t transa,
-                                               cublasOperation_t transb, int m, int n, int k, const float alpha, const float* A, int lda, long long int strideA,
-                                               const float* B, int ldb, long long int strideB, const float beta, float* C, int ldc, long long int strideC,
-                                               int batchCount) {
+cublasStatus_t inline cublasGemmStridedBatched(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+                                               int m, int n, int k, const float alpha,
+                                               const float* A, int lda, long long int strideA, const float* B, int ldb, long long int strideB,
+                                               const float beta, float* C, int ldc, long long int strideC, int batchCount) {
   return cublasSgemmStridedBatched(
       handle, transa, transb, m, n, k, &alpha, A, lda, strideA, B, ldb, strideB, &beta, C, ldc, strideC, batchCount);
 }
 
 template <>
-cublasStatus_t inline cublasGemmStridedBatched(cublasHandle_t handle, cublasOperation_t transa,
-                                               cublasOperation_t transb, int m, int n, int k, const half alpha, const half* A, int lda, long long int strideA,
-                                               const half* B, int ldb, long long int strideB, const half beta, half* C, int ldc, long long int strideC,
-                                               int batchCount) {
+cublasStatus_t inline cublasGemmStridedBatched(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+                                               int m, int n, int k, const half alpha,
+                                               const half* A, int lda, long long int strideA, const half* B, int ldb, long long int strideB,
+                                               const half beta, half* C, int ldc, long long int strideC, int batchCount) {
   return cublasHgemmStridedBatched(
       handle, transa, transb, m, n, k, &alpha, A, lda, strideA, B, ldb, strideB, &beta, C, ldc, strideC, batchCount);
 }
@@ -329,9 +330,14 @@ struct CublasConfigHelper {
 
 template <typename T>
 int qkvToCtx(cublasHandle_t& cublas, cudaStream_t stream,
-             const int batch_size, const int sequence_length, const int num_heads, const int head_size,
-             const T* input, T* output, T* scratch1, T* scratch2, T* scratch3,
+             const int batch_size, const int sequence_length, const int num_heads, const int head_size, const int element_size,
+             const T* input, T* output, T* workspace,
              const int* mask = nullptr) {
+  const size_t bytes = scratchSize(element_size, batch_size, num_heads, sequence_length);
+  T* scratch1 = workspace;
+  T* scratch2 = scratch1 + (bytes / element_size);
+  T* scratch3 = scratch2 + (bytes / element_size);
+
   // input should be BxSx3xNxH => scratch3: 3xBxNxSxH
   launchTransQkv(stream, sequence_length, batch_size, head_size, num_heads, input, scratch3);
 
@@ -353,7 +359,7 @@ int qkvToCtx(cublasHandle_t& cublas, cudaStream_t stream,
                                           q, head_size, size_per_batch, 0.f, scratch1, sequence_length, temp_matrix_size, batches));
 
   // apply softmax and store result P to scratch2: BxNxSxS
-  const float rsqrt_head_size = 1.f / sqrt(float(head_size));
+  const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(head_size));
   computeMaskedScaledSoftmax<T>(stream, sequence_length, batch_size, num_heads, rsqrt_head_size, mask, scratch1, scratch2);
 
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
@@ -376,29 +382,18 @@ void launchAttentionKernel(
     void* workspace,
     cublasHandle_t& cublas,
     const size_t element_size) {
-  const size_t bytes = scratchSize(element_size, batch_size, num_heads, sequence_length);
-
   // use default stream
   const cudaStream_t stream = nullptr;
 
   if (element_size == 2) {
-    half* scratch1 = reinterpret_cast<half*>(workspace);
-    half* scratch2 = scratch1 + (bytes / element_size);
-    half* scratch3 = scratch2 + (bytes / element_size);
-
     qkvToCtx(cublas, stream,
-             batch_size, sequence_length, num_heads, head_size,
-             reinterpret_cast<const half*>(input), reinterpret_cast<half*>(output), scratch1, scratch2, scratch3,
+             batch_size, sequence_length, num_heads, head_size, element_size,
+             reinterpret_cast<const half*>(input), reinterpret_cast<half*>(output), reinterpret_cast<half*>(workspace),
              mask);
-    return;
   } else {
-    float* scratch1 = reinterpret_cast<float*>(workspace);
-    float* scratch2 = scratch1 + (bytes / element_size);
-    float* scratch3 = scratch2 + (bytes / element_size);
-
     qkvToCtx(cublas, stream,
-             batch_size, sequence_length, num_heads, head_size,
-             reinterpret_cast<const float*>(input), reinterpret_cast<float*>(output), scratch1, scratch2, scratch3,
+             batch_size, sequence_length, num_heads, head_size, element_size,
+             reinterpret_cast<const float*>(input), reinterpret_cast<float*>(output), reinterpret_cast<float*>(workspace),
              mask);
   }
 }
