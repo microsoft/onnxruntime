@@ -143,9 +143,17 @@ TEST(HardmaxOperator, InvalidAxis) {
   RunTest(x_vals,
           expected_vals,
           dimensions,
-          /* invalid axis */ -1,
+          /* invalid axis */ -3,
           OpTester::ExpectResult::kExpectFailure,
-          "Invalid axis provided.");
+          "axis -3 is not in valid range [-2,1]");
+}
+
+TEST(HardmaxOperator, NegativeValidAxis) {
+  std::vector<float> x_vals = {-1.0f, 0.0f, 1.0f};
+  std::vector<float> expected_vals = {0.0f, 0.0f, 1.0f};
+  std::vector<int64_t> dimensions = {1, 3};
+
+  RunTest(x_vals, expected_vals, dimensions, -1);
 }
 
 }  // namespace test
