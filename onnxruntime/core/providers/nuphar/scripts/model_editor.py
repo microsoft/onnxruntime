@@ -271,11 +271,13 @@ def convert_lstm_to_scan(node, out_main_graph):
                                                             (c_subgraph, prev_c_subgraph)] +
                                                            ([(h_subgraph, np.zeros(shape=(), dtype=np.float32))] if node.output[0] else [])) # skip scan output if node.output[0] is empty
 
+                scan_attribs = {'body':scan_body,
+                                'scan_input_directions':[is_backward],
+                                'num_scan_inputs':1}
+                if node.output[0]:
+                    scan_attribs.update({'scan_output_directions':[is_backward]})
                 scan = nf.make_node('Scan', ([seq_len] if seq_len else []) + [init_h, init_c, X_proj],
-                                    {'body':scan_body,
-                                      'scan_input_directions':[is_backward],
-                                      'scan_output_directions':[is_backward],
-                                      'num_scan_inputs':1},
+                                    scan_attribs,
                                     output_names=[o.name for o in subgraph_outputs[(0 if seq_len else 1):]])
 
                 scan_h_outputs.append(subgraph_outputs[1])
@@ -433,11 +435,13 @@ def convert_gru_to_scan(node, out_main_graph):
                                                            [(Ht, prev_h_subgraph)] +
                                                            ([(Ht, np.zeros(shape=(), dtype=np.float32))] if node.output[0] else []))
 
+                scan_attribs = {'body':scan_body,
+                                'scan_input_directions':[is_backward],
+                                'num_scan_inputs':1}
+                if node.output[0]:
+                    scan_attribs.update({'scan_output_directions':[is_backward]})
                 scan = nf.make_node('Scan', ([seq_len] if seq_len else []) + [init_h, X_proj],
-                                    {'body':scan_body,
-                                      'scan_input_directions':[is_backward],
-                                      'scan_output_directions':[is_backward],
-                                      'num_scan_inputs':1},
+                                    scan_attribs,
                                     output_names=[o.name for o in subgraph_outputs[(0 if seq_len else 1):]])
 
                 scan_h_outputs.append(subgraph_outputs[1])
@@ -538,11 +542,13 @@ def convert_rnn_to_scan(node, out_main_graph):
                                                            [(Ht, prev_h_subgraph)] +
                                                            ([(Ht, np.zeros(shape=(), dtype=np.float32))] if node.output[0] else []))
 
+                scan_attribs = {'body':scan_body,
+                                'scan_input_directions':[is_backward],
+                                'num_scan_inputs':1}
+                if node.output[0]:
+                    scan_attribs.update({'scan_output_directions':[is_backward]})
                 scan = nf.make_node('Scan', ([seq_len] if seq_len else []) + [init_h, X_proj],
-                                    {'body':scan_body,
-                                      'scan_input_directions':[is_backward],
-                                      'scan_output_directions':[is_backward],
-                                      'num_scan_inputs':1},
+                                    scan_attribs,
                                     output_names=[o.name for o in subgraph_outputs[(0 if seq_len else 1):]])
 
                 scan_h_outputs.append(subgraph_outputs[1])
@@ -617,7 +623,7 @@ if __name__ == '__main__':
     print('input model: ' + args.input)
     print('output model ' + args.output)
     if args.mode == 'to_scan':
-        print('Convert LSTM to Scan...')
+        print('Convert LSTM/GRU/RNN to Scan...')
         convert_to_scan_model(args.input, args.output)
     elif args.mode == 'remove_initializers_from_inputs':
         print('Remove all initializers from input for model with IR version >= 4...')
@@ -625,5 +631,5 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError('Unknown mode')
     print('Running symbolic shape inference on output model')
-    SymbolicShapeInference.infer_shapes(args.output, args.output)
+    SymbolicShapeInference.infer_shapes(args.output, args.output, auto_merge=True)
     print('Done!')
