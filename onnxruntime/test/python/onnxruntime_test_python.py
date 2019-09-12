@@ -47,7 +47,7 @@ class TestInferenceSession(unittest.TestCase):
         sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"))
         self.assertTrue('CPUExecutionProvider' in sess.get_providers())
 
-    def testGetProviders(self):
+    def testSetProviders(self):
         if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
           sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"))
           # confirm that CUDA Provider is in list of registered providers.
