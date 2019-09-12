@@ -13,18 +13,19 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
+template <typename T>
 class Attention final : public CudaKernel {
  public:
   Attention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  int numHeads_;        // number of heads (N)
-  int headSize_;        // size per head (H)
-  int batchSize_;       // batch size (B)
-  int sequenceLength_;  // sequence length (S)
+  int num_heads_;        // number of heads (N)
+  int head_size_;        // size per head (H)
+  int batch_size_;       // batch size (B)
+  int sequence_length_;  // sequence length (S)
 
-  IAllocatorUniquePtr<void> workSpace_;  // gpu scratch buffer
+  IAllocatorUniquePtr<void> word_space_;  // gpu scratch buffer
 };
 
 }  // namespace cuda

@@ -240,11 +240,11 @@ is applied to the tensor elementwise.
       .SetDoc("Multi-Head Self Attention")
       .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
       .Attr("head_size", "Size per attention head", AttributeProto::INT)
-      .Attr("batch_size", "batch size", AttributeProto::INT)
-      .Attr("sequence_length", "max sequence length", AttributeProto::INT)
-      .Input(0, "input", "3D input tensor with Shape (B, S, N * H), B is batch size, S is max sequence length, N is number of heads, H is size per head", "T")
+      .Attr("batch_size", "Batch size", AttributeProto::INT)
+      .Attr("sequence_length", "Sequence length", AttributeProto::INT)
+      .Input(0, "input", "3D input tensor with shape (B, S, 3 * N * H), B is batch size, S is max sequence length, N is number of heads, H is size per head", "T")
       .Input(1, "mask", "attention mask with shape (B, S)", "Tm")
-      .Output(0, "output", "3D output tensor with same shape as input", "T")
+      .Output(0, "output", "3D output tensor with shape (B, S, N * H)", "T")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("Tm", {"tensor(int32)"},
                       "Constrain mask to integer types")
@@ -252,11 +252,20 @@ is applied to the tensor elementwise.
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         if (!hasInputShape(ctx, 0))
           return;
+
         auto& input_shape = getInputShape(ctx, 0);
+        auto& dims = input_shape.dim();
+        if (dims.size() != 3) {
+          fail_shape_inference("Input shall be 3 dimensions");
+        }
 
         ONNX_NAMESPACE::TensorShapeProto output_shape;
-        output_shape.add_dim();
-        output_shape.mutable_dim(0)->set_dim_value(input_shape.dim(0).dim_value() / 3);
+        for (auto& dim : dims) {
+          *output_shape.add_dim() = dim;
+        }
+        if (input_shape.dim(2).has_dim_value()) {
+          output_shape.mutable_dim(2)->set_dim_value(input_shape.dim(2).dim_value() / 3);
+        }
         updateOutputShape(ctx, 0, output_shape);
       });
 }
