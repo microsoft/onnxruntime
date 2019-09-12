@@ -191,6 +191,8 @@ namespace OperatorHelper
         static const int sc_sinceVer_FusedMatMul = 1;
         static const int sc_sinceVer_FusedAdd = 1;
         static const int sc_sinceVer_FusedSum = 1;
+        static const int sc_sinceVer_QuantizeLinear = 1;
+        static const int sc_sinceVer_DequantizeLinear = 1;
     } // namespace MsftOperatorSet1
 
 } // namespace OperatorHelper

@@ -323,6 +323,8 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(      7,  Affine,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      10, QuantizeLinear,                     typeNameListQuantize,           supportedTypeListQuantize,          DmGraphSupport::Supported)},
     {REG_INFO(      10, DequantizeLinear,                   typeNameListQuantize,           supportedTypeListQuantize,          DmGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  QuantizeLinear,                     typeNameListQuantize,           supportedTypeListQuantize,          DmGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  DequantizeLinear,                   typeNameListQuantize,           supportedTypeListQuantize,          DmGraphSupport::Supported)},
     {REG_INFO(      9,  Sign,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      9,  IsNan,                              typeNameListIsNan,              supportedTypeListIsNan,             DmGraphSupport::Supported)},
     {REG_INFO(      9,  Sinh,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
