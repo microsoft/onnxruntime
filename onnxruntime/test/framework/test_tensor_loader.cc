@@ -28,9 +28,9 @@ TEST(CApiTest, load_simple_float_tensor_not_enough_space) {
   std::vector<float> output(1);
   OrtValue value;
   auto deleter = std::make_unique<onnxruntime::OrtCallback>();
-  OrtMemoryInfo cpu_allocator_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
   auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p,
-                                        MemBuffer(output.data(), output.size() * sizeof(float), cpu_allocator_info), value, *deleter);
+                                        MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value, *deleter);
   // check the result
   ASSERT_FALSE(st.IsOK());
   if (deleter->f) {
@@ -53,9 +53,9 @@ TEST(CApiTest, load_simple_float_tensor) {
   std::vector<float> output(3);
   OrtValue value;
   auto deleter = std::make_unique<onnxruntime::OrtCallback>();
-  OrtMemoryInfo cpu_allocator_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
   auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p,
-                                        MemBuffer(output.data(), output.size() * sizeof(float), cpu_allocator_info), value, *deleter);
+                                        MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value, *deleter);
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
   float* real_output;
   auto ort_st = OrtGetTensorMutableData(&value, (void**)&real_output);
@@ -112,9 +112,9 @@ static void run_external_data_test() {
   }
   OrtValue value;
   auto deleter = std::make_unique<onnxruntime::OrtCallback>();
-  OrtMemoryInfo cpu_allocator_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
   auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p,
-                                        MemBuffer(output.data(), output.size() * sizeof(float), cpu_allocator_info), value, *deleter);
+                                        MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value, *deleter);
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
   float* real_output;
   auto ort_st = OrtGetTensorMutableData(&value, (void**)&real_output);
@@ -165,9 +165,9 @@ TEST(CApiTest, load_huge_tensor_with_external_data) {
   std::vector<int> output(total_ele_count);
   OrtValue value;
   auto deleter = std::make_unique<onnxruntime::OrtCallback>();
-  OrtMemoryInfo cpu_allocator_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
   auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p,
-                                        MemBuffer(output.data(), output.size() * sizeof(int), cpu_allocator_info), value, *deleter);
+                                        MemBuffer(output.data(), output.size() * sizeof(int), cpu_memory_info), value, *deleter);
 
   // check the result
   ASSERT_TRUE(st.IsOK()) << "Error from TensorProtoToMLValue: " << st.ErrorMessage();
