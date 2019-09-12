@@ -583,27 +583,30 @@ namespace Dml
                 m_bindingTable->BindOutputs(gsl::narrow_cast<uint32_t>(outputBindingDescs.size()), outputBindingDescs.data());
             }
 
-            // Allocate temporary data which will automatically be freed when the GPU work 
-            // which is scheduled up to the point that this method returns has completed.
-            ComPtr<IUnknown> tempAlloc;
-            uint64_t tempAllocId = 0;
-            THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(execBindingProps.TemporaryResourceSize, tempAlloc.GetAddressOf(), &tempAllocId));
-
-            ComPtr<IUnknown> tempResourceUnk;
-            m_winmlProvider->GetABIDataInterface(false, tempAlloc.Get(), &tempResourceUnk);
-                
-            // Bind the temporary resource.
-            ComPtr<ID3D12Resource> tempResource;
-            THROW_IF_FAILED(tempResourceUnk->QueryInterface(tempResource.GetAddressOf()));
-            DML_BUFFER_BINDING tempBufferBinding = {tempResource.Get(), 0, execBindingProps.TemporaryResourceSize};
-            DML_BINDING_DESC tempBindingDesc = { DML_BINDING_TYPE_BUFFER, &tempBufferBinding };
-
-            if (!tempAllocId || m_tempBindingAllocId != tempAllocId)
+            if (execBindingProps.TemporaryResourceSize > 0)
             {
-                m_bindingTable->BindTemporaryResource(&tempBindingDesc);
+                // Allocate temporary data which will automatically be freed when the GPU work 
+                // which is scheduled up to the point that this method returns has completed.
+                ComPtr<IUnknown> tempAlloc;
+                uint64_t tempAllocId = 0;
+                THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(execBindingProps.TemporaryResourceSize, tempAlloc.GetAddressOf(), &tempAllocId));
+
+                ComPtr<IUnknown> tempResourceUnk;
+                m_winmlProvider->GetABIDataInterface(false, tempAlloc.Get(), &tempResourceUnk);
+                    
+                // Bind the temporary resource.
+                ComPtr<ID3D12Resource> tempResource;
+                THROW_IF_FAILED(tempResourceUnk->QueryInterface(tempResource.GetAddressOf()));
+                DML_BUFFER_BINDING tempBufferBinding = {tempResource.Get(), 0, execBindingProps.TemporaryResourceSize};
+                DML_BINDING_DESC tempBindingDesc = { DML_BINDING_TYPE_BUFFER, &tempBufferBinding };
+
+                if (!tempAllocId || m_tempBindingAllocId != tempAllocId)
+                {
+                    m_bindingTable->BindTemporaryResource(&tempBindingDesc);
+                }
+            
+                m_tempBindingAllocId = tempAllocId;
             }
-           
-            m_tempBindingAllocId = tempAllocId;
 
             // Execute the command list and if it succeeds, update the fence value at which this command may be
             // re-used.
