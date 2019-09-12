@@ -122,7 +122,7 @@ class FuseExecutionProvider : public IExecutionProvider {
 class InferenceSessionGetGraphWrapper : public InferenceSession {
  public:
   explicit InferenceSessionGetGraphWrapper(const SessionOptions& session_options,
-                                          logging::LoggingManager* logging_manager) : InferenceSession(session_options, logging_manager) {
+                                           logging::LoggingManager* logging_manager) : InferenceSession(session_options, logging_manager) {
   }
 
   const Graph& GetGraph() {
@@ -224,15 +224,26 @@ void RunModel(InferenceSession& session_object,
 void RunModelWithBindingMatMul(InferenceSession& session_object,
                                const RunOptions& run_options,
                                ProviderType bind_provider_type,
-                               bool is_preallocate_output_vec = false,
-                               ProviderType allocation_provider = kCpuExecutionProvider) {
+                               bool is_preallocate_output_vec,
+                               ProviderType allocation_provider,
+                               bool check_replace_feed_value) {
   unique_ptr<IOBinding> io_binding;
   Status st = session_object.NewIOBinding(&io_binding);
   ASSERT_TRUE(st.IsOK());
   auto input_allocator = io_binding->GetCPUAllocator(0, bind_provider_type);
 
+  if (check_replace_feed_value) {
+    // bind a value to X with input that will produce invalid output.
+    std::vector<float> values_mul_x_tmp = {12.f, 11.f, 10.f, 9.f, 8.f, 7.f, 6.f, 5.f, 4.f, 3.f, 2.f, 1.f};
+    OrtValue input_tmp;
+    std::vector<int64_t> dims_mul_x_A_tmp = {3, 4};
+    CreateMLValue<float>(input_allocator, dims_mul_x_A_tmp, values_mul_x_tmp, &input_tmp);
+    io_binding->BindInput("A", input_tmp);
+  }
+
   // prepare inputs
   std::vector<float> values_mul_x = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f};
+
   /*
       0 1 2 3     0 1 2
       4 5 6 7     3 4 5
@@ -252,6 +263,9 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
 
   io_binding->BindInput("A", input_ml_value_A);
   io_binding->BindInput("B", input_ml_value_B);
+
+  // check input_ml_value_A is first entry, and replaced any existing value (if check_replace_feed_value is true)
+  ASSERT_TRUE(io_binding->GetInputs()[0].Get<Tensor>().DataRaw() == input_ml_value_A.Get<Tensor>().DataRaw());
 
   // prepare outputs
   std::vector<int64_t> expected_output_dims = {3, 3};
@@ -364,7 +378,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   InferenceSessionGetGraphWrapper session_object{so, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object.Load(test_model).IsOK());
   ASSERT_TRUE(session_object.Initialize().IsOK());
- 
+
   // Assert that model has been transformed and identity Node is removed.
   const auto& graph = session_object.GetGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -383,7 +397,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   InferenceSession session_object_opt{so_opt, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object_opt.Load(so.optimized_model_filepath).IsOK());
   ASSERT_TRUE(session_object_opt.Initialize().IsOK());
-  
+
   // Assert that re-feed of optimized model with default transform level results
   // in same runtime model as abs-id-max.onnx with TransformLevel-1.
   std::ifstream model_fs_session1(so.optimized_model_filepath, ios::in | ios::binary);
@@ -775,7 +789,15 @@ static void TestBindHelper(const std::string& log_str,
                             run_options,
                             bind_provider_type,
                             preallocate_output,
-                            allocation_provider);
+                            allocation_provider,
+                            /* check_replace_feed_value */ false);
+
+  RunModelWithBindingMatMul(session_object,
+                            run_options,
+                            bind_provider_type,
+                            preallocate_output,
+                            allocation_provider,
+                            /* check_replace_feed_value */ true);
 }
 
 TEST(InferenceSessionTests, TestBindCpu) {
