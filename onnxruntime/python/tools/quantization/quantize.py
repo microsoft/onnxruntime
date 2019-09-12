@@ -647,35 +647,31 @@ class ONNXQuantizer:
 
     def _get_bias_add_nodes(self, nodes, node, last_output, quantized_bias_name):
         '''
-        Given a node, this function handles bias add by adding a reshape node on bias and a add node
+        Given a node, this function handles bias add by adding a "reshape" node on bias and an "add" node
 
             parameter nodes: new nodes would be appended into nodes
-            parameter node: current node(Conv)
-            parameter last_output: output of previous node(input to bias add)
-            return: (nodes)
+            parameter node: current node (Conv)
+            parameter last_output: output of previous node (input to bias add)
+            return: the name of output
         '''
         # Add an Add operation for bias
-        #Add reshape for correct broadcase
-        #bias_input = node.input[2] #bias_index == 2
-        #initializer = _find_by_name(quantized_bias_name, self.model.graph.initializer)
-
-        #if initializer is not None:
-
+        # Add reshape for correct broadcase
         reshape_input = [quantized_bias_name]
+
         # Add tensors for the shape to be reshaped to
         _add_initializer_if_not_present(self.model.graph, "reshape_shape",
-        [1,-1,1,1], [4], onnx_proto.TensorProto.INT64)
+                                        [1,-1,1,1], [4], onnx_proto.TensorProto.INT64)
         reshape_input.append('reshape_shape')
         reshape_op_output = node.output[0] + "_reshape"
         reshape_node = onnx.helper.make_node("Reshape", reshape_input, [reshape_op_output],
-            quantized_bias_name+"reshape")
+                                            quantized_bias_name+"reshape")
         nodes.append(reshape_node)
 
         bias_add_input = [last_output]
         bias_add_input.append(reshape_op_output)
         add_node_output = node.output[0] + "_bias_add"
         add_node = onnx.helper.make_node("Add", bias_add_input, [add_node_output],
-            quantized_bias_name + "bias_add")
+                                        quantized_bias_name + "bias_add")
         nodes.append(add_node)
         return add_node_output
 
