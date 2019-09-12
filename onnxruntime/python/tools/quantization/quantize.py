@@ -14,7 +14,7 @@ from onnx import onnx_pb as onnx_proto
 __producer__ = "onnx.quantize"
 __version__ = "0.1.0"
 onnx_domain = "ai.onnx"
-onnx_op_set_version = 10
+onnx_op_set_version = 11
 
 type_to_name = {
     1: "FLOAT",
