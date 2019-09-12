@@ -233,12 +233,10 @@ static Status HandleFunctionCalls(Graph& graph, const std::unordered_map<std::st
   return Status::OK();
 }
 
-// Create FP16 weights based on FP32 weights for mixed precision.
-// And update the inputs of consumer with FP16 weights.
-static NodeArg* CreateFP16WeightsAndUpdateComsumers(Graph& graph,
+// Create FP16 NodeArg and update the consumers of arg with new FP16 NodeArg.
+static NodeArg* CreateFP16NodeArgAndUpdateComsumers(Graph& graph,
                                                     const std::unordered_map<std::string, std::vector<int>>& fp32_node_args,
-                                                    const NodeArg* arg,
-                                                    const ONNX_NAMESPACE::TensorProto* tensor_proto) {
+                                                    const NodeArg* arg) {
   ORT_ENFORCE(arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
               "data type is not float");
   // Create FP16 Node Arg
@@ -260,11 +258,6 @@ static NodeArg* CreateFP16WeightsAndUpdateComsumers(Graph& graph,
     kv.first->MutableInputDefs()[kv.second] = &new_arg;
   }
 
-  // copy weights and put them into the graph
-  Initializer initializer(tensor_proto);
-  ONNX_NAMESPACE::TensorProto weight_tensor_proto = initializer.ToFP16(arg_name);
-  graph.AddInitializedTensor(weight_tensor_proto);
-
   return &new_arg;
 }
 
@@ -284,19 +277,31 @@ Status TransformGraphForMixedPrecision(Graph& graph,
 
   // Convert initializers including trainable weights from FP32 to FP16
   const auto& initialized_tensors = graph.GetAllInitializedTensors();
+  std::vector<std::pair<std::string, const ONNX_NAMESPACE::TensorProto*> > fp16_initializers;
   for (const auto& kv : initialized_tensors) {
     NodeArg* input = graph.GetNodeArg(kv.first);
     if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       if (use_fp16_initializer) {
-        NodeArg* fp16_weight_arg = CreateFP16WeightsAndUpdateComsumers(graph, stage1_fp32_node_args, input, kv.second);
-        const auto it = weights_to_train.find(kv.first);
-        if (it != weights_to_train.cend()) {
-          fp16_weights_map[kv.first] = fp16_weight_arg;
+        NodeArg* fp16_weight_arg = CreateFP16NodeArgAndUpdateComsumers(graph, stage1_fp32_node_args, input);
+        if (fp16_weight_arg != nullptr) {
+          fp16_initializers.emplace_back(fp16_weight_arg->Name(), kv.second);
+          const auto it = weights_to_train.find(kv.first);
+          if (it != weights_to_train.cend()) {
+            fp16_weights_map[kv.first] = fp16_weight_arg;
+          }
         }
       } else {
         ORT_RETURN_IF_ERROR(CastNodeArg(graph, stage1_fp32_node_args, input, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
       }
     }
+  }
+
+  // Add new FP16 initializers to the graph
+  for (const auto& kv : fp16_initializers) {
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = kv.second;
+    Initializer initializer(tensor_proto);
+    ONNX_NAMESPACE::TensorProto weight_tensor_proto = initializer.ToFP16(kv.first);
+    graph.AddInitializedTensor(weight_tensor_proto);
   }
 
   // Handle implicit data type casting nodes such as Cast, ConstantOfShape
