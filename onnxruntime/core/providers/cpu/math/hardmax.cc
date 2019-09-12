@@ -4,6 +4,7 @@
 #include "core/providers/cpu/math/hardmax.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/math.h"
+#include "core/providers/common.h"
 
 namespace onnxruntime {
 
@@ -13,8 +14,9 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
   const TensorShape& input_shape = X->Shape();
   const auto* Xdata = X->template Data<float>();
 
-  size_t tmpN = input_shape.SizeToDimension(axis_);
-  size_t tmpD = input_shape.SizeFromDimension(axis_);
+  const auto axis_corrected = HandleNegativeAxis(axis_, static_cast<int64_t>(input_shape.NumDimensions()));
+  size_t tmpN = input_shape.SizeToDimension(axis_corrected);
+  size_t tmpD = input_shape.SizeFromDimension(axis_corrected);
 
   // Math::RowwiseMax expects int N and D.
   if (tmpN * tmpD > INT32_MAX || tmpN > INT32_MAX || tmpD > INT32_MAX) {
