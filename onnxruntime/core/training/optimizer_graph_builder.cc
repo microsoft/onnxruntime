@@ -130,6 +130,80 @@ Status AddDirectWeightUpdate(
   return Status::OK();
 }
 
+// given a base name, return a name suitable for a graph NodeArg
+using NodeArgNameGeneratorFn = std::function<std::string(const std::string&)>;
+
+Status AddFiniteGradientChecks(
+    const NodeArgNameGeneratorFn& nodearg_name_generator,
+    const std::vector<ArgDef>& gradient_argdefs,
+    GraphAugmenter::GraphDefs& graph_defs,
+    ArgDef& all_gradients_finite_argdef) {
+  /**
+   * gradient 1 ---> IsFinite ---> All ---|
+   * gradient 2 ---> IsFinite ---> All ---|---> Concat ---> All ---> (all gradients finite)
+   * ...                                  |
+   * gradient N ---> IsFinite ---> All ---|
+   */
+  const TypeProto* const reduce_all_output_type =
+      graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+
+  std::vector<NodeDef> nodedefs{};
+  nodedefs.reserve(2 * gradient_argdefs.size() + 2);
+
+  // for each gradient:
+  // - get elementwise finite check results with IsFinite
+  // - reduce with All
+  std::vector<ArgDef> is_finite_argdefs{};
+  for (const auto& gradient_argdef : gradient_argdefs) {
+    // output has the same shape and boolean element type
+    TypeProto* const elementwise_is_finite_type = graph_defs.CopyTypeProto(gradient_argdef);
+    elementwise_is_finite_type->mutable_tensor_type()->set_elem_type(
+        ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+    ArgDef elementwise_is_finite_argdef{
+        nodearg_name_generator(MakeString(gradient_argdef.name, "_elementwise_is_finite")),
+        elementwise_is_finite_type};
+
+    nodedefs.emplace_back(
+        NodeDef{"IsFinite", {gradient_argdef}, {elementwise_is_finite_argdef}});
+
+    ArgDef is_finite_argdef{
+        nodearg_name_generator(MakeString(gradient_argdef.name, "_is_finite")),
+        reduce_all_output_type};
+
+    nodedefs.emplace_back(
+        NodeDef{"All", {elementwise_is_finite_argdef}, {is_finite_argdef}});
+
+    is_finite_argdefs.emplace_back(is_finite_argdef);
+  }
+
+  // Concat finite check results from individual gradients
+  ArgDef concatenated_all_gradients_finite_argdef{
+      nodearg_name_generator("concatenated_all_gradients_finite"),
+      graph_defs.CreateTypeProto(
+          {static_cast<int64_t>(is_finite_argdefs.size())},
+          ONNX_NAMESPACE::TensorProto_DataType_BOOL)};
+  nodedefs.emplace_back(
+      NodeDef{
+          "Concat",
+          is_finite_argdefs,
+          {concatenated_all_gradients_finite_argdef},
+          std::vector<AttributeProto>{MakeAttribute("axis", static_cast<int64_t>(0))}});
+
+  // reduce with All
+  all_gradients_finite_argdef = ArgDef{
+      nodearg_name_generator("all_gradients_finite"),
+      reduce_all_output_type};
+  nodedefs.emplace_back(
+      NodeDef{
+          "All",
+          {concatenated_all_gradients_finite_argdef},
+          {all_gradients_finite_argdef}});
+
+  graph_defs.AddNodeDefs(nodedefs);
+
+  return Status::OK();
+}
+
 using GraphInitFn = std::function<Status(Graph&)>;
 
 Status MakeGraphProto(GraphInitFn graph_init_fn, GraphProto& graph_proto) {
@@ -144,8 +218,8 @@ Status MakeGraphProto(GraphInitFn graph_init_fn, GraphProto& graph_proto) {
 }
 
 Status AddConditionalWeightUpdate(
+    const NodeArgNameGeneratorFn& nodearg_name_generator,
     const ArgDef& condition_argdef,
-    const std::string& conditional_output_name,
     const OptimizerBuilderRegistry& opt_builder_registry,
     const std::vector<ArgDef>& weight_argdefs,
     const std::vector<ArgDef>& gradient_argdefs,
@@ -156,20 +230,18 @@ Status AddConditionalWeightUpdate(
 
   GraphProto then_subgraph_proto, else_subgraph_proto;
 
-  const TypeProto* const group_output_type_proto =
-      graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_BOOL);
   // just use this same output ArgDef for parent graph and subgraphs
-  const ArgDef conditional_output_argdef{conditional_output_name, group_output_type_proto};
+  const ArgDef conditional_output_argdef{
+      nodearg_name_generator("conditional_output"),
+      graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_BOOL)};
 
   // condition == true
   ORT_RETURN_IF_ERROR(MakeGraphProto(
-      [&condition_argdef, &opt_builder_registry, &weight_argdefs, &gradient_argdefs,
+      [&opt_builder_registry, &weight_argdefs, &gradient_argdefs,
        &opt_configs, &graph_defs, &conditional_output_argdef](Graph& then_subgraph) {
         /* subgraph structure:
          * the idea is to minimize any copying incurred by subgraph outputs
-         * condition is included as an input to group to ensure there is at least one
          *
-         * (condition) ---|
          * optimizer 1 ---|
          * optimizer 2 ---|---> group ---> (subgraph output)
          * ...            |
@@ -178,9 +250,6 @@ Status AddConditionalWeightUpdate(
 
         GraphAugmenter::GraphDefs then_subgraph_defs{};
         std::vector<ArgDef> group_input_argdefs{};
-
-        group_input_argdefs.emplace_back(condition_argdef);
-        then_subgraph.AddOuterScopeNodeArg(condition_argdef.name);
 
         const size_t num_weights = weight_argdefs.size();
         for (size_t i = 0; i < num_weights; ++i) {
@@ -218,19 +287,19 @@ Status AddConditionalWeightUpdate(
 
   // condition == false
   ORT_RETURN_IF_ERROR(MakeGraphProto(
-      [&condition_argdef, &conditional_output_argdef](Graph& else_subgraph) {
+      [&conditional_output_argdef](Graph& else_subgraph) {
         /* subgraph structure:
+         * output needs to match that of then_branch subgraph
          *
-         * (condition) ---> group ---> (subgraph output)
+         * (local initializer) ---> (subgraph output)
          */
 
         GraphAugmenter::GraphDefs else_subgraph_defs{};
 
-        else_subgraph_defs.AddNodeDefs({NodeDef{"Group", {condition_argdef}, {conditional_output_argdef}}});
+        TensorProto local_initializer = CreateTensorProto(conditional_output_argdef.name, true, {});
+        else_subgraph.AddInitializedTensor(local_initializer);
 
         else_subgraph_defs.AddGraphOutputs({conditional_output_argdef.name});
-
-        else_subgraph.AddOuterScopeNodeArg(condition_argdef.name);
 
         ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(else_subgraph, else_subgraph_defs));
 
@@ -274,6 +343,17 @@ OptimizerGraphBuilder::OptimizerGraphBuilder(
 }
 
 Status OptimizerGraphBuilder::Build(Graph& graph) {
+  if (weight_names_.empty()) {
+    // nothing to do
+    return Status::OK();
+  }
+
+  // from here, we assume there is at least one weight/gradient to process
+
+  auto nodearg_name_generator = [&graph](const std::string& base_name) {
+    return graph.GenerateNodeArgName(base_name);
+  };
+
   GraphAugmenter::GraphDefs graph_defs{};
   std::vector<ArgDef> weight_argdefs{}, gradient_argdefs{};
 
@@ -296,16 +376,14 @@ Status OptimizerGraphBuilder::Build(Graph& graph) {
 
   // add weight update
   if (opt_graph_config_.use_mixed_precision) {
-    // TODO check overflow
+    ArgDef all_grads_finite_argdef{};
+    ORT_RETURN_IF_ERROR(AddFiniteGradientChecks(
+        nodearg_name_generator, gradient_argdefs, graph_defs, all_grads_finite_argdef));
 
-    // TODO hardcoded condition for now...
-    ArgDef all_grads_finite_argdef{graph.GenerateNodeArgName("all_grads_finite")};
-    graph_defs.AddInitializers({CreateTensorProto(all_grads_finite_argdef.name, true)});
-
-    // TODO loss scale (maybe in opt_configs_?)
+    // TODO unscale gradients by loss scaling factor (maybe pass to optimizers via opt_configs_?)
 
     ORT_RETURN_IF_ERROR(AddConditionalWeightUpdate(
-        all_grads_finite_argdef, graph.GenerateNodeArgName("opt_conditional_out"),
+        nodearg_name_generator, all_grads_finite_argdef,
         opt_builder_registry_, weight_argdefs, gradient_argdefs, opt_configs_,
         graph_defs));
   } else {

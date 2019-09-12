@@ -32,6 +32,7 @@ namespace {
 const std::vector<std::string> k_weight_names{"weight_1", "weight_2"};
 constexpr const char* const k_optimizer_op_name = "SGDOptimizer";
 constexpr const char* const k_all_reduce_op_name = "HorovodAllReduce";
+constexpr const char* const k_is_finite_op_name = "IsFinite";
 
 // sets up a base graph with weight and gradient NodeArgs for each weight name
 void SetUpBaseGraph(Graph& graph) {
@@ -103,7 +104,7 @@ int GetOpCount(const std::map<std::string, int>& op_counts, const std::string& o
 }
 }  // namespace
 
-TEST_F(OptimizerGraphBuilderTest, ConditionalOptimizer) {
+TEST_F(OptimizerGraphBuilderTest, OptimizersWithMixedPrecision) {
   OptimizerGraphConfig opt_graph_config{};
   opt_graph_config.use_mixed_precision = true;
 
@@ -112,10 +113,13 @@ TEST_F(OptimizerGraphBuilderTest, ConditionalOptimizer) {
 
   ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph_));
 
-  // verify that optimizers are in the If subgraph
+  // verify that optimizers are in the If then_branch subgraph
+  // verify that nothing is in the If else_branch subgraph
+  // verify that finite gradient checks are in the main graph
   auto op_counts = CountOpsInGraph(graph_, false);
   ASSERT_EQ(GetOpCount(op_counts, "If"), 1);
   ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), 0);
+  ASSERT_EQ(GetOpCount(op_counts, k_is_finite_op_name), k_weight_names.size());
 
   auto if_node_it = std::find_if(
       graph_.Nodes().begin(), graph_.Nodes().end(),
@@ -129,9 +133,16 @@ TEST_F(OptimizerGraphBuilderTest, ConditionalOptimizer) {
 
   auto then_subgraph_op_counts = CountOpsInGraph(*then_subgraph);
   ASSERT_EQ(GetOpCount(then_subgraph_op_counts, k_optimizer_op_name), k_weight_names.size());
+  ASSERT_EQ(GetOpCount(then_subgraph_op_counts, k_is_finite_op_name), 0);
+
+  Graph* else_subgraph = if_node_it->GetMutableGraphAttribute("else_branch");
+  ASSERT_NE(else_subgraph, nullptr);
+
+  auto else_subgraph_op_counts = CountOpsInGraph(*else_subgraph);
+  ASSERT_TRUE(else_subgraph_op_counts.empty());
 }
 
-TEST_F(OptimizerGraphBuilderTest, UnconditionalOptimizer) {
+TEST_F(OptimizerGraphBuilderTest, OptimizersWithoutMixedPrecision) {
   OptimizerGraphConfig opt_graph_config{};
   opt_graph_config.use_mixed_precision = false;
 
@@ -141,9 +152,11 @@ TEST_F(OptimizerGraphBuilderTest, UnconditionalOptimizer) {
   ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph_));
 
   // verify that optimizers are in the main graph
+  // verify that no finite gradient checks are added
   auto op_counts = CountOpsInGraph(graph_, false);
   ASSERT_EQ(GetOpCount(op_counts, "If"), 0);
   ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), k_weight_names.size());
+  ASSERT_EQ(GetOpCount(op_counts, k_is_finite_op_name), 0);
 }
 
 #ifdef USE_HOROVOD

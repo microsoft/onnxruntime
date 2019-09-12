@@ -38,11 +38,11 @@ inline void SetTypedDataToTensor<int64_t>(int64_t val, TensorProto& tensor, int6
   }
 }
 
-// TODO clean up if not needed - temporarily used in OptimizerGraphBuilder to set the mixed precision conditional optimizer condition to a hard-coded value
 template <>
 inline void SetTypedDataToTensor<bool>(bool val, TensorProto& tensor, int64_t count) {
-  std::vector<char> value_bytes(count, val ? '\1' : '\0');
-  tensor.set_raw_data(value_bytes.data(), count);
+  for (int64_t i = 0; i < count; i++) {
+    tensor.add_int32_data(val);
+  }
 }
 
 template <class T>
