@@ -233,10 +233,10 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   auto input_allocator = io_binding->GetCPUAllocator(0, bind_provider_type);
 
   if (check_replace_feed_value) {
-    // bind a value to X with input that will produce invalid output.
+    // bind a value to A with input that will produce invalid output.
     std::vector<float> values_mul_x_tmp = {12.f, 11.f, 10.f, 9.f, 8.f, 7.f, 6.f, 5.f, 4.f, 3.f, 2.f, 1.f};
-    OrtValue input_tmp;
     std::vector<int64_t> dims_mul_x_A_tmp = {3, 4};
+    OrtValue input_tmp;
     CreateMLValue<float>(input_allocator, dims_mul_x_A_tmp, values_mul_x_tmp, &input_tmp);
     io_binding->BindInput("A", input_tmp);
   }
