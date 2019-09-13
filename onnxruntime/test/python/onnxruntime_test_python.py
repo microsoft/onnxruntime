@@ -57,6 +57,12 @@ class TestInferenceSession(unittest.TestCase):
           # confirm only CPU Provider is registered now.
           self.assertEqual(['CPUExecutionProvider'], sess.get_providers())
 
+    def testInvalidSetProviders(self):
+        with self.assertRaises(ValueError) as context:
+          sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"))
+          sess.set_providers(['InvalidProvider'])
+        self.assertTrue('[\'InvalidProvider\'] does not contain a subset of available providers' in str(context.exception))
+
     def testRunModel(self):
         sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"))
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)

@@ -266,7 +266,7 @@ const std::vector<std::string>& GetAvailableProviders() {
   return available_providers;
 }
 
-void RegisterExecutionProviders(InferenceSession* sess, std::vector<std::string> provider_types) {
+void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types) {
   for (const std::string& type : provider_types) {
     if (type == kCpuExecutionProvider) {
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CPU(sess->GetSessionOptions().enable_cpu_mem_arena));
@@ -307,7 +307,7 @@ void RegisterExecutionProviders(InferenceSession* sess, std::vector<std::string>
   }
 }
 
-void InitializeSession(InferenceSession* sess, std::vector<std::string> provider_types) {
+void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types) {
   if (provider_types.empty()) {
     // use default registration priority.
     RegisterExecutionProviders(sess, GetAllProviders());
@@ -667,7 +667,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def(py::init<SessionObjectInitializer, SessionObjectInitializer>())
       .def(py::init<SessionOptions, SessionObjectInitializer>())
       .def(
-          "load_model", [](InferenceSession* sess, const std::string& path, std::vector<std::string> provider_types) {
+          "load_model", [](InferenceSession* sess, const std::string& path, std::vector<std::string>& provider_types) {
             auto status = sess->Load(path);
             if (!status.IsOK()) {
               throw std::runtime_error(status.ToString().c_str());
@@ -676,7 +676,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           },
           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
       .def(
-          "read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel, std::vector<std::string> provider_types) {
+          "read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel, std::vector<std::string>& provider_types) {
             std::istringstream buffer(serializedModel);
             auto status = sess->Load(buffer);
             if (!status.IsOK()) {

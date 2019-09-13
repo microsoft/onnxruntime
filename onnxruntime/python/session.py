@@ -43,6 +43,7 @@ class InferenceSession:
         self._inputs_meta = self._sess.inputs_meta
         self._outputs_meta = self._sess.outputs_meta
         self._model_meta = self._sess.model_meta
+        self._providers = self._sess.get_providers()
 
     def _reset_session(self):
         "release underlying session object."
@@ -51,6 +52,7 @@ class InferenceSession:
         self._inputs_meta = None
         self._outputs_meta = None
         self._model_meta = None
+        self._providers = None
         self._sess = None
 
     def get_inputs(self):
@@ -67,10 +69,12 @@ class InferenceSession:
 
     def get_providers(self):
         "Return list of registered execution providers."
-        return self._sess.get_providers()
+        return self._providers
 
     def set_providers(self, providers):
         "Register the input list of execution providers. The underlying session is re-created."
+        if not set(providers).issubset(C.get_available_providers()):
+          raise ValueError("{} does not contain a subset of available providers {}".format(providers, C.get_available_providers()))
         self._reset_session()
         self._load_model(providers)
 
