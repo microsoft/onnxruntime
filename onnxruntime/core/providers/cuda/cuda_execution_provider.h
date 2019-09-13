@@ -13,6 +13,8 @@
 
 namespace onnxruntime {
 
+const int CPU_ALLOCATOR_DEVICE_ID = 0;
+
 // Information needed to construct CUDA execution providers.
 struct CUDAExecutionProviderInfo {
   int device_id{0};
@@ -24,7 +26,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info);
   virtual ~CUDAExecutionProvider();
 
-  AllocatorPtr GetAllocator(int id, OrtMemType mem_type = OrtMemTypeDefault) const override;
+  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
   Status Sync() const override;
 
@@ -52,7 +54,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     if (count_or_bytes == 0)
       return nullptr;
 
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeDefault), count_or_bytes);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(device_id_, OrtMemTypeDefault), count_or_bytes);
   }
 
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
