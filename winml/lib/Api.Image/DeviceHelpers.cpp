@@ -93,7 +93,7 @@ static HRESULT GetD3D12Device(const winrt::Windows::AI::MachineLearning::Learnin
     RETURN_IF_FAILED(D3D12CreateDevice(spAdapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(outDevice)));
   }
 #ifdef ENABLE_DXCORE
-  if (support.hasDxgi == false) {
+  if (support.has_dxgi == false) {
     winrt::com_ptr<IDXCoreAdapterFactory> spFactory;
     RETURN_IF_FAILED(DXCoreCreateAdapterFactory(IID_PPV_ARGS(spFactory.put())));
 
@@ -114,7 +114,7 @@ static HRESULT IsFloat16Blocked(ID3D12Device& device, bool* isBlocked) {
   AdapterEnumerationSupport support;
   RETURN_IF_FAILED(GetAdapterEnumerationSupport(&support));
 #ifdef ENABLE_DXCORE
-  if (support.hasDxcore) {
+  if (support.has_dxcore) {
     RETURN_IF_FAILED(GetDXCoreAdapterMetadata(device, isMcdmAdapter, vendorId, majorVersion, minorVersion));
     *isBlocked = CheckAdapterFP16Blocked(isMcdmAdapter, vendorId, majorVersion, minorVersion);
     return S_OK;
@@ -190,7 +190,7 @@ HRESULT GetAdapterEnumerationSupport(AdapterEnumerationSupport* support) {
     }
 #ifdef ENABLE_DXCORE
     if (SUCCEEDED(RunDelayLoadedApi(pDxCoreTestFunc, IID_PPV_ARGS(dxcoreFactory.put())))) {
-      adapterEnumerationSupport.hasDxcore = true;
+      adapterEnumerationSupport.has_dxcore = true;
     }
 #endif
 
