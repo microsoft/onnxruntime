@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/bfc_arena.h"
+#include <iostream >
 
 namespace onnxruntime {
 BFCArena::BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
@@ -53,29 +54,44 @@ BFCArena::Chunk* BFCArena::ChunkFromHandle(ChunkHandle h) {
   return &(chunks_[h]);
 }
 
-bool BFCArena::Extend(size_t rounded_bytes) {
+bool BFCArena::Extend(size_t requested_bytes) {
   size_t available_bytes = memory_limit_ - stats_.total_allocated_bytes;
   // Rounds available_bytes down to the nearest multiple of kMinAllocationSize.
   available_bytes = (available_bytes / kMinAllocationSize) * kMinAllocationSize;
 
   // Do we have enough space to handle the client's request?
   // If not, fail immediately.
-  if (rounded_bytes > available_bytes) {
+  if (requested_bytes > available_bytes) {
     return false;
   }
 
   // If curr_region_allocation_bytes_ is not enough to satisfy the
-  // allocation, keep multiplying by a power of two until that is
-  // sufficient.
+  // allocation, keep adding 50% until large enough
   bool increased_allocation = false;
-  while (rounded_bytes > curr_region_allocation_bytes_) {
-    curr_region_allocation_bytes_ *= 2;
+  while (requested_bytes > curr_region_allocation_bytes_) {
+    curr_region_allocation_bytes_ = RoundedBytes(curr_region_allocation_bytes_ +
+                                                 (curr_region_allocation_bytes_ >> 1));  // geometric growth. add 50%
+
     increased_allocation = true;
   }
 
   // Try allocating.
   size_t bytes = std::min(curr_region_allocation_bytes_, available_bytes);
-  void* mem_addr = device_allocator_->Alloc(bytes);
+  auto safe_alloc = [this](size_t alloc_bytes) {
+    void* new_mem = nullptr;
+
+    try {
+      new_mem = device_allocator_->Alloc(alloc_bytes);
+    } catch (const std::bad_alloc&) {
+      // handle 'new' throwing std::bad_alloc if it can't allocate the memory
+      std::cout << "Failed to allocate " << alloc_bytes << " bytes" << std::endl;
+    }
+
+    return new_mem;
+  };
+
+  void* mem_addr = safe_alloc(bytes);
+
   if (mem_addr == nullptr && !started_backpedal_) {
     // Only backpedal once.
     started_backpedal_ = true;
@@ -85,8 +101,10 @@ bool BFCArena::Extend(size_t rounded_bytes) {
     // Try allocating less memory.
     while (mem_addr == nullptr) {
       bytes = RoundedBytes(static_cast<size_t>(bytes * kBackpedalFactor));
-      if (bytes < rounded_bytes) break;
-      mem_addr = device_allocator_->Alloc(bytes);
+      if (bytes < requested_bytes)
+        break;
+
+      mem_addr = safe_alloc(bytes);
     }
   }
 
@@ -94,12 +112,13 @@ bool BFCArena::Extend(size_t rounded_bytes) {
     return false;
   }
 
-  if (!increased_allocation) {
-    // Increase the region size of the next required allocation.
-    curr_region_allocation_bytes_ *= 2;
-  }
+  // This doesn't make sense. We already updated curr_region_allocation_bytes_ when doing the allocation
+  //if (!increased_allocation) {
+  //  // Increase the region size of the next required allocation.
+  //  curr_region_allocation_bytes_ *= 2;
+  //}
 
-  LOGS_DEFAULT(INFO) << "Extending allocation by " << bytes
+  LOGS_DEFAULT(INFO) << "Extended allocation by " << bytes
                      << " bytes.";
 
   stats_.total_allocated_bytes += bytes;
