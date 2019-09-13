@@ -43,9 +43,17 @@ Status Softmax<float>::Compute(OpKernelContext* ctx) const {
   return status;
 }
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Softmax,
     1,
+    10,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Softmax<float>);
+
+// Opset 11 starts to support Neg Axis.
+ONNX_CPU_OPERATOR_KERNEL(
+    Softmax,
+    11,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Softmax<float>);
 
