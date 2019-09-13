@@ -26,8 +26,6 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 | OpenVino (MYRIAD) | mcr.microsoft.com/azureml/onnxruntime | TBA                                              | TBA              |
 | Server            | mcr.microsoft.com/onnxruntime/server  | :v0.4.0, :v0.5.0                                 | :latest          |
 
-**Preparation step:** download `scripts` to your local folder before running the `docker build` command for any of the options below. 
-
 ## Build from Source
 #### Linux 16.04, CPU, Python Bindings
 
@@ -103,7 +101,7 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 ## OpenVINO (Public Preview)
 #### Linux 16.04, Python Bindings
 
-1. Build the onnxruntime image for all the accelerators supported as below 
+1. Build the onnxruntime image for all the accelerators supported as below
 
    Retrieve your docker image in one of the following ways.
 
@@ -112,7 +110,7 @@ Use `docker pull` with any of the images and tags below to pull an image and try
        docker build -t onnxruntime --build-arg DEVICE=$DEVICE .
        ```
     - Pull the official image from DockerHub.
-   
+
 
 2. DEVICE: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
 
@@ -124,12 +122,12 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 	| <code>MYRIAD_FP16</code> | Intel<sup></sup> Movidius<sup>TM</sup> USB sticks |
 	| <code>VAD-M_FP16</code> | Intel<sup></sup> Vision Accelerator Design based on Movidius<sup>TM</sup> MyriadX VPUs |
 
-## CPU 
+## CPU
 
 1. Retrieve your docker image in one of the following ways.
 
-   - Build the docker image from the DockerFile in this repository. 
-      
+   - Build the docker image from the DockerFile in this repository.
+
      ```
      docker build -t onnxruntime-cpu --build-arg DEVICE=CPU_FP32 --network host .
      ```
@@ -144,10 +142,10 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 
 ## GPU
 
-1. Retrieve your docker image in one of the following ways. 
+1. Retrieve your docker image in one of the following ways.
    - Build the docker image from the DockerFile in this repository.
-     ``` 
-      docker build -t onnxruntime-gpu --build-arg DEVICE=GPU_FP32 --network host . 
+     ```
+      docker build -t onnxruntime-gpu --build-arg DEVICE=GPU_FP32 --network host .
      ```
    - Pull the official image from DockerHub.
      ```
@@ -158,12 +156,12 @@ Use `docker pull` with any of the images and tags below to pull an image and try
     ```
     docker run -it --device /dev/dri:/dev/dri onnxruntime-gpu:latest
     ```
-## Myriad VPU Accelerator 
+## Myriad VPU Accelerator
 
-1. Retrieve your docker image in one of the following ways. 
+1. Retrieve your docker image in one of the following ways.
    - Build the docker image from the DockerFile in this repository.
-     ``` 
-      docker build -t onnxruntime-myriad --build-arg DEVICE=MYRIAD_FP16 --network host . 
+     ```
+      docker build -t onnxruntime-myriad --build-arg DEVICE=MYRIAD_FP16 --network host .
      ```
    - Pull the official image from DockerHub.
      ```
@@ -176,12 +174,12 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 
     ```
 =======
-## VAD-M Accelerator Version 
+## VAD-M Accelerator Version
 
-1. Retrieve your docker image in one of the following ways. 
+1. Retrieve your docker image in one of the following ways.
    - Build the docker image from the DockerFile in this repository.
-     ``` 
-      docker build -t onnxruntime-vadr --build-arg DEVICE=VAD-M_FP16 --network host . 
+     ```
+      docker build -t onnxruntime-vadr --build-arg DEVICE=VAD-M_FP16 --network host .
      ```
    - Pull the official image from DockerHub.
      ```
