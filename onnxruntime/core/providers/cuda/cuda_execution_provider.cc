@@ -67,21 +67,24 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
   DeviceAllocatorRegistrationInfo default_memory_info(
-      {OrtMemTypeDefault, [](int id) { return std::make_unique<CUDAAllocator>(id, CUDA); }, std::numeric_limits<size_t>::max()});
+      {OrtMemTypeDefault, [](int device_id) { return std::make_unique<CUDAAllocator>(device_id, CUDA); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(default_memory_info, device_id_));
 
   DeviceAllocatorRegistrationInfo pinned_memory_info(
-      {OrtMemTypeCPUOutput, [](int) { return std::make_unique<CUDAPinnedAllocator>(0, CUDA_PINNED); }, std::numeric_limits<size_t>::max()});
-  InsertAllocator(CreateAllocator(pinned_memory_info, device_id_));
+      {OrtMemTypeCPUOutput, [](int device_id) { return std::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED); }, std::numeric_limits<size_t>::max()});
+  InsertAllocator(CreateAllocator(pinned_memory_info, CPU_ALLOCATOR_DEVICE_ID));
 
   // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
   // This will be refactored/removed when allocator and execution provider are decoupled.
-  DeviceAllocatorRegistrationInfo cpu_memory_info({OrtMemTypeCPUInput, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUInput)); }, std::numeric_limits<size_t>::max()});
-  InsertAllocator(CreateAllocator(cpu_memory_info));
+  DeviceAllocatorRegistrationInfo cpu_memory_info({
+      OrtMemTypeCPUInput,
+      [](int device_id) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id, OrtMemTypeCPUInput)); },
+      std::numeric_limits<size_t>::max()});
+  InsertAllocator(CreateAllocator(cpu_memory_info, CPU_ALLOCATOR_DEVICE_ID));
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
-  auto cpu_alloc = GetAllocator(0, OrtMemTypeCPU);
+  auto cpu_alloc = GetAllocator(CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
   std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
   auto it = deferred_release_cpu_ptr_.begin();
   while (it != deferred_release_cpu_ptr_.end()) {
