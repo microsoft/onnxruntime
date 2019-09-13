@@ -21,6 +21,9 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 
+const OrtApi* g_ort = OrtGetApi(ORT_API_VERSION);
+const OrtApi* Ort::g_api = OrtGetApi(ORT_API_VERSION);
+
 using namespace onnxruntime;
 
 namespace {

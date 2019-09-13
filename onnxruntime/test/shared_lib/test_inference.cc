@@ -13,6 +13,8 @@
 #include "test_fixture.h"
 #include "onnx_protobuf.h"
 
+extern const OrtApi* g_ort;
+
 struct Input {
   const char* name;
   std::vector<int64_t> dims;
@@ -86,7 +88,7 @@ void TestInference(Ort::Env& env, T model_uri,
     std::cout << "Running simple inference with default provider" << std::endl;
   }
   if (custom_op_domain_ptr) {
-    ORT_THROW_ON_ERROR(OrtAddCustomOpDomain(session_options, custom_op_domain_ptr));
+    session_options.Add(custom_op_domain_ptr);
   }
 
   Ort::Session session(env, model_uri, session_options);
@@ -258,7 +260,7 @@ TEST_F(CApiTest, create_tensor) {
 
   Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
-  ORT_THROW_ON_ERROR(OrtFillStringTensor(tensor, s, expected_len));
+  ORT_THROW_ON_ERROR(g_ort->FillStringTensor(tensor, s, expected_len));
   auto shape_info = tensor.GetTensorTypeAndShapeInfo();
 
   int64_t len = shape_info.GetElementCount();

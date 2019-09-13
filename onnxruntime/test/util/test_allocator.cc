@@ -3,16 +3,18 @@
 
 #include "test_allocator.h"
 
+extern const OrtApi* g_ort;
+
 MockedOrtAllocator::MockedOrtAllocator() {
   OrtAllocator::version = ORT_API_VERSION;
   OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<MockedOrtAllocator*>(this_)->Alloc(size); };
   OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<MockedOrtAllocator*>(this_)->Free(p); };
   OrtAllocator::Info = [](const OrtAllocator* this_) { return static_cast<const MockedOrtAllocator*>(this_)->Info(); };
-  ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpuAllocatorInfo));
+  ORT_THROW_ON_ERROR(g_ort->CreateCpuAllocatorInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpuAllocatorInfo));
 }
 
 MockedOrtAllocator::~MockedOrtAllocator() {
-  OrtReleaseAllocatorInfo(cpuAllocatorInfo);
+  g_ort->ReleaseAllocatorInfo(cpuAllocatorInfo);
 }
 
 void* MockedOrtAllocator::Alloc(size_t size) {

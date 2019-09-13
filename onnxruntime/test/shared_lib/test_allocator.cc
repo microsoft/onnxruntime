@@ -6,17 +6,20 @@
 #include "core/providers/cpu/cpu_provider_factory.h"
 #include "test_fixture.h"
 
+const OrtApi* g_ort = OrtGetApi(ORT_API_VERSION);
+const OrtApi* Ort::g_api = OrtGetApi(ORT_API_VERSION);
+
 using namespace onnxruntime;
 
 TEST_F(CApiTest, allocation_info) {
   OrtAllocatorInfo *info1, *info2;
-  ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &info1));
-  ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &info2));
+  ORT_THROW_ON_ERROR(g_ort->CreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &info1));
+  ORT_THROW_ON_ERROR(g_ort->CreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &info2));
   int result;
-  ORT_THROW_ON_ERROR(OrtCompareAllocatorInfo(info1, info2, &result));
+  ORT_THROW_ON_ERROR(g_ort->CompareAllocatorInfo(info1, info2, &result));
   ASSERT_EQ(0, result);
-  OrtReleaseAllocatorInfo(info1);
-  OrtReleaseAllocatorInfo(info2);
+  g_ort->ReleaseAllocatorInfo(info1);
+  g_ort->ReleaseAllocatorInfo(info2);
 }
 
 TEST_F(CApiTest, DefaultAllocator) {
@@ -28,6 +31,6 @@ TEST_F(CApiTest, DefaultAllocator) {
   const OrtAllocatorInfo* info1 = default_allocator.GetInfo();
   const OrtAllocatorInfo* info2 = static_cast<OrtAllocator*>(default_allocator)->Info(default_allocator);
   int result;
-  ORT_THROW_ON_ERROR(OrtCompareAllocatorInfo(info1, info2, &result));
+  ORT_THROW_ON_ERROR(g_ort->CompareAllocatorInfo(info1, info2, &result));
   ASSERT_EQ(0, result);
 }
