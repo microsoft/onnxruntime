@@ -56,7 +56,7 @@ Status FreeDimensionOverrideTransformer::ApplyImpl(Graph& graph, bool& modified,
 
         int64_t dimension_override = it->second;
 
-        // If this dimension actually has a value but it doesn't match the override value, throw an
+        // If this dimension actually has a value but it doesn't match the override value, return an
         // error.
         if (dimension.has_dim_value() && dimension.dim_value() != dimension_override) {
           LOGF_DEFAULT(ERROR,
