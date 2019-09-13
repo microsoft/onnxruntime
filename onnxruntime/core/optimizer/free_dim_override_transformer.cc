@@ -28,7 +28,7 @@ static std::string ToLower(std::string s) {
   }
 }
 
-Status FreeDimensionOverrideTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status FreeDimensionOverrideTransformer::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/) const {
   for (const onnxruntime::NodeArg* graph_input : graph.GetInputs()) {
     // Get the current input's type and shape
     const auto* input_type = graph_input->TypeAsProto();
@@ -63,8 +63,8 @@ Status FreeDimensionOverrideTransformer::ApplyImpl(Graph& graph, bool& modified,
             "The model has input '%s' with a fixed dimension denotation '%s', but the size of this dimension %lld does not equal the specified override of %lld.",
             graph_input->Name().c_str(),
             dimension.denotation().c_str(),
-            dimension.dim_value(),
-            dimension_override);
+            (long long int)dimension.dim_value(),
+            (long long int)dimension_override);
 
           return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid free dimension override.");
         }
