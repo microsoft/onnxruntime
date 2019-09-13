@@ -4,12 +4,27 @@ from onnx import TensorProto
 import numpy as np
 from onnx import numpy_helper
 
-input_model_name = 'bert_L-24_H-1024_A-16.onnx'
+old_dim = 3072
+old_vac_size = 32000
+new_dim = 4096
+new_vac_size = 30528
+initializer_range = 0.02
+expand_output_name = '220'
+
+input_model_name = 'bert_L-12_H-768_A-12.onnx'
 output_model_name = input_model_name[:-5] + '_optimized.onnx'
 # Also need to set following line differently for differnt verison of bert
 # expand_out.name = '412'
 
 model = onnx.load(input_model_name)
+
+import scipy.stats as stats
+
+def truncated_normal(stddev, size):
+    mu = 0
+    lower, upper = -2 * stddev, 2 * stddev,
+    X = stats.truncnorm( (lower - mu) / stddev, (upper - mu) / stddev, loc = mu, scale = stddev)
+    return X.rvs(size).tolist()
 
 def add_name(model):
     i = 0
@@ -186,7 +201,7 @@ def fix_dim(model):
     dim2 = output1.type.tensor_type.shape.dim.add()
     dim2.dim_param = 'max_seq_len_in_batch'
     dim3 = output1.type.tensor_type.shape.dim.add()
-    dim3.dim_value = 32000
+    dim3.dim_value = new_vac_size
     output2 = model.graph.output[1]
     del output2.type.tensor_type.shape.dim[:]
     dim1 = output2.type.tensor_type.shape.dim.add()
@@ -273,8 +288,35 @@ def process_dropout(model):
 
 def add_expand_shape(model):
     expand_out = model.graph.value_info.add()
-    expand_out.name = '412'
+    expand_out.name = expand_output_name
     expand_out.type.CopyFrom(model.graph.input[0].type)
+
+def fix_dimension(model, old, new, stddev):
+    w_s = []
+    index = 0
+    for w in model.graph.initializer:
+        for dim in w.dims:
+            if dim == old and len(w.dims) <= 2:
+                w_s.append(index)
+        index += 1
+    #create new weights
+    for w_idx in w_s:
+        w = model.graph.initializer[w_idx]
+        # new shape
+        new_shape = [ new if _ == old else _ for _ in w.dims]
+        size = 1
+        for i in new_shape:
+            size *= i
+        #todo truncated_normal
+        new_w_np = np.asarray(truncated_normal(stddev, size), dtype=np.float32).reshape(new_shape)
+        new_w = numpy_helper.from_array(new_w_np, w.name)
+        model.graph.initializer.extend([new_w])
+
+    w_s.sort(reverse=True)
+    #remove the out of date weights
+    for w_i in w_s:
+        del model.graph.initializer[w_i]
+
 
 #add name to nodes
 add_name(model)
@@ -292,6 +334,8 @@ process_dropout(model)
 add_expand_shape(model)
 #set opset version to 10
 model.opset_import[0].version = 10
+fix_dimension(model, old_dim, new_dim, initializer_range)
+fix_dimension(model, old_vac_size, new_vac_size, initializer_range)
 
 f = open(output_model_name, "wb")
 f.write(model.SerializeToString())
