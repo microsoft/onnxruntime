@@ -225,21 +225,19 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
                                const RunOptions& run_options,
                                ProviderType bind_provider_type,
                                bool is_preallocate_output_vec,
-                               ProviderType allocation_provider,
-                               bool check_replace_feed_value) {
+                               ProviderType allocation_provider) {
   unique_ptr<IOBinding> io_binding;
   Status st = session_object.NewIOBinding(&io_binding);
   ASSERT_TRUE(st.IsOK());
   auto input_allocator = io_binding->GetCPUAllocator(0, bind_provider_type);
 
-  if (check_replace_feed_value) {
-    // bind a value to A with input that will produce invalid output.
-    std::vector<float> values_mul_x_tmp = {12.f, 11.f, 10.f, 9.f, 8.f, 7.f, 6.f, 5.f, 4.f, 3.f, 2.f, 1.f};
-    std::vector<int64_t> dims_mul_x_A_tmp = {3, 4};
-    OrtValue input_tmp;
-    CreateMLValue<float>(input_allocator, dims_mul_x_A_tmp, values_mul_x_tmp, &input_tmp);
-    io_binding->BindInput("A", input_tmp);
-  }
+  // bind a value to A with input that will produce invalid output in order to test replacement of a feed
+  std::vector<float> values_mul_x_tmp = {12.f, 11.f, 10.f, 9.f, 8.f, 7.f, 6.f, 5.f, 4.f, 3.f, 2.f, 1.f};
+  std::vector<int64_t> dims_mul_x_A_tmp = {3, 4};
+  OrtValue input_tmp;
+  CreateMLValue<float>(input_allocator, dims_mul_x_A_tmp, values_mul_x_tmp, &input_tmp);
+  io_binding->BindInput("A", input_tmp);
+  const void* tmp_A = io_binding->GetInputs()[0].Get<Tensor>().DataRaw();  // location of data post binding
 
   // prepare inputs
   std::vector<float> values_mul_x = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f};
@@ -264,7 +262,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   io_binding->BindInput("A", input_ml_value_A);
   io_binding->BindInput("B", input_ml_value_B);
 
-  // check input_ml_value_A is first entry, and replaced any existing value (if check_replace_feed_value is true)
+  // check location of 'A' post-binding has changed to validate that the previous value was replaced
   ASSERT_TRUE(io_binding->GetInputs()[0].Get<Tensor>().DataRaw() == input_ml_value_A.Get<Tensor>().DataRaw());
 
   // prepare outputs
@@ -283,6 +281,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
       ORT_THROW("Unsupported provider");
     }
   }
+
   io_binding->BindOutput("Y", output_ml_value);
   ASSERT_TRUE(io_binding->SynchronizeInputs().IsOK());
 
@@ -789,15 +788,7 @@ static void TestBindHelper(const std::string& log_str,
                             run_options,
                             bind_provider_type,
                             preallocate_output,
-                            allocation_provider,
-                            /* check_replace_feed_value */ false);
-
-  RunModelWithBindingMatMul(session_object,
-                            run_options,
-                            bind_provider_type,
-                            preallocate_output,
-                            allocation_provider,
-                            /* check_replace_feed_value */ true);
+                            allocation_provider);
 }
 
 TEST(InferenceSessionTests, TestBindCpu) {
