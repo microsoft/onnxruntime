@@ -23,7 +23,7 @@ namespace onnxruntime {
       x<int32_t>);
 
 #define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(x, startVer, endVer)              \
-  ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                 \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                           \
       x,                                                                              \
       startVer,                                                                       \
       endVer,                                                                         \
@@ -31,7 +31,7 @@ namespace onnxruntime {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),   \
       x<float>);                                                                      \
                                                                                       \
-  ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                 \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                           \
       x,                                                                              \
       startVer,                                                                       \
       endVer,                                                                         \

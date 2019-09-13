@@ -1106,6 +1106,26 @@ TEST(ReductionOpTest, ArgMax_int32) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ArgMax_int32_neg_axis) {
+  OpTester test("ArgMax");
+  test.AddAttribute("axis", (int64_t)(-2));
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int32_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {3, 1, 2},
+                          {1, 1,
+                           1, 1,
+                           1, 1});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ArgMax2D) {
   OpTester test("ArgMax");
   test.AddAttribute("axis", (int64_t)1);
@@ -1170,6 +1190,25 @@ TEST(ReductionOpTest, ArgMin_do_not_keepdims_2) {
 TEST(ReductionOpTest, ArgMin_int32) {
   OpTester test("ArgMin");
   test.AddAttribute("axis", (int64_t)0);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<int32_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {2, 2},
+                          {0, 0,
+                           0, 0});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ArgMin_int32_neg_axis) {
+  OpTester test("ArgMin");
+  test.AddAttribute("axis", (int64_t)(-3));
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<int32_t>("data", {3, 2, 2},
                          {1, 2,
