@@ -86,7 +86,13 @@ enum Version {
   // IR VERSION 5 published on March 18, 2019
   // - Add message TensorAnnotation.
   // - Add quantization annotation in GraphProto to map tensor with its scale and zero point quantization parameters.
-  IR_VERSION = 0x0000000000000005;
+  IR_VERSION_2019_3_18 = 0x0000000000000005;
+
+  // IR VERSION 6 published on <TBD>
+  // - Add support for sparse tensor constants stored in model.
+  //   - Add message SparseTensorProto
+  //   - Add sparse initializers
+  IR_VERSION = 0x0000000000000006;
 }
 
 // Attributes
@@ -106,12 +112,14 @@ message AttributeProto {
     STRING = 3;
     TENSOR = 4;
     GRAPH = 5;
+    SPARSE_TENSOR = 11;
 
     FLOATS = 6;
     INTS = 7;
     STRINGS = 8;
     TENSORS = 9;
     GRAPHS = 10;
+    SPARSE_TENSORS = 12;
   }
 
   // The name field MUST be present for this version of the IR.
@@ -140,6 +148,7 @@ message AttributeProto {
   optional bytes s = 4;               // UTF-8 string
   optional TensorProto t = 5;         // tensor value
   optional GraphProto g = 6;          // graph
+  optional SparseTensorProto sparse_tensor = 22;  // sparse tensor value
   // Do not use field below, it's deprecated.
   // optional ValueProto v = 12;         // value - subsumes everything but graph
 
@@ -148,6 +157,7 @@ message AttributeProto {
   repeated bytes strings = 9;         // list of UTF-8 strings
   repeated TensorProto tensors = 10;  // list of tensors
   repeated GraphProto graphs = 11;    // list of graph
+  repeated SparseTensorProto sparse_tensors = 23; // list of sparse tensors
 }
 
 // Defines information on value, including the name, the type, and
@@ -276,6 +286,9 @@ message GraphProto {
   // Each TensorProto entry must have a distinct name (within the list) that
   // MAY also appear in the input list.
   repeated TensorProto initializer = 5;
+
+  // Initializers (see above) stored in sparse format.
+  repeated SparseTensorProto sparse_initializer = 15;
 
   // A human-readable documentation for this graph. Markdown is allowed.
   optional string doc_string = 10;
@@ -446,6 +459,28 @@ message TensorProto {
   repeated uint64 uint64_data = 11 [packed = true];
 }
 
+// A serialized sparse-tensor value
+message SparseTensorProto {
+  // The sequence of non-default values are encoded as a tensor of shape [NNZ].
+  // The default-value is zero for numeric tensors, and empty-string for string tensors.
+  optional TensorProto values = 1;
+
+  // The indices of the non-default values, which may be stored in one of two formats.
+  // (a) Indices can be a tensor of shape [NNZ, rank] with the [i,j]-th value
+  // corresponding to the j-th index of the i-th value (in the values tensor).
+  // (b) Indices can be a tensor of shape [NNZ], in which case the i-th value
+  // must be the linearized-index of the i-th value (in the values tensor).
+  // The linearized-index can be converted into an index tuple (k_1,...,k_rank)
+  // using the shape provided below.
+  // The indices must appear in ascending order without duplication.
+  // In the first format, the ordering is lexicographic-ordering:
+  // e.g., index-value [1,4] must appear before [2,1]
+  optional TensorProto indices = 2;
+
+  // The shape of the underlying dense-tensor: [dim_1, dim_2, ... dim_rank]
+  repeated int64 dims = 3;
+}
+
 // Defines a tensor shape. A dimension can be either an integer value
 // or a symbolic variable. A symbolic variable represents an unknown
 // dimension.
@@ -478,6 +513,14 @@ message TypeProto {
     optional TensorShapeProto shape = 2;
   }
 
+  message SparseTensor { 
+    // This field MUST NOT have the value of UNDEFINED 
+    // This field MUST have a valid TensorProto.DataType value
+    // This field MUST be present for this version of the IR. 
+    optional int32 elem_type = 1;
+    optional TensorShapeProto shape = 2;
+  }
+
 
   // repeated T
   message Sequence {
@@ -506,18 +549,12 @@ message TypeProto {
     // repeated TypeProto parameters = 3;
   }
 
-  message SparseTensor { 
-    // This field MUST NOT have the value of UNDEFINED 
-    // This field MUST have a valid TensorProto.DataType value
-    // This field MUST be present for this version of the IR. 
-    optional int32 elem_type = 1;
-    optional TensorShapeProto shape = 2;
-  }
-
 
   oneof value {
     // The type of a tensor.
     Tensor tensor_type = 1;
+
+    SparseTensor sparse_tensor_type = 8;
 
 
     // NOTE:  DNN-only implementations of ONNX MAY elect to not support non-tensor values
@@ -532,8 +569,6 @@ message TypeProto {
     Map map_type = 5;
 
     Opaque opaque_type = 7;
-
-    SparseTensor sparse_tensor_type = 8;
 
   }
 

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/function_impl.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
@@ -56,7 +57,7 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto
     // type attribute, we add its referenced attribute
     // into the op's schema
     for (auto& attr : node.attribute()) {
-      if (attr.has_ref_attr_name() && attr.has_type())
+      if (!attr.ref_attr_name().empty() && utils::HasType(attr))
         attribute_type_map[attr.ref_attr_name()] = attr.type();
     }
   }
@@ -225,12 +226,12 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   // Add node and node args into subgraph
   // The subgraph preserved the input/output tensor names
   // in the parent graph for later inlining purpose
-  auto attr_map = node_in_parent_graph->GetAttributes();
+  const auto& attr_map = node_in_parent_graph->GetAttributes();
   for (auto& node : onnx_func_proto_->node()) {
     std::vector<onnxruntime::NodeArg*> inputs;
     std::vector<onnxruntime::NodeArg*> outputs;
     std::string uniq_identifier = node.name();
-    if (!node.has_name()) {
+    if (!utils::HasName(node)) {
       std::stringstream ss;
       ss << static_cast<const void*>(&node);
       uniq_identifier = ss.str();
@@ -273,9 +274,10 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
 
     onnxruntime::NodeAttributes new_attr_map;
     for (auto& attr : node.attribute()) {
-      if (attr.has_ref_attr_name()) {
-        if (attr_map.count(attr.ref_attr_name())) {
-          new_attr_map[attr.name()] = attr_map[attr.ref_attr_name()];
+      if (!attr.ref_attr_name().empty()) {
+        auto entry = attr_map.find(attr.ref_attr_name());
+        if (entry != attr_map.cend()) {
+          new_attr_map[attr.name()] = entry->second;
         }
       } else {
         new_attr_map[attr.name()] = attr;

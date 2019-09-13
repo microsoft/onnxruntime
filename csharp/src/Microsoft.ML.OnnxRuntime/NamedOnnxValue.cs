@@ -25,7 +25,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static NamedOnnxValue CreateFromTensor<T>(string name, Tensor<T> value)
         {
-            return new NamedOnnxValue(name, value); 
+            return new NamedOnnxValue(name, value);
         }
 
         public string Name { get { return _name; } }
@@ -45,7 +45,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <typeparam name="T">Type</typeparam>
         /// <returns>Enumerable object if contained value is a Enumerable. Null otherwise</returns>
-        public IEnumerable<T> AsEnumerable<T> ()
+        public IEnumerable<T> AsEnumerable<T>()
         {
             var x = _value as IEnumerable<T>;
             return x;
@@ -249,7 +249,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
 
                 IntPtr status = NativeMethods.OrtCreateTensorWithDataAsOrtValue(
-                        NativeMemoryAllocatorInfo.DefaultInstance.Handle,
+                        NativeMemoryInfo.DefaultInstance.Handle,
                         dataBufferPointer,
                         (UIntPtr)(dataBufferLength),
                         longShape,
