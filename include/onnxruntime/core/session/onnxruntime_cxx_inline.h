@@ -60,9 +60,9 @@ inline const OrtMemoryInfo* AllocatorWithDefaultOptions::GetInfo() const {
 }
 
 inline MemoryInfo MemoryInfo::CreateCpu(OrtAllocatorType type, OrtMemType mem_type) {
-  OrtAllocatorInfo* p;
-  ORT_THROW_ON_ERROR(g_api->CreateCpuAllocatorInfo(type, mem_type, &p));
-  return AllocatorInfo(p);
+  OrtMemoryInfo* p;
+  ORT_THROW_ON_ERROR(g_api->CreateCpuMemoryInfo(type, mem_type, &p));
+  return MemoryInfo(p);
 }
 
 inline MemoryInfo::MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
@@ -339,15 +339,15 @@ inline Value Value::CreateSequence(std::vector<Value>& values) {
 }
 
 template <typename T>
-inline Value Value::CreateOpaque (const char* domain, const char* type_name, const T& data_container) {
+inline Value Value::CreateOpaque(const char* domain, const char* type_name, const T& data_container) {
   OrtValue* out;
-  ORT_THROW_ON_ERROR(OrtCreateOpaqueValue(domain, type_name, &data_container, sizeof(T), &out));
+  ORT_THROW_ON_ERROR(g_api->CreateOpaqueValue(domain, type_name, &data_container, sizeof(T), &out));
   return Value{out};
 }
 
 template <typename T>
-inline void Value::GetOpaqueData (const char* domain, const char* type_name, T& out) {
-  ORT_THROW_ON_ERROR(OrtGetOpaqueValue(domain, type_name, p_, &out, sizeof(T)));
+inline void Value::GetOpaqueData(const char* domain, const char* type_name, T& out) {
+  ORT_THROW_ON_ERROR(g_api->GetOpaqueValue(domain, type_name, p_, &out, sizeof(T)));
 }
 
 inline bool Value::IsTensor() const {

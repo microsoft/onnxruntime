@@ -206,7 +206,7 @@ typedef enum OrtMemType {
 struct OrtApi {
   ORT_CLASS_RELEASE(Env);
   ORT_CLASS_RELEASE(Status);  // nullptr for Status* indicates success
-  ORT_CLASS_RELEASE(AllocatorInfo);
+  ORT_CLASS_RELEASE(MemoryInfo);
   ORT_CLASS_RELEASE(Session);  //Don't call OrtReleaseSession from Dllmain (because session owns a thread pool)
   ORT_CLASS_RELEASE(Value);
   ORT_CLASS_RELEASE(RunOptions);
@@ -370,9 +370,9 @@ struct OrtApi {
 
   // Set a flag so that ALL incomplete OrtRun calls that are using this instance of OrtRunOptions
   // will exit as soon as possible.
-OrtStatus*(ORT_API_CALL* RunOptionsSetTerminate)(_Inout_ OrtRunOptions* options) NO_EXCEPTION;
-// Unset the terminate flag to enable this OrtRunOptions instance being used in new OrtRun calls.
-OrtStatus*(ORT_API_CALL* RunOptionsUnsetTerminate)(_Inout_ OrtRunOptions* options) NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* RunOptionsSetTerminate)(_Inout_ OrtRunOptions* options)NO_EXCEPTION;
+  // Unset the terminate flag to enable this OrtRunOptions instance being used in new OrtRun calls.
+  OrtStatus*(ORT_API_CALL* RunOptionsUnsetTerminate)(_Inout_ OrtRunOptions* options)NO_EXCEPTION;
 
   /**
    * Create a tensor from an allocator. OrtReleaseValue will also release the buffer inside the output value
@@ -477,13 +477,13 @@ OrtStatus*(ORT_API_CALL* RunOptionsUnsetTerminate)(_Inout_ OrtRunOptions* option
 
   OrtStatus*(ORT_API_CALL* CreateMemoryInfo)(_In_ const char* name1, enum OrtAllocatorType type, int id1, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out)NO_EXCEPTION;
 
-/**
- * Convenience function for special case of OrtCreateMemoryInfo, for the CPU allocator. Uses name = "Cpu" and id = 0.
+  /**
+ * Convenience function for special case of CreateMemoryInfo, for the CPU allocator. Uses name = "Cpu" and id = 0.
  */
-  OrtStatus*(ORT_API_CALL* CreateCpuAllocatorInfo)(enum OrtAllocatorType type, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out)NO_EXCEPTION
+  OrtStatus*(ORT_API_CALL* CreateCpuMemoryInfo)(enum OrtAllocatorType type, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out)NO_EXCEPTION
       ORT_ALL_ARGS_NONNULL;
 
-/**
+  /**
  * Test if two memory info are equal
  * \Sets 'out' to 0 if equal, -1 if not equal
  */
@@ -500,7 +500,7 @@ OrtStatus*(ORT_API_CALL* RunOptionsUnsetTerminate)(_Inout_ OrtRunOptions* option
 
   OrtStatus*(ORT_API_CALL* AllocatorAlloc)(_Inout_ OrtAllocator* ptr, size_t size, _Outptr_ void** out)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* AllocatorFree)(_Inout_ OrtAllocator* ptr, void* p)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* AllocatorGetInfo)(_In_ const OrtAllocator* ptr, _Out_ const OrtAllocatorInfo** out)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* AllocatorGetInfo)(_In_ const OrtAllocator* ptr, _Out_ const OrtMemoryInfo** out)NO_EXCEPTION;
 
   // The returned pointer doesn't have to be freed.
   // Always returns the same instance on every invocation.
@@ -555,6 +555,41 @@ OrtStatus*(ORT_API_CALL* RunOptionsUnsetTerminate)(_Inout_ OrtRunOptions* option
   OrtStatus*(ORT_API_CALL* CreateValue)(_In_ const OrtValue* const* in, size_t num_values, enum ONNXType value_type,
                                         _Outptr_ OrtValue** out)NO_EXCEPTION;
 
+  /**
+	 * Construct OrtValue that contains a value of non-standard type created for
+	 * experiments or while awaiting standardization. OrtValue in this case would contain
+	 * an internal representation of the Opaque type. Opaque types are distinguished between
+	 * each other by two strings 1) domain and 2) type name. The combination of the two
+	 * must be unique, so the type representation is properly identified internally. The combination
+	 * must be properly registered from within ORT at both compile/run time or by another API.
+	 *
+	 * To construct the OrtValue pass domain and type names, also a pointer to a data container
+	 * the type of which must be know to both ORT and the client program. That data container may or may
+	 * not match the internal representation of the Opaque type. The sizeof(data_container) is passed for
+	 * verification purposes.
+	 *
+	 * \domain_name - domain name for the Opaque type, null terminated.
+	 * \type_name   - type name for the Opaque type, null terminated.
+	 * \data_contianer - data to populate OrtValue
+	 * \data_container_size - sizeof() of the data container. Must match the sizeof() of the expected
+	 *                    data_container size internally.
+	 */
+  OrtStatus*(ORT_API_CALL* CreateOpaqueValue)(_In_ const char* domain_name, _In_ const char* type_name,
+                                              _In_ const void* data_container, size_t data_container_size, _Outptr_ OrtValue** out)NO_EXCEPTION;
+
+  /**
+	 * Fetch data from an OrtValue that contains a value of non-standard type created for
+	 * experiments or while awaiting standardization.
+	 * \domain_name - domain name for the Opaque type, null terminated.
+	 * \type_name   - type name for the Opaque type, null terminated.
+	 * \data_contianer - data to populate OrtValue
+	 * \data_container_size - sizeof() of the data container. Must match the sizeof() of the expected
+	 *                    data_container size internally.
+	 */
+
+  OrtStatus*(ORT_API_CALL* GetOpaqueValue)(_In_ const char* domain_name, _In_ const char* type_name,
+                                           _In_ const OrtValue* in, _Out_ void* data_container, size_t data_container_size)NO_EXCEPTION;
+
   OrtStatus*(ORT_API_CALL* KernelInfoGetAttribute_float)(_In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* KernelInfoGetAttribute_int64)(_In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* KernelInfoGetAttribute_string)(_In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ char* out, _Inout_ size_t* size)NO_EXCEPTION;
@@ -568,141 +603,6 @@ OrtStatus*(ORT_API_CALL* RunOptionsUnsetTerminate)(_Inout_ OrtRunOptions* option
 typedef struct OrtApi OrtApi;
 ORT_EXPORT const OrtApi* ORT_API_CALL OrtGetApi(uint32_t version) NO_EXCEPTION;  // Pass in ORT_API_VERSION
 ORT_API(const char*, OrtGetVersionString);
-
-#if 0
-extern const OrtApi* g_ort_api;
-#define ORT_RELEASE_INLINE(X) \
-  inline void OrtRelease##X(Ort##X* input) { g_ort_api->Release##X(input); }
-
-ORT_RELEASE_INLINE(Env);
-ORT_RELEASE_INLINE(Status);  // nullptr for Status* indicates success
-ORT_RELEASE_INLINE(Provider);
-ORT_RELEASE_INLINE(AllocatorInfo);
-ORT_RELEASE_INLINE(Session);  //Don't call OrtReleaseSession from Dllmain (because session owns a thread pool)
-ORT_RELEASE_INLINE(Value);
-ORT_RELEASE_INLINE(RunOptions);
-ORT_RELEASE_INLINE(TypeInfo);
-ORT_RELEASE_INLINE(TensorTypeAndShapeInfo);
-ORT_RELEASE_INLINE(SessionOptions);
-ORT_RELEASE_INLINE(CustomOpDomain);
-#endif
-
-#if 0
-
-inline OrtStatus* OrtCreateStatus(OrtErrorCode code, _In_ const char* msg) {
-  return g_ort_api->CreateStatus(code, msg);
-}
-
-inline OrtStatus* OrtCreateEnv(OrtLoggingLevel default_warning_level, _In_ const char* logid, _Outptr_ OrtEnv** out) {
-  return g_ort_api->CreateEnv(default_warning_level, logid, out);
-}
-
-inline OrtStatus* OrtCreateSession(_In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path,
-                                   _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
-  return g_ort_api->CreateSession(env, model_path, options, out);
-}
-
-inline OrtStatus* OrtRun(_Inout_ OrtSession* sess,
-                         _In_opt_ const OrtRunOptions* run_options,
-                         _In_ const char* const* input_names, _In_ const OrtValue* const* input, size_t input_len,
-                         _In_ const char* const* output_names, size_t output_names_len, _Outptr_ OrtValue** output) {
-  return g_ort_api->Run(sess, run_options, input_names, input, input_len, output_names, output_names_len, output);
-}
-
-inline OrtStatus* OrtCreateSessionOptions(_Outptr_ OrtSessionOptions** options);
-
-inline OrtStatus* OrtSetOptimizedModelFilePath(_Inout_ OrtSessionOptions* options, _In_ const ORTCHAR_T* optimized_model_filepath);
-
-inline OrtStatus* OrtCloneSessionOptions(_In_ const OrtSessionOptions* in_options, _Outptr_ OrtSessionOptions** out_options);
-inline OrtStatus* OrtEnableSequentialExecution(_Inout_ OrtSessionOptions* options);
-inline OrtStatus* OrtDisableSequentialExecution(_Inout_ OrtSessionOptions* options);
-
-inline OrtStatus* OrtEnableProfiling(_Inout_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix);
-inline OrtStatus* OrtDisableProfiling(_Inout_ OrtSessionOptions* options);
-
-inline OrtStatus* OrtEnableMemPattern(_Inout_ OrtSessionOptions* options);
-inline OrtStatus* OrtDisableMemPattern(_Inout_ OrtSessionOptions* options);
-
-inline OrtStatus* OrtEnableCpuMemArena(_Inout_ OrtSessionOptions* options);
-inline OrtStatus* OrtDisableCpuMemArena(_Inout_ OrtSessionOptions* options);
-
-inline OrtStatus* OrtSetSessionLogId(_Inout_ OrtSessionOptions* options, const char* logid);
-
-inline OrtStatus* OrtSetSessionLogVerbosityLevel(_Inout_ OrtSessionOptions* options, int session_log_verbosity_level);
-inline OrtStatus* OrtSetSessionLogSeverityLevel(_Inout_ OrtSessionOptions* options, int session_log_severity_level);
-
-inline OrtStatus* OrtSetSessionGraphOptimizationLevel(_Inout_ OrtSessionOptions* options, GraphOptimizationLevel graph_optimization_level);
-inline OrtStatus* OrtSetSessionThreadPoolSize(_Inout_ OrtSessionOptions* options, int session_thread_pool_size);
-
-inline OrtStatus* OrtSessionGetInputCount(_In_ const OrtSession* sess, _Out_ size_t* out);
-inline OrtStatus* OrtSessionGetOutputCount(_In_ const OrtSession* sess, _Out_ size_t* out);
-inline OrtStatus* OrtSessionGetInputTypeInfo(_In_ const OrtSession* sess, size_t index, _Outptr_ OrtTypeInfo** type_info);
-inline OrtStatus* OrtSessionGetOutputTypeInfo(_In_ const OrtSession* sess, size_t index, _Outptr_ OrtTypeInfo** type_info);
-
-inline OrtStatus* OrtSessionGetInputName(_In_ const OrtSession* sess, size_t index, _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
-inline OrtStatus* OrtSessionGetOutputName(_In_ const OrtSession* sess, size_t index, _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
-
-inline OrtStatus* OrtCreateRunOptions(_Outptr_ OrtRunOptions** out);
-
-inline OrtStatus* OrtRunOptionsSetRunLogVerbosityLevel(_Inout_ OrtRunOptions* options, int value);
-inline OrtStatus* OrtRunOptionsSetRunLogSeverityLevel(_Inout_ OrtRunOptions* options, int value);
-inline OrtStatus* OrtRunOptionsSetRunTag(_In_ OrtRunOptions*, _In_ const char* run_tag);
-
-inline OrtStatus* OrtRunOptionsGetRunLogVerbosityLevel(_In_ const OrtRunOptions* options, _Out_ int* out);
-inline OrtStatus* OrtRunOptionsGetRunLogSeverityLevel(_In_ const OrtRunOptions* options, _Out_ int* out);
-inline OrtStatus* OrtRunOptionsGetRunTag(_In_ const OrtRunOptions*, _Out_ const char** out);
-
-inline OrtStatus* OrtRunOptionsEnableTerminate(_Inout_ OrtRunOptions* options);
-inline OrtStatus* OrtRunOptionsDisableTerminate(_Inout_ OrtRunOptions* options);
-
-inline OrtStatus* OrtCreateCustomOpDomain(_In_ const char* domain, _Outptr_ OrtCustomOpDomain** out);
-inline OrtStatus* OrtCustomOpDomain_Add(_Inout_ OrtCustomOpDomain* custom_op_domain, _In_ OrtCustomOp* op);
-inline OrtStatus* OrtAddCustomOpDomain(_Inout_ OrtSessionOptions* options, _In_ OrtCustomOpDomain* custom_op_domain);
-inline OrtStatus* OrtIsTensor(_In_ const OrtValue* value, _Out_ int* out);
-inline OrtStatus* OrtGetTensorMutableData(_Inout_ OrtValue* value, _Outptr_ void** out);
-inline OrtStatus* OrtFillStringTensor(_Inout_ OrtValue* value, _In_ const char* const* s, size_t s_len);
-inline OrtStatus* OrtGetStringTensorDataLength(_In_ const OrtValue* value, _Out_ size_t* len);
-inline OrtStatus* OrtGetStringTensorContent(_In_ const OrtValue* value, _Out_ void* s, size_t s_len, _Out_ size_t* offsets, size_t offsets_len);
-#endif
-
-/**
-   * Construct OrtValue that contains a value of non-standard type created for
-   * experiments or while awaiting standardization. OrtValue in this case would contain
-   * an internal representation of the Opaque type. Opaque types are distinguished between
-   * each other by two strings 1) domain and 2) type name. The combination of the two
-   * must be unique, so the type representation is properly identified internally. The combination
-   * must be properly registered from within ORT at both compile/run time or by another API.
-   *
-   * To construct the OrtValue pass domain and type names, also a pointer to a data container
-   * the type of which must be know to both ORT and the client program. That data container may or may
-   * not match the internal representation of the Opaque type. The sizeof(data_container) is passed for
-   * verification purposes.
-   *
-   * \domain_name - domain name for the Opaque type, null terminated.
-   * \type_name   - type name for the Opaque type, null terminated.
-   * \data_contianer - data to populate OrtValue
-   * \data_container_size - sizeof() of the data container. Must match the sizeof() of the expected
-   *                    data_container size internally.
-   */
-ORT_API_STATUS(OrtCreateOpaqueValue, _In_ const char* domain_name, _In_ const char* type_name,
-               _In_ const void* data_container, size_t data_container_size, _Outptr_ OrtValue** out);
-
- /**
-   * Fetch data from an OrtValue that contains a value of non-standard type created for
-   * experiments or while awaiting standardization.
-   * \domain_name - domain name for the Opaque type, null terminated.
-   * \type_name   - type name for the Opaque type, null terminated.
-   * \data_contianer - data to populate OrtValue
-   * \data_container_size - sizeof() of the data container. Must match the sizeof() of the expected
-   *                    data_container size internally.
-   */
-
-ORT_API_STATUS(OrtGetOpaqueValue, _In_ const char* domain_name, _In_ const char* type_name,
-               _In_ const OrtValue* in, _Out_ void* data_container, size_t data_container_size);
-
-/*
- * EXPERIMENTAL APIS - Subject to change. Released as a preview to get feedback and enable early testing
-*/
 
 /*
  * Steps to use a custom op:
