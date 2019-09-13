@@ -263,7 +263,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   io_binding->BindInput("B", input_ml_value_B);
 
   // check location of 'A' post-binding has changed to validate that the previous value was replaced
-  ASSERT_TRUE(io_binding->GetInputs()[0].Get<Tensor>().DataRaw() == input_ml_value_A.Get<Tensor>().DataRaw());
+  ASSERT_TRUE(io_binding->GetInputs()[0].Get<Tensor>().DataRaw() != tmp_A);
 
   // prepare outputs
   std::vector<int64_t> expected_output_dims = {3, 3};
