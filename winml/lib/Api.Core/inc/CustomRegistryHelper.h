@@ -17,7 +17,7 @@ GetLotusCustomRegistries(
     auto abi_custom_registry =
         static_cast<winmlp::AbiCustomRegistry*>(registry);
 
-    // Get the Lotus registry
+    // Get the ORT registry
     return abi_custom_registry->GetRegistries();
   }
 

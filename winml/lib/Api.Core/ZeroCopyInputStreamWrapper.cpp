@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 #include "pch.h"
 
 #include "ZeroCopyInputStreamWrapper.h"
@@ -41,7 +44,7 @@ bool ZeroCopyInputStreamWrapper::Next(
 // BackUp is used when parsing encounters an error and needs to move
 // back to the beginning of the erroneous chunk. We don't support random access,
 // so we don't have a pointer to move back, but this can also happen for
-// de-encrypted strings since they can have extra memory at the end that
+// decrypted strings since they can have extra memory at the end that
 // isn't valid. We don't want to parse non-model related data so we
 // don't support this. I'd like to thrown an error here, but protobuf would
 // eat that error and terminate the app. So instead we do nothing and handle

@@ -1,6 +1,5 @@
-//
-//  Copyright (c) Microsoft Corporation.  All rights reserved.
-//
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 #pragma once
 
@@ -21,7 +20,6 @@ class CpuDetensorizer {
 #pragma warning(push)
 #pragma warning(disable : 26014)  // warning about possible out of bounds accesing pData, but input is checked for BGRA8 format, so uiCapacity should be in multiples of 4
     // output is BGRA8: so blue at i, green is at i + 1, red is at i + 2
-    // TODO: optimize
 
     uint32_t bytesPerPixel = formatTo == kImageTensorChannelTypeGRAY8 ? 1 : 4;
 

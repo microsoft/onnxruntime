@@ -1,6 +1,5 @@
-//
-//  Copyright (c) Microsoft Corporation.  All rights reserved.
-//
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 #include "pch.h"
 
@@ -193,7 +192,6 @@ HRESULT TensorToVideoFrameConverter::ConvertDX12TensorToUnsupportedVideoFrameFor
       supportedFormatIter != ImageConversionHelpers::supportedWinMLFormats.end(),
       "Detensorization for this format is unsupported on the current device.");
 
-  // TODO: (@pavignol) Optimize for batch
   converted_video_frame_ = VideoFrame::CreateAsDirect3D11SurfaceBacked(
       ImageConversionHelpers::GetDirectXPixelFormatFromDXGIFormat(*supportedFormatIter),
       unsupportedVideoFrame.Direct3DSurface().Description().Width,

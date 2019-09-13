@@ -1,4 +1,7 @@
-﻿#pragma once
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+#pragma once
 
 #include "robuffer.h"
 #include "winrt/Windows.Storage.Streams.h"
@@ -46,8 +49,7 @@ class TensorBuffer {
     auto buffer = Buffer();
 
     // The initial release of WinML (RS5) shipped with behavior that would
-    // zero-initialize uninitialized tensors. Some partners (evoke) have
-    // taken dependencies on this behavior. After measuring, the performance impact
+    // zero-initialize uninitialized tensors. After measuring, the performance impact
     // of memsetting the memory buffer is quite small (<1ms for 3channel 720x720 TensorFloats).
     // To maintain parity with RS5 behavior, we always zero out the memory buffer.
     memset(buffer.second, 0, buffer.first);

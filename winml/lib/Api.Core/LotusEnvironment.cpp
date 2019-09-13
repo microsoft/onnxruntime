@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 #include "pch.h"
 #include "inc/LotusEnvironment.h"
 #include <TraceLoggingProvider.h>
@@ -9,7 +12,7 @@ void Windows::AI::MachineLearning::CWinMLLogSink::SendImpl(
     const onnxruntime::logging::Timestamp& timestamp,
     const std::string& logger_id,
     const onnxruntime::logging::Capture& message) {
-  //Lotus Fatal and Error Messages are logged as Telemetry, rest are non-telemetry.
+  // ORT Fatal and Error Messages are logged as Telemetry, rest are non-telemetry.
   switch (message.Severity()) {
     case (onnxruntime::logging::Severity::kFATAL):  //Telemetry
       TraceLoggingWrite(

@@ -1,4 +1,6 @@
-﻿
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 //! \file Windows.AI.MachineLearning.idl
 import "Windows.Foundation.idl";
 import "windows.graphics.idl";

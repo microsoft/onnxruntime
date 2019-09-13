@@ -1,11 +1,9 @@
-﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
 #pragma once
 
 #include "common.h"
-
-// LotusRT
 
 // Needed to work around the fact that OnnxRuntime defines ERROR
 #ifdef ERROR

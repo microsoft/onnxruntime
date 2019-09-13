@@ -1,5 +1,7 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.#pragma once
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+#pragma once
 
 //
 // WinMLTelemetryHelper provides a centralized location for managing all telemetry

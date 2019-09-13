@@ -1,4 +1,7 @@
-﻿import "oaidl.idl";
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+import "oaidl.idl";
 import "ocidl.idl";
 import "d3d12.idl";
 

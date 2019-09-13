@@ -1,8 +1,11 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 #pragma once
 
 /*
     Implementation of Feature Values
-    All data types in engine\lotus\lotus\core\framework\data_types.cc should be implemented here
+    All data types in onnxruntime\core\framework\data_types.cc should be implemented here
 */
 
 #include "TensorBoolean.g.h"
@@ -72,7 +75,7 @@ CREATE_TENSOR(TensorFloat, float, float)
 CREATE_TENSOR(TensorDouble, double, double)
 
 // Currently, before the graph computation, we need to convert uint8 coming
-// from application end to int8(Lotus end) because winrt doesn't expose a signed 8-bit integer type,
+// from application end to int8(ORT end) because winrt doesn't expose a signed 8-bit integer type,
 // and after graph run, we need to convert it back.
 CREATE_TENSOR(TensorInt8Bit, int8_t, uint8_t)
 CREATE_TENSOR(TensorUInt8Bit, uint8_t, uint8_t)

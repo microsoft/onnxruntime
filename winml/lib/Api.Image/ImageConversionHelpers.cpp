@@ -1,6 +1,5 @@
-//
-//  Copyright (c) Microsoft Corporation.  All rights reserved.
-//
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 #include "pch.h"
 #include "inc/ImageConversionHelpers.h"
@@ -53,7 +52,6 @@ bool ImageConversionHelpers::SoftwareBitmapFormatSupported(_In_ const SoftwareBi
 }
 
 bool ImageConversionHelpers::DirectXPixelFormatSupported(_In_ DirectXPixelFormat format) {
-  // TODO: Support other non-normalized formats and normalize them ourselves instead of using the videoframe pipeline
   switch (format) {
     case DirectXPixelFormat::B8G8R8X8UIntNormalized:
     case DirectXPixelFormat::B8G8R8A8UIntNormalized:

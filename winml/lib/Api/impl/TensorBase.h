@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 #pragma once
 
 #pragma warning(push)
@@ -474,8 +477,6 @@ struct TensorBase : TBase {
           m_resources,
           "The tensor has been closed and its resources have been detached!");
 
-      // TODO: Figure out if we need to detensorize here when we only have cpu
-      // resources available, in the usual case...
       GetGpuResource()->DXResource.copy_to(ppResource);
       return S_OK;
     }

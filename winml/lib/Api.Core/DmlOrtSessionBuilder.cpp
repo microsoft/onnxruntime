@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 #include "pch.h"
 
 // Needed to work around the fact that OnnxRuntime defines ERROR
@@ -35,8 +38,8 @@ DmlOrtSessionBuilder::CreateSessionOptions(
 
   *p_options = onnxruntime::SessionOptions();
 
-  // Currently the only transformer in Lotus's transform manager will be the DML transformer.
-  // Lotus applies these transformers a certain number of times (currently 5) unless overridden here.
+  // Currently the only transformer in ORT's transform manager will be the DML transformer.
+  // ORT applies these transformers a certain number of times (currently 5) unless overridden here.
   p_options->max_num_graph_transformation_steps = 1;
 
   // Disable the mem pattern session option for DML. It will cause problems with how memory is allocated.

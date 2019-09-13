@@ -1,4 +1,7 @@
-﻿#include "pch.h"
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+#include "pch.h"
 #include "ConverterResourceStore.h"
 #include "impl/FeatureCompatibility.h"
 #include "FeatureValues.h"
@@ -94,7 +97,7 @@ std::tuple<std::string, OrtValue, BindingType> LearningModelBinding::CreateBindi
   // Get the bound tensor
   OrtValue value = {};
 
-  // Get the native lotus interface for the given bind value
+  // Get the native ORT interface for the given bind value
   auto spLotusValueProvider = featureValue.as<WinML::ILotusValueProviderPrivate>();
 
   auto spSession = m_session.as<LearningModelSession>();

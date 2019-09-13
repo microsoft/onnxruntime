@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 #include "pch.h"
 #include <windows.h>
 #include <Hstring.h>
@@ -12,7 +15,6 @@ using namespace winrt::Windows::AI::MachineLearning::implementation;
 #ifdef false
 // TODO: Delete all defines in this ifndef block after changing to a newer version of
 // WIL that is compatible with the trace logging functionality of the SDK packages.
-// https://microsoft.visualstudio.com/OS/_workitems/edit/21313649
 #ifndef WINDOWSAI_RAZZLE_BUILD
 #define _TlgActivityDecl _tlgActivityDecl
 #define _TlgActivityRef _tlgActivityRef

@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 #include "pch.h"
 #include "ImageFeatureValue.h"
 #include "LearningModelBinding.h"

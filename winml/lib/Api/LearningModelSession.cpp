@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 #include "pch.h"
 
 #include "LearningModelSession.h"
@@ -36,7 +39,7 @@ struct __declspec(uuid("D113B493-BBA2-4993-8608-D706A73B91CE")) __declspec(novta
 static const GUID WINML_PIX_EVAL_CAPTURABLE_WORK_GUID = __uuidof(guid_details::WINML_PIX_EVAL_CAPTURABLE_WORK_GUID);
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
-// Lotus intentionally requires callers derive from their session class to access
+// ORT intentionally requires callers derive from their session class to access
 // the protected Load method used below.
 class InferenceSessionProtectedLoadAccessor : public onnxruntime::InferenceSession {
  public:
@@ -406,7 +409,7 @@ LearningModelSession::Run(
 
   auto& io_binding = GetIOBinding(binding_impl, model_);
 
-  // Invoke run on the Lotus session.
+  // Invoke run on the ORT session.
   WINML_THROW_IF_NOT_OK(inference_session_->Run(run_options, io_binding));
 
   if (!device->IsCpuDevice()) {
@@ -478,7 +481,7 @@ LearningModelSession::EvaluateAsync(
 
   auto device = device_.as<LearningModelDevice>();
 
-  // Get the Lotus binding collection
+  // Get the ORT binding collection
   auto binding_impl = binding.as<winmlp::LearningModelBinding>();
 
   ApplyEvaluationProperties();
@@ -538,7 +541,7 @@ LearningModelSession::Evaluate(
     capture_interface->BeginCapturableWork(WINML_PIX_EVAL_CAPTURABLE_WORK_GUID);
   }
 
-  // Get the Lotus binding collection
+  // Get the ORT binding collection
   auto binding_impl = binding.as<implementation::LearningModelBinding>();
   uint64_t evaluation_complete_fence = Run(binding_impl);
 

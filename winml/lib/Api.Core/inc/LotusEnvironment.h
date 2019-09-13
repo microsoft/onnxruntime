@@ -27,7 +27,7 @@ class CWinMLLogSink : public onnxruntime::logging::ISink {
  private:
   static bool debug_output_;
 };
-// TODO: a bug in lotus requires a logging manager.  This function registers a static singleton logger as "default"
+// TODO: a bug in ORT requires a logging manager.  This function registers a static singleton logger as "default"
 inline onnxruntime::logging::LoggingManager& DefaultLoggingManager() {
   // create a CLog based default logging manager
   static std::string default_logger_id{"Default"};
