@@ -9,6 +9,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/session/environment.h"
+#include "core/training/optimizer_graph_builder.h"
 #include "test/training/runner/training_util.h"
 
 #ifdef USE_CUDA
@@ -84,11 +85,17 @@ Status TrainingRunner::Initialize() {
   // Add optimizer
   OptimizerGraphConfig opt_graph_config{};
   std::unordered_map<std::string, OptimizerNodeConfig> opt_configs;
+  std::unordered_map<std::string, std::string> opt_graph_outputs;
   ORT_RETURN_IF_ERROR(SetupOptimizerParams(weights_to_train, fp16_weights_map, opt_graph_config, opt_configs));
-  ORT_RETURN_IF_ERROR(session_.BuildOptimizer(opt_graph_config, opt_configs));
+  ORT_RETURN_IF_ERROR(session_.BuildOptimizer(opt_graph_config, opt_configs, opt_graph_outputs));
+  opt_graph_outputs_ = opt_graph_outputs;
 
   // Expose all fetches as graph outputs
-  ORT_RETURN_IF_ERROR(session_.OverrideGraphOutputs(params_.fetch_names));
+  VectorString fetch_names = params_.fetch_names;
+  for (const auto& it : opt_graph_outputs) {
+    fetch_names.push_back(it.second);
+  }
+  ORT_RETURN_IF_ERROR(session_.OverrideGraphOutputs(fetch_names));
 
   if (params_.mpi_context.world_rank == 0 && !params_.model_with_training_graph_path.empty()) {
     session_.Save(params_.model_with_training_graph_path, TrainingSession::SaveOption::NO_RELOAD);
@@ -129,25 +136,50 @@ Status TrainingRunner::Run() {
 
   ORT_RETURN_IF_ERROR(TrainingLoop());
 
-  ORT_RETURN_IF_ERROR(EndTraining());
+  // TODO: Remove this check when model saving is fixed
+  if (!params_.is_perf_test) {
+    ORT_RETURN_IF_ERROR(EndTraining());
+  }
   return Status::OK();
 }
 
 Status TrainingRunner::TrainingLoop() {
   // Prepare fetches
-  const VectorString& fetch_names = params_.fetch_names;
-  const VectorString& feed_names = training_data_loader_->DataSetTensorNames();
+  const VectorString fetch_names = params_.fetch_names;
+  const VectorString feed_names = training_data_loader_->DataSetTensorNames();
+  VectorString fetch_grad_accumulator_output;
+  if (params_.gradient_accumulation_steps > 1) {
+    auto it = opt_graph_outputs_.find(kGradientAccumulationOutputKey);
+    ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient accumulation output is missing in the optimizer output");
+    fetch_grad_accumulator_output.push_back(it->second);
+  }
+
+  if (params_.is_perf_test && params_.perf_warm_up_iters > 0) {
+    auto training_data = training_data_loader_->CurrentDataSet();
+    auto num_batches = training_data->TotalBatch(params_.batch_size);
+    ORT_RETURN_IF(params_.perf_warm_up_iters > num_batches,
+                  "perf_warm_up_iters is bigger than number of available batches.");
+
+    printf("Warming up for perf test.\n");
+    for (size_t batch = 0; batch < params_.perf_warm_up_iters; ++batch) {
+      std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch);
+      vector<MLValue> fetches;
+      ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
+                                       feed_names,
+                                       feeds,
+                                       fetch_names,
+                                       &fetches));
+    }
+  }
 
   double total_time{0};
-  //Set the first N batchs as warm-up iterations
-  size_t warm_up_iters = 10;
-
   size_t num_shards_to_visit = params_.num_of_epoch;
   if (training_data_loader_) {
     num_shards_to_visit *= training_data_loader_->NumShards();
   }
 
   size_t total_batch_num = 0;
+  size_t gradient_accumulation_step_count = 0, weight_update_step_count = 0;
   for (size_t shard_it = 0; shard_it < num_shards_to_visit; ++shard_it) {
     auto training_data = training_data_loader_->CurrentDataSet();
 
@@ -164,25 +196,34 @@ Status TrainingRunner::TrainingLoop() {
       std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch);
       vector<MLValue> fetches;
 
-      std::chrono::duration<double> duration_seconds;
       auto start = std::chrono::high_resolution_clock::now();
-      auto end = start;
-      ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
-                                       feed_names,
-                                       feeds,
-                                       fetch_names,
-                                       &fetches));
+
+      if ((step_ + 1) % params_.gradient_accumulation_steps == 0) {
+        ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
+                                         feed_names,
+                                         feeds,
+                                         fetch_names,
+                                         &fetches));
+        weight_update_step_count++;
+      } else {
+        RunOptions run_options;
+        run_options.only_execute_path_to_fetches = true;
+        ORT_RETURN_IF_ERROR(session_.Run(run_options,
+                                         feed_names,
+                                         feeds,
+                                         fetch_grad_accumulator_output,
+                                         &fetches));
+        gradient_accumulation_step_count++;
+      }
       step_++;
 
-      //Start counting after warm-up iterations
-      if (batch >= warm_up_iters || shard_it > 0) {
-        end = std::chrono::high_resolution_clock::now();
-        duration_seconds = end - start;
-        total_time += duration_seconds.count();
-      }
+      auto end = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double> duration_seconds = end - start;
+      total_time += duration_seconds.count();
 
       // Print some info when reaching the end of the batch.
-      printf("batch: %d/%d, shard_iteration: %d/%d \n",
+      printf("Step: %d, batch: %d/%d, shard_iteration: %d/%d \n",
+             static_cast<int>(step_),
              static_cast<int>(batch),
              static_cast<int>(batch_num_cur_shard),
              static_cast<int>(shard_it + 1),
@@ -202,10 +243,12 @@ Status TrainingRunner::TrainingLoop() {
     }
   }
 
-  auto total_batchs = total_batch_num - warm_up_iters;
-  std::cout << "Total running time:" << total_time << " seconds\n"
-            << "Average running time per batch:" << total_time / total_batchs * 1000 << " ms\n"
-            << "Throughput: " << params_.batch_size * total_batchs / total_time << " Examples / second\n";
+  std::cout << "Number of batches: " << total_batch_num << "\n"
+            << "Gradient Accumulation Steps: " << gradient_accumulation_step_count << "\n"
+            << "Weight Update Steps: " << weight_update_step_count << "\n"
+            << "Total running time: " << total_time << " seconds \n"
+            << "Average running time per batch: " << total_time / total_batch_num * 1000 << " ms\n"
+            << "Throughput: " << params_.batch_size * total_batch_num / total_time << " Examples / second\n";
 
   return Status::OK();
 }
@@ -349,6 +392,7 @@ Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string
   opt_graph_config.use_mixed_precision = false;  //params_.use_mixed_precision;  // TODO enable when fully implemented
   opt_graph_config.world_rank = params_.mpi_context.world_rank;
   opt_graph_config.world_size = params_.mpi_context.world_size;
+  opt_graph_config.gradient_accumulation_steps = params_.gradient_accumulation_steps;
 
   opt_graph_config_result = std::move(opt_graph_config);
 

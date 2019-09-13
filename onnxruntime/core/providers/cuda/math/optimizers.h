@@ -115,11 +115,25 @@ class LambOptimizer final : public CudaKernel {
   float epsilon_;
 };
 
+// Implementation can be found in cuda file, optimizers_impl.cu
+template <typename T, typename T_GRAD>
+void AccumulateGradientImpl(
+    const T* gradient_buffer,
+    const T_GRAD* gradient,
+    T* accumulated_gradient,
+    size_t count);
+
+template<typename T, typename T_GRAD>
+class AccumulateGradient final :  public CudaKernel {
+ public:
+  AccumulateGradient(const OpKernelInfo& info) : CudaKernel(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
 template <typename T>
 class ZeroGradient final : public CudaKernel {
  public:
   ZeroGradient(const OpKernelInfo& info) : CudaKernel(info) {}
-
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 

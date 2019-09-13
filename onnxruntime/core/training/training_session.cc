@@ -46,11 +46,12 @@ static Status BuildGradientGraphInternal(Graph& graph,
 
 static Status BuildOptimizerInternal(Graph& graph,
                                      const OptimizerGraphConfig& opt_graph_config,
-                                     const unordered_map<string, OptimizerNodeConfig>& opt_configs) {
+                                     const unordered_map<string, OptimizerNodeConfig>& opt_configs,
+                                     std::unordered_map<std::string, std::string>& opt_graph_outputs) {
   OptimizerGraphBuilder optimizer_graph_builder{
       OptimizerBuilderRegistry::GetInstance(), opt_graph_config, opt_configs};
 
-  ORT_RETURN_IF_ERROR(optimizer_graph_builder.Build(graph));
+  ORT_RETURN_IF_ERROR(optimizer_graph_builder.Build(graph, opt_graph_outputs));
 
   return Status::OK();
 }
@@ -110,7 +111,8 @@ Status TrainingSession::BuildGradientGraph(const unordered_set<string>& weights_
 
 Status TrainingSession::BuildOptimizer(
     const OptimizerGraphConfig& opt_graph_config,
-    const unordered_map<string, OptimizerNodeConfig>& opt_configs) {
+    const unordered_map<string, OptimizerNodeConfig>& opt_configs,
+    std::unordered_map<std::string, std::string>& opt_graph_outputs) {
   ORT_RETURN_IF_NOT(
       opt_configs.size() == weights_to_train_.size(),
       "Number of optimizer configurations does not match number of weights to train.")
@@ -126,7 +128,8 @@ Status TrainingSession::BuildOptimizer(
 
   ORT_RETURN_IF_ERROR(BuildOptimizerInternal(model_->MainGraph(),
                                              opt_graph_config_,
-                                             opt_configs_));
+                                             opt_configs_,
+                                             opt_graph_outputs));
 
   return DoPostLoadProcessing(*model_);
 }
@@ -215,9 +218,12 @@ Status TrainingSession::Save(const string& model_uri, TrainingSession::SaveOptio
                                                    loss_func_info_.loss_name,
                                                    weights_to_train_,
                                                    false));
+
+    std::unordered_map<std::string, std::string> opt_graph_outputs;
     ORT_RETURN_IF_ERROR(BuildOptimizerInternal(new_model->MainGraph(),
                                                opt_graph_config_,
-                                               opt_configs_));
+                                               opt_configs_,
+                                               opt_graph_outputs));
   }
 
   auto status = Model::Save(*new_model, model_uri);

@@ -33,6 +33,8 @@ const std::vector<std::string> k_weight_names{"weight_1", "weight_2"};
 constexpr const char* const k_optimizer_op_name = "SGDOptimizer";
 constexpr const char* const k_all_reduce_op_name = "HorovodAllReduce";
 constexpr const char* const k_is_finite_op_name = "IsFinite";
+constexpr const char* const k_gradient_accumulator_op_name = "GradientAccumulator";
+constexpr const char* const k_zero_gradient_op_name = "ZeroGradient";
 
 // sets up a base graph with weight and gradient NodeArgs for each weight name
 void SetUpBaseGraph(Graph& graph) {
@@ -111,7 +113,8 @@ TEST_F(OptimizerGraphBuilderTest, OptimizersWithMixedPrecision) {
   OptimizerGraphBuilder optimizer_graph_builder{
       GetOptimizerBuilderRegistry(), opt_graph_config, GetOptInfoMap()};
 
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph_));
+  std::unordered_map<std::string, std::string> opt_graph_outputs;
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph_, opt_graph_outputs));
 
   // verify that optimizers are in the If then_branch subgraph
   // verify that nothing is in the If else_branch subgraph
@@ -149,7 +152,8 @@ TEST_F(OptimizerGraphBuilderTest, OptimizersWithoutMixedPrecision) {
   OptimizerGraphBuilder optimizer_graph_builder{
       GetOptimizerBuilderRegistry(), opt_graph_config, GetOptInfoMap()};
 
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph_));
+  std::unordered_map<std::string, std::string> opt_graph_outputs;
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph_, opt_graph_outputs));
 
   // verify that optimizers are in the main graph
   // verify that no finite gradient checks are added
@@ -157,6 +161,41 @@ TEST_F(OptimizerGraphBuilderTest, OptimizersWithoutMixedPrecision) {
   ASSERT_EQ(GetOpCount(op_counts, "If"), 0);
   ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), k_weight_names.size());
   ASSERT_EQ(GetOpCount(op_counts, k_is_finite_op_name), 0);
+}
+
+TEST_F(OptimizerGraphBuilderTest, OptimizersWithGradientAccumulation) {
+  OptimizerGraphConfig opt_graph_config{};
+  opt_graph_config.gradient_accumulation_steps = 10;
+
+  OptimizerGraphBuilder optimizer_graph_builder{
+      GetOptimizerBuilderRegistry(), opt_graph_config, GetOptInfoMap()};
+
+  std::unordered_map<std::string, std::string> opt_graph_outputs;
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph_, opt_graph_outputs));
+
+  // verify that gradient_accumulator and zero_gradient nodes are added
+  auto op_counts = CountOpsInGraph(graph_, false);
+  ASSERT_EQ(GetOpCount(op_counts, k_gradient_accumulator_op_name), k_weight_names.size());
+  ASSERT_EQ(GetOpCount(op_counts, k_zero_gradient_op_name), k_weight_names.size());
+  ASSERT_GT(opt_graph_outputs.count(kGradientAccumulationOutputKey), 0);
+  ASSERT_GT(opt_graph_outputs.count(kWeightUpdateOutputKey), 0);
+}
+
+TEST_F(OptimizerGraphBuilderTest, OptimizersWithoutGradientAccumulation) {
+  OptimizerGraphConfig opt_graph_config{};
+
+  OptimizerGraphBuilder optimizer_graph_builder{
+      GetOptimizerBuilderRegistry(), opt_graph_config, GetOptInfoMap()};
+
+  std::unordered_map<std::string, std::string> opt_graph_outputs;
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph_, opt_graph_outputs));
+
+  // verify that gradient_accumulator and zero_gradient nodes are not added
+  auto op_counts = CountOpsInGraph(graph_, false);
+  ASSERT_EQ(GetOpCount(op_counts, k_gradient_accumulator_op_name), 0);
+  ASSERT_EQ(GetOpCount(op_counts, k_zero_gradient_op_name), 0);
+  ASSERT_EQ(opt_graph_outputs.count(kGradientAccumulationOutputKey), 0);
+  ASSERT_EQ(opt_graph_outputs.count(kWeightUpdateOutputKey), 0);
 }
 
 #ifdef USE_HOROVOD
@@ -167,7 +206,8 @@ TEST_F(OptimizerGraphBuilderTest, AllReduceNodeAdded) {
   OptimizerGraphBuilder optimizer_graph_builder{
       GetOptimizerBuilderRegistry(), opt_graph_config, GetOptInfoMap()};
 
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph_));
+  std::unordered_map<std::string, std::string> opt_graph_outputs;
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph_, opt_graph_outputs));
 
   // verify that AllReduce nodes are added
   auto op_counts = CountOpsInGraph(graph_);
@@ -182,7 +222,8 @@ TEST_F(OptimizerGraphBuilderTest, AllReduceNodeNotAdded) {
   OptimizerGraphBuilder optimizer_graph_builder{
       GetOptimizerBuilderRegistry(), opt_graph_config, GetOptInfoMap()};
 
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph_));
+  std::unordered_map<std::string, std::string> opt_graph_outputs;
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph_, opt_graph_outputs));
 
   // verify no AllReduce nodes are added
   auto op_counts = CountOpsInGraph(graph_);

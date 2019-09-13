@@ -67,7 +67,7 @@ class DataSet {
 
 class RandomDataSet : public DataSet {
  public:
-  explicit RandomDataSet(int num_samples,
+  explicit RandomDataSet(size_t num_samples,
                          const std::vector<std::string>& tensor_names,
                          const std::vector<TensorShape> tensor_shapes,
                          const std::vector<onnx::TensorProto_DataType> tensor_types)
@@ -83,7 +83,7 @@ class RandomDataSet : public DataSet {
   virtual std::vector<OrtValue> GetKthBatch(size_t batch_size, size_t k_th) const override;
 
  private:
-  int num_samples_;
+  size_t num_samples_;
   const std::vector<TensorShape> tensor_shapes_;
   const std::vector<onnx::TensorProto_DataType> tensor_types_;
 };

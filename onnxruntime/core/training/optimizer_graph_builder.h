@@ -14,6 +14,9 @@
 namespace onnxruntime {
 namespace training {
 
+constexpr const char* kGradientAccumulationOutputKey = "GRADIENT_ACCUMULATION_OUTPUT";
+constexpr const char* kWeightUpdateOutputKey = "WEIGHT_UPDATE_OUTPUT";
+
 /**
  * Builds the optimizer components on top of an existing training graph.
  * The optimizers used are determined by the weight_names_to_opt_configs parameter
@@ -37,9 +40,10 @@ class OptimizerGraphBuilder {
   /**
    * Builds the optimizer components on top of the graph.
    * @param graph The graph to build upon.
+   * @param[out] optimizer_graph_outputs The outputs introduced in optimizer graph
    * @return The status of the graph modification.
    */
-  Status Build(Graph& graph);
+  Status Build(Graph& graph, std::unordered_map<std::string, std::string>& optimizer_graph_outputs);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OptimizerGraphBuilder);

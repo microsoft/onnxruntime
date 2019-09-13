@@ -296,5 +296,40 @@ SPECIALIZED_IMPL_LambUpdate(float, float)
 SPECIALIZED_IMPL_LambUpdate(double, double)
 SPECIALIZED_IMPL_LambUpdate(half, float)
 
+template <typename T, typename T_GRAD>
+__global__ void _AccumulateGradient(
+    const T* gradient_buffer,
+    const T_GRAD* gradient,
+    T* accumulated_gradient,
+    CUDA_LONG N) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  accumulated_gradient[id] = gradient_buffer[id] + T(gradient[id]);
+}
+
+template <typename T, typename T_GRAD>
+void AccumulateGradientImpl(
+    const T* gradient_buffer,
+    const T_GRAD* gradient,
+    T* accumulated_gradient,
+    size_t count) {
+  int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
+  CUDA_LONG N = static_cast<CUDA_LONG>(count);
+  _AccumulateGradient<T, T_GRAD><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      gradient_buffer,
+      gradient,
+      accumulated_gradient,
+      N);
+}
+
+#define SPECIALIZED_IMPL_AccumulateGradient(T, T_GRAD)  \
+template void AccumulateGradientImpl(                   \
+    const T* gradient_buffer,                           \
+    const T_GRAD* gradient,                             \
+    T* accumulated_gradient,                            \
+    size_t count);
+
+SPECIALIZED_IMPL_AccumulateGradient(float, float)
+SPECIALIZED_IMPL_AccumulateGradient(float, half)
+
 }  // namespace cuda
 }  // namespace onnxruntime

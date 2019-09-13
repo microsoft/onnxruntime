@@ -304,12 +304,19 @@ void RegisterGradientSchemas() {
       .SinceVersion(9)
       .SetDoc("accumulator for gradient")
       .Input(0, "old_sum", "historical result of accumulator", "T")
-      .Input(1, "value", "the value that will be added to the accumulator", "T")
+      .Input(1, "value", "the value that will be added to the accumulator", "T_GRAD")
       .Output(0, "new_sum", "updated result of accumulator", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors.");
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T_GRAD",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });          
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ZeroGradient)
       .SinceVersion(9)
@@ -324,7 +331,10 @@ void RegisterGradientSchemas() {
       .TypeConstraint(
           "T2",
           OpSchema::all_tensor_types(),
-          "reset_signal can be of any tensor type.");
+          "reset_signal can be of any tensor type.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });            
 }
 }  // namespace training
 }  // namespace onnxruntime

@@ -870,7 +870,6 @@ TEST(GradientCheckerTest, BatchNormalizationGrad) {
     TensorInfo saved_mean_info(channel_shape, false);
     TensorInfo saved_var_info(channel_shape, false);
 
-
     gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
                                           {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
@@ -2070,20 +2069,15 @@ TEST(GradientUtilsTest, GradientAccumulatorFloat16) {
   std::vector<float> value = {4.0f, 5.0f, 6.0f};
   std::vector<float> new_sum = {5.0f, 7.0f, 9.0f};
 
-  std::vector<MLFloat16> old_sum_half(3);
   std::vector<MLFloat16> value_half(3);
-  std::vector<MLFloat16> new_sum_half(3);
-
-  ConvertFloatToMLFloat16(old_sum.data(), old_sum_half.data(), 3);
   ConvertFloatToMLFloat16(value.data(), value_half.data(), 3);
-  ConvertFloatToMLFloat16(new_sum.data(), new_sum_half.data(), 3);
 
-  test.AddInput<MLFloat16>("old_sum", {3}, old_sum_half);
+  test.AddInput<float>("old_sum", {3}, old_sum);
   test.AddInput<MLFloat16>("value", {3}, value_half);
+  test.AddOutput<float>("new_sum", {3}, new_sum);
 
-  test.AddOutput<MLFloat16>("new_sum", {3}, new_sum_half);
-
-  test.Run();
+  // Didn't implement mixed precision GradientAccumulator in CPU
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
 }
 #endif
 

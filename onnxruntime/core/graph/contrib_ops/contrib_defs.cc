@@ -2209,7 +2209,12 @@ Example 4:
       .Input(0, "input_tensors", "list of dependency tensors", "T", OpSchema::Variadic, false)
       .Output(0, "done", "all the dependency tensors are ready", "B")
       .TypeConstraint("T", OpSchema::all_tensor_types(), "All Tensor types")
-      .TypeConstraint("B", {"tensor(bool)"}, "Only bool");
+      .TypeConstraint("B", {"tensor(bool)"}, "Only bool")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+        updateOutputShape(ctx, 0, {});
+      });
+
 
   static const char* TransposeMatMul_doc = R"DOC(
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html

@@ -41,6 +41,8 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("evaluation_period",
         "How many training steps to make before making an evaluation.",
         cxxopts::value<size_t>()->default_value("100"))
+      ("gradient_accumulation_steps", "The number of gradient accumulation steps before performing a backward/update pass.",
+        cxxopts::value<int>()->default_value("1"))
       ("save_checkpoint_steps", "How often to save the model checkpoint.", cxxopts::value<int>()->default_value("1000"))
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
@@ -53,6 +55,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
           cxxopts::value<size_t>()->default_value(to_string(profiling::Profiler::DEFAULT_MAX_PROFILER_EVENTS)))
       ("mode", "mode for running, can be one of [train|perf]", cxxopts::value<std::string>()->default_value("train"))
       ("num_of_perf_samples", "Num of samples to run for the perf test", cxxopts::value<int>()->default_value("100"))
+      ("perf_warm_up_iters", "Num of warm-up iterations to run before the perf test", cxxopts::value<int>()->default_value("10"))
       ("max_seq_length",
         "The maximum total input sequence length after WordPiece tokenization. "
         "Sequences longer than this will be truncated, and sequences shorter "
@@ -70,12 +73,19 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     params.learning_rate = flags["learning_rate"].as<float>();
     params.num_of_epoch = flags["num_of_epoch"].as<int>();
     params.num_of_perf_samples = flags["num_of_perf_samples"].as<int>();
+    params.perf_warm_up_iters = flags["perf_warm_up_iters"].as<int>();
     params.batch_size = flags["train_batch_size"].as<int>();
     if (flags.count("eval_batch_size")) {
       params.eval_batch_size = flags["eval_batch_size"].as<int>();
     } else {
       params.eval_batch_size = params.batch_size;
     }
+
+    params.gradient_accumulation_steps = flags["gradient_accumulation_steps"].as<int>();
+    if (params.gradient_accumulation_steps < 1) {
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid gradient_accumulation_steps parameter: should be >= 1");
+    }
+
     params.evaluation_period = flags["evaluation_period"].as<size_t>();
     params.use_profiler = flags.count("use_profiler") > 0;
     params.max_profile_records = flags["max_profile_records"].as<size_t>();
@@ -91,7 +101,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     if (mode == "perf" || mode == "train") {
       params.is_perf_test = mode == "perf";
     } else {
-      printf("Incorrect command line for mode: it must be one of [perf|train]\n");
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Incorrect command line for mode: it must be one of [perf|train]");
     }
 
     params.use_mixed_precision = flags["use_mixed_precision"].as<bool>();
@@ -113,13 +123,13 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     } else if (optimizer_name == "lamb" || optimizer_name == "Lamb") {
       params.training_optimizer_name = "LambOptimizer";
     } else {
-      printf("Incorrect optimizer type: it must be one of [Adam|Lamb]\n");
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Incorrect optimizer type: it must be one of [Adam|Lamb]");
     }
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
     cerr << msg << ": " << e.what() << "\n"
          << options.help() << "\n";
-    return Status(ONNXRUNTIME, FAIL, msg);
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, msg);
   }
   return Status::OK();
 }

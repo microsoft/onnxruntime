@@ -69,13 +69,13 @@ NodeDef& GetGlobalBarrierNode(GraphAugmenter::GraphDefs& graph_defs) {
 
 ArgDef BuildAllReduceNode(const ArgDef& gradient_argdef, GraphAugmenter::GraphDefs& graph_defs) {
   const std::string& gradient_name = gradient_argdef.name;
-  ArgDef reduce_output(gradient_name + "_AllReduce_Out");
+  ArgDef reduce_output(gradient_name + "_AllReduce_Out", gradient_argdef.type_proto);
   ArgDef reduce_ready(gradient_name + "_AllReduce_Ready");
   ArgDef local_barrier_output(gradient_name + "_Barrier_Out");
   ArgDef local_barrier_ready(gradient_name + "_Barrier_Ready");
 
   // Add horovod all reduce node.
-  graph_defs.AddNodeDefs({NodeDef("HorovodAllReduce", {gradient_argdef}, {reduce_output, reduce_ready}, NodeAttributes(), gradient_name)});
+  graph_defs.AddNodeDefs({NodeDef("HorovodAllReduce", {gradient_argdef}, {reduce_output, reduce_ready}, NodeAttributes(), gradient_name + "_AllReduce")});
 
   // Add ready check to global barrier.
   NodeDef& global_barrier_node = GetGlobalBarrierNode(graph_defs);
@@ -92,9 +92,95 @@ ArgDef BuildAllReduceNode(const ArgDef& /*gradient*/, GraphAugmenter::GraphDefs&
 }
 #endif
 
-Status AddAllReduceForGradients(
-    std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
-    GraphAugmenter::GraphDefs& graph_defs) {
+// given a base name, return a name suitable for a graph NodeArg
+using NodeArgNameGeneratorFn = std::function<std::string(const std::string&)>;
+
+ArgDef BuildGroupNode(const std::string& group_output_name,
+                      const std::vector<ArgDef>& arg_defs,
+                      GraphAugmenter::GraphDefs& graph_defs) {
+  ArgDef group_output(group_output_name,
+                      graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_BOOL));
+  graph_defs.AddNodeDefs({NodeDef("Group",
+                                  arg_defs,
+                                  {group_output},
+                                  NodeAttributes(),
+                                  group_output.name)});
+  return group_output;
+}
+
+ArgDef BuildGradientAccumulationNode(const NodeArgNameGeneratorFn& nodearg_name_generator,
+                                     const ArgDef& gradient,
+                                     GraphAugmenter::GraphDefs& graph_defs) {
+  TypeProto* gradient_fp32_type_proto = graph_defs.CopyTypeProto(gradient);
+  gradient_fp32_type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  ArgDef gradient_accumulate_buffer(nodearg_name_generator(gradient.name + "_accumulate_buffer"),
+                                    gradient_fp32_type_proto);
+  ArgDef gradient_accumulator_output(nodearg_name_generator(gradient.name + "_accumulator_output"),
+                                     gradient_fp32_type_proto);
+
+  std::vector<int64_t> dims;
+  ORT_ENFORCE(gradient.type_proto &&
+              gradient.type_proto->has_tensor_type() &&
+              gradient.type_proto->tensor_type().has_shape());
+  for (const auto& dim : gradient.type_proto->tensor_type().shape().dim()) {
+    dims.push_back(dim.dim_value());
+  }
+
+  graph_defs.AddInitializers({CreateTensorProto<float>(gradient_accumulate_buffer.name, 0.f, dims)});
+  graph_defs.AddNodeDefs({NodeDef("GradientAccumulator",
+                                  {gradient_accumulate_buffer, gradient},
+                                  {gradient_accumulator_output},
+                                  NodeAttributes(),
+                                  gradient_accumulator_output.name)});
+  return gradient_accumulator_output;
+}
+
+ArgDef AddGradientAccumulationNodes(const NodeArgNameGeneratorFn& nodearg_name_generator,
+                                    std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
+                                    GraphAugmenter::GraphDefs& graph_defs) {
+  for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
+    gradient_argdefs[i] = BuildGradientAccumulationNode(nodearg_name_generator, gradient_argdefs[i], graph_defs);
+  }
+
+  ArgDef group_accumulate_gradient_output = BuildGroupNode(nodearg_name_generator("Group_Accumulated_Gradients"),
+                                                           gradient_argdefs,
+                                                           graph_defs);
+  graph_defs.AddGraphOutputs({group_accumulate_gradient_output.name});
+  return group_accumulate_gradient_output;
+}
+
+ArgDef BuildZeroGradientNode(const NodeArgNameGeneratorFn& nodearg_name_generator,
+                             const ArgDef& control_signal,
+                             const ArgDef& gradient,
+                             GraphAugmenter::GraphDefs& graph_defs) {
+  ArgDef gradient_zero_output(nodearg_name_generator(gradient.name + "_zero_out"), gradient.type_proto);
+  graph_defs.AddNodeDefs({NodeDef("ZeroGradient",
+                                  {gradient, control_signal},
+                                  {gradient_zero_output},
+                                  NodeAttributes(),
+                                  gradient_zero_output.name)});
+  return gradient_zero_output;
+}
+
+ArgDef AddZeroGradientNodes(const NodeArgNameGeneratorFn& nodearg_name_generator,
+                            const ArgDef& control_signal,
+                            std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
+                            GraphAugmenter::GraphDefs& graph_defs) {
+  for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
+    gradient_argdefs[i] = BuildZeroGradientNode(nodearg_name_generator, control_signal, gradient_argdefs[i], graph_defs);
+  }
+
+  ArgDef group_zero_gradient_output = BuildGroupNode(nodearg_name_generator("Group_Zero_Gradients"),
+                                                     gradient_argdefs,
+                                                     graph_defs);
+
+  graph_defs.AddGraphOutputs({group_zero_gradient_output.name});
+  return group_zero_gradient_output;
+}
+
+Status AddAllReduceForGradients(std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
+                                GraphAugmenter::GraphDefs& graph_defs) {
   for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
     gradient_argdefs[i] = BuildAllReduceNode(gradient_argdefs[i], graph_defs);
   }
@@ -102,15 +188,18 @@ Status AddAllReduceForGradients(
 }
 
 Status AddDirectWeightUpdate(
+    const NodeArgNameGeneratorFn& nodearg_name_generator,
     const OptimizerBuilderRegistry& opt_builder_registry,
     const std::vector<ArgDef>& weight_argdefs,
     const std::vector<ArgDef>& gradient_argdefs,
     const std::vector<OptimizerNodeConfig>& opt_configs,
+    ArgDef& group_optimizers_output,
     GraphAugmenter::GraphDefs& graph_defs) {
   assert(weight_argdefs.size() == gradient_argdefs.size() &&
          weight_argdefs.size() == opt_configs.size());
 
   const size_t num_weights = weight_argdefs.size();
+  std::vector<ArgDef> output_weight_argdefs(num_weights);
   for (size_t i = 0; i < num_weights; ++i) {
     auto opt_builder = opt_builder_registry.MakeUnique(opt_configs[i].name);
     ORT_RETURN_IF_NOT(
@@ -118,20 +207,19 @@ Status AddDirectWeightUpdate(
 
     std::vector<ArgDef> inputs_including_initializers{};
     std::vector<TensorProto> new_initializers{};
-    ArgDef output_weight_argdef{};
 
     ORT_RETURN_IF_ERROR(opt_builder->Build(
         weight_argdefs[i], gradient_argdefs[i], opt_configs[i],
-        graph_defs, inputs_including_initializers, new_initializers, output_weight_argdef));
+        graph_defs, inputs_including_initializers, new_initializers, output_weight_argdefs[i]));
 
     graph_defs.AddInitializers(new_initializers);
   }
 
+  group_optimizers_output = BuildGroupNode(nodearg_name_generator("Group_Optimizers_Output"),
+                                           output_weight_argdefs,
+                                           graph_defs);
   return Status::OK();
 }
-
-// given a base name, return a name suitable for a graph NodeArg
-using NodeArgNameGeneratorFn = std::function<std::string(const std::string&)>;
 
 Status AddFiniteGradientChecks(
     const NodeArgNameGeneratorFn& nodearg_name_generator,
@@ -224,6 +312,7 @@ Status AddConditionalWeightUpdate(
     const std::vector<ArgDef>& weight_argdefs,
     const std::vector<ArgDef>& gradient_argdefs,
     const std::vector<OptimizerNodeConfig>& opt_configs,
+    ArgDef& conditional_node_output,
     GraphAugmenter::GraphDefs& graph_defs) {
   assert(weight_argdefs.size() == gradient_argdefs.size() &&
          weight_argdefs.size() == opt_configs.size());
@@ -313,6 +402,8 @@ Status AddConditionalWeightUpdate(
 
   graph_defs.AddNodeDefs({NodeDef{"If", {condition_argdef}, {conditional_output_argdef}, conditional_attributes}});
 
+  conditional_node_output = conditional_output_argdef;
+
   return Status::OK();
 }
 }  // namespace
@@ -342,7 +433,8 @@ OptimizerGraphBuilder::OptimizerGraphBuilder(
       });
 }
 
-Status OptimizerGraphBuilder::Build(Graph& graph) {
+Status OptimizerGraphBuilder::Build(Graph& graph,
+                                    std::unordered_map<std::string, std::string>& optimizer_graph_outputs) {
   if (weight_names_.empty()) {
     // nothing to do
     return Status::OK();
@@ -367,14 +459,20 @@ Status OptimizerGraphBuilder::Build(Graph& graph) {
     ORT_RETURN_IF_ERROR(GetArgDefsFromGraph(graph, gradient_names, gradient_argdefs));
   }
 
-  // TODO grad accumulation
+  // add grad accumulation
+  if (opt_graph_config_.gradient_accumulation_steps > 1) {
+    ArgDef group_accumulate_gradient_output =
+        AddGradientAccumulationNodes(nodearg_name_generator, gradient_argdefs, graph_defs);
+    optimizer_graph_outputs[kGradientAccumulationOutputKey] = group_accumulate_gradient_output.name;
+  }
 
+  // add all-reduce
   if (opt_graph_config_.world_size > 1) {
-    // all-reduce
     ORT_RETURN_IF_ERROR(AddAllReduceForGradients(gradient_argdefs, graph_defs));
   }
 
   // add weight update
+  ArgDef zero_gradients_control_signal;
   if (opt_graph_config_.use_mixed_precision) {
     ArgDef all_grads_finite_argdef{};
     ORT_RETURN_IF_ERROR(AddFiniteGradientChecks(
@@ -385,14 +483,19 @@ Status OptimizerGraphBuilder::Build(Graph& graph) {
     ORT_RETURN_IF_ERROR(AddConditionalWeightUpdate(
         nodearg_name_generator, all_grads_finite_argdef,
         opt_builder_registry_, weight_argdefs, gradient_argdefs, opt_configs_,
-        graph_defs));
+        zero_gradients_control_signal, graph_defs));
   } else {
     ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(
-        opt_builder_registry_, weight_argdefs, gradient_argdefs, opt_configs_,
-        graph_defs));
+        nodearg_name_generator, opt_builder_registry_, weight_argdefs, gradient_argdefs, opt_configs_,
+        zero_gradients_control_signal, graph_defs));
   }
 
-  // TODO zero gradient
+  // add zero gradient
+  if (opt_graph_config_.gradient_accumulation_steps > 1) {
+    ArgDef group_zero_gradient_output =
+        AddZeroGradientNodes(nodearg_name_generator, zero_gradients_control_signal, gradient_argdefs, graph_defs);
+    optimizer_graph_outputs[kWeightUpdateOutputKey] = group_zero_gradient_output.name;
+  }
 
   ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, graph_defs));
 

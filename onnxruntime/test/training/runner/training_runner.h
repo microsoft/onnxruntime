@@ -42,7 +42,8 @@ class TrainingRunner {
     PATH_STRING_TYPE log_dir;  // Path to write Tensorboard events to.
 
     bool is_perf_test;
-    int num_of_perf_samples;
+    size_t perf_warm_up_iters;
+    size_t num_of_perf_samples;
     LossFunctionInfo loss_func_info;
 
     // The training optimizer name
@@ -51,6 +52,7 @@ class TrainingRunner {
     std::string training_optimizer_name = "SGDOptimizer";
     std::unordered_map<std::string, float> optimizer_attributes;
     float learning_rate;
+    int gradient_accumulation_steps = 1;
 
     // The weights to train, exclusive with weights_not_to_train_.
     std::unordered_set<std::string> weights_to_train;
@@ -121,6 +123,7 @@ class TrainingRunner {
   std::shared_ptr<IDataLoader> test_data_loader_ = nullptr;
 
   size_t step_;
+  std::unordered_map<std::string, std::string> opt_graph_outputs_;
 
   Parameters params_;
   TrainingSession session_;

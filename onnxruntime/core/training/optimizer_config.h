@@ -24,6 +24,7 @@ struct OptimizerGraphConfig {
   int world_rank{0};
   int world_size{1};
   bool use_mixed_precision{false};
+  int gradient_accumulation_steps{1};
 };
 }  // namespace training
 }  // namespace onnxruntime

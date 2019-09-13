@@ -34,7 +34,7 @@ MPIContext setup_horovod() {
   char version[MPI_MAX_LIBRARY_VERSION_STRING];
   MPI_Get_library_version(version, &len);
 
-  printf("Using cuda local_rank: %d, world_rank: %d, world_size: %d (version: %s)\n",
+  printf("Using cuda local_rank: %d, world_rank: %d, world_size: %d\n(version: %s)\n",
          local_rank, world_rank, world_size, version);
 
   return MPIContext(world_rank, local_rank, world_size);

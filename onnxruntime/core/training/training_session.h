@@ -54,10 +54,12 @@ class TrainingSession : public InferenceSession {
   /** Add optimizer into the model. Each trainable weight will have an optimizer
   @param opt_graph_config The configuration that applies to all optimizers.
   @param opt_configs specify the optimizers used by each weight in weights_to_train, 1-1 mapping to weights_to_train.
+  @param opt_graph_outputs The outputs of optimizer graph
   */
   common::Status BuildOptimizer(
       const OptimizerGraphConfig& opt_graph_config,
-      const std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs);
+      const std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs,
+      std::unordered_map<std::string, std::string>& opt_graph_outputs);
 
   /** Enable mixed precision training
   @param weights_to_train a set of weights to be training.
