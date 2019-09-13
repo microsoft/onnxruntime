@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/framework/bfc_arena.h"
-#include <iostream >
 
 namespace onnxruntime {
 BFCArena::BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
@@ -79,12 +78,11 @@ bool BFCArena::Extend(size_t requested_bytes) {
   size_t bytes = std::min(curr_region_allocation_bytes_, available_bytes);
   auto safe_alloc = [this](size_t alloc_bytes) {
     void* new_mem = nullptr;
-
     try {
       new_mem = device_allocator_->Alloc(alloc_bytes);
     } catch (const std::bad_alloc&) {
-      // handle 'new' throwing std::bad_alloc if it can't allocate the memory
-      std::cout << "Failed to allocate " << alloc_bytes << " bytes" << std::endl;
+      // attempted allocation can throw std::bad_alloc. we want to treat this the same as if it returned nullptr
+      // so swallow the exception
     }
 
     return new_mem;
@@ -92,10 +90,7 @@ bool BFCArena::Extend(size_t requested_bytes) {
 
   void* mem_addr = safe_alloc(bytes);
 
-  if (mem_addr == nullptr && !started_backpedal_) {
-    // Only backpedal once.
-    started_backpedal_ = true;
-
+  if (mem_addr == nullptr) {
     static constexpr float kBackpedalFactor = 0.9f;
 
     // Try allocating less memory.
@@ -112,11 +107,11 @@ bool BFCArena::Extend(size_t requested_bytes) {
     return false;
   }
 
-  // This doesn't make sense. We already updated curr_region_allocation_bytes_ when doing the allocation
-  //if (!increased_allocation) {
-  //  // Increase the region size of the next required allocation.
-  //  curr_region_allocation_bytes_ *= 2;
-  //}
+  // we allocated the same number of bytes as the current region, so we have 2x that now
+  if (!increased_allocation) {
+    // Increase the region size of the next required allocation.
+    curr_region_allocation_bytes_ *= 2;
+  }
 
   LOGS_DEFAULT(INFO) << "Extended allocation by " << bytes
                      << " bytes.";
