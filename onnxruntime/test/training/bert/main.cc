@@ -31,7 +31,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("output_dir", "The output directory where the model checkpoints will be written.",
         cxxopts::value<std::string>())
       ("log_dir", "The directory to write tensorboard events.",
-        cxxopts::value<std::string>()->default_value("logs"))
+        cxxopts::value<std::string>()->default_value(""))
       ("num_of_epoch", "Num of epoch", cxxopts::value<int>()->default_value("1"))
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>())
       ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>())
@@ -225,14 +225,19 @@ void setup_training_params(TrainingRunner::Parameters& params) {
     }
   };
 
-  auto tensorboard = std::make_shared<EventWriter>(params.log_dir);
+  std::shared_ptr<EventWriter> tensorboard;
+  if (!params.log_dir.empty())
+    tensorboard = std::make_shared<EventWriter>(params.log_dir);
+
   params.post_evaluation_callback = [tensorboard](size_t num_samples, size_t step) {
     float average_total_loss = total_loss / float(num_samples);
     float average_mlm_loss = mlm_loss / float(num_samples);
     float average_nsp_loss = nsp_loss / float(num_samples);
 
-    for (const std::string& summary : summary_loss)
-      tensorboard->AddSummary(summary, step);
+    if (tensorboard != nullptr) {
+      for (const std::string& summary : summary_loss)
+        tensorboard->AddSummary(summary, step);
+    }
 
     printf("Step: %zu, #examples: %d, total_loss: %0.04f, mlm_loss: %0.04f, nsp_loss: %0.04f \n\n",
            step,

@@ -36,7 +36,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("train_data_dir", "MNIST training and test data path.",
         cxxopts::value<std::string>()->default_value("mnist_data"))
       ("log_dir", "The directory to write tensorboard events.",
-        cxxopts::value<std::string>()->default_value("logs"))
+        cxxopts::value<std::string>()->default_value(""))
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
       ("use_gist", "Use GIST encoding/decoding.")
       ("use_cuda", "Use CUDA execution provider for training.", cxxopts::value<bool>()->default_value("false"))
@@ -145,12 +145,17 @@ void setup_training_params(TrainingRunner::Parameters& params) {
     total_loss += *loss_data;
   };
 
-  auto tensorboard = std::make_shared<EventWriter>(params.log_dir);
+  std::shared_ptr<EventWriter> tensorboard;
+  if (!params.log_dir.empty())
+    tensorboard = std::make_shared<EventWriter>(params.log_dir);
+
   params.post_evaluation_callback = [tensorboard](size_t num_samples, size_t step) {
     float precision = float(true_count) / num_samples;
     float average_loss = total_loss / float(num_samples);
-    tensorboard->AddScalar("precision", precision, step);
-    tensorboard->AddScalar("loss", average_loss, step);
+    if (tensorboard != nullptr) {
+      tensorboard->AddScalar("precision", precision, step);
+      tensorboard->AddScalar("loss", average_loss, step);
+    }
     printf("Step: %zu, #examples: %d, #correct: %d, precision: %0.04f, loss: %0.04f \n\n",
            step,
            static_cast<int>(num_samples),
