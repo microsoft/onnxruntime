@@ -31,9 +31,11 @@ SgemmKernelFrame STRUCT
         SavedXmm13 OWORD ?
         SavedXmm14 OWORD ?
         SavedXmm15 OWORD ?
+        Padding QWORD ?
         SavedR12 QWORD ?
         SavedR13 QWORD ?
         SavedR14 QWORD ?
+        SavedR15 QWORD ?
         SavedRdi QWORD ?
         SavedRsi QWORD ?
         SavedRbx QWORD ?
@@ -48,6 +50,7 @@ SgemmKernelFrame STRUCT
         lda QWORD ?
         ldc QWORD ?
         Alpha QWORD ?
+        ZeroMode QWORD ?
 
 SgemmKernelFrame ENDS
 
@@ -75,12 +78,10 @@ SgemmKernelM1Frame STRUCT
 SgemmKernelM1Frame ENDS
 
 ;
-; SgemmKernelAvxEntry
-;
 ; Macro Description:
 ;
-;   This macro implements the common prologue code for the AVX and FMA3
-;   SGEMM kernels.
+;   This macro implements the common prologue code for the AVX based SGEMM
+;   kernels.
 ;
 ; Arguments:
 ;
@@ -102,6 +103,8 @@ SgemmKernelM1Frame ENDS
 ;   rbx, rsi, rdi - Previous values stored on the stack and the registers
 ;       are available as temporaries.
 ;
+;   r15 - Stores the ZeroMode argument from the stack frame.
+;
 
 SgemmKernelAvxEntry MACRO SaveExtra
 
@@ -109,7 +112,8 @@ SgemmKernelAvxEntry MACRO SaveExtra
         push_reg rbx
         push_reg rsi
         push_reg rdi
-        alloc_stack (SgemmKernelFrame.SavedRdi)
+        push_reg r15
+        alloc_stack (SgemmKernelFrame.SavedR15)
 IFNB <SaveExtra>
         save_reg r12, SgemmKernelFrame.SavedR12
         save_reg r13, SgemmKernelFrame.SavedR13
@@ -137,11 +141,10 @@ ENDIF
         mov     r10,SgemmKernelFrame.lda[rsp]
         shl     r10,2
         mov     r11,SgemmKernelFrame.CountM[rsp]
+        movzx   r15,BYTE PTR SgemmKernelFrame.ZeroMode[rsp]
 
         ENDM
 
-;
-; SgemmKernelAvxExit
 ;
 ; Macro Description:
 ;
@@ -176,10 +179,11 @@ IFNB <RestoreExtra>
         mov     r13,SgemmKernelFrame.SavedR13[rsp]
         mov     r14,SgemmKernelFrame.SavedR14[rsp]
 ENDIF
-        add     rsp,(SgemmKernelFrame.SavedRdi)
+        add     rsp,(SgemmKernelFrame.SavedR15)
 
         BEGIN_EPILOGUE
 
+        pop     r15
         pop     rdi
         pop     rsi
         pop     rbx
@@ -189,7 +193,7 @@ ENDIF
         ENDM
 
 ;
-; ComputeBlockLoop
+; Macro Description:
 ;
 ;   This macro generates code to execute the block compute macro multiple
 ;   times and advancing the matrix A and matrix B data pointers.
@@ -198,7 +202,7 @@ ENDIF
 ;
 ;   ComputeBlock - Supplies the macro to compute a single block.
 ;
-;   Count - Supplies the number of rows to access from matrix A.
+;   RowCount - Supplies the number of rows to access from matrix A.
 ;
 ;   AdvanceMatrixAPlusRows - Supplies a non-zero value if the data pointer
 ;       in rbx should also be advanced as part of the loop.
@@ -217,7 +221,7 @@ ENDIF
 ;   ymm4-ymm15 - Supplies the block accumulators.
 ;
 
-ComputeBlockLoop MACRO ComputeBlock, Count, AdvanceMatrixAPlusRows
+ComputeBlockLoop MACRO ComputeBlock, RowCount, AdvanceMatrixAPlusRows
 
         LOCAL   ComputeBlockBy4Loop
         LOCAL   ProcessRemainingBlocks
@@ -229,16 +233,16 @@ ComputeBlockLoop MACRO ComputeBlock, Count, AdvanceMatrixAPlusRows
         jb      ProcessRemainingBlocks
 
 ComputeBlockBy4Loop:
-        ComputeBlock Count, 0, 0, 64*4
-        ComputeBlock Count, 16*4, 4, 64*4
+        ComputeBlock RowCount, 0, 0, 64*4
+        ComputeBlock RowCount, 16*4, 4, 64*4
         sub     rdx,-32*4                   ; advance matrix B by 32 columns
-        ComputeBlock Count, 0, 8, 64*4
-        ComputeBlock Count, 16*4, 12, 64*4
+        ComputeBlock RowCount, 0, 8, 64*4
+        ComputeBlock RowCount, 16*4, 12, 64*4
         sub     rdx,-32*4                   ; advance matrix B by 32 columns
         add     rcx,4*4                     ; advance matrix A by 4 columns
 IF AdvanceMatrixAPlusRows
         add     rbx,4*4                     ; advance matrix A plus rows by 4 columns
-IF Count GE 12
+IF RowCount GE 12
         add     r13,4*4
         add     r14,4*4
 ENDIF
@@ -251,12 +255,12 @@ ProcessRemainingBlocks:
         jz      OutputBlock
 
 ComputeBlockBy1Loop:
-        ComputeBlock Count, 0, 0
+        ComputeBlock RowCount, 0, 0
         add     rdx,16*4                    ; advance matrix B by 16 columns
         add     rcx,4                       ; advance matrix A by 1 column
 IF AdvanceMatrixAPlusRows
         add     rbx,4                       ; advance matrix A plus rows by 1 column
-IF Count GE 12
+IF RowCount GE 12
         add     r13,4
         add     r14,4
 ENDIF

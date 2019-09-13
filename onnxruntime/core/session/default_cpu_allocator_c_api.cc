@@ -29,10 +29,10 @@ struct OrtDefaultAllocator : OrtAllocatorImpl {
     OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<OrtDefaultAllocator*>(this_)->Alloc(size); };
     OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<OrtDefaultAllocator*>(this_)->Free(p); };
     OrtAllocator::Info = [](const OrtAllocator* this_) { return static_cast<const OrtDefaultAllocator*>(this_)->Info(); };
-    ORT_THROW_ON_ERROR(OrtApis::CreateCpuAllocatorInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpuAllocatorInfo));
+    ORT_THROW_ON_ERROR(OrtApis::CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info));
   }
 
-  ~OrtDefaultAllocator() override { OrtApis::ReleaseAllocatorInfo(cpuAllocatorInfo); }
+  ~OrtDefaultAllocator() override { OrtApis::ReleaseMemoryInfo(cpu_memory_info); }
 
   void* Alloc(size_t size) {
     return onnxruntime::utils::DefaultAlloc(size);
@@ -40,15 +40,15 @@ struct OrtDefaultAllocator : OrtAllocatorImpl {
   void Free(void* p) {
     onnxruntime::utils::DefaultFree(p);
   }
-  const OrtAllocatorInfo* Info() const {
-    return cpuAllocatorInfo;
+  const OrtMemoryInfo* Info() const {
+    return cpu_memory_info;
   }
 
  private:
   OrtDefaultAllocator(const OrtDefaultAllocator&) = delete;
   OrtDefaultAllocator& operator=(const OrtDefaultAllocator&) = delete;
 
-  OrtAllocatorInfo* cpuAllocatorInfo;
+  OrtMemoryInfo* cpu_memory_info;
 };
 
 #define API_IMPL_BEGIN try {

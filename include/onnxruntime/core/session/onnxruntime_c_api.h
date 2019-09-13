@@ -149,7 +149,7 @@ typedef enum OrtErrorCode {
 // The actual types defined have an Ort prefix
 ORT_RUNTIME_CLASS(Env);
 ORT_RUNTIME_CLASS(Status);  // nullptr for Status* indicates success
-ORT_RUNTIME_CLASS(AllocatorInfo);
+ORT_RUNTIME_CLASS(MemoryInfo);
 ORT_RUNTIME_CLASS(Session);  //Don't call OrtReleaseSession from Dllmain (because session owns a thread pool)
 ORT_RUNTIME_CLASS(Value);
 ORT_RUNTIME_CLASS(RunOptions);
@@ -164,7 +164,7 @@ typedef struct OrtAllocator {
   uint32_t version;  // Initialize to ORT_API_VERSION
   void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);
   void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);
-  const struct OrtAllocatorInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
+  const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
@@ -368,10 +368,11 @@ struct OrtApi {
   OrtStatus*(ORT_API_CALL* RunOptionsGetRunLogSeverityLevel)(_In_ const OrtRunOptions* options, _Out_ int* out)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* RunOptionsGetRunTag)(_In_ const OrtRunOptions*, _Out_ const char** out)NO_EXCEPTION;
 
-  // Set a flag so that any running OrtRun* calls that are using this instance of OrtRunOptions
-  // will exit as soon as possible if the flag is true.
-  OrtStatus*(ORT_API_CALL* RunOptionsEnableTerminate)(_Inout_ OrtRunOptions* options)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* RunOptionsDisableTerminate)(_Inout_ OrtRunOptions* options)NO_EXCEPTION;
+  // Set a flag so that ALL incomplete OrtRun calls that are using this instance of OrtRunOptions
+  // will exit as soon as possible.
+OrtStatus*(ORT_API_CALL* RunOptionsSetTerminate)(_Inout_ OrtRunOptions* options) NO_EXCEPTION;
+// Unset the terminate flag to enable this OrtRunOptions instance being used in new OrtRun calls.
+OrtStatus*(ORT_API_CALL* RunOptionsUnsetTerminate)(_Inout_ OrtRunOptions* options) NO_EXCEPTION;
 
   /**
    * Create a tensor from an allocator. OrtReleaseValue will also release the buffer inside the output value
@@ -387,7 +388,7 @@ struct OrtApi {
    * p_data is owned by caller. OrtReleaseValue won't release p_data.
    * \param out Should be freed by calling OrtReleaseValue
    */
-  OrtStatus*(ORT_API_CALL* CreateTensorWithDataAsOrtValue)(_In_ const OrtAllocatorInfo* info,
+  OrtStatus*(ORT_API_CALL* CreateTensorWithDataAsOrtValue)(_In_ const OrtMemoryInfo* info,
                                                            _Inout_ void* p_data, size_t p_data_len, _In_ const int64_t* shape, size_t shape_len,
                                                            ONNXTensorElementDataType type, _Outptr_ OrtValue** out)NO_EXCEPTION;
 
@@ -474,28 +475,28 @@ struct OrtApi {
 
   OrtStatus*(ORT_API_CALL* GetValueType)(_In_ const OrtValue* value, _Out_ enum ONNXType* out)NO_EXCEPTION;
 
-  OrtStatus*(ORT_API_CALL* CreateAllocatorInfo)(_In_ const char* name1, enum OrtAllocatorType type, int id1, enum OrtMemType mem_type1, _Outptr_ OrtAllocatorInfo** out)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* CreateMemoryInfo)(_In_ const char* name1, enum OrtAllocatorType type, int id1, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out)NO_EXCEPTION;
 
-  /**
- * Convenience function for special case of OrtCreateAllocatorInfo, for the CPU allocator. Uses name = "Cpu" and id = 0.
+/**
+ * Convenience function for special case of OrtCreateMemoryInfo, for the CPU allocator. Uses name = "Cpu" and id = 0.
  */
-  OrtStatus*(ORT_API_CALL* CreateCpuAllocatorInfo)(enum OrtAllocatorType type, enum OrtMemType mem_type1, _Outptr_ OrtAllocatorInfo** out)NO_EXCEPTION
+  OrtStatus*(ORT_API_CALL* CreateCpuAllocatorInfo)(enum OrtAllocatorType type, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out)NO_EXCEPTION
       ORT_ALL_ARGS_NONNULL;
 
-  /**
- * Test if two allocation info are equal
+/**
+ * Test if two memory info are equal
  * \Sets 'out' to 0 if equal, -1 if not equal
  */
-  OrtStatus*(ORT_API_CALL* CompareAllocatorInfo)(_In_ const OrtAllocatorInfo* info1, _In_ const OrtAllocatorInfo* info2, _Out_ int* out)NO_EXCEPTION
+  OrtStatus*(ORT_API_CALL* CompareMemoryInfo)(_In_ const OrtMemoryInfo* info1, _In_ const OrtMemoryInfo* info2, _Out_ int* out)NO_EXCEPTION
       ORT_ALL_ARGS_NONNULL;
 
   /**
  * Do not free the returned value
  */
-  OrtStatus*(ORT_API_CALL* AllocatorInfoGetName)(_In_ const OrtAllocatorInfo* ptr, _Out_ const char** out)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* AllocatorInfoGetId)(_In_ const OrtAllocatorInfo* ptr, _Out_ int* out)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* AllocatorInfoGetMemType)(_In_ const OrtAllocatorInfo* ptr, _Out_ OrtMemType* out)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* AllocatorInfoGetType)(_In_ const OrtAllocatorInfo* ptr, _Out_ OrtAllocatorType* out)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* MemoryInfoGetName)(_In_ const OrtMemoryInfo* ptr, _Out_ const char** out)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* MemoryInfoGetId)(_In_ const OrtMemoryInfo* ptr, _Out_ int* out)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* MemoryInfoGetMemType)(_In_ const OrtMemoryInfo* ptr, _Out_ OrtMemType* out)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* MemoryInfoGetType)(_In_ const OrtMemoryInfo* ptr, _Out_ OrtAllocatorType* out)NO_EXCEPTION;
 
   OrtStatus*(ORT_API_CALL* AllocatorAlloc)(_Inout_ OrtAllocator* ptr, size_t size, _Outptr_ void** out)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* AllocatorFree)(_Inout_ OrtAllocator* ptr, void* p)NO_EXCEPTION;
@@ -663,6 +664,41 @@ inline OrtStatus* OrtFillStringTensor(_Inout_ OrtValue* value, _In_ const char* 
 inline OrtStatus* OrtGetStringTensorDataLength(_In_ const OrtValue* value, _Out_ size_t* len);
 inline OrtStatus* OrtGetStringTensorContent(_In_ const OrtValue* value, _Out_ void* s, size_t s_len, _Out_ size_t* offsets, size_t offsets_len);
 #endif
+
+/**
+   * Construct OrtValue that contains a value of non-standard type created for
+   * experiments or while awaiting standardization. OrtValue in this case would contain
+   * an internal representation of the Opaque type. Opaque types are distinguished between
+   * each other by two strings 1) domain and 2) type name. The combination of the two
+   * must be unique, so the type representation is properly identified internally. The combination
+   * must be properly registered from within ORT at both compile/run time or by another API.
+   *
+   * To construct the OrtValue pass domain and type names, also a pointer to a data container
+   * the type of which must be know to both ORT and the client program. That data container may or may
+   * not match the internal representation of the Opaque type. The sizeof(data_container) is passed for
+   * verification purposes.
+   *
+   * \domain_name - domain name for the Opaque type, null terminated.
+   * \type_name   - type name for the Opaque type, null terminated.
+   * \data_contianer - data to populate OrtValue
+   * \data_container_size - sizeof() of the data container. Must match the sizeof() of the expected
+   *                    data_container size internally.
+   */
+ORT_API_STATUS(OrtCreateOpaqueValue, _In_ const char* domain_name, _In_ const char* type_name,
+               _In_ const void* data_container, size_t data_container_size, _Outptr_ OrtValue** out);
+
+ /**
+   * Fetch data from an OrtValue that contains a value of non-standard type created for
+   * experiments or while awaiting standardization.
+   * \domain_name - domain name for the Opaque type, null terminated.
+   * \type_name   - type name for the Opaque type, null terminated.
+   * \data_contianer - data to populate OrtValue
+   * \data_container_size - sizeof() of the data container. Must match the sizeof() of the expected
+   *                    data_container size internally.
+   */
+
+ORT_API_STATUS(OrtGetOpaqueValue, _In_ const char* domain_name, _In_ const char* type_name,
+               _In_ const OrtValue* in, _Out_ void* data_container, size_t data_container_size);
 
 /*
  * EXPERIMENTAL APIS - Subject to change. Released as a preview to get feedback and enable early testing

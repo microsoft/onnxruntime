@@ -65,8 +65,8 @@ class ExecutionProviders {
     return exec_providers_[it->second].get();
   }
 
-  const IExecutionProvider* Get(const OrtAllocatorInfo& allocator_info) const {
-    auto it = allocator_idx_map_.find(allocator_info);
+  const IExecutionProvider* Get(const OrtMemoryInfo& memory_info) const {
+    auto it = allocator_idx_map_.find(memory_info);
     if (it == allocator_idx_map_.end()) {
       return nullptr;
     }
@@ -74,13 +74,13 @@ class ExecutionProviders {
     return exec_providers_[it->second].get();
   }
 
-  AllocatorPtr GetAllocator(const OrtAllocatorInfo& allocator_info) const {
-    auto exec_provider = Get(allocator_info);
+  AllocatorPtr GetAllocator(const OrtMemoryInfo& memory_info) const {
+    auto exec_provider = Get(memory_info);
     if (exec_provider == nullptr) {
       return nullptr;
     }
 
-    return exec_provider->GetAllocator(allocator_info.id, allocator_info.mem_type);
+    return exec_provider->GetAllocator(memory_info.id, memory_info.mem_type);
   }
 
   bool Empty() const { return exec_providers_.empty(); }
@@ -91,7 +91,7 @@ class ExecutionProviders {
   const_iterator begin() const noexcept { return exec_providers_.cbegin(); }
   const_iterator end() const noexcept { return exec_providers_.cend(); }
 
-  OrtAllocatorInfo GetDefaultCpuAllocatorInfo() const {
+  OrtMemoryInfo GetDefaultCpuMemoryInfo() const {
     return Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault)->Info();
   }
 
@@ -100,8 +100,8 @@ class ExecutionProviders {
 
   // maps for fast lookup of an index into exec_providers_
   std::unordered_map<std::string, size_t> provider_idx_map_;
-  // using std::map as OrtAllocatorInfo would need a custom hash function to be used with unordered_map,
+  // using std::map as OrtMemoryInfo would need a custom hash function to be used with unordered_map,
   // and as this isn't performance critical it's not worth the maintenance overhead of adding one.
-  std::map<OrtAllocatorInfo, size_t> allocator_idx_map_;
+  std::map<OrtMemoryInfo, size_t> allocator_idx_map_;
 };
 }  // namespace onnxruntime

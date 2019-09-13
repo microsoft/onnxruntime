@@ -10,11 +10,11 @@ MockedOrtAllocator::MockedOrtAllocator() {
   OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<MockedOrtAllocator*>(this_)->Alloc(size); };
   OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<MockedOrtAllocator*>(this_)->Free(p); };
   OrtAllocator::Info = [](const OrtAllocator* this_) { return static_cast<const MockedOrtAllocator*>(this_)->Info(); };
-  ORT_THROW_ON_ERROR(g_ort->CreateCpuAllocatorInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpuAllocatorInfo));
+  ORT_THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info));
 }
 
 MockedOrtAllocator::~MockedOrtAllocator() {
-  g_ort->ReleaseAllocatorInfo(cpuAllocatorInfo);
+	g_ort->ReleaseMemoryInfo(cpu_memory_info);
 }
 
 void* MockedOrtAllocator::Alloc(size_t size) {
@@ -34,8 +34,8 @@ void MockedOrtAllocator::Free(void* p) {
   return ::free(p);
 }
 
-const OrtAllocatorInfo* MockedOrtAllocator::Info() const {
-  return cpuAllocatorInfo;
+const OrtMemoryInfo* MockedOrtAllocator::Info() const {
+  return cpu_memory_info;
 }
 
 void MockedOrtAllocator::LeakCheck() {

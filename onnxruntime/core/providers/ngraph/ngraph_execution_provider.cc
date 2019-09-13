@@ -37,32 +37,32 @@ NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderIn
   ORT_ENFORCE(info.ng_backend_type == "CPU", "nGraph Execution Provider for onnxruntime currently is only supported for CPU backend.");
 
   auto default_allocator_factory = [](int) {
-    auto allocator_info = std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator);
-    return std::make_unique<CPUAllocator>(std::move(allocator_info));
+    auto memory_info = std::make_unique<OrtMemoryInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator);
+    return std::make_unique<CPUAllocator>(std::move(memory_info));
   };
 
-  DeviceAllocatorRegistrationInfo default_allocator_info{
+  DeviceAllocatorRegistrationInfo default_memory_info{
     OrtMemTypeDefault,
     std::move(default_allocator_factory),
     std::numeric_limits<size_t>::max()
   };
 
-  InsertAllocator(CreateAllocator(default_allocator_info));
+  InsertAllocator(CreateAllocator(default_memory_info));
 
 
   auto cpu_allocator_factory = [](int) {
-    auto allocator_info = std::make_unique<OrtAllocatorInfo>(
+    auto memory_info = std::make_unique<OrtMemoryInfo>(
       NGRAPH, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput);
-    return std::make_unique<CPUAllocator>(std::move(allocator_info));
+    return std::make_unique<CPUAllocator>(std::move(memory_info));
   };
 
-  DeviceAllocatorRegistrationInfo cpu_allocator_info{
+  DeviceAllocatorRegistrationInfo cpu_memory_info{
     OrtMemTypeCPUOutput,
     std::move(cpu_allocator_factory),
     std::numeric_limits<size_t>::max()
   };
 
-  InsertAllocator(CreateAllocator(cpu_allocator_info));
+  InsertAllocator(CreateAllocator(cpu_memory_info));
 
   try {
     ng_backend_ = ngraph::runtime::Backend::create(info.ng_backend_type);
@@ -438,13 +438,24 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
   }
 
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
+  std::vector<std::string> const_inputs;
   for (const auto& in_arg : ordered_input_args) {
     if ((initializers.count(in_arg) && !original_graph_inputs.count(in_arg)) ||
         ng_required_initializers.count(in_arg)) {
-      cluster_inputs.push_back(in_arg);
-    } else if (!output_args.count(in_arg)) {
+      const_inputs.push_back(in_arg);
+    }
+  }
+
+  for (const auto& in_arg : ordered_input_args) {
+    if (!output_args.count(in_arg) &&
+        !((initializers.count(in_arg) && !original_graph_inputs.count(in_arg)) ||
+        ng_required_initializers.count(in_arg))) {
       cluster_inputs.push_back(in_arg);
     }
+  }
+
+  for (const auto& in_arg : const_inputs) {
+    cluster_inputs.push_back(in_arg);
   }
 
   std::copy(external_output_args.begin(), external_output_args.end(), std::back_inserter(cluster_outputs));

@@ -125,7 +125,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   TensorShape shape({3, 2});
   std::vector<float> fdata(static_cast<size_t>(shape.Size()));
   //create fake ml value with owned buffer.
-  OrtAllocatorInfo cpuinfo(kCpuExecutionProvider, OrtDeviceAllocator);
+  OrtMemoryInfo cpuinfo(kCpuExecutionProvider, OrtDeviceAllocator);
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type, shape, fdata.data(), cpuinfo);
   OrtValue value;
   value.Init(p_tensor.release(),

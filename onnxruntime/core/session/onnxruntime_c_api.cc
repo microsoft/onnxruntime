@@ -103,7 +103,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction loggi
   std::unique_ptr<ISink> logger = std::make_unique<LoggingWrapper>(logging_function, logger_param);
   auto default_logging_manager = std::make_unique<LoggingManager>(std::move(logger),
                                                                   static_cast<Severity>(default_warning_level), false,
-                                                                  LoggingManager::InstanceType::Default,
+                                                                  LoggingManager::InstanceType::Temporal,
                                                                   &name);
   std::unique_ptr<Environment> env;
   Status status = Environment::Create(env);
@@ -149,7 +149,7 @@ OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, OrtAllocator
  * this function will create a copy of the allocator info
  */
 template <typename T>
-OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, const OrtAllocatorInfo* info,
+OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, const OrtMemoryInfo* info,
                             void* p_data, size_t p_data_len, std::unique_ptr<Tensor>* out) {
   size_t elem_count = 1;
   std::vector<int64_t> shapes(shape_len);
@@ -171,9 +171,12 @@ OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, const OrtAll
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
-                    _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type,
-                    _Outptr_ OrtValue** out) {
+/**
+ * this function will create a copy of the allocator info
+ */
+ORT_API_STATUS_IMPL(OrtApis::CreateTensorWithDataAsOrtValue, _In_ const OrtMemoryInfo* info,
+                    _Inout_ void* p_data, size_t p_data_len, _In_ const int64_t* shape, size_t shape_len,
+                    ONNXTensorElementDataType type, _Outptr_ OrtValue** out) {
   API_IMPL_BEGIN
   std::unique_ptr<Tensor> tensor;
   switch (type) {
@@ -617,7 +620,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetOutputName, _In_ const OrtSession* sess, 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::AllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size, _Outptr_ void** out) {
+ORT_API_STATUS_IMPL(OrtApis::AllocatorGetInfo, _In_ const OrtAllocator* ptr, _Outptr_ const struct OrtMemoryInfo** out) {
   API_IMPL_BEGIN
   *out = ptr->Alloc(ptr, size);
   return nullptr;
@@ -1073,6 +1076,39 @@ ORT_API_STATUS_IMPL(OrtApis::CreateValue, const OrtValue* const* in, size_t num_
   return OrtCreateValueImpl(in, num_values, value_type, out);
   API_IMPL_END
 }
+
+ORT_API_STATUS_IMPL(OrtCreateOpaqueValue, const char* domain_name, const char* type_name, const void* data_container,
+               size_t data_container_size, OrtValue** out) {
+  API_IMPL_BEGIN
+  std::string dtype("opaque(");
+  dtype.append(domain_name).append(",").append(type_name).append(")");
+  MLDataType ml_type = DataTypeImpl::GetDataType(dtype);
+  ORT_ENFORCE(ml_type != nullptr,
+    "Specified domain and type names combination does not refer to a registered opaque type");
+  const auto* non_tensor_base = ml_type->AsNonTensorTypeBase();
+  ORT_ENFORCE(non_tensor_base != nullptr, "Opaque type is not a non_tensor type!!!");
+  std::unique_ptr<OrtValue> ort_val(new OrtValue);
+  non_tensor_base->FromDataContainer(data_container, data_container_size, *ort_val);
+  *out = ort_val.release();
+  API_IMPL_END
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtGetOpaqueValue, const char* domain_name, const char* type_name, const OrtValue* in, 
+    void* data_container, size_t data_container_size) {
+  API_IMPL_BEGIN
+  std::string dtype("opaque(");
+  dtype.append(domain_name).append(",").append(type_name).append(")");
+  MLDataType ml_type = DataTypeImpl::GetDataType(dtype);
+  ORT_ENFORCE(ml_type != nullptr,
+              "Specified domain and type names combination does not refer to a registered opaque type");
+  const auto* non_tensor_base = ml_type->AsNonTensorTypeBase();
+  ORT_ENFORCE(non_tensor_base != nullptr, "Opaque type is not a non_tensor type!!!");
+  non_tensor_base->ToDataContainer(*in, data_container_size, data_container);
+  API_IMPL_END
+  return nullptr;
+}
+
 
 // End support for non-tensor types
 

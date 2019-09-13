@@ -45,7 +45,7 @@ struct Exception : std::exception {
 #define ORT_DEFINE_RELEASE(NAME) \
   inline void OrtRelease(Ort##NAME* ptr) { g_api->Release##NAME(ptr); }
 
-ORT_DEFINE_RELEASE(AllocatorInfo);
+ORT_DEFINE_RELEASE(MemoryInfo);
 ORT_DEFINE_RELEASE(CustomOpDomain);
 ORT_DEFINE_RELEASE(Env);
 ORT_DEFINE_RELEASE(RunOptions);
@@ -95,7 +95,7 @@ struct Unowned : T {
 };
 
 struct AllocatorWithDefaultOptions;
-struct AllocatorInfo;
+struct MemoryInfo;
 struct Env;
 struct TypeInfo;
 struct Value;
@@ -129,8 +129,10 @@ struct RunOptions : Base<OrtRunOptions> {
   RunOptions& SetRunTag(const char* run_tag);
   const char* GetRunTag() const;
 
-  RunOptions& EnableTerminate();
-  RunOptions& DisableTerminate();
+  // terminate ALL currently executing Session::Run calls that were made using this RunOptions instance
+  RunOptions& SetTerminate();
+  // unset the terminate flag so this RunOptions instance can be used in a new Session::Run call
+  RunOptions& UnsetTerminate();
 };
 
 struct SessionOptions : Base<OrtSessionOptions> {
@@ -206,8 +208,8 @@ struct TypeInfo : Base<OrtTypeInfo> {
 
 struct Value : Base<OrtValue> {
   template <typename T>
-  static Value CreateTensor(const OrtAllocatorInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len);
-  static Value CreateTensor(const OrtAllocatorInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
+  static Value CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len);
+  static Value CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
                             ONNXTensorElementDataType type);
   template <typename T>
   static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len);
@@ -215,6 +217,12 @@ struct Value : Base<OrtValue> {
 
   static Value CreateMap(Value& keys, Value& values);
   static Value CreateSequence(std::vector<Value>& values);
+
+  template<typename T>
+  static Value CreateOpaque(const char* domain, const char* type_name, const T&);
+
+  template <typename T>
+  void GetOpaqueData(const char* domain, const char* type_name, T&);
 
   explicit Value(nullptr_t) {}
   explicit Value(OrtValue* p) : Base<OrtValue>{p} {}
@@ -242,19 +250,19 @@ struct AllocatorWithDefaultOptions {
   void* Alloc(size_t size);
   void Free(void* p);
 
-  const OrtAllocatorInfo* GetInfo() const;
+  const OrtMemoryInfo* GetInfo() const;
 
  private:
   OrtAllocator* p_{};
 };
 
-struct AllocatorInfo : Base<OrtAllocatorInfo> {
-  static AllocatorInfo CreateCpu(OrtAllocatorType type, OrtMemType mem_type1);
+struct MemoryInfo : Base<OrtMemoryInfo> {
+  static MemoryInfo CreateCpu(OrtAllocatorType type, OrtMemType mem_type1);
 
-  explicit AllocatorInfo(nullptr_t) {}
-  AllocatorInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type);
+  explicit MemoryInfo(nullptr_t) {}
+  MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type);
 
-  explicit AllocatorInfo(OrtAllocatorInfo* p) : Base<OrtAllocatorInfo>{p} {}
+  explicit MemoryInfo(OrtMemoryInfo* p) : Base<OrtMemoryInfo>{p} {}
 };
 
 //

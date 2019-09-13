@@ -6,7 +6,9 @@
 #include "core/framework/tensor_shape.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/onnxruntime_typeinfo.h"
+#include "core/framework/sparse_tensor.h"
 #include "core/framework/tensor_type_and_shape.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/framework/error_code_helper.h"
 
 #include <assert.h>
@@ -17,6 +19,7 @@ using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::MLFloat16;
 using onnxruntime::Tensor;
+using onnxruntime::SparseTensor;
 
 ORT_API_STATUS_IMPL(OrtApis::CreateTensorTypeAndShapeInfo, _Out_ OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN
@@ -102,12 +105,61 @@ ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(
   return type;
 }
 
-OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape* shape,
-                                 const onnxruntime::DataTypeImpl* tensor_data_type, OrtTensorTypeAndShapeInfo** out) {
-  ONNXTensorElementDataType type = MLDataTypeToOnnxRuntimeTensorElementDataType(tensor_data_type);
-  if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {
-    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Not implemented");
+ONNXTensorElementDataType TensorDataTypeToOnnxRuntimeTensorElementDataType(
+    int32_t dtype) {
+  namespace o = ONNX_NAMESPACE;
+  ONNXTensorElementDataType type;
+  switch (dtype) {
+    case o::TensorProto_DataType_FLOAT:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+      break;
+    case o::TensorProto_DataType_DOUBLE:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
+      break;
+    case o::TensorProto_DataType_FLOAT16:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+      break;
+    case o::TensorProto_DataType_BFLOAT16:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16;
+      break;
+    case o::TensorProto_DataType_INT8:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
+      break;
+    case o::TensorProto_DataType_UINT8:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
+      break;
+    case o::TensorProto_DataType_INT16:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;
+      break;
+    case o::TensorProto_DataType_UINT16:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16;
+      break;
+    case o::TensorProto_DataType_INT32:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
+      break;
+    case o::TensorProto_DataType_UINT32:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32;
+      break;
+    case o::TensorProto_DataType_INT64:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+      break;
+    case o::TensorProto_DataType_UINT64:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;
+      break;
+    case o::TensorProto_DataType_STRING:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+      break;
+    case o::TensorProto_DataType_BOOL:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
+      break;
+    default:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+      break;
   }
+  return type;
+}
+
+OrtStatus* GetTensorShapeAndTypeHelper(ONNXTensorElementDataType type, const onnxruntime::TensorShape* shape, OrtTensorTypeAndShapeInfo** out) {
   OrtTensorTypeAndShapeInfo* ret;
   if (auto* status = OrtApis::CreateTensorTypeAndShapeInfo(&ret))
     return status;
@@ -126,11 +178,50 @@ OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape* shape,
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetTensorTypeAndShape, _In_ const OrtValue* v,
+OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape* shape,
+                                 const onnxruntime::DataTypeImpl* tensor_data_type, OrtTensorTypeAndShapeInfo** out) {
+  ONNXTensorElementDataType type = MLDataTypeToOnnxRuntimeTensorElementDataType(tensor_data_type);
+  if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {
+    return OrtCreateStatus(ORT_NOT_IMPLEMENTED, "Not implemented");
+  }
+  return GetTensorShapeAndTypeHelper(type, shape, out);
+}
+
+OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape* shape,
+                                 const ONNX_NAMESPACE::TypeProto* type_proto, OrtTensorTypeAndShapeInfo** out) {
+  assert(type_proto != nullptr);
+  auto value_case = type_proto->value_case();
+  assert(value_case == ONNX_NAMESPACE::TypeProto::kTensorType || value_case == ONNX_NAMESPACE::TypeProto::kSparseTensorType);
+  auto dtype = (value_case == ONNX_NAMESPACE::TypeProto::kTensorType) ? 
+    type_proto->tensor_type().elem_type() : type_proto->sparse_tensor_type().elem_type();
+  ONNXTensorElementDataType type = TensorDataTypeToOnnxRuntimeTensorElementDataType(dtype);
+  if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {
+    return OrtCreateStatus(ORT_NOT_IMPLEMENTED, "Not implemented");
+  }
+  return GetTensorShapeAndTypeHelper(type, shape, out);
+}
+
+ORT_API_STATUS_IMPL(OrtGetTensorTypeAndShape, _In_ const OrtValue* v,
                     _Out_ OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN
-  const onnxruntime::Tensor& tensor = v->Get<onnxruntime::Tensor>();
-  return GetTensorShapeAndType(&tensor.Shape(), tensor.DataType(), out);
+  onnxruntime::MLDataType type = v->Type();
+  ORT_ENFORCE(type != nullptr, "OrtValue is not a Tensor");
+  if (type->IsTensorType() || type->IsSparseTensorType()) {
+    const onnxruntime::TensorShape* shape = nullptr;
+    onnxruntime::MLDataType data_type = nullptr;
+    if (type->IsTensorType()) {
+      const Tensor& tensor = v->Get<onnxruntime::Tensor>();
+      shape = &tensor.Shape();
+      data_type = tensor.DataType();
+    } else {
+      const SparseTensor& tensor = v->Get<onnxruntime::SparseTensor>();
+      shape = &tensor.Shape();
+      data_type = tensor.Values().DataType();
+    }
+    return GetTensorShapeAndType(shape, data_type, out);
+  } else {
+    ORT_THROW("Argument is not a tensor");
+  }
   API_IMPL_END
 }
 
@@ -157,10 +248,19 @@ ORT_API_STATUS_IMPL(OrtApis::GetTypeInfo, _In_ const OrtValue* v, struct OrtType
     *out = nullptr;
     return nullptr;
   }
-  if (type == DataTypeImpl::GetType<Tensor>()) {
-    const onnxruntime::Tensor& tensor = v->Get<onnxruntime::Tensor>();
-    const onnxruntime::TensorShape& shape = tensor.Shape();
-    return OrtTypeInfo::FromDataTypeImpl(type, &shape, tensor.DataType(), out);
+  if (type->IsTensorType() || type->IsSparseTensorType()) {
+    const onnxruntime::TensorShape* shape = nullptr;
+    onnxruntime::MLDataType data_type = nullptr;
+    if (type->IsTensorType()) {
+      const Tensor& tensor = v->Get<onnxruntime::Tensor>();
+      shape = &tensor.Shape();
+      data_type = tensor.DataType();
+    } else {
+      const SparseTensor& tensor = v->Get<onnxruntime::SparseTensor>();
+      shape = &tensor.Shape();
+      data_type = tensor.Values().DataType();
+    }
+    return OrtTypeInfo::FromDataTypeImpl(type, shape, data_type, out);
   }
   return OrtTypeInfo::FromDataTypeImpl(type, nullptr, nullptr, out);
 }
