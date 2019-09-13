@@ -151,17 +151,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
       return true;
     }
-  } else if (optype == "Split") {
-    const auto& attributes = node->GetAttributes();
-    const auto split_attr = attributes.find("split");
-
-    if (split_attr != attributes.end()) {
-      // split implementation contains a bug that doesn't throw for incorrect split values
-      // disabling temporarily until it's fixed in the next release of nGraph
-      const auto splits = split_attr->second.ints();
-      return std::any_of(std::begin(splits), std::end(splits),
-        [](const auto split) { return split <= 0; });
-    }
   } else if (optype == "QLinearMatMul") {
     const auto& a_zero_point = node->InputDefs()[2];
     const auto& b_zero_point = node->InputDefs()[5];
