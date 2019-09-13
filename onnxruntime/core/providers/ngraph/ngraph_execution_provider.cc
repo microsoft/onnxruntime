@@ -108,12 +108,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     //TopK opset 10 is currently not supported.
     //K as input is currently not suppported.
     return node->InputDefs().size() > 1;
-  } else if (optype == "LSTM") {
-    const auto& attributes = node->GetAttributes();
-    const auto direction_attr = attributes.find("direction");
-    if (direction_attr != attributes.end()) {
-      return direction_attr->second.s() == "reverse";
-    }
   } else if (optype == "MatMul") {
     //All matmuls except float have computation missmatch
     const bool A_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
