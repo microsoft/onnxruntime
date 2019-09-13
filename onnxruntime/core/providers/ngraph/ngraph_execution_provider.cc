@@ -281,13 +281,6 @@ static void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
   meta_def->inputs = inputs;
   meta_def->outputs = outputs;
 
-  //store the name of the graph this node belongs to - used to retrieve graph initializers from the cache
-  ONNX_NAMESPACE::AttributeProto graph_name;
-  graph_name.set_name("graph_name");
-  graph_name.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
-  graph_name.set_s(graph_viewer.Name());
-  meta_def->attributes["graph_name"] = graph_name;
-
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
   sub_graph->nodes = nodes;
   sub_graph->SetMetaDef(meta_def);
@@ -303,7 +296,7 @@ static std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int 
   std::map<std::string, std::set<std::string>> ng_supported_ops;
   ng_supported_ops.emplace(kOnnxDomain, ngraph::onnx_import::get_supported_operators(onnx_opset, kOnnxDomain));
 
-  const std::set<std::string> ng_disabled_ops = {"LSTM", "Gather"};  //Place-holder for ops not supported.
+  const std::set<std::string> ng_disabled_ops = {"LSTM"};  //Place-holder for ops not supported.
 
   for (const auto& disabled_op : ng_disabled_ops) {
     ng_supported_ops.at(kOnnxDomain).erase(disabled_op);
