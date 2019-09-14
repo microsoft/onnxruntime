@@ -125,7 +125,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
         public void AppendExecutionProvider_Nuphar(string settings = "")
         {
-            NativeApiStatus.VerifySuccess(OrtSessionOptionsAppendExecutionProvider_Nuphar(options._nativePtr, 1, settings));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(_nativePtr, 1, settings));
         }
 #endif
         #endregion //ExecutionProviderAppends
