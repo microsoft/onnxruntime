@@ -117,8 +117,8 @@ namespace perftest {
         test_config.run_config.f_verbose = true;
         break;
       case 'x':
-        test_config.run_config.session_thread_pool_size = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        if (test_config.run_config.session_thread_pool_size < 0) {
+        test_config.run_config.intra_op_thread_pool_size = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
+        if (test_config.run_config.intra_op_thread_pool_size < 0) {
           return false;
         }
         break;

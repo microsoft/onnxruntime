@@ -248,12 +248,21 @@ ORT_API_STATUS(OrtSetSessionGraphOptimizationLevel, _Inout_ OrtSessionOptions* o
                GraphOptimizationLevel graph_optimization_level);
 
 /**
- * How many threads in the session thread pool.
+ * Controls the size of the thread pool used to parallelize the execution of tasks within individual nodes (ops)
  * Set it to 0 to make onnxruntime run as single threaded.
- * \param session_thread_pool_size <0, let the runtime choose a default. =0, Don't create extra threads. 
+ * \param intra_op_thread_pool_size <0, let the runtime choose a default. =0, Don't create extra threads. 
  *                                 >0, create a thread pool with size of this value.
  */
-ORT_API_STATUS(OrtSetSessionThreadPoolSize, _Inout_ OrtSessionOptions* options, int session_thread_pool_size);
+ORT_API_STATUS(OrtSetIntraOpThreadPoolSize, _Inout_ OrtSessionOptions* options, int intra_op_thread_pool_size);
+
+/**
+ * Controls the size of the thread pool used to parallelize the execution of nodes (ops)
+ * configuring this makes sense only when you're using parallel executor
+ * Set it to 0 to make onnxruntime run as single threaded.
+ * \param intra_op_thread_pool_size <0, let the runtime choose a default. =0, Don't create extra threads. 
+ *                                 >0, create a thread pool with size of this value.
+ */
+ORT_API_STATUS(OrtSetInterOpThreadPoolSize, _Inout_ OrtSessionOptions* options, int inter_op_thread_pool_size);
 
 /**
   * To use additional providers, you must build ORT with the extra providers enabled. Then call one of these
@@ -540,7 +549,7 @@ ORT_API_STATUS(OrtCreateValue, _In_ const OrtValue* const* in, size_t num_values
 ORT_API_STATUS(OrtCreateOpaqueValue, _In_ const char* domain_name, _In_ const char* type_name,
                _In_ const void* data_container, size_t data_container_size, _Outptr_ OrtValue** out);
 
- /**
+/**
    * Fetch data from an OrtValue that contains a value of non-standard type created for
    * experiments or while awaiting standardization.
    * \domain_name - domain name for the Opaque type, null terminated.
