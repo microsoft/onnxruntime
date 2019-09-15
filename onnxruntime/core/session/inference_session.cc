@@ -567,6 +567,14 @@ int InferenceSession::GetCurrentNumRuns() const {
   return current_num_runs_.load();
 }
 
+const std::vector<std::string>& InferenceSession::GetRegisteredProviderTypes() const {
+  return execution_providers_.GetIds();
+}
+
+const SessionOptions& InferenceSession::GetSessionOptions() const {
+  return session_options_;
+}
+
 common::Status InferenceSession::CheckShapes(const std::string& input_name,
                                              const TensorShape& input_shape,
                                              const TensorShape& expected_shape) const {
