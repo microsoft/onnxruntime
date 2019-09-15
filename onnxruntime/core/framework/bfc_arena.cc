@@ -53,24 +53,23 @@ BFCArena::Chunk* BFCArena::ChunkFromHandle(ChunkHandle h) {
   return &(chunks_[h]);
 }
 
-bool BFCArena::Extend(size_t requested_bytes) {
+bool BFCArena::Extend(size_t rounded_bytes) {
   size_t available_bytes = memory_limit_ - stats_.total_allocated_bytes;
   // Rounds available_bytes down to the nearest multiple of kMinAllocationSize.
   available_bytes = (available_bytes / kMinAllocationSize) * kMinAllocationSize;
 
   // Do we have enough space to handle the client's request?
   // If not, fail immediately.
-  if (requested_bytes > available_bytes) {
+  if (rounded_bytes > available_bytes) {
     return false;
   }
 
   // If curr_region_allocation_bytes_ is not enough to satisfy the
-  // allocation, keep adding 50% until large enough
+  // allocation, keep multiplying by a power of two until that is
+  // sufficient.
   bool increased_allocation = false;
-  while (requested_bytes > curr_region_allocation_bytes_) {
-    curr_region_allocation_bytes_ = RoundedBytes(curr_region_allocation_bytes_ +
-                                                 (curr_region_allocation_bytes_ >> 1));  // geometric growth. add 50%
-
+  while (rounded_bytes > curr_region_allocation_bytes_) {
+    curr_region_allocation_bytes_ *= 2;
     increased_allocation = true;
   }
 
@@ -96,7 +95,7 @@ bool BFCArena::Extend(size_t requested_bytes) {
     // Try allocating less memory.
     while (mem_addr == nullptr) {
       bytes = RoundedBytes(static_cast<size_t>(bytes * kBackpedalFactor));
-      if (bytes < requested_bytes)
+      if (bytes < rounded_bytes)
         break;
 
       mem_addr = safe_alloc(bytes);
@@ -109,7 +108,6 @@ bool BFCArena::Extend(size_t requested_bytes) {
 
   // we allocated the same number of bytes as the current region, so we have 2x that now
   if (!increased_allocation) {
-    // Increase the region size of the next required allocation.
     curr_region_allocation_bytes_ *= 2;
   }
 
@@ -241,9 +239,9 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   // couldn't find one.  This means we must have run out of memory,
   // Dump the memory log for analysis.
   if (dump_log_on_failure) {
-    LOGS_DEFAULT(WARNING) << "BFC Arena ran out of memory trying "
-                          << "to allocate " << num_bytes
-                          << ".  Current allocation summary follows.";
+    LOGS_DEFAULT(ERROR) << "BFC Arena ran out of memory trying "
+                        << "to allocate " << num_bytes
+                        << ".  Current allocation summary follows.";
     DumpMemoryLog(rounded_bytes);
   }
   return nullptr;
