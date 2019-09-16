@@ -16,7 +16,7 @@ namespace onnxruntime {
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const InitializedTensorSet& initialized_tensor_set) {
   // Create CPU execution provider
-  // For now, CPU execution provider will be created every time when initilizing Info.
+  // For now, CPU execution provider will be created every time when initializing Info.
   // Later, it will be changed to pass by Info ctor.
   cpu_execution_provider_ = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   allocator_ptr_ = cpu_execution_provider_->GetAllocator(device_id_, mem_type_);

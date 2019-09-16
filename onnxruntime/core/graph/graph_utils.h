@@ -38,6 +38,11 @@ bool IsOutputUsed(const Node& node, int index);
 /** Returns true if the graph has the given input.*/
 bool IsGraphInput(const Graph& graph, const NodeArg* input);
 
+/** returns true if 'name' is an initializer, and is constant and cannot be overridden at runtime. 
+@param check_outer_scope If true and the graph is a subgraph, check parent graph/s for 'name' if not found in 'graph'.
+*/
+bool IsConstantInitializer(const Graph& graph, const std::string& name, bool check_outer_scope);
+
 /** Checks if the given node has only constant inputs (initializers). */
 bool AllNodeInputsAreConstant(const Graph& graph, const Node& node);
 
