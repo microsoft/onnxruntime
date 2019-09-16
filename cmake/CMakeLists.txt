@@ -475,6 +475,11 @@ if (onnxruntime_USE_JEMALLOC)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES jemalloc)
 endif()
 
+if (onnxruntime_USE_MIMALLOC)
+  include(external/mimalloc.cmake)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES mimalloc)
+endif()
+
 include_directories(
   ${ONNXRUNTIME_INCLUDE_DIR}
   ${REPO_ROOT}/include/onnxruntime/core/session

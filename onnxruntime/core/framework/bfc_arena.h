@@ -38,41 +38,6 @@ namespace onnxruntime {
 #endif
 #endif
 
-// Runtime statistics collected by an allocator.
-struct AllocatorStats {
-  int64_t num_allocs;             // Number of allocations.
-  int64_t bytes_in_use;           // Number of bytes in use.
-  int64_t total_allocated_bytes;  // The total number of allocated bytes by the allocator.
-  int64_t max_bytes_in_use;       // The maximum bytes in use.
-  int64_t max_alloc_size;         // The max single allocation seen.
-                                  // The upper limit what the allocator can allocate, if such a limit
-                                  // is known. Certain allocator may return 0 to indicate the limit is
-                                  // unknown.
-  int64_t bytes_limit;
-
-  AllocatorStats() { Clear(); }
-
-  void Clear() {
-    this->num_allocs = 0;
-    this->bytes_in_use = 0;
-    this->max_bytes_in_use = 0;
-    this->max_alloc_size = 0;
-    this->bytes_limit = 0;
-    this->total_allocated_bytes = 0;
-  }
-
-  std::string DebugString() const {
-    std::ostringstream ss;
-    ss << "Limit:           " << this->bytes_limit << "\n"
-       << "InUse:          " << this->bytes_in_use << "\n"
-       << "TotalAllocated: " << this->total_allocated_bytes << "\n"
-       << "MaxInUse:       " << this->max_bytes_in_use << "\n"
-       << "NumAllocs:      " << this->num_allocs << "\n"
-       << "MaxAllocSize:   " << this->max_alloc_size << "\n";
-    return ss.str();
-  }
-};
-
 // A memory allocator that implements a 'best-fit with coalescing'
 // algorithm.  This is essentially a very simple version of Doug Lea's
 // malloc (dlmalloc).

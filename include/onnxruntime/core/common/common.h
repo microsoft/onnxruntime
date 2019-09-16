@@ -36,6 +36,10 @@
 #include "core/common/make_unique.h"
 #include "core/common/status.h"
 
+#ifdef USE_MIMALLOC
+#include <mimalloc.h>
+#endif
+
 namespace onnxruntime {
 
 using TimePoint = std::chrono::high_resolution_clock::time_point;

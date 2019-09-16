@@ -275,6 +275,28 @@ class CPUAllocator : public IDeviceAllocator {
   std::unique_ptr<OrtMemoryInfo> memory_info_;
 };
 
+#ifdef USE_MIMALLOC
+class MiMallocAllocator : public IDeviceAllocator {
+ public:
+  explicit MiMallocAllocator(std::unique_ptr<OrtMemoryInfo> memory_info) {
+    ORT_ENFORCE(nullptr != memory_info);
+    memory_info_ = std::move(memory_info);
+  }
+
+  MiMallocAllocator() {
+    memory_info_ = std::make_unique<OrtMemoryInfo>(CPU, OrtAllocatorType::OrtDeviceAllocator);
+  }
+
+  void* Alloc(size_t size) override;
+  void Free(void* p) override;
+  const OrtMemoryInfo& Info() const override;
+
+ private:
+  std::unique_ptr<OrtMemoryInfo> memory_info_;
+};
+
+#endif
+
 using AllocatorPtr = std::shared_ptr<IAllocator>;
 
 }  // namespace onnxruntime

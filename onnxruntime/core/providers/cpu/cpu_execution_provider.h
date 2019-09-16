@@ -9,6 +9,12 @@
 
 namespace onnxruntime {
 
+#ifdef USE_MIMALLOC
+  using TAllocator = MiMallocAllocator;
+#else
+  using TAllocator = CPUAllocator;
+#endif
+
 // Information needed to construct CPU execution providers.
 struct CPUExecutionProviderInfo {
   bool create_arena{true};
@@ -28,9 +34,14 @@ class CPUExecutionProvider : public IExecutionProvider {
   explicit CPUExecutionProvider(const CPUExecutionProviderInfo& info)
       : IExecutionProvider{onnxruntime::kCpuExecutionProvider} {
     DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
-                                                [](int) { return onnxruntime::make_unique<CPUAllocator>(); },
+                                                [](int) { return onnxruntime::make_unique<TAllocator>(); },
                                                 std::numeric_limits<size_t>::max()};
+
 #ifdef USE_JEMALLOC
+    #if defined(USE_MIMALLOC)
+    #error jemalloc and mimalloc shouldn't both be enabled
+    #endif
+
     ORT_UNUSED_PARAMETER(info);
     //JEMalloc already has memory pool, so just use device allocator.
     InsertAllocator(
