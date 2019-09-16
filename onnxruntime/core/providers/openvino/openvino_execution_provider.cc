@@ -155,18 +155,6 @@ bool IsDimensionSupported(const Node* node, std::string dev_id) {
   return true;
 }
 
-static common::Status SaveModel(ONNX_NAMESPACE::ModelProto& model_proto, const std::string& file_path){
-    int fd;
-    Status status = Env::Default().FileOpenWr(file_path,fd);
-
-    google::protobuf::io::FileOutputStream output(fd);
-    const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
-    if(result)
-        return Status::OK();
-    else
-        return Status::OK();
-
-}
 //Checks whether the node is supported by OpenVINO
 bool IsOpSupported(std::string name) {
   std::set<std::string> supported_ops = {
@@ -480,7 +468,6 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
 
   auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
-  SaveModel(model_proto,"ov_model.onnx");
 
   std::set<const onnxruntime::NodeArg *> fused_inputs, fused_outputs;
 
