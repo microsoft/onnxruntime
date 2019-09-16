@@ -105,11 +105,6 @@ __global__ void RoIAlignForward(
     // RoI could have 4 or 5 columns
     const T* offset_bottom_rois = bottom_rois + n * roi_cols;
     const auto roi_batch_ind = batch_indices_ptr[n];
-    // int roi_batch_ind = 0;
-    // if (roi_cols == 5) {
-    //   roi_batch_ind = offset_bottom_rois[0];
-    //   offset_bottom_rois++;
-    // }
 
     bool continuous_coordinate = false;
     // Do not using rounding; this implementation detail is critical
@@ -230,7 +225,6 @@ void RoiAlignImpl(
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)
-//SPECIALIZED_IMPL(half)
   
 } // namespace cuda
 } // namespace onnxruntime
