@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/framework/op_kernel_context_internal.h"
 #include "core/providers/cpu/math/matmul.h"
 
 #include "core/util/math.h"
@@ -53,8 +52,7 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
 
 template <typename T>
 Status MatMul<T>::Compute(OpKernelContext* ctx) const {
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-  concurrency::ThreadPool* thread_pool = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
   const auto* left_X = ctx->Input<Tensor>(0);
   const auto* right_X = ctx->Input<Tensor>(1);

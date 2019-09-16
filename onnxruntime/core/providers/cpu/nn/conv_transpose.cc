@@ -16,7 +16,6 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cpu/nn/conv_transpose.h"
-#include "core/framework/op_kernel_context_internal.h"
 
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
@@ -230,8 +229,7 @@ Status ConvTranspose<T>::Compute(OpKernelContext* context) const {
 
 template <typename T>
 Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
-  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
 
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   Prepare p;

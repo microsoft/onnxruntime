@@ -10,7 +10,6 @@
 #include "core/common/logging/logging.h"
 #include "core/platform/threadpool.h"
 #include "core/framework/allocator.h"
-#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -72,8 +71,7 @@ static gsl::span<const T> SecondHalfSpan(const gsl::span<const T>& dspan) {
 
 template <typename T>
 Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(&context);
-  concurrency::ThreadPool* thread_pool = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* thread_pool = context.GetOperatorThreadPool();
 
   auto& logger = context.Logger();
 

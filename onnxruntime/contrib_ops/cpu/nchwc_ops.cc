@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/op_kernel_context_internal.h"
 #include "nchwc_ops.h"
 #include "core/mlas/inc/mlas.h"
 
@@ -144,21 +143,10 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
     }
   }
 
-  MlasNchwcConv(kernel_shape.size(),
-                X_shape.GetDims().data(),
-                kernel_shape.data(),
-                dilations.data(),
-                pads.data(),
-                strides.data(),
-                Y_dims.data(),
-                static_cast<size_t>(ConvBase::group_),
-                X->template Data<float>(),
-                W->template Data<float>(),
-                B != nullptr ? B->template Data<float>() : nullptr,
-                y_data,
-                &activation_,
-                Sum == nullptr,
-                const_cast<concurrency::ThreadPool*>(static_cast<OpKernelContextInternal*>(context)->GetOperatorThreadPool()));
+  MlasNchwcConv(kernel_shape.size(), X_shape.GetDims().data(), kernel_shape.data(), dilations.data(), pads.data(),
+                strides.data(), Y_dims.data(), static_cast<size_t>(ConvBase::group_), X->template Data<float>(),
+                W->template Data<float>(), B != nullptr ? B->template Data<float>() : nullptr, y_data, &activation_,
+                Sum == nullptr, context->GetOperatorThreadPool());
 
   return Status::OK();
 }
@@ -175,17 +163,10 @@ Status NchwcPoolBase::NchwcPool(OpKernelContext* context, MLAS_POOLING_KIND kind
   std::vector<int64_t> output_dims = PoolBase::SetOutputSize(X_shape, X_shape[1], &pads, dilations_, ceil_mode_);
   auto* Y = context->Output(0, output_dims);
 
-  MlasNchwcPool(kind,
-                2,
-                X_shape.GetDims().data(),
-                global_pooling_ ? nullptr : kernel_shape_.data(),
-                global_pooling_ ? nullptr : dilations_.data(),
-                global_pooling_ ? nullptr : pads.data(),
-                global_pooling_ ? nullptr : strides_.data(),
-                output_dims.data(),
-                X->template Data<float>(),
-                Y->template MutableData<float>(),
-                const_cast<concurrency::ThreadPool*>(static_cast<OpKernelContextInternal*>(context)->GetOperatorThreadPool()));
+  MlasNchwcPool(kind, 2, X_shape.GetDims().data(), global_pooling_ ? nullptr : kernel_shape_.data(),
+                global_pooling_ ? nullptr : dilations_.data(), global_pooling_ ? nullptr : pads.data(),
+                global_pooling_ ? nullptr : strides_.data(), output_dims.data(), X->template Data<float>(),
+                Y->template MutableData<float>(), context->GetOperatorThreadPool());
 
   return Status::OK();
 }

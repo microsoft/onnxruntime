@@ -20,7 +20,6 @@ limitations under the License.
 #include "core/util/math_cpuonly.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
-#include "core/framework/op_kernel_context_internal.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/object_detection/roialign.h"
 
@@ -58,7 +57,7 @@ void CropAndResizeForward(
     T* top_data,
     const std::string& mode,
     const int32_t* batch_indices_ptr,
-    const ThreadPool* ttp) {
+    ThreadPool* ttp) {
   int64_t n_rois = nthreads / channels / pooled_width / pooled_height;
 
   std::function<void(int32_t)> work_object = [&](int32_t n) {
@@ -177,7 +176,7 @@ void CropAndResizeForward(
       }  // for pw
     }    // for ph
   };     // for n
-  const_cast<ThreadPool*>(ttp)->ParallelFor(static_cast<int32_t>(n_rois), work_object);
+  ThreadPool::ParallelFor(ttp, static_cast<int32_t>(n_rois), work_object);
 }
 
 template <typename T>
@@ -232,7 +231,7 @@ Status CropAndResize<T>::Compute(OpKernelContext* context) const {
       Y.template MutableData<T>(),
       mode_,
       batch_indices_ptr->Data<int32_t>(),
-      static_cast<OpKernelContextInternal*>(context)->GetOperatorThreadPool());
+      context->GetOperatorThreadPool());
 
   return Status::OK();
 }

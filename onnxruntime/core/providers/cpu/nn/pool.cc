@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/op_kernel_context_internal.h"
 #include "core/providers/cpu/nn/pool.h"
 
 using namespace ::onnxruntime::common;
@@ -187,10 +186,7 @@ Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const
   std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations_, ceil_mode_);
   Tensor* Y = context->Output(0, output_dims);
 
-  // Get access to the internal threadpool
-  // Temporarily derive concurrency parameters without access to session state
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
-  concurrency::ThreadPool* thread_pool = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
   MlasPool(kind,
            pooling_dims,

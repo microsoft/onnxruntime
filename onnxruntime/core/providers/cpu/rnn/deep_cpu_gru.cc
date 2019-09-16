@@ -268,8 +268,7 @@ Status DeepCpuGruOp::Compute(OpKernelContext* context) const {
 
 template <typename T>
 Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(&context);
-  concurrency::ThreadPool* thread_pool = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* thread_pool = context.GetOperatorThreadPool();
 
   const Tensor& X = *context.Input<Tensor>(0);  // inputs. [seq_length, batch_size, input_size]
   const Tensor& W = *context.Input<Tensor>(1);  // weights. [num_directions, 3*hidden_size, input_size]

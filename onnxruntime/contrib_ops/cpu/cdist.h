@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/util/distance.h"
 #include "core/framework/op_kernel.h"
+#include "core/platform/threadpool.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/util/math_cpuonly.h"
 #include "assert.h"

@@ -14,10 +14,8 @@
 * limitations under the License.
 */
 /* Modifications Copyright (c) Microsoft. */
-#include "core/framework/op_kernel_context_internal.h"
 
 #include "core/providers/cpu/nn/conv.h"
-#include "core/framework/op_kernel_context_internal.h"
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
@@ -25,8 +23,7 @@ namespace onnxruntime {
 template <typename T>
 Status Conv<T>::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
-  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
 
   const auto* X = context->Input<Tensor>(0);
   const auto* W = context->Input<Tensor>(1);
@@ -147,8 +144,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 }
 
 Status Conv<float>::Compute(OpKernelContext* context) const {
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
-  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
 
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const auto* X = context->Input<Tensor>(0);

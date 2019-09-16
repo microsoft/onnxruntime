@@ -46,6 +46,14 @@ class ThreadPool {
   */
   void ParallelFor(int32_t total, std::function<void(int32_t)> fn);
 
+  template <typename T>
+  static void ParallelFor(ThreadPool* tp, int32_t total, T&& fn) {
+    if (tp != nullptr)
+      return tp->ParallelFor(total, fn);
+    for (int32_t i = 0; i != total; ++i) {
+		fn(i);
+    }
+  }
   /*
   Schedule work in the interval [first, last].
   */
