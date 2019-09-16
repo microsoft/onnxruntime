@@ -119,11 +119,11 @@ infer.is_fully_defined_shape = is_fully_defined_shape
 def prepare_emit_ir(graph: nx.MultiDiGraph, data_type: str, output_dir: str, output_model_name: str,
                     mean_data: [list, None] = None, input_names: list = [], meta_info: dict = dict()):
 
-    print('entered prepare_emit_ir')
+  
     for sub_graph in [graph] + collect_sub_graphs(graph):
         create_const_nodes(
             sub_graph, start_data_nodes_are_not_allowed=(sub_graph == graph))
-        print('entering determined_sort')
+ 
         op_order, data_order = determined_sort(get_sorted_outputs(sub_graph))
         mapping = {v: u for u, v in enumerate(op_order)}
         mapping.update({v: u for u, v in enumerate(
@@ -131,7 +131,6 @@ def prepare_emit_ir(graph: nx.MultiDiGraph, data_type: str, output_dir: str, out
         relabel_nodes_inplace_safe(sub_graph, mapping)
         port_renumber(sub_graph)
         convert_data_type.convert(sub_graph, data_type)
-    print('processed all subgraphs')
 
     tensor_names.propagate_op_name_to_tensor(graph)
     weights = np.array([])
@@ -140,14 +139,14 @@ def prepare_emit_ir(graph: nx.MultiDiGraph, data_type: str, output_dir: str, out
         weights = serialize_constants(weights, graph, data_type=np.float16)
     elif(data_type == "FP32"):
         weights = serialize_constants(weights, graph, data_type=np.float32)
-    print('serialized_constants')
+
 
     mean_offset = None
     mean_size = None
     if mean_data:
         mean_offset, mean_size = serialize_mean_image(
             bin_file, mean_data=mean_data)
-    print('entering generate_ie_ir')
+   
     xml_string = generate_ie_ir(graph=graph,
                                 file_name=os.path.join(
                                     output_dir, '{}.xml'.format(output_model_name)),
@@ -161,7 +160,7 @@ def prepare_emit_ir(graph: nx.MultiDiGraph, data_type: str, output_dir: str, out
 
 if '2019' in version:
     def graph_clean_up(graph: Graph, undead_node_types: list = None):
-        print('entered graph_clean_up')
+     
         if undead_node_types is None:
             undead_node_types = []
 
@@ -175,7 +174,7 @@ if '2019' in version:
         # Add Const op for constant data nodes
         add_constant_operations(graph)
         shape_inference(graph)
-        print('exited graph_clean_up')
+       
 
     def graph_clean_up_onnx(graph: Graph):
         graph_clean_up(graph, ['Shape'])
@@ -408,7 +407,7 @@ def driver_2019_R1(onnx_modelproto_bytes, precision: str, output_model_name: str
 
 def driver_2019_R2(onnx_modelproto_bytes, precision: str, output_model_name: str, output_dir: str):
     
-    print('Entered driver_2019_R2')
+   
     try:
         model_proto = onnx.load_from_string(bytes(onnx_modelproto_bytes))
     except Exception as e:
@@ -502,7 +501,7 @@ def driver_2019_R2(onnx_modelproto_bytes, precision: str, output_model_name: str
     weights, xml_string = prepare_emit_ir(graph=graph, data_type=precision, output_dir=output_dir, output_model_name=output_model_name,
                     meta_info={'unset': []})
 
-    print('Exiting driver function')
+    
     return weights, xml_string
 
 
@@ -574,13 +573,7 @@ if __name__ == "__main__":
         sys.exit(ret_code)
 
     from mo.utils.cli_parser import get_onnx_cli_parser
-    if '2019.2' in ov_root:
-        print('2019 R2 version')
-    if '2019.1' in ov_root:
-        print('2019 R1 version')
-    else:
-        print('2018 R5 version')
+    
     weights_string, final_string = convert_fp32()
-    print(weights_string)
-
+ 
     sys.exit(0)
