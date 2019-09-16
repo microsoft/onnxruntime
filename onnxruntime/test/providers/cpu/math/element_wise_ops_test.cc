@@ -312,7 +312,11 @@ TEST(MathOpTest, Div) {
   test.AddOutput<float>("C", dims,
                         {1.0f, 0.5f, 2.0f,
                          0.0f, 10.0f, -0.25f});
+#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  //OpenVINO: Will be enabled in the next release
+#else
   test.Run();
+#endif
 }
 
 TEST(MathOpTest, Abs) {
