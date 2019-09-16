@@ -506,6 +506,30 @@ namespace Dml
         return std::make_unique<onnxruntime::ComputeCapability>(std::move(subGraph));
     }
 
+    // Whether any operator in the model contains a subgraph.  This is true
+    // if the graph being partitioned is itself within a subgraph, or contains
+    // an operator with a subgraph.
+    bool ModelUsesSubgraph(const onnxruntime::GraphViewer& graph)
+    {
+        if (graph.IsSubgraph())
+        {
+            return true;
+        }
+
+        const std::vector<onnxruntime::NodeIndex>& toplogicalOrder = graph.GetNodesInTopologicalOrder();
+
+        for (size_t nodeIndex : toplogicalOrder) 
+        {
+            const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
+            if (node.ContainsSubgraph())
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // 
     // A simple graph partitioning algorithm is used:
     //
@@ -557,6 +581,9 @@ namespace Dml
         {
             graphOutputs.insert(arg->Name());
         }
+        
+        // Check whether this graph is a subgraph, or contains any node with a subgraph. 
+        bool modelUsesSubgraph = ModelUsesSubgraph(graph);
 
         // Build up partitions while traversing the graph.
         for (size_t nodeIndex : toplogicalOrder) 
@@ -584,7 +611,12 @@ namespace Dml
             );
 
             // Add a unique partition if graph node usage is not supported.
-            if (!isDmlGraphNode)
+            //
+            // Partitioning is disabled in models with subgraphs to work around issues with implicit inputs.  
+            // The partitioning algorithm does not currently consider such inputs.  Transfering shared initializers 
+            // for partitions could also cause problems.  Note, operators with subgraphs are currently not efficient 
+            // anyhow due to CPU/GPU copies.
+            if (modelUsesSubgraph || !isDmlGraphNode)
             {
                 if (onNodeUnsupportedInGraph)
                 {
