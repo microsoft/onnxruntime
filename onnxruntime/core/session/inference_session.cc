@@ -728,7 +728,8 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(
         utils::ExecuteGraph(session_state_, feeds_fetches_manager, feeds, *p_fetches,
-                            session_options_, run_options.terminate, run_logger));
+                            session_options_.enable_sequential_execution, session_options_.inter_op_thread_pool_size,
+                            run_options.terminate, run_logger));
 
   } catch (const std::exception& e) {
     retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());

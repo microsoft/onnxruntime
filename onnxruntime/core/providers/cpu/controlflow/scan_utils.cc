@@ -245,7 +245,8 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 
     // Create Executor and run graph.
     status = utils::ExecuteSubgraph(session_state, ffm, feeds, fetches, fetch_allocators,
-                                    /*sequential_execution*/ true, context.GetTerminateFlag(), context.Logger());
+                                    /*sequential_execution*/ true, /*inter_op_thread_pool_size*/ 0,
+                                    context.GetTerminateFlag(), context.Logger());
 
     ORT_RETURN_IF_ERROR(status);
 

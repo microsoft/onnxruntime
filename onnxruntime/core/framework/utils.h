@@ -61,14 +61,16 @@ void FinalizeFeedFetchCopyInfo(const SessionState& session_state,
 // Execute the main graph. The feed_fetches_manager will be finalized based on the provided feeds and fetches.
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                            const SessionOptions& session_options, const bool& terminate_flag, const logging::Logger& logger);
+                            bool enable_sequential_execution, int inter_op_thread_pool_size, const bool& terminate_flag,
+                            const logging::Logger& logger);
 
 // Execute a subgraph. The feeds_fetches_manager should have been finalized prior to calling this function.
 // See IControlFlowNode::SetupSubgraphExecutionInfo usage in the control flow kernels.
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               bool sequential_execution, const bool& terminate_flag, const logging::Logger& logger);
+                               bool enable_sequential_execution, int inter_op_thread_pool_size,
+                               const bool& terminate_flag, const logging::Logger& logger);
 
 #if defined(DEBUG_NODE_INPUTS_OUTPUTS)
 // to create a build with these enabled run the build script with
