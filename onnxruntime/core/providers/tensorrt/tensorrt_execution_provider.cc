@@ -362,7 +362,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     //trt6: build engine
     auto config = unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
     config->setMaxWorkspaceSize(max_workspace_size_);
-
+/*
     //trt6: Create an optimization profile to specify a range of input dimensions.
     auto profile = trt_builder->createOptimizationProfile();
     for (unsigned int i = 0, n = trt_network->getNbInputs(); i < n; i++) {
@@ -373,7 +373,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims4{1, 3, 416, 416});
     }
     config->addOptimizationProfile(profile);
-
+*/
     auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *config));
     ///auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildCudaEngine(*trt_network.get()));
     ORT_ENFORCE(trt_engine != nullptr);
@@ -480,13 +480,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         const auto& tensor_shape = ort.GetTensorShape(tensor_info);
 
         //trt6: set dynamic shape dimensions for input
+/*	      
         nvinfer1::Dims dimensions = trt_state->context->getEngine().getBindingDimensions(static_cast<int>(i));
         for (int j = 0, end = dimensions.nbDims; j < end; ++j) {
           //std::cout << i << ", engine dimension: " << dimensions.d[j] << ", input dimension: " << tensor_shape[j] << std::endl;
           dimensions.d[j] = tensor_shape[j];
         }
-      trt_state->context->setBindingDimensions(i, dimensions);
-
+        trt_state->context->setBindingDimensions(i, dimensions);
+*/
+	trt_state->context->setBindingDimensions(i, nvinfer1::Dims4(tensor_shape[0], tensor_shape[1], tensor_shape[2], tensor_shape[3]));
+						 
         auto tensor_type = ort.GetTensorElementType(tensor_info);
         ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
 
@@ -510,7 +513,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       // Allocate cuda memory for outputs
       for (int i = 0, end = num_binding_outputs; i < end; ++i) {
         int output_index = output_indexes[i];
-
+/*
         //trt6: get dynamic shape dimensions for output
         nvinfer1::Dims dimensions = trt_state->context->getBindingDimensions(static_cast<int>(i + num_binding_inputs));
         std::vector<int64_t> output_shape;
@@ -518,9 +521,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           //std::cout << i << ", output engine dimension: " << output_shapes[i][j] << ", output context dimension: " << dimensions.d[j] << std::endl;
           output_shape.push_back(dimensions.d[j]);
         }
-
-        //OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, output_shapes[i].data(), output_shapes[i].size());
         OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, output_shape.data(), output_shape.size());
+*/	      
+        OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, output_shapes[i].data(), output_shapes[i].size());
 
         if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
           buffers[i + num_binding_inputs] = ort.GetTensorMutableData<float>(output_tensor);
