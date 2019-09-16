@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 #include "core/util/math.h"
 #include <algorithm>
 #include <cmath>
@@ -194,7 +195,7 @@ TEST(MathOpTest, Add_Broadcast_2x1x1_3x4) {
 #endif
 }
 
-// Validate runtime failure has useful error message
+// Validate runtime failure has useful error message when ORT_ENFORCE is used
 TEST(MathOpTest, Add_Invalid_Broadcast) {
   OpTester test("Add");
 
@@ -216,10 +217,20 @@ TEST(MathOpTest, Add_Invalid_Broadcast) {
                          0.0f, 0.0f});
 
   // Call Run twice to validate different parts of the error message.
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Non-zero status code returned while running Add node. Name:'node1'");
+  // Only test on CPU as it's that implementation that has the ORT_ENFORCE we're targeting
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "onnxruntime::BroadcastIterator::Append axis == 1 || axis == largest was false. "
-           "Attempting to broadcast an axis by a dimension other than 1. 2 by 3");
+           "Non-zero status code returned while running Add node. Name:'node1'",
+           {}, nullptr, &execution_providers);
+
+  // test.Run std::move's the EP from execution_providers into the per-Run session so need to re-create
+  execution_providers[0] = DefaultCpuExecutionProvider();
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "axis == 1 || axis == largest was false. "
+           "Attempting to broadcast an axis by a dimension other than 1. 2 by 3",
+           {}, nullptr, &execution_providers);
 }
 
 TEST(MathOpTest, Sub_int32) {
