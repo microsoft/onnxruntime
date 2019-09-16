@@ -58,7 +58,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   const KernelDef& kernel_def_;
   // For non cpu/cuda case, this pointer should be set so that function kernel
   // will delegate kernel compute call to <execution_provider> compute call.
-  gsl::not_null<const ::onnxruntime::IExecutionProvider*> execution_provider_;
+  const IExecutionProvider& execution_provider_;
   const std::unordered_map<int, OrtValue>& constant_initialized_tensors_;
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
   const FuncManager& funcs_mgr_;

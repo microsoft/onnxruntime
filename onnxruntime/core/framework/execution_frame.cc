@@ -21,14 +21,12 @@ namespace onnxruntime {
 IExecutionFrame::IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
                                  const std::unordered_map<int, OrtValue>& initializers,
                                  const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
-                                 const OrtValueNameIdxMap& ort_value_idx_map, const NodeIndexInfo& node_index_info)
+                                 const NodeIndexInfo& node_index_info)
     : node_index_info_{node_index_info},
-      all_values_size_{static_cast<size_t>(ort_value_idx_map.MaxIdx()) + 1},
+      all_values_size_{static_cast<size_t>(node_index_info_.GetMaxMLValueIdx()) + 1},
       fetch_mlvalue_idxs_{fetch_mlvalue_idxs} {
   ORT_ENFORCE(feeds.size() == feed_mlvalue_idxs.size());
   ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs_.size());
-  ORT_ENFORCE(node_index_info_.GetMaxMLValueIdx() == ort_value_idx_map.MaxIdx(),
-              "node_index_info and ort_value_idx_map are out of sync and cannot be used");
 
   Init(feed_mlvalue_idxs, feeds, initializers, fetches);
 }
@@ -170,7 +168,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                const SessionState& session_state)
     : IExecutionFrame(feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(), fetch_mlvalue_idxs, fetches,
-                      session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo()),
+                      session_state.GetNodeIndexInfo()),
       session_state_{session_state},
       mem_patterns_{nullptr},
       planner_{nullptr} {

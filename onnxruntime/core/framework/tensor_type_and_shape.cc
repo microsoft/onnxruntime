@@ -26,7 +26,7 @@ using onnxruntime::SparseTensor;
     return OrtCreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
   }
 
-ORT_API_STATUS_IMPL(OrtCreateTensorTypeAndShapeInfo, _Out_ OrtTensorTypeAndShapeInfo** out) {
+ORT_API_STATUS_IMPL(OrtCreateTensorTypeAndShapeInfo, _Outptr_ OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN
   *out = new OrtTensorTypeAndShapeInfo();
   return nullptr;
@@ -37,7 +37,8 @@ ORT_API(void, OrtReleaseTensorTypeAndShapeInfo, _Frees_ptr_opt_ OrtTensorTypeAnd
   delete ptr;
 }
 
-ORT_API_STATUS_IMPL(OrtSetTensorElementType, _In_ OrtTensorTypeAndShapeInfo* this_ptr, enum ONNXTensorElementDataType type) {
+ORT_API_STATUS_IMPL(OrtSetTensorElementType, _Inout_ OrtTensorTypeAndShapeInfo* this_ptr,
+                    enum ONNXTensorElementDataType type) {
   API_IMPL_BEGIN
   this_ptr->type = type;
   return nullptr;
@@ -207,7 +208,7 @@ OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape* shape,
 }
 
 ORT_API_STATUS_IMPL(OrtGetTensorTypeAndShape, _In_ const OrtValue* v,
-                    _Out_ OrtTensorTypeAndShapeInfo** out) {
+                    _Outptr_ OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN
   onnxruntime::MLDataType type = v->Type();
   ORT_ENFORCE(type != nullptr, "OrtValue is not a Tensor");
@@ -247,7 +248,7 @@ ORT_API_STATUS_IMPL(OrtGetValueType, _In_ const OrtValue* v, _Out_ ONNXType* out
  * \param value
  * \return The returned value should be freed by OrtReleaseTypeInfo after use
  */
-ORT_API_STATUS_IMPL(OrtGetTypeInfo, _In_ const OrtValue* v, struct OrtTypeInfo** out) {
+ORT_API_STATUS_IMPL(OrtGetTypeInfo, _In_ const OrtValue* v, _Outptr_ OrtTypeInfo** out) {
   onnxruntime::MLDataType type = v->Type();
   if (type == nullptr) {
     *out = nullptr;

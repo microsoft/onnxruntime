@@ -16,12 +16,10 @@ class ExecutionFrame;
 
 class OpKernelContextInternal : public OpKernelContext {
  public:
-  explicit OpKernelContextInternal(const SessionState& session_state,
-                                   IExecutionFrame& frame,
-                                   const OpKernel& kernel,
+  explicit OpKernelContextInternal(const SessionState& session_state, IExecutionFrame& frame, const OpKernel& kernel,
                                    const logging::Logger& logger,
                                    const bool& terminate_flag)
-      : OpKernelContext(&frame, &kernel, logger),
+      : OpKernelContext(frame, kernel, logger, session_state.GetThreadPool()),
         session_state_{session_state},
         terminate_flag_{terminate_flag} {
     const auto& implicit_inputs = kernel.Node().ImplicitInputDefs();
@@ -40,17 +38,11 @@ class OpKernelContextInternal : public OpKernelContext {
     return session_state_.GetSubgraphSessionState(GetNodeIndex(), attribute_name);
   }
 
-  const OrtValue* GetInputMLValue(int index) const {
-    return OpKernelContext::GetInputMLValue(index);
-  }
+  const OrtValue* GetInputMLValue(int index) const { return OpKernelContext::GetInputMLValue(index); }
 
-  OrtValue* GetOutputMLValue(int index) {
-    return OpKernelContext::GetOutputMLValue(index);
-  }
+  OrtValue* GetOutputMLValue(int index) { return OpKernelContext::GetOutputMLValue(index); }
 
-  OrtValue* OutputMLValue(int index, const TensorShape& shape) {
-    return OpKernelContext::OutputMLValue(index, shape);
-  }
+  OrtValue* OutputMLValue(int index, const TensorShape& shape) { return OpKernelContext::OutputMLValue(index, shape); }
 
   // Get the OrtValue's for all implicit inputs. Order is same as Node::ImplicitInputDefs(). No nullptr entries.
   const std::vector<const OrtValue*>& GetImplicitInputs() const {
@@ -58,9 +50,6 @@ class OpKernelContextInternal : public OpKernelContext {
   }
 
   const bool& GetTerminateFlag() const noexcept { return terminate_flag_; }
-
-  _Ret_maybenull_ const onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return session_state_.GetThreadPool(); }
-  _Ret_maybenull_ onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() { return session_state_.GetThreadPool(); }
 
  private:
   const SessionState& session_state_;

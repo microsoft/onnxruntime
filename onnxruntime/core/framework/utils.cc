@@ -12,7 +12,6 @@
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/kernel_registry_manager.h"
-#include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/parallel_executor.h"
 #include "core/framework/session_state.h"
 #include "core/framework/sequential_executor.h"
