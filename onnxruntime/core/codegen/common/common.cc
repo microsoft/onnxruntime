@@ -227,14 +227,14 @@ bool ShapeHasValue(const NodeArg* def, int i) {
   ORT_ENFORCE_DEBUG(nullptr != def);
   ORT_ENFORCE_DEBUG(i >= 0);
   ORT_ENFORCE_DEBUG(i < def->Shape()->dim_size());
-  return def->Shape()->dim(i).has_dim_value();
+  return utils::HasDimValue(def->Shape()->dim(i));
 }
 
 bool ShapeHasSymbol(const NodeArg* def, int i) {
   ORT_ENFORCE_DEBUG(nullptr != def);
   ORT_ENFORCE_DEBUG(i >= 0);
   ORT_ENFORCE_DEBUG(i < def->Shape()->dim_size());
-  return def->Shape()->dim(i).has_dim_param();
+  return utils::HasDimParam(def->Shape()->dim(i));
 }
 
 int64_t ShapeValue(const NodeArg* def, int i) {

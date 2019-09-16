@@ -215,7 +215,7 @@ ProcessNextRowM4:
         mov     rdx,rsi
         mov     rcx,rdi
         lea     rsi,[rsi+r8*4]              ; advance next matrix A by 4 rows
-        lea     rdi,[rdi+r11*(2*4)]         ; advance next matrix D by 4 rows
+        lea     rdi,[rdi+r11*8]             ; advance next matrix D by 4 rows
         mov     rbx,r10                     ; reload columns remaining
         sub     rbx,16
         jb      ProcessRemainingColumnsM4

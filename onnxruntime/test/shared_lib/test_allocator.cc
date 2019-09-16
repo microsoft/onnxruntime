@@ -10,10 +10,10 @@ using namespace onnxruntime;
 
 TEST_F(CApiTest, allocation_info) {
   OrtMemoryInfo *info1, *info2;
-  ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &info1));
-  ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &info2));
+  ORT_THROW_ON_ERROR(OrtCreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &info1));
+  ORT_THROW_ON_ERROR(OrtCreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &info2));
   int result;
-  ORT_THROW_ON_ERROR(OrtCompareAllocatorInfo(info1, info2, &result));
+  ORT_THROW_ON_ERROR(OrtCompareMemoryInfo(info1, info2, &result));
   ASSERT_EQ(0, result);
   OrtReleaseMemoryInfo(info1);
   OrtReleaseMemoryInfo(info2);
@@ -28,6 +28,6 @@ TEST_F(CApiTest, DefaultAllocator) {
   const OrtMemoryInfo* info1 = default_allocator.GetInfo();
   const OrtMemoryInfo* info2 = static_cast<OrtAllocator*>(default_allocator)->Info(default_allocator);
   int result;
-  ORT_THROW_ON_ERROR(OrtCompareAllocatorInfo(info1, info2, &result));
+  ORT_THROW_ON_ERROR(OrtCompareMemoryInfo(info1, info2, &result));
   ASSERT_EQ(0, result);
 }
