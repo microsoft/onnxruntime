@@ -1216,6 +1216,7 @@ TEST(ReductionOpTest, ArgMin_int32) {
   test.AddOutput<int64_t>("reduced", {2, 2},
                           {0, 0,
                            0, 0});
+  test.Run();
 }
 
 TEST(ReductionOpTest, ArgMin_int32_neg_axis) {
