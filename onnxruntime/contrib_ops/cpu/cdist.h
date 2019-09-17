@@ -117,7 +117,7 @@ class CDist final : public OpKernel {
     const Tensor* B = context->Input<Tensor>(1);
     const TensorShape& shape_a = A->Shape();
     const TensorShape& shape_b = B->Shape();
-    if (shape_a.NumDimensions() != 2) {
+    if (shape_a.NumDimensions() != 2 || shape_a[1] <= 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The first input of CDist kernel has wrong shape: ", shape_a);
     }
 
