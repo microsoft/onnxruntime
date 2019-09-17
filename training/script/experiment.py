@@ -1,5 +1,7 @@
 import argparse
+import os
 import re
+import sys
 
 from azure.common.client_factory import get_client_from_cli_profile
 from azure.mgmt.containerregistry import ContainerRegistryManagementClient
@@ -27,6 +29,8 @@ parser.add_argument('--container_registry_resource_group', type=str, default='on
 parser.add_argument('--node_count', type=int, default=1, help='Number of nodes to use for the Experiment. If greater than 1, an MPI distributed job will be run.')
 parser.add_argument('--gpu_count', type=int, default=1, help='Number of GPUs to use per node. If greater than 1, an MPI distributed job will be run.')
 
+parser.add_argument('--tensorboard_dir', type=str, default=None, help='Specify a local directory to enable tensorboard monitoring of the AzureML Experiment. This will cause the script to block until the Experiment completes.')
+
 parser.add_argument('--model_name', type=str, default='bert_L-24_H-1024_A-16_V_30528_optimized_layer_norm', help='Model to be trained (must exist in the AzureML Datastore)')
 parser.add_argument('--script_params', type=str, default='', help='Training script parameters (--param1=value1 --param2=value2 --param3=value3)')
 args = parser.parse_args()
@@ -39,6 +43,24 @@ compute_target = ComputeTarget(workspace=ws, name=args.compute_target)
 
 # Get the datastore from current workspace
 ds = Datastore.get(workspace=ws, datastore_name=args.datastore)
+
+# Construct common script parameters
+script_params = {
+  '--model_name': ds.path(args.model_name).as_download(),
+  '--train_data_dir': ds.path('bert_data/train').as_mount(),
+  '--test_data_dir': ds.path('bert_data/test').as_mount(),
+}
+
+# Allow additional custom script parameters
+for params in args.script_params.split(' '):
+  key, value = params.split('=')
+  script_params[key] = value
+
+# Validate tensorboard will run correctly with given parameters
+if args.tensorboard_dir:
+  if '--log_dir' not in script_params or not script_params['--log_dir'].endswith('/'):
+    print("WARNING - To monitor tensorboard logs, you must specify --log_dir and it must end in a '/'. Ex: --script_params='--log_dir=logs/tensorboard/'")
+    sys.exit()
 
 # Get container registry information (if private)
 container_image = args.container
@@ -59,18 +81,6 @@ if acr:
   registry_details.address = registry_address
   registry_details.username = registry_credentials.username
   registry_details.password = registry_credentials.passwords[0].value
-
-# Construct common script parameters
-script_params = {
-  '--model_name': ds.path(args.model_name).as_download(),
-  '--train_data_dir': ds.path('bert_data/train').as_mount(),
-  '--test_data_dir': ds.path('bert_data/test').as_mount(),
-}
-
-# Allow additional custom script parameters
-for params in args.script_params.split(' '):
-  key, value = params.split('=')
-  script_params[key] = value
 
 # MPI configuration if executing a distributed run
 mpi = MpiConfiguration()
@@ -93,3 +103,23 @@ estimator = Estimator(source_directory='./',
 experiment = Experiment(workspace=ws, name=args.experiment)
 run = experiment.submit(estimator)
 print('Experiment running at: {}'.format(run.get_portal_url()))
+
+# Monitor Tensorboard logs, if requested
+if args.tensorboard_dir:
+  from azureml._run_impl.run_watcher import RunWatcher
+  from concurrent.futures import ThreadPoolExecutor
+  from requests import Session
+  from threading import Event, Thread
+
+  local_root = os.path.join(os.path.normpath(args.tensorboard_dir), run.id)
+  remote_root = script_params['--log_dir']
+  executor = ThreadPoolExecutor()
+  event = Event()
+  session = Session()
+
+  print("Streaming tensorboard logs from remote directory: '{}' to local directory: '{}'".format(remote_root, local_root))
+  watcher = RunWatcher(run, local_root=local_root, remote_root=remote_root, executor=executor, event=event, session=session)
+  executor.submit(watcher.refresh_requeue)
+
+  # Block until run completes, to keep the tensorboard logs updating
+  run.wait_for_completion(show_output=True)

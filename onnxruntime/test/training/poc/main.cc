@@ -146,7 +146,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
   };
 
   std::shared_ptr<EventWriter> tensorboard;
-  if (!params.log_dir.empty())
+  if (!params.log_dir.empty() && params.mpi_context.world_rank == 0)
     tensorboard = std::make_shared<EventWriter>(params.log_dir);
 
   params.post_evaluation_callback = [tensorboard](size_t num_samples, size_t step) {

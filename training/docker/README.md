@@ -50,18 +50,32 @@ After the AzureML-compatible docker container is created and pushed, an AzureML 
 
 ```
 // Submit a single-node, single-GPU experiment (defaults to OpenMPI 4.0.0, CUDA 10.1, bert_L-24_H-1024_A-16_V_30528_optimized_layer_norm.onnx):
-$ python experiment.py --script_params '--train_batch_size=4 --mode=perf --num_of_perf_samples=400'
+$ python experiment.py --script_params='--train_batch_size=4 --mode=perf --num_of_perf_samples=400'
 Experiment running at: https://mlworkspace.azure.ai/portal/subscriptions/ea482afa-3a32-437c-aa10-7de928a9e793/resourceGroups/onnx_training/providers/Microsoft.MachineLearningServices/workspaces/ort_training_dev/experiments/BERT-ONNX
 
 // Submit a single-node, single-GPU experiment with mixed-precision training on a custom docker image using IntelMPI:
-$ python experiment.py --container='onnxtraining.azurecr.io/azureml/bert:jesseb-cd29764cbe-intelmpi2018.3-cuda10.1-cudnn7-ubuntu16.04' --compute_target='intel-training' --script_params '--train_batch_size=8 --mode=perf --num_of_perf_samples=800 --use_mixed_precision=True'
+$ python experiment.py --container='onnxtraining.azurecr.io/azureml/bert:jesseb-cd29764cbe-intelmpi2018.3-cuda10.1-cudnn7-ubuntu16.04' --compute_target='intel-training' --script_params='--train_batch_size=8 --mode=perf --num_of_perf_samples=800 --use_mixed_precision=True'
 
 // Submit a multi-node, multi-GPU experiment (4-node x 4-GPU) with gradient accumulation:
-$ python experiment.py --node_count=4 --gpu_count=4 --script_params '--train_batch_size=4 --mode=perf --num_of_perf_samples=6400 --gradient_accumulation_steps=16'
+$ python experiment.py --node_count=4 --gpu_count=4 --script_params='--train_batch_size=4 --mode=perf --num_of_perf_samples=6400 --gradient_accumulation_steps=16'
 
 // See all options for running experiments:
 $ python experiment.py --help
 ```
+
+## Tensorboard for AzureML Experiments
+ONNX Training tensorboard events can be streamed to a local directory for interactive viewing (updates approximately every 5 seconds).
+
+```
+// Submit an Experiment with tensorboard logging enabled (must not be --mode=perf):
+$ python experiment.py --script_params='--train_batch_size=4 --evaluation_period=10 --log_dir=logs/tensorboard/' --tensorboard_dir='C:/tensorboard'
+
+// Start Tensorboard locally:
+$ python -m tensorboard.main --logdir C:/tensorboard
+```
+
+# Additional AzureML GPU Docker images
+AzureML base GPU docker images only support CUDA 9/10. We provide Dockerfiles for additional variants below.
 
 ## AzureML Docker image: CUDA 10.1, cuDNN 7.6.3, NCCL 2.4.8, OpenMPI 4.0.0
 This image is already built and pushed to onnxtraining.azurecr.io. To build the docker image from scratch:
