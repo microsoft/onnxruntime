@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/math/hardmax.h"
+#include "core/providers/common.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/math.h"
 
@@ -13,8 +14,9 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
   const TensorShape& input_shape = X->Shape();
   const auto* Xdata = X->template Data<float>();
 
-  size_t tmpN = input_shape.SizeToDimension(axis_);
-  size_t tmpD = input_shape.SizeFromDimension(axis_);
+  auto axis = HandleNegativeAxis(axis_, input_shape.NumDimensions());  // handle negative and enforce axis is valid
+  size_t tmpN = input_shape.SizeToDimension(axis);
+  size_t tmpD = input_shape.SizeFromDimension(axis);
 
   // Math::RowwiseMax expects int N and D.
   if (tmpN * tmpD > INT32_MAX || tmpN > INT32_MAX || tmpD > INT32_MAX) {
@@ -48,9 +50,17 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Hardmax,
     1,
+    10,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Hardmax<float>);
+
+// Opset 11 starts to support Neg Axis.
+ONNX_CPU_OPERATOR_KERNEL(
+    Hardmax,
+    11,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Hardmax<float>);
 

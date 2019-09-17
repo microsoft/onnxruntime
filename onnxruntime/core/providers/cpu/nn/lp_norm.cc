@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/nn/lp_norm.h"
 #include "core/util/math_cpuonly.h"
+#include "core/providers/common.h"
 
 namespace onnxruntime {
 ONNX_CPU_OPERATOR_KERNEL(
@@ -55,7 +56,7 @@ Status LpNorm<float>::Compute(OpKernelContext* p_op_kernel_context) const {
   const TensorShape& input_shape = input->Shape();
   Tensor* output = p_op_kernel_context->Output(0, input_shape);
 
-  const auto canonical_axis = axis_ != -1 ? axis_ : (input_shape.NumDimensions() - 1);
+  const auto canonical_axis = HandleNegativeAxis(axis_, static_cast<int64_t>(input_shape.NumDimensions()));
   const int64_t m = input_shape.GetDims()[canonical_axis];
   const int64_t n = input_shape.Size() / m;
   const int64_t sf = input_shape.SizeFromDimension(canonical_axis + 1);
