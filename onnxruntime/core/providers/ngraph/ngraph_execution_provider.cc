@@ -267,7 +267,6 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
 }
 
 static void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
-                                    const onnxruntime::GraphViewer& graph_viewer,
                                     const std::vector<std::string>& inputs,
                                     const std::vector<std::string>& outputs,
                                     std::vector<std::unique_ptr<ComputeCapability>>& result) {
@@ -493,7 +492,7 @@ NGRAPHExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
                   [&outputs](const NodeArg* node_arg) { outputs.push_back(node_arg->Name()); });
 
     // Create and add this graph to result.
-    AppendClusterToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), graph_viewer, inputs, outputs, result);
+    AppendClusterToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), inputs, outputs, result);
 
   } else {  // unsupported_nodes_idx.empty()
     const auto ng_clusters = GetPartitionedClusters(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
@@ -503,7 +502,7 @@ NGRAPHExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       GetInputsOutputsOfCluster(graph_viewer, this_cluster, ng_required_initializers, cluster_inputs, cluster_outputs);
 
       if (!cluster_inputs.empty()) {
-        AppendClusterToSubGraph(this_cluster, graph_viewer, cluster_inputs, cluster_outputs, result);
+        AppendClusterToSubGraph(this_cluster, cluster_inputs, cluster_outputs, result);
       }
     }
   }
