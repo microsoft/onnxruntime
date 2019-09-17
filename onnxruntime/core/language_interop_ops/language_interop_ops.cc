@@ -8,6 +8,8 @@
 #include "pyop/pyop.h"
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 
+extern const OrtApi* g_ort;
+
 namespace onnxruntime {
 
 void InterOpDomainDeleter(OrtCustomOpDomain* domain) {
@@ -38,8 +40,8 @@ void LoadInterOp(const ONNX_NAMESPACE::GraphProto& graph_proto, InterOpDomains& 
     const auto& node_proto = graph_proto.node(i);
     if (node_proto.op_type() == "PyOp") {
       OrtCustomOpDomain* pyop_domain = nullptr;
-      ORT_THROW_ON_ERROR(OrtCreateCustomOpDomain(node_proto.domain().c_str(), &pyop_domain));
-      ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(pyop_domain, LoadPyOp(node_proto, log_func)));
+      ORT_THROW_ON_ERROR(g_ort->CreateCustomOpDomain(node_proto.domain().c_str(), &pyop_domain));
+      ORT_THROW_ON_ERROR(g_ort->CustomOpDomain_Add(pyop_domain, LoadPyOp(node_proto, log_func)));
       auto ort_domain = std::unique_ptr<OrtCustomOpDomain, decltype(&InterOpDomainDeleter)>(pyop_domain, &InterOpDomainDeleter);
       domains.push_back(std::move(ort_domain));
     } else {

@@ -1212,7 +1212,12 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::ReleaseCustomOpDomain,
 };
 
-const OrtApi* ORT_API_CALL OrtGetApi(uint32_t version) NO_EXCEPTION { return &ort_api_1; }
+const OrtApi* ORT_API_CALL OrtGetApi(uint32_t version) NO_EXCEPTION {
+  if (version > 1)
+    return nullptr;
+
+  return &ort_api_1;
+}
 
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Env, OrtEnv)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, OrtValue)
