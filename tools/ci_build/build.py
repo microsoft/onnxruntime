@@ -124,6 +124,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--skip_submodule_sync", action='store_true', help="Don't do a 'git submodule update'. Makes the Update phase faster.")
 
     parser.add_argument("--use_jemalloc", action='store_true', help="Use jemalloc.")
+    parser.add_argument("--use_mimalloc", action='store_true', help="Use mimalloc.")
     parser.add_argument("--use_openblas", action='store_true', help="Build with OpenBLAS.")
     parser.add_argument("--use_mkldnn", action='store_true', help="Build with MKLDNN.")
     parser.add_argument("--use_mklml", action='store_true', help="Build with MKLML.")
@@ -331,6 +332,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_AUTOML=" + ("ON" if args.use_automl else "OFF"),				 
                  "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
                  "-Donnxruntime_USE_JEMALLOC=" + ("ON" if args.use_jemalloc else "OFF"),
+                 "-Donnxruntime_USE_MIMALLOC=" + ("ON" if args.use_mimalloc else "OFF"),
                  "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
                  "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
                  "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib or args.build_server else "OFF"),
@@ -751,7 +753,7 @@ def run_server_model_tests(build_dir, configs):
         run_subprocess([sys.executable, 'model_zoo_tests.py', server_app_path, test_raw_data_folder, server_test_data_folder, python_package_path, server_test_folder], cwd=server_test_folder, dll_path=None)
 
 
-def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, use_openvino, nightly_build = False):
+def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, use_openvino, use_nuphar, nightly_build = False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -767,6 +769,8 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use
             args.append('--use_ngraph')
         elif use_openvino:
             args.append('--use_openvino')
+        elif use_nuphar:
+            args.append('--use_nuphar')
         run_subprocess(args, cwd=cwd)
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
@@ -981,8 +985,8 @@ def main():
                 mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
 
         # run nuphar python tests last, as it installs ONNX 1.5.0
-        #if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
-        #    nuphar_run_python_tests(build_dir, configs, args.azure_sas_key)
+        if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
+            nuphar_run_python_tests(build_dir, configs, args.azure_sas_key)
 
     if args.build_server:
         split_server_binary_and_symbol(build_dir, configs)
@@ -994,7 +998,7 @@ def main():
     if args.build:
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
-            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_ngraph, args.use_tensorrt, args.use_openvino, nightly_build)
+            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_ngraph, args.use_tensorrt, args.use_openvino, args.use_nuphar, nightly_build)
 
     if args.gen_doc and (args.build or args.test):
         generate_documentation(source_dir, build_dir, configs)
