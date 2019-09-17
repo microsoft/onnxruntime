@@ -249,13 +249,15 @@ void RoiAlignForward(
             for (int64_t iy = 0; iy < roi_bin_grid_h; iy++) {
               for (int64_t ix = 0; ix < roi_bin_grid_w; ix++) {
                 PreCalc<T> pc = pre_calc[pre_calc_index];
+                T val = std::max(std::max(std::max(pc.w1 * offset_bottom_data[pc.pos1],
+                                            pc.w2 * offset_bottom_data[pc.pos2]),
+                                   pc.w3 * offset_bottom_data[pc.pos3]),
+                          pc.w4 * offset_bottom_data[pc.pos4]);
                 if (!max_flag) {
-                  output_val = pc.w1 * offset_bottom_data[pc.pos1];
+                  output_val = val;
                   max_flag = true;
                 } else {
-                  output_val = std::max(std::max(std::max(output_val, pc.w2 * offset_bottom_data[pc.pos2]),
-                                                 pc.w3 * offset_bottom_data[pc.pos3]),
-                                        pc.w4 * offset_bottom_data[pc.pos4]);
+                  output_val = std::max(output_val, val);
                 }
 
                 pre_calc_index += 1;
