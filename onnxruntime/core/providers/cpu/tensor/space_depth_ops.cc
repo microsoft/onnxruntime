@@ -82,7 +82,7 @@ Status DepthToSpace<float>::Compute(OpKernelContext* context) const {
   Tensor& output = *context->Output(0, {batch, output_depth, output_height, output_width});
   
   // Process "DCR" mode
-  if (is_dcr) {
+  if (is_dcr_) {
     std::array<int64_t, IntermediateTensorRank> permutation{{0, 3, 4, 1, 5, 2}};
     EigenTensorMap(output.template MutableData<float>(), batch, input_depth / blocksize_ / blocksize_,
                    input_height, blocksize_, input_width, blocksize_) =

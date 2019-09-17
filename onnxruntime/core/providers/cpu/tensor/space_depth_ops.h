@@ -36,7 +36,7 @@ class DepthToSpace final : public SpaceDepthBase {
     // (or) it is an opset < 11 model for which the only mode is "DCR" mode
     if (info.GetAttr("mode", &mode).IsOK()) {
       if (mode == "CRD")
-        is_dcr = false;
+        is_dcr_ = false;
 
       else if (mode != "DCR")
         ORT_THROW("DepthToSpace op: only 'DCR' and 'CRD' modes are supported"); 
@@ -46,7 +46,7 @@ class DepthToSpace final : public SpaceDepthBase {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  bool is_dcr = true;
+  bool is_dcr_ = true;
 };
 
 }  //namespace onnxruntime
