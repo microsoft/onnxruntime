@@ -3,6 +3,7 @@
 
 #include "range_schema_defs.h"
 
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 #include <cmath>
@@ -57,7 +58,7 @@ template <typename T>
 static T GetFirstElement(const TensorProto* shapeInitializer) {
     if (shapeInitializer == nullptr) return T{1};
 
-    if (shapeInitializer->has_raw_data()) {
+    if (utils::HasRawData(*shapeInitializer)) {
         const std::string& bytes = shapeInitializer->raw_data();
         return *reinterpret_cast<const T*>(bytes.c_str());
     }

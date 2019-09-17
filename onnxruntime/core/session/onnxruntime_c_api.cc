@@ -98,7 +98,7 @@ ORT_API_STATUS_IMPL(OrtCreateEnvWithCustomLogger, OrtLoggingFunction logging_fun
   std::unique_ptr<ISink> logger = std::make_unique<LoggingWrapper>(logging_function, logger_param);
   auto default_logging_manager = std::make_unique<LoggingManager>(std::move(logger),
                                                                   static_cast<Severity>(default_warning_level), false,
-                                                                  LoggingManager::InstanceType::Default,
+                                                                  LoggingManager::InstanceType::Temporal,
                                                                   &name);
   std::unique_ptr<Environment> env;
   Status status = Environment::Create(env);
@@ -1071,6 +1071,39 @@ ORT_API_STATUS_IMPL(OrtCreateValue, const OrtValue* const* in, size_t num_values
   return OrtCreateValueImpl(in, num_values, value_type, out);
   API_IMPL_END
 }
+
+ORT_API_STATUS_IMPL(OrtCreateOpaqueValue, const char* domain_name, const char* type_name, const void* data_container,
+               size_t data_container_size, OrtValue** out) {
+  API_IMPL_BEGIN
+  std::string dtype("opaque(");
+  dtype.append(domain_name).append(",").append(type_name).append(")");
+  MLDataType ml_type = DataTypeImpl::GetDataType(dtype);
+  ORT_ENFORCE(ml_type != nullptr,
+    "Specified domain and type names combination does not refer to a registered opaque type");
+  const auto* non_tensor_base = ml_type->AsNonTensorTypeBase();
+  ORT_ENFORCE(non_tensor_base != nullptr, "Opaque type is not a non_tensor type!!!");
+  std::unique_ptr<OrtValue> ort_val(new OrtValue);
+  non_tensor_base->FromDataContainer(data_container, data_container_size, *ort_val);
+  *out = ort_val.release();
+  API_IMPL_END
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtGetOpaqueValue, const char* domain_name, const char* type_name, const OrtValue* in, 
+    void* data_container, size_t data_container_size) {
+  API_IMPL_BEGIN
+  std::string dtype("opaque(");
+  dtype.append(domain_name).append(",").append(type_name).append(")");
+  MLDataType ml_type = DataTypeImpl::GetDataType(dtype);
+  ORT_ENFORCE(ml_type != nullptr,
+              "Specified domain and type names combination does not refer to a registered opaque type");
+  const auto* non_tensor_base = ml_type->AsNonTensorTypeBase();
+  ORT_ENFORCE(non_tensor_base != nullptr, "Opaque type is not a non_tensor type!!!");
+  non_tensor_base->ToDataContainer(*in, data_container_size, data_container);
+  API_IMPL_END
+  return nullptr;
+}
+
 
 // End support for non-tensor types
 

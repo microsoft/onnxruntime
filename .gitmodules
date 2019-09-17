@@ -41,3 +41,6 @@
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git
 	branch = 5.1
+[submodule "cmake/external/mimalloc"]
+	path = cmake/external/mimalloc
+	url = https://github.com/microsoft/mimalloc.git

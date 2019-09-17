@@ -17,12 +17,12 @@ void CPUAllocator::Free(void* p) {
   utils::DefaultFree(p);
 }
 
-const OrtMemoryInfo& CPUAllocator::Info() const { return *allocator_info_; }
+const OrtMemoryInfo& CPUAllocator::Info() const { return *memory_info_; }
 }  // namespace onnxruntime
 
 std::ostream& operator<<(std::ostream& out, const OrtMemoryInfo& info) { return (out << info.ToString()); }
 
-ORT_API_STATUS_IMPL(OrtCreateAllocatorInfo, _In_ const char* name1, OrtAllocatorType type, int id1,
+ORT_API_STATUS_IMPL(OrtCreateMemoryInfo, _In_ const char* name1, OrtAllocatorType type, int id1,
                     OrtMemType mem_type1, _Out_ OrtMemoryInfo** out) {
   if (strcmp(name1, onnxruntime::CPU) == 0) {
     *out = new OrtMemoryInfo(name1, type, OrtDevice(), id1, mem_type1);
@@ -62,7 +62,7 @@ ORT_API_STATUS_IMPL(OrtMemoryInfoGetType, _In_ const OrtMemoryInfo* ptr, _Out_ O
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtCompareAllocatorInfo, _In_ const OrtMemoryInfo* info1, _In_ const OrtMemoryInfo* info2,
+ORT_API_STATUS_IMPL(OrtCompareMemoryInfo, _In_ const OrtMemoryInfo* info1, _In_ const OrtMemoryInfo* info2,
                     _Out_ int* out) {
   *out = (*info1 == *info2) ? 0 : -1;
   return nullptr;

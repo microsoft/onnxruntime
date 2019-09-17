@@ -188,7 +188,7 @@ jobs:
 
   - task: AzureFileCopy@3
     displayName: 'Copy Signed NuGet Package to Blob Store'
-    condition: ne(variables['IsReleaseBuild'], 'true') # rlease build has a different package naming scheme
+    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
     inputs:
       sourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
       azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
@@ -197,3 +197,10 @@ jobs:
       containerName: ortpackages
       blobPrefix: '$(CurrentDate)/'
 
+  - task: DotNetCoreCLI@2
+    displayName: 'Copy Signed NuGet Package to Internal NuGet Feed'
+    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
+    inputs:
+      command: 'push'
+      searchPatternPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
+      feedPublish: 'OnnxRuntime'

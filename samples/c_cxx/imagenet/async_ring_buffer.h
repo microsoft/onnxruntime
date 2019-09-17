@@ -222,18 +222,18 @@ class AsyncRingBuffer {
         buffer_(capacity_, CalcItemSize(p->GetOutputShape(1))),
         input_begin_(input_begin),
         input_end_(input_end) {
-    OrtMemoryInfo* allocator_info;
-    ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
+    OrtMemoryInfo* memory_info;
+    ORT_THROW_ON_ERROR(OrtCreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
     uint8_t* output_data = buffer_.Begin();
     std::vector<int64_t> input_shape = p_->GetOutputShape(batch_size_);
     size_t off = CalcItemSize(input_shape);
-    queue_.Init([allocator_info, off, &output_data, &input_shape](QueueItem& e) {
-      ORT_THROW_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(allocator_info, output_data, off, input_shape.data(),
+    queue_.Init([memory_info, off, &output_data, &input_shape](QueueItem& e) {
+      ORT_THROW_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(memory_info, output_data, off, input_shape.data(),
                                                            input_shape.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
                                                            &e.value));
       output_data += off;
     });
-    OrtReleaseMemoryInfo(allocator_info);
+    OrtReleaseMemoryInfo(memory_info);
   }
 
   void ProcessRemain() {
@@ -243,18 +243,18 @@ class AsyncRingBuffer {
     uint8_t* output_data;
     std::vector<InputType> task_id_list;
     if (!buffer_.TakeAllRemain(&output_data, task_id_list)) return;
-    OrtMemoryInfo* allocator_info;
-    ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
+    OrtMemoryInfo* memory_info;
+    ORT_THROW_ON_ERROR(OrtCreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
     size_t count = task_id_list.size();
     assert(count != 0);
     std::vector<int64_t> input_shape = p_->GetOutputShape(count);
     size_t len = CalcItemSize(input_shape);
     OrtValue* input_tensor = nullptr;
-    ORT_THROW_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(allocator_info, output_data, len, input_shape.data(),
+    ORT_THROW_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(memory_info, output_data, len, input_shape.data(),
                                                          input_shape.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
                                                          &input_tensor));
     (*c_)(task_id_list, input_tensor);
-    OrtReleaseMemoryInfo(allocator_info);
+    OrtReleaseMemoryInfo(memory_info);
     OrtReleaseValue(input_tensor);
   }
 
