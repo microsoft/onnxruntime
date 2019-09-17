@@ -22,6 +22,23 @@ namespace onnxruntime {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()), \
       x<int32_t>);
 
+#define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(x, startVer, endVer)              \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                           \
+      x,                                                                              \
+      startVer,                                                                       \
+      endVer,                                                                         \
+      float,                                                                          \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),   \
+      x<float>);                                                                      \
+                                                                                      \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                           \
+      x,                                                                              \
+      startVer,                                                                       \
+      endVer,                                                                         \
+      int32_t,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()), \
+      x<int32_t>);
+
 #define REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(x, sinceVersion)               \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                    \
       x,                                                                             \
@@ -53,8 +70,10 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceSum, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSum, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSumSquare, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSumSquare, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMax, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 1);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMax, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMax, 11);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMin, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 11);
 
 // When all reduce axises located at the tail of the dims, quite general cases, transpose and extra
 // copy could be skiped to improve performance, if required by check_no_transpose = true;
