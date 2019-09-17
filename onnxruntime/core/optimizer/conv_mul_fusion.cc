@@ -15,15 +15,11 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
   const auto& conv_inputs = conv_node.InputDefs();
   const auto& mul_inputs = mul_node.InputDefs();
 
-  const ONNX_NAMESPACE::TensorProto* conv_W_tensor_proto = nullptr;
-  if (!graph.GetInitializedTensor(conv_inputs[1]->Name(), conv_W_tensor_proto)) {
-    return Status::OK();
-  }
+  const auto* conv_W_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[1]->Name());
+  ORT_ENFORCE(conv_W_tensor_proto);
 
-  const ONNX_NAMESPACE::TensorProto* mul_B_tensor_proto = nullptr;
-  if (!graph.GetInitializedTensor(mul_inputs[1]->Name(), mul_B_tensor_proto)) {
-    return Status::OK();
-  }
+  const auto* mul_B_tensor_proto = graph_utils::GetConstantInitializer(graph, mul_inputs[1]->Name());
+  ORT_ENFORCE(mul_B_tensor_proto);
 
   if (!Initializer::IsSupportedDataType(conv_W_tensor_proto) ||
       !Initializer::IsSupportedDataType(mul_B_tensor_proto) ||
@@ -61,10 +57,9 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
   std::unique_ptr<Initializer> conv_B = nullptr;
   const bool is_3d = conv_inputs.size() == 3;
   if (is_3d) {
-    if (!graph.GetInitializedTensor(conv_inputs[2]->Name(), conv_B_tensor_proto))
-      return Status::OK();
-    if (conv_B_tensor_proto == nullptr)
-      return Status(ONNXRUNTIME, FAIL, "Internal error in ConvMulFusion. conv_B_tensor_proto is NULL");
+    conv_B_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[2]->Name());
+    ORT_ENFORCE(conv_B_tensor_proto);
+
     if (!Initializer::IsSupportedDataType(conv_B_tensor_proto) ||
         conv_B_tensor_proto->data_type() != mul_B_tensor_proto->data_type() ||
         conv_B_tensor_proto->dims_size() != 1 ||
@@ -90,14 +85,12 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
   conv_W->ToProto(&new_conv_W_tensor_proto);
 
   // Replace initializers of conv node
-  graph.RemoveInitializedTensor(conv_inputs[1]->Name());
-  graph.AddInitializedTensor(new_conv_W_tensor_proto);
+  graph_utils::ReplaceInitializer(graph, conv_inputs[1]->Name(), new_conv_W_tensor_proto);
 
   if (is_3d) {
     ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto(*conv_B_tensor_proto);
     conv_B->ToProto(&new_conv_B_tensor_proto);
-    graph.RemoveInitializedTensor(conv_inputs[2]->Name());
-    graph.AddInitializedTensor(new_conv_B_tensor_proto);
+    graph_utils::ReplaceInitializer(graph, conv_inputs[2]->Name(), new_conv_B_tensor_proto);
   }
 
   // Remove Mul node.

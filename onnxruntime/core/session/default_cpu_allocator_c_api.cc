@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <atomic>
+#include "core/framework/utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include <assert.h>
 
@@ -17,26 +18,26 @@ struct OrtDefaultAllocator : OrtAllocatorImpl {
     OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<OrtDefaultAllocator*>(this_)->Alloc(size); };
     OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<OrtDefaultAllocator*>(this_)->Free(p); };
     OrtAllocator::Info = [](const OrtAllocator* this_) { return static_cast<const OrtDefaultAllocator*>(this_)->Info(); };
-    ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &cpuAllocatorInfo));
+    ORT_THROW_ON_ERROR(OrtCreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info));
   }
 
-  ~OrtDefaultAllocator() override { OrtReleaseAllocatorInfo(cpuAllocatorInfo); }
+  ~OrtDefaultAllocator() override { OrtReleaseMemoryInfo(cpu_memory_info); }
 
   void* Alloc(size_t size) {
-    return ::malloc(size);
+    return onnxruntime::utils::DefaultAlloc(size);
   }
   void Free(void* p) {
-    return ::free(p);
+    onnxruntime::utils::DefaultFree(p);
   }
-  const OrtAllocatorInfo* Info() const {
-    return cpuAllocatorInfo;
+  const OrtMemoryInfo* Info() const {
+    return cpu_memory_info;
   }
 
  private:
   OrtDefaultAllocator(const OrtDefaultAllocator&) = delete;
   OrtDefaultAllocator& operator=(const OrtDefaultAllocator&) = delete;
 
-  OrtAllocatorInfo* cpuAllocatorInfo;
+  OrtMemoryInfo* cpu_memory_info;
 };
 
 #define API_IMPL_BEGIN try {
@@ -46,13 +47,10 @@ struct OrtDefaultAllocator : OrtAllocatorImpl {
     return OrtCreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
   }
 
-ORT_API_STATUS_IMPL(OrtCreateDefaultAllocator, _Out_ OrtAllocator** out) {
+ORT_API_STATUS_IMPL(OrtGetAllocatorWithDefaultOptions, _Out_ OrtAllocator** out) {
   API_IMPL_BEGIN
-  *out = new OrtDefaultAllocator();
+  static OrtDefaultAllocator ort_default_allocator;
+  *out = &ort_default_allocator;
   return nullptr;
   API_IMPL_END
-}
-
-ORT_API(void, OrtReleaseAllocator, _In_ OrtAllocator* allocator) {
-  delete static_cast<OrtAllocatorImpl*>(allocator);
 }

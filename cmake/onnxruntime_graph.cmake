@@ -14,6 +14,13 @@ if (onnxruntime_DISABLE_CONTRIB_OPS)
     )
 endif()
 
+if(NOT onnxruntime_USE_AUTOML)
+  list(REMOVE_ITEM onnxruntime_graph_src
+    "${ONNXRUNTIME_ROOT}/core/graph/automl_ops/*.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/automl_ops/*.cc"
+    )
+endif()
+
 file(GLOB_RECURSE onnxruntime_ir_defs_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/defs/*.cc"
 )
@@ -21,6 +28,7 @@ file(GLOB_RECURSE onnxruntime_ir_defs_src CONFIGURE_DEPENDS
 add_library(onnxruntime_graph ${onnxruntime_graph_src} ${onnxruntime_ir_defs_src})
 add_dependencies(onnxruntime_graph onnx_proto gsl)
 onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common gsl onnx onnx_proto protobuf::libprotobuf)
+
 target_include_directories(onnxruntime_graph PRIVATE ${ONNXRUNTIME_ROOT})
 set_target_properties(onnxruntime_graph PROPERTIES FOLDER "ONNXRuntime")
 set_target_properties(onnxruntime_graph PROPERTIES LINKER_LANGUAGE CXX)

@@ -7,6 +7,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--src_root", required=True, help="input symbol file")
     parser.add_argument("--output", required=True, help="output file")
+    parser.add_argument("--output_source", required=True, help="output file")
     parser.add_argument("--version_file", required=True, help="VERSION_NUMBER file")
     parser.add_argument("--style", required=True, choices=["gcc", "vc"])
     parser.add_argument("--config", required=True, nargs="+")
@@ -14,7 +15,6 @@ def parse_arguments():
 
 args = parse_arguments()
 print("Generating symbol file for %s" % str(args.config))
-
 with open(args.version_file, 'r') as f:
     VERSION_STRING=f.read().strip();
 
@@ -52,3 +52,13 @@ with open(args.output, 'w') as file:
     file.write(" local:\n")
     file.write("    *;\n")
     file.write("};   \n")
+
+with open(args.output_source, 'w') as file:
+   file.write("#include <onnxruntime_c_api.h>\n")
+   for c in args.config:
+      file.write("#include <core/providers/%s/%s_provider_factory.h>\n" % (c,c))
+   file.write("void* GetFunctionEntryByName(const char* name){\n")
+   for symbol in symbols:
+      file.write("if(strcmp(name,\"%s\") ==0) return (void*)&%s;\n" % (symbol,symbol))
+   file.write("return NULL;\n");
+   file.write("}\n");

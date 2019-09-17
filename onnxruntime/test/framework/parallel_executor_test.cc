@@ -46,7 +46,7 @@ struct TestOp {
           // success
           Tensor* Y = ctx->Output(0, action_tensor.Shape());
           void* target = Y->MutableData<int64_t>();
-          memcpy(target, action, action_tensor.Size());
+          memcpy(target, action, action_tensor.SizeInBytes());
           break;
         }
         case 1: {

@@ -17,12 +17,12 @@ Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "test"};
 // result_ holds the index with highest probability (aka the number the model thinks is in the image)
 struct MNIST {
   MNIST() {
-    auto allocator_info = Ort::AllocatorInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
-    input_tensor_ = Ort::Value::CreateTensor<float>(allocator_info, input_image_.data(), input_image_.size(), input_shape_.data(), input_shape_.size());
-    output_tensor_ = Ort::Value::CreateTensor<float>(allocator_info, results_.data(), results_.size(), output_shape_.data(), output_shape_.size());
+    auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+    input_tensor_ = Ort::Value::CreateTensor<float>(memory_info, input_image_.data(), input_image_.size(), input_shape_.data(), input_shape_.size());
+    output_tensor_ = Ort::Value::CreateTensor<float>(memory_info, results_.data(), results_.size(), output_shape_.data(), output_shape_.size());
   }
 
-  int Run() {
+  std::ptrdiff_t Run() {
     const char* input_names[] = {"Input3"};
     const char* output_names[] = {"Plus214_Output_0"};
 
@@ -94,7 +94,8 @@ void ConvertDibToMnist() {
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 // The Windows entry point function
-int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPTSTR lpCmdLine, int nCmdShow) {
+int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPTSTR lpCmdLine,
+                      _In_ int nCmdShow) {
   {
     WNDCLASSEX wc{};
     wc.cbSize = sizeof(WNDCLASSEX);
@@ -119,7 +120,7 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPTSTR lpCmd
     void* bits;
     dib_ = CreateDIBSection(nullptr, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
   }
-
+  if (dib_ == nullptr) return -1;
   hdc_dib_ = CreateCompatibleDC(nullptr);
   SelectObject(hdc_dib_, dib_);
   SelectObject(hdc_dib_, CreatePen(PS_SOLID, 2, RGB(0, 0, 0)));

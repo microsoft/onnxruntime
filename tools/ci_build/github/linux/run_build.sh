@@ -17,7 +17,11 @@ done
 if [ $BUILD_OS = "android" ]; then
     pushd /onnxruntime_src
     mkdir build-android && cd build-android
-    cmake -DCMAKE_TOOLCHAIN_FILE=/android-ndk/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc ../cmake
+    if [ $BUILD_DEVICE = "nnapi" ]; then
+        cmake -DCMAKE_TOOLCHAIN_FILE=/android-ndk/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_USE_NNAPI=ON ../cmake
+    else
+        cmake -DCMAKE_TOOLCHAIN_FILE=/android-ndk/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc ../cmake
+    fi
     make -j$(nproc)
 else
     COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"

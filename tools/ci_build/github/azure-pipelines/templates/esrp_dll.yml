@@ -8,7 +8,7 @@ steps:
   - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
     displayName: ${{ parameters.DisplayName }}
     inputs:
-      ConnectedServiceName: 'OnnxRuntime CodeSign 20171127'
+      ConnectedServiceName: 'OnnxRuntime CodeSign 20190817'
       FolderPath: ${{ parameters.FolderPath }}
       Pattern: '*.dll'
       signConfigType: inlineSignParams

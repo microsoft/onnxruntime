@@ -17,6 +17,7 @@ namespace cuda {
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
+          .MayInplace(0, 0)                                       \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Shrink<T>);
 

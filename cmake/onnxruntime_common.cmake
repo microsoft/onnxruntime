@@ -53,11 +53,12 @@ target_include_directories(onnxruntime_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR
 if(onnxruntime_USE_NSYNC)
     target_compile_definitions(onnxruntime_common PUBLIC USE_NSYNC)
 endif()
-if(onnxruntime_USE_EIGEN_THREADPOOL)
-    target_include_directories(onnxruntime_common PRIVATE ${eigen_INCLUDE_DIRS})
-    target_compile_definitions(onnxruntime_common PUBLIC USE_EIGEN_THREADPOOL)
-    add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
+
+target_include_directories(onnxruntime_common PUBLIC ${eigen_INCLUDE_DIRS})
+if(NOT onnxruntime_USE_OPENMP)
+  target_compile_definitions(onnxruntime_common PUBLIC EIGEN_USE_THREADS)
 endif()
+add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 set_target_properties(onnxruntime_common PROPERTIES LINKER_LANGUAGE CXX)

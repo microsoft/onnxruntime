@@ -6,6 +6,7 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -45,7 +46,7 @@ void WordConvEmbedding::ComputeConvMaxPoolWithActivation(
     int64_t char_embedding_size,
     int64_t filter_width,
     int64_t num_filters,
-    float* output) const {
+    float* output, concurrency::ThreadPool* tp) const {
   int64_t input_word_size = word_len * char_embedding_size;
   int64_t unfolded_width = word_len - filter_width + 1;
   int64_t unfolded_kernal_size = filter_width * char_embedding_size;
@@ -83,12 +84,12 @@ void WordConvEmbedding::ComputeConvMaxPoolWithActivation(
       tmp_word_inx++;
     }
 
-    math::GemmEx<float, CPUMathUtil>(
+    math::GemmEx<float>(
         CblasNoTrans, CblasTrans,
         static_cast<int>(words_unfolded_width), static_cast<int>(num_filters), static_cast<int>(unfolded_kernal_size), 1.0f,
         unfolded_buffer_p.get(), static_cast<int>(unfolded_kernal_size),
         weights, static_cast<int>(unfolded_kernal_size), 0.0f,
-        conv_buf_p, static_cast<int>(num_filters), &CPUMathUtil::Instance());
+        conv_buf_p, static_cast<int>(num_filters), tp);
 
     for (int64_t unfolded_inx = 0; unfolded_inx < words_unfolded_width; unfolded_inx++)
       for (int64_t filter_inx = 0; filter_inx < num_filters; filter_inx++) {
@@ -160,6 +161,9 @@ Status WordConvEmbedding::ValidateInputShape(const TensorShape& w_conv_shape, co
 }
 
 Status WordConvEmbedding::Compute(OpKernelContext* ctx) const {
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
+  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
+
   // original lstm processing
   const Tensor& sequence = *(ctx->Input<Tensor>(0));          // sequence: [sequence_length, word_length]
   const Tensor& w_conv = *(ctx->Input<Tensor>(1));            // conv weight: [M, C/group, kH, kW]
@@ -216,7 +220,7 @@ Status WordConvEmbedding::Compute(OpKernelContext* ctx) const {
       char_embedding_size,
       filter_width,
       filter_size,
-      Y->MutableData<float>());
+      Y->MutableData<float>(), tp);
 
   return Status::OK();
 }

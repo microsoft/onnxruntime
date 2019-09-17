@@ -14,16 +14,26 @@ Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
                                            const IExecutionProvider& execution_provider,
                                            const SessionState& session_state,
                                            /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
+  auto create_error_message = [&node](const std::string& error) {
+    std::ostringstream errormsg;
+    errormsg << error << node.OpType();
+    if (node.Op() != nullptr) errormsg << "(" << node.Op()->since_version() << ")";
+    if (!node.Name().empty()) errormsg << " (node " << node.Name() << ")";
+    return errormsg.str();
+  };
+
   const std::string& ptype = node.GetExecutionProviderType();
   if (ptype.empty()) {
     return Status(ONNXRUNTIME, FAIL,
-                  "The node is not placed on any Execution Provider, therefore, can't find a suitable kernel for it");
+                  create_error_message("The node is not placed on any Execution Provider, "
+                                       "therefore, can't find a suitable kernel for "));
   }
+
   Status status;
   {
     for (auto& registry : custom_kernel_registries_) {
       status = registry->TryCreateKernel(node, execution_provider, session_state.GetConstantInitializedTensors(),
-                                         session_state.GetOrtValueNameIdxMap(), session_state.GetFuncMgr(), op_kernel);
+                                         session_state.GetOrtValueNameIdxMap(), session_state.GetFuncMgr(), session_state.GetDataTransferMgr(), op_kernel);
       if (status.IsOK()) {
         return status;
       }
@@ -35,17 +45,13 @@ Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
   if (iter != provider_type_to_registry_.end()) p = iter->second.get();
   if (p != nullptr) {
     status = p->TryCreateKernel(node, execution_provider, session_state.GetConstantInitializedTensors(),
-                                session_state.GetOrtValueNameIdxMap(), session_state.GetFuncMgr(), op_kernel);
+                                session_state.GetOrtValueNameIdxMap(), session_state.GetFuncMgr(), session_state.GetDataTransferMgr(), op_kernel);
     if (status.IsOK()) {
       return status;
     }
   }
 
-  std::ostringstream errormsg;
-  errormsg << "Failed to find kernel for " << node.OpType();
-  if (node.Op() != nullptr) errormsg << "(" << node.Op()->since_version() << ")";
-  if (!node.Name().empty()) errormsg << " (node " << node.Name() << ")";
-  return Status(ONNXRUNTIME, FAIL, errormsg.str());
+  return Status(ONNXRUNTIME, FAIL, create_error_message("Failed to find kernel for "));
 }
 
 Status KernelRegistryManager::RegisterKernels(const ExecutionProviders& execution_providers) {

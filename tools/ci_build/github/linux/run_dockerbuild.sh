@@ -21,7 +21,7 @@ x) BUILD_EXTR_PAR=${OPTARG};;
 c) CUDA_VER=${OPTARG};;
 # x86 or other, only for ubuntu16.04 os
 a) BUILD_ARCH=${OPTARG};;
-# openvino version tag: 2018_R5, 2019_R1 (Default is 2018_R5)
+# openvino version tag: 2018_R5, 2019_R1.1 (Default is 2019_R1.1)
 v) OPENVINO_VERSION=${OPTARG};;
 esac
 done
@@ -57,9 +57,9 @@ else
         DOCKER_FILE=Dockerfile.ubuntu_tensorrt
         docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
     elif [ $BUILD_DEVICE = "openvino" ]; then
-        IMAGE="ubuntu16.04"
+        IMAGE="ubuntu16.04-openvino"
         DOCKER_FILE=Dockerfile.ubuntu_openvino
-        docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OPENVINO_VERSION=${OPENVINO_VERSION} -f Dockerfile.ubuntu_openvino .
+        docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OPENVINO_VERSION=${OPENVINO_VERSION} -f $DOCKER_FILE .
     else
         IMAGE="ubuntu16.04"
         if [ $BUILD_ARCH = "x86" ]; then
@@ -79,19 +79,23 @@ if [ -z "$NIGHTLY_BUILD" ]; then
     set NIGHTLY_BUILD=0
 fi
 
-if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ] || [ $BUILD_DEVICE = "openvino" ]; then
-    ONNX_DOCKER=docker
+if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ] || [ $BUILD_DEVICE = "openvino" ] || [ $BUILD_DEVICE = "nnapi" ]; then
+    RUNTIME=
 else
-    ONNX_DOCKER=nvidia-docker
+    RUNTIME="--runtime=nvidia"
+fi
+
+DOCKER_RUN_PARAMETER="--name onnxruntime-$BUILD_DEVICE \
+                      --volume $SOURCE_ROOT:/onnxruntime_src \
+                      --volume $BUILD_DIR:/build \
+                      --volume $HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime \
+                      --volume $HOME/.onnx:/home/onnxruntimedev/.onnx"
+if [ $BUILD_DEVICE = "openvino" ] && [[ $BUILD_EXTR_PAR == *"--use_openvino GPU_FP"* ]]; then
+    DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --device /dev/dri:/dev/dri"
 fi
 
 docker rm -f "onnxruntime-$BUILD_DEVICE" || true
-$ONNX_DOCKER run -h $HOSTNAME \
-    --name "onnxruntime-$BUILD_DEVICE" \
-    --volume "$SOURCE_ROOT:/onnxruntime_src" \
-    --volume "$BUILD_DIR:/build" \
-    --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
-    --volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" \
+docker run $RUNTIME -h $HOSTNAME $DOCKER_RUN_PARAMETER \
     -e NIGHTLY_BUILD \
     "onnxruntime-$IMAGE" \
     /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \

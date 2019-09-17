@@ -40,11 +40,12 @@ class IOBinding {
  public:
   /**
    * Call repeatedly to bind as many inputs as required.
+   * If called again for the same name will replace an existing value.
    * If the input ort_value is not at the desired location (specified by the execution provider), this will
    * copy it to the desired location. This copy may or may not be async. It depends on the exec provider.
    * If the input ort_value is not at the desired location, it should be preallocated
    * If the input ort_value isn't preallocated, it should have memtype of OrtMemTypeDefault
-   * For copying it leverages IExecutionProvider::CopyTensor().
+   * For copying it leverages DataTransferManager::CopyTensor().
    */
   common::Status BindInput(const std::string& name, const OrtValue& ml_value);
 

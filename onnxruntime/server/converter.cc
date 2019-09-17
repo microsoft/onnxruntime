@@ -219,7 +219,7 @@ void MLValueToTensorProto(Ort::Value& ml_value, bool using_raw_data,
     case onnx::TensorProto_DataType_UINT32: {  // Target: raw_data or uint64_data
       const auto* data = ml_value.GetTensorMutableData<uint32_t>();
       if (using_raw_data) {
-        tensor_proto.set_raw_data(data, sizeof(u_int32_t) * elem_count);
+        tensor_proto.set_raw_data(data, sizeof(uint32_t) * elem_count);
       } else {
         for (size_t i = 0, count = elem_count; i < count; ++i) {
           tensor_proto.add_uint64_data(data[i]);

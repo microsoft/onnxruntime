@@ -64,7 +64,7 @@ class Tensor final {
    *              Tensor does not own the data and will not delete it
    * \param alloc Where the buffer('data') was allocated from
    */
-  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtAllocatorInfo& alloc,
+  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
          int64_t offset = 0);
 
   /**
@@ -78,9 +78,9 @@ class Tensor final {
   //Move is allowed
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(Tensor);
 
-  Tensor(Tensor&& other);
+  Tensor(Tensor&& other) noexcept;
 
-  Tensor& operator=(Tensor&& other);
+  Tensor& operator=(Tensor&& other) noexcept;
 
   /**
      Returns the data type.
@@ -95,7 +95,7 @@ class Tensor final {
   /**
      Returns the location of the tensor's memory
   */
-  const OrtAllocatorInfo& Location() const { return alloc_info_; }
+  const OrtMemoryInfo& Location() const { return alloc_info_; }
 
   /**
      May return nullptr if tensor size is zero
@@ -170,7 +170,7 @@ class Tensor final {
   /**
   The number of bytes of data.
   */
-  size_t Size() const {
+  size_t SizeInBytes() const {
     size_t ret;
     int64_t l = shape_.Size();
     if (l >= static_cast<int64_t>(std::numeric_limits<ptrdiff_t>::max())) {
@@ -202,7 +202,7 @@ class Tensor final {
 
   TensorShape shape_;
   MLDataType dtype_;
-  OrtAllocatorInfo alloc_info_;
+  OrtMemoryInfo alloc_info_;
   int64_t byte_offset_;
 };
 #ifdef __GNUC__

@@ -26,7 +26,7 @@ if [ ! -f /opt/onnxruntime-python/bin/python${PYTHON_VER} ]; then
   ln -s python /opt/onnxruntime-python/bin/python${PYTHON_VER}
 fi
 python -m pip install --upgrade --force-reinstall pip==19.1.1
-python -m pip install --upgrade --force-reinstall numpy==1.16.3
+python -m pip install --upgrade --force-reinstall numpy==1.15.0
 python -m pip install --upgrade --force-reinstall requests==2.21.0
 python -m pip install --upgrade --force-reinstall wheel==0.31.1
 python -m pip install --upgrade --force-reinstall setuptools==41.0.1

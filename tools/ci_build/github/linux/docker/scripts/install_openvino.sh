@@ -7,10 +7,11 @@ o) OPENVINO_VERSION=${OPTARG};;
 esac
 done
 
-OPENVINO_VERSION=${OPENVINO_VERSION:=2018_R5}
-git clone https://github.com/opencv/dldt.git /data/dldt
+OPENVINO_VERSION=${OPENVINO_VERSION:=2019_R1.1}
+git clone https://github.com/opencv/dldt.git /data/dldt/openvino_2019.1.144
 
-export INTEL_CVSDK_DIR=/data/dldt
+export INTEL_CVSDK_DIR=/data/dldt/openvino_2019.1.144
+apt-get update && apt-get -y  install libusb-1.0-0-dev
 
 cd ${INTEL_CVSDK_DIR}/inference-engine
 git submodule init
@@ -30,7 +31,9 @@ mv model-optimizer model_optimizer && mv model_optimizer deployment_tools/
 cd ${INTEL_CVSDK_DIR}/deployment_tools/model_optimizer/install_prerequisites && ./install_prerequisites_onnx.sh
 
 cd ${INTEL_CVSDK_DIR}/deployment_tools/inference_engine
-mkdir -p lib/ubuntu_16.04/intel64
-mv bin/intel64/Release/lib/* lib/ubuntu_16.04/intel64
+mkdir -p lib/intel64
+mkdir -p external/tbb/lib
+mv bin/intel64/Release/lib/* lib/intel64
+mv temp/tbb/lib/* external/tbb/lib
 
 cd ~

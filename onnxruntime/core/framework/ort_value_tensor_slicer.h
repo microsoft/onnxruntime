@@ -44,7 +44,8 @@ class OrtValueTensorSlicer {
     using reference = T&;
     using const_reference = std::add_const_t<reference>;
 
-    enum class Direction { kForward, kReverse };
+    enum class Direction { kForward,
+                           kReverse };
 
     explicit Iterator(T& ort_value, size_t slice_dimension, size_t dim0_offset, int64_t position,
                       Direction direction = Direction::kForward);
@@ -106,7 +107,7 @@ class OrtValueTensorSlicer {
 
     const void* tensor_data_raw_;
     MLDataType tensor_data_type_;
-    const OrtAllocatorInfo* tensor_location_;
+    const OrtMemoryInfo* tensor_location_;
 
     int64_t sequence_length_;
     TensorShape per_iteration_shape_;

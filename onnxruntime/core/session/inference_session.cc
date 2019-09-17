@@ -11,6 +11,7 @@
 #include <sstream>
 #include <unordered_set>
 #include <list>
+#include <string>
 #include <thread>
 
 #include "core/common/logging/logging.h"
@@ -43,6 +44,7 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/transformer_memcpy.h"
+#include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/IOBinding.h"
 #include "core/session/custom_ops.h"
@@ -86,31 +88,30 @@ inline std::basic_string<T> GetCurrentTimeString() {
   OrtStrftime<T>(time_str, sizeof(time_str), GetDateFormatString<T>(), &local_tm);
   return std::basic_string<T>(time_str);
 }
+
+concurrency::ThreadPool* CreateThreadPool(int size) {
+  if (size < 0) size = std::thread::hardware_concurrency() / 2;
+  return size > 0 ? new concurrency::ThreadPool("SESSION", size) : nullptr;
+}
+
 }  // namespace
 
-InferenceSession::InferenceSession(const SessionOptions& session_options, logging::LoggingManager* logging_manager)
+InferenceSession::InferenceSession(const SessionOptions& session_options,
+                                   logging::LoggingManager* logging_manager)
     : session_options_{session_options},
-      graph_transformation_mgr_{session_options_.max_num_graph_transformation_steps},
+      graph_transformation_mgr_{session_options.max_num_graph_transformation_steps},
       logging_manager_{logging_manager},
+      thread_pool_(CreateThreadPool(session_options.session_thread_pool_size)),
       session_state_(execution_providers_,
-                     session_options.enable_mem_pattern && session_options.enable_sequential_execution),
+                     session_options.enable_mem_pattern && session_options.enable_sequential_execution,
+                     thread_pool_.get()),
       insert_cast_transformer_{"CastFloat16Transformer"} {
   ORT_ENFORCE(Environment::IsInitialized(),
               "Environment must be initialized before creating an InferenceSession.");
 
   InitLogger(logging_manager);
 
-  // The threadpool is currently evolving.  We will always create a per session threadpool.
-  // Beyond this, we will create a global thread pool to share across sessions.
-  {
-    int pool_size = session_options_.session_thread_pool_size <= 0
-                        ? std::thread::hardware_concurrency() / 2
-                        : session_options_.session_thread_pool_size;
-
-    thread_pool_ = std::make_unique<onnxruntime::concurrency::ThreadPool>("SESSION", pool_size);
-  }
-
-  session_state_.SetThreadPool(thread_pool_.get());
+  session_state_.SetDataTransferMgr(&data_transfer_mgr_);
   session_profiler_.Initialize(session_logger_);
   session_state_.SetProfiler(session_profiler_);
   if (session_options.enable_profiling) {
@@ -142,6 +143,13 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
 
   std::string provider_type = p_exec_provider->Type();
   VLOGS(*session_logger_, 1) << "Adding execution provider of type: " << provider_type;
+  auto p_data_xfr = p_exec_provider->GetDataTransfer();
+  if (p_data_xfr) {
+    auto st = data_transfer_mgr_.RegisterDataTransfer(std::move(p_data_xfr));
+    if (!st.IsOK()) {
+      return st;
+    }
+  }
   execution_providers_.Add(provider_type, std::move(p_exec_provider));
 
   return Status::OK();
@@ -213,7 +221,7 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
     status = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
   }
 
-  if (session_profiler_.FEnabled()) {
+  if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, event_name, tp);
   }
 
@@ -390,13 +398,13 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       Graph* subgraph = entry.second;
       ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
 
-      auto subgraph_session_state =
-          std::make_unique<SessionState>(execution_providers_, session_state.GetEnableMemoryPattern());
+      auto subgraph_session_state = std::make_unique<SessionState>(execution_providers_,
+                                                                   session_state.GetEnableMemoryPattern(),
+                                                                   session_state.GetThreadPool());
       subgraph_session_state->SetProfiler(session_profiler_);
       subgraph_session_state->SetLogger(*session_logger_);
-      // Pass threadpool to subgraph
-      subgraph_session_state->SetThreadPool(session_state.GetThreadPool());
-
+      // Pass data transfer manager to subgraph.
+      subgraph_session_state->SetDataTransferMgr(&session_state.GetDataTransferMgr());
       // Pass fused function manager to subgraph
       subgraph_session_state->GetMutableFuncMgr().SetFusedFuncs(session_state.GetFuncMgr());
 
@@ -418,6 +426,13 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
 /// @remarks We pass in graph and session_state so we can handled nested subgraphs in the future
 common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, SessionState& session_state) {
   for (auto& node : graph.Nodes()) {
+    // We only need subgraph session state for control flow nodes being handled by the CPU execution provider.
+    // Remove it if it's not needed.
+    if (node.ContainsSubgraph() && node.GetExecutionProviderType() != kCpuExecutionProvider) {
+      session_state.RemoveSubgraphSessionState(node.Index());
+      continue;
+    }
+
     for (const auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       auto& name = entry.first;
       Graph& subgraph = *entry.second;
@@ -433,10 +448,14 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
       ORT_RETURN_IF_ERROR(initializer.CreatePlan(&node, &implicit_inputs,
                                                  session_options_.enable_sequential_execution));
 
-      ORT_RETURN_IF_ERROR(initializer.InitializeAndSave(&implicit_inputs));
-
       // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
       //                                                   &*subgraph_info.session_state);
+
+      // setup all the info for handling the feeds and fetches used in subraph execution
+      auto* p_op_kernel = session_state.GetMutableKernel(node.Index());
+      ORT_ENFORCE(p_op_kernel);
+      auto& control_flow_kernel = dynamic_cast<controlflow::IControlFlowKernel&>(*p_op_kernel);
+      ORT_RETURN_IF_ERROR(control_flow_kernel.SetupSubgraphExecutionInfo(session_state, name, *subgraph_session_state));
 
       // recurse
       ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(subgraph, *subgraph_session_state));
@@ -467,8 +486,8 @@ common::Status InferenceSession::Initialize() {
     if (!execution_providers_.Get(onnxruntime::kCpuExecutionProvider)) {
       LOGS(*session_logger_, INFO) << "Adding default CPU execution provider.";
       CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
-      ORT_RETURN_IF_ERROR(execution_providers_.Add(onnxruntime::kCpuExecutionProvider,
-                                                   std::make_unique<CPUExecutionProvider>(epi)));
+      auto p_cpu_exec_provider = std::make_unique<CPUExecutionProvider>(epi);
+      ORT_RETURN_IF_ERROR(RegisterExecutionProvider(std::move(p_cpu_exec_provider)));
     }
 
     if (!session_options_.enable_sequential_execution &&
@@ -510,14 +529,20 @@ common::Status InferenceSession::Initialize() {
     // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
     ORT_RETURN_IF_ERROR(graph.Resolve());
 
+    if (!session_options_.optimized_model_filepath.empty()) {
+      if (session_options_.graph_optimization_level < TransformerLevel::Level3) {
+        // Serialize optimized ONNX model.
+        ORT_RETURN_IF_ERROR(Model::Save(*model_, session_options_.optimized_model_filepath));
+      } else {
+        LOGS(*session_logger_, WARNING) << "Serializing Optimized ONNX model with Graph Optimization"
+                                           " level greater than 2 is not supported.";
+      }
+    }
+
     ORT_RETURN_IF_ERROR(session_initializer.CreatePlan(nullptr, nullptr, session_options_.enable_sequential_execution));
-    ORT_RETURN_IF_ERROR(session_initializer.InitializeAndSave(nullptr));
 
     // handle any subgraphs
     ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(graph, session_state_));
-
-    session_state_.CalculateNodeIndexInfo();
-
     is_inited_ = true;
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
@@ -532,7 +557,7 @@ common::Status InferenceSession::Initialize() {
     LOGS(*session_logger_, ERROR) << status.ErrorMessage();
   }
 
-  if (session_profiler_.FEnabled()) {
+  if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "session_initialization", tp);
   }
   return status;
@@ -542,7 +567,52 @@ int InferenceSession::GetCurrentNumRuns() const {
   return current_num_runs_.load();
 }
 
-common::Status InferenceSession::CheckTypes(MLDataType actual, MLDataType expected) {
+const std::vector<std::string>& InferenceSession::GetRegisteredProviderTypes() const {
+  return execution_providers_.GetIds();
+}
+
+const SessionOptions& InferenceSession::GetSessionOptions() const {
+  return session_options_;
+}
+
+common::Status InferenceSession::CheckShapes(const std::string& input_name,
+                                             const TensorShape& input_shape,
+                                             const TensorShape& expected_shape) const {
+  auto input_shape_sz = input_shape.NumDimensions();
+  auto expected_shape_sz = expected_shape.NumDimensions();
+  if (input_shape_sz != expected_shape_sz) {
+    std::ostringstream ostr;
+    ostr << "Invalid rank for input: " << input_name
+         << " Got: " << input_shape_sz << " Expected: " << expected_shape_sz
+         << " Please fix either the inputs or the model.";
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
+  }
+
+  std::vector<int> invalid_dim_indices;
+  for (size_t i = 0; i < input_shape_sz; ++i) {
+    if (expected_shape[i] < 0) {
+      continue;  // this represents a symbolic shape dimension
+    }
+    if (input_shape[i] != expected_shape[i]) {
+      invalid_dim_indices.push_back(i);
+    }
+  }
+
+  if (!invalid_dim_indices.empty()) {
+    std::ostringstream ostr;
+    ostr << "Got invalid dimensions for input: " << input_name << " for the following indices\n";
+    for (size_t i = 0, end = invalid_dim_indices.size(); i < end; ++i) {
+      int idx = invalid_dim_indices[i];
+      ostr << " index: " << idx << " Got: " << input_shape[idx] << " Expected: " << expected_shape[idx] << "\n";
+    }
+    ostr << " Please fix either the inputs or the model.";
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
+  }
+
+  return Status::OK();
+}
+
+static common::Status CheckTypes(MLDataType actual, MLDataType expected) {
   if (actual == expected) {
     return Status::OK();
   }
@@ -553,7 +623,7 @@ common::Status InferenceSession::CheckTypes(MLDataType actual, MLDataType expect
 }
 
 common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& feed_names,
-                                                const std::vector<OrtValue>& feeds) {
+                                                const std::vector<OrtValue>& feeds) const {
   if (feed_names.size() != feeds.size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Size mismatch: feed_names has ",
@@ -561,79 +631,46 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
                            feeds.size(), " elements.");
   }
 
-  std::unordered_set<std::string> seen_names;
-  seen_names.reserve(feeds.size());
-  size_t seen_required_inputs = 0;
-  const Graph& graph = model_->MainGraph();
-
   for (size_t i = 0; i < feeds.size(); ++i) {
     const auto& feed_name = feed_names[i];
 
-    if (seen_names.insert(feed_name).second == false) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Duplicate name in feeds: ", feed_name);
-    }
-
     auto iter = input_def_map_.find(feed_name);
     if (input_def_map_.end() == iter) {
-      // if IR < 4 all initializers are required to have a matching graph input with the same name,
-      // however we disallow using that graph input to override the initializer, and treat the initializers as constant.
-      // check for this and output a nicer error message if that is the case.
-      // As we've already moved all initializers to SessionState we need to check if it's in the constant initializers there
-      int idx;
-      bool is_constant_initializer = session_state_.GetOrtValueNameIdxMap().GetIdx(feed_name, idx).IsOK() &&
-                                     session_state_.GetConstantInitializedTensors().find(idx) !=
-                                         session_state_.GetConstantInitializedTensors().cend();
-
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Invalid Feed Input Name:", feed_name,
-                             is_constant_initializer ? ". Initializers may not be overridden by feeds"
-                                                       " if model IR version is less than 4."
-                                                     : ".");
+                             "Invalid Feed Input Name:", feed_name);
     }
 
-    auto expected_type = utils::GetMLDataType(*iter->second);
+    auto expected_type = iter->second.ml_data_type;
     auto& input_ml_value = feeds.at(i);
     if (input_ml_value.IsTensor()) {
+      // check for type
+      if (!expected_type->IsTensorType()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ",
+                               feed_name, " is not expected to be of type tensor.");
+      }
+
       auto expected_element_type = expected_type->AsTensorType()->GetElementType();
       auto input_element_type = input_ml_value.Get<Tensor>().DataType();
       ORT_RETURN_IF_ERROR(CheckTypes(input_element_type, expected_element_type));
+
+      // check for shape
+      const auto& expected_shape = iter->second.tensor_shape;
+      if (expected_shape.NumDimensions() > 0) {
+        const auto& input_shape = input_ml_value.Get<Tensor>().Shape();
+        ORT_RETURN_IF_ERROR(CheckShapes(feed_name, input_shape, expected_shape));
+      }
     } else {
       auto input_type = input_ml_value.Type();
       ORT_RETURN_IF_ERROR(CheckTypes(input_type, expected_type));
     }
-
-    if (!graph.CanOverrideInitializer() ||  // all entries in input_def_map_ are required.
-        required_inputs_.find(feed_name) != required_inputs_.cend()) {
-      ++seen_required_inputs;
-    }
-  }
-
-  if (seen_required_inputs < required_inputs_.size()) {
-    std::ostringstream req_input_str;
-    auto cur = required_inputs_.cbegin(), end = required_inputs_.cend();
-    req_input_str << "Required inputs: ";
-    req_input_str << *(cur++);
-    while (cur != end) {
-      req_input_str << ", " << *(cur++);
-    }
-
-    req_input_str << " . Got: ";
-    for (size_t i = 0; i < feed_names.size(); ++i) {
-      if (i > 0)
-        req_input_str << ", ";
-      req_input_str << feed_names[i];
-    }
-
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "One or more missing required inputs. ",
-                           req_input_str.str());
   }
 
   return Status::OK();
 }
 
 common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>& output_names,
-                                                 const std::vector<OrtValue>* p_fetches) {
-  if (!p_fetches) {
+                                                 const std::vector<OrtValue>* p_fetches) const {
+  if (p_fetches == nullptr) {
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                           "Output vector pointer is NULL");
   }
@@ -676,12 +713,9 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     }
 
     ORT_RETURN_IF_ERROR(ValidateInputs(feed_names, feeds));
-
-    // if the output vector is non-empty, ensure that its the same size as the output_names
     ORT_RETURN_IF_ERROR(ValidateOutputs(output_names, p_fetches));
 
-    FeedsFetchesInfo info(feed_names, output_names);
-    ORT_RETURN_IF_ERROR(info.SetMLValueIdxs(session_state_.GetOrtValueNameIdxMap()));
+    FeedsFetchesInfo info(feed_names, output_names, session_state_.GetOrtValueNameIdxMap());
     FeedsFetchesManager feeds_fetches_manager{std::move(info)};
 
     if (!run_options.run_tag.empty()) {
@@ -705,9 +739,8 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
 
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(
-        utils::ExecuteGraph(session_state_, feeds_fetches_manager, feeds, *p_fetches, {},
-                            session_options_.enable_sequential_execution, run_options.terminate, run_logger,
-                            false));
+        utils::ExecuteGraph(session_state_, feeds_fetches_manager, feeds, *p_fetches,
+                            session_options_.enable_sequential_execution, run_options.terminate, run_logger));
 
   } catch (const std::exception& e) {
     retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
@@ -721,7 +754,7 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
   }
 
   --current_num_runs_;
-  if (session_profiler_.FEnabled()) {
+  if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
   }
 
@@ -807,7 +840,8 @@ common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_bin
 common::Status InferenceSession::Run(const RunOptions& run_options, IOBinding& io_binding) {
   // TODO should Run() call io_binding.SynchronizeInputs() or should it let the callers do it?
   // io_binding.SynchronizeInputs();
-  return Run(run_options, io_binding.feed_names_, io_binding.feeds_, io_binding.output_names_, &io_binding.outputs_);
+  return Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(),
+             io_binding.GetOutputNames(), &io_binding.GetOutputs());
 }
 
 common::Status InferenceSession::Run(IOBinding& io_binding) {
@@ -838,7 +872,12 @@ void InferenceSession::StartProfiling(const logging::Logger* logger_ptr) {
 
 std::string InferenceSession::EndProfiling() {
   if (is_model_loaded_) {
-    return session_profiler_.EndProfiling();
+    if (session_profiler_.IsEnabled()) {
+      return session_profiler_.EndProfiling();
+    } else {
+      LOGS(*session_logger_, VERBOSE) << "Profiler is disabled.";
+      return std::string();
+    }
   }
   LOGS(*session_logger_, ERROR) << "Could not write a profile because no model was loaded.";
   return std::string();
@@ -870,7 +909,13 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
   auto add_inputs = [this](const InputDefList& inputs) {
     input_def_map_.reserve(inputs.size());
     for (auto elem : inputs) {
-      input_def_map_.insert({elem->Name(), elem});
+      auto elem_type = utils::GetMLDataType(*elem);
+      auto elem_shape_proto = elem->Shape();
+      input_def_map_.insert({elem->Name(), InputDefMetaData(elem,
+                                                            elem_type,
+                                                            elem_shape_proto
+                                                                ? utils::GetTensorShapeFromTensorShapeProto(*elem_shape_proto)
+                                                                : TensorShape())});
     }
   };
 
@@ -916,13 +961,12 @@ const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& ru
     run_log_id += run_options.run_tag;
 
     logging::Severity severity = logging::Severity::kWARNING;
-
-    if (run_options.run_log_severity_level < 0) {
+    if (run_options.run_log_severity_level == -1) {
       severity = session_logger_->GetSeverity();
     } else {
       ORT_ENFORCE(run_options.run_log_severity_level >= 0 &&
                       run_options.run_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
-                  "Invalid run log severity level. Must be a valid onnxruntime::logging::Severity value. Got ",
+                  "Invalid run log severity level. Not a valid onnxruntime::logging::Severity value: ",
                   run_options.run_log_severity_level);
       severity = static_cast<logging::Severity>(run_options.run_log_severity_level);
     }
@@ -945,26 +989,22 @@ const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& ru
 
 void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
   // create logger for session, using provided logging manager if possible
-  if (logging_manager != nullptr) {
-    std::string session_logid = !session_options_.session_logid.empty()
-                                    ? session_options_.session_logid
-                                    : "InferenceSession";  // there's probably a better default...
-
+  if (logging_manager != nullptr && !session_options_.session_logid.empty()) {
     logging::Severity severity = logging::Severity::kWARNING;
-
-    if (session_options_.session_log_severity_level < 0) {
+    if (session_options_.session_log_severity_level == -1) {
       severity = logging::LoggingManager::DefaultLogger().GetSeverity();
     } else {
       ORT_ENFORCE(session_options_.session_log_severity_level >= 0 &&
                       session_options_.session_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
-                  "Invalid session log severity level. Must be a valid onnxruntime::logging::Severity value. Got ",
+                  "Invalid session log severity level. Not a valid onnxruntime::logging::Severity value: ",
                   session_options_.session_log_severity_level);
       severity = static_cast<logging::Severity>(session_options_.session_log_severity_level);
     }
 
-    owned_session_logger_ = logging_manager_->CreateLogger(session_logid, severity, false,
+    owned_session_logger_ = logging_manager_->CreateLogger(session_options_.session_logid,
+                                                           severity,
+                                                           false,
                                                            session_options_.session_log_verbosity_level);
-
     session_logger_ = owned_session_logger_.get();
   } else {
     session_logger_ = &logging::LoggingManager::DefaultLogger();
@@ -995,6 +1035,10 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
 
   if ((graph_optimization_level >= TransformerLevel::Level2) || !custom_list.empty()) {
     add_transformers(TransformerLevel::Level2);
+  }
+
+  if ((graph_optimization_level >= TransformerLevel::Level3) || !custom_list.empty()) {
+    add_transformers(TransformerLevel::Level3);
   }
 }
 

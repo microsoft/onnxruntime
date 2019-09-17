@@ -19,6 +19,7 @@
 #include <google/protobuf/stubs/common.h>
 #include "core/framework/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/optimizer/graph_transformer_level.h"
 
 using namespace onnxruntime;
 
@@ -34,13 +35,11 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph' or 'openvino'. "
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph', 'openvino' or 'nuphar'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
-      "\t-o [optimization level]: Specifies the graph optimization level to enable. Valid values are 0, 1 or 2. Default is 1.\n"
-      "\t\t0 -> Disable all optimizations\n"
-      "\t\t1 -> Enable basic optimizations\n"
-      "\t\t2 -> Enable all optimizations\n"
+      "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
+      "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. \n"
       "\t-h: help\n"
       "\n"
       "onnxruntime version: %s\n",
@@ -95,7 +94,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_tensorrt = false;
   bool enable_mem_pattern = true;
   bool enable_openvino = false;
-  uint32_t graph_optimization_level{};
+  bool enable_nnapi = false;
+  GraphOptimizationLevel graph_optimization_level = ORT_DISABLE_ALL;
   bool user_graph_optimization_level_set = false;
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
@@ -153,6 +153,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_tensorrt = true;
           } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
             enable_openvino = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
+            enable_nnapi = true;
           } else {
             usage();
             return -1;
@@ -161,15 +163,34 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         case 'x':
           enable_sequential_execution = false;
           break;
-        case 'o':
-          graph_optimization_level = static_cast<uint32_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-          if (graph_optimization_level > 2) {
-            fprintf(stderr, "See usage for valid values of graph optimization level\n");
-            usage();
-            return -1;
+        case 'o': {
+          int tmp = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
+          switch (tmp) {
+            case ORT_DISABLE_ALL:
+              graph_optimization_level = ORT_DISABLE_ALL;
+              break;
+            case ORT_ENABLE_BASIC:
+              graph_optimization_level = ORT_ENABLE_BASIC;
+              break;
+            case ORT_ENABLE_EXTENDED:
+              graph_optimization_level = ORT_ENABLE_EXTENDED;
+              break;
+            case ORT_ENABLE_ALL:
+              graph_optimization_level = ORT_ENABLE_ALL;
+              break;
+            default: {
+              if (tmp > ORT_ENABLE_ALL) {  // relax constraint
+                graph_optimization_level = ORT_ENABLE_ALL;
+              } else {
+                fprintf(stderr, "See usage for valid values of graph optimization level\n");
+                usage();
+                return -1;
+              }
+            }
           }
           user_graph_optimization_level_set = true;
           break;
+        }
         case '?':
         case 'h':
         default:
@@ -207,9 +228,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
-    double relative_per_sample_tolerance = enable_cuda ? 0.017 : 1e-3;
     // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
-    relative_per_sample_tolerance = enable_openvino ? 0.009 : 1e-3;
+    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009 : 1e-3;
 
     Ort::SessionOptions sf;
 
@@ -225,9 +245,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.EnableSequentialExecution();
     else
       sf.DisableSequentialExecution();
+
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf));
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, 0));
       ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0));
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
@@ -253,7 +274,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_nuphar) {
 #ifdef USE_NUPHAR
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(sf, 0, ""));
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(sf, /*allow_unaligned_buffers*/ 1, ""));
 #else
       fprintf(stderr, "Nuphar is not supported in this build");
       return -1;
@@ -275,6 +296,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
+    if (enable_nnapi) {
+#ifdef USE_NNAPI
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf));
+#else
+      fprintf(stderr, "DNNLibrary/NNAPI is not supported in this build");
+      return -1;
+#endif
+    }
 
     if (user_graph_optimization_level_set) {
       sf.SetGraphOptimizationLevel(graph_optimization_level);
@@ -282,7 +311,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     std::unordered_set<std::string> cuda_flaky_tests = {
         "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
-
+    std::unordered_set<std::string> nuphar_flaky_tests = {"logsoftmax_axis_0", "softmax_axis_0"};
 #if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
     //Minimize mem consumption
     LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&stat, &sf, enable_cuda, &cuda_flaky_tests, &env](ITestCase* l) {
@@ -310,7 +339,17 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         }
       }
     }
-
+    if (enable_nuphar) {
+      for (auto it = tests.begin(); it != tests.end();) {
+        auto iter = nuphar_flaky_tests.find((*it)->GetTestCaseName());
+        if (iter != nuphar_flaky_tests.end()) {
+          delete *it;
+          it = tests.erase(it);
+        } else {
+          ++it;
+        }
+      }
+    }
     TestEnv args(tests, stat, env, sf);
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
                          GetDefaultThreadPool(Env::Default()));
@@ -341,7 +380,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"constantofshape_float_ones", "test data bug", {"onnx141","onnx150"}},
       {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
       {"convtranspose_1d", "disable reason"},
-      {"convtranspose_3d", "disable reason"},      
+      {"convtranspose_3d", "disable reason"},
       {"cast_STRING_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
       {"tf_nasnet_large", "disable temporarily"},
@@ -350,13 +389,74 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"shrink", "test case is wrong", {"onnx141"}},
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
       {"tf_inception_v2", "result mismatch"},
-      {"mxnet_arcface", "result mismatch"}
+      {"mxnet_arcface", "result mismatch"},
+      {"dynamicquantizelinear_expanded", "Round(11) not implemented yet"},
+      {"dynamicquantizelinear_max_adjusted_expanded", "Round(11) not implemented yet"},
+      {"dynamicquantizelinear_min_adjusted_expanded", "Round(11) not implemented yet"},
+      {"top_k", "not implemented yet for opset 11", {"onnxtip"}},
+      {"top_k_smallest", "not implemented yet for opset 11", {"onnxtip"}},
+      {"unique_not_sorted_without_axis", "not implemented yet"},
+      {"unique_sorted_with_axis", "not implemented yet"},
+      {"unique_sorted_with_axis_3d", "not implemented yet"},
+      {"unique_sorted_without_axis", "not implemented yet"},
+      {"scatter_elements_with_axis", "not implemented yet"},
+      {"scatter_elements_without_axis", "not implemented yet"},
+      {"round", "not implemented yet"},
+      {"gather_elements_1", "not implemented yet"},
+      {"gather_elements_0", "not implemented yet"},
+      {"depthtospace_crd_mode_example", "not implemented yet"},
+      {"depthtospace_crd_mode", "not implemented yet"},
+      {"cumsum_2d_axis_1", "not implemented yet"},
+      {"cumsum_2d_axis_0", "not implemented yet"},
+      {"cumsum_1d_reverse_exclusive", "not implemented yet"},
+      {"cumsum_1d_reverse", "not implemented yet"},
+      {"cumsum_1d_exclusive", "not implemented yet"},
+      {"cumsum_1d", "not implemented yet"},
+      {"range_float_type_positive_delta", "not implemented yet"},
+      {"range_float_type_positive_delta_expanded", "not implemented yet"},
+      {"range_int32_type_negative_delta", "not implemented yet"},
+      {"range_int32_type_negative_delta_expanded", "not implemented yet"},
+      {"det_2d", "not implemented yet"},
+      {"det_nd", "not implemented yet"},
+      {"gathernd_example_float32", "not implemented yet"},
+      {"gathernd_example_int32", "not implemented yet"},
+      {"resize_downsample_scales_cubic_A_n0p5_exclude_outside", "not implemented yet"},
+      {"resize_downsample_scales_cubic_align_corners", "not implemented yet"},
+      {"resize_downsample_scales_cubic", "not implemented yet"},
+      {"resize_downsample_scales_linear_align_corners", "not implemented yet"},
+      {"resize_downsample_scales_linear", "not implemented yet"},
+      {"resize_downsample_scales_nearest", "not implemented yet"},
+      {"resize_downsample_sizes_cubic", "not implemented yet"},
+      {"resize_downsample_sizes_linear_pytorch_half_pixel", "not implemented yet"},
+      {"resize_downsample_sizes_nearest", "not implemented yet"},
+      {"resize_downsample_sizes_nearest_tf_half_pixel_for_nn", "not implemented yet"},
+      {"resize_tf_crop_and_resize", "not implemented yet"},
+      {"resize_upsample_scales_cubic_A_n0p5_exclude_outside", "not implemented yet"},
+      {"resize_upsample_scales_cubic_align_corners", "not implemented yet"},
+      {"resize_upsample_scales_cubic_asymmetric", "not implemented yet"},
+      {"resize_upsample_scales_cubic", "not implemented yet"},
+      {"resize_upsample_scales_linear_align_corners", "not implemented yet"},
+      {"resize_upsample_scales_linear", "not implemented yet"},
+      {"resize_upsample_scales_nearest", "not implemented yet"},
+      {"resize_upsample_sizes_cubic", "not implemented yet"},
+      {"resize_upsample_sizes_nearest_ceil_half_pixel", "not implemented yet"},
+      {"resize_upsample_sizes_nearest", "not implemented yet"},
+      {"resize_upsample_sizes_nearest_floor_align_corners", "not implemented yet"},
+      {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "not implemented yet"},
+      {"scatternd", "not implemented yet"},
+      {"yolov3", "regression in resize opset 10 shape inference"},
   };
 
 #ifdef USE_NGRAPH
   broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
   broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
-  broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});  
+  broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
+  broken_tests.insert({"clip_splitbounds", "not implemented yet for opset 11"});
+  broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});	
+  broken_tests.insert({"clip_example", "not implemented yet for opset 11"});	
+  broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});	
+  broken_tests.insert({"clip_default_max", "not implemented yet for opset 11"});
+  broken_tests.insert({"clip", "not implemented yet for opset 11"});
 #endif
 
 #ifdef USE_MKLDNN
@@ -375,10 +475,26 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 #endif
 
-
+#ifdef USE_TENSORRT
+  broken_tests.insert({"fp16_shufflenet", "TRT EP bug"});
+  broken_tests.insert({"fp16_inception_v1", "TRT EP bug"});
+  broken_tests.insert({"fp16_tiny_yolov2", "TRT EP bug"});
+  broken_tests.insert({"tf_inception_v3", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_mobilenet_v1_1.0_224", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_mobilenet_v2_1.0_224", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_mobilenet_v2_1.4_224", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v1_101", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v1_152", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v1_50", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v2_101", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v2_152", "TRT Engine couldn't be created"});
+  broken_tests.insert({"tf_resnet_v2_50", "TRT Engine couldn't be created"});
+#endif
 
 #ifdef USE_CUDA
   broken_tests.insert({"mxnet_arcface", "result mismatch"});
+  broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
+  broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
   broken_tests.insert({"tf_inception_v1", "flaky test"}); //TODO: Investigate cause for flakiness
 #endif
   // clang-format on

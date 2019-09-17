@@ -105,7 +105,7 @@ class BFCArena : public IArenaAllocator {
     return memory_limit_;
   }
 
-  const OrtAllocatorInfo& Info() const override {
+  const OrtMemoryInfo& Info() const override {
     return info_;
   }
 
@@ -244,7 +244,7 @@ class BFCArena : public IArenaAllocator {
 
     ~AllocationRegion() { delete[] handles_; }
 
-    AllocationRegion(AllocationRegion&& other) { Swap(other); }
+    AllocationRegion(AllocationRegion&& other) noexcept { Swap(other); }
 
     AllocationRegion& operator=(AllocationRegion&& other) {
       Swap(other);
@@ -476,7 +476,7 @@ class BFCArena : public IArenaAllocator {
 
   AllocatorStats stats_;
 
-  OrtAllocatorInfo info_;
+  OrtMemoryInfo info_;
 
   std::unordered_map<void*, size_t> reserved_chunks_;
 

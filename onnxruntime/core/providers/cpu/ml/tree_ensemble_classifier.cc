@@ -293,58 +293,6 @@ void TreeEnsembleClassifier<T>::Initialize() {
               base_values_.size() == weights_classes_.size());
 }
 
-void get_max_weight(const std::map<int64_t, float>& classes, int64_t& maxclass, float& maxweight) {
-  maxclass = -1;
-  maxweight = 0.f;
-  for (auto& classe : classes) {
-    if (maxclass == -1 || classe.second > maxweight) {
-      maxclass = classe.first;
-      maxweight = classe.second;
-    }
-  }
-}
-
-void get_weight_class_positive(std::map<int64_t, float>& classes, float& pos_weight) {
-  auto it_classes = classes.find(1);
-  pos_weight = it_classes == classes.end()
-                   ? (classes.size() > 0 ? classes[0] : 0.f)  // only 1 class
-                   : it_classes->second;
-}
-
-template <typename LabelType>
-void _set_score_binary(int64_t i, LabelType* y_data, int& write_additional_scores,
-                       bool weights_are_all_positive_,
-                       std::map<int64_t, float>& classes,
-                       const std::vector<LabelType>& classes_labels_,
-                       const std::set<int64_t>& weights_classes_,
-                       LabelType positive_label, LabelType negative_label) {
-  float pos_weight;
-  get_weight_class_positive(classes, pos_weight);
-  if (classes_labels_.size() == 2 && weights_classes_.size() == 1) {
-    if (weights_are_all_positive_) {
-      if (pos_weight > 0.5) {
-        y_data[i] = classes_labels_[1];  // positive label
-        write_additional_scores = 0;
-      } else {
-        y_data[i] = classes_labels_[0];  // negative label
-        write_additional_scores = 1;
-      }
-    } else {
-      if (pos_weight > 0) {
-        y_data[i] = classes_labels_[1];  // positive label
-        write_additional_scores = 2;
-      } else {
-        y_data[i] = classes_labels_[0];  // negative label
-        write_additional_scores = 3;
-      }
-    }
-  } else if (pos_weight > 0) {
-    y_data[i] = positive_label;  // positive label
-  } else {
-    y_data[i] = negative_label;  // negative label
-  }
-}
-
 template <typename T>
 common::Status TreeEnsembleClassifier<T>::Compute(OpKernelContext* context) const {
   const Tensor& X = *context->Input<Tensor>(0);
@@ -358,41 +306,37 @@ common::Status TreeEnsembleClassifier<T>::Compute(OpKernelContext* context) cons
   int64_t N = x_dims.size() == 1 ? 1 : x_dims[0];
   Tensor* Y = context->Output(0, TensorShape({N}));
   auto* Z = context->Output(1, TensorShape({N, class_count_}));
+
+  int64_t zindex = 0;
   const T* x_data = X.template Data<T>();
 
-  common::Status status;
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
+  // for each class
+  std::vector<float> scores;
+  scores.reserve(class_count_);
   for (int64_t i = 0; i < N; ++i) {
-    int64_t zindex = i * class_count_;
-    std::vector<float> scores;
+    scores.clear();
     int64_t current_weight_0 = i * stride;
     std::map<int64_t, float> classes;
+    // fill in base values, this might be empty but that is ok
+    for (int64_t k = 0, end = static_cast<int64_t>(base_values_.size()); k < end; ++k) {
+      auto p1 = std::make_pair<int64_t&, const float&>(k, base_values_[k]);
+      classes.insert(p1);
+    }
     // walk each tree from its root
     for (size_t j = 0, end = roots_.size(); j < end; ++j) {
-      auto process_status = ProcessTreeNode(classes, roots_[j], x_data, current_weight_0);
-      if (!process_status.IsOK()) {
-        status = process_status;
-      }
+      ORT_RETURN_IF_ERROR(ProcessTreeNode(classes, roots_[j], x_data, current_weight_0));
     }
     float maxweight = 0.f;
     int64_t maxclass = -1;
     // write top class
     int write_additional_scores = -1;
     if (class_count_ > 2) {
-      // add base values
-      std::map<int64_t, float>::iterator it_classes;
-      for (int64_t k = 0, end = static_cast<int64_t>(base_values_.size()); k < end; ++k) {
-        it_classes = classes.find(k);
-        if (it_classes == classes.end()) {
-          auto p1 = std::make_pair<int64_t&, const float&>(k, base_values_[k]);
-          classes.insert(p1);
-        } else {
-          it_classes->second += base_values_[k];
+      for (auto& classe : classes) {
+        if (maxclass == -1 || classe.second > maxweight) {
+          maxclass = classe.first;
+          maxweight = classe.second;
         }
       }
-      get_max_weight(classes, maxclass, maxweight);
       if (using_strings_) {
         Y->template MutableData<std::string>()[i] = classlabels_strings_[maxclass];
       } else {
@@ -400,32 +344,68 @@ common::Status TreeEnsembleClassifier<T>::Compute(OpKernelContext* context) cons
       }
     } else  // binary case
     {
-      if (base_values_.size() == 2) {
-        // add base values
-        std::map<int64_t, float>::iterator it_classes;
-        it_classes = classes.find(1);
-        if (it_classes == classes.end()) {
-          // base_value_[0] is not used. It assumes base_value[0] == base_value[1] in this case.
-          // The specification does not forbid it but does not say what the output should be in that case.
-          std::map<int64_t, float>::iterator it_classes0 = classes.find(0);
-          classes[1] = base_values_[1] + it_classes0->second;
-          it_classes0->second = -classes[1];
-        } else {
-          // binary as multiclass
-          it_classes->second += base_values_[1];
-          classes[0] += base_values_[0];
-        }
-      }
+      maxweight = !classes.empty() ? classes[0] : 0.f;  // only 1 class
       if (using_strings_) {
-        _set_score_binary<std::string>(i, Y->template MutableData<std::string>(),
-                                       write_additional_scores, weights_are_all_positive_,
-                                       classes, classlabels_strings_,
-                                       weights_classes_, "1", "0");
+        auto* y_data = Y->template MutableData<std::string>();
+        if (classlabels_strings_.size() == 2 &&
+            weights_are_all_positive_ &&
+            maxweight > 0.5 &&
+            weights_classes_.size() == 1) {
+          y_data[i] = classlabels_strings_[1];  // positive label
+          write_additional_scores = 0;
+        } else if (classlabels_strings_.size() == 2 &&
+                   weights_are_all_positive_ &&
+                   maxweight <= 0.5 &&
+                   weights_classes_.size() == 1) {
+          y_data[i] = classlabels_strings_[0];  // negative label
+          write_additional_scores = 1;
+        } else if (classlabels_strings_.size() == 2 &&
+                   maxweight > 0 &&
+                   !weights_are_all_positive_ && weights_classes_.size() == 1) {
+          y_data[i] = classlabels_strings_[1];  // pos label
+          write_additional_scores = 2;
+        } else if (classlabels_strings_.size() == 2 &&
+                   maxweight <= 0 &&
+                   !weights_are_all_positive_ &&
+                   weights_classes_.size() == 1) {
+          y_data[i] = classlabels_strings_[0];  // neg label
+          write_additional_scores = 3;
+        } else if (maxweight > 0) {
+          y_data[i] = "1";  // positive label
+        } else {
+          y_data[i] = "0";  // negative label
+        }
       } else {
-        _set_score_binary<int64_t>(i, Y->template MutableData<int64_t>(),
-                                   write_additional_scores, weights_are_all_positive_,
-                                   classes, classlabels_int64s_,
-                                   weights_classes_, 1, 0);
+        auto* y_data = Y->template MutableData<int64_t>();
+        if (classlabels_int64s_.size() == 2 &&
+            weights_are_all_positive_ &&
+            maxweight > 0.5 &&
+            weights_classes_.size() == 1) {
+          y_data[i] = classlabels_int64s_[1];  // positive label
+          write_additional_scores = 0;
+        } else if (classlabels_int64s_.size() == 2 &&
+                   weights_are_all_positive_ &&
+                   maxweight <= 0.5 &&
+                   weights_classes_.size() == 1) {
+          y_data[i] = classlabels_int64s_[0];  // negative label
+          write_additional_scores = 1;
+        } else if (classlabels_int64s_.size() == 2 &&
+                   maxweight > 0 &&
+                   !weights_are_all_positive_ &&
+                   weights_classes_.size() == 1) {
+          y_data[i] = classlabels_int64s_[1];  // pos label
+          write_additional_scores = 2;
+        } else if (classlabels_int64s_.size() == 2 &&
+                   maxweight <= 0 &&
+                   !weights_are_all_positive_ &&
+                   weights_classes_.size() == 1) {
+          y_data[i] = classlabels_int64s_[0];  // neg label
+          write_additional_scores = 3;
+        } else if (maxweight > 0) {
+          y_data[i] = 1;  // positive label
+        } else {
+          y_data[i] = 0;  // negative label
+        }
       }
     }
     // write float values, might not have all the classes in the output yet
@@ -445,9 +425,10 @@ common::Status TreeEnsembleClassifier<T>::Compute(OpKernelContext* context) cons
       }
     }
     write_scores(scores, post_transform_, zindex, Z, write_additional_scores);
-  }  // namespace ml
-  return status;
-}  // namespace ml
+    zindex += scores.size();
+  }  // for every batch
+  return Status::OK();
+}
 
 template <typename T>
 common::Status TreeEnsembleClassifier<T>::ProcessTreeNode(std::map<int64_t, float>& classes,

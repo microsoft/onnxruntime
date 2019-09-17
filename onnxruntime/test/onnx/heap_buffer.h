@@ -4,8 +4,10 @@
 #pragma once
 #include <vector>
 #include <memory>
-struct OrtCallback;
 
+namespace onnxruntime {
+namespace test {
+struct OrtCallback;
 /**
  * A holder for delay freed buffers
  */
@@ -27,3 +29,5 @@ class HeapBuffer {
   std::vector<OrtCallback*> deleters_;
   std::vector<void*> buffers_;
 };
+}  // namespace test
+}  // namespace onnxruntime

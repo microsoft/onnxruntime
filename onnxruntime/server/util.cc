@@ -19,6 +19,7 @@ protobufutil::Status GenerateProtobufStatus(const int& onnx_status, const std::s
     case onnxruntime::common::StatusCode::MODEL_LOADED:
       code = protobufutil::error::Code::OK;
       break;
+    case onnxruntime::common::StatusCode::FAIL:
     case onnxruntime::common::StatusCode::INVALID_ARGUMENT:
     case onnxruntime::common::StatusCode::INVALID_PROTOBUF:
     case onnxruntime::common::StatusCode::INVALID_GRAPH:
@@ -31,7 +32,6 @@ protobufutil::Status GenerateProtobufStatus(const int& onnx_status, const std::s
     case onnxruntime::common::StatusCode::NOT_IMPLEMENTED:
       code = protobufutil::error::Code::UNIMPLEMENTED;
       break;
-    case onnxruntime::common::StatusCode::FAIL:
     case onnxruntime::common::StatusCode::RUNTIME_EXCEPTION:
       code = protobufutil::error::Code::INTERNAL;
       break;

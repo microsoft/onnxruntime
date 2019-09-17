@@ -29,30 +29,48 @@ ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* i
   return onnxruntime::ToOrtStatus(status);
 }
 
-ORT_API_STATUS_IMPL(OrtKernelContext_GetInputCount, const OrtKernelContext* context, _Out_ size_t* out) {
+ORT_API_STATUS_IMPL(OrtKernelContext_GetInputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out) {
   *out = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->InputCount();
   return nullptr;
 };
 
-ORT_API_STATUS_IMPL(OrtKernelContext_GetOutputCount, const OrtKernelContext* context, _Out_ size_t* out) {
+ORT_API_STATUS_IMPL(OrtKernelContext_GetOutputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out) {
   *out = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->OutputCount();
   return nullptr;
 };
 
-ORT_API_STATUS_IMPL(OrtKernelContext_GetInput, const OrtKernelContext* context, _In_ size_t index, _Out_ const OrtValue** out) {
+ORT_API_STATUS_IMPL(OrtKernelContext_GetInput, _In_ const OrtKernelContext* context, _In_ size_t index, _Out_ const OrtValue** out) {
   *out = reinterpret_cast<const OrtValue*>(reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->GetInputMLValue(index));
   return nullptr;
 };
 
-ORT_API_STATUS_IMPL(OrtKernelContext_GetOutput, OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count, _Out_ OrtValue** out) {
+ORT_API_STATUS_IMPL(OrtKernelContext_GetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count, _Out_ OrtValue** out) {
   onnxruntime::TensorShape shape(dim_values, dim_count);
   *out = reinterpret_cast<OrtValue*>(reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->OutputMLValue(index, shape));
   return nullptr;
 };
 
+ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ char* out, _Inout_ size_t* size) {
+  std::string value;
+  auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<std::string>(name, &value);
+  if (status.IsOK()) {
+    if (*size >= value.size() + 1) {
+      std::memcpy(out, value.data(), value.size());
+      out[value.size()] = '\0';
+      *size = value.size();
+      return nullptr;
+    } else {
+      *size = value.size() + 1;
+      return OrtCreateStatus(ORT_INVALID_ARGUMENT, "Result buffer is not large enough");
+    }
+  }
+  return onnxruntime::ToOrtStatus(status);
+}
+
 constexpr OrtCustomOpApi g_custom_op_api = {
     &OrtKernelInfoGetAttribute_float,
     &OrtKernelInfoGetAttribute_int64,
+    &OrtKernelInfoGetAttribute_string,
 
     &OrtGetTensorTypeAndShape,
 

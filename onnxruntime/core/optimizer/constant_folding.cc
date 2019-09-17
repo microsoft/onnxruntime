@@ -23,23 +23,24 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
 
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
 
+    InitializedTensorSet constant_inputs;
+
     // Check if constant folding can be applied on this node.
     if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders()) ||
         excluded_op_types_.find(node->OpType()) != excluded_op_types_.end() ||
-        // constant folding is not currently supported for nodes that include subgraphs (control flow operators,
-        // such as If/Loop/Scan, fall into this category).
+        // constant folding does not support executing a node that includes subgraphs (control flow operators,
+        // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
+        // by the Recurse call above
         node->ContainsSubgraph() ||
         // if the node output is in the graph output, we will get a graph with no nodes.
         // TODO check if this is allowed in ONNX and ORT.
         graph.IsNodeOutputsInGraphOutputs(*node) ||
-        !graph_utils::AllNodeInputsAreConstant(graph, *node)) {
+        !graph_utils::AllNodeInputsAreConstant(graph, *node, constant_inputs)) {
       continue;
     }
 
     // Create execution frame for executing constant nodes.
-    // NOTE: As we call AllNodeInputsAreConstant we can use the full list of initializers from
-    // graph.GetAllInitializedTensors() without filtering out overridable (i.e. non-constant) initializers
-    OptimizerExecutionFrame::Info info({node}, graph.GetAllInitializedTensors());
+    OptimizerExecutionFrame::Info info({node}, constant_inputs);
 
     std::vector<int> fetch_mlvalue_idxs;
     for (const auto* node_out : node->OutputDefs()) {

@@ -25,16 +25,22 @@
 [submodule "cmake/external/re2"]
 	path = cmake/external/re2
 	url = https://github.com/google/re2.git
-[submodule "cmake/external/onnx-tensorrt"]
-	path = cmake/external/onnx-tensorrt
-	url = https://github.com/onnx/onnx-tensorrt.git
-        branch = v5.0
 [submodule "cmake/external/eigen"]
 	path = cmake/external/eigen
 	url = https://github.com/eigenteam/eigen-git-mirror.git
+[submodule "cmake/external/grpc"]
+	path = cmake/external/grpc
+	url = https://github.com/grpc/grpc
 [submodule "cmake/external/DNNLibrary"]
 	path = cmake/external/DNNLibrary
 	url = https://github.com/JDAI-CV/DNNLibrary
 [submodule "cmake/external/spdlog"]
 	path = cmake/external/spdlog
 	url = https://github.com/gabime/spdlog.git
+[submodule "cmake/external/onnx-tensorrt"]
+	path = cmake/external/onnx-tensorrt
+	url = https://github.com/onnx/onnx-tensorrt.git
+	branch = 5.1
+[submodule "cmake/external/mimalloc"]
+	path = cmake/external/mimalloc
+	url = https://github.com/microsoft/mimalloc.git

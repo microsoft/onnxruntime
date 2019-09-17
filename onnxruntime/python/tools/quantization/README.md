@@ -62,7 +62,7 @@ onnx.save(quantized_model, 'path/to/the/quantized_model.onnx')
 See below for a description of all the options to quantize():
 
 - **model**: ModelProto to quantize
-- **per_channel**: *default: True*
+- **per_channel**: *default: False*
     If True, weights of Conv nodes are quantized per output channel.
     If False, they are quantized per tensor. Refer [QLinearConv](https://github.com/onnx/onnx/blob/master/docs/Operators.md#qlinearconv) for more information.
 - **nbits**: *default: 8*

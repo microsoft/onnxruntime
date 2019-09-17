@@ -43,8 +43,7 @@ struct Exception : std::exception {
 #define ORT_DEFINE_RELEASE(NAME) \
   inline void OrtRelease(Ort##NAME* ptr) { OrtRelease##NAME(ptr); }
 
-ORT_DEFINE_RELEASE(Allocator);
-ORT_DEFINE_RELEASE(AllocatorInfo);
+ORT_DEFINE_RELEASE(MemoryInfo);
 ORT_DEFINE_RELEASE(CustomOpDomain);
 ORT_DEFINE_RELEASE(Env);
 ORT_DEFINE_RELEASE(RunOptions);
@@ -73,8 +72,8 @@ struct Base {
 
  protected:
   Base(const Base&) = delete;
-  Base(Base&& v) : p_{v.p_} { v.p_ = nullptr; }
-  void operator=(Base&& v) {
+  Base(Base&& v) noexcept : p_{v.p_} { v.p_ = nullptr; }
+  void operator=(Base&& v) noexcept {
     OrtRelease(p_);
     p_ = v.p_;
     v.p_ = nullptr;
@@ -93,16 +92,16 @@ struct Unowned : T {
   ~Unowned() { this->p_ = nullptr; }
 };
 
-struct Allocator;
-struct AllocatorInfo;
+struct AllocatorWithDefaultOptions;
+struct MemoryInfo;
 struct Env;
 struct TypeInfo;
 struct Value;
 
 struct Env : Base<OrtEnv> {
   Env(nullptr_t) {}
-  Env(OrtLoggingLevel default_warning_level, _In_ const char* logid);
-  Env(OrtLoggingLevel default_warning_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
+  Env(OrtLoggingLevel default_logging_level, _In_ const char* logid);
+  Env(OrtLoggingLevel default_logging_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
 };
 
@@ -117,13 +116,19 @@ struct RunOptions : Base<OrtRunOptions> {
   RunOptions(nullptr_t) {}
   RunOptions();
 
-  RunOptions& SetRunLogVerbosityLevel(unsigned int);
-  unsigned int GetRunLogVerbosityLevel() const;
+  RunOptions& SetRunLogVerbosityLevel(int);
+  int GetRunLogVerbosityLevel() const;
+
+  RunOptions& SetRunLogSeverityLevel(int);
+  int GetRunLogSeverityLevel() const;
 
   RunOptions& SetRunTag(const char* run_tag);
   const char* GetRunTag() const;
 
-  RunOptions& SetTerminate(bool flag);
+  // terminate ALL currently executing Session::Run calls that were made using this RunOptions instance
+  RunOptions& SetTerminate();
+  // unset the terminate flag so this RunOptions instance can be used in a new Session::Run call
+  RunOptions& UnsetTerminate();
 };
 
 struct SessionOptions : Base<OrtSessionOptions> {
@@ -134,10 +139,12 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions Clone() const;
 
   SessionOptions& SetThreadPoolSize(int session_thread_pool_size);
-  SessionOptions& SetGraphOptimizationLevel(uint32_t graph_optimization_level);
+  SessionOptions& SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);
 
   SessionOptions& EnableCpuMemArena();
   SessionOptions& DisableCpuMemArena();
+
+  SessionOptions& SetOptimizedModelFilePath(const ORTCHAR_T* optimized_model_file);
 
   SessionOptions& EnableProfiling(const ORTCHAR_T* profile_file_prefix);
   SessionOptions& DisableProfiling();
@@ -197,8 +204,8 @@ struct TypeInfo : Base<OrtTypeInfo> {
 
 struct Value : Base<OrtValue> {
   template <typename T>
-  static Value CreateTensor(const OrtAllocatorInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len);
-  static Value CreateTensor(const OrtAllocatorInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
+  static Value CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len);
+  static Value CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
                             ONNXTensorElementDataType type);
   template <typename T>
   static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len);
@@ -206,6 +213,12 @@ struct Value : Base<OrtValue> {
 
   static Value CreateMap(Value& keys, Value& values);
   static Value CreateSequence(std::vector<Value>& values);
+
+  template<typename T>
+  static Value CreateOpaque(const char* domain, const char* type_name, const T&);
+
+  template <typename T>
+  void GetOpaqueData(const char* domain, const char* type_name, T&);
 
   explicit Value(nullptr_t) {}
   explicit Value(OrtValue* p) : Base<OrtValue>{p} {}
@@ -224,25 +237,28 @@ struct Value : Base<OrtValue> {
   TensorTypeAndShapeInfo GetTensorTypeAndShapeInfo() const;
 };
 
-struct Allocator : Base<OrtAllocator> {
-  static Allocator CreateDefault();
+struct AllocatorWithDefaultOptions {
+  AllocatorWithDefaultOptions();
 
-  explicit Allocator(nullptr_t) {}
-  explicit Allocator(OrtAllocator* p) : Base<OrtAllocator>{p} {}
+  operator OrtAllocator*() { return p_; }
+  operator const OrtAllocator*() const { return p_; }
 
   void* Alloc(size_t size);
   void Free(void* p);
 
-  const OrtAllocatorInfo* GetInfo() const;
+  const OrtMemoryInfo* GetInfo() const;
+
+ private:
+  OrtAllocator* p_{};
 };
 
-struct AllocatorInfo : Base<OrtAllocatorInfo> {
-  static AllocatorInfo CreateCpu(OrtAllocatorType type, OrtMemType mem_type1);
+struct MemoryInfo : Base<OrtMemoryInfo> {
+  static MemoryInfo CreateCpu(OrtAllocatorType type, OrtMemType mem_type1);
 
-  explicit AllocatorInfo(nullptr_t) {}
-  AllocatorInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type);
+  explicit MemoryInfo(nullptr_t) {}
+  MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type);
 
-  explicit AllocatorInfo(OrtAllocatorInfo* p) : Base<OrtAllocatorInfo>{p} {}
+  explicit MemoryInfo(OrtMemoryInfo* p) : Base<OrtMemoryInfo>{p} {}
 };
 
 //
@@ -252,7 +268,7 @@ struct AllocatorInfo : Base<OrtAllocatorInfo> {
 struct CustomOpApi {
   CustomOpApi(const OrtCustomOpApi& api) : api_(api) {}
 
-  template <typename T>  // T is only implemented for float and int64_t
+  template <typename T>  // T is only implemented for float, int64_t, and string
   T KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name);
 
   OrtTensorTypeAndShapeInfo* GetTensorTypeAndShape(_In_ const OrtValue* value);
