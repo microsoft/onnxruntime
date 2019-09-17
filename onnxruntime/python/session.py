@@ -42,6 +42,7 @@ class InferenceSession:
 
         self._inputs_meta = self._sess.inputs_meta
         self._outputs_meta = self._sess.outputs_meta
+        self._inputs_meta_including_initializers = self._sess.inputs_meta_including_initializers
         self._model_meta = self._sess.model_meta
         self._providers = self._sess.get_providers()
 
@@ -62,6 +63,10 @@ class InferenceSession:
     def get_outputs(self):
         "Return the outputs metadata as a list of :class:`onnxruntime.NodeArg`."
         return self._outputs_meta
+
+    def get_inputs_including_initializers(self):
+        "Return the inputs (including initializers) metadata as a list of :class:`onnxruntime.NodeArg`."
+        return self._inputs_meta_including_initializers
 
     def get_modelmeta(self):
         "Return the metadata. See :class:`onnxruntime.ModelMetadata`."

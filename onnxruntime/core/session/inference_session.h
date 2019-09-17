@@ -267,6 +267,14 @@ class InferenceSession {
     */
   std::pair<common::Status, const InputDefList*> GetModelInputs() const;
 
+    /**
+    * Get all input definitions of the model, including initializers.
+    * This does not include weights. Use this to get the name/type/shapes of the inputs.
+    * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
+    * @note lifetime of the returned pointer is valid as long as the Session object is live.
+    */
+  std::pair<common::Status, const InputDefList*> GetModelInputsIncludingInitializers() const;
+
   /**
     * Get all output definitions of the model. Use this to get the name/type/shapes of the outputs.
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.

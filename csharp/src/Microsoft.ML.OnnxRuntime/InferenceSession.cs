@@ -25,6 +25,12 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region Public API
 
+        public enum InputInclusion
+        {
+            InputsOnly = 0,
+            IncludeInitializers = 1
+        }
+
         /// <summary>
         /// Constructs an InferenceSession from a model file
         /// </summary>
@@ -200,7 +206,7 @@ namespace Microsoft.ML.OnnxRuntime
 
                 // get input count
                 UIntPtr inputCount = UIntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputCount(_nativeHandle, out inputCount));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputCount(_nativeHandle, InputInclusion.InputsOnly, out inputCount));
 
                 // get all the output names
                 for (ulong i = 0; i < (ulong)inputCount; i++)
@@ -266,6 +272,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             IntPtr status = NativeMethods.OrtSessionGetInputName(
                                                 _nativeHandle,
+                                                inclusion,
                                                 (UIntPtr)index,
                                                 NativeMemoryAllocator.DefaultInstance.Handle,
                                                 out nameHandle);
@@ -291,7 +298,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr typeInfo = IntPtr.Zero;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputTypeInfo(_nativeHandle, (UIntPtr)index, out typeInfo));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputTypeInfo(_nativeHandle, InputInclusion.InputsOnly, (UIntPtr)index, out typeInfo));
                 return GetMetadataFromTypeInfo(typeInfo);
             }
             finally

@@ -57,6 +57,8 @@ def main():
     meta = sess.get_modelmeta()
 
     feeds = {}
+    # Use sess.get_inputs_including_initializers so the initializers
+    # can be overridden (available in IR4)
     for input_meta in sess.get_inputs():
         # replace any symbolic dimensions (value is None) with 1
         shape = [dim if dim else 1 for dim in input_meta.shape]

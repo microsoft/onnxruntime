@@ -525,10 +525,10 @@ ORT_API_STATUS_IMPL(OrtGetStringTensorContent, _In_ const OrtValue* value,
     delete reinterpret_cast<REAL_TYPE*>(value);                                   \
   }
 
-ORT_API_STATUS_IMPL(OrtSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
+ORT_API_STATUS_IMPL(OrtSessionGetInputCount, _In_ const OrtSession* sess, ONNXSessionInputInclusion inclusion, _Out_ size_t* out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
-  std::pair<Status, const InputDefList*> p = session->GetModelInputs();
+  std::pair<Status, const InputDefList*> p = (inclusion == kIncludeInitializers) ? session->GetModelInputsIncludingInitializers() : session->GetModelInputs();
   if (!p.first.IsOK())
     return ToOrtStatus(p.first);
   *out = p.second->size();
@@ -547,10 +547,10 @@ ORT_API_STATUS_IMPL(OrtSessionGetOutputCount, _In_ const OrtSession* sess, _Out_
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtSessionGetInputTypeInfo, _In_ const OrtSession* sess, size_t index, _Outptr_ struct OrtTypeInfo** out) {
+ORT_API_STATUS_IMPL(OrtSessionGetInputTypeInfo, _In_ const OrtSession* sess, ONNXSessionInputInclusion inclusion, size_t index, _Outptr_ struct OrtTypeInfo** out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
-  std::pair<Status, const InputDefList*> p = session->GetModelInputs();
+  std::pair<Status, const InputDefList*> p = (inclusion == kIncludeInitializers) ? session->GetModelInputsIncludingInitializers() : session->GetModelInputs();
   if (!p.first.IsOK())
     return ToOrtStatus(p.first);
   if (p.second->size() <= index)
@@ -559,6 +559,7 @@ ORT_API_STATUS_IMPL(OrtSessionGetInputTypeInfo, _In_ const OrtSession* sess, siz
   return OrtTypeInfo::FromDataTypeImpl(type_proto, out);
   API_IMPL_END
 }
+
 ORT_API_STATUS_IMPL(OrtSessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t index, _Outptr_ struct OrtTypeInfo** out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
@@ -579,11 +580,16 @@ static char* StrDup(const std::string& str, OrtAllocator* allocator) {
   return output_string;
 }
 
-static OrtStatus* GetInputOutputNameImpl(_In_ const OrtSession* sess, size_t index,
-                                         _Inout_ OrtAllocator* allocator, bool is_input,
+static OrtStatus* GetInputOutputNameImpl(_In_ const OrtSession* sess, ONNXSessionInputInclusion inclusion, 
+                                          size_t index, _Inout_ OrtAllocator* allocator, bool is_input,
                                          _Outptr_ char** output) {
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
-  std::pair<Status, const InputDefList*> p = is_input ? session->GetModelInputs() : session->GetModelOutputs();
+  std::pair<Status, const InputDefList*> p;
+  if(is_input) {
+    p = (inclusion == kIncludeInitializers) ? session->GetModelInputsIncludingInitializers() : session->GetModelInputs();
+  } else {
+    p = session->GetModelOutputs();
+  }
   if (!p.first.IsOK())
     return ToOrtStatus(p.first);
   if (p.second == nullptr)
@@ -622,17 +628,18 @@ ORT_API_STATUS_IMPL(OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr, _Outptr_ 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtSessionGetInputName, _In_ const OrtSession* sess, size_t index,
+ORT_API_STATUS_IMPL(OrtSessionGetInputName, _In_ const OrtSession* sess, ONNXSessionInputInclusion inclusion, size_t index,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** output) {
   API_IMPL_BEGIN
-  return GetInputOutputNameImpl(sess, index, allocator, true, output);
+  return GetInputOutputNameImpl(sess, inclusion, index, allocator, true, output);
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtSessionGetOutputName, _In_ const OrtSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** output) {
   API_IMPL_BEGIN
-  return GetInputOutputNameImpl(sess, index, allocator, false, output);
+  // inclusion is ignored for outputs
+  return GetInputOutputNameImpl(sess, kInputsOnly, index, allocator, false, output);
   API_IMPL_END
 }
 

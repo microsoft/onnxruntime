@@ -172,13 +172,13 @@ struct Session : Base<OrtSession> {
   void Run(const RunOptions& run_options, const char* const* input_names, Value* input_values, size_t input_count,
            const char* const* output_names, Value* output_values, size_t output_count);
 
-  size_t GetInputCount() const;
+  size_t GetInputCount(ONNXSessionInputInclusion) const;
   size_t GetOutputCount() const;
 
-  char* GetInputName(size_t index, OrtAllocator* allocator) const;
+  char* GetInputName(ONNXSessionInputInclusion, size_t index, OrtAllocator* allocator) const;
   char* GetOutputName(size_t index, OrtAllocator* allocator) const;
 
-  TypeInfo GetInputTypeInfo(size_t index) const;
+  TypeInfo GetInputTypeInfo(ONNXSessionInputInclusion, size_t index) const;
   TypeInfo GetOutputTypeInfo(size_t index) const;
 };
 

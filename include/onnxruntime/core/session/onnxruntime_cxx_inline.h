@@ -225,9 +225,9 @@ inline void Session::Run(const RunOptions& run_options, const char* const* input
   ORT_THROW_ON_ERROR(OrtRun(p_, run_options, input_names, ort_input_values, input_count, output_names, output_count, ort_output_values));
 }
 
-inline size_t Session::GetInputCount() const {
+inline size_t Session::GetInputCount(ONNXSessionInputInclusion inclusion) const {
   size_t out;
-  ORT_THROW_ON_ERROR(OrtSessionGetInputCount(p_, &out));
+  ORT_THROW_ON_ERROR(OrtSessionGetInputCount(p_, inclusion, &out));
   return out;
 }
 
@@ -237,9 +237,9 @@ inline size_t Session::GetOutputCount() const {
   return out;
 }
 
-inline char* Session::GetInputName(size_t index, OrtAllocator* allocator) const {
+inline char* Session::GetInputName(ONNXSessionInputInclusion inclusion, size_t index, OrtAllocator* allocator) const {
   char* out;
-  ORT_THROW_ON_ERROR(OrtSessionGetInputName(p_, index, allocator, &out));
+  ORT_THROW_ON_ERROR(OrtSessionGetInputName(p_, inclusion, index, allocator, &out));
   return out;
 }
 
@@ -249,9 +249,9 @@ inline char* Session::GetOutputName(size_t index, OrtAllocator* allocator) const
   return out;
 }
 
-inline TypeInfo Session::GetInputTypeInfo(size_t index) const {
+inline TypeInfo Session::GetInputTypeInfo(ONNXSessionInputInclusion inclusion, size_t index) const {
   OrtTypeInfo* out;
-  ORT_THROW_ON_ERROR(OrtSessionGetInputTypeInfo(p_, index, &out));
+  ORT_THROW_ON_ERROR(OrtSessionGetInputTypeInfo(p_, inclusion, index, &out));
   return TypeInfo{out};
 }
 

@@ -67,7 +67,7 @@ class Validator : public OutputCollector<TCharString> {
 
   static void VerifyInputOutputCount(OrtSession* session) {
     size_t count;
-    ORT_THROW_ON_ERROR(OrtSessionGetInputCount(session, &count));
+    ORT_THROW_ON_ERROR(OrtSessionGetInputCount(session, kInputsOnly, &count));
     assert(count == 1);
     ORT_THROW_ON_ERROR(OrtSessionGetOutputCount(session, &count));
     assert(count == 1);
@@ -131,7 +131,7 @@ class Validator : public OutputCollector<TCharString> {
     ORT_THROW_ON_ERROR(OrtGetAllocatorWithDefaultOptions(&ort_alloc));
     {
       char* t;
-      ORT_THROW_ON_ERROR(OrtSessionGetInputName(session_, 0, ort_alloc, &t));
+      ORT_THROW_ON_ERROR(OrtSessionGetInputName(session_, kInputsOnly, 0, ort_alloc, &t));
       input_name_ = my_strdup(t);
       OrtAllocatorFree(ort_alloc, t);
       ORT_THROW_ON_ERROR(OrtSessionGetOutputName(session_, 0, ort_alloc, &t));
@@ -140,7 +140,7 @@ class Validator : public OutputCollector<TCharString> {
     }
 
     OrtTypeInfo* info;
-    ORT_THROW_ON_ERROR(OrtSessionGetInputTypeInfo(session_, 0, &info));
+    ORT_THROW_ON_ERROR(OrtSessionGetInputTypeInfo(session_, kInputsOnly, 0, &info));
     const OrtTensorTypeAndShapeInfo* tensor_info;
     ORT_THROW_ON_ERROR(OrtCastTypeInfoToTensorInfo(info, &tensor_info));
     size_t dim_count;

@@ -69,6 +69,7 @@ namespace Microsoft.ML.OnnxRuntime
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionGetInputCount(
                                                 IntPtr /*(OrtSession*)*/ session,
+                                                InputInclusion inclusion,
                                                 out UIntPtr count);
 
 
@@ -80,6 +81,7 @@ namespace Microsoft.ML.OnnxRuntime
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/OrtSessionGetInputName(
                                                 IntPtr /*(OrtSession*)*/ session,
+                                                InputInclusion inclusion,
                                                 UIntPtr index,
                                                 IntPtr /*(OrtAllocator*)*/ allocator,
                                                 out IntPtr /*(char**)*/name);
@@ -95,6 +97,7 @@ namespace Microsoft.ML.OnnxRuntime
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/OrtSessionGetInputTypeInfo(
                                                 IntPtr /*(const OrtSession*)*/ session,
+                                                InputInclusion inclusion,
                                                 UIntPtr index,
                                                 out IntPtr /*(struct OrtTypeInfo**)*/ typeInfo);
 

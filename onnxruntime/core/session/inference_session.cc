@@ -810,6 +810,20 @@ std::pair<common::Status, const InputDefList*> InferenceSession::GetModelInputs(
   return std::make_pair(common::Status::OK(), &model_->MainGraph().GetInputs());
 }
 
+std::pair<common::Status, const InputDefList*> InferenceSession::GetModelInputsIncludingInitializers() const {
+  {
+    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    if (!is_model_loaded_) {
+      LOGS(*session_logger_, ERROR) << "Model was not loaded";
+      return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."),
+                            nullptr);
+    }
+  }
+
+  // return required inputs including any inputs used for overriding initializers
+  return std::make_pair(common::Status::OK(), &model_->MainGraph().GetInputsIncludingInitializers());
+}
+
 std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutputs() const {
   {
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);

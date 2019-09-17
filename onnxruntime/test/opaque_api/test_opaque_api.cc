@@ -210,9 +210,9 @@ TEST_F(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
     Ort::AllocatorWithDefaultOptions allocator;
 
     // Expecting one input
-    size_t num_input_nodes = session.GetInputCount();
+    size_t num_input_nodes = session.GetInputCount(kInputsOnly);
     EXPECT_EQ(num_input_nodes, 1U);
-    const char* input_name = session.GetInputName(0, allocator);
+    const char* input_name = session.GetInputName(kInputsOnly, 0, allocator);
 
     size_t num_output_nodes = session.GetOutputCount();
     EXPECT_EQ(num_output_nodes, 1U);

@@ -757,6 +757,14 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           return *(res.second);
         }
       })
+      .def_property_readonly("inputs_meta_including_initializers", [](const InferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
+        auto res = sess->GetModelInputsIncludingInitializers();
+        if (!res.first.IsOK()) {
+          throw std::runtime_error(res.first.ToString().c_str());
+        } else {
+          return *(res.second);
+        }
+      })
       .def_property_readonly("model_meta", [](const InferenceSession* sess) -> const onnxruntime::ModelMetadata& {
         auto res = sess->GetModelMetadata();
         if (!res.first.IsOK()) {

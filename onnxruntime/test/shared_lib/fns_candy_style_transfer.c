@@ -178,7 +178,7 @@ int run_inference(OrtSession* session, const char* input_file, const char* outpu
 
 void verify_input_output_count(OrtSession* session) {
   size_t count;
-  ORT_ABORT_ON_ERROR(OrtSessionGetInputCount(session, &count));
+  ORT_ABORT_ON_ERROR(OrtSessionGetInputCount(session, kInputsOnly, &count));
   assert(count == 1);
   ORT_ABORT_ON_ERROR(OrtSessionGetOutputCount(session, &count));
   assert(count == 1);

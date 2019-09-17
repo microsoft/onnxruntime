@@ -73,13 +73,13 @@ int main(int argc, char* argv[]) {
   for (size_t i = 0; i < num_input_nodes; i++) {
     // print input node names
     char* input_name;
-    status = OrtSessionGetInputName(session, i, allocator, &input_name);
+    status = OrtSessionGetInputName(session, kInputsOnly, i, allocator, &input_name);
     printf("Input %zu : name=%s\n", i, input_name);
     input_node_names[i] = input_name;
 
     // print input node types
     OrtTypeInfo* typeinfo;
-    status = OrtSessionGetInputTypeInfo(session, i, &typeinfo);
+    status = OrtSessionGetInputTypeInfo(session, kInputsOnly, i, &typeinfo);
     const OrtTensorTypeAndShapeInfo* tensor_info;
     CHECK_STATUS(OrtCastTypeInfoToTensorInfo(typeinfo, &tensor_info));
     ONNXTensorElementDataType type;
