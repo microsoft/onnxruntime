@@ -81,16 +81,10 @@ class LotusEnvironment {
 
  private:
   void RegisterSuspendHandler() {
-    // Bug 23401273: Layering: onnxruntime\winml\lib\Api.Core\inc\LotusEnvironment.h has RegisterSuspendHandler disabled. Need to reenable.
-    return;
-    /*
-        try
-        {
-            m_suspendToken = winrt::Windows::ApplicationModel::Core::CoreApplication::Suspending(
-                winrt::Windows::Foundation::EventHandler<winrt::Windows::ApplicationModel::SuspendingEventArgs>(&OnSuspending));
-        }
-        catch (...) {}//Catch in case CoreApplication cannot be found for non-UWP executions
-		*/
+    try {
+        suspend_token_ = winrt::Windows::ApplicationModel::Core::CoreApplication::Suspending(
+            winrt::Windows::Foundation::EventHandler<winrt::Windows::ApplicationModel::SuspendingEventArgs>(&OnSuspending));
+    } catch (...) {}//Catch in case CoreApplication cannot be found for non-UWP executions
   }
 
   std::unique_ptr<onnxruntime::Environment> lotus_environment_;

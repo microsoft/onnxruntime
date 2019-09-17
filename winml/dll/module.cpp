@@ -12,46 +12,18 @@
 
 using namespace winrt::Windows::AI::MachineLearning::implementation;
 
-#ifdef false
-// TODO: Delete all defines in this ifndef block after changing to a newer version of
-// WIL that is compatible with the trace logging functionality of the SDK packages.
-#ifndef WINDOWSAI_RAZZLE_BUILD
-#define _TlgActivityDecl _tlgActivityDecl
-#define _TlgActivityRef _tlgActivityRef
-#define _TlgKeywordVal _tlgKeywordVal
-#define _TlgActivity_Keyword _tlgActivity_Keyword
-#define _TlgActivity_Level _tlgActivity_Level
-#define _TlgActivityPrivacyTag _tlgActivityPrivacyTag
-#define _TlgLevelVal _tlgLevelVal
-#define _TLG_FOREACH _tlg_FOREACH
-#define _TLG_CASSERT static_assert
-#define _TlgDefineProvider_annotation(hProvider, functionPostfix, requiresWrapper, providerName)                                               \
-  _TlgDefineProvider_functionWrapperBegin##requiresWrapper(functionPostfix)                                                                    \
-      __annotation(                                                                                                                            \
-          L"_TlgDefineProvider:|" _TLG_PASTE(L, _TLG_STRINGIZE(__LINE__)) L"|" _TLG_PASTE(L, _TLG_STRINGIZE(hProvider)) L"|" L##providerName); \
-  _TlgDefineProvider_functionWrapperEnd##requiresWrapper
-#define _TlgDefineProvider_functionWrapperBegin0(functionPostfix)
-#define _TlgDefineProvider_functionWrapperBegin1(functionPostfix) static void __cdecl _TLG_PASTE(_TlgDefineProvider_annotation_, functionPostfix)(void) {
-#define _TlgDefineProvider_functionWrapperEnd0
-#define _TlgDefineProvider_functionWrapperEnd1 }
-#endif
-#include <wil/TraceLogging.h>
-
-class WindowsMLWilProvider : public wil::TraceLoggingProvider {
-  IMPLEMENT_TRACELOGGING_CLASS(WindowsMLWilProvider,
-                               WINML_PROVIDER_DESC,
-                               WINML_PROVIDER_GUID);
-  virtual void OnErrorReported(bool alreadyReported, wil::FailureInfo const& failure) WI_NOEXCEPT;
-};
-
-void WindowsMLWilProvider::OnErrorReported(bool alreadyReported, wil::FailureInfo const& failure) WI_NOEXCEPT {
+void __stdcall OnErrorReported(bool alreadyReported, wil::FailureInfo const &failure) WI_NOEXCEPT {
   if (!alreadyReported) {
-    winrt::hstring message(failure.pszMessage ? failure.pszMessage : L"");
-    telemetry_helper.LogRuntimeError(failure.hr, winrt::to_string(message), failure.pszFile, failure.pszFunction, failure.uLineNumber);
+    winrt::hstring message(failure.pszMessage);
+    telemetry_helper.LogRuntimeError(
+      failure.hr,
+      winrt::to_string(message),
+      failure.pszFile,
+      failure.pszFunction,
+      failure.uLineNumber
+    );
   }
 }
-
-#endif
 
 extern "C" BOOL WINAPI DllMain(_In_ HINSTANCE hInstance, DWORD dwReason, _In_ void* lpvReserved) {
   switch (dwReason) {
@@ -69,7 +41,7 @@ extern "C" BOOL WINAPI DllMain(_In_ HINSTANCE hInstance, DWORD dwReason, _In_ vo
         profiler.Enable(ProfilerType::CPU);
         profiler.Reset(ProfilerType::CPU);
       }
-      // wil::SetResultTelemetryFallback(WindowsMLWilProvider::FallbackTelemetryCallback);
+      wil::SetResultTelemetryFallback(&OnErrorReported);
       break;
     case DLL_PROCESS_DETACH:
       telemetry_helper.LogRuntimePerf(profiler, true);
