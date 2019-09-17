@@ -422,19 +422,19 @@ typedef enum OrtMemType {
   OrtMemTypeDefault = 0,                // the default allocator for execution provider
 } OrtMemType;
 
-ORT_API_STATUS(OrtCreateAllocatorInfo, _In_ const char* name1, enum OrtAllocatorType type, int id1, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out);
+ORT_API_STATUS(OrtCreateMemoryInfo, _In_ const char* name1, enum OrtAllocatorType type, int id1, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out);
 
 /**
- * Convenience function for special case of OrtCreateAllocatorInfo, for the CPU allocator. Uses name = "Cpu" and id = 0.
+ * Convenience function for special case of OrtCreateMemoryInfo, for the CPU allocator. Uses name = "Cpu" and id = 0.
  */
-ORT_API_STATUS(OrtCreateCpuAllocatorInfo, enum OrtAllocatorType type, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out)
+ORT_API_STATUS(OrtCreateCpuMemoryInfo, enum OrtAllocatorType type, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out)
 ORT_ALL_ARGS_NONNULL;
 
 /**
- * Test if two allocation info are equal
+ * Test if two memory info objects are equal
  * \Sets 'out' to 0 if equal, -1 if not equal
  */
-ORT_API_STATUS(OrtCompareAllocatorInfo, _In_ const OrtMemoryInfo* info1, _In_ const OrtMemoryInfo* info2, _Out_ int* out)
+ORT_API_STATUS(OrtCompareMemoryInfo, _In_ const OrtMemoryInfo* info1, _In_ const OrtMemoryInfo* info2, _Out_ int* out)
 ORT_ALL_ARGS_NONNULL;
 
 /**
@@ -517,6 +517,41 @@ ORT_API_STATUS(OrtGetValueCount, _In_ const OrtValue* value, _Out_ size_t* out);
    */
 ORT_API_STATUS(OrtCreateValue, _In_ const OrtValue* const* in, size_t num_values, enum ONNXType value_type,
                _Outptr_ OrtValue** out);
+
+/**
+   * Construct OrtValue that contains a value of non-standard type created for
+   * experiments or while awaiting standardization. OrtValue in this case would contain
+   * an internal representation of the Opaque type. Opaque types are distinguished between
+   * each other by two strings 1) domain and 2) type name. The combination of the two
+   * must be unique, so the type representation is properly identified internally. The combination
+   * must be properly registered from within ORT at both compile/run time or by another API.
+   *
+   * To construct the OrtValue pass domain and type names, also a pointer to a data container
+   * the type of which must be know to both ORT and the client program. That data container may or may
+   * not match the internal representation of the Opaque type. The sizeof(data_container) is passed for
+   * verification purposes.
+   *
+   * \domain_name - domain name for the Opaque type, null terminated.
+   * \type_name   - type name for the Opaque type, null terminated.
+   * \data_contianer - data to populate OrtValue
+   * \data_container_size - sizeof() of the data container. Must match the sizeof() of the expected
+   *                    data_container size internally.
+   */
+ORT_API_STATUS(OrtCreateOpaqueValue, _In_ const char* domain_name, _In_ const char* type_name,
+               _In_ const void* data_container, size_t data_container_size, _Outptr_ OrtValue** out);
+
+ /**
+   * Fetch data from an OrtValue that contains a value of non-standard type created for
+   * experiments or while awaiting standardization.
+   * \domain_name - domain name for the Opaque type, null terminated.
+   * \type_name   - type name for the Opaque type, null terminated.
+   * \data_contianer - data to populate OrtValue
+   * \data_container_size - sizeof() of the data container. Must match the sizeof() of the expected
+   *                    data_container size internally.
+   */
+
+ORT_API_STATUS(OrtGetOpaqueValue, _In_ const char* domain_name, _In_ const char* type_name,
+               _In_ const OrtValue* in, _Out_ void* data_container, size_t data_container_size);
 
 /*
  * EXPERIMENTAL APIS - Subject to change. Released as a preview to get feedback and enable early testing
