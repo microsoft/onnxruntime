@@ -219,10 +219,17 @@ ONNX Runtime supports OpenVINO Execution Provider to enable deep learning infere
 
 The OpenVINO Execution Provider can be built using the following commands:
 
-- Currently supports and validated on two versions of OpenVINO: OpenVINO 2018 R5.0.1 and OpenVINO 2019 R1.1(Recommended). Install the OpenVINO release along with its dependencies from ([https://software.intel.com/en-us/openvino-toolkit](https://software.intel.com/en-us/openvino-toolkit)).
+- Currently supports and validated on two versions of OpenVINO: OpenVINO 2018 R5.0.1 and OpenVINO 2019 R1.1(Recommended). Install the OpenVINO release along with its dependencies from ([https://software.intel.com/en-us/openvino-toolkit](https://software.intel.com/en-us/openvino-toolkit)).For windows, please download 2019 R1.1 windows installer
 
 - Install the model optimizer prerequisites for ONNX by running
-<code><openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.sh</code>
+
+   For Linux:
+
+    <code><openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.sh</code>
+
+    For Windows:
+
+    <code><openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.bat</code>
 
 - Initialize the OpenVINO environment by running the setupvars in <code>\<openvino\_install\_directory\>\/bin</code> using the below command:
 
