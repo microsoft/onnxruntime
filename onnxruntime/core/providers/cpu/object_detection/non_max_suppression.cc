@@ -158,7 +158,7 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
       }
 
       ScoreIndexPair next_top_score;
-      std::vector<int64_t> selected_indicies_inside_class;
+      std::vector<int64_t> selected_indices_inside_class;
       // Get the next box with top score, filter by iou_threshold
       while (!sorted_scores_with_index.empty()) {
         next_top_score = sorted_scores_with_index.top();
@@ -166,7 +166,7 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
 
         bool selected = true;
         // Check with existing selected boxes for this class, suppress if exceed the IOU (Intersection Over Union) threshold
-        for (int64_t selected_index : selected_indicies_inside_class) {
+        for (int64_t selected_index : selected_indices_inside_class) {
           if (SuppressByIOU(boxes_data + box_offset, selected_index, next_top_score.index_,
                             center_point_box, iou_threshold)) {
             selected = false;
@@ -176,10 +176,10 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
 
         if (selected) {
           if (max_output_boxes_per_class > 0 &&
-              static_cast<int64_t>(selected_indicies_inside_class.size()) >= max_output_boxes_per_class) {
+              static_cast<int64_t>(selected_indices_inside_class.size()) >= max_output_boxes_per_class) {
             break;
           }
-          selected_indicies_inside_class.push_back(next_top_score.index_);
+          selected_indices_inside_class.push_back(next_top_score.index_);
           selected_indices.emplace_back(batch_index, class_index, next_top_score.index_);
         }
       }  //while

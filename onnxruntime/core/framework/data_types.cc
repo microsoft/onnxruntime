@@ -23,12 +23,17 @@
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
-
 // Return the MLDataType used for a generic Tensor
 template <>
 MLDataType DataTypeImpl::GetType<Tensor>() {
   return TensorTypeBase::Type();
 }
+} // namespace onnxruntime
+
+// This conflics with the above GetType<>() specialization
+#include "core/framework/tensorprotoutils.h"
+
+namespace onnxruntime {
 
 // Return the MLDataType used for a generic SparseTensor
 template <>
@@ -180,8 +185,7 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Opaque& opaque_proto,
 
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_proto,
                   const ONNX_NAMESPACE::TypeProto_Tensor& type_proto) {
-  return type_proto.has_elem_type() &&
-         type_proto.elem_type() == tensor_proto.elem_type();
+  return type_proto.elem_type() == tensor_proto.elem_type();
   /* Currently all Tensors with all kinds of shapes
      are mapped into the same MLDataType (same element type)
      so we omit shape from IsCompatible consideration
@@ -190,10 +194,6 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_proto,
 
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Map& map_proto,
                   const ONNX_NAMESPACE::TypeProto_Map& type_proto) {
-  if (!(type_proto.has_key_type() &&
-        type_proto.key_type() == map_proto.key_type())) {
-    return false;
-  }
   const auto& lhs = map_proto;
   const auto& rhs = type_proto;
   bool result = true;
@@ -230,8 +230,7 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Sequence& sequence_proto,
   bool result = true;
   const auto& lhs = sequence_proto;
   const auto& rhs = type_proto;
-  if (rhs.has_elem_type() &&
-      lhs.elem_type().value_case() == rhs.elem_type().value_case()) {
+  if (lhs.elem_type().value_case() == rhs.elem_type().value_case()) {
     switch (lhs.elem_type().value_case()) {
       case TypeProto::ValueCase::kTensorType:
         result = IsCompatible(lhs.elem_type().tensor_type(), rhs.elem_type().tensor_type());
@@ -260,16 +259,16 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Sequence& sequence_proto,
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Opaque& opaque_proto, const ONNX_NAMESPACE::TypeProto_Opaque& type_proto) {
   const auto& lhs = opaque_proto;
   const auto& rhs = type_proto;
-  bool lhs_domain = lhs.has_domain() && !lhs.domain().empty();
-  bool rhs_domain = rhs.has_domain() && !rhs.domain().empty();
+  bool lhs_domain = utils::HasDomain(lhs);
+  bool rhs_domain = utils::HasDomain(rhs);
 
   if ((lhs_domain != rhs_domain) ||
       (lhs_domain && rhs_domain && lhs.domain() != lhs.domain())) {
     return false;
   }
 
-  bool lhs_name = lhs.has_name() && !lhs.name().empty();
-  bool rhs_name = rhs.has_name() && !rhs.name().empty();
+  bool lhs_name = utils::HasName(lhs);
+  bool rhs_name = utils::HasName(rhs);
 
   return !((lhs_name != rhs_name) ||
            (lhs_name && rhs_name && lhs.name() != rhs.name()));
@@ -277,9 +276,7 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Opaque& opaque_proto, const ON
 
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_SparseTensor& tensor_proto,
                   const ONNX_NAMESPACE::TypeProto_SparseTensor& type_proto) {
-  return type_proto.has_elem_type() &&
-         type_proto.elem_type() == tensor_proto.elem_type();
-  // XXX: Ignoring shape for now
+  return type_proto.elem_type() == tensor_proto.elem_type();
 }
 
 void RegisterAllProtos(const std::function<void(MLDataType)>& /*reg_fn*/);
@@ -322,6 +319,19 @@ class DataTypeRegistry {
       return p->second;
     }
     return nullptr;
+  }
+
+  MLDataType GetMLDataType(const std::string& data_type) const {
+    using namespace ONNX_NAMESPACE;
+    DataType dtype = Utils::DataTypeUtils::ToType(data_type);
+    if (dtype == nullptr) {
+      return nullptr;
+    }
+    auto hit = mapping_.find(dtype);
+    if (hit == mapping_.end()) {
+      return nullptr;
+    }
+    return hit->second;
   }
 };
 
@@ -370,15 +380,16 @@ ONNX_NAMESPACE::TypeProto& TensorTypeBase::mutable_type_proto() {
 
 bool TensorTypeBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const {
   const auto* thisProto = GetTypeProto();
+  ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kTensorType);
+  ORT_ENFORCE(utils::HasElemType(thisProto->tensor_type()));
+
   if (&type_proto == thisProto) {
     return true;
   }
+
   if (type_proto.value_case() != TypeProto::ValueCase::kTensorType) {
     return false;
   }
-
-  ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kTensorType);
-  ORT_ENFORCE(thisProto->tensor_type().has_elem_type());
 
   return data_types_internal::IsCompatible(thisProto->tensor_type(), type_proto.tensor_type());
 }
@@ -408,7 +419,7 @@ bool SparseTensorTypeBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_pr
   }
 
   ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kSparseTensorType);
-  ORT_ENFORCE(thisProto->sparse_tensor_type().has_elem_type());
+  ORT_ENFORCE(utils::HasElemType(thisProto->sparse_tensor_type()));
 
   return data_types_internal::IsCompatible(thisProto->sparse_tensor_type(), type_proto.sparse_tensor_type());
 }
@@ -461,8 +472,8 @@ bool NonTensorTypeBase::IsMapCompatible(const ONNX_NAMESPACE::TypeProto& type_pr
     return false;
   }
   ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kMapType);
-  ORT_ENFORCE(thisProto->map_type().has_key_type());
-  ORT_ENFORCE(thisProto->map_type().has_value_type());
+  ORT_ENFORCE(utils::HasKeyType(thisProto->map_type()));
+  ORT_ENFORCE(utils::HasKeyType(thisProto->map_type()));
   return data_types_internal::IsCompatible(thisProto->map_type(), type_proto.map_type());
 }
 
@@ -475,7 +486,7 @@ bool NonTensorTypeBase::IsSequenceCompatible(const ONNX_NAMESPACE::TypeProto& ty
     return false;
   }
   ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kSequenceType);
-  ORT_ENFORCE(thisProto->sequence_type().has_elem_type());
+  ORT_ENFORCE(utils::HasElemType(thisProto->sequence_type()));
   return data_types_internal::IsCompatible(thisProto->sequence_type(), type_proto.sequence_type());
 }
 
@@ -488,9 +499,16 @@ bool NonTensorTypeBase::IsOpaqueCompatible(const ONNX_NAMESPACE::TypeProto& type
     return false;
   }
   ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kOpaqueType);
-  ORT_ENFORCE(thisProto->opaque_type().has_domain());
-  ORT_ENFORCE(thisProto->opaque_type().has_name());
   return data_types_internal::IsCompatible(thisProto->opaque_type(), type_proto.opaque_type());
+}
+
+// The below two APIs must be implemented in the derived types to be used
+void NonTensorTypeBase::FromDataContainer(const void* /* data */, size_t /*data_size*/, OrtValue& /* output */) const {
+  ORT_ENFORCE(false, "Not implemented");
+}
+
+void NonTensorTypeBase::ToDataContainer (const OrtValue& /* input */, size_t /*data_size */, void* /* data */) const {
+  ORT_ENFORCE(false, "Not implemented");
 }
 
 ORT_REGISTER_TENSOR_TYPE(int32_t);
@@ -615,6 +633,10 @@ void DataTypeImpl::RegisterDataType(MLDataType mltype) {
   data_types_internal::DataTypeRegistry::instance().RegisterDataType(mltype);
 }
 
+MLDataType DataTypeImpl::GetDataType(const std::string& data_type) {
+  return data_types_internal::DataTypeRegistry::instance().GetMLDataType(data_type);
+}
+
 const char* DataTypeImpl::ToString(MLDataType type) {
   if (type == DataTypeImpl::GetTensorType<float>()) {
     return "tensor(float)";
@@ -670,33 +692,33 @@ const char* DataTypeImpl::ToString(MLDataType type) {
 const TensorTypeBase* DataTypeImpl::TensorTypeFromONNXEnum(int type) {
   switch (type) {
     case TensorProto_DataType_FLOAT:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<float>());
+      return DataTypeImpl::GetTensorType<float>()->AsTensorType();
     case TensorProto_DataType_BOOL:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<bool>());
+      return DataTypeImpl::GetTensorType<bool>()->AsTensorType();
     case TensorProto_DataType_INT32:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<int32_t>());
+      return DataTypeImpl::GetTensorType<int32_t>()->AsTensorType();
     case TensorProto_DataType_DOUBLE:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<double>());
+      return DataTypeImpl::GetTensorType<double>()->AsTensorType();
     case TensorProto_DataType_STRING:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<std::string>());
+      return DataTypeImpl::GetTensorType<std::string>()->AsTensorType();
     case TensorProto_DataType_UINT8:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<uint8_t>());
+      return DataTypeImpl::GetTensorType<uint8_t>()->AsTensorType();
     case TensorProto_DataType_UINT16:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<uint16_t>());
+      return DataTypeImpl::GetTensorType<uint16_t>()->AsTensorType();
     case TensorProto_DataType_INT8:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<int8_t>());
+      return DataTypeImpl::GetTensorType<int8_t>()->AsTensorType();
     case TensorProto_DataType_INT16:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<int16_t>());
+      return DataTypeImpl::GetTensorType<int16_t>()->AsTensorType();
     case TensorProto_DataType_INT64:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<int64_t>());
+      return DataTypeImpl::GetTensorType<int64_t>()->AsTensorType();
     case TensorProto_DataType_UINT32:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<uint32_t>());
+      return DataTypeImpl::GetTensorType<uint32_t>()->AsTensorType();
     case TensorProto_DataType_UINT64:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<uint64_t>());
+      return DataTypeImpl::GetTensorType<uint64_t>()->AsTensorType();
     case TensorProto_DataType_FLOAT16:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<MLFloat16>());
+      return DataTypeImpl::GetTensorType<MLFloat16>()->AsTensorType();
     case TensorProto_DataType_BFLOAT16:
-      return reinterpret_cast<const TensorTypeBase*>(DataTypeImpl::GetTensorType<BFloat16>());
+      return DataTypeImpl::GetTensorType<BFloat16>()->AsTensorType();
     default:
       ORT_NOT_IMPLEMENTED("tensor type ", type, " is not supported");
   }
@@ -743,12 +765,12 @@ MLDataType DataTypeImpl::TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto) {
   switch (proto.value_case()) {
     case TypeProto::ValueCase::kTensorType: {
       const auto& tensor_type = proto.tensor_type();
-      ORT_ENFORCE(tensor_type.has_elem_type());
+      ORT_ENFORCE(utils::HasElemType(tensor_type));
       return TensorTypeFromONNXEnum(tensor_type.elem_type());
     } break;  // kTensorType
     case TypeProto::ValueCase::kSparseTensorType: {
       const auto& sparse_tensor_type = proto.sparse_tensor_type();
-      ORT_ENFORCE(sparse_tensor_type.has_elem_type());
+      ORT_ENFORCE(utils::HasElemType(sparse_tensor_type));
       return SparseTensorTypeFromONNXEnum(sparse_tensor_type.elem_type());
     } break;  // kSparseTensorType
     case TypeProto::ValueCase::kMapType: {
@@ -893,6 +915,40 @@ ORT_REGISTER_NON_ONNX_TYPE(uint32_t);
 ORT_REGISTER_NON_ONNX_TYPE(uint64_t);
 ORT_REGISTER_NON_ONNX_TYPE(MLFloat16);
 ORT_REGISTER_NON_ONNX_TYPE(BFloat16);
+
+const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorExceptHalfTypes() {
+  static std::vector<MLDataType> all_fixed_size_tensor_types =
+      {DataTypeImpl::GetTensorType<float>(),
+       DataTypeImpl::GetTensorType<double>(),
+       DataTypeImpl::GetTensorType<int64_t>(),
+       DataTypeImpl::GetTensorType<uint64_t>(),
+       DataTypeImpl::GetTensorType<int32_t>(),
+       DataTypeImpl::GetTensorType<uint32_t>(),
+       DataTypeImpl::GetTensorType<int16_t>(),
+       DataTypeImpl::GetTensorType<uint16_t>(),
+       DataTypeImpl::GetTensorType<int8_t>(),
+       DataTypeImpl::GetTensorType<uint8_t>(),
+       DataTypeImpl::GetTensorType<bool>()};
+
+  return all_fixed_size_tensor_types;
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllIEEEFloatTensorExceptHalfTypes() {
+  static std::vector<MLDataType> all_IEEE_float_tensor_except_half_types =
+      {DataTypeImpl::GetTensorType<float>(),
+       DataTypeImpl::GetTensorType<double>()};
+
+  return all_IEEE_float_tensor_except_half_types;
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllIEEEFloatTensorTypes() {
+  static std::vector<MLDataType> all_IEEE_float_tensor_types =
+      {DataTypeImpl::GetTensorType<float>(),
+       DataTypeImpl::GetTensorType<double>(),
+       DataTypeImpl::GetTensorType<MLFloat16>()};
+
+  return all_IEEE_float_tensor_types;
+}
 
 const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypes() {
   static std::vector<MLDataType> all_fixed_size_tensor_types =

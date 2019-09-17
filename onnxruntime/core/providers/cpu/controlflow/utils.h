@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -10,32 +11,33 @@
 #include "core/framework/feeds_fetches_manager.h"
 
 namespace onnxruntime {
+class Graph;
+
 namespace controlflow {
+
+/** Interface for control flow kernels    */
+class IControlFlowKernel {
+ public:
+  /** Setup information that is re-used each time to execute the subgraph.
+  @param session_state SessionState for graph containing the control flow node
+  @param attribute_name Control flow node's attribute name that contained the subgraph 
+  @param subgraph_session_state SessionState for the subgraph
+  */
+  virtual common::Status SetupSubgraphExecutionInfo(const SessionState& session_state,
+                                                    const std::string& attribute_name,
+                                                    const SessionState& subgraph_session_state) = 0;
+};
+
 namespace detail {
 
-// helper to execute the subgraph by calling the Execute method of the provided implementation class with
-// with the cached or newly created FeedsFetchesManager
-template <typename TImpl>
-common::Status SubgraphExecuteHelper(std::unique_ptr<FeedsFetchesManager>& cached_feeds_fetches_manager, TImpl& impl) {
-  auto status = Status::OK();
-
-  if (cached_feeds_fetches_manager) {
-    // make it clear we don't update this instance when executing so there are no potential concurrency issues
-    const FeedsFetchesManager* cached_ffm = &*cached_feeds_fetches_manager;
-    status = impl.Execute(nullptr, cached_ffm);
-  } else {
-    // use a local instance until we know we're successful, and cache if it is
-    std::unique_ptr<FeedsFetchesManager> new_ffm;
-    ORT_RETURN_IF_ERROR(impl.CreateFeedsFetchesManager(new_ffm));
-
-    status = impl.Execute(&*new_ffm, nullptr);
-    if (status.IsOK()) {
-      cached_feeds_fetches_manager = std::move(new_ffm);
-    }
-  }
-
-  return status;
-}
+// Searches the allocation plan from the session_state to find the OrtDevice each value in 'names' is located on,
+// and updates the entry in devices with the same index.
+// Resizes 'devices' if needed, defaulting to CPU as the OrtDevice.
+// Use 'start_at' to skip entries in 'names' and 'devices'.
+common::Status FindDevicesForValues(const SessionState& session_state,
+                                    const std::vector<std::string>& names,
+                                    std::vector<OrtDevice>& devices,
+                                    size_t start_at = 0);
 
 }  // namespace detail
 }  // namespace controlflow

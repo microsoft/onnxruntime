@@ -17,10 +17,12 @@ tvm::Tensor Gemm(const tvm::Tensor& A, const tvm::Tensor& B, const tvm::Tensor& 
                  bool trans_A, bool trans_B, float alpha, float beta,
                  const std::string& name) {
   auto A_dot_B = MatMul2D(A, B, trans_A, trans_B, name + "_matmul2d");
+  tvm::Expr alphaExpr = tvm::make_const(A->dtype, alpha);
   if (beta != 0) {
-    return Rename(alpha * A_dot_B + (beta * C), name);
+    tvm::Expr betaExpr = tvm::make_const(A->dtype, beta);
+    return Rename(alphaExpr * A_dot_B + (betaExpr * C), name);
   } else {
-    return Rename(alpha * A_dot_B, name);
+    return Rename(alphaExpr * A_dot_B, name);
   }
 }
 

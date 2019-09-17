@@ -86,6 +86,7 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 * [Intel nGraph](#nGraph)
 * [Intel OpenVINO](#openvino)
 * [Android NNAPI](#Android)
+* [Nuphar](#Nuphar)
 
 **Options**
 * [OpenMP](#OpenMP)
@@ -267,6 +268,46 @@ For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, To
 3. Denote the unzip destination in step 1 as $ANDROID_NDK, append `-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=path/to/protoc` to your cmake args, run cmake and make to build it.
 
 Note: For 32-bit devices, replace `-DANDROID_ABI=arm64-v8a` to `-DANDROID_ABI=armeabi-v7a`.
+
+---
+
+### Nuphar
+ONNX Runtime supports Nuphar execution provider (released as preview). It is an execution provider built on top of [TVM](https://github.com/dmlc/tvm) and [LLVM](https://llvm.org). Currently it targets to X64 CPU.
+
+The Nuphar execution provider for ONNX Runtime is built and tested with LLVM 6.0.1. Because of TVM's requirement when building with LLVM, you need to build LLVM from source:
+
+Window with Visual Studio 2017: (Note here builds release flavor. Debug build of LLVM would be needed to build with Debug flavor of ONNX Runtime)
+```
+REM download llvm source code 6.0.1 and unzip to \llvm\source\path, then install to \llvm\install\path
+cd \llvm\source\path
+mkdir build
+cd build
+cmake .. -G "Visual Studio 15 2017 Win64" -DLLVM_TARGETS_TO_BUILD=X86
+msbuild llvm.sln /maxcpucount /p:Configuration=Release /p:Platform=x64
+cmake -DCMAKE_INSTALL_PREFIX=\llvm\install\path -DBUILD_TYPE=Release -P cmake_install.cmake
+```
+
+Linux:
+```
+# download llvm source code 6.0.1 and unzip to /llvm/source/path, then install to /llvm/install/path
+cd /llvm/source/path
+mkdir build
+cd build
+cmake .. -DLLVM_TARGETS_TO_BUILD=X86 -DCMAKE_BUILD_TYPE=Release
+cmake --build.
+cmake -DCMAKE_INSTALL_PREFIX=/llvm/install/path -DBUILD_TYPE=Release -P cmake_install.cmake
+```
+
+Then you can build from source by using following command from the onnxruntime directory:
+Windows:
+```
+build.bat --use_tvm --use_llvm --llvm_path=\llvm\install\path\lib\cmake\llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
+```
+
+Linux:
+```
+./build.sh --use_tvm --use_llvm --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
+```
 
 ---
 

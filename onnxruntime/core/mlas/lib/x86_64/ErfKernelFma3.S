@@ -26,6 +26,7 @@ Abstract:
 //
 // Structure layout for the erf constants block.
 //
+
         .equ    ErfUpperAbsRange, 0
         .equ    ErfSplitBoundary, 4
         .equ    ErfSMALL_P0, 8
@@ -68,7 +69,7 @@ Abstract:
         .equ    ErfBuffer1, 128
         .equ    ErfKernelFrame_CountN, 256
         .equ    ErfKernelFrame_ReturnAddress, 256+8
-        
+
 /*++
 
 Routine Description:
@@ -92,7 +93,7 @@ Return Value:
         .globl  C_UNDERSCORE(MlasErfKernelFma3)
 C_UNDERSCORE(MlasErfKernelFma3):
         sub     rsp,ErfKernelFrame_ReturnAddress
-        mov     rax,C_UNDERSCORE(MlasErfConstants)@GOTPCREL[rip]
+        lea     rax,C_UNDERSCORE(MlasErfConstants)[rip]
 
         sub     rdx,8*4
         jb      .LErfProcessRemainingCount
@@ -376,10 +377,9 @@ C_UNDERSCORE(MlasErfKernelFma3):
 
 .LErfProcess1x8:
         mov     DWORD PTR ErfKernelFrame_CountN[rsp],edx
-        mov     rcx,QWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOTPCREL[rip]
         vbroadcastss ymm3,DWORD PTR ErfKernelFrame_CountN[rsp]
 
-        vpcmpgtd ymm3,ymm3,YMMWORD PTR [rcx]
+        vpcmpgtd ymm3,ymm3,YMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip]
         vbroadcastss ymm15,ErfNegZero[rax]
         vmaskmovps ymm0,ymm3,YMMWORD PTR [rdi]  # original input vx0
 

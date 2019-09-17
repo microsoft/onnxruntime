@@ -77,7 +77,7 @@ void TestInference(Ort::Env& env, T model_uri,
 #endif
   } else if (provider_type == 3) {
 #ifdef USE_NUPHAR
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, 0, ""));
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, /*allow_unaligned_buffers*/ 1, ""));
     std::cout << "Running simple inference with nuphar provider" << std::endl;
 #else
     return;
@@ -275,7 +275,7 @@ TEST_F(CApiTest, create_tensor_with_data) {
   float values[] = {3.0f, 1.0f, 2.f, 0.f};
   constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
 
-  Ort::AllocatorInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
   std::vector<int64_t> dims = {4};
   Ort::Value tensor = Ort::Value::CreateTensor<float>(info, values, values_length, dims.data(), dims.size());

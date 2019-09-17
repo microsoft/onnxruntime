@@ -18,4 +18,4 @@ __author__ = "Microsoft"
 from onnxruntime.capi import onnxruntime_validation
 onnxruntime_validation.check_distro_info()
 from onnxruntime.capi.session import InferenceSession
-from onnxruntime.capi._pybind_state import get_device, RunOptions, SessionOptions, NodeArg, ModelMetadata, GraphOptimizationLevel
+from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, RunOptions, SessionOptions, NodeArg, ModelMetadata, GraphOptimizationLevel

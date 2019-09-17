@@ -5,6 +5,7 @@
 
 #include "core/codegen/common/profile.h"
 #include "core/codegen/passes/utils/codegen_context.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
 #include "gsl/gsl_util"
 
@@ -89,9 +90,9 @@ tvm::Array<tvm::Expr> ShapeToTvmArray(const NodeArg* def, CodeGenContext& ctx) {
 }
 
 tvm::Expr ShapeDimToTvmDim(const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim, CodeGenContext& ctx) {
-  if (dim.has_dim_param()) {
+  if (utils::HasDimParam(dim)) {
     return ctx.GetOrCreateDynamicDim(dim.dim_param());
-  } else if (dim.has_dim_value()) {
+  } else if (utils::HasDimValue(dim)) {
     return tvm::Expr(gsl::narrow_cast<int32_t>(dim.dim_value()));
   }
   return ctx.GetOrCreateDynamicDim(ctx.CreateUnnamedSymbol());
@@ -100,7 +101,7 @@ tvm::Expr ShapeDimToTvmDim(const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim
 #ifdef CODEGEN_ENABLE_PROFILER
 struct event_in_bracket_and_id {
   bool in_bracket;
-  int id;
+  size_t id;
 };
 std::unordered_map<std::string, event_in_bracket_and_id> g_codegen_profiler_event_ids;
 std::vector<std::pair<std::string, TimePoint>> g_codegen_profiler_events(1024);
@@ -109,7 +110,7 @@ TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.profile_event")
     .set_body([](tvm::TVMArgs args, tvm::TVMRetValue* ret) {
       DLTensor* X = args[0];
       DLTensor* Y = args[1];
-      int event_id = args[2];
+      size_t event_id = args[2];
       bool is_begin = args[3];
       if (!is_begin) {
         DCHECK(event_id < g_codegen_profiler_event_ids.size());
@@ -120,7 +121,7 @@ TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.profile_event")
       }
 
       {
-        CODEGEN_PROFILER_EVENT(profile_stub);
+        CODEGEN_PROFILER_EVENT("profile_stub");
         int64_t elem_count = 1;
         for (int i = 0; i < X->ndim; ++i) {
           elem_count *= X->shape[i];
@@ -141,7 +142,7 @@ TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.profile_event")
     });
 
 tvm::Tensor ProfileBegin(tvm::Tensor X, const std::string& event_name) {
-  int event_id;
+  size_t event_id;
   if (g_codegen_profiler_event_ids.count(event_name) == 0) {
     event_id = g_codegen_profiler_event_ids.size();
     ORT_ENFORCE(event_id < g_codegen_profiler_events.size());
@@ -157,7 +158,7 @@ tvm::Tensor ProfileBegin(tvm::Tensor X, const std::string& event_name) {
         return topi::detail::call_packed({tvm::Expr("tvm.contrib.onnxruntime.profile_event"),
                                           topi::detail::pack_buffer(ins[0]),
                                           topi::detail::pack_buffer(outs[0]),
-                                          event_id,
+                                          gsl::narrow<int>(event_id),
                                           true});
       },
       event_name + "_begin", "", {})[0];
@@ -166,7 +167,7 @@ tvm::Tensor ProfileBegin(tvm::Tensor X, const std::string& event_name) {
 tvm::Tensor ProfileEnd(tvm::Tensor X, const std::string& event_name) {
   ORT_ENFORCE(g_codegen_profiler_event_ids.at(event_name).in_bracket);
   g_codegen_profiler_event_ids.at(event_name).in_bracket = false;
-  int event_id = g_codegen_profiler_event_ids.at(event_name).id;
+  size_t event_id = g_codegen_profiler_event_ids.at(event_name).id;
   ORT_ENFORCE(event_id < g_codegen_profiler_events.size());
   ORT_ENFORCE(g_codegen_profiler_events[event_id].first == event_name);
   return topi::detail::make_extern(
@@ -175,7 +176,7 @@ tvm::Tensor ProfileEnd(tvm::Tensor X, const std::string& event_name) {
         return topi::detail::call_packed({tvm::Expr("tvm.contrib.onnxruntime.profile_event"),
                                           topi::detail::pack_buffer(ins[0]),
                                           topi::detail::pack_buffer(outs[0]),
-                                          event_id,
+                                          gsl::narrow<int>(event_id),
                                           false});
       },
       event_name + "_end", "", {})[0];

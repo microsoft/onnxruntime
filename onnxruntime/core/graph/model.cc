@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/model.h"
 #include <memory>
 #include "core/common/logging/logging.h"
@@ -81,7 +82,7 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
     throw std::invalid_argument("ModelProto was null.");
   }
 
-  if (!model_proto->has_graph()) {
+  if (!utils::HasGraph(*model_proto)) {
     throw std::invalid_argument("ModelProto does not have a graph.");
   }
 
@@ -108,18 +109,25 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
     const auto& domain = opSet.domain();
     const auto version = opSet.version();
     // empty domain and 'ai.onnx' are equivalent
-    if ((domain.empty() || domain == "ai.onnx") && version < 7) {
+    if ((domain.empty() || domain == kOnnxDomainAlias) && version < 7) {
       // TODO: Check if we can upgrade all the current opset 6 models that are being tested
       // in CI to opset 7 or above
       LOGS_DEFAULT(WARNING) << "ONNX Runtime only *guarantees* support for models stamped "
                                "with opset version 7 or above for opset domain 'ai.onnx'. "
                                "Please upgrade your model to opset 7 or higher. "
                                "For now, this opset "
-                            <<  version
+                            << version
                             << " model may run depending upon legacy support "
                                "of some older opset version operators.";
     }
-    domain_to_version[domain] = gsl::narrow_cast<int>(version);
+    // We need to overwrite the domain here with ("") or else the loop below will try to find ("")
+    // in the map and if not found (when domain == kOnnxDomainAlias), adds an entry for ("", 11).
+    // This effectively ignores the opset version specified by the model for the onnx domain.
+    if (domain == kOnnxDomainAlias) {
+      domain_to_version[kOnnxDomain] = gsl::narrow_cast<int>(version);
+    } else {
+      domain_to_version[domain] = gsl::narrow_cast<int>(version);
+    }
   }
 
   auto domain_map = schema_registry->GetLatestOpsetVersions(false);
@@ -143,7 +151,7 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
 }
 
 Version Model::IrVersion() const {
-  if (model_proto_->has_ir_version()) {
+  if (utils::HasIrVersion(*model_proto_)) {
     return model_proto_->ir_version();
   }
   return kNoVersion;
@@ -174,7 +182,7 @@ void Model::SetDomain(const std::string& domain) {
 }
 
 Version Model::ModelVersion() const {
-  if (model_proto_->has_model_version()) {
+  if (utils::HasModelVersion(*model_proto_)) {
     return model_proto_->model_version();
   }
   return kNoVersion;
@@ -232,7 +240,7 @@ Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
 
 Status Model::Load(const ModelProto& model_proto, std::shared_ptr<Model>& model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
   // we expect a graph to be present
-  if (!model_proto.has_graph()) {
+  if (!utils::HasGraph(model_proto)) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No graph was found in the protobuf.");
   }
 
@@ -251,7 +259,7 @@ Status Model::Load(const ModelProto& model_proto, std::shared_ptr<Model>& model,
 
 Status Model::Load(std::unique_ptr<ModelProto> p_model_proto, std::shared_ptr<Model>& model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
   // we expect a graph to be present
-  if (!p_model_proto->has_graph()) {
+  if (!utils::HasGraph(*p_model_proto)) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No graph was found in the protobuf.");
   }
 

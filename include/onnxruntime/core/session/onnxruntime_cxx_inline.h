@@ -53,20 +53,20 @@ inline void AllocatorWithDefaultOptions::Free(void* p) {
   ORT_THROW_ON_ERROR(OrtAllocatorFree(p_, p));
 }
 
-inline const OrtAllocatorInfo* AllocatorWithDefaultOptions::GetInfo() const {
-  const OrtAllocatorInfo* out;
+inline const OrtMemoryInfo* AllocatorWithDefaultOptions::GetInfo() const {
+  const OrtMemoryInfo* out;
   ORT_THROW_ON_ERROR(OrtAllocatorGetInfo(p_, &out));
   return out;
 }
 
-inline AllocatorInfo AllocatorInfo::CreateCpu(OrtAllocatorType type, OrtMemType mem_type) {
-  OrtAllocatorInfo* p;
-  ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(type, mem_type, &p));
-  return AllocatorInfo(p);
+inline MemoryInfo MemoryInfo::CreateCpu(OrtAllocatorType type, OrtMemType mem_type) {
+  OrtMemoryInfo* p;
+  ORT_THROW_ON_ERROR(OrtCreateCpuMemoryInfo(type, mem_type, &p));
+  return MemoryInfo(p);
 }
 
-inline AllocatorInfo::AllocatorInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
-  ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo(name, type, id, mem_type, &p_));
+inline MemoryInfo::MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
+  ORT_THROW_ON_ERROR(OrtCreateMemoryInfo(name, type, id, mem_type, &p_));
 }
 
 inline Env::Env(OrtLoggingLevel default_warning_level, _In_ const char* logid) {
@@ -116,13 +116,13 @@ inline const char* RunOptions::GetRunTag() const {
   return out;
 }
 
-inline RunOptions& RunOptions::EnableTerminate() {
-  ORT_THROW_ON_ERROR(OrtRunOptionsEnableTerminate(p_));
+inline RunOptions& RunOptions::SetTerminate() {
+  ORT_THROW_ON_ERROR(OrtRunOptionsSetTerminate(p_));
   return *this;
 }
 
-inline RunOptions& RunOptions::DisableTerminate() {
-  ORT_THROW_ON_ERROR(OrtRunOptionsDisableTerminate(p_));
+inline RunOptions& RunOptions::UnsetTerminate() {
+  ORT_THROW_ON_ERROR(OrtRunOptionsUnsetTerminate(p_));
   return *this;
 }
 
@@ -302,11 +302,11 @@ inline ONNXType TypeInfo::GetONNXType() const {
 }
 
 template <typename T>
-inline Value Value::CreateTensor(const OrtAllocatorInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len) {
+inline Value Value::CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len) {
   return CreateTensor(info, p_data, p_data_element_count * sizeof(T), shape, shape_len, TypeToTensorType<T>::type);
 }
 
-inline Value Value::CreateTensor(const OrtAllocatorInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
+inline Value Value::CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
                                  ONNXTensorElementDataType type) {
   OrtValue* out;
   ORT_THROW_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(info, p_data, p_data_byte_count, shape, shape_len, type, &out));
@@ -340,6 +340,18 @@ inline Value Value::CreateSequence(std::vector<Value>& values) {
   std::vector<OrtValue*> values_ort{values.data(), values.data() + values.size()};
   ORT_THROW_ON_ERROR(OrtCreateValue(values_ort.data(), values_ort.size(), ONNX_TYPE_SEQUENCE, &out));
   return Value{out};
+}
+
+template <typename T>
+inline Value Value::CreateOpaque (const char* domain, const char* type_name, const T& data_container) {
+  OrtValue* out;
+  ORT_THROW_ON_ERROR(OrtCreateOpaqueValue(domain, type_name, &data_container, sizeof(T), &out));
+  return Value{out};
+}
+
+template <typename T>
+inline void Value::GetOpaqueData (const char* domain, const char* type_name, T& out) {
+  ORT_THROW_ON_ERROR(OrtGetOpaqueValue(domain, type_name, p_, &out, sizeof(T)));
 }
 
 inline bool Value::IsTensor() const {
