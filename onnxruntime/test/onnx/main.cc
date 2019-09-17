@@ -17,6 +17,7 @@
 #include "sync_api.h"
 #include "providers.h"
 #include <google/protobuf/stubs/common.h>
+#include <google/protobuf/stubs/common.h>
 #include "core/framework/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/optimizer/graph_transformer_level.h"
@@ -423,7 +424,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"clip_default_max", "not implemented yet for opset 11"});
   broken_tests.insert({"clip", "not implemented yet for opset 11"});
   broken_tests.insert({"depthtospace_crd_mode_example", "NGraph does not support CRD mode"});
-  broken_tests.insert({"depthtospace_crd_mode", "NGraph does not support CRD mode"});
 #endif
 
 #ifdef USE_MKLDNN
