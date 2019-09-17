@@ -176,7 +176,7 @@ TEST(CApiTest, load_huge_tensor_with_external_data) {
   ASSERT_TRUE(st.IsOK()) << "Error from TensorProtoToMLValue: " << st.ErrorMessage();
   int* buffer;
   auto ort_st = g_ort->GetTensorMutableData(&value, (void**)&buffer);
-  ASSERT_EQ(ort_st, nullptr) << "Error from OrtGetTensorMutableData: " << OrtGetErrorMessage(ort_st);
+  ASSERT_EQ(ort_st, nullptr) << "Error from OrtGetTensorMutableData: " << g_ort->GetErrorMessage(ort_st);
   for (size_t i = 0; i != total_ele_count; ++i) {
     ASSERT_EQ(1, buffer[i]);
   }
