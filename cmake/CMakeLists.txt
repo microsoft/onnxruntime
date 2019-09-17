@@ -87,14 +87,22 @@ set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
 
 if(onnxruntime_USE_OPENMP)
-  # MKLML and NGraph depend on their own OpenMP library that may be different with the compiler's.
-  # Disable the options to build mklml/NGraph and OpenMP together.
-  if(onnxruntime_USE_MKLML)
-    message(FATAL_ERROR "Please use only one of onnxruntime_USE_MKLML, onnxruntime_USE_OPENMP")
-  endif()
-  if(onnxruntime_USE_NGRAPH)
-    message(FATAL_ERROR "Please use only one of onnxruntime_USE_NGRAPH, onnxruntime_USE_OPENMP")
-  endif()
+  find_package(OpenMP)
+  if (OPENMP_FOUND)
+    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    add_definitions(-DUSE_OPENMP)
+    # MKLML and NGraph depend on their own OpenMP library that may be different with the compiler's.
+    # Disable the options to build mklml/NGraph and OpenMP together.
+    if(onnxruntime_USE_MKLML)
+      message(FATAL_ERROR "Please use only one of onnxruntime_USE_MKLML, onnxruntime_USE_OPENMP")
+    endif()
+    if(onnxruntime_USE_NGRAPH)
+      message(FATAL_ERROR "Please use only one of onnxruntime_USE_NGRAPH, onnxruntime_USE_OPENMP")
+    endif()
+  else()
+    set(onnxruntime_USE_OPENMP OFF)
+  endif()  
 endif()
 if(onnxruntime_ENABLE_LTO)
   #TODO: figure out why nsync doesn't work
@@ -115,15 +123,6 @@ endif()
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
 file (STRINGS "${REPO_ROOT}/VERSION_NUMBER" ORT_VERSION)
-
-if(onnxruntime_USE_OPENMP)
-  find_package(OpenMP)
-  if (OPENMP_FOUND)
-    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-    add_definitions(-DUSE_OPENMP)
-  endif()
-endif()
 
 # Guarantee that the Eigen code that you are #including is licensed
 # under the MPL2 and possibly more permissive licenses (like BSD).
@@ -460,6 +459,10 @@ else()
 endif()
 
 if (onnxruntime_USE_JEMALLOC)
+  if (onnxruntime_USE_MIMALLOC)
+    message( FATAL_ERROR "You cannot specify both jemalloc and mimalloc." )
+  endif()
+
   if (Win32)
     message( FATAL_ERROR "Jemalloc is not supported on Windows." )
   endif()

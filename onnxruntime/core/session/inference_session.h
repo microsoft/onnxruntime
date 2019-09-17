@@ -280,6 +280,17 @@ class InferenceSession {
   int GetCurrentNumRuns() const;
 
   /**
+    * Get the names of registered Execution Providers. The returned vector is ordered by Execution Provider
+    * priority. The first provider in the vector has the highest priority.
+    */
+  const std::vector<std::string>& GetRegisteredProviderTypes() const;
+
+  /*
+   * Get the options this session was initialized with.
+   */
+  const SessionOptions& GetSessionOptions() const;
+
+  /**
     * Start profiling on this inference session. This simply turns on profiling events to be
     * recorded. A corresponding EndProfiling has to follow to write profiling data to a file.
     *@param file_prefix is the prefix of the profile file. It can include a directory path.

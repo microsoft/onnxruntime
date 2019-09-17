@@ -153,8 +153,10 @@ uint32_t OpNodeProtoHelper<Impl_t>::GetPrimitiveAttrElementCount(AttributeProto_
       case AttributeProto_AttributeType_UNDEFINED:
       case AttributeProto_AttributeType_TENSOR:
       case AttributeProto_AttributeType_GRAPH:
+      case AttributeProto_AttributeType_SPARSE_TENSOR:
       case AttributeProto_AttributeType_TENSORS:
       case AttributeProto_AttributeType_GRAPHS:
+      case AttributeProto_AttributeType_SPARSE_TENSORS:
       default:
         return 0;
     }

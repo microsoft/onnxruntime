@@ -48,6 +48,7 @@ class ExecutionProviders {
     }
 
     exec_providers_.push_back(std::move(p_exec_provider));
+    exec_provider_ids_.push_back(provider_id);
 
     return Status::OK();
   }
@@ -65,8 +66,8 @@ class ExecutionProviders {
     return exec_providers_[it->second].get();
   }
 
-  const IExecutionProvider* Get(const OrtMemoryInfo& allocator_info) const {
-    auto it = allocator_idx_map_.find(allocator_info);
+  const IExecutionProvider* Get(const OrtMemoryInfo& memory_info) const {
+    auto it = allocator_idx_map_.find(memory_info);
     if (it == allocator_idx_map_.end()) {
       return nullptr;
     }
@@ -74,13 +75,13 @@ class ExecutionProviders {
     return exec_providers_[it->second].get();
   }
 
-  AllocatorPtr GetAllocator(const OrtMemoryInfo& allocator_info) const {
-    auto exec_provider = Get(allocator_info);
+  AllocatorPtr GetAllocator(const OrtMemoryInfo& memory_info) const {
+    auto exec_provider = Get(memory_info);
     if (exec_provider == nullptr) {
       return nullptr;
     }
 
-    return exec_provider->GetAllocator(allocator_info.id, allocator_info.mem_type);
+    return exec_provider->GetAllocator(memory_info.id, memory_info.mem_type);
   }
 
   bool Empty() const { return exec_providers_.empty(); }
@@ -91,12 +92,15 @@ class ExecutionProviders {
   const_iterator begin() const noexcept { return exec_providers_.cbegin(); }
   const_iterator end() const noexcept { return exec_providers_.cend(); }
 
-  OrtMemoryInfo GetDefaultCpuAllocatorInfo() const {
+  OrtMemoryInfo GetDefaultCpuMemoryInfo() const {
     return Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault)->Info();
   }
 
+  const std::vector<std::string>& GetIds() const { return exec_provider_ids_; }
+
  private:
   std::vector<std::unique_ptr<IExecutionProvider>> exec_providers_;
+  std::vector<std::string> exec_provider_ids_;
 
   // maps for fast lookup of an index into exec_providers_
   std::unordered_map<std::string, size_t> provider_idx_map_;

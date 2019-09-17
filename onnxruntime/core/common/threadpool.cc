@@ -39,9 +39,23 @@ void ThreadPool::ParallelFor(int32_t total, std::function<void(int32_t)> fn) {
     fn(0);
     return;
   }
-
   // TODO: Eigen supports a more efficient ThreadPoolDevice mechanism
   // We will simply rely on the work queue and stealing in the short term.
+  if (total > NumThreads()) {
+    //The dispatcher thread will be idle at here
+    Barrier barrier(static_cast<unsigned int>(total));
+    std::function<void(int32_t)> handle_iteration = [&barrier, &fn](int iteration) {
+      fn(iteration);
+      barrier.Notify();
+    };
+
+    for (int32_t id = 0; id < total; ++id) {
+      Schedule([=, &handle_iteration]() { handle_iteration(id); });
+    }
+
+    barrier.Wait();
+    return;
+  }
   Barrier barrier(static_cast<unsigned int>(total - 1));
   std::function<void(int32_t)> handle_iteration = [&barrier, &fn](int iteration) {
     fn(iteration);
@@ -51,7 +65,7 @@ void ThreadPool::ParallelFor(int32_t total, std::function<void(int32_t)> fn) {
   for (int32_t id = 1; id < total; ++id) {
     Schedule([=, &handle_iteration]() { handle_iteration(id); });
   }
-
+  //reuse the current thread for one task
   fn(0);
   barrier.Wait();
 }
