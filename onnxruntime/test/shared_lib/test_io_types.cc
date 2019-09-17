@@ -7,7 +7,7 @@
 static void TestModelInfo(const Ort::Session& session, bool is_input, const std::vector<int64_t>& dims) {
   size_t input_count;
   if (is_input) {
-    input_count = session.GetInputCount();
+    input_count = session.GetInputCount(kInputsOnly);
   } else {
     input_count = session.GetOutputCount();
   }
