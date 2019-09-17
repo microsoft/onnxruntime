@@ -224,20 +224,31 @@ The OpenVINO Execution Provider can be built using the following commands:
 - Install the model optimizer prerequisites for ONNX by running
 <code><openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.sh</code>
 
-- Initialize the OpenVINO environment by running the setupvars.sh in <code>\<openvino\_install\_directory\>\/bin</code> using the below command:
+- Initialize the OpenVINO environment by running the setupvars in <code>\<openvino\_install\_directory\>\/bin</code> using the below command:
 
-   <code>source setupvars.sh</code>
+   <code>source setupvars.sh (Linux)</code>
 
-- To configure Intel<sup>®</sup> Processor Graphics(GPU), please follow the installation steps from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
+   <code>setupvars.bat (Windows)</code>
 
-- To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow the getting started guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+- To configure Intel<sup>®</sup> Processor Graphics(GPU), please follow the installation steps from    (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps  (Linux))
+ (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_windows.html#Install-GPU (Windows))
 
-- To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow the configuration guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#install-VPU)
+- To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow the getting started guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps (Linux))
+(https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_windows.html#usb-myriad (Windows))
+
+- To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow the configuration guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#install-VPU (Linux))
+(https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_windows.html#hddl-myriad (Windows))
 
 
 - Build ONNX Runtime using the below command.
 
+  For Linux:
+  
    <code>./build.sh --config RelWithDebInfo --use_openvino <hardware_option>  </code>
+
+  For Windows:
+  
+  <code> build.bat --config Release --cmake_generator "Visual Studio 16 2019" --use_openvino <hardware_option> --build_shared_lib --parallel</code>
 
    <code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
 
