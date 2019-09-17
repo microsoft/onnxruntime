@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "utils.h"
+#include "core/providers/common.h"
 
 namespace onnxruntime {
 
@@ -29,8 +30,10 @@ class SqueezeBase {
       const TensorShape& axes) {
     size_t j = 0;
     std::vector<int64_t> output_shape;
-    for (size_t i = 0; i < input_shape.NumDimensions(); ++i) {
-      if ((j < axes.NumDimensions() && axes[j] == static_cast<int64_t>(i)) ||
+    auto num_dimensions = input_shape.NumDimensions();
+    for (size_t i = 0; i < num_dimensions; ++i) {
+      int64_t axis = HandleNegativeAxis(axes[j], num_dimensions);  // handle negative and enforce axis is valid
+      if ((j < axes.NumDimensions() && axis == static_cast<int64_t>(i)) ||
           (axes.NumDimensions() == 0 && input_shape[i] == 1)) {
         ORT_ENFORCE(input_shape[i] == 1, "Dimension of input ", i, " must be 1 instead of ", input_shape[i],
                     ". shape=", input_shape);

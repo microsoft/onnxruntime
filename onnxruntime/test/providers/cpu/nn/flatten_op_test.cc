@@ -56,5 +56,13 @@ TEST_F(FlattenOpTest, Flatten_axis4) {
   test_.AddOutput<float>("output", {16L, 1L}, data1_);
   test_.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
+
+TEST_F(FlattenOpTest, Flatten_axis3) {
+  test_.AddAttribute<int64_t>("axis", -1L);
+  test_.AddInput<float>("data", {2L, 3L, 4L, 5L}, data0_);
+  test_.AddOutput<float>("output", {24L, 5L}, data0_);
+  test_.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

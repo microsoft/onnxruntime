@@ -7,6 +7,7 @@
 #include "core/framework/op_kernel.h"
 #include "gsl/gsl_util"
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/common.h"
 
 namespace onnxruntime {
 
@@ -21,9 +22,11 @@ class Flatten final : public OpKernel {
     if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
 
     const TensorShape& X_shape = X->Shape();
-    ORT_ENFORCE(gsl::narrow_cast<int64_t>(X_shape.NumDimensions()) >= axis_, "The rank of input tensor must be >= axis");
+    auto axis = axis_;
+    axis = HandleNegativeAxis(axis, X_shape.NumDimensions());  // handle negative and enforce axis is valid
+    ORT_ENFORCE(gsl::narrow_cast<int64_t>(X_shape.NumDimensions()) >= axis, "The rank of input tensor must be >= axis");
 
-    Tensor* Y = context->Output(0, TensorShape({X_shape.SizeToDimension(axis_), X_shape.SizeFromDimension(axis_)}));
+    Tensor* Y = context->Output(0, TensorShape({X_shape.SizeToDimension(axis), X_shape.SizeFromDimension(axis)}));
 
     CopyCpuTensor(X, Y);
 
