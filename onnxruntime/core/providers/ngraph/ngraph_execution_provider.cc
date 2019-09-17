@@ -516,13 +516,16 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
   ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", fused_node->Name());
 
   const Graph& node_subgraph = node_function->Body();
-  onnxruntime::Model model{node_subgraph.Name(), true};
+  onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{},
+                           IOnnxRuntimeOpSchemaRegistryList{}, node_subgraph.DomainToVersionMap()};
 
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
   *(model_proto.mutable_graph()) = node_subgraph.ToGraphProto();
 
+  // remove the following 4 lines when a fix for unknown domains is merged into nGraph
+  model_proto.clear_opset_import();
   auto opset = model_proto.add_opset_import();
   opset->set_domain(kOnnxDomain);
   opset->set_version(node_subgraph.DomainToVersionMap().at(kOnnxDomain));
