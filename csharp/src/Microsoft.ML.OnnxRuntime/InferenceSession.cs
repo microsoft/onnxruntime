@@ -272,7 +272,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             IntPtr status = NativeMethods.OrtSessionGetInputName(
                                                 _nativeHandle,
-                                                inclusion,
+                                                InputInclusion.InputsOnly,
                                                 (UIntPtr)index,
                                                 NativeMemoryAllocator.DefaultInstance.Handle,
                                                 out nameHandle);
