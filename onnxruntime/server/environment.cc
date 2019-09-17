@@ -36,7 +36,7 @@ ServerEnvironment::ServerEnvironment(OrtLoggingLevel severity, spdlog::sinks_ini
                                                                                                logger_id_("ServerApp"),
                                                                                                sink_(sink),
                                                                                                default_logger_(std::make_shared<spdlog::logger>(logger_id_, sink)),
-                                                                                               runtime_environment_(severity, logger_id_.c_str(), Log, default_logger_.get()),
+                                                                                               runtime_environment_(severity, logger_id_.c_str(), Log, default_logger_.get())
                                                                                                {
   spdlog::set_automatic_registration(false);
   spdlog::set_level(Convert(severity_));
@@ -44,31 +44,28 @@ ServerEnvironment::ServerEnvironment(OrtLoggingLevel severity, spdlog::sinks_ini
 }
 
 void ServerEnvironment::InitializeModel(const std::string& model_path, const std::string& model_name, const std::string& model_version) {
-  result = sessions_.try_emplace(std::make_pair(model_name, model_version), SesssionHolder{
-    Ort::Session(runtime_environment_, model_path.c_str(), Ort::SessionOptions())
-  });
+  auto result = sessions_.emplace(std::piecewise_construct, std::forward_as_tuple(model_name, model_version), std::forward_as_tuple(runtime_environment_, model_path.c_str(), Ort::SessionOptions()));
 
   if (!result.second){
-    throw Ort::Exception("Model of that name already loaded.", ORT_INVALID_ARGUMENT)
+    throw Ort::Exception("Model of that name already loaded.", ORT_INVALID_ARGUMENT);
   }
 
   auto iterator = result.first;
-  auto sessionDetails = iterator -> second; 
-  auto output_count = sessionDetails.session.GetOutputCount();
+  auto output_count = (iterator -> second).session.GetOutputCount();
 
   Ort::AllocatorWithDefaultOptions allocator;
   for (size_t i = 0; i < output_count; i++) {
-    auto name = session.GetOutputName(i, allocator);
-    sessionDetails.output_names.push_back(name);
+    auto name = (iterator -> second).session.GetOutputName(i, allocator);
+    (iterator -> second).output_names.push_back(name);
     allocator.Free(name);
   }
 }
 
 const std::vector<std::string>& ServerEnvironment::GetModelOutputNames(const std::string& model_name, const std::string& model_version) const {
   auto identifier = std::make_pair(model_name, model_version);
-  it = sessions_.find(identifier);
+  auto it = sessions_.find(identifier);
     if (it == sessions_.end()){
-      throw Ort::Exception("No model loaded of that name.", ORT_NO_MODEL)
+      throw Ort::Exception("No model loaded of that name.", ORT_NO_MODEL);
     } 
   
   return it->second.output_names;
@@ -80,9 +77,9 @@ OrtLoggingLevel ServerEnvironment::GetLogSeverity() const {
 
 const Ort::Session& ServerEnvironment::GetSession(const std::string& model_name, const std::string& model_version) const {
   auto identifier = std::make_pair(model_name, model_version);
-  it = sessions_.find(model_name);
+  auto it = sessions_.find(identifier);
     if (it == sessions_.end()){
-      throw Ort::Exception("No model loaded of that name.", ORT_NO_MODEL)
+      throw Ort::Exception("No model loaded of that name.", ORT_NO_MODEL);
     } 
   
   return it->second.session;
@@ -98,14 +95,14 @@ std::shared_ptr<spdlog::logger> ServerEnvironment::GetAppLogger() const {
   return default_logger_;
 }
 
-const void ServerEnvironment::UnloadModel(const std::string& model_name, const std::string& model_version) {
+void ServerEnvironment::UnloadModel(const std::string& model_name, const std::string& model_version) {
   auto identifier = std::make_pair(model_name, model_version);
-  it = sessions_.find(model_name);
+  auto it = sessions_.find(identifier);
     if (it == sessions_.end()){
-      throw Ort::Exception("No model loaded of that name.", ORT_NO_MODEL)
+      throw Ort::Exception("No model loaded of that name.", ORT_NO_MODEL);
     } 
   
-  sessions.erase(it);
+  sessions_.erase(it);
 }
 
 }  // namespace server

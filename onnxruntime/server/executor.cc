@@ -131,12 +131,12 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
       output_names.push_back(name);
     }
   } else {
-    output_names = env_->GetModelOutputNames();
+    output_names = env_->GetModelOutputNames(model_name, model_version);
   }
 
   std::vector<Ort::Value> outputs;
   try {
-    outputs = Run(env_->GetSession(), run_options, input_names, input_values, output_names);
+    outputs = Run(env_->GetSession(model_name, model_version), run_options, input_names, input_values, output_names);
   } catch (const Ort::Exception& e) {
     return GenerateProtobufStatus(e.GetOrtErrorCode(), e.what());
   }

@@ -8,6 +8,7 @@
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include <spdlog/spdlog.h>
+#include <map>
 
 namespace onnxruntime {
 namespace server {
@@ -36,11 +37,12 @@ class ServerEnvironment {
   Ort::Env runtime_environment_;
   Ort::SessionOptions options_;
 
-  struct SesssionHolder {
+  struct SessionHolder {
       Ort::Session session;
       std::vector<std::string> output_names;
-      explicit SessionHolder(Ort::Session in_session) : session(in_session)
+      explicit SessionHolder(Ort::Env &env, std::string path, const Ort::SessionOptions &options) : session(nullptr)
       {
+        session = Ort::Session(env, path.c_str(), options);
       };
       ~SessionHolder() = default;
       SessionHolder(const SessionHolder&) = delete;
@@ -48,7 +50,7 @@ class ServerEnvironment {
       SessionHolder& operator=(const SessionHolder&) = delete; 
   };
 
-  std::map<std::string, SessionHolder> sessions_;
+  std::map<std::pair<std::string, std::string>, ServerEnvironment::SessionHolder> sessions_;
 };
 
 }  // namespace server
