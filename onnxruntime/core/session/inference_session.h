@@ -46,6 +46,15 @@ namespace logging {
 class LoggingManager;
 }
 
+struct FreeDimensionOverride {
+  FreeDimensionOverride(const std::basic_string<ORTCHAR_T>& dimension_symbol0,
+                        int64_t dimension_override0)
+      : dimension_symbol(dimension_symbol0), dimension_override(dimension_override0) {
+  }
+  std::basic_string<ORTCHAR_T> dimension_symbol;
+  int64_t dimension_override;
+};
+
 /**
   * Configuration information for a session.
   */
@@ -89,6 +98,8 @@ struct SessionOptions {
 
   // How many threads in the session thread pool.
   int session_thread_pool_size = -1;
+
+  std::vector<FreeDimensionOverride> free_dimension_overrides;
 };
 
 /**

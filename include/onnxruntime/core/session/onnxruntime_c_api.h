@@ -255,6 +255,9 @@ ORT_API_STATUS(OrtSetSessionGraphOptimizationLevel, _Inout_ OrtSessionOptions* o
  */
 ORT_API_STATUS(OrtSetSessionThreadPoolSize, _Inout_ OrtSessionOptions* options, int session_thread_pool_size);
 
+ORT_API_STATUS(OrtAddFreeDimensionOverride, _Inout_ OrtSessionOptions* options,
+               _In_ const ORTCHAR_T* dim_symbol, _In_ int64_t dim_override);
+
 /**
   * To use additional providers, you must build ORT with the extra providers enabled. Then call one of these
   * functions to enable them in the session:
@@ -540,7 +543,7 @@ ORT_API_STATUS(OrtCreateValue, _In_ const OrtValue* const* in, size_t num_values
 ORT_API_STATUS(OrtCreateOpaqueValue, _In_ const char* domain_name, _In_ const char* type_name,
                _In_ const void* data_container, size_t data_container_size, _Outptr_ OrtValue** out);
 
- /**
+/**
    * Fetch data from an OrtValue that contains a value of non-standard type created for
    * experiments or while awaiting standardization.
    * \domain_name - domain name for the Opaque type, null terminated.

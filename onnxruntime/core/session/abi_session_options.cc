@@ -137,3 +137,9 @@ ORT_API_STATUS_IMPL(OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options
   options->value.session_thread_pool_size = session_thread_pool_size;
   return nullptr;
 }
+
+ORT_API_STATUS_IMPL(OrtAddFreeDimensionOverride, _Inout_ OrtSessionOptions* options,
+                    _In_ const ORTCHAR_T* dim_symbol, _In_ int64_t dim_override) {
+  options->value.free_dimension_overrides.push_back(onnxruntime::FreeDimensionOverride(dim_symbol, dim_override));
+  return nullptr;
+}
