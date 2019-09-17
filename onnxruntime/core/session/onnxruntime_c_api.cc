@@ -1106,17 +1106,6 @@ ORT_API_STATUS_IMPL(OrtApis::GetOpaqueValue, const char* domain_name, const char
 // End support for non-tensor types
 
 static constexpr OrtApi ort_api_1 = {
-    &OrtApis::ReleaseEnv,
-    &OrtApis::ReleaseStatus,
-    &OrtApis::ReleaseMemoryInfo,
-    &OrtApis::ReleaseSession,
-    &OrtApis::ReleaseValue,
-    &OrtApis::ReleaseRunOptions,
-    &OrtApis::ReleaseTypeInfo,
-    &OrtApis::ReleaseTensorTypeAndShapeInfo,
-    &OrtApis::ReleaseSessionOptions,
-    &OrtApis::ReleaseCustomOpDomain,
-
     &OrtApis::CreateStatus,
     &OrtApis::GetErrorCode,
     &OrtApis::GetErrorMessage,
@@ -1210,6 +1199,17 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::KernelContext_GetOutputCount,
     &OrtApis::KernelContext_GetInput,
     &OrtApis::KernelContext_GetOutput,
+
+    &OrtApis::ReleaseEnv,
+    &OrtApis::ReleaseStatus,
+    &OrtApis::ReleaseMemoryInfo,
+    &OrtApis::ReleaseSession,
+    &OrtApis::ReleaseValue,
+    &OrtApis::ReleaseRunOptions,
+    &OrtApis::ReleaseTypeInfo,
+    &OrtApis::ReleaseTensorTypeAndShapeInfo,
+    &OrtApis::ReleaseSessionOptions,
+    &OrtApis::ReleaseCustomOpDomain,
 };
 
 const OrtApi* ORT_API_CALL OrtGetApi(uint32_t version) NO_EXCEPTION { return &ort_api_1; }

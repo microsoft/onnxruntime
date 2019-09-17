@@ -204,17 +204,6 @@ typedef enum OrtMemType {
 } OrtMemType;
 
 struct OrtApi {
-  ORT_CLASS_RELEASE(Env);
-  ORT_CLASS_RELEASE(Status);  // nullptr for Status* indicates success
-  ORT_CLASS_RELEASE(MemoryInfo);
-  ORT_CLASS_RELEASE(Session);  //Don't call OrtReleaseSession from Dllmain (because session owns a thread pool)
-  ORT_CLASS_RELEASE(Value);
-  ORT_CLASS_RELEASE(RunOptions);
-  ORT_CLASS_RELEASE(TypeInfo);
-  ORT_CLASS_RELEASE(TensorTypeAndShapeInfo);
-  ORT_CLASS_RELEASE(SessionOptions);
-  ORT_CLASS_RELEASE(CustomOpDomain);
-
   /**
 * \param msg A null-terminated string. Its content will be copied into the newly created OrtStatus
 */
@@ -598,6 +587,17 @@ struct OrtApi {
   OrtStatus*(ORT_API_CALL* KernelContext_GetOutputCount)(_In_ const OrtKernelContext* context, _Out_ size_t* out)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* KernelContext_GetInput)(_In_ const OrtKernelContext* context, _In_ size_t index, _Out_ const OrtValue** out)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* KernelContext_GetOutput)(_Inout_ OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count, _Outptr_ OrtValue** out)NO_EXCEPTION;
+
+  ORT_CLASS_RELEASE(Env);
+  ORT_CLASS_RELEASE(Status);  // nullptr for Status* indicates success
+  ORT_CLASS_RELEASE(MemoryInfo);
+  ORT_CLASS_RELEASE(Session);  //Don't call OrtReleaseSession from Dllmain (because session owns a thread pool)
+  ORT_CLASS_RELEASE(Value);
+  ORT_CLASS_RELEASE(RunOptions);
+  ORT_CLASS_RELEASE(TypeInfo);
+  ORT_CLASS_RELEASE(TensorTypeAndShapeInfo);
+  ORT_CLASS_RELEASE(SessionOptions);
+  ORT_CLASS_RELEASE(CustomOpDomain);
 };
 
 typedef struct OrtApi OrtApi;
