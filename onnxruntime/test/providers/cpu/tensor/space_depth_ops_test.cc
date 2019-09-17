@@ -190,7 +190,7 @@ TEST(TensorOpTest, DepthToSpaceTest_3) {
 }
 
 TEST(TensorOpTest, DepthToSpaceTest_4) {
-  OpTester test("DepthToSpace", 11);  // create an opset 11 model with attribute present
+  OpTester test("DepthToSpace", 11);  // create an opset 11 model with attribute present = "DCR" mode
   const int64_t blocksize = 2;
   test.AddAttribute("blocksize", blocksize);
   test.AddAttribute("mode", "DCR");
@@ -230,6 +230,33 @@ TEST(TensorOpTest, DepthToSpaceTest_4) {
       122., 140., 123., 141., 88., 106., 89., 107., 124., 142., 125.,
       143.};
   test.AddOutput<float>("output", {2, 3, 6, 4}, result);
+  test.Run();
+}
+
+TEST(TensorOpTest, DepthToSpaceTest_5) {
+  OpTester test("DepthToSpace", 11);  // create an opset 11 model with attribute present = "CRD" mode
+  const int64_t blocksize = 2;
+  test.AddAttribute("blocksize", blocksize);
+  test.AddAttribute("mode", "CRD");
+
+  const int64_t N = 1, C = 4, H = 2, W = 3;
+  const std::vector<float> X = {0., 1., 2.,
+                                3., 4., 5.,
+                                9., 10., 11.,
+                                12., 13., 14.,
+                                18., 19., 20.,
+                                21., 22., 23.,
+                                27., 28., 29.,
+                                30., 31., 32.};
+
+  test.AddInput<float>("input", {N, C, H, W}, X);
+
+  const std::vector<float> result = {0., 9., 1., 10., 2., 11.,
+                                     18., 27., 19., 28., 20., 29.,
+                                     3., 12., 4., 13., 5., 14.,
+                                    21., 30., 22., 31., 23., 32.};
+
+  test.AddOutput<float>("output", {1, 1, 4, 6}, result);
   test.Run();
 }
 
