@@ -52,7 +52,7 @@ class SessionState {
   SessionState(const ExecutionProviders& execution_providers,
                bool enable_mem_pattern,
                concurrency::ThreadPool* thread_pool,
-               concurrency::ThreadPool* inter_op_thread_pool = nullptr)
+               concurrency::ThreadPool* inter_op_thread_pool)
       : execution_providers_{execution_providers},
         enable_mem_pattern_(enable_mem_pattern),
         thread_pool_(thread_pool),
