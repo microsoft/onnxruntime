@@ -218,7 +218,7 @@ struct Value : Base<OrtValue> {
   static Value CreateMap(Value& keys, Value& values);
   static Value CreateSequence(std::vector<Value>& values);
 
-  template<typename T>
+  template <typename T>
   static Value CreateOpaque(const char* domain, const char* type_name, const T&);
 
   template <typename T>
@@ -293,6 +293,8 @@ struct CustomOpApi {
   const OrtValue* KernelContext_GetInput(const OrtKernelContext* context, _In_ size_t index);
   size_t KernelContext_GetOutputCount(const OrtKernelContext* context);
   OrtValue* KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count);
+
+  void ThrowOnError(OrtStatus* result);
 
  private:
   const OrtApi& api_;

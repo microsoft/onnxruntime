@@ -15,6 +15,15 @@
 
 namespace Ort {
 
+inline void ThrowOnError(OrtStatus* status) {
+  if (status) {
+    std::string error_message = Ort::g_api->GetErrorMessage(status);
+    OrtErrorCode error_code = Ort::g_api->GetErrorCode(status);
+    Ort::g_api->ReleaseStatus(status);
+    throw Ort::Exception(std::move(error_message), error_code);
+  }
+}
+
 // This template converts a C++ type into it's ONNXTensorElementDataType
 template <typename T>
 struct TypeToTensorType;
@@ -40,172 +49,172 @@ template <>
 struct TypeToTensorType<uint64_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64; };
 
 inline AllocatorWithDefaultOptions::AllocatorWithDefaultOptions() {
-  ORT_THROW_ON_ERROR(g_api->GetAllocatorWithDefaultOptions(&p_));
+  ThrowOnError(g_api->GetAllocatorWithDefaultOptions(&p_));
 }
 
 inline void* AllocatorWithDefaultOptions::Alloc(size_t size) {
   void* out;
-  ORT_THROW_ON_ERROR(g_api->AllocatorAlloc(p_, size, &out));
+  ThrowOnError(g_api->AllocatorAlloc(p_, size, &out));
   return out;
 }
 
 inline void AllocatorWithDefaultOptions::Free(void* p) {
-  ORT_THROW_ON_ERROR(g_api->AllocatorFree(p_, p));
+  ThrowOnError(g_api->AllocatorFree(p_, p));
 }
 
 inline const OrtMemoryInfo* AllocatorWithDefaultOptions::GetInfo() const {
   const OrtMemoryInfo* out;
-  ORT_THROW_ON_ERROR(g_api->AllocatorGetInfo(p_, &out));
+  ThrowOnError(g_api->AllocatorGetInfo(p_, &out));
   return out;
 }
 
 inline MemoryInfo MemoryInfo::CreateCpu(OrtAllocatorType type, OrtMemType mem_type) {
   OrtMemoryInfo* p;
-  ORT_THROW_ON_ERROR(g_api->CreateCpuMemoryInfo(type, mem_type, &p));
+  ThrowOnError(g_api->CreateCpuMemoryInfo(type, mem_type, &p));
   return MemoryInfo(p);
 }
 
 inline MemoryInfo::MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
-  ORT_THROW_ON_ERROR(g_api->CreateMemoryInfo(name, type, id, mem_type, &p_));
+  ThrowOnError(g_api->CreateMemoryInfo(name, type, id, mem_type, &p_));
 }
 
 inline Env::Env(OrtLoggingLevel default_warning_level, _In_ const char* logid) {
-  ORT_THROW_ON_ERROR(g_api->CreateEnv(default_warning_level, logid, &p_));
+  ThrowOnError(g_api->CreateEnv(default_warning_level, logid, &p_));
 }
 
 inline Env::Env(OrtLoggingLevel default_warning_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param) {
-  ORT_THROW_ON_ERROR(g_api->CreateEnvWithCustomLogger(logging_function, logger_param, default_warning_level, logid, &p_));
+  ThrowOnError(g_api->CreateEnvWithCustomLogger(logging_function, logger_param, default_warning_level, logid, &p_));
 }
 
 inline CustomOpDomain::CustomOpDomain(const char* domain) {
-  ORT_THROW_ON_ERROR(g_api->CreateCustomOpDomain(domain, &p_));
+  ThrowOnError(g_api->CreateCustomOpDomain(domain, &p_));
 }
 
 inline void CustomOpDomain::Add(OrtCustomOp* op) {
-  ORT_THROW_ON_ERROR(g_api->CustomOpDomain_Add(p_, op));
+  ThrowOnError(g_api->CustomOpDomain_Add(p_, op));
 }
 
 inline RunOptions::RunOptions() {
-  ORT_THROW_ON_ERROR(g_api->CreateRunOptions(&p_));
+  ThrowOnError(g_api->CreateRunOptions(&p_));
 }
 
 inline RunOptions& RunOptions::SetRunLogVerbosityLevel(int level) {
-  ORT_THROW_ON_ERROR(g_api->RunOptionsSetRunLogVerbosityLevel(p_, level));
+  ThrowOnError(g_api->RunOptionsSetRunLogVerbosityLevel(p_, level));
   return *this;
 }
 
 inline RunOptions& RunOptions::SetRunLogSeverityLevel(int level) {
-  ORT_THROW_ON_ERROR(g_api->RunOptionsSetRunLogSeverityLevel(p_, level));
+  ThrowOnError(g_api->RunOptionsSetRunLogSeverityLevel(p_, level));
   return *this;
 }
 
 inline int RunOptions::GetRunLogVerbosityLevel() const {
   int out;
-  ORT_THROW_ON_ERROR(g_api->RunOptionsGetRunLogVerbosityLevel(p_, &out));
+  ThrowOnError(g_api->RunOptionsGetRunLogVerbosityLevel(p_, &out));
   return out;
 }
 
 inline RunOptions& RunOptions::SetRunTag(const char* run_tag) {
-  ORT_THROW_ON_ERROR(g_api->RunOptionsSetRunTag(p_, run_tag));
+  ThrowOnError(g_api->RunOptionsSetRunTag(p_, run_tag));
   return *this;
 }
 
 inline const char* RunOptions::GetRunTag() const {
   const char* out;
-  ORT_THROW_ON_ERROR(g_api->RunOptionsGetRunTag(p_, &out));
+  ThrowOnError(g_api->RunOptionsGetRunTag(p_, &out));
   return out;
 }
 
 inline RunOptions& RunOptions::SetTerminate() {
-  ORT_THROW_ON_ERROR(g_api->RunOptionsSetTerminate(p_));
+  ThrowOnError(g_api->RunOptionsSetTerminate(p_));
   return *this;
 }
 
 inline RunOptions& RunOptions::UnsetTerminate() {
-  ORT_THROW_ON_ERROR(g_api->RunOptionsUnsetTerminate(p_));
+  ThrowOnError(g_api->RunOptionsUnsetTerminate(p_));
   return *this;
 }
 
 inline SessionOptions::SessionOptions() {
-  ORT_THROW_ON_ERROR(g_api->CreateSessionOptions(&p_));
+  ThrowOnError(g_api->CreateSessionOptions(&p_));
 }
 
 inline SessionOptions SessionOptions::Clone() const {
   OrtSessionOptions* out;
-  ORT_THROW_ON_ERROR(g_api->CloneSessionOptions(p_, &out));
+  ThrowOnError(g_api->CloneSessionOptions(p_, &out));
   return SessionOptions{out};
 }
 
 inline SessionOptions& SessionOptions::SetThreadPoolSize(int session_thread_pool_size) {
-  ORT_THROW_ON_ERROR(g_api->SetSessionThreadPoolSize(p_, session_thread_pool_size));
+  ThrowOnError(g_api->SetSessionThreadPoolSize(p_, session_thread_pool_size));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level) {
-  ORT_THROW_ON_ERROR(g_api->SetSessionGraphOptimizationLevel(p_, graph_optimization_level));
+  ThrowOnError(g_api->SetSessionGraphOptimizationLevel(p_, graph_optimization_level));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::SetOptimizedModelFilePath(const ORTCHAR_T* optimized_model_filepath) {
-  ORT_THROW_ON_ERROR(g_api->SetOptimizedModelFilePath(p_, optimized_model_filepath));
+  ThrowOnError(g_api->SetOptimizedModelFilePath(p_, optimized_model_filepath));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::EnableProfiling(const ORTCHAR_T* profile_file_prefix) {
-  ORT_THROW_ON_ERROR(g_api->EnableProfiling(p_, profile_file_prefix));
+  ThrowOnError(g_api->EnableProfiling(p_, profile_file_prefix));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::DisableProfiling() {
-  ORT_THROW_ON_ERROR(g_api->DisableProfiling(p_));
+  ThrowOnError(g_api->DisableProfiling(p_));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::EnableMemPattern() {
-  ORT_THROW_ON_ERROR(g_api->EnableMemPattern(p_));
+  ThrowOnError(g_api->EnableMemPattern(p_));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::DisableMemPattern() {
-  ORT_THROW_ON_ERROR(g_api->DisableMemPattern(p_));
+  ThrowOnError(g_api->DisableMemPattern(p_));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::EnableCpuMemArena() {
-  ORT_THROW_ON_ERROR(g_api->EnableCpuMemArena(p_));
+  ThrowOnError(g_api->EnableCpuMemArena(p_));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::DisableCpuMemArena() {
-  ORT_THROW_ON_ERROR(g_api->DisableCpuMemArena(p_));
+  ThrowOnError(g_api->DisableCpuMemArena(p_));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::EnableSequentialExecution() {
-  ORT_THROW_ON_ERROR(g_api->EnableSequentialExecution(p_));
+  ThrowOnError(g_api->EnableSequentialExecution(p_));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::DisableSequentialExecution() {
-  ORT_THROW_ON_ERROR(g_api->DisableSequentialExecution(p_));
+  ThrowOnError(g_api->DisableSequentialExecution(p_));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::SetLogId(const char* logid) {
-  ORT_THROW_ON_ERROR(g_api->SetSessionLogId(p_, logid));
+  ThrowOnError(g_api->SetSessionLogId(p_, logid));
   return *this;
 }
 inline SessionOptions& SessionOptions::Add(OrtCustomOpDomain* custom_op_domain) {
-  ORT_THROW_ON_ERROR(g_api->AddCustomOpDomain(p_, custom_op_domain));
+  ThrowOnError(g_api->AddCustomOpDomain(p_, custom_op_domain));
   return *this;
 }
 
 inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {
-  ORT_THROW_ON_ERROR(g_api->CreateSession(env, model_path, options, &p_));
+  ThrowOnError(g_api->CreateSession(env, model_path, options, &p_));
 }
 
 inline Session::Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options) {
-  ORT_THROW_ON_ERROR(g_api->CreateSessionFromArray(env, model_data, model_data_length, options, &p_));
+  ThrowOnError(g_api->CreateSessionFromArray(env, model_data, model_data_length, options, &p_));
 }
 
 inline std::vector<Value> Session::Run(const RunOptions& run_options, const char* const* input_names, Value* input_values, size_t input_count,
@@ -222,65 +231,65 @@ inline void Session::Run(const RunOptions& run_options, const char* const* input
   static_assert(sizeof(Value) == sizeof(OrtValue*), "Value is really just an array of OrtValue* in memory, so we can reinterpret_cast safely");
   auto ort_input_values = reinterpret_cast<OrtValue**>(input_values);
   auto ort_output_values = reinterpret_cast<OrtValue**>(output_values);
-  ORT_THROW_ON_ERROR(g_api->Run(p_, run_options, input_names, ort_input_values, input_count, output_names, output_count, ort_output_values));
+  ThrowOnError(g_api->Run(p_, run_options, input_names, ort_input_values, input_count, output_names, output_count, ort_output_values));
 }
 
 inline size_t Session::GetInputCount() const {
   size_t out;
-  ORT_THROW_ON_ERROR(g_api->SessionGetInputCount(p_, &out));
+  ThrowOnError(g_api->SessionGetInputCount(p_, &out));
   return out;
 }
 
 inline size_t Session::GetOutputCount() const {
   size_t out;
-  ORT_THROW_ON_ERROR(g_api->SessionGetOutputCount(p_, &out));
+  ThrowOnError(g_api->SessionGetOutputCount(p_, &out));
   return out;
 }
 
 inline char* Session::GetInputName(size_t index, OrtAllocator* allocator) const {
   char* out;
-  ORT_THROW_ON_ERROR(g_api->SessionGetInputName(p_, index, allocator, &out));
+  ThrowOnError(g_api->SessionGetInputName(p_, index, allocator, &out));
   return out;
 }
 
 inline char* Session::GetOutputName(size_t index, OrtAllocator* allocator) const {
   char* out;
-  ORT_THROW_ON_ERROR(g_api->SessionGetOutputName(p_, index, allocator, &out));
+  ThrowOnError(g_api->SessionGetOutputName(p_, index, allocator, &out));
   return out;
 }
 
 inline TypeInfo Session::GetInputTypeInfo(size_t index) const {
   OrtTypeInfo* out;
-  ORT_THROW_ON_ERROR(g_api->SessionGetInputTypeInfo(p_, index, &out));
+  ThrowOnError(g_api->SessionGetInputTypeInfo(p_, index, &out));
   return TypeInfo{out};
 }
 
 inline TypeInfo Session::GetOutputTypeInfo(size_t index) const {
   OrtTypeInfo* out;
-  ORT_THROW_ON_ERROR(g_api->SessionGetOutputTypeInfo(p_, index, &out));
+  ThrowOnError(g_api->SessionGetOutputTypeInfo(p_, index, &out));
   return TypeInfo{out};
 }
 
 inline ONNXTensorElementDataType TensorTypeAndShapeInfo::GetElementType() const {
   ONNXTensorElementDataType out;
-  ORT_THROW_ON_ERROR(g_api->GetTensorElementType(p_, &out));
+  ThrowOnError(g_api->GetTensorElementType(p_, &out));
   return out;
 }
 
 inline size_t TensorTypeAndShapeInfo::GetElementCount() const {
   size_t out;
-  ORT_THROW_ON_ERROR(g_api->GetTensorShapeElementCount(p_, &out));
+  ThrowOnError(g_api->GetTensorShapeElementCount(p_, &out));
   return static_cast<size_t>(out);
 }
 
 inline size_t TensorTypeAndShapeInfo::GetDimensionsCount() const {
   size_t out;
-  ORT_THROW_ON_ERROR(g_api->GetDimensionsCount(p_, &out));
+  ThrowOnError(g_api->GetDimensionsCount(p_, &out));
   return out;
 }
 
 inline void TensorTypeAndShapeInfo::GetDimensions(int64_t* values, size_t values_count) const {
-  ORT_THROW_ON_ERROR(g_api->GetDimensions(p_, values, values_count));
+  ThrowOnError(g_api->GetDimensions(p_, values, values_count));
 }
 
 inline std::vector<int64_t> TensorTypeAndShapeInfo::GetShape() const {
@@ -291,13 +300,13 @@ inline std::vector<int64_t> TensorTypeAndShapeInfo::GetShape() const {
 
 inline Unowned<TensorTypeAndShapeInfo> TypeInfo::GetTensorTypeAndShapeInfo() const {
   const OrtTensorTypeAndShapeInfo* out;
-  ORT_THROW_ON_ERROR(g_api->CastTypeInfoToTensorInfo(p_, &out));
+  ThrowOnError(g_api->CastTypeInfoToTensorInfo(p_, &out));
   return Unowned<TensorTypeAndShapeInfo>{const_cast<OrtTensorTypeAndShapeInfo*>(out)};
 }
 
 inline ONNXType TypeInfo::GetONNXType() const {
   ONNXType out;
-  ORT_THROW_ON_ERROR(g_api->GetOnnxTypeFromTypeInfo(p_, &out));
+  ThrowOnError(g_api->GetOnnxTypeFromTypeInfo(p_, &out));
   return out;
 }
 
@@ -309,7 +318,7 @@ inline Value Value::CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_
 inline Value Value::CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
                                  ONNXTensorElementDataType type) {
   OrtValue* out;
-  ORT_THROW_ON_ERROR(g_api->CreateTensorWithDataAsOrtValue(info, p_data, p_data_byte_count, shape, shape_len, type, &out));
+  ThrowOnError(g_api->CreateTensorWithDataAsOrtValue(info, p_data, p_data_byte_count, shape, shape_len, type, &out));
   return Value{out};
 }
 
@@ -320,97 +329,106 @@ inline Value Value::CreateTensor(OrtAllocator* allocator, const int64_t* shape, 
 
 inline Value Value::CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type) {
   OrtValue* out;
-  ORT_THROW_ON_ERROR(g_api->CreateTensorAsOrtValue(allocator, shape, shape_len, type, &out));
+  ThrowOnError(g_api->CreateTensorAsOrtValue(allocator, shape, shape_len, type, &out));
   return Value{out};
 }
 
 inline Value Value::CreateMap(Value& keys, Value& values) {
   OrtValue* out;
   OrtValue* inputs[2] = {keys, values};
-  ORT_THROW_ON_ERROR(g_api->CreateValue(inputs, 2, ONNX_TYPE_MAP, &out));
+  ThrowOnError(g_api->CreateValue(inputs, 2, ONNX_TYPE_MAP, &out));
   return Value{out};
 }
 
 inline Value Value::CreateSequence(std::vector<Value>& values) {
   OrtValue* out;
   std::vector<OrtValue*> values_ort{values.data(), values.data() + values.size()};
-  ORT_THROW_ON_ERROR(g_api->CreateValue(values_ort.data(), values_ort.size(), ONNX_TYPE_SEQUENCE, &out));
+  ThrowOnError(g_api->CreateValue(values_ort.data(), values_ort.size(), ONNX_TYPE_SEQUENCE, &out));
   return Value{out};
 }
 
 template <typename T>
 inline Value Value::CreateOpaque(const char* domain, const char* type_name, const T& data_container) {
   OrtValue* out;
-  ORT_THROW_ON_ERROR(g_api->CreateOpaqueValue(domain, type_name, &data_container, sizeof(T), &out));
+  ThrowOnError(g_api->CreateOpaqueValue(domain, type_name, &data_container, sizeof(T), &out));
   return Value{out};
 }
 
 template <typename T>
 inline void Value::GetOpaqueData(const char* domain, const char* type_name, T& out) {
-  ORT_THROW_ON_ERROR(g_api->GetOpaqueValue(domain, type_name, p_, &out, sizeof(T)));
+  ThrowOnError(g_api->GetOpaqueValue(domain, type_name, p_, &out, sizeof(T)));
 }
 
 inline bool Value::IsTensor() const {
   int out;
-  ORT_THROW_ON_ERROR(g_api->IsTensor(p_, &out));
+  ThrowOnError(g_api->IsTensor(p_, &out));
   return out != 0;
 }
 
 inline size_t Value::GetCount() const {
   size_t out;
-  ORT_THROW_ON_ERROR(g_api->GetValueCount(p_, &out));
+  ThrowOnError(g_api->GetValueCount(p_, &out));
   return out;
 }
 
 inline Value Value::GetValue(int index, OrtAllocator* allocator) const {
   OrtValue* out;
-  ORT_THROW_ON_ERROR(g_api->GetValue(p_, index, allocator, &out));
+  ThrowOnError(g_api->GetValue(p_, index, allocator, &out));
   return Value{out};
 }
 
 inline size_t Value::GetStringTensorDataLength() const {
   size_t out;
-  ORT_THROW_ON_ERROR(g_api->GetStringTensorDataLength(p_, &out));
+  ThrowOnError(g_api->GetStringTensorDataLength(p_, &out));
   return out;
 }
 
 inline void Value::GetStringTensorContent(void* buffer, size_t buffer_length, size_t* offsets, size_t offsets_count) const {
-  ORT_THROW_ON_ERROR(g_api->GetStringTensorContent(p_, buffer, buffer_length, offsets, offsets_count));
+  ThrowOnError(g_api->GetStringTensorContent(p_, buffer, buffer_length, offsets, offsets_count));
 }
 
 template <typename T>
 T* Value::GetTensorMutableData() {
   T* out;
-  ORT_THROW_ON_ERROR(g_api->GetTensorMutableData(p_, (void**)&out));
+  ThrowOnError(g_api->GetTensorMutableData(p_, (void**)&out));
   return out;
 }
 
 inline TypeInfo Value::GetTypeInfo() const {
   OrtTypeInfo* output;
-  ORT_THROW_ON_ERROR(g_api->GetTypeInfo(p_, &output));
+  ThrowOnError(g_api->GetTypeInfo(p_, &output));
   return TypeInfo{output};
 }
 
 inline TensorTypeAndShapeInfo Value::GetTensorTypeAndShapeInfo() const {
   OrtTensorTypeAndShapeInfo* output;
-  ORT_THROW_ON_ERROR(g_api->GetTensorTypeAndShape(p_, &output));
+  ThrowOnError(g_api->GetTensorTypeAndShape(p_, &output));
   return TensorTypeAndShapeInfo{output};
 }
 
 //
 // Custom OP API Inlines
 //
+inline void CustomOpApi::ThrowOnError(OrtStatus* status) {
+  if (status) {
+    std::string error_message = api_.GetErrorMessage(status);
+    OrtErrorCode error_code = api_.GetErrorCode(status);
+    api_.ReleaseStatus(status);
+    throw Ort::Exception(std::move(error_message), error_code);
+  }
+}
+
 template <>
 inline float CustomOpApi::KernelInfoGetAttribute<float>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
   float out;
-  ORT_THROW_ON_ERROR(api_.KernelInfoGetAttribute_float(info, name, &out));
+  ThrowOnError(api_.KernelInfoGetAttribute_float(info, name, &out));
   return out;
 }
 
 template <>
 inline int64_t CustomOpApi::KernelInfoGetAttribute<int64_t>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
   int64_t out;
-  ORT_THROW_ON_ERROR(api_.KernelInfoGetAttribute_int64(info, name, &out));
+  ThrowOnError(api_.KernelInfoGetAttribute_int64(info, name, &out));
   return out;
 }
 
@@ -424,50 +442,50 @@ inline std::string CustomOpApi::KernelInfoGetAttribute<std::string>(_In_ const O
   if (api_.GetErrorCode(status) == ORT_INVALID_ARGUMENT) {
     api_.ReleaseStatus(status);
     out.resize(size);
-    ORT_THROW_ON_ERROR(api_.KernelInfoGetAttribute_string(info, name, &out[0], &size));
+    ThrowOnError(api_.KernelInfoGetAttribute_string(info, name, &out[0], &size));
     out.resize(size - 1);  // remove the terminating character '\0'
   } else {
-    ORT_THROW_ON_ERROR(status);
+    ThrowOnError(status);
   }
   return out;
 }
 
 inline OrtTensorTypeAndShapeInfo* CustomOpApi::GetTensorTypeAndShape(_In_ const OrtValue* value) {
   OrtTensorTypeAndShapeInfo* out;
-  ORT_THROW_ON_ERROR(api_.GetTensorTypeAndShape(value, &out));
+  ThrowOnError(api_.GetTensorTypeAndShape(value, &out));
   return out;
 }
 
 inline size_t CustomOpApi::GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info) {
   size_t out;
-  ORT_THROW_ON_ERROR(api_.GetTensorShapeElementCount(info, &out));
+  ThrowOnError(api_.GetTensorShapeElementCount(info, &out));
   return out;
 }
 
 inline ONNXTensorElementDataType CustomOpApi::GetTensorElementType(const OrtTensorTypeAndShapeInfo* info) {
   ONNXTensorElementDataType out;
-  ORT_THROW_ON_ERROR(api_.GetTensorElementType(info, &out));
+  ThrowOnError(api_.GetTensorElementType(info, &out));
   return out;
 }
 
 inline size_t CustomOpApi::GetDimensionsCount(_In_ const OrtTensorTypeAndShapeInfo* info) {
   size_t out;
-  ORT_THROW_ON_ERROR(api_.GetDimensionsCount(info, &out));
+  ThrowOnError(api_.GetDimensionsCount(info, &out));
   return out;
 }
 
 inline void CustomOpApi::GetDimensions(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length) {
-  ORT_THROW_ON_ERROR(api_.GetDimensions(info, dim_values, dim_values_length));
+  ThrowOnError(api_.GetDimensions(info, dim_values, dim_values_length));
 }
 
 inline void CustomOpApi::SetDimensions(OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count) {
-  ORT_THROW_ON_ERROR(api_.SetDimensions(info, dim_values, dim_count));
+  ThrowOnError(api_.SetDimensions(info, dim_values, dim_count));
 }
 
 template <typename T>
 inline T* CustomOpApi::GetTensorMutableData(_Inout_ OrtValue* value) {
   T* data;
-  ORT_THROW_ON_ERROR(api_.GetTensorMutableData(value, reinterpret_cast<void**>(&data)));
+  ThrowOnError(api_.GetTensorMutableData(value, reinterpret_cast<void**>(&data)));
   return data;
 }
 
@@ -488,25 +506,25 @@ inline void CustomOpApi::ReleaseTensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo
 
 inline size_t CustomOpApi::KernelContext_GetInputCount(const OrtKernelContext* context) {
   size_t out;
-  ORT_THROW_ON_ERROR(api_.KernelContext_GetInputCount(context, &out));
+  ThrowOnError(api_.KernelContext_GetInputCount(context, &out));
   return out;
 }
 
 inline const OrtValue* CustomOpApi::KernelContext_GetInput(const OrtKernelContext* context, _In_ size_t index) {
   const OrtValue* out;
-  ORT_THROW_ON_ERROR(api_.KernelContext_GetInput(context, index, &out));
+  ThrowOnError(api_.KernelContext_GetInput(context, index, &out));
   return out;
 }
 
 inline size_t CustomOpApi::KernelContext_GetOutputCount(const OrtKernelContext* context) {
   size_t out;
-  ORT_THROW_ON_ERROR(api_.KernelContext_GetOutputCount(context, &out));
+  ThrowOnError(api_.KernelContext_GetOutputCount(context, &out));
   return out;
 }
 
 inline OrtValue* CustomOpApi::KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count) {
   OrtValue* out;
-  ORT_THROW_ON_ERROR(api_.KernelContext_GetOutput(context, index, dim_values, dim_count, &out));
+  ThrowOnError(api_.KernelContext_GetOutput(context, index, dim_values, dim_count, &out));
   return out;
 }
 

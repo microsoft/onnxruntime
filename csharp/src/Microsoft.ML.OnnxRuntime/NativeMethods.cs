@@ -203,25 +203,25 @@ namespace Microsoft.ML.OnnxRuntime
         #region Runtime/Environment API
 
         public delegate IntPtr /* OrtStatus* */DOrtCreateEnv(LogLevel default_warning_level, string logId, out IntPtr /*(OrtEnv*)*/ env);
-        static public DOrtCreateEnv OrtCreateEnv;
+        public static DOrtCreateEnv OrtCreateEnv;
 
         // OrtReleaseEnv should not be used
         public delegate void DOrtReleaseEnv(IntPtr /*(OrtEnv*)*/ env);
-        static public DOrtReleaseEnv OrtReleaseEnv;
+        public static DOrtReleaseEnv OrtReleaseEnv;
 
         #endregion Runtime/Environment API
 
         #region Status API
         public delegate ErrorCode DOrtGetErrorCode(IntPtr /*(OrtStatus*)*/status);
-        static public DOrtGetErrorCode OrtGetErrorCode;
+        public static DOrtGetErrorCode OrtGetErrorCode;
 
         // returns char*, need to convert to string by the caller.
         // does not free the underlying OrtStatus*
         public delegate IntPtr /* char* */DOrtGetErrorMessage(IntPtr /* (OrtStatus*) */status);
-        static public DOrtGetErrorMessage OrtGetErrorMessage;
+        public static DOrtGetErrorMessage OrtGetErrorMessage;
 
         public delegate void DOrtReleaseStatus(IntPtr /*(OrtStatus*)*/ statusPtr);
-        static public DOrtReleaseStatus OrtReleaseStatus;
+        public static DOrtReleaseStatus OrtReleaseStatus;
 
         #endregion Status API
 
@@ -233,7 +233,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                 byte[] modelPath,
                                                 IntPtr /* (OrtSessionOptions*) */sessopnOptions,
                                                 out IntPtr /**/ session);
-        static public DOrtCreateSession OrtCreateSession;
+        public static DOrtCreateSession OrtCreateSession;
 
         public delegate IntPtr /*(ONNStatus*)*/ DOrtRun(
                                                 IntPtr /*(OrtSession*)*/ session,
@@ -247,106 +247,106 @@ namespace Microsoft.ML.OnnxRuntime
                                                 [MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 5 /*index of outputCount*/)][In, Out]
                                                 IntPtr[] outputValues /* An array of output value pointers. Array must be allocated by the caller */
                                                 );
-        static public DOrtRun OrtRun;
+        public static DOrtRun OrtRun;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSessionGetInputCount(
                                                 IntPtr /*(OrtSession*)*/ session,
                                                 out UIntPtr count);
-        static public DOrtSessionGetInputCount OrtSessionGetInputCount;
+        public static DOrtSessionGetInputCount OrtSessionGetInputCount;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSessionGetOutputCount(
                                                 IntPtr /*(OrtSession*)*/ session,
                                                 out UIntPtr count);
-        static public DOrtSessionGetOutputCount OrtSessionGetOutputCount;
+        public static DOrtSessionGetOutputCount OrtSessionGetOutputCount;
 
         public delegate IntPtr /*(OrtStatus*)*/DOrtSessionGetInputName(
                                                 IntPtr /*(OrtSession*)*/ session,
                                                 UIntPtr index,
                                                 IntPtr /*(OrtAllocator*)*/ allocator,
                                                 out IntPtr /*(char**)*/name);
-        static public DOrtSessionGetInputName OrtSessionGetInputName;
+        public static DOrtSessionGetInputName OrtSessionGetInputName;
 
         public delegate IntPtr /*(OrtStatus*)*/DOrtSessionGetOutputName(
                                                 IntPtr /*(OrtSession*)*/ session,
                                                 UIntPtr index,
                                                 IntPtr /*(OrtAllocator*)*/ allocator,
                                                 out IntPtr /*(char**)*/name);
-        static public DOrtSessionGetOutputName OrtSessionGetOutputName;
+        public static DOrtSessionGetOutputName OrtSessionGetOutputName;
 
         // release the typeinfo using OrtReleaseTypeInfo
         public delegate IntPtr /*(OrtStatus*)*/DOrtSessionGetInputTypeInfo(
                                                 IntPtr /*(const OrtSession*)*/ session,
                                                 UIntPtr index,
                                                 out IntPtr /*(struct OrtTypeInfo**)*/ typeInfo);
-        static public DOrtSessionGetInputTypeInfo OrtSessionGetInputTypeInfo;
+        public static DOrtSessionGetInputTypeInfo OrtSessionGetInputTypeInfo;
 
         // release the typeinfo using OrtReleaseTypeInfo
         public delegate IntPtr /*(OrtStatus*)*/DOrtSessionGetOutputTypeInfo(
                                                 IntPtr /*(const OrtSession*)*/ session,
                                                 UIntPtr index,
                                                 out IntPtr /* (struct OrtTypeInfo**)*/ typeInfo);
-        static public DOrtSessionGetOutputTypeInfo OrtSessionGetOutputTypeInfo;
+        public static DOrtSessionGetOutputTypeInfo OrtSessionGetOutputTypeInfo;
 
         public delegate void DOrtReleaseTypeInfo(IntPtr /*(OrtTypeInfo*)*/session);
-        static public DOrtReleaseTypeInfo OrtReleaseTypeInfo;
+        public static DOrtReleaseTypeInfo OrtReleaseTypeInfo;
 
         public delegate void DOrtReleaseSession(IntPtr /*(OrtSession*)*/session);
-        static public DOrtReleaseSession OrtReleaseSession;
+        public static DOrtReleaseSession OrtReleaseSession;
 
         #endregion InferenceSession API
 
         #region SessionOptions API
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateSessionOptions(out IntPtr /*(OrtSessionOptions**)*/ sessionOptions);
-        static public DOrtCreateSessionOptions OrtCreateSessionOptions;
+        public static DOrtCreateSessionOptions OrtCreateSessionOptions;
 
         public delegate void DOrtReleaseSessionOptions(IntPtr /*(OrtSessionOptions*)*/session);
-        static public DOrtReleaseSessionOptions OrtReleaseSessionOptions;
+        public static DOrtReleaseSessionOptions OrtReleaseSessionOptions;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtCloneSessionOptions(IntPtr /*(OrtSessionOptions*)*/ sessionOptions, out IntPtr /*(OrtSessionOptions**)*/ output);
-        static public DOrtCloneSessionOptions OrtCloneSessionOptions;
+        public static DOrtCloneSessionOptions OrtCloneSessionOptions;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtEnableSequentialExecution(IntPtr /*(OrtSessionOptions*)*/ options);
-        static public DOrtEnableSequentialExecution OrtEnableSequentialExecution;
+        public static DOrtEnableSequentialExecution OrtEnableSequentialExecution;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtDisableSequentialExecution(IntPtr /*(OrtSessionOptions*)*/ options);
-        static public DOrtDisableSequentialExecution OrtDisableSequentialExecution;
+        public static DOrtDisableSequentialExecution OrtDisableSequentialExecution;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetOptimizedModelFilePath(IntPtr /* OrtSessionOptions* */ options, [MarshalAs(UnmanagedType.LPWStr)]string optimizedModelFilepath);
-        static public DOrtSetOptimizedModelFilePath OrtSetOptimizedModelFilePath;
+        public static DOrtSetOptimizedModelFilePath OrtSetOptimizedModelFilePath;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtEnableProfiling(IntPtr /* OrtSessionOptions* */ options, string profilePathPrefix);
-        static public DOrtEnableProfiling OrtEnableProfiling;
+        public static DOrtEnableProfiling OrtEnableProfiling;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtDisableProfiling(IntPtr /* OrtSessionOptions* */ options);
-        static public DOrtDisableProfiling OrtDisableProfiling;
+        public static DOrtDisableProfiling OrtDisableProfiling;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtEnableMemPattern(IntPtr /* OrtSessionOptions* */ options);
-        static public DOrtEnableMemPattern OrtEnableMemPattern;
+        public static DOrtEnableMemPattern OrtEnableMemPattern;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtDisableMemPattern(IntPtr /* OrtSessionOptions* */ options);
-        static public DOrtDisableMemPattern OrtDisableMemPattern;
+        public static DOrtDisableMemPattern OrtDisableMemPattern;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtEnableCpuMemArena(IntPtr /* OrtSessionOptions* */ options);
-        static public DOrtEnableCpuMemArena OrtEnableCpuMemArena;
+        public static DOrtEnableCpuMemArena OrtEnableCpuMemArena;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtDisableCpuMemArena(IntPtr /* OrtSessionOptions* */ options);
-        static public DOrtDisableCpuMemArena OrtDisableCpuMemArena;
+        public static DOrtDisableCpuMemArena OrtDisableCpuMemArena;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionLogId(IntPtr /* OrtSessionOptions* */ options, string logId);
-        static public DOrtSetSessionLogId OrtSetSessionLogId;
+        public static DOrtSetSessionLogId OrtSetSessionLogId;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionLogVerbosityLevel(IntPtr /* OrtSessionOptions* */ options, LogLevel sessionLogVerbosityLevel);
-        static public DOrtSetSessionLogVerbosityLevel OrtSetSessionLogVerbosityLevel;
+        public static DOrtSetSessionLogVerbosityLevel OrtSetSessionLogVerbosityLevel;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionLogSeverityLevel(IntPtr /* OrtSessionOptions* */ options, LogLevel sessionLogSeverityLevel);
-        static public DOrtSetSessionLogSeverityLevel OrtSetSessionLogSeverityLevel;
+        public static DOrtSetSessionLogSeverityLevel OrtSetSessionLogSeverityLevel;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionThreadPoolSize(IntPtr /* OrtSessionOptions* */ options, int sessionThreadPoolSize);
-        static public DOrtSetSessionThreadPoolSize OrtSetSessionThreadPoolSize;
+        public static DOrtSetSessionThreadPoolSize OrtSetSessionThreadPoolSize;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionGraphOptimizationLevel(IntPtr /* OrtSessionOptions* */ options, GraphOptimizationLevel graphOptimizationLevel);
-        static public DOrtSetSessionGraphOptimizationLevel OrtSetSessionGraphOptimizationLevel;
+        public static DOrtSetSessionGraphOptimizationLevel OrtSetSessionGraphOptimizationLevel;
 
 
         ///**
@@ -398,31 +398,31 @@ namespace Microsoft.ML.OnnxRuntime
         #endregion
 
         #region RunOptions API
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateRunOptions( out IntPtr /* OrtRunOptions** */ runOptions);
-        static public DOrtCreateRunOptions OrtCreateRunOptions;
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateRunOptions(out IntPtr /* OrtRunOptions** */ runOptions);
+        public static DOrtCreateRunOptions OrtCreateRunOptions;
 
         public delegate void DOrtReleaseRunOptions(IntPtr /*(OrtRunOptions*)*/options);
-        static public DOrtReleaseRunOptions OrtReleaseRunOptions;
+        public static DOrtReleaseRunOptions OrtReleaseRunOptions;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsSetRunLogVerbosityLevel(IntPtr /* OrtRunOptions* */ options, LogLevel value);
-        static public DOrtRunOptionsSetRunLogVerbosityLevel OrtRunOptionsSetRunLogVerbosityLevel;
+        public static DOrtRunOptionsSetRunLogVerbosityLevel OrtRunOptionsSetRunLogVerbosityLevel;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsSetRunTag(IntPtr /* OrtRunOptions* */ options, string /* const char* */ runTag);
-        static public DOrtRunOptionsSetRunTag OrtRunOptionsSetRunTag;
+        public static DOrtRunOptionsSetRunTag OrtRunOptionsSetRunTag;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsGetRunLogVerbosityLevel(IntPtr /* OrtRunOptions* */ options, out LogLevel verbosityLevel);
-        static public DOrtRunOptionsGetRunLogVerbosityLevel OrtRunOptionsGetRunLogVerbosityLevel;
+        public static DOrtRunOptionsGetRunLogVerbosityLevel OrtRunOptionsGetRunLogVerbosityLevel;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsGetRunTag(IntPtr /* const OrtRunOptions* */options, out IntPtr /* const char** */ runtag);
-        static public DOrtRunOptionsGetRunTag OrtRunOptionsGetRunTag;
+        public static DOrtRunOptionsGetRunTag OrtRunOptionsGetRunTag;
 
         // Set a flag so that any running OrtRun* calls that are using this instance of OrtRunOptions
         // will exit as soon as possible if the flag is true.
         public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsSetTerminate(IntPtr /* OrtRunOptions* */ options);
-        static public DOrtRunOptionsSetTerminate OrtRunOptionsSetTerminate;
+        public static DOrtRunOptionsSetTerminate OrtRunOptionsSetTerminate;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsUnsetTerminate(IntPtr /* OrtRunOptions* */ options);
-        static public DOrtRunOptionsUnsetTerminate OrtRunOptionsUnsetTerminate;
+        public static DOrtRunOptionsUnsetTerminate OrtRunOptionsUnsetTerminate;
 
 
 
@@ -454,7 +454,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                             MemoryType memType,
                                                             out IntPtr /*(OrtMemoryInfo*)*/ allocatorInfo    // memory ownership transfered to caller
                                                        );
-        static public DOrtCreateMemoryInfo OrtCreateMemoryInfo;
+        public static DOrtCreateMemoryInfo OrtCreateMemoryInfo;
 
         //ORT_API_STATUS(OrtCreateCpuMemoryInfo, enum OrtAllocatorType type, enum OrtMemType mem_type1, _Out_ OrtMemoryInfo** out)
         public delegate IntPtr /* (OrtStatus*)*/ DOrtCreateCpuMemoryInfo(
@@ -462,13 +462,13 @@ namespace Microsoft.ML.OnnxRuntime
                                                             MemoryType memoryType,
                                                             out IntPtr /*(OrtMemoryInfo*)*/ allocatorInfo
                                                         );
-        static public DOrtCreateCpuMemoryInfo OrtCreateCpuMemoryInfo;
+        public static DOrtCreateCpuMemoryInfo OrtCreateCpuMemoryInfo;
 
         public delegate void DOrtReleaseMemoryInfo(IntPtr /*(OrtMemoryInfo*)*/ allocatorInfo);
-        static public DOrtReleaseMemoryInfo OrtReleaseMemoryInfo;
+        public static DOrtReleaseMemoryInfo OrtReleaseMemoryInfo;
 
         public delegate IntPtr /*(OrtStatus*)*/DOrtGetAllocatorWithDefaultOptions(out IntPtr /*(OrtAllocator**)*/ allocator);
-        static public DOrtGetAllocatorWithDefaultOptions OrtGetAllocatorWithDefaultOptions;
+        public static DOrtGetAllocatorWithDefaultOptions OrtGetAllocatorWithDefaultOptions;
 
         /// <summary>
         /// Release any object allocated by an allocator
@@ -476,10 +476,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="allocator"></param>
         /// <param name="memory"></param>
         public delegate IntPtr /*(OrtStatus*)*/DOrtAllocatorFree(IntPtr allocator, IntPtr memory);
-        static public DOrtAllocatorFree OrtAllocatorFree;
+        public static DOrtAllocatorFree OrtAllocatorFree;
 
         public delegate IntPtr /*(OrtStatus*)*/DOrtAllocatorGetInfo(IntPtr /*(const OrtAllocator*)*/ ptr, out IntPtr /*(const struct OrtMemoryInfo**)*/info);
-        static public DOrtAllocatorGetInfo OrtAllocatorGetInfo;
+        public static DOrtAllocatorGetInfo OrtAllocatorGetInfo;
 
         #endregion Allocator/MemoryInfo API
 
@@ -489,19 +489,19 @@ namespace Microsoft.ML.OnnxRuntime
                                                                  int index,
                                                                  IntPtr /*(OrtAllocator*)*/ allocator,
                                                                  out IntPtr /*(OrtValue**)*/ outputValue);
-        static public DOrtGetValue OrtGetValue;
+        public static DOrtGetValue OrtGetValue;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetValueType(IntPtr /*(OrtValue*)*/ value, IntPtr /*(OnnxValueType*)*/ onnxtype);
-        static public DOrtGetValueType OrtGetValueType;
+        public static DOrtGetValueType OrtGetValueType;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetOnnxTypeFromTypeInfo(IntPtr /*(OrtTypeInfo*)*/ typeinfo, IntPtr /*(OnnxValueType*)*/ onnxtype);
-        static public DOrtGetOnnxTypeFromTypeInfo OrtGetOnnxTypeFromTypeInfo;
+        public static DOrtGetOnnxTypeFromTypeInfo OrtGetOnnxTypeFromTypeInfo;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetValueCount(IntPtr /*(OrtValue*)*/ value, out IntPtr /*(size_t*)*/ count);
-        static public DOrtGetValueCount OrtGetValueCount;
+        public static DOrtGetValueCount OrtGetValueCount;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTypeInfo(IntPtr /*(OrtValue*)*/ value, IntPtr /*(OrtValue**)*/ typeInfo);
-        static public DOrtGetTypeInfo OrtGetTypeInfo;
+        public static DOrtGetTypeInfo OrtGetTypeInfo;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateTensorAsOrtValue(
                         IntPtr /*_Inout_ OrtAllocator* */ allocator,
@@ -509,7 +509,7 @@ namespace Microsoft.ML.OnnxRuntime
                         UIntPtr /*size_t*/ shape_len, 
                         TensorElementType type,
                         out IntPtr /* OrtValue** */ outputValue);
-        static public DOrtCreateTensorAsOrtValue OrtCreateTensorAsOrtValue;
+        public static DOrtCreateTensorAsOrtValue OrtCreateTensorAsOrtValue;
 
         public delegate IntPtr /* OrtStatus */ DOrtCreateTensorWithDataAsOrtValue(
                                                         IntPtr /* (const OrtMemoryInfo*) */ allocatorInfo,
@@ -519,12 +519,12 @@ namespace Microsoft.ML.OnnxRuntime
                                                         UIntPtr shapeLength,
                                                         TensorElementType type,
                                                         out IntPtr /* OrtValue** */ outputValue);
-        static public DOrtCreateTensorWithDataAsOrtValue OrtCreateTensorWithDataAsOrtValue;
+        public static DOrtCreateTensorWithDataAsOrtValue OrtCreateTensorWithDataAsOrtValue;
 
         /// This function doesn't work with string tensor
         /// this is a no-copy method whose pointer is only valid until the backing OrtValue* is free'd.
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTensorMutableData(IntPtr /*(OrtValue*)*/ value, out IntPtr /* (void**)*/ dataBufferHandle);
-        static public DOrtGetTensorMutableData OrtGetTensorMutableData;
+        public static DOrtGetTensorMutableData OrtGetTensorMutableData;
 
         /// \param value A tensor created from OrtCreateTensor... function.
         /// \param len total data length, not including the trailing '\0' chars.
@@ -532,7 +532,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                         IntPtr /* OrtValue */ value,
                                                         string[] /* const char* const* */s, 
                                                         UIntPtr /* size_t */ s_len);
-        static public DOrtFillStringTensor OrtFillStringTensor;
+        public static DOrtFillStringTensor OrtFillStringTensor;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetStringTensorContent(
                                                         IntPtr /*(OrtValue*)*/ value,
@@ -540,34 +540,34 @@ namespace Microsoft.ML.OnnxRuntime
                                                         UIntPtr dst_buffer_len,
                                                         IntPtr offsets,
                                                         UIntPtr offsets_len);
-        static public DOrtGetStringTensorContent OrtGetStringTensorContent;
+        public static DOrtGetStringTensorContent OrtGetStringTensorContent;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetStringTensorDataLength(IntPtr /*(OrtValue*)*/ value,
                                                         out UIntPtr /*(size_t*)*/ len);
-        static public DOrtGetStringTensorDataLength OrtGetStringTensorDataLength;
+        public static DOrtGetStringTensorDataLength OrtGetStringTensorDataLength;
 
         public delegate IntPtr /*(OrtStatus*)*/
                                 DOrtCastTypeInfoToTensorInfo(IntPtr /*(struct OrtTypeInfo*)*/ typeInfo, out IntPtr /*(const struct OrtTensorTypeAndShapeInfo**)*/ typeAndShapeInfo);
-        static public DOrtCastTypeInfoToTensorInfo OrtCastTypeInfoToTensorInfo;
+        public static DOrtCastTypeInfoToTensorInfo OrtCastTypeInfoToTensorInfo;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTensorTypeAndShape(IntPtr /*(OrtValue*)*/ value, out IntPtr /*(struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
-        static public DOrtGetTensorTypeAndShape OrtGetTensorTypeAndShape;
+        public static DOrtGetTensorTypeAndShape OrtGetTensorTypeAndShape;
 
 
         public delegate void DOrtReleaseTensorTypeAndShapeInfo(IntPtr /*(OrtTensorTypeAndShapeInfo*)*/ value);
-        static public DOrtReleaseTensorTypeAndShapeInfo OrtReleaseTensorTypeAndShapeInfo;
+        public static DOrtReleaseTensorTypeAndShapeInfo OrtReleaseTensorTypeAndShapeInfo;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTensorElementType(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo, IntPtr /*(TensorElementType*)*/ output);
-        static public DOrtGetTensorElementType OrtGetTensorElementType;
+        public static DOrtGetTensorElementType OrtGetTensorElementType;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetDimensionsCount(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo, out UIntPtr output);
-        static public DOrtGetDimensionsCount OrtGetDimensionsCount;
+        public static DOrtGetDimensionsCount OrtGetDimensionsCount;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetDimensions(
                             IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo,
                             long[] dim_values,
                             UIntPtr dim_values_length);
-        static public DOrtGetDimensions OrtGetDimensions;
+        public static DOrtGetDimensions OrtGetDimensions;
 
         /**
          * How many elements does this tensor have.
@@ -579,10 +579,10 @@ namespace Microsoft.ML.OnnxRuntime
          * [-1,3,4] -> -1
          */
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTensorShapeElementCount(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo, IntPtr /*(long*)*/ output);
-        static public DOrtGetTensorShapeElementCount OrtGetTensorShapeElementCount;
+        public static DOrtGetTensorShapeElementCount OrtGetTensorShapeElementCount;
 
         public delegate void DOrtReleaseValue(IntPtr /*(OrtValue*)*/ value);
-        static public DOrtReleaseValue OrtReleaseValue;
+        public static DOrtReleaseValue OrtReleaseValue;
 
         #endregion
     } //class NativeMethods
