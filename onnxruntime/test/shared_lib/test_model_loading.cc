@@ -9,8 +9,6 @@
 #include "test_fixture.h"
 #include "file_util.h"
 
-extern const OrtApi* g_ort;
-
 namespace onnxruntime {
 namespace test {
 namespace {
