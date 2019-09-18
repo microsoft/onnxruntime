@@ -730,7 +730,7 @@ class SymbolicShapeInference:
                 if is_literal(e):
                     if e >= int(2 ** 31 - 1): # max value of int32
                         e = new_shape[i]
-                    elif e <= -int(2 ** 31 - 1):
+                    elif e <= -int(2 ** 31):  # min value of int32
                         e = 0
                     elif is_literal(new_shape[i]):
                         e = min(e, new_shape[i])
