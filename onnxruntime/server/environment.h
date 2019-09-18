@@ -8,7 +8,8 @@
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include <spdlog/spdlog.h>
-#include <map>
+#include <unordered_map>
+#include <boost/functional/hash.hpp>
 
 namespace onnxruntime {
 namespace server {
@@ -50,7 +51,7 @@ class ServerEnvironment {
       SessionHolder& operator=(const SessionHolder&) = delete; 
   };
 
-  std::map<std::pair<std::string, std::string>, ServerEnvironment::SessionHolder> sessions_;
+  std::unordered_map<std::pair<std::string, std::string>, ServerEnvironment::SessionHolder, boost::hash<std::pair<std::string, std::string>>> sessions_;
 };
 
 }  // namespace server

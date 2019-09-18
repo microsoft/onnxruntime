@@ -16,7 +16,7 @@ namespace server {
 namespace grpc {
 namespace test {
 
-// This classes constructor calls the GRPC library's init method.
+// This class's constructor calls the GRPC library's init method.
 static ::grpc::internal::GrpcLibraryInitializer g_initializer;
 
 PredictRequest GetRequest() {
