@@ -82,8 +82,13 @@ TEST_F(CApiTest, model_missing_data) {
   WriteStringToTempFile(test_data, model_url);
   std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(model_url.c_str()),
                                                                          DeleteFileFromDisk);
-  Ort::SessionOptions so;
-  Ort::Session session(env_, model_url.c_str(), so);
+  bool failed = false;
+  try {
+    Ort::Session session(env_, model_url.c_str(), Ort::SessionOptions{});
+  } catch (const Ort::Exception& exception) {
+    failed = true;
+  }
+  ASSERT_EQ(failed, true);
 }
 
 TEST_F(CApiTest, model_with_external_data) {
