@@ -37,7 +37,8 @@ Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
 
   // Set all axes_ indices to 1 in output_dims and check for duplicates
   for (int64_t axis : axes_) {
-    axis = HandleNegativeAxis(axis, input_tensor.Shape().NumDimensions());
+    // Valid axis range is [0, output_rank - 1]
+    axis = HandleNegativeAxis(axis, output_dims.size());
     if (axis < 0 || axis >= static_cast<int64_t>(output_dims.size()))
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an out of range axis");
     if (output_dims[axis] != 0)

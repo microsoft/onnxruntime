@@ -66,7 +66,7 @@ TEST(TensorOpTest, Unsqueeze_OutOfRange) {
 TEST(TensorOpTest, UnsqueezeNegAxis_3) {
   OpTester test("Unsqueeze");
 
-  test.AddAttribute("axes", std::vector<int64_t>{-1, 1, -3});
+  test.AddAttribute("axes", std::vector<int64_t>{-4, 1, -6});
   test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
   test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
   test.Run();

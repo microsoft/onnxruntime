@@ -32,8 +32,7 @@ class SqueezeBase {
     std::vector<int64_t> output_shape;
     auto num_dimensions = input_shape.NumDimensions();
     for (size_t i = 0; i < num_dimensions; ++i) {
-      int64_t axis = HandleNegativeAxis(axes[j], num_dimensions);  // handle negative and enforce axis is valid
-      if ((j < axes.NumDimensions() && axis == static_cast<int64_t>(i)) ||
+      if ((j < axes.NumDimensions() && HandleNegativeAxis(axes[j], num_dimensions) == static_cast<int64_t>(i)) ||
           (axes.NumDimensions() == 0 && input_shape[i] == 1)) {
         ORT_ENFORCE(input_shape[i] == 1, "Dimension of input ", i, " must be 1 instead of ", input_shape[i],
                     ". shape=", input_shape);
