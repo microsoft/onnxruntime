@@ -302,7 +302,7 @@ void SessionState::RemoveSubgraphSessionState(onnxruntime::NodeIndex index) {
 }
 
 const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
-  ORT_ENFORCE(node_index_info_, "SetGraphAndCreateKernels must be called prior to GetNodeIndexInfo.");
+  ORT_ENFORCE(node_index_info_, "SetGraphAndCreateKernels must be called prior to GetExecutionInfo.");
   return *node_index_info_;
 }
 }  // namespace onnxruntime

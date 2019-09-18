@@ -4,6 +4,7 @@
 #include "core/providers/cpu/math/logsoftmax.h"
 
 #include "core/framework/op_kernel.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 #include "core/providers/common.h"
 #include "core/providers/cpu/math/softmax_shared.h"
@@ -13,7 +14,8 @@ namespace onnxruntime {
 
 template <>
 Status LogSoftmax<float>::Compute(OpKernelContext* ctx) const {
-  concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
+  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
 
   const auto* tensor_pointer = ctx->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");

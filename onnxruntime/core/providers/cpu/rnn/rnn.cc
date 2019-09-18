@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "core/framework/op_kernel_context_internal.h"
 
 #include "core/providers/cpu/rnn/rnn.h"
 #include "core/providers/cpu/rnn/rnn_activation_functors.h"
@@ -99,7 +100,8 @@ using EigenMatrixMapRowMajor = Eigen::Map<
 template <>
 Status RNN<float>::Compute(OpKernelContext* ctx) const {
   using namespace rnn::detail;
-  concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
+  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
 
   // inputs
   const Tensor& X = *ctx->Input<Tensor>(0);

@@ -6,6 +6,7 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -160,7 +161,8 @@ Status WordConvEmbedding::ValidateInputShape(const TensorShape& w_conv_shape, co
 }
 
 Status WordConvEmbedding::Compute(OpKernelContext* ctx) const {
-  concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
+  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
 
   // original lstm processing
   const Tensor& sequence = *(ctx->Input<Tensor>(0));          // sequence: [sequence_length, word_length]

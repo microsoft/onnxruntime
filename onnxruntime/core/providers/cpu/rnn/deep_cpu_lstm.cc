@@ -314,7 +314,8 @@ DeepCpuLstmOp::Compute(OpKernelContext* context) const {
 
 template <typename T>
 Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
-  concurrency::ThreadPool* mlas_thread_pool = context.GetOperatorThreadPool();
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(&context);
+  concurrency::ThreadPool* mlas_thread_pool = ctx_internal->GetOperatorThreadPool();
 
   auto& logger = context.Logger();
 

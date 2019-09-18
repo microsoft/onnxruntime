@@ -246,7 +246,7 @@ class BFCArena : public IArenaAllocator {
 
     AllocationRegion(AllocationRegion&& other) noexcept { Swap(other); }
 
-    AllocationRegion& operator=(AllocationRegion&& other) noexcept {
+    AllocationRegion& operator=(AllocationRegion&& other) {
       Swap(other);
       return *this;
     }
