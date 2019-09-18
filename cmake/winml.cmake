@@ -64,20 +64,6 @@ target_midl(winml_api_native_internal
   ${sdk_version}          # sdk version
   ${target_folder})       # the folder this target will be placed under
 
-install(
-  FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/Windows.AI.MachineLearning.winmd
-    ${CMAKE_CURRENT_BINARY_DIR}/Windows.AI.MachineLearning_h.h
-    ${CMAKE_CURRENT_BINARY_DIR}/Windows.AI.MachineLearning.native.h
-    ${CMAKE_CURRENT_BINARY_DIR}/Windows.AI.MachineLearning.native.internal.h
-    ${winml_api_root}/dualapipartitionattribute.h
-    dualapipartitionattribute.idl
-    Windows.AI.MachineLearning.idl
-    Windows.AI.MachineLearning.native.idl
-    Windows.AI.MachineLearning.native.internal.idl
-  DESTINATION winml/include
-)
-
 ###########################
 # Add winml_lib_telemetry
 ###########################
@@ -490,16 +476,3 @@ target_link_libraries(winml_dll PRIVATE ${DBGHELP})
 if("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
   set_target_properties(winml_dll PROPERTIES VS_GLOBAL_PreferredToolArchitecture "x64")
 endif("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
-
-install(
-  FILES 
-    $<TARGET_FILE:winml_dll> 
-    $<TARGET_PDB_FILE:winml_dll> 
-  DESTINATION bin
-)
-
-install(
-  FILES 
-    $<TARGET_LINKER_FILE:winml_dll>
-  DESTINATION lib
-)
