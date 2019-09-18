@@ -15,21 +15,16 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
 #include "core/platform/threadpool.h"
-#include "core/util/thread_utils.h"
 
 namespace onnxruntime {
 
-ParallelExecutor::ParallelExecutor(const SessionState& session_state, int inter_op_thread_pool_size,
-                                   const bool& terminate_flag)
-    : out_standings_(0), terminate_flag_{terminate_flag} {
+ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool& terminate_flag)
+    : out_standings_(0), terminate_flag_{terminate_flag}, executor_pool_(session_state.GetInterOpThreadPool()) {
   auto graph_viewer = session_state.GetGraphViewer();
   node_refs_.resize(graph_viewer->MaxNodeIndex());
   for (auto& node : graph_viewer->Nodes()) {
     node_refs_[node.Index()] = node.GetInputEdgesCount();
   }
-
-  executor_pool_ = concurrency::CreateThreadPool("PARALLEL_EXECUTOR",
-                                                 inter_op_thread_pool_size);
 }
 
 Status ParallelExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,

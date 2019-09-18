@@ -327,7 +327,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetIntraOpThreadPoolSize(_nativePtr, value));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetIntraOpNumThreads(_nativePtr, value));
                 _intraOpThreadPoolSize = value;
             }
         }

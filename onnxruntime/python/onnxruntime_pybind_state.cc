@@ -491,7 +491,7 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
       .def_readwrite("log_verbosity_level", &SessionOptions::session_log_verbosity_level,
                      R"pbdoc(VLOG level if DEBUG build and session_log_verbosity_level is 0. 
 Applies to session load, initialization, etc. Default is 0.)pbdoc")
-      .def_readwrite("thread_pool_size", &SessionOptions::intra_op_thread_pool_size,
+      .def_readwrite("thread_pool_size", &SessionOptions::intra_op_num_threads,
                      R"pbdoc(How many threads in the session thread pool. Default is 0 to let onnxruntime choose.
 This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
       .def_property(

@@ -97,10 +97,16 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
     : session_options_{session_options},
       graph_transformation_mgr_{session_options.max_num_graph_transformation_steps},
       logging_manager_{logging_manager},
-      thread_pool_(concurrency::CreateThreadPool("SESSION", session_options.intra_op_thread_pool_size)),
+      thread_pool_(concurrency::CreateThreadPool("intra_op_thread_pool", concurrency::ThreadPoolType::kIntraOp,
+                                                 session_options.intra_op_num_threads)),
+      inter_op_thread_pool_(!session_options.enable_sequential_execution
+                                ? concurrency::CreateThreadPool("inter_op_thread_pool", concurrency::ThreadPoolType::kInterOp,
+                                                                session_options.inter_op_num_threads)
+                                : nullptr),
       session_state_(execution_providers_,
                      session_options.enable_mem_pattern && session_options.enable_sequential_execution,
-                     thread_pool_.get()),
+                     thread_pool_.get(),
+                     inter_op_thread_pool_.get()),
       insert_cast_transformer_{"CastFloat16Transformer"} {
   ORT_ENFORCE(Environment::IsInitialized(),
               "Environment must be initialized before creating an InferenceSession.");
@@ -396,7 +402,8 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
 
       auto subgraph_session_state = std::make_unique<SessionState>(execution_providers_,
                                                                    session_state.GetEnableMemoryPattern(),
-                                                                   session_state.GetThreadPool());
+                                                                   session_state.GetThreadPool(),
+                                                                   session_state.GetInterOpThreadPool());
       subgraph_session_state->SetProfiler(session_profiler_);
       subgraph_session_state->SetLogger(*session_logger_);
       // Pass data transfer manager to subgraph.
@@ -728,7 +735,7 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(
         utils::ExecuteGraph(session_state_, feeds_fetches_manager, feeds, *p_fetches,
-                            session_options_.enable_sequential_execution, session_options_.inter_op_thread_pool_size,
+                            session_options_.enable_sequential_execution,
                             run_options.terminate, run_logger));
 
   } catch (const std::exception& e) {

@@ -84,6 +84,6 @@ OrtSetSessionLogId
 OrtSetSessionLogVerbosityLevel
 OrtSetSessionLogSeverityLevel
 OrtSetOptimizedModelFilePath
-OrtSetIntraOpThreadPoolSize
-OrtSetInterOpThreadPoolSize
+OrtSetIntraOpNumThreads
+OrtSetInterOpNumThreads
 OrtSetTensorElementType

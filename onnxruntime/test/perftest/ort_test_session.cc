@@ -90,8 +90,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.EnableSequentialExecution();
   else
     session_options.DisableSequentialExecution();
-  fprintf(stdout, "Setting thread pool size to %d\n", performance_test_config.run_config.intra_op_thread_pool_size);
-  session_options.SetIntraOpThreadPoolSize(performance_test_config.run_config.intra_op_thread_pool_size);
+  fprintf(stdout, "Setting thread pool size to %d\n", performance_test_config.run_config.intra_op_num_threads);
+  session_options.SetIntraOpThreadPoolSize(performance_test_config.run_config.intra_op_num_threads);
   // Set optimization level.
   session_options.SetGraphOptimizationLevel(performance_test_config.run_config.optimization_level);
   if (!performance_test_config.run_config.profile_file.empty())

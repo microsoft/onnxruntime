@@ -136,13 +136,13 @@ inline SessionOptions SessionOptions::Clone() const {
   return SessionOptions{out};
 }
 
-inline SessionOptions& SessionOptions::SetIntraOpThreadPoolSize(int intra_op_thread_pool_size) {
-  ORT_THROW_ON_ERROR(OrtSetIntraOpThreadPoolSize(p_, intra_op_thread_pool_size));
+inline SessionOptions& SessionOptions::SetIntraOpThreadPoolSize(int intra_op_num_threads) {
+  ORT_THROW_ON_ERROR(OrtSetIntraOpNumThreads(p_, intra_op_num_threads));
   return *this;
 }
 
-inline SessionOptions& SessionOptions::SetInterOpThreadPoolSize(int inter_op_thread_pool_size) {
-  ORT_THROW_ON_ERROR(OrtSetInterOpThreadPoolSize(p_, inter_op_thread_pool_size));
+inline SessionOptions& SessionOptions::SetInterOpThreadPoolSize(int inter_op_num_threads) {
+  ORT_THROW_ON_ERROR(OrtSetInterOpNumThreads(p_, inter_op_num_threads));
   return *this;
 }
 

@@ -17,7 +17,6 @@
 #include "core/framework/session_state.h"
 #include "core/framework/sequential_executor.h"
 #include "core/mlas/inc/mlas.h"
-#include "core/session/inference_session.h"
 
 namespace onnxruntime {
 namespace utils {
@@ -387,15 +386,13 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const FeedsFetchesManager& feeds_fetches_manager,
                                        const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                        const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                       bool enable_sequential_execution, int inter_op_thread_pool_size,
-                                       const bool& terminate_flag,
+                                       bool sequential_execution, const bool& terminate_flag,
                                        const logging::Logger& logger) {
   std::unique_ptr<IExecutor> p_exec;
-  if (enable_sequential_execution) {
+  if (sequential_execution) {
     p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag));
   } else {
-    p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, inter_op_thread_pool_size,
-                                                             terminate_flag));
+    p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
   }
 
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
@@ -456,7 +453,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
 common::Status ExecuteGraph(const SessionState& session_state,
                             FeedsFetchesManager& feeds_fetches_manager,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                            bool enable_sequential_execution, int inter_op_thread_pool_size, const bool& terminate_flag,
+                            bool sequential_execution, const bool& terminate_flag,
                             const logging::Logger& logger) {
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
 
@@ -464,7 +461,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
   FinalizeFeedFetchCopyInfo(session_state, feeds_fetches_manager, feeds, fetches);
 
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
-                                 enable_sequential_execution, inter_op_thread_pool_size, terminate_flag, logger);
+                                 sequential_execution, terminate_flag, logger);
 
   return status;
 }
@@ -472,10 +469,9 @@ common::Status ExecuteGraph(const SessionState& session_state,
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               bool enable_sequential_execution, int inter_op_thread_pool_size,
-                               const bool& terminate_flag, const logging::Logger& logger) {
+                               bool sequential_execution, const bool& terminate_flag, const logging::Logger& logger) {
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
-                                 enable_sequential_execution, inter_op_thread_pool_size, terminate_flag, logger);
+                                 sequential_execution, terminate_flag, logger);
   return status;
 }
 

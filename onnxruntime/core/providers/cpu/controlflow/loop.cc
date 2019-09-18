@@ -79,13 +79,21 @@ ONNX_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction(LoopInferenceFunction));
 */
 
-ONNX_CPU_OPERATOR_KERNEL(Loop,
-                         1,
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
+                         1, 10,
                          KernelDefBuilder()
                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
                              .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                          Loop);
+
+ONNX_CPU_OPERATOR_KERNEL(Loop,
+                                   11,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                                   Loop);
 
 struct Loop::Info {
   Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in)
@@ -415,8 +423,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
     }
 
     status = utils::ExecuteSubgraph(session_state_, ffm, feeds, fetches, {},
-                                    /*sequential_execution*/ true, /*inter_op_thread_pool_size*/ 0,
-                                    context_.GetTerminateFlag(), context_.Logger());
+                                    /*sequential_execution*/ true, context_.GetTerminateFlag(), context_.Logger());
 
     ORT_RETURN_IF_ERROR(status);
 

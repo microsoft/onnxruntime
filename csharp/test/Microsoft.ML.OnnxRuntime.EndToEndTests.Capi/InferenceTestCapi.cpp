@@ -72,7 +72,7 @@ int test() {
   ORT_ABORT_ON_ERROR(OrtCreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
   OrtSessionOptions* session_option = OrtCreateSessionOptions();
   OrtSession* session;
-  OrtSetIntraOpThreadPoolSize(session_option, 1);
+  OrtSetIntraOpNumThreads(session_option, 1);
   ORT_ABORT_ON_ERROR(OrtCreateSession(env, model_path, session_option, &session));
   OrtReleaseSessionOptions(session_option);
 
