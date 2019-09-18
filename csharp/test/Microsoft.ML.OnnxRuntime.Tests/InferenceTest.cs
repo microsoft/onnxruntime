@@ -803,7 +803,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 return;
             var entryPointNames = new[]{
             "OrtGetApiEnv",
-            "OrtSessionOptionsAppendExecutionProvider_CPU",
+            "OrtSessionOptionsAppendExecutionProvider_CPU"
 #if USE_MKLDNN
             ,"OrtSessionOptionsAppendExecutionProvider_Mkldnn"
 #endif
