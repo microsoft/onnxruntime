@@ -164,6 +164,9 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern IntPtr /*(OrtStatus*)*/ OrtSetIntraOpNumThreads(IntPtr /* OrtSessionOptions* */ options, int intraOpNumThreads);
 
         [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSetInterOpNumThreads(IntPtr /* OrtSessionOptions* */ options, int interOpNumThreads);
+
+        [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSetSessionGraphOptimizationLevel(IntPtr /* OrtSessionOptions* */ options, GraphOptimizationLevel graphOptimizationLevel);
 
 

@@ -33,6 +33,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal("", opt.LogId);
                 Assert.Equal(LogLevel.Verbose, opt.LogVerbosityLevel);
                 Assert.Equal(0, opt.IntraOpNumThreads);
+                Assert.Equal(0, opt.InterOpNumThreads);
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_BASIC, opt.GraphOptimizationLevel);
 
                 // try setting options 
@@ -60,6 +61,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 opt.IntraOpNumThreads = 4;
                 Assert.Equal(4, opt.IntraOpNumThreads);
+
+                opt.InterOpNumThreads = 4;
+                Assert.Equal(4, opt.InterOpNumThreads);
 
                 opt.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_EXTENDED;
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, opt.GraphOptimizationLevel);

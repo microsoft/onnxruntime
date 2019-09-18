@@ -316,8 +316,8 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         /// <summary>
-        /// Threadpool size for the session.Run() calls. 
-        /// Default = 0, meaning threadpool size is aumatically selected from number of available cores.
+        // Sets the number of threads used to parallelize the execution within nodes
+        // A value of 0 means ORT will pick a default
         /// </summary>
         public int IntraOpNumThreads
         {
@@ -333,6 +333,24 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private int _intraOpNumThreads = 0; // set to what is set in C++ SessionOptions by default;
 
+        /// <summary>
+        // Sets the number of threads used to parallelize the execution of the graph (across nodes)
+        // If sequential execution is enabled this value is ignored
+        // A value of 0 means ORT will pick a default
+        /// </summary>
+        public int InterOpNumThreads
+        {
+            get
+            {
+                return _interOpNumThreads;
+            }
+            set
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetInterOpNumThreads(_nativePtr, value));
+                _interOpNumThreads = value;
+            }
+        }
+        private int _interOpNumThreads = 0; // set to what is set in C++ SessionOptions by default;
 
         /// <summary>
         /// Sets the graph optimization level for the session. Default is set to ORT_ENABLE_BASIC.        
