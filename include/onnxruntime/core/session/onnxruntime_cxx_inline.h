@@ -5,6 +5,7 @@
 // These are the inline implementations of the C++ header APIs. They're in this separate file as to not clutter
 // the main C++ file with implementation details.
 
+// TODO: Delete this macro once all uses of it are converted to the inline functions below
 #define ORT_THROW_ON_ERROR(expr)                                              \
   if (OrtStatus* onnx_status = (expr)) {                                      \
     std::string ort_error_message = Ort::g_api->GetErrorMessage(onnx_status); \
@@ -15,13 +16,17 @@
 
 namespace Ort {
 
-inline void ThrowOnError(OrtStatus* status) {
+inline void ThrowOnError(const OrtApi* ort, OrtStatus* status) {
   if (status) {
-    std::string error_message = Ort::g_api->GetErrorMessage(status);
-    OrtErrorCode error_code = Ort::g_api->GetErrorCode(status);
-    Ort::g_api->ReleaseStatus(status);
+    std::string error_message = ort->GetErrorMessage(status);
+    OrtErrorCode error_code = ort->GetErrorCode(status);
+    ort->ReleaseStatus(status);
     throw Ort::Exception(std::move(error_message), error_code);
   }
+}
+
+inline void ThrowOnError(OrtStatus* status) {
+  ThrowOnError(g_api, status);
 }
 
 // This template converts a C++ type into it's ONNXTensorElementDataType
@@ -410,12 +415,7 @@ inline TensorTypeAndShapeInfo Value::GetTensorTypeAndShapeInfo() const {
 // Custom OP API Inlines
 //
 inline void CustomOpApi::ThrowOnError(OrtStatus* status) {
-  if (status) {
-    std::string error_message = api_.GetErrorMessage(status);
-    OrtErrorCode error_code = api_.GetErrorCode(status);
-    api_.ReleaseStatus(status);
-    throw Ort::Exception(std::move(error_message), error_code);
-  }
+  Ort::ThrowOnError(&api_, status);
 }
 
 template <>
