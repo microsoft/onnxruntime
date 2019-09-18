@@ -757,7 +757,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           return *(res.second);
         }
       })
-      .def_property_readonly("overridable_initializers", [](const InferenceSession* sess) -> std::vector <const NodeArg*> {
+      .def_property_readonly("overridable_initializers", [](const InferenceSession* sess) -> std::vector<const onnxruntime::NodeArg*> {
         auto res = sess->GetOverridableInitializers();
         if (!res.first.IsOK()) {
           throw std::runtime_error(res.first.ToString().c_str());
