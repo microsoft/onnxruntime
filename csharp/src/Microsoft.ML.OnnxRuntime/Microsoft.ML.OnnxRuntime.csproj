@@ -204,7 +204,7 @@
       <CurrentTime>$([System.DateTime]::Now.ToString(hhmm))</CurrentTime>
       <PackageVersion>@(MajorVersionNumber)</PackageVersion>
       <Version>$(PackageVersion)</Version>
-      <PackageVersion Condition="'$(IsReleaseBuild)'!='true'">$(PackageVersion)-dev.$(CurrentDate).$(CurrentTime).$(GitCommitHashShort)</PackageVersion>
+      <PackageVersion Condition="'$(IsReleaseBuild)'!='true'">$(PackageVersion)-dev-$(CurrentDate)-$(CurrentTime)-$(GitCommitHashShort)</PackageVersion>
     </PropertyGroup>
     <Message Importance="High" Text="PackageVersion=$(PackageVersion)" />
     <Message Importance="High" Text="CurrentDate: $(CurrentDate)"/>
