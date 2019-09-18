@@ -5,8 +5,8 @@ steps:
 - task: CmdLine@2
   condition: eq(variables['Agent.OS'], 'Windows_NT')
   displayName: 'Extract version number from the NuPkg file, Windows VMs'
-  workingDirectory: '${{ parameters.packageFolder }}'
   inputs:
+    workingDirectory: '${{ parameters.packageFolder }}'
     script: |
       echo processing nupkg
       SETLOCAL ENABLEDELAYEDEXPANSION
@@ -20,8 +20,8 @@ steps:
 - task: CmdLine@2
   condition: not(eq(variables['Agent.OS'], 'Windows_NT'))
   displayName: 'Extract version number from the NuPkg file, Unix VMs'
-  workingDirectory: '${{ parameters.packageFolder }}'
   inputs:
+    workingDirectory: '${{ parameters.packageFolder }}'
     script: |
       filenamewithext=$(ls Microsoft.ML.OnnxRuntime*.nupkg)
       filename=${filenamewithext%.*}
