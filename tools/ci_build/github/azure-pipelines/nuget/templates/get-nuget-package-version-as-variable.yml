@@ -5,6 +5,7 @@ steps:
 - task: CmdLine@2
   condition: eq(variables['Agent.OS'], 'Windows_NT')
   displayName: 'Extract version number from the NuPkg file, Windows VMs'
+  workingDirectory: '${{ parameters.packageFolder }}''
   inputs:
     script: |
       echo processing nupkg
@@ -15,11 +16,11 @@ steps:
         @echo version number = %filename:~25%
         @echo version number variable = $(NuGetPackageVersionNumber)
       )
-  workingDirectory: ${{ parameters.packageFolder }}
 
 - task: CmdLine@2
   condition: not(eq(variables['Agent.OS'], 'Windows_NT'))
   displayName: 'Extract version number from the NuPkg file, Unix VMs'
+  workingDirectory: '${{ parameters.packageFolder }}'
   inputs:
     script: |
       filenamewithext=$(ls Microsoft.ML.OnnxRuntime*.nupkg)
@@ -28,4 +29,3 @@ steps:
       echo "##vso[task.setvariable variable=NuGetPackageVersionNumber;]$ortversion"
       echo version number = $ortversion
       echo version number variable = $(NuGetPackageVersionNumber)
-  workingDirectory: ${{ parameters.packageFolder }}
