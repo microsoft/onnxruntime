@@ -25,6 +25,9 @@
 #ifdef USE_OPENVINO
 #include "core/providers/openvino/openvino_provider_factory.h"
 #endif
+#ifdef USE_INTEL
+#include "core/providers/intel/intel_provider_factory.h"
+#endif
 #ifdef USE_NNAPI
 #include "core/providers/nnapi/nnapi_provider_factory.h"
 #endif

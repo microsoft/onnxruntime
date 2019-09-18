@@ -67,6 +67,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
+ } else if (provider_name == onnxruntime::kIntelExecutionProvider) {
+#ifdef USE_INTEL
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Intel(session_options, "CPU"));
+#else
+    ORT_THROW("Intel is not supported in this build\n");
+#endif
   } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
 #ifdef USE_NNAPI
     ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options));

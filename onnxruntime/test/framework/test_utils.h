@@ -21,6 +21,9 @@
 #ifdef USE_OPENVINO
 #include "core/providers/openvino/openvino_execution_provider.h"
 #endif
+#ifdef USE_INTEL
+#include "core/providers/intel/intel_execution_provider.h"
+#endif
 #ifdef USE_NNAPI
 #include "core/providers/nnapi/nnapi_execution_provider.h"
 #endif
@@ -44,6 +47,10 @@ IExecutionProvider* TestTensorrtExecutionProvider();
 
 #ifdef USE_OPENVINO
 IExecutionProvider* TestOpenVINOExecutionProvider();
+#endif
+
+#ifdef USE_INTEL
+IExecutionProvider* TestIntelExecutionProvider();
 #endif
 
 #ifdef USE_NNAPI

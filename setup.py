@@ -34,13 +34,14 @@ elif '--use_cuda' in sys.argv:
 elif '--use_ngraph' in sys.argv:
     package_name = 'onnxruntime-ngraph'
     sys.argv.remove('--use_ngraph')
-
 elif '--use_openvino' in sys.argv:
     package_name = 'onnxruntime-openvino'
-
 elif '--use_nuphar' in sys.argv:
     package_name = 'onnxruntime-nuphar'
     sys.argv.remove('--use_nuphar')
+elif '--use_intel' in sys.argv:
+    package_name = 'onnxruntime-intel'
+    sys.argv.remove('--use_intel')
 
 if '--nightly_build' in sys.argv:
     package_name = 'ort-nightly'

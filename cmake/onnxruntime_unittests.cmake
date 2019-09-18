@@ -11,6 +11,10 @@ if (onnxruntime_USE_OPENVINO)
     list(APPEND TEST_INC_DIR ${OPENVINO_INCLUDE_DIR})
 endif()
 
+if (onnxruntime_USE_INTEL)
+    list(APPEND TEST_INC_DIR ${OPENVINO_INCLUDE_DIR})
+endif()
+
 set(disabled_warnings)
 set(extra_includes)
 function(AddTest)
@@ -211,6 +215,10 @@ if(onnxruntime_USE_OPENVINO)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino)
 endif()
 
+if(onnxruntime_USE_INTEL)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_intel)
+endif()
+
 if(onnxruntime_USE_NNAPI)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
@@ -236,6 +244,11 @@ if(onnxruntime_USE_NUPHAR)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nuphar)
 endif()
 
+file(GLOB_RECURSE onnxruntime_test_intel_src
+  "${ONNXRUNTIME_ROOT}/test/openvino/*.h"
+  "${ONNXRUNTIME_ROOT}/test/openvino/*.cc"
+ )
+
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   include(onnxruntime_unittests_internal.cmake)
 endif()
@@ -249,6 +262,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
+    ${PROVIDERS_INTEL}
     ${PROVIDERS_NNAPI}
     onnxruntime_optimizer
     onnxruntime_providers
@@ -327,6 +341,9 @@ if (SingleUnitTestProject)
   endif()
   if (onnxruntime_USE_OPENVINO)
     list(APPEND all_tests ${onnxruntime_test_openvino_src})
+  endif()
+  if (onnxruntime_USE_INTEL)
+    list(APPEND all_tests ${onnxruntime_test_intel_src})
   endif()
   # we can only have one 'main', so remove them all and add back the providers test_main as it sets
   # up everything we need for all tests
