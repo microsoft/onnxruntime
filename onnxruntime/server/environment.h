@@ -39,16 +39,15 @@ class ServerEnvironment {
   Ort::SessionOptions options_;
 
   struct SessionHolder {
-      Ort::Session session;
-      std::vector<std::string> output_names;
-      explicit SessionHolder(Ort::Env &env, std::string path, const Ort::SessionOptions &options) : session(nullptr)
-      {
-        session = Ort::Session(env, path.c_str(), options);
-      };
-      ~SessionHolder() = default;
-      SessionHolder(const SessionHolder&) = delete;
-      SessionHolder(const SessionHolder&&) = delete;
-      SessionHolder& operator=(const SessionHolder&) = delete; 
+    Ort::Session session;
+    std::vector<std::string> output_names;
+    explicit SessionHolder(Ort::Env& env, std::string path, const Ort::SessionOptions& options) : session(nullptr) {
+      session = Ort::Session(env, path.c_str(), options);
+    };
+    ~SessionHolder() = default;
+    SessionHolder(const SessionHolder&) = delete;
+    SessionHolder(const SessionHolder&&) = delete;
+    SessionHolder& operator=(const SessionHolder&) = delete;
   };
 
   std::unordered_map<std::pair<std::string, std::string>, ServerEnvironment::SessionHolder, boost::hash<std::pair<std::string, std::string>>> sessions_;

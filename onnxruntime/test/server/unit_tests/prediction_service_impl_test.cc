@@ -10,7 +10,6 @@
 #include <grpcpp/impl/grpc_library.h>
 #include "test_server_environment.h"
 
-
 namespace onnxruntime {
 namespace server {
 namespace grpc {
@@ -32,24 +31,22 @@ PredictRequest GetRequest() {
   return req;
 }
 
-
-
-class PredictionServiceImplTest : public ::testing::Test{
-  protected:
+class PredictionServiceImplTest : public ::testing::Test {
+ protected:
   void SetUp() override {
-  const static auto model_file = "testdata/mul_1.onnx";
-  
-  onnxruntime::server::ServerEnvironment* env = onnxruntime::server::test::ServerEnv();
-  // Implementation detail - currently predict is hardcoded to model "default" version 1.
-  env->InitializeModel(model_file, "default", "1");
+    const static auto model_file = "testdata/mul_1.onnx";
+
+    onnxruntime::server::ServerEnvironment* env = onnxruntime::server::test::ServerEnv();
+    // Implementation detail - currently predict is hardcoded to model "default" version 1.
+    env->InitializeModel(model_file, "default", "1");
   }
   void TearDown() override {
     onnxruntime::server::ServerEnvironment* env = onnxruntime::server::test::ServerEnv();
-    env -> UnloadModel("default", "1");
+    env->UnloadModel("default", "1");
   }
   std::shared_ptr<onnxruntime::server::ServerEnvironment> GetEnvironment() {
-  return std::shared_ptr<onnxruntime::server::ServerEnvironment>(onnxruntime::server::test::ServerEnv(), [](onnxruntime::server::ServerEnvironment *){});
-}
+    return std::shared_ptr<onnxruntime::server::ServerEnvironment>(onnxruntime::server::test::ServerEnv(), [](onnxruntime::server::ServerEnvironment*) {});
+  }
 };
 
 TEST_F(PredictionServiceImplTest, HappyPath) {
