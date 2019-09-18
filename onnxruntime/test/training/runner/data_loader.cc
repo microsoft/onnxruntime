@@ -49,7 +49,7 @@ DataLoader::DataLoader(const MapStringToString& input_name_map,
   vector<PATH_STRING_TYPE> partial_training_files;
   // If only need to load partial data for data-parallelism training
   if (total_shard > 1) {
-    if (shard_index < total_shard) {
+    if (shard_index >= total_shard) {
       ORT_THROW("shard_index must be 0~", total_shard - 1);
     }
 
