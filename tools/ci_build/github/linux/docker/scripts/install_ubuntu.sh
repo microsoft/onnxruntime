@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-while getopts p: parameter_Option
+while getopts p:d: parameter_Option
 do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
@@ -85,6 +85,7 @@ fi
 if [ $DEVICE_TYPE = "Normal" ]; then
     /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall sympy==1.1.1
 fi
+/usr/bin/python${PYTHON_VER} -m pip install --upgrade scipy
 rm -rf /var/lib/apt/lists/*
 
 if [ $DEVICE_TYPE = "Normal" ]; then
