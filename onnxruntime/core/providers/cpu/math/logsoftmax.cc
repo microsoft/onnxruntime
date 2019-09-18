@@ -42,10 +42,17 @@ Status LogSoftmax<float>::Compute(OpKernelContext* ctx) const {
   return status;
 }
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     LogSoftmax,
     1,
+    10,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     LogSoftmax<float>);
 
+// Opset 11 starts to support Neg Axis.
+ONNX_CPU_OPERATOR_KERNEL(
+    LogSoftmax,
+    11,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    LogSoftmax<float>);
 }  // namespace onnxruntime
