@@ -5,7 +5,7 @@ steps:
 - task: CmdLine@2
   condition: eq(variables['Agent.OS'], 'Windows_NT')
   displayName: 'Extract version number from the NuPkg file, Windows VMs'
-  workingDirectory: '${{ parameters.packageFolder }}''
+  workingDirectory: '${{ parameters.packageFolder }}'
   inputs:
     script: |
       echo processing nupkg
