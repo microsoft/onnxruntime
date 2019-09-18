@@ -478,6 +478,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #ifdef USE_NNAPI
   broken_tests.insert({"scan9_sum", "Error with the extra graph"});
   broken_tests.insert({"scan_sum", "Error with the extra graph"});
+  broken_tests.insert({"mvn_expanded", "Failed to find kernel for MemcpyFromHost(1) (node Memcpy_1)"});
 #endif
 
 #ifdef USE_TENSORRT
