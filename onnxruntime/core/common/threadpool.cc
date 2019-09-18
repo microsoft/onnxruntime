@@ -28,7 +28,7 @@ namespace concurrency {
 //
 // ThreadPool
 //
-ThreadPool::ThreadPool(const std::string&, int num_threads) : impl_(num_threads) {}
+  ThreadPool::ThreadPool(const std::string&, int num_threads) : impl_(num_threads, false) {}
 
 void ThreadPool::Schedule(std::function<void()> fn) { impl_.Schedule(fn); }
 
