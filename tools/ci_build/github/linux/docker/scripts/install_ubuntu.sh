@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-while getopts p: parameter_Option
+while getopts p:d: parameter_Option
 do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
