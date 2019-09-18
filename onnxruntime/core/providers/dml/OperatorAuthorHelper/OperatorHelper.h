@@ -40,6 +40,8 @@ void FindValueIndices(gsl::span<const T> values, T value, /*out*/ std::vector<ui
 // So given 3 dimensions, a -1 refers to axis 2, and -3 to axis 0.
 uint32_t HandleNegativeAxis(int32_t signedOnnxAxis, uint32_t dimCount);
 
+void HandleNegativeAxes(gsl::span<int32_t> onnxAxes, uint32_t dimCount);
+
 // Remove array entries of the given indices (in ascending order), shifting them toward the front.
 // There is a special check to avoid removing all the values, since returning a completely
 // empty array would frequently causes errors later in many uses (such as with dimensions).
@@ -437,14 +439,17 @@ protected:
 class SplitHelper
 {
 public:
-    void Initialize(const MLOperatorAttributes& operatorAttributes);
+    void Initialize(
+        const MLOperatorAttributes& operatorAttributes,
+        gsl::span<const DimensionType> inputDimensions
+        );
 
     // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
     // Shape_t is used to obtain input shape which will be used for adjusting attribute value. 
     template<typename Info_t, typename Shape_t>
     SplitHelper(const Info_t& info, const Shape_t& shape)
     {
-        Initialize(info);
+        Initialize(info, shape.GetInputTensorShape(0));
     }
 
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
@@ -517,7 +522,8 @@ public:
             int axis = info.GetOptionalAttribute<int>(AttrName::Axis, 0);
             m_axes.push_back(axis);
         }
-        auto inputShape = shape.GetInputTensorShape(0);
+        std::vector<uint32_t> inputShape = shape.GetInputTensorShape(0);
+        HandleNegativeAxes(/*inout*/ m_axes, gsl::narrow_cast<uint32_t>(inputShape.size()));
         AdjustAxesAndOutputShape(inputShape);
     }
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
@@ -607,13 +613,17 @@ protected:
 class ConcatHelper
 {
 public:
+    void Initialize(
+        const MLOperatorAttributes& operatorAttributes,
+        gsl::span<const DimensionType> inputDimensions
+    );
+
     // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
     // Shape_t is used to obtain input shape which will be used for adjusting attribute value. 
     template<typename Info_t, typename Shape_t>
     ConcatHelper(const Info_t& info, const Shape_t& shape)
     {
-        m_axis = info.GetOptionalAttribute<int>(AttrName::Axis, -1);
-        ML_CHECK_VALID_ARGUMENT(m_axis >= 0);
+        Initialize(info, shape.GetInputTensorShape(0));
     }
 
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
@@ -687,12 +697,17 @@ protected:
 class FlattenHelper
 {
 public:
+    void Initialize(
+        const MLOperatorAttributes& operatorAttributes,
+        gsl::span<const DimensionType> inputDimensions
+    );
+
     // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
     // Shape_t is used to obtain input shape which will be used for adjusting attribute value. 
     template<typename Info_t, typename Shape_t>
     FlattenHelper(const Info_t& info, const Shape_t& shape)
     {
-        m_axis = info.GetOptionalAttribute<int>(AttrName::Axis, 1);
+        Initialize(info, shape.GetInputTensorShape(0));
     }
 
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;

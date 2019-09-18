@@ -36,7 +36,10 @@ public:
         case DML_OPERATOR_ACTIVATION_SOFTMAX:
         case DML_OPERATOR_ACTIVATION_LOG_SOFTMAX:
         case DML_OPERATOR_ACTIVATION_HARDMAX:
-            coerceAxis = kernelCreationContext.GetOptionalAttribute<int>(AttrName::Axis, 1);
+            {
+                const uint32_t onnxDimCount = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0).size());
+                coerceAxis = HandleNegativeAxis(kernelCreationContext.GetOptionalAttribute<int>(AttrName::Axis, 1), onnxDimCount);
+            }
             break;
 
         case DML_OPERATOR_ACTIVATION_HARD_SIGMOID:

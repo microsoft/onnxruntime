@@ -36,7 +36,6 @@ public:
 
         // Read the axis.
         int onnxAxis = kernelCreationContext.GetOptionalAttribute<int>(AttrName::Axis, 0);
-        ML_CHECK_VALID_ARGUMENT(onnxAxis >= -int(dataDimensions.size()) && onnxAxis <= int(dataDimensions.size()) - 1);
         uint32_t dmlAxis = GetDmlAdjustedAxis(onnxAxis, kernelCreationContext, m_inputTensorDescs.front().GetDimensionCount());
 
         DML_SCATTER_OPERATOR_DESC operatorDesc = {};

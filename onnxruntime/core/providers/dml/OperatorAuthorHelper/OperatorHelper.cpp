@@ -19,6 +19,14 @@ uint32_t HandleNegativeAxis(int32_t signedOnnxAxis, uint32_t dimCount)
     return absoluteAxis;
 }
 
+void HandleNegativeAxes(gsl::span<int32_t> onnxAxes, uint32_t dimCount)
+{
+    for (int32_t& axis : onnxAxes)
+    {
+        axis = HandleNegativeAxis(axis, dimCount);
+    }
+}
+
 int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
 {
     switch (tensorDataType)
@@ -357,9 +365,13 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         return { std::move(outputShape) };
     }
 
-    void SplitHelper::Initialize(const MLOperatorAttributes& operatorAttributes)
+    void SplitHelper::Initialize(
+        const MLOperatorAttributes& operatorAttributes,
+        gsl::span<const DimensionType> inputDimensions
+        )
     {
-        m_axis = operatorAttributes.GetOptionalAttribute<int>(AttrName::Axis, 0);
+        const uint32_t inputDimCount = gsl::narrow_cast<int32_t>(inputDimensions.size());
+        m_axis = HandleNegativeAxis(operatorAttributes.GetOptionalAttribute<int32_t>(AttrName::Axis, 0), inputDimCount);
         m_split = operatorAttributes.GetOptionalAttributeVectorInt32(AttrName::Split);
     }
 
@@ -420,9 +432,12 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         gsl::span<const DimensionType> inputDimensions
         )
     {
+        const uint32_t dimCount = gsl::narrow_cast<int32_t>(inputDimensions.size());
+
         std::vector<int32_t> starts = operatorAttributes.GetOptionalAttributeVectorInt32(AttrName::Starts);
         std::vector<int32_t> ends = operatorAttributes.GetOptionalAttributeVectorInt32(AttrName::Ends);
         std::vector<int32_t> axes = operatorAttributes.GetOptionalAttributeVectorInt32(AttrName::Axes);
+        HandleNegativeAxes(/*inout*/ axes, dimCount);
 
         ML_CHECK_VALID_ARGUMENT(starts.size() == ends.size(), "'starts' must equal 'ends' in size.");
         ML_CHECK_VALID_ARGUMENT(axes.empty() || starts.size() == axes.size(), "'axes' must equal 'starts' in size, or 'axes' must be empty.");
@@ -796,6 +811,16 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         return { std::move(outputShape) };
     }
 
+    void ConcatHelper::Initialize(
+        const MLOperatorAttributes& operatorAttributes,
+        gsl::span<const DimensionType> inputDimensions
+        )
+    {
+        int32_t inputDimCount = gsl::narrow_cast<int>(inputDimensions.size());
+        m_axis = HandleNegativeAxis(operatorAttributes.GetOptionalAttribute<int>(AttrName::Axis, -1), inputDimCount);
+        ML_CHECK_VALID_ARGUMENT(m_axis < inputDimensions.size());
+    }
+
     std::vector<EdgeShapes> ConcatHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         auto outputShape = shapeInfo.GetInputTensorShape(0);
@@ -879,6 +904,17 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         return { std::move(EdgeShapes(outputDimensions)) };
     }
 
+    void FlattenHelper::Initialize(
+        const MLOperatorAttributes& operatorAttributes,
+        gsl::span<const DimensionType> inputDimensions
+        )
+    {
+        int32_t inputDimCount = gsl::narrow_cast<int32_t>(inputDimensions.size());
+        int32_t axis = operatorAttributes.GetOptionalAttribute<int32_t>(AttrName::Axis, 1);
+        // Flatten can accept an axis [-r, r], including one past the last absolute index.
+        m_axis = (axis == inputDimCount) ? axis : HandleNegativeAxis(axis, inputDimCount);
+    }
+
     std::vector<EdgeShapes> FlattenHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         auto inputDimensions = shapeInfo.GetInputTensorShape(0);
@@ -891,19 +927,11 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         // the remaining dimensions. An axis of 0 means no input dimensions
         // are flattened into the first output dimension, so the output is 1D 
         // padded with a 1 in the first diemension.
-        if (m_axis == 0)
-        {
-            DimensionType totalElements = ComputeElementCountFromDimensions(inputDimensions);
-            outputDimensions.assign({ 1, totalElements });
-        }
-        else
-        {
-            ML_CHECK_VALID_ARGUMENT(m_axis > 0 && m_axis <= gsl::narrow_cast<int>(inputDimensions.size()));
-            gsl::span<const DimensionType> outputDimensionsSpan(inputDimensions);
-            DimensionType elementsToAxis = ComputeElementCountFromDimensions(outputDimensionsSpan.subspan(0, m_axis));
-            DimensionType elementsFromAxis = ComputeElementCountFromDimensions(outputDimensionsSpan.subspan(m_axis, inputDimensions.size() - m_axis));
-            outputDimensions.assign({ elementsToAxis, elementsFromAxis });
-        }
+        ML_CHECK_VALID_ARGUMENT(m_axis >= 0 && m_axis <= gsl::narrow_cast<int>(inputDimensions.size()));
+        gsl::span<const DimensionType> outputDimensionsSpan(inputDimensions);
+        DimensionType elementsToAxis = ComputeElementCountFromDimensions(outputDimensionsSpan.subspan(0, m_axis));
+        DimensionType elementsFromAxis = ComputeElementCountFromDimensions(outputDimensionsSpan.subspan(m_axis, inputDimensions.size() - m_axis));
+        outputDimensions.assign({ elementsToAxis, elementsFromAxis });
 
         return { std::move(outputDimensions) };
     }

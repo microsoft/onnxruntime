@@ -15,7 +15,7 @@ public:
     :   DmlOperator(kernelInfo),
         ConcatHelper(kernelInfo, kernelInfo.GetTensorShapeDescription())
     {
-        Initialize(kernelInfo);
+        DmlOperator::Initialize(kernelInfo);
 
         uint32_t dmlAxis = GetDmlAdjustedAxis(m_axis, kernelInfo, m_inputTensorDescs.front().GetDimensionCount());
 

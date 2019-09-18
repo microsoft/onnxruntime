@@ -331,18 +331,19 @@ namespace Dml
 
     } // namespace FusionHelpers
 
-    uint32_t GetDmlAdjustedAxis(uint32_t onnxAxis, const MLOperatorKernelCreationContext& kernelCreationContext, uint32_t dmlDimCount)
+    uint32_t GetDmlAdjustedAxis(int32_t onnxAxis, const MLOperatorKernelCreationContext& kernelCreationContext, uint32_t dmlDimCount)
     {
         const std::vector<DimensionType> inputDimensions = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0);
         uint32_t onnxDimCount = gsl::narrow_cast<uint32_t>(inputDimensions.size());
+        onnxAxis = HandleNegativeAxis(onnxAxis, onnxDimCount);
         return GetDmlAdjustedAxis(onnxAxis, onnxDimCount, dmlDimCount);
     }
 
     // Adjust the axis value to compensate for padding any upper dimensions (unsqueezing).
-    uint32_t GetDmlAdjustedAxis(uint32_t onnxAxis, uint32_t onnxDimCount, uint32_t dmlDimCount)
+    uint32_t GetDmlAdjustedAxis(int32_t onnxAxis, uint32_t onnxDimCount, uint32_t dmlDimCount)
     {
-        ML_CHECK_VALID_ARGUMENT(onnxAxis <= onnxDimCount);
         ML_CHECK_VALID_ARGUMENT(dmlDimCount >= onnxDimCount);
+        onnxAxis = HandleNegativeAxis(onnxAxis, onnxDimCount);
         uint32_t dmlAxis = onnxAxis + dmlDimCount - onnxDimCount;
         return dmlAxis;
     }
