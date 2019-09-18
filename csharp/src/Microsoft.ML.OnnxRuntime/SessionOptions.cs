@@ -319,19 +319,19 @@ namespace Microsoft.ML.OnnxRuntime
         /// Threadpool size for the session.Run() calls. 
         /// Default = 0, meaning threadpool size is aumatically selected from number of available cores.
         /// </summary>
-        public int IntraOpThreadPoolSize
+        public int IntraOpNumThreads
         {
             get
             {
-                return _intraOpThreadPoolSize;
+                return _intraOpNumThreads;
             }
             set
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSetIntraOpNumThreads(_nativePtr, value));
-                _intraOpThreadPoolSize = value;
+                _intraOpNumThreads = value;
             }
         }
-        private int _intraOpThreadPoolSize = 0; // set to what is set in C++ SessionOptions by default;
+        private int _intraOpNumThreads = 0; // set to what is set in C++ SessionOptions by default;
 
 
         /// <summary>

@@ -237,7 +237,7 @@ ORT_API_STATUS(OrtSetSessionLogVerbosityLevel, _Inout_ OrtSessionOptions* option
 ORT_API_STATUS(OrtSetSessionLogSeverityLevel, _Inout_ OrtSessionOptions* options, int session_log_severity_level);
 
 // Set Graph optimization level.
-// TODO Add documentation about which optimizations are enabled for each value.
+// TODO (askhade) Add documentation about which optimizations are enabled for each value.
 typedef enum GraphOptimizationLevel {
   ORT_DISABLE_ALL = 0,
   ORT_ENABLE_BASIC = 1,
@@ -247,21 +247,13 @@ typedef enum GraphOptimizationLevel {
 ORT_API_STATUS(OrtSetSessionGraphOptimizationLevel, _Inout_ OrtSessionOptions* options,
                GraphOptimizationLevel graph_optimization_level);
 
-/**
- * Controls the size of the thread pool used to parallelize the execution of tasks within individual nodes (ops)
- * Set it to 0 to make onnxruntime run as single threaded.
- * \param intra_op_num_threads <0, let the runtime choose a default. =0, Don't create extra threads. 
- *                                 >0, create a thread pool with size of this value.
- */
+// Sets the number of threads used to parallelize the execution within nodes
+// A value of 0 means ORT will pick a default
 ORT_API_STATUS(OrtSetIntraOpNumThreads, _Inout_ OrtSessionOptions* options, int intra_op_num_threads);
 
-/**
- * Controls the size of the thread pool used to parallelize the execution of nodes (ops)
- * configuring this makes sense only when you're using parallel executor
- * Set it to 0 to make onnxruntime run as single threaded.
- * \param intra_op_num_threads <0, let the runtime choose a default. =0, Don't create extra threads. 
- *                                 >0, create a thread pool with size of this value.
- */
+// Sets the number of threads used to parallelize the execution of the graph (across nodes)
+// If sequential execution is enabled this value is ignored
+// A value of 0 means ORT will pick a default
 ORT_API_STATUS(OrtSetInterOpNumThreads, _Inout_ OrtSessionOptions* options, int inter_op_num_threads);
 
 /**
