@@ -39,47 +39,10 @@ constexpr const char* Intel = "Intel";
 
 IntelExecutionProvider::IntelExecutionProvider(const IntelExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kIntelExecutionProvider} {
-
   ORT_UNUSED_PARAMETER(info);
-  //ORT_ENFORCE(info.ng_backend_type == "CPU", "nGraph Execution Provider for onnxruntime currently is only supported for CPU backend.");
 
-  auto default_allocator_factory = [](int) {
-    auto allocator_info = std::make_unique<OrtAllocatorInfo>(Intel, OrtAllocatorType::OrtDeviceAllocator);
-    return std::make_unique<CPUAllocator>(std::move(allocator_info));
-  };
-
-  DeviceAllocatorRegistrationInfo default_allocator_info{
-    OrtMemTypeDefault,
-    std::move(default_allocator_factory),
-    std::numeric_limits<size_t>::max()
-  };
-
-  InsertAllocator(CreateAllocator(default_allocator_info));
-
-
-  auto cpu_allocator_factory = [](int) {
-    auto allocator_info = std::make_unique<OrtAllocatorInfo>(
-      Intel, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput);
-    return std::make_unique<CPUAllocator>(std::move(allocator_info));
-  };
-
-  DeviceAllocatorRegistrationInfo cpu_allocator_info{
-    OrtMemTypeCPUOutput,
-    std::move(cpu_allocator_factory),
-    std::numeric_limits<size_t>::max()
-  };
-
-  InsertAllocator(CreateAllocator(cpu_allocator_info));
-/*
-  try {
-    ng_backend_ = ngraph::runtime::Backend::create(info.ng_backend_type);
-  } catch (const std::exception& exp) {
-    LOGS_DEFAULT(FATAL) << "Exception while creating nGraph " << info.ng_backend_type << " Backend: " << std::string(exp.what());
-  } catch (...) {
-    LOGS_DEFAULT(FATAL) << "Unknown exception while while creating nGraph " << info.ng_backend_type << " Backend";
-    throw;
-  }
-*/
+  DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) {return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(Intel, OrtDeviceAllocator));}, std::numeric_limits<size_t>::max()});
+  InsertAllocator(CreateAllocator(device_info));
 }
 
 // Returns true only if op is in a mode that is not currently supported
