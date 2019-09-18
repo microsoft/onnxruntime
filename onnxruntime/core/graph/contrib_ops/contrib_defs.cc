@@ -1654,6 +1654,23 @@ round([-4.5]) = [-4.0]
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Equal)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(Round_ver1_doc)
+      .Input(0, "A", "Input tensor", "T")
+      .Input(1, "B", "Input tensor", "T")
+      .Output(0, "C", "Output tensor", "T1")
+      .TypeConstraint(
+          "T",
+          {"tensor(bool)", "tensor(int32)", "tensor(int64)", "tensor(float)"},
+          "Constrain input to bool and numeric tensors")
+      .TypeConstraint(
+          "T1",
+          {"tensor(bool)"},
+          "Constrain output to bool tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
 
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
