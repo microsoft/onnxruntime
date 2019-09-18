@@ -666,13 +666,26 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
                      }),
       graph_mutable_nodes->end());
 
+  // Collect all node arg name, type, shape information in the graph.
+  // type/shape information will be assigned to each node arg when going
+  // thru all nodes later.
+
+  // process graph inputs first as we want the type/shape from them to be preferred if a graph input
+  // has a matching initializer
+  for (auto& graph_input : graph_proto_->input()) {
+    if (utils::HasName(graph_input) && utils::HasType(graph_input)) {
+      name_to_type_map[graph_input.name()] = graph_input.type();
+      GetOrCreateNodeArg(graph_input.name(), &graph_input.type());
+    }
+  }
+
   // Copy initial tensors to a map.
   for (auto& tensor : graph_proto_->initializer()) {
     name_to_initial_tensor_[tensor.name()] = &tensor;
 
     // v4 does not require initializers to be inputs, so we need to ensure there is a NodeArg created for all
     // initializers in that case
-    if (ir_version_ > 3) {
+    if (ir_version_ > 3 && GetNodeArg(tensor.name()) == nullptr) {
       TypeProto t;
       t.mutable_tensor_type()->set_elem_type(tensor.data_type());
       auto shape = t.mutable_tensor_type()->mutable_shape();
@@ -680,17 +693,6 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
         shape->add_dim()->set_dim_value(dim);
 
       GetOrCreateNodeArg(tensor.name(), &t);
-    }
-  }
-
-  // Collect all node arg name, type, shape information in the graph.
-  // type/shape information will be assigned to each node arg when going
-  // thru all nodes later.
-  for (auto& graph_input : graph_proto_->input()) {
-    if (utils::HasName(graph_input) && utils::HasType(graph_input)) {
-      name_to_type_map[graph_input.name()] = graph_input.type();
-      // always create a NodeArg for graph input in case its from an initializer
-      GetOrCreateNodeArg(graph_input.name(), &graph_input.type());
     }
   }
 
@@ -1284,16 +1286,6 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     auto p_node_arg = node_.InputDefs().at(index);
     if ((nullptr != p_node_arg) && p_node_arg->Exists()) {
       type = p_node_arg->TypeAsProto();
-
-      // if the input is an initializer that is not const we have to strip out the shape as an
-      // override via a graph input may change it
-      if (type != nullptr && graph_utils::IsInitializer(graph_, p_node_arg->Name(), true) &&
-          !graph_utils::IsConstantInitializer(graph_, p_node_arg->Name(), true)) {
-        TypeProto temp_type(*type);
-        temp_type.mutable_tensor_type()->clear_shape();
-        temp_types_.push_back(std::move(temp_type));
-        type = &temp_types_.back();
-      }
     }
 
     return type;
@@ -1342,8 +1334,6 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   SubgraphInferencingFunc subgraph_inferencing_func_;
   std::vector<std::unique_ptr<GraphInferencerImpl>> graph_inferencers_;
   const Graph& graph_;
-  // temporary copies of types where we had to remove the shape
-  mutable std::vector<TypeProto> temp_types_;
 };
 
 Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
@@ -1645,12 +1635,17 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
         inferred_shape.add_dim()->set_dim_value(dim);
       }
       const TensorShapeProto* p_existing_shape = node_arg->Shape();
-      if (nullptr == p_existing_shape)
-        node_arg->SetShape(inferred_shape);
-      else {
+      if (nullptr == p_existing_shape) {
+        // use the inferred shape if this is a constant initializer (cannot be overridden).
+        // if not it has a matching graph input, and we prefer the shape info (or lack of info) from the graph input
+        if (graph_utils::IsConstantInitializer(*this, name, false)) {
+          node_arg->SetShape(inferred_shape);
+        }
+      } else {
         if (p_existing_shape->dim_size() != tensor_proto->dims_size())
           return Status(ONNXRUNTIME, FAIL,
                         "Type Error: Shape of initializer " + name + " does not match its type.");
+
         for (int i = 0; i < p_existing_shape->dim_size(); ++i) {
           auto& d = p_existing_shape->dim(i);
           if (utils::HasDimValue(d) && (d.dim_value() != tensor_proto->dims(i)))

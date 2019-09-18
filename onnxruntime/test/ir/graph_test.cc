@@ -814,11 +814,23 @@ TEST(TypeInferenceTest, VariadicOutput) {
   CheckTensorEltType(Z.TypeAsProto(), TensorProto_DataType_FLOAT);
 }
 
-// test that we don't apply the shape from a non-const initializer
+// test that we prefer the graph input shape for a non-const initializer (initializer with matching graph input)
 TEST(TypeInferenceTest, NonConstInitializer) {
   Model model("graph_1");
   auto& graph = model.MainGraph();
 
+  TypeProto tensor_type_no_shape;
+  tensor_type_no_shape.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  // tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+
+  auto& X = graph.GetOrCreateNodeArg("X", &tensor_type_no_shape);
+  auto& Y = graph.GetOrCreateNodeArg("Y_Initializer", &tensor_type_no_shape);
+  auto& Z = graph.GetOrCreateNodeArg("Z", nullptr);
+
+  // 2 graph inputs, both without shapes
+  graph.SetInputs({&X, &Y});
+
+  // add initializer for the Y input with shape
   TensorProto t;
   t.set_data_type(TensorProto_DataType_FLOAT);
   t.add_float_data(0.1f);
@@ -827,24 +839,38 @@ TEST(TypeInferenceTest, NonConstInitializer) {
   t.set_name("Y_Initializer");
   graph.AddInitializedTensor(t);
 
-  TypeProto tensor_type;
-  tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
-
-  auto& X = graph.GetOrCreateNodeArg("X", &tensor_type);
-  auto& Y = graph.GetOrCreateNodeArg("Y_Initializer", nullptr);
-  auto& Z = graph.GetOrCreateNodeArg("Z", nullptr);
-
   graph.AddNode("node_1", "Add", "node 1.", {&X, &Y}, {&Z});
 
-  // 2 graph inputs, both with shapes, but Y_Initializer can be overridden
-  // When running shape inferencing we should NOT be able to determine the shape of Z due to the latter.
-  graph.SetInputs({&X, &Y});
+  auto resolve_and_validate = [](Graph& g) {
+    auto status = g.Resolve();
+    EXPECT_TRUE(status.IsOK()) << status;
 
-  auto status = graph.Resolve();
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+    const auto* current_Y = g.GetNodeArg("Y_Initializer");
+    const auto* current_Z = g.GetNodeArg("Z");
 
-  EXPECT_TRUE(Z.Shape() == nullptr);
+    // the graph input should still have no shape as we don't want to infer the shape from the initializer
+    // as inputs have priority
+    EXPECT_TRUE(current_Y != nullptr && current_Y->Shape() == nullptr);
+
+    // and we should have type but no shape for Z after type/shape inferencing
+    EXPECT_TRUE(current_Z != nullptr && current_Z->Type() == current_Y->Type());
+    EXPECT_TRUE(current_Z->Shape() == nullptr);
+  };
+
+  resolve_and_validate(graph);
+
+  // save and reload to validate same happens when graph is loaded from proto
+  std::string s1;
+  ModelProto model_proto;
+  std::shared_ptr<onnxruntime::Model> p_model;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&s1));
+  ASSERT_TRUE(model_proto.ParseFromString(s1));
+
+  auto status = onnxruntime::Model::Load(model_proto, p_model, nullptr);
+  ASSERT_TRUE(status.IsOK()) << status;
+
+  auto& graph2 = p_model->MainGraph();
+  resolve_and_validate(graph2);
 }
 
 // Test that Graph::Resolve identifies name-duplication across initializer and node-output-arg
