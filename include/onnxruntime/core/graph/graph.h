@@ -252,6 +252,7 @@ class Node {
   ADD_ATTR_INTERFACES(std::string)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TensorProto)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::GraphProto)
+  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::SparseTensorProto)
 
   /** Remove the specified attribute from this Node */
   bool ClearAttribute(const std::string& attr_name);

@@ -1,5 +1,7 @@
 # Docker containers for ONNX Runtime
 
+#### Build Instructions
+
 - [Arm 32v7](Dockerfile.arm32v7)
 - [Build from source (CPU)](Dockerfile.source)
 - [CUDA + CUDNN](Dockerfile.cuda)
@@ -9,7 +11,20 @@
 - [ONNX Runtime Server](Dockerfile.server)
 - [Nuphar](Dockerfile.nuphar)
 
-**Preparation step:** download `scripts` to your local folder before running the `docker build` command for any of the options below. 
+#### Published Microsoft Container Registry (MCR) Images
+
+Use `docker pull` with any of the images and tags below to pull an image and try for yourself. Note that the build from source (CPU), CUDA, and TensorRT images include additional dependencies like miniconda for compatibility with AzureML image deployment.
+
+**Example**: Run `docker pull mcr.microsoft.com/azureml/onnxruntime:latest-cuda` to pull the latest released docker image with ONNX Runtime GPU, CUDA, and CUDNN support.
+
+| Build Flavor      | Base Image                            | ONNX Runtime Docker Image tags                   | Latest           |
+|-------------------|---------------------------------------|--------------------------------------------------|------------------|
+| Source (CPU)      | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0, :v0.5.0                                 | :latest          |
+| CUDA (GPU)        | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0-cuda10.0-cudnn7, :v0.5.0-cuda10.1-cudnn7 | :latest-cuda     |
+| TensorRT (x86)    | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0-tensorrt19.03, :v0.5.0-tensorrt19.06     | :latest-tensorrt |
+| OpenVino (VAD-M)  | mcr.microsoft.com/azureml/onnxruntime | TBA                                              | TBA              |
+| OpenVino (MYRIAD) | mcr.microsoft.com/azureml/onnxruntime | TBA                                              | TBA              |
+| Server            | mcr.microsoft.com/onnxruntime/server  | :v0.4.0, :v0.5.0                                 | :latest          |
 
 ## Build from Source
 #### Linux 16.04, CPU, Python Bindings
@@ -86,7 +101,7 @@
 ## OpenVINO (Public Preview)
 #### Linux 16.04, Python Bindings
 
-1. Build the onnxruntime image for all the accelerators supported as below 
+1. Build the onnxruntime image for all the accelerators supported as below
 
    Retrieve your docker image in one of the following ways.
 
@@ -95,7 +110,7 @@
        docker build -t onnxruntime --build-arg DEVICE=$DEVICE .
        ```
     - Pull the official image from DockerHub.
-   
+
 
 2. DEVICE: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
 
@@ -107,12 +122,12 @@
 	| <code>MYRIAD_FP16</code> | Intel<sup></sup> Movidius<sup>TM</sup> USB sticks |
 	| <code>VAD-M_FP16</code> | Intel<sup></sup> Vision Accelerator Design based on Movidius<sup>TM</sup> MyriadX VPUs |
 
-## CPU 
+## CPU
 
 1. Retrieve your docker image in one of the following ways.
 
-   - Build the docker image from the DockerFile in this repository. 
-      
+   - Build the docker image from the DockerFile in this repository.
+
      ```
      docker build -t onnxruntime-cpu --build-arg DEVICE=CPU_FP32 --network host .
      ```
@@ -127,10 +142,10 @@
 
 ## GPU
 
-1. Retrieve your docker image in one of the following ways. 
+1. Retrieve your docker image in one of the following ways.
    - Build the docker image from the DockerFile in this repository.
-     ``` 
-      docker build -t onnxruntime-gpu --build-arg DEVICE=GPU_FP32 --network host . 
+     ```
+      docker build -t onnxruntime-gpu --build-arg DEVICE=GPU_FP32 --network host .
      ```
    - Pull the official image from DockerHub.
      ```
@@ -141,12 +156,12 @@
     ```
     docker run -it --device /dev/dri:/dev/dri onnxruntime-gpu:latest
     ```
-## Myriad VPU Accelerator 
+## Myriad VPU Accelerator
 
-1. Retrieve your docker image in one of the following ways. 
+1. Retrieve your docker image in one of the following ways.
    - Build the docker image from the DockerFile in this repository.
-     ``` 
-      docker build -t onnxruntime-myriad --build-arg DEVICE=MYRIAD_FP16 --network host . 
+     ```
+      docker build -t onnxruntime-myriad --build-arg DEVICE=MYRIAD_FP16 --network host .
      ```
    - Pull the official image from DockerHub.
      ```
@@ -159,12 +174,12 @@
 
     ```
 =======
-## VAD-M Accelerator Version 
+## VAD-M Accelerator Version
 
-1. Retrieve your docker image in one of the following ways. 
+1. Retrieve your docker image in one of the following ways.
    - Build the docker image from the DockerFile in this repository.
-     ``` 
-      docker build -t onnxruntime-vadr --build-arg DEVICE=VAD-M_FP16 --network host . 
+     ```
+      docker build -t onnxruntime-vadr --build-arg DEVICE=VAD-M_FP16 --network host .
      ```
    - Pull the official image from DockerHub.
      ```

@@ -62,7 +62,7 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
 
   // Put the output_block_size and block_size into div_strides
   // for divmod calling in _GatherKernel to calculate the input index
-  CudaAsyncBuffer<fast_divmod> div_strides(this, 0, 2);
+  CudaAsyncBuffer<fast_divmod> div_strides(this, 2);
   gsl::span<fast_divmod> div_strides_span = div_strides.CpuSpan();
   div_strides_span[0] = fast_divmod(gsl::narrow_cast<int>(output_block_size));
   div_strides_span[1] = fast_divmod(gsl::narrow_cast<int>(block_size));
