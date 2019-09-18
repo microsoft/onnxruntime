@@ -802,7 +802,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 return;
             var entryPointNames = new[]{
-            "OrtGetApiEnv",
+            "OrtGetApi",
             "OrtSessionOptionsAppendExecutionProvider_CPU"
 #if USE_MKLDNN
             ,"OrtSessionOptionsAppendExecutionProvider_Mkldnn"
