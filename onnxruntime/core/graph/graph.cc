@@ -1984,6 +1984,31 @@ void Graph::CleanAllInitializedTensors() noexcept {
   }
 }
 
+std::vector<const NodeArg*> Graph::GetOverridableInitializers () const {
+  std::vector<const NodeArg*> result;
+  if (CanOverrideInitializer()) {
+    // graph_inputs_excluding_initializers_ and graph_inputs_including_initializers_
+    // are inserted in the same order. So we walk and compute the difference.
+    auto f_incl = graph_inputs_including_initializers_.cbegin();
+    const auto l_incl = graph_inputs_including_initializers_.cend();
+    auto f_excl = graph_inputs_excluding_initializers_.cbegin();
+    const auto l_excl = graph_inputs_excluding_initializers_.cend();
+    while (f_incl != l_incl) {
+      if (f_excl != l_excl) {
+        // Equal means not an initializer
+        if (*f_incl == *f_excl) {
+          ++f_incl;
+          ++f_excl;
+          continue;
+        }
+      }
+      result.push_back(*f_incl);
+      ++f_incl;
+    }
+  }
+  return result;
+}
+
 const InitializedTensorSet& Graph::GetAllInitializedTensors() const noexcept {
   return name_to_initial_tensor_;
 }

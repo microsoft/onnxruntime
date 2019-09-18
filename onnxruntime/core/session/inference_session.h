@@ -267,6 +267,14 @@ class InferenceSession {
     */
   std::pair<common::Status, const InputDefList*> GetModelInputs() const;
 
+    /**
+    * Get all definitions of the model for including overridable initializers.
+    * This does not include weights. Use this to get the name/type/shapes of the overridable initializers.
+    * @return pair.first = OK; FAIL otherwise. pair.second is always a vector that can be empty
+    * @note Empty vector is returned for IR < 4 models as all initializers are constant there.
+    */
+  std::pair<common::Status, std::vector<const NodeArg*>> GetOverridableInitializers() const;
+
   /**
     * Get all output definitions of the model. Use this to get the name/type/shapes of the outputs.
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
