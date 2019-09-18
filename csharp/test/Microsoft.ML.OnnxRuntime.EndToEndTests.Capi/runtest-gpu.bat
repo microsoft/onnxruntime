@@ -3,18 +3,19 @@ REM Licensed under the MIT License.
 echo on
 
 set LocalNuGetRepo=%1
+SET CurrentOnnxRuntimeVersion=%2
 setlocal enableextensions disabledelayedexpansion
 
 REM WorkingDirectory is Build.SourcesDirectory\csharp
-set /p MajorVersionNumber=<..\VERSION_NUMBER
-set VersionSuffix=
-IF NOT DEFINED IsReleaseBuild (
-    FOR /F "tokens=* USEBACKQ" %%F IN (`git rev-parse --short HEAD`) DO (
-        set VersionSuffix=-dev-%%F
-    )
-)
+REM set /p MajorVersionNumber=<..\VERSION_NUMBER
+REM set VersionSuffix=
+REM IF NOT DEFINED IsReleaseBuild (
+REM     FOR /F "tokens=* USEBACKQ" %%F IN (`git rev-parse --short HEAD`) DO (
+REM         set VersionSuffix=-dev-%%F
+REM     )
+REM )
 
-set CurrentOnnxRuntimeVersion=%MajorVersionNumber%%VersionSuffix%
+REM set CurrentOnnxRuntimeVersion=%MajorVersionNumber%%VersionSuffix%
 
 @echo %CurrentOnnxRuntimeVersion%
 

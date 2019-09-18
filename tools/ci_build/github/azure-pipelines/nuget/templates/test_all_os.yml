@@ -1,4 +1,5 @@
 # test NuGet package on Win, Linux and MacOS
+parameters:
 jobs:
 - template: test_win.yml
   parameters:
