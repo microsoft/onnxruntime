@@ -85,7 +85,7 @@ TEST_F(CApiTest, model_missing_data) {
   bool failed = false;
   try {
     Ort::Session session(env_, model_url.c_str(), Ort::SessionOptions{});
-  } catch (const Ort::Exception& exception) {
+  } catch (const Ort::Exception&) {
     failed = true;
   }
   ASSERT_EQ(failed, true);
