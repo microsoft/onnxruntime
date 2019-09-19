@@ -150,8 +150,13 @@ inline SessionOptions SessionOptions::Clone() const {
   return SessionOptions{out};
 }
 
-inline SessionOptions& SessionOptions::SetThreadPoolSize(int session_thread_pool_size) {
-  ThrowOnError(g_api->SetSessionThreadPoolSize(p_, session_thread_pool_size));
+inline SessionOptions& SessionOptions::SetIntraOpNumThreads(int intra_op_num_threads) {
+  ORT_THROW_ON_ERROR(g_api->SetIntraOpNumThreads(p_, intra_op_num_threads));
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::SetInterOpNumThreads(int inter_op_num_threads) {
+  ORT_THROW_ON_ERROR(g_api->SetInterOpNumThreads(p_, inter_op_num_threads));
   return *this;
 }
 

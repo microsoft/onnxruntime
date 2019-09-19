@@ -158,6 +158,8 @@ namespace Microsoft.ML.OnnxRuntime
             OrtSetSessionLogVerbosityLevel = (DOrtSetSessionLogVerbosityLevel)Marshal.GetDelegateForFunctionPointer(api_.SetSessionLogVerbosityLevel, typeof(DOrtSetSessionLogVerbosityLevel));
             OrtSetSessionLogSeverityLevel = (DOrtSetSessionLogSeverityLevel)Marshal.GetDelegateForFunctionPointer(api_.SetSessionLogSeverityLevel, typeof(DOrtSetSessionLogSeverityLevel));
             OrtSetSessionThreadPoolSize = (DOrtSetSessionThreadPoolSize)Marshal.GetDelegateForFunctionPointer(api_.SetSessionThreadPoolSize, typeof(DOrtSetSessionThreadPoolSize));
+           
+            OrtSetSessionThreadPoolSize = (DOrtSetSessionThreadPoolSize)Marshal.GetDelegateForFunctionPointer(api_.SetSessionThreadPoolSize, typeof(DOrtSetSessionThreadPoolSize));
             OrtSetSessionGraphOptimizationLevel = (DOrtSetSessionGraphOptimizationLevel)Marshal.GetDelegateForFunctionPointer(api_.SetSessionGraphOptimizationLevel, typeof(DOrtSetSessionGraphOptimizationLevel));
 
             OrtCreateRunOptions = (DOrtCreateRunOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateRunOptions, typeof(DOrtCreateRunOptions));
@@ -505,8 +507,8 @@ namespace Microsoft.ML.OnnxRuntime
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateTensorAsOrtValue(
                         IntPtr /*_Inout_ OrtAllocator* */ allocator,
-                        long[] /*_In_ const int64_t* */ shape, 
-                        UIntPtr /*size_t*/ shape_len, 
+                        long[] /*_In_ const int64_t* */ shape,
+                        UIntPtr /*size_t*/ shape_len,
                         TensorElementType type,
                         out IntPtr /* OrtValue** */ outputValue);
         public static DOrtCreateTensorAsOrtValue OrtCreateTensorAsOrtValue;
@@ -530,7 +532,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// \param len total data length, not including the trailing '\0' chars.
         public delegate IntPtr /*(OrtStatus*)*/ DOrtFillStringTensor(
                                                         IntPtr /* OrtValue */ value,
-                                                        string[] /* const char* const* */s, 
+                                                        string[] /* const char* const* */s,
                                                         UIntPtr /* size_t */ s_len);
         public static DOrtFillStringTensor OrtFillStringTensor;
 

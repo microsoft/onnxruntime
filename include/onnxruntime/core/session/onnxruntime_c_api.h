@@ -172,7 +172,7 @@ typedef void(ORT_API_CALL* OrtLoggingFunction)(
     const char* message);
 
 // Set Graph optimization level.
-// TODO Add documentation about which optimizations are enabled for each value.
+// TODO (askhade) Add documentation about which optimizations are enabled for each value.
 typedef enum GraphOptimizationLevel {
   ORT_DISABLE_ALL = 0,
   ORT_ENABLE_BASIC = 1,
@@ -287,13 +287,14 @@ struct OrtApi {
 
   OrtStatus*(ORT_API_CALL* SetSessionGraphOptimizationLevel)(_Inout_ OrtSessionOptions* options, GraphOptimizationLevel graph_optimization_level)NO_EXCEPTION;
 
-  /**
-	 * How many threads in the session thread pool.
-	 * Set it to 0 to make onnxruntime run as single threaded.
-	 * \param session_thread_pool_size <0, let the runtime choose a default. =0, Don't create extra threads.
-	 *                                 >0, create a thread pool with size of this value.
-	 */
-  OrtStatus*(ORT_API_CALL* SetSessionThreadPoolSize)(_Inout_ OrtSessionOptions* options, int session_thread_pool_size)NO_EXCEPTION;
+// Sets the number of threads used to parallelize the execution within nodes
+// A value of 0 means ORT will pick a default
+OrtStatus* (ORT_API_CALL* SetIntraOpNumThreads)(_Inout_ OrtSessionOptions* options, int intra_op_num_threads);
+
+// Sets the number of threads used to parallelize the execution of the graph (across nodes)
+// If sequential execution is enabled this value is ignored
+// A value of 0 means ORT will pick a default
+OrtStatus*(ORT_API_CALL* SetInterOpNumThreads)(_Inout_ OrtSessionOptions* options, int inter_op_num_threads);
 
   /*
 * Create a custom op domain. After all sessions using it are released, call OrtReleaseCustomOpDomain

@@ -533,9 +533,10 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
       .def_readwrite("log_verbosity_level", &SessionOptions::session_log_verbosity_level,
                      R"pbdoc(VLOG level if DEBUG build and session_log_verbosity_level is 0. 
 Applies to session load, initialization, etc. Default is 0.)pbdoc")
-      .def_readwrite("thread_pool_size", &SessionOptions::session_thread_pool_size,
-                     R"pbdoc(How many threads in the session thread pool. Default is 0 to let onnxruntime choose.
-This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
+      .def_readwrite("intra_op_num_threads", &SessionOptions::intra_op_num_threads,
+                     R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
+      .def_readwrite("inter_op_num_threads", &SessionOptions::inter_op_num_threads,
+                     R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")
       .def_property(
           "graph_optimization_level",
           [](const SessionOptions* options) -> GraphOptimizationLevel {
@@ -610,57 +611,55 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             return *(na.Type());
           },
           "node type")
-      .def(
-          "__str__", [](const onnxruntime::NodeArg& na) -> std::string {
-            std::ostringstream res;
-            res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
-            auto shape = na.Shape();
-            std::vector<py::object> arr;
-            if (shape == nullptr || shape->dim_size() == 0) {
-              res << "[]";
+      .def("__str__", [](const onnxruntime::NodeArg& na) -> std::string {
+        std::ostringstream res;
+        res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
+        auto shape = na.Shape();
+        std::vector<py::object> arr;
+        if (shape == nullptr || shape->dim_size() == 0) {
+          res << "[]";
+        } else {
+          res << "[";
+          for (int i = 0; i < shape->dim_size(); ++i) {
+            if (utils::HasDimValue(shape->dim(i))) {
+              res << shape->dim(i).dim_value();
+            } else if (utils::HasDimParam(shape->dim(i))) {
+              res << "'" << shape->dim(i).dim_param() << "'";
             } else {
-              res << "[";
-              for (int i = 0; i < shape->dim_size(); ++i) {
-                if (utils::HasDimValue(shape->dim(i))) {
-                  res << shape->dim(i).dim_value();
-                } else if (utils::HasDimParam(shape->dim(i))) {
-                  res << "'" << shape->dim(i).dim_param() << "'";
-                } else {
-                  res << "None";
-                }
-
-                if (i < shape->dim_size() - 1) {
-                  res << ", ";
-                }
-              }
-              res << "]";
-            }
-            res << ")";
-
-            return std::string(res.str());
-          },
-          "converts the node into a readable string")
-      .def_property_readonly(
-          "shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
-            auto shape = na.Shape();
-            std::vector<py::object> arr;
-            if (shape == nullptr || shape->dim_size() == 0) {
-              return arr;
+              res << "None";
             }
 
-            arr.resize(shape->dim_size());
-            for (int i = 0; i < shape->dim_size(); ++i) {
-              if (utils::HasDimValue(shape->dim(i))) {
-                arr[i] = py::cast(shape->dim(i).dim_value());
-              } else if (utils::HasDimParam(shape->dim(i))) {
-                arr[i] = py::cast(shape->dim(i).dim_param());
-              } else {
-                arr[i] = py::none();
-              }
+            if (i < shape->dim_size() - 1) {
+              res << ", ";
             }
-            return arr;
-          },
-          "node shape (assuming the node holds a tensor)");
+          }
+          res << "]";
+        }
+        res << ")";
+
+        return std::string(res.str());
+      },
+           "converts the node into a readable string")
+      .def_property_readonly("shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
+        auto shape = na.Shape();
+        std::vector<py::object> arr;
+        if (shape == nullptr || shape->dim_size() == 0) {
+          return arr;
+        }
+
+        arr.resize(shape->dim_size());
+        for (int i = 0; i < shape->dim_size(); ++i) {
+          if (utils::HasDimValue(shape->dim(i))) {
+            arr[i] = py::cast(shape->dim(i).dim_value());
+          } else if (utils::HasDimParam(shape->dim(i))) {
+            arr[i] = py::cast(shape->dim(i).dim_param());
+          } else {
+            arr[i] = py::none();
+          }
+        }
+        return arr;
+      },
+                             "node shape (assuming the node holds a tensor)");
 
   py::class_<SessionObjectInitializer>(m, "SessionObjectInitializer");
   py::class_<InferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
@@ -675,16 +674,15 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             InitializeSession(sess, provider_types);
           },
           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
-      .def(
-          "read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel, std::vector<std::string>& provider_types) {
-            std::istringstream buffer(serializedModel);
-            auto status = sess->Load(buffer);
-            if (!status.IsOK()) {
-              throw std::runtime_error(status.ToString().c_str());
-            }
-            InitializeSession(sess, provider_types);
-          },
-          R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
+      .def("read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel, std::vector<std::string>& provider_types) {
+        std::istringstream buffer(serializedModel);
+        auto status = sess->Load(buffer);
+        if (!status.IsOK()) {
+          throw std::runtime_error(status.ToString().c_str());
+        }
+        InitializeSession(sess, provider_types);
+      },
+           R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
       .def("run", [](InferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr) -> std::vector<py::object> {
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {
