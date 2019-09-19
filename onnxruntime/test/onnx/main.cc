@@ -513,6 +513,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"hardmax_negative_axis", "ShapeInferenceError"},
       {"gemm_default_scalar_bias", "Incorrect test case"},
       {"gather_negative_indices", "Incorrect test case"},
+      {"mlperf_ssd_mobilenet_300", "Shape Inference Error repros in an older model. Newer model solves it. "
+                                   "Will remove after test data is updated."},
 };
 
 #ifdef USE_NGRAPH

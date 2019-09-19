@@ -110,6 +110,7 @@ def create_backend_test(testname=None):
                                  '^test_cumsum_1d_reverse_exclusive_cpu.*',
                                  '^test_cumsum_2d_axis_0_cpu.*',
                                  '^test_cumsum_2d_axis_1_cpu.*',
+                                 '^test_cumsum_2d_negative_axis_cpu.*',                                 
                                  '^test_dynamicquantizelinear_expanded*',
                                  '^test_dynamicquantizelinear_max_adjusted_expanded*',
                                  '^test_dynamicquantizelinear_min_adjusted_expanded*',
@@ -164,8 +165,11 @@ def create_backend_test(testname=None):
                                  '^test_logsoftmax_negative_axis_*',
                                  '^test_softmax_negative_axis_*',
                                  '^test_hardmax_negative_axis_*',
-                                 '^gemm_default_scalar_bias_*',
-                                 '^gather_negative_indices_*'                               
+                                 '^test_gemm_default_scalar_bias_cpu.*',
+                                 '^test_gather_negative_indices_cpu.*',
+                                 '^test_constant_pad_cpu.*',
+                                 '^test_edge_pad_cpu.*',
+                                 '^test_reflect_pad_cpu.*'                                 
                                  )
 
         # Example of how to disable tests for a specific provider.
