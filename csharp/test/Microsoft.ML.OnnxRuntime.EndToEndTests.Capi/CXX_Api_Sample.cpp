@@ -14,7 +14,7 @@ int main(int argc, char* argv[]) {
 
   // initialize session options if needed
   Ort::SessionOptions session_options;
-  session_options.SetThreadPoolSize(1);
+  session_options.SetIntraOpNumThreads(1);
 
   // If onnxruntime.dll is built with CUDA enabled, we can uncomment out this line to use CUDA for this
   // session (we also need to include cuda_provider_factory.h above which defines it)

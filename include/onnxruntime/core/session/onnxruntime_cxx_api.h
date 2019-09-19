@@ -138,7 +138,8 @@ struct SessionOptions : Base<OrtSessionOptions> {
 
   SessionOptions Clone() const;
 
-  SessionOptions& SetThreadPoolSize(int session_thread_pool_size);
+  SessionOptions& SetIntraOpNumThreads(int intra_op_num_threads);
+  SessionOptions& SetInterOpNumThreads(int inter_op_num_threads);
   SessionOptions& SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);
 
   SessionOptions& EnableCpuMemArena();
@@ -214,7 +215,7 @@ struct Value : Base<OrtValue> {
   static Value CreateMap(Value& keys, Value& values);
   static Value CreateSequence(std::vector<Value>& values);
 
-  template<typename T>
+  template <typename T>
   static Value CreateOpaque(const char* domain, const char* type_name, const T&);
 
   template <typename T>
