@@ -176,7 +176,7 @@ void CropAndResizeForward(
       }  // for pw
     }    // for ph
   };     // for n
-  ThreadPool::ParallelFor(ttp, static_cast<int32_t>(n_rois), work_object);
+  ThreadPool::TryParallelFor(ttp, static_cast<int32_t>(n_rois), work_object);
 }
 
 template <typename T>
