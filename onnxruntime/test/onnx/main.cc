@@ -404,8 +404,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"round", "not implemented yet"},
       {"gather_elements_1", "not implemented yet"},
       {"gather_elements_0", "not implemented yet"},
-      {"depthtospace_crd_mode_example", "not implemented yet"},
-      {"depthtospace_crd_mode", "not implemented yet"},
       {"cumsum_2d_axis_1", "not implemented yet"},
       {"cumsum_2d_axis_0", "not implemented yet"},
       {"cumsum_1d_reverse_exclusive", "not implemented yet"},
@@ -452,11 +450,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
   broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
   broken_tests.insert({"clip_splitbounds", "not implemented yet for opset 11"});
-  broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});	
-  broken_tests.insert({"clip_example", "not implemented yet for opset 11"});	
-  broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});	
+  broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});
+  broken_tests.insert({"clip_example", "not implemented yet for opset 11"});
+  broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});
   broken_tests.insert({"clip_default_max", "not implemented yet for opset 11"});
   broken_tests.insert({"clip", "not implemented yet for opset 11"});
+  broken_tests.insert({"depthtospace_crd_mode_example", "NGraph does not support CRD mode"});
+  broken_tests.insert({"depthtospace_crd_mode", "NGraph does not support CRD mode"});
 #endif
 
 #ifdef USE_MKLDNN
@@ -472,6 +472,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"fp16_tiny_yolov2", "accuaracy mismatch with fp16 precision"});
 #ifdef OPENVINO_CONFIG_GPU_FP32
   broken_tests.insert({"tiny_yolov2", "accuracy mismatch"});
+  broken_tests.insert({"div", "will be fixed in the next release"});
+#ifdef OPENVINO_CONFIG_GPU_FP16
+  broken_tests.insert({"div", "will be fixed in the next release"});
+#endif
 #endif
 #endif
 

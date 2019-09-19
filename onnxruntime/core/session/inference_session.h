@@ -87,8 +87,12 @@ struct SessionOptions {
   // set graph optimization level
   TransformerLevel graph_optimization_level = TransformerLevel::Level1;
 
-  // How many threads in the session thread pool.
-  int session_thread_pool_size = -1;
+  // controls the size of the thread pool used to parallelize the execution of tasks within individual nodes (ops)
+  int intra_op_num_threads = 0;
+
+  // controls the size of the thread pool used to parallelize the execution of nodes (ops)
+  // configuring this makes sense only when you're using parallel executor
+  int inter_op_num_threads = 0;
 };
 
 /**
@@ -421,6 +425,7 @@ class InferenceSession {
  private:
   // Threadpool for this session
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
 
  protected:
   // Immutable state for each op in the model. Shared by all executors.

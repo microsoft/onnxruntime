@@ -49,9 +49,15 @@ struct MemoryPatternGroup;
  */
 class SessionState {
  public:
-  SessionState(const ExecutionProviders& execution_providers, bool enable_mem_pattern,
-               concurrency::ThreadPool* thread_pool)
-      : execution_providers_{execution_providers}, enable_mem_pattern_(enable_mem_pattern), thread_pool_(thread_pool) {}
+  SessionState(const ExecutionProviders& execution_providers,
+               bool enable_mem_pattern,
+               concurrency::ThreadPool* thread_pool,
+               concurrency::ThreadPool* inter_op_thread_pool)
+      : execution_providers_{execution_providers},
+        enable_mem_pattern_(enable_mem_pattern),
+        thread_pool_(thread_pool),
+        inter_op_thread_pool_(inter_op_thread_pool) {
+  }
 
   ~SessionState() {
     for (auto* p : session_kernels_) {
@@ -197,6 +203,7 @@ class SessionState {
   void RemoveSubgraphSessionState(onnxruntime::NodeIndex index);
 
   concurrency::ThreadPool* GetThreadPool() const { return thread_pool_; }
+  concurrency::ThreadPool* GetInterOpThreadPool() const { return inter_op_thread_pool_; }
 
   bool ExportDll() const { return export_fused_dll_; }
   void SetExportDllFlag(bool flag) { export_fused_dll_ = flag; }
@@ -252,7 +259,8 @@ class SessionState {
   SubgraphSessionStateMap subgraph_session_states_;
 
   // It could be NULL
-  concurrency::ThreadPool* const thread_pool_;
+  concurrency::ThreadPool* const thread_pool_{};
+  concurrency::ThreadPool* const inter_op_thread_pool_{};
 
   bool export_fused_dll_ = false;
   FuncManager fused_funcs_mgr_;

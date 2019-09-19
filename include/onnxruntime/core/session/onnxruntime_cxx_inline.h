@@ -136,8 +136,13 @@ inline SessionOptions SessionOptions::Clone() const {
   return SessionOptions{out};
 }
 
-inline SessionOptions& SessionOptions::SetThreadPoolSize(int session_thread_pool_size) {
-  ORT_THROW_ON_ERROR(OrtSetSessionThreadPoolSize(p_, session_thread_pool_size));
+inline SessionOptions& SessionOptions::SetIntraOpNumThreads(int intra_op_num_threads) {
+  ORT_THROW_ON_ERROR(OrtSetIntraOpNumThreads(p_, intra_op_num_threads));
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::SetInterOpNumThreads(int inter_op_num_threads) {
+  ORT_THROW_ON_ERROR(OrtSetInterOpNumThreads(p_, inter_op_num_threads));
   return *this;
 }
 
@@ -343,14 +348,14 @@ inline Value Value::CreateSequence(std::vector<Value>& values) {
 }
 
 template <typename T>
-inline Value Value::CreateOpaque (const char* domain, const char* type_name, const T& data_container) {
+inline Value Value::CreateOpaque(const char* domain, const char* type_name, const T& data_container) {
   OrtValue* out;
   ORT_THROW_ON_ERROR(OrtCreateOpaqueValue(domain, type_name, &data_container, sizeof(T), &out));
   return Value{out};
 }
 
 template <typename T>
-inline void Value::GetOpaqueData (const char* domain, const char* type_name, T& out) {
+inline void Value::GetOpaqueData(const char* domain, const char* type_name, T& out) {
   ORT_THROW_ON_ERROR(OrtGetOpaqueValue(domain, type_name, p_, &out, sizeof(T)));
 }
 
