@@ -14,7 +14,6 @@ class GraphViewer;
 class OrtValueNameIdxMap;
 class Node;
 
-// one for each session
 class NodeIndexInfo final {
  public:
   // construct from a GraphViewer.
