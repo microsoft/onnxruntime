@@ -12,7 +12,10 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
                                            const IExecutionProvider& execution_provider,
-                                           const SessionState& session_state,
+                                           const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
+                                           const OrtValueNameIdxMap& ort_value_name_idx_map,
+                                           const FuncManager& funcs_mgr,
+                                           const DataTransferManager& data_transfer_mgr,
                                            /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
   auto create_error_message = [&node](const std::string& error) {
     std::ostringstream errormsg;
@@ -32,8 +35,8 @@ Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
   Status status;
   {
     for (auto& registry : custom_kernel_registries_) {
-      status = registry->TryCreateKernel(node, execution_provider, session_state.GetConstantInitializedTensors(),
-                                         session_state.GetOrtValueNameIdxMap(), session_state.GetFuncMgr(), session_state.GetDataTransferMgr(), op_kernel);
+      status = registry->TryCreateKernel(node, execution_provider, constant_initialized_tensors,
+                                         ort_value_name_idx_map, funcs_mgr, data_transfer_mgr, op_kernel);
       if (status.IsOK()) {
         return status;
       }
@@ -44,8 +47,8 @@ Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
   auto iter = provider_type_to_registry_.find(ptype);
   if (iter != provider_type_to_registry_.end()) p = iter->second.get();
   if (p != nullptr) {
-    status = p->TryCreateKernel(node, execution_provider, session_state.GetConstantInitializedTensors(),
-                                session_state.GetOrtValueNameIdxMap(), session_state.GetFuncMgr(), session_state.GetDataTransferMgr(), op_kernel);
+    status = p->TryCreateKernel(node, execution_provider, constant_initialized_tensors,
+                                ort_value_name_idx_map, funcs_mgr, data_transfer_mgr, op_kernel);
     if (status.IsOK()) {
       return status;
     }
@@ -77,6 +80,14 @@ void KernelRegistryManager::RegisterKernelRegistry(std::shared_ptr<KernelRegistr
     return;
   }
   custom_kernel_registries_.push_front(kernel_registry);
+}
+
+// This function assumes the node is already assigned to an execution provider
+// Don't call this function before graph partition is done
+
+Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node, const IExecutionProvider& execution_provider, const SessionState& session_state, std::unique_ptr<OpKernel>& op_kernel) const {
+  return CreateKernel(node, execution_provider, session_state.GetConstantInitializedTensors(), session_state.GetOrtValueNameIdxMap(),
+                      session_state.GetFuncMgr(), session_state.GetDataTransferMgr(), op_kernel);
 }
 
 bool KernelRegistryManager::HasImplementationOf(const Node& node, const std::string& provider_type) const {

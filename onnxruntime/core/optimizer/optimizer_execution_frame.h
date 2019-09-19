@@ -13,6 +13,8 @@
 #include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/callback.h"
+#include "core/framework/kernel_registry_manager.h"
+#include "core/framework/execution_providers.h"
 
 namespace onnxruntime {
 class DataTransferManager;
@@ -28,7 +30,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
       }
     }
     AllocatorPtr GetAllocator(const OrtMemoryInfo& info) const {
-      return cpu_execution_provider_->GetAllocator(info.id, info.mem_type);
+		return execution_providers_.GetAllocator(info);      
     }
 
     AllocatorPtr GetAllocator() const { return allocator_ptr_; }
@@ -46,13 +48,14 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
       return -1;
     }
 
-    const OpKernel* GetKernel(NodeIndex node_id) const;
     Status RunSingleKernel(std::vector<int>& fetch_mlvalue_idxs, size_t node_index, std::vector<OrtValue>& fetches,
                            const logging::Logger& logger = logging::LoggingManager::DefaultLogger());
 
    private:
+    const OpKernel* GetKernel(NodeIndex node_id) const;
     // The optimizer is running on CPU execution provider by default.
-    std::unique_ptr<CPUExecutionProvider> cpu_execution_provider_;
+    KernelRegistryManager kernel_registry_manager_;
+    ExecutionProviders execution_providers_;
     const int device_id_{0};
     const OrtMemType mem_type_{OrtMemTypeDefault};
     AllocatorPtr allocator_ptr_;

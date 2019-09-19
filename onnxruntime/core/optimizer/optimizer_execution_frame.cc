@@ -23,6 +23,7 @@ Status OptimizerExecutionFrame::Info::RunSingleKernel(std::vector<int>& fetch_ml
   if (kernel == nullptr) {
     return Status(ONNXRUNTIME, FAIL);
   }
+  //Disable multiple threading for now
   OpKernelContext op_kernel_context(frame, *kernel, logger, nullptr);
   ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
   ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
@@ -34,10 +35,12 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   // Create CPU execution provider
   // For now, CPU execution provider will be created every time when initializing Info.
   // Later, it will be changed to pass by Info ctor.
-  cpu_execution_provider_ = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  auto cpu_execution_provider_ = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   allocator_ptr_ = cpu_execution_provider_->GetAllocator(device_id_, mem_type_);
   ORT_ENFORCE(allocator_ptr_ != nullptr, "Failed to get allocator for optimizer");
-
+  execution_providers_.Add(kCpuExecutionProvider, std::move(cpu_execution_provider_));
+  ORT_ENFORCE(kernel_registry_manager_.RegisterKernels(execution_providers_).IsOK());
+ 
   data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
 
   // Create MLValues related maps
@@ -52,7 +55,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
       size_t cpu_tensor_length;
       ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &cpu_tensor_length));
       OrtValue ort_value;
-      const OrtMemoryInfo& info = cpu_execution_provider_->GetAllocator(0, OrtMemTypeDefault)->Info();
+      const OrtMemoryInfo& info = execution_providers_.GetDefaultCpuMemoryInfo();
       std::unique_ptr<char[]> data(new char[cpu_tensor_length]);
       std::unique_ptr<Tensor> p_tensor;
       OrtCallback d;
@@ -69,18 +72,16 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   };
 
   // TODO: node->ImplicitInputDefs() need to be added here for control flow nodes.
-  for (auto* node : nodes) {
+  for (const Node* node : nodes) {
     onnxruntime::Node::ForEachWithIndex(node->InputDefs(), initialize_maps);
     onnxruntime::Node::ForEachWithIndex(node->OutputDefs(), initialize_maps);
   }
 
-  node_index_info_ = std::make_unique<NodeIndexInfo>(nodes, ort_value_name_idx_map_);
-  std::shared_ptr<KernelRegistry> kernel_registry = cpu_execution_provider_->GetKernelRegistry();
   FuncManager fm;
   // create kernels for these nodes
   for (auto* node : nodes) {
     std::unique_ptr<OpKernel> op_kernel;
-    auto status = kernel_registry->TryCreateKernel(*node, *cpu_execution_provider_, initializers_,
+    auto status = kernel_registry_manager_.CreateKernel(*node, *cpu_execution_provider_, initializers_,
                                                    ort_value_name_idx_map_, fm, data_transfer_mgr_, op_kernel);
     if (status.IsOK())
       kernels_[node->Index()] = std::move(op_kernel);

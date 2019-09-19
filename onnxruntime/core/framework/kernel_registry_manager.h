@@ -51,6 +51,16 @@ class KernelRegistryManager {
 
   // This function assumes the node is already assigned to an execution provider
   // Don't call this function before graph partition is done
+  Status CreateKernel(const onnxruntime::Node& node,
+                      const IExecutionProvider& execution_provider,
+                      const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
+                      const OrtValueNameIdxMap& ort_value_name_idx_map,
+                      const FuncManager& funcs_mgr,
+                      const DataTransferManager& data_transfer_mgr,
+                      /*out*/ std::unique_ptr<OpKernel>& op_kernel) const;
+
+  // This function assumes the node is already assigned to an execution provider
+  // Don't call this function before graph partition is done
   Status SearchKernelRegistry(const onnxruntime::Node& node,
                               /*out*/ const KernelCreateInfo** kernel_create_info) const;
 
