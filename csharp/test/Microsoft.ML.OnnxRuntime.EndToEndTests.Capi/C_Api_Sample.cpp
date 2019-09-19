@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
   // initialize session options if needed
   OrtSessionOptions* session_options;
   CHECK_STATUS(OrtCreateSessionOptions(&session_options));
-  OrtSetSessionThreadPoolSize(session_options, 1);
+  OrtSetIntraOpNumThreads(session_options, 1);
 
   // Sets graph optimization level
   OrtSetSessionGraphOptimizationLevel(session_options, ORT_ENABLE_BASIC);
