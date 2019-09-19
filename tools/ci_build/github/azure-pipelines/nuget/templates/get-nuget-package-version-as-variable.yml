@@ -13,8 +13,6 @@ steps:
       FOR /R %%i IN (Microsoft.ML.OnnxRuntime*.nupkg) do (
         set filename=%%~ni
         @echo ##vso[task.setvariable variable=NuGetPackageVersionNumber;]%filename:~25%
-        @echo version number = %filename:~25%
-        @echo version number variable = $(NuGetPackageVersionNumber)
       )
 
 - task: CmdLine@2
@@ -27,5 +25,3 @@ steps:
       filename=${filenamewithext%.*}
       ortversion=${filename:25}
       echo "##vso[task.setvariable variable=NuGetPackageVersionNumber;]$ortversion"
-      echo version number = $ortversion
-      echo version number variable = $(NuGetPackageVersionNumber)
