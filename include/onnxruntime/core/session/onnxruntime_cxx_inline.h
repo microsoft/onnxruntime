@@ -38,6 +38,8 @@ template <>
 struct TypeToTensorType<uint32_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32; };
 template <>
 struct TypeToTensorType<uint64_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64; };
+template <>
+struct TypeToTensorType<bool> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL; };
 
 inline AllocatorWithDefaultOptions::AllocatorWithDefaultOptions() {
   ORT_THROW_ON_ERROR(OrtGetAllocatorWithDefaultOptions(&p_));
@@ -242,6 +244,12 @@ inline size_t Session::GetOutputCount() const {
   return out;
 }
 
+inline size_t Session::GetOverridableInitializerCount () const {
+  size_t out;
+  ORT_THROW_ON_ERROR(OrtSessionGetOverridableInitializerCount(p_, &out));
+  return out;
+}
+
 inline char* Session::GetInputName(size_t index, OrtAllocator* allocator) const {
   char* out;
   ORT_THROW_ON_ERROR(OrtSessionGetInputName(p_, index, allocator, &out));
@@ -254,6 +262,12 @@ inline char* Session::GetOutputName(size_t index, OrtAllocator* allocator) const
   return out;
 }
 
+inline char* Session::GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const {
+  char* out;
+  ORT_THROW_ON_ERROR(OrtSessionGetOverridableInitializerName(p_, index, allocator, &out));
+  return out;
+}
+
 inline TypeInfo Session::GetInputTypeInfo(size_t index) const {
   OrtTypeInfo* out;
   ORT_THROW_ON_ERROR(OrtSessionGetInputTypeInfo(p_, index, &out));
@@ -263,6 +277,12 @@ inline TypeInfo Session::GetInputTypeInfo(size_t index) const {
 inline TypeInfo Session::GetOutputTypeInfo(size_t index) const {
   OrtTypeInfo* out;
   ORT_THROW_ON_ERROR(OrtSessionGetOutputTypeInfo(p_, index, &out));
+  return TypeInfo{out};
+}
+
+inline TypeInfo Session::GetOverridableInitializerTypeInfo(size_t index) const {
+  OrtTypeInfo* out;
+  ORT_THROW_ON_ERROR(OrtSessionGetOverridableInitializerTypeInfo(p_, index, &out));
   return TypeInfo{out};
 }
 
