@@ -126,7 +126,6 @@ const TensorShapeProto* NodeArg::Shape() const {
 }
 
 void NodeArg::SetShape(const TensorShapeProto& shape) {
-
   const auto type_case = node_arg_info_.type().value_case();
   switch (type_case) {
     case TypeProto::kTensorType:
@@ -1356,7 +1355,7 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
                              " inputs and requires ", num_required_subgraph_inputs,
                              " inputs. Either provide all subgraph inputs, or just the required inputs.");
     }
-    
+
     subgraph_inputs = &required_subgraph_inputs;
     num_subgraph_inputs = num_required_subgraph_inputs;
   }
@@ -1984,31 +1983,6 @@ void Graph::CleanAllInitializedTensors() noexcept {
   }
 }
 
-std::vector<const NodeArg*> Graph::GetOverridableInitializers () const {
-  std::vector<const NodeArg*> result;
-  if (CanOverrideInitializer()) {
-    // graph_inputs_excluding_initializers_ and graph_inputs_including_initializers_
-    // are inserted in the same order. So we walk and compute the difference.
-    auto f_incl = graph_inputs_including_initializers_.cbegin();
-    const auto l_incl = graph_inputs_including_initializers_.cend();
-    auto f_excl = graph_inputs_excluding_initializers_.cbegin();
-    const auto l_excl = graph_inputs_excluding_initializers_.cend();
-    while (f_incl != l_incl) {
-      if (f_excl != l_excl) {
-        // Equal means not an initializer
-        if (*f_incl == *f_excl) {
-          ++f_incl;
-          ++f_excl;
-          continue;
-        }
-      }
-      result.push_back(*f_incl);
-      ++f_incl;
-    }
-  }
-  return result;
-}
-
 const InitializedTensorSet& Graph::GetAllInitializedTensors() const noexcept {
   return name_to_initial_tensor_;
 }
@@ -2484,7 +2458,32 @@ Status Graph::SetGraphInputsOutputs() {
     }
   }
 
+  ComputeOverridableInitializers();
+
   return Status::OK();
+}
+
+void Graph::ComputeOverridableInitializers() {
+  graph_overridable_initializers_.clear();
+  if (CanOverrideInitializer()) {
+    // graph_inputs_excluding_initializers_ and graph_inputs_including_initializers_
+    // are inserted in the same order. So we walk and compute the difference.
+    auto f_incl = graph_inputs_including_initializers_.cbegin();
+    const auto l_incl = graph_inputs_including_initializers_.cend();
+    auto f_excl = graph_inputs_excluding_initializers_.cbegin();
+    const auto l_excl = graph_inputs_excluding_initializers_.cend();
+
+    while (f_incl != l_incl) {
+      // Equal means not an initializer
+      if (f_excl != l_excl && *f_incl == *f_excl) {
+        ++f_incl;
+        ++f_excl;
+        continue;
+      }
+      graph_overridable_initializers_.push_back(*f_incl);
+      ++f_incl;
+    }
+  }
 }
 
 // calling private ctor

@@ -268,6 +268,7 @@ ORT_API_STATUS(OrtSetSessionThreadPoolSize, _Inout_ OrtSessionOptions* options, 
 
 ORT_API_STATUS(OrtSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out);
 ORT_API_STATUS(OrtSessionGetOutputCount, _In_ const OrtSession* sess, _Out_ size_t* out);
+ORT_API_STATUS(OrtSessionGetOverridableInitializerCount, _In_ const OrtSession* sess, _Out_ size_t* out);
 
 /**
  * \param out  should be freed by OrtReleaseTypeInfo after use
@@ -278,6 +279,12 @@ ORT_API_STATUS(OrtSessionGetInputTypeInfo, _In_ const OrtSession* sess, size_t i
  * \param out  should be freed by OrtReleaseTypeInfo after use
  */
 ORT_API_STATUS(OrtSessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t index, _Outptr_ OrtTypeInfo** type_info);
+
+/**
+ * \param out  should be freed by OrtReleaseTypeInfo after use
+ */
+ORT_API_STATUS(OrtSessionGetOverridableInitializerTypeInfo, _In_ const OrtSession* sess, size_t index, _Outptr_ OrtTypeInfo** type_info);
+
 
 /**
  * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible in freeing it.
