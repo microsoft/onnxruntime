@@ -182,7 +182,7 @@ int run_inference(OrtSession* session, const ORTCHAR_T* input_file, const ORTCHA
   int is_tensor;
   ORT_ABORT_ON_ERROR(g_ort->IsTensor(input_tensor, &is_tensor));
   assert(is_tensor);
-  OrtReleaseMemoryInfo(memory_info);
+  g_ort->ReleaseMemoryInfo(memory_info);
   const char* input_names[] = {"inputImage"};
   const char* output_names[] = {"outputImage"};
   OrtValue* output_tensor = NULL;
