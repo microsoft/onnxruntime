@@ -36,6 +36,14 @@ IExecutionProvider* TestOpenVINOExecutionProvider() {
 }
 #endif
 
+#ifdef USE_INTEL
+IExecutionProvider* TestIntelExecutionProvider() {
+  static IntelExecutionProviderInfo info;
+  static IntelExecutionProvider intel_provider(info);
+  return &intel_provider;
+}
+#endif
+
 #ifdef USE_NNAPI
 IExecutionProvider* TestNnapiExecutionProvider() {
   static NnapiExecutionProvider nnapi_provider;

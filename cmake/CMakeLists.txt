@@ -47,6 +47,7 @@ option(onnxruntime_ENABLE_STATIC_ANALYSIS "Enable static analysis" OFF)
 option(onnxruntime_ENABLE_PYTHON "Enable python buildings" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
 option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
+option(onnxruntime_USE_INTEL "Build with Intel support" OFF)
 option(onnxruntime_USE_NSYNC "Build with NSYNC support. This option only takes effect on Linux" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" OFF)
@@ -557,6 +558,43 @@ if(onnxruntime_USE_OPENVINO)
 
 endif()
 
+if(onnxruntime_USE_INTEL)
+
+  if (NOT onnxruntime_USE_FULL_PROTOBUF)
+    message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for nGraph execution provider.")
+  endif()
+
+  if(WIN32)
+      message(FATAL_ERROR "Building on Windows using OpenVINO execution provider is not supported")
+  endif()
+
+  add_definitions(-DUSE_INTEL=1)
+
+	if (onnxruntime_USE_OPENVINO_BINARY)
+	    #TODO: set plugin path var
+	endif()
+
+	if(onnxruntime_USE_INTEL_MYRIAD)
+		add_definitions(-DINTEL_CONFIG_MYRIAD=1)
+	endif()
+
+	if(onnxruntime_USE_INTEL_GPU_FP32)
+		add_definitions(-DINTEL_CONFIG_GPU_FP32=1)
+	endif()
+
+	if(onnxruntime_USE_INTEL_GPU_FP16)
+		add_definitions(-DINTEL_CONFIG_GPU_FP16=1)
+	endif()
+
+	if(onnxruntime_USE_INTEL_CPU_FP32)
+		add_definitions(-DINTEL_CONFIG_CPU_FP32=1)
+	endif()
+
+	if(onnxruntime_USE_INTEL_VAD_M)
+		add_definitions(-DINTEL_CONFIG_VAD_M=1)
+	endif()
+
+endif()
 
 if (onnxruntime_USE_OPENBLAS)
   add_definitions(-DUSE_OPENBLAS=1)

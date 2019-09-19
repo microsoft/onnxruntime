@@ -68,6 +68,10 @@ if(onnxruntime_USE_NNAPI)
   set(PROVIDERS_NNAPI onnxruntime_providers_nnapi)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
 endif()
+if(onnxruntime_USE_INTEL)
+  set(PROVIDERS_INTEL onnxruntime_providers_intel)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES intel)
+endif()
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
 set(onnxruntime_providers_src ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
@@ -440,7 +444,40 @@ if (onnxruntime_USE_NUPHAR)
   add_dependencies(onnxruntime_providers_nuphar ${onnxruntime_EXTERNAL_DEPENDENCIES})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/nuphar  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 endif()
- 
+
+if (onnxruntime_USE_INTEL)
+  include_directories("${CMAKE_CURRENT_BINARY_DIR}/onnx")
+
+  file(GLOB_RECURSE onnxruntime_providers_intel_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/intel/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/intel/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/intel/*.hpp"
+    "${ONNXRUNTIME_ROOT}/core/providers/intel/*.cpp"
+  )
+
+  if (onnxruntime_USE_OPENVINO_BINARY)
+    set(OPENVINO_INCLUDE_DIR $ENV{INTEL_CVSDK_DIR}/inference-engine/include)
+    set(OPENVINO_NGRAPH_INCLUDE_DIR $ENV{INTEL_CVSDK_DIR}/ngraph/src)
+    set(OPENVINO_TBB_INCLUDE_DIR $ENV{INTEL_CVSDK_DIR}/inference-engine/temp/tbb/include)
+    set(OPENVINO_MKL_TINY_INCLUDE_DIR $ENV{INTEL_CVSDK_DIR}/inference-engine/temp/mkltiny_lnx_20190620/include)
+
+    set(OPENVINO_LIB_DIR $ENV{INTEL_CVSDK_DIR}/bin/intel64/Debug/lib)
+    set(OPENVINO_NGRAPH_LIB_DIR $ENV{INTEL_CVSDK_DIR}/bin/intel64/Debug/lib)
+    set(OPENVINO_TBB_LIB_DIR $ENV{INTEL_CVSDK_DIR}/inference-engine/temp/tbb/lib)
+    set(OPENVINO_MKL_TINY_LIB_DIR $ENV{INTEL_CVSDK_DIR}/inference-engine/temp/mkltiny_lnx_20190620/lib)
+  endif()
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_intel_cc_srcs})
+  add_library(onnxruntime_providers_intel ${onnxruntime_providers_intel_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_intel gsl onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+  set_target_properties(onnxruntime_providers_intel PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_intel SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${OPENVINO_NGRAPH_INCLUDE_DIR} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${OPENVINO_TBB_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/intel  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_intel PROPERTIES LINKER_LANGUAGE CXX)
+  link_directories(onnxruntime_providers_intel ${OPENVINO_LIB_DIR} ${OPENVINO_NGRAPH_LIB_DIR} ${OPENVINO_TBB_LIB_DIR} ${OPENVINO_MKL_TINY_LIB_DIR})
+  target_link_libraries(onnxruntime_providers_intel -lngraph -linference_engine -ltbb ${PYTHON_LIBRARIES})
+endif()
+
 if (onnxruntime_USE_NNAPI)
   add_definitions(-DUSE_NNAPI=1)
   option(DNN_READ_ONNX "" ON)
