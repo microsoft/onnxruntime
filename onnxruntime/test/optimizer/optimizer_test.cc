@@ -61,7 +61,7 @@ TEST(OptimizerTest, Basic) {
 
   std::vector<const Node*> nodes;
   for (auto& node : graph.Nodes()) {
-	node.SetExecutionProviderType(kCpuExecutionProvider);
+    node.SetExecutionProviderType(kCpuExecutionProvider);
     nodes.push_back(&node);
   }
 
