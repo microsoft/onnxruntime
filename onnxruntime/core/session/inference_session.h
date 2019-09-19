@@ -271,6 +271,15 @@ class InferenceSession {
     */
   std::pair<common::Status, const InputDefList*> GetModelInputs() const;
 
+    /**
+    * Get all definitions of the model for overridable initializers.
+    * This does not include weights. Use this to get the name/type/shapes of the overridable initializers.
+    * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
+    * @note lifetime of the returned pointer is valid as long as the Session object is live.
+    * @note for IR < 4 returned list will always be empty.
+    */
+  std::pair<common::Status, const InputDefList*> GetOverridableInitializers() const;
+
   /**
     * Get all output definitions of the model. Use this to get the name/type/shapes of the outputs.
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.

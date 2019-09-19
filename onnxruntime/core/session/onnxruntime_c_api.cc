@@ -529,10 +529,16 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorContent, _In_ const OrtValue* value,
     delete reinterpret_cast<REAL_TYPE*>(value);                                         \
   }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
+using DefListResult = std::pair<Status, const InputDefList*>;
+using GetDefListFn = DefListResult (*)(const ::onnxruntime::InferenceSession*);
+const auto get_inputs_fn = [](const ::onnxruntime::InferenceSession* session) -> DefListResult { return session->GetModelInputs(); };
+const auto get_outputs_fn = [](const ::onnxruntime::InferenceSession* session) -> DefListResult { return session->GetModelOutputs(); };
+const auto get_overridable_initializers_fn = [](const ::onnxruntime::InferenceSession* session) -> DefListResult { return session->GetOverridableInitializers(); };
+
+static OrtStatus* GetNodeDefListCountHelper(const OrtSession* sess, GetDefListFn get_fn, size_t* out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
-  std::pair<Status, const InputDefList*> p = session->GetModelInputs();
+  std::pair<Status, const InputDefList*> p = get_fn(session);
   if (!p.first.IsOK())
     return ToOrtStatus(p.first);
   *out = p.second->size();
@@ -540,21 +546,22 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetInputCount, _In_ const OrtSession* sess, 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionGetOutputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
-  API_IMPL_BEGIN
-  auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
-  std::pair<Status, const InputDefList*> p = session->GetModelOutputs();
-  if (!p.first.IsOK())
-    return ToOrtStatus(p.first);
-  *out = p.second->size();
-  return nullptr;
-  API_IMPL_END
+ORT_API_STATUS_IMPL(OrtSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
+  return GetNodeDefListCountHelper(sess, get_inputs_fn, out);
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionGetInputTypeInfo, _In_ const OrtSession* sess, size_t index, _Outptr_ struct OrtTypeInfo** out) {
+ORT_API_STATUS_IMPL(OrtSessionGetOutputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
+  return GetNodeDefListCountHelper(sess, get_outputs_fn, out);
+}
+
+ORT_API_STATUS_IMPL(OrtSessionGetOverridableInitializerCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
+  return GetNodeDefListCountHelper(sess, get_overridable_initializers_fn, out);
+}
+
+static OrtStatus* GetNodeDefTypeInfoHelper(const OrtSession* sess, GetDefListFn get_fn, size_t index, _Outptr_ struct OrtTypeInfo** out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
-  std::pair<Status, const InputDefList*> p = session->GetModelInputs();
+  std::pair<Status, const InputDefList*> p = get_fn(session);
   if (!p.first.IsOK())
     return ToOrtStatus(p.first);
   if (p.second->size() <= index)
@@ -564,17 +571,16 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetInputTypeInfo, _In_ const OrtSession* ses
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t index, _Outptr_ struct OrtTypeInfo** out) {
-  API_IMPL_BEGIN
-  auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
-  std::pair<Status, const InputDefList*> p = session->GetModelOutputs();
-  if (!p.first.IsOK())
-    return ToOrtStatus(p.first);
-  if (p.second->size() <= index)
-    return OrtApis::CreateStatus(ORT_FAIL, "out of index");
-  const ONNX_NAMESPACE::TypeProto* type_proto = (*p.second)[index]->TypeAsProto();
-  return OrtTypeInfo::FromDataTypeImpl(type_proto, out);
-  API_IMPL_END
+ORT_API_STATUS_IMPL(OrtSessionGetInputTypeInfo, _In_ const OrtSession* sess, size_t index, _Outptr_ struct OrtTypeInfo** out) {
+  return GetNodeDefTypeInfoHelper(sess, get_inputs_fn, index, out);
+}
+
+ORT_API_STATUS_IMPL(OrtSessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t index, _Outptr_ struct OrtTypeInfo** out) {
+  return GetNodeDefTypeInfoHelper(sess, get_outputs_fn, index, out);
+}
+
+ORT_API_STATUS_IMPL(OrtSessionGetOverridableInitializerTypeInfo, _In_ const OrtSession* sess, size_t index, _Outptr_ struct OrtTypeInfo** out) {
+  return GetNodeDefTypeInfoHelper(sess, get_overridable_initializers_fn, index, out);
 }
 
 static char* StrDup(const std::string& str, OrtAllocator* allocator) {
@@ -584,11 +590,11 @@ static char* StrDup(const std::string& str, OrtAllocator* allocator) {
   return output_string;
 }
 
-static OrtStatus* GetInputOutputNameImpl(_In_ const OrtSession* sess, size_t index,
-                                         _Inout_ OrtAllocator* allocator, bool is_input,
-                                         _Outptr_ char** output) {
+static OrtStatus* GetNodeDefNameImpl(_In_ const OrtSession* sess, size_t index,
+                                     _Inout_ OrtAllocator* allocator, GetDefListFn get_fn,
+                                     _Outptr_ char** output) {
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
-  std::pair<Status, const InputDefList*> p = is_input ? session->GetModelInputs() : session->GetModelOutputs();
+  std::pair<Status, const InputDefList*> p = get_fn(session);
   if (!p.first.IsOK())
     return ToOrtStatus(p.first);
   if (p.second == nullptr)
@@ -623,15 +629,20 @@ ORT_API_STATUS_IMPL(OrtApis::AllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t s
 
 ORT_API_STATUS_IMPL(OrtApis::AllocatorFree, _Inout_ OrtAllocator* ptr, void* p) {
   API_IMPL_BEGIN
-  ptr->Free(ptr, p);
-  return nullptr;
+  return GetNodeDefNameImpl(sess, index, allocator, get_inputs_fn, output);
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::AllocatorGetInfo, _In_ const OrtAllocator* ptr, _Outptr_ const struct OrtMemoryInfo** out) {
   API_IMPL_BEGIN
-  *out = ptr->Info(ptr);
-  return nullptr;
+  return GetNodeDefNameImpl(sess, index, allocator, get_outputs_fn, output);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtSessionGetOverridableInitializerName, _In_ const OrtSession* sess, size_t index,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** output) {
+  API_IMPL_BEGIN
+  return GetNodeDefNameImpl(sess, index, allocator, get_overridable_initializers_fn, output);
   API_IMPL_END
 }
 
@@ -1071,7 +1082,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateValue, const OrtValue* const* in, size_t num_
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateOpaqueValue, const char* domain_name, const char* type_name, const void* data_container,
+ORT_API_STATUS_IMPL(OrtCreateOpaqueValue, const char* domain_name, const char* type_name, const void* data_container,
                     size_t data_container_size, OrtValue** out) {
   API_IMPL_BEGIN
   std::string dtype("opaque(");
@@ -1088,7 +1099,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOpaqueValue, const char* domain_name, const c
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetOpaqueValue, const char* domain_name, const char* type_name, const OrtValue* in,
+ORT_API_STATUS_IMPL(OrtGetOpaqueValue, const char* domain_name, const char* type_name, const OrtValue* in,
                     void* data_container, size_t data_container_size) {
   API_IMPL_BEGIN
   std::string dtype("opaque(");
