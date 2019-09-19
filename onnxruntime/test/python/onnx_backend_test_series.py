@@ -160,7 +160,7 @@ def create_backend_test(testname=None):
         if c2.supports_device('NGRAPH'):
             current_failing_tests = current_failing_tests + ('|^test_clip*',)
 
-        if c2.supports_device('OPENVINO_GPU_FP32'):
+        if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
             current_failing_tests = current_failing_tests + ('^test_div_cpu*',)
 
         filters = current_failing_tests + \
