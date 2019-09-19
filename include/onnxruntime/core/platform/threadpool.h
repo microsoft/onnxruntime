@@ -51,7 +51,7 @@ class ThreadPool {
     if (tp != nullptr)
       return tp->ParallelFor(total, fn);
     for (int32_t i = 0; i != total; ++i) {
-		fn(i);
+      fn(i);
     }
   }
   /*
