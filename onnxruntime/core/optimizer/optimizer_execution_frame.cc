@@ -76,7 +76,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
     onnxruntime::Node::ForEachWithIndex(node->InputDefs(), initialize_maps);
     onnxruntime::Node::ForEachWithIndex(node->OutputDefs(), initialize_maps);
   }
-
+  node_index_info_ = std::make_unique<NodeIndexInfo>(nodes, ort_value_name_idx_map_);
   FuncManager fm;
   // create kernels for these nodes
   for (auto* node : nodes) {
