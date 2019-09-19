@@ -255,8 +255,10 @@ The OpenVINO Execution Provider can be built using the following commands:
 
   For Windows:
   
-  <code> build.bat --config Release --cmake_generator "Visual Studio 16 2019" --use_openvino <hardware_option> --build_shared_lib --parallel</code>
-
+  <code> build.bat --config RelWithDebInfo  --use_openvino <hardware_option> </code>
+ 
+   *Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat.*
+ 
    <code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
 
    <code><hardware_option></code>: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.

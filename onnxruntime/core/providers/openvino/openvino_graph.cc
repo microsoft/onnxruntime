@@ -11,6 +11,8 @@
 #include <Python.h>
 
 #include <inference_engine.hpp>
+//MSVC does not allow initialization of a typedef
+
 #ifdef OPTIONAL
 #undef OPTIONAL
 
