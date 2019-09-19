@@ -1,11 +1,12 @@
 #include "thread_utils.h"
+#include <algorithm>
 
 namespace onnxruntime {
 namespace concurrency {
 
 std::unique_ptr<ThreadPool> CreateThreadPool(const std::string& name, int thread_pool_size) {
   if (thread_pool_size <= 0) {  // default
-    thread_pool_size = std::thread::hardware_concurrency() / 2;
+    thread_pool_size = std::max<int>(1, std::thread::hardware_concurrency() / 2);
   }
 
   // since we use the main thread for execution we don't have to create any threads on the thread pool when
