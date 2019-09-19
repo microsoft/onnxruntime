@@ -227,6 +227,7 @@ HRESULT GetDXGIHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, IDX
       return S_OK;
     }
 
+    spAdapter = nullptr;
     ++i;
   }
   return ERROR_NOT_FOUND;
