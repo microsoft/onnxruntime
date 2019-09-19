@@ -33,7 +33,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SetSessionLogVerbosityLevel;
         public IntPtr SetSessionLogSeverityLevel;
         public IntPtr SetSessionGraphOptimizationLevel;
-        public IntPtr SetSessionThreadPoolSize;
+        public IntPtr SetIntraOpNumThreads;
+        public IntPtr SetInterOpNumThreads;
 
         public IntPtr CreateCustomOpDomain;
         public IntPtr CustomOpDomain_Add;
@@ -157,9 +158,8 @@ namespace Microsoft.ML.OnnxRuntime
             OrtSetSessionLogId = (DOrtSetSessionLogId)Marshal.GetDelegateForFunctionPointer(api_.SetSessionLogId, typeof(DOrtSetSessionLogId));
             OrtSetSessionLogVerbosityLevel = (DOrtSetSessionLogVerbosityLevel)Marshal.GetDelegateForFunctionPointer(api_.SetSessionLogVerbosityLevel, typeof(DOrtSetSessionLogVerbosityLevel));
             OrtSetSessionLogSeverityLevel = (DOrtSetSessionLogSeverityLevel)Marshal.GetDelegateForFunctionPointer(api_.SetSessionLogSeverityLevel, typeof(DOrtSetSessionLogSeverityLevel));
-            OrtSetSessionThreadPoolSize = (DOrtSetSessionThreadPoolSize)Marshal.GetDelegateForFunctionPointer(api_.SetSessionThreadPoolSize, typeof(DOrtSetSessionThreadPoolSize));
-           
-            OrtSetSessionThreadPoolSize = (DOrtSetSessionThreadPoolSize)Marshal.GetDelegateForFunctionPointer(api_.SetSessionThreadPoolSize, typeof(DOrtSetSessionThreadPoolSize));
+            OrtSetInterOpNumThreads = (DOrtSetInterOpNumThreads)Marshal.GetDelegateForFunctionPointer(api_.SetInterOpNumThreads, typeof(DOrtSetInterOpNumThreads));
+            OrtSetIntraOpNumThreads = (DOrtSetIntraOpNumThreads)Marshal.GetDelegateForFunctionPointer(api_.SetIntraOpNumThreads, typeof(DOrtSetIntraOpNumThreads));
             OrtSetSessionGraphOptimizationLevel = (DOrtSetSessionGraphOptimizationLevel)Marshal.GetDelegateForFunctionPointer(api_.SetSessionGraphOptimizationLevel, typeof(DOrtSetSessionGraphOptimizationLevel));
 
             OrtCreateRunOptions = (DOrtCreateRunOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateRunOptions, typeof(DOrtCreateRunOptions));
@@ -344,12 +344,14 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionLogSeverityLevel(IntPtr /* OrtSessionOptions* */ options, LogLevel sessionLogSeverityLevel);
         public static DOrtSetSessionLogSeverityLevel OrtSetSessionLogSeverityLevel;
 
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionThreadPoolSize(IntPtr /* OrtSessionOptions* */ options, int sessionThreadPoolSize);
-        public static DOrtSetSessionThreadPoolSize OrtSetSessionThreadPoolSize;
+        public delegate IntPtr /*(OrtStatus*)*/ DSetIntraOpNumThreads(IntPtr /* OrtSessionOptions* */ options, int intraOpNumThreads);
+        public static DSetIntraOpNumThreads SetIntraOpNumThreads;
 
+        public delegate IntPtr /*(OrtStatus*)*/ DSetInterOpNumThreads(IntPtr /* OrtSessionOptions* */ options, int interOpNumThreads);
+        public static DSetInterOpNumThreads SetInterOpNumThreads;
+        
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionGraphOptimizationLevel(IntPtr /* OrtSessionOptions* */ options, GraphOptimizationLevel graphOptimizationLevel);
         public static DOrtSetSessionGraphOptimizationLevel OrtSetSessionGraphOptimizationLevel;
-
 
         ///**
         //  * The order of invocation indicates the preference order as well. In other words call this method
