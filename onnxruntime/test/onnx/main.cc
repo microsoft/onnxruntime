@@ -405,6 +405,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"cumsum_1d_reverse", "not implemented yet"},
       {"cumsum_1d_exclusive", "not implemented yet"},
       {"cumsum_1d", "not implemented yet"},      
+      {"mask_rcnn", "broken"},
   };
 
 #ifdef USE_NGRAPH
