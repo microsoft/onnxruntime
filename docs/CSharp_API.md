@@ -34,7 +34,7 @@ You can load your input data into Tensor<T> objects in several ways. A simple ex
     int[] dimensions;    // and the dimensions of the input is stored here
     Tensor<float> t1 = new DenseTensor<float>(sourceData, dimensions);    
 
-Here is a [complete sample code](https://github.com/Microsoft/onnxruntime/tree/master/csharp/sample/Microsoft.ML.OnnxRuntime.InferenceSample) that runs inference on a pretrained model.
+Here is a [complete sample code](../csharp/sample/Microsoft.ML.OnnxRuntime.InferenceSample) that runs inference on a pretrained model.
 
 ## Running on GPU (Optional)
 If using the GPU package, simply use the appropriate SessionOptions when creating an InferenceSession.

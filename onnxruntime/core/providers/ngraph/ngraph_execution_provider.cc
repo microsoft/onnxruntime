@@ -37,32 +37,32 @@ NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderIn
   ORT_ENFORCE(info.ng_backend_type == "CPU", "nGraph Execution Provider for onnxruntime currently is only supported for CPU backend.");
 
   auto default_allocator_factory = [](int) {
-    auto allocator_info = std::make_unique<OrtMemoryInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator);
-    return std::make_unique<CPUAllocator>(std::move(allocator_info));
+    auto memory_info = std::make_unique<OrtMemoryInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator);
+    return std::make_unique<CPUAllocator>(std::move(memory_info));
   };
 
-  DeviceAllocatorRegistrationInfo default_allocator_info{
+  DeviceAllocatorRegistrationInfo default_memory_info{
     OrtMemTypeDefault,
     std::move(default_allocator_factory),
     std::numeric_limits<size_t>::max()
   };
 
-  InsertAllocator(CreateAllocator(default_allocator_info));
+  InsertAllocator(CreateAllocator(default_memory_info));
 
 
   auto cpu_allocator_factory = [](int) {
-    auto allocator_info = std::make_unique<OrtMemoryInfo>(
+    auto memory_info = std::make_unique<OrtMemoryInfo>(
       NGRAPH, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput);
-    return std::make_unique<CPUAllocator>(std::move(allocator_info));
+    return std::make_unique<CPUAllocator>(std::move(memory_info));
   };
 
-  DeviceAllocatorRegistrationInfo cpu_allocator_info{
+  DeviceAllocatorRegistrationInfo cpu_memory_info{
     OrtMemTypeCPUOutput,
     std::move(cpu_allocator_factory),
     std::numeric_limits<size_t>::max()
   };
 
-  InsertAllocator(CreateAllocator(cpu_allocator_info));
+  InsertAllocator(CreateAllocator(cpu_memory_info));
 
   try {
     ng_backend_ = ngraph::runtime::Backend::create(info.ng_backend_type);

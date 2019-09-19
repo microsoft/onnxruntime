@@ -8,13 +8,14 @@ OrtMemoryInfoGetName
 OrtMemoryInfoGetType
 OrtCastTypeInfoToTensorInfo
 OrtCloneSessionOptions
-OrtCompareAllocatorInfo
-OrtCreateAllocatorInfo
-OrtCreateCpuAllocatorInfo
+OrtCompareMemoryInfo
+OrtCreateMemoryInfo
+OrtCreateCpuMemoryInfo
 OrtCreateCustomOpDomain
 OrtGetAllocatorWithDefaultOptions
 OrtCreateEnv
 OrtCreateEnvWithCustomLogger
+OrtCreateOpaqueValue
 OrtCreateRunOptions
 OrtCreateSession
 OrtCreateSessionFromArray
@@ -38,6 +39,7 @@ OrtGetDimensions
 OrtGetDimensionsCount
 OrtGetErrorCode
 OrtGetErrorMessage
+OrtGetOpaqueValue
 OrtGetStringTensorContent
 OrtGetStringTensorDataLength
 OrtGetTensorElementType

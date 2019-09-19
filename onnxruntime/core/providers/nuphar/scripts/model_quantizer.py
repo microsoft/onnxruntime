@@ -53,27 +53,6 @@ class QuantizeConfig:
                      ('QuantizationType', 'Signed' if self.sign_bit_ else 'Unsigned'),
                      ('ReservedBit', self.reserved_bits_)])
 
-def parse_node_description(in_node):
-    if not in_node.doc_string:
-        return None
-    from model_editor_internal import parse_custom_attributes
-    custom_qcfg = parse_custom_attributes(in_node)
-    if custom_qcfg:
-        assert custom_qcfg['IntermediateBit'] == 32
-        assert custom_qcfg['PerRowQuantization']
-        assert custom_qcfg['QuantizeBitOfVector'] == custom_qcfg['QuantizeBitOfMatrix']
-        qbits = custom_qcfg['QuantizeBitOfVector']
-        assert ("Asymmetric" in custom_qcfg['VectorQuantizationType']) == ("Asymmetric" in custom_qcfg['MatrixQuantizationType'])
-        symmetric = 0 if "Asymmetric" in custom_qcfg['VectorQuantizationType'] else 1
-        x_signed = 0 if "Unsigned" in custom_qcfg['VectorQuantizationType'] else 1
-        w_signed = 0 if "Unsigned" in custom_qcfg['MatrixQuantizationType'] else 1
-        x_reserved_bits = custom_qcfg['ReservedBitOfVector']
-        w_reserved_bits = custom_qcfg['ReservedBitOfMatrix']
-        return {'W' : dict(QuantizeConfig(signed=w_signed, reserved_bits=w_reserved_bits, type_bits=qbits)),
-                'X' : dict(QuantizeConfig(signed=x_signed, reserved_bits=x_reserved_bits, type_bits=qbits)),
-                'Symmetric' : symmetric}
-    return None
-
 def quantize_matmul_2d_with_weight(in_node, in_graph, nf, converted_weights, quantized_inputs, qcfg_dict, update_qcfg_dict, default_qcfg):
     assert in_node.op_type == 'MatMul'
 
@@ -90,7 +69,7 @@ def quantize_matmul_2d_with_weight(in_node, in_graph, nf, converted_weights, qua
     if in_node.output[0] in qcfg_dict:
         node_qcfg = qcfg_dict[in_node.output[0]]
     else:
-        node_qcfg = parse_node_description(in_node)
+        node_qcfg = None
         if not node_qcfg:
             if not update_qcfg_dict and qcfg_dict:
                 # when qcfg_dict is readonly, raise warning if qcfg is not found for this node
@@ -220,15 +199,25 @@ def quantize_matmul_2d_with_weight(in_node, in_graph, nf, converted_weights, qua
 
     return True
 
-def upgrade_slice_op(nf, in_n):
-    # convert opset9 Slice to opset10
-    assert len(in_n.input) == 1
-    with nf.scoped_prefix(in_n.name) as scoped_prefix:
-        slice_inputs = [in_n.input[0],
-                        np.asarray(NodeFactory.get_attribute(in_n,'starts')).astype(np.int64),
-                        np.asarray(NodeFactory.get_attribute(in_n,'ends')).astype(np.int64),
-                        np.asarray(NodeFactory.get_attribute(in_n,'axes')).astype(np.int64)]
-        nf.make_node('Slice', slice_inputs, output_names=[in_n.output[0]])
+def upgrade_op(nf, in_n):
+    if in_n.op_type == 'Slice' and len(in_n.input) == 1:
+        # convert opset9 Slice to opset10
+        with nf.scoped_prefix(in_n.name) as scoped_prefix:
+            slice_inputs = [in_n.input[0],
+                            np.asarray(NodeFactory.get_attribute(in_n,'starts')).astype(np.int64),
+                            np.asarray(NodeFactory.get_attribute(in_n,'ends')).astype(np.int64),
+                            np.asarray(NodeFactory.get_attribute(in_n,'axes')).astype(np.int64)]
+            nf.make_node('Slice', slice_inputs, output_names=list(in_n.output))
+        return True
+    elif in_n.op_type == 'TopK' and len(in_n.input) == 1:
+        # convert opset1 TopK to opset10
+        with nf.scoped_prefix(in_n.name) as scoped_prefix:
+            topk_inputs = [in_n.input[0],
+                            np.asarray([NodeFactory.get_attribute(in_n,'k')]).astype(np.int64)]
+            nf.make_node('TopK', topk_inputs, {'axis':NodeFactory.get_attribute(in_n,'axis',-1)}, output_names=list(in_n.output))
+        return True
+    else:
+        return False
 
 # quantize matmul to MatMulInteger using asymm uint8
 def convert_matmul_model(input_model, output_model, only_for_scan=False, share_input_quantization=False, preset_str='asymm8_param0_input1', qcfg_json=None, export_qcfg_json=None):
@@ -256,8 +245,7 @@ def convert_matmul_model(input_model, output_model, only_for_scan=False, share_i
     converted_weights = {} # remember MatMul weights that have been converted, in case of sharing
     quantized_inputs = {} if share_input_quantization else None # remember quantized inputs that might be able to share between MatMuls
     for in_n in in_mp.graph.node:
-        if in_n.op_type == 'Slice' and len(in_n.input) == 1:
-            upgrade_slice_op(nf, in_n)
+        if upgrade_op(nf, in_n):
             continue
 
         if in_n.op_type == 'MatMul' and not only_for_scan:
@@ -277,8 +265,7 @@ def convert_matmul_model(input_model, output_model, only_for_scan=False, share_i
                     if quantize_matmul_2d_with_weight(in_sn, in_subgraph, scan_nf, converted_weights, subgraph_quantized_inputs, qcfg_dict, export_qcfg_json, default_qcfg):
                         continue
 
-                if in_sn.op_type == 'Slice' and len(in_sn.input) == 1:
-                    upgrade_slice_op(scan_nf, in_sn)
+                if upgrade_op(scan_nf, in_sn):
                     continue
 
                 out_sn = out_subgraph.node.add()
@@ -291,8 +278,8 @@ def convert_matmul_model(input_model, output_model, only_for_scan=False, share_i
 
 def parse_arguments():
   parser = argparse.ArgumentParser()
-  parser.add_argument('--input', help='The input model file', default=None)
-  parser.add_argument('--output', help='The output model file', default=None)
+  parser.add_argument('--input', required=True, help='The input model file')
+  parser.add_argument('--output', required=True, help='The output model file')
   parser.add_argument('--default_qcfg', help='The preset of quantization of <asymm|symm><qbits>_param<reserve_bit>_input<reserve_bit>', choices=['asymm8_param0_input1', 'symm16_param3_input3'], default='asymm8_param0_input1')
   parser.add_argument('--qcfg_json', help='The quantization config json file for read or write.', default=None)
   parser.add_argument('--export_qcfg_json', help='If set, write default quantization config to qcfg_json file.', action='store_true', default=False)
