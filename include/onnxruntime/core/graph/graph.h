@@ -768,7 +768,6 @@ class Graph {
 
   /** Returns true if the name is for a value that is coming from outer scope */
   bool IsOuterScopeValue(const std::string& name) const {
-    ORT_ENFORCE(graph_resolve_needed_ == false, "Graph::Resolve must have been called earlier.");
     return resolve_context_.outer_scope_node_args.find(name) != resolve_context_.outer_scope_node_args.cend();
   }
 
