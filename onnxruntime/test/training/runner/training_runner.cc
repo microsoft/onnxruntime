@@ -338,10 +338,8 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
 
     // Set to next batch
     if (++current_batch >= test_data->TotalBatch(params_.batch_size)) {
-      if (test_data_loader_ != nullptr) {
-        // Move to next shard
-        test_data = test_data_loader_->MoveToNextDataSet();
-      }
+      // Move to next shard
+      test_data = test_data_loader_->MoveToNextDataSet();
       current_batch = 0;
     }
   }

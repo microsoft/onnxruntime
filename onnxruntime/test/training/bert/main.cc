@@ -311,21 +311,21 @@ int main(int argc, char* argv[]) {
     runner = std::make_unique<TrainingRunner>(random_perf_data_loader, random_perf_data_loader, params);
 
   } else {
-    auto device_id = params.mpi_context.local_rank;
-    auto device_count = params.mpi_context.world_size;
     const size_t max_num_files_preload = 2;
 
     auto training_data_loader = std::make_shared<DataLoader>(params.input_name_map,
                                                              params.train_data_dir,
                                                              max_num_files_preload,
                                                              params.mpi_context.world_rank,
-                                                             device_count);
-    auto test_data_loader = std::make_shared<DataLoader>(params.input_name_map,
-                                                         params.test_data_dir,
-                                                         max_num_files_preload);
+                                                             params.mpi_context.world_size);
     RETURN_IF_FAIL(training_data_loader->InitialPreLoadAsync());
+
     // Evaluation is only done in device #0
-    if (device_id == 0) {
+    std::shared_ptr<DataLoader> test_data_loader;
+    if (params.mpi_context.world_rank == 0) {
+      test_data_loader = std::make_shared<DataLoader>(params.input_name_map,
+                                                      params.test_data_dir,
+                                                      max_num_files_preload);
       RETURN_IF_FAIL(test_data_loader->InitialPreLoadAsync());
     }
 
