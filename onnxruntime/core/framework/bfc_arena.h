@@ -457,10 +457,6 @@ class BFCArena : public IArenaAllocator {
   // The size of the current region allocation.
   size_t curr_region_allocation_bytes_;
 
-  // An indicator that expansion of a region has hit the limits
-  // of the available memory.
-  bool started_backpedal_ = false;
-
   std::unique_ptr<IDeviceAllocator> device_allocator_;
 
   mutable OrtMutex lock_;
