@@ -293,6 +293,8 @@ ORT_API_STATUS(OrtSessionGetInputName, _In_ const OrtSession* sess, size_t index
                _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 ORT_API_STATUS(OrtSessionGetOutputName, _In_ const OrtSession* sess, size_t index,
                _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+ORT_API_STATUS(OrtSessionGetOverridableInitializerName, _In_ const OrtSession* sess, size_t index,
+               _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 
 /**
  * \return A pointer to the newly created object. The pointer should be freed by OrtReleaseRunOptions after use

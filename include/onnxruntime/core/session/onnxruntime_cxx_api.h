@@ -72,6 +72,7 @@ struct Base {
 
  protected:
   Base(const Base&) = delete;
+  Base& operator=(const Base&) = delete;
   Base(Base&& v) noexcept : p_{v.p_} { v.p_ = nullptr; }
   void operator=(Base&& v) noexcept {
     OrtRelease(p_);
@@ -174,12 +175,15 @@ struct Session : Base<OrtSession> {
 
   size_t GetInputCount() const;
   size_t GetOutputCount() const;
+  size_t GetOverridableInitializerCount() const;
 
   char* GetInputName(size_t index, OrtAllocator* allocator) const;
   char* GetOutputName(size_t index, OrtAllocator* allocator) const;
+  char* GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const;
 
   TypeInfo GetInputTypeInfo(size_t index) const;
   TypeInfo GetOutputTypeInfo(size_t index) const;
+  TypeInfo GetOverridableInitializerTypeInfo(size_t index) const;
 };
 
 struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
@@ -222,6 +226,8 @@ struct Value : Base<OrtValue> {
 
   explicit Value(nullptr_t) {}
   explicit Value(OrtValue* p) : Base<OrtValue>{p} {}
+  Value(Value&&) = default;
+  Value& operator=(Value&&) = default;
 
   bool IsTensor() const;
   size_t GetCount() const;  // If a non tensor, returns 2 for map and N for sequence, where N is the number of elements

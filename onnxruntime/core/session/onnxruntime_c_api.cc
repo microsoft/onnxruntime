@@ -554,7 +554,7 @@ ORT_API_STATUS_IMPL(OrtSessionGetOverridableInitializerCount, _In_ const OrtSess
   return GetNodeDefListCountHelper(sess, get_overridable_initializers_fn, out);
 }
 
-static OrtStatus* GetNodeDefTypeInfoHelper (const OrtSession* sess, GetDefListFn get_fn, size_t index, _Outptr_ struct OrtTypeInfo** out) {
+static OrtStatus* GetNodeDefTypeInfoHelper(const OrtSession* sess, GetDefListFn get_fn, size_t index, _Outptr_ struct OrtTypeInfo** out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
   std::pair<Status, const InputDefList*> p = get_fn(session);
@@ -586,11 +586,11 @@ static char* StrDup(const std::string& str, OrtAllocator* allocator) {
   return output_string;
 }
 
-static OrtStatus* GetInputOutputNameImpl(_In_ const OrtSession* sess, size_t index,
-                                         _Inout_ OrtAllocator* allocator, bool is_input,
-                                         _Outptr_ char** output) {
+static OrtStatus* GetNodeDefNameImpl(_In_ const OrtSession* sess, size_t index,
+                                     _Inout_ OrtAllocator* allocator, GetDefListFn get_fn,
+                                     _Outptr_ char** output) {
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
-  std::pair<Status, const InputDefList*> p = is_input ? session->GetModelInputs() : session->GetModelOutputs();
+  std::pair<Status, const InputDefList*> p = get_fn(session);
   if (!p.first.IsOK())
     return ToOrtStatus(p.first);
   if (p.second == nullptr)
@@ -632,14 +632,21 @@ ORT_API_STATUS_IMPL(OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr, _Outptr_ 
 ORT_API_STATUS_IMPL(OrtSessionGetInputName, _In_ const OrtSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** output) {
   API_IMPL_BEGIN
-  return GetInputOutputNameImpl(sess, index, allocator, true, output);
+  return GetNodeDefNameImpl(sess, index, allocator, get_inputs_fn, output);
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtSessionGetOutputName, _In_ const OrtSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** output) {
   API_IMPL_BEGIN
-  return GetInputOutputNameImpl(sess, index, allocator, false, output);
+  return GetNodeDefNameImpl(sess, index, allocator, get_outputs_fn, output);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtSessionGetOverridableInitializerName, _In_ const OrtSession* sess, size_t index,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** output) {
+  API_IMPL_BEGIN
+  return GetNodeDefNameImpl(sess, index, allocator, get_overridable_initializers_fn, output);
   API_IMPL_END
 }
 
