@@ -132,8 +132,12 @@ ORT_API_STATUS_IMPL(OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions*
   return nullptr;
 }
 
-///How many threads in the session thread pool.
-ORT_API_STATUS_IMPL(OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size) {
-  options->value.session_thread_pool_size = session_thread_pool_size;
+ORT_API_STATUS_IMPL(OrtSetIntraOpNumThreads, _In_ OrtSessionOptions* options, int intra_op_num_threads) {
+  options->value.intra_op_num_threads = intra_op_num_threads;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtSetInterOpNumThreads, _In_ OrtSessionOptions* options, int inter_op_num_threads) {
+  options->value.inter_op_num_threads = inter_op_num_threads;
   return nullptr;
 }

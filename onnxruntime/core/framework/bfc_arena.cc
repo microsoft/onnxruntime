@@ -75,18 +75,30 @@ bool BFCArena::Extend(size_t rounded_bytes) {
 
   // Try allocating.
   size_t bytes = std::min(curr_region_allocation_bytes_, available_bytes);
-  void* mem_addr = device_allocator_->Alloc(bytes);
-  if (mem_addr == nullptr && !started_backpedal_) {
-    // Only backpedal once.
-    started_backpedal_ = true;
+  auto safe_alloc = [this](size_t alloc_bytes) {
+    void* new_mem = nullptr;
+    try {
+      new_mem = device_allocator_->Alloc(alloc_bytes);
+    } catch (const std::bad_alloc&) {
+      // attempted allocation can throw std::bad_alloc. we want to treat this the same as if it returned nullptr
+      // so swallow the exception
+    }
 
+    return new_mem;
+  };
+
+  void* mem_addr = safe_alloc(bytes);
+
+  if (mem_addr == nullptr) {
     static constexpr float kBackpedalFactor = 0.9f;
 
     // Try allocating less memory.
     while (mem_addr == nullptr) {
       bytes = RoundedBytes(static_cast<size_t>(bytes * kBackpedalFactor));
-      if (bytes < rounded_bytes) break;
-      mem_addr = device_allocator_->Alloc(bytes);
+      if (bytes < rounded_bytes)
+        break;
+
+      mem_addr = safe_alloc(bytes);
     }
   }
 
@@ -94,12 +106,12 @@ bool BFCArena::Extend(size_t rounded_bytes) {
     return false;
   }
 
+  // we allocated the same number of bytes as the current region, so we have 2x that now
   if (!increased_allocation) {
-    // Increase the region size of the next required allocation.
     curr_region_allocation_bytes_ *= 2;
   }
 
-  LOGS_DEFAULT(INFO) << "Extending allocation by " << bytes
+  LOGS_DEFAULT(INFO) << "Extended allocation by " << bytes
                      << " bytes.";
 
   stats_.total_allocated_bytes += bytes;
@@ -227,9 +239,9 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   // couldn't find one.  This means we must have run out of memory,
   // Dump the memory log for analysis.
   if (dump_log_on_failure) {
-    LOGS_DEFAULT(WARNING) << "BFC Arena ran out of memory trying "
-                          << "to allocate " << num_bytes
-                          << ".  Current allocation summary follows.";
+    LOGS_DEFAULT(ERROR) << "BFC Arena ran out of memory trying "
+                        << "to allocate " << num_bytes
+                        << ".  Current allocation summary follows.";
     DumpMemoryLog(rounded_bytes);
   }
   return nullptr;
