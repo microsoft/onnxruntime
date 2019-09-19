@@ -344,11 +344,11 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionLogSeverityLevel(IntPtr /* OrtSessionOptions* */ options, LogLevel sessionLogSeverityLevel);
         public static DOrtSetSessionLogSeverityLevel OrtSetSessionLogSeverityLevel;
 
-        public delegate IntPtr /*(OrtStatus*)*/ DSetIntraOpNumThreads(IntPtr /* OrtSessionOptions* */ options, int intraOpNumThreads);
-        public static DSetIntraOpNumThreads OrtSetIntraOpNumThreads;
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetIntraOpNumThreads(IntPtr /* OrtSessionOptions* */ options, int intraOpNumThreads);
+        public static DOrtSetIntraOpNumThreads OrtSetIntraOpNumThreads;
 
-        public delegate IntPtr /*(OrtStatus*)*/ DSetInterOpNumThreads(IntPtr /* OrtSessionOptions* */ options, int interOpNumThreads);
-        public static DSetInterOpNumThreads OrtSetInterOpNumThreads;
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetInterOpNumThreads(IntPtr /* OrtSessionOptions* */ options, int interOpNumThreads);
+        public static DOrtSetInterOpNumThreads OrtSetInterOpNumThreads;
         
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionGraphOptimizationLevel(IntPtr /* OrtSessionOptions* */ options, GraphOptimizationLevel graphOptimizationLevel);
         public static DOrtSetSessionGraphOptimizationLevel OrtSetSessionGraphOptimizationLevel;
