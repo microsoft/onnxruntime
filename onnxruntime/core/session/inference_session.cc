@@ -97,10 +97,10 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
     : session_options_{session_options},
       graph_transformation_mgr_{session_options.max_num_graph_transformation_steps},
       logging_manager_{logging_manager},
-      thread_pool_(concurrency::CreateThreadPool("intra_op_thread_pool", concurrency::ThreadPoolType::kIntraOp,
+      thread_pool_(concurrency::CreateThreadPool("intra_op_thread_pool",
                                                  session_options.intra_op_num_threads)),
       inter_op_thread_pool_(!session_options.enable_sequential_execution
-                                ? concurrency::CreateThreadPool("inter_op_thread_pool", concurrency::ThreadPoolType::kInterOp,
+                                ? concurrency::CreateThreadPool("inter_op_thread_pool",
                                                                 session_options.inter_op_num_threads)
                                 : nullptr),
       session_state_(execution_providers_,
