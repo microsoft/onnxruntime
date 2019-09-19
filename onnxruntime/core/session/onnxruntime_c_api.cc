@@ -1131,7 +1131,8 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::SetSessionLogVerbosityLevel,
     &OrtApis::SetSessionLogSeverityLevel,
     &OrtApis::SetSessionGraphOptimizationLevel,
-    &OrtApis::SetSessionThreadPoolSize,
+    &OrtApis::SetIntraOpNumThreads,
+    &OrtApis::SetInterOpNumThreads,
 
     &OrtApis::CreateCustomOpDomain,
     &OrtApis::CustomOpDomain_Add,

@@ -49,7 +49,8 @@ ORT_API_STATUS_IMPL(SetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options
 ORT_API_STATUS_IMPL(SetSessionLogSeverityLevel, _In_ OrtSessionOptions* options, int session_log_severity_level);
 ORT_API_STATUS_IMPL(SetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options,
                     GraphOptimizationLevel graph_optimization_level);
-ORT_API_STATUS_IMPL(SetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size);
+ORT_API_STATUS_IMPL(SetIntraOpNumThreads, _Inout_ OrtSessionOptions* options, int intra_op_num_threads);
+ORT_API_STATUS_IMPL(SetInterOpNumThreads, _Inout_ OrtSessionOptions* options, int inter_op_num_threads);
 
 ORT_API_STATUS_IMPL(CreateCustomOpDomain, _In_ const char* domain, _Outptr_ OrtCustomOpDomain** out);
 ORT_API_STATUS_IMPL(CustomOpDomain_Add, _Inout_ OrtCustomOpDomain* custom_op_domain, _In_ OrtCustomOp* op);
