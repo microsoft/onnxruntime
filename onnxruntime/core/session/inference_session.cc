@@ -594,6 +594,14 @@ int InferenceSession::GetCurrentNumRuns() const {
   return current_num_runs_.load();
 }
 
+const std::vector<std::string>& InferenceSession::GetRegisteredProviderTypes() const {
+  return execution_providers_.GetIds();
+}
+
+const SessionOptions& InferenceSession::GetSessionOptions() const {
+  return session_options_;
+}
+
 common::Status InferenceSession::CheckShapes(const std::string& input_name,
                                              const TensorShape& input_shape,
                                              const TensorShape& expected_shape) const {
@@ -859,7 +867,8 @@ common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_bin
 common::Status InferenceSession::Run(const RunOptions& run_options, IOBinding& io_binding) {
   // TODO should Run() call io_binding.SynchronizeInputs() or should it let the callers do it?
   // io_binding.SynchronizeInputs();
-  return Run(run_options, io_binding.feed_names_, io_binding.feeds_, io_binding.output_names_, &io_binding.outputs_);
+  return Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(),
+             io_binding.GetOutputNames(), &io_binding.GetOutputs());
 }
 
 common::Status InferenceSession::Run(IOBinding& io_binding) {

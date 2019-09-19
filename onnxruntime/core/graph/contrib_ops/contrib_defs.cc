@@ -1648,6 +1648,23 @@ Example 4:
                 output_counts = [1, 2, 2, 1]
               )DOC");
 
+  //see:https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.cdist.html
+  ONNX_CONTRIB_OPERATOR_SCHEMA(CDist)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("metric",
+            "The distance metric to use. If a string, the distance function can be \"braycurtis\", \"canberra\", "
+            "\"chebyshev\", \"cityblock\", \"correlation\", \"cosine\", \"dice\", \"euclidean\", \"hamming\", \"jaccard\", "
+            "\"jensenshannon\", \"kulsinski\", \"mahalanobis\", \"matching\", \"minkowski\", \"rogerstanimoto\", \"russellrao\", "
+            "\"seuclidean\", \"sokalmichener\", \"sokalsneath\", \"sqeuclidean\", \"wminkowski\", \"yule\".",
+            AttributeProto::STRING, std::string("sqeuclidean"))     
+      .Input(0, "A", "2D matrix with shape (M,N)", "T")
+	  .Input(1, "B", "2D matrix with shape (K,N)", "T")
+      .Output(0, "C",
+              "A 2D Matrix that represents the distance between each pair of the two collections of inputs.",
+              "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(double)"}, "Constrains input to only numeric types.");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(CropAndResize)
       .SetDomain(kMSDomain)
       .SinceVersion(1)

@@ -57,9 +57,9 @@ else
         DOCKER_FILE=Dockerfile.ubuntu_tensorrt
         docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
     elif [ $BUILD_DEVICE = "openvino" ]; then
-        IMAGE="ubuntu16.04"
+        IMAGE="ubuntu16.04-openvino"
         DOCKER_FILE=Dockerfile.ubuntu_openvino
-        docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OPENVINO_VERSION=${OPENVINO_VERSION} -f Dockerfile.ubuntu_openvino .
+        docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OPENVINO_VERSION=${OPENVINO_VERSION} -f $DOCKER_FILE .
     else
         IMAGE="ubuntu16.04"
         if [ $BUILD_ARCH = "x86" ]; then
@@ -85,13 +85,17 @@ else
     RUNTIME="--runtime=nvidia"
 fi
 
+DOCKER_RUN_PARAMETER="--name onnxruntime-$BUILD_DEVICE \
+                      --volume $SOURCE_ROOT:/onnxruntime_src \
+                      --volume $BUILD_DIR:/build \
+                      --volume $HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime \
+                      --volume $HOME/.onnx:/home/onnxruntimedev/.onnx"
+if [ $BUILD_DEVICE = "openvino" ] && [[ $BUILD_EXTR_PAR == *"--use_openvino GPU_FP"* ]]; then
+    DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --device /dev/dri:/dev/dri"
+fi
+
 docker rm -f "onnxruntime-$BUILD_DEVICE" || true
-docker run $RUNTIME -h $HOSTNAME \
-    --name "onnxruntime-$BUILD_DEVICE" \
-    --volume "$SOURCE_ROOT:/onnxruntime_src" \
-    --volume "$BUILD_DIR:/build" \
-    --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
-    --volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" \
+docker run $RUNTIME -h $HOSTNAME $DOCKER_RUN_PARAMETER \
     -e NIGHTLY_BUILD \
     "onnxruntime-$IMAGE" \
     /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
