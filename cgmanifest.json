@@ -67,7 +67,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "09f082940113661256310e3f4811aa7261a9fa05",
+               "commitHash": "00a0aa992953d6482114a0f539a21bb535a16383",
                "repositoryUrl": "https://github.com/pybind/pybind11.git"
             }
          }
