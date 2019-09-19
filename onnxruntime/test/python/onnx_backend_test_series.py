@@ -160,6 +160,9 @@ def create_backend_test(testname=None):
             current_failing_tests = current_failing_tests + ('|^test_clip*',)
             current_failing_tests = current_failing_tests + ('|^test_depthtospace_crd*',)
 
+        if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
+            current_failing_tests = current_failing_tests + ('^test_div_cpu*',)
+
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \
                   unsupported_usages_filters()
@@ -184,7 +187,7 @@ def parse_args():
     parser.add_argument('-t', '--test-name', dest='testname', type=str,
                         help="Only run tests that match this value. Matching is regex based, and '.*' is automatically appended")
 
-    # parse just our args. python unittest has its own args and arg parsing, and that runs inside unittest.main()	
+    # parse just our args. python unittest has its own args and arg parsing, and that runs inside unittest.main()
     args, left = parser.parse_known_args()
     sys.argv = sys.argv[:1] + left
 
