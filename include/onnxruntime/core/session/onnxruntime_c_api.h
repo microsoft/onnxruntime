@@ -287,18 +287,18 @@ struct OrtApi {
 
   OrtStatus*(ORT_API_CALL* SetSessionGraphOptimizationLevel)(_Inout_ OrtSessionOptions* options, GraphOptimizationLevel graph_optimization_level)NO_EXCEPTION;
 
-// Sets the number of threads used to parallelize the execution within nodes
-// A value of 0 means ORT will pick a default
-OrtStatus* (ORT_API_CALL* SetIntraOpNumThreads)(_Inout_ OrtSessionOptions* options, int intra_op_num_threads);
+  // Sets the number of threads used to parallelize the execution within nodes
+  // A value of 0 means ORT will pick a default
+  OrtStatus*(ORT_API_CALL* SetIntraOpNumThreads)(_Inout_ OrtSessionOptions* options, int intra_op_num_threads);
 
-// Sets the number of threads used to parallelize the execution of the graph (across nodes)
-// If sequential execution is enabled this value is ignored
-// A value of 0 means ORT will pick a default
-OrtStatus*(ORT_API_CALL* SetInterOpNumThreads)(_Inout_ OrtSessionOptions* options, int inter_op_num_threads);
+  // Sets the number of threads used to parallelize the execution of the graph (across nodes)
+  // If sequential execution is enabled this value is ignored
+  // A value of 0 means ORT will pick a default
+  OrtStatus*(ORT_API_CALL* SetInterOpNumThreads)(_Inout_ OrtSessionOptions* options, int inter_op_num_threads);
 
   /*
-* Create a custom op domain. After all sessions using it are released, call OrtReleaseCustomOpDomain
-*/
+  Create a custom op domain. After all sessions using it are released, call OrtReleaseCustomOpDomain
+  */
   OrtStatus*(ORT_API_CALL* CreateCustomOpDomain)(_In_ const char* domain, _Outptr_ OrtCustomOpDomain** out)NO_EXCEPTION;
 
   /*

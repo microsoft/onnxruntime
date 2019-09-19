@@ -345,10 +345,10 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtSetSessionLogSeverityLevel OrtSetSessionLogSeverityLevel;
 
         public delegate IntPtr /*(OrtStatus*)*/ DSetIntraOpNumThreads(IntPtr /* OrtSessionOptions* */ options, int intraOpNumThreads);
-        public static DSetIntraOpNumThreads SetIntraOpNumThreads;
+        public static DSetIntraOpNumThreads OrtSetIntraOpNumThreads;
 
         public delegate IntPtr /*(OrtStatus*)*/ DSetInterOpNumThreads(IntPtr /* OrtSessionOptions* */ options, int interOpNumThreads);
-        public static DSetInterOpNumThreads SetInterOpNumThreads;
+        public static DSetInterOpNumThreads OrtSetInterOpNumThreads;
         
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionGraphOptimizationLevel(IntPtr /* OrtSessionOptions* */ options, GraphOptimizationLevel graphOptimizationLevel);
         public static DOrtSetSessionGraphOptimizationLevel OrtSetSessionGraphOptimizationLevel;
