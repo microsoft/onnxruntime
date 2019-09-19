@@ -30,7 +30,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
       }
     }
     AllocatorPtr GetAllocator(const OrtMemoryInfo& info) const {
-		return execution_providers_.GetAllocator(info);      
+      return execution_providers_.GetAllocator(info);
     }
 
     AllocatorPtr GetAllocator() const { return allocator_ptr_; }

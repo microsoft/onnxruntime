@@ -40,7 +40,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   ORT_ENFORCE(allocator_ptr_ != nullptr, "Failed to get allocator for optimizer");
   execution_providers_.Add(kCpuExecutionProvider, std::move(cpu_execution_provider_));
   ORT_ENFORCE(kernel_registry_manager_.RegisterKernels(execution_providers_).IsOK());
- 
+
   data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
 
   // Create MLValues related maps
@@ -82,7 +82,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   for (auto* node : nodes) {
     std::unique_ptr<OpKernel> op_kernel;
     auto status = kernel_registry_manager_.CreateKernel(*node, *cpu_execution_provider_, initializers_,
-                                                   ort_value_name_idx_map_, fm, data_transfer_mgr_, op_kernel);
+                                                        ort_value_name_idx_map_, fm, data_transfer_mgr_, op_kernel);
     if (status.IsOK())
       kernels_[node->Index()] = std::move(op_kernel);
   }
