@@ -152,6 +152,21 @@ def create_backend_test(testname=None):
                                  '^test_resize_upsample_sizes_nearest_floor_align_corners_cpu.*',
                                  '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu.*',
                                  '^test_scatternd_cpu.*',
+                                 '^test_sequence_*',
+                                 '^test_unsqueeze_*',
+                                 '^test_squeeze_*',
+                                 '^test_slice_*',
+                                 '^test_scatter_*',
+                                 '^test_reduce_*',
+                                 '^test_onehot_*',
+                                 '^test_flatten_*',
+                                 '^test_concat_*',
+                                 '^test_compress_*',
+                                 '^test_logsoftmax_negative_axis_*',
+                                 '^test_softmax_negative_axis_*',
+                                 '^test_hardmax_negative_axis_*',
+                                 '^gemm_default_scalar_bias_*',
+                                 '^gather_negative_indices_*'                               
                                  )
 
         # Example of how to disable tests for a specific provider.
