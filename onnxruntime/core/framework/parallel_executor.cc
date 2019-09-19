@@ -133,12 +133,12 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
       ORT_THROW("Exiting due to terminate flag being set to true.");
     }
 
-    auto p_op_kernel = session_state.GetKernel(node_index);
+    const auto* p_op_kernel = session_state.GetKernel(node_index);
+    const auto& node = *graph_viewer->GetNode(node_index);
 
     // if a kernel has been added in the session state, it better be NON-null.
     if (p_op_kernel == nullptr) {
-      ORT_THROW("Got nullptr from GetKernel for node: ",
-                graph_viewer->GetNode(node_index)->Name());
+      ORT_THROW("Got nullptr from GetKernel for node: ", node.Name());
     }
 
     OpKernelContextInternal op_kernel_context(session_state, *root_frame_, *p_op_kernel, logger, terminate_flag_);
@@ -152,7 +152,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
       for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
         Fence_t fence = op_kernel_context.InputFence(input_index);
         if (fence) {
-          auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+          auto execution_provider_type = node.GetExecutionProviderType();
           if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
             execution_provider_type = kCpuExecutionProvider;
           }
@@ -163,7 +163,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
       for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
         Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
         if (fence) {
-          auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+          auto execution_provider_type = node.GetExecutionProviderType();
           if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
             execution_provider_type = kCpuExecutionProvider;
           }
@@ -174,14 +174,14 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
       for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
         Fence_t fence = op_kernel_context.OutputFence(output_index);
         if (fence) {
-          fence->BeforeUsingAsOutput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
+          fence->BeforeUsingAsOutput(node.GetExecutionProviderType(), queue_id);
         }
       }
     }
 
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     p_op_kernel->Node().Name() + "_fence_before",
+                                                     node.Name() + "_fence_before",
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
 
@@ -189,20 +189,28 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
     }
 
     // call compute on the kernel
-    VLOGS(logger, 1) << "Computing kernel: " << p_op_kernel->Node().Name();
+    VLOGS(logger, 1) << "Computing kernel: " << node.Name();
 
     // Execute the kernel.
-    status = p_op_kernel->Compute(&op_kernel_context);
+    try {
+      status = p_op_kernel->Compute(&op_kernel_context);
+    } catch (const std::exception& ex) {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
+    }
+
     if (!status.IsOK()) {
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Compute failed for node: ", graph_viewer->GetNode(node_index)->Name(),
-                               "\nError:", status);
+      std::ostringstream ss;
+      ss << "Non-zero status code returned while running " << node.OpType() << " node. Name:'" << node.Name()
+         << "' Status Message: " << status.ErrorMessage();
+      const auto msg_string = ss.str();
+      LOGS(logger, ERROR) << msg_string;
+      status = Status(status.Category(), status.Code(), msg_string);
       break;
     }
 
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     p_op_kernel->Node().Name() + "_kernel_time",
+                                                     node.Name() + "_kernel_time",
                                                      kernel_begin_time,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}, {"provider", p_op_kernel->KernelDef().Provider()}});
 
@@ -234,7 +242,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
 
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     p_op_kernel->Node().Name() + "_fence_after",
+                                                     node.Name() + "_fence_after",
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
     }
@@ -245,8 +253,8 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
 
     // Checking which output nodes ready for running.
     {
-      auto begin = p_op_kernel->Node().OutputEdgesBegin();
-      auto end = p_op_kernel->Node().OutputEdgesEnd();
+      auto begin = node.OutputEdgesBegin();
+      auto end = node.OutputEdgesEnd();
 
       std::lock_guard<OrtMutex> lock(ref_mutex_);
       for (auto it = begin; it != end; it++) {
@@ -260,7 +268,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
           }
         }
 
-        // std::cout << "handle output, current name: " << p_op_kernel->Node().Name() << ", current index: "
+        // std::cout << "handle output, current name: " << node.Name() << ", current index: "
         // << p_node_index << ", output name: " << (*it)->GetNode().Name() << ", output index: "
         // << (*it)->GetNode().Index() << ", after -- output ref: " << node_refs_[idx] << std::endl;
       }
