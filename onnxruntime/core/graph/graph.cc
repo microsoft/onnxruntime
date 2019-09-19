@@ -644,7 +644,7 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
   ArgNameToTypeMap name_to_type_map;
 
   // Process 'Constant' nodes
-  // Put the 'tensor' stored in the 'Constant' nodes attribute into the graphs initializer list
+  // Put the 'TensorProto' stored in the 'Constant' nodes attribute into the graphs initializer list
   for (auto& node : graph_proto_->node()) {
     if (node.op_type() != kConstant) {
       continue;
