@@ -38,10 +38,10 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
           !graph_utils::AllNodeInputsAreConstant(graph, *node, constant_inputs)) {
         continue;
       }
-	  node->SetExecutionProviderType(kCpuExecutionProvider);
+      node->SetExecutionProviderType(kCpuExecutionProvider);
       // Create execution frame for executing constant nodes.
       OptimizerExecutionFrame::Info info({node}, constant_inputs);
-	  node->SetExecutionProviderType("");
+      node->SetExecutionProviderType("");
 
       std::vector<int> fetch_mlvalue_idxs;
       for (auto n : node->OutputDefs()) {
