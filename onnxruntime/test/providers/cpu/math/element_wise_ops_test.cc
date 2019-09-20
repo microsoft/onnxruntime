@@ -943,6 +943,46 @@ TEST(MathOpTest, Equal_float) {
   test.Run();
 }
 
+TEST(MathOpTest, Equal_broadcastAB) {
+  OpTester test("Equal");
+  test.AddInput<int32_t>("A", {4, 2}, {1, 0, -1, -1, 1, 1, -1, 0});
+  test.AddInput<int32_t>("B", {2}, {1, 1});
+  test.AddOutput<bool>("C", {4, 2}, {true, false, false, false, true, true, false, false});
+  test.Run();
+}
+
+TEST(MathOpTest, Equal_broadcastBA) {
+  OpTester test("Equal");
+  test.AddInput<int32_t>("A", {2}, {1, 1});
+  test.AddInput<int32_t>("B", {4, 2}, {1, 0, -1, -1, 1, 1, -1, 0});
+  test.AddOutput<bool>("C", {4, 2}, {true, false, false, false, true, true, false, false});
+  test.Run();
+}
+
+TEST(MathOpTest, Equal_multidiretional_broadcastAB) {
+  OpTester test("Equal");
+  test.AddInput<int32_t>("A", {4, 1}, {1, 0, -1, -1});
+  test.AddInput<int32_t>("B", {2}, {1, 1});
+  test.AddOutput<bool>("C", {4, 2}, {true, true, false, false, false, false, false, false});
+  test.Run();
+}
+
+TEST(MathOpTest, Equal_multidiretional_broadcastBA) {
+  OpTester test("Equal");
+  test.AddInput<int32_t>("A", {4, 1}, {1, 0, -1, -1});
+  test.AddInput<int32_t>("B", {2}, {1, 1});
+  test.AddOutput<bool>("C", {4, 2}, {true, true, false, false, false, false, false, false});
+  test.Run();
+}
+
+TEST(MathOpTest, Equal_multidiretional_broadcastAB_bool) {
+  OpTester test("Equal");
+  test.AddInput<bool>("A", {4, 1}, {true, false, false, false});
+  test.AddInput<bool>("B", {2}, {true, true});
+  test.AddOutput<bool>("C", {4, 2}, {true, true, false, false, false, false, false, false});
+  test.Run();
+}
+
 TEST(MathOpTest, Mean_6) {
   OpTester test("Mean", 6);
   std::vector<int64_t> dims{3, 3};
