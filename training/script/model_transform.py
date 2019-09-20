@@ -1,30 +1,18 @@
+import sys
 import onnx
 from onnx import helper, shape_inference
 from onnx import TensorProto
 import numpy as np
 from onnx import numpy_helper
 
-old_dim = 3072
-old_vac_size = 32000
-new_dim = 4096
-new_vac_size = 30528
-initializer_range = 0.02
-expand_output_name = '220'
+if len(sys.argv) < 2:
+    print("Please give model path...")
+    exit(1)
 
-input_model_name = 'bert_L-12_H-768_A-12.onnx'
+input_model_name = sys.argv[1]
 output_model_name = input_model_name[:-5] + '_optimized.onnx'
-# Also need to set following line differently for differnt verison of bert
-# expand_out.name = '412'
 
 model = onnx.load(input_model_name)
-
-import scipy.stats as stats
-
-def truncated_normal(stddev, size):
-    mu = 0
-    lower, upper = -2 * stddev, 2 * stddev,
-    X = stats.truncnorm( (lower - mu) / stddev, (upper - mu) / stddev, loc = mu, scale = stddev)
-    return X.rvs(size).tolist()
 
 def add_name(model):
     i = 0
@@ -188,26 +176,6 @@ def fix_expand(model):
 
 def fix_dim(model):
     del model.graph.input[3:]
-    for input in model.graph.input:
-        del input.type.tensor_type.shape.dim[:]
-        dim1 = input.type.tensor_type.shape.dim.add()
-        dim1.dim_param = 'batch'
-        dim2 = input.type.tensor_type.shape.dim.add()
-        dim2.dim_param = 'max_seq_len_in_batch'
-    output1 = model.graph.output[0]
-    del output1.type.tensor_type.shape.dim[:]
-    dim1 = output1.type.tensor_type.shape.dim.add()
-    dim1.dim_param = 'batch'
-    dim2 = output1.type.tensor_type.shape.dim.add()
-    dim2.dim_param = 'max_seq_len_in_batch'
-    dim3 = output1.type.tensor_type.shape.dim.add()
-    dim3.dim_value = new_vac_size
-    output2 = model.graph.output[1]
-    del output2.type.tensor_type.shape.dim[:]
-    dim1 = output2.type.tensor_type.shape.dim.add()
-    dim1.dim_param = 'batch'
-    dim2 = output2.type.tensor_type.shape.dim.add()
-    dim2.dim_value = 2
 
 def replace_input_arg(model, arg, new_arg):
     for node in model.graph.node:
@@ -286,37 +254,12 @@ def process_dropout(model):
     for d in dropouts:
         del model.graph.node[d]
 
+# Also need to set following line differently for differnt verison of bert
+# expand_out.name = '412'
 def add_expand_shape(model):
     expand_out = model.graph.value_info.add()
-    expand_out.name = expand_output_name
+    expand_out.name = '74' #'410' # 74 for base model
     expand_out.type.CopyFrom(model.graph.input[0].type)
-
-def fix_dimension(model, old, new, stddev):
-    w_s = []
-    index = 0
-    for w in model.graph.initializer:
-        for dim in w.dims:
-            if dim == old and len(w.dims) <= 2:
-                w_s.append(index)
-        index += 1
-    #create new weights
-    for w_idx in w_s:
-        w = model.graph.initializer[w_idx]
-        # new shape
-        new_shape = [ new if _ == old else _ for _ in w.dims]
-        size = 1
-        for i in new_shape:
-            size *= i
-        #todo truncated_normal
-        new_w_np = np.asarray(truncated_normal(stddev, size), dtype=np.float32).reshape(new_shape)
-        new_w = numpy_helper.from_array(new_w_np, w.name)
-        model.graph.initializer.extend([new_w])
-
-    w_s.sort(reverse=True)
-    #remove the out of date weights
-    for w_i in w_s:
-        del model.graph.initializer[w_i]
-
 
 #add name to nodes
 add_name(model)
@@ -334,9 +277,34 @@ process_dropout(model)
 add_expand_shape(model)
 #set opset version to 10
 model.opset_import[0].version = 10
-fix_dimension(model, old_dim, new_dim, initializer_range)
-fix_dimension(model, old_vac_size, new_vac_size, initializer_range)
 
 f = open(output_model_name, "wb")
 f.write(model.SerializeToString())
 f.close()
+
+# Use ORT to verify the converted model. Notice that you must use python package from the
+# training branch because training requires some extra ops.
+import onnxruntime as ort
+# We convert model to accept variable-length batch size, so it can be any positive integer.
+batch = 3
+# This should match --max_seq_length when calling nv_run_pretraining.py.
+sq_length = 512
+# This should match vocab_size in bert_config.json in DeepLearningExamples/PyTorch/LanguageModeling/BERT.
+vocab_size = 30528
+
+# Create a fake data point.
+input_ids = np.random.randint(low=0, high=vocab_size, size=(batch, sq_length), dtype=np.int64)
+segment_ids = np.random.randint(low=0, high=2, size=(batch, sq_length), dtype=np.int64)
+input_mask = np.ones((batch, sq_length), dtype=np.int64)
+
+# Do forward using the original model.
+sess = ort.InferenceSession(input_model_name)
+result = sess.run(None, {'input1': input_ids, 'input2': segment_ids, 'input3': input_mask})
+
+# Do forward using the new model.
+new_sess = ort.InferenceSession(output_model_name)
+new_result = new_sess.run(None, {'input1': input_ids, 'input2': segment_ids, 'input3': input_mask})
+
+# Compare the outcomes from the two models.
+print(np.linalg.norm(result[0]-new_result[0]))
+print(np.linalg.norm(result[1]-new_result[1]))

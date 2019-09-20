@@ -42,6 +42,8 @@ class TrainingSession : public InferenceSession {
 
   common::Status AddGistEncoding();
 
+  common::Status ApplyTransformationsToMainGraph();
+
   /** Perform auto-diff to add backward graph into the model.
   @param weights_to_train a set of weights to be training.
   @param loss_function_output_name the name of the loss function's output.

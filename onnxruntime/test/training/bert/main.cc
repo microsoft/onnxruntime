@@ -283,9 +283,9 @@ int main(int argc, char* argv[]) {
     // setup fake data
     int batch_size = static_cast<int>(params.batch_size);
     int max_seq_len_in_batch = 512;
-    std::vector<std::string> tensor_names = {"input1",
-                                             "input2",
-                                             "input3",
+    std::vector<std::string> tensor_names = {"input1", /*input_ids*/
+                                             "input2", /*token_type_ids*/
+                                             "input3", /*input_mask*/
                                              "masked_lm_positions",
                                              "masked_lm_ids",
                                              "masked_lm_weights",

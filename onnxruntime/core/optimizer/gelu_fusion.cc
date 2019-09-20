@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <deque>
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/graph/graph_utils.h"
-#include <deque>
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -50,6 +50,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) cons
         node.GetOutputEdgesCount() != 1) {
       continue;
     }
+
     std::tuple<bool, NodeArg*, NodeArg*> t;
     IsInputConstant(graph, node, t);
     if (!std::get<0>(t) || std::get<1>(t) == nullptr || std::get<2>(t) == nullptr) {

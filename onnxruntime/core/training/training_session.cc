@@ -7,8 +7,10 @@
 #include "core/training/gradient_graph_builder.h"
 #include "core/training/optimizer_graph_builder.h"
 #include "core/training/training_session.h"
-#include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/identity_elimination.h"
+#include "core/optimizer/insert_output_rewriter.h"
+#include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/graph/training/mixed_precision_transformer.h"
 #include "core/graph/training/gradient_builder_base.h"
 
@@ -54,6 +56,25 @@ static Status BuildOptimizerInternal(Graph& graph,
   ORT_RETURN_IF_ERROR(optimizer_graph_builder.Build(graph, opt_graph_outputs));
 
   return Status::OK();
+}
+
+common::Status TrainingSession::ApplyTransformationsToMainGraph() {
+  try {
+    Graph& graph = model_->MainGraph();
+
+    GraphTransformerManager graph_transformation_mgr{1};
+
+    // MUST be empty here, because this is called before partition, so the node's execution type is not decided yet.
+    // If we give values here, the check in transformer will fail.
+    std::unordered_set<std::string> compatible_eps = {};
+    auto gelu_transformer = std::make_unique<GeluFusion>(compatible_eps);
+    graph_transformation_mgr.Register(std::move(gelu_transformer), TransformerLevel::Level2);
+
+    auto status = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2);
+    return status;
+  } catch (const OnnxRuntimeException& exp) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to apply default optimization passes: ", exp.what());
+  }
 }
 
 Status TrainingSession::AddGistEncoding() {

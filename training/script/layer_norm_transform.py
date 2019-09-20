@@ -2,6 +2,7 @@ import sys
 import os.path
 from onnx import *
 import onnx
+import numpy as np
 
 def find_node(graph_proto, op_type):
     nodes = []
@@ -25,7 +26,7 @@ def main():
         print("Please give model path...")
         return
 
-    model_file_path = ''.join(sys.argv[1:])
+    model_file_path = sys.argv[1]
     #model_file_path = os.path.dirname(sys.argv[1:])
     print("model_file_path: " + model_file_path)
     model_file_name = os.path.basename(model_file_path)
@@ -144,6 +145,34 @@ def main():
 
     with open(new_model_file_path, 'wb') as f:
         f.write(model_proto.SerializeToString())
+
+    # Use ORT to verify the converted model. Notice that you must use python package from the
+    # training branch because training requires some extra ops.
+    import onnxruntime as ort
+    # We convert model to accept variable-length batch size, so it can be any positive integer.
+    batch = 3
+    # This should match --max_seq_length when calling nv_run_pretraining.py.
+    sq_length = 512
+    # This should match vocab_size in bert_config.json in DeepLearningExamples/PyTorch/LanguageModeling/BERT.
+    vocab_size = 30528
+
+    # Create a fake data point.
+    vocab_size = 30528 # It shoudl match the value from BERT config file.
+    input_ids = np.random.randint(low=0, high=vocab_size, size=(batch, sq_length), dtype=np.int64)
+    segment_ids = np.random.randint(low=0, high=2, size=(batch, sq_length), dtype=np.int64)
+    input_mask = np.ones((batch, sq_length), dtype=np.int64)
+
+    # Do forward using the original model.
+    sess = ort.InferenceSession(model_file_path)
+    result = sess.run(None, {'input1': input_ids, 'input2': segment_ids, 'input3': input_mask})
+
+    # Do forward using the new model.
+    new_sess = ort.InferenceSession(new_model_file_path)
+    new_result = new_sess.run(None, {'input1': input_ids, 'input2': segment_ids, 'input3': input_mask})
+
+    # Compare the outcomes from the two models.
+    print(np.linalg.norm(result[0]-new_result[0]))
+    print(np.linalg.norm(result[1]-new_result[1]))
 
 if __name__ == "__main__":
     main()

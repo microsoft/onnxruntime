@@ -53,6 +53,7 @@ TrainingRunner::TrainingRunner(std::shared_ptr<IDataLoader> training_data_loader
 
 Status TrainingRunner::Initialize() {
   ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
+  ORT_RETURN_IF_ERROR(session_.ApplyTransformationsToMainGraph());
 
   // Add loss func
   ORT_RETURN_IF_ERROR(session_.BuildLossFunction(params_.loss_func_info));

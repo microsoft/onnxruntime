@@ -31,19 +31,14 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
     : graph_(graph),
       loss_node_arg_name_(loss_node_arg_name),
       set_gradient_as_graph_output_(set_gradient_as_graph_output) {
+
   auto rule_based_graph_transformer =
       std::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
   rule_based_graph_transformer->Register(make_unique<InsertMaxPoolOutput>());
   rule_based_graph_transformer->Register(make_unique<AdjustBatchNormOutputs>());
 
   graph_transformation_mgr_.Register(std::move(rule_based_graph_transformer),
-                                     TransformerLevel::Level2);
-
-  // MUST be empty here, because this is called before partition, so the node's execution type is not decided yet.
-  // If we give values here, the check in transformer will fail.
-  std::unordered_set<std::string> compatible_eps = {};
-  auto gelu_transformer = std::make_unique<GeluFusion>(compatible_eps);
-  graph_transformation_mgr_.Register(std::move(gelu_transformer), TransformerLevel::Level2);
+                                    TransformerLevel::Level2);
 
   for (const auto& name : y_node_arg_names) {
     const NodeArg* node_arg = graph->GetNodeArg(name);
@@ -124,7 +119,6 @@ Status GradientGraphBuilder::CheckNodeArgsReachable(const NodeSet& reachable_nod
         break;
       }
     }
-
     if (!reachable) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Cannot compute the partial derivative for '", node_arg->Name(),
