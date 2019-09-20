@@ -163,7 +163,9 @@ def create_backend_test(testname=None):
                                  '^test_concat_*',
                                  '^test_compress_*',
                                  '^test_constant_pad_cpu.*',
-                                 '^test_gemm_default_scalar_bias_cpu.*', 
+                                 '^test_gemm_default_scalar_bias_cpu.*',
+                                 '^test_gather_negative_indices_cpu.*',
+                                 '^test_gemm_*', 
                                  '^test_edge_pad_cpu.*',
                                  '^test_reflect_pad_cpu.*'                                 
                                  )
