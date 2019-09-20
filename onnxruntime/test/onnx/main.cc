@@ -393,14 +393,16 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"dynamicquantizelinear_expanded", "Round(11) not implemented yet"},
       {"dynamicquantizelinear_max_adjusted_expanded", "Round(11) not implemented yet"},
       {"dynamicquantizelinear_min_adjusted_expanded", "Round(11) not implemented yet"},
-      {"top_k", "not implemented yet for opset 11", {"onnxtip"}},
-      {"top_k_smallest", "not implemented yet for opset 11", {"onnxtip"}},
+      {"top_k", "not implemented yet for opset 11"},
+      {"top_k_smallest", "not implemented yet for opset 11"},
+      {"top_k_negative_axis", "TopK(11) not implemented yet"},
       {"unique_not_sorted_without_axis", "not implemented yet"},
       {"unique_sorted_with_axis", "Unique not implemented yet"},
       {"unique_sorted_with_axis_3d", "Unique not implemented yet"},
       {"unique_sorted_without_axis", "Unique not implemented yet"},
       {"unique_sorted_axis_3d", "Unique not implemented yet"},
       {"unique_sorted_axis", "Unique not implemented yet"},
+      {"unique_sorted_with_negative_axis", "Unique not implemented yet"},
       {"scatter_elements_with_axis", "not implemented yet"},
       {"scatter_elements_without_axis", "not implemented yet"},
       {"round", "not implemented yet"},
@@ -458,7 +460,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"unsqueeze_axis_2", "Unsqueeze not implemented yet"},
       {"unsqueeze_axis_1", "Unsqueeze not implemented yet"},
       {"unsqueeze_axis_0", "Unsqueeze not implemented yet"},
-      {"top_k_negative_axis", "TopK(11) not implemented yet"},
       {"squeeze_negative_axes", "Squeeze(11) not implemented yet"},
       {"slice_negative_axes", "Slice(11) not implemented yet"},
       {"scatter_elements_with_negative_indices", "ScatterElements(11) not implemented yet"},
@@ -524,6 +525,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"clip", "not implemented yet for opset 11"});
   broken_tests.insert({"depthtospace_crd_mode_example", "NGraph does not support CRD mode"});
   broken_tests.insert({"depthtospace_crd_mode", "NGraph does not support CRD mode"});
+  broken_tests.insert({"argmax_negative_axis_keepdims_random", "not implemented yet for opset 11"});
+  broken_tests.insert({"argmin_negative_axis_keepdims_example", "not implemented yet for opset 11"});	
+  broken_tests.insert({"argmin_negative_axis_keepdims_random", "not implemented yet for opset 11"});	
+  broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});	
+  broken_tests.insert({"hardmax_negative_axis", "not implemented yet for opset 11"});
 #endif
 
 #ifdef USE_MKLDNN

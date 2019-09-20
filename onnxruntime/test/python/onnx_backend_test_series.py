@@ -176,6 +176,10 @@ def create_backend_test(testname=None):
         if c2.supports_device('NGRAPH'):
             current_failing_tests = current_failing_tests + ('|^test_clip*',)
             current_failing_tests = current_failing_tests + ('|^test_depthtospace_crd*',)
+            current_failing_tests = current_failing_tests + ('|^test_argmax_negative_axis*',)            
+            current_failing_tests = current_failing_tests + ('|^test_argmin_negative_axis*',)
+            current_failing_tests = current_failing_tests + ('|^test_hadmax_negative_axis*',)            
+            current_failing_tests = current_failing_tests + ('|^test_gemm_default_no_bias_cpu.*',)            
 
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \
