@@ -814,7 +814,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             "OrtCreateSessionOptions","OrtCloneSessionOptions",
             "OrtEnableSequentialExecution","OrtDisableSequentialExecution","OrtEnableProfiling","OrtDisableProfiling",
             "OrtEnableMemPattern","OrtDisableMemPattern","OrtEnableCpuMemArena","OrtDisableCpuMemArena",
-            "OrtSetSessionLogId","OrtSetSessionLogVerbosityLevel","OrtSetIntraOpNumThreads","OrtSetSessionGraphOptimizationLevel",
+            "OrtSetSessionLogId","OrtSetSessionLogVerbosityLevel","OrtSetIntraOpNumThreads","OrtSetInterOpNumThreads", "OrtSetSessionGraphOptimizationLevel",
             "OrtSetOptimizedModelFilePath", "OrtSessionOptionsAppendExecutionProvider_CPU","OrtCreateMemoryInfo","OrtCreateCpuMemoryInfo",
             "OrtGetAllocatorWithDefaultOptions","OrtAllocatorFree","OrtAllocatorGetInfo",
             "OrtCreateTensorWithDataAsOrtValue","OrtGetTensorMutableData", "OrtReleaseMemoryInfo",

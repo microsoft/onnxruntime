@@ -256,8 +256,10 @@ ORT_API_STATUS(OrtSetIntraOpNumThreads, _Inout_ OrtSessionOptions* options, int 
 // A value of 0 means ORT will pick a default
 ORT_API_STATUS(OrtSetInterOpNumThreads, _Inout_ OrtSessionOptions* options, int inter_op_num_threads);
 
+// Override symbolic dimensions with actual values if known at session initialization time to enable
+// optimizations that can take advantage of fixed values (such as memory planning, etc)
 ORT_API_STATUS(OrtAddFreeDimensionOverride, _Inout_ OrtSessionOptions* options,
-               _In_ const ORTCHAR_T* dim_symbol, _In_ int64_t dim_override);
+               _In_ const char* symbolic_dim, _In_ int64_t dim_override);
 
 /**
   * To use additional providers, you must build ORT with the extra providers enabled. Then call one of these
@@ -288,7 +290,6 @@ ORT_API_STATUS(OrtSessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t 
  * \param out  should be freed by OrtReleaseTypeInfo after use
  */
 ORT_API_STATUS(OrtSessionGetOverridableInitializerTypeInfo, _In_ const OrtSession* sess, size_t index, _Outptr_ OrtTypeInfo** type_info);
-
 
 /**
  * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible in freeing it.
