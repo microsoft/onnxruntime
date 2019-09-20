@@ -362,18 +362,18 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     //trt6: build engine
     auto config = unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
     config->setMaxWorkspaceSize(max_workspace_size_);
-/*
+
     //trt6: Create an optimization profile to specify a range of input dimensions.
     auto profile = trt_builder->createOptimizationProfile();
     for (unsigned int i = 0, n = trt_network->getNbInputs(); i < n; i++) {
       auto input = trt_network->getInput(i);
       std::cout << "input name: " << input->getName() << std::endl;
-      profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims4{1, 3, 416, 416});
-      profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims4{1, 3, 416, 416});
-      profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims4{1, 3, 416, 416});
+      profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims4{1, 224, 224, 3});
+      profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims4{8, 224, 224, 3});
+      profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims4{16, 224, 224, 3});
     }
     config->addOptimizationProfile(profile);
-*/
+
     auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *config));
     ///auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildCudaEngine(*trt_network.get()));
     ORT_ENFORCE(trt_engine != nullptr);
