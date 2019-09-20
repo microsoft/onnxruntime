@@ -46,12 +46,21 @@ namespace Microsoft.ML.OnnxRuntime
             Init(modelPath, null, options);
         }
 
+        /// <summary>
+        /// Constructs an InferenceSession from a model data in byte array
+        /// </summary>
+        /// <param name="model"></param>
         public InferenceSession(byte[] model)
         {
             _builtInSessionOptions = new SessionOptions(); // need to be disposed
             Init(null, model, _builtInSessionOptions);
         }
 
+        /// <summary>
+        /// Constructs an InferenceSession from a model data in byte array, with some additional session options
+        /// </summary>
+        /// <param name="model"></param>
+        /// <param name="options"></param>
         public InferenceSession(byte[] model, SessionOptions options)
         {
             Init(null, model, options);
@@ -192,7 +201,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region private methods
 
-        protected void Init(string modelPath, byte[] modelData, SessionOptions options)
+        private void Init(string modelPath, byte[] modelData, SessionOptions options)
         {
             var envHandle = OnnxRuntime.Handle;
 
