@@ -479,16 +479,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
         const auto& tensor_shape = ort.GetTensorShape(tensor_info);
 
-        //trt6: set dynamic shape dimensions for input
-/*	      
+        //trt6: set dynamic shape dimensions for input	      
         nvinfer1::Dims dimensions = trt_state->context->getEngine().getBindingDimensions(static_cast<int>(i));
         for (int j = 0, end = dimensions.nbDims; j < end; ++j) {
           //std::cout << i << ", engine dimension: " << dimensions.d[j] << ", input dimension: " << tensor_shape[j] << std::endl;
           dimensions.d[j] = tensor_shape[j];
         }
         trt_state->context->setBindingDimensions(i, dimensions);
-*/
-	trt_state->context->setBindingDimensions(i, nvinfer1::Dims4(tensor_shape[0], tensor_shape[1], tensor_shape[2], tensor_shape[3]));
+	///trt_state->context->setBindingDimensions(i, nvinfer1::Dims4(tensor_shape[0], tensor_shape[1], tensor_shape[2], tensor_shape[3]));
 						 
         auto tensor_type = ort.GetTensorElementType(tensor_info);
         ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
@@ -503,7 +501,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           buffers[i] = const_cast<float*>(ort.GetTensorData<float>(input_tensor));
         } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8) {
           buffers[i] = const_cast<int8_t*>(ort.GetTensorData<int8_t>(input_tensor));
-        } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
+        } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32 || tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
           buffers[i] = const_cast<int32_t*>(ort.GetTensorData<int32_t>(input_tensor));
         } else {
           return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
@@ -513,7 +511,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       // Allocate cuda memory for outputs
       for (int i = 0, end = num_binding_outputs; i < end; ++i) {
         int output_index = output_indexes[i];
-/*
+
         //trt6: get dynamic shape dimensions for output
         nvinfer1::Dims dimensions = trt_state->context->getBindingDimensions(static_cast<int>(i + num_binding_inputs));
         std::vector<int64_t> output_shape;
@@ -521,9 +519,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           //std::cout << i << ", output engine dimension: " << output_shapes[i][j] << ", output context dimension: " << dimensions.d[j] << std::endl;
           output_shape.push_back(dimensions.d[j]);
         }
-        OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, output_shape.data(), output_shape.size());
-*/	      
-        OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, output_shapes[i].data(), output_shapes[i].size());
+        OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, output_shape.data(), output_shape.size());	      
+        ///OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, output_shapes[i].data(), output_shapes[i].size());
 
         if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
           buffers[i + num_binding_inputs] = ort.GetTensorMutableData<float>(output_tensor);
