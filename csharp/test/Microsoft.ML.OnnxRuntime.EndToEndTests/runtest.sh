@@ -5,7 +5,7 @@
 LocalNuGetRepo=$1
 SourceRoot=$2
 BuildDir=$3
-CurrentOnnxRuntimeVersion=$4
+export CurrentOnnxRuntimeVersion=$4
 set -x
 
 OldDir=`pwd`

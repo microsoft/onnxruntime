@@ -11,8 +11,9 @@ SET dn="C:\Program Files\dotnet\dotnet"
 SET LocalNuGetRepo=%1
 IF NOT "%2"=="" (SET TargetFramework=%2)
 IF NOT "%3"=="" (SET TargetArch=%3)
-IF NOT "%4"=="" (SET CurrentOnnxRuntimeVersion=%4)
-ELSE (
+IF NOT "%4"=="" (
+    SET CurrentOnnxRuntimeVersion=%4
+) ELSE (
     echo Usage: runtest.bat <LocalNuGetRepoPath> <TargetFramework> <TargetArch> <NuGetPackageVersion>
 )
 
