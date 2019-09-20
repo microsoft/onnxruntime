@@ -44,8 +44,10 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SessionGetOutputCount;
         public IntPtr SessionGetInputTypeInfo;
         public IntPtr SessionGetOutputTypeInfo;
+        public IntPtr SessionGetOverridableInitializerTypeInfo;
         public IntPtr SessionGetInputName;
         public IntPtr SessionGetOutputName;
+        public IntPtr SessionGetOverridableInitializerName;
         public IntPtr CreateRunOptions;
         public IntPtr RunOptionsSetRunLogVerbosityLevel;
         public IntPtr RunOptionsSetRunLogSeverityLevel;
