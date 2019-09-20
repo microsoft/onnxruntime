@@ -42,6 +42,7 @@ class InferenceSession:
 
         self._inputs_meta = self._sess.inputs_meta
         self._outputs_meta = self._sess.outputs_meta
+        self._overridable_initializers = self._sess.overridable_initializers
         self._model_meta = self._sess.model_meta
         self._providers = self._sess.get_providers()
 
@@ -51,6 +52,7 @@ class InferenceSession:
         # so they must be set to None to decrement _sess reference count.
         self._inputs_meta = None
         self._outputs_meta = None
+        self._overridable_initializers = None
         self._model_meta = None
         self._providers = None
         self._sess = None
@@ -62,6 +64,10 @@ class InferenceSession:
     def get_outputs(self):
         "Return the outputs metadata as a list of :class:`onnxruntime.NodeArg`."
         return self._outputs_meta
+
+    def get_overridable_initializers(self):
+        "Return the inputs (including initializers) metadata as a list of :class:`onnxruntime.NodeArg`."
+        return self._overridable_initializers
 
     def get_modelmeta(self):
         "Return the metadata. See :class:`onnxruntime.ModelMetadata`."

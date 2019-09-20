@@ -525,10 +525,16 @@ ORT_API_STATUS_IMPL(OrtGetStringTensorContent, _In_ const OrtValue* value,
     delete reinterpret_cast<REAL_TYPE*>(value);                                   \
   }
 
-ORT_API_STATUS_IMPL(OrtSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
+using DefListResult = std::pair<Status, const InputDefList*>;
+using GetDefListFn = DefListResult (*)(const ::onnxruntime::InferenceSession*);
+const auto get_inputs_fn = [](const ::onnxruntime::InferenceSession* session) -> DefListResult { return session->GetModelInputs(); };
+const auto get_outputs_fn = [](const ::onnxruntime::InferenceSession* session) -> DefListResult { return session->GetModelOutputs(); };
+const auto get_overridable_initializers_fn = [](const ::onnxruntime::InferenceSession* session) -> DefListResult { return session->GetOverridableInitializers(); };
+
+static OrtStatus* GetNodeDefListCountHelper(const OrtSession* sess, GetDefListFn get_fn, size_t* out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
-  std::pair<Status, const InputDefList*> p = session->GetModelInputs();
+  std::pair<Status, const InputDefList*> p = get_fn(session);
   if (!p.first.IsOK())
     return ToOrtStatus(p.first);
   *out = p.second->size();
@@ -536,40 +542,41 @@ ORT_API_STATUS_IMPL(OrtSessionGetInputCount, _In_ const OrtSession* sess, _Out_ 
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
+  return GetNodeDefListCountHelper(sess, get_inputs_fn, out);
+}
+
 ORT_API_STATUS_IMPL(OrtSessionGetOutputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
+  return GetNodeDefListCountHelper(sess, get_outputs_fn, out);
+}
+
+ORT_API_STATUS_IMPL(OrtSessionGetOverridableInitializerCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
+  return GetNodeDefListCountHelper(sess, get_overridable_initializers_fn, out);
+}
+
+static OrtStatus* GetNodeDefTypeInfoHelper(const OrtSession* sess, GetDefListFn get_fn, size_t index, _Outptr_ struct OrtTypeInfo** out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
-  std::pair<Status, const InputDefList*> p = session->GetModelOutputs();
+  std::pair<Status, const InputDefList*> p = get_fn(session);
   if (!p.first.IsOK())
     return ToOrtStatus(p.first);
-  *out = p.second->size();
-  return nullptr;
+  if (p.second->size() <= index)
+    return OrtCreateStatus(ORT_FAIL, "out of index");
+  const ONNX_NAMESPACE::TypeProto* type_proto = (*p.second)[index]->TypeAsProto();
+  return OrtTypeInfo::FromDataTypeImpl(type_proto, out);
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtSessionGetInputTypeInfo, _In_ const OrtSession* sess, size_t index, _Outptr_ struct OrtTypeInfo** out) {
-  API_IMPL_BEGIN
-  auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
-  std::pair<Status, const InputDefList*> p = session->GetModelInputs();
-  if (!p.first.IsOK())
-    return ToOrtStatus(p.first);
-  if (p.second->size() <= index)
-    return OrtCreateStatus(ORT_FAIL, "out of index");
-  const ONNX_NAMESPACE::TypeProto* type_proto = (*p.second)[index]->TypeAsProto();
-  return OrtTypeInfo::FromDataTypeImpl(type_proto, out);
-  API_IMPL_END
+  return GetNodeDefTypeInfoHelper(sess, get_inputs_fn, index, out);
 }
+
 ORT_API_STATUS_IMPL(OrtSessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t index, _Outptr_ struct OrtTypeInfo** out) {
-  API_IMPL_BEGIN
-  auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
-  std::pair<Status, const InputDefList*> p = session->GetModelOutputs();
-  if (!p.first.IsOK())
-    return ToOrtStatus(p.first);
-  if (p.second->size() <= index)
-    return OrtCreateStatus(ORT_FAIL, "out of index");
-  const ONNX_NAMESPACE::TypeProto* type_proto = (*p.second)[index]->TypeAsProto();
-  return OrtTypeInfo::FromDataTypeImpl(type_proto, out);
-  API_IMPL_END
+  return GetNodeDefTypeInfoHelper(sess, get_outputs_fn, index, out);
+}
+
+ORT_API_STATUS_IMPL(OrtSessionGetOverridableInitializerTypeInfo, _In_ const OrtSession* sess, size_t index, _Outptr_ struct OrtTypeInfo** out) {
+  return GetNodeDefTypeInfoHelper(sess, get_overridable_initializers_fn, index, out);
 }
 
 static char* StrDup(const std::string& str, OrtAllocator* allocator) {
@@ -579,11 +586,11 @@ static char* StrDup(const std::string& str, OrtAllocator* allocator) {
   return output_string;
 }
 
-static OrtStatus* GetInputOutputNameImpl(_In_ const OrtSession* sess, size_t index,
-                                         _Inout_ OrtAllocator* allocator, bool is_input,
-                                         _Outptr_ char** output) {
+static OrtStatus* GetNodeDefNameImpl(_In_ const OrtSession* sess, size_t index,
+                                     _Inout_ OrtAllocator* allocator, GetDefListFn get_fn,
+                                     _Outptr_ char** output) {
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
-  std::pair<Status, const InputDefList*> p = is_input ? session->GetModelInputs() : session->GetModelOutputs();
+  std::pair<Status, const InputDefList*> p = get_fn(session);
   if (!p.first.IsOK())
     return ToOrtStatus(p.first);
   if (p.second == nullptr)
@@ -625,14 +632,21 @@ ORT_API_STATUS_IMPL(OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr, _Outptr_ 
 ORT_API_STATUS_IMPL(OrtSessionGetInputName, _In_ const OrtSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** output) {
   API_IMPL_BEGIN
-  return GetInputOutputNameImpl(sess, index, allocator, true, output);
+  return GetNodeDefNameImpl(sess, index, allocator, get_inputs_fn, output);
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtSessionGetOutputName, _In_ const OrtSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** output) {
   API_IMPL_BEGIN
-  return GetInputOutputNameImpl(sess, index, allocator, false, output);
+  return GetNodeDefNameImpl(sess, index, allocator, get_outputs_fn, output);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtSessionGetOverridableInitializerName, _In_ const OrtSession* sess, size_t index,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** output) {
+  API_IMPL_BEGIN
+  return GetNodeDefNameImpl(sess, index, allocator, get_overridable_initializers_fn, output);
   API_IMPL_END
 }
 
@@ -1073,13 +1087,13 @@ ORT_API_STATUS_IMPL(OrtCreateValue, const OrtValue* const* in, size_t num_values
 }
 
 ORT_API_STATUS_IMPL(OrtCreateOpaqueValue, const char* domain_name, const char* type_name, const void* data_container,
-               size_t data_container_size, OrtValue** out) {
+                    size_t data_container_size, OrtValue** out) {
   API_IMPL_BEGIN
   std::string dtype("opaque(");
   dtype.append(domain_name).append(",").append(type_name).append(")");
   MLDataType ml_type = DataTypeImpl::GetDataType(dtype);
   ORT_ENFORCE(ml_type != nullptr,
-    "Specified domain and type names combination does not refer to a registered opaque type");
+              "Specified domain and type names combination does not refer to a registered opaque type");
   const auto* non_tensor_base = ml_type->AsNonTensorTypeBase();
   ORT_ENFORCE(non_tensor_base != nullptr, "Opaque type is not a non_tensor type!!!");
   std::unique_ptr<OrtValue> ort_val(new OrtValue);
@@ -1089,8 +1103,8 @@ ORT_API_STATUS_IMPL(OrtCreateOpaqueValue, const char* domain_name, const char* t
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtGetOpaqueValue, const char* domain_name, const char* type_name, const OrtValue* in, 
-    void* data_container, size_t data_container_size) {
+ORT_API_STATUS_IMPL(OrtGetOpaqueValue, const char* domain_name, const char* type_name, const OrtValue* in,
+                    void* data_container, size_t data_container_size) {
   API_IMPL_BEGIN
   std::string dtype("opaque(");
   dtype.append(domain_name).append(",").append(type_name).append(")");
@@ -1103,7 +1117,6 @@ ORT_API_STATUS_IMPL(OrtGetOpaqueValue, const char* domain_name, const char* type
   API_IMPL_END
   return nullptr;
 }
-
 
 // End support for non-tensor types
 
