@@ -44,3 +44,6 @@
 [submodule "cmake/external/mimalloc"]
 	path = cmake/external/mimalloc
 	url = https://github.com/microsoft/mimalloc.git
+[submodule "gsl-lite"]
+	path = cmake/external/gsl-lite
+	url = https://github.com/martinmoene/gsl-lite.git
