@@ -63,7 +63,7 @@ int main(int argc, char* argv[]) {
   logger->info("Model path: {}", config.model_path);
 
   try {
-    env->InitializeModel(config.model_path);
+    env->InitializeModel(config.model_path, "default", "1");
     logger->debug("Initialize Model Successfully!");
   } catch (const Ort::Exception& ex) {
     logger->critical("Initialize Model Failed: {} ---- Error: [{}]", ex.GetOrtErrorCode(), ex.what());
