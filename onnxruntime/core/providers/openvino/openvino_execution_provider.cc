@@ -463,8 +463,8 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
   device_id = "HDDL";
 #endif
 
-#ifdef OPENVINO_CONFIG_HETERO_FPGA
-  device_id = "HETERO_FPGA";
+#ifdef OPENVINO_CONFIG_VAD_F
+  device_id = "FPGA";
 #endif
 
   int counter = 0;

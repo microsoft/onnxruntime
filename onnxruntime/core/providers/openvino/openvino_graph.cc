@@ -63,7 +63,7 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
   precision_str = "FP16";
 #endif
 
-#ifdef OPENVINO_CONFIG_HETERO_FPGA
+#ifdef OPENVINO_CONFIG_VAD_F
   device_id_ = "HETERO:FPGA,CPU";
   precision_ = InferenceEngine::Precision::FP32;
   precision_str = "FP32";
@@ -110,7 +110,7 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
   class FPGA_ErrorListener : public InferenceEngine::IErrorListener{
 
         void onError(const char *msg) noexcept override {
-            std::cout << msg;
+          LOGS_DEFAULT(INFO) << log_tag << msg;
         }
   };
 
