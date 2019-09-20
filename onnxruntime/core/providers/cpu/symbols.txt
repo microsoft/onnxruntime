@@ -8,9 +8,9 @@ OrtMemoryInfoGetName
 OrtMemoryInfoGetType
 OrtCastTypeInfoToTensorInfo
 OrtCloneSessionOptions
-OrtCompareAllocatorInfo
-OrtCreateAllocatorInfo
-OrtCreateCpuAllocatorInfo
+OrtCompareMemoryInfo
+OrtCreateMemoryInfo
+OrtCreateCpuMemoryInfo
 OrtCreateCustomOpDomain
 OrtGetAllocatorWithDefaultOptions
 OrtCreateEnv
@@ -77,6 +77,9 @@ OrtSessionGetInputTypeInfo
 OrtSessionGetOutputCount
 OrtSessionGetOutputName
 OrtSessionGetOutputTypeInfo
+OrtSessionGetOverridableInitializerCount
+OrtSessionGetOverridableInitializerName
+OrtSessionGetOverridableInitializerTypeInfo
 OrtSessionOptionsAppendExecutionProvider_CPU
 OrtSetDimensions
 OrtSetSessionGraphOptimizationLevel
@@ -84,5 +87,6 @@ OrtSetSessionLogId
 OrtSetSessionLogVerbosityLevel
 OrtSetSessionLogSeverityLevel
 OrtSetOptimizedModelFilePath
-OrtSetSessionThreadPoolSize
+OrtSetIntraOpNumThreads
+OrtSetInterOpNumThreads
 OrtSetTensorElementType

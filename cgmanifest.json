@@ -49,7 +49,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "7d90796473295ca3cdf976ed772215c5980ad3e0",
+               "commitHash": "568b65aaa2bd94b04d8fdac24b398dc25c507b50",
                "repositoryUrl": "https://github.com/onnx/onnx.git"
             }
          }
@@ -67,7 +67,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "a1041190c8b8ff0cd9e2f0752248ad5e3789ea0c",
+               "commitHash": "00a0aa992953d6482114a0f539a21bb535a16383",
                "repositoryUrl": "https://github.com/pybind/pybind11.git"
             }
          }
@@ -103,7 +103,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "fd4801612817f96e890058656834deb925fc064a",
+               "commitHash": "638d7d2407de27f98f542f61a37a33c90a2e75a9",
                "repositoryUrl": "https://github.com/microsoft/onnxruntime-tvm.git"
             }
          }

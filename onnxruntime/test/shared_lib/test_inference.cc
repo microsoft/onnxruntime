@@ -116,6 +116,7 @@ void TestInference(Ort::Env& env, T model_uri,
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
+static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/overridable_initializer.onnx");
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 static constexpr PATH_TYPE PYOP_FLOAT_MODEL_URI = TSTR("testdata/pyop_1.onnx");
 #endif
@@ -275,7 +276,7 @@ TEST_F(CApiTest, create_tensor_with_data) {
   float values[] = {3.0f, 1.0f, 2.f, 0.f};
   constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
 
-  Ort::AllocatorInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
   std::vector<int64_t> dims = {4};
   Ort::Value tensor = Ort::Value::CreateTensor<float>(info, values, values_length, dims.data(), dims.size());
@@ -288,6 +289,61 @@ TEST_F(CApiTest, create_tensor_with_data) {
 
   ASSERT_NE(tensor_info, nullptr);
   ASSERT_EQ(1, tensor_info.GetDimensionsCount());
+}
+
+TEST_F(CApiTest, override_initializer) {
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  auto allocator = std::make_unique<MockedOrtAllocator>();
+  // CreateTensor which is not owning this ptr
+  bool Label_input[] = {true};
+  std::vector<int64_t> dims = {1, 1};
+  Ort::Value label_input_tensor = Ort::Value::CreateTensor<bool>(info, Label_input, 1U, dims.data(), dims.size());
+
+  std::string f2_data{"f2_string"};
+  // Place a string into Tensor OrtValue and assign to the
+  Ort::Value f2_input_tensor = Ort::Value::CreateTensor(allocator.get(), dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+  // No C++ Api to either create a string Tensor or to fill one with string, so we use C
+  const char* const input_char_string[] = {f2_data.c_str()};
+  ORT_THROW_ON_ERROR(OrtFillStringTensor(static_cast<OrtValue*>(f2_input_tensor), input_char_string, 1U));
+
+  Ort::SessionOptions session_options;
+  Ort::Session session(env_, OVERRIDABLE_INITIALIZER_MODEL_URI, session_options);
+
+  // Get Overrideable initializers
+  size_t init_count = session.GetOverridableInitializerCount();
+  ASSERT_EQ(init_count, 1U);
+
+  char* f1_init_name = session.GetOverridableInitializerName(0, allocator.get());
+  ASSERT_TRUE(strcmp("F1", f1_init_name) == 0);
+  allocator->Free(f1_init_name);
+
+  Ort::TypeInfo init_type_info = session.GetOverridableInitializerTypeInfo(0);
+  ASSERT_EQ(ONNX_TYPE_TENSOR, init_type_info.GetONNXType());
+
+  // Let's override the initializer
+  float f11_input_data[] = {2.0f};
+  Ort::Value f11_input_tensor = Ort::Value::CreateTensor<float>(info, f11_input_data, 1U, dims.data(), dims.size());
+
+  std::vector<Ort::Value> ort_inputs;
+  ort_inputs.push_back(std::move(label_input_tensor));
+  ort_inputs.push_back(std::move(f2_input_tensor));
+  ort_inputs.push_back(std::move(f11_input_tensor));
+
+  std::vector<const char*> input_names = {"Label", "F2", "F1"};
+
+  const char* const output_names[] = {"Label0", "F20", "F11"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(),
+                                                    ort_inputs.data(), ort_inputs.size(),
+                                                    output_names, countof(output_names));
+
+  ASSERT_EQ(ort_outputs.size(), 3U);
+  // Expecting the last output would be the overridden value of the initializer
+  auto type_info = ort_outputs[2].GetTensorTypeAndShapeInfo();
+  ASSERT_EQ(type_info.GetShape(), dims);
+  ASSERT_EQ(type_info.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+  ASSERT_EQ(type_info.GetElementCount(), 1U);
+  float* output_data = ort_outputs[2].GetTensorMutableData<float>();
+  ASSERT_EQ(*output_data, f11_input_data[0]);
 }
 
 int main(int argc, char** argv) {

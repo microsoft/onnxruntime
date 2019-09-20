@@ -72,6 +72,7 @@ struct Base {
 
  protected:
   Base(const Base&) = delete;
+  Base& operator=(const Base&) = delete;
   Base(Base&& v) noexcept : p_{v.p_} { v.p_ = nullptr; }
   void operator=(Base&& v) noexcept {
     OrtRelease(p_);
@@ -93,7 +94,7 @@ struct Unowned : T {
 };
 
 struct AllocatorWithDefaultOptions;
-struct AllocatorInfo;
+struct MemoryInfo;
 struct Env;
 struct TypeInfo;
 struct Value;
@@ -138,7 +139,8 @@ struct SessionOptions : Base<OrtSessionOptions> {
 
   SessionOptions Clone() const;
 
-  SessionOptions& SetThreadPoolSize(int session_thread_pool_size);
+  SessionOptions& SetIntraOpNumThreads(int intra_op_num_threads);
+  SessionOptions& SetInterOpNumThreads(int inter_op_num_threads);
   SessionOptions& SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);
 
   SessionOptions& EnableCpuMemArena();
@@ -174,12 +176,15 @@ struct Session : Base<OrtSession> {
 
   size_t GetInputCount() const;
   size_t GetOutputCount() const;
+  size_t GetOverridableInitializerCount() const;
 
   char* GetInputName(size_t index, OrtAllocator* allocator) const;
   char* GetOutputName(size_t index, OrtAllocator* allocator) const;
+  char* GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const;
 
   TypeInfo GetInputTypeInfo(size_t index) const;
   TypeInfo GetOutputTypeInfo(size_t index) const;
+  TypeInfo GetOverridableInitializerTypeInfo(size_t index) const;
 };
 
 struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
@@ -214,7 +219,7 @@ struct Value : Base<OrtValue> {
   static Value CreateMap(Value& keys, Value& values);
   static Value CreateSequence(std::vector<Value>& values);
 
-  template<typename T>
+  template <typename T>
   static Value CreateOpaque(const char* domain, const char* type_name, const T&);
 
   template <typename T>
@@ -222,6 +227,8 @@ struct Value : Base<OrtValue> {
 
   explicit Value(nullptr_t) {}
   explicit Value(OrtValue* p) : Base<OrtValue>{p} {}
+  Value(Value&&) = default;
+  Value& operator=(Value&&) = default;
 
   bool IsTensor() const;
   size_t GetCount() const;  // If a non tensor, returns 2 for map and N for sequence, where N is the number of elements
@@ -252,13 +259,13 @@ struct AllocatorWithDefaultOptions {
   OrtAllocator* p_{};
 };
 
-struct AllocatorInfo : Base<OrtMemoryInfo> {
-  static AllocatorInfo CreateCpu(OrtAllocatorType type, OrtMemType mem_type1);
+struct MemoryInfo : Base<OrtMemoryInfo> {
+  static MemoryInfo CreateCpu(OrtAllocatorType type, OrtMemType mem_type1);
 
-  explicit AllocatorInfo(nullptr_t) {}
-  AllocatorInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type);
+  explicit MemoryInfo(nullptr_t) {}
+  MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type);
 
-  explicit AllocatorInfo(OrtMemoryInfo* p) : Base<OrtMemoryInfo>{p} {}
+  explicit MemoryInfo(OrtMemoryInfo* p) : Base<OrtMemoryInfo>{p} {}
 };
 
 //

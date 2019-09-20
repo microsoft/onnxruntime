@@ -27,7 +27,7 @@ struct RelAllocations {
 TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type seq(map(int64, float))
   // Creation
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
-  Ort::AllocatorInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
   const int N = 3;
   const int NUM_KV_PAIRS = 4;
@@ -87,7 +87,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output ty
 TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output type seq(map(string, float))
   // Creation
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
-  Ort::AllocatorInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
   const int N = 3;
   const int64_t NUM_KV_PAIRS = 4;

@@ -237,7 +237,7 @@ ORT_API_STATUS(OrtSetSessionLogVerbosityLevel, _Inout_ OrtSessionOptions* option
 ORT_API_STATUS(OrtSetSessionLogSeverityLevel, _Inout_ OrtSessionOptions* options, int session_log_severity_level);
 
 // Set Graph optimization level.
-// TODO Add documentation about which optimizations are enabled for each value.
+// TODO (askhade) Add documentation about which optimizations are enabled for each value.
 typedef enum GraphOptimizationLevel {
   ORT_DISABLE_ALL = 0,
   ORT_ENABLE_BASIC = 1,
@@ -247,13 +247,14 @@ typedef enum GraphOptimizationLevel {
 ORT_API_STATUS(OrtSetSessionGraphOptimizationLevel, _Inout_ OrtSessionOptions* options,
                GraphOptimizationLevel graph_optimization_level);
 
-/**
- * How many threads in the session thread pool.
- * Set it to 0 to make onnxruntime run as single threaded.
- * \param session_thread_pool_size <0, let the runtime choose a default. =0, Don't create extra threads. 
- *                                 >0, create a thread pool with size of this value.
- */
-ORT_API_STATUS(OrtSetSessionThreadPoolSize, _Inout_ OrtSessionOptions* options, int session_thread_pool_size);
+// Sets the number of threads used to parallelize the execution within nodes
+// A value of 0 means ORT will pick a default
+ORT_API_STATUS(OrtSetIntraOpNumThreads, _Inout_ OrtSessionOptions* options, int intra_op_num_threads);
+
+// Sets the number of threads used to parallelize the execution of the graph (across nodes)
+// If sequential execution is enabled this value is ignored
+// A value of 0 means ORT will pick a default
+ORT_API_STATUS(OrtSetInterOpNumThreads, _Inout_ OrtSessionOptions* options, int inter_op_num_threads);
 
 /**
   * To use additional providers, you must build ORT with the extra providers enabled. Then call one of these
@@ -268,6 +269,7 @@ ORT_API_STATUS(OrtSetSessionThreadPoolSize, _Inout_ OrtSessionOptions* options, 
 
 ORT_API_STATUS(OrtSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out);
 ORT_API_STATUS(OrtSessionGetOutputCount, _In_ const OrtSession* sess, _Out_ size_t* out);
+ORT_API_STATUS(OrtSessionGetOverridableInitializerCount, _In_ const OrtSession* sess, _Out_ size_t* out);
 
 /**
  * \param out  should be freed by OrtReleaseTypeInfo after use
@@ -280,11 +282,19 @@ ORT_API_STATUS(OrtSessionGetInputTypeInfo, _In_ const OrtSession* sess, size_t i
 ORT_API_STATUS(OrtSessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t index, _Outptr_ OrtTypeInfo** type_info);
 
 /**
+ * \param out  should be freed by OrtReleaseTypeInfo after use
+ */
+ORT_API_STATUS(OrtSessionGetOverridableInitializerTypeInfo, _In_ const OrtSession* sess, size_t index, _Outptr_ OrtTypeInfo** type_info);
+
+
+/**
  * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible in freeing it.
  */
 ORT_API_STATUS(OrtSessionGetInputName, _In_ const OrtSession* sess, size_t index,
                _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 ORT_API_STATUS(OrtSessionGetOutputName, _In_ const OrtSession* sess, size_t index,
+               _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+ORT_API_STATUS(OrtSessionGetOverridableInitializerName, _In_ const OrtSession* sess, size_t index,
                _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 
 /**
@@ -422,19 +432,19 @@ typedef enum OrtMemType {
   OrtMemTypeDefault = 0,                // the default allocator for execution provider
 } OrtMemType;
 
-ORT_API_STATUS(OrtCreateAllocatorInfo, _In_ const char* name1, enum OrtAllocatorType type, int id1, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out);
+ORT_API_STATUS(OrtCreateMemoryInfo, _In_ const char* name1, enum OrtAllocatorType type, int id1, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out);
 
 /**
- * Convenience function for special case of OrtCreateAllocatorInfo, for the CPU allocator. Uses name = "Cpu" and id = 0.
+ * Convenience function for special case of OrtCreateMemoryInfo, for the CPU allocator. Uses name = "Cpu" and id = 0.
  */
-ORT_API_STATUS(OrtCreateCpuAllocatorInfo, enum OrtAllocatorType type, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out)
+ORT_API_STATUS(OrtCreateCpuMemoryInfo, enum OrtAllocatorType type, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out)
 ORT_ALL_ARGS_NONNULL;
 
 /**
- * Test if two allocation info are equal
+ * Test if two memory info objects are equal
  * \Sets 'out' to 0 if equal, -1 if not equal
  */
-ORT_API_STATUS(OrtCompareAllocatorInfo, _In_ const OrtMemoryInfo* info1, _In_ const OrtMemoryInfo* info2, _Out_ int* out)
+ORT_API_STATUS(OrtCompareMemoryInfo, _In_ const OrtMemoryInfo* info1, _In_ const OrtMemoryInfo* info2, _Out_ int* out)
 ORT_ALL_ARGS_NONNULL;
 
 /**
@@ -540,7 +550,7 @@ ORT_API_STATUS(OrtCreateValue, _In_ const OrtValue* const* in, size_t num_values
 ORT_API_STATUS(OrtCreateOpaqueValue, _In_ const char* domain_name, _In_ const char* type_name,
                _In_ const void* data_container, size_t data_container_size, _Outptr_ OrtValue** out);
 
- /**
+/**
    * Fetch data from an OrtValue that contains a value of non-standard type created for
    * experiments or while awaiting standardization.
    * \domain_name - domain name for the Opaque type, null terminated.

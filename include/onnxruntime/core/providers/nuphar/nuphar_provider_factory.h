@@ -8,7 +8,7 @@ extern "C" {
 #endif
 /**
  * \param device_id nuphar device id, starts from zero.
- * \param target_str TVM target string.
+ * \param settings_str Nuphar settings string.
  */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Nuphar, _In_ OrtSessionOptions* options, int allow_unaligned_buffers, _In_ const char* settings_str);
 

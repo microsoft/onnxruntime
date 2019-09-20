@@ -25,7 +25,7 @@ namespace protobufutil = google::protobuf::util;
 
 protobufutil::Status Executor::SetMLValue(const onnx::TensorProto& input_tensor,
                                           MemBufferArray& buffers,
-                                          OrtMemoryInfo* cpu_allocator_info,
+                                          OrtMemoryInfo* cpu_memory_info,
                                           /* out */ Ort::Value& ml_value) {
   auto logger = env_->GetLogger(request_id_);
 
@@ -40,7 +40,7 @@ protobufutil::Status Executor::SetMLValue(const onnx::TensorProto& input_tensor,
   auto* buf = buffers.AllocNewBuffer(cpu_tensor_length);
   try {
     onnxruntime::server::TensorProtoToMLValue(input_tensor,
-                                              onnxruntime::server::MemBuffer(buf, cpu_tensor_length, *cpu_allocator_info),
+                                              onnxruntime::server::MemBuffer(buf, cpu_tensor_length, *cpu_memory_info),
                                               ml_value);
 
   } catch (const Ort::Exception& e) {
@@ -57,12 +57,12 @@ protobufutil::Status Executor::SetNameMLValueMap(std::vector<std::string>& input
                                                  MemBufferArray& buffers) {
   auto logger = env_->GetLogger(request_id_);
 
-  OrtMemoryInfo* allocator_info = nullptr;
-  auto ort_status = OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info);
+  OrtMemoryInfo* memory_info = nullptr;
+  auto ort_status = OrtCreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info);
 
-  if (ort_status != nullptr || allocator_info == nullptr) {
-    logger->error("OrtCreateCpuAllocatorInfo failed");
-    return protobufutil::Status(protobufutil::error::Code::RESOURCE_EXHAUSTED, "OrtCreateCpuAllocatorInfo() failed");
+  if (ort_status != nullptr || memory_info == nullptr) {
+    logger->error("OrtCreateCpuMemoryInfo failed");
+    return protobufutil::Status(protobufutil::error::Code::RESOURCE_EXHAUSTED, "OrtCreateCpuMemoryInfo() failed");
   }
 
   // Prepare the Value object
@@ -70,9 +70,9 @@ protobufutil::Status Executor::SetNameMLValueMap(std::vector<std::string>& input
     using_raw_data_ = using_raw_data_ && input.second.has_raw_data();
 
     Ort::Value ml_value{nullptr};
-    auto status = SetMLValue(input.second, buffers, allocator_info, ml_value);
+    auto status = SetMLValue(input.second, buffers, memory_info, ml_value);
     if (status != protobufutil::Status::OK) {
-      OrtReleaseMemoryInfo(allocator_info);
+      OrtReleaseMemoryInfo(memory_info);
       logger->error("SetMLValue() failed! Input name: {}", input.first);
       return status;
     }
@@ -81,7 +81,7 @@ protobufutil::Status Executor::SetNameMLValueMap(std::vector<std::string>& input
     input_values.push_back(std::move(ml_value));
   }
 
-  OrtReleaseMemoryInfo(allocator_info);
+  OrtReleaseMemoryInfo(memory_info);
   return protobufutil::Status::OK;
 }
 
@@ -131,12 +131,12 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
       output_names.push_back(name);
     }
   } else {
-    output_names = env_->GetModelOutputNames();
+    output_names = env_->GetModelOutputNames(model_name, model_version);
   }
 
   std::vector<Ort::Value> outputs;
   try {
-    outputs = Run(env_->GetSession(), run_options, input_names, input_values, output_names);
+    outputs = Run(env_->GetSession(model_name, model_version), run_options, input_names, input_values, output_names);
   } catch (const Ort::Exception& e) {
     return GenerateProtobufStatus(e.GetOrtErrorCode(), e.what());
   }

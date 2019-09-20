@@ -38,6 +38,8 @@ template <>
 struct TypeToTensorType<uint32_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32; };
 template <>
 struct TypeToTensorType<uint64_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64; };
+template <>
+struct TypeToTensorType<bool> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL; };
 
 inline AllocatorWithDefaultOptions::AllocatorWithDefaultOptions() {
   ORT_THROW_ON_ERROR(OrtGetAllocatorWithDefaultOptions(&p_));
@@ -59,14 +61,14 @@ inline const OrtMemoryInfo* AllocatorWithDefaultOptions::GetInfo() const {
   return out;
 }
 
-inline AllocatorInfo AllocatorInfo::CreateCpu(OrtAllocatorType type, OrtMemType mem_type) {
+inline MemoryInfo MemoryInfo::CreateCpu(OrtAllocatorType type, OrtMemType mem_type) {
   OrtMemoryInfo* p;
-  ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(type, mem_type, &p));
-  return AllocatorInfo(p);
+  ORT_THROW_ON_ERROR(OrtCreateCpuMemoryInfo(type, mem_type, &p));
+  return MemoryInfo(p);
 }
 
-inline AllocatorInfo::AllocatorInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
-  ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo(name, type, id, mem_type, &p_));
+inline MemoryInfo::MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
+  ORT_THROW_ON_ERROR(OrtCreateMemoryInfo(name, type, id, mem_type, &p_));
 }
 
 inline Env::Env(OrtLoggingLevel default_warning_level, _In_ const char* logid) {
@@ -136,8 +138,13 @@ inline SessionOptions SessionOptions::Clone() const {
   return SessionOptions{out};
 }
 
-inline SessionOptions& SessionOptions::SetThreadPoolSize(int session_thread_pool_size) {
-  ORT_THROW_ON_ERROR(OrtSetSessionThreadPoolSize(p_, session_thread_pool_size));
+inline SessionOptions& SessionOptions::SetIntraOpNumThreads(int intra_op_num_threads) {
+  ORT_THROW_ON_ERROR(OrtSetIntraOpNumThreads(p_, intra_op_num_threads));
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::SetInterOpNumThreads(int inter_op_num_threads) {
+  ORT_THROW_ON_ERROR(OrtSetInterOpNumThreads(p_, inter_op_num_threads));
   return *this;
 }
 
@@ -237,6 +244,12 @@ inline size_t Session::GetOutputCount() const {
   return out;
 }
 
+inline size_t Session::GetOverridableInitializerCount () const {
+  size_t out;
+  ORT_THROW_ON_ERROR(OrtSessionGetOverridableInitializerCount(p_, &out));
+  return out;
+}
+
 inline char* Session::GetInputName(size_t index, OrtAllocator* allocator) const {
   char* out;
   ORT_THROW_ON_ERROR(OrtSessionGetInputName(p_, index, allocator, &out));
@@ -249,6 +262,12 @@ inline char* Session::GetOutputName(size_t index, OrtAllocator* allocator) const
   return out;
 }
 
+inline char* Session::GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const {
+  char* out;
+  ORT_THROW_ON_ERROR(OrtSessionGetOverridableInitializerName(p_, index, allocator, &out));
+  return out;
+}
+
 inline TypeInfo Session::GetInputTypeInfo(size_t index) const {
   OrtTypeInfo* out;
   ORT_THROW_ON_ERROR(OrtSessionGetInputTypeInfo(p_, index, &out));
@@ -258,6 +277,12 @@ inline TypeInfo Session::GetInputTypeInfo(size_t index) const {
 inline TypeInfo Session::GetOutputTypeInfo(size_t index) const {
   OrtTypeInfo* out;
   ORT_THROW_ON_ERROR(OrtSessionGetOutputTypeInfo(p_, index, &out));
+  return TypeInfo{out};
+}
+
+inline TypeInfo Session::GetOverridableInitializerTypeInfo(size_t index) const {
+  OrtTypeInfo* out;
+  ORT_THROW_ON_ERROR(OrtSessionGetOverridableInitializerTypeInfo(p_, index, &out));
   return TypeInfo{out};
 }
 
@@ -343,14 +368,14 @@ inline Value Value::CreateSequence(std::vector<Value>& values) {
 }
 
 template <typename T>
-inline Value Value::CreateOpaque (const char* domain, const char* type_name, const T& data_container) {
+inline Value Value::CreateOpaque(const char* domain, const char* type_name, const T& data_container) {
   OrtValue* out;
   ORT_THROW_ON_ERROR(OrtCreateOpaqueValue(domain, type_name, &data_container, sizeof(T), &out));
   return Value{out};
 }
 
 template <typename T>
-inline void Value::GetOpaqueData (const char* domain, const char* type_name, T& out) {
+inline void Value::GetOpaqueData(const char* domain, const char* type_name, T& out) {
   ORT_THROW_ON_ERROR(OrtGetOpaqueValue(domain, type_name, p_, &out, sizeof(T)));
 }
 

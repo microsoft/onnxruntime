@@ -6,8 +6,8 @@
 
 namespace onnxruntime {
 
-AllocatorPtr ITensorAllocator::GetAllocator(const OrtMemoryInfo& allocator_info) {
-  return exec_providers_.GetAllocator(allocator_info);
+AllocatorPtr ITensorAllocator::GetAllocator(const OrtMemoryInfo& memory_info) {
+  return exec_providers_.GetAllocator(memory_info);
 }
 
 std::unique_ptr<ITensorAllocator> ITensorAllocator::Create(bool enable_mem_pattern,

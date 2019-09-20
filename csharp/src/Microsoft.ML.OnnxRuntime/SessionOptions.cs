@@ -27,7 +27,7 @@ namespace Microsoft.ML.OnnxRuntime
         private IntPtr _nativePtr;
         private static string[] cudaDelayLoadedLibs = { "cublas64_100.dll", "cudnn64_7.dll" };
 
-#region Constructor and Factory methods
+        #region Constructor and Factory methods
 
         /// <summary>
         /// Constructs an empty SessionOptions
@@ -61,9 +61,9 @@ namespace Microsoft.ML.OnnxRuntime
             return options;
         }
 #endif
-#endregion
+        #endregion
 
-#region ExecutionProviderAppends
+        #region ExecutionProviderAppends
         public void AppendExecutionProvider_CPU(int useArena)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(_nativePtr, useArena));
@@ -125,7 +125,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
         public void AppendExecutionProvider_Nuphar(string settings = "")
         {
-            NativeApiStatus.VerifySuccess(OrtSessionOptionsAppendExecutionProvider_Nuphar(options._nativePtr, 1, settings));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(_nativePtr, 1, settings));
         }
 #endif
         #endregion //ExecutionProviderAppends
@@ -316,23 +316,41 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         /// <summary>
-        /// Threadpool size for the session.Run() calls. 
-        /// Default = 0, meaning threadpool size is aumatically selected from number of available cores.
+        // Sets the number of threads used to parallelize the execution within nodes
+        // A value of 0 means ORT will pick a default
         /// </summary>
-        public int ThreadPoolSize
+        public int IntraOpNumThreads
         {
             get
             {
-                return _threadPoolSize;
+                return _intraOpNumThreads;
             }
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionThreadPoolSize(_nativePtr, value));
-                _threadPoolSize = value;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetIntraOpNumThreads(_nativePtr, value));
+                _intraOpNumThreads = value;
             }
         }
-        private int _threadPoolSize = 0; // set to what is set in C++ SessionOptions by default;
+        private int _intraOpNumThreads = 0; // set to what is set in C++ SessionOptions by default;
 
+        /// <summary>
+        // Sets the number of threads used to parallelize the execution of the graph (across nodes)
+        // If sequential execution is enabled this value is ignored
+        // A value of 0 means ORT will pick a default
+        /// </summary>
+        public int InterOpNumThreads
+        {
+            get
+            {
+                return _interOpNumThreads;
+            }
+            set
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetInterOpNumThreads(_nativePtr, value));
+                _interOpNumThreads = value;
+            }
+        }
+        private int _interOpNumThreads = 0; // set to what is set in C++ SessionOptions by default;
 
         /// <summary>
         /// Sets the graph optimization level for the session. Default is set to ORT_ENABLE_BASIC.        
@@ -351,9 +369,9 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private GraphOptimizationLevel _graphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_BASIC;
 
-#endregion
+        #endregion
 
-#region Private Methods
+        #region Private Methods
 
 
         // Declared, but called only if OS = Windows.
@@ -384,8 +402,8 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
 
-#endregion
-#region destructors disposers
+        #endregion
+        #region destructors disposers
 
         ~SessionOptions()
         {
@@ -407,6 +425,6 @@ namespace Microsoft.ML.OnnxRuntime
             NativeMethods.OrtReleaseSessionOptions(_nativePtr);
         }
 
-#endregion
+        #endregion
     }
 }

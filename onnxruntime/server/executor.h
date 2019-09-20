@@ -32,7 +32,7 @@ class Executor {
 
   google::protobuf::util::Status SetMLValue(const onnx::TensorProto& input_tensor,
                                             MemBufferArray& buffers,
-                                            OrtMemoryInfo* cpu_allocator_info,
+                                            OrtMemoryInfo* cpu_memory_info,
                                             /* out */ Ort::Value& ml_value);
 
   google::protobuf::util::Status SetNameMLValueMap(/* out */ std::vector<std::string>& input_names,

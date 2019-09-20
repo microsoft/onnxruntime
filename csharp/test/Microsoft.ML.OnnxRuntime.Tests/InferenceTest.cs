@@ -32,7 +32,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.True(opt.EnableCpuMemArena);
                 Assert.Equal("", opt.LogId);
                 Assert.Equal(LogLevel.Verbose, opt.LogVerbosityLevel);
-                Assert.Equal(0, opt.ThreadPoolSize);
+                Assert.Equal(0, opt.IntraOpNumThreads);
+                Assert.Equal(0, opt.InterOpNumThreads);
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_BASIC, opt.GraphOptimizationLevel);
 
                 // try setting options 
@@ -58,12 +59,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.LogVerbosityLevel = LogLevel.Error;
                 Assert.Equal(LogLevel.Error, opt.LogVerbosityLevel);
 
-                opt.ThreadPoolSize = 4;
-                Assert.Equal(4, opt.ThreadPoolSize);
+                opt.IntraOpNumThreads = 4;
+                Assert.Equal(4, opt.IntraOpNumThreads);
+
+                opt.InterOpNumThreads = 4;
+                Assert.Equal(4, opt.InterOpNumThreads);
 
                 opt.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_EXTENDED;
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, opt.GraphOptimizationLevel);
-                
+
                 Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; });
 
                 opt.AppendExecutionProvider_CPU(1);
@@ -754,7 +758,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact(Skip="The Model Serialization Test fails on linux. Test skipped until fixed. Serialization API should not be used before fix.")]
+        [Fact(Skip = "The Model Serialization Test fails on linux. Test skipped until fixed. Serialization API should not be used before fix.")]
         private void TestModelSerialization()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
@@ -810,8 +814,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             "OrtCreateSessionOptions","OrtCloneSessionOptions",
             "OrtEnableSequentialExecution","OrtDisableSequentialExecution","OrtEnableProfiling","OrtDisableProfiling",
             "OrtEnableMemPattern","OrtDisableMemPattern","OrtEnableCpuMemArena","OrtDisableCpuMemArena",
-            "OrtSetSessionLogId","OrtSetSessionLogVerbosityLevel","OrtSetSessionThreadPoolSize","OrtSetSessionGraphOptimizationLevel",
-            "OrtSetOptimizedModelFilePath", "OrtSessionOptionsAppendExecutionProvider_CPU","OrtCreateAllocatorInfo","OrtCreateCpuAllocatorInfo",
+            "OrtSetSessionLogId","OrtSetSessionLogVerbosityLevel","OrtSetIntraOpNumThreads","OrtSetSessionGraphOptimizationLevel",
+            "OrtSetOptimizedModelFilePath", "OrtSessionOptionsAppendExecutionProvider_CPU","OrtCreateMemoryInfo","OrtCreateCpuMemoryInfo",
             "OrtGetAllocatorWithDefaultOptions","OrtAllocatorFree","OrtAllocatorGetInfo",
             "OrtCreateTensorWithDataAsOrtValue","OrtGetTensorMutableData", "OrtReleaseMemoryInfo",
             "OrtCastTypeInfoToTensorInfo","OrtGetTensorTypeAndShape","OrtGetTensorElementType","OrtGetDimensionsCount",

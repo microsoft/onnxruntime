@@ -51,6 +51,7 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/graph_transformer_utils.h"
+#include "core/util/thread_utils.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -89,11 +90,6 @@ inline std::basic_string<T> GetCurrentTimeString() {
   return std::basic_string<T>(time_str);
 }
 
-concurrency::ThreadPool* CreateThreadPool(int size) {
-  if (size < 0) size = std::thread::hardware_concurrency() / 2;
-  return size > 0 ? new concurrency::ThreadPool("SESSION", size) : nullptr;
-}
-
 }  // namespace
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
@@ -101,10 +97,16 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
     : session_options_{session_options},
       graph_transformation_mgr_{session_options.max_num_graph_transformation_steps},
       logging_manager_{logging_manager},
-      thread_pool_(CreateThreadPool(session_options.session_thread_pool_size)),
+      thread_pool_(concurrency::CreateThreadPool("intra_op_thread_pool",
+                                                 session_options.intra_op_num_threads)),
+      inter_op_thread_pool_(!session_options.enable_sequential_execution
+                                ? concurrency::CreateThreadPool("inter_op_thread_pool",
+                                                                session_options.inter_op_num_threads)
+                                : nullptr),
       session_state_(execution_providers_,
                      session_options.enable_mem_pattern && session_options.enable_sequential_execution,
-                     thread_pool_.get()),
+                     thread_pool_.get(),
+                     inter_op_thread_pool_.get()),
       insert_cast_transformer_{"CastFloat16Transformer"} {
   ORT_ENFORCE(Environment::IsInitialized(),
               "Environment must be initialized before creating an InferenceSession.");
@@ -400,7 +402,8 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
 
       auto subgraph_session_state = std::make_unique<SessionState>(execution_providers_,
                                                                    session_state.GetEnableMemoryPattern(),
-                                                                   session_state.GetThreadPool());
+                                                                   session_state.GetThreadPool(),
+                                                                   session_state.GetInterOpThreadPool());
       subgraph_session_state->SetProfiler(session_profiler_);
       subgraph_session_state->SetLogger(*session_logger_);
       // Pass data transfer manager to subgraph.
@@ -565,6 +568,14 @@ common::Status InferenceSession::Initialize() {
 
 int InferenceSession::GetCurrentNumRuns() const {
   return current_num_runs_.load();
+}
+
+const std::vector<std::string>& InferenceSession::GetRegisteredProviderTypes() const {
+  return execution_providers_.GetIds();
+}
+
+const SessionOptions& InferenceSession::GetSessionOptions() const {
+  return session_options_;
 }
 
 common::Status InferenceSession::CheckShapes(const std::string& input_name,
@@ -732,7 +743,8 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(
         utils::ExecuteGraph(session_state_, feeds_fetches_manager, feeds, *p_fetches,
-                            session_options_.enable_sequential_execution, run_options.terminate, run_logger));
+                            session_options_.enable_sequential_execution,
+                            run_options.terminate, run_logger));
 
   } catch (const std::exception& e) {
     retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
@@ -802,6 +814,20 @@ std::pair<common::Status, const InputDefList*> InferenceSession::GetModelInputs(
   return std::make_pair(common::Status::OK(), &model_->MainGraph().GetInputs());
 }
 
+std::pair<common::Status, const InputDefList*> InferenceSession::GetOverridableInitializers() const {
+  {
+    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    if (!is_model_loaded_) {
+      LOGS(*session_logger_, ERROR) << "Model was not loaded";
+      return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."),
+                            nullptr);
+    }
+  }
+
+  // returns a list of initializers that can be overriden.
+  return std::make_pair(common::Status::OK(), &model_->MainGraph().GetOverridableInitializers());
+}
+
 std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutputs() const {
   {
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
@@ -832,7 +858,8 @@ common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_bin
 common::Status InferenceSession::Run(const RunOptions& run_options, IOBinding& io_binding) {
   // TODO should Run() call io_binding.SynchronizeInputs() or should it let the callers do it?
   // io_binding.SynchronizeInputs();
-  return Run(run_options, io_binding.feed_names_, io_binding.feeds_, io_binding.output_names_, &io_binding.outputs_);
+  return Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(),
+             io_binding.GetOutputNames(), &io_binding.GetOutputs());
 }
 
 common::Status InferenceSession::Run(IOBinding& io_binding) {

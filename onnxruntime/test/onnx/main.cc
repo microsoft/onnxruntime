@@ -404,14 +404,45 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"round", "not implemented yet"},
       {"gather_elements_1", "not implemented yet"},
       {"gather_elements_0", "not implemented yet"},
-      {"depthtospace_crd_mode_example", "not implemented yet"},
-      {"depthtospace_crd_mode", "not implemented yet"},
       {"cumsum_2d_axis_1", "not implemented yet"},
       {"cumsum_2d_axis_0", "not implemented yet"},
       {"cumsum_1d_reverse_exclusive", "not implemented yet"},
       {"cumsum_1d_reverse", "not implemented yet"},
       {"cumsum_1d_exclusive", "not implemented yet"},
-      {"cumsum_1d", "not implemented yet"},      
+      {"cumsum_1d", "not implemented yet"},
+      {"range_float_type_positive_delta", "not implemented yet"},
+      {"range_float_type_positive_delta_expanded", "not implemented yet"},
+      {"range_int32_type_negative_delta", "not implemented yet"},
+      {"range_int32_type_negative_delta_expanded", "not implemented yet"},
+      {"det_2d", "not implemented yet"},
+      {"det_nd", "not implemented yet"},
+      {"gathernd_example_float32", "not implemented yet"},
+      {"gathernd_example_int32", "not implemented yet"},
+      {"resize_downsample_scales_cubic_A_n0p5_exclude_outside", "not implemented yet"},
+      {"resize_downsample_scales_cubic_align_corners", "not implemented yet"},
+      {"resize_downsample_scales_cubic", "not implemented yet"},
+      {"resize_downsample_scales_linear_align_corners", "not implemented yet"},
+      {"resize_downsample_scales_linear", "not implemented yet"},
+      {"resize_downsample_scales_nearest", "not implemented yet"},
+      {"resize_downsample_sizes_cubic", "not implemented yet"},
+      {"resize_downsample_sizes_linear_pytorch_half_pixel", "not implemented yet"},
+      {"resize_downsample_sizes_nearest", "not implemented yet"},
+      {"resize_downsample_sizes_nearest_tf_half_pixel_for_nn", "not implemented yet"},
+      {"resize_tf_crop_and_resize", "not implemented yet"},
+      {"resize_upsample_scales_cubic_A_n0p5_exclude_outside", "not implemented yet"},
+      {"resize_upsample_scales_cubic_align_corners", "not implemented yet"},
+      {"resize_upsample_scales_cubic_asymmetric", "not implemented yet"},
+      {"resize_upsample_scales_cubic", "not implemented yet"},
+      {"resize_upsample_scales_linear_align_corners", "not implemented yet"},
+      {"resize_upsample_scales_linear", "not implemented yet"},
+      {"resize_upsample_scales_nearest", "not implemented yet"},
+      {"resize_upsample_sizes_cubic", "not implemented yet"},
+      {"resize_upsample_sizes_nearest_ceil_half_pixel", "not implemented yet"},
+      {"resize_upsample_sizes_nearest", "not implemented yet"},
+      {"resize_upsample_sizes_nearest_floor_align_corners", "not implemented yet"},
+      {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "not implemented yet"},
+      {"scatternd", "not implemented yet"},
+      {"yolov3", "regression in resize opset 10 shape inference"},
   };
 
 #ifdef USE_NGRAPH
@@ -419,11 +450,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
   broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
   broken_tests.insert({"clip_splitbounds", "not implemented yet for opset 11"});
-  broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});	
-  broken_tests.insert({"clip_example", "not implemented yet for opset 11"});	
-  broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});	
+  broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});
+  broken_tests.insert({"clip_example", "not implemented yet for opset 11"});
+  broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});
   broken_tests.insert({"clip_default_max", "not implemented yet for opset 11"});
   broken_tests.insert({"clip", "not implemented yet for opset 11"});
+  broken_tests.insert({"depthtospace_crd_mode_example", "NGraph does not support CRD mode"});
+  broken_tests.insert({"depthtospace_crd_mode", "NGraph does not support CRD mode"});
 #endif
 
 #ifdef USE_MKLDNN
@@ -439,6 +472,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"fp16_tiny_yolov2", "accuaracy mismatch with fp16 precision"});
 #ifdef OPENVINO_CONFIG_GPU_FP32
   broken_tests.insert({"tiny_yolov2", "accuracy mismatch"});
+  broken_tests.insert({"div", "will be fixed in the next release"});
+#ifdef OPENVINO_CONFIG_GPU_FP16
+  broken_tests.insert({"div", "will be fixed in the next release"});
+#endif
 #endif
 #endif
 
