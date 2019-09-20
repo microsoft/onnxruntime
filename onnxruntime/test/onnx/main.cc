@@ -508,13 +508,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"bitshift_left_uint64", "BitShift(11) not implemented yet"},
       {"bitshift_left_uint32", "BitShift(11) not implemented yet"},
       {"bitshift_left_uint16", "BitShift(11) not implemented yet"},
-      {"softmax_negative_axis", "ShapeInferenceError"},
-      {"logsoftmax_negative_axis", "ShapeInferenceError"},
-      {"hardmax_negative_axis", "ShapeInferenceError"},
-      {"gemm_default_scalar_bias", "Incorrect test case"},
-      {"gather_negative_indices", "Incorrect test case"},
-      {"mlperf_ssd_mobilenet_300", "Shape Inference Error repros in an older model. Newer model solves it. "
-                                   "Will remove after test data is updated."},
+      {"mlperf_ssd_mobilenet_300", "Shape Inference Error. Possibly the model has issues."},
 };
 
 #ifdef USE_NGRAPH
