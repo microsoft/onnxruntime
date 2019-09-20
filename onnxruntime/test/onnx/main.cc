@@ -525,6 +525,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"clip", "not implemented yet for opset 11"});
   broken_tests.insert({"depthtospace_crd_mode_example", "NGraph does not support CRD mode"});
   broken_tests.insert({"depthtospace_crd_mode", "NGraph does not support CRD mode"});
+  broken_tests.insert({"argmax_negative_axis_keepdims_example", "not implemented yet for opset 11"});
   broken_tests.insert({"argmax_negative_axis_keepdims_random", "not implemented yet for opset 11"});
   broken_tests.insert({"argmin_negative_axis_keepdims_example", "not implemented yet for opset 11"});	
   broken_tests.insert({"argmin_negative_axis_keepdims_random", "not implemented yet for opset 11"});	
