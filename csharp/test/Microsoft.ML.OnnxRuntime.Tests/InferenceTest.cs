@@ -793,7 +793,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
-        private void TestModelFromArray()
+        private void TestInferenceSessionWithByteArray()
         {
             // model takes 1x5 input of fixed type, echoes back
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_FLOAT.pb");
