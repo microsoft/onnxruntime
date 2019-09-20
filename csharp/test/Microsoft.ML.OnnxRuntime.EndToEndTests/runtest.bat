@@ -14,9 +14,8 @@ IF NOT "%3"=="" (SET TargetArch=%3)
 IF NOT "%4"=="" (
     SET CurrentOnnxRuntimeVersion=%4
 ) ELSE (
-    echo Usage: runtest.bat <LocalNuGetRepoPath> <TargetFramework> <TargetArch> <NuGetPackageVersion>
+    echo "Usage: runtest.bat LocalNuGetRepoPath TargetFramework TargetArch NuGetPackageVersion"
 )
-
 
 IF "%TargetArch%"=="x86" (
   SET dn="C:\Program Files (x86)\dotnet\dotnet"

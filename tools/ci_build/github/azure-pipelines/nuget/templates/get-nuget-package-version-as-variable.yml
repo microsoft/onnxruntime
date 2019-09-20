@@ -14,6 +14,7 @@ steps:
         set filename=%%~ni
         @echo ##vso[task.setvariable variable=NuGetPackageVersionNumber;]%filename:~25%
       )
+      @echo "NugetPackageVersionNumber = $(NuGetPackageVersionNumber)"
 
 - task: CmdLine@2
   condition: not(eq(variables['Agent.OS'], 'Windows_NT'))

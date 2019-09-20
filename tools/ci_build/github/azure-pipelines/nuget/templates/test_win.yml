@@ -35,6 +35,7 @@ jobs:
 
   - script: |
      @echo "Running Runtest.bat"
+     @echo "NuGetPackageVersionNumber = $(NuGetPackageVersionNumber)"
      test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .Net Core'
@@ -42,6 +43,7 @@ jobs:
 
   - script: |
      @echo "Running Runtest.bat"
+     @echo "NuGetPackageVersionNumber = $(NuGetPackageVersionNumber)"
      test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x86 $(NuGetPackageVersionNumber)
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .Net Core x86'
@@ -50,6 +52,7 @@ jobs:
 
   - script: |
      @echo "Running Runtest.bat"
+     @echo "NuGetPackageVersionNumber = $(NuGetPackageVersionNumber)"
      test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x64 $(NuGetPackageVersionNumber)
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .NetFramework'
@@ -57,6 +60,7 @@ jobs:
 
   - script: |
      @echo "Running Runtest.bat"
+     @echo "NuGetPackageVersionNumber = $(NuGetPackageVersionNumber)"
      test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x86 $(NuGetPackageVersionNumber)
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .NetFramework x86'
@@ -65,6 +69,7 @@ jobs:
 
   - script: |
      @echo "Running runtest.bat"
+     @echo "NuGetPackageVersionNumber = $(NuGetPackageVersionNumber)"
      test\Microsoft.ML.OnnxRuntime.EndToEndTests.Capi\runtest.bat $(Build.BinariesDirectory)\nuget-artifact x64 $(NuGetPackageVersionNumber)
      REM Need an ErrorLevel check, since the script uses Exit /B
      IF NOT %ERRORLEVEL% EQU 0 {
@@ -81,6 +86,7 @@ jobs:
 
   - script: |
      @echo "Running runtest.bat"
+     @echo "NuGetPackageVersionNumber = $(NuGetPackageVersionNumber)"
      test\Microsoft.ML.OnnxRuntime.EndToEndTests.Capi\runtest.bat $(Build.BinariesDirectory)\nuget-artifact x64 $(NuGetPackageVersionNumber)
      REM Need an ErrorLevel check, since the script uses Exit /B
      IF NOT %ERRORLEVEL% EQU 0 {
