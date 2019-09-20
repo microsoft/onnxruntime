@@ -10,9 +10,9 @@ namespace onnxruntime {
 namespace test {
 
 // Disable TensorRT on some of the tests because the limit in its parser: axis >=0 && axis < nbDims
-
 template <typename OutT>
 void TestReduceOp(const std::string& op,
+                  int opset_version,
                   const std::vector<int64_t>& input_dims,
                   const std::vector<float>& data,
                   const std::vector<int64_t>& axes,
@@ -21,7 +21,7 @@ void TestReduceOp(const std::string& op,
                   const std::vector<OutT>& expected_data)
 
 {
-  OpTester test(op.c_str());
+  OpTester test(op.c_str(), opset_version);
   bool has_neg_axis = false;
 
   if (!axes.empty()) {
@@ -57,11 +57,15 @@ TEST(ReductionOpTest, ReductionVariationTest) {
       std::vector<int64_t> expected_values;
       for (auto v : std::get<2>(a.second))
         expected_values.push_back(static_cast<int64_t>(v));
-      TestReduceOp<int64_t>(a.first, input_dims, input_data, attributes.axes_, attributes.keep_dims_,
+      TestReduceOp<int64_t>(a.first, 7, input_dims, input_data, attributes.axes_, attributes.keep_dims_,
+                            expected_dims, expected_values);
+      TestReduceOp<int64_t>(a.first, 11, input_dims, input_data, attributes.axes_, attributes.keep_dims_,
                             expected_dims, expected_values);
     } else {
       const std::vector<float> expected_values = std::get<2>(a.second);
-      TestReduceOp<float>(a.first, input_dims, input_data, attributes.axes_, attributes.keep_dims_,
+      TestReduceOp<float>(a.first, 7, input_dims, input_data, attributes.axes_, attributes.keep_dims_,
+                          expected_dims, expected_values);
+      TestReduceOp<float>(a.first, 11, input_dims, input_data, attributes.axes_, attributes.keep_dims_,
                           expected_dims, expected_values);
     }
   }
