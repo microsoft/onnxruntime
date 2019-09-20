@@ -23,7 +23,12 @@ static void RunTest(const std::vector<float>& x_vals,
 
   test.AddInput<float>("X", dimensions, x_vals);
   test.AddOutput<float>("Y", dimensions, expected_vals);
-  test.Run(expect_result, expected_err_str);
+
+  std::unordered_set<std::string> excluded_eps;
+  if (axis < 0)
+    excluded_eps.insert(kNGraphExecutionProvider); // NGraph EP cannot handle negative axis values
+
+  test.Run(expect_result, expected_err_str, excluded_eps);
 }
 
 TEST(HardmaxOperator, Simple) {
@@ -143,9 +148,17 @@ TEST(HardmaxOperator, InvalidAxis) {
   RunTest(x_vals,
           expected_vals,
           dimensions,
-          /* invalid axis */ -1,
+          /* invalid axis */ -3,
           OpTester::ExpectResult::kExpectFailure,
-          "Invalid axis provided.");
+          "axis -3 is not in valid range [-2,1]");
+}
+
+TEST(HardmaxOperator, NegativeValidAxis) {
+  std::vector<float> x_vals = {-1.0f, 0.0f, 1.0f};
+  std::vector<float> expected_vals = {0.0f, 0.0f, 1.0f};
+  std::vector<int64_t> dimensions = {1, 3};
+
+  RunTest(x_vals, expected_vals, dimensions, -1);
 }
 
 }  // namespace test
