@@ -241,6 +241,14 @@ TEST(MathOpTest, Sub_int32) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT parser:elementwise inputs must not be Int32
 }
 
+TEST(MathOpTest, Sub_scalar) {
+  OpTester test("Sub");
+  test.AddInput<int32_t>("A", {}, {1});
+  test.AddInput<int32_t>("B", {}, {4});
+  test.AddOutput<int32_t>("C", {}, {-3});
+  test.Run();
+}
+
 TEST(MathOpTest, Sub_int64) {
   OpTester test("Sub");
   test.AddInput<int64_t>("A", {3}, {1, 5, 6});
