@@ -31,7 +31,6 @@ using onnxruntime::Environment;
 using onnxruntime::IAllocator;
 using onnxruntime::InputDefList;
 using onnxruntime::MLFloat16;
-using onnxruntime::MLStatus;
 using onnxruntime::OutputDefList;
 using onnxruntime::Tensor;
 using onnxruntime::ToOrtStatus;
