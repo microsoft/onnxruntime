@@ -306,7 +306,7 @@ TEST_F(CApiTest, override_initializer) {
   Ort::Value f2_input_tensor = Ort::Value::CreateTensor(allocator.get(), dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
   // No C++ Api to either create a string Tensor or to fill one with string, so we use C
   const char* const input_char_string[] = {f2_data.c_str()};
-  ORT_THROW_ON_ERROR(OrtFillStringTensor(static_cast<OrtValue*>(f2_input_tensor), input_char_string, 1U));
+  ORT_THROW_ON_ERROR(g_ort->FillStringTensor(static_cast<OrtValue*>(f2_input_tensor), input_char_string, 1U));
 
   Ort::SessionOptions session_options;
   Ort::Session session(env_, OVERRIDABLE_INITIALIZER_MODEL_URI, session_options);
