@@ -508,7 +508,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"bitshift_left_uint64", "BitShift(11) not implemented yet"},
       {"bitshift_left_uint32", "BitShift(11) not implemented yet"},
       {"bitshift_left_uint16", "BitShift(11) not implemented yet"},
-      {"gemm_default_scalar_bias", "Invalid model"},
+      {"gemm_default_scalar_bias", "Gemm ValidBroadcast() has bug to be fixed."},
       {"mlperf_ssd_mobilenet_300", "Shape Inference Error. Possibly the model has issues."},
 };
 
