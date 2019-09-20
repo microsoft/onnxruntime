@@ -32,7 +32,7 @@ namespace Microsoft.ML.OnnxRuntime
         public InferenceSession(string modelPath)
         {
             _builtInSessionOptions = new SessionOptions(); // need to be disposed
-            Init(modelPath, _builtInSessionOptions);
+            Init(modelPath, null, _builtInSessionOptions);
         }
 
 
@@ -43,9 +43,19 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options"></param>
         public InferenceSession(string modelPath, SessionOptions options)
         {
-            Init(modelPath, options);
+            Init(modelPath, null, options);
         }
 
+        public InferenceSession(byte[] model)
+        {
+            _builtInSessionOptions = new SessionOptions(); // need to be disposed
+            Init(null, model, _builtInSessionOptions);
+        }
+
+        public InferenceSession(byte[] model, SessionOptions options)
+        {
+            Init(null, model, options);
+        }
 
         /// <summary>
         /// Meta data regarding the input nodes, keyed by input names
@@ -182,17 +192,24 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region private methods
 
-        protected void Init(string modelPath, SessionOptions options)
+        protected void Init(string modelPath, byte[] modelData, SessionOptions options)
         {
             var envHandle = OnnxRuntime.Handle;
 
             _nativeHandle = IntPtr.Zero;
             try
             {
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.Unicode.GetBytes(modelPath), options.Handle, out _nativeHandle));
+                if (modelData != null)
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionFromArray(envHandle, modelData, (UIntPtr)modelData.Length, options.Handle, out _nativeHandle));
+                }
                 else
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.UTF8.GetBytes(modelPath), options.Handle, out _nativeHandle));
+                {
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                        NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.Unicode.GetBytes(modelPath), options.Handle, out _nativeHandle));
+                    else
+                        NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.UTF8.GetBytes(modelPath), options.Handle, out _nativeHandle));
+                }
 
                 // Initialize input/output metadata
                 _inputMetadata = new Dictionary<string, NodeMetadata>();
