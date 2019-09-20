@@ -324,9 +324,9 @@ struct OrtApi {
 	* If none are called Ort will use its internal CPU execution provider.
 	*/
 
-  OrtStatus*(ORT_API_CALL* SessionGetInputCount)(_In_ const OrtSession* sess, _Out_ size_t* out) NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* SessionGetOutputCount)(_In_ const OrtSession* sess, _Out_ size_t* out) NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* SessionGetOverridableInitializerCount)(_In_ const OrtSession* sess, _Out_ size_t* out) NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* SessionGetInputCount)(_In_ const OrtSession* sess, _Out_ size_t* out)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* SessionGetOutputCount)(_In_ const OrtSession* sess, _Out_ size_t* out)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* SessionGetOverridableInitializerCount)(_In_ const OrtSession* sess, _Out_ size_t* out)NO_EXCEPTION;
 
   /**
    * \param out  should be freed by OrtReleaseTypeInfo after use
@@ -341,9 +341,8 @@ struct OrtApi {
   /**
  * \param out  should be freed by OrtReleaseTypeInfo after use
  */
-  OrtStatus*(ORT_API_CALL* SessionGetOverridableInitializerTypeInfo)(_In_ const OrtSession* sess, size_t index, _Outptr_ OrtTypeInfo** type_info) NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* SessionGetOverridableInitializerTypeInfo)(_In_ const OrtSession* sess, size_t index, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
 
-  
   /**
    * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible in freeing it.
    */
@@ -351,6 +350,8 @@ struct OrtApi {
                                                 _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionGetOutputName)(_In_ const OrtSession* sess, size_t index,
                                                  _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* SessionGetOverridableInitializerName)(_In_ const OrtSession* sess, size_t index,
+                                                                 _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
 
   /**
    * \return A pointer to the newly created object. The pointer should be freed by OrtReleaseRunOptions after use

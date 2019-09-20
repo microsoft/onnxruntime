@@ -153,12 +153,12 @@ inline SessionOptions SessionOptions::Clone() const {
 }
 
 inline SessionOptions& SessionOptions::SetIntraOpNumThreads(int intra_op_num_threads) {
-  ORT_THROW_ON_ERROR(g_api->SetIntraOpNumThreads(p_, intra_op_num_threads));
+  ThrowOnError(g_api->SetIntraOpNumThreads(p_, intra_op_num_threads));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::SetInterOpNumThreads(int inter_op_num_threads) {
-  ORT_THROW_ON_ERROR(g_api->SetInterOpNumThreads(p_, inter_op_num_threads));
+  ThrowOnError(g_api->SetInterOpNumThreads(p_, inter_op_num_threads));
   return *this;
 }
 
@@ -258,9 +258,9 @@ inline size_t Session::GetOutputCount() const {
   return out;
 }
 
-inline size_t Session::GetOverridableInitializerCount () const {
+inline size_t Session::GetOverridableInitializerCount() const {
   size_t out;
-  ORT_THROW_ON_ERROR(OrtSessionGetOverridableInitializerCount(p_, &out));
+  ThrowOnError(g_api->SessionGetOverridableInitializerCount(p_, &out));
   return out;
 }
 
@@ -278,7 +278,7 @@ inline char* Session::GetOutputName(size_t index, OrtAllocator* allocator) const
 
 inline char* Session::GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const {
   char* out;
-  ORT_THROW_ON_ERROR(OrtSessionGetOverridableInitializerName(p_, index, allocator, &out));
+  ThrowOnError(g_api->SessionGetOverridableInitializerName(p_, index, allocator, &out));
   return out;
 }
 
@@ -296,7 +296,7 @@ inline TypeInfo Session::GetOutputTypeInfo(size_t index) const {
 
 inline TypeInfo Session::GetOverridableInitializerTypeInfo(size_t index) const {
   OrtTypeInfo* out;
-  ORT_THROW_ON_ERROR(OrtSessionGetOverridableInitializerTypeInfo(p_, index, &out));
+  ThrowOnError(g_api->SessionGetOverridableInitializerTypeInfo(p_, index, &out));
   return TypeInfo{out};
 }
 
