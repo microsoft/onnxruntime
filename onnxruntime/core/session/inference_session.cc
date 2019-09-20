@@ -46,6 +46,9 @@
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#ifdef USE_DML // TODO: This is necessary for the workaround in TransformGraph
+#include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
+#endif
 #include "core/session/IOBinding.h"
 #include "core/session/custom_ops.h"
 #include "core/util/protobuf_parsing_utils.h"
@@ -143,7 +146,14 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for exec provider");
   }
 
-  std::string provider_type = p_exec_provider->Type();
+  const std::string& provider_type = p_exec_provider->Type();
+
+  // DML's memory is not byte addressable and hence mem pattern doesn't work.
+  if (provider_type == onnxruntime::kDmlExecutionProvider &&
+      session_options_.enable_mem_pattern) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Memory pattern must be disabled before registering DMLExecutionProvider");
+  }
+
   VLOGS(*session_logger_, 1) << "Adding execution provider of type: " << provider_type;
   auto p_data_xfr = p_exec_provider->GetDataTransfer();
   if (p_data_xfr) {
@@ -350,6 +360,23 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 
   // first apply global(execution provider independent),  level 1(default/system/basic) graph to graph optimizations
   ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1));
+
+#ifdef USE_DML
+  // TODO: this is a temporary workaround to apply the DML EP's custom graph transformer prior to partitioning. This
+  // transformer applies DML-specific fusions that go beyond what ORT offers by default. Ideally the DML EP should
+  // apply these transforms during partitioning, but the full mutable Graph object isn't exposed to
+  // IExecutionProvider::GetCapability, which is necessary for the DML EP's transforms.
+  // 
+  // To prevent this from interfering with other EPs, we only apply this transform if the DML EP is the only one that's
+  // registered (aside from the CPU EP, which is always registered by default.)
+  if (execution_providers_.Get(kDmlExecutionProvider) && execution_providers_.NumProviders() <= 2) {
+    auto dml_registry = execution_providers_.Get(kDmlExecutionProvider)->GetKernelRegistry();
+    Dml::GraphTransformer dml_transformer(onnxruntime::kDmlExecutionProvider, std::move(dml_registry));
+
+    bool modified = false;
+    dml_transformer.Apply(graph, modified);
+  }
+#endif
 
   // Do partitioning based on execution providers' capability.
   GraphPartitioner partitioner(kernel_registry_manager, providers);

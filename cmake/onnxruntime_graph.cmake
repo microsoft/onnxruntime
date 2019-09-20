@@ -21,6 +21,13 @@ if(NOT onnxruntime_USE_AUTOML)
     )
 endif()
 
+if(NOT onnxruntime_USE_DML)
+  list(REMOVE_ITEM onnxruntime_graph_src
+    "${ONNXRUNTIME_ROOT}/core/graph/dml_ops/*.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/dml_ops/*.cc"
+    )
+endif()
+
 file(GLOB_RECURSE onnxruntime_ir_defs_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/defs/*.cc"
 )

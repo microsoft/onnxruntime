@@ -95,6 +95,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_mem_pattern = true;
   bool enable_openvino = false;
   bool enable_nnapi = false;
+  bool enable_dml = false;
   GraphOptimizationLevel graph_optimization_level = ORT_DISABLE_ALL;
   bool user_graph_optimization_level_set = false;
 
@@ -155,6 +156,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_openvino = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
             enable_nnapi = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
+            enable_dml = true;
           } else {
             usage();
             return -1;
@@ -301,6 +304,16 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf));
 #else
       fprintf(stderr, "DNNLibrary/NNAPI is not supported in this build");
+      return -1;
+#endif
+    }
+    if (enable_dml) {
+#ifdef USE_DML
+      fprintf(stderr, "Disabling mem pattern since DML is used");
+      sf.DisableMemPattern();
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_DML(sf, 0));
+#else
+      fprintf(stderr, "DML is not supported in this build");
       return -1;
 #endif
     }
@@ -500,6 +513,32 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
   broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
   broken_tests.insert({"tf_inception_v1", "flaky test"}); //TODO: Investigate cause for flakiness
+#endif
+
+#ifdef USE_DML
+  if (enable_dml)
+  {
+    broken_tests.insert({"PixelShuffle", "Test requires 6D Reshape, which isn't supported by DirectML"});
+    broken_tests.insert({"operator_permute2", "Test requires 6D Transpose, which isn't supported by DirectML"});
+    broken_tests.insert({"resize_downsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
+    broken_tests.insert({"resize_upsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
+    broken_tests.insert({"resize_upsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
+
+    // These tests are temporarily disabled pending a fix to the DML EP for Convolution when 3D tensors are supplied
+    broken_tests.insert({"Conv1d", "Temporarily disabled due to EP bug"});
+    broken_tests.insert({"Conv1d_dilated", "Temporarily disabled due to EP bug"});
+    broken_tests.insert({"Conv1d_groups", "Temporarily disabled due to EP bug"});
+    broken_tests.insert({"Conv1d_pad1", "Temporarily disabled due to EP bug"});
+    broken_tests.insert({"Conv1d_pad1size1", "Temporarily disabled due to EP bug"});
+    broken_tests.insert({"Conv1d_pad2", "Temporarily disabled due to EP bug"});
+    broken_tests.insert({"Conv1d_pad2size1", "Temporarily disabled due to EP bug"});
+    broken_tests.insert({"Conv1d_stride", "Temporarily disabled due to EP bug"});
+
+    // These tests are temporarily disabled pending a fix to the DML EP for handling of the output_padding attribute
+    broken_tests.insert({"ConvTranspose2d", "Temporarily disabled due to EP bug"});
+    broken_tests.insert({"ConvTranspose2d_no_bias", "Temporarily disabled due to EP bug"});
+    broken_tests.insert({"operator_convtranspose", "Temporarily disabled due to EP bug"});
+  }
 #endif
   // clang-format on
 

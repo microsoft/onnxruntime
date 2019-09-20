@@ -250,6 +250,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_DML}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util

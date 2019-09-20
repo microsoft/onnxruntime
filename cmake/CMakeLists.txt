@@ -80,6 +80,7 @@ option(onnxruntime_USE_EIGEN_THREADPOOL "Use eigen threadpool. Otherwise OpenMP 
 option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir")
 option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in language other than cpp" OFF)
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output data to standard output when executing the model." OFF)
+option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
@@ -640,6 +641,15 @@ endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   add_definitions(-DMICROSOFT_INTERNAL)
+endif()
+
+if (onnxruntime_USE_DML)
+  if(NOT WIN32)
+    message(FATAL_ERROR "The DirectML execution provider is only supported when building for Windows.")
+  endif()
+
+  add_definitions(-DUSE_DML=1)
+  include(dml)
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers
