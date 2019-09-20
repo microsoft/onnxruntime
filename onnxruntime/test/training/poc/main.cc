@@ -113,6 +113,10 @@ void setup_training_params(TrainingRunner::Parameters& params) {
     params.training_optimizer_name = "SGDOptimizer";
   }
 
+#ifdef USE_HOROVOD
+  params.mpi_context = setup_horovod();
+#endif
+
   params.error_function = [](const std::vector<std::string>& /*feed_names*/,
                              const std::vector<OrtValue>& feeds,
                              const std::vector<std::string>& /*fetch_names*/,
@@ -184,11 +188,6 @@ int main(int argc, char* args[]) {
   TrainingRunner::Parameters params;
   RETURN_IF_FAIL(ParseArguments(argc, args, params));
   setup_training_params(params);
-
-  // setup horovod
-#ifdef USE_HOROVOD
-  params.mpi_context = setup_horovod();
-#endif
 
   params.learning_rate /= params.mpi_context.world_size;
 

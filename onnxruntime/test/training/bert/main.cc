@@ -197,6 +197,10 @@ void setup_training_params(TrainingRunner::Parameters& params) {
 
   params.skip_evaluation = params.is_perf_test;
 
+#ifdef USE_HOROVOD
+  params.mpi_context = setup_horovod();
+#endif
+
   params.error_function = [params](const std::vector<std::string>& /*feed_names*/,
                                    const std::vector<OrtValue>& /*feeds*/,
                                    const std::vector<std::string>& fetch_names,
@@ -272,11 +276,6 @@ int main(int argc, char* argv[]) {
   // setup onnxruntime env
   unique_ptr<Environment> env;
   ORT_ENFORCE(Environment::Create(env).IsOK());
-
-// setup horovod
-#ifdef USE_HOROVOD
-  params.mpi_context = setup_horovod();
-#endif
 
   // start training session
   std::unique_ptr<TrainingRunner> runner;
