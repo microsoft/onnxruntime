@@ -201,6 +201,12 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region private methods
 
+        /// <summary>
+        /// Initializes the session object with a model specified by either file path or byte array
+        /// </summary>
+        /// <param name="modelPath">Model's file path to load. This parameter is ignored if <paramref name="modelData"/> is specified.</param>
+        /// <param name="modelData">Model's byte array to read. If this parameter is ignored, then <paramref name="modelPath"/> will be ignored.</param>
+        /// <param name="options">Session options</param>
         private void Init(string modelPath, byte[] modelData, SessionOptions options)
         {
             var envHandle = OnnxRuntime.Handle;
