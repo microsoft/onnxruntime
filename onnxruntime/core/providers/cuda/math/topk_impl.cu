@@ -126,7 +126,16 @@ Status TopKImpl(const T* input_x, T* output_v, int64_t* output_i, const int64_t*
   return Status::OK();
 }
 
-template Status TopKImpl<int32_t> (const int32_t* input_x, int32_t* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted);
+template Status TopKImpl<uint8_t>  (const uint8_t*   input_x, uint8_t*   output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted);
+template Status TopKImpl<uint16_t> (const uint16_t*  input_x, uint16_t*  output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted);
+template Status TopKImpl<uint32_t> (const uint32_t*  input_x, uint32_t*  output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted);
+template Status TopKImpl<uint64_t> (const uint64_t*  input_x, uint64_t*  output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted);
+template Status TopKImpl<int8_t>   (const int8_t*    input_x, int8_t*    output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted);
+template Status TopKImpl<int16_t>  (const int16_t*   input_x, int16_t*   output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted);
+template Status TopKImpl<int32_t>  (const int32_t*   input_x, int32_t*   output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted);
+template Status TopKImpl<int64_t>  (const int64_t*   input_x, int64_t*   output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted);
+template Status TopKImpl<float>    (const float*     input_x, float*     output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted);
+template Status TopKImpl<double>   (const double*    input_x, double*    output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted);
 
 }
 }

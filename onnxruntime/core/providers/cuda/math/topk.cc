@@ -16,8 +16,7 @@ ONNX_OPERATOR_KERNEL_EX(
   kOnnxDomain,
   11,
   kCudaExecutionProvider,
-  KernelDefBuilder()
-    .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
   TopK);
 
 TopK::TopK(const OpKernelInfo& info) : CudaKernel(info) {
@@ -36,8 +35,9 @@ TopK::TopK(const OpKernelInfo& info) : CudaKernel(info) {
 Status TopK::ComputeInternal(OpKernelContext* ctx) const {
     auto tensor_X = ctx->Input<Tensor>(0);
     ORT_ENFORCE(nullptr != tensor_X);
-    auto axis = axis_ < 0 ? tensor_X->Shape().NumDimensions() + axis_ : axis_;
-    ORT_ENFORCE(axis > -1 && axis < tensor_X->Shape().NumDimensions());
+    auto rank = static_cast<int64_t>(tensor_X->Shape().NumDimensions());
+    auto axis = axis_ < 0 ? rank + axis_ : axis_;
+    ORT_ENFORCE(axis > -1 && axis < rank);
 
     auto tensor_K = ctx->Input<Tensor>(1);
     ORT_ENFORCE(nullptr != tensor_K);
@@ -50,7 +50,7 @@ Status TopK::ComputeInternal(OpKernelContext* ctx) const {
     auto tensor_I = ctx->Output(1, output_shape);
 
     auto elem_nums = tensor_X->Shape().GetDims();
-    for (size_t i = elem_nums.size()-2; i >= 0; --i) {
+    for (auto i = static_cast<int32_t>(elem_nums.size())-2; i >= 0; --i) {
       elem_nums[i] *= elem_nums[i+1];
     }
 
@@ -72,8 +72,6 @@ Status TopK::ComputeInternal(OpKernelContext* ctx) const {
       return TOPKIMPL(int64_t);
     } else if (tensor_X->DataType() == DataTypeImpl::GetType<float>()) {
       return TOPKIMPL(float);
-    } else if (tensor_X->DataType() == DataTypeImpl::GetType<MLFloat16>()) {
-      return TOPKIMPL(MLFloat16);
     } else if (tensor_X->DataType() == DataTypeImpl::GetType<double>()) {
       return TOPKIMPL(double);
     } else {

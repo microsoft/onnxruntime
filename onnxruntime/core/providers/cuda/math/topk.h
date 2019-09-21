@@ -14,9 +14,9 @@ class TopK final : public CudaKernel {
   Status ComputeInternal(OpKernelContext*) const override;
 
  private:
-  int64_t axis_     = -1;
-  int64_t largest_  = -1;
-  int64_t sorted_   = -1;
+  int64_t axis_;
+  int64_t largest_;
+  int64_t sorted_;
 };
 }  // namespace cuda
 }  // namespace onnxruntime
