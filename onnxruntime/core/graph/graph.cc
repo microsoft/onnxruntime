@@ -11,7 +11,7 @@
 #include <numeric>
 #include <stack>
 
-#include "gsl/pointers"
+#include "gsl/gsl"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/function.h"
 #include "core/graph/function_impl.h"

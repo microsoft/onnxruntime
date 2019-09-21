@@ -10,7 +10,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensorprotoutils.h"
 #include "onnx/defs/schema.h"
-#include "gsl/span"
+#include "gsl/gsl"
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {

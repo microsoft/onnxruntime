@@ -19,7 +19,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include <gsl/gsl_byte>
+#include <gsl/gsl>
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {

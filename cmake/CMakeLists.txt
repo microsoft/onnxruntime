@@ -298,13 +298,14 @@ get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
 set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
-add_subdirectory(external/gsl EXCLUDE_FROM_ALL)
+add_subdirectory(external/gsl-lite EXCLUDE_FROM_ALL)
 add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
 set_target_properties(re2 PROPERTIES FOLDER "External/re2")
-add_library(gsl ALIAS GSL)
+add_library(gsl ALIAS gsl-lite)
 
 # bounds checking behavior.
 # throw instead of calling terminate if there's a bounds checking violation.
+# The following -DGSL macros are recognized by gsl-lite along with -Dgsl macros
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGSL_THROW_ON_CONTRACT_VIOLATION")
 # no bounds checking in release build so no perf cost
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DGSL_UNENFORCED_ON_CONTRACT_VIOLATION")

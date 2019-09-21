@@ -141,7 +141,7 @@ void BahdanauAttention<T>::Compute(
       }
     }
 
-    SoftmaxInplace(gsl::span<T>{alignments, mem_steps});
+    SoftmaxInplace(gsl::span<T>{alignments, gsl::narrow_cast<gsl::index>(mem_steps)});
 
     // Calculate the context
     auto outspan = output.subspan(b * memory_depth_);

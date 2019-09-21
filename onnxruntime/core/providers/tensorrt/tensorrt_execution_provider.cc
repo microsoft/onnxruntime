@@ -15,7 +15,7 @@
 #include "core/common/status.h"
 #include "onnx/shape_inference/implementation.h"
 #include "cuda_runtime_api.h"
-#include "gsl/pointers"
+#include "gsl/gsl"
 #include "core/graph/model.h"
 #include "cuda_runtime_api.h"
 #include "core/providers/cuda/gpu_data_transfer.h"

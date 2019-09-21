@@ -10,7 +10,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/framework/ml_value.h"
 
-#include "gsl/gsl_algorithm"
+#include "gsl/gsl"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider.h"

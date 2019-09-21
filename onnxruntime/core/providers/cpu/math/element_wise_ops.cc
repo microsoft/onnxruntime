@@ -685,7 +685,7 @@ class Asinh final : public OpKernel {
     auto in = gsl::make_span(X_data, X.Shape().Size());
     auto out = gsl::make_span(Y_data, Y.Shape().Size());
 
-    for (int64_t index = 0; index < in.size(); ++index) {
+    for (size_t index = 0; index < in.size(); ++index) {
       out[index] = std::asinh(in[index]);
     }
     return Status::OK();
@@ -717,7 +717,7 @@ class Acosh final : public OpKernel {
     auto in = gsl::make_span(X_data, X.Shape().Size());
     auto out = gsl::make_span(Y_data, Y.Shape().Size());
 
-    for (int64_t index = 0; index < in.size(); ++index) {
+    for (size_t index = 0; index < in.size(); ++index) {
       out[index] = std::acosh(in[index]);
     }
     return Status::OK();
@@ -749,7 +749,7 @@ class Atanh final : public OpKernel {
     auto in = gsl::make_span(X_data, X.Shape().Size());
     auto out = gsl::make_span(Y_data, Y.Shape().Size());
 
-    for (int64_t index = 0; index < in.size(); ++index) {
+    for (size_t index = 0; index < in.size(); ++index) {
       out[index] = std::atanh(in[index]);
     }
     return Status::OK();

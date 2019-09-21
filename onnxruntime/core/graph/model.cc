@@ -17,8 +17,7 @@
 #endif
 #include "core/util/protobuf_parsing_utils.h"
 
-#include "gsl/pointers"
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 #include "core/platform/env.h"
 #include "core/graph/schema_registry.h"

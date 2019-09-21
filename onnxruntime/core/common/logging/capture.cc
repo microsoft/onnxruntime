@@ -3,8 +3,7 @@
 
 #include "core/common/logging/capture.h"
 #include "core/common/logging/logging.h"
-#include "gsl/span"
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 namespace onnxruntime {
 namespace logging {

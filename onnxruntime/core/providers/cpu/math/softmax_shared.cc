@@ -35,8 +35,7 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
-#include "gsl/gsl_algorithm"
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 namespace onnxruntime {
 

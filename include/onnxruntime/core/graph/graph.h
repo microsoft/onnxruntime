@@ -19,8 +19,7 @@
 #include "core/graph/node_arg.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/function.h"
-#include "gsl/gsl_util"
-#include "gsl/pointers"
+#include "gsl/gsl"
 
 namespace onnxruntime {
 class Graph;

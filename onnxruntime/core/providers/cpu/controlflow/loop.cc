@@ -20,8 +20,7 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 
-#include "gsl/gsl_algorithm"
-#include "gsl/span"
+#include "gsl/gsl"
 
 #ifdef _MSC_VER
 #pragma warning(pop)

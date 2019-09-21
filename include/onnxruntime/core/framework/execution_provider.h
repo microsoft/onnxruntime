@@ -4,7 +4,7 @@
 #pragma once
 
 #include <unordered_map>
-#include "gsl/pointers"
+#include "gsl/gsl"
 
 #include "core/common/status.h"
 #include "core/framework/tensor.h"
