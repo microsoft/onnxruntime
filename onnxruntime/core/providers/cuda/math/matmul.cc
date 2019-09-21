@@ -67,10 +67,9 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         static_cast<int>(helper.N())));
     return Status::OK();
   }
-  int device_id = GetDeviceId();
-  CudaAsyncBuffer<const CudaT*> left_arrays(this, device_id, helper.LeftOffsets().size());
-  CudaAsyncBuffer<const CudaT*> right_arrays(this, device_id, helper.RightOffsets().size());
-  CudaAsyncBuffer<CudaT*> output_arrays(this, device_id, helper.OutputOffsets().size());
+  CudaAsyncBuffer<const CudaT*> left_arrays(this, helper.LeftOffsets().size());
+  CudaAsyncBuffer<const CudaT*> right_arrays(this, helper.RightOffsets().size());
+  CudaAsyncBuffer<CudaT*> output_arrays(this, helper.OutputOffsets().size());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(left_X->template Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(right_X->template Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<CudaT*>(Y->template MutableData<T>()), helper.OutputOffsets(), output_arrays.CpuSpan());

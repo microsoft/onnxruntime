@@ -10,18 +10,23 @@ namespace onnxruntime {
 
 Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_ptr, const Tensor* batch_indices_ptr);
 
+enum struct RoiAlignMode {
+  avg = 0,
+  max
+};
+
 template <typename T>
-class RoiAlign final : public OpKernel {
+class RoiAlignBase {
  public:
-  explicit RoiAlign(const OpKernelInfo& info) : OpKernel(info) {
+  explicit RoiAlignBase(const OpKernelInfo& info) {
     // mode
-    std::string mode_tmp;
-    if (info.GetAttr<std::string>("mode", &mode_tmp).IsOK()) {
-      mode_ = mode_tmp;
-      std::transform(mode_.begin(), mode_.end(), mode_.begin(), [](auto& i) { return static_cast<char>(::tolower(i)); });
-      if (mode_ != "avg" && mode_ != "max") {
-        ORT_THROW("Invalid mode of value ", mode_, " specified. It should be either avg or max");
+    std::string mode;
+    if (info.GetAttr<std::string>("mode", &mode).IsOK()) {
+      std::transform(mode.begin(), mode.end(), mode.begin(), [](auto& i) { return static_cast<char>(::tolower(i)); });
+      if (mode != "avg" && mode != "max") {
+        ORT_THROW("Invalid mode of value ", mode, " specified. It should be either avg or max");
       }
+      mode_ = mode == "avg" ? RoiAlignMode::avg : RoiAlignMode::max;
     }
 
     // output_height
@@ -50,15 +55,25 @@ class RoiAlign final : public OpKernel {
     }
   }
 
-  Status Compute(OpKernelContext* context) const override;
-
- private:
-  std::string mode_{"avg"};
+ protected:
+  RoiAlignMode mode_{RoiAlignMode::avg};
   int64_t output_height_{1};
   int64_t output_width_{1};
   int64_t sampling_ratio_{0};
   float spatial_scale_{1.0f};
 
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RoiAlignBase);
+};
+
+template <typename T>
+class RoiAlign final : public OpKernel, public RoiAlignBase<T> {
+ public:
+  explicit RoiAlign(const OpKernelInfo& info) : OpKernel(info), RoiAlignBase<T>(info) {}
+
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RoiAlign);
 };
 }  // namespace onnxruntime
