@@ -814,6 +814,20 @@ std::pair<common::Status, const InputDefList*> InferenceSession::GetModelInputs(
   return std::make_pair(common::Status::OK(), &model_->MainGraph().GetInputs());
 }
 
+std::pair<common::Status, const InputDefList*> InferenceSession::GetOverridableInitializers() const {
+  {
+    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    if (!is_model_loaded_) {
+      LOGS(*session_logger_, ERROR) << "Model was not loaded";
+      return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."),
+                            nullptr);
+    }
+  }
+
+  // returns a list of initializers that can be overriden.
+  return std::make_pair(common::Status::OK(), &model_->MainGraph().GetOverridableInitializers());
+}
+
 std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutputs() const {
   {
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
@@ -1023,7 +1037,7 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
                                                  const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
-    auto transformers_to_register = transformer_utils::GenerateTransformers(level, custom_list);
+    auto transformers_to_register = transformer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides, custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }
