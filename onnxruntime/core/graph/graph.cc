@@ -650,13 +650,6 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
       continue;
     }
 
-    // 'Constant' nodes support specifying a tensor or sparse_tensor starting Opset-11
-    // Only one of them can be present in a node. Hence enforcing this.
-    ORT_ENFORCE(node.attribute_size() == 1 , "This is an invalid model. " 
-                                             "The model contains an invalid 'Constant' node. "
-                                             "Exactly one of the two attributes - 'value' or "
-                                             "'sparse_value' must be specified in a 'Constant' node. ");
-
     // Copy constant nodes _value to name_to_initial_tensor_
     const gsl::not_null<TensorProto*>
         tensor{graph_proto_->add_initializer()};
@@ -666,7 +659,7 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
     // An easy way is to implement a method that converts a SparseTensorproto into a TensorProto to use the same downstream flow,
     // but that is going to impact peak memory usage and probably a smarter way is required.
     ORT_ENFORCE(constant_attribute.has_t(), "Only 'value' attribute is supported within a 'Constant' node in ORT");
-    *tensor = node.attribute(0).t();
+    *tensor = constant_attribute.t();
     *(tensor->mutable_name()) = node.output(0);
   }
 
