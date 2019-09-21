@@ -404,6 +404,9 @@ namespace Microsoft.ML.OnnxRuntime
         //[DllImport(nativeLib, CharSet = charSet)]
         //public static extern void OrtAddCustomOp(IntPtr /*(OrtSessionOptions*)*/ options, string custom_op_path);
 
+        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverride(IntPtr /*(OrtSessionOptions*) */ options, string /*(const char*)*/ symbolic_dim, int dim_override);
+        public static DOrtAddFreeDimensionOverride OrtAddFreeDimensionOverride;
+
         #endregion
 
         #region RunOptions API
