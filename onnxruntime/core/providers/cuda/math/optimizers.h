@@ -88,6 +88,7 @@ void LambUpdateImpl(
     const T2* weights,
     const T1* update_direction,
     T2* weights_out,
+    half* fp16_weights_out,
     size_t count);
 
 // Implementation can be found in cuda file, optimizers_impl.cu
@@ -123,8 +124,8 @@ void AccumulateGradientImpl(
     T* accumulated_gradient,
     size_t count);
 
-template<typename T, typename T_GRAD>
-class AccumulateGradient final :  public CudaKernel {
+template <typename T, typename T_GRAD>
+class AccumulateGradient final : public CudaKernel {
  public:
   AccumulateGradient(const OpKernelInfo& info) : CudaKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;

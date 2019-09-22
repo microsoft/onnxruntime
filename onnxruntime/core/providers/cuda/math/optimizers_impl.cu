@@ -47,7 +47,7 @@ template void SGDOptimizerImpl(                    \
 
 SPECIALIZED_IMPL__SGDOptimizerImpl(float)
 
-template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD>
+template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, bool update_fp16_weight>
 __global__ void _AdamOptimizer(
     const T1* eta,
     const T2* update_count,
@@ -69,7 +69,7 @@ __global__ void _AdamOptimizer(
   // Regularize gradient.
   const T4 g_regularized = lambda * T4(weights[id]) + T4(grads[id]);
 
-  // A shared constant. 
+  // A shared constant.
   const T4 one = T4(1.0f);
 
   // Update exponentially-averaged historical gradient.
@@ -91,7 +91,7 @@ __global__ void _AdamOptimizer(
     T3(eta_new * moment_1_out[id] / (_Sqrt(moment_2_out[id]) + epsilon));
   *update_count_out = (*update_count) + 1;
 
-  if (fp16_weights_out != nullptr) {
+  if (update_fp16_weight) {
     fp16_weights_out[id] = static_cast<half>(weights_out[id]);
   }
 }
@@ -116,7 +116,9 @@ void AdamOptimizerImpl(
     size_t count) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _AdamOptimizer<T1, T2, T3, T4, T_GRAD><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+
+  if (fp16_weights_out != nullptr){
+    _AdamOptimizer<T1, T2, T3, T4, T_GRAD, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       eta,
       update_count,
       weights,
@@ -133,6 +135,25 @@ void AdamOptimizerImpl(
       update_count_out,
       fp16_weights_out,
       N);
+  } else {
+    _AdamOptimizer<T1, T2, T3, T4, T_GRAD, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      eta,
+      update_count,
+      weights,
+      grads,
+      moment_1,
+      moment_2,
+      alpha,
+      beta,
+      lambda,
+      epsilon,
+      weights_out,
+      moment_1_out,
+      moment_2_out,
+      update_count_out,
+      nullptr,
+      N);
+  }
 }
 
 #define SPECIALIZED_AdamOptimizerImpl(T1, T2, T3, T4, T_GRAD) \
@@ -245,7 +266,7 @@ SPECIALIZED_IMPL_LambComputeDirectionImpl(double, double, double)
 SPECIALIZED_IMPL_LambComputeDirectionImpl(float, half, half)
 SPECIALIZED_IMPL_LambComputeDirectionImpl(float, half, float)
 
-template <typename T1, typename T2>
+template <typename T1, typename T2, bool update_fp16_weight>
 __global__ void _LambUpdate(
     const T1* eta,
     const T2* r_norm,
@@ -253,11 +274,16 @@ __global__ void _LambUpdate(
     const T2* weights,
     const T1* update_direction,
     T2* weights_out,
+    half* fp16_weights_out,
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   // Compute new weight using the saved update direction.
   weights_out[id] = weights[id] - \
     _Sqrt((*w_norm) / (*r_norm)) * T2((*eta) * update_direction[id]);
+
+  if (update_fp16_weight) {
+    fp16_weights_out[id] = static_cast<half>(weights_out[id]);
+  }
 }
 
 template <typename T1, typename T2>
@@ -268,18 +294,32 @@ void LambUpdateImpl(
     const T2* weights,
     const T1* update_direction,
     T2* weights_out,
+    half* fp16_weights_out,
     size_t count) {
   int blocksPerGrid = \
     (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _LambUpdate<T1, T2><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  if (fp16_weights_out != nullptr) {
+    _LambUpdate<T1, T2, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       eta,
       r_norm,
       w_norm,
       weights,
       update_direction,
       weights_out,
+      fp16_weights_out,
       N);
+  } else {
+    _LambUpdate<T1, T2, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      eta,
+      r_norm,
+      w_norm,
+      weights,
+      update_direction,
+      weights_out,
+      nullptr,
+      N);
+  }
 }
 
 #define SPECIALIZED_IMPL_LambUpdate(T1, T2) \
@@ -290,6 +330,7 @@ template void LambUpdateImpl(               \
     const T2* weights,                      \
     const T1* update_direction,             \
     T2* weights_out,                        \
+    half* fp16_weights_out,                        \
     size_t count);
 
 SPECIALIZED_IMPL_LambUpdate(float, float)

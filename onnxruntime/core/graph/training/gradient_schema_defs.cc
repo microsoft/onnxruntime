@@ -146,6 +146,12 @@ void RegisterGradientSchemas() {
           "FP16 weights to optimize.",
           "T_FP16",
           OpSchema::Optional)
+      .Input(
+          7,
+          "do_update",
+          "If this flag is set to false, optimizer will skip weight update.",
+          "B",
+          OpSchema::Optional)
       .Output(
           0,
           "new_weights",
@@ -218,7 +224,11 @@ void RegisterGradientSchemas() {
       .TypeConstraint(
           "T_FP16",
           {"tensor(float16)"},
-          "Constrain input types to float16 tensors.");
+          "Constrain input types to float16 tensors.")
+      .TypeConstraint(
+          "B",
+          {"tensor(bool)"},
+          "Constrain input types to bool tensors.");
 
   // TODO: This is copied from onnx schemas. When the change is in and we update this can be removed.
   // For Brevity documentation was not copied
@@ -245,6 +255,18 @@ void RegisterGradientSchemas() {
           "moment_2",
           "exponentially averaged historical squared gradients.",
           "T4")
+      .Input(
+          5,
+          "fp16_weights",
+          "FP16 weights to optimize.",
+          "T_FP16",
+          OpSchema::Optional)
+      .Input(
+          6,
+          "do_update",
+          "If this flag is set to false, optimizer will skip weight update.",
+          "B",
+          OpSchema::Optional)
       .Output(
           0,
           "new_weights",
@@ -260,6 +282,12 @@ void RegisterGradientSchemas() {
           "output_moment_2",
           "New averaged squared gradients",
           "T4")
+      .Output(
+          3,
+          "new_fp16_weights",
+          "New FP16 weights",
+          "T_FP16",
+          OpSchema::Optional)
       .Attr(
           "alpha",
           "Coefficient of previous gradient in running average.",
@@ -298,7 +326,15 @@ void RegisterGradientSchemas() {
       .TypeConstraint(
           "T4",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input types to float tensors.");
+          "Constrain input types to float tensors.")
+      .TypeConstraint(
+          "T_FP16",
+          {"tensor(float16)"},
+          "Constrain input types to float16 tensors.")
+      .TypeConstraint(
+          "B",
+          {"tensor(bool)"},
+          "Constrain input types to bool tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GradientAccumulator)
       .SinceVersion(9)
@@ -316,7 +352,7 @@ void RegisterGradientSchemas() {
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
-      });          
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ZeroGradient)
       .SinceVersion(9)
@@ -334,7 +370,7 @@ void RegisterGradientSchemas() {
           "reset_signal can be of any tensor type.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
-      });            
+      });
 }
 }  // namespace training
 }  // namespace onnxruntime

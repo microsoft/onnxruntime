@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include <algorithm>
@@ -1097,19 +1097,67 @@ TEST(GradientCheckerTest, GeluGrad) {
   UnaryOpGradientTest("Gelu");
 }
 
+struct AdamOptimizerInputOutput {
+  AdamOptimizerInputOutput() {
+    eta_half.resize(eta.size());
+    g_half.resize(g.size());
+    m1_half.resize(m1.size());
+    m2_half.resize(m2.size());
+    w_half.resize(w.size());
+    ConvertFloatToMLFloat16(eta.data(), eta_half.data(), int(eta.size()));
+    ConvertFloatToMLFloat16(g.data(), g_half.data(), int(g.size()));
+    ConvertFloatToMLFloat16(m1.data(), m1_half.data(), int(m1.size()));
+    ConvertFloatToMLFloat16(m2.data(), m2_half.data(), int(m2.size()));
+    ConvertFloatToMLFloat16(w.data(), w_half.data(), int(w.size()));
+
+    m1_new_half.resize(m1_new.size());
+    m2_new_half.resize(m2_new.size());
+    w_new_half.resize(w_new.size());
+    ConvertFloatToMLFloat16(m1_new.data(), m1_new_half.data(), int(m1_new.size()));
+    ConvertFloatToMLFloat16(m2_new.data(), m2_new_half.data(), int(m2_new.size()));
+    ConvertFloatToMLFloat16(w_new.data(), w_new_half.data(), int(w_new.size()));
+  }
+
+  // Fp32 Inputs
+  std::vector<float> eta = {0.5f};
+  std::vector<float> w = {1.0f, 2.0f, 3.0f};
+  std::vector<float> g = {4.0f, 5.0f, 6.0f};
+  std::vector<float> m1 = {0.1f, 0.2f, 0.3f};
+  std::vector<float> m2 = {0.4f, 0.5f, 0.6f};
+
+  // Fp16 Inputs
+  std::vector<MLFloat16> eta_half;
+  std::vector<MLFloat16> w_half;
+  std::vector<MLFloat16> g_half;
+  std::vector<MLFloat16> m1_half;
+  std::vector<MLFloat16> m2_half;
+
+  // FP32 Outptus
+  std::vector<float> w_new = {0.9232284f, 1.9051629f, 2.8897603f};
+  std::vector<float> m1_new = {0.49f, 0.68f, 0.87f};
+  std::vector<float> m2_new = {0.4156f, 0.5245f, 0.6354f};
+
+  // FP16 Outptus
+  std::vector<MLFloat16> w_new_half;
+  std::vector<MLFloat16> m1_new_half;
+  std::vector<MLFloat16> m2_new_half;
+};
+
 TEST(OptimizerTest, AdamOptimizerTest) {
   OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
-  test.AddInput<float>("ETA", {}, {0.5f});
+  AdamOptimizerInputOutput data;
+
+  test.AddInput<float>("ETA", {}, data.eta);
   test.AddInput<int64_t>("Update_Count", {}, {3});
-  test.AddInput<float>("W", {3}, {1, 2, 3});
-  test.AddInput<float>("G", {3}, {4, 5, 6});
-  test.AddInput<float>("Moment_1", {3}, {0.1f, 0.2f, 0.3f});
-  test.AddInput<float>("Moment_2", {3}, {0.4f, 0.5f, 0.6f});
+  test.AddInput<float>("W", {3}, data.w);
+  test.AddInput<float>("G", {3}, data.g);
+  test.AddInput<float>("Moment_1", {3}, data.m1);
+  test.AddInput<float>("Moment_2", {3}, data.m2);
 
   // Verify AdamOptimizer outputs
-  test.AddOutput<float>("W_Out", {3}, {0.9232284f, 1.9051629f, 2.8897603f});
-  test.AddOutput<float>("Moment_1_Out", {3}, {0.49f, 0.68f, 0.87f});
-  test.AddOutput<float>("Moment_2_Out", {3}, {0.4156f, 0.5245f, 0.6354f});
+  test.AddOutput<float>("W_Out", {3}, data.w_new);
+  test.AddOutput<float>("Moment_1_Out", {3}, data.m1_new);
+  test.AddOutput<float>("Moment_2_Out", {3}, data.m2_new);
   test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
 
   test.Run();
@@ -1491,83 +1539,84 @@ TEST(GradientCheckerTest, GatherNDGrad_int32_indice_unique_float_data_axis_2) {
 
 TEST(OptimizerTest, AdamOptimizerMixPrecisionTest) {
   OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
-  std::vector<float> eta = {0.5f};
-  std::vector<float> w = {1.0f, 2.0f, 3.0f};
-  std::vector<float> g = {4.0f, 5.0f, 6.0f};
-  std::vector<float> m1 = {0.1f, 0.2f, 0.3f};
-  std::vector<float> m2 = {0.4f, 0.5f, 0.6f};
+  AdamOptimizerInputOutput data;
 
-  std::vector<MLFloat16> eta_half(eta.size());
-  std::vector<MLFloat16> g_half(w.size());
-  std::vector<MLFloat16> m1_half(w.size());
-  std::vector<MLFloat16> m2_half(w.size());
-
-  ConvertFloatToMLFloat16(eta.data(), eta_half.data(), int(eta.size()));
-  ConvertFloatToMLFloat16(g.data(), g_half.data(), int(g.size()));
-  ConvertFloatToMLFloat16(m1.data(), m1_half.data(), int(m1.size()));
-  ConvertFloatToMLFloat16(m2.data(), m2_half.data(), int(m2.size()));
-
-  std::vector<float> w_new = {0.9232284f, 1.9051629f, 2.8897603f};
-  std::vector<float> m1_new = {0.49f, 0.68f, 0.87f};
-  std::vector<float> m2_new = {0.4156f, 0.5245f, 0.6354f};
-
-  std::vector<MLFloat16> m1_new_half(w.size());
-  std::vector<MLFloat16> m2_new_half(w.size());
-  ConvertFloatToMLFloat16(m1_new.data(), m1_new_half.data(), int(m1_new.size()));
-  ConvertFloatToMLFloat16(m2_new.data(), m2_new_half.data(), int(m2_new.size()));
-
-  test.AddInput<MLFloat16>("ETA", {}, eta_half);
+  test.AddInput<MLFloat16>("ETA", {}, data.eta_half);
   test.AddInput<int64_t>("Update_Count", {}, {3});
-  test.AddInput<float>("W", {3}, w);
-  test.AddInput<MLFloat16>("G", {3}, g_half);
-  test.AddInput<MLFloat16>("Moment_1", {3}, m1_half);
-  test.AddInput<MLFloat16>("Moment_2", {3}, m2_half);
+  test.AddInput<float>("W", {3}, data.w);
+  test.AddInput<MLFloat16>("G", {3}, data.g_half);
+  test.AddInput<MLFloat16>("Moment_1", {3}, data.m1_half);
+  test.AddInput<MLFloat16>("Moment_2", {3}, data.m2_half);
 
   // Verify AdamOptimizer outputs
-  test.AddOutput<float>("W_Out", {3}, w_new);
-  test.AddOutput<MLFloat16>("Moment_1_Out", {3}, m1_new_half);
-  test.AddOutput<MLFloat16>("Moment_2_Out", {3}, m2_new_half);
+  test.AddOutput<float>("W_Out", {3}, data.w_new);
+  test.AddOutput<MLFloat16>("Moment_1_Out", {3}, data.m1_new_half);
+  test.AddOutput<MLFloat16>("Moment_2_Out", {3}, data.m2_new_half);
   test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
+
+  test.Run();
+}
+
+TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_Test) {
+  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  AdamOptimizerInputOutput data;
+
+  test.AddInput<MLFloat16>("ETA", {}, data.eta_half);
+  test.AddInput<int64_t>("Update_Count", {}, {3});
+  test.AddInput<float>("W", {3}, data.w);
+  test.AddInput<MLFloat16>("G", {3}, data.g_half);
+  test.AddInput<MLFloat16>("Moment_1", {3}, data.m1_half);
+  test.AddInput<MLFloat16>("Moment_2", {3}, data.m2_half);
+  test.AddInput<MLFloat16>("FP16_W", {3}, data.w_half);
+
+  // Verify AdamOptimizer outputs
+  test.AddOutput<float>("W_Out", {3}, data.w_new);
+  test.AddOutput<MLFloat16>("Moment_1_Out", {3}, data.m1_new_half);
+  test.AddOutput<MLFloat16>("Moment_2_Out", {3}, data.m2_new_half);
+  test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
+  test.AddOutput<MLFloat16>("FP16_W_Out", {3}, data.w_new_half);
+
+  test.Run();
+}
+
+TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_SkipUpdate_Test) {
+  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  AdamOptimizerInputOutput data;
+
+  test.AddInput<MLFloat16>("ETA", {}, data.eta_half);
+  test.AddInput<int64_t>("Update_Count", {}, {3});
+  test.AddInput<float>("W", {3}, data.w);
+  test.AddInput<MLFloat16>("G", {3}, data.g_half);
+  test.AddInput<MLFloat16>("Moment_1", {3}, data.m1_half);
+  test.AddInput<MLFloat16>("Moment_2", {3}, data.m2_half);
+  test.AddInput<MLFloat16>("FP16_W", {3}, data.w_half);
+  test.AddInput<bool>("DoUpdate", {}, {false});
+
+  // Verify AdamOptimizer outputs
+  test.AddOutput<float>("W_Out", {3}, data.w);
+  test.AddOutput<MLFloat16>("Moment_1_Out", {3}, data.m1_half);
+  test.AddOutput<MLFloat16>("Moment_2_Out", {3}, data.m2_half);
+  test.AddOutput<int64_t>("Update_Count_Out", {}, {3});
+  test.AddOutput<MLFloat16>("FP16_W_Out", {3}, data.w_half);
 
   test.Run();
 }
 
 TEST(OptimizerTest, AdamOptimizerMixPrecisionTestFloatEta) {
   OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
-  std::vector<float> eta = {0.5f};
-  std::vector<float> w = {1.0f, 2.0f, 3.0f};
-  std::vector<float> g = {4.0f, 5.0f, 6.0f};
-  std::vector<float> m1 = {0.1f, 0.2f, 0.3f};
-  std::vector<float> m2 = {0.4f, 0.5f, 0.6f};
+  AdamOptimizerInputOutput data;
 
-  std::vector<MLFloat16> g_half(w.size());
-  std::vector<MLFloat16> m1_half(w.size());
-  std::vector<MLFloat16> m2_half(w.size());
-
-  ConvertFloatToMLFloat16(g.data(), g_half.data(), int(g.size()));
-  ConvertFloatToMLFloat16(m1.data(), m1_half.data(), int(m1.size()));
-  ConvertFloatToMLFloat16(m2.data(), m2_half.data(), int(m2.size()));
-
-  std::vector<float> w_new = {0.9232284f, 1.9051629f, 2.8897603f};
-  std::vector<float> m1_new = {0.49f, 0.68f, 0.87f};
-  std::vector<float> m2_new = {0.4156f, 0.5245f, 0.6354f};
-
-  std::vector<MLFloat16> m1_new_half(w.size());
-  std::vector<MLFloat16> m2_new_half(w.size());
-  ConvertFloatToMLFloat16(m1_new.data(), m1_new_half.data(), int(m1_new.size()));
-  ConvertFloatToMLFloat16(m2_new.data(), m2_new_half.data(), int(m2_new.size()));
-
-  test.AddInput<float>("ETA", {}, eta);
+  test.AddInput<float>("ETA", {}, data.eta);
   test.AddInput<int64_t>("Update_Count", {}, {3});
-  test.AddInput<float>("W", {3}, w);
-  test.AddInput<MLFloat16>("G", {3}, g_half);
-  test.AddInput<MLFloat16>("Moment_1", {3}, m1_half);
-  test.AddInput<MLFloat16>("Moment_2", {3}, m2_half);
+  test.AddInput<float>("W", {3}, data.w);
+  test.AddInput<MLFloat16>("G", {3}, data.g_half);
+  test.AddInput<MLFloat16>("Moment_1", {3}, data.m1_half);
+  test.AddInput<MLFloat16>("Moment_2", {3}, data.m2_half);
 
   // Verify AdamOptimizer outputs
-  test.AddOutput<float>("W_Out", {3}, w_new);
-  test.AddOutput<MLFloat16>("Moment_1_Out", {3}, m1_new_half);
-  test.AddOutput<MLFloat16>("Moment_2_Out", {3}, m2_new_half);
+  test.AddOutput<float>("W_Out", {3}, data.w_new);
+  test.AddOutput<MLFloat16>("Moment_1_Out", {3}, data.m1_new_half);
+  test.AddOutput<MLFloat16>("Moment_2_Out", {3}, data.m2_new_half);
   test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
 
   test.Run();
@@ -1633,7 +1682,10 @@ void run_lamb_test_with_baseline(
     const float epsilon,
     const std::vector<T1>& w_new,
     const std::vector<T3>& m_new,
-    const std::vector<T3>& v_new) {
+    const std::vector<T3>& v_new,
+    const std::vector<MLFloat16>& w_half = {},
+    const std::vector<MLFloat16>& w_new_half = {},
+    bool do_update = true) {
   OpTester test("LambOptimizer", 9, onnxruntime::kOnnxDomain, true);
 
   test.AddInput<T2>("ETA", {}, eta);
@@ -1641,6 +1693,12 @@ void run_lamb_test_with_baseline(
   test.AddInput<T2>("G", shape, g);
   test.AddInput<T3>("Moment_1", shape, m);
   test.AddInput<T3>("Moment_2", shape, v);
+  if (!w_half.empty()) {
+    test.AddInput<MLFloat16>("FP16_W", shape, w_half);
+  }
+  if (!do_update) {
+    test.AddInput<bool>("DoUpdate", {}, {false});
+  }
 
   test.AddAttribute<float>("alpha", alpha);
   test.AddAttribute<float>("beta", beta);
@@ -1650,6 +1708,9 @@ void run_lamb_test_with_baseline(
   test.AddOutput<T1>("W_Out", shape, w_new);
   test.AddOutput<T3>("Moment_1_Out", shape, m_new);
   test.AddOutput<T3>("Moment_2_Out", shape, v_new);
+  if (!w_new_half.empty()) {
+    test.AddOutput<MLFloat16>("FP16_W_Out", shape, w_new_half);
+  }
 
   test.Run();
 }
@@ -1709,22 +1770,43 @@ void run_lamb_mix_precision_test(
   std::vector<MLFloat16> g_half(w.size());
   std::vector<MLFloat16> m_half(w.size());
   std::vector<MLFloat16> v_half(w.size());
+  std::vector<MLFloat16> w_half(w.size());
   ConvertFloatToMLFloat16(eta.data(), eta_half.data(), int(eta.size()));
   ConvertFloatToMLFloat16(g.data(), g_half.data(), int(g.size()));
   ConvertFloatToMLFloat16(m.data(), m_half.data(), int(m.size()));
   ConvertFloatToMLFloat16(v.data(), v_half.data(), int(v.size()));
+  ConvertFloatToMLFloat16(w.data(), w_half.data(), int(w.size()));
+
   std::vector<MLFloat16> m_new_half(w.size());
   std::vector<MLFloat16> v_new_half(w.size());
+  std::vector<MLFloat16> w_new_half(w.size());
   ConvertFloatToMLFloat16(m_new.data(), m_new_half.data(), int(m_new.size()));
   ConvertFloatToMLFloat16(v_new.data(), v_new_half.data(), int(v_new.size()));
+  ConvertFloatToMLFloat16(w_new.data(), w_new_half.data(), int(w_new.size()));
 
-  // Half momentums.
+  // Half momentums, without fp16 weight
   run_lamb_test_with_baseline(
       shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w_new, m_new_half, v_new_half);
 
-  // Float momentums.
+  // Float momentums, without fp16 weight
   run_lamb_test_with_baseline(
       shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w_new, m_new, v_new);
+
+  // Half momentums, with fp16 weight
+  run_lamb_test_with_baseline(
+      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w_new, m_new_half, v_new_half, w_half, w_new_half);
+
+  // Float momentums, with fp16 weight
+  run_lamb_test_with_baseline(
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w_new, m_new, v_new, w_half, w_new_half);
+
+  // Half momentums, with fp16 weight, skip weight udpate
+  run_lamb_test_with_baseline(
+      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w, m_half, v_half, w_half, w_half, false);
+
+  // Float momentums, with fp16 weight, skip weight udpate
+  run_lamb_test_with_baseline(
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w, m, v, w_half, w_half, false);
 }
 
 // A optimizer test with an 2-element vector.
