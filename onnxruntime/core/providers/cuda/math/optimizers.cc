@@ -38,24 +38,24 @@ Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
 }
 
 // TODO: Once Schema is checked in to onnx lets fix this to match that
-#define REGISTER_ADAM_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD)                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
-      AdamOptimizer,                                                        \
-      kOnnxDomain,                                                          \
-      9,                                                                    \
-      T1##_##T2##_##T3##_##T4##_##T_GRAD,                                   \
-      kCudaExecutionProvider,                                               \
-      KernelDefBuilder()                                                    \
-          .Alias(1, 3) /* Update step count in-place */                     \
-          .Alias(2, 0) /* Update weights in-place */                        \
-          .Alias(4, 1) /* Update moment-1 in-place */                       \
-          .Alias(5, 2) /* Update moment-2 in-place */                       \
-          .Alias(6, 4) /* Update FP16 weights in-place */                   \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())          \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())          \
-          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())          \
-          .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>())          \
-          .TypeConstraint("T_GRAD", DataTypeImpl::GetTensorType<T_GRAD>())  \
+#define REGISTER_ADAM_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD)                     \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                               \
+      AdamOptimizer,                                                           \
+      kOnnxDomain,                                                             \
+      9,                                                                       \
+      T1##_##T2##_##T3##_##T4##_##T_GRAD,                                      \
+      kCudaExecutionProvider,                                                  \
+      KernelDefBuilder()                                                       \
+          .Alias(1, 3) /* Update step count in-place */                        \
+          .Alias(2, 0) /* Update weights in-place */                           \
+          .Alias(4, 1) /* Update moment-1 in-place */                          \
+          .Alias(5, 2) /* Update moment-2 in-place */                          \
+          .Alias(6, 4) /* Update FP16 weights in-place */                      \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())             \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())             \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())             \
+          .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>())             \
+          .TypeConstraint("T_GRAD", DataTypeImpl::GetTensorType<T_GRAD>())     \
           .TypeConstraint("T_FP16", DataTypeImpl::GetTensorType<MLFloat16>()), \
       AdamOptimizer<T1, T2, T3, T4, T_GRAD>);
 
@@ -236,14 +236,14 @@ Status AccumulateGradient<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) cons
   typedef typename ToCudaType<T_GRAD>::MappedType CudaT_GRAD;
 
   const Tensor& gradient_buffer = *ctx->Input<Tensor>(0);
-  const Tensor& gradient = *ctx->Input<Tensor>(1); 
+  const Tensor& gradient = *ctx->Input<Tensor>(1);
   Tensor& accumulated_gradient = *ctx->Output(0, gradient_buffer.Shape());
 
   AccumulateGradientImpl(
-    reinterpret_cast<const CudaT*>(gradient_buffer.template Data<T>()),
-    reinterpret_cast<const CudaT_GRAD*>(gradient.template Data<T_GRAD>()),
-    reinterpret_cast<CudaT*>(accumulated_gradient.template MutableData<T>()),
-    gradient.Shape().Size());
+      reinterpret_cast<const CudaT*>(gradient_buffer.template Data<T>()),
+      reinterpret_cast<const CudaT_GRAD*>(gradient.template Data<T_GRAD>()),
+      reinterpret_cast<CudaT*>(accumulated_gradient.template MutableData<T>()),
+      gradient.Shape().Size());
 
   return Status::OK();
 }
@@ -268,7 +268,7 @@ Status ZeroGradient<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor& old_gradient = *ctx->Input<Tensor>(0);
   Tensor& zero_gradient = *ctx->Output(0, old_gradient.Shape());
 
-  cudaMemset(zero_gradient.template MutableData<T>(), 0, zero_gradient.Shape().Size() * sizeof(T));
+  CUDA_RETURN_IF_ERROR(cudaMemset(zero_gradient.template MutableData<T>(), 0, zero_gradient.Shape().Size() * sizeof(T)));
   return Status::OK();
 }
 

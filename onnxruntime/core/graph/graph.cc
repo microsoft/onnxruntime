@@ -1062,7 +1062,12 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
   while (!stack.empty()) {
     const WorkEntry last_entry = stack.back();
     stack.pop_back();
+
+    if (last_entry.first == nullptr) {
+      continue;
+    }
     const Node& n = *last_entry.first;
+
     if (last_entry.second) {
       // leave node
       leave(&n);
@@ -1572,10 +1577,10 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
       // For mixed precision training, the type mismatch is expected since the model is loaded with float32 first
       // and then transformed to float16.
       // TODO verify that a warning (and not a failure) is ok for cases other than mixed precision
-      
+
       // The "SetType" call will override the shape information to empty.
-      // If the original tensor has shape information, need to set it back. 
-      if (output_def->Shape()){
+      // If the original tensor has shape information, need to set it back.
+      if (output_def->Shape()) {
         auto old_shape = *output_def->Shape();
         output_def->SetType(inferred_type);
         output_def->SetShape(old_shape);
@@ -1583,8 +1588,8 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
         output_def->SetType(inferred_type);
       }
       LOGS_DEFAULT(WARNING) << "Type Mismatch: Type (" + *existing_type + ") of output arg (" +
-                                output_def->Name() + ") of node (" + node_name +
-                               ") does not match expected type (" + *inferred_type + ").";
+                                   output_def->Name() + ") of node (" + node_name +
+                                   ") does not match expected type (" + *inferred_type + ").";
     }
 
     if (existing_type == nullptr)
@@ -2578,7 +2583,7 @@ Status Graph::InlineFunction(Node& node) {
   }
   std::unordered_map<std::string, NodeArg*> remap_input_output;
   if (node.MutableInputDefs().size() != subgraph.GetInputsIncludingInitializers().size())
-	  return Status(ONNXRUNTIME, FAIL);
+    return Status(ONNXRUNTIME, FAIL);
   for (size_t i = 0; i < subgraph.GetInputsIncludingInitializers().size(); ++i) {
     auto* input = subgraph.GetInputsIncludingInitializers()[i];
     if (input->Name() != node.MutableInputDefs()[i]->Name())

@@ -110,6 +110,7 @@ ArgDef BuildGroupNode(const std::string& group_output_name,
 
 ArgDef BuildGradientAccumulationNode(const NodeArgNameGeneratorFn& nodearg_name_generator,
                                      const ArgDef& gradient,
+                                     ArgDef& gradient_accumulation_buffer,
                                      GraphAugmenter::GraphDefs& graph_defs) {
   TypeProto* gradient_fp32_type_proto = graph_defs.CopyTypeProto(gradient);
   gradient_fp32_type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
@@ -133,14 +134,47 @@ ArgDef BuildGradientAccumulationNode(const NodeArgNameGeneratorFn& nodearg_name_
                                   {gradient_accumulator_output},
                                   NodeAttributes(),
                                   gradient_accumulator_output.name)});
+
+  gradient_accumulation_buffer = gradient_accumulate_buffer;
   return gradient_accumulator_output;
 }
 
-ArgDef AddGradientAccumulationNodes(const NodeArgNameGeneratorFn& nodearg_name_generator,
-                                    std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
-                                    GraphAugmenter::GraphDefs& graph_defs) {
+ArgDef BuildGradientScalingNode(const NodeArgNameGeneratorFn& nodearg_name_generator,
+                                const ArgDef& scale,
+                                const ArgDef& gradient_argdefs,
+                                GraphAugmenter::GraphDefs& graph_defs) {
+  ArgDef scaled_gradient_argdef = ArgDef(nodearg_name_generator(gradient_argdefs.name + "_scaled"),
+                                         gradient_argdefs.type_proto);
+  graph_defs.AddNodeDefs({NodeDef("Mul",
+                                  {gradient_argdefs, scale},
+                                  {scaled_gradient_argdef},
+                                  NodeAttributes(),
+                                  scaled_gradient_argdef.name)});
+  return scaled_gradient_argdef;
+}
+
+Status AddGradientScalingNodes(const NodeArgNameGeneratorFn& nodearg_name_generator,
+                               const float scale,
+                               std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
+                               GraphAugmenter::GraphDefs& graph_defs) {
+  ArgDef pre_allreduce_scale(nodearg_name_generator("pre_allreduce_scale"),
+                             graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+  graph_defs.AddInitializers({CreateTensorProto<float>(pre_allreduce_scale.name, scale, {})});
+
   for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
-    gradient_argdefs[i] = BuildGradientAccumulationNode(nodearg_name_generator, gradient_argdefs[i], graph_defs);
+    gradient_argdefs[i] = BuildGradientScalingNode(nodearg_name_generator, pre_allreduce_scale, gradient_argdefs[i], graph_defs);
+  }
+  return Status::OK();
+}
+
+ArgDef AddGradientAccumulationNodes(const NodeArgNameGeneratorFn& nodearg_name_generator,
+                                    std::vector<ArgDef>& gradient_argdefs,               // update argdefs in place
+                                    std::vector<ArgDef>& gradient_accumulation_buffers,  // output
+                                    GraphAugmenter::GraphDefs& graph_defs) {
+  gradient_accumulation_buffers.resize(gradient_argdefs.size());
+  for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
+    gradient_argdefs[i] = BuildGradientAccumulationNode(
+        nodearg_name_generator, gradient_argdefs[i], gradient_accumulation_buffers[i], graph_defs);
   }
 
   ArgDef group_accumulate_gradient_output = BuildGroupNode(nodearg_name_generator("Group_Accumulated_Gradients"),
@@ -460,10 +494,17 @@ Status OptimizerGraphBuilder::Build(Graph& graph,
   }
 
   // add grad accumulation
+  std::vector<ArgDef> gradient_accumulation_buffers;
   if (opt_graph_config_.gradient_accumulation_steps > 1) {
     ArgDef group_accumulate_gradient_output =
-        AddGradientAccumulationNodes(nodearg_name_generator, gradient_argdefs, graph_defs);
+        AddGradientAccumulationNodes(nodearg_name_generator, gradient_argdefs, gradient_accumulation_buffers, graph_defs);
     optimizer_graph_outputs[kGradientAccumulationOutputKey] = group_accumulate_gradient_output.name;
+  }
+
+  // add gradient scaling
+  if (opt_graph_config_.gradient_accumulation_steps > 1 || opt_graph_config_.world_size > 1) {
+    float scale = 1.0f / static_cast<float>(opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.world_size);
+    ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, graph_defs));
   }
 
   // add all-reduce
@@ -493,7 +534,7 @@ Status OptimizerGraphBuilder::Build(Graph& graph,
   // add zero gradient
   if (opt_graph_config_.gradient_accumulation_steps > 1) {
     ArgDef group_zero_gradient_output =
-        AddZeroGradientNodes(nodearg_name_generator, zero_gradients_control_signal, gradient_argdefs, graph_defs);
+        AddZeroGradientNodes(nodearg_name_generator, zero_gradients_control_signal, gradient_accumulation_buffers, graph_defs);
     optimizer_graph_outputs[kWeightUpdateOutputKey] = group_zero_gradient_output.name;
   }
 

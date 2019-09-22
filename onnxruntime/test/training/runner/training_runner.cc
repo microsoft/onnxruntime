@@ -149,6 +149,7 @@ Status TrainingRunner::TrainingLoop() {
   const VectorString fetch_names = params_.fetch_names;
   const VectorString feed_names = training_data_loader_->DataSetTensorNames();
   VectorString fetch_grad_accumulator_output;
+
   if (params_.gradient_accumulation_steps > 1) {
     auto it = opt_graph_outputs_.find(kGradientAccumulationOutputKey);
     ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient accumulation output is missing in the optimizer output");
