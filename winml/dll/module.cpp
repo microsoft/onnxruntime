@@ -14,7 +14,7 @@ using namespace winrt::Windows::AI::MachineLearning::implementation;
 
 void __stdcall OnErrorReported(bool alreadyReported, wil::FailureInfo const &failure) WI_NOEXCEPT {
   if (!alreadyReported) {
-    winrt::hstring message(failure.pszMessage);
+    winrt::hstring message(failure.pszMessage ? failure.pszMessage : L"");
     telemetry_helper.LogRuntimeError(
       failure.hr,
       winrt::to_string(message),
