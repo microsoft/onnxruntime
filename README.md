@@ -6,7 +6,7 @@
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Linux%20GPU%20CI%20Pipeline?label=Linux+GPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=12)
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/MacOS%20CI%20Pipeline?label=MacOS+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=13)
 
-**ONNX Runtime** is a performance-focused complete scoring engine for Open Neural Network Exchange (ONNX) models, with an open extensible architecture to continually address the latest developments in AI and Deep Learning. ONNX Runtime stays up to date with the ONNX standard with complete implementation of **all** ONNX operators, and supports all ONNX releases (1.2+) with both future and backwards compatibility. Please refer to [this page](docs/Versioning.md) for ONNX opset compatibility details.
+**ONNX Runtime** is a performance-focused complete scoring engine for Open Neural Network Exchange (ONNX) models, with an open extensible architecture to continually address the latest developments in AI and Deep Learning. ONNX Runtime stays up to date with the ONNX standard and supports all operators from ONNX 1.2+ with both future and backwards compatibility. Please refer to [this page](docs/Versioning.md) for ONNX opset compatibility details.
 
 [ONNX](https://onnx.ai) is an interoperable format for machine learning models supported by various ML and DNN frameworks and tools. The universal format makes it easier to interoperate between frameworks and maximize the reach of hardware optimization investments.
 
@@ -51,13 +51,13 @@ ONNX Runtime supports both CPU and GPU. Using various graph optimizations and ac
 
 Currently ONNX Runtime supports the following accelerators:
 * MLAS (Microsoft Linear Algebra Subprograms)
-* [MKL-DNN](./docs/execution_providers/MKL-DNN-ExecutionProvider.md) - [subgraph optimization](./docs/execution_providers/MKL-DNN-Subgraphs.md)
-* MKL-ML
+* NVIDIA CUDA
+* Intel MKL-ML
+* [Intel MKL-DNN](./docs/execution_providers/MKL-DNN-ExecutionProvider.md) - [subgraph optimization](./docs/execution_providers/MKL-DNN-Subgraphs.md)
 * [Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)
-* CUDA
-* [TensorRT](./docs/execution_providers/TensorRT-ExecutionProvider.md)
-* [OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)
-* [Nuphar](./docs/execution_providers/Nuphar-ExecutionProvider.md)
+* [NVIDIA TensorRT](./docs/execution_providers/TensorRT-ExecutionProvider.md)
+* [Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)
+* [Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md)
 
 Not all variations are supported in the [official release builds](#apis-and-official-builds), but can be built from source following [these instructions](./BUILD.md). Find Dockerfiles [here](./dockerfiles).
 
@@ -125,9 +125,23 @@ Dockerfiles are available [here](./tools/ci_build/github/linux/docker) to help y
   * [E2E training on Azure Machine Learning Services](https://docs.microsoft.com/en-us/azure/machine-learning/service/concept-onnx)
 
 ## Deploying ONNX Runtime
+### Cloud
 ONNX Runtime can be deployed to the cloud for model inferencing using [Azure Machine Learning Services](https://azure.microsoft.com/en-us/services/machine-learning-service). See [detailed instructions](https://docs.microsoft.com/en-us/azure/machine-learning/service/how-to-build-deploy-onnx) and [sample notebooks](https://github.com/Azure/MachineLearningNotebooks/tree/master/how-to-use-azureml/deployment/onnx).
 
 **ONNX Runtime Server (beta)** is a hosted application for serving ONNX models using ONNX Runtime, providing a REST API for prediction. Usage details can be found [here](./docs/ONNX_Runtime_Server_Usage.md), and image installation instructions are [here](./dockerfiles#onnx-runtime-server-preview).
+
+### Local applications
+ONNX Runtime packages are published to PyPi and Nuget (see [Official Packages](#official-packages) and/or can be [built from source](./BUILD.md) for local application development. Find samples [here](https://github.com/microsoft/onnxruntime/tree/master/samples/c_cxx) using the C++ API. 
+
+On newer Windows 10 devices (1809+), ONNX Runtime is available by default as part of the OS and is accessible via the [Windows Machine Learning APIs](https://docs.microsoft.com/en-us/windows/ai/windows-ml/). Find tutorials [here](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-desktop) for building a Windows Desktop or UWP application using WinML.
+
+### IoT and edge devices
+The expanding focus and selection of IoT devices with sensors and consistent signal streams introduces new opportunities to move AI workloads to the edge.
+ 
+This is particularly important when there are massive volumes of incoming data/signals that may not be efficient or useful to push to the cloud due to storage or latency considerations. Consider: surveillance tapes where 99% of footage is uneventful, or real-time person detection scenarios where immediate action is required. In these scenarios, directly executing model inferencing on the target device is crucial for optimal assistance.
+ 
+To deploy AI workloads to these edge devices and take advantage of hardware acceleration capabilities on the target device, see [these reference implementations](https://github.com/Azure-Samples/onnxruntime-iot-edge).
+
 
 ## Performance Tuning
 ONNX Runtime is open and extensible, supporting a broad set of configurations and execution providers for model acceleration. For performance tuning guidance, please see [this page](./docs/ONNX_Runtime_Perf_Tuning.md).
