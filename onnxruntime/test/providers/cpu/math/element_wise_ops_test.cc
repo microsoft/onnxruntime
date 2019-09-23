@@ -88,6 +88,38 @@ TEST(MathOpTest, Add_Broadcast_Axis) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "");
 }
 
+TEST(MathOpTest, Add_Broadcast_MultidirectionalAB) {
+  OpTester test("Add");
+
+  test.AddInput<float>("A", {3, 1},
+                       {3.0f,
+                        2.0f,
+                        1.0f});
+  test.AddInput<float>("B", {3},
+                       {1.0f, 2.0f, 3.0f});
+  test.AddOutput<float>("C", {3, 3},
+                        {4.0f, 5.0f, 6.0f,
+                         3.0f, 4.0f, 5.0f,
+                         2.0f, 3.0f, 4.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+}
+
+TEST(MathOpTest, Add_Broadcast_MultidirectionalBA) {
+  OpTester test("Add");
+
+  test.AddInput<float>("A", {3},
+                       {1.0f, 2.0f, 3.0f});
+  test.AddInput<float>("B", {3, 1},
+                       {3.0f,
+                        2.0f,
+                        1.0f});
+  test.AddOutput<float>("C", {3, 3},
+                        {4.0f, 5.0f, 6.0f,
+                         3.0f, 4.0f, 5.0f,
+                         2.0f, 3.0f, 4.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+}
+
 TEST(MathOpTest, Add_Broadcast_0x0) {
   OpTester test("Add");
 
@@ -1032,8 +1064,8 @@ TEST(MathOpTest, Equal_multidiretional_broadcastAB) {
 
 TEST(MathOpTest, Equal_multidiretional_broadcastBA) {
   OpTester test("Equal");
-  test.AddInput<int32_t>("A", {4, 1}, {1, 0, -1, -1});
-  test.AddInput<int32_t>("B", {2}, {1, 1});
+  test.AddInput<int32_t>("A", {2}, {1, 1});
+  test.AddInput<int32_t>("B", {4, 1}, {1, 0, -1, -1});
   test.AddOutput<bool>("C", {4, 2}, {true, true, false, false, false, false, false, false});
   test.Run();
 }
