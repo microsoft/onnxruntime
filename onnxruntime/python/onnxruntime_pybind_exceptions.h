@@ -1,52 +1,42 @@
 #include <pybind11/pybind11.h>
 #include <stdexcept>
+#include "core/common/status.h"
 
 namespace onnxruntime {
 namespace python {
 
 // onnxruntime::python exceptions map 1:1 to onnxruntime:common::StatusCode enum.
-class Fail : public std::runtime_error {
- public:
+struct Fail : std::runtime_error {
   explicit Fail(const std::string& what) : std::runtime_error(what) {}
 };
-class InvalidArgument : public std::runtime_error {
- public:
+struct InvalidArgument : std::runtime_error {
   explicit InvalidArgument(const std::string& what) : std::runtime_error(what) {}
 };
-class NoSuchFile : public std::runtime_error {
- public:
+struct NoSuchFile : std::runtime_error {
   explicit NoSuchFile(const std::string& what) : std::runtime_error(what) {}
 };
-class NoModel : public std::runtime_error {
- public:
+struct NoModel : std::runtime_error {
   explicit NoModel(const std::string& what) : std::runtime_error(what) {}
 };
-class EngineError : public std::runtime_error {
- public:
+struct EngineError : std::runtime_error {
   explicit EngineError(const std::string& what) : std::runtime_error(what) {}
 };
-class RuntimeException : public std::runtime_error {
- public:
+struct RuntimeException : std::runtime_error {
   explicit RuntimeException(const std::string& what) : std::runtime_error(what) {}
 };
-class InvalidProtobuf : public std::runtime_error {
- public:
+struct InvalidProtobuf : std::runtime_error {
   explicit InvalidProtobuf(const std::string& what) : std::runtime_error(what) {}
 };
-class ModelLoaded : public std::runtime_error {
- public:
+struct ModelLoaded : std::runtime_error {
   explicit ModelLoaded(const std::string& what) : std::runtime_error(what) {}
 };
-class NotImplemented : public std::runtime_error {
- public:
+struct NotImplemented : std::runtime_error {
   explicit NotImplemented(const std::string& what) : std::runtime_error(what) {}
 };
-class InvalidGraph : public std::runtime_error {
- public:
+struct InvalidGraph : std::runtime_error {
   explicit InvalidGraph(const std::string& what) : std::runtime_error(what) {}
 };
-class EPFail : public std::runtime_error {
- public:
+struct EPFail : std::runtime_error {
   explicit EPFail(const std::string& what) : std::runtime_error(what) {}
 };
 
@@ -63,48 +53,35 @@ void RegisterExceptions(pybind11::module& m) {
   pybind11::register_exception<InvalidGraph>(m, "InvalidGraph");
   pybind11::register_exception<EPFail>(m, "EPFail");
 }
-#define ORT_PYBIND_THROW_IF_ERROR(expr)     \
-  do {                                      \
-    auto _status = (expr);                  \
-    auto _msg = _status.ToString();         \
-    if ((!_status.IsOK())) {                \
-      switch (_status.Code()) {             \
-        case StatusCode::FAIL:              \
-          throw Fail(_msg);                 \
-          break;                            \
-        case StatusCode::INVALID_ARGUMENT:  \
-          throw InvalidArgument(_msg);      \
-          break;                            \
-        case StatusCode::NO_SUCHFILE:       \
-          throw NoSuchFile(_msg);           \
-          break;                            \
-        case StatusCode::NO_MODEL:          \
-          throw NoModel(_msg);              \
-          break;                            \
-        case StatusCode::ENGINE_ERROR:      \
-          throw EngineError(_msg);          \
-          break;                            \
-        case StatusCode::RUNTIME_EXCEPTION: \
-          throw RuntimeException(_msg);     \
-          break;                            \
-        case StatusCode::INVALID_PROTOBUF:  \
-          throw InvalidProtobuf(_msg);      \
-          break;                            \
-        case StatusCode::NOT_IMPLEMENTED:   \
-          throw NotImplemented(_msg);       \
-          break;                            \
-        case StatusCode::INVALID_GRAPH:     \
-          throw InvalidGraph(_msg);         \
-          break;                            \
-        case StatusCode::EP_FAIL:           \
-          throw EPFail(_msg);               \
-          break;                            \
-        default:                            \
-          throw std::runtime_error(_msg);   \
-          break;                            \
-      }                                     \
-    }                                       \
-  } while (0)
 
+inline void OrtPybindThrowIfError(onnxruntime::common::Status status) {
+  std::string msg = status.ToString();
+  if (!status.IsOK()) {
+    switch (status.Code()) {
+      case onnxruntime::common::StatusCode::FAIL:
+        throw Fail(std::move(msg));
+      case onnxruntime::common::StatusCode::INVALID_ARGUMENT:
+        throw InvalidArgument(std::move(msg));
+      case onnxruntime::common::StatusCode::NO_SUCHFILE:
+        throw NoSuchFile(std::move(msg));
+      case onnxruntime::common::StatusCode::NO_MODEL:
+        throw NoModel(std::move(msg));
+      case onnxruntime::common::StatusCode::ENGINE_ERROR:
+        throw EngineError(std::move(msg));
+      case onnxruntime::common::StatusCode::RUNTIME_EXCEPTION:
+        throw RuntimeException(std::move(msg));
+      case onnxruntime::common::StatusCode::INVALID_PROTOBUF:
+        throw InvalidProtobuf(std::move(msg));
+      case onnxruntime::common::StatusCode::NOT_IMPLEMENTED:
+        throw NotImplemented(std::move(msg));
+      case onnxruntime::common::StatusCode::INVALID_GRAPH:
+        throw InvalidGraph(std::move(msg));
+      case onnxruntime::common::StatusCode::EP_FAIL:
+        throw EPFail(std::move(msg));
+      default:
+        throw std::runtime_error(std::move(msg));
+    }
+  }
+}
 }  // namespace python
 }  // namespace onnxruntime

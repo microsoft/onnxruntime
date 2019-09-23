@@ -235,7 +235,7 @@ class SessionObjectInitializer {
 
 inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExecutionProviderFactory& f) {
   auto p = f.CreateProvider();
-  ORT_PYBIND_THROW_IF_ERROR(sess->RegisterExecutionProvider(std::move(p)));
+  OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(p)));
 }
 
 // ordered by default priority. highest to lowest.
@@ -324,7 +324,7 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
   } else {
     RegisterExecutionProviders(sess, provider_types);
   }
-  ORT_PYBIND_THROW_IF_ERROR(sess->Initialize());
+  OrtPybindThrowIfError(sess->Initialize());
 }
 
 void addGlobalMethods(py::module& m) {
@@ -679,14 +679,14 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def(py::init<SessionOptions, SessionObjectInitializer>())
       .def(
           "load_model", [](InferenceSession* sess, const std::string& path, std::vector<std::string>& provider_types) {
-            ORT_PYBIND_THROW_IF_ERROR(sess->Load(path));
+            OrtPybindThrowIfError(sess->Load(path));
             InitializeSession(sess, provider_types);
           },
           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
       .def(
           "read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel, std::vector<std::string>& provider_types) {
             std::istringstream buffer(serializedModel);
-            ORT_PYBIND_THROW_IF_ERROR(sess->Load(buffer));
+            OrtPybindThrowIfError(sess->Load(buffer));
             InitializeSession(sess, provider_types);
           },
           R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
@@ -718,9 +718,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           // release GIL to allow multiple python threads to invoke Run() in parallel.
           py::gil_scoped_release release;
           if (run_options != nullptr) {
-            ORT_PYBIND_THROW_IF_ERROR(sess->Run(*run_options, feeds, output_names, &fetches));
+            OrtPybindThrowIfError(sess->Run(*run_options, feeds, output_names, &fetches));
           } else {
-            ORT_PYBIND_THROW_IF_ERROR(sess->Run(feeds, output_names, &fetches));
+            OrtPybindThrowIfError(sess->Run(feeds, output_names, &fetches));
           }
         }
 
@@ -743,22 +743,22 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       })
       .def_property_readonly("inputs_meta", [](const InferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
         auto res = sess->GetModelInputs();
-        ORT_PYBIND_THROW_IF_ERROR(res.first);
+        OrtPybindThrowIfError(res.first);
         return *(res.second);
       })
       .def_property_readonly("outputs_meta", [](const InferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
         auto res = sess->GetModelOutputs();
-        ORT_PYBIND_THROW_IF_ERROR(res.first);
+        OrtPybindThrowIfError(res.first);
         return *(res.second);
       })
       .def_property_readonly("overridable_initializers", [](const InferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
         auto res = sess->GetOverridableInitializers();
-        ORT_PYBIND_THROW_IF_ERROR(res.first);
+        OrtPybindThrowIfError(res.first);
         return *(res.second);
       })
       .def_property_readonly("model_meta", [](const InferenceSession* sess) -> const onnxruntime::ModelMetadata& {
         auto res = sess->GetModelMetadata();
-        ORT_PYBIND_THROW_IF_ERROR(res.first);
+        OrtPybindThrowIfError(res.first);
         return *(res.second);
       });
 }
@@ -775,7 +775,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
     })();
 
     static std::unique_ptr<Environment> env;
-    ORT_PYBIND_THROW_IF_ERROR(Environment::Create(env));
+    OrtPybindThrowIfError(Environment::Create(env));
 
     static bool initialized = false;
     if (initialized) {
