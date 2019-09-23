@@ -797,8 +797,6 @@ ReduceColumnSumVectorNUnaligned:
 ;
 ;   ymm2 - Supplies the broadcast value loaded from matrix A.
 ;
-;   ymm4 - Supplies a scratch register for intermediate results.
-;
 ;   ymm12 - Supplies a 256-bit with the broadcasted word value 0x0001.
 ;
 

@@ -685,7 +685,7 @@ C_UNDERSCORE(MlasGemmU8S8CopyPackBAvx2):
         mov     BYTE PTR [rbp],al
 
 .LCopyPackB.DoneCopyRemainingCountNKSmall:
-        dec     r10
+        dec     r8
         jz      .LCopyPackB.ProcessPaddedMatrixBData
         add     rsi,r10                     # advance next matrix B by 1 row
         mov     rbp,r11
@@ -723,16 +723,18 @@ Implicit Arguments:
 
     ymm2 - Supplies the broadcast value loaded from matrix A.
 
+    ymm12 - Supplies a 256-bit with the broadcasted word value 0x0001.
+
 --*/
 
         .macro MultiplyAccumulateRow ColumnCount, Vec1Reg, Vec2Reg
 
         vpmaddubsw ymm3,ymm2,ymm0
-        vpmaddwd ymm3,ymm3,ymm15
+        vpmaddwd ymm3,ymm3,ymm12
 .if \ColumnCount\() == 16
         vpaddd  \Vec1Reg\(),\Vec1Reg\(),ymm3
         vpmaddubsw ymm2,ymm2,ymm1
-        vpmaddwd ymm2,ymm2,ymm15
+        vpmaddwd ymm2,ymm2,ymm12
         vpaddd  \Vec2Reg\(),\Vec2Reg\(),ymm2
 .else
         vpaddd  \Vec2Reg\(),\Vec2Reg\(),ymm3
@@ -769,6 +771,8 @@ Implicit Arguments:
 
     ymm4-ymm11 - Supplies the block accumulators.
 
+    ymm12 - Supplies a 256-bit with the broadcasted word value 0x0001.
+
 --*/
 
         .macro ComputeBlock ColumnCount, RowCount, VectorOffset, BroadcastOffset
@@ -776,11 +780,11 @@ Implicit Arguments:
 .if \RowCount\() == 1
         vpbroadcastd ymm2,DWORD PTR [rdi+\BroadcastOffset\()]
         vpmaddubsw ymm3,ymm2,YMMWORD PTR [rsi+\VectorOffset\()]
-        vpmaddwd ymm3,ymm3,ymm15
+        vpmaddwd ymm3,ymm3,ymm12
 .if \ColumnCount\() == 16
         vpaddd  ymm4,ymm4,ymm3
         vpmaddubsw ymm2,ymm2,YMMWORD PTR [rsi+\VectorOffset\()+32]
-        vpmaddwd ymm2,ymm2,ymm15
+        vpmaddwd ymm2,ymm2,ymm12
         vpaddd  ymm5,ymm5,ymm2
 .else
         vpaddd  ymm5,ymm5,ymm3
@@ -789,13 +793,13 @@ Implicit Arguments:
         vmovdqu ymm0,YMMWORD PTR [rsi+\VectorOffset\()]
         EmitIfCountGE \ColumnCount\(), 16, "vmovdqu ymm1,YMMWORD PTR [rsi+\VectorOffset\()+32]"
         EmitIfCountGE \RowCount\(), 1, "vpbroadcastd ymm2,DWORD PTR [rdi+\BroadcastOffset\()]"
-        EmitIfCountGE \RowCount\(), 1, "MultiplyAccumulateRow ColumnCount, ymm4, ymm5"
+        EmitIfCountGE \RowCount\(), 1, "MultiplyAccumulateRow \ColumnCount\(), ymm4, ymm5"
         EmitIfCountGE \RowCount\(), 2, "vpbroadcastd ymm2,DWORD PTR [rdi+rcx+\BroadcastOffset\()]"
-        EmitIfCountGE \RowCount\(), 2, "MultiplyAccumulateRow ColumnCount, ymm6, ymm7"
+        EmitIfCountGE \RowCount\(), 2, "MultiplyAccumulateRow \ColumnCount\(), ymm6, ymm7"
         EmitIfCountGE \RowCount\(), 3, "vpbroadcastd ymm2,DWORD PTR [rdi+rcx*2+\BroadcastOffset\()]"
-        EmitIfCountGE \RowCount\(), 3, "MultiplyAccumulateRow ColumnCount, ymm8, ymm9"
+        EmitIfCountGE \RowCount\(), 3, "MultiplyAccumulateRow \ColumnCount\(), ymm8, ymm9"
         EmitIfCountGE \RowCount\(), 4, "vpbroadcastd ymm2,DWORD PTR [rbx+\BroadcastOffset\()]"
-        EmitIfCountGE \RowCount\(), 4, "MultiplyAccumulateRow ColumnCount, ymm10, ymm11"
+        EmitIfCountGE \RowCount\(), 4, "MultiplyAccumulateRow \ColumnCount\(), ymm10, ymm11"
 .endif
 
         .endm
