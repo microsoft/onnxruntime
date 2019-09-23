@@ -50,11 +50,13 @@
 #pragma warning(pop)
 #endif
 
+extern const OrtApi* g_ort;
+
 using namespace onnxruntime;
 using namespace onnxruntime::common;
 using google::protobuf::RepeatedPtrField;
 
-using ORT_VALUE_HOLDER = std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)>;
+using ORT_VALUE_HOLDER = std::unique_ptr<OrtValue, decltype(g_ort->ReleaseValue)>;
 
 const std::string TestModelInfo::unknown_version = "unknown version";
 
@@ -85,16 +87,16 @@ template <typename T>
 OrtValue* CreateTensorWithDataAsOrtValue(OrtMemoryInfo* info, std::vector<T>& input) {
   std::vector<int64_t> dims(1, input.size());
   OrtValue* ret = nullptr;
-  ORT_THROW_ON_ERROR(::OrtCreateTensorWithDataAsOrtValue(info, input.data(), input.size() * sizeof(T), dims.data(),
-                                                         dims.size(), NumericTypeToONNXType<T>(), &ret));
+  ORT_THROW_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(info, input.data(), input.size() * sizeof(T), dims.data(),
+                                                           dims.size(), NumericTypeToONNXType<T>(), &ret));
   return ret;
 }
 
 template <typename key_type, typename value_type>
 OrtValue* PbMapToOrtValue(const google::protobuf::Map<key_type, value_type>& map) {
   OrtMemoryInfo* info;
-  ORT_THROW_ON_ERROR(OrtCreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &info));
-  std::unique_ptr<OrtMemoryInfo, decltype(&OrtReleaseMemoryInfo)> rel_info(info, OrtReleaseMemoryInfo);
+  ORT_THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &info));
+  std::unique_ptr<OrtMemoryInfo, decltype(g_ort->ReleaseMemoryInfo)> rel_info(info, g_ort->ReleaseMemoryInfo);
   const size_t ele_count = map.size();
   std::vector<int64_t> dims(1, ele_count);
   std::vector<key_type> keys(ele_count);
@@ -116,15 +118,15 @@ OrtValue* PbMapToOrtValue(const google::protobuf::Map<key_type, value_type>& map
 
   // create map ort value
   OrtValue* map_ort = nullptr;
-  ORT_THROW_ON_ERROR(OrtCreateValue(map_in.Data(), map_in.Length(), ONNX_TYPE_MAP, &map_ort));
+  ORT_THROW_ON_ERROR(g_ort->CreateValue(map_in.Data(), map_in.Length(), ONNX_TYPE_MAP, &map_ort));
   return map_ort;
 }
 
 template <typename T>
 void VectorProtoToOrtValue(const RepeatedPtrField<T>& input, ORT_VALUE_HOLDER& output) {
   OrtMemoryInfo* info;
-  ORT_THROW_ON_ERROR(OrtCreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &info));
-  std::unique_ptr<OrtMemoryInfo, decltype(&OrtReleaseMemoryInfo)> rel_info(info, OrtReleaseMemoryInfo);
+  ORT_THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &info));
+  std::unique_ptr<OrtMemoryInfo, decltype(g_ort->ReleaseMemoryInfo)> rel_info(info, g_ort->ReleaseMemoryInfo);
   OrtValueArray in(input.size());
   size_t j = 0;
   for (const T& v : input) {
@@ -153,11 +155,11 @@ void VectorProtoToOrtValue(const RepeatedPtrField<T>& input, ORT_VALUE_HOLDER& o
 
     // create map ort value
     OrtValue* map_ort = nullptr;
-    ORT_THROW_ON_ERROR(OrtCreateValue(map_in.Data(), map_in.Length(), ONNX_TYPE_MAP, &map_ort));
+    ORT_THROW_ON_ERROR(g_ort->CreateValue(map_in.Data(), map_in.Length(), ONNX_TYPE_MAP, &map_ort));
     in.Set(j++, map_ort);
   }
   OrtValue* seq_ort = nullptr;
-  ORT_THROW_ON_ERROR(OrtCreateValue(in.Data(), in.Length(), ONNX_TYPE_SEQUENCE, &seq_ort));
+  ORT_THROW_ON_ERROR(g_ort->CreateValue(in.Data(), in.Length(), ONNX_TYPE_SEQUENCE, &seq_ort));
   output.reset(seq_ort);
 }
 
@@ -299,7 +301,7 @@ void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo* model
        google::protobuf::util::ParseDelimitedFromCodedStream(&data, &coded_input, &clean_eof);
        ++item_id, data.Clear()) {
     try {
-      ORT_VALUE_HOLDER gvalue(nullptr, OrtReleaseValue);
+      ORT_VALUE_HOLDER gvalue(nullptr, g_ort->ReleaseValue);
       switch (data.values_case()) {
         case proto::TraditionalMLData::kVectorMapStringToFloat:
           VectorProtoToOrtValue(data.vector_map_string_to_float().v(), gvalue);
