@@ -11,10 +11,13 @@
    ```
 2. Install cmake-3.13 or better from https://cmake.org/download/.
 
+3. Windows user: Install Python-3.5 or better from https://www.python.org/. 
+   Linux user: Install Python from your system's package manager(like apt-get/dnf/yum).
+
 **On Windows:**
 
-3. (optional) Install protobuf from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF. 
-On Windows, you may use the build command like:
+3. (optional) Install protobuf from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF and protobuf\_MSVC\_STATIC\_RUNTIME must be ON.
+You may use the build command like:
 ```
 cd cmake\external\protobuf\cmake
 mkdir build\release
@@ -37,12 +40,6 @@ set PATH=C:\local\protobuf\bin;%PATH%
     python3 setup.py bdist_wheel
     pip3 install --upgrade dist/*.whl
     ```
-   Linux:
-    ```
-    export ONNX_ML=1
-    python3 setup.py bdist_wheel
-    pip3 install --upgrade dist/*.whl
-    ```
 5. Build onnxruntime
 
 Run `build.bat --config RelWithDebInfo --build_shared_lib --parallel`. 
@@ -52,9 +49,11 @@ Run `build.bat --config RelWithDebInfo --build_shared_lib --parallel`.
 **On Linux:**
 
 3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned ON. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
-4. If you installed your protobuf in a non standard location it would be helpful to set the following env var:`export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=full path to protoc"` so ONNX build can find it. Also run `ldconfig <protobuf lib folder path>` so the linker can find protobuf libraries.
+4. If you installed your protobuf in a non standard location it would be helpful to set the following env var:`export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=full path to protoc"` so ONNX build can find it, or you may add protoc command to your PATH env. Please also run `ldconfig <protobuf lib folder path>` so the linker can find protobuf libraries if the protobuf in a non standard location.
+
 5. (optional) Install onnx from source code (cmake/external/onnx)
     ```
+    cd cmake/external/onnx
     export ONNX_ML=1
     python3 setup.py bdist_wheel
     pip3 install --upgrade dist/*.whl
