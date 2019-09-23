@@ -216,11 +216,11 @@ class Min final : public CudaKernel {
 };
 
 template <typename T, typename CudaT>
-class CompareFunction final : public BinaryElementwise<ShouldBroadcast> {
+class CompareFunction : public BinaryElementwise<ShouldBroadcast> {
  public:
   CompareFunction(const OpKernelInfo& info) : BinaryElementwise(info) {}
 
-  Status Compare(OpKernelContext* context, void (*Impl_Compare)(
+  Status CompareMethod(OpKernelContext* context, void (*Impl_Compare)(
                                                size_t output_rank_or_simple_broadcast,
                                                const int64_t* lhs_padded_strides,
                                                const CudaT* lhs_data,

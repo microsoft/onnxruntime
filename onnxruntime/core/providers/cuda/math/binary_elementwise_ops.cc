@@ -397,7 +397,7 @@ Status Min<T>::ComputeInternal(OpKernelContext* context) const {
 //Greater op output tensor type is bool, so it cannot directly fit in the macros
 //for other elementwise ops
 template <typename T, typename CudaT>
-Status CompareFunction<T, CudaT>::Compare(OpKernelContext* context, void (*Impl_Compare)(
+Status CompareFunction<T, CudaT>::CompareMethod(OpKernelContext* context, void (*Impl_Compare)(
                                                                  size_t output_rank_or_simple_broadcast,
                                                                  const int64_t* lhs_padded_strides,
                                                                  const CudaT* lhs_data,
@@ -438,7 +438,7 @@ Status CompareFunction<T, CudaT>::Compare(OpKernelContext* context, void (*Impl_
 template <typename T>
 Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
 
-  Compare(context, &Impl_Greater);
+  this->CompareMethod(context, &Impl_Greater);
 
   return Status::OK();
 }
@@ -446,7 +446,7 @@ Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
 template <typename T>
 Status Equal<T>::ComputeInternal(OpKernelContext* context) const {
 
-  Compare(context, &Impl_Equal);
+  this->CompareMethod(context, &Impl_Equal);
 
   return Status::OK();
 }
@@ -456,7 +456,7 @@ Status Equal<T>::ComputeInternal(OpKernelContext* context) const {
 template <typename T>
 Status Less<T>::ComputeInternal(OpKernelContext* context) const {
 
-  Compare(context, &Impl_Less);
+  this->CompareMethod(context, &Impl_Less);
 
   return Status::OK();
 }
