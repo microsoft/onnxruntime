@@ -91,8 +91,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr AllocatorAlloc;
         public IntPtr AllocatorFree;
         public IntPtr AllocatorGetInfo;
-        public IntPtr AddFreeDimensionOverride;
         public IntPtr GetAllocatorWithDefaultOptions;
+        public IntPtr AddFreeDimensionOverride;
         public IntPtr GetValue;
         public IntPtr GetValueCount;
         public IntPtr CreateValue;
