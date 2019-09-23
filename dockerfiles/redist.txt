@@ -1,0 +1,97 @@
+This text file is the file (e.g., redist.txt, etc) specified in the accompanying
+End User License Agreement for the Intel(R) Software Development Products ("Agreement").
+All capitalized terms used but not defined in this text file have the same meaning as specified in the Agreement.
+
+The Redistributables files are listed below, and are subject to all of the terms and conditions of the Agreement,
+including without limitation Section 2.1.A.(4).
+
+Also included as Redistributables are executables and shared and static libraries you create by linking your program
+with libraries provided by Intel as part of the Materials for this product but which are not listed in this redist.txt file (“Libraries”);
+provided that you do not redistribute those Intel provided libraries or any other portion of those Intel provided libraries in any other way.
+
+YOU MAY NOT REDISTRIBUTE THESE MATERIALS UNDER AN EVALUATION LICENSE
+
+################################################################################
+###   Intel® Deep Learning Deployment Toolkit for Windows*
+################################################################################
+<install_root>/licensing/deployment_tools/redist.txt
+<install_root>/deployment_tools/inference_engine/bin/intel64/Debug/clDNN64.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Debug/clDNNPlugin.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Debug/cpu_extension_avx2.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Debug/gna.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Debug/GNAPlugin.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Debug/HeteroPlugin.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Debug/inference_engine.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Debug/libiomp5md.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Debug/MKLDNNPlugin.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Debug/mkl_tiny_omp.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Debug/myriadPlugin.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Debug/mvnc/MvNCAPI-ma<version>.mvcmd
+<install_root>/deployment_tools/inference_engine/bin/intel64/Release/clDNN64.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Release/clDNNPlugin.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Release/cpu_extension_avx2.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Release/gna.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Release/GNAPlugin.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Release/HeteroPlugin.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Release/inference_engine.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Release/libiomp5md.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Release/MKLDNNPlugin.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Release/mkl_tiny_omp.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Release/myriadPlugin.dll
+<install_root>/deployment_tools/inference_engine/bin/intel64/Release/mvnc/MvNCAPI-ma<version>.mvcmd
+
+################################################################################
+###   Intel® Deep Learning Deployment Toolkit for Linux* and for Linux* with FPGA Support
+################################################################################
+<install_root>/licensing/deployment_tools/redist.txt
+<install_root>/deployment_tools/inference_engine/external/gna/lib/libgna_api.so
+<install_root>/deployment_tools/inference_engine/external/gna/lib/libgna_kernel.so
+<install_root>/deployment_tools/inference_engine/external/mkltiny_lnx/lib/libmkl_tiny_omp.so
+<install_root>/deployment_tools/inference_engine/external/omp/lib/libiomp5.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.3/intel64/libclDNN64.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.3/intel64/libclDNNPlugin.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.3/intel64/libcpu_extension_avx2.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.3/intel64/libdla_compiler_core.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.3/intel64/libdliaPlugin.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.3/intel64/libGNAPlugin.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.3/intel64/libHeteroPlugin.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.3/intel64/libinference_engine.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.3/intel64/liblpsolve5525.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.3/intel64/libMKLDNNPlugin.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.3/intel64/libmyriadPlugin.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.3/intel64/libprotobuf.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.3/intel64/libprotoc.so
+<install_root>/deployment_tools/inference_engine/lib/centos_7.3/intel64/mvnc/MvNCAPI-ma<version>.mvcmd
+<install_root>/deployment_toolsinference_engine/lib/centos_7.4/intel64/libclDNN64.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.4/intel64/libclDNNPlugin.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.4/intel64/libcpu_extension_avx2.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.4/intel64/libdla_compiler_core.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.4/intel64/libdliaPlugin.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.4/intel64/libGNAPlugin.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.4/intel64/libHeteroPlugin.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.4/intel64/libinference_engine.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.4/intel64/liblpsolve5525.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.4/intel64/libMKLDNNPlugin.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.4/intel64/libmyriadPlugin.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.4/intel64/libprotobuf.so
+<install_root>/deployment_toolsinference_engine/lib/centos_7.4/intel64/libprotoc.so
+<install_root>/deployment_tools/inference_engine/lib/centos_7.4/intel64/mvnc/MvNCAPI-ma<version>.mvcmd
+<install_root>/deployment_toolsinference_engine/lib/ubuntu_16.04/intel64/libclDNN64.so
+<install_root>/deployment_toolsinference_engine/lib/ubuntu_16.04/intel64/libclDNNPlugin.so
+<install_root>/deployment_toolsinference_engine/lib/ubuntu_16.04/intel64/libcpu_extension_avx2.so
+<install_root>/deployment_toolsinference_engine/lib/ubuntu_16.04/intel64/libdla_compiler_core.so
+<install_root>/deployment_toolsinference_engine/lib/ubuntu_16.04/intel64/libdliaPlugin.so
+<install_root>/deployment_toolsinference_engine/lib/ubuntu_16.04/intel64/libGNAPlugin.so
+<install_root>/deployment_toolsinference_engine/lib/ubuntu_16.04/intel64/libHeteroPlugin.so
+<install_root>/deployment_toolsinference_engine/lib/ubuntu_16.04/intel64/libinference_engine.so
+<install_root>/deployment_toolsinference_engine/lib/ubuntu_16.04/intel64/liblpsolve5525.so
+<install_root>/deployment_toolsinference_engine/lib/ubuntu_16.04/intel64/libMKLDNNPlugin.so
+<install_root>/deployment_toolsinference_engine/lib/ubuntu_16.04/intel64/libmyriadPlugin.so
+<install_root>/deployment_toolsinference_engine/lib/ubuntu_16.04/intel64/libprotobuf.so
+<install_root>/deployment_toolsinference_engine/lib/ubuntu_16.04/intel64/libprotoc.so
+<install_root>/deployment_tools/inference_engine/lib/ubuntu_16.04/intel64/mvnc/MvNCAPI-ma<version>.mvcmd
+<install_root>/deployment_tools/inference_engine/tools/centos_7.3/cross_check_tool
+<install_root>/deployment_tools/inference_engine/tools/centos_7.4/cross_check_tool
+<install_root>/deployment_tools/inference_engine/tools/ubuntu_16.04/cross_check_tool
+
+* Other names and brands may be claimed as the property of others.
