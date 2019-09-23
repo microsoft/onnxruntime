@@ -344,7 +344,7 @@ OrtStatus* CreateSessionImpl(_In_ const OrtEnv* env, _In_ const OrtSessionOption
       if (provider->Type() == kDmlExecutionProvider && options->value.enable_mem_pattern) {
         // TODO Instead of returning an error, should we set mem pattern to false here and log a warning saying so?
         // Doing so would be inconsistent with the Python API that doesn't go through this code path.
-        return OrtCreateStatus(ORT_INVALID_ARGUMENT, "Mem pattern should be disabled when using DML execution provider.");
+        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Mem pattern should be disabled when using DML execution provider.");
       }
       provider_list.push_back(std::move(provider));
     }
