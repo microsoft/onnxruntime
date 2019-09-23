@@ -54,6 +54,7 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/graph_transformer_utils.h"
+#include "core/util/thread_utils.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -92,11 +93,6 @@ inline std::basic_string<T> GetCurrentTimeString() {
   return std::basic_string<T>(time_str);
 }
 
-concurrency::ThreadPool* CreateThreadPool(int size) {
-  if (size < 0) size = std::thread::hardware_concurrency() / 2;
-  return size > 0 ? new concurrency::ThreadPool("SESSION", size) : nullptr;
-}
-
 }  // namespace
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
@@ -104,10 +100,16 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
     : session_options_{session_options},
       graph_transformation_mgr_{session_options.max_num_graph_transformation_steps},
       logging_manager_{logging_manager},
-      thread_pool_(CreateThreadPool(session_options.session_thread_pool_size)),
+      thread_pool_(concurrency::CreateThreadPool("intra_op_thread_pool",
+                                                 session_options.intra_op_num_threads)),
+      inter_op_thread_pool_(!session_options.enable_sequential_execution
+                                ? concurrency::CreateThreadPool("inter_op_thread_pool",
+                                                                session_options.inter_op_num_threads)
+                                : nullptr),
       session_state_(execution_providers_,
                      session_options.enable_mem_pattern && session_options.enable_sequential_execution,
-                     thread_pool_.get()),
+                     thread_pool_.get(),
+                     inter_op_thread_pool_.get()),
       insert_cast_transformer_{"CastFloat16Transformer"} {
   ORT_ENFORCE(Environment::IsInitialized(),
               "Environment must be initialized before creating an InferenceSession.");
@@ -427,7 +429,8 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
 
       auto subgraph_session_state = std::make_unique<SessionState>(execution_providers_,
                                                                    session_state.GetEnableMemoryPattern(),
-                                                                   session_state.GetThreadPool());
+                                                                   session_state.GetThreadPool(),
+                                                                   session_state.GetInterOpThreadPool());
       subgraph_session_state->SetProfiler(session_profiler_);
       subgraph_session_state->SetLogger(*session_logger_);
       // Pass data transfer manager to subgraph.
@@ -767,7 +770,8 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(
         utils::ExecuteGraph(session_state_, feeds_fetches_manager, feeds, *p_fetches,
-                            session_options_.enable_sequential_execution, run_options.terminate, run_logger));
+                            session_options_.enable_sequential_execution,
+                            run_options.terminate, run_logger));
 
   } catch (const std::exception& e) {
     retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
@@ -835,6 +839,20 @@ std::pair<common::Status, const InputDefList*> InferenceSession::GetModelInputs(
 
   // return required inputs (excludes any inputs used for overriding initializers)
   return std::make_pair(common::Status::OK(), &model_->MainGraph().GetInputs());
+}
+
+std::pair<common::Status, const InputDefList*> InferenceSession::GetOverridableInitializers() const {
+  {
+    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    if (!is_model_loaded_) {
+      LOGS(*session_logger_, ERROR) << "Model was not loaded";
+      return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."),
+                            nullptr);
+    }
+  }
+
+  // returns a list of initializers that can be overriden.
+  return std::make_pair(common::Status::OK(), &model_->MainGraph().GetOverridableInitializers());
 }
 
 std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutputs() const {
@@ -1046,7 +1064,7 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
                                                  const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
-    auto transformers_to_register = transformer_utils::GenerateTransformers(level, custom_list);
+    auto transformers_to_register = transformer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides, custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }

@@ -28,7 +28,7 @@ TEST(MemcpyTest, copy1) {
   CPUExecutionProviderInfo epi;
   auto st = execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
-  SessionState s{execution_providers, true, &tp};
+  SessionState s{execution_providers, true, &tp, nullptr};
   s.SetLogger(logging::LoggingManager::DefaultLogger());
   KernelRegistryManager kernel_registry_manager;
   kernel_registry_manager.RegisterKernels(execution_providers);
