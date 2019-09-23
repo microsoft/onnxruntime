@@ -85,9 +85,10 @@ class Softmax final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
+#ifndef USE_OPENMP
     auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
     concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
-
+#endif
     const auto* tensor_pointer = ctx->Input<Tensor>(0);
     if (tensor_pointer == nullptr)
       return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
@@ -107,11 +108,14 @@ class Softmax final : public OpKernel {
         X.Data<float>(), N, D);
     Eigen::TensorMap<Eigen::Tensor<float, 2, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned> Y_tensor(
         Y->MutableData<float>(), N, D);
+#ifndef USE_OPENMP
     if (tp == nullptr)
+#endif
       ComputeSoftMax(Eigen::DefaultDevice(), X_tensor, Y_tensor, use_log);
+#ifndef USE_OPENMP
     else
       ComputeSoftMax(Eigen::ThreadPoolDevice(&tp->GetHandler(), tp->NumThreads()), X_tensor, Y_tensor, use_log);
-
+#endif
     return Status::OK();
   }
 
