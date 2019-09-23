@@ -236,7 +236,7 @@ class CompareFunction final : public BinaryElementwise<ShouldBroadcast> {
 template <typename T>
 class Greater final : public CompareFunction<T, typename ToCudaType<T>::MappedType> {
  public:
-  Greater(const OpKernelInfo& info) : CompareFunction(info) {}
+  Greater(const OpKernelInfo& info) : CompareFunction<T, typename ToCudaType<T>::MappedType>(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
@@ -244,7 +244,7 @@ class Greater final : public CompareFunction<T, typename ToCudaType<T>::MappedTy
 template <typename T>
 class Equal final : public CompareFunction<T, typename ToCudaType<T>::MappedType> {
  public:
-  Equal(const OpKernelInfo& info) : CompareFunction(info) {}
+  Equal(const OpKernelInfo& info) : CompareFunction<T, typename ToCudaType<T>::MappedType>(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
@@ -252,7 +252,7 @@ class Equal final : public CompareFunction<T, typename ToCudaType<T>::MappedType
 template <typename T>
 class Less final : public CompareFunction<T, typename ToCudaType<T>::MappedType> {
  public:
-  Less(const OpKernelInfo& info) : CompareFunction(info) {}
+  Less(const OpKernelInfo& info) : CompareFunction<T, typename ToCudaType<T>::MappedType>(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
