@@ -13,14 +13,39 @@
 
 **On Windows:**
 
-3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF. After the installation, you should have the 'protoc' executable in your PATH.
+3. (optional) Install protobuf from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF. 
+On Windows, you may use the build command like:
+```
+cd cmake\external\protobuf\cmake
+mkdir build\release
+cd build\release
+cmake -T host=x64 -G "Visual Studio 15 2017 Win64" -DCMAKE_INSTALL_PREFIX=C:\local\protobuf -Dprotobuf_BUILD_TESTS=OFF -Dprotobuf_BUILD_SHARED_LIBS=OFF -Dprotobuf_MSVC_STATIC_RUNTIME=ON ..\cmake
+protobuf.sln
+```
+Then, build the "INSTALL" target in "Wisual Studio"
+
+After the installation, you should put 'protoc.exe' in your PATH.
+```
+set PATH=C:\local\protobuf\bin;%PATH%
+```
 4. (optional) Install onnx from source code (cmake/external/onnx)
+   (Install onnx requires install protobuf first)
+   Delete the "dist" and ".setuptools-cmake-build" dir if they already exist. Then,
+   Windows:
+    ```
+    set ONNX_ML=1
+    python3 setup.py bdist_wheel
+    pip3 install --upgrade dist/*.whl
+    ```
+   Linux:
     ```
     export ONNX_ML=1
     python3 setup.py bdist_wheel
     pip3 install --upgrade dist/*.whl
     ```
-5. Run `build.bat --config RelWithDebInfo --build_shared_lib --parallel`. 
+5. Build onnxruntime
+
+Run `build.bat --config RelWithDebInfo --build_shared_lib --parallel`. 
 
 *Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat.*
 
