@@ -3,11 +3,14 @@
 
 #pragma once
 
+#include <gsl/span>
+
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/rewrite_rule.h"
 
 namespace onnxruntime {
+struct FreeDimensionOverride;
 
 namespace transformer_utils {
 
@@ -21,6 +24,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
     If transformers_and_rules_to_enable is not empty, it returns the intersection between the predefined transformers/rules 
 	and the transformers_and_rules_to_enable. */
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerLevel level,
+                                                                    gsl::span<const FreeDimensionOverride> free_dimension_overrides,
                                                                     const std::vector<std::string>& rules_and_transformers_to_enable = {});
 
 /** Given a TransformerLevel, this method generates a name for the rule-based graph transformer of that level. */
