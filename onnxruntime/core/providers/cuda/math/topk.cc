@@ -28,9 +28,9 @@ TopK::TopK(const OpKernelInfo& info) : CudaKernel(info) {
 #define TOPKIMPL(T) TopKImpl<T> (tensor_X->Data<T>(),                               \
                                  static_cast<T*>(tensor_V->MutableDataRaw()),       \
                                  static_cast<int64_t*>(tensor_I->MutableDataRaw()), \
-                                 elem_nums.data(),                                  \
+                                 elem_nums_cuda.GpuPtr(),                           \
                                  elem_nums.size(),                                  \
-                                 axis, K, largest_, sorted_)
+                                 axis, K, largest_, sorted_, N, dimension)
 
 Status TopK::ComputeInternal(OpKernelContext* ctx) const {
     auto tensor_X = ctx->Input<Tensor>(0);
@@ -41,7 +41,8 @@ Status TopK::ComputeInternal(OpKernelContext* ctx) const {
 
     auto tensor_K = ctx->Input<Tensor>(1);
     ORT_ENFORCE(nullptr != tensor_K);
-    auto K = *(tensor_K->Data<int64_t>());
+    int64_t K = 0;
+    cudaMemcpyAsync(&K, tensor_K->Data<int64_t>(), sizeof(int64_t), cudaMemcpyDeviceToHost);
     ORT_ENFORCE(K > 0 && K <= tensor_X->Shape().GetDims()[axis]);
 
     auto output_shape = tensor_X->Shape();
@@ -53,6 +54,11 @@ Status TopK::ComputeInternal(OpKernelContext* ctx) const {
     for (auto i = static_cast<int32_t>(elem_nums.size())-2; i >= 0; --i) {
       elem_nums[i] *= elem_nums[i+1];
     }
+
+    auto dimension = axis == elem_nums.size()-1 ? elem_nums[axis] : elem_nums[axis] / elem_nums[axis+1];
+    auto N = elem_nums[0]/dimension;
+    CudaAsyncBuffer<int64_t> elem_nums_cuda(this, elem_nums);
+    ORT_RETURN_IF_ERROR(elem_nums_cuda.CopyToGpu());
 
     if (tensor_X->DataType() == DataTypeImpl::GetType<uint8_t>()) {
       return TOPKIMPL(uint8_t);
