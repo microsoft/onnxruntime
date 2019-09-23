@@ -101,7 +101,7 @@ TEST(MathOpTest, Add_Broadcast_MultidirectionalAB) {
                         {4.0f, 5.0f, 6.0f,
                          3.0f, 4.0f, 5.0f,
                          2.0f, 3.0f, 4.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: got C with shape [3, 1]
 }
 
 TEST(MathOpTest, Add_Broadcast_MultidirectionalBA) {
@@ -117,7 +117,7 @@ TEST(MathOpTest, Add_Broadcast_MultidirectionalBA) {
                         {4.0f, 5.0f, 6.0f,
                          3.0f, 4.0f, 5.0f,
                          2.0f, 3.0f, 4.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: got C with shape [3, 1]
 }
 
 TEST(MathOpTest, Add_Broadcast_0x0) {
