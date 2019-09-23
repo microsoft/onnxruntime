@@ -1,7 +1,7 @@
 # ONNX Runtime Samples and Tutorials
 
 Here you will find various samples, tutorials, and reference implementations for using ONNX Runtime. 
-For a list of available dockerfiles and published images to help with getting started, see [this page](../dockerfiles/README.md)
+For a list of available dockerfiles and published images to help with getting started, see [this page](../dockerfiles/README.md).
 
 * [Python](#Python)
 * [C#](#C)
