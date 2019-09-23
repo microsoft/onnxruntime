@@ -11,7 +11,7 @@ namespace test {
 
 class FlattenOpTest : public testing::Test {
  public:
-  FlattenOpTest() : test_("Flatten"), data0_(120, 1.0f) {}
+  FlattenOpTest() : test_("Flatten", 11), data0_(120, 1.0f) {}
 
  protected:
   OpTester test_;

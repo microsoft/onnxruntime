@@ -96,7 +96,7 @@ TEST(SqueezeOpTest, BadAxes) {
 }
 
 TEST(SqueezeOpTest, SqueezeNegAxis_2) {
-  OpTester test("Squeeze");
+  OpTester test("Squeeze", 11);
   test.AddAttribute("axes", std::vector<int64_t>{0, -3, -2});
   test.AddInput<float>("data", {1, 4, 1, 1, 2},
                        std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
