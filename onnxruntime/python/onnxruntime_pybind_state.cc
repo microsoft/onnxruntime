@@ -332,8 +332,12 @@ void addGlobalMethods(py::module& m) {
   m.def(
       "get_device", []() -> std::string { return BACKEND_DEVICE; },
       "Return the device used to compute the prediction (CPU, MKL, ...)");
-  m.def("get_all_providers", []() -> const std::vector<std::string>& { return GetAllProviders(); });
-  m.def("get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableProviders(); });
+  m.def(
+      "get_all_providers", []() -> const std::vector<std::string>& { return GetAllProviders(); },
+      "Return list of Execution Providers that this version of Onnxruntime can support.");
+  m.def(
+      "get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableProviders(); },
+      "Return list of available Execution Providers available in this installed version of Onnxruntime.");
 
 #ifdef USE_NUPHAR
   m.def("set_nuphar_settings", [](const std::string& str) {
@@ -739,35 +743,23 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       })
       .def_property_readonly("inputs_meta", [](const InferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
         auto res = sess->GetModelInputs();
-        if (!res.first.IsOK()) {
-          throw std::runtime_error(res.first.ToString().c_str());
-        } else {
-          return *(res.second);
-        }
+        ORT_PYBIND_THROW_IF_ERROR(res.first);
+        return *(res.second);
       })
       .def_property_readonly("outputs_meta", [](const InferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
         auto res = sess->GetModelOutputs();
-        if (!res.first.IsOK()) {
-          throw std::runtime_error(res.first.ToString().c_str());
-        } else {
-          return *(res.second);
-        }
+        ORT_PYBIND_THROW_IF_ERROR(res.first);
+        return *(res.second);
       })
       .def_property_readonly("overridable_initializers", [](const InferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
         auto res = sess->GetOverridableInitializers();
-        if (!res.first.IsOK()) {
-          throw std::runtime_error(res.first.ToString().c_str());
-        } else {
-          return *res.second;
-        }
+        ORT_PYBIND_THROW_IF_ERROR(res.first);
+        return *(res.second);
       })
       .def_property_readonly("model_meta", [](const InferenceSession* sess) -> const onnxruntime::ModelMetadata& {
         auto res = sess->GetModelMetadata();
-        if (!res.first.IsOK()) {
-          throw std::runtime_error(res.first.ToString().c_str());
-        } else {
-          return *(res.second);
-        }
+        ORT_PYBIND_THROW_IF_ERROR(res.first);
+        return *(res.second);
       });
 }
 

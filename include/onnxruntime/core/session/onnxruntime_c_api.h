@@ -122,8 +122,7 @@ typedef enum OrtErrorCode {
   ORT_MODEL_LOADED,
   ORT_NOT_IMPLEMENTED,
   ORT_INVALID_GRAPH,
-  ORT_SHAPE_INFERENCE_NOT_REGISTERED,
-  ORT_REQUIREMENT_NOT_REGISTERED,
+  ORT_EP_FAIL,
 } OrtErrorCode;
 
 // __VA_ARGS__ on Windows and Linux are different
@@ -285,7 +284,6 @@ ORT_API_STATUS(OrtSessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t 
  * \param out  should be freed by OrtReleaseTypeInfo after use
  */
 ORT_API_STATUS(OrtSessionGetOverridableInitializerTypeInfo, _In_ const OrtSession* sess, size_t index, _Outptr_ OrtTypeInfo** type_info);
-
 
 /**
  * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible in freeing it.

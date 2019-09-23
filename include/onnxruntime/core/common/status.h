@@ -41,14 +41,15 @@ enum StatusCode {
   MODEL_LOADED = 8,
   NOT_IMPLEMENTED = 9,
   INVALID_GRAPH = 10,
-  SHAPE_INFERENCE_NOT_REGISTERED = 11,
-  REQUIREMENT_NOT_REGISTERED = 12
+  EP_FAIL = 11
 };
 
 inline const char* StatusCodeToString(StatusCode status) noexcept {
   switch (status) {
     case StatusCode::OK:
       return "SUCCESS";
+    case StatusCode::FAIL:
+      return "FAIL";
     case StatusCode::INVALID_ARGUMENT:
       return "INVALID_ARGUMENT";
     case StatusCode::NO_SUCHFILE:
@@ -67,10 +68,8 @@ inline const char* StatusCodeToString(StatusCode status) noexcept {
       return "NOT_IMPLEMENTED";
     case StatusCode::INVALID_GRAPH:
       return "INVALID_GRAPH";
-    case StatusCode::SHAPE_INFERENCE_NOT_REGISTERED:
-      return "SHAPE_INFERENCE_NOT_REGISTERED";
-    case StatusCode::REQUIREMENT_NOT_REGISTERED:
-      return "REQUIREMENT_NOT_REGISTERED";
+    case StatusCode::EP_FAIL:
+      return "EP_FAIL";
     default:
       return "GENERAL ERROR";
   }
