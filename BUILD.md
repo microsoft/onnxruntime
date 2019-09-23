@@ -25,7 +25,7 @@ cd build\release
 cmake -T host=x64 -G "Visual Studio 15 2017 Win64" -DCMAKE_INSTALL_PREFIX=C:\local\protobuf -Dprotobuf_BUILD_TESTS=OFF -Dprotobuf_BUILD_SHARED_LIBS=OFF -Dprotobuf_MSVC_STATIC_RUNTIME=ON ..\cmake
 protobuf.sln
 ```
-Then, build the "INSTALL" target in "Wisual Studio"
+Then, build the "INSTALL" target in "Visual Studio"
 
 After the installation, you should put 'protoc.exe' in your PATH.
 ```
