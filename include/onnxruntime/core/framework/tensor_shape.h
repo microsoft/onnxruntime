@@ -11,7 +11,8 @@
 
 namespace ONNX_NAMESPACE {
 class TensorShapeProto;
-}
+class TensorProto;
+}  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
 #ifdef __GNUC__
@@ -143,7 +144,7 @@ class TensorShape : private std::vector<int64_t> {
 #endif
 // operator<< to nicely output to a stream
 std::ostream& operator<<(std::ostream& out, const ::onnxruntime::TensorShape& shape);
-
 std::ostream& operator<<(std::ostream& out, const ONNX_NAMESPACE::TensorShapeProto& shape_proto);
+std::ostream& operator<<(std::ostream& out, const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
 }  // namespace onnxruntime

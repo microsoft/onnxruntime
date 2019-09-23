@@ -117,4 +117,23 @@ std::ostream& operator<<(std::ostream& out, const ONNX_NAMESPACE::TensorShapePro
   return (out << result);
 }
 
+std::ostream& operator<<(std::ostream& out, const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  std::string result;
+  result.reserve(128);
+
+  result.append("{");
+  bool first = true;
+  for (auto& dim : tensor_proto.dims()) {
+    if (!first) {
+      result.append(",");
+    }
+
+    result.append(std::to_string(dim));
+    first = false;
+  }
+  result.append("}");
+
+  return (out << result);
+}
+
 }  // namespace onnxruntime

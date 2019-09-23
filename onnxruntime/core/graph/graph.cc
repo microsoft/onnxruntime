@@ -13,6 +13,7 @@
 
 #include "gsl/pointers"
 #include "core/common/logging/logging.h"
+#include "core/framework/tensor_shape.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/function.h"
 #include "core/graph/function_impl.h"
@@ -72,6 +73,16 @@ static void RemoveInvalidValues(ONNX_NAMESPACE::TypeProto& type) {
       }
     }
   }
+}
+
+static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
+  TypeProto t;
+  t.mutable_tensor_type()->set_elem_type(tensor.data_type());
+  auto shape = t.mutable_tensor_type()->mutable_shape();
+  for (auto dim : tensor.dims())
+    shape->add_dim()->set_dim_value(dim);
+
+  return t;
 }
 
 NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
@@ -651,8 +662,7 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
     }
 
     // Copy constant nodes _value to name_to_initial_tensor_
-    const gsl::not_null<TensorProto*>
-        tensor{graph_proto_->add_initializer()};
+    const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     *tensor = node.attribute(0).t();
     *(tensor->mutable_name()) = node.output(0);
   }
@@ -683,16 +693,24 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
   for (auto& tensor : graph_proto_->initializer()) {
     name_to_initial_tensor_[tensor.name()] = &tensor;
 
-    // v4 does not require initializers to be inputs, so we need to ensure there is a NodeArg created for all
-    // initializers in that case
-    if (ir_version_ > 3 && GetNodeArg(tensor.name()) == nullptr) {
-      TypeProto t;
-      t.mutable_tensor_type()->set_elem_type(tensor.data_type());
-      auto shape = t.mutable_tensor_type()->mutable_shape();
-      for (auto dim : tensor.dims())
-        shape->add_dim()->set_dim_value(dim);
+    NodeArg* matching_graph_input = GetNodeArg(tensor.name());
+    TypeProto t{TypeProtoFromTensorProto(tensor)};
 
-      GetOrCreateNodeArg(tensor.name(), &t);
+    if (ir_version_ < 4) {
+      // all initializers have matching graph inputs but are treated as constant,
+      // so we prefer the shape from the initializer
+      ORT_ENFORCE(matching_graph_input, "Expected matching graph input for model to be valid but missing for ",
+                  tensor.name());
+
+      name_to_type_map[tensor.name()] = t;
+      ORT_THROW_IF_ERROR(matching_graph_input->UpdateTypeAndShape(t));
+    } else {
+      // v4 and later allows a constant initializer with no matching graph input. create a NodeArg for these.
+      // otherwise we prefer the shape from the graph input so leave matching_graph_input as is.
+      if (matching_graph_input == nullptr) {
+        name_to_type_map[tensor.name()] = t;
+        GetOrCreateNodeArg(tensor.name(), &t);
+      }
     }
   }
 
@@ -1608,9 +1626,6 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
     }
   }
 
-  // Note: The ONNX spec requires every initializer to be included in the graph input,
-  // but onnxruntime relaxes this requirement for various reasons.
-
   // Infer/check type and shape for all initializers from their values
   for (auto& initializer_pair : name_to_initial_tensor_) {
     const std::string& name = initializer_pair.first;
@@ -1634,6 +1649,7 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
       for (auto dim : tensor_proto->dims()) {
         inferred_shape.add_dim()->set_dim_value(dim);
       }
+
       const TensorShapeProto* p_existing_shape = node_arg->Shape();
       if (nullptr == p_existing_shape) {
         // use the inferred shape if this is a constant initializer (cannot be overridden).
@@ -1642,19 +1658,24 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
           node_arg->SetShape(inferred_shape);
         }
       } else {
-        if (p_existing_shape->dim_size() != tensor_proto->dims_size())
-          return Status(ONNXRUNTIME, FAIL,
-                        "Type Error: Shape of initializer " + name + " does not match its type.");
+        if (p_existing_shape->dim_size() != tensor_proto->dims_size()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Type Error: Shape of initializer ", name, " does not match. ",
+                                 *p_existing_shape, " != ", *tensor_proto);
+        }
+      }
 
-        for (int i = 0; i < p_existing_shape->dim_size(); ++i) {
-          auto& d = p_existing_shape->dim(i);
-          if (utils::HasDimValue(d) && (d.dim_value() != tensor_proto->dims(i)))
-            return Status(ONNXRUNTIME, FAIL,
-                          "Type Error: Shape of initializer " + initializer_pair.first + " does not match its type.");
+      for (int i = 0; i < p_existing_shape->dim_size(); ++i) {
+        auto& d = p_existing_shape->dim(i);
+        if (utils::HasDimValue(d) && (d.dim_value() != tensor_proto->dims(i))) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Type Error: Shape of initializer ", name, " does not match. ",
+                                 *p_existing_shape, " != ", *tensor_proto);
         }
       }
     }
   }
+
   return Status::OK();
 }
 
@@ -1945,13 +1966,12 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
   *(tensor_added) = tensor;
   name_to_initial_tensor_[tensor.name()] = tensor_added;
 
-  if (!GraphLoadedFromModelFile(graph_proto_)) {
-    // make sure there is a NodeArg for the initializer as SetGraphInputsOutputs may add it to the graph inputs
+  if (!GraphLoadedFromModelFile(graph_proto_) && GetNodeArg(tensor.name()) == nullptr) {
+    // make sure there is a NodeArg for the initializer as SetGraphInputsOutputs may add it to the graph inputs.
+    // the shape will be set to the correct value in TypeCheckInputsAndInitializers as we don't yet know whether there
+    // will be a matching graph input for this initializer (we prefer shape info from the graph input).
     TypeProto t;
     t.mutable_tensor_type()->set_elem_type(tensor.data_type());
-    auto shape = t.mutable_tensor_type()->mutable_shape();
-    for (auto dim : tensor.dims())
-      shape->add_dim()->set_dim_value(dim);
 
     ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
   }
