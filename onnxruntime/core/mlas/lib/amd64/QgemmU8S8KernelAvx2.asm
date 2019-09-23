@@ -552,9 +552,9 @@ InterleaveRowDataN16:
         vinsertf128 ymm2,ymm2,xmm3,1
         vmovdqu YMMWORD PTR [rcx],ymm4      ; store interleaved rows
         vmovdqu YMMWORD PTR [rcx+32],ymm2
-        vpmaddubsw ymm4,ymm4,ymm8           ; horizontal byte+byte=word per row
+        vpmaddubsw ymm4,ymm8,ymm4           ; horizontal byte+byte=word per row
         vpaddw  ymm0,ymm0,ymm4              ; add words to row accumulators
-        vpmaddubsw ymm2,ymm2,ymm8
+        vpmaddubsw ymm2,ymm8,ymm2
         vpaddw  ymm1,ymm1,ymm2
         add     rcx,64                      ; advance matrix D by 64 bytes
         sub     rbx,4                       ; subtract rows remaining
@@ -702,9 +702,9 @@ ProcessPaddedMatrixBData:
         vinsertf128 ymm2,ymm2,xmm3,1
         vmovdqu YMMWORD PTR [rcx],ymm4      ; store interleaved rows
         vmovdqu YMMWORD PTR [rcx+32],ymm2
-        vpmaddubsw ymm4,ymm4,ymm8           ; horizontal byte+byte=word per row
+        vpmaddubsw ymm4,ymm8,ymm4           ; horizontal byte+byte=word per row
         vpaddw  ymm0,ymm0,ymm4              ; add words to row accumulators
-        vpmaddubsw ymm2,ymm2,ymm8
+        vpmaddubsw ymm2,ymm8,ymm2
         vpaddw  ymm1,ymm1,ymm2
         lea     rsi,[rsi+r8*4]              ; advance next matrix B by 4 rows
         add     rcx,64                      ; advance matrix D by 64 bytes

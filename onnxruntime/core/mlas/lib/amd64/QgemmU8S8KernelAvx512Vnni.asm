@@ -56,14 +56,15 @@ INCLUDE AssembleAvx512Vnni.inc
 
 ComputeBlock MACRO ColumnCount, RowCount, VectorOffset, BroadcastOffset
 
-IF ColumnCount GE 32
 IF ColumnCount GE 48
         vmovdqu32 zmm0,ZMMWORD PTR [rdx+VectorOffset]
         vmovdqu32 zmm1,ZMMWORD PTR [rdx+r14+VectorOffset]
         vmovdqu32 zmm2,ZMMWORD PTR [rdx+r14*2+VectorOffset]
-ELSE
+ELSEIF ColumnCount GE 32
         vmovdqu32 zmm1,ZMMWORD PTR [rdx+VectorOffset]
         vmovdqu32 zmm2,ZMMWORD PTR [rdx+r14+VectorOffset]
+ELSE
+        vmovdqu32 zmm2,ZMMWORD PTR [rdx+VectorOffset]
 ENDIF
         EmitIfCountGE RowCount, 1, <vpbroadcastd zmm3,DWORD PTR [rcx+BroadcastOffset]>
         EmitIfCount2GE RowCount, 1, ColumnCount, 48, <VpdpbusdsZmmZmmZmm zmm26,zmm3,zmm0>
@@ -89,15 +90,6 @@ ENDIF
         EmitIfCount2GE RowCount, 6, ColumnCount, 48, <VpdpbusdsZmmZmmZmm zmm31,zmm3,zmm0>
         EmitIfCount2GE RowCount, 6, ColumnCount, 32, <VpdpbusdsZmmZmmZmm zmm25,zmm3,zmm1>
         EmitIfCount2GE RowCount, 6, ColumnCount, 16, <VpdpbusdsZmmZmmZmm zmm19,zmm3,zmm2>
-ELSE
-        vmovdqu32 zmm2,ZMMWORD PTR [rdx+VectorOffset]
-        EmitIfCountGE RowCount, 1, <VpdpbusdsZmmZmmBroadcast zmm14,zmm2,rcx,BroadcastOffset>
-        EmitIfCountGE RowCount, 2, <VpdpbusdsZmmZmmBroadcast zmm15,zmm2,rcx,BroadcastOffset,r9,1>
-        EmitIfCountGE RowCount, 3, <VpdpbusdsZmmZmmBroadcast zmm16,zmm2,rcx,BroadcastOffset,r9,2>
-        EmitIfCountGE RowCount, 4, <VpdpbusdsZmmZmmBroadcast zmm17,zmm2,rbx,BroadcastOffset>
-        EmitIfCountGE RowCount, 5, <VpdpbusdsZmmZmmBroadcast zmm18,zmm2,rbx,BroadcastOffset,r9,1>
-        EmitIfCountGE RowCount, 6, <VpdpbusdsZmmZmmBroadcast zmm19,zmm2,rbx,BroadcastOffset,r9,2>
-ENDIF
 
         ENDM
 
