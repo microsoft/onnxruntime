@@ -697,19 +697,18 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
     TypeProto t{TypeProtoFromTensorProto(tensor)};
 
     if (ir_version_ < 4) {
-      // all initializers have matching graph inputs but are treated as constant,
+      // initializers can have matching graph inputs but are treated as constant,
       // so we prefer the shape from the initializer
-      ORT_ENFORCE(matching_graph_input, "Expected matching graph input for model to be valid but missing for ",
-                  tensor.name());
-
       name_to_type_map[tensor.name()] = t;
-      ORT_THROW_IF_ERROR(matching_graph_input->UpdateTypeAndShape(t));
+      if (matching_graph_input != nullptr) {
+        ORT_THROW_IF_ERROR(matching_graph_input->UpdateTypeAndShape(t));
+      }
     } else {
       // v4 and later allows a constant initializer with no matching graph input. create a NodeArg for these.
       // otherwise we prefer the shape from the graph input so leave matching_graph_input as is.
       if (matching_graph_input == nullptr) {
         name_to_type_map[tensor.name()] = t;
-        GetOrCreateNodeArg(tensor.name(), &t);
+        ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
       }
     }
   }
@@ -1663,14 +1662,14 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
                                  "Type Error: Shape of initializer ", name, " does not match. ",
                                  *p_existing_shape, " != ", *tensor_proto);
         }
-      }
 
-      for (int i = 0; i < p_existing_shape->dim_size(); ++i) {
-        auto& d = p_existing_shape->dim(i);
-        if (utils::HasDimValue(d) && (d.dim_value() != tensor_proto->dims(i))) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 "Type Error: Shape of initializer ", name, " does not match. ",
-                                 *p_existing_shape, " != ", *tensor_proto);
+        for (int i = 0; i < p_existing_shape->dim_size(); ++i) {
+          auto& d = p_existing_shape->dim(i);
+          if (utils::HasDimValue(d) && (d.dim_value() != tensor_proto->dims(i))) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "Type Error: Shape of initializer ", name, " does not match. ",
+                                   *p_existing_shape, " != ", *tensor_proto);
+          }
         }
       }
     }
