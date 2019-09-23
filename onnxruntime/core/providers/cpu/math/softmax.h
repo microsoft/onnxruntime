@@ -19,8 +19,10 @@ limitations under the License.
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/op_kernel_context_internal.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/eigen_common_wrapper.h"
+#include "core/providers/common.h"
 
 namespace onnxruntime {
 // copied from tensorflow/core/kernels/softmax_op.cc
