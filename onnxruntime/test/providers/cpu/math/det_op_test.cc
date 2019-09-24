@@ -21,6 +21,15 @@ TEST(DetOpTest, 2dWithBatchSize3) {
   test.Run();
 }
 
+TEST(DetOpTest, 2dWithMultipleBatchDims) {
+  OpTester test("Det", 11);
+  test.AddInput<float>("X",
+                       {1, 2, 3, 2, 2},
+                       {1., 2., 3., 4., 1., 2., 2., 1., 1., 3., 3., 1., 1., 2., 3., 4., 1., 2., 2., 1., 1., 3., 3., 1.});
+  test.AddOutput<float>("Y", {1, 2, 3}, {-2., -3., -8., -2., -3., -8.});
+  test.Run();
+}
+
 TEST(DetOpTest, InputDimsLessThan2) {
   OpTester test("Det", 11);
   test.AddInput<float>("X", {1}, {3.0f});

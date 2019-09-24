@@ -43,11 +43,19 @@ Status Det<T>::Compute(OpKernelContext* context) const {
     auto* Y_data = Y->template MutableData<T>();
     *Y_data = get_determinant(X_data);
   } else {
-    int batch_size = static_cast<int>(X_shape[0]);
+    // calculate batch size and output shape
+    std::vector<int64_t> output_shape;
+    output_shape.reserve(X_num_dims - 2);
+    int64_t batch_size = 1;
+    for (int i = 0; i < X_num_dims - 2; ++i) {
+      batch_size *= X_shape[i];
+      output_shape.push_back(X_shape[i]);
+    }
+
     int num_matrix_elems = matrix_dim * matrix_dim;
-    auto* Y = context->Output(0, {batch_size});
+    auto* Y = context->Output(0, output_shape);
     auto* Y_data = Y->template MutableData<T>();
-    for (int b = 0; b < batch_size; ++b) {  // can be parallelized if need to
+    for (int b = 0; b < static_cast<int>(batch_size); ++b) {  // can be parallelized if need to
       const T* one_matrix = X_data + (b * num_matrix_elems);
       *Y_data++ = get_determinant(one_matrix);
     }
