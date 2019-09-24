@@ -92,7 +92,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.DisableSequentialExecution();
   fprintf(stdout, "Setting intra_op_num_threads to %d\n", performance_test_config.run_config.intra_op_num_threads);
   session_options.SetIntraOpNumThreads(performance_test_config.run_config.intra_op_num_threads);
-  fprintf(stdout, "Setting inter_op_num_threads to %d\n", performance_test_config.run_config.inter_op_num_threads);
+
+  if (!performance_test_config.run_config.enable_sequential_execution) {
+    fprintf(stdout, "Setting inter_op_num_threads to %d\n", performance_test_config.run_config.inter_op_num_threads);
+  }
+
   session_options.SetInterOpNumThreads(performance_test_config.run_config.inter_op_num_threads);
   // Set optimization level.
   session_options.SetGraphOptimizationLevel(performance_test_config.run_config.optimization_level);
