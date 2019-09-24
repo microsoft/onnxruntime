@@ -44,8 +44,21 @@
 #define BACKEND_NGRAPH ""
 #endif
 
-#if USE_OPENVINO
-#define BACKEND_OPENVINO "-OPENVINO"
+#if OPENVINO_CONFIG_CPU_FP32
+#define BACKEND_OPENVINO "-OPENVINO_CPU_FP32"
+
+#elif OPENVINO_CONFIG_GPU_FP32
+#define BACKEND_OPENVINO "-OPENVINO_GPU_FP32"
+
+#elif OPENVINO_CONFIG_GPU_FP16
+#define BACKEND_OPENVINO "-OPENVINO_GPU_FP16"
+
+#elif OPENVINO_CONFIG_MYRIAD
+#define BACKEND_OPENVINO "-OPENVINO_MYRIAD"
+
+#elif OPENVINO_CONFIG_VAD_M
+#define BACKEND_OPENVINO "-OPENVINO_VAD_M"
+
 #else
 #define BACKEND_OPENVINO ""
 #endif
@@ -228,64 +241,106 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
   }
 }
 
-void InitializeSession(InferenceSession* sess) {
-  onnxruntime::common::Status status;
+// ordered by default priority. highest to lowest.
+const std::vector<std::string>& GetAllProviders() {
+  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kMklDnnExecutionProvider,
+                                                   kNGraphExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider,
+                                                   kBrainSliceExecutionProvider, kCpuExecutionProvider};
+  return all_providers;
+}
 
+const std::vector<std::string>& GetAvailableProviders() {
+  auto InitializeProviders = []() {
+    std::vector<std::string> available_providers = {kCpuExecutionProvider};
 #ifdef USE_TENSORRT
-  {
-    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt(0));
-  }
+    available_providers.push_back(kTensorrtExecutionProvider);
 #endif
-
 #ifdef USE_CUDA
-  {
-    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(0));
-  }
+    available_providers.push_back(kCudaExecutionProvider);
 #endif
-
 #ifdef USE_MKLDNN
-  {
-    const bool enable_cpu_mem_arena = true;
-    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Mkldnn(enable_cpu_mem_arena ? 1 : 0));
-  }
+    available_providers.push_back(kMklDnnExecutionProvider);
 #endif
-
-#if USE_NGRAPH
-  {
-    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"));
-  }
+#ifdef USE_NGRAPH
+    available_providers.push_back(kNGraphExecutionProvider);
 #endif
-
 #ifdef USE_OPENVINO
-  {
-    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO("CPU"));
-  }
+    available_providers.push_back(kOpenVINOExecutionProvider);
 #endif
-
-#if USE_NUPHAR
-  {
-    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(true, nuphar_settings.c_str()));
-    nuphar_settings.clear();  // clear nuphar_settings after use to avoid it being accidentally passed on to next session
-  }
+#ifdef USE_NUPHAR
+    available_providers.push_back(kNupharExecutionProvider);
 #endif
-
 #ifdef USE_BRAINSLICE
-  {
-    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_BrainSlice(0, -1, -1, false, "", "", ""));
-  }
+    available_providers.push_back(kBrainSliceExecutionProvider);
 #endif
+    return available_providers;
+  };
+  static std::vector<std::string> available_providers = InitializeProviders();
+  return available_providers;
+}
 
+void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types) {
+  for (const std::string& type : provider_types) {
+    if (type == kCpuExecutionProvider) {
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CPU(sess->GetSessionOptions().enable_cpu_mem_arena));
+    } else if (type == kTensorrtExecutionProvider) {
+#ifdef USE_TENSORRT
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt(0));
+#endif
+    } else if (type == kCudaExecutionProvider) {
+#ifdef USE_CUDA
+      // device id??
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(0));
+#endif
+    } else if (type == kMklDnnExecutionProvider) {
+#ifdef USE_MKLDNN
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Mkldnn(sess->GetSessionOptions().enable_cpu_mem_arena));
+#endif
+    } else if (type == kNGraphExecutionProvider) {
+#if USE_NGRAPH
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"));
+#endif
+    } else if (type == kOpenVINOExecutionProvider) {
+#ifdef USE_OPENVINO
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO("CPU"));
+#endif
+    } else if (type == kNupharExecutionProvider) {
+#if USE_NUPHAR
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(true, nuphar_settings.c_str()));
+      nuphar_settings.clear();  // clear nuphar_settings after use to avoid it being accidentally passed on to next session
+#endif
+    } else if (type == kBrainSliceExecutionProvider) {
+#ifdef USE_BRAINSLICE
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_BrainSlice(0, -1, -1, false, "", "", ""));
+#endif
+    } else {
+      // unknown provider
+      throw std::runtime_error("Unknown Provider Type: " + type);
+    }
+  }
+}
+
+void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types) {
+  if (provider_types.empty()) {
+    // use default registration priority.
+    RegisterExecutionProviders(sess, GetAllProviders());
+  } else {
+    RegisterExecutionProviders(sess, provider_types);
+  }
+  onnxruntime::common::Status status;
   status = sess->Initialize();
   if (!status.IsOK()) {
     throw std::runtime_error(status.ToString().c_str());
   }
-}  // namespace python
+}
 
 void addGlobalMethods(py::module& m) {
   m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
   m.def(
       "get_device", []() -> std::string { return BACKEND_DEVICE; },
       "Return the device used to compute the prediction (CPU, MKL, ...)");
+  m.def("get_all_providers", []() -> const std::vector<std::string>& { return GetAllProviders(); });
+  m.def("get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableProviders(); });
 
 #ifdef USE_NUPHAR
   m.def("set_nuphar_settings", [](const std::string& str) {
@@ -308,77 +363,74 @@ void addGlobalMethods(py::module& m) {
 
         // default logger is needed to create the MklDNNExecutionProvider
         std::string default_logger_id{"DefaultLogger"};
-        std::unique_ptr<onnxruntime::logging::LoggingManager> default_logging_manager = 
-                  std::make_unique<LoggingManager>(
-                          std::unique_ptr<onnxruntime::logging::ISink>{ new onnxruntime::logging::CLogSink {}}, 
-                          onnxruntime::logging::Severity::kWARNING, 
-                          false,
-                          onnxruntime::logging::LoggingManager::InstanceType::Default, 
-                          &default_logger_id, 
-                          /*default_max_vlog_level*/ -1);
-     
+        std::unique_ptr<onnxruntime::logging::LoggingManager> default_logging_manager =
+            std::make_unique<LoggingManager>(
+                std::unique_ptr<onnxruntime::logging::ISink>{new onnxruntime::logging::CLogSink{}},
+                onnxruntime::logging::Severity::kWARNING,
+                false,
+                onnxruntime::logging::LoggingManager::InstanceType::Default,
+                &default_logger_id,
+                /*default_max_vlog_level*/ -1);
+
         std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> factories = {
-          onnxruntime::CreateExecutionProviderFactory_CPU(0),
+            onnxruntime::CreateExecutionProviderFactory_CPU(0),
 #ifdef USE_CUDA
-          onnxruntime::CreateExecutionProviderFactory_CUDA(0),
+            onnxruntime::CreateExecutionProviderFactory_CUDA(0),
 #endif
 #ifdef USE_MKLDNN
-          onnxruntime::CreateExecutionProviderFactory_Mkldnn(1),
+            onnxruntime::CreateExecutionProviderFactory_Mkldnn(1),
 #endif
 #ifdef USE_NGRAPH
-          onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),
+            onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),
 #endif
 #ifdef USE_OPENVINO
-          onnxruntime::CreateExecutionProviderFactory_OpenVINO("CPU"),
-#endif    
-#ifdef  USE_TENSORRT    
-          onnxruntime::CreateExecutionProviderFactory_Tensorrt()
-#endif          
+            onnxruntime::CreateExecutionProviderFactory_OpenVINO("CPU"),
+#endif
+#ifdef USE_TENSORRT
+            onnxruntime::CreateExecutionProviderFactory_Tensorrt()
+#endif
         };
 
-      for (const auto& f: factories){
-        for (const auto& m: f->CreateProvider()
-                       ->GetKernelRegistry()
-                       ->GetKernelCreateMap()){
-          result.emplace_back(*(m.second.kernel_def)); 
+        for (const auto& f : factories) {
+          for (const auto& m : f->CreateProvider()
+                                   ->GetKernelRegistry()
+                                   ->GetKernelCreateMap()) {
+            result.emplace_back(*(m.second.kernel_def));
+          }
         }
-      }
 
-      return result;
-    },
-    "Return a vector of KernelDef for all registered OpKernels"
-  );
-#endif //onnxruntime_PYBIND_EXPORT_OPSCHEMA
+        return result;
+      },
+      "Return a vector of KernelDef for all registered OpKernels");
+#endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 }
 
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
-void addOpKernelSubmodule(py::module& m){
+void addOpKernelSubmodule(py::module& m) {
   auto opkernel = m.def_submodule("opkernel");
   opkernel.doc() = "OpKernel submodule";
   py::class_<onnxruntime::KernelDef> kernel_def(opkernel, "KernelDef");
   kernel_def.def_property_readonly("op_name", &onnxruntime::KernelDef::OpName)
-            .def_property_readonly("domain", &onnxruntime::KernelDef::Domain)
-            .def_property_readonly("provider", &onnxruntime::KernelDef::Provider)
-            .def_property_readonly("version_range", 
-              [](const onnxruntime::KernelDef& kernelDef) -> std::pair<int, int> {
-                return kernelDef.onnxruntime::KernelDef::SinceVersion();
-              })
-            .def_property_readonly("type_constraints", 
-              [](const onnxruntime::KernelDef& kernelDef) -> std::unordered_map<std::string, std::vector<std::string> > {
-                std::unordered_map<std::string, std::vector<std::string> > result;
-                const auto& tempResult = kernelDef.TypeConstraints();
-                for (const auto& tc: tempResult){
-                  result[tc.first] = std::vector<std::string>();
-                  for (const auto& dt: tc.second){
-                    result[tc.first].emplace_back(onnxruntime::DataTypeImpl::ToString(dt));  
-                  }
-                }
-                return result;
-              })
-            ;
+      .def_property_readonly("domain", &onnxruntime::KernelDef::Domain)
+      .def_property_readonly("provider", &onnxruntime::KernelDef::Provider)
+      .def_property_readonly("version_range",
+                             [](const onnxruntime::KernelDef& kernelDef) -> std::pair<int, int> {
+                               return kernelDef.onnxruntime::KernelDef::SinceVersion();
+                             })
+      .def_property_readonly("type_constraints",
+                             [](const onnxruntime::KernelDef& kernelDef) -> std::unordered_map<std::string, std::vector<std::string>> {
+                               std::unordered_map<std::string, std::vector<std::string>> result;
+                               const auto& tempResult = kernelDef.TypeConstraints();
+                               for (const auto& tc : tempResult) {
+                                 result[tc.first] = std::vector<std::string>();
+                                 for (const auto& dt : tc.second) {
+                                   result[tc.first].emplace_back(onnxruntime::DataTypeImpl::ToString(dt));
+                                 }
+                               }
+                               return result;
+                             });
 }
-
 
 void addOpSchemaSubmodule(py::module& m) {
   auto schemadef = m.def_submodule("schemadef");
@@ -489,14 +541,15 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
       .def_readwrite("logid", &SessionOptions::session_logid,
                      R"pbdoc(Logger id to use for session output.)pbdoc")
       .def_readwrite("log_severity_level", &SessionOptions::session_log_severity_level,
-                     R"pbdoc(Log severity level. Applies to session load, initialization, etc. 
+                     R"pbdoc(Log severity level. Applies to session load, initialization, etc.
 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.)pbdoc")
       .def_readwrite("log_verbosity_level", &SessionOptions::session_log_verbosity_level,
-                     R"pbdoc(VLOG level if DEBUG build and session_log_verbosity_level is 0. 
+                     R"pbdoc(VLOG level if DEBUG build and session_log_verbosity_level is 0.
 Applies to session load, initialization, etc. Default is 0.)pbdoc")
-      .def_readwrite("thread_pool_size", &SessionOptions::session_thread_pool_size,
-                     R"pbdoc(How many threads in the session thread pool. Default is 0 to let onnxruntime choose.
-This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
+      .def_readwrite("intra_op_num_threads", &SessionOptions::intra_op_num_threads,
+                     R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
+      .def_readwrite("inter_op_num_threads", &SessionOptions::inter_op_num_threads,
+                     R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")
       .def_property(
           "graph_optimization_level",
           [](const SessionOptions* options) -> GraphOptimizationLevel {
@@ -521,7 +574,7 @@ This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
             }
             return retval;
           },
-          
+
           [](SessionOptions* options, GraphOptimizationLevel level) -> void {
             switch (level) {
               case ORT_DISABLE_ALL:
@@ -540,13 +593,12 @@ This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
           },
           R"pbdoc(Graph optimization level for this session.)pbdoc");
 
-
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
       .def_readwrite("log_severity_level", &RunOptions::run_log_severity_level,
                      R"pbdoc(Log severity level for a particular Run() invocation. 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.)pbdoc")
       .def_readwrite("log_verbosity_level", &RunOptions::run_log_verbosity_level,
-                     R"pbdoc(VLOG level if DEBUG build and run_log_severity_level is 0. 
+                     R"pbdoc(VLOG level if DEBUG build and run_log_severity_level is 0.
 Applies to a particular Run() invocation. Default is 0.)pbdoc")
       .def_readwrite("logid", &RunOptions::run_tag,
                      "To identify logs generated by a particular Run() invocation.")
@@ -627,21 +679,21 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def(py::init<SessionObjectInitializer, SessionObjectInitializer>())
       .def(py::init<SessionOptions, SessionObjectInitializer>())
       .def(
-          "load_model", [](InferenceSession* sess, const std::string& path) {
+          "load_model", [](InferenceSession* sess, const std::string& path, std::vector<std::string>& provider_types) {
             auto status = sess->Load(path);
             if (!status.IsOK()) {
               throw std::runtime_error(status.ToString().c_str());
             }
-            InitializeSession(sess);
+            InitializeSession(sess, provider_types);
           },
           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
-      .def("read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel) {
+      .def("read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel, std::vector<std::string>& provider_types) {
         std::istringstream buffer(serializedModel);
         auto status = sess->Load(buffer);
         if (!status.IsOK()) {
           throw std::runtime_error(status.ToString().c_str());
         }
-        InitializeSession(sess);
+        InitializeSession(sess, provider_types);
       },
            R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
       .def("run", [](InferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr) -> std::vector<py::object> {
@@ -697,6 +749,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def("end_profiling", [](InferenceSession* sess) -> std::string {
         return sess->EndProfiling();
       })
+      .def("get_providers", [](InferenceSession* sess) -> const std::vector<std::string>& {
+        return sess->GetRegisteredProviderTypes();
+      })
       .def_property_readonly("inputs_meta", [](const InferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
         auto res = sess->GetModelInputs();
         if (!res.first.IsOK()) {
@@ -713,6 +768,14 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           return *(res.second);
         }
       })
+      .def_property_readonly("overridable_initializers", [](const InferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
+        auto res = sess->GetOverridableInitializers();
+        if (!res.first.IsOK()) {
+          throw std::runtime_error(res.first.ToString().c_str());
+        } else {
+          return *res.second;
+        }
+      })
       .def_property_readonly("model_meta", [](const InferenceSession* sess) -> const onnxruntime::ModelMetadata& {
         auto res = sess->GetModelMetadata();
         if (!res.first.IsOK()) {
@@ -722,7 +785,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         }
       });
 }
-
 
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";

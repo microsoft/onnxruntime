@@ -46,6 +46,11 @@ namespace logging {
 class LoggingManager;
 }
 
+struct FreeDimensionOverride {
+  std::string dimension_denotation;
+  int64_t dimension_override;
+};
+
 /**
   * Configuration information for a session.
   */
@@ -87,8 +92,16 @@ struct SessionOptions {
   // set graph optimization level
   TransformerLevel graph_optimization_level = TransformerLevel::Level1;
 
-  // How many threads in the session thread pool.
-  int session_thread_pool_size = -1;
+  // controls the size of the thread pool used to parallelize the execution of tasks within individual nodes (ops)
+  int intra_op_num_threads = 0;
+
+  // controls the size of the thread pool used to parallelize the execution of nodes (ops)
+  // configuring this makes sense only when you're using parallel executor
+  int inter_op_num_threads = 0;
+
+  // For models with free input dimensions (most commonly batch size), specifies a set of values to override those
+  // free dimensions with, keyed by dimension denotation.
+  std::vector<FreeDimensionOverride> free_dimension_overrides;
 };
 
 /**
@@ -268,6 +281,15 @@ class InferenceSession {
   std::pair<common::Status, const InputDefList*> GetModelInputs() const;
 
   /**
+    * Get all definitions of the model for overridable initializers.
+    * This does not include weights. Use this to get the name/type/shapes of the overridable initializers.
+    * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
+    * @note lifetime of the returned pointer is valid as long as the Session object is live.
+    * @note for IR < 4 returned list will always be empty.
+    */
+  std::pair<common::Status, const InputDefList*> GetOverridableInitializers() const;
+
+  /**
     * Get all output definitions of the model. Use this to get the name/type/shapes of the outputs.
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
     * @note lifetime of the returned pointer is valid as long as the Session object is live.
@@ -278,6 +300,17 @@ class InferenceSession {
     * Get the current number of in-progress concurrent Run calls.
     */
   int GetCurrentNumRuns() const;
+
+  /**
+    * Get the names of registered Execution Providers. The returned vector is ordered by Execution Provider
+    * priority. The first provider in the vector has the highest priority.
+    */
+  const std::vector<std::string>& GetRegisteredProviderTypes() const;
+
+  /*
+   * Get the options this session was initialized with.
+   */
+  const SessionOptions& GetSessionOptions() const;
 
   /**
     * Start profiling on this inference session. This simply turns on profiling events to be
@@ -410,6 +443,7 @@ class InferenceSession {
  private:
   // Threadpool for this session
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
 
  protected:
   // Immutable state for each op in the model. Shared by all executors.

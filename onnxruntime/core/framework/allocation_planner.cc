@@ -313,13 +313,13 @@ class PlannerImpl {
     auto p_required_buffer_shape = context_.GetShape(output_arg);
     if (nullptr == p_required_buffer_shape) return false;
     auto required_buffer_type = output_arg.Type();
-    auto& required_allocator_info = AllocPlan(output_arg.Name()).location;
+    auto& required_memory_info = AllocPlan(output_arg.Name()).location;
 
     for (auto it = freelist_.begin(); it != freelist_.end(); ++it) {
       size_t reusable = static_cast<size_t>(it->ml_value);
       const onnxruntime::NodeArg* p_node_arg = ort_value_info_.at(reusable).p_def_site;
-      auto& available_allocator_info = AllocPlan(p_node_arg->Name()).location;
-      if (!(available_allocator_info == required_allocator_info)) continue;
+      auto& available_memory_info = AllocPlan(p_node_arg->Name()).location;
+      if (!(available_memory_info == required_memory_info)) continue;
       auto p_available_buffer_shape = context_.GetShape(*p_node_arg);
       if (nullptr != p_available_buffer_shape) {
         auto available_buffer_type = p_node_arg->Type();
@@ -461,7 +461,7 @@ class PlannerImpl {
     ORT_ENFORCE(kernel_create_info != nullptr && kernel_create_info->kernel_def != nullptr);
     if (kernel_create_info->kernel_def->IsInputOnCpu(input_index))
       // weights are not output from any node, so it's OK to put its location on CPU provider
-      return execution_providers_.GetDefaultCpuAllocatorInfo();
+      return execution_providers_.GetDefaultCpuMemoryInfo();
     return p_provider->GetAllocator(0, OrtMemTypeDefault)->Info();
   }
 
@@ -490,7 +490,7 @@ class PlannerImpl {
       for (size_t j = 0; j != loc.size(); ++j) {
         if (loc[j] != loc[0]) {
           // set the location to CPU
-          plan_.allocation_plan[i].location = execution_providers_.GetDefaultCpuAllocatorInfo();
+          plan_.allocation_plan[i].location = execution_providers_.GetDefaultCpuMemoryInfo();
           break;
         }
       }

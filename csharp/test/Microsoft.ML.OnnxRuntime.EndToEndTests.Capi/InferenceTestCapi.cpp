@@ -28,67 +28,64 @@ wchar_t* GetWideString(const char* c) {
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-namespace UnitTest1
-{		
-    TEST_CLASS(UnitTest1)
-    {
-    public:
-        
-        int run_inference(OrtSession* session) {
-            size_t input_height = 224;
-            size_t input_width = 224;
-            float* model_input = (float *) malloc (sizeof (float) * 224 * 224 * 3);
-            size_t model_input_ele_count = 224 * 224 * 3;
+namespace UnitTest1 {
+TEST_CLASS(UnitTest1){
+  public :
 
-            // initialize to values between 0.0 and 1.0
-            for (unsigned int i = 0; i < model_input_ele_count; i++)
-                model_input[i] = (float)i / (float)(model_input_ele_count + 1);
+      int run_inference(OrtSession * session){
+          size_t input_height = 224;
+size_t input_width = 224;
+float* model_input = (float*)malloc(sizeof(float) * 224 * 224 * 3);
+size_t model_input_ele_count = 224 * 224 * 3;
 
-            OrtMemoryInfo* allocator_info;
-            ORT_ABORT_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
-            const size_t input_shape[] = { 1, 3, 224, 224 };
-            const size_t input_shape_len = sizeof(input_shape) / sizeof(input_shape[0]);
-            const size_t model_input_len = model_input_ele_count * sizeof(float);
+// initialize to values between 0.0 and 1.0
+for (unsigned int i = 0; i < model_input_ele_count; i++)
+  model_input[i] = (float)i / (float)(model_input_ele_count + 1);
 
-            OrtValue* input_tensor = NULL;
-            ORT_ABORT_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(allocator_info, model_input, model_input_len, input_shape, input_shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
-            assert(input_tensor != NULL);
-            assert(OrtIsTensor(input_tensor));
-            OrtReleaseMemoryInfo(allocator_info);
-            const char* input_names[] = { "data_0" };
-            const char* output_names[] = { "softmaxout_1" };
-            OrtValue* output_tensor = NULL;
-            ORT_ABORT_ON_ERROR(OrtRun(session, NULL, input_names, (const OrtValue* const*)&input_tensor, 1, output_names, 1, &output_tensor));
-            assert(output_tensor != NULL);
-            assert(OrtIsTensor(output_tensor));
+OrtMemoryInfo* memory_info;
+ORT_ABORT_ON_ERROR(OrtCreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
+const size_t input_shape[] = {1, 3, 224, 224};
+const size_t input_shape_len = sizeof(input_shape) / sizeof(input_shape[0]);
+const size_t model_input_len = model_input_ele_count * sizeof(float);
 
-            OrtReleaseValue(output_tensor);
-            OrtReleaseValue(input_tensor);
-            free(model_input);
-            return 0;
-        }
+OrtValue* input_tensor = NULL;
+ORT_ABORT_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(memory_info, model_input, model_input_len, input_shape, input_shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
+assert(input_tensor != NULL);
+assert(OrtIsTensor(input_tensor));
+OrtReleaseMemoryInfo(memory_info);
+const char* input_names[] = {"data_0"};
+const char* output_names[] = {"softmaxout_1"};
+OrtValue* output_tensor = NULL;
+ORT_ABORT_ON_ERROR(OrtRun(session, NULL, input_names, (const OrtValue* const*)&input_tensor, 1, output_names, 1, &output_tensor));
+assert(output_tensor != NULL);
+assert(OrtIsTensor(output_tensor));
 
-        int test()
-        {
-            const wchar_t * model_path = L"squeezenet.onnx";
-            OrtEnv* env;
-            ORT_ABORT_ON_ERROR(OrtCreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
-            OrtSessionOptions* session_option = OrtCreateSessionOptions();
-            OrtSession* session;
-            OrtSetSessionThreadPoolSize(session_option, 1);
-            ORT_ABORT_ON_ERROR(OrtCreateSession(env, model_path, session_option, &session));
-            OrtReleaseSessionOptions(session_option);
+OrtReleaseValue(output_tensor);
+OrtReleaseValue(input_tensor);
+free(model_input);
+return 0;
+}  // namespace UnitTest1
 
-            int result = run_inference(session);
+int test() {
+  const wchar_t* model_path = L"squeezenet.onnx";
+  OrtEnv* env;
+  ORT_ABORT_ON_ERROR(OrtCreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
+  OrtSessionOptions* session_option = OrtCreateSessionOptions();
+  OrtSession* session;
+  OrtSetIntraOpNumThreads(session_option, 1);
+  ORT_ABORT_ON_ERROR(OrtCreateSession(env, model_path, session_option, &session));
+  OrtReleaseSessionOptions(session_option);
 
-            OrtReleaseSession(session);
-            OrtReleaseEnv(env);
-        }
+  int result = run_inference(session);
 
-        TEST_METHOD(TestMethod1)
-        {
-            int res = test();
-            Assert::AreEqual(res, 0);
-        }
-    };
+  OrtReleaseSession(session);
+  OrtReleaseEnv(env);
+}
+
+TEST_METHOD(TestMethod1) {
+  int res = test();
+  Assert::AreEqual(res, 0);
+}
+}
+;
 }

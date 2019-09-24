@@ -348,7 +348,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   if ((CUDNN_RNN_RELU == rnn_mode_ || CUDNN_RNN_TANH == rnn_mode_) && sequence_lens_data != nullptr && y_h_data != nullptr && y_data != nullptr) {
-    CudaAsyncBuffer<int32_t> sequence_lens_buffer(this, GetDeviceId(), batch_size);
+    CudaAsyncBuffer<int32_t> sequence_lens_buffer(this, batch_size);
     memcpy(sequence_lens_buffer.CpuPtr(), sequence_lens_data, batch_size * sizeof(int32_t));
     sequence_lens_buffer.CopyToGpu();
     RnnMaskImpl(gsl::narrow_cast<int32_t>(num_directions_),
@@ -371,7 +371,7 @@ void CudnnRnnBase<T>::SetZeroSequences(const int64_t zero_seq_index_cache_size,
                                        T* y_h_data,
                                        T* y_c_data) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
-  CudaAsyncBuffer<int32_t> zero_seq_index_cache_async_buffer(this, GetDeviceId(), zero_seq_index_cache_size);
+  CudaAsyncBuffer<int32_t> zero_seq_index_cache_async_buffer(this, zero_seq_index_cache_size);
   memcpy(zero_seq_index_cache_async_buffer.CpuPtr(), zero_seq_index_cache.data(), zero_seq_index_cache_size * sizeof(int32_t));
   zero_seq_index_cache_async_buffer.CopyToGpu();
   MaskZeroSequences(gsl::narrow_cast<int32_t>(hidden_size_),

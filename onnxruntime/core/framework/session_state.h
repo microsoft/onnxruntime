@@ -49,9 +49,15 @@ struct MemoryPatternGroup;
  */
 class SessionState {
  public:
-  SessionState(const ExecutionProviders& execution_providers, bool enable_mem_pattern,
-               concurrency::ThreadPool* thread_pool)
-      : execution_providers_{execution_providers}, enable_mem_pattern_(enable_mem_pattern), thread_pool_(thread_pool) {}
+  SessionState(const ExecutionProviders& execution_providers,
+               bool enable_mem_pattern,
+               concurrency::ThreadPool* thread_pool,
+               concurrency::ThreadPool* inter_op_thread_pool)
+      : execution_providers_{execution_providers},
+        enable_mem_pattern_(enable_mem_pattern),
+        thread_pool_(thread_pool),
+        inter_op_thread_pool_(inter_op_thread_pool) {
+  }
 
   ~SessionState() {
     for (auto* p : session_kernels_) {
@@ -69,6 +75,10 @@ class SessionState {
   // Get kernel for specified node.
   // It should called right before graph execution only.
   const OpKernel* GetKernel(size_t node_id) const {
+    return (node_id < session_kernels_.size()) ? session_kernels_[node_id] : nullptr;
+  }
+
+  OpKernel* GetMutableKernel(size_t node_id) {
     return (node_id < session_kernels_.size()) ? session_kernels_[node_id] : nullptr;
   }
 
@@ -173,6 +183,7 @@ class SessionState {
   const NameNodeInfoMapType& GetInputNodeInfoMap() const;
 
   void AddOutputNameToNodeInfoMapping(const std::string& output_name, const NodeInfo& node_info);
+  common::Status GetOutputNodeInfo(const std::string& output_name, std::vector<NodeInfo>& node_info_vec) const;
   const NameNodeInfoMapType& GetOutputNodeInfoMap() const;
 
   /// Add a SessionState instance for executing a subgraph in a Node
@@ -187,7 +198,12 @@ class SessionState {
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
 
+  // Remove the SessionState for a node containing a subgraph.
+  // If the node isn't going to be executed by the CPU provider we don't need it.
+  void RemoveSubgraphSessionState(onnxruntime::NodeIndex index);
+
   concurrency::ThreadPool* GetThreadPool() const { return thread_pool_; }
+  concurrency::ThreadPool* GetInterOpThreadPool() const { return inter_op_thread_pool_; }
 
   bool ExportDll() const { return export_fused_dll_; }
   void SetExportDllFlag(bool flag) { export_fused_dll_ = flag; }
@@ -243,7 +259,8 @@ class SessionState {
   SubgraphSessionStateMap subgraph_session_states_;
 
   // It could be NULL
-  concurrency::ThreadPool* const thread_pool_;
+  concurrency::ThreadPool* const thread_pool_{};
+  concurrency::ThreadPool* const inter_op_thread_pool_{};
 
   bool export_fused_dll_ = false;
   FuncManager fused_funcs_mgr_;
