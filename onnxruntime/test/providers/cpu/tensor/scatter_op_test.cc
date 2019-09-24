@@ -7,9 +7,6 @@
 namespace onnxruntime {
 namespace test {
 
-const int Scatter_ver = 9;
-const int ScatterElements_ver = 11;
-
 static void scatter_without_axis_tests(const char* op_name, int op_version) {
   OpTester test(op_name, op_version);
 
