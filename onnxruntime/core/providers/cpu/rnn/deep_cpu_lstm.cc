@@ -794,10 +794,6 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   // explicitly check just the range for each iteration, however if it's going to run over
   // it should also run over on the last iteration, so this should be good enough to catch any
   // logic errors causing bounds violations.
-  span_T_iter C_prev_end = batched_internal_state_prev_one_step.end();
-  span_T_iter C_prev_clipped_end = batched_internal_state_clipped_one_step.end();
-  span_T_const_iter previous_state_end = batched_hidden_state_one_step.end();
-
   if (batch_parallel_) {
     int fused_hidden_rows = batch_size_ / hidden_num_threads_;
     if (batch_size_ % hidden_num_threads_ != 0)
@@ -805,6 +801,10 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
     // lambda to do all processing on fused_hidden_rows rows
     auto hidden_gemm_and_activations = [&](int row) {
+      span_T_iter C_prev_end = batched_internal_state_prev_one_step.end();
+      span_T_iter C_prev_clipped_end = batched_internal_state_clipped_one_step.end();
+      span_T_const_iter previous_state_end = batched_hidden_state_one_step.cend();
+
       //handling boundaries
       int local_fused_hidden_rows = fused_hidden_rows;
       if ((row + fused_hidden_rows) > batch_size_)
@@ -887,6 +887,10 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
     ExecuteLambdaInParallel("Processing batch", hidden_gemm_and_activations, batch_size_, fused_hidden_rows, lstm_tp_, logger_);
 
   } else {
+    span_T_iter C_prev_end = batched_internal_state_prev_one_step.end();
+    span_T_iter C_prev_clipped_end = batched_internal_state_clipped_one_step.end();
+    span_T_const_iter previous_state_end = batched_hidden_state_one_step.cend();
+
     span_T_iter c_prev = batched_internal_state_prev_one_step.begin();
     span_T_iter c_prev_clipped = batched_internal_state_clipped_one_step.begin();
 
