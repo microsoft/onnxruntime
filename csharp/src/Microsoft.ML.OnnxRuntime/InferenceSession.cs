@@ -32,7 +32,7 @@ namespace Microsoft.ML.OnnxRuntime
         public InferenceSession(string modelPath)
         {
             _builtInSessionOptions = new SessionOptions(); // need to be disposed
-            Init(modelPath, null, _builtInSessionOptions);
+            Init(modelPath, _builtInSessionOptions);
         }
 
 
@@ -43,7 +43,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options"></param>
         public InferenceSession(string modelPath, SessionOptions options)
         {
-            Init(modelPath, null, options);
+            Init(modelPath, options);
         }
 
         /// <summary>
@@ -53,7 +53,7 @@ namespace Microsoft.ML.OnnxRuntime
         public InferenceSession(byte[] model)
         {
             _builtInSessionOptions = new SessionOptions(); // need to be disposed
-            Init(null, model, _builtInSessionOptions);
+            Init(model, _builtInSessionOptions);
         }
 
         /// <summary>
@@ -63,7 +63,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options"></param>
         public InferenceSession(byte[] model, SessionOptions options)
         {
-            Init(null, model, options);
+            Init(model, options);
         }
 
         /// <summary>
@@ -201,30 +201,39 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region private methods
 
-        /// <summary>
-        /// Initializes the session object with a model specified by either file path or byte array
-        /// </summary>
-        /// <param name="modelPath">Model's file path to load. This parameter is ignored if <paramref name="modelData"/> is specified.</param>
-        /// <param name="modelData">Model's byte array to read. If this parameter is ignored, then <paramref name="modelPath"/> will be ignored.</param>
-        /// <param name="options">Session options</param>
-        private void Init(string modelPath, byte[] modelData, SessionOptions options)
+        private void Init(string modelPath, SessionOptions options)
         {
             var envHandle = OnnxRuntime.Handle;
+            var session = IntPtr.Zero;
 
-            _nativeHandle = IntPtr.Zero;
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.Unicode.GetBytes(modelPath), options.Handle, out session));
+            else
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.UTF8.GetBytes(modelPath), options.Handle, out session));
+
+            InitWithSessionHandle(session, options);
+        }
+
+        private void Init(byte[] modelData, SessionOptions options)
+        {
+            var envHandle = OnnxRuntime.Handle;
+            var session = IntPtr.Zero;
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionFromArray(envHandle, modelData, (UIntPtr)modelData.Length, options.Handle, out session));
+
+            InitWithSessionHandle(session, options);
+        }
+
+        /// <summary>
+        /// Initializes the session object with a native session handle
+        /// </summary>
+        /// <param name="session">Handle of a native session object</param>
+        /// <param name="options">Session options</param>
+        private void InitWithSessionHandle(IntPtr session, SessionOptions options)
+        {
+            _nativeHandle = session;
             try
             {
-                if (modelData != null)
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionFromArray(envHandle, modelData, (UIntPtr)modelData.Length, options.Handle, out _nativeHandle));
-                }
-                else
-                {
-                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                        NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.Unicode.GetBytes(modelPath), options.Handle, out _nativeHandle));
-                    else
-                        NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.UTF8.GetBytes(modelPath), options.Handle, out _nativeHandle));
-                }
 
                 // Initialize input/output metadata
                 _inputMetadata = new Dictionary<string, NodeMetadata>();
