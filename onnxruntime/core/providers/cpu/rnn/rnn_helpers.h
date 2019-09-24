@@ -230,8 +230,6 @@ void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, i
   ORT_UNUSED_PARAMETER(name);
   ORT_UNUSED_PARAMETER(logger);
 
-  const int total_tasks = max / (step > 0 ? step : 1) + (max % step > 0 ? 1 : 0);
-
   // ORT_ENFORCE may and does throw at times from within the tasks that run
   // on a thread-pool. Without propagating exceptions the process exits silently
   // which will make diagnosing bugs more difficult.
