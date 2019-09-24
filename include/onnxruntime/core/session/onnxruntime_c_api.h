@@ -504,6 +504,11 @@ struct OrtApi {
   // Always returns the same instance on every invocation.
   OrtStatus*(ORT_API_CALL* GetAllocatorWithDefaultOptions)(_Outptr_ OrtAllocator** out)NO_EXCEPTION;
 
+  // Override symbolic dimensions with actual values if known at session initialization time to enable
+  // optimizations that can take advantage of fixed values (such as memory planning, etc)
+  OrtStatus*(ORT_API_CALL* OrtAddFreeDimensionOverride)(_Inout_ OrtSessionOptions* options,
+                                                        _In_ const char* symbolic_dim, _In_ int64_t dim_override)NO_EXCEPTION;
+
   /**
    * APIs to support non-tensor types - map and sequence.
    * Currently only the following types are supported
