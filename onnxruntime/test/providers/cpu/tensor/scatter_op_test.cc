@@ -185,7 +185,7 @@ static void scatter_invalid_index(const char* op_name, int op_version) {
   test.AddInput<int64_t>("indices", {1, 1, 1}, {4});
   test.AddInput<float>("updates", {1, 1, 1}, {5.0f});
   test.AddOutput<float>("y", {4, 2, 1}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "indices element out of data bounds, idx=4 must be within the inclusive range [0,3]");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "indices element out of data bounds, idx=4 must be within the inclusive range [-4,3]");
 }
 
 TEST(Scatter, InvalidIndex) {
