@@ -58,7 +58,7 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
     if (idx < -axis_dim_limit || idx >= axis_dim_limit) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "indices element out of data bounds, idx=", idx,
-                             " must be within the inclusive range [", (is_scatter_elements ? -axis_dim_limit : 0), 
+                             " must be within the inclusive range [", -axis_dim_limit, 
                              ",", axis_dim_limit - 1, "]");
     }
 
