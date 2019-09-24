@@ -104,7 +104,6 @@ class OptimizerBuilder {
   const std::string& OpType() const { return name_; }
 
  protected:
-  const std::string learning_rate_name_ = "Learning_Rate";
   int num_inputs_;
   int num_outputs_;
 

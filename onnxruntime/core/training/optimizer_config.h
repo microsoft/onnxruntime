@@ -14,7 +14,7 @@ namespace training {
 struct OptimizerNodeConfig {
   std::string name{};
   const NodeArg* fp16_weight_arg{};
-  float learning_rate{1.0f};
+  std::string lr_feed_name{};
   std::unordered_map<std::string, float> attributes{};
   bool use_fp16_moments{false};
 };

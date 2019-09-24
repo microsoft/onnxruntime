@@ -43,7 +43,6 @@ class TrainingRunner {
 
     bool is_perf_test;
     size_t perf_warm_up_iters;
-    size_t num_of_perf_samples;
     LossFunctionInfo loss_func_info;
 
     // The training optimizer name
@@ -51,7 +50,7 @@ class TrainingRunner {
     // For now all to-be-trained weights use the same optimizer type.
     std::string training_optimizer_name = "SGDOptimizer";
     std::unordered_map<std::string, float> optimizer_attributes;
-    float learning_rate;
+    LearningRateParameters lr_params;
     int gradient_accumulation_steps = 1;
 
     // The weights to train, exclusive with weights_not_to_train_.
@@ -68,7 +67,7 @@ class TrainingRunner {
     bool shuffle_data;
     size_t batch_size;
     size_t eval_batch_size;
-    size_t num_of_epoch;
+    size_t num_train_steps;
     size_t evaluation_period;
 
     // error_function_ is called when evaluating the error for a single sample.

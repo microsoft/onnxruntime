@@ -153,14 +153,14 @@ void LayerNormOpTester::CompareWithCPU(double rtol, double atol) {
 }
 
 static void TestLayerNorm(const std::vector<int64_t>& X_dims,
-                   const std::vector<int64_t>& scale_dims,
-                   const std::vector<int64_t>& B_dims,
-                   const std::vector<int64_t>& Y_dims,
-                   const std::vector<int64_t>& mean_dims,
-                   const std::vector<int64_t>& var_dims,
-                   optional<float> epsilon,
-                   int64_t axis = -1,
-                   int64_t keep_dims = 1) {
+                          const std::vector<int64_t>& scale_dims,
+                          const std::vector<int64_t>& B_dims,
+                          const std::vector<int64_t>& Y_dims,
+                          const std::vector<int64_t>& mean_dims,
+                          const std::vector<int64_t>& var_dims,
+                          optional<float> epsilon,
+                          int64_t axis = -1,
+                          int64_t keep_dims = 1) {
   LayerNormOpTester test("LayerNormalization");
   test.AddAttribute("axis", axis);
   test.AddAttribute("keep_dims", keep_dims);
@@ -208,5 +208,5 @@ TEST(LayerNormTest, BERTLayerNorm) {
   std::vector<int64_t> var_dims{4, 512, 1};
   TestLayerNorm(X_dims, scale_dims, B_dims, Y_dims, mean_dims, var_dims, epsilon);
 }
-}
+}  // namespace test
 }  // namespace onnxruntime

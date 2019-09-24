@@ -16,19 +16,13 @@ Status SGDOptimizerBuilder::Build(
     const OptimizerNodeConfig& opt_config,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& external_inputs_including_initializers,
-    std::vector<TensorProto>& new_external_initializers,
+    std::vector<TensorProto>& /*new_external_initializers*/,
     ArgDef& output_weight_argdef) const {
   const std::string& weight_name = weight_argdef.name;
   const TypeProto* const weight_type_proto = weight_argdef.type_proto;
 
-  std::vector<TensorProto> new_initializers{};
-
-  // Initialized tensor for Learning Rate
-  TensorProto lr_tensor_proto = CreateTensorProto<float>(learning_rate_name_, opt_config.learning_rate);
-  new_initializers.emplace_back(lr_tensor_proto);
-
   std::vector<ArgDef> input_args(num_inputs_);
-  input_args[0] = ArgDef(learning_rate_name_);
+  input_args[0] = ArgDef(opt_config.lr_feed_name);
   input_args[1] = weight_argdef;
   input_args[2] = gradient_argdef;
 
@@ -40,9 +34,7 @@ Status SGDOptimizerBuilder::Build(
                                   output_args,
                                   NodeAttributes(),
                                   OptimizerNodeName(weight_name))});
-
   external_inputs_including_initializers.assign(input_args.begin(), input_args.end());
-  new_external_initializers = std::move(new_initializers);
   output_weight_argdef = output_args[0];
 
   return Status::OK();
@@ -63,15 +55,12 @@ Status AdamOptimizerBuilder::Build(
 
   std::vector<TensorProto> new_initializers{};
 
-  // Initialized tensor for Learning Rate
-  TensorProto lr_tensor_proto = CreateTensorProto<float>(learning_rate_name_, opt_config.learning_rate);
-
   // The type proto initializer for Update Count
   const std::string update_count_string = "Update_Count_" + weight_name;  // per weight optimizer requires a per weight update count
   TensorProto uc_tensor_proto = CreateTensorProto<int64_t>(update_count_string, 1);
 
-  // Add lr and uc tensorproto as initializers
-  new_initializers.assign({lr_tensor_proto, uc_tensor_proto});
+  // Add uc tensorproto as initializers
+  new_initializers.assign({uc_tensor_proto});
 
   int num_inputs = num_inputs_;
   int num_outputs = num_outputs_;
@@ -82,7 +71,7 @@ Status AdamOptimizerBuilder::Build(
     num_outputs += 1;
   }
   std::vector<ArgDef> input_args(num_inputs);
-  input_args[0] = ArgDef(learning_rate_name_);
+  input_args[0] = ArgDef(opt_config.lr_feed_name);
   input_args[1] = ArgDef(update_count_string);
   input_args[2] = weight_argdef;
   input_args[3] = gradient_argdef;
@@ -160,12 +149,8 @@ Status LambOptimizerBuilder::Build(
 
   std::vector<TensorProto> new_initializers{};
 
-  // Initialized tensor for Learning Rate
-  TensorProto lr_tensor_proto = CreateTensorProto<float>(learning_rate_name_, opt_config.learning_rate);
-  new_initializers.emplace_back(lr_tensor_proto);
-
   std::vector<ArgDef> input_args(num_inputs_);
-  input_args[0] = ArgDef(learning_rate_name_);
+  input_args[0] = ArgDef(opt_config.lr_feed_name);
   input_args[1] = weight_argdef;
   input_args[2] = gradient_argdef;
 

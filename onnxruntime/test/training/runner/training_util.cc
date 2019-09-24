@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "constant.h"
 #include "core/framework/data_types.h"
 #include "core/framework/tensorprotoutils.h"
 #include "test/training/runner/training_util.h"
@@ -210,6 +211,22 @@ void TrainingUtil::PrintTensor(const string& name, const Tensor& tensor, ostream
     os << "Unsupported data type.";
   }
   os << "\n\n";
+}
+
+std::unique_ptr<LearningRateScheduler> LearningRateScheduler::Create(LearningRateParameters& lr_params, size_t training_step_count) {
+  if (lr_params.warmup_mode == LRSchedule_NoWarmup) {
+    return std::make_unique<NoWarmpScheduler>(lr_params, training_step_count);
+  } else if (lr_params.warmup_mode == LRSchedule_Cosine) {
+    return std::make_unique<CosineScheduler>(lr_params, training_step_count);
+  } else if (lr_params.warmup_mode == LRSchedule_Constant) {
+    return std::make_unique<ConstantScheduler>(lr_params, training_step_count);
+  } else if (lr_params.warmup_mode == LRSchedule_Linear) {
+    return std::make_unique<LinearScheduler>(lr_params, training_step_count);
+  } else if (lr_params.warmup_mode == LRSchedule_Poly) {
+    return std::make_unique<PolyScheduler>(lr_params, training_step_count);
+  } else {
+    ORT_THROW("Unsupported learning rate warmup schedule");
+  }
 }
 
 }  // namespace training

@@ -145,9 +145,9 @@ Status TrainingRunner::Run() {
 }
 
 Status TrainingRunner::TrainingLoop() {
-  // Prepare fetches
   const VectorString fetch_names = params_.fetch_names;
-  const VectorString feed_names = training_data_loader_->DataSetTensorNames();
+  VectorString feed_names = training_data_loader_->DataSetTensorNames();
+  feed_names.push_back(params_.lr_params.feed_name);
   VectorString fetch_grad_accumulator_output;
 
   if (params_.gradient_accumulation_steps > 1) {
@@ -165,6 +165,10 @@ Status TrainingRunner::TrainingLoop() {
     printf("Warming up for perf test.\n");
     for (size_t batch = 0; batch < params_.perf_warm_up_iters; ++batch) {
       std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch);
+      OrtValue lr_ort_val;
+      TrainingUtil::CreateMLValue(TrainingUtil::GetCpuAllocator(), {}, std::vector<float>{params_.lr_params.initial_lr}, &lr_ort_val);
+      feeds.push_back(lr_ort_val);
+
       vector<MLValue> fetches;
       ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
                                        feed_names,
@@ -174,84 +178,91 @@ Status TrainingRunner::TrainingLoop() {
     }
   }
 
+  const size_t num_shards_to_visit = training_data_loader_->NumShards();
+  const auto lr_scheduler = LearningRateScheduler::Create(params_.lr_params, params_.num_train_steps);
   double total_time{0};
-  size_t num_shards_to_visit = params_.num_of_epoch;
-  if (training_data_loader_) {
-    num_shards_to_visit *= training_data_loader_->NumShards();
-  }
-
+  size_t epoch = 0;
   size_t total_batch_num = 0;
   size_t gradient_accumulation_step_count = 0, weight_update_step_count = 0;
-  for (size_t shard_it = 0; shard_it < num_shards_to_visit; ++shard_it) {
-    auto training_data = training_data_loader_->CurrentDataSet();
 
-    // Shuffle the data for each epoch
-    if (params_.shuffle_data) {
-      printf("Randomly shuffle training data.\n");
-      training_data->RandomShuffle();
-    }
+  while (step_ < params_.num_train_steps) {
+    for (size_t shard_it = 0; shard_it < num_shards_to_visit; ++shard_it) {
+      auto training_data = training_data_loader_->CurrentDataSet();
 
-    // loop through the data
-    size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
-    total_batch_num += batch_num_cur_shard;
-    for (size_t batch = 0; batch < batch_num_cur_shard; ++batch) {
-      std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch);
-      vector<MLValue> fetches;
-
-      auto start = std::chrono::high_resolution_clock::now();
-
-      if ((step_ + 1) % params_.gradient_accumulation_steps == 0) {
-        ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
-                                         feed_names,
-                                         feeds,
-                                         fetch_names,
-                                         &fetches));
-        weight_update_step_count++;
-      } else {
-        RunOptions run_options;
-        run_options.only_execute_path_to_fetches = true;
-        ORT_RETURN_IF_ERROR(session_.Run(run_options,
-                                         feed_names,
-                                         feeds,
-                                         fetch_grad_accumulator_output,
-                                         &fetches));
-        gradient_accumulation_step_count++;
+      // Shuffle the data for each epoch
+      if (params_.shuffle_data) {
+        printf("Randomly shuffle training data.\n");
+        training_data->RandomShuffle();
       }
-      step_++;
 
-      auto end = std::chrono::high_resolution_clock::now();
-      std::chrono::duration<double> duration_seconds = end - start;
-      total_time += duration_seconds.count();
+      // loop through the data
+      size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
+      total_batch_num += batch_num_cur_shard;
+      for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
+        std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch);
+        float learning_rate = lr_scheduler->GetLearningRate(step_ + 1);
+        OrtValue lr_ort_val;
+        TrainingUtil::CreateMLValue(TrainingUtil::GetCpuAllocator(), {}, std::vector<float>{learning_rate}, &lr_ort_val);
+        feeds.push_back(lr_ort_val);
 
-      // Print some info when reaching the end of the batch.
-      printf("Step: %d, batch: %d/%d, shard_iteration: %d/%d \n",
-             static_cast<int>(step_),
-             static_cast<int>(batch),
-             static_cast<int>(batch_num_cur_shard),
-             static_cast<int>(shard_it + 1),
-             static_cast<int>(num_shards_to_visit));
-      printf("Training data range: [%d - %d)\n",
-             static_cast<int>(batch * params_.batch_size),
-             static_cast<int>((batch + 1) * params_.batch_size - 1));
+        vector<MLValue> fetches;
 
-      if (step_ % params_.evaluation_period == 0) {
-        ORT_RETURN_IF_ERROR(Evaluate(session_));
+        auto start = std::chrono::high_resolution_clock::now();
+
+        if ((step_ + 1) % params_.gradient_accumulation_steps == 0) {
+          ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
+                                           feed_names,
+                                           feeds,
+                                           fetch_names,
+                                           &fetches));
+          weight_update_step_count++;
+        } else {
+          RunOptions run_options;
+          run_options.only_execute_path_to_fetches = true;
+          ORT_RETURN_IF_ERROR(session_.Run(run_options,
+                                           feed_names,
+                                           feeds,
+                                           fetch_grad_accumulator_output,
+                                           &fetches));
+          gradient_accumulation_step_count++;
+        }
+        step_++;
+
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> duration_seconds = end - start;
+        total_time += duration_seconds.count();
+
+        // Print some info when reaching the end of the batch.
+        printf("Step: %d, epoch: %d, batch: %d/%d, shard_iteration: %d/%d \n",
+               static_cast<int>(step_),
+               static_cast<int>(epoch),
+               static_cast<int>(batch),
+               static_cast<int>(batch_num_cur_shard),
+               static_cast<int>(shard_it + 1),
+               static_cast<int>(num_shards_to_visit));
+        printf("Training data range: [%d - %d)\n",
+               static_cast<int>(batch * params_.batch_size),
+               static_cast<int>((batch + 1) * params_.batch_size - 1));
+
+        if (step_ % params_.evaluation_period == 0) {
+          ORT_RETURN_IF_ERROR(Evaluate(session_));
+        }
+      }  // end of one file/shard
+
+      if (step_ < params_.num_train_steps) {
+        training_data_loader_->MoveToNextDataSet();
       }
-    }
+    }  // end of one epoch
 
-    // Move to next shard of data, except for the last iteration.
-    if (training_data_loader_ != nullptr && shard_it != num_shards_to_visit - 1) {
-      training_data_loader_->MoveToNextDataSet();
-    }
+    epoch++;
   }
 
-  std::cout << "Number of batches: " << total_batch_num << "\n"
+  std::cout << "Number of Batches: " << total_batch_num << "\n"
             << "Gradient Accumulation Steps: " << gradient_accumulation_step_count << "\n"
             << "Weight Update Steps: " << weight_update_step_count << "\n"
-            << "Total running time: " << total_time << " seconds \n"
-            << "Average running time per batch: " << total_time / total_batch_num * 1000 << " ms\n"
-            << "Throughput: " << params_.batch_size * total_batch_num / total_time << " Examples / second\n";
-
+            << "Total Running Time: " << total_time << " Seconds \n"
+            << "Average Running Time Per Batch: " << total_time / total_batch_num * 1000 << " ms\n"
+            << "Throughput: " << params_.batch_size * total_batch_num / total_time << " Examples / Second\n";
   return Status::OK();
 }
 
@@ -374,7 +385,7 @@ Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string
   OptimizerNodeConfig opt_config{
       params_.training_optimizer_name,
       nullptr,
-      params_.learning_rate,
+      params_.lr_params.feed_name,
       params_.optimizer_attributes,
       params_.use_fp16_moments};
 

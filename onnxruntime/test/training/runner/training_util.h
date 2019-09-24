@@ -3,6 +3,7 @@
 
 #pragma once
 #include <vector>
+#include "constant.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/framework_common.h"
@@ -118,5 +119,105 @@ class TrainingUtil {
 
   static void PrintTensor(const std::string& name, const Tensor& tensor, std::ostream& os = std::cout);
 };
+
+struct LearningRateParameters {
+  float initial_lr;
+  float warmup_ratio;
+
+  // Learning rate schedule to perform warmup : None, Cosine, Constant, Linear, Poly.
+  std::string warmup_mode = LRSchedule_NoWarmup;
+  std::string feed_name = "Learning_Rate";
+};
+
+class LearningRateScheduler {
+ public:
+  LearningRateScheduler(LearningRateParameters& lr_params, size_t training_step_count)
+      : lr_params_(lr_params),
+        total_step_count_(static_cast<float>(training_step_count)) {}
+
+  float GetLearningRate(const size_t current_step) const {
+    const float cur_ratio = static_cast<float>(current_step) / total_step_count_;
+    float schedule_factor = this->GetLearningRateFactor(cur_ratio, lr_params_.warmup_ratio);
+    return lr_params_.initial_lr * schedule_factor;
+  }
+
+  virtual ~LearningRateScheduler() = default;
+
+  virtual float GetLearningRateFactor(float cur_ratio, float warmp_ratio) const = 0;
+
+  static std::unique_ptr<LearningRateScheduler> Create(LearningRateParameters& lr_params, size_t training_step_count);
+
+ private:
+  const LearningRateParameters lr_params_;
+  const float total_step_count_;
+};
+
+class NoWarmpScheduler : public LearningRateScheduler {
+ public:
+  NoWarmpScheduler(LearningRateParameters& lr_params, size_t training_step_count)
+      : LearningRateScheduler(lr_params, training_step_count) {}
+
+  float GetLearningRateFactor(float /*cur_ratio*/, float /*warmp_ratio*/) const {
+    return 1.f;
+  }
+};
+
+class CosineScheduler : public LearningRateScheduler {
+ public:
+  CosineScheduler(LearningRateParameters& lr_params, size_t training_step_count)
+      : LearningRateScheduler(lr_params, training_step_count) {}
+
+  float GetLearningRateFactor(float cur_ratio, float warmp_ratio) const {
+    if (cur_ratio < warmp_ratio) {
+      return cur_ratio / warmp_ratio;
+    }
+
+    return 0.5f * (1.f + std::cos(static_cast<float>(M_PI) * cur_ratio));
+  }
+};
+
+class ConstantScheduler : public LearningRateScheduler {
+ public:
+  ConstantScheduler(LearningRateParameters& lr_params, size_t training_step_count)
+      : LearningRateScheduler(lr_params, training_step_count) {}
+
+  float GetLearningRateFactor(float cur_ratio, float warmp_ratio) const {
+    if (cur_ratio < warmp_ratio) {
+      return cur_ratio / warmp_ratio;
+    }
+
+    return 1.f;
+  }
+};
+
+class LinearScheduler : public LearningRateScheduler {
+ public:
+  LinearScheduler(LearningRateParameters& lr_params, size_t training_step_count)
+      : LearningRateScheduler(lr_params, training_step_count) {}
+
+  float GetLearningRateFactor(float cur_ratio, float warmp_ratio) const {
+    if (cur_ratio < warmp_ratio) {
+      return cur_ratio / warmp_ratio;
+    }
+
+    return std::max((cur_ratio - 1.f) / (warmp_ratio - 1.f), 0.f);
+  }
+};
+
+class PolyScheduler : public LearningRateScheduler {
+ public:
+  PolyScheduler(LearningRateParameters& lr_params, size_t training_step_count)
+      : LearningRateScheduler(lr_params, training_step_count) {}
+
+  float GetLearningRateFactor(float cur_ratio, float warmp_ratio) const {
+    if (cur_ratio < warmp_ratio) {
+      return cur_ratio / warmp_ratio;
+    }
+
+    const float degree = 0.5f;
+    return std::pow(1.f - cur_ratio, degree);
+  }
+};
+
 }  // namespace training
 }  // namespace onnxruntime

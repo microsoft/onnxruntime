@@ -9,6 +9,7 @@
 #include "core/training/training_session.h"
 #include "core/training/tensorboard/event_writer.h"
 #include "core/training/mpi_setup.h"
+#include "test/training/runner/constant.h"
 #include "test/training/runner/training_runner.h"
 #include "test/training/runner/training_util.h"
 #include "test/training/runner/data_loader.h"
@@ -32,12 +33,11 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
         cxxopts::value<std::string>())
       ("log_dir", "The directory to write tensorboard events.",
         cxxopts::value<std::string>()->default_value(""))
-      ("num_of_epoch", "Num of epoch", cxxopts::value<int>()->default_value("1"))
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>())
       ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>())
       ("learning_rate", "The initial learning rate for the optimizer.", cxxopts::value<float>()->default_value("5e-5"))
-      ("num_train_steps", "Number of training steps.", cxxopts::value<int>()->default_value("100000"))
-      ("num_warmup_steps", "Number of warmup steps.", cxxopts::value<int>()->default_value("10000"))
+      ("num_train_steps", "Total number of training steps to perform.", cxxopts::value<int>()->default_value("100000"))
+      ("warmup_ratio", "Fraction of training steps for learning rate warmup.", cxxopts::value<float>()->default_value("0"))
       ("evaluation_period",
         "How many training steps to make before making an evaluation.",
         cxxopts::value<size_t>()->default_value("100"))
@@ -52,9 +52,8 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
         cxxopts::value<bool>()->default_value("true"))
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
       ("max_profile_records", "Maximum number of runtime profile data records to collect.",
-          cxxopts::value<size_t>()->default_value(to_string(profiling::Profiler::DEFAULT_MAX_PROFILER_EVENTS)))
+        cxxopts::value<size_t>()->default_value(to_string(profiling::Profiler::DEFAULT_MAX_PROFILER_EVENTS)))
       ("mode", "mode for running, can be one of [train|perf]", cxxopts::value<std::string>()->default_value("train"))
-      ("num_of_perf_samples", "Num of samples to run for the perf test", cxxopts::value<int>()->default_value("100"))
       ("perf_warm_up_iters", "Num of warm-up iterations to run before the perf test", cxxopts::value<int>()->default_value("10"))
       ("max_seq_length",
         "The maximum total input sequence length after WordPiece tokenization. "
@@ -70,9 +69,20 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     auto flags = options.parse(argc, argv);
 
     params.model_name = flags["model_name"].as<std::string>();
-    params.learning_rate = flags["learning_rate"].as<float>();
-    params.num_of_epoch = flags["num_of_epoch"].as<int>();
-    params.num_of_perf_samples = flags["num_of_perf_samples"].as<int>();
+    float lr = flags["learning_rate"].as<float>();
+    if (lr > 1.f || lr < 0.f) {
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "learning_rate is not in valid range [0.0, 1.0]");
+    }
+    params.lr_params.initial_lr = lr;
+
+    float ratio = flags["warmup_ratio"].as<float>();
+    if (ratio > 1.f || ratio < 0.f) {
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "warmup_ratio is not in valid range [0.0, 1.0]");
+    }
+    params.lr_params.warmup_ratio = ratio;
+
+    params.num_train_steps = flags["num_train_steps"].as<int>();
+
     params.perf_warm_up_iters = flags["perf_warm_up_iters"].as<int>();
     params.batch_size = flags["train_batch_size"].as<int>();
     if (flags.count("eval_batch_size")) {
@@ -118,6 +128,8 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     }
 
     std::string optimizer_name = flags["optimizer"].as<std::string>();
+    // todo: let's change the warm up as required later.
+    params.lr_params.warmup_mode = LRSchedule_NoWarmup;
     if (optimizer_name == "adam" || optimizer_name == "Adam") {
       params.training_optimizer_name = "AdamOptimizer";
     } else if (optimizer_name == "lamb" || optimizer_name == "Lamb") {
@@ -304,8 +316,8 @@ int main(int argc, char* argv[]) {
                                                             onnx::TensorProto_DataType_INT64,
                                                             onnx::TensorProto_DataType_FLOAT,
                                                             onnx::TensorProto_DataType_INT64};
-
-    auto random_perf_data = std::make_shared<RandomDataSet>(params.num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
+    const size_t num_of_perf_samples = params.num_train_steps * params.batch_size;
+    auto random_perf_data = std::make_shared<RandomDataSet>(num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
     auto random_perf_data_loader = std::make_shared<SingleDataLoader>(random_perf_data, tensor_names);
     runner = std::make_unique<TrainingRunner>(random_perf_data_loader, random_perf_data_loader, params);
 

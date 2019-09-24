@@ -440,6 +440,25 @@ Status AddConditionalWeightUpdate(
 
   return Status::OK();
 }
+
+Status AddLearningRateGraphInputs(Graph& graph, const std::vector<OptimizerNodeConfig>& opt_configs) {
+  auto graph_inputs = graph.GetInputsIncludingInitializers();
+  std::vector<const NodeArg*> inputs_args_sets(graph_inputs.begin(), graph_inputs.end());
+  std::unordered_set<std::string> added_feed_names;
+  for (auto& cfg : opt_configs) {
+    if (added_feed_names.find(cfg.lr_feed_name) == added_feed_names.end()) {
+      TypeProto tensor_float;
+      tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+      const auto& out_def = graph.GetOrCreateNodeArg(cfg.lr_feed_name, &tensor_float);
+      inputs_args_sets.push_back(&out_def);
+      added_feed_names.emplace(cfg.lr_feed_name);
+    }
+  }
+
+  graph.SetInputs(inputs_args_sets);
+  return Status::OK();
+}
+
 }  // namespace
 
 OptimizerGraphBuilder::OptimizerGraphBuilder(
@@ -537,6 +556,9 @@ Status OptimizerGraphBuilder::Build(Graph& graph,
         AddZeroGradientNodes(nodearg_name_generator, zero_gradients_control_signal, gradient_accumulation_buffers, graph_defs);
     optimizer_graph_outputs[kWeightUpdateOutputKey] = group_zero_gradient_output.name;
   }
+
+  // add learning rate inputs
+  AddLearningRateGraphInputs(graph, opt_configs_);
 
   ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, graph_defs));
 
