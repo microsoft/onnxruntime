@@ -8,6 +8,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/memcpy.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_fence.h"
@@ -17,13 +18,60 @@
 #include "cuda_runtime_api.h"
 #include "gsl/pointers"
 #include "core/graph/model.h"
-#include "cuda_runtime_api.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
+
+ONNX_OPERATOR_KERNEL_EX(
+    MemcpyFromHost,
+    kOnnxDomain,
+    1,
+    kTensorrtExecutionProvider,
+    KernelDefBuilder()
+        .InputMemoryType<OrtMemTypeCPUInput>(0)
+        .ExecQueueId(kCudaStreamCopyIn)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    Memcpy);
+
+ONNX_OPERATOR_KERNEL_EX(
+    MemcpyToHost,
+    kOnnxDomain,
+    1,
+    kTensorrtExecutionProvider,
+    KernelDefBuilder()
+        .OutputMemoryType<OrtMemTypeCPUOutput>(0)
+        .ExecQueueId(kCudaStreamCopyOut)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    Memcpy);
+
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
+
+static void RegisterTensorrtKernels(KernelRegistry& kernel_registry) {
+  static const BuildKernelCreateInfoFn function_table[] = {
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
+  };
+
+  for (auto& function_table_entry : function_table) {
+    kernel_registry.Register(function_table_entry());
+  }
+}
+
+std::shared_ptr<KernelRegistry> GetTensorrtKernelRegistry() {
+  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
+  RegisterTensorrtKernels(*kernel_registry);
+
+  return kernel_registry;
+}
+
+std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() const {
+  static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::GetTensorrtKernelRegistry();
+  return kernel_registry;
+}
 
 // Per TensorRT documentation, logger needs to be a singleton.
 TensorrtLogger& GetTensorrtLogger() {
@@ -64,7 +112,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
 
   // Find inputs and outputs of the subgraph
-  std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add;
+  std::unordered_map<const NodeArg *, int> fused_inputs, fused_outputs, fused_outputs_to_add;
   std::unordered_set<const NodeArg*> erased;
   int input_order = 0;
   int output_order = 0;
@@ -121,7 +169,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   fused_outputs.insert(fused_outputs_to_add.begin(), fused_outputs_to_add.end());
 
   // Sort inputs and outputs by the order they were added
-  std::multimap<int, const NodeArg*> inputs, outputs;
+  std::multimap<int, const NodeArg *> inputs, outputs;
   for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
     inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
   }
@@ -175,7 +223,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         //Add node and node args
         for (const auto& index : group.first) {
           const auto& node = graph.GetNode(node_index[index]);
-          std::vector<onnxruntime::NodeArg*> inputs, outputs;
+          std::vector<onnxruntime::NodeArg *> inputs, outputs;
           for (auto input : node->InputDefs()) {
             auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
             inputs.push_back(&n_input);
@@ -205,9 +253,8 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         SubGraphCollection_t parser_nodes_list;
         TensorrtLogger& trt_logger = GetTensorrtLogger();
         auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
-        ///auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
         const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-        auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));//trt6
+        auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
 
         auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
         trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list);
@@ -234,7 +281,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap());
   onnxruntime::Graph& graph_build = model.MainGraph();
   for (const auto& node : graph.Nodes()) {
-    std::vector<onnxruntime::NodeArg*> inputs, outputs;
+    std::vector<onnxruntime::NodeArg *> inputs, outputs;
     for (auto input : node.InputDefs()) {
       auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
       inputs.push_back(&n_input);
@@ -266,9 +313,8 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   SubGraphCollection_t parser_nodes_vector;
   TensorrtLogger& trt_logger = GetTensorrtLogger();
   auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
-  ///auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
   const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-  auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));//trt6
+  auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
   auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
   trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_vector);
 
@@ -278,18 +324,9 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   bool early_termination = false;
   supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_iterations, graph, &early_termination);
   if (early_termination) {
-    std::cout << "Early termination: no graph is running on TRT!" << std::endl; //slx
     supported_nodes_vector.clear();
-  }	
-	
-  //for tf_inception_v1 debugging
-  supported_nodes_vector = {{{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,
-  28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,
-  70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,
-  109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,
-  141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,
-  173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,199}, true}};	
-	
+  }
+
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
   int counter = 0;
@@ -345,9 +382,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     // Create TensorRT engine
     TensorrtLogger& trt_logger = GetTensorrtLogger();
     auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
-    ///auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-    auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));//trt6
+    auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
 
     auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
     trt_parser->parse(string_buf.data(), string_buf.size());
@@ -365,25 +401,36 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     }
 
     trt_builder->setMaxBatchSize(max_batch_size_);
-    ///trt_builder->setMaxWorkspaceSize(max_workspace_size_);
 
-    //trt6: build engine
-    auto config = unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
-    config->setMaxWorkspaceSize(max_workspace_size_);
+    auto trt_config = unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
+    trt_config->setMaxWorkspaceSize(max_workspace_size_);
 
-    //trt6: Create an optimization profile to specify a range of input dimensions.
-    auto profile = trt_builder->createOptimizationProfile();
+    //Set optimization profile for dynamic shapes
+    //Only support dynamic batch size on the first dimension for now
+    //TODO: add full dynamic shape support
+    auto trt_profile = trt_builder->createOptimizationProfile();
+    bool dynamic_shape = false;
     for (unsigned int i = 0, n = trt_network->getNbInputs(); i < n; i++) {
       auto input = trt_network->getInput(i);
-      std::cout << "input name: " << input->getName() << std::endl;
-      profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims4{1, 224, 224, 3});
-      profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims4{8, 224, 224, 3});
-      profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims4{16, 224, 224, 3});
+      nvinfer1::Dims dims = input->getDimensions();
+      nvinfer1::Dims dims_min = dims;
+      nvinfer1::Dims dims_opt = dims;
+      nvinfer1::Dims dims_max = dims;
+      if (dims.d[0] == -1) {
+        dims_min.d[0] = 1;
+        dims_opt.d[0] = max_batch_size_;
+        dims_max.d[0] = max_batch_size_;
+        trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMIN, dims_min);
+        trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
+        trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, dims_max);
+        dynamic_shape = true;
+      }
     }
-    config->addOptimizationProfile(profile);
+    if (dynamic_shape) {
+      trt_config->addOptimizationProfile(trt_profile);
+    }
 
-    auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *config));
-    ///auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildCudaEngine(*trt_network.get()));
+    auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
     ORT_ENFORCE(trt_engine != nullptr);
 
     // Build TensorRT context
@@ -473,7 +520,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       const std::vector<int>& input_indexes = (trt_state->input_info)[0];
       const std::vector<int>& output_indexes = (trt_state->output_info)[0];
       const std::vector<int>& output_types = (trt_state->output_info)[2];
-      std::vector<std::vector<int64_t>> output_shapes = trt_state->output_shapes;
 
       int num_binding_inputs = input_indexes.size();
       int num_binding_outputs = output_indexes.size();
@@ -481,21 +527,24 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       std::vector<void*> buffers(total_bindings);
       int batch_size = 1;
 
+      bool dynamic_shape = false;
+      if (!trt_state->context->allInputDimensionsSpecified()) {
+        dynamic_shape = true;
+      }
+
       // Get batch size and allocate cuda memory for inputs
       for (int i = 0, end = num_binding_inputs; i < end; ++i) {
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_indexes[i]);
         auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
         const auto& tensor_shape = ort.GetTensorShape(tensor_info);
 
-        //trt6: set dynamic shape dimensions for input	      
-        nvinfer1::Dims dimensions = trt_state->context->getEngine().getBindingDimensions(static_cast<int>(i));
-        for (int j = 0, end = dimensions.nbDims; j < end; ++j) {
-          //std::cout << i << ", engine dimension: " << dimensions.d[j] << ", input dimension: " << tensor_shape[j] << std::endl;
-          dimensions.d[j] = tensor_shape[j];
+        //Set dynamic batch size for input
+        if (dynamic_shape) {
+          nvinfer1::Dims dimensions = trt_state->context->getEngine().getBindingDimensions(static_cast<int>(i));
+          dimensions.d[0] = tensor_shape[0];
+          trt_state->context->setBindingDimensions(i, dimensions);
         }
-        trt_state->context->setBindingDimensions(i, dimensions);
-	///trt_state->context->setBindingDimensions(i, nvinfer1::Dims4(tensor_shape[0], tensor_shape[1], tensor_shape[2], tensor_shape[3]));
-						 
+
         auto tensor_type = ort.GetTensorElementType(tensor_info);
         ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
 
@@ -520,15 +569,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       for (int i = 0, end = num_binding_outputs; i < end; ++i) {
         int output_index = output_indexes[i];
 
-        //trt6: get dynamic shape dimensions for output
+        //Get dynamic batch size
         nvinfer1::Dims dimensions = trt_state->context->getBindingDimensions(static_cast<int>(i + num_binding_inputs));
-        std::vector<int64_t> output_shape;
-        for (int j = 0, end = dimensions.nbDims; j < end; ++j) {
-          //std::cout << i << ", output engine dimension: " << output_shapes[i][j] << ", output context dimension: " << dimensions.d[j] << std::endl;
-          output_shape.push_back(dimensions.d[j]);
-        }
-        OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, output_shape.data(), output_shape.size());	      
-        ///OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, output_shapes[i].data(), output_shapes[i].size());
+        trt_state->output_shapes[i][0] = dimensions.d[0];
+        OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, trt_state->output_shapes[i].data(), trt_state->output_shapes[i].size());
 
         if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
           buffers[i + num_binding_inputs] = ort.GetTensorMutableData<float>(output_tensor);
@@ -543,12 +587,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
       // Run TRT inference
       std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
-      //bool ret = trt_state->context->enqueue(batch_size, &buffers[0], nullptr, nullptr);
-      bool ret = trt_state->context->enqueueV2(&buffers[0], nullptr, nullptr);//trt6
+      bool ret = trt_state->context->enqueueV2(&buffers[0], nullptr, nullptr);
       if (!ret) {
         if (trt_state->context->getEngine().getMaxBatchSize() < batch_size) {
-	  return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-			        "TRT enqueue failed: Set ORT_TENSORRT_MAX_BATCH_SIZE environment variable to at least " + to_string(batch_size));
+          return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                                "TRT enqueue failed: Set ORT_TENSORRT_MAX_BATCH_SIZE environment variable to at least " + to_string(batch_size));
         }
         return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to enqueue to TRT execution context.");
       }

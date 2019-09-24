@@ -166,9 +166,7 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
 }
 
 void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries, InitializedTensorSet& initializers_consumed) {
-  if (node.GetExecutionProviderType() == provider_
-      || (node.GetExecutionProviderType() == kCudaExecutionProvider && provider_ == kTensorrtExecutionProvider)
-      || (node.GetExecutionProviderType() == kTensorrtExecutionProvider && provider_ == kCudaExecutionProvider)) {
+  if (node.GetExecutionProviderType() == provider_) {
     provider_nodes_.insert(&node);
     // note KernelCreateInfo might be nullptr for custom kernel
     const KernelCreateInfo* kci = nullptr;
@@ -205,7 +203,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
       else
         provider_output_defs_.insert(arg);
     }
-  } else {
+  } else if (node.GetExecutionProviderType() != kCudaExecutionProvider && node.GetExecutionProviderType() != kTensorrtExecutionProvider) {
     // TODO: copy between devices? i.e. multiple GPUs
     if (node.GetExecutionProviderType() != onnxruntime::kCpuExecutionProvider &&
         node.GetExecutionProviderType() != onnxruntime::kNGraphExecutionProvider && !node.GetExecutionProviderType().empty()) {
