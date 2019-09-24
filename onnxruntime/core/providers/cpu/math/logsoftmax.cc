@@ -15,7 +15,7 @@ namespace onnxruntime {
 template <>
 Status LogSoftmax<float>::Compute(OpKernelContext* ctx) const {
   auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-  auto tp = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
 
   const auto* tensor_pointer = ctx->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
@@ -42,10 +42,17 @@ Status LogSoftmax<float>::Compute(OpKernelContext* ctx) const {
   return status;
 }
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     LogSoftmax,
     1,
+    10,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     LogSoftmax<float>);
 
+// Opset 11 starts to support Neg Axis.
+ONNX_CPU_OPERATOR_KERNEL(
+    LogSoftmax,
+    11,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    LogSoftmax<float>);
 }  // namespace onnxruntime

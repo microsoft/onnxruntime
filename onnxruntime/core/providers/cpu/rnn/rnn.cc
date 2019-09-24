@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
 #include "core/framework/op_kernel_context_internal.h"
+
 #include "core/providers/cpu/rnn/rnn.h"
 #include "core/providers/cpu/rnn/rnn_activation_functors.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
@@ -99,10 +99,9 @@ using EigenMatrixMapRowMajor = Eigen::Map<
 
 template <>
 Status RNN<float>::Compute(OpKernelContext* ctx) const {
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-  auto tp = ctx_internal->GetOperatorThreadPool();
-
   using namespace rnn::detail;
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
+  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
 
   // inputs
   const Tensor& X = *ctx->Input<Tensor>(0);
@@ -164,7 +163,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
     }
 
     // X * W[direction]^t + B
-    math::Gemm<float, onnxruntime::concurrency::ThreadPool>(
+    math::Gemm<float>(
         CblasNoTrans,
         CblasTrans,
         static_cast<int>(seq_length * batch_size),
@@ -185,8 +184,12 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
 
       const float* h_prev = nullptr;
       if (t == 0) {
-        if (initial_h != nullptr)
-          h_prev = initial_h->template Data<float>();
+        if (initial_h != nullptr) {
+          // the shape of initial_h is [num_directions, batch_size, hidden_size]
+          // so pick the offset (multiple of Y_frame_size == batch_size * hidden_size_)
+          // based on the direction
+          h_prev = initial_h->template Data<float>() + (direction * Y_frame_size);        
+        }
       } else {
         if (isReverse)
           h_prev = Y_buffer_data_current_frame + num_directions * Y_frame_size;
@@ -196,7 +199,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
 
       if (h_prev != nullptr) {
         // H_t_1 * R[direction]^t
-        math::Gemm<float, onnxruntime::concurrency::ThreadPool>(
+        math::Gemm<float>(
             CblasNoTrans,
             CblasTrans,
             static_cast<int>(batch_size),

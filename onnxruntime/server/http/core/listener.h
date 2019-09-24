@@ -41,4 +41,3 @@ class Listener : public std::enable_shared_from_this<Listener> {
 
 }  // namespace server
 }  // namespace onnxruntime
-

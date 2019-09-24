@@ -40,15 +40,14 @@ class OpKernel {
     return op_kernel_info_.GetKernelDef();
   }
 
-  virtual Status Compute(OpKernelContext* context) const = 0;
+  virtual Status Compute(OpKernelContext* context) const ORT_MUST_USE_RESULT = 0;
 
-  virtual Status ComputeAsync(OpKernelContext*,
-                              DoneCallback) const {
+  virtual Status ComputeAsync(OpKernelContext*, DoneCallback) const ORT_MUST_USE_RESULT {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
-  const OrtAllocatorInfo& Allocator(int id, OrtMemType mem_type) const {
-    return op_kernel_info_.GetAllocatorInfo(id, mem_type);
+  const OrtMemoryInfo& Allocator(int id, OrtMemType mem_type) const {
+    return op_kernel_info_.GetMemoryInfo(id, mem_type);
   }
 
   const OpKernelInfo& Info() const { return op_kernel_info_; }
@@ -94,8 +93,7 @@ class OpKernelContext {
     if (index < 0 || index >= OutputCount())
       return nullptr;
 
-    OrtValue* p_ml_value = nullptr;
-    ORT_ENFORCE(GetOrCreateOutputMLValue(index, p_ml_value).IsOK());
+    OrtValue* p_ml_value = GetOrCreateOutputMLValue(index);
     return p_ml_value ? p_ml_value->GetMutable<T>() : nullptr;
   }
 
@@ -160,6 +158,11 @@ class OpKernelContext {
   */
   Fence_t OutputFence(int index) const;
 
+  /**
+  Returns the opset domain of the underlying kernel
+  **/
+  const std::string& GetOpDomain() const;
+
  protected:
   onnxruntime::NodeIndex GetNodeIndex() const;
 
@@ -175,7 +178,7 @@ class OpKernelContext {
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernelContext);
 
-  Status GetOrCreateOutputMLValue(int index, OrtValue*& value);
+  OrtValue* GetOrCreateOutputMLValue(int index);
 
   int GetInputArgIndex(int index) const;
   int GetImplicitInputArgIndex(int index) const;
@@ -212,7 +215,7 @@ struct KernelCreateInfo {
       : kernel_def(std::move(definition)),
         kernel_create_func(create_func) {}
 
-  KernelCreateInfo(KernelCreateInfo&& other)
+  KernelCreateInfo(KernelCreateInfo&& other) noexcept
       : kernel_def(std::move(other.kernel_def)),
         kernel_create_func(std::move(other.kernel_create_func)) {}
 };
@@ -232,6 +235,11 @@ namespace contrib {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace contrib
+
+namespace automl {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}  // namespace automl
 
 namespace contrib {
 namespace cuda {

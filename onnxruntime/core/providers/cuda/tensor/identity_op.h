@@ -30,7 +30,18 @@ class IdentityOp final : public CudaKernel {
     }
 
     if (is_dropout) {
-      context->Output(1, std::vector<int64_t>());
+      Tensor* mask = context->Output(1, shape);
+      // a 'nullptr' returned would make it an unused optional output
+      if (mask != nullptr) {
+        // Opset 7 differs with Opset 10 in that the type of the 'mask'
+        // output is tied with the type of the input in Opset 7 whereas
+        // the type of 'mask' in Opset 10 is 'bool' always
+        // so we have a common solution
+        void* mask_data = mask->MutableDataRaw();
+        // In 'test'/'inference' mode, there are no input values dropped out
+        // so fill the buffer with 0/false
+        CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask_data, 0, mask->SizeInBytes()));
+      }
     }
 
     return Status::OK();

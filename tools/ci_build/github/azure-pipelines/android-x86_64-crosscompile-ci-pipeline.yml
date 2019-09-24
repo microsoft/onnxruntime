@@ -1,0 +1,15 @@
+jobs:
+- job: Android_CI
+  pool: 
+    vmImage: 'macOS-10.14'
+  steps:
+    # cmake 3.15 breaks Android NDK https://gitlab.kitware.com/cmake/cmake/issues/19515. pip install cmake==3.13.2 installs 3.12.2
+    - script: pip install cmake==3.13.2.post1 && alias cmake=/usr/local/bin/cmake && cmake --version && brew install coreutils && alias time=gtimeout
+      displayName: Install cmake 3.14 and coreutils
+    - script: 'git submodule update --init --recursive --progress'
+      displayName: Clone submodules
+    - script: echo "y" | $ANDROID_HOME/tools/bin/sdkmanager --install 'ndk-bundle'
+      displayName: Install Android NDK
+    - script: tools/ci_build/build.py --android --build_dir build --android_ndk $ANDROID_HOME/ndk-bundle --android_abi=x86_64 --skip_submodule_sync --parallel --use_dnnlibrary
+      displayName: Build and Test on Android Emulator
+

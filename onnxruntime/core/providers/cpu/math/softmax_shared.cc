@@ -66,7 +66,7 @@ common::Status SoftmaxCPU(const int64_t N,
   // Put the intermediate result X - max(X) into Y by first copying X to Y, and then subtracting max from each entry
   gsl::copy(gsl::make_span(Xdata, nd), gsl::make_span(Ydata, nd));
 
-  math::Gemm<float, onnxruntime::concurrency::ThreadPool>(CblasNoTrans, CblasNoTrans, n, d, 1, -1, rowmax, sum_multiplier, 1, Ydata, tp);
+  math::Gemm<float>(CblasNoTrans, CblasNoTrans, n, d, 1, -1, rowmax, sum_multiplier, 1, Ydata, tp);
 
   // Exponentiation
   math::Exp<float, CPUMathUtil>(nd, Ydata, Ydata, nullptr);

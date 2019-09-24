@@ -196,7 +196,7 @@ This operator applies the Abs op element-wise to the input sparse-tensor.
       // So, we copy indices/shape from input to output.
       // TODO: Extend allocation-planner to enable such sharing.
       const auto& input_indices = input->Indices();
-      memcpy(output->MutableIndices().MutableData<int64_t>(), input_indices.Data<int64_t>(), input_indices.Size());
+      memcpy(output->MutableIndices().MutableData<int64_t>(), input_indices.Data<int64_t>(), input_indices.SizeInBytes());
       return Status::OK();
     }
   };

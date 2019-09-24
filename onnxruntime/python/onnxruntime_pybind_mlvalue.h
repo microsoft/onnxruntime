@@ -11,12 +11,10 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/logging/sinks/cerr_sink.h"
 #include "core/framework/allocatormgr.h"
-#include "core/framework/environment.h"
+#include "core/session/environment.h"
 #include "core/framework/ml_value.h"
 #include "core/session/inference_session.h"
 
-
-using namespace std;
 namespace onnxruntime {
 namespace python {
 

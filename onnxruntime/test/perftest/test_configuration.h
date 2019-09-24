@@ -44,8 +44,9 @@ struct RunConfig {
   bool enable_memory_pattern{true};
   bool enable_cpu_mem_arena{true};
   bool enable_sequential_execution{true};
-  int session_thread_pool_size{0};
-  uint32_t optimization_level{2};
+  int intra_op_num_threads{0};
+  int inter_op_num_threads{0};
+  GraphOptimizationLevel optimization_level{ORT_ENABLE_EXTENDED};
 };
 
 struct PerformanceTestConfig {

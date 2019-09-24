@@ -14,9 +14,10 @@
 #include "core/framework/tensor.h"
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/allocator.h"
-#include "core/common/callback.h"
+#include "core/framework/callback.h"
 #include "core/framework/data_types.h"
 #include "core/framework/path_lib.h"
+#include "core/session/ort_apis.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -55,10 +56,10 @@ static Status UnpackTensorWithRawData(const void* raw_data, size_t raw_data_leng
   {
     size_t expected_size_in_bytes;
     if (!onnxruntime::IAllocator::CalcMemSizeForArray(expected_size, sizeof(T), &expected_size_in_bytes)) {
-      return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "size overflow");
+      return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "size overflow");
     }
     if (raw_data_length != expected_size_in_bytes)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "UnpackTensor: the pre-allocated size does not match the raw data size, expected ",
                              expected_size_in_bytes, ", got ", raw_data_length);
     if (IsLittleEndianOrder()) {
@@ -80,33 +81,32 @@ static Status UnpackTensorWithRawData(const void* raw_data, size_t raw_data_leng
 }
 }  // namespace
 
-
 namespace onnxruntime {
 namespace utils {
 
 // This macro doesn't work for Float16/bool/string tensors
-#define DEFINE_UNPACK_TENSOR(T, Type, field_name, field_size)                                                 \
-  template <>                                                                                                 \
-  Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,   \
-                      /*out*/ T* p_data, int64_t expected_size) {                                             \
-    if (nullptr == p_data) {                                                                                  \
-      const size_t size = raw_data != nullptr ? raw_data_len : tensor.field_size();                           \
-      if (size == 0) return Status::OK();                                                                     \
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);                                           \
-    }                                                                                                         \
-    if (nullptr == p_data || Type != tensor.data_type()) {                                                    \
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);                                           \
-    }                                                                                                         \
-    if (raw_data != nullptr) {                                                                                \
-      return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);                          \
-    }                                                                                                         \
-    if (tensor.field_size() != expected_size)                                                                 \
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "corrupted protobuf data: tensor shape size(", expected_size, \
-                             ") does not match the data size(", tensor.field_size(), ") in proto");           \
-    auto& data = tensor.field_name();                                                                         \
-    for (auto data_iter = data.cbegin(); data_iter != data.cend(); ++data_iter)                               \
-      *p_data++ = *reinterpret_cast<const T*>(data_iter);                                                     \
-    return Status::OK();                                                                                      \
+#define DEFINE_UNPACK_TENSOR(T, Type, field_name, field_size)                                                             \
+  template <>                                                                                                             \
+  Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,               \
+                      /*out*/ T* p_data, int64_t expected_size) {                                                         \
+    if (nullptr == p_data) {                                                                                              \
+      const size_t size = raw_data != nullptr ? raw_data_len : tensor.field_size();                                       \
+      if (size == 0) return Status::OK();                                                                                 \
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);                                                       \
+    }                                                                                                                     \
+    if (nullptr == p_data || Type != tensor.data_type()) {                                                                \
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);                                                       \
+    }                                                                                                                     \
+    if (raw_data != nullptr) {                                                                                            \
+      return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);                                      \
+    }                                                                                                                     \
+    if (tensor.field_size() != expected_size)                                                                             \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "corrupted protobuf data: tensor shape size(", expected_size, \
+                             ") does not match the data size(", tensor.field_size(), ") in proto");                       \
+    auto& data = tensor.field_name();                                                                                     \
+    for (auto data_iter = data.cbegin(); data_iter != data.cend(); ++data_iter)                                           \
+      *p_data++ = *reinterpret_cast<const T*>(data_iter);                                                                 \
+    return Status::OK();                                                                                                  \
   }
 
 // TODO: complex64 complex128
@@ -134,7 +134,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* /*raw
   }
 
   if (tensor.string_data_size() != expected_size)
-    return Status(common::ONNXRUNTIME, common::FAIL,
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "UnpackTensor: the pre-allocate size does not match the size in proto");
 
   auto& string_data = tensor.string_data();
@@ -161,7 +161,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
   }
 
   if (tensor.int32_data_size() != expected_size)
-    return Status(common::ONNXRUNTIME, common::FAIL,
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "UnpackTensor: the pre-allocate size does not match the size in proto");
   for (int iter : tensor.int32_data()) {
     *p_data++ = static_cast<bool>(iter);
@@ -186,14 +186,14 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
   }
 
   if (tensor.int32_data_size() != expected_size)
-    return Status(common::ONNXRUNTIME, common::FAIL,
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "UnpackTensor: the pre-allocate size does not match the size in proto");
 
   constexpr int max_value = std::numeric_limits<uint16_t>::max();
   for (int i = 0; i < static_cast<int>(expected_size); i++) {
     int v = tensor.int32_data()[i];
     if (v < 0 || v > max_value) {
-      return Status(common::ONNXRUNTIME, common::FAIL, "data overflow");
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "data overflow");
     }
     p_data[i] = MLFloat16(static_cast<uint16_t>(v));
   }
@@ -220,14 +220,14 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
   }
 
   if (tensor.int32_data_size() != expected_size)
-    return Status(common::ONNXRUNTIME, common::FAIL,
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "UnpackTensor: the pre-allocate size does not match the size in proto");
 
   constexpr int max_value = std::numeric_limits<uint16_t>::max();
   for (int i = 0; i < static_cast<int>(expected_size); i++) {
     int v = tensor.int32_data()[i];
     if (v < 0 || v > max_value) {
-      return Status(common::ONNXRUNTIME, common::FAIL, "data overflow");
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "data overflow");
     }
     p_data[i] = BFloat16(static_cast<uint16_t>(v));
   }
@@ -235,11 +235,11 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
   return Status::OK();
 }
 
-#define CASE_PROTO_TRACE(X, Y)                                                            \
-  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                    \
-    if (!IAllocator::CalcMemSizeForArrayWithAlignment<alignment>(size, sizeof(Y), out)) { \
-      return common::Status(common::ONNXRUNTIME, common::FAIL, "Invalid TensorProto");    \
-    }                                                                                     \
+#define CASE_PROTO_TRACE(X, Y)                                                                     \
+  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                             \
+    if (!IAllocator::CalcMemSizeForArrayWithAlignment<alignment>(size, sizeof(Y), out)) {          \
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid TensorProto"); \
+    }                                                                                              \
     break;
 
 template <size_t alignment>
@@ -248,10 +248,10 @@ common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& 
   size_t size = 1;
   for (google::protobuf::int64 dim : dims) {
     if (dim < 0 || static_cast<uint64_t>(dim) >= std::numeric_limits<size_t>::max()) {
-      return common::Status(common::ONNXRUNTIME, common::FAIL, "Invalid TensorProto");
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid TensorProto");
     }
     if (!IAllocator::CalcMemSizeForArray(size, static_cast<size_t>(dim), &size)) {
-      return common::Status(common::ONNXRUNTIME, common::FAIL, "Invalid TensorProto");
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid TensorProto");
     }
   }
   switch (tensor_proto.data_type()) {
@@ -275,16 +275,15 @@ common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& 
   return Status::OK();
 }
 
-std::vector<int64_t> GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto) {
+TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto) {
   const auto& dims = tensor_shape_proto.dim();
   std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
   for (int i = 0; i < dims.size(); ++i) {
-    tensor_shape_vec[i] = dims[i].has_dim_param() ? -1 /* symbolic dimensions are represented as -1 in onnxruntime*/
-                                                  : dims[i].dim_value();
+    tensor_shape_vec[i] = HasDimValue(dims[i]) ? dims[i].dim_value()
+                                                  : -1; /* symbolic dimensions are represented as -1 in onnxruntime*/
   }
-  return tensor_shape_vec;
+  return TensorShape(std::move(tensor_shape_vec));
 }
-
 
 struct UnInitializeParam {
   void* preallocated;
@@ -306,7 +305,7 @@ ORT_API_STATUS(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t input_
  */
 ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enum ONNXTensorElementDataType type);
 
-static void ORT_API_CALL UnInitTensor(void* param) noexcept {
+static void UnInitTensor(void* param) noexcept {
   UnInitializeParam* p = reinterpret_cast<UnInitializeParam*>(param);
   OrtUninitializeBuffer(p->preallocated, p->preallocated_size, p->ele_type);
   delete p;
@@ -322,7 +321,7 @@ ORT_API_STATUS_IMPL(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t i
       new (ptr + i) std::string();
     }
   } catch (std::exception& ex) {
-    return OrtCreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
   }
   return nullptr;
 }
@@ -365,7 +364,7 @@ static void MoveOrtCallback(OrtCallback& from, OrtCallback& to) {
 Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
                             const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, OrtValue& value,
                             OrtCallback& deleter) {
-  const OrtAllocatorInfo& allocator = m.GetAllocInfo();
+  const OrtMemoryInfo& allocator = m.GetAllocInfo();
   ONNXTensorElementDataType ele_type = utils::GetTensorElementType(tensor_proto);
   deleter.f = nullptr;
   deleter.param = nullptr;
@@ -377,7 +376,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
   {
     if (tensor_proto.data_location() == TensorProto_DataLocation_EXTERNAL) {
       if (ele_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)
-        return Status(common::ONNXRUNTIME, common::FAIL, "string tensor can not have raw data");
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not have raw data");
 
       std::unique_ptr<ExternalDataInfo> external_data_info;
       ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
@@ -393,12 +392,12 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
       {
         void* file_data;
         ORT_RETURN_IF_ERROR(env.ReadFileAsString(full_path.c_str(), external_data_info->GetOffset(),
-            file_data, raw_data_len, deleter_for_file_data.d));
+                                                 file_data, raw_data_len, deleter_for_file_data.d));
         raw_data = file_data;
       }
-    } else if (tensor_proto.has_raw_data()) {
+    } else if (utils::HasRawData(tensor_proto)) {
       if (ele_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)
-        return Status(common::ONNXRUNTIME, common::FAIL, "string tensor can not have raw data");
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not have raw data");
       raw_data = tensor_proto.raw_data().data();
       raw_data_len = tensor_proto.raw_data().size();
     }
@@ -411,7 +410,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
       int64_t tensor_size = 1;
       {
         for (auto i : tensor_proto.dims()) {
-          if (i < 0) return Status(common::ONNXRUNTIME, common::FAIL, "tensor can't contain negative dims");
+          if (i < 0) return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "tensor can't contain negative dims");
           tensor_size *= i;
         }
       }
@@ -426,7 +425,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
       }
 
       if (preallocated && preallocated_size < size_to_allocate)
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "The buffer planner is not consistent with tensor buffer size, expected ",
                                size_to_allocate, ", got ", preallocated_size);
       switch (tensor_proto.data_type()) {
@@ -447,7 +446,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
           if (preallocated != nullptr) {
             OrtStatus* status = OrtInitializeBufferForTensor(preallocated, preallocated_size, ele_type);
             if (status != nullptr) {
-              OrtReleaseStatus(status);
+              OrtApis::ReleaseStatus(status);
               return Status(common::ONNXRUNTIME, common::FAIL, "initialize preallocated buffer failed");
             }
 
@@ -540,7 +539,7 @@ TensorProto::DataType GetTensorProtoType(const Tensor& tensor) {
 }
 
 ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name,
-                                                const onnx::TypeProto& tensor_proto_type) {
+                                                const ONNX_NAMESPACE::TypeProto& tensor_proto_type) {
   // Given we are using the raw_data field in the protobuf, this will work only for little-endian format.
   ORT_ENFORCE(IsLittleEndianOrder());
 
@@ -559,7 +558,7 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std:
 
   tensor_proto.set_data_type(tensor_proto_type.tensor_type().elem_type());
 
-  tensor_proto.set_raw_data(tensor.DataRaw(), tensor.Size());
+  tensor_proto.set_raw_data(tensor.DataRaw(), tensor.SizeInBytes());
 
   return tensor_proto;
 }

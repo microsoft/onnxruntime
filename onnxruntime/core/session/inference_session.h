@@ -46,6 +46,11 @@ namespace logging {
 class LoggingManager;
 }
 
+struct FreeDimensionOverride {
+  std::string dimension_denotation;
+  int64_t dimension_override;
+};
+
 /**
   * Configuration information for a session.
   */
@@ -55,6 +60,9 @@ struct SessionOptions {
 
   // enable profiling for this session.
   bool enable_profiling = false;
+
+  // non empty filepath enables serialization of the transformed optimized model to the specified filepath.
+  std::basic_string<ORTCHAR_T> optimized_model_filepath;
 
   // enable the memory pattern optimization.
   // The idea is if the input shapes are the same, we could trace the internal memory allocation
@@ -77,15 +85,23 @@ struct SessionOptions {
   /// See https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
   /// Default = -1 (use default logger severity)
   int session_log_severity_level = -1;
-  unsigned session_log_verbosity_level = 0;  ///< VLOG level if debug build and session_log_severity_level is 0 (VERBOSE).
+  int session_log_verbosity_level = 0;  ///< VLOG level if debug build and session_log_severity_level is 0 (VERBOSE).
 
   unsigned max_num_graph_transformation_steps = 5;  // TODO choose a good default here?
 
   // set graph optimization level
   TransformerLevel graph_optimization_level = TransformerLevel::Level1;
 
-  // How many threads in the session thread pool.
-  int session_thread_pool_size = 0;
+  // controls the size of the thread pool used to parallelize the execution of tasks within individual nodes (ops)
+  int intra_op_num_threads = 0;
+
+  // controls the size of the thread pool used to parallelize the execution of nodes (ops)
+  // configuring this makes sense only when you're using parallel executor
+  int inter_op_num_threads = 0;
+
+  // For models with free input dimensions (most commonly batch size), specifies a set of values to override those
+  // free dimensions with, keyed by dimension denotation.
+  std::vector<FreeDimensionOverride> free_dimension_overrides;
 };
 
 /**
@@ -177,7 +193,7 @@ class InferenceSession {
     * The order of invocation indicates the reversed preference order: Register your most
     * preferred registry at the end.
     * Calling this API is optional.
-	* This API is not thread safe.
+    * This API is not thread safe.
     * @return OK if success.
     */
   common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry);
@@ -210,7 +226,7 @@ class InferenceSession {
     * Initializes a previously loaded model. Initialization includes but is not
     * limited to graph transformations, construction of kernels, etc.
     * This method assumes that a method has been loaded previously.
-	* This API is thread-safe.
+    * This API is thread-safe.
     * @return OK if success
     */
   common::Status Initialize();
@@ -265,6 +281,15 @@ class InferenceSession {
   std::pair<common::Status, const InputDefList*> GetModelInputs() const;
 
   /**
+    * Get all definitions of the model for overridable initializers.
+    * This does not include weights. Use this to get the name/type/shapes of the overridable initializers.
+    * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
+    * @note lifetime of the returned pointer is valid as long as the Session object is live.
+    * @note for IR < 4 returned list will always be empty.
+    */
+  std::pair<common::Status, const InputDefList*> GetOverridableInitializers() const;
+
+  /**
     * Get all output definitions of the model. Use this to get the name/type/shapes of the outputs.
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
     * @note lifetime of the returned pointer is valid as long as the Session object is live.
@@ -275,6 +300,17 @@ class InferenceSession {
     * Get the current number of in-progress concurrent Run calls.
     */
   int GetCurrentNumRuns() const;
+
+  /**
+    * Get the names of registered Execution Providers. The returned vector is ordered by Execution Provider
+    * priority. The first provider in the vector has the highest priority.
+    */
+  const std::vector<std::string>& GetRegisteredProviderTypes() const;
+
+  /*
+   * Get the options this session was initialized with.
+   */
+  const SessionOptions& GetSessionOptions() const;
 
   /**
     * Start profiling on this inference session. This simply turns on profiling events to be
@@ -367,11 +403,13 @@ class InferenceSession {
 
   void InitLogger(logging::LoggingManager* logging_manager);
 
-  static common::Status CheckTypes(MLDataType actual, MLDataType expected);
+  common::Status CheckShapes(const std::string& input_name,
+                             const TensorShape& input_shape,
+                             const TensorShape& expected_shape) const;
 
-  common::Status ValidateInputs(const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds);
+  common::Status ValidateInputs(const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds) const;
 
-  common::Status ValidateOutputs(const std::vector<std::string>& output_names, const std::vector<OrtValue>* p_fetches);
+  common::Status ValidateOutputs(const std::vector<std::string>& output_names, const std::vector<OrtValue>* p_fetches) const;
 
   common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms);
 
@@ -391,15 +429,21 @@ class InferenceSession {
   std::vector<std::string> transformers_to_enable_;
 
   /// Logging manager if provided.
-  logging::LoggingManager* logging_manager_;
+  logging::LoggingManager* logging_manager_ = nullptr;
 
   /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
-  std::unique_ptr<logging::Logger> owned_session_logger_;
+  std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
 
   // Profiler for this session.
   profiling::Profiler session_profiler_;
 
+  // The list of execution providers.
   ExecutionProviders execution_providers_;
+
+ private:
+  // Threadpool for this session
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
 
  protected:
   // Immutable state for each op in the model. Shared by all executors.
@@ -414,12 +458,21 @@ class InferenceSession {
   std::vector<std::unique_ptr<IExecutor>> executors_;  // TODO do we need this vector?
 
   ModelMetadata model_metadata_;
-  InputDefList required_input_def_list_;
-  std::unordered_map<std::string, const NodeArg*> input_def_map_;
+  std::unordered_set<std::string> required_inputs_;
+
+  struct InputDefMetaData {
+    InputDefMetaData(const NodeArg* node_arg0, MLDataType ml_data_type0, TensorShape&& tensor_shape0)
+        : node_arg(node_arg0), ml_data_type(ml_data_type0), tensor_shape(std::move(tensor_shape0)) {
+    }
+    const NodeArg* node_arg;
+    MLDataType ml_data_type;
+    TensorShape tensor_shape;  // not applicable if the input is non-tensor type
+  };
+  std::unordered_map<std::string, InputDefMetaData> input_def_map_;
   OutputDefList output_def_list_;
 
-  // Threadpool for this session
-  std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
+  // Data transfer manager.
+  DataTransferManager data_transfer_mgr_;
 
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_;
@@ -434,7 +487,7 @@ class InferenceSession {
   //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
   std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
 
-#ifdef ENABLE_LANGUAGE_INTEROP_OPS 
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
   InterOpDomains interop_domains_;
 #endif
 };

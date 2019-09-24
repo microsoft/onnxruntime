@@ -84,7 +84,7 @@ void WordConvEmbedding::ComputeConvMaxPoolWithActivation(
       tmp_word_inx++;
     }
 
-    math::GemmEx<float, concurrency::ThreadPool>(
+    math::GemmEx<float>(
         CblasNoTrans, CblasTrans,
         static_cast<int>(words_unfolded_width), static_cast<int>(num_filters), static_cast<int>(unfolded_kernal_size), 1.0f,
         unfolded_buffer_p.get(), static_cast<int>(unfolded_kernal_size),
@@ -162,7 +162,7 @@ Status WordConvEmbedding::ValidateInputShape(const TensorShape& w_conv_shape, co
 
 Status WordConvEmbedding::Compute(OpKernelContext* ctx) const {
   auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-  auto tp = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
 
   // original lstm processing
   const Tensor& sequence = *(ctx->Input<Tensor>(0));          // sequence: [sequence_length, word_length]

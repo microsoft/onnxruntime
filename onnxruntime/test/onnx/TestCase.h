@@ -10,6 +10,7 @@
 #include <core/session/onnxruntime_cxx_api.h>
 #include <core/framework/path_lib.h>
 #include "heap_buffer.h"
+
 namespace ONNX_NAMESPACE {
 class ValueInfoProto;
 }
@@ -18,7 +19,7 @@ class ValueInfoProto;
 //One test case can contain multiple test data(input/output pairs)
 class ITestCase {
  public:
-  virtual void LoadTestData(size_t id, HeapBuffer& b, std::unordered_map<std::string, OrtValue*>& name_data_map,
+  virtual void LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b, std::unordered_map<std::string, OrtValue*>& name_data_map,
                             bool is_input) = 0;
   virtual const PATH_CHAR_TYPE* GetModelUrl() const = 0;
   virtual const std::string& GetNodeName() const = 0;
@@ -53,7 +54,7 @@ class TestModelInfo {
   virtual int GetOutputCount() const = 0;
   virtual const std::string& GetInputName(size_t i) const = 0;
   virtual const std::string& GetOutputName(size_t i) const = 0;
-  virtual std::string GetModelVersion() const {return "";}
+  virtual std::string GetModelVersion() const { return ""; }
   virtual ~TestModelInfo() = default;
 
   static TestModelInfo* LoadOnnxModel(_In_ const PATH_CHAR_TYPE* model_url);

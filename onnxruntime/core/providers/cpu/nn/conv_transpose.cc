@@ -231,7 +231,7 @@ Status ConvTranspose<T>::Compute(OpKernelContext* context) const {
 template <typename T>
 Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
   auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
-  auto tp = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
 
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   Prepare p;
@@ -259,7 +259,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   for (auto image_id = 0; image_id < p.N; ++image_id) {
     for (int group_id = 0; group_id < group_; ++group_id) {
       // Weight term
-      math::Gemm<T, onnxruntime::concurrency::ThreadPool>(
+      math::Gemm<T>(
           CblasTrans,
           CblasNoTrans,
           kernel_dim,

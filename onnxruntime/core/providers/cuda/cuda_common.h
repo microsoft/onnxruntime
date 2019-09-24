@@ -4,6 +4,7 @@
 #pragma once
 #include "cuda_pch.h"
 #include "core/common/status.h"
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/op_kernel.h"
 #include "core/graph/graph_viewer.h"
 #include "shared_inc/cuda_call.h"
@@ -44,8 +45,8 @@ class CudaKernel : public OpKernel {
   virtual Status ComputeInternal(OpKernelContext* p_op_kernel_context) const = 0;
 
   template <typename T>
-  inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(int id, size_t count_or_bytes) const {
-    AllocatorPtr allocator = provider_->GetAllocator(id, OrtMemTypeCPU);
+  inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
+    AllocatorPtr allocator = provider_->GetAllocator(CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
     if (!allocator)
       return nullptr;
     return IAllocator::MakeUniquePtr<T>(allocator, count_or_bytes);
@@ -67,24 +68,24 @@ class CudaKernel : public OpKernel {
    public:
     CudaAsyncBuffer(const CudaKernel* op_kernel) : gpu_copy_(nullptr), count_(0), op_kernel_(op_kernel) {}
 
-    CudaAsyncBuffer(const CudaKernel* op_kernel, int device_id, size_t count) : CudaAsyncBuffer(op_kernel) {
-      AllocCpuPtr(device_id, count);
+    CudaAsyncBuffer(const CudaKernel* op_kernel, size_t count) : CudaAsyncBuffer(op_kernel) {
+      AllocCpuPtr(count);
     }
 
-    CudaAsyncBuffer(const CudaKernel* op_kernel, int device_id, const T& value, size_t count)
-        : CudaAsyncBuffer(op_kernel, device_id, count) {
+    CudaAsyncBuffer(const CudaKernel* op_kernel, const T& value, size_t count)
+        : CudaAsyncBuffer(op_kernel, count) {
       T* p = CpuPtr();
       for (size_t i = 0; i != count; ++i) {
         *p++ = value;
       }
     }
 
-    CudaAsyncBuffer(const CudaKernel* op_kernel, int device_id, const std::vector<T>& vec) : CudaAsyncBuffer(op_kernel, device_id, vec.size()) {
+    CudaAsyncBuffer(const CudaKernel* op_kernel, const std::vector<T>& vec) : CudaAsyncBuffer(op_kernel, vec.size()) {
       memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T));
     }
 
-    void AllocCpuPtr(int id, size_t count) {
-      cpu_pinned_copy_ = op_kernel_->AllocateBufferOnCPUPinned<T>(id, count);
+    void AllocCpuPtr( size_t count) {
+      cpu_pinned_copy_ = op_kernel_->AllocateBufferOnCPUPinned<T>(count);
       if (cpu_pinned_copy_ == nullptr)
         throw std::runtime_error("alloc failed");
       count_ = count;
@@ -137,8 +138,10 @@ class CudaKernel : public OpKernel {
   }
 
   inline Status CopyTensor(const Tensor& src, Tensor& dst) const {
-    return provider_->CopyTensor(src, dst);
+    return Info().GetDataTransferManager().CopyTensor(src, dst);
   }
+
+  inline int GetDeviceId() const { return provider_->GetDeviceId(); }
 
  private:
   CUDAExecutionProvider* provider_;

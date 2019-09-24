@@ -3,12 +3,14 @@
 
 #pragma once
 #include "core/framework/tensor.h"
-#include "cuda_execution_provider.h"
+#include "core/graph/basic_types.h"
+
 namespace onnxruntime {
+class GPUDataTransfer;
 
 class CUDAFence : public IFence {
  public:
-  CUDAFence(const CUDAExecutionProvider* provider);
+  CUDAFence(const GPUDataTransfer* data_transfer);
   virtual ~CUDAFence();
   virtual void BeforeUsingAsInput(onnxruntime::ProviderType provider_type, int queue_id) override;
   virtual void BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int queue_id) override;
@@ -19,7 +21,7 @@ class CUDAFence : public IFence {
  private:
   cudaEvent_t read_event_;
   cudaEvent_t write_event_;
-  const CUDAExecutionProvider* provider_;
+  const GPUDataTransfer* data_transfer_;
 };
 
 }  // namespace onnxruntime

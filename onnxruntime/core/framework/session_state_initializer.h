@@ -36,13 +36,10 @@ class SessionStateInitializer {
                           KernelRegistryManager& kernel_registry_manager);
 
   // First perform any transformations and create the execution plan
-  common::Status CreatePlan(const Node* parent_node,
-                            const ConstPointerContainer<std::vector<NodeArg*>>* outer_scope_node_args,
+  // Then initialize tensors, and save. save kernels and input/output node mappings
+  common::Status CreatePlan(_In_opt_ const Node* parent_node,
+                            _In_opt_ const ConstPointerContainer<std::vector<NodeArg*>>* outer_scope_node_args,
                             bool enable_sequential_execution);
-
-  // initialize tensors, and save. save kernels and input/output node mappings
-  // \param implicit_inputs could be NULL
-  common::Status InitializeAndSave(const ConstPointerContainer<std::vector<NodeArg*>>* implicit_inputs);
 
  private:
   const std::basic_string<PATH_CHAR_TYPE>& graph_loc_;

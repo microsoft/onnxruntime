@@ -31,14 +31,10 @@ int main(int argc, char* argv[]) {
   // initialize session options if needed
   OrtSessionOptions* session_options;
   CHECK_STATUS(OrtCreateSessionOptions(&session_options));
-  OrtSetSessionThreadPoolSize(session_options, 1);
+  OrtSetIntraOpNumThreads(session_options, 1);
 
   // Sets graph optimization level
-  // Available levels are
-  // 0 -> To disable all optimizations
-  // 1 -> To enable basic optimizations (Such as redundant node removals)
-  // 2 -> To enable all optimizations (Includes level 1 + more complex optimizations like node fusions)
-  OrtSetSessionGraphOptimizationLevel(session_options, 1);
+  OrtSetSessionGraphOptimizationLevel(session_options, ORT_ENABLE_BASIC);
 
   // Optionally add more execution providers via session_options
   // E.g. for CUDA include cuda_provider_factory.h and uncomment the following line:
@@ -55,6 +51,7 @@ int main(int argc, char* argv[]) {
   const char* model_path = "squeezenet.onnx";
 #endif
 
+  printf("Using Onnxruntime C API\n");
   CHECK_STATUS(OrtCreateSession(env, model_path, session_options, &session));
 
   //*************************************************************************
@@ -62,7 +59,7 @@ int main(int argc, char* argv[]) {
   size_t num_input_nodes;
   OrtStatus* status;
   OrtAllocator* allocator;
-  CHECK_STATUS(OrtCreateDefaultAllocator(&allocator));
+  CHECK_STATUS(OrtGetAllocatorWithDefaultOptions(&allocator));
 
   // print number of model input nodes
   status = OrtSessionGetInputCount(session, &num_input_nodes);
@@ -100,7 +97,6 @@ int main(int argc, char* argv[]) {
 
     OrtReleaseTypeInfo(typeinfo);
   }
-  OrtReleaseAllocator(allocator);
 
   // Results should be...
   // Number of inputs = 1
@@ -131,14 +127,14 @@ int main(int argc, char* argv[]) {
     input_tensor_values[i] = (float)i / (input_tensor_size + 1);
 
   // create input tensor object from data values
-  OrtAllocatorInfo* allocator_info;
-  CHECK_STATUS(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
+  OrtMemoryInfo* memory_info;
+  CHECK_STATUS(OrtCreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
   OrtValue* input_tensor = NULL;
-  CHECK_STATUS(OrtCreateTensorWithDataAsOrtValue(allocator_info, input_tensor_values.data(), input_tensor_size * sizeof(float), input_node_dims.data(), 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
+  CHECK_STATUS(OrtCreateTensorWithDataAsOrtValue(memory_info, input_tensor_values.data(), input_tensor_size * sizeof(float), input_node_dims.data(), 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
   int is_tensor;
   CHECK_STATUS(OrtIsTensor(input_tensor, &is_tensor));
   assert(is_tensor);
-  OrtReleaseAllocatorInfo(allocator_info);
+  OrtReleaseMemoryInfo(memory_info);
 
   // score model & input tensor, get back output tensor
   OrtValue* output_tensor = NULL;

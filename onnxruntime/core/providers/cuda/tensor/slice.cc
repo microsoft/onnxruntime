@@ -39,23 +39,6 @@ REGISTER_VERSIONED_TYPED_SLICE(int64_t)
 REGISTER_V10_TYPED_SLICE(int32_t) 
 REGISTER_V10_TYPED_SLICE(int64_t)
 
-#define REGISTER_TYPED_DYNAMICSLICE(TIND)                                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                          \
-      DynamicSlice,                                                                       \
-      kOnnxDomain,                                                                        \
-      1,                                                                                  \
-      TIND,                                                                               \
-      kCudaExecutionProvider,                                                             \
-      KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).                          \
-                         InputMemoryType<OrtMemTypeCPUInput>(2).                          \
-                         InputMemoryType<OrtMemTypeCPUInput>(3).                          \
-                         TypeConstraint("T",    DataTypeImpl::AllFixedSizeTensorTypes()). \
-                         TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()),     \
-      Slice<TIND,true>);
-
-REGISTER_TYPED_DYNAMICSLICE(int32_t) 
-REGISTER_TYPED_DYNAMICSLICE(int64_t)
-
 template<typename Tind, bool dynamic>
 Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   auto input_tensor = ctx->Input<Tensor>(0);
@@ -85,28 +68,27 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   if (output_size == 0) {
     return Status::OK();
   }
-  int device_id = 0;
-  CudaAsyncBuffer<int64_t> starts_buffer(this, device_id, dimension_count);
+  CudaAsyncBuffer<int64_t> starts_buffer(this, dimension_count);
   gsl::span<int64_t> starts_buffer_span = starts_buffer.CpuSpan();
   for (int i = 0; i < dimension_count; ++i) {
     starts_buffer_span[i] = starts[i];
   }
   starts_buffer.CopyToGpu();
 
-  CudaAsyncBuffer<int64_t> steps_buffer(this, device_id, dimension_count);
+  CudaAsyncBuffer<int64_t> steps_buffer(this, dimension_count);
   gsl::span<int64_t> steps_buffer_span = steps_buffer.CpuSpan();
   for (int i = 0; i < dimension_count; ++i) {
     steps_buffer_span[i] = steps[i];
   }
   steps_buffer.CopyToGpu();
 
-  CudaAsyncBuffer<int64_t> input_strides(this, device_id, dimension_count);
+  CudaAsyncBuffer<int64_t> input_strides(this, dimension_count);
   ORT_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), input_dimensions));
   input_strides.CopyToGpu();
 
   TensorPitches output_pitches(output_dims);
 
-  CudaAsyncBuffer<fast_divmod> div_strides(this, device_id, dimension_count);
+  CudaAsyncBuffer<fast_divmod> div_strides(this, dimension_count);
   gsl::span<fast_divmod> div_strides_span = div_strides.CpuSpan();
   for (int i = 0; i < dimension_count; ++i) {
     div_strides_span[i] = fast_divmod(gsl::narrow_cast<int>(output_pitches[i]));

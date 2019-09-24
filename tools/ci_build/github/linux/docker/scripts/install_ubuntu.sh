@@ -1,21 +1,24 @@
 #!/bin/bash
 set -e
-while getopts p: parameter_Option
+while getopts p:d: parameter_Option
 do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
+d) DEVICE_TYPE=${OPTARG};;
 esac
 done
 
 PYTHON_VER=${PYTHON_VER:=3.5}
+# Some Edge devices only have limited disk space, use this option to exclude some package
+DEVICE_TYPE=${DEVICE_TYPE:=Normal}
 DEBIAN_FRONTEND=noninteractive
 
 SYS_LONG_BIT=$(getconf LONG_BIT)
 
 apt-get update && apt-get install -y software-properties-common
 add-apt-repository ppa:deadsnakes/ppa
-apt-get update && apt-get install -y --no-install-recommends \
-        autotools-dev \
+
+PACKAGE_LIST="autotools-dev \
         automake \
         build-essential \
         git apt-transport-https apt-utils \
@@ -45,7 +48,11 @@ apt-get update && apt-get install -y --no-install-recommends \
         zip \
         rsync libunwind8 libpng16-dev libexpat1-dev \
         python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest \
-        libprotobuf-dev libprotobuf9v5 protobuf-compiler
+        libprotobuf-dev libprotobuf9v5 protobuf-compiler"
+if [ $DEVICE_TYPE = "Normal" ]; then
+    PACKAGE_LIST="$PACKAGE_LIST libedit-dev libxml2-dev python3-packaging"
+fi
+apt-get update && apt-get install -y --no-install-recommends $PACKAGE_LIST
 
 locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
@@ -75,5 +82,13 @@ fi
 
 /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall numpy==1.15.0
 /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall requests==2.21.0
+if [ $DEVICE_TYPE = "Normal" ]; then
+    /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall sympy==1.1.1
+fi
+/usr/bin/python${PYTHON_VER} -m pip install --upgrade scipy
 rm -rf /var/lib/apt/lists/*
 
+if [ $DEVICE_TYPE = "Normal" ]; then
+aria2c -q -d /tmp -o llvm.tar.xz http://releases.llvm.org/6.0.1/clang+llvm-6.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz
+tar --strip 1 -Jxf /tmp/llvm.tar.xz -C /usr
+fi

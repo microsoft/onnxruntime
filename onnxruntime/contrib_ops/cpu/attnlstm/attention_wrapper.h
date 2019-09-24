@@ -8,11 +8,9 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
-namespace concurrency {
-class ThreadPool;
-}
 namespace contrib {
 
 template <typename T>
@@ -25,12 +23,12 @@ class AttentionWrapper {
                    int attn_layer_depth,
                    int inner_cell_hidden_size,
                    bool has_attn_layer,
-                   const IAttentionMechanism<T>& attention_mechanism);
+                   const IAttentionMechanism<T>& attention_mechanism, concurrency::ThreadPool* threadpool);
 
   virtual ~AttentionWrapper() = default;
 
   // Calculation based on output of the inner wrapped rnn_cell.
-  void ProcessOutput(const gsl::span<const T>& rnn_cell_state, onnxruntime::concurrency::ThreadPool* tp);
+  void ProcessOutput(const gsl::span<const T>& rnn_cell_state);
 
   gsl::span<const T> GetAttnStates() const;
 
@@ -72,6 +70,7 @@ class AttentionWrapper {
   bool has_attn_layer_;
 
   const IAttentionMechanism<T>& attention_mechanism_;
+  concurrency::ThreadPool* ttp_;
 };
 
 }  // namespace contrib

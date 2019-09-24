@@ -7,21 +7,17 @@
 #include "core/graph/constants.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
+#include "core/providers/cuda/gpu_data_transfer.h"
 #include "shared_inc/cuda_utils.h"
 #include <deque>
 
 namespace onnxruntime {
 
+const int CPU_ALLOCATOR_DEVICE_ID = 0;
+
 // Information needed to construct CUDA execution providers.
 struct CUDAExecutionProviderInfo {
   int device_id{0};
-};
-
-enum CUDAStreamType : int {
-  kCudaStreamDefault = 0,
-  kCudaStreamCopyIn,
-  kCudaStreamCopyOut,
-  kTotalCudaStreams,
 };
 
 // Logical device representation.
@@ -30,7 +26,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info);
   virtual ~CUDAExecutionProvider();
 
-  AllocatorPtr GetAllocator(int id, OrtMemType mem_type = OrtMemTypeDefault) const override;
+  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
   Status Sync() const override;
 
@@ -38,21 +34,12 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   Status OnRunEnd() override;
 
-  Status CopyTensor(const Tensor& src, Tensor& dst) const override;
-
-  Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
-
   cublasHandle_t PerThreadCublasHandle() {
     return GetPerThreadContext().CublasHandle();
   }
 
   cudnnHandle_t PerThreadCudnnHandle() {
     return GetPerThreadContext().CudnnHandle();
-  }
-
-  cudaStream_t GetStream(int queue_id) const {
-    ORT_ENFORCE(queue_id >= 0 && queue_id < kTotalCudaStreams);
-    return streams_[queue_id];
   }
 
   template <typename T>
@@ -67,17 +54,19 @@ class CUDAExecutionProvider : public IExecutionProvider {
     if (count_or_bytes == 0)
       return nullptr;
 
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeDefault), count_or_bytes);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(device_id_, OrtMemTypeDefault), count_or_bytes);
   }
 
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
   virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
+  int GetDeviceId() const { return device_id_; }
+
  private:
-  cudaStream_t streams_[kTotalCudaStreams];
   int device_id_;
 
   struct DeferredReleaseCPUPtrs {

@@ -6,9 +6,6 @@
 #include <gsl/span>
 
 namespace onnxruntime {
-namespace concurrency {
-class ThreadPool;
-}
 namespace contrib {
 
 template <typename T>

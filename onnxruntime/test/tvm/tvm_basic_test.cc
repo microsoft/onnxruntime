@@ -2,49 +2,31 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
-#include <tvm/runtime/ndarray.h>
-#include "core/codegen/tvm/tvm_kernel.h"
-#include "core/framework/execution_provider.h"
+#include "core/common/logging/logging.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/execution_provider.h"
+#include "core/framework/kernel_registry.h"
+#include "core/framework/op_kernel.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/common/logging/logging.h"
 #include "test/framework/test_utils.h"
 #include "test/test_environment.h"
-#include "core/framework/op_kernel.h"
-#include "core/framework/kernel_registry.h"
+#include "test/tvm/tvm_demo/demo_compiler.h"
+
+#include <tvm/runtime/ndarray.h>
 
 namespace onnxruntime {
 
-tvm::Schedule DefaultTVMScheduleGenerator(const TVMGraph& tvm_graph) {
-  std::vector<tvm::Operation> args;
-  for (auto& tensor : tvm_graph.outputs_)
-    args.push_back(tensor.tvm_tensor_->op);
-  return tvm::create_schedule(args);
-}
+using namespace tvm_demo;
 
-tvm::runtime::Module BuildStackVMDefaultModule(tvm::Schedule schedule,
-                                               tvm::BuildConfig config,
-                                               tvm::Array<tvm::Tensor> tvm_args,
-                                               std::vector<std::string>& target_func_names) {
-  auto target = tvm::target::stackvm();
-  std::string func_name = "func";
-  auto args = tvm::Array<tvm::Tensor>(tvm_args);
-  std::unordered_map<tvm::Tensor, tvm::Buffer> binds;
-  auto lowered = lower(schedule, args, "func", binds, config);
-  target_func_names.push_back(func_name);
-  return build(lowered, target, tvm::Target(), config);
-}
-
-template <TVMScheduleCreator S, TVMModuleBuilder M>
-class TVMFuseAddKernels : public TVMKernel<S, M> {
+class TVMDemoKernel : public OpKernel {
  public:
-  explicit TVMFuseAddKernels(const OpKernelInfo& info) : TVMKernel<S, M>(info) {}
+  explicit TVMDemoKernel(const OpKernelInfo& info) : OpKernel(info) {}
 
  protected:
-  virtual const TensorShape& GetOutputShape(OpKernelContext* context, int /*i*/) const override {
+  const TensorShape& GetOutputShape(OpKernelContext* context, int /*i*/) const {
     return context->Input<Tensor>(0)->Shape();
   }
 };
@@ -100,28 +82,28 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override {
     std::vector<std::unique_ptr<ComputeCapability>> result;
-    std::vector<onnxruntime::NodeIndex> add_nodes;
+    std::vector<onnxruntime::NodeIndex> fused_nodes;
     for (auto& node : graph_viewer.Nodes()) {
-      if (node.OpType() == "Add") {
-        add_nodes.push_back(node.Index());
+      if (node.OpType() == "Mul") {
+        fused_nodes.push_back(node.Index());
       }
     }
 
-    UnionSet set(static_cast<int>(add_nodes.size()));
-    for (int i = 0; i < add_nodes.size(); ++i) {
-      auto node = graph_viewer.GetNode(add_nodes[i]);
+    UnionSet set(static_cast<int>(fused_nodes.size()));
+    for (int i = 0; i < fused_nodes.size(); ++i) {
+      auto node = graph_viewer.GetNode(fused_nodes[i]);
       for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
-        auto index_it = std::find(add_nodes.begin(), add_nodes.end(), (*it).Index());
-        if (index_it != add_nodes.end()) {
-          set.merge(i, static_cast<int>(index_it - add_nodes.begin()));
+        auto index_it = std::find(fused_nodes.begin(), fused_nodes.end(), (*it).Index());
+        if (index_it != fused_nodes.end()) {
+          set.merge(i, static_cast<int>(index_it - fused_nodes.begin()));
         }
       }
     }
 
     std::vector<std::vector<onnxruntime::NodeIndex>> groups;
-    groups.resize(add_nodes.size());
+    groups.resize(fused_nodes.size());
     for (int i = 0; i < set.farthers_.size(); ++i) {
-      groups[set.get(i)].push_back(add_nodes[i]);
+      groups[set.get(i)].push_back(fused_nodes[i]);
     }
 
     for (auto& group : groups) {
@@ -150,7 +132,7 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
         }
 
         auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-        meta_def->name = "TVMFuseAdd";
+        meta_def->name = "TVMFuse";
         meta_def->domain = "FuseTest";
         for (auto input : fused_inputs) {
           meta_def->inputs.push_back(input->Name());
@@ -177,22 +159,22 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
       auto func_body = fused_node->GetFunctionBody();
       if (!func_body)
         return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
-      //1. compile the onnxruntime Graph to tvm graph.
-      auto tvm_graph_ = CompileToTVM(func_body->Body(), kCpuExecutionProvider);
-      //2. create schedule for tvm graph, this step is depends on the execution provider/hardware.
-      auto s = DefaultTVMScheduleGenerator(tvm_graph_);
-      //3. Build module
+      //1. Build tvm IR based on the Ort graph
+      auto demo_tvm_tensor_ctx = BuildTVMIR(func_body->Body());
+      //2. Create schedule for the built tvm IRs
+      auto s = CreateSchedule(demo_tvm_tensor_ctx);
+      //3. Build tvm module
       std::vector<tvm::Tensor> tvm_args;
-      for (auto& t : tvm_graph_.inputs_) {
-        tvm_args.push_back(t.tvm_tensor_);
+      for (auto& t : demo_tvm_tensor_ctx.inputs) {
+        tvm_args.push_back(t);
       }
-      for (auto& t : tvm_graph_.outputs_) {
-        tvm_args.push_back(t.tvm_tensor_);
+      for (auto& t : demo_tvm_tensor_ctx.outputs) {
+        tvm_args.push_back(t);
       }
 
       std::vector<std::string> func_names;
       auto module_ptr = std::make_shared<tvm::runtime::Module>();
-      *module_ptr = BuildStackVMDefaultModule(s, tvm::build_config(), tvm_args, func_names);
+      *module_ptr = BuildStackVMModule(s, tvm::build_config(), tvm_args, func_names);
       modules_[fused_node->Name()] = module_ptr;
 
       NodeComputeInfo compute_info;
@@ -307,7 +289,9 @@ static void RunSession(InferenceSession& session_object,
 
   // Now run
   common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
-  std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
+  if (!st.IsOK()) {
+    std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
+  }
   EXPECT_TRUE(st.IsOK());
   ASSERT_EQ(1, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
@@ -319,9 +303,9 @@ static void RunSession(InferenceSession& session_object,
     ASSERT_EQ(found[i], values_y[i]);
 }
 
-static const std::string MODEL_URI = "testdata/fuse_add_1.pb";
+static const std::string MODEL_URI = "testdata/fuse_mul_1.onnx";
 
-TEST(TVMTest, Fuse_Add_Test) {
+TEST(TVMTest, CodeGen_Demo_for_Fuse_Mul) {
   SessionOptions so;
 
   so.session_logid = "InferenceSessionTests.NoTimeout";
@@ -346,8 +330,8 @@ TEST(TVMTest, Fuse_Add_Test) {
   std::vector<int64_t> expected_dims_y = {
       6,
   };
-  // now the expected value should be Add's result.
-  std::vector<double> expected_values_y = {5.0, 10.0, 15.0, 20.0, 25.0, 30.0};
+  // now the expected value should be Mul's result.
+  std::vector<double> expected_values_y = {1.0, 32.0, 243.0, 1024.0, 3125.0, 7776.0};
 
   // Now run
   RunSession(session_object, run_options, dims_x, values_x, expected_dims_y, expected_values_y);
@@ -356,7 +340,7 @@ TEST(TVMTest, Fuse_Add_Test) {
 
 }  // namespace onnxruntime
 
-TEST(TVMTest, Basic) {
+TEST(TVMTest, Native_TVM) {
   using namespace tvm;
   auto n = var("n");
   Array<Expr> shape;

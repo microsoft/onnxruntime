@@ -10,7 +10,7 @@
 #include "Eigen/src/Core/arch/GPU/Half.h"
 #include "core/common/common.h"
 
-#if defined(USE_MLAS) && defined(_M_AMD64)
+#if defined(_M_AMD64)
 #include "core/mlas/inc/mlas.h"
 #endif
 
@@ -40,7 +40,7 @@ inline void CastData<MLFloat16, float>(const Tensor* in, Tensor* out, const Tens
   auto out_data = out->template MutableData<float>();
   auto in_data = in->template Data<MLFloat16>();
   auto shape_size = shape.Size();
-#if defined(USE_MLAS) && defined(_M_AMD64)
+#if defined(_M_AMD64)
   MlasConvertHalfToFloatBuffer(&in_data[0].val, out_data, shape_size);
 #else
   auto in_vector = ConstEigenVectorMap<Eigen::half>(static_cast<const Eigen::half*>(static_cast<const void*>(in_data)), shape_size);
@@ -359,7 +359,7 @@ Status Cast<MLFloat16>::Compute(OpKernelContext* context) const {
       st = CastFloat16Data<MLFloat16, int8_t>(X, Y, shape, context);
       break;
     case TensorProto_DataType_STRING:
-      ORT_THROW("Casting to and from strings is not supported yet."); /*break;*/
+      ORT_THROW("Casting from 'float16' to 'string' is not supported yet."); /*break;*/
     case TensorProto_DataType_UNDEFINED:
       ORT_THROW("Cast op must have 'to' argument of type DataType"); /*break;*/
     default:

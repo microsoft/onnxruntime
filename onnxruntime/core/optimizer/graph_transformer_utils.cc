@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/identity_elimination.h"
@@ -14,6 +16,10 @@
 #include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/shape_to_initializer.h"
+#include "core/optimizer/nchwc_transformer.h"
+#include "core/optimizer/free_dim_override_transformer.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/session/inference_session.h"
 
 namespace onnxruntime {
 
@@ -41,6 +47,10 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
       rules.push_back(std::make_unique<ConvMulFusion>());
       rules.push_back(std::make_unique<ConvBNFusion>());
       break;
+
+    case TransformerLevel::Level3:
+      break;
+
     default:
       ORT_ENFORCE(false, "Unsupported level" + std::to_string(static_cast<uint32_t>(level)));
   }
@@ -79,6 +89,7 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(Tra
 }
 
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerLevel level,
+                                                                    gsl::span<const FreeDimensionOverride> free_dimension_overrides,
                                                                     const std::vector<std::string>& transformers_and_rules_to_enable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
@@ -87,6 +98,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       std::unordered_set<std::string> l1_execution_providers = {};
 
       transformers.emplace_back(std::make_unique<ConstantFolding>(l1_execution_providers));
+      transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
 
       rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
     } break;
@@ -103,6 +115,16 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(l2_execution_providers));
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(l2_execution_providers));
 #endif
+    } break;
+
+    case TransformerLevel::Level3: {
+#ifndef DISABLE_CONTRIB_OPS
+      // Register the NCHWc layout transformer if supported by the platform.
+      if (MlasNchwcGetBlockSize() > 1) {
+        transformers.emplace_back(std::make_unique<NchwcTransformer>());
+      }
+#endif
+
     } break;
 
     default:
