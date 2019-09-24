@@ -46,6 +46,56 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle, cublasOpera
   return cublasHgemmBatched(handle, transa, transb, m, n, k, alpha, (const __half**)Aarray, lda, (const __half**)Barray, ldb, beta, (__half**)Carray, ldc, batchCount);
 }
 
+// strided batched gemm
+inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
+                                                     cublasOperation_t transa,
+                                                     cublasOperation_t transb,
+                                                     int m, int n, int k,
+                                                     const float* alpha,
+                                                     const float* A, int lda,
+                                                     long long int strideA,
+                                                     const float* B, int ldb,
+                                                     long long int strideB,
+                                                     const float* beta,
+                                                     float* C, int ldc,
+                                                     long long int strideC,
+                                                     int batchCount) {
+  return cublasSgemmStridedBatched(handle, transa, transb, m, n, k, alpha, A, lda, strideA, B, ldb, strideB, beta, C, ldc, strideC, batchCount);
+}
+
+inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
+                                                     cublasOperation_t transa,
+                                                     cublasOperation_t transb,
+                                                     int m, int n, int k,
+                                                     const double* alpha,
+                                                     const double* A, int lda,
+                                                     long long int strideA,
+                                                     const double* B, int ldb,
+                                                     long long int strideB,
+                                                     const double* beta,
+                                                     double* C, int ldc,
+                                                     long long int strideC,
+                                                     int batchCount){
+  return cublasDgemmStridedBatched(handle, transa, transb, m, n, k, alpha, A, lda, strideA, B, ldb, strideB, beta, C, ldc, strideC, batchCount);
+}
+
+inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
+                                                     cublasOperation_t transa,
+                                                     cublasOperation_t transb,
+                                                     int m, int n, int k,
+                                                     const __half* alpha,
+                                                     const __half* A, int lda,
+                                                     long long int strideA,
+                                                     const __half* B, int ldb,
+                                                     long long int strideB,
+                                                     const __half* beta,
+                                                     __half* C, int ldc,
+                                                     long long int strideC,
+                                                     int batchCount) {
+  cublasSetMathMode(handle, CUBLAS_TENSOR_OP_MATH);
+  return cublasHgemmStridedBatched(handle, transa, transb, m, n, k, alpha, A, lda, strideA, B, ldb, strideB, beta, C, ldc, strideC, batchCount);
+}
+
 // axpy
 inline cublasStatus_t cublasAxpyHelper(cublasHandle_t handle, int n, const float* alpha, const float* x, int incx, float* y, int incy) {
   return cublasSaxpy(handle, n, alpha, x, incx, y, incy);
