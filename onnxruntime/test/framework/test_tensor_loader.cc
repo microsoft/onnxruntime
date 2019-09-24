@@ -11,6 +11,9 @@
 #include <Windows.h>
 #endif
 
+const OrtApi* g_ort = OrtGetApi(ORT_API_VERSION);
+const OrtApi* Ort::g_api = OrtGetApi(ORT_API_VERSION);
+
 namespace onnxruntime {
 namespace test {
 
@@ -58,13 +61,13 @@ TEST(CApiTest, load_simple_float_tensor) {
                                         MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value, *deleter);
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
   float* real_output;
-  auto ort_st = OrtGetTensorMutableData(&value, (void**)&real_output);
-  ASSERT_EQ(ort_st, nullptr) << OrtGetErrorMessage(ort_st);
+  auto ort_st = g_ort->GetTensorMutableData(&value, (void**)&real_output);
+  ASSERT_EQ(ort_st, nullptr) << g_ort->GetErrorMessage(ort_st);
   // check the result
   ASSERT_EQ(real_output[0], 1.0f);
   ASSERT_EQ(real_output[1], 2.2f);
   ASSERT_EQ(real_output[2], 3.5f);
-  OrtReleaseStatus(ort_st);
+  g_ort->ReleaseStatus(ort_st);
   if (deleter->f) {
     OrtRunCallback(deleter.release());
   }
@@ -117,13 +120,13 @@ static void run_external_data_test() {
                                         MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value, *deleter);
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
   float* real_output;
-  auto ort_st = OrtGetTensorMutableData(&value, (void**)&real_output);
-  ASSERT_EQ(ort_st, nullptr) << OrtGetErrorMessage(ort_st);
+  auto ort_st = g_ort->GetTensorMutableData(&value, (void**)&real_output);
+  ASSERT_EQ(ort_st, nullptr) << g_ort->GetErrorMessage(ort_st);
   // check the result
   ASSERT_EQ(real_output[0], 1.0f);
   ASSERT_EQ(real_output[1], 2.2f);
   ASSERT_EQ(real_output[2], 3.5f);
-  OrtReleaseStatus(ort_st);
+  g_ort->ReleaseStatus(ort_st);
   if (deleter->f) {
     OrtRunCallback(deleter.release());
   }
@@ -172,12 +175,12 @@ TEST(CApiTest, load_huge_tensor_with_external_data) {
   // check the result
   ASSERT_TRUE(st.IsOK()) << "Error from TensorProtoToMLValue: " << st.ErrorMessage();
   int* buffer;
-  auto ort_st = OrtGetTensorMutableData(&value, (void**)&buffer);
-  ASSERT_EQ(ort_st, nullptr) << "Error from OrtGetTensorMutableData: " << OrtGetErrorMessage(ort_st);
+  auto ort_st = g_ort->GetTensorMutableData(&value, (void**)&buffer);
+  ASSERT_EQ(ort_st, nullptr) << "Error from OrtGetTensorMutableData: " << g_ort->GetErrorMessage(ort_st);
   for (size_t i = 0; i != total_ele_count; ++i) {
     ASSERT_EQ(1, buffer[i]);
   }
-  OrtReleaseStatus(ort_st);
+  g_ort->ReleaseStatus(ort_st);
   if (deleter->f) {
     OrtRunCallback(deleter.release());
   }

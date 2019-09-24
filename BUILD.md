@@ -219,26 +219,46 @@ ONNX Runtime supports OpenVINO Execution Provider to enable deep learning infere
 
 The OpenVINO Execution Provider can be built using the following commands:
 
-- Currently supports and validated on two versions of OpenVINO: OpenVINO 2018 R5.0.1 and OpenVINO 2019 R1.1(Recommended). Install the OpenVINO release along with its dependencies from ([https://software.intel.com/en-us/openvino-toolkit](https://software.intel.com/en-us/openvino-toolkit)).
+- Currently supports and validated on two versions of OpenVINO: OpenVINO 2018 R5.0.1 and OpenVINO 2019 R1.1(Recommended). Install the OpenVINO release along with its dependencies from ([https://software.intel.com/en-us/openvino-toolkit](https://software.intel.com/en-us/openvino-toolkit)).For windows, please download 2019 R1.1 windows installer
 
 - Install the model optimizer prerequisites for ONNX by running
-<code><openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.sh</code>
 
-- Initialize the OpenVINO environment by running the setupvars.sh in <code>\<openvino\_install\_directory\>\/bin</code> using the below command:
+   For Linux:
 
-   <code>source setupvars.sh</code>
+    <code><openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.sh</code>
 
-- To configure Intel<sup>®</sup> Processor Graphics(GPU), please follow the installation steps from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
+    For Windows:
 
-- To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow the getting started guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+    <code><openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.bat</code>
 
-- To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow the configuration guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#install-VPU)
+- Initialize the OpenVINO environment by running the setupvars in <code>\<openvino\_install\_directory\>\/bin</code> using the below command:
+
+   <code>source setupvars.sh (Linux)</code>
+
+   <code>setupvars.bat (Windows)</code>
+
+- To configure Intel<sup>®</sup> Processor Graphics(GPU), please follow the installation steps from    (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps  (Linux))
+ (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_windows.html#Install-GPU (Windows))
+
+- To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow the getting started guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps (Linux))
+(https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_windows.html#usb-myriad (Windows))
+
+- To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow the configuration guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#install-VPU (Linux))
+(https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_windows.html#hddl-myriad (Windows))
 
 
 - Build ONNX Runtime using the below command.
 
+  For Linux:
+  
    <code>./build.sh --config RelWithDebInfo --use_openvino <hardware_option>  </code>
 
+  For Windows:
+  
+  <code> build.bat --config RelWithDebInfo  --use_openvino <hardware_option> </code>
+ 
+   *Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat.*
+ 
    <code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
 
    <code><hardware_option></code>: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.

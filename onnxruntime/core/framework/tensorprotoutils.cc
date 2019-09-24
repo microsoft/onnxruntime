@@ -17,6 +17,7 @@
 #include "core/framework/callback.h"
 #include "core/framework/data_types.h"
 #include "core/framework/path_lib.h"
+#include "core/session/ort_apis.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -320,7 +321,7 @@ ORT_API_STATUS_IMPL(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t i
       new (ptr + i) std::string();
     }
   } catch (std::exception& ex) {
-    return OrtCreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
   }
   return nullptr;
 }
@@ -445,7 +446,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
           if (preallocated != nullptr) {
             OrtStatus* status = OrtInitializeBufferForTensor(preallocated, preallocated_size, ele_type);
             if (status != nullptr) {
-              OrtReleaseStatus(status);
+              OrtApis::ReleaseStatus(status);
               return Status(common::ONNXRUNTIME, common::FAIL, "initialize preallocated buffer failed");
             }
 
