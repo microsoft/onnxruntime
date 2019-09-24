@@ -1182,7 +1182,7 @@ MlasGemm(
 
 void
 MLASCALL
-MlasQgemm(
+MlasGemm(
     size_t M,
     size_t N,
     size_t K,
