@@ -49,53 +49,6 @@ class InferenceSessionProtectedLoadAccessor : public onnxruntime::InferenceSessi
   }
 };
 
-static HRESULT
-ApplyBatchSizeOverride(
-    onnx::ModelProto* p_model_proto,
-    uint32_t batch_size_override) {
-  WINML_THROW_HR_IF_NULL_MSG(E_INVALIDARG, p_model_proto, "The model proto is null.");
-
-  // If batch size override is 0, we want to use the model without an override
-  RETURN_HR_IF(S_FALSE, batch_size_override == 0);
-
-  // If the batch size override is set, then set all the batch dimentions on
-  // inputs to the batch_size_override.
-  auto graph = p_model_proto->mutable_graph();
-
-  for (int32_t i = 0; i < graph->input_size(); i++) {
-    // Get the current input and its type
-    auto& inputType = *graph->mutable_input(i)->mutable_type();
-    if (inputType.has_tensor_type() &&        // VERIFY: is tensor type
-        inputType.tensor_type().has_shape())  // VERIFY: has shape
-    {
-      // Get the current input's shape
-      auto& shape = *inputType.mutable_tensor_type()->mutable_shape();
-      for (int32_t dimIndex = 0; dimIndex < shape.dim_size(); dimIndex++) {
-        auto& dimension = *shape.mutable_dim(dimIndex);
-        if (dimension.has_denotation() &&                                     // VERIFY: has denotation
-            _stricmp(onnx::DATA_BATCH, dimension.denotation().c_str()) == 0)  // VERIFY: has batch denotation
-        {
-          if (dimension.has_dim_param())  // VERIFY: does not have a fixed batch size()
-          {
-            dimension.clear_dim_param();
-            dimension.set_dim_value(batch_size_override);
-          } else {
-            WINML_THROW_HR_IF_FALSE_MSG(
-                E_UNEXPECTED,
-                dimension.dim_value() == batch_size_override,
-                "The model has input %s with a fixed batch dimenions of size %lld not equal %d specified by the batch_size_override.",
-                graph->input(i).name().c_str(),
-                dimension.dim_value(),
-                batch_size_override);
-          }
-        }
-      }
-    }
-  }
-
-  return S_OK;
-}
-
 static bool
 IsFeatureDescriptorFp16(
     winml::ILearningModelFeatureDescriptor descriptor) {
@@ -242,13 +195,6 @@ LearningModelSession::GetOptimizedModel(bool should_close_model) {
                       : model->CopyModelProto();
   }
 
-  // Apply optimizations
-  uint32_t c_default_batch_size_override = 0;
-  auto batch_size_override = session_options_ != nullptr
-                                 ? session_options_.BatchSizeOverride()
-                                 : c_default_batch_size_override;  // The default
-  ApplyBatchSizeOverride(model_proto.get(), batch_size_override);
-
   // Ensure that the model is runnable on the device
   EnsureModelDeviceCompatibility(model_, model_proto.get(), device_);
 
@@ -268,6 +214,15 @@ void LearningModelSession::Initialize() {
 
   onnxruntime::SessionOptions options = {};
   WINML_THROW_IF_FAILED(session_builder->CreateSessionOptions(&options));
+
+  // Make onnxruntime apply the batch size override, if any
+  if (session_options_ && session_options_.BatchSizeOverride() != 0)
+  {
+    onnxruntime::FreeDimensionOverride overrideOption = {};
+    overrideOption.dimension_denotation = onnx::DATA_BATCH;
+    overrideOption.dimension_override = session_options_.BatchSizeOverride();
+    options.free_dimension_overrides.emplace_back(overrideOption);
+  }
 
   auto session = std::unique_ptr<onnxruntime::InferenceSession>();
   WINML_THROW_IF_FAILED(session_builder->CreateSession(
