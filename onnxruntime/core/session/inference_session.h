@@ -46,8 +46,7 @@ namespace logging {
 class LoggingManager;
 }
 
-struct FreeDimensionOverride
-{
+struct FreeDimensionOverride {
   std::string dimension_denotation;
   int64_t dimension_override;
 };
@@ -281,7 +280,7 @@ class InferenceSession {
     */
   std::pair<common::Status, const InputDefList*> GetModelInputs() const;
 
-    /**
+  /**
     * Get all definitions of the model for overridable initializers.
     * This does not include weights. Use this to get the name/type/shapes of the overridable initializers.
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
