@@ -137,6 +137,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtReleaseStatus = (DOrtReleaseStatus)Marshal.GetDelegateForFunctionPointer(api_.ReleaseStatus, typeof(DOrtReleaseStatus));
 
             OrtCreateSession = (DOrtCreateSession)Marshal.GetDelegateForFunctionPointer(api_.CreateSession, typeof(DOrtCreateSession));
+            OrtCreateSessionFromArray = (DOrtCreateSessionFromArray)Marshal.GetDelegateForFunctionPointer(api_.CreateSessionFromArray, typeof(DOrtCreateSessionFromArray));
             OrtRun = (DOrtRun)Marshal.GetDelegateForFunctionPointer(api_.Run, typeof(DOrtRun));
             OrtSessionGetInputCount = (DOrtSessionGetInputCount)Marshal.GetDelegateForFunctionPointer(api_.SessionGetInputCount, typeof(DOrtSessionGetInputCount));
             OrtSessionGetOutputCount = (DOrtSessionGetOutputCount)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOutputCount, typeof(DOrtSessionGetOutputCount));
@@ -241,6 +242,14 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /* (OrtSessionOptions*) */sessopnOptions,
                                                 out IntPtr /**/ session);
         public static DOrtCreateSession OrtCreateSession;
+
+        public delegate IntPtr /* OrtStatus* */DOrtCreateSessionFromArray(
+                                                IntPtr /* (OrtEnv*) */ environment,
+                                                byte[] modelData,
+                                                UIntPtr modelSize,
+                                                IntPtr /* (OrtSessionOptions*) */sessionOptions,
+                                                out IntPtr /**/ session);
+        public static DOrtCreateSessionFromArray OrtCreateSessionFromArray;
 
         public delegate IntPtr /*(ONNStatus*)*/ DOrtRun(
                                                 IntPtr /*(OrtSession*)*/ session,
