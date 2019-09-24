@@ -46,6 +46,11 @@ namespace logging {
 class LoggingManager;
 }
 
+struct FreeDimensionOverride {
+  std::string dimension_denotation;
+  int64_t dimension_override;
+};
+
 /**
   * Configuration information for a session.
   */
@@ -93,6 +98,10 @@ struct SessionOptions {
   // controls the size of the thread pool used to parallelize the execution of nodes (ops)
   // configuring this makes sense only when you're using parallel executor
   int inter_op_num_threads = 0;
+
+  // For models with free input dimensions (most commonly batch size), specifies a set of values to override those
+  // free dimensions with, keyed by dimension denotation.
+  std::vector<FreeDimensionOverride> free_dimension_overrides;
 };
 
 /**
@@ -270,6 +279,15 @@ class InferenceSession {
     * @note lifetime of the returned pointer is valid as long as the Session object is live.
     */
   std::pair<common::Status, const InputDefList*> GetModelInputs() const;
+
+  /**
+    * Get all definitions of the model for overridable initializers.
+    * This does not include weights. Use this to get the name/type/shapes of the overridable initializers.
+    * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
+    * @note lifetime of the returned pointer is valid as long as the Session object is live.
+    * @note for IR < 4 returned list will always be empty.
+    */
+  std::pair<common::Status, const InputDefList*> GetOverridableInitializers() const;
 
   /**
     * Get all output definitions of the model. Use this to get the name/type/shapes of the outputs.
