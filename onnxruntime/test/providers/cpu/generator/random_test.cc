@@ -246,7 +246,7 @@ TEST(Random, MultinomialGoodCase) {
   const std::vector<int64_t> output_dims{batch_size, num_samples};
 #ifdef _WIN32
   const std::vector<int64_t> expected_output{2, 0, 0, 2, 2, 2, 0, 2, 2, 1, 1, 2, 1, 1, 1, 1, 2, 1, 2, 0};
-#elif defined(__MACH__) || defined (__ANDROID__)
+#elif defined(__MACH__) || defined(__ANDROID__)
   const std::vector<int64_t> expected_output{1, 1, 2, 2, 0, 2, 2, 2, 0, 2, 1, 1, 2, 0, 2, 2, 0, 2, 1, 1};
 #else
   const std::vector<int64_t> expected_output{2, 0, 0, 1, 0, 1, 2, 0, 1, 0, 0, 1, 1, 0, 1, 0, 2, 0, 2, 0};
@@ -257,31 +257,46 @@ TEST(Random, MultinomialGoodCase) {
 }
 
 TEST(Random, MultinomialDefaultDType) {
-  OpTester test("Multinomial");
+  auto run_test = [](int num_run_calls, const std::vector<int32_t>& expected_output) {
+    OpTester test("Multinomial");
+    const int64_t num_samples = 10;
+    const int batch_size = 2;
+    const float seed = 1618.f;
 
-  const int64_t num_samples = 10;
-  const int batch_size = 2;
-  const float seed = 1618.f;
+    const std::vector<int64_t> input_dims{2, 3};
+    std::vector<float> input(TensorShape(input_dims).Size());
+    std::fill(input.begin(), input.end(), -10.f);
+    test.AddInput<float>("X", input_dims, input);
 
-  const std::vector<int64_t> input_dims{2, 3};
-  std::vector<float> input(TensorShape(input_dims).Size());
-  std::fill(input.begin(), input.end(), -10.f);
-  test.AddInput<float>("X", input_dims, input);
+    test.AddAttribute("sample_size", num_samples);
+    test.AddAttribute("seed", seed);
 
-  test.AddAttribute("sample_size", num_samples);
-  test.AddAttribute("seed", seed);
+    const std::vector<int64_t> output_dims{batch_size, num_samples};
+    test.AddOutput<int32_t>("Y", output_dims, expected_output);
 
-  const std::vector<int64_t> output_dims{batch_size, num_samples};
+    // test.Run() re-loads the model each time, so we need to do multiple calls to InferenceSession::Run inside of it
+    // to test that the second call to Compute produces different data
+    test.SetNumRunCalls(num_run_calls);
+
+    test.Run();
+  };
+
 #ifdef _WIN32
-  const std::vector<int32_t> expected_output{2, 0, 0, 2, 2, 2, 0, 2, 2, 1, 1, 2, 1, 1, 1, 1, 2, 1, 2, 0};
-#elif defined(__MACH__) || defined (__ANDROID__)
-  const std::vector<int32_t> expected_output{1, 1, 2, 2, 0, 2, 2, 2, 0, 2, 1, 1, 2, 0, 2, 2, 0, 2, 1, 1};
+  const std::vector<int32_t> expected_output_1{2, 0, 0, 2, 2, 2, 0, 2, 2, 1, 1, 2, 1, 1, 1, 1, 2, 1, 2, 0};
+  const std::vector<int32_t> expected_output_2{0, 0, 1, 0, 2, 2, 2, 0, 2, 1, 2, 1, 0, 2, 0, 2, 2, 1, 2, 1};
+#elif defined(__MACH__) || defined(__ANDROID__)
+  const std::vector<int32_t> expected_output_1{1, 1, 2, 2, 0, 2, 2, 2, 0, 2, 1, 1, 2, 0, 2, 2, 0, 2, 1, 1};
+  const std::vector<int32_t> expected_output_2{1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 2, 0, 1, 1, 0, 2, 2, 2, 1};
 #else
-  const std::vector<int32_t> expected_output{2, 0, 0, 1, 0, 1, 2, 0, 1, 0, 0, 1, 1, 0, 1, 0, 2, 0, 2, 0};
+  const std::vector<int32_t> expected_output_1{2, 0, 0, 1, 0, 1, 2, 0, 1, 0, 0, 1, 1, 0, 1, 0, 2, 0, 2, 0};
+  const std::vector<int32_t> expected_output_2{2, 2, 1, 1, 0, 2, 2, 1, 1, 2, 0, 0, 0, 2, 0, 1, 1, 1, 0, 0};
 #endif
-  test.AddOutput<int32_t>("Y", output_dims, expected_output);
 
-  test.Run();
+  // Test output from a single call to Multinomial::Compute
+  run_test(1, expected_output_1);
+
+  // Test output from 2 calls to Multinomial::Compute
+  run_test(2, expected_output_2);
 }
 
 TEST(Random, MultinomialInvalidDtype) {

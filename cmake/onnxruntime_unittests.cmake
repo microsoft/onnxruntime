@@ -126,6 +126,12 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     "${TEST_SRC_DIR}/contrib_ops/*.cc")
 endif()
 
+if(onnxruntime_USE_AUTOML)
+  list(APPEND onnxruntime_test_providers_src_patterns
+    "${TEST_SRC_DIR}/automl_ops/*.h"
+    "${TEST_SRC_DIR}/automl_ops/*.cc")
+endif()
+
 file(GLOB onnxruntime_test_providers_src CONFIGURE_DEPENDS
   ${onnxruntime_test_providers_src_patterns})
 file(GLOB_RECURSE onnxruntime_test_providers_cpu_src CONFIGURE_DEPENDS
@@ -209,6 +215,10 @@ if(onnxruntime_USE_NNAPI)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
 
+if(onnxruntime_USE_AUTOML)
+   list(APPEND onnxruntime_test_providers_dependencies automl_featurizers)
+endif()
+
 file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/test/tvm/*.h"
   "${ONNXRUNTIME_ROOT}/test/tvm/*.cc"
@@ -218,6 +228,13 @@ file(GLOB_RECURSE onnxruntime_test_openvino_src
   "${ONNXRUNTIME_ROOT}/test/openvino/*.h"
   "${ONNXRUNTIME_ROOT}/test/openvino/*.cc"
  )
+
+if(onnxruntime_USE_NUPHAR)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/nuphar/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nuphar)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nuphar)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nuphar)
+endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   include(onnxruntime_unittests_internal.cmake)
@@ -231,6 +248,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
+    ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
     onnxruntime_optimizer
     onnxruntime_providers
@@ -472,6 +490,9 @@ set(onnx_test_runner_common_srcs
   ${onnx_test_runner_src_dir}/onnxruntime_event.h
   ${onnx_test_runner_src_dir}/sync_api.h
   ${onnx_test_runner_src_dir}/sync_api.cc
+  ${onnx_test_runner_src_dir}/callback.h
+  ${onnx_test_runner_src_dir}/callback.cc
+  ${onnx_test_runner_src_dir}/mem_buffer.h
   ${onnx_test_runner_src_dir}/tensorprotoutils.h
   ${onnx_test_runner_src_dir}/tensorprotoutils.cc)
 
@@ -507,13 +528,19 @@ onnxruntime_add_include_to_target(onnx_test_runner gsl)
 target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
 set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
 
+if (onnxruntime_USE_TVM)
+  if (WIN32)
+    target_link_options(onnx_test_runner PRIVATE "/STACK:4000000")
+  endif()
+endif()
+
 install(TARGETS onnx_test_runner
         ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if(onnxruntime_BUILD_BENCHMARKS)
-  add_executable(onnxruntime_benchmark ${TEST_SRC_DIR}/onnx/microbenchmark/main.cc ${TEST_SRC_DIR}/onnx/microbenchmark/modeltest.cc ${TEST_SRC_DIR}/onnx/microbenchmark/model_init.cc)
+  add_executable(onnxruntime_benchmark ${TEST_SRC_DIR}/onnx/microbenchmark/main.cc ${TEST_SRC_DIR}/onnx/microbenchmark/modeltest.cc)
   target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} benchmark)
   onnxruntime_add_include_to_target(onnxruntime_benchmark gsl)
   if(WIN32)
@@ -566,7 +593,7 @@ onnxruntime_add_include_to_target(onnxruntime_perf_test gsl)
 
 if (onnxruntime_BUILD_SHARED_LIB)
   set(onnxruntime_perf_test_libs onnxruntime_test_utils onnx_test_runner_common onnxruntime_common
-          onnx_test_data_proto onnx_proto libprotobuf ${GETOPT_LIB_WIDE} onnxruntime onnxruntime_framework onnx
+          onnx_test_data_proto onnx_proto libprotobuf ${GETOPT_LIB_WIDE} onnxruntime
           ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
   if(onnxruntime_USE_NSYNC)
     list(APPEND onnxruntime_perf_test_libs nsync_cpp)
@@ -586,6 +613,29 @@ set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS AND NOT onnxruntime_BUILD_SHARED_LIB)
   target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
+
+if (onnxruntime_USE_TVM)
+  if (WIN32)
+    target_link_options(onnxruntime_perf_test PRIVATE "/STACK:4000000")
+  endif()
+endif()
+
+# Opaque API test can not be a part of the shared lib tests since it is using
+# C++ internals apis to register custom type, kernel and schema. It also can not
+# a part of providers unit tests since it requires its own environment.
+set(opaque_api_test_srcs ${ONNXRUNTIME_ROOT}/test/opaque_api/test_opaque_api.cc)
+
+AddTest(
+  TARGET opaque_api_test
+  SOURCES ${opaque_api_test_srcs}
+  LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
+  DEPENDS ${onnxruntime_test_providers_dependencies}
+)
+
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  target_link_libraries(opaque_api_test PRIVATE onnxruntime_language_interop onnxruntime_pyop)
+endif()
+
 
 # shared lib
 if (onnxruntime_BUILD_SHARED_LIB)

@@ -18,12 +18,19 @@
 #include "gsl/pointers"
 #include "core/graph/model.h"
 #include "cuda_runtime_api.h"
+#include "core/providers/cuda/gpu_data_transfer.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
+
+// Per TensorRT documentation, logger needs to be a singleton.
+TensorrtLogger& GetTensorrtLogger() {
+  static TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
+  return trt_logger;
+}
 
 #define CHECK_CUDA(call)                                        \
   do {                                                          \
@@ -37,16 +44,20 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider}, device_id_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
-  DeviceAllocatorRegistrationInfo default_allocator_info(
+  DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault, [](int id) { return std::make_unique<CUDAAllocator>(id, TRT); }, std::numeric_limits<size_t>::max()});
-  InsertAllocator(CreateAllocator(default_allocator_info, device_id_));
+  InsertAllocator(CreateAllocator(default_memory_info, device_id_));
 
-  DeviceAllocatorRegistrationInfo pinned_allocator_info(
+  DeviceAllocatorRegistrationInfo pinned_memory_info(
       {OrtMemTypeCPUOutput, [](int) { return std::make_unique<CUDAPinnedAllocator>(0, TRT_PINNED); }, std::numeric_limits<size_t>::max()});
-  InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_));
+  InsertAllocator(CreateAllocator(pinned_memory_info, device_id_));
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {}
+
+std::unique_ptr<onnxruntime::IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
+  return std::make_unique<onnxruntime::GPUDataTransfer>();
+}
 
 std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index, const onnxruntime::GraphViewer& graph) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
@@ -197,7 +208,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         // Get supported node list recursively
         SubGraphCollection_t parser_nodes_list;
-        TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
+        TensorrtLogger& trt_logger = GetTensorrtLogger();
         auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
         auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
         auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
@@ -255,7 +266,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
   // Get supported node list
   SubGraphCollection_t parser_nodes_vector;
-  TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
+  TensorrtLogger& trt_logger = GetTensorrtLogger();
   auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
   auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
   auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
@@ -323,7 +334,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     model_proto.SerializeToString(&string_buf);
 
     // Create TensorRT engine
-    TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
+    TensorrtLogger& trt_logger = GetTensorrtLogger();
     auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
     auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
     auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
@@ -490,7 +501,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
       // Run TRT inference
       std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
-      trt_state->context->enqueue(batch_size, &buffers[0], nullptr, nullptr);
+      bool ret = trt_state->context->enqueue(batch_size, &buffers[0], nullptr, nullptr);
+      if (!ret) {
+        if (trt_state->context->getEngine().getMaxBatchSize() < batch_size) {
+          return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                                "TRT enqueue failed: Set ORT_TENSORRT_MAX_BATCH_SIZE environment variable to at least " + to_string(batch_size));
+        }
+        return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to enqueue to TRT execution context.");
+      }
 
       return Status::OK();
     };

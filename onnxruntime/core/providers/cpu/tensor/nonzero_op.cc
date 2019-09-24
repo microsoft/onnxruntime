@@ -23,7 +23,7 @@ namespace onnxruntime {
 
 // start with a subset of types, enable more as needed...
 NONZERO_TYPED_KERNEL(bool)
-//NONZERO_TYPED_KERNEL(uint8_t)
+NONZERO_TYPED_KERNEL(uint8_t)
 //NONZERO_TYPED_KERNEL(uint16_t)
 //NONZERO_TYPED_KERNEL(uint32_t)
 //NONZERO_TYPED_KERNEL(uint64_t)

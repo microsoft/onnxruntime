@@ -26,11 +26,21 @@ Abstract:
 #else
 #include <sys/mman.h>
 #endif
+#if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#include "core/platform/threadpool.h"
+#endif
 
 #if !defined(_countof)
 #define _countof(_Array) (sizeof(_Array) / sizeof(_Array[0]))
 #endif
 
+#if defined(_M_IX86) || defined(__i386__) || defined(_M_AMD64) || defined(__x86_64__)
+#define MLAS_HAS_QGEMM_U8U8
+#endif
+
+MLAS_THREADPOOL* threadpool = nullptr;
+
+template <typename T>
 class MatrixGuardBuffer
 {
 public:
@@ -46,7 +56,7 @@ public:
         ReleaseBuffer();
     }
 
-    float* GetBuffer(size_t Elements)
+    T* GetBuffer(size_t Elements)
     {
         //
         // Check if the internal buffer needs to be reallocated.
@@ -64,7 +74,7 @@ public:
             constexpr size_t BufferAlignment = 64 * 1024;
             constexpr size_t GuardPadding = 256 * 1024;
 
-            size_t BytesToAllocate = ((Elements * sizeof(float)) + BufferAlignment - 1) & ~(BufferAlignment - 1);
+            size_t BytesToAllocate = ((Elements * sizeof(T)) + BufferAlignment - 1) & ~(BufferAlignment - 1);
 
             _BaseBufferSize = BytesToAllocate + GuardPadding;
 
@@ -93,26 +103,26 @@ public:
             }
 #endif
 
-            _ElementsAllocated = BytesToAllocate / sizeof(float);
-            _GuardAddress = (float*)((unsigned char*)_BaseBuffer + BytesToAllocate);
+            _ElementsAllocated = BytesToAllocate / sizeof(T);
+            _GuardAddress = (T*)((unsigned char*)_BaseBuffer + BytesToAllocate);
         }
 
         //
         //
         //
 
-        float* GuardAddress = _GuardAddress;
-        float* buffer = GuardAddress - Elements;
+        T* GuardAddress = _GuardAddress;
+        T* buffer = GuardAddress - Elements;
 
         const int MinimumFillValue = -23;
         const int MaximumFillValue = 23;
 
         int FillValue = MinimumFillValue;
-        float* FillAddress = buffer;
+        T* FillAddress = buffer;
 
         while (FillAddress < GuardAddress) {
 
-            *FillAddress++ = (float)FillValue;
+            *FillAddress++ = (T)FillValue;
 
             FillValue++;
 
@@ -145,7 +155,7 @@ private:
     size_t _ElementsAllocated;
     void* _BaseBuffer;
     size_t _BaseBufferSize;
-    float* _GuardAddress;
+    T* _GuardAddress;
 };
 
 class MlasTestBase
@@ -225,7 +235,7 @@ private:
         std::fill_n(C, M * N, -0.5f);
         std::fill_n(CReference, M * N, -0.5f);
 
-        MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, nullptr);
+        MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool);
         ReferenceSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, CReference, ldc);
 
         for (size_t f = 0; f < M * N; f++) {
@@ -345,10 +355,10 @@ private:
         }
     }
 
-    MatrixGuardBuffer BufferA;
-    MatrixGuardBuffer BufferB;
-    MatrixGuardBuffer BufferC;
-    MatrixGuardBuffer BufferCReference;
+    MatrixGuardBuffer<float> BufferA;
+    MatrixGuardBuffer<float> BufferB;
+    MatrixGuardBuffer<float> BufferC;
+    MatrixGuardBuffer<float> BufferCReference;
 
 public:
     void
@@ -441,6 +451,181 @@ public:
         }
     }
 };
+
+#ifdef MLAS_HAS_QGEMM_U8U8
+
+class MlasQgemmU8U8Test : public MlasTestBase
+{
+private:
+    void
+    Test(
+        size_t M,
+        size_t N,
+        size_t K,
+        uint8_t offa,
+        uint8_t offb
+        )
+    {
+        const uint8_t* A = BufferA.GetBuffer(K * M);
+        const uint8_t* B = BufferB.GetBuffer(N * K);
+        int32_t* C = BufferC.GetBuffer(N * M);
+        int32_t* CReference = BufferCReference.GetBuffer(N * M);
+
+        Test(M, N, K, A, K, offa, B, N, offb, C, CReference, N);
+    }
+
+    void
+    Test(
+        size_t M,
+        size_t N,
+        size_t K,
+        const uint8_t* A,
+        size_t lda,
+        uint8_t offa,
+        const uint8_t* B,
+        size_t ldb,
+        uint8_t offb,
+        int32_t* C,
+        int32_t* CReference,
+        size_t ldc
+        )
+    {
+        std::fill_n(C, M * N, -1);
+        std::fill_n(CReference, M * N, -1);
+
+        MlasQgemm(M, N, K, A, lda, offa, B, ldb, offb, C, ldc, threadpool);
+        ReferenceQgemm(M, N, K, A, lda, offa, B, ldb, offb, CReference, ldc);
+
+        for (size_t f = 0; f < M * N; f++) {
+            if (C[f] != CReference[f]) {
+                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d!\n", M, N, K, offa, offb);
+            }
+        }
+    }
+
+    void
+    ReferenceQgemm(
+        size_t M,
+        size_t N,
+        size_t K,
+        const uint8_t* A,
+        size_t lda,
+        uint8_t offa,
+        const uint8_t* B,
+        size_t ldb,
+        uint8_t offb,
+        int32_t* C,
+        size_t ldc
+        )
+    {
+        for (size_t m = 0; m < M; m++) {
+
+            for (size_t n = 0; n < N; n++) {
+
+                const uint8_t* a = A + (m * lda);
+                const uint8_t* b = B + n;
+                int32_t* c = C + (m * ldc) + n;
+                int32_t sum = 0;
+
+                for (size_t k = 0; k < K; k++) {
+                    sum += ((int32_t(*b) - offb) * (int32_t(*a) - offa));
+                    b += ldb;
+                    a += 1;
+                }
+
+                *c = sum;
+            }
+        }
+    }
+
+    MatrixGuardBuffer<uint8_t> BufferA;
+    MatrixGuardBuffer<uint8_t> BufferB;
+    MatrixGuardBuffer<int32_t> BufferC;
+    MatrixGuardBuffer<int32_t> BufferCReference;
+
+public:
+    void
+    ExecuteShort(
+        void
+        ) override
+    {
+        for (size_t b = 1; b < 16; b++) {
+            Test(b, b, b, 14, 211);
+        }
+        for (size_t b = 16; b <= 256; b <<= 1) {
+            Test(b, b, b, 34, 1);
+        }
+        for (size_t b = 256; b < 320; b += 32) {
+            Test(b, b, b, 85, 173);
+        }
+    }
+
+    void
+    ExecuteLong(
+        void
+        ) override
+    {
+        static const uint8_t zero_points[] = { 0, 18, 128, 157, 231, 255 };
+
+        for (size_t a = 0; a < _countof(zero_points); a++) {
+            uint8_t offa = zero_points[a];
+
+            for (size_t b = 0; b < _countof(zero_points); b++) {
+                uint8_t offb = zero_points[b];
+
+                for (size_t M = 16; M < 160; M += 32) {
+                    for (size_t N = 16; N < 160; N += 32) {
+
+                        static const size_t ks[] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 16, 20, 32, 48, 64, 118, 119, 120, 121, 122, 160, 240, 320 };
+                        for (size_t k = 0; k < _countof(ks); k++) {
+                            size_t K = ks[k];
+
+                            Test(M, N, K, offa, offb);
+                            Test(M + 1, N, K, offa, offb);
+                            Test(M, N + 1, K, offa, offb);
+                            Test(M + 1, N + 1, K, offa, offb);
+                            Test(M + 3, N + 2, K, offa, offb);
+                            Test(M + 4, N, K, offa, offb);
+                            Test(M, N + 4, K, offa, offb);
+                            Test(M + 4, N + 4, K, offa, offb);
+                            Test(M + 3, N + 7, K, offa, offb);
+                            Test(M + 8, N, K, offa, offb);
+                            Test(M, N + 8, K, offa, offb);
+                            Test(M + 12, N + 12, K, offa, offb);
+                            Test(M + 13, N, K, offa, offb);
+                            Test(M, N + 15, K, offa, offb);
+                            Test(M + 15, N + 15, K, offa, offb);
+                        }
+                    }
+                    printf("a %zd/%zd b %zd/%zd M %zd\n", a, _countof(zero_points), b, _countof(zero_points), M);
+                }
+            }
+        }
+
+        for (size_t M = 1; M < 160; M++) {
+            for (size_t N = 1; N < 160; N++) {
+                for (size_t K = 1; K < 160; K++) {
+                    Test(M, N, K, 18, 24);
+                }
+            }
+            printf("M %zd\n", M);
+        }
+
+        for (size_t M = 160; M < 320; M += 24) {
+            for (size_t N = 112; N < 320; N += 24) {
+                for (size_t K = 1; K < 16; K++) {
+                    Test(M, N, K, 1, 3);
+                }
+                for (size_t K = 16; K < 160; K += 32) {
+                    Test(M, N, K, 5, 7);
+                }
+            }
+            printf("M %zd\n", M);
+        }
+    }
+};
+
+#endif
 
 class MlasConv2DTest : public MlasTestBase
 {
@@ -667,7 +852,7 @@ protected:
                 }
 
                 MlasSgemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f,
-                    filter, K, Im2Col, OutputSize, 0.0f, Output, OutputSize, nullptr);
+                    filter, K, Im2Col, OutputSize, 0.0f, Output, OutputSize, threadpool);
 
                 //
                 // Apply the bias.
@@ -687,13 +872,13 @@ protected:
         }
     }
 
-    MatrixGuardBuffer BufferInput;
-    MatrixGuardBuffer BufferFilter;
-    MatrixGuardBuffer BufferBias;
-    MatrixGuardBuffer BufferOutput;
-    MatrixGuardBuffer BufferOutputReference;
-    MatrixGuardBuffer BufferWorking;
-    MatrixGuardBuffer BufferIm2Col;
+    MatrixGuardBuffer<float> BufferInput;
+    MatrixGuardBuffer<float> BufferFilter;
+    MatrixGuardBuffer<float> BufferBias;
+    MatrixGuardBuffer<float> BufferOutput;
+    MatrixGuardBuffer<float> BufferOutputReference;
+    MatrixGuardBuffer<float> BufferWorking;
+    MatrixGuardBuffer<float> BufferIm2Col;
 
 public:
     void
@@ -907,10 +1092,10 @@ protected:
 
     const size_t BlockSize = MlasNchwcGetBlockSize();
 
-    MatrixGuardBuffer BufferNchwcInput;
-    MatrixGuardBuffer BufferNchwcFilter;
-    MatrixGuardBuffer BufferNchwcBias;
-    MatrixGuardBuffer BufferNchwcOutput;
+    MatrixGuardBuffer<float> BufferNchwcInput;
+    MatrixGuardBuffer<float> BufferNchwcFilter;
+    MatrixGuardBuffer<float> BufferNchwcBias;
+    MatrixGuardBuffer<float> BufferNchwcOutput;
 
 public:
     void
@@ -1072,7 +1257,7 @@ protected:
         float* Output
         )
     {
-        MlasPool(PoolingKind, 2, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, nullptr);
+        MlasPool(PoolingKind, 2, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, threadpool);
     }
 
     void
@@ -1210,9 +1395,9 @@ protected:
         }
     }
 
-    MatrixGuardBuffer BufferInput;
-    MatrixGuardBuffer BufferOutput;
-    MatrixGuardBuffer BufferOutputReference;
+    MatrixGuardBuffer<float> BufferInput;
+    MatrixGuardBuffer<float> BufferOutput;
+    MatrixGuardBuffer<float> BufferOutputReference;
 
 public:
     void
@@ -1314,8 +1499,8 @@ protected:
         MlasReorderOutput(OutputShape, NchwcOutput, Output);
     }
 
-    MatrixGuardBuffer BufferNchwcInput;
-    MatrixGuardBuffer BufferNchwcOutput;
+    MatrixGuardBuffer<float> BufferNchwcInput;
+    MatrixGuardBuffer<float> BufferNchwcOutput;
 
     const size_t BlockSize = MlasNchwcGetBlockSize();
 
@@ -1417,7 +1602,7 @@ protected:
         float* Output = BufferOutput.GetBuffer(OutputBufferElements);
         float* OutputReference = BufferOutputReference.GetBuffer(OutputBufferElements);
 
-        MlasPool(MlasMaximumPooling, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, nullptr);
+        MlasPool(MlasMaximumPooling, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, threadpool);
         ReferenceMaximumPool3D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference);
 
         if (memcmp(Output, OutputReference, OutputBufferElements * sizeof(float)) != 0) {
@@ -1425,7 +1610,7 @@ protected:
                 InputChannels, InputDepth, InputHeight, InputWidth, KernelDepth, KernelHeight, KernelWidth);
         }
 
-        MlasPool(MlasAveragePoolingExcludePad, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, nullptr);
+        MlasPool(MlasAveragePoolingExcludePad, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, threadpool);
         ReferenceAveragePool3D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference, false);
 
         if (memcmp(Output, OutputReference, OutputBufferElements * sizeof(float)) != 0) {
@@ -1433,7 +1618,7 @@ protected:
                 InputChannels, InputDepth, InputHeight, InputWidth, KernelDepth, KernelHeight, KernelWidth);
         }
 
-        MlasPool(MlasAveragePoolingIncludePad, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, nullptr);
+        MlasPool(MlasAveragePoolingIncludePad, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, threadpool);
         ReferenceAveragePool3D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference, true);
 
         if (memcmp(Output, OutputReference, OutputBufferElements * sizeof(float)) != 0) {
@@ -1611,9 +1796,9 @@ protected:
         }
     }
 
-    MatrixGuardBuffer BufferInput;
-    MatrixGuardBuffer BufferOutput;
-    MatrixGuardBuffer BufferOutputReference;
+    MatrixGuardBuffer<float> BufferInput;
+    MatrixGuardBuffer<float> BufferOutput;
+    MatrixGuardBuffer<float> BufferOutputReference;
 
 public:
     void
@@ -1781,28 +1966,42 @@ main(
     void
     )
 {
-    printf("SGEMM tests.\n");
-    std::make_unique<MlasSgemmTest>()->ExecuteShort();
+    for (int i = 0; i != 2; ++i) {
+        printf("SGEMM tests.\n");
+        std::make_unique<MlasSgemmTest>()->ExecuteShort();
 
-    printf("Conv2D tests.\n");
-    std::make_unique<MlasConv2DTest>()->ExecuteShort();
-    if (MlasNchwcGetBlockSize() > 1) {
-        std::make_unique<MlasNchwcConv2DTest>()->ExecuteShort();
-    }
+#ifdef MLAS_HAS_QGEMM_U8U8
+        printf("QGEMM tests.\n");
+        std::make_unique<MlasQgemmU8U8Test>()->ExecuteShort();
+#endif
 
-    printf("Pool2D tests.\n");
-    std::make_unique<MlasPool2DTest>()->ExecuteShort();
-    if (MlasNchwcGetBlockSize() > 1) {
-        std::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
-    }
+        printf("Conv2D tests.\n");
+        std::make_unique<MlasConv2DTest>()->ExecuteShort();
+        if (MlasNchwcGetBlockSize() > 1) {
+            std::make_unique<MlasNchwcConv2DTest>()->ExecuteShort();
+        }
 
-    printf("Pool3D tests.\n");
-    std::make_unique<MlasPool3DTest>()->ExecuteShort();
+        printf("Pool2D tests.\n");
+        std::make_unique<MlasPool2DTest>()->ExecuteShort();
+        if (MlasNchwcGetBlockSize() > 1) {
+            std::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
+        }
 
-    printf("Activation tests.\n");
-    std::make_unique<MlasActivationTest>()->ExecuteShort();
+        printf("Pool3D tests.\n");
+        std::make_unique<MlasPool3DTest>()->ExecuteShort();
 
-    printf("Done.\n");
+        printf("Activation tests.\n");
+        std::make_unique<MlasActivationTest>()->ExecuteShort();
 
+        printf("Done.\n");
+#if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+        if(threadpool != nullptr) threadpool = new onnxruntime::concurrency::ThreadPool("test", 2);
+#else
+        break;
+#endif
+	}
+#if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+    delete threadpool;
+#endif
     return 0;
 }

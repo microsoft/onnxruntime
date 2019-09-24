@@ -27,45 +27,46 @@
 using namespace onnxruntime;
 using ::onnxruntime::common::Status;
 
-// Permanently exclude following tests because ORT support only opset staring from 7, 
+extern const OrtApi* g_ort;
+
+// Permanently exclude following tests because ORT support only opset staring from 7,
 // Please make no more changes to the list
-const std::set<std::string> immutable_broken_tests = 
-{
-    "AvgPool1d", 
-    "AvgPool1d_stride",
-    "AvgPool2d",
-    "AvgPool2d_stride",
-    "AvgPool3d",
-    "AvgPool3d_stride",
-    "AvgPool3d_stride1_pad0_gpu_input",
-    "BatchNorm1d_3d_input_eval",
-    "BatchNorm2d_eval",
-    "BatchNorm2d_momentum_eval",
-    "BatchNorm3d_eval",
-    "BatchNorm3d_momentum_eval",
-    "GLU",
-    "GLU_dim",
-    "Linear",
-    "PReLU_1d",
-    "PReLU_1d_multiparam",
-    "PReLU_2d",
-    "PReLU_2d_multiparam",
-    "PReLU_3d",
-    "PReLU_3d_multiparam",
-    "PoissonNLLLLoss_no_reduce",
-    "Softsign",
-    "operator_add_broadcast",
-    "operator_add_size1_broadcast",
-    "operator_add_size1_right_broadcast",
-    "operator_add_size1_singleton_broadcast",
-    "operator_addconstant",
-    "operator_addmm",
-    "operator_basic",
-    "operator_mm",
-    "operator_non_float_params",
-    "operator_params", 
-    "operator_pow"
-};
+const std::set<std::string> immutable_broken_tests =
+    {
+        "AvgPool1d",
+        "AvgPool1d_stride",
+        "AvgPool2d",
+        "AvgPool2d_stride",
+        "AvgPool3d",
+        "AvgPool3d_stride",
+        "AvgPool3d_stride1_pad0_gpu_input",
+        "BatchNorm1d_3d_input_eval",
+        "BatchNorm2d_eval",
+        "BatchNorm2d_momentum_eval",
+        "BatchNorm3d_eval",
+        "BatchNorm3d_momentum_eval",
+        "GLU",
+        "GLU_dim",
+        "Linear",
+        "PReLU_1d",
+        "PReLU_1d_multiparam",
+        "PReLU_2d",
+        "PReLU_2d_multiparam",
+        "PReLU_3d",
+        "PReLU_3d_multiparam",
+        "PoissonNLLLLoss_no_reduce",
+        "Softsign",
+        "operator_add_broadcast",
+        "operator_add_size1_broadcast",
+        "operator_add_size1_right_broadcast",
+        "operator_add_size1_singleton_broadcast",
+        "operator_addconstant",
+        "operator_addmm",
+        "operator_basic",
+        "operator_mm",
+        "operator_non_float_params",
+        "operator_params",
+        "operator_pow"};
 
 void ORT_CALLBACK RunTestCase(ORT_CALLBACK_INSTANCE pci, void* context, ORT_WORK work) {
   OnnxRuntimeCloseThreadpoolWork(work);
@@ -232,13 +233,13 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
   }
   for (size_t i = 0; i != env.tests.size(); ++i) {
     if (!results[i]) {
-      stat.AddFailedTest(std::pair<std::string,std::string>(env.tests[i]->GetTestCaseName(), env.tests[i]->GetTestCaseVersion()));
+      stat.AddFailedTest(std::pair<std::string, std::string>(env.tests[i]->GetTestCaseName(), env.tests[i]->GetTestCaseVersion()));
       continue;
     }
     const TestCaseResult& r = *results[i];
     for (const EXECUTE_RESULT res : r.GetExcutionResult()) {
       if (res != EXECUTE_RESULT::SUCCESS && res != EXECUTE_RESULT::NOT_SUPPORT) {
-        stat.AddFailedTest(std::pair<std::string,std::string>(env.tests[i]->GetTestCaseName(),env.tests[i]->GetTestCaseVersion()));
+        stat.AddFailedTest(std::pair<std::string, std::string>(env.tests[i]->GetTestCaseName(), env.tests[i]->GetTestCaseVersion()));
       }
       switch (res) {
         case EXECUTE_RESULT::SUCCESS:
@@ -329,7 +330,7 @@ DataRunner::DataRunner(OrtSession* session1, const std::string& test_case_name1,
 }
 
 DataRunner::~DataRunner() {
-  OrtReleaseSession(session);
+  g_ort->ReleaseSession(session);
 }
 
 void DataRunner::RunTask(size_t task_id, ORT_CALLBACK_INSTANCE pci, bool store_result) {
@@ -347,17 +348,17 @@ void DataRunner::RunTask(size_t task_id, ORT_CALLBACK_INSTANCE pci, bool store_r
 }
 
 EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
-  HeapBuffer holder;
+  onnxruntime::test::HeapBuffer holder;
   std::unordered_map<std::string, OrtValue*> feeds;
   c_->LoadTestData(task_id, holder, feeds, true);
 
   // Create output feed
   size_t output_count = 0;
-  ORT_THROW_ON_ERROR(OrtSessionGetOutputCount(session, &output_count));
+  ORT_THROW_ON_ERROR(g_ort->SessionGetOutputCount(session, &output_count));
   std::vector<std::string> output_names(output_count);
   for (size_t i = 0; i != output_count; ++i) {
     char* output_name = nullptr;
-    ORT_THROW_ON_ERROR(OrtSessionGetOutputName(session, i, default_allocator.get(), &output_name));
+    ORT_THROW_ON_ERROR(g_ort->SessionGetOutputName(session, i, default_allocator.get(), &output_name));
     assert(output_name != nullptr);
     output_names[i] = output_name;
     default_allocator->Free(output_name);
@@ -383,9 +384,9 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
       output_names_raw_ptr[i] = output_names[i].c_str();
     }
     GetMonotonicTimeCounter(&start_time);
-    ORT_THROW_ON_ERROR(OrtRun(session, nullptr, input_names.data(), input_values.Data(),
-                              static_cast<size_t>(input_values.Length()), output_names_raw_ptr.data(), output_count,
-                              output_values.Data()));
+    ORT_THROW_ON_ERROR(g_ort->Run(session, nullptr, input_names.data(), input_values.Data(),
+                                  static_cast<size_t>(input_values.Length()), output_names_raw_ptr.data(), output_count,
+                                  output_values.Data()));
   }
   GetMonotonicTimeCounter(&end_time);
   AccumulateTimeSpec(&spent_time_, &start_time, &end_time);
@@ -484,7 +485,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     }
   }
   for (auto& kvp : expected_output_values) {
-    OrtReleaseValue(kvp.second);
+    g_ort->ReleaseValue(kvp.second);
   }
   return res;
 }
@@ -499,7 +500,6 @@ void SeqTestRunner::Start(ORT_CALLBACK_INSTANCE pci, size_t) {
 }
 
 void RunSingleTestCase(ITestCase* info, Ort::Env& env, const Ort::SessionOptions& sf, size_t concurrent_runs, size_t repeat_count, PThreadPool tpool, ORT_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished) {
-
   //for test in immutable list, do not even run it
   if (immutable_broken_tests.find(info->GetTestCaseName()) != immutable_broken_tests.end()) {
     on_finished(std::make_shared<TestCaseResult>(0, EXECUTE_RESULT::NOT_SUPPORT, info->GetNodeName()), pci);

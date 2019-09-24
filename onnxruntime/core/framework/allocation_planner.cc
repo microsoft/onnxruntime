@@ -13,6 +13,7 @@
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 
 using namespace onnxruntime::common;
@@ -250,14 +251,16 @@ class PlannerImpl {
 
   static bool SameShape(const TensorShapeProto& shape1, const TensorShapeProto& shape2) {
     // TODO: This should probably be defined to be the equality operator on TensorShapeProto.
+    namespace on = ONNX_NAMESPACE;
     int rank1 = shape1.dim_size();
     if (shape2.dim_size() != rank1) return false;
     for (int i = 0; i < rank1; i++) {
       const auto& val1 = shape1.dim(i);
       const auto& val2 = shape2.dim(i);
-      if (val1.has_dim_value() && val2.has_dim_value() && (val1.dim_value() == val2.dim_value()))
+      if (utils::HasDimValue(val1) && utils::HasDimValue(val2) &&
+         (val1.dim_value() == val2.dim_value()))
         continue;  // same known dimension
-      if (val1.has_dim_param() && val2.has_dim_param()) {
+      if (utils::HasDimParam(val1) && utils::HasDimParam(val2)) {
         const auto& val1_param = val1.dim_param();
         if (val1_param == val2.dim_param() && !val1_param.empty())
           continue;  // same unknown dimension
@@ -310,13 +313,13 @@ class PlannerImpl {
     auto p_required_buffer_shape = context_.GetShape(output_arg);
     if (nullptr == p_required_buffer_shape) return false;
     auto required_buffer_type = output_arg.Type();
-    auto& required_allocator_info = AllocPlan(output_arg.Name()).location;
+    auto& required_memory_info = AllocPlan(output_arg.Name()).location;
 
     for (auto it = freelist_.begin(); it != freelist_.end(); ++it) {
       size_t reusable = static_cast<size_t>(it->ml_value);
       const onnxruntime::NodeArg* p_node_arg = ort_value_info_.at(reusable).p_def_site;
-      auto& available_allocator_info = AllocPlan(p_node_arg->Name()).location;
-      if (!(available_allocator_info == required_allocator_info)) continue;
+      auto& available_memory_info = AllocPlan(p_node_arg->Name()).location;
+      if (!(available_memory_info == required_memory_info)) continue;
       auto p_available_buffer_shape = context_.GetShape(*p_node_arg);
       if (nullptr != p_available_buffer_shape) {
         auto available_buffer_type = p_node_arg->Type();
@@ -347,6 +350,10 @@ class PlannerImpl {
 
   Status ComputeUseCounts() {
     // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
+    std::unordered_set<std::string> graph_inputs;
+    for (auto& graph_input : graph_viewer_.GetInputsIncludingInitializers()) {
+      graph_inputs.insert(graph_input->Name());
+    }
 
     for (auto graph_input : graph_viewer_.GetInputs()) {
       OrtValueIndex index = Index(graph_input->Name());
@@ -371,15 +378,7 @@ class PlannerImpl {
     for (SequentialExecutionPlan::NodeExecutionPlan& step : plan_.execution_plan) {
       auto pnode = graph_viewer_.GetNode(step.node_index);
       if (pnode == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Can not find the node ", step.node_index);
-      for (auto node_input : pnode->InputDefs()) {
-        if (node_input->Exists())
-          UseCount(node_input->Name())++;
-      }
 
-      for (auto node_input : pnode->ImplicitInputDefs()) {
-        if (node_input->Exists())
-          UseCount(node_input->Name())++;
-      }
       // Identify where each output of this node should be allocated.
       // This is determined by the opkernel bound to the node.
       const KernelCreateInfo* kernel_create_info = nullptr;
@@ -394,31 +393,45 @@ class PlannerImpl {
         if (!pnode->Name().empty()) errormsg << " (node " << pnode->Name() << ")";
         return Status(ONNXRUNTIME, FAIL, errormsg.str());
       }
-
       auto exec_provider = execution_providers_.Get(*pnode);
       if (exec_provider == nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Can not find the execution provider ",
                                pnode->GetExecutionProviderType());
       }
 
-      auto& default_allocator_info = exec_provider->GetAllocator(0, OrtMemTypeDefault)->Info();
+      // increment UseCount and add location information if applicable for the provided input def
+      auto process_input = [&graph_inputs, &exec_provider, &p_kernelDef, this](const NodeArg& input, size_t arg_idx) {
+        const auto& name = input.Name();
+        UseCount(name)++;
+
+        // If it's a graph input or outer scope node arg, set its plan.
+        // NOTE: Copy nodes should have already been added if a graph input is fed as input
+        // to nodes assigned to different providers.
+        if (graph_inputs.find(name) != graph_inputs.cend() ||
+            std::find_if(outer_scope_node_args_.cbegin(), outer_scope_node_args_.cend(),
+                         [&name](const NodeArg* value) {
+                           return value && value->Name() == name;
+                         }) != outer_scope_node_args_.cend()) {
+          OrtValueIndex index = Index(name);
+          plan_.SetLocation(static_cast<size_t>(index),
+                            exec_provider->GetAllocator(0, p_kernelDef->InputMemoryType(arg_idx))->Info());
+        }
+
+        return Status::OK();
+      };
+
+      ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(pnode->InputDefs(), process_input));
+      ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(pnode->ImplicitInputDefs(), process_input));
+
       auto outputs = pnode->OutputDefs();
       auto num_outputs = outputs.size();
-
       for (size_t i = 0; i < num_outputs; ++i) {
         auto* node_output = outputs[i];
         if (!node_output->Exists()) continue;
         OrtValueIndex index = Index(node_output->Name());
         ProcessDef(index, node_output);
         ++UseCount(index);
-        if (strcmp(default_allocator_info.name, CPU) != 0) {
-          // By default, outputs of this node are allocated on the default device allocator,
-          // except for outputs marked for allocation in MemoryType:
-          auto memory_type = p_kernelDef->OutputMemoryType(i);
-          plan_.SetLocation(static_cast<size_t>(index), memory_type == OrtMemTypeDefault
-                                                            ? default_allocator_info
-                                                            : exec_provider->GetAllocator(0, memory_type)->Info());
-        }
+        plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, p_kernelDef->OutputMemoryType(i))->Info());
       }
       // if sync is needed, mark allocation plan as create_fence_if_async=true
       // note that the input arg may come from an execution provider (i.e. CPU) that does not support async,
@@ -438,7 +451,7 @@ class PlannerImpl {
     return Status::OK();
   }
 
-  OrtAllocatorInfo GetLocationForNodeInput(size_t input_index, const Node& node) {
+  OrtMemoryInfo GetLocationForNodeInput(size_t input_index, const Node& node) {
     auto* p_provider = execution_providers_.Get(node);
     ORT_ENFORCE(p_provider);
 
@@ -448,13 +461,13 @@ class PlannerImpl {
     ORT_ENFORCE(kernel_create_info != nullptr && kernel_create_info->kernel_def != nullptr);
     if (kernel_create_info->kernel_def->IsInputOnCpu(input_index))
       // weights are not output from any node, so it's OK to put its location on CPU provider
-      return execution_providers_.GetDefaultCpuAllocatorInfo();
+      return execution_providers_.GetDefaultCpuMemoryInfo();
     return p_provider->GetAllocator(0, OrtMemTypeDefault)->Info();
   }
 
   Status GeneratePlanForWeights() {
     auto& weights = graph_viewer_.GetAllInitializedTensors();
-    std::vector<std::vector<OrtAllocatorInfo>> locations(plan_.allocation_plan.size());
+    std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
     for (auto& node : graph_viewer_.Nodes()) {
       ORT_RETURN_IF_ERROR(onnxruntime::Node::ForEachWithIndex(
           node.InputDefs(), [this, &locations, &node, &weights](const onnxruntime::NodeArg& def, size_t index) {
@@ -470,14 +483,14 @@ class PlannerImpl {
           }));
     }
     for (size_t i = 0; i != locations.size(); ++i) {
-      const std::vector<OrtAllocatorInfo>& loc = locations[i];
+      const std::vector<OrtMemoryInfo>& loc = locations[i];
       if (loc.empty()) continue;
       plan_.allocation_plan[i].alloc_kind = AllocKind::kAllocateStatically;
       plan_.allocation_plan[i].location = loc[0];
       for (size_t j = 0; j != loc.size(); ++j) {
         if (loc[j] != loc[0]) {
           // set the location to CPU
-          plan_.allocation_plan[i].location = execution_providers_.GetDefaultCpuAllocatorInfo();
+          plan_.allocation_plan[i].location = execution_providers_.GetDefaultCpuMemoryInfo();
           break;
         }
       }
@@ -597,8 +610,7 @@ class PlannerImpl {
       AllocPlanPerValue& value_plan = AllocPlan(index);
 
       has_fence = value_plan.create_fence_if_async;
-      if (value_plan.alloc_kind == AllocKind::kReuse)
-      {
+      if (value_plan.alloc_kind == AllocKind::kReuse) {
         // Buffer reused, check original buffer to see if fence is shared.
         has_fence = has_fence || AllocPlan(value_plan.reused_buffer).create_fence_if_async;
       }
@@ -609,7 +621,6 @@ class PlannerImpl {
 
   // Compute fence check. Set has_fence flag if either one of inputs, implicit inputs or outputs of a given node has fence.
   Status ComputeFenceCheck() {
-
     for (SequentialExecutionPlan::NodeExecutionPlan& step : plan_.execution_plan) {
       auto pnode = graph_viewer_.GetNode(step.node_index);
       if (pnode == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Can not find the node ", step.node_index);
@@ -667,7 +678,7 @@ class PlannerImpl {
     // TODO: unclear why we should go through a string-representation of type
     auto ptype = nodearg.Type();
     auto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(ptype);
-    return !type_proto.has_tensor_type();
+    return !utils::HasTensorType(type_proto);
   }
 };  // namespace onnxruntime
 

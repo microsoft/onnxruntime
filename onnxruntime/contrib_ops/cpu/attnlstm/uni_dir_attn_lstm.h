@@ -51,7 +51,7 @@ class UniDirectionalAttnLstm {
                          const ActivationFuncs::Entry& activation_func_g,
                          const ActivationFuncs::Entry& activation_func_h,
                          const float clip,
-                         onnxruntime::concurrency::ThreadPool& ttp);
+                         onnxruntime::concurrency::ThreadPool* ttp);
 
   void Compute(const gsl::span<const T>& inputs,
                const gsl::span<const int>& sequence_lengths,
@@ -151,7 +151,7 @@ class UniDirectionalAttnLstm {
 
   AttentionWrapper<T>& attention_wrapper_;
 
-  onnxruntime::concurrency::ThreadPool& ttp_;
+  onnxruntime::concurrency::ThreadPool* ttp_;
 };
 
 }  // namespace detail

@@ -170,9 +170,6 @@ Status NchwcPoolBase::NchwcPool(OpKernelContext* context, MLAS_POOLING_KIND kind
   ORT_ENFORCE(X_shape.NumDimensions() == 4);
   ORT_ENFORCE((X_shape[1] % MlasNchwcGetBlockSize()) == 0);
 
-  if (!global_pooling_) {
-    ORT_RETURN_IF_NOT(kernel_shape_.size() == 2, "kernel_shape num_dims is not compatible with X num_dims.");
-  }
 
   std::vector<int64_t> pads = pads_;
   std::vector<int64_t> output_dims = PoolBase::SetOutputSize(X_shape, X_shape[1], &pads, dilations_, ceil_mode_);

@@ -8,6 +8,7 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "gemm_helper.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 
@@ -27,6 +28,9 @@ class Gemm : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override {
+    auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
+    concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
+
     const auto X = context->Input<Tensor>(0);
     const auto W = context->Input<Tensor>(1);
     const auto B = context->Input<Tensor>(2);
@@ -64,7 +68,7 @@ class Gemm : public OpKernel {
     }
 
     // W * x
-    math::Gemm<T, CPUMathUtil>(
+    math::Gemm<T>(
         trans_A_,
         trans_B_,
         M,
@@ -75,7 +79,7 @@ class Gemm : public OpKernel {
         W->template Data<T>(),
         beta_,
         y_data,
-        &CPUMathUtil::Instance());
+        tp);
 
     FuseActivation<T>(activation_, y_data, M * N, leaky_relu_alpha_);
 

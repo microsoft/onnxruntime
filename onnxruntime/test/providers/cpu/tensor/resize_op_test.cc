@@ -7,7 +7,7 @@
 
 namespace onnxruntime {
 namespace test {
-TEST(ResizeOpTest, ResizeOpLineartDownSampleTest) {
+TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_4DBilinear) {
   OpTester test("Resize", 10);
   std::vector<float> scales{1.0f, 1.0f, 0.6f, 0.6f};
 
@@ -27,7 +27,27 @@ TEST(ResizeOpTest, ResizeOpLineartDownSampleTest) {
   test.Run();
 }
 
-TEST(ResizeOpTest, ResizeOpLineartUpSampleTest) {
+TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_2DBilinear) {
+  OpTester test("Resize", 10);
+  std::vector<float> scales{0.6f, 0.6f};
+
+  test.AddAttribute("mode", "linear");
+
+  const int64_t H = 2, W = 4;
+  std::vector<float> X = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f};
+
+  test.AddInput<float>("X", {H, W}, X);
+  test.AddInput<float>("scales", {2}, scales);
+
+  std::vector<float> Y = {1.0f, 2.66666651f};
+
+  test.AddOutput<float>("Y", {(int64_t)(H * scales[0]), (int64_t)(W * scales[1])}, Y);
+  test.Run();
+}
+
+TEST(ResizeOpTest, ResizeOpLineartUpSampleTest_4DBilinear) {
   OpTester test("Resize", 10);
   std::vector<float> scales{1.0f, 1.0f, 2.0f, 4.0f};
   test.AddAttribute("mode", "linear");
@@ -57,7 +77,30 @@ TEST(ResizeOpTest, ResizeOpLineartUpSampleTest) {
   test.Run();
 }
 
-TEST(ResizeOpTest, ResizeOpLineartNoScaleTest) {
+TEST(ResizeOpTest, ResizeOpLineartUpSampleTest_2DBilinear) {
+  OpTester test("Resize", 10);
+  std::vector<float> scales{2.0f, 4.0f};
+  test.AddAttribute("mode", "linear");
+
+  const int64_t H = 2, W = 2;
+  std::vector<float> X = {1.0f, 3.0f,
+                          4.0f, 8.0f};
+
+  test.AddInput<float>("X", {H, W}, X);
+  test.AddInput<float>("scales", {2}, scales);
+
+  std::vector<float> Y = {
+      1.0f, 1.5f, 2.0f, 2.5f, 3.0f, 3.0f, 3.0f, 3.0f,
+      2.5f, 3.25f, 4.0f, 4.75f, 5.5f, 5.5f, 5.5f, 5.5f,
+      4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 8.0f, 8.0f, 8.0f,
+      4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 8.0f, 8.0f, 8.0f
+  };
+
+  test.AddOutput<float>("Y", {(int64_t)(H * scales[0]), (int64_t)(W * scales[1])}, Y);
+  test.Run();
+}
+
+TEST(ResizeOpTest, ResizeOpLineartScalesNoOpTest) {
   OpTester test("Resize", 10);
   std::vector<float> scales{1.0f, 1.0f, 1.0f, 1.0f};
   test.AddAttribute("mode", "linear");

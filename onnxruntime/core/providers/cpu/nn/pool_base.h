@@ -99,10 +99,13 @@ class LpPool {
 };
 
 class PoolBase {
+ private:
+  static bool IsGlobalPooling(const std::string& op_name) {
+    return op_name == "GlobalAveragePool" || op_name == "GlobalMaxPool" || op_name == "GlobalLpPool";
+  }
+
  protected:
-  PoolBase(const OpKernelInfo& info) {
-    op_name_ = info.GetKernelDef().OpName();
-    global_pooling_ = (op_name_ == "GlobalAveragePool" || op_name_ == "GlobalMaxPool" || op_name_ == "GlobalLpPool");
+  PoolBase(const OpKernelInfo& info) : op_name_(info.GetKernelDef().OpName()), global_pooling_(IsGlobalPooling(op_name_)) {
     int end;
     info.GetKernelDef().SinceVersion(&start_version_, &end);
 
@@ -256,8 +259,8 @@ class PoolBase {
   Status Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const;
 
  protected:
-  std::string op_name_;
-  bool global_pooling_{};
+  const std::string op_name_;
+  const bool global_pooling_;
   bool count_include_pad_{};
   int64_t storage_order_{0};  // MaxPool_8 only. 0 is row major, and 1 is column major. Default is 0.
   int64_t ceil_mode_{0};      // Introduced in MaxPool_10

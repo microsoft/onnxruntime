@@ -190,7 +190,7 @@ Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const
   // Get access to the internal threadpool
   // Temporarily derive concurrency parameters without access to session state
   auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
-  auto thread_pool = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* thread_pool = ctx_internal->GetOperatorThreadPool();
 
   MlasPool(kind,
            pooling_dims,
