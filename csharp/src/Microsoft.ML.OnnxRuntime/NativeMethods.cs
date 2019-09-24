@@ -242,6 +242,14 @@ namespace Microsoft.ML.OnnxRuntime
                                                 out IntPtr /**/ session);
         public static DOrtCreateSession OrtCreateSession;
 
+        public delegate IntPtr /* OrtStatus* */DOrtCreateSessionFromArray(
+                                                IntPtr /* (OrtEnv*) */ environment,
+                                                byte[] modelData,
+                                                UIntPtr modelSize,
+                                                IntPtr /* (OrtSessionOptions*) */sessionOptions,
+                                                out IntPtr /**/ session);
+        public static DOrtCreateSessionFromArray OrtCreateSessionFromArray;
+
         public delegate IntPtr /*(ONNStatus*)*/ DOrtRun(
                                                 IntPtr /*(OrtSession*)*/ session,
                                                 IntPtr /*(OrtSessionRunOptions*)*/ runOptions,  // can be null to use the default options
