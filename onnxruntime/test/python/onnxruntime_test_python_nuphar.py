@@ -38,9 +38,9 @@ class TestNuphar(unittest.TestCase):
 
         # run onnx_test_runner to verify results
         # use -M to disable memory pattern
-        # use -c 1 to run one model/session at a time when running multiple models
+        # use -j 1 -c 1 to run one model/session at a time when running multiple models
         onnx_test_runner = os.path.join(cwd, 'onnx_test_runner')
-        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-M', '-c', '1', '-n', 'bidaf', cwd], check=True, cwd=cwd)
+        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-M', '-c', '1', '-j', '1', '-n', 'bidaf', cwd], check=True, cwd=cwd)
 
         # test AOT on the quantized model
         cache_dir = os.path.join(cwd, 'nuphar_cache')
