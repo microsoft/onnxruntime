@@ -34,7 +34,7 @@ INCLUDE QgemmU8U8KernelAvx512Common.inc
 ;
 ;   Mult1Reg - Supplies the first multiplication operand register.
 ;
-;   Mult2Reg - Supplies the first multiplication operand register.
+;   Mult2Reg - Supplies the second multiplication operand register.
 ;
 ; Implicit Arguments:
 ;
