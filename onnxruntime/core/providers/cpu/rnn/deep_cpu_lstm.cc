@@ -306,7 +306,6 @@ DeepCpuLstmOp::Compute(OpKernelContext* context) const {
 }
 
 // #define DUMP_MATRIXES to provide lots of diagnostic output
-#define DUMP_MATRIXES
 #if defined(DUMP_MATRIXES)
 #define DumpMatrix(...) ::onnxruntime::rnn::detail::DumpMatrixImpl(__VA_ARGS__)
 #else
