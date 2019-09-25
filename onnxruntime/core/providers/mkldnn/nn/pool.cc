@@ -244,17 +244,17 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
     return onnxruntime::Pool<T, PoolType>::Compute(context);
   }
 
-  std::vector<int64_t> kernel_shape = this->kernel_shape_;
-  std::vector<int64_t> pads = this->pads_;
-  std::vector<int64_t> strides = this->strides_;
+  std::vector<int64_t> kernel_shape = this->pool_attrs_.kernel_shape;
+  std::vector<int64_t> pads = this->pool_attrs_.pads;
+  std::vector<int64_t> strides = this->pool_attrs_.strides;
 
-  if (this->global_pooling_) {
+  if (this->pool_attrs_.global_pooling) {
     kernel_shape.assign(x_dims.begin() + 2, x_dims.end());
     pads.assign(kernel_shape.size() * 2, 0);
     strides.assign(kernel_shape.size(), 1);
   }
 
-  std::vector<int64_t> y_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, this->dilations_, this->ceil_mode_);
+  std::vector<int64_t> y_dims = this->pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
   Tensor* Y = context->Output(0, TensorShape(y_dims));
 
   size_t num_outputs = OpKernel::Node().OutputDefs().size();
@@ -285,7 +285,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
                            src_dims_mkl, dst_dims_mkl,
                            kernel_mkl, strides_mkl,
                            padding_left_mkl, padding_right_mkl,
-                           this->count_include_pad_);
+                           this->pool_attrs_.count_include_pad);
     PoolPrimitive<T, PoolType>* pool_primitive = PoolPrimitivePool<T, PoolType>::Get(pool_params);
     auto fwd_primitive_desc = pool_primitive->GetPrimitiveDesc();
 
