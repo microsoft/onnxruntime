@@ -7,7 +7,7 @@ Intel and Microsoft have developed MKL-DNN Execution Provider (EP) for ONNX Runt
 For information on how MKL-DNN optimizes subgraphs, see [Subgraph Optimization](./MKL-DNN-Subgraphs.md)
 
 ## Build
-For build instructions, please see the [BUILD page](../build.md#mkldnn-and-mklml).
+For build instructions, please see the [BUILD page](../../BUILD.md#mkldnn-and-mklml).
 
 ## Supported OS
 * Ubuntu 16.04
