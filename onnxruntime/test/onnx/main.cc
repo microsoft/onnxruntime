@@ -409,8 +409,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"unique_sorted_axis_3d", "Unique not implemented yet"},
       {"unique_sorted_axis", "Unique not implemented yet"},
       {"unique_sorted_with_negative_axis", "Unique not implemented yet"},
-      {"scatter_elements_with_axis", "not implemented yet"},
-      {"scatter_elements_without_axis", "not implemented yet"},
       {"round", "not implemented yet"},
       {"gather_elements_1", "not implemented yet"},
       {"gather_elements_0", "not implemented yet"},
@@ -459,6 +457,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"sequence_model3", "SequenceConstruct not implemented yet"},
       {"sequence_model2", "SequenceConstruct not implemented yet"},
       {"sequence_model1", "Sequence* not implemented yet"},
+      {"unsqueeze_unsorted_axes", "Unsqueeze not implemented yet"},
       {"unsqueeze_two_axes", "Unsqueeze not implemented yet"},
       {"unsqueeze_three_axes", "Unsqueeze not implemented yet"},
       {"unsqueeze_negative_axes", "Unsqueeze not implemented yet"},
@@ -516,7 +515,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"bitshift_left_uint32", "BitShift(11) not implemented yet"},
       {"bitshift_left_uint16", "BitShift(11) not implemented yet"},
       {"gemm_default_scalar_bias", "Gemm ValidBroadcast() has bug to be fixed."},
-      {"mlperf_ssd_mobilenet_300", "Shape Inference Error. Possibly the model has issues."},
 };
 
 #ifdef USE_NGRAPH
