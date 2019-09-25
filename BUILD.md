@@ -76,7 +76,6 @@ ONNX Runtime Python bindings support Python 3.5, 3.6 and 3.7.
 # Additional Build Instructions
 The complete list of build options can be found by running `./build.sh (or ./build.bat) --help`
 
-* [Docker on Linux](#Docker-on-Linux)
 * [ONNX Runtime Server (Linux)](#Build-ONNX-Runtime-Server-on-Linux)
 
 **Execution Providers**
@@ -95,39 +94,6 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 **Architectures**
 * [x86](#x86)
 * [ARM](#ARM)
-
----
-## Docker on Linux
-Install Docker: `https://docs.docker.com/install/`
-
-**CPU**
-```
-cd tools/ci_build/github/linux/docker
-docker build -t onnxruntime_dev --build-arg OS_VERSION=16.04 -f Dockerfile.ubuntu .
-docker run --rm -it onnxruntime_dev /bin/bash
-```
-
-**GPU**
-
-If you need GPU support, please also install:
-1. nvidia driver. Before doing this please add `nomodeset rd.driver.blacklist=nouveau` to your linux [kernel boot parameters](https://www.kernel.org/doc/html/v4.17/admin-guide/kernel-parameters.html).
-2. nvidia-docker2: [Install doc](`https://github.com/NVIDIA/nvidia-docker/wiki/Installation-(version-2.0)`)
-
-To test your nvidia-docker:
-```
-docker run --runtime=nvidia --rm nvidia/cuda nvidia-smi
-```
-
-Then build a Docker image. We provided a sample for use:
-```
-cd tools/ci_build/github/linux/docker
-docker build -t cuda_dev -f Dockerfile.ubuntu_gpu .
-```
-
-Then run:
-```
-./tools/ci_build/github/linux/run_dockerbuild.sh
-```
 
 ---
 
