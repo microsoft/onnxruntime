@@ -171,17 +171,17 @@ Status NchwcPoolBase::NchwcPool(OpKernelContext* context, MLAS_POOLING_KIND kind
   ORT_ENFORCE((X_shape[1] % MlasNchwcGetBlockSize()) == 0);
 
 
-  std::vector<int64_t> pads = pads_;
-  std::vector<int64_t> output_dims = PoolBase::SetOutputSize(X_shape, X_shape[1], &pads, dilations_, ceil_mode_);
+  std::vector<int64_t> pads = pool_attrs_.pads;
+  std::vector<int64_t> output_dims = pool_attrs_.SetOutputSize(X_shape, X_shape[1], &pads);
   auto* Y = context->Output(0, output_dims);
 
   MlasNchwcPool(kind,
                 2,
                 X_shape.GetDims().data(),
-                global_pooling_ ? nullptr : kernel_shape_.data(),
-                global_pooling_ ? nullptr : dilations_.data(),
-                global_pooling_ ? nullptr : pads.data(),
-                global_pooling_ ? nullptr : strides_.data(),
+                pool_attrs_.global_pooling ? nullptr : pool_attrs_.kernel_shape.data(),
+                pool_attrs_.global_pooling ? nullptr : pool_attrs_.dilations.data(),
+                pool_attrs_.global_pooling ? nullptr : pads.data(),
+                pool_attrs_.global_pooling ? nullptr : pool_attrs_.strides.data(),
                 output_dims.data(),
                 X->template Data<float>(),
                 Y->template MutableData<float>(),
@@ -195,7 +195,8 @@ Status NchwcMaxPool::Compute(OpKernelContext* context) const {
 }
 
 Status NchwcAveragePool::Compute(OpKernelContext* context) const {
-  return NchwcPoolBase::NchwcPool(context, count_include_pad_ ? MlasAveragePoolingIncludePad : MlasAveragePoolingExcludePad);
+  return NchwcPoolBase::NchwcPool(context, pool_attrs_.count_include_pad ? MlasAveragePoolingIncludePad :
+                                                                           MlasAveragePoolingExcludePad);
 }
 
 }  // namespace contrib

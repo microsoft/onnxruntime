@@ -110,11 +110,11 @@ def create_backend_test(testname=None):
                                  '^test_cumsum_1d_reverse_exclusive_cpu.*',
                                  '^test_cumsum_2d_axis_0_cpu.*',
                                  '^test_cumsum_2d_axis_1_cpu.*',
+                                 '^test_cumsum_2d_negative_axis_cpu.*',                                 
                                  '^test_dynamicquantizelinear_expanded*',
                                  '^test_dynamicquantizelinear_max_adjusted_expanded*',
                                  '^test_dynamicquantizelinear_min_adjusted_expanded*',
                                  '^test_gather_elements*',
-                                 '^test_scatter_elements*',
                                  '^test_top_k*',
                                  '^test_unique_*',
                                  '^test_mod_float_mixed_sign_example_cpu.*', #onnxruntime::Mod::Compute fmod_ was false. fmod attribute must be true for float, float16 and double types
@@ -151,6 +151,22 @@ def create_backend_test(testname=None):
                                  '^test_resize_upsample_sizes_nearest_floor_align_corners_cpu.*',
                                  '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu.*',
                                  '^test_scatternd_cpu.*',
+                                 '^test_sequence_*',
+                                 '^test_unsqueeze_*',
+                                 '^test_squeeze_*',
+                                 '^test_slice_*',
+                                 '^test_scatter_*',
+                                 '^test_reduce_*',
+                                 '^test_onehot_*',
+                                 '^test_flatten_*',
+                                 '^test_concat_*',
+                                 '^test_compress_*',
+                                 '^test_constant_pad_cpu.*',
+                                 '^test_gemm_default_scalar_bias_cpu.*',
+                                 '^test_gather_negative_indices_cpu.*',
+                                 '^test_gemm_*', 
+                                 '^test_edge_pad_cpu.*',
+                                 '^test_reflect_pad_cpu.*'                                 
                                  )
 
         # Example of how to disable tests for a specific provider.
@@ -159,6 +175,10 @@ def create_backend_test(testname=None):
         if c2.supports_device('NGRAPH'):
             current_failing_tests = current_failing_tests + ('|^test_clip*',)
             current_failing_tests = current_failing_tests + ('|^test_depthtospace_crd*',)
+            current_failing_tests = current_failing_tests + ('|^test_argmax_negative_axis*',)            
+            current_failing_tests = current_failing_tests + ('|^test_argmin_negative_axis*',)
+            current_failing_tests = current_failing_tests + ('|^test_hadmax_negative_axis*',)            
+            current_failing_tests = current_failing_tests + ('|^test_gemm_default_no_bias_cpu.*',)            
 
         if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
             current_failing_tests = current_failing_tests + ('^test_div_cpu*',)

@@ -126,7 +126,6 @@ const TensorShapeProto* NodeArg::Shape() const {
 }
 
 void NodeArg::SetShape(const TensorShapeProto& shape) {
-
   const auto type_case = node_arg_info_.type().value_case();
   switch (type_case) {
     case TypeProto::kTensorType:
@@ -643,6 +642,8 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
   ArgNameToTypeMap name_to_type_map;
 
+  // Process 'Constant' nodes
+  // Put the 'TensorProto' stored in the 'Constant' nodes attribute into the graphs initializer list
   for (auto& node : graph_proto_->node()) {
     if (node.op_type() != kConstant) {
       continue;
@@ -651,7 +652,13 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
     // Copy constant nodes _value to name_to_initial_tensor_
     const gsl::not_null<TensorProto*>
         tensor{graph_proto_->add_initializer()};
-    *tensor = node.attribute(0).t();
+    const AttributeProto& constant_attribute = node.attribute(0);
+    // TODO: Add support for parsing 'sparse_value' attribute from a 'Constant' node
+    // Discussion surrounding handling the SparseTensorProto must be had. 
+    // An easy way is to implement a method that converts a SparseTensorproto into a TensorProto 
+    // to use the same downstream flow, but that is going to impact peak memory usage and probably a smarter way is required.
+    ORT_ENFORCE(constant_attribute.has_t(), "Only 'value' attribute is supported within a 'Constant' node in ORT");
+    *tensor = constant_attribute.t();
     *(tensor->mutable_name()) = node.output(0);
   }
 
@@ -1356,7 +1363,7 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
                              " inputs and requires ", num_required_subgraph_inputs,
                              " inputs. Either provide all subgraph inputs, or just the required inputs.");
     }
-    
+
     subgraph_inputs = &required_subgraph_inputs;
     num_subgraph_inputs = num_required_subgraph_inputs;
   }
@@ -2459,7 +2466,32 @@ Status Graph::SetGraphInputsOutputs() {
     }
   }
 
+  ComputeOverridableInitializers();
+
   return Status::OK();
+}
+
+void Graph::ComputeOverridableInitializers() {
+  graph_overridable_initializers_.clear();
+  if (CanOverrideInitializer()) {
+    // graph_inputs_excluding_initializers_ and graph_inputs_including_initializers_
+    // are inserted in the same order. So we walk and compute the difference.
+    auto f_incl = graph_inputs_including_initializers_.cbegin();
+    const auto l_incl = graph_inputs_including_initializers_.cend();
+    auto f_excl = graph_inputs_excluding_initializers_.cbegin();
+    const auto l_excl = graph_inputs_excluding_initializers_.cend();
+
+    while (f_incl != l_incl) {
+      // Equal means not an initializer
+      if (f_excl != l_excl && *f_incl == *f_excl) {
+        ++f_incl;
+        ++f_excl;
+        continue;
+      }
+      graph_overridable_initializers_.push_back(*f_incl);
+      ++f_incl;
+    }
+  }
 }
 
 // calling private ctor

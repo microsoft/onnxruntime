@@ -10,10 +10,11 @@ namespace onnxruntime {
 
 class Scatter final : public OpKernel {
  public:
-  Scatter(const OpKernelInfo& info) : OpKernel(info) {
+  explicit Scatter(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK(),
                 "Missing/Invalid 'axis' attribute value");
   }
+
   ~Scatter() = default;
   Status Compute(OpKernelContext* context) const override;
 
@@ -21,9 +22,18 @@ class Scatter final : public OpKernel {
   int64_t axis_;
 };
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Scatter,
-    9,
+    9, 10,
+    KernelDefBuilder()
+        .MayInplace(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
+    Scatter);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    ScatterElements,
+    11,
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
@@ -34,14 +44,25 @@ template <class Tin, class Tdata>
 Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, const Tensor* updates_input,
                        const int64_t axis, Tensor* data_output) {
   const TensorShape& input_data_shape = data_input->Shape();
-  const Tin* indices_data = indices_input->template Data<Tin>();
+  const Tin* indices_data_raw= indices_input->template Data<Tin>();
   const auto num_indices = indices_input->Shape().Size();
+
+  std::vector<Tin> indices_data;
+  indices_data.reserve(num_indices);
+
+  auto axis_dim_limit = input_data_shape[axis];
+
   for (int64_t i = 0; i < num_indices; ++i) {
-    Tin idx = indices_data[i];
-    if (idx < 0 || idx >= input_data_shape[axis]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices element out of data bounds, idx=", idx,
-                             " data_dim=", input_data_shape[axis]);
+    Tin idx = indices_data_raw[i];
+
+    if (idx < -axis_dim_limit || idx >= axis_dim_limit) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "indices element out of data bounds, idx=", idx,
+                             " must be within the inclusive range [", -axis_dim_limit, 
+                             ",", axis_dim_limit - 1, "]");
     }
+
+    indices_data.push_back(idx < 0 ? idx + static_cast<Tin>(axis_dim_limit) : idx);
   }
 
   const auto input_elements = input_data_shape.Size();

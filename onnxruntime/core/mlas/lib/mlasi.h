@@ -196,6 +196,52 @@ typedef MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* PMLAS_SGEMM_TRANSPOSE_PACKB_BL
 
 typedef
 void
+(MLASCALL MLAS_GEMM_U8S8_COPY_PACKA_ROUTINE)(
+    uint8_t* D,
+    const uint8_t* A,
+    size_t lda,
+    size_t CountM,
+    size_t CountK,
+    int32_t* RowSumVector,
+    int16_t offb
+    );
+
+typedef MLAS_GEMM_U8S8_COPY_PACKA_ROUTINE* PMLAS_GEMM_U8S8_COPY_PACKA_ROUTINE;
+
+typedef
+void
+(MLASCALL MLAS_GEMM_U8S8_COPY_PACKB_ROUTINE)(
+    int8_t* D,
+    const int8_t* B,
+    size_t ldb,
+    size_t CountN,
+    size_t CountK,
+    int32_t* ColumnSumVector,
+    int16_t offa
+    );
+
+typedef MLAS_GEMM_U8S8_COPY_PACKB_ROUTINE* PMLAS_GEMM_U8S8_COPY_PACKB_ROUTINE;
+
+typedef
+size_t
+(MLASCALL MLAS_GEMM_U8S8_KERNEL)(
+    const uint8_t* A,
+    const int8_t* B,
+    int32_t* C,
+    size_t QuadCountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    const int32_t* RowSumVector,
+    const int32_t* ColumnSumVector,
+    int32_t DepthValue,
+    bool ZeroMode
+    );
+
+typedef MLAS_GEMM_U8S8_KERNEL* PMLAS_GEMM_U8S8_KERNEL;
+
+typedef
+void
 (MLASCALL MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE)(
     int16_t* D,
     const uint8_t* A,
@@ -228,7 +274,7 @@ size_t
     const int16_t* A,
     const uint8_t* B,
     int32_t* C,
-    size_t PairedCountK,
+    size_t PairCountK,
     size_t CountM,
     size_t CountN,
     size_t ldc,
@@ -364,10 +410,18 @@ extern "C" {
 #endif
 
 #if defined(MLAS_TARGET_AMD64_IX86)
+    MLAS_GEMM_U8S8_COPY_PACKA_ROUTINE MlasGemmU8S8CopyPackASse;
+    MLAS_GEMM_U8S8_COPY_PACKB_ROUTINE MlasGemmU8S8CopyPackBSse;
+    MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelSse;
     MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE MlasGemmU8U8CopyPackASse;
     MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE MlasGemmU8U8CopyPackBSse;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelSse;
 #if defined(MLAS_TARGET_AMD64)
+    MLAS_GEMM_U8S8_COPY_PACKA_ROUTINE MlasGemmU8S8CopyPackAAvx2;
+    MLAS_GEMM_U8S8_COPY_PACKB_ROUTINE MlasGemmU8S8CopyPackBAvx2;
+    MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx2;
+    MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512BW;
+    MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512Vnni;
     MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE MlasGemmU8U8CopyPackAAvx2;
     MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE MlasGemmU8U8CopyPackBAvx2;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx2;
@@ -490,6 +544,9 @@ struct MLAS_PLATFORM {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
     PMLAS_GEMM_FLOAT_KERNEL GemmFloatKernel;
+    PMLAS_GEMM_U8S8_COPY_PACKA_ROUTINE GemmU8S8CopyPackARoutine;
+    PMLAS_GEMM_U8S8_COPY_PACKB_ROUTINE GemmU8S8CopyPackBRoutine;
+    PMLAS_GEMM_U8S8_KERNEL GemmU8S8Kernel;
     PMLAS_GEMM_U8U8_COPY_PACKA_ROUTINE GemmU8U8CopyPackARoutine;
     PMLAS_GEMM_U8U8_COPY_PACKB_ROUTINE GemmU8U8CopyPackBRoutine;
     PMLAS_GEMM_U8U8_KERNEL GemmU8U8Kernel;
@@ -545,7 +602,7 @@ MlasGetMaximumThreadCount(
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
 #else
     if (ThreadPool != nullptr) {
-        return ThreadPool->NumThreads();
+        return ThreadPool->NumThreads() + 1;
     }
 #endif
 

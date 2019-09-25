@@ -49,7 +49,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "568b65aaa2bd94b04d8fdac24b398dc25c507b50",
+               "commitHash": "2873fea8bd4679fdf337d64d1140e80a61986c29",
                "repositoryUrl": "https://github.com/onnx/onnx.git"
             }
          }
@@ -67,7 +67,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "a1041190c8b8ff0cd9e2f0752248ad5e3789ea0c",
+               "commitHash": "00a0aa992953d6482114a0f539a21bb535a16383",
                "repositoryUrl": "https://github.com/pybind/pybind11.git"
             }
          }

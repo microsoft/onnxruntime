@@ -9,6 +9,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/session/ort_apis.h"
 
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
@@ -23,20 +24,20 @@ OrtTypeInfo::OrtTypeInfo(ONNXType type1, OrtTensorTypeAndShapeInfo* data1) noexc
 }
 
 OrtTypeInfo::~OrtTypeInfo() {
-  OrtReleaseTensorTypeAndShapeInfo(data);
+  OrtApis::ReleaseTensorTypeAndShapeInfo(data);
 }
 
-ORT_API_STATUS_IMPL(OrtGetOnnxTypeFromTypeInfo, _In_ const struct OrtTypeInfo* input, ONNXType* out) {
+ORT_API_STATUS_IMPL(OrtApis::GetOnnxTypeFromTypeInfo, _In_ const struct OrtTypeInfo* input, ONNXType* out) {
   *out = input->type;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtCastTypeInfoToTensorInfo, _In_ const struct OrtTypeInfo* input, const struct OrtTensorTypeAndShapeInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToTensorInfo, _In_ const struct OrtTypeInfo* input, const struct OrtTensorTypeAndShapeInfo** out) {
   *out = input->type == ONNX_TYPE_TENSOR ? input->data : nullptr;
   return nullptr;
 }
 
-ORT_API(void, OrtReleaseTypeInfo, _Frees_ptr_opt_ OrtTypeInfo* ptr) {
+ORT_API(void, OrtApis::ReleaseTypeInfo, _Frees_ptr_opt_ OrtTypeInfo* ptr) {
   delete ptr;
 }
 
@@ -106,7 +107,7 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const onnxruntime::DataTypeImpl* input,
         break;
     }
   }
-  return OrtCreateStatus(ORT_NOT_IMPLEMENTED, "not implemented");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "not implemented");
 }
 
 const DataTypeImpl* ElementTypeFromProto(int type) {
@@ -213,5 +214,5 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const ONNX_NAMESPACE::TypeProto* input,
      // Not implemented
       break;
   }
-  return OrtCreateStatus(ORT_NOT_IMPLEMENTED, "not implemented");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "not implemented");
 }
