@@ -77,7 +77,7 @@ const void* ORTTensor::data() const {
 }
 
 int64_t ORTTensor::size() const {
-  return (int64_t)tensor_->Shape().Size();
+  return (int64_t)tensor_->SizeInBytes();
 }
 
 ORTPersistentBuffer::ORTPersistentBuffer(AllocatorPtr allocator, int64_t size) : allocator_(allocator) {
