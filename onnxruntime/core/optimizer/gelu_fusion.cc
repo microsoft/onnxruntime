@@ -10,22 +10,39 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-static void IsInputConstant(const Graph& graph, const Node& node, std::tuple<bool, NodeArg*, NodeArg*>& ret) {
-  const auto& inputs = node.InputDefs();
-  bool found_constant = false;
-  NodeArg* gelu_non_const_input = nullptr;
-  NodeArg* gelu_const_input = nullptr;
-  for (auto& i : inputs) {
-    if (graph_utils::NodeArgIsConstant(graph, *i)) {
-      // Todo: check the constant for example be sqrt(2.0) or 1
-      found_constant = true;
-      gelu_const_input = const_cast<NodeArg*>(i);
-    } else {
-      gelu_non_const_input = const_cast<NodeArg*>(i);
+static bool CheckConstantInput(const Graph& graph, const NodeArg& input_arg, float expected_value) {
+  auto shape = input_arg.Shape();
+  auto dim_size = shape->dim_size();
+  if (dim_size != 0) {
+    // only check scalar.
+    return false;
+  }
+
+  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+  graph.GetInitializedTensor(input_arg.Name(), tensor_proto);
+  auto init_const = std::make_unique<Initializer>(tensor_proto);
+  auto data_type = *(input_arg.Type());
+  if (data_type == "tensor(float)") {
+    float* val = init_const->data<float>();
+    float diff = std::abs(val[0] - static_cast<float>(expected_value));
+    if (diff > FLT_EPSILON) {
+      return false;
+    }
+  } else if (data_type == "tensor(double)") {
+    double* val = init_const->data<double>();
+    double diff = std::abs(val[0] - static_cast<double>(expected_value));
+    if (diff > DBL_EPSILON) {
+      return false;
+    }
+  } else if (data_type == "tensor(float16)") {
+    MLFloat16* val = init_const->data<MLFloat16>();
+    float diff = std::abs(math::halfToFloat(val[0].val) - static_cast<float>(expected_value));
+    if (diff > FLT_EPSILON) {
+      return false;
     }
   }
 
-  ret = std::make_tuple(found_constant, gelu_non_const_input, gelu_const_input);
+  return graph_utils::NodeArgIsConstant(graph, input_arg);
 }
 
 static bool HasConsumers(Graph& graph, const NodeArg* arg) {
@@ -43,6 +60,19 @@ static bool HasConsumers(Graph& graph, const NodeArg* arg) {
   return false;
 }
 
+// Gelu supports limited data types.
+static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)"};
+
+static bool IsSupportedDataType(const Node& node) {
+  for (const auto& input_arg : node.InputDefs()) {
+    if (std::find(supported_data_types.begin(), supported_data_types.end(),
+                  *(input_arg->Type())) == supported_data_types.end()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -50,57 +80,52 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) cons
   std::deque<NodeArg*> removed_initializers;
 
   for (auto node_index : node_topology_list) {
-    auto& node = *graph.GetNode(node_index);
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+    auto& div = *graph.GetNode(node_index);
+    ORT_RETURN_IF_ERROR(Recurse(div, modified, graph_level));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Div", {7}) ||
-        !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
-        node.GetOutputEdgesCount() != 1) {
-      continue;
-    }
-    std::tuple<bool, NodeArg*, NodeArg*> t;
-    IsInputConstant(graph, node, t);
-    if (!std::get<0>(t) || std::get<1>(t) == nullptr || std::get<2>(t) == nullptr) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(div, "Div", {7}) ||
+        !graph_utils::IsSupportedProvider(div, GetCompatibleExecutionProviders()) ||
+        div.GetOutputEdgesCount() != 1 ||
+        !IsSupportedDataType(div)) {
       continue;
     }
 
-    auto erf_node_itr = node.OutputNodesBegin();
-    if (erf_node_itr == node.OutputNodesEnd()) {
+    // Check second input is sqrt(2)
+    if (!CheckConstantInput(graph, *(div.MutableInputDefs()[1]), static_cast<float>(M_SQRT2))) {
       continue;
     }
 
-    const Node& erf_node = (*erf_node_itr);
+    const Node& erf_node = *(div.OutputNodesBegin());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(erf_node, "Erf", {9}) ||
-        erf_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
-        erf_node.GetOutputEdgesCount() != 1) {
+        erf_node.GetExecutionProviderType() != div.GetExecutionProviderType() ||
+        erf_node.GetOutputEdgesCount() != 1 ||
+        !IsSupportedDataType(erf_node)) {
       continue;
     }
 
-    auto add_node_itr = erf_node.OutputNodesBegin();
-    if (add_node_itr == erf_node.OutputNodesEnd()) {
-      continue;
-    }
-
-    const Node& add_node = (*add_node_itr);
-    std::tuple<bool, NodeArg*, NodeArg*> add_input_check;
-    IsInputConstant(graph, add_node, add_input_check);
-    if (!std::get<0>(add_input_check) || std::get<1>(add_input_check) == nullptr || std::get<2>(add_input_check) == nullptr) {
-      continue;
-    }
+    const Node& add_node = *(erf_node.OutputNodesBegin());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(add_node, "Add", {7}) ||
-        add_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
-        add_node.GetOutputEdgesCount() != 1) {
+        add_node.GetExecutionProviderType() != div.GetExecutionProviderType() ||
+        add_node.GetOutputEdgesCount() != 1 ||
+        !IsSupportedDataType(add_node)) {
       continue;
     }
 
-    auto mul_node_itr = add_node.OutputNodesBegin();
-    if (mul_node_itr == add_node.OutputNodesEnd()) {
+    // Check the other input node(e.g. not of type Erf) is 1.0f.
+    const Node& add_first_input_node = *(add_node.InputNodesBegin());
+    int add_const_input_index = 0;
+    if (add_first_input_node.OpType().compare("Erf") == 0) {
+      add_const_input_index = 1;
+    }
+    const auto& add_const_input_arg = add_node.InputDefs()[add_const_input_index];
+    if (!CheckConstantInput(graph, *add_const_input_arg, 1.0f)) {
       continue;
     }
 
-    const Node& mul_node = *(mul_node_itr);
+    const Node& mul_node = *(add_node.OutputNodesBegin());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7}) ||
-        mul_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
+        mul_node.GetExecutionProviderType() != div.GetExecutionProviderType() ||
+        !IsSupportedDataType(mul_node)) {
       continue;
     }
 
@@ -116,18 +141,25 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) cons
       continue;
     }
 
-    std::tuple<bool, NodeArg*, NodeArg*> mul2_input_check;
-    IsInputConstant(graph, *mul2_node, mul2_input_check);
-    if (!std::get<0>(mul2_input_check) || std::get<1>(mul2_input_check) == nullptr || std::get<2>(mul2_input_check) == nullptr) {
-      continue;
-    }
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(*mul2_node, "Mul", {7}) ||
-        mul2_node->GetExecutionProviderType() != node.GetExecutionProviderType() ||
-        mul2_node->GetOutputEdgesCount() != 1) {
+        mul2_node->GetExecutionProviderType() != div.GetExecutionProviderType() ||
+        mul2_node->GetOutputEdgesCount() != 1 ||
+        !IsSupportedDataType(*mul2_node)) {
       continue;
     }
 
-    const std::vector<NodeArg*> gelu_input_defs{std::get<1>(t)};
+    // Check the other input node(e.g. not of type Add) is 0.5f.
+    int mul_const_input_index = 0;
+    if (mul2_node->InputDefs()[0]->Name() == div.MutableInputDefs()[0]->Name()) {
+      mul_const_input_index = 1;
+    }
+
+    const auto& mul_const_input_arg = mul2_node->InputDefs()[mul_const_input_index];
+    if (!CheckConstantInput(graph, *mul_const_input_arg, 0.5f)) {
+      continue;
+    }
+
+    const std::vector<NodeArg*> gelu_input_defs{div.MutableInputDefs()[0]};
     const std::vector<NodeArg*> gelu_output_defs{const_cast<NodeArg*>(mul_node.OutputDefs()[0])};
     Node& gelu_node = graph.AddNode(graph.GenerateNodeName("Gelu"),
                                     "Gelu",
@@ -136,16 +168,19 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) cons
                                     gelu_output_defs, {}, kMSDomain);
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
-    gelu_node.SetExecutionProviderType(node.GetExecutionProviderType());
+    gelu_node.SetExecutionProviderType(div.GetExecutionProviderType());
 
-    removed_nodes.push_front(node.Index());
+    removed_nodes.push_front(div.Index());
     removed_nodes.push_front(erf_node.Index());
     removed_nodes.push_front(add_node.Index());
     removed_nodes.push_front(mul2_node->Index());
     removed_nodes.push_front(mul_node.Index());
-    removed_initializers.push_front(std::get<2>(t));
-    removed_initializers.push_front(std::get<2>(add_input_check));
-    removed_initializers.push_front(std::get<2>(mul2_input_check));
+
+    // The initializers will be candidiates for removal.
+    // While we will check their usage before removing them from graph.
+    removed_initializers.push_front(div.MutableInputDefs()[1]);
+    removed_initializers.push_front(const_cast<NodeArg*>(add_const_input_arg));
+    removed_initializers.push_front(const_cast<NodeArg*>(mul_const_input_arg));
   }
 
   // Have to remove node in reversed order for now to walk around the issue in RemoveNode
