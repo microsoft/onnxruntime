@@ -85,6 +85,9 @@ Return Value:
     //
 
     this->GemmFloatKernel = MlasGemmFloatKernelSse;
+    this->GemmU8S8CopyPackARoutine = MlasGemmU8S8CopyPackASse;
+    this->GemmU8S8CopyPackBRoutine = MlasGemmU8S8CopyPackBSse;
+    this->GemmU8S8Kernel = MlasGemmU8S8KernelSse;
     this->GemmU8U8CopyPackARoutine = MlasGemmU8U8CopyPackASse;
     this->GemmU8U8CopyPackBRoutine = MlasGemmU8U8CopyPackBSse;
     this->GemmU8U8Kernel = MlasGemmU8U8KernelSse;
@@ -157,6 +160,9 @@ Return Value:
 
             if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
 
+                this->GemmU8S8CopyPackARoutine = MlasGemmU8S8CopyPackAAvx2;
+                this->GemmU8S8CopyPackBRoutine = MlasGemmU8S8CopyPackBAvx2;
+                this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx2;
                 this->GemmU8U8CopyPackARoutine = MlasGemmU8U8CopyPackAAvx2;
                 this->GemmU8U8CopyPackBRoutine = MlasGemmU8U8CopyPackBAvx2;
                 this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx2;
@@ -180,6 +186,7 @@ Return Value:
 
                     if ((Cpuid7[1] & 0x40000000) != 0) {
 
+                        this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512BW;
                         this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512BW;
 
                         //
@@ -187,6 +194,8 @@ Return Value:
                         //
 
                         if ((Cpuid7[2] & 0x800) != 0) {
+
+                            this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Vnni;
                             this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Vnni;
                         }
                     }
