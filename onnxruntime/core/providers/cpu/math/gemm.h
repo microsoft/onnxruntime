@@ -57,7 +57,7 @@ class Gemm : public OpKernel {
         // B is treated as scalar 0
         output_mat.setConstant(0);
       } else {
-        // Broadcast the bias as needed IF the bias is provided
+        // Broadcast the bias as needed
         const auto& b_shape = B->Shape();
         const T* b_data = B->template Data<T>();
         if (b_shape.Size() == 1) {

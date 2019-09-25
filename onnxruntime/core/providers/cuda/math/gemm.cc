@@ -69,45 +69,58 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   // Broadcast the bias as needed IF the bias is provided
   if (beta_ != 0) {
-    auto& b_shape = B->Shape();
-    const CudaT* b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
-
-    if (b_shape.Size() == 1) {
-      // if B is (), (1,) or (1, 1), broadcast the scalar
+    // if beta is non-zero and bias is missing, we need to reset memory of the output buffer to 0
+    // treating the "missing" bias as scalar 0, otherwise any junk data in the output buffer will be used as bias
+    if (B == nullptr) {
       CUBLAS_RETURN_IF_ERROR(cublasCopyHelper(
           CublasHandle(),
           M * N,
-          b_data,
+          &zero,  // B is treated as scalar 0
           0,
           out_data,
           1));
-    } else if (b_shape.NumDimensions() == 1 || b_shape[0] == 1) {
-      // B is (N,) or (1, N), broadcast using Y(N,M) = 1 * B(N,1) x ones(1,M) + 0 * Y
-      CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-          CublasHandle(),
-          CUBLAS_OP_N,
-          CUBLAS_OP_N,
-          N, M, 1,
-          /*alpha*/ &one,
-          b_data, N,
-          GetConstOnes<CudaT>(M), 1,
-          /*beta*/ &zero,
-          out_data, N));
-    } else if (b_shape.NumDimensions() == 2 && b_shape[1] == 1) {
-      // B is (M, 1), broadcast using Y(N,M) = 1 * ones(N,1) x B(1,M) + 0 * Y
-      CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-          CublasHandle(),
-          CUBLAS_OP_N,
-          CUBLAS_OP_N,
-          N, M, 1,
-          /*alpha*/ &one,
-          GetConstOnes<CudaT>(N), N,
-          b_data, 1,
-          /*beta*/ &zero,
-          out_data, N));
     } else {
-      // B is (M, N), no broadcast needed.
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(out_data, b_data, M * N * sizeof(float), cudaMemcpyDeviceToDevice));
+      // Broadcast the bias as needed
+      auto& b_shape = B->Shape();
+      const CudaT* b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
+
+      if (b_shape.Size() == 1) {
+        // if B is (), (1,) or (1, 1), broadcast the scalar
+        CUBLAS_RETURN_IF_ERROR(cublasCopyHelper(
+            CublasHandle(),
+            M * N,
+            b_data,
+            0,
+            out_data,
+            1));
+      } else if (b_shape.NumDimensions() == 1 || b_shape[0] == 1) {
+        // B is (N,) or (1, N), broadcast using Y(N,M) = 1 * B(N,1) x ones(1,M) + 0 * Y
+        CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+            CublasHandle(),
+            CUBLAS_OP_N,
+            CUBLAS_OP_N,
+            N, M, 1,
+            /*alpha*/ &one,
+            b_data, N,
+            GetConstOnes<CudaT>(M), 1,
+            /*beta*/ &zero,
+            out_data, N));
+      } else if (b_shape.NumDimensions() == 2 && b_shape[1] == 1) {
+        // B is (M, 1), broadcast using Y(N,M) = 1 * ones(N,1) x B(1,M) + 0 * Y
+        CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+            CublasHandle(),
+            CUBLAS_OP_N,
+            CUBLAS_OP_N,
+            N, M, 1,
+            /*alpha*/ &one,
+            GetConstOnes<CudaT>(N), N,
+            b_data, 1,
+            /*beta*/ &zero,
+            out_data, N));
+      } else {
+        // B is (M, N), no broadcast needed.
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(out_data, b_data, M * N * sizeof(float), cudaMemcpyDeviceToDevice));
+      }
     }
   }
 
