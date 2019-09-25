@@ -244,7 +244,6 @@ TEST(GemmOpTest, GemmNoBiasOpset11) {
                        {1.0f, 2.0f, 3.0f, 4.0f,
                         -1.0f, -2.0f, -3.0f, -4.0f});
   test.AddInput<float>("B", {4, 3}, std::vector<float>(12, 1.0f));
-  test.AddInput<float>("C", {2, 3}, std::vector<float>(6, 1.0f));
   test.AddOutput<float>("Y", {2, 3},
                         {10.0f, 10.0f, 10.0f,
                          -10.0f, -10.0f, -10.0f});
