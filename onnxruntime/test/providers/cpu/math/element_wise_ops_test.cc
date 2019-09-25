@@ -88,6 +88,38 @@ TEST(MathOpTest, Add_Broadcast_Axis) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "");
 }
 
+TEST(MathOpTest, Add_Broadcast_MultidirectionalAB) {
+  OpTester test("Add");
+
+  test.AddInput<float>("A", {3, 1},
+                       {3.0f,
+                        2.0f,
+                        1.0f});
+  test.AddInput<float>("B", {3},
+                       {1.0f, 2.0f, 3.0f});
+  test.AddOutput<float>("C", {3, 3},
+                        {4.0f, 5.0f, 6.0f,
+                         3.0f, 4.0f, 5.0f,
+                         2.0f, 3.0f, 4.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: got C with shape [3, 1]
+}
+
+TEST(MathOpTest, Add_Broadcast_MultidirectionalBA) {
+  OpTester test("Add");
+
+  test.AddInput<float>("A", {3},
+                       {1.0f, 2.0f, 3.0f});
+  test.AddInput<float>("B", {3, 1},
+                       {3.0f,
+                        2.0f,
+                        1.0f});
+  test.AddOutput<float>("C", {3, 3},
+                        {4.0f, 5.0f, 6.0f,
+                         3.0f, 4.0f, 5.0f,
+                         2.0f, 3.0f, 4.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: got C with shape [3, 1]
+}
+
 TEST(MathOpTest, Add_Broadcast_0x0) {
   OpTester test("Add");
 
@@ -854,6 +886,37 @@ TEST(MathOpTest, Less_int64_Scalar1) {
   test.AddOutput<bool>("C", {4}, {false, true, false, true});
   test.Run();
 }
+TEST(MathOpTest, Less_broadcastAB) {
+  OpTester test("Less", 9);
+  test.AddInput<int32_t>("A", {4, 2}, {10, 11, 12, 13, 14, 15, 16, 17});
+  test.AddInput<int32_t>("B", {2}, {15, 7});
+  test.AddOutput<bool>("C", {4, 2}, {true, false, true, false, true, false, false, false});
+  test.Run();
+}
+
+TEST(MathOpTest, Less_broadcastBA) {
+  OpTester test("Less", 9);
+  test.AddInput<int32_t>("A", {2}, {15, 7});
+  test.AddInput<int32_t>("B", {4, 2}, {10, 11, 12, 13, 14, 15, 16, 17});
+  test.AddOutput<bool>("C", {4, 2}, {false, true, false, true, false, true, true, true});
+  test.Run();
+}
+
+TEST(MathOpTest, Less_multidiretional_broadcastAB) {
+  OpTester test("Less", 9);
+  test.AddInput<int32_t>("A", {4, 1}, {10, 11, 12, 13});
+  test.AddInput<int32_t>("B", {2}, {15, 7});
+  test.AddOutput<bool>("C", {4, 2}, {true, false, true, false, true, false, true, false});
+  test.Run();
+}
+
+TEST(MathOpTest, Less_multidiretional_broadcastBA) {
+  OpTester test("Less", 9);
+  test.AddInput<int32_t>("A", {2}, {15, 7});
+  test.AddInput<int32_t>("B", {4, 1}, {10, 11, 12, 13});
+  test.AddOutput<bool>("C", {4, 2}, {false, true, false, true, false, true, false, true});
+  test.Run();
+}
 
 TEST(MathOpTest, Greater_7) {
   OpTester test("Greater");
@@ -888,6 +951,38 @@ TEST(MathOpTest, Greater_9_int64) {
   test.AddInput<int64_t>("A", dims, {10, 11, 12, 13});
   test.AddInput<int64_t>("B", dims, {15, 7, 12, 9});
   test.AddOutput<bool>("C", dims, {false, true, false, true});
+  test.Run();
+}
+
+TEST(MathOpTest, Greater_broadcastAB) {
+  OpTester test("Greater", 9);
+  test.AddInput<int32_t>("A", {4, 2}, {10, 11, 12, 13, 14, 15, 16, 17});
+  test.AddInput<int32_t>("B", {2}, {15, 7});
+  test.AddOutput<bool>("C", {4, 2}, {false, true, false, true, false, true, true, true});
+  test.Run();
+}
+
+TEST(MathOpTest, Greater_broadcastBA) {
+  OpTester test("Greater", 9);
+  test.AddInput<int32_t>("A", {2}, {15, 7});
+  test.AddInput<int32_t>("B", {4, 2}, {10, 11, 12, 13, 14, 15, 16, 17});
+  test.AddOutput<bool>("C", {4, 2}, {true, false, true, false, true, false, false, false});
+  test.Run();
+}
+
+TEST(MathOpTest, Greater_multidiretional_broadcastAB) {
+  OpTester test("Greater", 9);
+  test.AddInput<int32_t>("A", {4, 1}, {10, 11, 12, 13});
+  test.AddInput<int32_t>("B", {2}, {15, 7});
+  test.AddOutput<bool>("C", {4, 2}, {false, true, false, true, false, true, false, true});
+  test.Run();
+}
+
+TEST(MathOpTest, Greater_multidiretional_broadcastBA) {
+  OpTester test("Greater", 9);
+  test.AddInput<int32_t>("A", {2}, {15, 7});
+  test.AddInput<int32_t>("B", {4, 1}, {10, 11, 12, 13});
+  test.AddOutput<bool>("C", {4, 2}, {true, false, true, false, true, false, true, false});
   test.Run();
 }
 
@@ -940,6 +1035,46 @@ TEST(MathOpTest, Equal_float) {
   test.AddInput<float>("A", dims, {1.0f, 0.0f, -1.0f, -1.0f});
   test.AddInput<float>("B", dims, {1.0f, 1.0f, 2.0f, -1.0f});
   test.AddOutput<bool>("C", dims, {true, false, false, true});
+  test.Run();
+}
+
+TEST(MathOpTest, Equal_broadcastAB) {
+  OpTester test("Equal");
+  test.AddInput<int32_t>("A", {4, 2}, {1, 0, -1, -1, 1, 1, -1, 0});
+  test.AddInput<int32_t>("B", {2}, {1, 1});
+  test.AddOutput<bool>("C", {4, 2}, {true, false, false, false, true, true, false, false});
+  test.Run();
+}
+
+TEST(MathOpTest, Equal_broadcastBA) {
+  OpTester test("Equal");
+  test.AddInput<int32_t>("A", {2}, {1, 1});
+  test.AddInput<int32_t>("B", {4, 2}, {1, 0, -1, -1, 1, 1, -1, 0});
+  test.AddOutput<bool>("C", {4, 2}, {true, false, false, false, true, true, false, false});
+  test.Run();
+}
+
+TEST(MathOpTest, Equal_multidiretional_broadcastAB) {
+  OpTester test("Equal");
+  test.AddInput<int32_t>("A", {4, 1}, {1, 0, -1, -1});
+  test.AddInput<int32_t>("B", {2}, {1, 1});
+  test.AddOutput<bool>("C", {4, 2}, {true, true, false, false, false, false, false, false});
+  test.Run();
+}
+
+TEST(MathOpTest, Equal_multidiretional_broadcastBA) {
+  OpTester test("Equal");
+  test.AddInput<int32_t>("A", {2}, {1, 1});
+  test.AddInput<int32_t>("B", {4, 1}, {1, 0, -1, -1});
+  test.AddOutput<bool>("C", {4, 2}, {true, true, false, false, false, false, false, false});
+  test.Run();
+}
+
+TEST(MathOpTest, Equal_multidiretional_broadcastAB_bool) {
+  OpTester test("Equal");
+  test.AddInput<bool>("A", {4, 1}, {true, false, false, false});
+  test.AddInput<bool>("B", {2}, {true, true});
+  test.AddOutput<bool>("C", {4, 2}, {true, true, false, false, false, false, false, false});
   test.Run();
 }
 
