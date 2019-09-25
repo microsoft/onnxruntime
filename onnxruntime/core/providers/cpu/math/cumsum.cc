@@ -50,7 +50,8 @@ void SumSlices(const Tensor& input, Tensor& output,
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, float, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), CumSum<float>);;
+ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, float, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), CumSum<float>);
+ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, double, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()), CumSum<double>);
 ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, int32_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()), CumSum<int32_t>);;
 ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, int64_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()), CumSum<int64_t>);
 
