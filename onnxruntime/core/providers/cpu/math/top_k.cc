@@ -22,6 +22,8 @@
 #include "core/framework/tensor.h"
 #include "core/util/math_cpuonly.h"
 #include <queue>
+#include <algorithm>
+
 using namespace std;
 namespace onnxruntime {
 
@@ -73,11 +75,12 @@ struct LesserValueCmp {
 // Static helpers that implement the core logic for each of the 'TopK' operator flavor
 
 // Given an input tensor 'input' and metadata values - 'k' and 'axis_parsed',
-// this method will extract the sorted top k largest elements and place them in the output tensor 'values'
+// this method will extract the sorted top k largest/smallest elements and place them in the output tensor 'values'
 // along with the metadata output 'indices'
-static void extract_sorted_largest_top_k_elements(const Tensor* input, const std::vector<int64_t>& input_shape,
-                                                  Tensor* values, Tensor* indices, const std::vector<int64_t>& output_shape,
-                                                  const unsigned k, const unsigned axis_parsed) {
+template <bool largest, bool sorted, class Comparator>
+static void extract_top_k_elements(const Tensor* input, const std::vector<int64_t>& input_shape,
+                                   Tensor* values, Tensor* indices, const std::vector<int64_t>& output_shape,
+                                   const unsigned k, const unsigned axis_parsed) {
   // Cache some values that will be used in the implementation below
   const int64_t rows = SizeToDim(axis_parsed, input_shape);
   const int64_t cols = input->Shape().Size() / rows;
@@ -95,96 +98,71 @@ static void extract_sorted_largest_top_k_elements(const Tensor* input, const std
 
   // This is basically the number of elements within each of the "k" rows
   const int64_t block_slice = reduced_cols / k;
+  const int64_t num_blocks = input_shape[axis_parsed];
   // Sort preserving indices
   for (int64_t i = 0; i < rows; ++i) {
     for (int64_t j = 0; j < block_slice; ++j) {
-      // Build a min-heap, the heap element is pair of (value, idx)
-      // the top of the heap is the smallest value
-      priority_queue<
-          pair<float, int64_t>,
-          vector<pair<float, int64_t>>,
-          GreaterValueCmp<float>>
-          min_heap;
-      // Maintain the size of heap to be less or equal to k_, so the
-      // heap will hold the k largest Values
-      for (int64_t l = 0; l < input_shape[axis_parsed]; ++l) {
-        const auto value = input_map(i, l * block_slice + j);
-        if (min_heap.size() < k || value > min_heap.top().first) {
-          min_heap.push({value, l});
+      // If the request is to sort the TopK values, we will use a Heap to
+      // hold the top K values in sorted fashion
+      if (sorted) {  // the optimizer will clean-up the redundant condition based on the template parameter 'sorted'
+        // Build a min-heap/max-heap, the heap element is pair of (value, idx)
+        // the top of the heap is the smallest value
+        // This is a min-heap if largest == true, this is a max-heap largest == false
+        priority_queue<
+            pair<float, int64_t>,
+            vector<pair<float, int64_t>>,
+            Comparator>
+            heap;
+        // Maintain the size of heap to be less or equal to k, so the
+        // heap will hold the k largest/smallest values
+        for (int64_t l = 0; l < num_blocks; ++l) {
+          const auto value = input_map(i, l * block_slice + j);
+          // largest == true: insert into the min-heap if the size is < k or if the new element is greater than the min element in the min-heap
+          // largest == false: insert into the min-heap if the size is < k or if the new element is lesser than the max element in the max-heap
+          if ((heap.size() < k) ||
+              (largest && value > heap.top().first) ||
+              (!largest && value < heap.top().first)) {  // the optimizer will clean-up the redundant condition based on the template parameter 'largest'
+            heap.push({value, l});
+          }
+          if (heap.size() > k) {
+            heap.pop();
+          }
         }
-        if (min_heap.size() > k) {
-          min_heap.pop();
+        // Extract these k elements and place them in the results placeholder
+        for (int64_t l = 0; l < k; ++l) {
+          const auto& elem = heap.top();
+          auto col_index = (k - l - 1) * block_slice + j;
+          values_map(i, col_index) = elem.first;
+          indices_map(i, col_index) = elem.second;
+          heap.pop();
         }
       }
-      // Extract these k elements and place them in the results placeholder
-      for (int64_t l = 0; l < k; ++l) {
-        auto& pqElem = min_heap.top();
-        auto col_index = (k - l - 1) * block_slice + j;
-        values_map(i, col_index) = pqElem.first;
-        indices_map(i, col_index) = pqElem.second;
-        min_heap.pop();
+
+      // If the top K values are not required to be sorted, we use a more (on average) optimal selection algorithm
+      else { // sorted == false
+        // create a data holder and insert elements
+        vector<pair<float, int64_t>> data_holder;
+        //data_holder.reserve(num_blocks);
+        for (int64_t l = 0; l < num_blocks; ++l) {
+          data_holder.push_back({input_map(i, l * block_slice + j), l});
+        }
+
+        // find the top k (largest or smallest) elements in the data holder
+        nth_element(data_holder.begin(), data_holder.begin() + (k - 1), data_holder.end(), Comparator());
+
+        // insert the top k (largest or smallest) elements into the final output buffers
+        for (int64_t l = 0; l < k; ++l) {
+          const auto& elem = data_holder[l];
+          auto col_index = l * block_slice + j;
+          values_map(i, col_index) = elem.first;
+          indices_map(i, col_index) = elem.second;
+        }
       }
     }
   }
 }
 
-// Given an input tensor 'input' and metadata values - 'k' and 'axis_parsed',
-// this method will extract the sorted top k smallest elements and place them in the output tensor 'values'
-// along with the metadata output 'indices'
-static void extract_sorted_smallest_top_k_elements(const Tensor* input, const std::vector<int64_t>& input_shape,
-                                                   Tensor* values, Tensor* indices, const std::vector<int64_t>& output_shape,
-                                                   const unsigned k, const unsigned axis_parsed) {
-  // Cache some values that will be used in the implementation below
-  const int64_t rows = SizeToDim(axis_parsed, input_shape);
-  const int64_t cols = input->Shape().Size() / rows;
-  auto input_map = ConstEigenMatrixMapRowMajor<float>(
-      static_cast<const float*>(input->template Data<float>()),
-      rows,
-      cols);
-
-  // Use Eigen maps to allow indexing into the 2d tensors like Values_map(i,j)
-  const int64_t reduced_cols = SizeFromDim(axis_parsed, output_shape);
-  auto values_map = EigenMatrixMapRowMajor<float>(
-      values->template MutableData<float>(), rows, reduced_cols);
-  auto indices_map = EigenMatrixMapRowMajor<int64_t>(
-      indices->template MutableData<int64_t>(), rows, reduced_cols);
-
-  // This is basically the number of elements within each of the "k" rows
-  const int64_t block_slice = reduced_cols / k;
-  // Sort preserving indices
-  for (int64_t i = 0; i < rows; ++i) {
-    for (int64_t j = 0; j < block_slice; ++j) {
-      // Build a max-heap, the heap element is pair of (value, idx)
-      // the top of the heap is the largest value
-      priority_queue<
-          pair<float, int64_t>,
-          vector<pair<float, int64_t>>,
-          LesserValueCmp<float>>
-          max_heap;
-      // Maintain the size of heap to be less or equal to k_, so the
-      // heap will hold the k largest Values
-      for (int64_t l = 0; l < input_shape[axis_parsed]; ++l) {
-        const auto value = input_map(i, l * block_slice + j);
-        if (max_heap.size() < k || value > max_heap.top().first) {
-          max_heap.push({value, l});
-        }
-        if (max_heap.size() > k) {
-          max_heap.pop();
-        }
-      }
-      // Extract these k elements and place them in the results placeholder
-      for (int64_t l = 0; l < k; ++l) {
-        auto& pqElem = max_heap.top();
-        auto col_index = (k - l - 1) * block_slice + j;
-        values_map(i, col_index) = pqElem.first;
-        indices_map(i, col_index) = pqElem.second;
-        max_heap.pop();
-      }
-    }
-  }
-}
-
-// Core TopK implementation
+// Wrapper over core TopK implementation
 Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input, const int axis, const unsigned k,
                 bool largest = true, bool sorted = true) {
   const vector<int64_t>& input_shape = input->Shape().GetDims();
@@ -199,7 +177,7 @@ Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input, const
 
   // Resize output tensors to be the same shape as the input except
   // for the specified dimension ((i.e.) axis_parsed), which will be of size k. E.x. for an input tensor
-  // of shape [3, 4, 5] and k=2 with axis_parsed=1, both of these will be shape [3, 2, 5]
+  // of shape [3, 4, 5] and k=2 with axis_parsed=1, both of the outputs will be shape [3, 2, 5]
   vector<int64_t> output_shape = input_shape;
   output_shape[axis_parsed] = k;
   auto* values = p_op_kernel_context->Output(0, output_shape);
@@ -217,12 +195,26 @@ Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input, const
 
   // extract sorted largest TopK elements
   if (sorted && largest) {
-    extract_sorted_largest_top_k_elements(input, input_shape, values, indices, output_shape, k, gsl::narrow_cast<unsigned>(axis_parsed));
+    // Average - O(NlogK). Worst - O(NlogK), where 'N' is the number of input elements
+    extract_top_k_elements<true, true, GreaterValueCmp<float>>(input, input_shape, values, indices, output_shape, k, gsl::narrow_cast<unsigned>(axis_parsed));
   }
 
   // extract sorted smallest TopK elements
-  if (sorted && !largest) {
-    extract_sorted_smallest_top_k_elements(input, input_shape, values, indices, output_shape, k, gsl::narrow_cast<unsigned>(axis_parsed));
+  else if (sorted && !largest) {
+    // Average - O(NlogK). Worst - O(NlogK), where 'N' is the number of input elements
+    extract_top_k_elements<true, true, LesserValueCmp<float>>(input, input_shape, values, indices, output_shape, k, gsl::narrow_cast<unsigned>(axis_parsed));
+  }
+
+  // extract unsorted (order undefined) largest TopK elements
+  else if (largest) {
+    // Average - O(N). Worst - O(NlogN)/O(N^2) depending on underlying implementation, where 'N' is the number of input elements
+    extract_top_k_elements<true, false, GreaterValueCmp<float>>(input, input_shape, values, indices, output_shape, k, gsl::narrow_cast<unsigned>(axis_parsed));
+  }
+
+  // extract unsorted (order undefined) smallest TopK elements
+  else if (!largest) {
+    // Average - O(N). Worst - O(NlogN)/O(N^2) depending on underlying implementation, where 'N' is the number of input elements
+    extract_top_k_elements<true, false, LesserValueCmp<float>>(input, input_shape, values, indices, output_shape, k, gsl::narrow_cast<unsigned>(axis_parsed));
   }
 
   return Status::OK();
@@ -273,6 +265,37 @@ Status TopK<10, float>::Compute(OpKernelContext* p_op_kernel_context) const {
   return TopKImpl(p_op_kernel_context, X, axis_, gsl::narrow_cast<unsigned>(parsed_input_k));
 }
 
+// Opset ver - 11
+template <>
+TopK<11, float>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
+  int64_t axis_temp;
+  ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("axis", &axis_temp).IsOK());
+  axis_ = gsl::narrow_cast<int>(axis_temp);
+
+  int64_t largest_temp;
+  ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("largest", &largest_temp).IsOK());
+  largest_ = largest_temp == 1 ? true : false;
+
+  int64_t sorted_temp;
+  ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("sorted", &sorted_temp).IsOK());
+  sorted_ = sorted_temp == 1 ? true : false;
+}
+
+// Opset ver - 11
+template <>
+Status TopK<11, float>::Compute(OpKernelContext* p_op_kernel_context) const {
+  const auto* X = p_op_kernel_context->Input<Tensor>(0);
+  const auto* Y = p_op_kernel_context->Input<Tensor>(1);
+  if (X == nullptr || Y == nullptr) return Status(common::ONNXRUNTIME, common::FAIL,
+                                                  "input count mismatch, expected 2 inputs - "
+                                                  "the tensor to be processed and a tensor containing k value");
+  const vector<int64_t>& y_shape = Y->Shape().GetDims();
+  if (y_shape.size() != 1 || y_shape[0] != 1) return Status(common::ONNXRUNTIME, common::FAIL, "k tensor should be a 1D tensor of size 1");
+  auto parsed_input_k = Y->template Data<int64_t>()[0];
+  if (parsed_input_k < 0) return Status(common::ONNXRUNTIME, common::FAIL, "value of k must not be negative");
+  return TopKImpl(p_op_kernel_context, X, axis_, gsl::narrow_cast<unsigned>(parsed_input_k), largest_, sorted_);
+}
+
 // Register necessary kernels
 // spec https://github.com/onnx/onnx/blob/master/docs/Operators.md#TopK
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -281,10 +304,16 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
     TopK<9, float>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     TopK,
-    10,
+    10, 10,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
     TopK<10, float>);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    TopK,
+    11,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
+    TopK<11, float>);
 
 }  // namespace onnxruntime
