@@ -6,7 +6,7 @@
 ;
 ; Module Name:
 ;
-;   QgemmU8U8KernelAvx512BW.asm
+;   QgemmU8S8KernelAvx512BW.asm
 ;
 ; Abstract:
 ;
@@ -19,7 +19,7 @@
 
         .xlist
 INCLUDE mlasi.inc
-INCLUDE QgemmU8U8KernelAvx512Common.inc
+INCLUDE QgemmU8S8KernelAvx512Common.inc
         .list
 
 ;
@@ -40,10 +40,13 @@ INCLUDE QgemmU8U8KernelAvx512Common.inc
 ;
 ;   zmm4 - Supplies a scratch register for intermediate results.
 ;
+;   zmm5 - Supplies a 512-bit with the broadcasted word value 0x0001.
+;
 
 MultiplyAccumulateCell MACRO AccumReg, Mult1Reg, Mult2Reg
 
-        vpmaddwd zmm4,Mult1Reg,Mult2Reg
+        vpmaddubsw zmm4,Mult1Reg,Mult2Reg
+        vpmaddwd zmm4,zmm4,zmm5
         vpaddd  AccumReg,AccumReg,zmm4
 
         ENDM
@@ -82,14 +85,14 @@ MultiplyAccumulateCell MACRO AccumReg, Mult1Reg, Mult2Reg
 ComputeBlock MACRO ColumnCount, RowCount, VectorOffset, BroadcastOffset
 
 IF ColumnCount GE 48
-        vpmovzxbw zmm0,YMMWORD PTR [rdx+VectorOffset]
-        vpmovzxbw zmm1,YMMWORD PTR [rdx+r14+VectorOffset]
-        vpmovzxbw zmm2,YMMWORD PTR [rdx+r14*2+VectorOffset]
+        vmovdqu32 zmm0,ZMMWORD PTR [rdx+VectorOffset]
+        vmovdqu32 zmm1,ZMMWORD PTR [rdx+r14+VectorOffset]
+        vmovdqu32 zmm2,ZMMWORD PTR [rdx+r14*2+VectorOffset]
 ELSEIF ColumnCount GE 32
-        vpmovzxbw zmm1,YMMWORD PTR [rdx+VectorOffset]
-        vpmovzxbw zmm2,YMMWORD PTR [rdx+r14+VectorOffset]
+        vmovdqu32 zmm1,ZMMWORD PTR [rdx+VectorOffset]
+        vmovdqu32 zmm2,ZMMWORD PTR [rdx+r14+VectorOffset]
 ELSE
-        vpmovzxbw zmm2,YMMWORD PTR [rdx+VectorOffset]
+        vmovdqu32 zmm2,ZMMWORD PTR [rdx+VectorOffset]
 ENDIF
         EmitIfCountGE RowCount, 1, <vpbroadcastd zmm3,DWORD PTR [rcx+BroadcastOffset]>
         EmitIfCount2GE RowCount, 1, ColumnCount, 48, <MultiplyAccumulateCell zmm26,zmm3,zmm0>
@@ -122,6 +125,6 @@ ENDIF
 ; Generate the GEMM kernel.
 ;
 
-GemmU8X8KernelAvx512Function U8U8, Avx512BW
+GemmU8X8KernelAvx512Function U8S8, Avx512BW
 
         END
