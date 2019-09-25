@@ -876,9 +876,9 @@ def main():
     if args.build_csharp:
         args.build_shared_lib = True
 
+    # Disabling unit tests for VAD-F as FPGA only supports models with NCHW layout
     if args.use_openvino == "VAD-F_FP32":
         args.test = False
-        args.skip_onnx_tests = True
 
     configs = set(args.config)
 
