@@ -4,6 +4,7 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/graph/graph_utils.h"
+#include "float.h"
 #include <deque>
 
 using namespace ONNX_NAMESPACE;
