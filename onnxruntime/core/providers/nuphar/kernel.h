@@ -77,7 +77,8 @@ class NupharKernelState {
   NUPHAR_OP(Add, 7, DataTypeImpl::AllFixedSizeTensorTypes())                                 \
   NUPHAR_OP(ArgMax, 1, DataTypeImpl::AllFixedSizeTensorTypes())                              \
   NUPHAR_OP(ArgMin, 1, DataTypeImpl::AllFixedSizeTensorTypes())                              \
-  DISABLE_MACRO(NUPHAR_OP(AveragePool, 7, DataTypeImpl::AllFixedSizeTensorTypes()))          \
+  NUPHAR_VERSIONED_OP(AveragePool, 7, 9, DataTypeImpl::AllFixedSizeTensorTypes())            \
+  NUPHAR_OP(AveragePool, 10, DataTypeImpl::AllFixedSizeTensorTypes())                        \
   NUPHAR_OP(Ceil, 6, DataTypeImpl::AllIEEEFloatTensorTypes())                                \
   NUPHAR_OP(Clip, 6, DataTypeImpl::AllIEEEFloatTensorTypes())                                \
   NUPHAR_OP(Concat, 4, DataTypeImpl::AllFixedSizeTensorTypes())                              \
@@ -94,8 +95,8 @@ class NupharKernelState {
   NUPHAR_OP(Floor, 6, DataTypeImpl::AllIEEEFloatTensorTypes())                               \
   NUPHAR_VERSIONED_OP(Gemm, 7, 8, DataTypeImpl::AllIEEEFloatTensorExceptHalfTypes())         \
   NUPHAR_OP(Gemm, 9, DataTypeImpl::AllIEEEFloatTensorExceptHalfTypes())                      \
-  DISABLE_MACRO(NUPHAR_OP(GlobalAveragePool, 1, DataTypeImpl::AllFixedSizeTensorTypes()))    \
-  DISABLE_MACRO(NUPHAR_OP(GlobalMaxPool, 1, DataTypeImpl::AllFixedSizeTensorTypes()))        \
+  NUPHAR_OP(GlobalAveragePool, 1, DataTypeImpl::AllFixedSizeTensorTypes())                   \
+  NUPHAR_OP(GlobalMaxPool, 1, DataTypeImpl::AllFixedSizeTensorTypes())                       \
   NUPHAR_OP(Greater, 9, DataTypeImpl::AllFixedSizeTensorTypes())                             \
   NUPHAR_OP(HardSigmoid, 6, DataTypeImpl::AllIEEEFloatTensorTypes())                         \
   NUPHAR_OP(Identity, 1, DataTypeImpl::AllFixedSizeTensorTypes())                            \
@@ -107,8 +108,9 @@ class NupharKernelState {
   NUPHAR_VERSIONED_OP(MatMul, 1, 8, DataTypeImpl::AllIEEEFloatTensorExceptHalfTypes())       \
   NUPHAR_OP(MatMul, 9, DataTypeImpl::AllIEEEFloatTensorExceptHalfTypes())                    \
   NUPHAR_OP(Max, 8, DataTypeImpl::AllFixedSizeTensorTypes())                                 \
-  DISABLE_MACRO(NUPHAR_VERSIONED_OP(MaxPool, 1, 7, DataTypeImpl::AllFixedSizeTensorTypes())) \
-  DISABLE_MACRO(NUPHAR_OP(MaxPool, 8, DataTypeImpl::AllFixedSizeTensorTypes()))              \
+  NUPHAR_VERSIONED_OP(MaxPool, 1, 7, DataTypeImpl::AllFixedSizeTensorTypes())                \
+  NUPHAR_VERSIONED_OP(MaxPool, 8, 9, DataTypeImpl::AllFixedSizeTensorTypes())                \
+  NUPHAR_OP(MaxPool, 10, DataTypeImpl::AllFixedSizeTensorTypes())                            \
   NUPHAR_OP(Min, 8, DataTypeImpl::AllFixedSizeTensorTypes())                                 \
   NUPHAR_OP(Mul, 7, DataTypeImpl::AllFixedSizeTensorTypes())                                 \
   NUPHAR_OP(Neg, 6, DataTypeImpl::AllFixedSizeTensorTypes())                                 \
