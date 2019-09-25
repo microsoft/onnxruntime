@@ -27,7 +27,7 @@ void ZeroOutSliceAtIndex(Tensor& output, int64_t rank, int64_t axis, int64_t ind
 }
 template <typename T>
 void CopySlices(const Tensor& input, Tensor& output,
-                std::vector<int64_t>& input_starts, const std::vector<int64_t>& output_starts,
+                const std::vector<int64_t>& input_starts, const std::vector<int64_t>& output_starts,
                 const std::vector<int64_t>& slice_dims, const std::vector<int64_t>& steps, const int64_t slice_size) {
   SliceIterator<T> input_iterator(input, input_starts, slice_dims, steps);
   WritableSliceIterator<T> output_iterator(output, output_starts, slice_dims, steps);
@@ -37,7 +37,7 @@ void CopySlices(const Tensor& input, Tensor& output,
 }
 template <typename T>
 void SumSlices(const Tensor& input, Tensor& output,
-               std::vector<int64_t>& input_starts, const std::vector<int64_t>& output_starts, const std::vector<int64_t>& previous_output_starts,
+               const std::vector<int64_t>& input_starts, const std::vector<int64_t>& output_starts, const std::vector<int64_t>& previous_output_starts,
                const std::vector<int64_t>& slice_dims, const std::vector<int64_t>& steps, const int64_t slice_size) {
   SliceIterator<T> input_iterator(input, input_starts, slice_dims, steps);
   WritableSliceIterator<T> output_iterator(output, output_starts, slice_dims, steps);
@@ -50,24 +50,17 @@ void SumSlices(const Tensor& input, Tensor& output,
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, float, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), CumSum<float>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, double, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()), CumSum<double>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, int8_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int8_t>()), CumSum<int8_t>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, uint8_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()), CumSum<uint8_t>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, int16_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int16_t>()), CumSum<int16_t>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, uint16_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint16_t>()), CumSum<uint16_t>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, int32_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()), CumSum<int32_t>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, uint32_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint32_t>()), CumSum<uint32_t>);
+ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, float, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), CumSum<float>);;
+ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, int32_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()), CumSum<int32_t>);;
 ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, int64_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()), CumSum<int64_t>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, uint64_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint64_t>()), CumSum<uint64_t>);
 
 template <typename T>
-CumSum<T>::CumSum(const OpKernelInfo& info) : OpKernel(info), _exclusive(), _reverse() {
+CumSum<T>::CumSum(const OpKernelInfo& info) : OpKernel(info), exclusive_(), reverse_() {
   int64_t exclusive = 0;
   auto status = info.GetAttr("exclusive", &exclusive);
   if (status.IsOK()) {
     if (exclusive == 1 || exclusive == 0) {
-      _exclusive = exclusive;
+      exclusive_ = exclusive;
     } else {
       ORT_ENFORCE("attribute exclusive can only be 0 or 1");
     }
@@ -76,7 +69,7 @@ CumSum<T>::CumSum(const OpKernelInfo& info) : OpKernel(info), _exclusive(), _rev
   status = info.GetAttr("reverse", &reverse);
   if (status.IsOK()) {
     if (reverse == 1 || reverse == 0) {
-      _reverse = reverse;
+      reverse_ = reverse;
     } else {
       ORT_ENFORCE("attribute reverse can only be 0 or 1");
     }
@@ -113,10 +106,10 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
 
   std::vector<int64_t> steps(rank, 1);  // steps for the slice -- always set to 1
 
-  if (!_reverse) {
+  if (!reverse_) {
     int64_t index(0);  // the index we use as we walkthrough the given axis
     // If (exclusive == true) the first slice is always 0
-    if (_exclusive) {
+    if (exclusive_) {
       ::ZeroOutSliceAtIndex<T>(output_tensor, rank, axis, index, slice_dims, steps, slice_size);
       ++index;
     }
@@ -130,7 +123,7 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
 
     for (; index < dim; ++index) {
       // Each output slice is the sum of corresponding input slice and the previous output slice
-      auto input_starts(::GetStarts(rank, axis, _exclusive ? index - 1 : index));
+      auto input_starts(::GetStarts(rank, axis, exclusive_ ? index - 1 : index));
       auto output_starts(::GetStarts(rank, axis, index));
       auto previous_starts(::GetStarts(rank, axis, index - 1));
       ::SumSlices<T>(*input, output_tensor, input_starts, output_starts, previous_starts,
@@ -140,7 +133,7 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
     //_reverse == true
     int64_t index(dim - 1);  // the index we use as we walkthrough the given axis
     // If (exclusive == true) the first slice is always 0
-    if (_exclusive) {
+    if (exclusive_) {
       ::ZeroOutSliceAtIndex<T>(output_tensor, rank, axis, index, slice_dims, steps, slice_size);
       --index;
     }
@@ -154,7 +147,7 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
 
     for (; index >= 0; --index) {
       // Each output slice is the sum of corresponding input slice and the previous output slice
-      auto input_starts(::GetStarts(rank, axis, _exclusive ? index + 1 : index));
+      auto input_starts(::GetStarts(rank, axis, exclusive_ ? index + 1 : index));
       auto output_starts(::GetStarts(rank, axis, index));
       auto previous_starts(::GetStarts(rank, axis, index + 1));
       ::SumSlices<T>(*input, output_tensor, input_starts, output_starts, previous_starts,

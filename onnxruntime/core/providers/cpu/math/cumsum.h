@@ -15,8 +15,8 @@ class CumSum final : public OpKernel {
   Status Compute(OpKernelContext* p_op_kernel_context) const override;
 
  private:
-  int64_t _exclusive;
-  int64_t _reverse;
+  int64_t exclusive_;
+  int64_t reverse_;
 };
 
 }  // namespace onnxruntime

@@ -179,13 +179,6 @@ TEST(CumSumTest, _3DTestAxis2ReverseExclusive) {
   test.AddOutput<float>("y", {2, 3, 4}, {9., 7., 4., 0., 21., 15., 8., 0., 33., 23., 12., 0., 45., 31., 16., 0., 57., 39., 20., 0., 69., 47., 24., 0.});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
-TEST(CumSumTest, _1DTestDouble) {
-  OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
-  test.AddInput<double>("x", {5}, {1., 2., 3., 4., 5.});
-  test.AddInput<int32_t>("axis", {1}, {0});
-  test.AddOutput<double>("y", {5}, {1., 3., 6., 10., 15.});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-}
 TEST(CumSumTest, _1DTestInt32) {
   OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
   test.AddInput<int32_t>("x", {5}, {1, 2, 3, 4, 5});
@@ -193,25 +186,11 @@ TEST(CumSumTest, _1DTestInt32) {
   test.AddOutput<int32_t>("y", {5}, {1, 3, 6, 10, 15});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
-TEST(CumSumTest, _1DTestUInt32) {
-  OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
-  test.AddInput<uint32_t>("x", {5}, {1, 2, 3, 4, 5});
-  test.AddInput<int32_t>("axis", {1}, {0});
-  test.AddOutput<uint32_t>("y", {5}, {1, 3, 6, 10, 15});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-}
 TEST(CumSumTest, _1DTestInt64) {
   OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
   test.AddInput<int64_t>("x", {5}, {1, 2, 3, 4, 5});
   test.AddInput<int32_t>("axis", {1}, {0});
   test.AddOutput<int64_t>("y", {5}, {1, 3, 6, 10, 15});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-}
-TEST(CumSumTest, _1DTestUInt64) {
-  OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
-  test.AddInput<uint64_t>("x", {5}, {1, 2, 3, 4, 5});
-  test.AddInput<int32_t>("axis", {1}, {0});
-  test.AddOutput<uint64_t>("y", {5}, {1, 3, 6, 10, 15});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 }  // namespace test
