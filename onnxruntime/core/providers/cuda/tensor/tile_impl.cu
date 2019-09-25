@@ -16,7 +16,7 @@ __global__ void _TileKernel(
     const fast_divmod* fdm_output_strides,
     T* output_data,
     const CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, 1);
   CUDA_LONG input_index = 0;
   CUDA_LONG output_index = id;
   for (int dim = 0; dim < shape_rank; ++dim) {

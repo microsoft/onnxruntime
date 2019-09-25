@@ -26,7 +26,7 @@ struct OP_B_DivGrad {
   }
 };
 
-template <typename T, bool a_is_scalar, bool b_is_scalar>
+template <typename T, bool a_is_scalar, bool b_is_scalar, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _DivGradSimple(
     const T* a_data,
     const T* b_data,
@@ -34,38 +34,59 @@ __global__ void _DivGradSimple(
     T* output_da_data,
     T* output_db_data,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  CUDA_LONG a_index = (a_is_scalar ? 0 : id);
-  CUDA_LONG b_index = (b_is_scalar ? 0 : id);
-  output_da_data[id] = OP_A_DivGrad<T>()(dy_data[id], b_data[b_index]);
-  output_db_data[id] = OP_B_DivGrad<T>()(dy_data[id], a_data[a_index], b_data[b_index]);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
+
+  #pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      CUDA_LONG a_index = (a_is_scalar ? 0 : id);
+      CUDA_LONG b_index = (b_is_scalar ? 0 : id);
+      output_da_data[id] = OP_A_DivGrad<T>()(dy_data[id], b_data[b_index]);
+      output_db_data[id] = OP_B_DivGrad<T>()(dy_data[id], a_data[a_index], b_data[b_index]);
+      id += NumThreadsPerBlock;
+    }
+  }
 }
 
-template <typename T, bool a_is_scalar, bool b_is_scalar>
+template <typename T, bool a_is_scalar, bool b_is_scalar, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _DivGradSimple_A(
     const T* b_data,
     const T* dy_data,
     T* output_da_data,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  CUDA_LONG b_index = (b_is_scalar ? 0 : id);
-  output_da_data[id] = OP_A_DivGrad<T>()(dy_data[id], b_data[b_index]);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
+
+  #pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      CUDA_LONG b_index = (b_is_scalar ? 0 : id);
+      output_da_data[id] = OP_A_DivGrad<T>()(dy_data[id], b_data[b_index]);
+      id += NumThreadsPerBlock;
+    }
+  }
 }
 
-template <typename T, bool a_is_scalar, bool b_is_scalar>
+template <typename T, bool a_is_scalar, bool b_is_scalar, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _DivGradSimple_B(
     const T* a_data,
     const T* b_data,
     const T* dy_data,
     T* output_db_data,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  CUDA_LONG a_index = (a_is_scalar ? 0 : id);
-  CUDA_LONG b_index = (b_is_scalar ? 0 : id);
-  output_db_data[id] = OP_B_DivGrad<T>()(dy_data[id], a_data[a_index], b_data[b_index]);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
+
+  #pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      CUDA_LONG a_index = (a_is_scalar ? 0 : id);
+      CUDA_LONG b_index = (b_is_scalar ? 0 : id);
+      output_db_data[id] = OP_B_DivGrad<T>()(dy_data[id], a_data[a_index], b_data[b_index]);
+      id += NumThreadsPerBlock;
+    }
+  }
 }
 
-template <typename T>
+template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _DivGradRhsPerChannelBatch1(
     const T* a_data,
     const T* b_data,
@@ -74,26 +95,40 @@ __global__ void _DivGradRhsPerChannelBatch1(
     T* output_da_data,
     T* output_db_data,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  CUDA_LONG a_index = id;
-  CUDA_LONG b_index = fdm_H.div(id);
-  output_da_data[id] = OP_A_DivGrad<T>()(dy_data[id], b_data[b_index]);
-  output_db_data[id] = OP_B_DivGrad<T>()(dy_data[id], a_data[a_index], b_data[b_index]);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
+
+  #pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      CUDA_LONG a_index = id;
+      CUDA_LONG b_index = fdm_H.div(id);
+      output_da_data[id] = OP_A_DivGrad<T>()(dy_data[id], b_data[b_index]);
+      output_db_data[id] = OP_B_DivGrad<T>()(dy_data[id], a_data[a_index], b_data[b_index]);
+      id += NumThreadsPerBlock;
+    }
+  }
 }
 
-template <typename T>
+template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _DivGradRhsPerChannelBatch1_A(
     const T* b_data,
     const T* dy_data,
     const fast_divmod fdm_H,
     T* output_da_data,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  CUDA_LONG b_index = fdm_H.div(id);
-  output_da_data[id] = OP_A_DivGrad<T>()(dy_data[id], b_data[b_index]);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
+
+  #pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      CUDA_LONG b_index = fdm_H.div(id);
+      output_da_data[id] = OP_A_DivGrad<T>()(dy_data[id], b_data[b_index]);
+      id += NumThreadsPerBlock;
+    }
+  }
 }
 
-template <typename T>
+template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _DivGradRhsPerChannelBatch1_B(
     const T* a_data,
     const T* b_data,
@@ -101,13 +136,20 @@ __global__ void _DivGradRhsPerChannelBatch1_B(
     const fast_divmod fdm_H,
     T* output_db_data,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  CUDA_LONG a_index = id;
-  CUDA_LONG b_index = fdm_H.div(id);
-  output_db_data[id] = OP_B_DivGrad<T>()(dy_data[id], a_data[a_index], b_data[b_index]);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
+
+  #pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      CUDA_LONG a_index = id;
+      CUDA_LONG b_index = fdm_H.div(id);
+      output_db_data[id] = OP_B_DivGrad<T>()(dy_data[id], a_data[a_index], b_data[b_index]);
+      id += NumThreadsPerBlock;
+    }
+  }
 }
 
-template <typename T>
+template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _DivGradRhsPerChannelBatchN(
     const T* a_data,
     const T* b_data,
@@ -117,17 +159,24 @@ __global__ void _DivGradRhsPerChannelBatchN(
     T* output_da_data,
     T* output_db_data,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  CUDA_LONG a_index = id;
-  CUDA_LONG b_index = fdm_H.div(id);
-  int q, r;
-  fdm_C.divmod(b_index, q, r);
-  b_index = r;
-  output_da_data[id] = OP_A_DivGrad<T>()(dy_data[id], b_data[b_index]);
-  output_db_data[id] = OP_B_DivGrad<T>()(dy_data[id], a_data[a_index], b_data[b_index]);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
+
+  #pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      CUDA_LONG a_index = id;
+      CUDA_LONG b_index = fdm_H.div(id);
+      int q, r;
+      fdm_C.divmod(b_index, q, r);
+      b_index = r;
+      output_da_data[id] = OP_A_DivGrad<T>()(dy_data[id], b_data[b_index]);
+      output_db_data[id] = OP_B_DivGrad<T>()(dy_data[id], a_data[a_index], b_data[b_index]);
+      id += NumThreadsPerBlock;
+    }
+  }
 }
 
-template <typename T>
+template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _DivGradRhsPerChannelBatchN_A(
     const T* b_data,
     const T* dy_data,
@@ -135,15 +184,22 @@ __global__ void _DivGradRhsPerChannelBatchN_A(
     const fast_divmod fdm_C,
     T* output_da_data,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  CUDA_LONG b_index = fdm_H.div(id);
-  int q, r;
-  fdm_C.divmod(b_index, q, r);
-  b_index = r;
-  output_da_data[id] = OP_A_DivGrad<T>()(dy_data[id], b_data[b_index]);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
+
+  #pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      CUDA_LONG b_index = fdm_H.div(id);
+      int q, r;
+      fdm_C.divmod(b_index, q, r);
+      b_index = r;
+      output_da_data[id] = OP_A_DivGrad<T>()(dy_data[id], b_data[b_index]);
+      id += NumThreadsPerBlock;
+    }
+  }
 }
 
-template <typename T>
+template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _DivGradRhsPerChannelBatchN_B(
     const T* a_data,
     const T* b_data,
@@ -152,16 +208,23 @@ __global__ void _DivGradRhsPerChannelBatchN_B(
     const fast_divmod fdm_C,
     T* output_db_data,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  CUDA_LONG a_index = id;
-  CUDA_LONG b_index = fdm_H.div(id);
-  int q, r;
-  fdm_C.divmod(b_index, q, r);
-  b_index = r;
-  output_db_data[id] = OP_B_DivGrad<T>()(dy_data[id], a_data[a_index], b_data[b_index]);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
+
+  #pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      CUDA_LONG a_index = id;
+      CUDA_LONG b_index = fdm_H.div(id);
+      int q, r;
+      fdm_C.divmod(b_index, q, r);
+      b_index = r;
+      output_db_data[id] = OP_B_DivGrad<T>()(dy_data[id], a_data[a_index], b_data[b_index]);
+      id += NumThreadsPerBlock;
+    }
+  }
 }
 
-template <typename T, bool a_need_compute, bool b_need_compute>
+template <typename T, bool a_need_compute, bool b_need_compute, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _DivGrad(
     size_t output_rank,
     const int64_t* a_padded_strides,
@@ -173,31 +236,38 @@ __global__ void _DivGrad(
     T* output_da_data,
     T* output_db_data,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  CUDA_LONG a_index = (a_need_compute ? 0 : id);
-  CUDA_LONG b_index = (b_need_compute ? 0 : id);
-  CUDA_LONG offset = id;
-  for (int dim = 0; dim < output_rank; dim++) {
-    int q, r;
-    fdm_output_strides[dim].divmod(offset, q, r);
-    // compute index increase based on stride and broadcast
-    // note that stride[i-1] == stride[i] means dim[i] is 1 (broadcasting)
-    if (a_need_compute) {
-      if (a_padded_strides[dim] != a_padded_strides[dim + 1])
-        a_index += static_cast<int>(a_padded_strides[dim + 1]) * q;
-    }
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
 
-    if (b_need_compute) {
-      if (b_padded_strides[dim] != b_padded_strides[dim + 1])
-        b_index += static_cast<int>(b_padded_strides[dim + 1]) * q;
+  #pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      CUDA_LONG a_index = (a_need_compute ? 0 : id);
+      CUDA_LONG b_index = (b_need_compute ? 0 : id);
+      CUDA_LONG offset = id;
+      for (int dim = 0; dim < output_rank; dim++) {
+        int q, r;
+        fdm_output_strides[dim].divmod(offset, q, r);
+        // compute index increase based on stride and broadcast
+        // note that stride[i-1] == stride[i] means dim[i] is 1 (broadcasting)
+        if (a_need_compute) {
+          if (a_padded_strides[dim] != a_padded_strides[dim + 1])
+            a_index += static_cast<int>(a_padded_strides[dim + 1]) * q;
+        }
+
+        if (b_need_compute) {
+          if (b_padded_strides[dim] != b_padded_strides[dim + 1])
+            b_index += static_cast<int>(b_padded_strides[dim + 1]) * q;
+        }
+        offset = r;
+      }
+      output_da_data[id] = OP_A_DivGrad<T>()(dy_data[id], b_data[b_index]);
+      output_db_data[id] = OP_B_DivGrad<T>()(dy_data[id], a_data[a_index], b_data[b_index]);
+      id += NumThreadsPerBlock;
     }
-    offset = r;
   }
-  output_da_data[id] = OP_A_DivGrad<T>()(dy_data[id], b_data[b_index]);
-  output_db_data[id] = OP_B_DivGrad<T>()(dy_data[id], a_data[a_index], b_data[b_index]);
 }
 
-template <typename T, bool b_need_compute>
+template <typename T, bool b_need_compute, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _DivGrad_A(
     size_t output_rank,
     const int64_t* b_padded_strides,
@@ -206,24 +276,31 @@ __global__ void _DivGrad_A(
     const fast_divmod* fdm_output_strides,
     T* output_da_data,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  CUDA_LONG b_index = (b_need_compute ? 0 : id);
-  CUDA_LONG offset = id;
-  for (int dim = 0; dim < output_rank; dim++) {
-    int q, r;
-    fdm_output_strides[dim].divmod(offset, q, r);
-    // compute index increase based on stride and broadcast
-    // note that stride[i-1] == stride[i] means dim[i] is 1 (broadcasting)
-    if (b_need_compute) {
-      if (b_padded_strides[dim] != b_padded_strides[dim + 1])
-        b_index += static_cast<int>(b_padded_strides[dim + 1]) * q;
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
+
+  #pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      CUDA_LONG b_index = (b_need_compute ? 0 : id);
+      CUDA_LONG offset = id;
+      for (int dim = 0; dim < output_rank; dim++) {
+        int q, r;
+        fdm_output_strides[dim].divmod(offset, q, r);
+        // compute index increase based on stride and broadcast
+        // note that stride[i-1] == stride[i] means dim[i] is 1 (broadcasting)
+        if (b_need_compute) {
+          if (b_padded_strides[dim] != b_padded_strides[dim + 1])
+            b_index += static_cast<int>(b_padded_strides[dim + 1]) * q;
+        }
+        offset = r;
+      }
+      output_da_data[id] = OP_A_DivGrad<T>()(dy_data[id], b_data[b_index]);
+      id += NumThreadsPerBlock;
     }
-    offset = r;
   }
-  output_da_data[id] = OP_A_DivGrad<T>()(dy_data[id], b_data[b_index]);
 }
 
-template <typename T, bool a_need_compute, bool b_need_compute>
+template <typename T, bool a_need_compute, bool b_need_compute, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _DivGrad_B(
     size_t output_rank,
     const int64_t* a_padded_strides,
@@ -234,27 +311,34 @@ __global__ void _DivGrad_B(
     const fast_divmod* fdm_output_strides,
     T* output_db_data,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  CUDA_LONG a_index = (a_need_compute ? 0 : id);
-  CUDA_LONG b_index = (b_need_compute ? 0 : id);
-  CUDA_LONG offset = id;
-  for (int dim = 0; dim < output_rank; dim++) {
-    int q, r;
-    fdm_output_strides[dim].divmod(offset, q, r);
-    // compute index increase based on stride and broadcast
-    // note that stride[i-1] == stride[i] means dim[i] is 1 (broadcasting)
-    if (a_need_compute) {
-      if (a_padded_strides[dim] != a_padded_strides[dim + 1])
-        a_index += static_cast<int>(a_padded_strides[dim + 1]) * q;
-    }
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
 
-    if (b_need_compute) {
-      if (b_padded_strides[dim] != b_padded_strides[dim + 1])
-        b_index += static_cast<int>(b_padded_strides[dim + 1]) * q;
+  #pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      CUDA_LONG a_index = (a_need_compute ? 0 : id);
+      CUDA_LONG b_index = (b_need_compute ? 0 : id);
+      CUDA_LONG offset = id;
+      for (int dim = 0; dim < output_rank; dim++) {
+        int q, r;
+        fdm_output_strides[dim].divmod(offset, q, r);
+        // compute index increase based on stride and broadcast
+        // note that stride[i-1] == stride[i] means dim[i] is 1 (broadcasting)
+        if (a_need_compute) {
+          if (a_padded_strides[dim] != a_padded_strides[dim + 1])
+            a_index += static_cast<int>(a_padded_strides[dim + 1]) * q;
+        }
+
+        if (b_need_compute) {
+          if (b_padded_strides[dim] != b_padded_strides[dim + 1])
+            b_index += static_cast<int>(b_padded_strides[dim + 1]) * q;
+        }
+        offset = r;
+      }
+      output_db_data[id] = OP_B_DivGrad<T>()(dy_data[id], a_data[a_index], b_data[b_index]);
+      id += NumThreadsPerBlock;
     }
-    offset = r;
   }
-  output_db_data[id] = OP_B_DivGrad<T>()(dy_data[id], a_data[a_index], b_data[b_index]);
 }
 
 template <typename T>
@@ -266,14 +350,15 @@ void ImplDivGradSimple(
     size_t count,
     T* da_output_data,
     T* db_output_data) {
-  int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
+  int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
 
   switch (simpleBroadcast) {
     case SimpleBroadcast::NoBroadcast:
       // a, b and dy has the same shape: a_is_scalar = false, b_is_scalar = false
       if (da_output_data && db_output_data)
-        _DivGradSimple<T, false, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        _DivGradSimple<T, false, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+          <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
             a_data,
             b_data,
             dy_data,
@@ -281,13 +366,15 @@ void ImplDivGradSimple(
             db_output_data,
             N);
       else if (da_output_data)
-        _DivGradSimple_A<T, false, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        _DivGradSimple_A<T, false, false, GridDim::maxThreadsPerBlock,GridDim::maxElementsPerThread>\
+          <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
             b_data,
             dy_data,
             da_output_data,
             N);
       else
-        _DivGradSimple_B<T, false, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        _DivGradSimple_B<T, false, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+          <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
             a_data,
             b_data,
             dy_data,
@@ -297,7 +384,8 @@ void ImplDivGradSimple(
     case SimpleBroadcast::LeftScalar:
       // a is a scalar, b and dy has the same shape
       if (da_output_data && db_output_data)
-        _DivGradSimple<T, true, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        _DivGradSimple<T, true, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+          <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
             a_data,
             b_data,
             dy_data,
@@ -305,13 +393,15 @@ void ImplDivGradSimple(
             db_output_data,
             N);
       else if (da_output_data)
-        _DivGradSimple_A<T, true, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        _DivGradSimple_A<T, true, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+          <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
             b_data,
             dy_data,
             da_output_data,
             N);
       else
-        _DivGradSimple_B<T, true, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        _DivGradSimple_B<T, true, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+          <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
             a_data,
             b_data,
             dy_data,
@@ -321,7 +411,8 @@ void ImplDivGradSimple(
     case SimpleBroadcast::RightScalar:
       // b is a scalar, a and dy has the same shape
       if (da_output_data && db_output_data)
-        _DivGradSimple<T, false, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        _DivGradSimple<T, false, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+          <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
             a_data,
             b_data,
             dy_data,
@@ -329,13 +420,15 @@ void ImplDivGradSimple(
             db_output_data,
             N);
       else if (da_output_data)
-        _DivGradSimple_A<T, false, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        _DivGradSimple_A<T, false, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+          <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
             b_data,
             dy_data,
             da_output_data,
             N);
       else
-        _DivGradSimple_B<T, false, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        _DivGradSimple_B<T, false, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+          <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
             a_data,
             b_data,
             dy_data,
@@ -356,10 +449,11 @@ void ImplDivGradRhsPerChannelBatch1(
     const fast_divmod& fdm_H,
     T* da_output_data,
     T* db_output_data) {
-  int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
+  int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   if (da_output_data && db_output_data)
-    _DivGradRhsPerChannelBatch1<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _DivGradRhsPerChannelBatch1<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         a_data,
         b_data,
         dy_data,
@@ -368,14 +462,16 @@ void ImplDivGradRhsPerChannelBatch1(
         db_output_data,
         N);
   else if (da_output_data)
-    _DivGradRhsPerChannelBatch1_A<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _DivGradRhsPerChannelBatch1_A<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         b_data,
         dy_data,
         fdm_H,
         da_output_data,
         N);
   else
-    _DivGradRhsPerChannelBatch1_B<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _DivGradRhsPerChannelBatch1_B<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         a_data,
         b_data,
         dy_data,
@@ -394,11 +490,12 @@ void ImplDivGradRhsPerChannelBatchN(
     const fast_divmod& fdm_C,
     T* da_output_data,
     T* db_output_data) {
-  int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
+  int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
 
   if (da_output_data && db_output_data)
-    _DivGradRhsPerChannelBatchN<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _DivGradRhsPerChannelBatchN<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         a_data,
         b_data,
         dy_data,
@@ -408,7 +505,8 @@ void ImplDivGradRhsPerChannelBatchN(
         db_output_data,
         N);
   else if (da_output_data)
-    _DivGradRhsPerChannelBatchN_A<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _DivGradRhsPerChannelBatchN_A<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         b_data,
         dy_data,
         fdm_H,
@@ -416,7 +514,8 @@ void ImplDivGradRhsPerChannelBatchN(
         da_output_data,
         N);
   else
-    _DivGradRhsPerChannelBatchN_B<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _DivGradRhsPerChannelBatchN_B<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
+      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         a_data,
         b_data,
         dy_data,
@@ -438,11 +537,12 @@ void ImplDivGrad(
     const fast_divmod* fdm_output_strides,
     T* da_output_data,
     T* db_output_data) {
-  int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
+  int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   if (a_padded_strides && b_padded_strides) {
     if (da_output_data && db_output_data)
-      _DivGrad<T, true, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _DivGrad<T, true, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           output_rank,
           a_padded_strides,
           a_data,
@@ -454,7 +554,8 @@ void ImplDivGrad(
           db_output_data,
           N);
     else if (da_output_data)
-      _DivGrad_A<T, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _DivGrad_A<T, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           output_rank,
           b_padded_strides,
           b_data,
@@ -463,7 +564,8 @@ void ImplDivGrad(
           da_output_data,
           N);
     else
-      _DivGrad_B<T, true, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _DivGrad_B<T, true, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           output_rank,
           a_padded_strides,
           a_data,
@@ -475,7 +577,8 @@ void ImplDivGrad(
           N);
   } else if (a_padded_strides) {
     if (da_output_data && db_output_data)
-      _DivGrad<T, true, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _DivGrad<T, true, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           output_rank,
           a_padded_strides,
           a_data,
@@ -487,7 +590,8 @@ void ImplDivGrad(
           db_output_data,
           N);
     else if (da_output_data)
-      _DivGrad_A<T, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _DivGrad_A<T, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           output_rank,
           b_padded_strides,
           b_data,
@@ -496,7 +600,8 @@ void ImplDivGrad(
           da_output_data,
           N);
     else
-      _DivGrad_B<T, true, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _DivGrad_B<T, true, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           output_rank,
           a_padded_strides,
           a_data,
@@ -508,7 +613,8 @@ void ImplDivGrad(
           N);
   } else {
     if (da_output_data && db_output_data)
-      _DivGrad<T, false, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _DivGrad<T, false, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           output_rank,
           a_padded_strides,
           a_data,
@@ -520,7 +626,8 @@ void ImplDivGrad(
           db_output_data,
           N);
     else if (da_output_data)
-      _DivGrad_A<T, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _DivGrad_A<T, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           output_rank,
           b_padded_strides,
           b_data,
@@ -529,7 +636,8 @@ void ImplDivGrad(
           da_output_data,
           N);
     else
-      _DivGrad_B<T, false, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _DivGrad_B<T, false, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           output_rank,
           a_padded_strides,
           a_data,

@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T>
+template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _InstanceNormKernel(
     const T* input_data,
     const T* scale,
@@ -20,13 +20,20 @@ __global__ void _InstanceNormKernel(
     const fast_divmod fdm_C,
     T* output_data,
     const CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  int nc = fdm_HW.div(id);
-  int n, c;
-  fdm_C.divmod(nc, n, c);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
 
-  // Y = scale * (x - mean) / sqrt (std * std + epsilon) + B
-  output_data[id] = scale[c] * (input_data[id] - mean[nc]) / _Sqrt(variance[nc] * (T)variance_correction + (T)epsilon) + bias[c];
+  #pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      int nc = fdm_HW.div(id);
+      int n, c;
+      fdm_C.divmod(nc, n, c);
+
+      // Y = scale * (x - mean) / sqrt (std * std + epsilon) + B
+      output_data[id] = scale[c] * (input_data[id] - mean[nc]) / _Sqrt(variance[nc] * (T)variance_correction + (T)epsilon) + bias[c];
+      id += NumThreadsPerBlock;
+    }
+  }
 }
 
 template <typename T>
@@ -42,8 +49,8 @@ void InstanceNormImpl(
     const fast_divmod& fdm_C,
     T* output_data,
     size_t N) {
-  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _InstanceNormKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  int blocksPerGrid = static_cast<int>(CeilDiv(N, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  _InstanceNormKernel<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       input_data, scale, bias, mean, variance, variance_correction, epsilon, fdm_HW, fdm_C, output_data, (CUDA_LONG)N);
 }
 

@@ -6,13 +6,13 @@ namespace cuda {
 
 template <typename TSrc>
 __global__ void _IsFinite(const TSrc* input, bool* output, CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, 1);
   output[id] = isfinite(input[id]);
 }
 
 template<>
 __global__ void _IsFinite(const half* input, bool* output, CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, 1);
 #if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
   output[id] = !__hisinf(input[id]) && !__hisnan(input[id]);
 #else

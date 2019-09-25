@@ -26,7 +26,7 @@ __global__ void _PadKernel(
     const fast_divmod* fdm_output_strides,
     T* output_data,
     const size_t N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, 1);
   CUDA_LONG input_index = 0;
   CUDA_LONG output_index = id;
   bool use_pad_value = false;

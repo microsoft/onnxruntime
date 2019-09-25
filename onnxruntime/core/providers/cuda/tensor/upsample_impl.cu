@@ -15,7 +15,7 @@ __global__ void _UpampleNearestKernel(const size_t rank,
                                       const T* input_data,
                                       T* output_data,
                                       const size_t N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, 1);
   CUDA_LONG input_index = 0;
   CUDA_LONG output_index = id;
 
@@ -39,7 +39,7 @@ __global__ void _UpampleBilinearKernel(const int64_t input_dim2,
                                        const T* input_data,
                                        T* output_data,
                                        const size_t N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, 1);
   CUDA_LONG input_index = 0;
 
   // For bilinear mode, scales[0]=scales[1]=1

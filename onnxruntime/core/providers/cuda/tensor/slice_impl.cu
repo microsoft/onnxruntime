@@ -17,7 +17,7 @@ __global__ void _SliceKernel(const int32_t dimension_count,
                              const T* input_data,
                              T* output_data,
                              const CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, 1);
   CUDA_LONG input_index = 0;
   int div;
   int mod = id;

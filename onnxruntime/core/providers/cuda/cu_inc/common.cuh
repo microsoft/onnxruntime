@@ -207,8 +207,9 @@ static INT CeilDiv(INT a, INT2 b)  // ceil(a/b)
 
 struct GridDim {
   enum : CUDA_LONG {
-    maxThreadsPerBlock = 1024,  // use this many threads per block
+    maxThreadsPerBlock = 256,  // use this many threads per block
     maxWarpsPerBlock = 32,      // use this many warps per block. This means 1024 threads for warpSize=32
+    maxElementsPerThread = 4
   };
 
   // use these for launching
@@ -272,19 +273,14 @@ struct GridDim {
     return cachedDevicesProps[GetCurrentDeviceId()];
   }
 
-  // compute our location on the grid
-  static __device__ CUDA_LONG GetLinearThreadId() {
-    return blockDim.x * blockIdx.x + threadIdx.x;
-  }
-
  private:
   static std::vector<cudaDeviceProp> s_cachedDeviceProps;
   static std::once_flag s_cachedDevicePropsInitFlag;
 };
 
-#define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N) \
-  CUDA_LONG id = GridDim::GetLinearThreadId();     \
-  if (id >= N)                                     \
+#define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread)        \
+  CUDA_LONG id = NumElementsPerThread * blockDim.x * blockIdx.x + threadIdx.x;  \
+  if (id >= N)                                                                  \
     return;
 
 // CUDA_KERNEL_ASSERT is a macro that wraps an assert() call inside cuda kernels.
