@@ -11,13 +11,13 @@ Developers can now tap into the power of Nuphar through ONNX Runtime to accelera
 #### C/C++
 The Nuphar execution provider needs to be registered with ONNX Runtime to enable in the inference session. The C API details are [here](../C_API.md#c-api).
 
-### Python
+#### Python
 You can use the Nuphar execution provider via the python wheel from the ONNX Runtime build. The Nuphar execution provider will be automatically prioritized over the default CPU execution providers, thus no need to separately register the execution provider. Python APIs details are [here](../python/api_summary.rst#api-summary).
 
-### Using onnxruntime_perf_test/onnx_test_runner for performance and accuracy test
+### Performance and Accuracy Testing
 You can test your ONNX model's performance with [onnxruntime_perf_test](../../onnxruntime/test/perftest/README.md), or test accuracy with [onnx_test_runner](../../onnxruntime/test/onnx/README.txt). To run these tools with the Nuphar execution provider, please pass `-e nuphar` in command line options.
 
-### Model conversion/quantization
+### Model Conversion and Quantization
 You may use Python script [model_editor.py](../../onnxruntime/core/providers/nuphar/scripts/model_editor.py) to turn LSTM/GRU/RNN ops to Scan ops for a given model, and then use [model_quantizer.py](../../onnxruntime/core/providers/nuphar/scripts/model_quantizer.py) to quantize MatMul ops into MatMulInteger ops.
 
 We use dynamic per-row quantization for inputs of LSTM MatMul, so MatMul becomes three parts: quantization, MatMulInteger and dequantization. Weights for MatMulInteger are statically quantized per-column to int8. We have observed good speed-up and no loss of accuracy with this quantization scheme inside Scan for various LSTM models.
