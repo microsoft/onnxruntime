@@ -18,6 +18,10 @@ __global__ void TopKKernel(const T* input_x, T* output_v, int64_t* output_i, con
     __device__ bool ValueEquals(const Node& node) const { return abs((float)value_ - (float)node.value_) < 1e-5; }
   };
 
+  /* Implement a heap on deivcec to:
+     1.Only keep fixed number of max/min nodes ever pushed
+     2.Resort by new max/min policy
+     3.Resort by value/index of the Node */
   class Heap {
    public:
     __device__ Heap(int64_t K, int64_t largest) : K_(K), largest_(largest) {
@@ -51,22 +55,19 @@ __global__ void TopKKernel(const T* input_x, T* output_v, int64_t* output_i, con
     }
     __device__ bool Empty() const { return 0 == size_; }
     __device__ int64_t Size() const { return size_; }
-    __device__ void SetLargest(int64_t largest) { largest_ = largest; }
     __device__ void Sort(int64_t largest = 1) {
       largest_ = largest;
       for (int64_t i = 1; i < size_; ++i) {
         SortFromBottom(i);
       }
     }
-    bool sort_by_value_   = true;
-    bool ascending_index_ = true;
-
+    bool sort_by_value_ = true; // on true sort by value then index, on false only sort by index
    private:
     __device__ bool ShouldGoTop(const Node& n1, const Node& n2) const {
       if (largest_ == 1) {
-        return sort_by_value_ ? (n1.value_ < n2.value_ || ascending_index_ && n1.ValueEquals(n2) && n1.index_ > n2.index_) : n1.index_ < n2.index_;
+        return sort_by_value_ ? (n1.value_ < n2.value_ || n1.ValueEquals(n2) && n1.index_ > n2.index_) : n1.index_ < n2.index_;
       } else {
-        return sort_by_value_ ? (n2.value_ < n1.value_ || ascending_index_ && n1.ValueEquals(n2) && n1.index_ > n2.index_) : n2.index_ < n1.index_;
+        return sort_by_value_ ? (n2.value_ < n1.value_ || n1.ValueEquals(n2) && n1.index_ > n2.index_) : n2.index_ < n1.index_;
       }
     }
     __device__ void SortFromTop() {
@@ -91,7 +92,7 @@ __global__ void TopKKernel(const T* input_x, T* output_v, int64_t* output_i, con
       if (pos == -1) {
         pos = size_ - 1;
       }
-      auto pap = pos >> 1;
+      auto pap = pos - 1 >> 1;
       while (pos > 0 && ShouldGoTop(nodes_[pos], nodes_[pap])) {
         auto tmp_nd = nodes_[pos];
         nodes_[pos] = nodes_[pap];
@@ -102,7 +103,7 @@ __global__ void TopKKernel(const T* input_x, T* output_v, int64_t* output_i, con
     }
     int64_t K_;
     int64_t size_ = 0;
-    int64_t largest_ = 1;  // keep largest K ever pushed
+    int64_t largest_ = 1; // keep largest K ever pushed with min on top, or keep smallest K with max on top 
     Node* nodes_ = nullptr;
   };
 
@@ -113,10 +114,7 @@ __global__ void TopKKernel(const T* input_x, T* output_v, int64_t* output_i, con
     auto input_offset = left + i * (axis == size - 1 ? 1 : elem_nums[axis + 1]) + right;
     heap.Push({input_x[input_offset], i});
   }
-  if (1 == sorted) {
-    heap.ascending_index_ = true;
-    heap.Sort(largest);
-  } else {
+  if (1 != sorted) {
     heap.sort_by_value_ = false;
     heap.Sort(-1);
   }

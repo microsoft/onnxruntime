@@ -3,10 +3,7 @@
 
 #include "topk.h"
 #include "topk_impl.h"
-//#include "core/common/common.h"
-//#include "core/framework/op_kernel.h"
-//#include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cuda_allocator.h"
+// #include "core/providers/cuda/cuda_allocator.h"
 
 namespace onnxruntime {
 namespace cuda {
