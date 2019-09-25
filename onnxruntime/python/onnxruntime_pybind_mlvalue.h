@@ -14,6 +14,8 @@
 #include "core/session/environment.h"
 #include "core/framework/ml_value.h"
 #include "core/session/inference_session.h"
+#include "core/session/IOBinding.h"
+#include "core/training/training_session.h"
 
 
 using namespace std;
@@ -23,6 +25,8 @@ namespace python {
 namespace py = pybind11;
 
 int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type);
+
+MLDataType NumpyTypeToOnnxRuntimeType(int numpy_type);
 
 void CreateGenericMLValue(AllocatorPtr alloc, const std::string& name_input, py::object& value, OrtValue* p_mlvalue);
 

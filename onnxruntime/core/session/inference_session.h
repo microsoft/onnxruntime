@@ -458,4 +458,15 @@ class InferenceSession {
   InterOpDomains interop_domains_;
 #endif
 };
+
+struct SessionIOBinding {
+ public:
+  SessionIOBinding(InferenceSession* session);
+
+  IOBinding* Get();
+
+ private:
+  std::unique_ptr<IOBinding> binding_;
+};
+
 }  // namespace onnxruntime

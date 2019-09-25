@@ -42,7 +42,6 @@ GraphAugmenter::GraphDefs MeanSquaredError::operator()(const Graph& graph, const
   // Pow
   {
     onnx::TensorProto tensor_proto;
-    tensor_proto.add_dims(1);
     tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     tensor_proto.add_float_data(2.f);
     tensor_proto.set_name("MeanSquaredError_exponent");
@@ -67,31 +66,10 @@ GraphAugmenter::GraphDefs MeanSquaredError::operator()(const Graph& graph, const
                                        ArgDef("MeanSquaredError_diff_square"), // Inputs
                                    },
                                    {
-                                       ArgDef("MeanSquaredError_reduce_mean"), // Outputs
+                                       ArgDef(loss_name), // Outputs
                                    },
                                    {MakeAttribute("keepdims", int64_t(0))},
                                    "MeanSquaredError_reduce_mean"  // name
-                                   ));
-  }
-  // Reshape
-  {
-    onnx::TensorProto tensor_proto;
-    tensor_proto.add_dims(1);
-    tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-    tensor_proto.add_int64_data(1);
-    tensor_proto.set_name("MeanSquaredError_shape");
-    graph_defs.AddInitializers({tensor_proto});
-
-    new_nodes.emplace_back(NodeDef("Reshape",  // Op
-                                   {
-                                       ArgDef("MeanSquaredError_reduce_mean"), // Inputs
-                                       ArgDef("MeanSquaredError_shape"),
-                                   },
-                                   {
-                                       ArgDef(loss_name),   // Outputs
-                                   },
-                                   NodeAttributes(),
-                                   "MeanSquaredError_reshape"  // name
                                    ));
   }
 

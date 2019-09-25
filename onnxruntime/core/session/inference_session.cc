@@ -1045,4 +1045,12 @@ common::Status InferenceSession::WaitForNotification(Notification* p_executor_do
   return Status::OK();
 }
 
+SessionIOBinding::SessionIOBinding(InferenceSession* session) {
+  ORT_ENFORCE(session->NewIOBinding(&binding_).IsOK());
+}
+
+IOBinding* SessionIOBinding::Get() {
+  return binding_.get();
+}
+
 }  // namespace onnxruntime

@@ -8,6 +8,15 @@
 #include "core/framework/utils.h"
 
 namespace onnxruntime {
+
+static std::pair<bool, size_t> Contains(const std::vector<std::string>& output_names, const std::string& oname) {
+  auto it = std::find(std::begin(output_names), std::end(output_names), oname);
+  if (it == std::end(output_names)) {
+    return {false, 0};
+  }
+  return {true, it - std::begin(output_names)};
+}
+
 IOBinding::IOBinding(const SessionState& session_state) : session_state_(session_state) {
 }
 
@@ -20,6 +29,13 @@ common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_
 
   OrtValue new_mlvalue;
   ORT_RETURN_IF_ERROR(utils::CopyOneInputAcrossDevices(session_state_, name, ml_value, new_mlvalue));
+
+  auto rc = Contains(feed_names_, name);
+  if (rc.first) {
+    feeds_[rc.second] = ml_value;
+    return Status::OK();
+  }
+
   feed_names_.push_back(name);
   feeds_.push_back(new_mlvalue);
 
@@ -55,14 +71,6 @@ common::Status IOBinding::SynchronizeInputs() {
 common::Status IOBinding::SynchronizeOutputs() {
   ORT_RETURN_IF_ERROR(SyncProviders(session_state_.GetOutputNodeInfoMap(), session_state_));
   return Status::OK();
-}
-
-static std::pair<bool, size_t> Contains(const std::vector<std::string>& output_names, const std::string& oname) {
-  auto it = std::find(std::begin(output_names), std::end(output_names), oname);
-  if (it == std::end(output_names)) {
-    return {false, 0};
-  }
-  return {true, it - std::begin(output_names)};
 }
 
 common::Status IOBinding::BindOutput(const std::string& name, const OrtValue& ml_value) {
