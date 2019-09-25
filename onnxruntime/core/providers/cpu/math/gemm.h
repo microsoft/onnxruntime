@@ -33,9 +33,9 @@ class Gemm : public OpKernel {
 
     const auto* X = context->Input<Tensor>(0);
     const auto* W = context->Input<Tensor>(1);
-    const auto* B = context->Input<Tensor>(2);
-    // Bias could be missing. Treat as scalar 0 if that is the case. 
-    GemmHelper helper(X->Shape(), trans_A_ != CblasNoTrans, W->Shape(), trans_B_ != CblasNoTrans, 
+    const auto* B = context->InputCount() == 3 ? context->Input<Tensor>(2) : nullptr;
+    // Bias could be missing. Treat as scalar 0 if that is the case.
+    GemmHelper helper(X->Shape(), trans_A_ != CblasNoTrans, W->Shape(), trans_B_ != CblasNoTrans,
                       B != nullptr ? B->Shape() : TensorShape({}));
 
     if (!helper.State().IsOK())
@@ -49,23 +49,30 @@ class Gemm : public OpKernel {
       return Status::OK();
     T* y_data = Y->template MutableData<T>();
 
-    // Broadcast the bias as needed IF the bias is provided
-    if (beta_ != 0 && B != nullptr) {
+    if (beta_ != 0) {
       auto output_mat = EigenMatrixMapRowMajor<T>(y_data, M, N);
-      const auto& b_shape = B->Shape();
-      const T* b_data = B->template Data<T>();
-      if (b_shape.Size() == 1) {
-        // B is (), (1,) or (1, 1), set the scalar
-        output_mat.setConstant(*b_data);
-      } else if (b_shape.NumDimensions() == 1 || b_shape[0] == 1) {
-        // B is (N,) or (1, N)
-        output_mat.rowwise() = ConstEigenVectorMap<T>(b_data, N).transpose();
-      } else if (b_shape[1] == 1) {
-        // B is (M, 1)
-        output_mat.colwise() = ConstEigenVectorMap<T>(b_data, M);
+      // if beta is non-zero and bias is missing, we need to reset memory of the output buffer to 0
+      // treating the "missing" bias as scalar 0, otherwise any junk data in the output buffer will be used as bias
+      if (B == nullptr) {
+        // B is treated as scalar 0
+        output_mat.setConstant(0);
       } else {
-        // B is (M, N), no broadcast needed.
-        output_mat = ConstEigenMatrixMapRowMajor<T>(b_data, M, N);
+        // Broadcast the bias as needed IF the bias is provided
+        const auto& b_shape = B->Shape();
+        const T* b_data = B->template Data<T>();
+        if (b_shape.Size() == 1) {
+          // B is (), (1,) or (1, 1), set the scalar
+          output_mat.setConstant(*b_data);
+        } else if (b_shape.NumDimensions() == 1 || b_shape[0] == 1) {
+          // B is (N,) or (1, N)
+          output_mat.rowwise() = ConstEigenVectorMap<T>(b_data, N).transpose();
+        } else if (b_shape[1] == 1) {
+          // B is (M, 1)
+          output_mat.colwise() = ConstEigenVectorMap<T>(b_data, M);
+        } else {
+          // B is (M, N), no broadcast needed.
+          output_mat = ConstEigenMatrixMapRowMajor<T>(b_data, M, N);
+        }
       }
     }
 

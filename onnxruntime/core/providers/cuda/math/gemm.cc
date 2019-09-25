@@ -48,9 +48,9 @@ template <typename T>
 Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  const auto X = ctx->Input<Tensor>(0);
-  const auto W = ctx->Input<Tensor>(1);
-  const auto B = ctx->Input<Tensor>(2);
+  const auto* X = ctx->Input<Tensor>(0);
+  const auto* W = ctx->Input<Tensor>(1);
+  const auto* B = context->InputCount() == 3 ? context->Input<Tensor>(2) : nullptr;
   // Bias could be missing. Treat as scalar 0 if that is the case.
   GemmHelper helper(X->Shape(), trans_A_ != CblasNoTrans, W->Shape(), trans_B_ != CblasNoTrans,
                     B != nullptr ? B->Shape() : TensorShape({}));
@@ -68,7 +68,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
   // Broadcast the bias as needed IF the bias is provided
-  if (beta_ != 0 && B != nullptr) {
+  if (beta_ != 0) {
     auto& b_shape = B->Shape();
     const CudaT* b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
 
