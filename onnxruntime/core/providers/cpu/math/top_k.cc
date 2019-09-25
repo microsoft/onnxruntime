@@ -202,7 +202,7 @@ Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input, const
   // extract sorted smallest TopK elements
   else if (sorted && !largest) {
     // Average - O(NlogK). Worst - O(NlogK), where 'N' is the number of input elements
-    extract_top_k_elements<true, true, LesserValueCmp<float>>(input, input_shape, values, indices, output_shape, k, gsl::narrow_cast<unsigned>(axis_parsed));
+    extract_top_k_elements<false, true, LesserValueCmp<float>>(input, input_shape, values, indices, output_shape, k, gsl::narrow_cast<unsigned>(axis_parsed));
   }
 
   // extract unsorted (order undefined) largest TopK elements
@@ -214,7 +214,7 @@ Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input, const
   // extract unsorted (order undefined) smallest TopK elements
   else if (!largest) {
     // Average - O(N). Worst - O(NlogN)/O(N^2) depending on underlying implementation, where 'N' is the number of input elements
-    extract_top_k_elements<true, false, LesserValueCmp<float>>(input, input_shape, values, indices, output_shape, k, gsl::narrow_cast<unsigned>(axis_parsed));
+    extract_top_k_elements<false, false, LesserValueCmp<float>>(input, input_shape, values, indices, output_shape, k, gsl::narrow_cast<unsigned>(axis_parsed));
   }
 
   return Status::OK();
