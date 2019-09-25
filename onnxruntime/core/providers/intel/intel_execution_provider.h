@@ -9,7 +9,7 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/allocatormgr.h"
 #include "intel_graph.h"
-#include "intel_custom_op.h"
+//#include "intel_custom_op.h"
 #include <map>
 
 namespace ngraph {
@@ -38,12 +38,8 @@ struct IntelEPFunctionState {
   DestroyFunc destroy_func = nullptr;
   AllocatorHandle allocator_handle = nullptr;
   std::shared_ptr<intel_ep::IntelGraph> intel_graph = nullptr;
+  const onnxruntime::Node* fused_node_copy;
 };
-
-// Information needed to construct nGraph execution providers.
-/*struct IntelExecutionProviderInfo {
-  const std::string ng_backend_type;
-};*/
 
 // Logical device representation.
 class IntelExecutionProvider : public IExecutionProvider {
@@ -65,9 +61,10 @@ class IntelExecutionProvider : public IExecutionProvider {
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;
   }
-
+  //const onnxruntime::Node* fused_node_copy;
  private:
   IntelExecutionProviderInfo info_;
+  const onnxruntime::Node* fused_node_copy;
   std::shared_ptr<ngraph::runtime::Backend> ng_backend_;
 };
 

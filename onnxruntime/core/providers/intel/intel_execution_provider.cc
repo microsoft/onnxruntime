@@ -9,7 +9,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "intel_execution_provider.h"
-#include "intel_custom_op.h"
+//#include "intel_custom_op.h"
 #include "intel_graph.h"
 
 #include "core/framework/tensorprotoutils.h"
@@ -36,9 +36,11 @@
 namespace onnxruntime {
 
 constexpr const char* Intel = "Intel";
+//const onnxruntime::Node* fused_node_copy;
 
 IntelExecutionProvider::IntelExecutionProvider(const IntelExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kIntelExecutionProvider} {
+  std::cout << "In the Intel EP" << std::endl;	    
   ORT_UNUSED_PARAMETER(info);
 
   DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) {return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(Intel, OrtDeviceAllocator));}, std::numeric_limits<size_t>::max()});
@@ -49,7 +51,7 @@ IntelExecutionProvider::IntelExecutionProvider(const IntelExecutionProviderInfo&
 static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer) {
   const auto& optype = node->OpType();
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
-
+  std::cout << "Op Type: " << optype << std::endl;
   if (optype == "Reshape") {
     //nGraph Reshape op currently requires shape info available in advance.
     const auto& shape_arg = node->InputDefs()[1];
@@ -497,6 +499,7 @@ IntelExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
 
 static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node) {
+  std::cout << "In Get model proto from fused node" << std::endl;
   const auto* node_function = fused_node->GetFunctionBody();
 
   ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", fused_node->Name());
@@ -512,7 +515,6 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
   auto opset = model_proto.add_opset_import();
   opset->set_domain(kOnnxDomain);
   opset->set_version(node_subgraph.DomainToVersionMap().at(kOnnxDomain));
-
   return model_proto;
 }
 
@@ -522,41 +524,30 @@ common::Status IntelExecutionProvider::Compile(
     std::vector<NodeComputeInfo>& node_compute_funcs) {
  for (const auto& fused_node : fused_nodes) {
     NodeComputeInfo compute_info;
-
-    // Local copy of backend since, class members cannot be captured.
-    //auto ngraph_backend = ng_backend_;
-    compute_info.create_state_func = [model_proto = GetModelProtoFromFusedNode(fused_node)]//, ngraph_backend]
-                                     (ComputeContext* context, FunctionState* state)
-    {
-      auto* p = new intel_ep::IntelCustomOp(context, model_proto);//, ngraph_backend);
-      *state = p;
-      return 0;
+    std::shared_ptr<intel_ep::IntelGraph> intel_graph;
+    intel_graph = std::make_shared<intel_ep::IntelGraph>(fused_node); 
+    auto model_proto = GetModelProtoFromFusedNode(fused_node);  
+    compute_info.create_state_func = 
+	    [intel_graph](ComputeContext* context, FunctionState* state) {
+	    IntelEPFunctionState* p = new IntelEPFunctionState();
+	    p->allocate_func = context->allocate_func;
+	    p->destroy_func = context->release_func;
+	    p->allocator_handle = context->allocator_handle;
+	    p->intel_graph = intel_graph;
+	    *state = static_cast<FunctionState>(p);
+	    return 0;
     };
-/*
-    compute_info.release_state_func = [](FunctionState state) {
-      if (state)
-        delete reinterpret_cast<onnxruntime::intel_ep::IntelCustomOp*>(state);
-    };
-*/
-    compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
-      onnxruntime::intel_ep::IntelCustomOp* ng_custom_op = reinterpret_cast<onnxruntime::intel_ep::IntelCustomOp*>(state);
-      //return ng_custom_op->CreateNGraphFunc(api, context);
-      ng_custom_op->CreateNGraphFunc(api, context);
-
+    compute_info.compute_func = [model_proto](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       auto function_state = static_cast<IntelEPFunctionState*>(state);
-      std::cout << "After Create Ngraph Func" << std::endl;
           try {
-      std::cout << "Before Infer" << std::endl;
-            function_state->intel_graph->Infer(*api, context);
-      std::cout << "After Infer" << std::endl;
+            function_state->intel_graph->Infer(model_proto,*api, context);
+            std::cout << "After Infer" << std::endl;
           } catch (const char* msg) {
             return common::Status(common::ONNXRUNTIME, common::FAIL);
           }
       return Status::OK();
     };
 
-          std::cout << "Compute Function done" << std::endl;
-
     compute_info.release_state_func =
         [](FunctionState state) {
           if (state) {
@@ -567,82 +558,6 @@ common::Status IntelExecutionProvider::Compile(
     node_compute_funcs.push_back(compute_info);
   }
 
-  return Status::OK();
-/*--------------------------------------------------
-  
-    NodeComputeInfo compute_info;
-
-    compute_info.create_state_func =
-        [intel_graph](ComputeContext* context, FunctionState* state) {
-          IntelEPFunctionState* p = new IntelEPFunctionState();
-          p->allocate_func = context->allocate_func;
-          p->destroy_func = context->release_func;
-          p->allocator_handle = context->allocator_handle;
-          p->intel_graph = intel_graph;
-          *state = static_cast<FunctionState>(p);
-          return 0;
-        };
-
-    compute_info.compute_func =
-        [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
-          Ort::CustomOpApi ort{*api};
-
-          auto function_state = static_cast<IntelEPFunctionState*>(state);
-
-          try {
-            function_state->intel_graph->Infer(ort, context);
-          } catch (const char* msg) {
-            return common::Status(common::ONNXRUNTIME, common::FAIL);
-          }
-
-          return Status::OK();
-        };
-
-    compute_info.release_state_func =
-        [](FunctionState state) {
-          if (state) {
-            IntelEPFunctionState* function_state = static_cast<IntelEPFunctionState*>(state);
-            delete function_state;
-          }
-        };
-
-    node_compute_funcs.push_back(compute_info);
-  }
-
-  return Status::OK(); */
-}
-
-/*
-Status IntelExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                                        std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (const auto& fused_node : fused_nodes) {
-    NodeComputeInfo compute_info;
-
-    // Local copy of backend since, class members cannot be captured.
-    auto ngraph_backend = ng_backend_;
-    compute_info.create_state_func = [model_proto = GetModelProtoFromFusedNode(fused_node), ngraph_backend]
-                                     (ComputeContext* context, FunctionState* state)
-    {
-      auto* p = new intel_ep::IntelCustomOp(context, model_proto, ngraph_backend);
-      *state = p;
-      return 0;
-    };
-
-    compute_info.release_state_func = [](FunctionState state) {
-      if (state)
-        delete reinterpret_cast<onnxruntime::intel_ep::IntelCustomOp*>(state);
-    };
-
-    compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
-      onnxruntime::intel_ep::IntelCustomOp* ng_custom_op = reinterpret_cast<onnxruntime::intel_ep::IntelCustomOp*>(state);
-      return ng_custom_op->Compute(api, context);
-    };
-
-    node_compute_funcs.push_back(compute_info);
-  }
-
-  return Status::OK();
-}
-*/
-
+  return Status::OK(); 
+ }
 }  // namespace onnxruntime
