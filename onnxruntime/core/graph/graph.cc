@@ -15,6 +15,7 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/utils.h"
 #include "core/graph/function.h"
 #include "core/graph/function_impl.h"
 #include "core/graph/graph_utils.h"
