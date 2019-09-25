@@ -229,8 +229,6 @@ void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, i
   ORT_UNUSED_PARAMETER(name);
   ORT_UNUSED_PARAMETER(logger);
 
-  const int total_tasks = max / (step > 0 ? step : 1) + (max % step > 0 ? 1 : 0);
-
   // ORT_ENFORCE may and does throw at times from within the tasks that run
   // on a thread-pool. Without propagating exceptions the process exits silently
   // which will make diagnosing bugs more difficult.
@@ -248,8 +246,10 @@ void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, i
   //
   // The only solution with the current Eigen that comes to mind is to have shared_ptr to with std::promise.
   //
-
+  const int total_tasks = max / (step > 0 ? step : 1) + (max % step > 0 ? 1 : 0);
   std::vector<std::future<void> > futures;
+  futures.reserve(total_tasks);
+
   for (int i = 0, t = 0; i < max; i += step, ++t) {
     auto p_ptr = std::make_shared<std::promise<void> >();
     futures.push_back(p_ptr->get_future());
@@ -263,15 +263,24 @@ void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, i
     });
   }
 
-  // If ORT_ENFORCE is failing multiple threads can throw
-  // we ignore other exceptions but one. Futures with unclaimed
-  // shared states should destruct just fine.
+  // We'd like to wait until all of the tasks have finished
+  // even though one or more have already thrown. We will store
+  // the first exception and then will re-throw at the end.
+  std::exception_ptr pending_exception;
   for (auto& fut : futures) {
     try {
+      // get() will re-throw any exceptions
+      // the running task may throw
       fut.get();
     } catch (...) {
-      throw;
+      if (!pending_exception) {
+        pending_exception = std::current_exception();
+      }
     }
+  }
+
+  if (pending_exception) {
+    std::rethrow_exception(pending_exception);
   }
 
 #endif

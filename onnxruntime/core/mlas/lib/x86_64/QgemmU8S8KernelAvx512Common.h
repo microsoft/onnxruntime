@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    QgemmU8U8KernelAvx512Common.h
+    QgemmU8S8KernelAvx512Common.h
 
 Abstract:
 
@@ -20,7 +20,7 @@ Abstract:
 
 /*++
 
-  Macro Description:
+Macro Description:
 
     This macro generates code to execute the block compute macro multiple
     times and advancing the matrix A and matrix B data pointers.
@@ -51,14 +51,38 @@ Implicit Arguments:
 
         mov     rbp,rcx                     # reload row length remaining
 
+.if ((\RowCount\() & 1) == 0)
+        sub     rbp,4*4
+        jb      .LProcessRemainingBlocks\@
+
+.LComputeBlockBy4Loop\@:
+        ComputeBlock \ColumnCount\(), \RowCount\(), 0*64, 0
+        ComputeBlock \ColumnCount\(), \RowCount\(), 1*64, 4
+        ComputeBlock \ColumnCount\(), \RowCount\(), 2*64, 8
+        ComputeBlock \ColumnCount\(), \RowCount\(), 3*64, 12
+        add     rdi,4*4                     # advance matrix A by 1 quad
+.if \RowCount\() > 3
+        add     rbx,4*4                     # advance matrix A plus 3 rows by 1 quad
+.endif
+        add     rsi,4*64                    # advance matrix B
+        sub     rbp,4*4                     # decrement quads remaining
+        jae     .LComputeBlockBy4Loop\@
+
+.LProcessRemainingBlocks\@:
+        add     rbp,4*4                     # correct for over-subtract above
+        jz      .LComputeBlockLoopExit\@
+.endif
+
 .LComputeBlockBy1Loop\@:
         ComputeBlock \ColumnCount\(), \RowCount\(), 0, 0
-        add     rdi,4                       # advance matrix A by 1 pair
+        add     rdi,4                       # advance matrix A by 1 quad
 .if \RowCount\() > 3
-        add     rbx,4                       # advance matrix A plus 3 rows by 1 pair
+        add     rbx,4                       # advance matrix A plus 3 rows by 1 quad
 .endif
-        add     rsi,32                      # advance matrix B
-        sub     rbp,4
+        add     rsi,64                      # advance matrix B
+        sub     rbp,4                       # decrement quads remaining
         jnz     .LComputeBlockBy1Loop\@
+
+.LComputeBlockLoopExit\@:
 
         .endm
