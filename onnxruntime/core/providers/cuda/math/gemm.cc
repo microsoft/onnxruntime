@@ -20,10 +20,20 @@ namespace cuda {
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Gemm<T>);                                                   \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Gemm,                                                       \
       kOnnxDomain,                                                \
       9,                                                          \
+      10,                                                         \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Gemm<T>);                                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      Gemm,                                                       \
+      kOnnxDomain,                                                \
+      11,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
@@ -41,7 +51,9 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto X = ctx->Input<Tensor>(0);
   const auto W = ctx->Input<Tensor>(1);
   const auto B = ctx->Input<Tensor>(2);
-  GemmHelper helper(X->Shape(), trans_A_, W->Shape(), trans_B_, B->Shape());
+  // Bias could be missing. Treat as scalar 0 if that is the case.
+  GemmHelper helper(X->Shape(), trans_A_ != CblasNoTrans, W->Shape(), trans_B_ != CblasNoTrans,
+                    B != nullptr ? B->Shape() : TensorShape({}));
 
   if (!helper.State().IsOK())
     return helper.State();
@@ -55,8 +67,8 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
-  // broadcast bias if needed
-  if (beta_ != 0) {
+  // Broadcast the bias as needed IF the bias is provided
+  if (beta_ != 0 && B != nullptr) {
     auto& b_shape = B->Shape();
     const CudaT* b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
 

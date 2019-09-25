@@ -31,10 +31,12 @@ class Gemm : public OpKernel {
     auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
     concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
 
-    const auto X = context->Input<Tensor>(0);
-    const auto W = context->Input<Tensor>(1);
-    const auto B = context->Input<Tensor>(2);
-    GemmHelper helper(X->Shape(), trans_A_ != CblasNoTrans, W->Shape(), trans_B_ != CblasNoTrans, B->Shape());
+    const auto* X = context->Input<Tensor>(0);
+    const auto* W = context->Input<Tensor>(1);
+    const auto* B = context->Input<Tensor>(2);
+    // Bias could be missing. Treat as scalar 0 if that is the case. 
+    GemmHelper helper(X->Shape(), trans_A_ != CblasNoTrans, W->Shape(), trans_B_ != CblasNoTrans, 
+                      B != nullptr ? B->Shape() : TensorShape({}));
 
     if (!helper.State().IsOK())
       return helper.State();
@@ -47,8 +49,8 @@ class Gemm : public OpKernel {
       return Status::OK();
     T* y_data = Y->template MutableData<T>();
 
-    // Broadcast the bias as needed.
-    if (beta_ != 0) {
+    // Broadcast the bias as needed IF the bias is provided
+    if (beta_ != 0 && B != nullptr) {
       auto output_mat = EigenMatrixMapRowMajor<T>(y_data, M, N);
       const auto& b_shape = B->Shape();
       const T* b_data = B->template Data<T>();
