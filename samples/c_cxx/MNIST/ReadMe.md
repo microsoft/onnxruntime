@@ -1,6 +1,6 @@
 # MNIST Sample - Number recognition
 
-This sample uses the MNIST model from the Model Zoo: https://github.com/onnx/models/tree/master/mnist
+This sample uses the MNIST model from the Model Zoo: https://github.com/onnx/models/tree/master/vision/classification/mnist
 
 ![Screenshot](Screenshot.png)
 

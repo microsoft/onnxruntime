@@ -23,11 +23,11 @@ NnapiExecutionProvider::NnapiExecutionProvider()
                                               std::numeric_limits<size_t>::max()};
   InsertAllocator(CreateAllocator(device_info));
 
-  DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUOutput,
+  DeviceAllocatorRegistrationInfo cpu_memory_info({OrtMemTypeCPUOutput,
                                                       [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(NNAPI, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); },
                                                       std::numeric_limits<size_t>::max()});
 
-  InsertAllocator(CreateAllocator(cpu_allocator_info));
+  InsertAllocator(CreateAllocator(cpu_memory_info));
 }
 
 NnapiExecutionProvider::~NnapiExecutionProvider() {}

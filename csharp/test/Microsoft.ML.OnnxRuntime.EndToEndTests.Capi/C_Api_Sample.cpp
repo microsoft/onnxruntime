@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
   // initialize session options if needed
   OrtSessionOptions* session_options;
   CHECK_STATUS(OrtCreateSessionOptions(&session_options));
-  OrtSetSessionThreadPoolSize(session_options, 1);
+  OrtSetIntraOpNumThreads(session_options, 1);
 
   // Sets graph optimization level
   OrtSetSessionGraphOptimizationLevel(session_options, ORT_ENABLE_BASIC);
@@ -127,14 +127,14 @@ int main(int argc, char* argv[]) {
     input_tensor_values[i] = (float)i / (input_tensor_size + 1);
 
   // create input tensor object from data values
-  OrtMemoryInfo* allocator_info;
-  CHECK_STATUS(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
+  OrtMemoryInfo* memory_info;
+  CHECK_STATUS(OrtCreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
   OrtValue* input_tensor = NULL;
-  CHECK_STATUS(OrtCreateTensorWithDataAsOrtValue(allocator_info, input_tensor_values.data(), input_tensor_size * sizeof(float), input_node_dims.data(), 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
+  CHECK_STATUS(OrtCreateTensorWithDataAsOrtValue(memory_info, input_tensor_values.data(), input_tensor_size * sizeof(float), input_node_dims.data(), 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
   int is_tensor;
   CHECK_STATUS(OrtIsTensor(input_tensor, &is_tensor));
   assert(is_tensor);
-  OrtReleaseMemoryInfo(allocator_info);
+  OrtReleaseMemoryInfo(memory_info);
 
   // score model & input tensor, get back output tensor
   OrtValue* output_tensor = NULL;

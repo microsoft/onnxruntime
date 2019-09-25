@@ -630,6 +630,89 @@ TEST(Loop, SubgraphInputShadowsOuterScopeValue) {
   }
 }
 
+TEST(Loop, Opset11WithNoVariadicInputsAndOutputs) {
+  auto create_subgraph = []() {
+    Model model("Loop opset 11 op body graph");
+    auto& graph = model.MainGraph();
+
+    std::vector<NodeArg*> inputs;
+    std::vector<NodeArg*> outputs;
+
+    // graph inputs types.
+    // iteration number
+    TypeProto int64_scalar;
+    int64_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+    int64_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    // loop condition
+    TypeProto bool_scalar;
+    bool_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+    bool_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+     
+    // graph output types
+    // constant_out
+    TypeProto float_scalar;
+    float_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+
+    // graph inputs
+    auto& iter_num_in = graph.GetOrCreateNodeArg("iter_num_in", &int64_scalar);
+    auto& cond_in = graph.GetOrCreateNodeArg("cond_in", &bool_scalar);
+
+    // graph outputs
+    auto& cond_out = graph.GetOrCreateNodeArg("cond_out", &bool_scalar);
+    auto& constant_out = graph.GetOrCreateNodeArg("constant_out", &float_scalar);
+
+    // cond_in -> cond_out
+    {
+      inputs = {&cond_in};
+      outputs = {&cond_out};
+
+      graph.AddNode("cond_in_identity", "Identity", "Forward cond_in to cond_out", inputs, outputs);
+    }
+
+    // produce constant_out 
+    {
+      outputs = {&constant_out};
+
+      TensorProto constant_tensor_proto;
+
+      auto& constant_node = graph.AddNode("constant_out", "Constant", "Produce constant_out", {}, outputs);
+
+      AttributeProto attr_proto;
+      attr_proto.set_name("value");
+      attr_proto.set_type(AttributeProto_AttributeType_TENSOR);
+
+      auto* constant_attribute_tensor_proto = attr_proto.mutable_t();
+      constant_attribute_tensor_proto->mutable_dims()->Clear(); // scalar
+      constant_attribute_tensor_proto->set_data_type(TensorProto_DataType_FLOAT); //float scalar
+      *constant_attribute_tensor_proto->mutable_float_data()->Add() = 1.0f; //float scalar with value 1.0f
+
+      constant_node.AddAttribute("value", attr_proto);
+    }
+
+    graph.SetInputs({&iter_num_in, &cond_in});
+    graph.SetOutputs({&cond_out, &constant_out});
+
+    auto status = graph.Resolve();
+    EXPECT_EQ(status, Status::OK());
+
+    return graph.ToGraphProto();
+  };
+
+  OpTester test("Loop", 11);
+  auto body = create_subgraph();
+  test.AddAttribute<GraphProto>("body", body);
+  test.AddInput<int64_t>("M", {1}, {1});
+  test.AddInput<bool>("cond", {1}, {true});
+  // This 'Loop' has no variadic inputs to test the spec of 'Loop' opset 11 which allows 
+  // 'Loop' to be used without variadic inputs
+
+  test.AddOutput<float>("loop_scan_out", {1}, {1.0f});
+
+  // Disable TensorRT on unsupported data type BOOL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 #ifdef USE_CUDA
 // test that when part of the subgraph run on CUDA it executes successfully
 TEST(Loop, MixedExecutionProviders) {
