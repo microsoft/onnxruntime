@@ -301,9 +301,14 @@ struct WritableSliceIterator {
   // Initialize initial skip and inner_extent.
   void Init(const std::vector<int64_t>& dims, gsl::span<const int64_t> starts,
             gsl::span<const int64_t> steps) {
-    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == starts.size() &&
-                static_cast<ptrdiff_t>(dims.size()) == extents_.size() &&
-                static_cast<ptrdiff_t>(dims.size()) >= steps.size());
+    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == starts.size(),
+                "dims.size()=", dims.size(), " != ", "starts.size()=", starts.size());
+
+    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == extents_.size(),
+                "dims.size()=", dims.size(), " != ", "extents.size()=", extents_.size());
+
+    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == steps.size(),
+                "dims.size()=", dims.size(), " != ", "steps.size()=", steps.size());
 
     size_t pitch = 1;
     // Initial skip, so that input_ points to the first element to copy
