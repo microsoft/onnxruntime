@@ -69,7 +69,7 @@ class ConvBase {
     kernel_shape_specified_ = info.GetAttrs<int64_t>("kernel_shape", kernel_shape_).IsOK();
 
     status = info.GetAttrs<int64_t>("strides", strides_);
-    if (!status.IsOK()) {
+    if (!status.IsOK() || strides_.empty()) {
       strides_.resize(kernel_shape_.size(), 1);
     }
 
@@ -79,7 +79,7 @@ class ConvBase {
     }
 
     status = info.GetAttrs<int64_t>("dilations", dilations_);
-    if (!status.IsOK()) {
+    if (!status.IsOK() || dilations_.empty()) {
       dilations_.resize(kernel_shape_.size(), 1);
     }
 

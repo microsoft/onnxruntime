@@ -162,7 +162,6 @@ class PoolBase {
   }
 
   ~PoolBase() = default;
-  ;
 
   std::vector<int64_t> SetOutputSize(const TensorShape& input_shape,
                                      int64_t output_channel,

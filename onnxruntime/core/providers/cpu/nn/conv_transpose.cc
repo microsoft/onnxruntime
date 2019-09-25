@@ -23,9 +23,15 @@
 
 namespace onnxruntime {
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    ConvTranspose,
+    1, 10,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    ConvTranspose<float>);
+
 ONNX_CPU_OPERATOR_KERNEL(
     ConvTranspose,
-    1,
+    11,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     ConvTranspose<float>);
 
