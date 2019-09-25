@@ -406,8 +406,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"unique_sorted_axis_3d", "Unique not implemented yet"},
       {"unique_sorted_axis", "Unique not implemented yet"},
       {"unique_sorted_with_negative_axis", "Unique not implemented yet"},
-      {"scatter_elements_with_axis", "not implemented yet"},
-      {"scatter_elements_without_axis", "not implemented yet"},
       {"round", "not implemented yet"},
       {"gather_elements_1", "not implemented yet"},
       {"gather_elements_0", "not implemented yet"},
