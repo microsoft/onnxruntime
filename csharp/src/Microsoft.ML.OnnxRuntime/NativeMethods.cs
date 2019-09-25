@@ -60,8 +60,6 @@ namespace Microsoft.ML.OnnxRuntime
                                                 UIntPtr inputCount,
                                                 string[] outputNames,
                                                 UIntPtr outputCount,
-
-                                                [MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 5 /*index of outputCount*/)][In, Out]
                                                 IntPtr[] outputValues /* An array of output value pointers. Array must be allocated by the caller */
                                                 );
 
