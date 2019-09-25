@@ -86,7 +86,7 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 * [Intel nGraph](#nGraph)
 * [Intel OpenVINO](#openvino)
 * [Android NNAPI](#Android)
-* [Nuphar](#Nuphar)
+* [Nuphar Model Compiler](#Nuphar)
 
 **Options**
 * [OpenMP](#OpenMP)
@@ -108,22 +108,23 @@ docker run --rm -it onnxruntime_dev /bin/bash
 ```
 
 **GPU**
+
 If you need GPU support, please also install:
 1. nvidia driver. Before doing this please add `nomodeset rd.driver.blacklist=nouveau` to your linux [kernel boot parameters](https://www.kernel.org/doc/html/v4.17/admin-guide/kernel-parameters.html).
 2. nvidia-docker2: [Install doc](`https://github.com/NVIDIA/nvidia-docker/wiki/Installation-(version-2.0)`)
 
-To test if your nvidia-docker works:
+To test your nvidia-docker:
 ```
 docker run --runtime=nvidia --rm nvidia/cuda nvidia-smi
 ```
 
-Then build a docker image. We provided a sample for use:
+Then build a Docker image. We provided a sample for use:
 ```
 cd tools/ci_build/github/linux/docker
 docker build -t cuda_dev -f Dockerfile.ubuntu_gpu .
 ```
 
-Then run it
+Then run:
 ```
 ./tools/ci_build/github/linux/run_dockerbuild.sh
 ```
@@ -142,106 +143,129 @@ Read more about ONNX Runtime Server [here](https://github.com/microsoft/onnxrunt
 ## Execution Providers
 
 ### CUDA
-For Linux, please use [this Dockerfile](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/linux/docker/Dockerfile.ubuntu_gpu) and refer to instructions above for [building with Docker on Linux](#Docker-on-Linux)
+#### Pre-Requisites
+* Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
+  * ONNX Runtime is built and tested with CUDA 10.0 and cuDNN 7.3 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3)
+  * CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017.
+  * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`
+  * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`. The cuDNN path should contain `bin`, `include` and `lib` directories.
+  * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
 
-ONNX Runtime supports CUDA builds. You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn).
-
-ONNX Runtime is built and tested with CUDA 10.0 and cuDNN 7.3 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3). 
-CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017.
-
- - The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`.
- - The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`. The cuDNN path should contain `bin`, `include` and `lib` directories.
- - The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
-
-You can build with:
-
+#### Build Instructions
+##### Windows
 ```
-./build.sh --use_cuda --cudnn_home /usr --cuda_home /usr/local/cuda (Linux)
-./build.bat --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path> (Windows)
+./build.bat --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path>
 ```
 
-Depending on compatibility between the CUDA, cuDNN, and Visual Studio 2017 versions you are using, you may need to explicitly install an earlier version of the MSVC toolset.
-- CUDA 10.0 is known to work with toolsets from 14.11 up to 14.16 (Visual Studio 2017 15.9), and should continue to work with future Visual Studio versions
-  - https://devblogs.microsoft.com/cppblog/cuda-10-is-now-available-with-support-for-the-latest-visual-studio-2017-versions/
-- CUDA 9.2 is known to work with the 14.11 MSVC toolset (Visual Studio 15.3 and 15.4)
+##### Linux
+```
+./build.sh --use_cuda --cudnn_home /usr --cuda_home /usr/local/cuda
+```
 
-To install the 14.11 MSVC toolset, see <https://blogs.msdn.microsoft.com/vcblog/2017/11/15/side-by-side-minor-version-msvc-toolsets-in-visual-studio-2017/>
+A Dockerfile is available [here](./tools/ci_build/github/linux/docker/Dockerfile.ubuntu_gpu).
 
-To use the 14.11 toolset with a later version of Visual Studio 2017 you have two options:
+   
+#### Notes
+* Depending on compatibility between the CUDA, cuDNN, and Visual Studio 2017 versions you are using, you may need to explicitly install an earlier version of the MSVC toolset.
+ * CUDA 10.0 is [known to work](https://devblogs.microsoft.com/cppblog/cuda-10-is-now-available-with-support-for-the-latest-visual-studio-2017-versions/) with toolsets from 14.11 up to 14.16 (Visual Studio 2017 15.9), and should continue to work with future Visual Studio versions
+ * CUDA 9.2 is known to work with the 14.11 MSVC toolset (Visual Studio 15.3 and 15.4)
+    * To install the 14.11 MSVC toolset, see [this page](https://blogs.msdn.microsoft.com/vcblog/2017/11/15/side-by-side-minor-version-msvc-toolsets-in-visual-studio-2017).
+    * To use the 14.11 toolset with a later version of Visual Studio 2017 you have two options:
+     1. Setup the Visual Studio environment variables to point to the 14.11 toolset by running vcvarsall.bat, prior to running the build script. e.g. if you have VS2017 Enterprise, an x64 build would use the following command `"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64 -vcvars_ver=14.11` For convenience, build.amd64.1411.bat will do this and can be used in the same way as build.bat. e.g. ` .\build.amd64.1411.bat --use_cuda`
 
-1. Setup the Visual Studio environment variables to point to the 14.11 toolset by running vcvarsall.bat, prior to running the build script
-   - e.g.  if you have VS2017 Enterprise, an x64 build would use the following command
-`"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64 -vcvars_ver=14.11`
-   - For convenience, build.amd64.1411.bat will do this and can be used in the same way as build.bat.
-     - e.g.` .\build.amd64.1411.bat --use_cuda`
-
-2. Alternatively if you have CMake 3.12 or later you can specify the toolset version via the `--msvc_toolset` build script parameter.
-   - e.g. `.\build.bat --msvc_toolset 14.11`
-
-_Side note: If you have multiple versions of CUDA installed on a Windows machine and are building with Visual Studio, CMake will use the build files for the highest version of CUDA it finds in the BuildCustomization folder.
+     2. Alternatively, if you have CMake 3.12 or later you can specify the toolset version via the `--msvc_toolset` build script parameter. e.g. `.\build.bat --msvc_toolset 14.11`
+   
+* If you have multiple versions of CUDA installed on a Windows machine and are building with Visual Studio, CMake will use the build files for the highest version of CUDA it finds in the BuildCustomization folder.
 e.g. C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\Common7\IDE\VC\VCTargets\BuildCustomizations\.
-If you want to build with an earlier version, you must temporarily remove the 'CUDA x.y.*' files for later versions from this directory._
+If you want to build with an earlier version, you must temporarily remove the 'CUDA x.y.*' files for later versions from this directory.
+
 
 ---
 
 ### TensorRT
-ONNX Runtime supports the TensorRT execution provider (released as preview). You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit), [cuDNN](https://developer.nvidia.com/cudnn) and [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download).
+See more information on the TensorRT Execution Provider [here](./docs/execution_providers/TensorRT-ExecutionProvider.md)
 
-The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 9.0/CUDA 10.0, cuDNN 7.1 and TensorRT 5.0.2.6.
+#### Pre-Requisites
+* Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn) 
+   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 9.0/CUDA 10.0 and cuDNN 7.1.
+   * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`. The CUDA path should contain `bin`, `include` and `lib` directories.
+   * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
+   * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`.
+ * Install [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download)
+   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 5.0.2.6.
+   * The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.  
 
- - The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`. The CUDA path should contain `bin`, `include` and `lib` directories.
- - The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
- - The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`.
-- The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
-
-You can build from source on Linux by using the following `cmd` from the onnxruntime directory:
-
+#### Build Instructions
+##### Linux
 ```
-./build.sh --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> (Linux)
+./build.sh --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home>
 ```
+
+Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 
 ---
 
 ### MKLDNN and MKLML
-To build ONNX Runtime with MKL-DNN support, build it with `./build.sh --use_mkldnn`
-To build ONNX Runtime using MKL-DNN built with dependency on MKL small libraries, build it with `./build.sh --use_mkldnn --use_mklml`
+See more information on MKL-DNN and MKL-ML [here](./docs/execution_providers/MKL-DNN-ExecutionProvider.md)
+
+#### Build Instructions
+##### Linux
+MKL-DNN: `./build.sh --use_mkldnn`
+
+MKL-DNN built with dependency on MKL small libraries: `./build.sh --use_mkldnn --use_mklml`
 
 ---
 
 ### nGraph
-ONNX runtime with nGraph as an execution provider (released as preview) can be built on Linux as follows : `./build.sh --use_ngraph`.  Similarly, on Windows use `.\build.bat --use_ngraph`
+See more information on the nGraph Execution Provider [here](./docs/execution_providers/nGraph-ExecutionProvider.md)
+
+#### Build Instructions
+#### Windows
+```
+.\build.bat --use_ngraph
+```
+
+##### Linux
+```
+./build.sh --use_ngraph
+```
 
 ---
 
 ### OpenVINO
+See more information on the OpenVINO Execution Provider [here](./docs/execution_providers/OpenVINO-ExecutionProvider.md)
 
-ONNX Runtime supports OpenVINO Execution Provider to enable deep learning inference using Intel<sup>®</sup> OpenVINO<sup>TM</sup> Toolkit. This execution provider supports several Intel hardware device types - CPU, integrated GPU, Intel<sup>®</sup> Movidius<sup>TM</sup> VPUs and Intel<sup>®</sup> Vision accelerator Design with 8 Intel Movidius<sup>TM</sup> MyriadX VPUs.
-
-The OpenVINO Execution Provider can be built using the following commands:
-
-- Currently supports and validated on two versions of OpenVINO: OpenVINO 2018 R5.0.1 and OpenVINO 2019 R1.1(Recommended). Install the OpenVINO release along with its dependencies from ([https://software.intel.com/en-us/openvino-toolkit](https://software.intel.com/en-us/openvino-toolkit)).
-
-- Install the model optimizer prerequisites for ONNX by running
-<code><openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.sh</code>
-
-- Initialize the OpenVINO environment by running the setupvars.sh in <code>\<openvino\_install\_directory\>\/bin</code> using the below command:
-
-   <code>source setupvars.sh</code>
-
-- To configure Intel<sup>®</sup> Processor Graphics(GPU), please follow the installation steps from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
-
-- To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow the getting started guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
-
-- To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow the configuration guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#install-VPU)
+#### Pre-Requisites
+* Install the OpenVINO release along with its dependencies: [Windows]([https://software.intel.com/en-us/openvino-toolkit](https://software.intel.com/en-us/openvino-toolkit), [Linux](https://software.intel.com/en-us/openvino-toolkit).
+   * For Linux, currently supports and is validated on OpenVINO 2018 R5.0.1 and OpenVINO 2019 R1.1 (Recommended)
+   * For Windows, download the 2019 R1.1 Windows Installer.
+* Install the model optimizer prerequisites for ONNX by running:
+   * Windows: `<openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.bat`
+   * Linux: `<openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.sh`
+* Initialize the OpenVINO environment by running the setupvars in `\<openvino\_install\_directory\>\/bin` using `setupvars.bat` (Windows) or `source setupvars.sh` (Linux)
+   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
+   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Windows](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_windows.html#usb-myriad), [Linux](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#install-VPU)
 
 
-- Build ONNX Runtime using the below command.
+#### Build Instructions
+##### Windows
+```
+build.bat --config RelWithDebInfo --use_openvino <hardware_option>
+```
+*Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat.*
 
-   <code>./build.sh --config RelWithDebInfo --use_openvino <hardware_option>  </code>
+##### Linux
+```
+./build.sh --config RelWithDebInfo --use_openvino <hardware_option> 
+```
 
-   <code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
+Dockerfile instructions are available [here](./dockerfiles#openvino-public-preview)
 
-   <code><hardware_option></code>: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
+#### Notes
+* `--use_openvino`: Builds the OpenVINO Execution Provider in ONNX Runtime
+
+* `<hardware_option>`: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
 
 | Hardware Option | Target Device |
 | --------------- | ------------------------|
@@ -250,8 +274,6 @@ The OpenVINO Execution Provider can be built using the following commands:
 | <code>GPU_FP16</code> | Intel<sup>®</sup> Integrated Graphics with FP16 quantization of models |
 | <code>MYRIAD_FP16</code> | Intel<sup>®</sup> Movidius<sup>TM</sup> USB sticks | 
 | <code>VAD-M_FP16</code> | Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs |
-
-For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document OpenVINO-ExecutionProvider.md in <code>$onnxruntime_root/docs/execution_providers</code>
  
 ---
 
@@ -261,81 +283,103 @@ For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, To
 
 1. Get Android NDK from https://developer.android.com/ndk/downloads. Please unzip it after downloading.
 
-2. Get a pre-compiled protoc:
-
-   You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip. Please unzip it after downloading.
+2. Get a pre-compiled protoc from [here](https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip). Please unzip it after downloading.
 
 3. Denote the unzip destination in step 1 as $ANDROID_NDK, append `-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=path/to/protoc` to your cmake args, run cmake and make to build it.
 
-Note: For 32-bit devices, replace `-DANDROID_ABI=arm64-v8a` to `-DANDROID_ABI=armeabi-v7a`.
+#### Notes
+* For 32-bit devices, replace `-DANDROID_ABI=arm64-v8a` to `-DANDROID_ABI=armeabi-v7a`.
 
 ---
 
 ### Nuphar
-ONNX Runtime supports Nuphar execution provider (released as preview). It is an execution provider built on top of [TVM](https://github.com/dmlc/tvm) and [LLVM](https://llvm.org). Currently it targets to X64 CPU.
+See more information on the Nuphar Execution Provider [here](./docs/execution_providers/Nuphar-ExecutionProvider.md).
 
-The Nuphar execution provider for ONNX Runtime is built and tested with LLVM 6.0.1. Because of TVM's requirement when building with LLVM, you need to build LLVM from source:
+#### Pre-Requisites
+* The Nuphar execution provider for ONNX Runtime is built and tested with LLVM 6.0.1. Because of TVM's requirement when building with LLVM, you need to build LLVM from source.
+   * Windows (Visual Studio 2017): 
+   ```
+   REM download llvm source code 6.0.1 and unzip to \llvm\source\path, then install to \llvm\install\path
+   cd \llvm\source\path
+   mkdir build
+   cd build
+   cmake .. -G "Visual Studio 15 2017 Win64" -DLLVM_TARGETS_TO_BUILD=X86
+   msbuild llvm.sln /maxcpucount /p:Configuration=Release /p:Platform=x64
+   cmake -DCMAKE_INSTALL_PREFIX=\llvm\install\path -DBUILD_TYPE=Release -P cmake_install.cmake
+   ```
+   * Linux
+   Download llvm source code 6.0.1 and unzip to /llvm/source/path, then install to /llvm/install/path
+   ```
+   cd /llvm/source/path
+   mkdir build
+   cd build
+   cmake .. -DLLVM_TARGETS_TO_BUILD=X86 -DCMAKE_BUILD_TYPE=Release
+   cmake --build.
+   cmake -DCMAKE_INSTALL_PREFIX=/llvm/install/path -DBUILD_TYPE=Release -P cmake_install.cmake
+   ```
 
-Window with Visual Studio 2017: (Note here builds release flavor. Debug build of LLVM would be needed to build with Debug flavor of ONNX Runtime)
-```
-REM download llvm source code 6.0.1 and unzip to \llvm\source\path, then install to \llvm\install\path
-cd \llvm\source\path
-mkdir build
-cd build
-cmake .. -G "Visual Studio 15 2017 Win64" -DLLVM_TARGETS_TO_BUILD=X86
-msbuild llvm.sln /maxcpucount /p:Configuration=Release /p:Platform=x64
-cmake -DCMAKE_INSTALL_PREFIX=\llvm\install\path -DBUILD_TYPE=Release -P cmake_install.cmake
-```
-
-Linux:
-```
-# download llvm source code 6.0.1 and unzip to /llvm/source/path, then install to /llvm/install/path
-cd /llvm/source/path
-mkdir build
-cd build
-cmake .. -DLLVM_TARGETS_TO_BUILD=X86 -DCMAKE_BUILD_TYPE=Release
-cmake --build.
-cmake -DCMAKE_INSTALL_PREFIX=/llvm/install/path -DBUILD_TYPE=Release -P cmake_install.cmake
-```
-
-Then you can build from source by using following command from the onnxruntime directory:
-Windows:
+#### Build Instructions
+##### Windows
 ```
 build.bat --use_tvm --use_llvm --llvm_path=\llvm\install\path\lib\cmake\llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
-Linux:
+##### Linux:
 ```
 ./build.sh --use_tvm --use_llvm --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
+* Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#nuphar-public-preview)
 ---
+
+#### Notes
+* These instructions build the release flavor. The Debug build of LLVM would be needed to build with the Debug flavor of ONNX Runtime
+
 
 ## Options
 ### OpenMP
+#### Build Instructions
+##### Windows
 ```
-./build.sh --use_openmp (for Linux)
-./build.bat --use_openmp (for Windows)
+./build.bat --use_openmp
+```
+
+##### Linux
+```
+./build.sh --use_openmp
+
 ```
 
 ---
 
 ### OpenBLAS
-**Windows**
-Instructions how to build OpenBLAS for windows can be found here https://github.com/xianyi/OpenBLAS/wiki/How-to-use-OpenBLAS-in-Microsoft-Visual-Studio#build-openblas-for-universal-windows-platform.
+#### Pre-Requisites
+* OpenBLAS
+   * Windows: See build instructions [here](https://github.com/xianyi/OpenBLAS/wiki/How-to-use-OpenBLAS-in-Microsoft-Visual-Studio#build-openblas-for-universal-windows-platform)
+   * Linux: Install the libopenblas-dev package `sudo apt-get install libopenblas-dev`
 
-Once you have the OpenBLAS binaries, build ONNX Runtime with `./build.bat --use_openblas`
+#### Build Instructions
+##### Windows
+```
+./build.bat --use_openblas
+```
 
-**Linux**
-For Linux (e.g. Ubuntu 16.04), install libopenblas-dev package
-`sudo apt-get install libopenblas-dev` and build with `./build.sh --use_openblas`
+##### Linux
+```
+./build.sh --use_openblas
+```
 
 --- 
 
 ## Architectures
 ### x86
- - For Windows, just add --x86 argument when launching build.bat
- - For Linux, it must be built out of a x86 os, --x86 argument also needs be specified to build.sh
+#### Build Intsructions
+##### Windows
+* add `--x86` argument when launching build.bat
+
+##### Linux
+* Must be built on a x86 OS
+* add --x86 argument to build.sh
 
 ---
 
