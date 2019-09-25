@@ -9,17 +9,17 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-__global__ void TopKKernel(const T* input_x, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension)
-{
+__global__ void TopKKernel(const T* input_x, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
 
   struct Node {
-    T       value_;
+    T value_;
     int64_t index_;
+    __device__ bool ValueEquals(const Node& node) const { return abs((float)value_ - (float)node.value_) < 1e-5; }
   };
 
   class Heap {
-  public:
+   public:
     __device__ Heap(int64_t K, int64_t largest) : K_(K), largest_(largest) {
       nodes_ = new Node[K];
     }
@@ -28,11 +28,15 @@ __global__ void TopKKernel(const T* input_x, T* output_v, int64_t* output_i, con
     }
     __device__ const Node& Top() const { return nodes_[0]; }
     __device__ bool Allow(const Node& node) const {
-      if (size_ == 0) return true;
-      return ShouldGoTop(nodes_[0], node);
+      if (0 == K_)
+        return false;
+      else if (0 == size_)
+        return true;
+      else
+        return ShouldGoTop(nodes_[0], node);
     }
-    __device__ void Push (const Node& node) {
-      if (size_ != K_) {
+    __device__ void Push(const Node& node) {
+      if (size_ < K_) {
         nodes_[size_++] = node;
         SortFromBottom();
       } else if (Allow(node)) {
@@ -45,18 +49,25 @@ __global__ void TopKKernel(const T* input_x, T* output_v, int64_t* output_i, con
       nodes_[0] = nodes_[--size_];
       SortFromTop();
     }
-    __device__ bool Empty() const { return 0 == size_;}
+    __device__ bool Empty() const { return 0 == size_; }
+    __device__ int64_t Size() const { return size_; }
+    __device__ void SetLargest(int64_t largest) { largest_ = largest; }
     __device__ void Sort(int64_t largest = 1) {
       largest_ = largest;
       for (int64_t i = 1; i < size_; ++i) {
         SortFromBottom(i);
       }
     }
-    bool sort_by_value_ = true;
-  private:
+    bool sort_by_value_   = true;
+    bool ascending_index_ = true;
+
+   private:
     __device__ bool ShouldGoTop(const Node& n1, const Node& n2) const {
-      if (largest_ == 1) return sort_by_value_ ? n1.value_ < n2.value_ : n1.index_ < n2.index_;
-      else               return sort_by_value_ ? n2.value_ < n1.value_ : n2.index_ < n1.index_;
+      if (largest_ == 1) {
+        return sort_by_value_ ? (n1.value_ < n2.value_ || ascending_index_ && n1.ValueEquals(n2) && n1.index_ > n2.index_) : n1.index_ < n2.index_;
+      } else {
+        return sort_by_value_ ? (n2.value_ < n1.value_ || ascending_index_ && n1.ValueEquals(n2) && n1.index_ > n2.index_) : n2.index_ < n1.index_;
+      }
     }
     __device__ void SortFromTop() {
       int64_t pos = 0;
@@ -72,7 +83,8 @@ __global__ void TopKKernel(const T* input_x, T* output_v, int64_t* output_i, con
           pos = nxt;
           rcd = pos + 1 << 1;
           lcd = rcd - 1;
-        } else break;
+        } else
+          break;
       }
     }
     __device__ void SortFromBottom(int64_t pos = -1) {
@@ -89,51 +101,64 @@ __global__ void TopKKernel(const T* input_x, T* output_v, int64_t* output_i, con
       }
     }
     int64_t K_;
-    int64_t size_    = 0;
-    int64_t largest_ = 1; // keep largest K ever pushed
-    Node*   nodes_   = nullptr;
+    int64_t size_ = 0;
+    int64_t largest_ = 1;  // keep largest K ever pushed
+    Node* nodes_ = nullptr;
   };
 
   Heap heap(K, largest);
-  auto left = id / (axis == size-1 ? 1 : elem_nums[axis+1]) * elem_nums[axis];
-  auto right = axis == size-1 ? 0 : id % elem_nums[axis+1];
+  auto left = id / (axis == size - 1 ? 1 : elem_nums[axis + 1]) * elem_nums[axis];
+  auto right = axis == size - 1 ? 0 : id % elem_nums[axis + 1];
   for (int64_t i = 0; i < dimension; ++i) {
-    auto input_offset = left + i * (axis == size-1 ? 1 : elem_nums[axis+1]) + right;
+    auto input_offset = left + i * (axis == size - 1 ? 1 : elem_nums[axis + 1]) + right;
     heap.Push({input_x[input_offset], i});
   }
-  if (sorted != 1) {
+  if (1 == sorted) {
+    heap.ascending_index_ = true;
+    heap.Sort(largest);
+  } else {
     heap.sort_by_value_ = false;
-    heap.Sort(); //sort heap by ascending index
+    heap.Sort(-1);
   }
-  int64_t output_count = 0;
+  left = left * K / dimension;
   while (!heap.Empty()) {
     auto& node = heap.Top();
-    auto output_offset = left + output_count * (axis == size-1 ? 1 : elem_nums[axis+1]) + right;
+    auto output_offset = left + (heap.Size() - 1) * (axis == size - 1 ? 1 : elem_nums[axis + 1]) + right;
     output_v[output_offset] = node.value_;
     output_i[output_offset] = node.index_;
-    output_count++;
     heap.Pop();
   }
 }
 
 template <typename T>
-Status TopKImpl(const T* input_x, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension)
-{
+Status TopKImpl(const T* input_x, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  TopKKernel <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>> (input_x, output_v, output_i, elem_nums, size, axis, K, largest, sorted, N, dimension);
+  TopKKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(input_x, output_v, output_i, elem_nums, size, axis, K, largest, sorted, N, dimension);
   return Status::OK();
 }
 
-template Status TopKImpl<uint8_t>  (const uint8_t*   input_x, uint8_t*   output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension);
-template Status TopKImpl<uint16_t> (const uint16_t*  input_x, uint16_t*  output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension);
-template Status TopKImpl<uint32_t> (const uint32_t*  input_x, uint32_t*  output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension);
-template Status TopKImpl<uint64_t> (const uint64_t*  input_x, uint64_t*  output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension);
-template Status TopKImpl<int8_t>   (const int8_t*    input_x, int8_t*    output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension);
-template Status TopKImpl<int16_t>  (const int16_t*   input_x, int16_t*   output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension);
-template Status TopKImpl<int32_t>  (const int32_t*   input_x, int32_t*   output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension);
-template Status TopKImpl<int64_t>  (const int64_t*   input_x, int64_t*   output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension);
-template Status TopKImpl<float>    (const float*     input_x, float*     output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension);
-template Status TopKImpl<double>   (const double*    input_x, double*    output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension);
+#define TOPKIMPLE(T) template Status TopKImpl<T>(const T* input_x,         \
+                                                 T* output_v,              \
+                                                 int64_t* output_i,        \
+                                                 const int64_t* elem_nums, \
+                                                 size_t size,              \
+                                                 int64_t axis,             \
+                                                 int64_t K,                \
+                                                 int64_t largest,          \
+                                                 int64_t sorted,           \
+                                                 int64_t N,                \
+                                                 int64_t dimension)
 
-}
-}
+TOPKIMPLE(uint8_t);
+TOPKIMPLE(uint16_t);
+TOPKIMPLE(uint32_t);
+TOPKIMPLE(uint64_t);
+TOPKIMPLE(int8_t);
+TOPKIMPLE(int16_t);
+TOPKIMPLE(int32_t);
+TOPKIMPLE(int64_t);
+TOPKIMPLE(float);
+TOPKIMPLE(double);
+
+}  // namespace cuda
+}  // namespace onnxruntime
