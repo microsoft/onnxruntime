@@ -29,10 +29,10 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
     //TODO: fix this checker later
     //ONNXRUNTIME_RETURN_IF_NOT((x_shape[2] == m_shape[2]) && (x_shape[3] == m_shape[3]), " Input shape and mask shape mismatch: ", x_shape, " vs ", m_shape);
 
-    std::vector<int64_t> pads = pads_;
-    std::vector<int64_t> kernel_shape = kernel_shape_;
+    std::vector<int64_t> pads = pool_attrs_.pads;
+    std::vector<int64_t> kernel_shape = pool_attrs_.kernel_shape;
 
-    std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations_, ceil_mode_);
+    std::vector<int64_t> output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
     Tensor* Y = context->Output(0, TensorShape(output_dims));
 
     const float* X_data = X->template Data<float>();

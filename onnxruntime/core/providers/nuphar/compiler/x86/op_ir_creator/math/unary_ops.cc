@@ -3,7 +3,6 @@
 
 #include "core/providers/nuphar/compiler/x86/op_ir_creator/all_ops.h"
 
-#include "core/codegen/common/op_macro.h"
 #include "core/framework/op_kernel_info.h"
 #include "core/providers/nuphar/mti_x86/math/unary_ops.h"
 
