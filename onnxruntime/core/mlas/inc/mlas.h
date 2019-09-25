@@ -135,7 +135,24 @@ MlasSgemm(
 
 void
 MLASCALL
-MlasQgemm(
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    uint8_t offa,
+    const int8_t* B,
+    size_t ldb,
+    int8_t offb,
+    int32_t* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasGemm(
     size_t M,
     size_t N,
     size_t K,
