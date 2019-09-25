@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/ngraph-logo.png">
+  <img src="../images/ngraph-logo.png">
 </p>
 
 # nGraph Execution Provider
