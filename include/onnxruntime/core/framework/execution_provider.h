@@ -9,6 +9,7 @@
 #include "core/common/status.h"
 #include "core/framework/tensor.h"
 #include "core/framework/func_api.h"
+#include "core/framework/data_transfer.h"
 
 namespace onnxruntime {
 class GraphViewer;
@@ -28,7 +29,7 @@ typedef std::map<int, AllocatorPtr> AllocatorMap;
 // if we are export the fused function to dll, the function will still in the same binary as lotus
 // use std function to give execution provider some chance to capture some state.
 using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
-using ComputeFunc = std::function<Status(FunctionState, const OrtCustomOpApi*, OrtKernelContext*)>;
+using ComputeFunc = std::function<Status(FunctionState, const OrtApi*, OrtKernelContext*)>;
 using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
 
 struct NodeComputeInfo {
@@ -55,6 +56,16 @@ class IExecutionProvider {
    * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
    */
   virtual AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const;
+
+  /**
+   * Returns a data transfer object that implements methods to copy to and
+   * from this device.
+   * If no copy is required for the successful operation of this provider,
+   * return a nullptr.
+   */
+  virtual std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const {
+    return nullptr;
+  }
 
   /**
      Get execution provider's capability for the specified <graph>.

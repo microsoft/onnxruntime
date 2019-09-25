@@ -17,6 +17,7 @@
 #include "core/framework/callback.h"
 #include "core/framework/data_types.h"
 #include "core/framework/path_lib.h"
+#include "core/session/ort_apis.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -278,7 +279,7 @@ TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShape
   const auto& dims = tensor_shape_proto.dim();
   std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
   for (int i = 0; i < dims.size(); ++i) {
-    tensor_shape_vec[i] = dims[i].has_dim_value() ? dims[i].dim_value()
+    tensor_shape_vec[i] = HasDimValue(dims[i]) ? dims[i].dim_value()
                                                   : -1; /* symbolic dimensions are represented as -1 in onnxruntime*/
   }
   return TensorShape(std::move(tensor_shape_vec));
@@ -320,7 +321,7 @@ ORT_API_STATUS_IMPL(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t i
       new (ptr + i) std::string();
     }
   } catch (std::exception& ex) {
-    return OrtCreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
   }
   return nullptr;
 }
@@ -363,7 +364,7 @@ static void MoveOrtCallback(OrtCallback& from, OrtCallback& to) {
 Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
                             const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, OrtValue& value,
                             OrtCallback& deleter) {
-  const OrtAllocatorInfo& allocator = m.GetAllocInfo();
+  const OrtMemoryInfo& allocator = m.GetAllocInfo();
   ONNXTensorElementDataType ele_type = utils::GetTensorElementType(tensor_proto);
   deleter.f = nullptr;
   deleter.param = nullptr;
@@ -394,7 +395,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
                                                  file_data, raw_data_len, deleter_for_file_data.d));
         raw_data = file_data;
       }
-    } else if (tensor_proto.has_raw_data()) {
+    } else if (utils::HasRawData(tensor_proto)) {
       if (ele_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not have raw data");
       raw_data = tensor_proto.raw_data().data();
@@ -445,7 +446,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
           if (preallocated != nullptr) {
             OrtStatus* status = OrtInitializeBufferForTensor(preallocated, preallocated_size, ele_type);
             if (status != nullptr) {
-              OrtReleaseStatus(status);
+              OrtApis::ReleaseStatus(status);
               return Status(common::ONNXRUNTIME, common::FAIL, "initialize preallocated buffer failed");
             }
 

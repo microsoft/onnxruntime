@@ -46,8 +46,8 @@ class OpKernel {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
-  const OrtAllocatorInfo& Allocator(int id, OrtMemType mem_type) const {
-    return op_kernel_info_.GetAllocatorInfo(id, mem_type);
+  const OrtMemoryInfo& Allocator(int id, OrtMemType mem_type) const {
+    return op_kernel_info_.GetMemoryInfo(id, mem_type);
   }
 
   const OpKernelInfo& Info() const { return op_kernel_info_; }
@@ -157,6 +157,11 @@ class OpKernelContext {
   It is null if the output OrtValue doesn't have fence or the output is optional.
   */
   Fence_t OutputFence(int index) const;
+
+  /**
+  Returns the opset domain of the underlying kernel
+  **/
+  const std::string& GetOpDomain() const;
 
  protected:
   onnxruntime::NodeIndex GetNodeIndex() const;

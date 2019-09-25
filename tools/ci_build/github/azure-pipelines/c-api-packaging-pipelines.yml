@@ -16,22 +16,6 @@ jobs:
           commitId: $(OnnxRuntimeGitCommitHash)
     - template: templates/clean-agent-build-directory-step.yml
 
-- job: Linux_C_API_Packaging_CPU_x86
-  pool: Linux-CPU
-  steps:
-    - template: templates/linux-set-variables-and-download.yml
-    - template: templates/set-version-number-variables-step.yml
-
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -a x86 -x "--x86"'
-      displayName: 'Build and Test Linux on Docker'
-    - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
-      parameters:
-          buildConfig: 'Release'
-          artifactName: 'onnxruntime-linux-x86-$(OnnxRuntimeVersion)'
-          libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
-          commitId: $(OnnxRuntimeGitCommitHash)          
-    - template: templates/clean-agent-build-directory-step.yml
-
 - job: Linux_C_API_Packaging_GPU_x64
   pool: Linux-GPU
   steps:

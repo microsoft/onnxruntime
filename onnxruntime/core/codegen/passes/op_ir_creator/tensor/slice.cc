@@ -6,6 +6,7 @@
 #include "core/codegen/mti/mti_tvm_utils.h"
 #include "core/codegen/mti/tensor/slice.h"
 #include "core/framework/op_kernel_info.h"
+#include "core/framework/tensorprotoutils.h"
 
 #include <tvm/ir_pass.h>
 
@@ -42,7 +43,7 @@ Status SliceCommon(const tvm::Array<tvm::Tensor>& inputs,
     bool found_in_axes = (axes_iter != axes.end());
     if (!found_in_axes) {
       tvm_starts.push_back(0);
-      if (proto_dim.has_dim_value()) {
+      if (utils::HasDimValue(proto_dim)) {
         tvm_ends.push_back(proto_dim.dim_value());
       } else {
         tvm_ends.push_back(max_range);
@@ -51,7 +52,7 @@ Status SliceCommon(const tvm::Array<tvm::Tensor>& inputs,
       auto axes_index = axes_iter - axes.begin();
       int64_t start = starts[axes_index];
       int64_t end = ends[axes_index];
-      if (proto_dim.has_dim_value()) {
+      if (utils::HasDimValue(proto_dim)) {
         int64_t dim_max = proto_dim.dim_value();
         if (start < 0) start += dim_max;
         if (end < 0) end += dim_max;
