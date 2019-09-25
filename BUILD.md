@@ -4,39 +4,38 @@
 *Pre-built packages are available at the locations indicated [here](https://github.com/microsoft/onnxruntime#official-builds).*
 
 ## To build the baseline CPU version of ONNX Runtime from source:
-1. Checkout the source tree:
+
+## Pre-Requisites
+* Checkout the source tree:
    ```
    git clone --recursive https://github.com/Microsoft/onnxruntime
    cd onnxruntime
    ```
-2. Install cmake-3.13 or better from https://cmake.org/download/.
-
-**On Windows:**
-
-3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF. After the installation, you should have the 'protoc' executable in your PATH.
-4. (optional) Install onnx from source code (cmake/external/onnx)
+* Install cmake-3.13 or better from https://cmake.org/download/.
+* (Optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
+   * If you installed your protobuf in a non standard location it would be helpful to set the following env var:`export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=full path to protoc"` so the ONNX build can find it. Also run `ldconfig <protobuf lib folder path>` so the linker can find protobuf libraries.
+* (Optional) Install onnx from source code (cmake/external/onnx)
     ```
     export ONNX_ML=1
     python3 setup.py bdist_wheel
     pip3 install --upgrade dist/*.whl
     ```
-5. Run `build.bat --config RelWithDebInfo --build_shared_lib --parallel`. 
 
-*Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat.*
+## Build Instructions
+### Windows
+```
+build.bat --config RelWithDebInfo --build_shared_lib --parallel
+```
+The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat
 
-**On Linux:**
+### Linux
+```
+./build.sh --config RelWithDebInfo --build_shared_lib --parallel
+```
 
-3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned ON. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
-4. If you installed your protobuf in a non standard location it would be helpful to set the following env var:`export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=full path to protoc"` so ONNX build can find it. Also run `ldconfig <protobuf lib folder path>` so the linker can find protobuf libraries.
-5. (optional) Install onnx from source code (cmake/external/onnx)
-    ```
-    export ONNX_ML=1
-    python3 setup.py bdist_wheel
-    pip3 install --upgrade dist/*.whl
-    ```
-6. Run `./build.sh --config RelWithDebInfo --build_shared_lib --parallel`.
+### Notes
 
-The build script runs all unit tests by default (for native builds and skips tests by default for cross-compiled builds).
+* The build script runs all unit tests by default (for native builds and skips tests by default for cross-compiled builds).
 
 ---
 
@@ -99,10 +98,22 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 
 ## Build ONNX Runtime Server on Linux
 Read more about ONNX Runtime Server [here](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Server_Usage.md)
-1. ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL. 
+
+### Pre-Requisites
+* ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL. 
     See https://golang.org/doc/install for installation instructions.
-2. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
-3. ONNX Runtime Server supports sending log to [rsyslog](https://www.rsyslog.com/) daemon. To enable it, please build with an additional parameter: `--cmake_extra_defines onnxruntime_USE_SYSLOG=1`. The build command will look like this: `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel --cmake_extra_defines onnxruntime_USE_SYSLOG=1`
+
+### Build Instructions
+```
+./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel
+```
+
+ONNX Runtime Server supports sending logs to [rsyslog](https://www.rsyslog.com/) daemon. To enable it, please build with an additional parameter: `--cmake_extra_defines onnxruntime_USE_SYSLOG=1`.
+
+The build command will look like this: 
+```
+./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel --cmake_extra_defines onnxruntime_USE_SYSLOG=1
+```
 
 ---
 
