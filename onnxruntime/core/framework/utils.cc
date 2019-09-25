@@ -17,6 +17,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/sequential_executor.h"
 #include "core/mlas/inc/mlas.h"
+#include "gsl/gsl"
 
 namespace onnxruntime {
 namespace utils {
@@ -604,3 +605,15 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
 
 }  // namespace utils
 }  // namespace onnxruntime
+
+// This definition is provided to handle GSL failures in CUDA as
+// not throwing exception but calling a user-defined handler.
+// Otherwise gsl condition checks code does not compile even though
+// gsl may not be used in CUDA specific code.
+namespace gsl {
+gsl_api void fail_fast_assert_handler(
+    char const* const expression, char const* const message,
+    char const* const file, int line) {
+  ORT_ENFORCE(false, expression, file, line, message);
+}
+}  // namespace gsl
