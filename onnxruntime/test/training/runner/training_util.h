@@ -3,6 +3,7 @@
 
 #pragma once
 #include <vector>
+#include <math.h>
 #include "constant.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/ml_value.h"
