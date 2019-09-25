@@ -3,7 +3,7 @@
 OpenVINO Execution Provider enables deep learning inference on Intel CPUs, Intel integrated GPUs and Intel<sup>®</sup> Movidius<sup>TM</sup> Vision Processing Units (VPUs). Please refer to [this](https://software.intel.com/en-us/openvino-toolkit/hardware) page for details on the Intel hardware supported.
 
 # Build
-For build instructions, please see the BUILD page](../../BUILD.md#openvino).
+For build instructions, please see the [BUILD page](../../BUILD.md#openvino).
 
 # ONNX Layers supported using OpenVINO
 
