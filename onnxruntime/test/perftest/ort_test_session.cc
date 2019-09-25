@@ -73,6 +73,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("NNAPI is not supported in this build\n");
 #endif
+  } else if (provider_name == onnxruntime::kDmlExecutionProvider) {
+#ifdef USE_DML
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_DML(session_options, 0));
+#else
+    ORT_THROW("DirectML is not supported in this build\n");
+#endif
   } else if (!provider_name.empty() && provider_name != onnxruntime::kCpuExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");
   }

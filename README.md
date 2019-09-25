@@ -51,6 +51,7 @@ ONNX Runtime supports both CPU and GPU. Using various graph optimizations and ac
 
 Currently ONNX Runtime supports the following accelerators:
 * MLAS (Microsoft Linear Algebra Subprograms)
+* [DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)
 * [MKL-DNN](./docs/execution_providers/MKL-DNN-ExecutionProvider.md) - [subgraph optimization](./docs/execution_providers/MKL-DNN-Subgraphs.md)
 * MKL-ML
 * [Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)

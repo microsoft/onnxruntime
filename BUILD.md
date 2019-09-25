@@ -87,6 +87,7 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 * [Intel OpenVINO](#openvino)
 * [Android NNAPI](#Android)
 * [Nuphar](#Nuphar)
+* [DirectML](#DirectML)
 
 **Options**
 * [OpenMP](#OpenMP)
@@ -349,6 +350,16 @@ Once you have the OpenBLAS binaries, build ONNX Runtime with `./build.bat --use_
 **Linux**
 For Linux (e.g. Ubuntu 16.04), install libopenblas-dev package
 `sudo apt-get install libopenblas-dev` and build with `./build.sh --use_openblas`
+
+--- 
+
+### DirectML
+
+To build onnxruntime with the [DirectML execution provider](./docs/execution_providers/DirectML-ExecutionProvider.md) included, supply the `--use_dml` parameter to build.bat. e.g.
+
+    build.bat --use_dml
+
+The DirectML execution provider supports building for both x64 and x86 architectures. DirectML is only supported on Windows.
 
 --- 
 

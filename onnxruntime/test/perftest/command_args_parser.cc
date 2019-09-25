@@ -28,7 +28,7 @@ namespace perftest {
       "perf_test [options...] model_path result_file\n"
       "Options:\n"
       "\t-m [test_mode]: Specifies the test mode. Value could be 'duration' or 'times'.\n"
-      "\t\tProvide 'duration' to run the test for a fix duration, and 'times' to repeated for a certain times. "
+      "\t\tProvide 'duration' to run the test for a fix duration, and 'times' to repeated for a certain times. \n"
       "\t-M: Disable memory pattern.\n"
       "\t-A: Disable memory arena\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
