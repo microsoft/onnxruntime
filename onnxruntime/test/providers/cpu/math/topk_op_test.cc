@@ -327,5 +327,47 @@ TEST(TopKOperator, Top1ExplicitAxisMultiDInputLargestElements) {
   top_1_explicit_axis_MultiD_input(11);
 }
 
+static void top_2_default_axis_smallest(int opset_version) {
+  std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.4f, 0.2f};
+  std::vector<int64_t> input_dimensions = {2, 4};
+  std::vector<float> expected_vals = {0.1f, 0.2f, 0.1f, 0.2f};
+  std::vector<int64_t> expected_indices = {0, 2, 0, 3};
+  std::vector<int64_t> expected_dimensions = {2, 2};
+  int64_t axis = -1;
+  RunTest(opset_version, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 0);
+}
+
+TEST(TopKOperator, Top2DefaultAxisSmallestElements) {
+  top_2_default_axis_smallest(11);
+}
+
+static void top_3_explicit_axis_smallest(int opset_version) {
+  std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
+  std::vector<int64_t> input_dimensions = {4, 2};
+  std::vector<float> expected_vals = {0.1f, 0.2f, 0.1f, 0.3f, 0.2f, 0.3f};
+  std::vector<int64_t> expected_indices = {0, 3, 2, 0, 1, 2};
+  std::vector<int64_t> expected_dimensions = {3, 2};
+  int64_t axis = 0;
+  RunTest(opset_version, 3, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 0);
+}
+
+TEST(TopKOperator, Top3ExplicitAxisSmallestElements) {
+  top_3_explicit_axis_smallest(11);
+}
+
+static void top_1_explicit_axis_MultiD_input_smallest(int opset_version) {
+  std::vector<float> input_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
+  std::vector<int64_t> input_dimensions = {2, 2, 2};
+  std::vector<float> expected_vals = {1, 2, 5, 6};
+  std::vector<int64_t> expected_indices = {0, 0, 0, 0};
+  std::vector<int64_t> expected_dimensions = {2, 1, 2};
+  int64_t axis = 1;
+  RunTest(opset_version, 1, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 0);
+}
+
+TEST(TopKOperator, Top1ExplicitAxisMultiDInputSmallestElements) {
+  top_1_explicit_axis_MultiD_input_smallest(11);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

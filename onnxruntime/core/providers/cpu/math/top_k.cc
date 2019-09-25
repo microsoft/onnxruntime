@@ -27,6 +27,7 @@
 using namespace std;
 namespace onnxruntime {
 
+/*
 // Helper methods
 static int64_t SizeToDim(size_t k, const vector<int64_t>& dims) {
   ORT_ENFORCE(k <= dims.size());
@@ -45,6 +46,7 @@ static int64_t SizeFromDim(size_t k, const vector<int64_t>& dims) {
   }
   return r;
 }
+*/
 
 template <typename T>
 struct GreaterValueCmp {
@@ -78,11 +80,11 @@ struct LesserValueCmp {
 // this method will extract the sorted top k largest/smallest elements and place them in the output tensor 'values'
 // along with the metadata output 'indices'
 template <bool largest, bool sorted, class Comparator>
-static void extract_top_k_elements(const Tensor* input, const std::vector<int64_t>& input_shape,
-                                   Tensor* values, Tensor* indices, const std::vector<int64_t>& output_shape,
+static void extract_top_k_elements(const Tensor* input, const TensorShape& input_shape,
+                                   Tensor* values, Tensor* indices, const TensorShape& output_shape,
                                    const unsigned k, const unsigned axis_parsed) {
   // Cache some values that will be used in the implementation below
-  const int64_t rows = SizeToDim(axis_parsed, input_shape);
+  const int64_t rows = input_shape.SizeToDimension(static_cast<size_t>(axis_parsed));
   const int64_t cols = input->Shape().Size() / rows;
   auto input_map = ConstEigenMatrixMapRowMajor<float>(
       static_cast<const float*>(input->template Data<float>()),
@@ -90,7 +92,7 @@ static void extract_top_k_elements(const Tensor* input, const std::vector<int64_
       cols);
 
   // Use Eigen maps to allow indexing into the 2d tensors like Values_map(i,j)
-  const int64_t reduced_cols = SizeFromDim(axis_parsed, output_shape);
+  const int64_t reduced_cols = output_shape.SizeFromDimension(static_cast<size_t>(axis_parsed));
   auto values_map = EigenMatrixMapRowMajor<float>(
       values->template MutableData<float>(), rows, reduced_cols);
   auto indices_map = EigenMatrixMapRowMajor<int64_t>(
@@ -165,26 +167,24 @@ static void extract_top_k_elements(const Tensor* input, const std::vector<int64_
 // Wrapper over core TopK implementation
 Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input, const int axis, const unsigned k,
                 bool largest = true, bool sorted = true) {
-  const vector<int64_t>& input_shape = input->Shape().GetDims();
+  const TensorShape& input_shape = input->Shape();
   // Will return axis_ as is if positive or fixes it in case it is negative
-  const auto axis_parsed = HandleNegativeAxis(axis, input_shape.size());
+  const auto axis_parsed = HandleNegativeAxis(axis, static_cast<int64_t>(input_shape.NumDimensions()));
   // Check to ensure k is within the bounds of what is available in that specific axis
-  if (input_shape.at(axis_parsed) < k) {
-    ostringstream err_msg;
-    err_msg << "k argment [" << k << "] should not be greater than specified axis dim value [" << input_shape[axis_parsed] << "]";
-    return Status(common::ONNXRUNTIME, common::FAIL, err_msg.str());
+  if (input_shape[axis_parsed] < k) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k argument [" , k , "] should not be greater than specified axis dim value [" , input_shape[axis_parsed] , "]");
   }
 
   // Resize output tensors to be the same shape as the input except
   // for the specified dimension ((i.e.) axis_parsed), which will be of size k. E.x. for an input tensor
   // of shape [3, 4, 5] and k=2 with axis_parsed=1, both of the outputs will be shape [3, 2, 5]
-  vector<int64_t> output_shape = input_shape;
+  TensorShape output_shape = input_shape;
   output_shape[axis_parsed] = k;
   auto* values = p_op_kernel_context->Output(0, output_shape);
   auto* indices = p_op_kernel_context->Output(1, output_shape);
 
   if (values == nullptr || indices == nullptr) {
-    return Status(common::ONNXRUNTIME, common::FAIL,
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                   "output count mismatch, expected 2 outputs to be present for TopK operator");
   }
 
@@ -237,8 +237,8 @@ TopK<9, float>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_in
 template <>
 Status TopK<9, float>::Compute(OpKernelContext* p_op_kernel_context) const {
   const auto* X = p_op_kernel_context->Input<Tensor>(0);
-  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL,
-                                  "input count mismatch, expected 1 input - the tensor to be processed");
+  if (X == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                          "input count mismatch, expected 1 input - the tensor to be processed");
   return TopKImpl(p_op_kernel_context, X, axis_, k_);
 }
 
@@ -255,13 +255,13 @@ template <>
 Status TopK<10, float>::Compute(OpKernelContext* p_op_kernel_context) const {
   const auto* X = p_op_kernel_context->Input<Tensor>(0);
   const auto* Y = p_op_kernel_context->Input<Tensor>(1);
-  if (X == nullptr || Y == nullptr) return Status(common::ONNXRUNTIME, common::FAIL,
+  if (X == nullptr || Y == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                                   "input count mismatch, expected 2 inputs - "
                                                   "the tensor to be processed and a tensor containing k value");
   const vector<int64_t>& y_shape = Y->Shape().GetDims();
-  if (y_shape.size() != 1 || y_shape[0] != 1) return Status(common::ONNXRUNTIME, common::FAIL, "k tensor should be a 1D tensor of size 1");
+  if (y_shape.size() != 1 || y_shape[0] != 1) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k tensor should be a 1D tensor of size 1");
   auto parsed_input_k = Y->template Data<int64_t>()[0];
-  if (parsed_input_k < 0) return Status(common::ONNXRUNTIME, common::FAIL, "value of k must not be negative");
+  if (parsed_input_k < 0) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "value of k must not be negative");
   return TopKImpl(p_op_kernel_context, X, axis_, gsl::narrow_cast<unsigned>(parsed_input_k));
 }
 
@@ -286,13 +286,13 @@ template <>
 Status TopK<11, float>::Compute(OpKernelContext* p_op_kernel_context) const {
   const auto* X = p_op_kernel_context->Input<Tensor>(0);
   const auto* Y = p_op_kernel_context->Input<Tensor>(1);
-  if (X == nullptr || Y == nullptr) return Status(common::ONNXRUNTIME, common::FAIL,
+  if (X == nullptr || Y == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                                   "input count mismatch, expected 2 inputs - "
                                                   "the tensor to be processed and a tensor containing k value");
   const vector<int64_t>& y_shape = Y->Shape().GetDims();
-  if (y_shape.size() != 1 || y_shape[0] != 1) return Status(common::ONNXRUNTIME, common::FAIL, "k tensor should be a 1D tensor of size 1");
+  if (y_shape.size() != 1 || y_shape[0] != 1) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k tensor should be a 1D tensor of size 1");
   auto parsed_input_k = Y->template Data<int64_t>()[0];
-  if (parsed_input_k < 0) return Status(common::ONNXRUNTIME, common::FAIL, "value of k must not be negative");
+  if (parsed_input_k < 0) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "value of k must not be negative");
   return TopKImpl(p_op_kernel_context, X, axis_, gsl::narrow_cast<unsigned>(parsed_input_k), largest_, sorted_);
 }
 
