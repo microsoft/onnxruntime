@@ -44,3 +44,6 @@
 [submodule "gsl-lite"]
 	path = cmake/external/gsl-lite
 	url = https://github.com/martinmoene/gsl-lite.git
+[submodule "cmake/external/cub"]
+	path = cmake/external/cub
+	url = https://github.com/NVlabs/cub.git
