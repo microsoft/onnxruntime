@@ -65,7 +65,7 @@ namespace onnxruntime {
       x<int64_t>);
 
 #define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(x, startVer, endVer)   \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                     \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                     \
       x,                                                                              \
       startVer,                                                                       \
       endVer,                                                                         \
