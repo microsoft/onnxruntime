@@ -50,7 +50,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   const auto* X = ctx->Input<Tensor>(0);
   const auto* W = ctx->Input<Tensor>(1);
-  const auto* B = ctx->InputCount() == 3 ? context->Input<Tensor>(2) : nullptr;
+  const auto* B = ctx->InputCount() == 3 ? ctx->Input<Tensor>(2) : nullptr;
   // Bias could be missing. Treat as scalar 0 if that is the case.
   GemmHelper helper(X->Shape(), trans_A_ != CblasNoTrans, W->Shape(), trans_B_ != CblasNoTrans,
                     B != nullptr ? B->Shape() : TensorShape({}));
