@@ -56,11 +56,14 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
 
   // Check the indices first in case there's a out of bound index.
   // We can't merge this code in the omp loop below as omp does not allow return in the loop
+  auto axis_dim_limit = input_data_shape[axis];
+
   for (int64_t i = 0; i < N; ++i) {
     Tin idx = indices_data[i];
-    if (idx < 0 || idx >= input_data_shape[axis]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices element out of data bounds, idx=", idx,
-                             " data_dim=", input_data_shape[axis]);
+    if (idx < -axis_dim_limit || idx >= axis_dim_limit) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "indices element out of data bounds, idx=", idx,
+                             " must be within the inclusive range [", -axis_dim_limit,",", axis_dim_limit - 1, "]");
     }
   }
 
@@ -74,6 +77,7 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
     const int64_t src_offset_batch = batch * data_batch_bytes;
     const int64_t dst_offset_batch = batch * gathered_batch_bytes;
     Tin idx = indices_data[i];
+    idx = idx < 0 ? idx + static_cast<Tin>(axis_dim_limit) : idx;
     const int64_t src_offset = src_offset_batch + idx * block_size;
     const int64_t dst_offset = dst_offset_batch + i * block_size;
 
