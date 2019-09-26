@@ -3,6 +3,7 @@
 
 #include "tensorrt_execution_provider.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/op_kernel.h"
@@ -24,6 +25,14 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
+
+#define CHECK_CUDA(call)                                        \
+  do {                                                          \
+    cudaError_t status = call;                                  \
+    if (status != cudaSuccess) {                                \
+      return common::Status(common::ONNXRUNTIME, common::FAIL); \
+    }                                                           \
+  } while (0)
 
 ONNX_OPERATOR_KERNEL_EX(
     MemcpyFromHost,
@@ -78,14 +87,6 @@ TensorrtLogger& GetTensorrtLogger() {
   static TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
   return trt_logger;
 }
-
-#define CHECK_CUDA(call)                                        \
-  do {                                                          \
-    cudaError_t status = call;                                  \
-    if (status != cudaSuccess) {                                \
-      return common::Status(common::ONNXRUNTIME, common::FAIL); \
-    }                                                           \
-  } while (0)
 
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider}, device_id_(info.device_id) {
@@ -401,7 +402,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     }
 
     trt_builder->setMaxBatchSize(max_batch_size_);
-
+    std::cout << "max_batch_size_: " << max_batch_size_ << std::endl;
     auto trt_config = unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
     trt_config->setMaxWorkspaceSize(max_workspace_size_);
 
@@ -525,7 +526,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       int num_binding_outputs = output_indexes.size();
       int total_bindings = num_binding_inputs + num_binding_outputs;
       std::vector<void*> buffers(total_bindings);
-      int batch_size = 1;
 
       bool dynamic_shape = false;
       if (!trt_state->context->allInputDimensionsSpecified()) {
@@ -538,48 +538,62 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
         const auto& tensor_shape = ort.GetTensorShape(tensor_info);
 
-        //Set dynamic batch size for input
+        //Set dynamic shapes
+        nvinfer1::Dims dimensions = trt_state->context->getEngine().getBindingDimensions(static_cast<int>(i));
         if (dynamic_shape) {
-          nvinfer1::Dims dimensions = trt_state->context->getEngine().getBindingDimensions(static_cast<int>(i));
-          dimensions.d[0] = tensor_shape[0];
+          for (int j = 0, end = tensor_shape.size(); j < end; ++j)
+            dimensions.d[j] = tensor_shape[j];
           trt_state->context->setBindingDimensions(i, dimensions);
         }
 
         auto tensor_type = ort.GetTensorElementType(tensor_info);
         ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
 
-        const int input_batch_size = tensor_shape[0];
-        if (i > 0 && batch_size != input_batch_size) {
-          ORT_THROW("Input batch size is inconsistent");
-        }
-        batch_size = input_batch_size;
-
         if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
           buffers[i] = const_cast<float*>(ort.GetTensorData<float>(input_tensor));
         } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8) {
           buffers[i] = const_cast<int8_t*>(ort.GetTensorData<int8_t>(input_tensor));
-        } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32 || tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
+        } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {  // || tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64
           buffers[i] = const_cast<int32_t*>(ort.GetTensorData<int32_t>(input_tensor));
+        } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
+          // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
+          int input_dim_size = 1;
+          for (int j = 0, end = dimensions.nbDims; j < end; ++j) {
+            input_dim_size *= tensor_shape[j];
+          }
+          CHECK_CUDA(cudaMalloc(&buffers[i], input_dim_size * sizeof(int32_t)));
+          cuda::Impl_Cast<int64_t, int32_t>(ort.GetTensorData<int64_t>(input_tensor), reinterpret_cast<int32_t*>(buffers[i]), input_dim_size);
         } else {
           return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
         }
       }
 
-      // Allocate cuda memory for outputs
+      // Allocate CUDA memory for outputs
+      std::vector<int> output_dim_size(num_binding_outputs, 1);
+      std::vector<OrtValue*> output_tensor(num_binding_outputs, nullptr);
       for (int i = 0, end = num_binding_outputs; i < end; ++i) {
-        int output_index = output_indexes[i];
-
-        //Get dynamic batch size
+        // Set dynamic shapes
         nvinfer1::Dims dimensions = trt_state->context->getBindingDimensions(static_cast<int>(i + num_binding_inputs));
-        trt_state->output_shapes[i][0] = dimensions.d[0];
-        OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, trt_state->output_shapes[i].data(), trt_state->output_shapes[i].size());
+        for (int j = 0, end = trt_state->output_shapes[i].size(); j < end; ++j) {
+          trt_state->output_shapes[i][j] = dimensions.d[j];
+        }
+
+        int output_index = output_indexes[i];
+        output_tensor[i] = ort.KernelContext_GetOutput(context, output_index, trt_state->output_shapes[i].data(), trt_state->output_shapes[i].size());
 
         if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-          buffers[i + num_binding_inputs] = ort.GetTensorMutableData<float>(output_tensor);
+          buffers[i + num_binding_inputs] = ort.GetTensorMutableData<float>(output_tensor[i]);
         } else if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8) {
-          buffers[i + num_binding_inputs] = ort.GetTensorMutableData<int8_t>(output_tensor);
-        } else if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32 || output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
-          buffers[i + num_binding_inputs] = ort.GetTensorMutableData<int32_t>(output_tensor);
+          buffers[i + num_binding_inputs] = ort.GetTensorMutableData<int8_t>(output_tensor[i]);
+        } else if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
+          buffers[i + num_binding_inputs] = ort.GetTensorMutableData<int32_t>(output_tensor[i]);
+        } else if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
+          // Allocate INT32 CUDA memory for INT64 output type because TensorRT doesn't fully support INT64
+          for (int j = 0, end = dimensions.nbDims; j < end; ++j) {
+            output_dim_size[i] *= dimensions.d[j];
+          }
+          CHECK_CUDA(cudaMalloc(&buffers[i + num_binding_inputs], output_dim_size[i] * sizeof(int32_t)));
+
         } else {
           return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
         }
@@ -587,13 +601,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
       // Run TRT inference
       std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
-      bool ret = trt_state->context->enqueueV2(&buffers[0], nullptr, nullptr);
-      if (!ret) {
-        if (trt_state->context->getEngine().getMaxBatchSize() < batch_size) {
-          return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                                "TRT enqueue failed: Set ORT_TENSORRT_MAX_BATCH_SIZE environment variable to at least " + to_string(batch_size));
+      trt_state->context->enqueueV2(&buffers[0], nullptr, nullptr);
+
+      // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
+      for (int i = 0, end = num_binding_outputs; i < end; ++i) {
+        if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
+          cuda::Impl_Cast<int32_t, int64_t>(reinterpret_cast<int32_t*>(buffers[i + num_binding_inputs]), ort.GetTensorMutableData<int64_t>(output_tensor[i]), output_dim_size[i]);
         }
-        return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to enqueue to TRT execution context.");
       }
 
       return Status::OK();
@@ -605,3 +619,4 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
   return Status::OK();
 }
 }  // namespace onnxruntime
+

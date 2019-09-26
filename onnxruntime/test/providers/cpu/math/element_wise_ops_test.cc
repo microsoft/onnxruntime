@@ -328,7 +328,7 @@ TEST(MathOpTest, Abs_int8) {
   std::vector<int64_t> dims{4};
   test.AddInput<int8_t>("X", dims, {1, 2, -1, -5});
   test.AddOutput<int8_t>("Y", dims, {1, 2, 1, 5});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: INT8, Assertion `regionRanges != nullptr' failed
 }
 
 TEST(MathOpTest, Abs_int32) {
@@ -356,7 +356,7 @@ TEST(MathOpTest, Neg_int8) {
   std::vector<int64_t> dims{4};
   test.AddInput<int8_t>("X", dims, {1, -2, 0, -10});
   test.AddOutput<int8_t>("Y", dims, {-1, 2, 0, 10});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: INT8 is not supported
 }
 
 TEST(MathOpTest, Neg_int32) {
