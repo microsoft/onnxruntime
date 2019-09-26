@@ -6,38 +6,23 @@ Licensed under the MIT License.
 
 Module Name:
 
-    SgemmKernelAvx.s
+    FgemmKernelAvxCommon.h
 
 Abstract:
 
-    This module implements the kernels for the single precision matrix/matrix
-    multiply operation (SGEMM).
+    This module implements the kernels for the floating point matrix/matrix
+    multiply operation (SGEMM and DGEMM).
 
     This implementation uses AVX instructions.
 
 --*/
 
-#include "asmmacro.h"
-#include "SgemmKernelCommon.h"
-
-        .intel_syntax noprefix
-
-        .equ    .LSgemmKernelFrame_alpha, -8
-        .equ    .LSgemmKernelFrame_SavedR15, 0
-        .equ    .LSgemmKernelFrame_SavedRbx, 8
-        .equ    .LSgemmKernelFrame_SavedRbp, 16
-        .equ    .LSgemmKernelFrame_ReturnAddress, 24
-        .equ    .LSgemmKernelFrame_lda, 32
-        .equ    .LSgemmKernelFrame_ldc, 40
-        .equ    .LSgemmKernelFrame_ZeroMode, 48
-
-        .text
-
 /*++
 
 Macro Description:
 
-    This macro multiplies and accumulates for a 16xN block of the output matrix.
+    This macro multiplies and accumulates for 2 YMMWORDs by N rows of the output
+    matrix.
 
 Arguments:
 
@@ -67,34 +52,34 @@ Implicit Arguments:
         .macro ComputeBlockAvxBy16 RowCount, VectorOffset, BroadcastOffset, PrefetchOffset
 
 .if \RowCount\() == 1
-        vbroadcastss ymm3,DWORD PTR [rdi+\BroadcastOffset\()]
-        vmulps  ymm4,ymm3,YMMWORD PTR [rsi+\VectorOffset\()]
-        vaddps  ymm8,ymm8,ymm4
-        vmulps  ymm5,ymm3,YMMWORD PTR [rsi+\VectorOffset\()+32]
-        vaddps  ymm9,ymm9,ymm5
+        vbroadcastsf ymm3,[rdi+\BroadcastOffset\()]
+        vmulpf  ymm4,ymm3,YMMWORD PTR [rsi+\VectorOffset\()]
+        vaddpf  ymm8,ymm8,ymm4
+        vmulpf  ymm5,ymm3,YMMWORD PTR [rsi+\VectorOffset\()+32]
+        vaddpf  ymm9,ymm9,ymm5
 .else
-        vmovaps ymm0,YMMWORD PTR [rsi+\VectorOffset\()]
-        vmovaps ymm1,YMMWORD PTR [rsi+\VectorOffset\()+32]
-        EmitIfCountGE \RowCount\(), 1, "vbroadcastss ymm3,DWORD PTR [rdi+\BroadcastOffset\()]"
-        EmitIfCountGE \RowCount\(), 1, "vmulps ymm4,ymm3,ymm0"
-        EmitIfCountGE \RowCount\(), 1, "vaddps ymm8,ymm8,ymm4"
-        EmitIfCountGE \RowCount\(), 1, "vmulps ymm5,ymm3,ymm1"
-        EmitIfCountGE \RowCount\(), 1, "vaddps ymm9,ymm9,ymm5"
-        EmitIfCountGE \RowCount\(), 2, "vbroadcastss ymm3,DWORD PTR [rdi+r10+\BroadcastOffset\()]"
-        EmitIfCountGE \RowCount\(), 2, "vmulps ymm6,ymm3,ymm0"
-        EmitIfCountGE \RowCount\(), 2, "vaddps ymm10,ymm10,ymm6"
-        EmitIfCountGE \RowCount\(), 2, "vmulps ymm7,ymm3,ymm1"
-        EmitIfCountGE \RowCount\(), 2, "vaddps ymm11,ymm11,ymm7"
-        EmitIfCountGE \RowCount\(), 3, "vbroadcastss ymm3,DWORD PTR [rbx+\BroadcastOffset\()]"
-        EmitIfCountGE \RowCount\(), 3, "vmulps ymm4,ymm3,ymm0"
-        EmitIfCountGE \RowCount\(), 3, "vaddps ymm12,ymm12,ymm4"
-        EmitIfCountGE \RowCount\(), 3, "vmulps ymm5,ymm3,ymm1"
-        EmitIfCountGE \RowCount\(), 3, "vaddps ymm13,ymm13,ymm5"
-        EmitIfCountGE \RowCount\(), 4, "vbroadcastss ymm3,DWORD PTR [rbx+r10+\BroadcastOffset\()]"
-        EmitIfCountGE \RowCount\(), 4, "vmulps ymm6,ymm3,ymm0"
-        EmitIfCountGE \RowCount\(), 4, "vaddps ymm14,ymm14,ymm6"
-        EmitIfCountGE \RowCount\(), 4, "vmulps ymm7,ymm3,ymm1"
-        EmitIfCountGE \RowCount\(), 4, "vaddps ymm15,ymm15,ymm7"
+        vmovapf ymm0,YMMWORD PTR [rsi+\VectorOffset\()]
+        vmovapf ymm1,YMMWORD PTR [rsi+\VectorOffset\()+32]
+        EmitIfCountGE \RowCount\(), 1, "vbroadcastsf ymm3,[rdi+\BroadcastOffset\()]"
+        EmitIfCountGE \RowCount\(), 1, "vmulpf ymm4,ymm3,ymm0"
+        EmitIfCountGE \RowCount\(), 1, "vaddpf ymm8,ymm8,ymm4"
+        EmitIfCountGE \RowCount\(), 1, "vmulpf ymm5,ymm3,ymm1"
+        EmitIfCountGE \RowCount\(), 1, "vaddpf ymm9,ymm9,ymm5"
+        EmitIfCountGE \RowCount\(), 2, "vbroadcastsf ymm3,[rdi+r10+\BroadcastOffset\()]"
+        EmitIfCountGE \RowCount\(), 2, "vmulpf ymm6,ymm3,ymm0"
+        EmitIfCountGE \RowCount\(), 2, "vaddpf ymm10,ymm10,ymm6"
+        EmitIfCountGE \RowCount\(), 2, "vmulpf ymm7,ymm3,ymm1"
+        EmitIfCountGE \RowCount\(), 2, "vaddpf ymm11,ymm11,ymm7"
+        EmitIfCountGE \RowCount\(), 3, "vbroadcastsf ymm3,[rbx+\BroadcastOffset\()]"
+        EmitIfCountGE \RowCount\(), 3, "vmulpf ymm4,ymm3,ymm0"
+        EmitIfCountGE \RowCount\(), 3, "vaddpf ymm12,ymm12,ymm4"
+        EmitIfCountGE \RowCount\(), 3, "vmulpf ymm5,ymm3,ymm1"
+        EmitIfCountGE \RowCount\(), 3, "vaddpf ymm13,ymm13,ymm5"
+        EmitIfCountGE \RowCount\(), 4, "vbroadcastsf ymm3,[rbx+r10+\BroadcastOffset\()]"
+        EmitIfCountGE \RowCount\(), 4, "vmulpf ymm6,ymm3,ymm0"
+        EmitIfCountGE \RowCount\(), 4, "vaddpf ymm14,ymm14,ymm6"
+        EmitIfCountGE \RowCount\(), 4, "vmulpf ymm7,ymm3,ymm1"
+        EmitIfCountGE \RowCount\(), 4, "vaddpf ymm15,ymm15,ymm7"
 .endif
 
         .endm
@@ -103,7 +88,8 @@ Implicit Arguments:
 
 Macro Description:
 
-    This macro multiplies and accumulates for a 8xN block of the output matrix.
+    This macro multiplies and accumulates for 1 YMMWORD by N rows of the output
+    matrix.
 
 Arguments:
 
@@ -133,23 +119,23 @@ Implicit Arguments:
         .macro ComputeBlockAvxBy8 RowCount, VectorOffset, BroadcastOffset, PrefetchOffset
 
 .if \RowCount\() == 1
-        vbroadcastss ymm3,DWORD PTR [rdi+\BroadcastOffset\()]
-        vmulps  ymm5,ymm3,YMMWORD PTR [rsi+\VectorOffset\()]
-        vaddps  ymm9,ymm9,ymm5
+        vbroadcastsf ymm3,[rdi+\BroadcastOffset\()]
+        vmulpf  ymm5,ymm3,YMMWORD PTR [rsi+\VectorOffset\()]
+        vaddpf  ymm9,ymm9,ymm5
 .else
-        vmovaps ymm0,YMMWORD PTR [rsi+\VectorOffset\()]
-        EmitIfCountGE \RowCount\(), 1, "vbroadcastss ymm3,DWORD PTR [rdi+\BroadcastOffset\()]"
-        EmitIfCountGE \RowCount\(), 1, "vmulps ymm5,ymm3,ymm0"
-        EmitIfCountGE \RowCount\(), 1, "vaddps ymm9,ymm9,ymm5"
-        EmitIfCountGE \RowCount\(), 2, "vbroadcastss ymm3,DWORD PTR [rdi+r10+\BroadcastOffset\()]"
-        EmitIfCountGE \RowCount\(), 2, "vmulps ymm7,ymm3,ymm0"
-        EmitIfCountGE \RowCount\(), 2, "vaddps ymm11,ymm11,ymm7"
-        EmitIfCountGE \RowCount\(), 3, "vbroadcastss ymm3,DWORD PTR [rbx+\BroadcastOffset\()]"
-        EmitIfCountGE \RowCount\(), 3, "vmulps ymm5,ymm3,ymm0"
-        EmitIfCountGE \RowCount\(), 3, "vaddps ymm13,ymm13,ymm5"
-        EmitIfCountGE \RowCount\(), 4, "vbroadcastss ymm3,DWORD PTR [rbx+r10+\BroadcastOffset\()]"
-        EmitIfCountGE \RowCount\(), 4, "vmulps ymm7,ymm3,ymm0"
-        EmitIfCountGE \RowCount\(), 4, "vaddps ymm15,ymm15,ymm7"
+        vmovapf ymm0,YMMWORD PTR [rsi+\VectorOffset\()]
+        EmitIfCountGE \RowCount\(), 1, "vbroadcastsf ymm3,[rdi+\BroadcastOffset\()]"
+        EmitIfCountGE \RowCount\(), 1, "vmulpf ymm5,ymm3,ymm0"
+        EmitIfCountGE \RowCount\(), 1, "vaddpf ymm9,ymm9,ymm5"
+        EmitIfCountGE \RowCount\(), 2, "vbroadcastsf ymm3,[rdi+r10+\BroadcastOffset\()]"
+        EmitIfCountGE \RowCount\(), 2, "vmulpf ymm7,ymm3,ymm0"
+        EmitIfCountGE \RowCount\(), 2, "vaddpf ymm11,ymm11,ymm7"
+        EmitIfCountGE \RowCount\(), 3, "vbroadcastsf ymm3,[rbx+\BroadcastOffset\()]"
+        EmitIfCountGE \RowCount\(), 3, "vmulpf ymm5,ymm3,ymm0"
+        EmitIfCountGE \RowCount\(), 3, "vaddpf ymm13,ymm13,ymm5"
+        EmitIfCountGE \RowCount\(), 4, "vbroadcastsf ymm3,[rbx+r10+\BroadcastOffset\()]"
+        EmitIfCountGE \RowCount\(), 4, "vmulpf ymm7,ymm3,ymm0"
+        EmitIfCountGE \RowCount\(), 4, "vaddpf ymm15,ymm15,ymm7"
 .endif
 
         .endm
@@ -177,6 +163,8 @@ Implicit Arguments:
 
     rcx - Supplies the number of columns from matrix A and the number of rows
         from matrix B to iterate over.
+
+    r10 - Supplies the length in bytes of a row from matrix A.
 
     ymm4-ymm15 - Supplies the block accumulators.
 
@@ -234,128 +222,146 @@ Implicit Arguments:
 
         .macro ProcessCountM RowCount, Fallthrough
 
-        cmp     r9,8
+        cmp     r9,.LFgemmYmmElementCount
         jbe     .LProcessRemainingCountN\@
 
-.LProcessNextColumnLoop16xN\@:
-        EmitIfCountGE \RowCount\(), 1, "vxorps xmm8,xmm8,xmm8"
-        EmitIfCountGE \RowCount\(), 1, "vxorps xmm9,xmm9,xmm9"
-        EmitIfCountGE \RowCount\(), 2, "vxorps xmm10,xmm10,xmm10"
-        EmitIfCountGE \RowCount\(), 2, "vxorps xmm11,xmm11,xmm11"
-        EmitIfCountGE \RowCount\(), 3, "vxorps xmm12,xmm12,xmm12"
-        EmitIfCountGE \RowCount\(), 3, "vxorps xmm13,xmm13,xmm13"
-        EmitIfCountGE \RowCount\(), 4, "vxorps xmm14,xmm14,xmm14"
-        EmitIfCountGE \RowCount\(), 4, "vxorps xmm15,xmm15,xmm15"
+.LProcessNextColumnLoop2xN\@:
+        EmitIfCountGE \RowCount\(), 1, "vxorpf xmm8,xmm8,xmm8"
+        EmitIfCountGE \RowCount\(), 1, "vxorpf xmm9,xmm9,xmm9"
+        EmitIfCountGE \RowCount\(), 2, "vxorpf xmm10,xmm10,xmm10"
+        EmitIfCountGE \RowCount\(), 2, "vxorpf xmm11,xmm11,xmm11"
+        EmitIfCountGE \RowCount\(), 3, "vxorpf xmm12,xmm12,xmm12"
+        EmitIfCountGE \RowCount\(), 3, "vxorpf xmm13,xmm13,xmm13"
+        EmitIfCountGE \RowCount\(), 4, "vxorpf xmm14,xmm14,xmm14"
+        EmitIfCountGE \RowCount\(), 4, "vxorpf xmm15,xmm15,xmm15"
         ComputeBlockAvxLoop ComputeBlockAvxBy16, \RowCount\()
-        EmitIfCountGE \RowCount\(), 1, "vmulps ymm8,ymm8,ymm2"
-        EmitIfCountGE \RowCount\(), 1, "vmulps ymm9,ymm9,ymm2"
-        EmitIfCountGE \RowCount\(), 2, "vmulps ymm10,ymm10,ymm2"
-        EmitIfCountGE \RowCount\(), 2, "vmulps ymm11,ymm11,ymm2"
-        EmitIfCountGE \RowCount\(), 3, "vmulps ymm12,ymm12,ymm2"
-        EmitIfCountGE \RowCount\(), 3, "vmulps ymm13,ymm13,ymm2"
-        EmitIfCountGE \RowCount\(), 4, "vmulps ymm14,ymm14,ymm2"
-        EmitIfCountGE \RowCount\(), 4, "vmulps ymm15,ymm15,ymm2"
-        sub     r9,16
-        jb      .LOutputMasked16xNBlock\@
+        EmitIfCountGE \RowCount\(), 1, "vmulpf ymm8,ymm8,ymm2"
+        EmitIfCountGE \RowCount\(), 1, "vmulpf ymm9,ymm9,ymm2"
+        EmitIfCountGE \RowCount\(), 2, "vmulpf ymm10,ymm10,ymm2"
+        EmitIfCountGE \RowCount\(), 2, "vmulpf ymm11,ymm11,ymm2"
+        EmitIfCountGE \RowCount\(), 3, "vmulpf ymm12,ymm12,ymm2"
+        EmitIfCountGE \RowCount\(), 3, "vmulpf ymm13,ymm13,ymm2"
+        EmitIfCountGE \RowCount\(), 4, "vmulpf ymm14,ymm14,ymm2"
+        EmitIfCountGE \RowCount\(), 4, "vmulpf ymm15,ymm15,ymm2"
+        sub     r9,2*.LFgemmYmmElementCount
+        jb      .LOutputMasked2xNBlock\@
         test    r15b,r15b                   # ZeroMode?
-        jnz     .LStore16xNBlock\@
-        EmitIfCountGE \RowCount\(), 1, "vaddps ymm8,ymm8,YMMWORD PTR [rdx]"
-        EmitIfCountGE \RowCount\(), 1, "vaddps ymm9,ymm9,YMMWORD PTR [rdx+32]"
-        EmitIfCountGE \RowCount\(), 2, "vaddps ymm10,ymm10,YMMWORD PTR [rdx+rax]"
-        EmitIfCountGE \RowCount\(), 2, "vaddps ymm11,ymm11,YMMWORD PTR [rdx+rax+32]"
-        EmitIfCountGE \RowCount\(), 3, "vaddps ymm12,ymm12,YMMWORD PTR [rbx]"
-        EmitIfCountGE \RowCount\(), 3, "vaddps ymm13,ymm13,YMMWORD PTR [rbx+32]"
-        EmitIfCountGE \RowCount\(), 4, "vaddps ymm14,ymm14,YMMWORD PTR [rbx+rax]"
-        EmitIfCountGE \RowCount\(), 4, "vaddps ymm15,ymm15,YMMWORD PTR [rbx+rax+32]"
+        jnz     .LStore2xNBlock\@
+        EmitIfCountGE \RowCount\(), 1, "vaddpf ymm8,ymm8,YMMWORD PTR [rdx]"
+        EmitIfCountGE \RowCount\(), 1, "vaddpf ymm9,ymm9,YMMWORD PTR [rdx+32]"
+        EmitIfCountGE \RowCount\(), 2, "vaddpf ymm10,ymm10,YMMWORD PTR [rdx+rax]"
+        EmitIfCountGE \RowCount\(), 2, "vaddpf ymm11,ymm11,YMMWORD PTR [rdx+rax+32]"
+        EmitIfCountGE \RowCount\(), 3, "vaddpf ymm12,ymm12,YMMWORD PTR [rbx]"
+        EmitIfCountGE \RowCount\(), 3, "vaddpf ymm13,ymm13,YMMWORD PTR [rbx+32]"
+        EmitIfCountGE \RowCount\(), 4, "vaddpf ymm14,ymm14,YMMWORD PTR [rbx+rax]"
+        EmitIfCountGE \RowCount\(), 4, "vaddpf ymm15,ymm15,YMMWORD PTR [rbx+rax+32]"
 
-.LStore16xNBlock\@:
-        EmitIfCountGE \RowCount\(), 1, "vmovups YMMWORD PTR [rdx],ymm8"
-        EmitIfCountGE \RowCount\(), 1, "vmovups YMMWORD PTR [rdx+32],ymm9"
-        EmitIfCountGE \RowCount\(), 2, "vmovups YMMWORD PTR [rdx+rax],ymm10"
-        EmitIfCountGE \RowCount\(), 2, "vmovups YMMWORD PTR [rdx+rax+32],ymm11"
-        EmitIfCountGE \RowCount\(), 3, "vmovups YMMWORD PTR [rbx],ymm12"
-        EmitIfCountGE \RowCount\(), 3, "vmovups YMMWORD PTR [rbx+32],ymm13"
-        EmitIfCountGE \RowCount\(), 4, "vmovups YMMWORD PTR [rbx+rax],ymm14"
-        EmitIfCountGE \RowCount\(), 4, "vmovups YMMWORD PTR [rbx+rax+32],ymm15"
-        add     rdx,16*4                    # advance matrix C by 16 columns
+.LStore2xNBlock\@:
+        EmitIfCountGE \RowCount\(), 1, "vmovupf YMMWORD PTR [rdx],ymm8"
+        EmitIfCountGE \RowCount\(), 1, "vmovupf YMMWORD PTR [rdx+32],ymm9"
+        EmitIfCountGE \RowCount\(), 2, "vmovupf YMMWORD PTR [rdx+rax],ymm10"
+        EmitIfCountGE \RowCount\(), 2, "vmovupf YMMWORD PTR [rdx+rax+32],ymm11"
+        EmitIfCountGE \RowCount\(), 3, "vmovupf YMMWORD PTR [rbx],ymm12"
+        EmitIfCountGE \RowCount\(), 3, "vmovupf YMMWORD PTR [rbx+32],ymm13"
+        EmitIfCountGE \RowCount\(), 4, "vmovupf YMMWORD PTR [rbx+rax],ymm14"
+        EmitIfCountGE \RowCount\(), 4, "vmovupf YMMWORD PTR [rbx+rax+32],ymm15"
+        add     rdx,2*32                    # advance matrix C by 2 YMMWORDs
         mov     rdi,r11                     # reload matrix A
-        cmp     r9,8
-        ja      .LProcessNextColumnLoop16xN\@
+        cmp     r9,.LFgemmYmmElementCount
+        ja      .LProcessNextColumnLoop2xN\@
         test    r9,r9
         jz      .LExitKernel
 
 .LProcessRemainingCountN\@:
-        EmitIfCountGE \RowCount\(), 1, "vxorps xmm9,xmm9,xmm9"
-        EmitIfCountGE \RowCount\(), 2, "vxorps xmm11,xmm11,xmm11"
-        EmitIfCountGE \RowCount\(), 3, "vxorps xmm13,xmm13,xmm13"
-        EmitIfCountGE \RowCount\(), 4, "vxorps xmm15,xmm15,xmm15"
+        EmitIfCountGE \RowCount\(), 1, "vxorpf xmm9,xmm9,xmm9"
+        EmitIfCountGE \RowCount\(), 2, "vxorpf xmm11,xmm11,xmm11"
+        EmitIfCountGE \RowCount\(), 3, "vxorpf xmm13,xmm13,xmm13"
+        EmitIfCountGE \RowCount\(), 4, "vxorpf xmm15,xmm15,xmm15"
         ComputeBlockAvxLoop ComputeBlockAvxBy8, \RowCount\()
-        EmitIfCountGE \RowCount\(), 1, "vmulps ymm9,ymm9,ymm2"
-        EmitIfCountGE \RowCount\(), 2, "vmulps ymm11,ymm11,ymm2"
-        EmitIfCountGE \RowCount\(), 3, "vmulps ymm13,ymm13,ymm2"
-        EmitIfCountGE \RowCount\(), 4, "vmulps ymm15,ymm15,ymm2"
-        cmp     r9,8
-        jb      .LOutputMasked8xNBlock\@
+        EmitIfCountGE \RowCount\(), 1, "vmulpf ymm9,ymm9,ymm2"
+        EmitIfCountGE \RowCount\(), 2, "vmulpf ymm11,ymm11,ymm2"
+        EmitIfCountGE \RowCount\(), 3, "vmulpf ymm13,ymm13,ymm2"
+        EmitIfCountGE \RowCount\(), 4, "vmulpf ymm15,ymm15,ymm2"
+        cmp     r9,.LFgemmYmmElementCount
+        jb      .LOutputMasked1xNBlock\@
         test    r15b,r15b                   # ZeroMode?
-        jnz     .LStore8xNBlock\@
-        EmitIfCountGE \RowCount\(), 1, "vaddps ymm9,ymm9,YMMWORD PTR [rdx]"
-        EmitIfCountGE \RowCount\(), 2, "vaddps ymm11,ymm11,YMMWORD PTR [rdx+rax]"
-        EmitIfCountGE \RowCount\(), 3, "vaddps ymm13,ymm13,YMMWORD PTR [rbx]"
-        EmitIfCountGE \RowCount\(), 4, "vaddps ymm15,ymm15,YMMWORD PTR [rbx+rax]"
+        jnz     .LStore1xNBlock\@
+        EmitIfCountGE \RowCount\(), 1, "vaddpf ymm9,ymm9,YMMWORD PTR [rdx]"
+        EmitIfCountGE \RowCount\(), 2, "vaddpf ymm11,ymm11,YMMWORD PTR [rdx+rax]"
+        EmitIfCountGE \RowCount\(), 3, "vaddpf ymm13,ymm13,YMMWORD PTR [rbx]"
+        EmitIfCountGE \RowCount\(), 4, "vaddpf ymm15,ymm15,YMMWORD PTR [rbx+rax]"
 
-.LStore8xNBlock\@:
-        EmitIfCountGE \RowCount\(), 1, "vmovups YMMWORD PTR [rdx],ymm9"
-        EmitIfCountGE \RowCount\(), 2, "vmovups YMMWORD PTR [rdx+rax],ymm11"
-        EmitIfCountGE \RowCount\(), 3, "vmovups YMMWORD PTR [rbx],ymm13"
-        EmitIfCountGE \RowCount\(), 4, "vmovups YMMWORD PTR [rbx+rax],ymm15"
+.LStore1xNBlock\@:
+        EmitIfCountGE \RowCount\(), 1, "vmovupf YMMWORD PTR [rdx],ymm9"
+        EmitIfCountGE \RowCount\(), 2, "vmovupf YMMWORD PTR [rdx+rax],ymm11"
+        EmitIfCountGE \RowCount\(), 3, "vmovupf YMMWORD PTR [rbx],ymm13"
+        EmitIfCountGE \RowCount\(), 4, "vmovupf YMMWORD PTR [rbx+rax],ymm15"
         jmp     .LExitKernel
 
-.LOutputMasked16xNBlock\@:
+.LOutputMasked2xNBlock\@:
         test    r15b,r15b                   # ZeroMode?
-        jnz     .LStoreMasked16xNBlock\@
-        EmitIfCountGE \RowCount\(), 1, "vaddps ymm8,ymm8,YMMWORD PTR [rdx]"
-        EmitIfCountGE \RowCount\(), 2, "vaddps ymm10,ymm10,YMMWORD PTR [rdx+rax]"
-        EmitIfCountGE \RowCount\(), 3, "vaddps ymm12,ymm12,YMMWORD PTR [rbx]"
-        EmitIfCountGE \RowCount\(), 4, "vaddps ymm14,ymm14,YMMWORD PTR [rbx+rax]"
+        jnz     .LStoreMasked2xNBlock\@
+        EmitIfCountGE \RowCount\(), 1, "vaddpf ymm8,ymm8,YMMWORD PTR [rdx]"
+        EmitIfCountGE \RowCount\(), 2, "vaddpf ymm10,ymm10,YMMWORD PTR [rdx+rax]"
+        EmitIfCountGE \RowCount\(), 3, "vaddpf ymm12,ymm12,YMMWORD PTR [rbx]"
+        EmitIfCountGE \RowCount\(), 4, "vaddpf ymm14,ymm14,YMMWORD PTR [rbx+rax]"
 
-.LStoreMasked16xNBlock\@:
-        EmitIfCountGE \RowCount\(), 1, "vmovups YMMWORD PTR [rdx],ymm8"
-        EmitIfCountGE \RowCount\(), 2, "vmovups YMMWORD PTR [rdx+rax],ymm10"
-        EmitIfCountGE \RowCount\(), 3, "vmovups YMMWORD PTR [rbx],ymm12"
-        EmitIfCountGE \RowCount\(), 4, "vmovups YMMWORD PTR [rbx+rax],ymm14"
-        add     rdx,8*4                     # advance matrix C by 8 columns
+.LStoreMasked2xNBlock\@:
+        EmitIfCountGE \RowCount\(), 1, "vmovupf YMMWORD PTR [rdx],ymm8"
+        EmitIfCountGE \RowCount\(), 2, "vmovupf YMMWORD PTR [rdx+rax],ymm10"
+        EmitIfCountGE \RowCount\(), 3, "vmovupf YMMWORD PTR [rbx],ymm12"
+        EmitIfCountGE \RowCount\(), 4, "vmovupf YMMWORD PTR [rbx+rax],ymm14"
+        add     rdx,32                      # advance matrix C by YMMWORD
 .if \RowCount\() > 2
-        add     rbx,8*4                     # advance matrix C plus 2 rows by 8 columns
+        add     rbx,32                      # advance matrix C plus 2 rows by YMMWORD
 .endif
-        add     r9,8                        # correct for over-subtract above
+        add     r9,.LFgemmYmmElementCount   # correct for over-subtract above
 
-.LOutputMasked8xNBlock\@:
+.LOutputMasked1xNBlock\@:
         vmovd   xmm0,r9d
+.if .LFgemmElementSize == 4
         vshufps xmm0,xmm0,xmm0,0
-        vpcmpgtd xmm1,xmm0,XMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip+16]
-        vpcmpgtd xmm0,xmm0,XMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip]
+.else
+        vmovddup xmm0,xmm0
+.endif
+        vpcmpgtf xmm1,xmm0,XMMWORD PTR .LFgemmMaskMoveVector[rip+16]
+        vpcmpgtf xmm0,xmm0,XMMWORD PTR .LFgemmMaskMoveVector[rip]
         vinsertf128 ymm0,ymm0,xmm1,1
         test    r15b,r15b                   # ZeroMode?
-        jnz     .LStoreMasked8xNBlock\@
-        EmitIfCountGE \RowCount\(), 1, "vmaskmovps ymm8,ymm0,YMMWORD PTR [rdx]"
-        EmitIfCountGE \RowCount\(), 2, "vmaskmovps ymm10,ymm0,YMMWORD PTR [rdx+rax]"
-        EmitIfCountGE \RowCount\(), 3, "vmaskmovps ymm12,ymm0,YMMWORD PTR [rbx]"
-        EmitIfCountGE \RowCount\(), 4, "vmaskmovps ymm14,ymm0,YMMWORD PTR [rbx+rax]"
-        EmitIfCountGE \RowCount\(), 1, "vaddps ymm9,ymm9,ymm8"
-        EmitIfCountGE \RowCount\(), 2, "vaddps ymm11,ymm11,ymm10"
-        EmitIfCountGE \RowCount\(), 3, "vaddps ymm13,ymm13,ymm12"
-        EmitIfCountGE \RowCount\(), 4, "vaddps ymm15,ymm15,ymm14"
+        jnz     .LStoreMasked1xNBlock\@
+        EmitIfCountGE \RowCount\(), 1, "vmaskmovpf ymm8,ymm0,YMMWORD PTR [rdx]"
+        EmitIfCountGE \RowCount\(), 2, "vmaskmovpf ymm10,ymm0,YMMWORD PTR [rdx+rax]"
+        EmitIfCountGE \RowCount\(), 3, "vmaskmovpf ymm12,ymm0,YMMWORD PTR [rbx]"
+        EmitIfCountGE \RowCount\(), 4, "vmaskmovpf ymm14,ymm0,YMMWORD PTR [rbx+rax]"
+        EmitIfCountGE \RowCount\(), 1, "vaddpf ymm9,ymm9,ymm8"
+        EmitIfCountGE \RowCount\(), 2, "vaddpf ymm11,ymm11,ymm10"
+        EmitIfCountGE \RowCount\(), 3, "vaddpf ymm13,ymm13,ymm12"
+        EmitIfCountGE \RowCount\(), 4, "vaddpf ymm15,ymm15,ymm14"
 
-.LStoreMasked8xNBlock\@:
-        EmitIfCountGE \RowCount\(), 1, "vmaskmovps YMMWORD PTR [rdx],ymm0,ymm9"
-        EmitIfCountGE \RowCount\(), 2, "vmaskmovps YMMWORD PTR [rdx+rax],ymm0,ymm11"
-        EmitIfCountGE \RowCount\(), 3, "vmaskmovps YMMWORD PTR [rbx],ymm0,ymm13"
-        EmitIfCountGE \RowCount\(), 4, "vmaskmovps YMMWORD PTR [rbx+rax],ymm0,ymm15"
+.LStoreMasked1xNBlock\@:
+        EmitIfCountGE \RowCount\(), 1, "vmaskmovpf YMMWORD PTR [rdx],ymm0,ymm9"
+        EmitIfCountGE \RowCount\(), 2, "vmaskmovpf YMMWORD PTR [rdx+rax],ymm0,ymm11"
+        EmitIfCountGE \RowCount\(), 3, "vmaskmovpf YMMWORD PTR [rbx],ymm0,ymm13"
+        EmitIfCountGE \RowCount\(), 4, "vmaskmovpf YMMWORD PTR [rbx+rax],ymm0,ymm15"
 .ifb \Fallthrough\()
         jmp     .LExitKernel
 .endif
 
         .endm
+
+/*++
+
+Macro Description:
+
+    This macro generates the inner kernel to compute matrix multiplication.
+
+Arguments:
+
+    FunctionName - Supplies the name for the generated function.
+
+--*/
+
+        .macro FgemmKernelAvxFunction FunctionName
 
 /*++
 
@@ -387,7 +393,7 @@ Arguments:
 
     ldc - Supplies the first dimension of matrix C.
 
-    Alpha (xmm0) - Supplies the scalar alpha multiplier (see SGEMM definition).
+    Alpha (xmm0) - Supplies the scalar alpha multiplier (see GEMM definition).
 
     ZeroMode - Supplies true if the output matrix must be zero initialized,
         else false if the output matrix is accumulated into.
@@ -398,20 +404,20 @@ Return Value:
 
 --*/
 
-        .globl  C_UNDERSCORE(MlasGemmFloatKernelAvx)
-C_UNDERSCORE(MlasGemmFloatKernelAvx):
+        .globl  \FunctionName\()
+\FunctionName\():
 
         push    rbp
         push    rbx
         push    r15
         mov     r11,rdi
-        mov     r10,.LSgemmKernelFrame_lda[rsp]
-        shl     r10,2                       # convert lda to bytes
-        mov     rax,.LSgemmKernelFrame_ldc[rsp]
-        shl     rax,2                       # convert ldc to bytes
-        movzx   r15,BYTE PTR .LSgemmKernelFrame_ZeroMode[rsp]
-        vmovss  DWORD PTR .LSgemmKernelFrame_alpha[rsp],xmm0
-        vbroadcastss ymm2,DWORD PTR .LSgemmKernelFrame_alpha[rsp]
+        mov     r10,.LFgemmKernelFrame_lda[rsp]
+        shl     r10,.LFgemmElementShift     # convert lda to bytes
+        mov     rax,.LFgemmKernelFrame_ldc[rsp]
+        shl     rax,.LFgemmElementShift     # convert ldc to bytes
+        movzx   r15,BYTE PTR .LFgemmKernelFrame_ZeroMode[rsp]
+        vmovsf  .LFgemmKernelFrame_alpha[rsp],xmm0
+        vbroadcastsf ymm2,.LFgemmKernelFrame_alpha[rsp]
 
 //
 // Process 4 rows of the matrices.
@@ -451,4 +457,4 @@ C_UNDERSCORE(MlasGemmFloatKernelAvx):
 .LProcessCountMLessThan2:
         ProcessCountM 1
 
-        .end
+        .endm

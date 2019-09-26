@@ -6,14 +6,46 @@ Licensed under the MIT License.
 
 Module Name:
 
-   SgemmKernelCommon.h
+    FgemmKernelCommon.h
 
 Abstract:
 
-   This module contains common kernel macros and structures for the single
-   precision matrix/matrix multiply operation (SGEMM).
+    This module contains common kernel macros and structures for the floating
+    point matrix/matrix multiply operation (SGEMM and DGEMM).
 
 --*/
+
+//
+// Stack frame layout for the floating point kernels.
+//
+
+        .equ    .LFgemmKernelFrame_SavedR12, -40
+        .equ    .LFgemmKernelFrame_SavedR13, -32
+        .equ    .LFgemmKernelFrame_SavedR14, -24
+        .equ    .LFgemmKernelFrame_alpha, -16
+        .equ    .LFgemmKernelFrame_mask, -8
+        .equ    .LFgemmKernelFrame_SavedR15, 0
+        .equ    .LFgemmKernelFrame_SavedRbx, 8
+        .equ    .LFgemmKernelFrame_SavedRbp, 16
+        .equ    .LFgemmKernelFrame_ReturnAddress, 24
+        .equ    .LFgemmKernelFrame_lda, 32
+        .equ    .LFgemmKernelFrame_ldc, 40
+        .equ    .LFgemmKernelFrame_ZeroMode, 48
+
+//
+// Define the number of elements per vector register.
+//
+
+        .equ    .LFgemmXmmElementCount, 16 / .LFgemmElementSize
+        .equ    .LFgemmYmmElementCount, 32 / .LFgemmElementSize
+        .equ    .LFgemmZmmElementCount, 64 / .LFgemmElementSize
+
+//
+// Define the typed instruction template.
+//
+
+#define FGEMM_TYPED_INSTRUCTION(Untyped, Typed) \
+        .macro Untyped Operand:vararg; Typed \Operand\(); .endm;
 
 /*++
 
@@ -53,18 +85,18 @@ Implicit Arguments:
         jb      .LProcessRemainingBlocks\@
 
 .LComputeBlockBy4Loop\@:
-        \ComputeBlock\() \RowCount\(), 0, 0, 64*4
-        \ComputeBlock\() \RowCount\(), 16*4, 4, 64*4
-        sub     rsi,-32*4                   # advance matrix B by 32 columns
-        \ComputeBlock\() \RowCount\(), 0, 8, 64*4
-        \ComputeBlock\() \RowCount\(), 16*4, 12, 64*4
-        sub     rsi,-32*4                   # advance matrix B by 32 columns
-        add     rdi,4*4                     # advance matrix A by 4 columns
+        \ComputeBlock\() \RowCount\(), 0, .LFgemmElementSize*0, 64*4
+        \ComputeBlock\() \RowCount\(), 2*32, .LFgemmElementSize*1, 64*4
+        add_immed rsi,2*2*32                # advance matrix B by 128 bytes
+        \ComputeBlock\() \RowCount\(), 0, .LFgemmElementSize*2, 64*4
+        \ComputeBlock\() \RowCount\(), 2*32, .LFgemmElementSize*3, 64*4
+        add_immed rsi,2*2*32                # advance matrix B by 128 bytes
+        add     rdi,4*.LFgemmElementSize    # advance matrix A by 4 elements
 .if \RowCount\() > 3
-        add     rbx,4*4                     # advance matrix A plus rows by 4 columns
+        add     rbx,4*.LFgemmElementSize    # advance matrix A plus rows by 4 elements
 .if \RowCount\() == 12
-        add     r13,4*4
-        add     r14,4*4
+        add     r13,4*.LFgemmElementSize
+        add     r14,4*.LFgemmElementSize
 .endif
 .endif
         sub     rbp,4
@@ -76,13 +108,13 @@ Implicit Arguments:
 
 .LComputeBlockBy1Loop\@:
         \ComputeBlock\() \RowCount\(), 0, 0
-        add     rsi,16*4                    # advance matrix B by 16 columns
-        add     rdi,4                       # advance matrix A by 1 column
+        add     rsi,2*32                    # advance matrix B by 64 bytes
+        add     rdi,.LFgemmElementSize      # advance matrix A by 1 element
 .if \RowCount\() > 3
-        add     rbx,4                       # advance matrix A plus rows by 1 column
+        add     rbx,.LFgemmElementSize      # advance matrix A plus rows by 1 element
 .if \RowCount\() == 12
-        add     r13,4
-        add     r14,4
+        add     r13,.LFgemmElementSize
+        add     r14,.LFgemmElementSize
 .endif
 .endif
         dec     rbp

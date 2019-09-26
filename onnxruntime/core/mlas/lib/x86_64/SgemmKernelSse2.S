@@ -19,17 +19,9 @@ Abstract:
 
 #include "asmmacro.h"
 #include "SgemmKernelCommon.h"
+#include "FgemmKernelSse2Common.h"
 
         .intel_syntax noprefix
-
-        .equ    .LSgemmKernelFrame_alpha, -8
-        .equ    .LSgemmKernelFrame_SavedR15, 0
-        .equ    .LSgemmKernelFrame_SavedRbx, 8
-        .equ    .LSgemmKernelFrame_SavedRbp, 16
-        .equ    .LSgemmKernelFrame_ReturnAddress, 24
-        .equ    .LSgemmKernelFrame_lda, 32
-        .equ    .LSgemmKernelFrame_ldc, 40
-        .equ    .LSgemmKernelFrame_ZeroMode, 48
 
         .text
 
@@ -226,8 +218,8 @@ Implicit Arguments:
         jz      .LOutput16xNBlock\@
 
 .LCompute16xNBlockBy1Loop\@:
-        EmitIfCountGE \RowCount\(), 1, "movss xmm0,DWORD PTR [rdi]"
-        EmitIfCountGE \RowCount\(), 2, "movss xmm1,DWORD PTR [rdi+r10]"
+        EmitIfCountGE \RowCount\(), 1, "movss xmm0,[rdi]"
+        EmitIfCountGE \RowCount\(), 2, "movss xmm1,[rdi+r10]"
         ComputeBlockSseBy16 2, 0, 0x00
         add     rsi,16*4                    # advance matrix B by 16 columns
         add     rdi,4                       # advance matrix A by 1 column
@@ -235,7 +227,7 @@ Implicit Arguments:
         jne     .LCompute16xNBlockBy1Loop\@
 
 .LOutput16xNBlock\@:
-        movss   xmm2,DWORD PTR .LSgemmKernelFrame_alpha[rsp]
+        movss   xmm2,.LFgemmKernelFrame_alpha[rsp]
         shufps  xmm2,xmm2,0
         EmitIfCountGE \RowCount\(), 1, "mulps xmm8,xmm2"
                                             # multiply by alpha
@@ -318,98 +310,22 @@ Implicit Arguments:
 .LOutputPartial1xNBlock\@:
         test    r15b,r15b                   # ZeroMode?
         jnz     .LSkipAccumulateOutput1xN\@
-        EmitIfCountGE \RowCount\(), 1, "addss xmm8,DWORD PTR [rdx]"
-        EmitIfCountGE \RowCount\(), 2, "addss xmm12,DWORD PTR [rdx+rax]"
+        EmitIfCountGE \RowCount\(), 1, "addss xmm8,[rdx]"
+        EmitIfCountGE \RowCount\(), 2, "addss xmm12,[rdx+rax]"
 
 .LSkipAccumulateOutput1xN\@:
-        EmitIfCountGE \RowCount\(), 1, "movss DWORD PTR [rdx],xmm8"
-        EmitIfCountGE \RowCount\(), 2, "movss DWORD PTR [rdx+rax],xmm12"
+        EmitIfCountGE \RowCount\(), 1, "movss [rdx],xmm8"
+        EmitIfCountGE \RowCount\(), 2, "movss [rdx+rax],xmm12"
 .ifb \Fallthrough\()
         jmp     .LExitKernel
 .endif
 
         .endm
 
-/*++
-
-Routine Description:
-
-    This routine is an inner kernel to compute matrix multiplication for a
-    set of rows.
-
-Arguments:
-
-    A (rdi) - Supplies the address of matrix A.
-
-    B (rsi) - Supplies the address of matrix B. The matrix data has been packed
-        using MlasSgemmCopyPackB or MlasSgemmTransposePackB.
-
-    C (rdx) - Supplies the address of matrix C.
-
-    CountK (rcx) - Supplies the number of columns from matrix A and the number
-        of rows from matrix B to iterate over.
-
-    CountM (r8) - Supplies the maximum number of rows that can be processed for
-        matrix A and matrix C. The actual number of rows handled for this
-        invocation depends on the kernel implementation.
-
-    CountN (r9) - Supplies the number of columns from matrix B and matrix C to
-        iterate over.
-
-    lda - Supplies the first dimension of matrix A.
-
-    ldc - Supplies the first dimension of matrix C.
-
-    Alpha (xmm0) - Supplies the scalar alpha multiplier (see SGEMM definition).
-
-    ZeroMode - Supplies true if the output matrix must be zero initialized,
-        else false if the output matrix is accumulated into.
-
-Return Value:
-
-    Returns the number of rows handled.
-
---*/
-
-        .globl  C_UNDERSCORE(MlasGemmFloatKernelSse)
-C_UNDERSCORE(MlasGemmFloatKernelSse):
-
-        push    rbp
-        push    rbx
-        push    r15
-        mov     r11,rdi
-        mov     r10,.LSgemmKernelFrame_lda[rsp]
-        shl     r10,2                       # convert lda to bytes
-        mov     rax,.LSgemmKernelFrame_ldc[rsp]
-        shl     rax,2                       # convert ldc to bytes
-        movzx   r15,BYTE PTR .LSgemmKernelFrame_ZeroMode[rsp]
-        movss   DWORD PTR .LSgemmKernelFrame_alpha[rsp],xmm0
-
 //
-// Process CountM rows of the matrices.
+// Generate the GEMM kernel.
 //
 
-        cmp     r8,2
-        jb      .LProcessCountM1
-        mov     r8d,2                       # return 2 rows handled
-        ProcessCountM 2, Fallthrough
-
-//
-// Restore non-volatile registers and return.
-//
-
-.LExitKernel:
-        mov     eax,r8d
-        pop     r15
-        pop     rbx
-        pop     rbp
-        ret
-
-//
-// Process 1 row of the matrices.
-//
-
-.LProcessCountM1:
-        ProcessCountM 1
+FgemmKernelSse2Function C_UNDERSCORE(MlasGemmFloatKernelSse)
 
         .end
