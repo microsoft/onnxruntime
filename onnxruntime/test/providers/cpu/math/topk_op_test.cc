@@ -335,7 +335,34 @@ static void top_all_explicit_axis_1D_input(int opset_version, int64_t sorted = 1
 TEST(TopKOperator, TopAllExplicitAxis1DInputLargestElements) {
   top_all_explicit_axis_1D_input(10);
   top_all_explicit_axis_1D_input(11);
-  top_all_explicit_axis_1D_input(11, 0); // unsorted
+  top_all_explicit_axis_1D_input(11, 0);  // unsorted
+}
+
+
+static void top_2_explicit_axis_1D_large_input(int opset_version, int64_t sorted = 1) {
+  std::vector<float> input_vals = {93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f, 
+                                   93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f, 
+                                   93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f, 
+                                   93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f, 
+                                   93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f,
+                                   93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f,
+                                   93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f,
+                                   93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f,
+                                   93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f,
+                                   93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f};
+
+  std::vector<int64_t> input_dimensions = {100};
+  std::vector<float> expected_vals = {983.0f, 983.0f};
+  std::vector<int64_t> expected_indices = {7, 17};
+  std::vector<int64_t> expected_dimensions = {2};
+  int64_t axis = 0;
+  RunTest(opset_version, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 1, sorted);
+}
+
+TEST(TopKOperator, TopAllExplicitAxis1DLargeInputLargestElements) {
+  top_2_explicit_axis_1D_large_input(10);
+  top_2_explicit_axis_1D_large_input(11);
+  top_2_explicit_axis_1D_large_input(11, 0);  // unsorted
 }
 
 static void top_1_explicit_axis_MultiD_input(int opset_version, int64_t sorted = 1) {
