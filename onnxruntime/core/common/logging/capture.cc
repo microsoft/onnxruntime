@@ -39,7 +39,7 @@ void Capture::ProcessPrintf(msvc_printf_check const char* format, va_list args) 
 #else
   const int nbrcharacters = vsnprintf(message.data(), message.size(), format, args);
   error = nbrcharacters < 0;
-  truncated = (nbrcharacters >=0 && static_cast<gsl::span::index_type>(nbrcharacters) > message.size();
+  truncated = (nbrcharacters >= 0 && static_cast<gsl::index>(nbrcharacters) > message.size());
 #endif
 
   if (error) {
