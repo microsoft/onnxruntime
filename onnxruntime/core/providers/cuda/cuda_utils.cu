@@ -13,28 +13,20 @@ namespace cuda {
 std::vector<cudaDeviceProp> GridDim::s_cachedDeviceProps;
 std::once_flag GridDim::s_cachedDevicePropsInitFlag;
 
-template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
+template <typename T>
 __global__ void _Fill(
     T* output_data,
     T val,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
-
-  #pragma unroll
-  for (int i = 0; i < NumElementsPerThread; i++) {
-    if (id < N) {
-      output_data[id] = val;
-      id += NumThreadsPerBlock;
-    }
-  }
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  output_data[id] = val;
 }
 
 template <typename T>
 void Fill(T* output, T value, int64_t count) {
-  int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _Fill<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
-    <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(output, value, N);
+  _Fill<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(output, value, N);
 }
 
 template <typename T>

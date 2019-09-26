@@ -19,7 +19,7 @@ __global__ void _ImageScalerKernel(
     const fast_divmod fdm_HW,
     T* output_data,
     const size_t N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, 1);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   int n, c;
   if (batch1)
     c = fdm_HW.div(id);

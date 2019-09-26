@@ -9,22 +9,15 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
+template <typename T>
 __global__ void _SGDOptimizer(
     const T* eta,
     const T* weights,
     const T* gradients,
     T* weights_out,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
-
-  #pragma unroll
-  for (int i = 0; i < NumElementsPerThread; i++) {
-    if (id < N) {
-      weights_out[id] = weights[id] - ((*eta) * gradients[id]);
-      id += NumThreadsPerBlock;
-    }
-  }
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  weights_out[id] = weights[id] - ((*eta) * gradients[id]);
 }
 
 template <typename T>
@@ -34,10 +27,9 @@ void SGDOptimizerImpl(
     const T* gradients,
     T* weights_out,
     size_t count) {
-  int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _SGDOptimizer<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
-    <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _SGDOptimizer<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       eta,
       weights,
       gradients,
@@ -55,8 +47,7 @@ template void SGDOptimizerImpl(                    \
 
 SPECIALIZED_IMPL__SGDOptimizerImpl(float)
 
-template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD,\
-  int NumThreadsPerBlock, int NumElementsPerThread, bool update_fp16_weight>
+template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, bool update_fp16_weight>
 __global__ void _AdamOptimizer(
     const T1* eta,
     const T2* update_count,
@@ -74,41 +65,34 @@ __global__ void _AdamOptimizer(
     int64_t* update_count_out,
     half* fp16_weights_out,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  // Regularize gradient.
+  const T4 g_regularized = lambda * T4(weights[id]) + T4(grads[id]);
 
-  #pragma unroll
-  for (int i = 0; i < NumElementsPerThread; i++) {
-    if (id < N) {
-      // Regularize gradient.
-      const T4 g_regularized = lambda * T4(weights[id]) + T4(grads[id]);
+  // A shared constant.
+  const T4 one = T4(1.0f);
 
-      // A shared constant.
-      const T4 one = T4(1.0f);
+  // Update exponentially-averaged historical gradient.
+  moment_1_out[id] = \
+    alpha * moment_1[id] + (one - alpha) * g_regularized;
 
-      // Update exponentially-averaged historical gradient.
-      moment_1_out[id] =
-          alpha * moment_1[id] + (one - alpha) * g_regularized;
+  // Update exponentially-averaged historical squared gradient.
+  moment_2_out[id] = \
+    beta * moment_2[id] + (one  - beta) * g_regularized * g_regularized;
 
-      // Update exponentially-averaged historical squared gradient.
-      moment_2_out[id] =
-          beta * moment_2[id] + (one - beta) * g_regularized * g_regularized;
+  // Update learning rate - Use the updated eta for the final weight update.
+  const T4 count = T4(static_cast<long long>(*update_count));
+  const T4 numerator = _Sqrt(one - _Pow(beta, count));
+  const T4 denom = one - _Pow(alpha, count);
+  const T4 eta_new = T4(*eta) * numerator / denom;
 
-      // Update learning rate - Use the updated eta for the final weight update.
-      const T4 count = T4(static_cast<long long>(*update_count));
-      const T4 numerator = _Sqrt(one - _Pow(beta, count));
-      const T4 denom = one - _Pow(alpha, count);
-      const T4 eta_new = T4(*eta) * numerator / denom;
+  // Compute the new weight.
+  weights_out[id] = weights[id] - \
+    T3(eta_new * moment_1_out[id] / (_Sqrt(moment_2_out[id]) + epsilon));
+  *update_count_out = (*update_count) + 1;
 
-      // Compute the new weight.
-      weights_out[id] = weights[id] -
-                        T3(eta_new * moment_1_out[id] / (_Sqrt(moment_2_out[id]) + epsilon));
-      *update_count_out = (*update_count) + 1;
-
-      if (update_fp16_weight) {
-        fp16_weights_out[id] = static_cast<half>(weights_out[id]);
-      }
-      id += NumThreadsPerBlock;
-    }
+  if (update_fp16_weight) {
+    fp16_weights_out[id] = static_cast<half>(weights_out[id]);
   }
 }
 
@@ -130,12 +114,11 @@ void AdamOptimizerImpl(
     T2* update_count_out,
     half* fp16_weights_out,
     size_t count) {
-  int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
 
   if (fp16_weights_out != nullptr){
-    _AdamOptimizer<T1, T2, T3, T4, T_GRAD, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread, true>\
-      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _AdamOptimizer<T1, T2, T3, T4, T_GRAD, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       eta,
       update_count,
       weights,
@@ -153,8 +136,7 @@ void AdamOptimizerImpl(
       fp16_weights_out,
       N);
   } else {
-    _AdamOptimizer<T1, T2, T3, T4, T_GRAD, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread, false>\
-      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _AdamOptimizer<T1, T2, T3, T4, T_GRAD, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       eta,
       update_count,
       weights,
@@ -200,7 +182,7 @@ SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half)
 SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half)
 SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half)
 
-template <typename T1, typename T2, typename T3, int NumThreadsPerBlock, int NumElementsPerThread>
+template <typename T1, typename T2, typename T3>
 __global__ void _LambComputeDirection(
     const T1* weights,
     const T2* grads,
@@ -214,28 +196,21 @@ __global__ void _LambComputeDirection(
     T3* moment_1_out,
     T3* moment_2_out,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  const T3 one = T3(1.0);
+  const T3 g = T3(grads[id]);
 
-  #pragma unroll
-  for (int i = 0; i < NumElementsPerThread; i++) {
-    if (id < N) {
-      const T3 one = T3(1.0);
-      const T3 g = T3(grads[id]);
+  // Update exponentially-averaged historical gradient
+  moment_1_out[id] = alpha * moment_1[id] + \
+    (one - alpha) * g;
 
-      // Update exponentially-averaged historical gradient
-      moment_1_out[id] = alpha * moment_1[id] + \
-        (one - alpha) * g;
+  // Update exponentially-averaged historical squared gradient
+  moment_2_out[id] = beta * moment_2[id] + \
+    (one - beta) * g * g;
 
-      // Update exponentially-averaged historical squared gradient
-      moment_2_out[id] = beta * moment_2[id] + \
-        (one - beta) * g * g;
-
-      // Save regularized update direction to output.
-      update_direction[id] = lambda * weights[id] + \
-        T1(moment_1_out[id] / (_Sqrt(moment_2_out[id]) + epsilon));
-      id += NumThreadsPerBlock;
-    }
-  }
+  // Save regularized update direction to output.
+  update_direction[id] = lambda * weights[id] + \
+    T1(moment_1_out[id] / (_Sqrt(moment_2_out[id]) + epsilon));
 }
 
 template <typename T1, typename T2, typename T3>
@@ -252,9 +227,10 @@ void LambComputeDirectionImpl(
     T3* moment_1_out,
     T3* moment_2_out,
     size_t count) {
-  int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  int blocksPerGrid = \
+    (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _LambComputeDirection<T1, T2, T3, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
+  _LambComputeDirection<T1, T2, T3>\
     <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       weights,
       grads,
@@ -290,7 +266,7 @@ SPECIALIZED_IMPL_LambComputeDirectionImpl(double, double, double)
 SPECIALIZED_IMPL_LambComputeDirectionImpl(float, half, half)
 SPECIALIZED_IMPL_LambComputeDirectionImpl(float, half, float)
 
-template <typename T1, typename T2, int NumThreadsPerBlock, int NumElementsPerThread, bool update_fp16_weight>
+template <typename T1, typename T2, bool update_fp16_weight>
 __global__ void _LambUpdate(
     const T1* eta,
     const T2* r_norm,
@@ -300,19 +276,13 @@ __global__ void _LambUpdate(
     T2* weights_out,
     half* fp16_weights_out,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  // Compute new weight using the saved update direction.
+  weights_out[id] = weights[id] - \
+    _Sqrt((*w_norm) / (*r_norm)) * T2((*eta) * update_direction[id]);
 
-  #pragma unroll
-  for (int i = 0; i < NumElementsPerThread; i++) {
-    if (id < N) {
-      // Compute new weight using the saved update direction.
-      weights_out[id] = weights[id] - \
-        _Sqrt((*w_norm) / (*r_norm)) * T2((*eta) * update_direction[id]);
-      if (update_fp16_weight) {
-        fp16_weights_out[id] = static_cast<half>(weights_out[id]);
-      }
-      id += NumThreadsPerBlock;
-    }
+  if (update_fp16_weight) {
+    fp16_weights_out[id] = static_cast<half>(weights_out[id]);
   }
 }
 
@@ -326,22 +296,21 @@ void LambUpdateImpl(
     T2* weights_out,
     half* fp16_weights_out,
     size_t count) {
-  int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  int blocksPerGrid = \
+    (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   if (fp16_weights_out != nullptr) {
-    _LambUpdate<T1, T2, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread, true>\
-      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-        eta,
-        r_norm,
-        w_norm,
-        weights,
-        update_direction,
-        weights_out,
-        fp16_weights_out,
-        N);
+    _LambUpdate<T1, T2, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      eta,
+      r_norm,
+      w_norm,
+      weights,
+      update_direction,
+      weights_out,
+      fp16_weights_out,
+      N);
   } else {
-    _LambUpdate<T1, T2, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread, false>
-      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _LambUpdate<T1, T2, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       eta,
       r_norm,
       w_norm,
@@ -368,21 +337,14 @@ SPECIALIZED_IMPL_LambUpdate(float, float)
 SPECIALIZED_IMPL_LambUpdate(double, double)
 SPECIALIZED_IMPL_LambUpdate(half, float)
 
-template <typename T, typename T_GRAD, int NumThreadsPerBlock, int NumElementsPerThread>
+template <typename T, typename T_GRAD>
 __global__ void _AccumulateGradient(
     const T* gradient_buffer,
     const T_GRAD* gradient,
     T* accumulated_gradient,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
-
-  #pragma unroll
-  for (int i = 0; i < NumElementsPerThread; i++) {
-    if (id < N) {
-      accumulated_gradient[id] = gradient_buffer[id] + T(gradient[id]);
-      id += NumThreadsPerBlock;
-    }
-  }
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  accumulated_gradient[id] = gradient_buffer[id] + T(gradient[id]);
 }
 
 template <typename T, typename T_GRAD>
@@ -391,10 +353,9 @@ void AccumulateGradientImpl(
     const T_GRAD* gradient,
     T* accumulated_gradient,
     size_t count) {
-  int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _AccumulateGradient<T, T_GRAD, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
-    <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _AccumulateGradient<T, T_GRAD><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       gradient_buffer,
       gradient,
       accumulated_gradient,

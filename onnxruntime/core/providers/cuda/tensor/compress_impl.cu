@@ -27,7 +27,7 @@ __global__ void _CompressKernel(const int32_t valid_condition_length,
                                 const T* input_data,
                                 T* output_data,
                                 const CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, 1);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG output_index = 0;
 
   int div, mod;

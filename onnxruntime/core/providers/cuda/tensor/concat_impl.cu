@@ -18,7 +18,7 @@ __global__ void _ConcatKernel(const fast_divmod block_size_including_axis_dim_di
                               T* output_data,
                               const void** input_ptr,
                               const CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, 1);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG input_pos = 0;
 
   int outter_block_index = 0;
