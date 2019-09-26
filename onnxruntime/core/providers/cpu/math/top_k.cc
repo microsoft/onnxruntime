@@ -27,27 +27,6 @@
 using namespace std;
 namespace onnxruntime {
 
-/*
-// Helper methods
-static int64_t SizeToDim(size_t k, const vector<int64_t>& dims) {
-  ORT_ENFORCE(k <= dims.size());
-  int64_t r = 1;
-  for (size_t i = 0; i < k; ++i) {
-    r *= dims[i];
-  }
-  return r;
-}
-
-static int64_t SizeFromDim(size_t k, const vector<int64_t>& dims) {
-  ORT_ENFORCE(k <= dims.size());
-  int64_t r = 1;
-  for (size_t i = k; i < dims.size(); ++i) {
-    r *= dims[i];
-  }
-  return r;
-}
-*/
-
 template <typename T>
 struct GreaterValueCmp {
   bool operator()(

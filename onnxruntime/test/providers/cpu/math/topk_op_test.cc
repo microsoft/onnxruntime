@@ -39,18 +39,20 @@ static void RunTest(int op_set,
     test.AddInput<int64_t>("K", {1}, {k});
 
   // Outputs
-  if (sorted == 1) {
+  if (sorted == 1){
     test.AddOutput<float>("Values", expected_dimensions, expected_vals);
     test.AddOutput<int64_t>("Indices", expected_dimensions, expected_indices);
   } else {
-    test.AddOutput<float>("Values", expected_dimensions, expected_vals, false);        // false indicates contents could be jumbled
-    test.AddOutput<int64_t>("Indices", expected_dimensions, expected_indices, false);  // false indicates contents could be jumbled
+    // false indicates contents could be jumbled
+    test.AddOutput<float>("Values", expected_dimensions, expected_vals, false);
+    // false indicates contents could be jumbled
+    test.AddOutput<int64_t>("Indices", expected_dimensions, expected_indices, false);
   }
 
   // Run test and check results
   std::unordered_set<std::string> excluded_providers;
   if (!is_tensorrt_supported) {
-    excluded_providers.insert(kTensorrtExecutionProvider);  //Disable TensorRT because of unsupported data types
+    excluded_providers.insert(kTensorrtExecutionProvider);//Disable TensorRT because of unsupported data types
   }
   test.Run(expect_result, expected_err_str, excluded_providers);
 }
@@ -193,13 +195,14 @@ static void top_1_default_axis(int opset_version, int64_t sorted = 1) {
   std::vector<int64_t> expected_indices = {3, 1};
   std::vector<int64_t> expected_dimensions = {2, 1};
   int64_t axis = -1;
-  RunTest(opset_version, 1, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 1, sorted);
+  RunTest(opset_version, 1, input_vals, input_dimensions, expected_vals, expected_indices, 
+      expected_dimensions, false, axis, 1, sorted);
 }
 
 TEST(TopKOperator, Top1DefaultAxisLargestElements) {
   top_1_default_axis(10);
   top_1_default_axis(11);
-  top_1_default_axis(11, 0);  // unsorted
+  top_1_default_axis(11, 0); // unsorted
 }
 
 static void top_2_default_axis(int opset_version, int64_t sorted = 1) {
@@ -209,13 +212,14 @@ static void top_2_default_axis(int opset_version, int64_t sorted = 1) {
   std::vector<int64_t> expected_indices = {3, 1, 2, 1};
   std::vector<int64_t> expected_dimensions = {2, 2};
   int64_t axis = -1;
-  RunTest(opset_version, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 1, sorted);
+  RunTest(opset_version, 2, input_vals, input_dimensions, expected_vals, expected_indices, 
+      expected_dimensions, false, axis, 1, sorted);
 }
 
 TEST(TopKOperator, Top2DefaultAxisLargestElements) {
   top_2_default_axis(10);
   top_2_default_axis(11);
-  top_2_default_axis(11, 0);  // unsorted
+  top_2_default_axis(11, 0); // unsorted
 }
 
 static void top_3_default_axis(int opset_version, int64_t sorted = 1) {
@@ -225,13 +229,14 @@ static void top_3_default_axis(int opset_version, int64_t sorted = 1) {
   std::vector<int64_t> expected_indices = {3, 1, 2, 2, 1, 3};
   std::vector<int64_t> expected_dimensions = {2, 3};
   int64_t axis = -1;
-  RunTest(opset_version, 3, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 1, sorted);
+  RunTest(opset_version, 3, input_vals, input_dimensions, expected_vals, expected_indices, 
+      expected_dimensions, false, axis, 1, sorted);
 }
 
 TEST(TopKOperator, Top3DefaultAxisLargestElements) {
   top_3_default_axis(10);
   top_3_default_axis(11);
-  top_3_default_axis(11, 0);  //unsorted
+  top_3_default_axis(11, 0); //unsorted
 }
 
 static void top_all_default_axis(int opset_version, int64_t sorted = 1) {
@@ -241,13 +246,14 @@ static void top_all_default_axis(int opset_version, int64_t sorted = 1) {
   std::vector<int64_t> expected_indices = {3, 1, 2, 0, 1, 2, 3, 0};
   std::vector<int64_t> expected_dimensions = {2, 4};
   int64_t axis = -1;
-  RunTest(opset_version, 4, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 1, sorted);
+  RunTest(opset_version, 4, input_vals, input_dimensions, expected_vals, expected_indices, 
+      expected_dimensions, false, axis, 1, sorted);
 }
 
 TEST(TopKOperator, TopAllDefaultAxisLargestElements) {
   top_all_default_axis(10);
   top_all_default_axis(11);
-  top_all_default_axis(11, 0);  // unsorted
+  top_all_default_axis(11, 0); // unsorted
 }
 
 static void top_1_explicit_axis(int opset_version, int64_t sorted = 1) {
@@ -257,13 +263,14 @@ static void top_1_explicit_axis(int opset_version, int64_t sorted = 1) {
   std::vector<int64_t> expected_indices = {3, 1};
   std::vector<int64_t> expected_dimensions = {1, 2};
   int64_t axis = 0;
-  RunTest(opset_version, 1, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 1, sorted);
+  RunTest(opset_version, 1, input_vals, input_dimensions, expected_vals, expected_indices, 
+      expected_dimensions, false, axis, 1, sorted);
 }
 
 TEST(TopKOperator, Top1ExplicitAxisLargestElements) {
   top_1_explicit_axis(10);
   top_1_explicit_axis(11);
-  top_1_explicit_axis(11, 0);  // unsorted
+  top_1_explicit_axis(11, 0); // unsorted
 }
 
 static void top_2_explicit_axis(int opset_version, int64_t sorted = 1) {
@@ -273,13 +280,14 @@ static void top_2_explicit_axis(int opset_version, int64_t sorted = 1) {
   std::vector<int64_t> expected_indices = {1, 2, 2, 0, 2, 1, 1, 1};
   std::vector<int64_t> expected_dimensions = {2, 4};
   int64_t axis = 0;
-  RunTest(opset_version, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 1, sorted);
+  RunTest(opset_version, 2, input_vals, input_dimensions, expected_vals, expected_indices, 
+      expected_dimensions, false, axis,1 , sorted);
 }
 
 TEST(TopKOperator, Top2ExplicitAxisLargestElements) {
   top_2_explicit_axis(10);
   top_2_explicit_axis(11);
-  top_2_explicit_axis(11, 0);  //unsorted
+  top_2_explicit_axis(11, 0); //unsorted
 }
 
 static void top_3_explicit_axis(int opset_version, int64_t sorted = 1) {
@@ -295,7 +303,7 @@ static void top_3_explicit_axis(int opset_version, int64_t sorted = 1) {
 TEST(TopKOperator, Top3ExplicitAxisLargestElements) {
   top_3_explicit_axis(10);
   top_3_explicit_axis(11);
-  top_3_explicit_axis(11, 0);  //unsorted
+  top_3_explicit_axis(11 , 0); //unsorted
 }
 
 static void top_all_explicit_axis(int opset_version, int64_t sorted = 1) {
@@ -311,7 +319,7 @@ static void top_all_explicit_axis(int opset_version, int64_t sorted = 1) {
 TEST(TopKOperator, TopAllExplicitAxisLargestElements) {
   top_all_explicit_axis(10);
   top_all_explicit_axis(11);
-  top_all_explicit_axis(11, 0);  // unsorted
+  top_all_explicit_axis(11, 0); // unsorted
 }
 
 static void top_all_explicit_axis_1D_input(int opset_version, int64_t sorted = 1) {
@@ -327,7 +335,7 @@ static void top_all_explicit_axis_1D_input(int opset_version, int64_t sorted = 1
 TEST(TopKOperator, TopAllExplicitAxis1DInputLargestElements) {
   top_all_explicit_axis_1D_input(10);
   top_all_explicit_axis_1D_input(11);
-  top_all_explicit_axis_1D_input(11, 0);  // unsorted
+  top_all_explicit_axis_1D_input(11, 0); // unsorted
 }
 
 static void top_1_explicit_axis_MultiD_input(int opset_version, int64_t sorted = 1) {
@@ -343,7 +351,7 @@ static void top_1_explicit_axis_MultiD_input(int opset_version, int64_t sorted =
 TEST(TopKOperator, Top1ExplicitAxisMultiDInputLargestElements) {
   top_1_explicit_axis_MultiD_input(10);
   top_1_explicit_axis_MultiD_input(11);
-  top_1_explicit_axis_MultiD_input(11, 0);  // unsorted
+  top_1_explicit_axis_MultiD_input(11, 0); // unsorted
 }
 
 static void top_2_default_axis_smallest(int opset_version, int64_t sorted = 1) {
@@ -358,7 +366,7 @@ static void top_2_default_axis_smallest(int opset_version, int64_t sorted = 1) {
 
 TEST(TopKOperator, Top2DefaultAxisSmallestElements) {
   top_2_default_axis_smallest(11);
-  top_2_default_axis_smallest(11, 0);  // unsorted
+  top_2_default_axis_smallest(11, 0); // unsorted
 }
 
 static void top_3_explicit_axis_smallest(int opset_version, int64_t sorted = 1) {
@@ -373,7 +381,7 @@ static void top_3_explicit_axis_smallest(int opset_version, int64_t sorted = 1) 
 
 TEST(TopKOperator, Top3ExplicitAxisSmallestElements) {
   top_3_explicit_axis_smallest(11);
-  top_3_explicit_axis_smallest(11, 0);  //unsorted
+  top_3_explicit_axis_smallest(11, 0); //unsorted
 }
 
 static void top_1_explicit_axis_MultiD_input_smallest(int opset_version, int64_t sorted = 1) {
@@ -388,7 +396,7 @@ static void top_1_explicit_axis_MultiD_input_smallest(int opset_version, int64_t
 
 TEST(TopKOperator, Top1ExplicitAxisMultiDInputSmallestElements) {
   top_1_explicit_axis_MultiD_input_smallest(11);
-  top_1_explicit_axis_MultiD_input_smallest(11, 0);  //unsorted
+  top_1_explicit_axis_MultiD_input_smallest(11, 0); //unsorted
 }
 
 }  // namespace test
