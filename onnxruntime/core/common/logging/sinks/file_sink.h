@@ -5,6 +5,7 @@
 
 #include <fstream>
 #include "core/common/logging/sinks/ostream_sink.h"
+#include "core/common/make_unique.h"
 
 namespace onnxruntime {
 namespace logging {
