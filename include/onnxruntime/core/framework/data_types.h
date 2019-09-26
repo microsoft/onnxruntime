@@ -11,6 +11,7 @@
 
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
+#include "core/framework/tensor.h"
 
 struct OrtValue;
 
@@ -36,6 +37,7 @@ using VectorFloat = std::vector<float>;
 using VectorDouble = std::vector<double>;
 using VectorMapStringToFloat = std::vector<MapStringToFloat>;
 using VectorMapInt64ToFloat = std::vector<MapInt64ToFloat>;
+using VectorTensor = std::vector<onnxruntime::Tensor>;
 
 class DataTypeImpl;
 class TensorTypeBase;
@@ -650,12 +652,12 @@ class OpaqueType : public NonTensorType<T> {
     return this->IsOpaqueCompatible(type_proto);
   }
 
-  void FromDataContainer (const void* data, size_t data_size, OrtValue& output) const override {
+  void FromDataContainer(const void* data, size_t data_size, OrtValue& output) const override {
     NonTensorTypeConverter<T>::FromContainer(this, data, data_size, output);
   }
 
-  void ToDataContainer (const OrtValue& input, size_t data_size, void* data) const override {
-    NonTensorTypeConverter<T>::ToContainer(input, data_size, data); 
+  void ToDataContainer(const OrtValue& input, size_t data_size, void* data) const override {
+    NonTensorTypeConverter<T>::ToContainer(input, data_size, data);
   }
 
  private:
