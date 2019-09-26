@@ -32,9 +32,7 @@ HRESULT MapLotusErrorToHRESULT(onnxruntime::common::Status status)
         return E_NOTIMPL;
     case onnxruntime::common::StatusCode::INVALID_GRAPH:
         return __HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
-    case onnxruntime::common::StatusCode::SHAPE_INFERENCE_NOT_REGISTERED:
-        return __HRESULT_FROM_WIN32(ERROR_INTERNAL_ERROR);
-    case onnxruntime::common::StatusCode::REQUIREMENT_NOT_REGISTERED:
+    case onnxruntime::common::StatusCode::EP_FAIL:
         return __HRESULT_FROM_WIN32(ERROR_INTERNAL_ERROR);
     default:
         return E_FAIL;
