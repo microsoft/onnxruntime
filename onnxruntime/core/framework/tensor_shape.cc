@@ -5,7 +5,6 @@
 #include <iostream>
 #include "core/common/common.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
 
@@ -92,29 +91,6 @@ int64_t TensorShape::SizeHelper(size_t start, size_t end) const {
 // operator<< to nicely output to a stream
 std::ostream& operator<<(std::ostream& out, const ::onnxruntime::TensorShape& shape) {
   return (out << shape.ToString());
-}
-
-std::ostream& operator<<(std::ostream& out, const ONNX_NAMESPACE::TensorShapeProto& shape_proto) {
-  std::string result;
-  result.reserve(128);
-
-  result.append("{");
-  bool first = true;
-  for (auto& dim : shape_proto.dim()) {
-    if (!first) {
-      result.append(",");
-    }
-
-    if (utils::HasDimValue(dim))
-      result.append(std::to_string(dim.dim_value()));
-    else if (utils::HasDimParam(dim))
-      result.append(dim.dim_param());
-
-    first = false;
-  }
-  result.append("}");
-
-  return (out << result);
 }
 
 }  // namespace onnxruntime
