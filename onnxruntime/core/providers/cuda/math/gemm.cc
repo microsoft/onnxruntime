@@ -52,8 +52,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto* W = ctx->Input<Tensor>(1);
   const auto* B = ctx->InputCount() == 3 ? ctx->Input<Tensor>(2) : nullptr;
   // Bias could be missing. Treat as scalar 0 if that is the case.
-  GemmHelper helper(X->Shape(), trans_A_ != CblasNoTrans, W->Shape(), trans_B_ != CblasNoTrans,
-                    B != nullptr ? B->Shape() : TensorShape({}));
+  GemmHelper helper(X->Shape(), trans_A_, W->Shape(), trans_B_, B != nullptr ? B->Shape() : TensorShape({}));
 
   if (!helper.State().IsOK())
     return helper.State();
@@ -67,7 +66,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
-  // broadcast bias if needed and is
+  // broadcast bias if needed and is present
   if (beta_ != 0 && B != nullptr) {
     auto& b_shape = B->Shape();
     const CudaT* b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
