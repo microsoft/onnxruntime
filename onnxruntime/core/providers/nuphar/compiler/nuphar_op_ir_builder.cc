@@ -3,6 +3,7 @@
 
 #include "core/providers/nuphar/compiler/nuphar_op_ir_builder.h"
 
+#include "core/codegen/common/op_macro.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
 #include "core/codegen/passes/op_ir_creator/all_ops.h"
 #include "core/codegen/passes/op_ir_creator/tvm_ir_builder.h"
