@@ -80,7 +80,7 @@ void OrtValueTensorSlicer<T>::Iterator::MaterializeMLValue() const {
   // a lot more complexity (re-consider how ExecutionFrame and OpKernelContext work and whether
   // they need to be OrtValue based, or whether they could be Tensor based).
   // Potential future performance enhancement.
-  auto sub_tensor = std::make_unique<Tensor>(tensor_data_type_, per_iteration_shape_,
+  auto sub_tensor = onnxruntime::make_unique<Tensor>(tensor_data_type_, per_iteration_shape_,
                                              const_cast<void*>(tensor_slice_data_raw), *tensor_location_);
 
   current_ =

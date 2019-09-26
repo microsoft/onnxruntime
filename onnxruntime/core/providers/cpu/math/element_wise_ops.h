@@ -535,7 +535,7 @@ struct TensorAllocator {
   }
 
   std::unique_ptr<Tensor> Allocate(const TensorShape& shape) {
-    return std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
+    return onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
                                     shape,
                                     allocator_);
   }

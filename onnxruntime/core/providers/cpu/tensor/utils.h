@@ -301,13 +301,13 @@ struct WritableSliceIterator {
   // Initialize initial skip and inner_extent.
   void Init(const std::vector<int64_t>& dims, gsl::span<const int64_t> starts,
             gsl::span<const int64_t> steps) {
-    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == starts.size(),
+    ORT_ENFORCE(dims.size() == starts.size(),
                 "dims.size()=", dims.size(), " != ", "starts.size()=", starts.size());
 
-    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == extents_.size(),
+    ORT_ENFORCE(dims.size() == extents_.size(),
                 "dims.size()=", dims.size(), " != ", "extents.size()=", extents_.size());
 
-    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == steps.size(),
+    ORT_ENFORCE(dims.size() == steps.size(),
                 "dims.size()=", dims.size(), " != ", "steps.size()=", steps.size());
 
     size_t pitch = 1;
@@ -318,7 +318,7 @@ struct WritableSliceIterator {
     }
 
     inner_extent_ = extents_[dims.size() - 1];
-    inner_step_ = static_cast<ptrdiff_t>(dims.size()) == steps.size()
+    inner_step_ = dims.size() == steps.size()
                       ? steps[dims.size() - 1]
                       : 1;
   }

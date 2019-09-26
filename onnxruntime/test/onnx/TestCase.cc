@@ -276,7 +276,7 @@ OrtValue* TensorToOrtValue(const ONNX_NAMESPACE::TensorProto& t, onnxruntime::te
   }
   void* p = len == 0 ? nullptr : b.AllocMemory(len);
   Ort::Value temp_value{nullptr};
-  auto d = std::make_unique<onnxruntime::test::OrtCallback>();
+  auto d = onnxruntime::make_unique<onnxruntime::test::OrtCallback>();
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
   status = onnxruntime::test::TensorProtoToMLValue(t, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
                                                    temp_value, *d);
@@ -596,7 +596,7 @@ void OnnxTestCase::ConvertTestData(const std::vector<ONNX_NAMESPACE::TensorProto
     }
     void* p = len == 0 ? nullptr : b.AllocMemory(len);
     Ort::Value v1{nullptr};
-    auto d = std::make_unique<onnxruntime::test::OrtCallback>();
+    auto d = onnxruntime::make_unique<onnxruntime::test::OrtCallback>();
     OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
     status = onnxruntime::test::TensorProtoToMLValue(input, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
                                                      v1, *d);

@@ -86,14 +86,14 @@ class Status {
   Status(StatusCategory category, int code);
 
   Status(const Status& other)
-      : state_((other.state_ == nullptr) ? nullptr : std::make_unique<State>(*other.state_)) {}
+      : state_((other.state_ == nullptr) ? nullptr : new State(*other.state_)) {}
 
   Status& operator=(const Status& other) {
     if (state_ != other.state_) {
       if (other.state_ == nullptr) {
         state_.reset();
       } else {
-        state_ = std::make_unique<State>(*other.state_);
+        state_.reset(new State(*other.state_));
       }
     }
     return *this;

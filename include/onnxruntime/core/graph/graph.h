@@ -318,7 +318,7 @@ class Node {
   */
   class Definitions {
    public:
-    Definitions() noexcept = default;
+    Definitions() = default;
 
     /** The Node's explicit input definitions. */
     std::vector<NodeArg*> input_defs;

@@ -50,8 +50,8 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
     }
   }
 
-  auto conv_W = std::make_unique<Initializer>(conv_W_tensor_proto);
-  auto mul_B = std::make_unique<Initializer>(mul_B_tensor_proto);
+  auto conv_W = onnxruntime::make_unique<Initializer>(conv_W_tensor_proto);
+  auto mul_B = onnxruntime::make_unique<Initializer>(mul_B_tensor_proto);
 
   const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
   std::unique_ptr<Initializer> conv_B = nullptr;
@@ -66,7 +66,7 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
         conv_B_tensor_proto->dims(0) != conv_W_tensor_proto->dims(0)) {
       return Status::OK();
     }
-    conv_B = std::make_unique<Initializer>(conv_B_tensor_proto);
+    conv_B = onnxruntime::make_unique<Initializer>(conv_B_tensor_proto);
   }
 
   // Calculate new value of initializers of conv node

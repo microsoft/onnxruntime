@@ -12,7 +12,7 @@ namespace test {
 TEST(AllocatorTest, CUDAAllocatorTest) {
   int cuda_device_id = 0;
   DeviceAllocatorRegistrationInfo default_memory_info({OrtMemTypeDefault,
-                                                          [](int id) { return std::make_unique<CUDAAllocator>(id, CUDA); }, std::numeric_limits<size_t>::max()});
+                                                          [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); }, std::numeric_limits<size_t>::max()});
 
   auto cuda_arena = CreateAllocator(default_memory_info, cuda_device_id);
 
@@ -28,7 +28,7 @@ TEST(AllocatorTest, CUDAAllocatorTest) {
   EXPECT_TRUE(cuda_addr);
 
   DeviceAllocatorRegistrationInfo pinned_memory_info({OrtMemTypeCPUOutput,
-                                                         [](int) { return std::make_unique<CUDAPinnedAllocator>(0, CUDA_PINNED); }, std::numeric_limits<size_t>::max()});
+                                                         [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(0, CUDA_PINNED); }, std::numeric_limits<size_t>::max()});
 
   auto pinned_allocator = CreateAllocator(pinned_memory_info);
 
