@@ -58,7 +58,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
         s_.cached_benchmark_results.clear();
       }
 
-      Prepare p;
+      ConvTransposeAttributes::Prepare p;
       ORT_RETURN_IF_ERROR(conv_transpose_attrs_.PrepareForCompute(context, has_bias, p, dynamic_padding));
 
       const auto& y_dims = p.Y->Shape().GetDims();
@@ -74,7 +74,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       ORT_RETURN_IF_ERROR(s_.conv_desc.Set(p.kernel_shape.size(), p.pads, p.strides,
                                            p.dilations, mode, CudnnTensor::GetDataType<CudaT>()));
       CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(s_.conv_desc,
-                                                          gsl::narrow_cast<int>(conv_transpose_attrs_.group_)));
+                                                          gsl::narrow_cast<int>(conv_transpose_attrs_.group)));
 
       if (has_bias) {
         const auto& b_shape = p.B->Shape();
