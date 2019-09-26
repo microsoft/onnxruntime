@@ -183,6 +183,7 @@ class OnnxModelInfo : public TestModelInfo {
  private:
   std::string node_name_;
   std::string onnx_commit_tag_;
+  bool need_contrib_op_ = false;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> input_value_info_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> output_value_info_;
 
@@ -194,6 +195,7 @@ class OnnxModelInfo : public TestModelInfo {
     }
   }
   const std::basic_string<PATH_CHAR_TYPE> model_url_;
+  bool NeedContribOp() const override { return need_contrib_op_; }
 
  public:
   OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) : model_url_(model_url) {
@@ -219,6 +221,12 @@ class OnnxModelInfo : public TestModelInfo {
       onnx_commit_tag_ = TestModelInfo::unknown_version;
     }
 #endif
+    for (const auto& x : model_pb.opset_import()) {
+      if (x.domain() == "com.microsoft") {
+        need_contrib_op_ = true;
+        break;
+      }
+    }
     const ONNX_NAMESPACE::GraphProto& graph = model_pb.graph();
     if (graph.node().size() == 1) {
       node_name_ = graph.node()[0].op_type();

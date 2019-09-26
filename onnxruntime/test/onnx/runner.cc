@@ -309,9 +309,15 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
         return true;
       }
       std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(node_data_root_path, filename_str);
-
-      ITestCase* l = CreateOnnxTestCase(ToMBString(test_case_name), TestModelInfo::LoadOnnxModel(p.c_str()),
-                                        default_per_sample_tolerance, default_relative_per_sample_tolerance);
+      auto* model = TestModelInfo::LoadOnnxModel(p.c_str());
+#ifdef DISABLE_CONTRIB_OPS
+      if (model->NeedContribOp()) {
+		delete model;
+        return true;
+      }
+#endif
+      ITestCase* l = CreateOnnxTestCase(ToMBString(test_case_name), model, default_per_sample_tolerance,
+                                        default_relative_per_sample_tolerance);
       process_function(l);
       return true;
     });
