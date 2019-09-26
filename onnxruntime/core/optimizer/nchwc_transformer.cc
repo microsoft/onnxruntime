@@ -166,7 +166,7 @@ void NchwcTransformerImpl::CreateNchwcArgument(Node& node,
   std::string output_reorder_def_name = graph_.GenerateNodeArgName("reorder");
   auto* output_nchwc_arg = &graph_.GetOrCreateNodeArg(output_reorder_def_name, nullptr);
   nchwc_args_[output_original_arg] =
-      std::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, channels, shape);
+      onnxruntime::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, channels, shape);
   output_defs[0] = output_nchwc_arg;
 }
 
@@ -178,7 +178,7 @@ void NchwcTransformerImpl::FuseNchwcArgument(Node& node, const NchwcArgument& nc
   auto& nchwc_node = nchwc_arg.output_node_;
   auto* output_nchwc_arg = nchwc_node.MutableOutputDefs()[0];
   nchwc_args_[output_original_arg] =
-      std::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, nchwc_arg.channels_, nchwc_arg.shape_);
+      onnxruntime::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, nchwc_arg.channels_, nchwc_arg.shape_);
 }
 
 void NchwcTransformerImpl::InsertReorderInput(Node& node) {
@@ -364,7 +364,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     // Reuse the existing NodeArg.
     nchwc_conv_W_arg = filters_it->second;
   } else {
-    auto conv_W = std::make_unique<Initializer>(conv_W_tensor_proto);
+    auto conv_W = onnxruntime::make_unique<Initializer>(conv_W_tensor_proto);
 
     std::vector<float> reordered_filter(conv_W->size() / output_channels * nchwc_output_channels);
 
@@ -400,7 +400,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
       // Reuse the existing NodeArg.
       nchwc_conv_B_arg = biases_it->second;
     } else {
-      auto conv_B = std::make_unique<Initializer>(conv_B_tensor_proto);
+      auto conv_B = onnxruntime::make_unique<Initializer>(conv_B_tensor_proto);
 
       std::vector<float> aligned_bias(nchwc_output_channels);
       std::copy_n(conv_B->data<float>(), output_channels, aligned_bias.data());

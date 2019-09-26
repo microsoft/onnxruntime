@@ -202,7 +202,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
   ORT_UNUSED_PARAMETER(attribute_name);
 
   const auto& node = Node();
-  info_ = std::make_unique<Loop::Info>(node, *subgraph_session_state.GetGraphViewer());
+  info_ = onnxruntime::make_unique<Loop::Info>(node, *subgraph_session_state.GetGraphViewer());
 
   // the Loop inputs are matched to subgraph feeds based on order.
   // we first need the names of the Loop inputs to determine what device they are available on
@@ -286,7 +286,7 @@ LoopImpl::LoopImpl(OpKernelContextInternal& context,
 template <typename T>
 static OrtValue MakeScalarMLValue(AllocatorPtr& allocator, T value, bool is_1d) {
   auto* data_type = DataTypeImpl::GetType<T>();
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(data_type,
+  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(data_type,
                                                               is_1d ? TensorShape({1}) : TensorShape({}),
                                                               allocator);
 

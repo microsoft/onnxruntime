@@ -125,7 +125,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
     auto element_type = DataTypeImpl::GetType<float>();
 
-    std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
+    std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type,
                                                                 shape,
                                                                 alloc);
 

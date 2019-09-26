@@ -308,11 +308,6 @@ add_library(gsl ALIAS gsl-lite)
 # we make it through via a handler so CUDA does not complain
 # The following -DGSL macros are recognized by gsl-lite along with -Dgsl macros
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Dgsl_CONFIG_CONTRACT_VIOLATION_CALLS_HANDLER")
-# Downgrade to C++99 as we have troubles with constexpr
-if(UNIX)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Dgsl_CPLUSPLUS=199711L")
-endif()
-
 # no bounds checking in release build so no perf cost
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DGSL_UNENFORCED_ON_CONTRACT_VIOLATION")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -DGSL_UNENFORCED_ON_CONTRACT_VIOLATION")

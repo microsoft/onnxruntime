@@ -34,7 +34,7 @@ class FileSink : public OStreamSink {
   /// <param name="filter_user_data">If set to <c>true</c> [removes user data].</param>
   /// <remarks>Filtering of user data can alternatively be done at the <see cref="LoggingManager" /> level.</remarks>
   FileSink(const std::string& filename, bool append, bool filter_user_data)
-      : FileSink{std::make_unique<std::ofstream>(filename, std::ios::out | (append ? std::ios::app : std::ios::trunc)),
+      : FileSink{onnxruntime::make_unique<std::ofstream>(filename, std::ios::out | (append ? std::ios::app : std::ios::trunc)),
                  filter_user_data} {
   }
 

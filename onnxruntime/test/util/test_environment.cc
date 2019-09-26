@@ -35,7 +35,7 @@ TestEnvironment::TestEnvironment(int argc, char** argv, bool create_default_logg
 
   if (create_default_logging_manager) {
     static std::string default_logger_id{"Default"};
-    s_default_logging_manager = std::make_unique<LoggingManager>(std::unique_ptr<ISink>{new CLogSink{}},
+    s_default_logging_manager = onnxruntime::make_unique<LoggingManager>(std::unique_ptr<ISink>{new CLogSink{}},
                                                         Severity::kWARNING,  // TODO make this configurable through
                                                                              // cmd line arguments or some other way
                                                         false,

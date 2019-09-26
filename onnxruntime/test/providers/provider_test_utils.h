@@ -181,7 +181,7 @@ class OpTester {
   void AddInput(const char* name, const T& val) {
     auto mltype = DataTypeImpl::GetType<T>();
     ORT_ENFORCE(mltype != nullptr, "T must be a registered cpp type");
-    auto ptr = std::make_unique<T>(val);
+    auto ptr = onnxruntime::make_unique<T>(val);
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
@@ -192,7 +192,7 @@ class OpTester {
   void AddInput(const char* name, T&& val) {
     auto mltype = DataTypeImpl::GetType<T>();
     ORT_ENFORCE(mltype != nullptr, "T must be a registered cpp type");
-    auto ptr = std::make_unique<T>(std::move(val));
+    auto ptr = onnxruntime::make_unique<T>(std::move(val));
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
@@ -202,7 +202,7 @@ class OpTester {
 
   template <typename TKey, typename TVal>
   void AddInput(const char* name, const std::map<TKey, TVal>& val) {
-    std::unique_ptr<std::map<TKey, TVal>> ptr = std::make_unique<std::map<TKey, TVal>>(val);
+    std::unique_ptr<std::map<TKey, TVal>> ptr = onnxruntime::make_unique<std::map<TKey, TVal>>(val);
     OrtValue value;
     value.Init(ptr.release(),
                DataTypeImpl::GetType<std::map<TKey, TVal>>(),
@@ -237,7 +237,7 @@ class OpTester {
   void AddOutput(const char* name, const T& val) {
     auto mltype = DataTypeImpl::GetType<T>();
     ORT_ENFORCE(mltype != nullptr, "T must be a registered cpp type");
-    auto ptr = std::make_unique<T>(val);
+    auto ptr = onnxruntime::make_unique<T>(val);
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
@@ -248,7 +248,7 @@ class OpTester {
   void AddOutput(const char* name, T&& val) {
     auto mltype = DataTypeImpl::GetType<T>();
     ORT_ENFORCE(mltype != nullptr, "T must be a registered cpp type");
-    auto ptr = std::make_unique<T>(std::move(val));
+    auto ptr = onnxruntime::make_unique<T>(std::move(val));
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
@@ -258,7 +258,7 @@ class OpTester {
   // Add non tensor output
   template <typename TKey, typename TVal>
   void AddOutput(const char* name, const std::vector<std::map<TKey, TVal>>& val) {
-    auto ptr = std::make_unique<std::vector<std::map<TKey, TVal>>>(val);
+    auto ptr = onnxruntime::make_unique<std::vector<std::map<TKey, TVal>>>(val);
     OrtValue ml_value;
     ml_value.Init(ptr.release(),
                   DataTypeImpl::GetType<std::vector<std::map<TKey, TVal>>>(),
@@ -336,7 +336,7 @@ class OpTester {
                   " input values doesn't match tensor size of ", shape.Size());
 
       auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-      auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
+      auto p_tensor = onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
                                                shape,
                                                allocator);
 

@@ -16,7 +16,7 @@ namespace onnxruntime {
 
 const GraphViewer* SessionState::GetGraphViewer() const { return graph_viewer_.get(); }
 Status SessionState::SetGraph(const Graph& graph) {
-  graph_viewer_ = std::make_unique<onnxruntime::GraphViewer>(graph);
+  graph_viewer_ = onnxruntime::make_unique<onnxruntime::GraphViewer>(graph);
   auto& logger = Logger();
   // use graph_viewer_ to initialize ort_value_name_idx_map_
   LOGS(logger, INFO) << "SaveMLValueNameIndexMapping";
@@ -99,7 +99,7 @@ Status SessionState::CreateKernels(const KernelRegistryManager& custom_registry_
       session_kernels_[node.Index()] = op_kernel.release();
     }
   }
-  node_index_info_ = std::make_unique<NodeIndexInfo>(*graph_viewer_, ort_value_name_idx_map_);
+  node_index_info_ = onnxruntime::make_unique<NodeIndexInfo>(*graph_viewer_, ort_value_name_idx_map_);
   return Status::OK();
 }
 
