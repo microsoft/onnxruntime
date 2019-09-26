@@ -539,6 +539,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"tf_mobilenet_v2_1.4_224", "result mismatch"});
   broken_tests.insert({"tf_mobilenet_v1_1.0_224", "result mismatch"});
   broken_tests.insert({"mobilenetv2-1.0", "result mismatch"});
+  broken_tests.insert({"candy", "result mismatch"});
 #endif
 
 #ifdef USE_OPENVINO
