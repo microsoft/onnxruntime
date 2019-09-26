@@ -9,10 +9,6 @@
 #include <cstring>
 #include "onnxruntime_config.h"
 
-namespace ONNX_NAMESPACE {
-class TensorShapeProto;
-}
-
 namespace onnxruntime {
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -142,8 +138,6 @@ class TensorShape : private std::vector<int64_t> {
 #pragma GCC diagnostic pop
 #endif
 // operator<< to nicely output to a stream
-std::ostream& operator<<(std::ostream& out, const ::onnxruntime::TensorShape& shape);
-
-std::ostream& operator<<(std::ostream& out, const ONNX_NAMESPACE::TensorShapeProto& shape_proto);
+std::ostream& operator<<(std::ostream& out, const TensorShape& shape);
 
 }  // namespace onnxruntime

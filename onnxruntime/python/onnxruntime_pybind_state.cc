@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "onnxruntime_pybind_exceptions.h"
 #include "onnxruntime_pybind_mlvalue.h"
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
@@ -125,7 +126,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainS
 #pragma warning(disable : 4267 4996 4503 4003)
 #endif  // _MSC_VER
 
-using namespace std;
 namespace onnxruntime {
 namespace python {
 
@@ -144,10 +144,10 @@ static const SessionOptions& GetDefaultCPUSessionOptions() {
 }
 
 template <typename T>
-void AddNonTensor(OrtValue& val, vector<py::object>& pyobjs) {
+void AddNonTensor(OrtValue& val, std::vector<py::object>& pyobjs) {
   pyobjs.push_back(py::cast(val.Get<T>()));
 }
-void AddNonTensorAsPyObj(OrtValue& val, vector<py::object>& pyobjs) {
+void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   // Should be in sync with core/framework/datatypes.h
   if (val.Type() == DataTypeImpl::GetType<MapStringToString>()) {
     AddNonTensor<MapStringToString>(val, pyobjs);
@@ -182,7 +182,7 @@ void AddNonTensorAsPyObj(OrtValue& val, vector<py::object>& pyobjs) {
   }
 }
 
-void AddTensorAsPyObj(OrtValue& val, vector<py::object>& pyobjs) {
+void AddTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   const Tensor& rtensor = val.Get<Tensor>();
   std::vector<npy_intp> npy_dims;
   const TensorShape& shape = rtensor.Shape();
@@ -235,10 +235,7 @@ class SessionObjectInitializer {
 
 inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExecutionProviderFactory& f) {
   auto p = f.CreateProvider();
-  auto status = sess->RegisterExecutionProvider(std::move(p));
-  if (!status.IsOK()) {
-    throw std::runtime_error(status.ErrorMessage().c_str());
-  }
+  OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(p)));
 }
 
 // ordered by default priority. highest to lowest.
@@ -327,11 +324,7 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
   } else {
     RegisterExecutionProviders(sess, provider_types);
   }
-  onnxruntime::common::Status status;
-  status = sess->Initialize();
-  if (!status.IsOK()) {
-    throw std::runtime_error(status.ToString().c_str());
-  }
+  OrtPybindThrowIfError(sess->Initialize());
 }
 
 void addGlobalMethods(py::module& m) {
@@ -339,8 +332,20 @@ void addGlobalMethods(py::module& m) {
   m.def(
       "get_device", []() -> std::string { return BACKEND_DEVICE; },
       "Return the device used to compute the prediction (CPU, MKL, ...)");
-  m.def("get_all_providers", []() -> const std::vector<std::string>& { return GetAllProviders(); });
-  m.def("get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableProviders(); });
+  m.def(
+      "set_default_logger_severity", [](int severity) {
+        ORT_ENFORCE(severity >= 0 && severity <= 4,
+                    "Invalid logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
+        logging::LoggingManager* default_logging_manager = SessionObjectInitializer::Get();
+        default_logging_manager->SetDefaultLoggerSeverity(static_cast<logging::Severity>(severity));
+      },
+      "Sets the default logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
+  m.def(
+      "get_all_providers", []() -> const std::vector<std::string>& { return GetAllProviders(); },
+      "Return list of Execution Providers that this version of Onnxruntime can support.");
+  m.def(
+      "get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableProviders(); },
+      "Return list of available Execution Providers available in this installed version of Onnxruntime.");
 
 #ifdef USE_NUPHAR
   m.def("set_nuphar_settings", [](const std::string& str) {
@@ -624,55 +629,57 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             return *(na.Type());
           },
           "node type")
-      .def("__str__", [](const onnxruntime::NodeArg& na) -> std::string {
-        std::ostringstream res;
-        res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
-        auto shape = na.Shape();
-        std::vector<py::object> arr;
-        if (shape == nullptr || shape->dim_size() == 0) {
-          res << "[]";
-        } else {
-          res << "[";
-          for (int i = 0; i < shape->dim_size(); ++i) {
-            if (utils::HasDimValue(shape->dim(i))) {
-              res << shape->dim(i).dim_value();
-            } else if (utils::HasDimParam(shape->dim(i))) {
-              res << "'" << shape->dim(i).dim_param() << "'";
+      .def(
+          "__str__", [](const onnxruntime::NodeArg& na) -> std::string {
+            std::ostringstream res;
+            res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
+            auto shape = na.Shape();
+            std::vector<py::object> arr;
+            if (shape == nullptr || shape->dim_size() == 0) {
+              res << "[]";
             } else {
-              res << "None";
+              res << "[";
+              for (int i = 0; i < shape->dim_size(); ++i) {
+                if (utils::HasDimValue(shape->dim(i))) {
+                  res << shape->dim(i).dim_value();
+                } else if (utils::HasDimParam(shape->dim(i))) {
+                  res << "'" << shape->dim(i).dim_param() << "'";
+                } else {
+                  res << "None";
+                }
+
+                if (i < shape->dim_size() - 1) {
+                  res << ", ";
+                }
+              }
+              res << "]";
+            }
+            res << ")";
+
+            return std::string(res.str());
+          },
+          "converts the node into a readable string")
+      .def_property_readonly(
+          "shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
+            auto shape = na.Shape();
+            std::vector<py::object> arr;
+            if (shape == nullptr || shape->dim_size() == 0) {
+              return arr;
             }
 
-            if (i < shape->dim_size() - 1) {
-              res << ", ";
+            arr.resize(shape->dim_size());
+            for (int i = 0; i < shape->dim_size(); ++i) {
+              if (utils::HasDimValue(shape->dim(i))) {
+                arr[i] = py::cast(shape->dim(i).dim_value());
+              } else if (utils::HasDimParam(shape->dim(i))) {
+                arr[i] = py::cast(shape->dim(i).dim_param());
+              } else {
+                arr[i] = py::none();
+              }
             }
-          }
-          res << "]";
-        }
-        res << ")";
-
-        return std::string(res.str());
-      },
-           "converts the node into a readable string")
-      .def_property_readonly("shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
-        auto shape = na.Shape();
-        std::vector<py::object> arr;
-        if (shape == nullptr || shape->dim_size() == 0) {
-          return arr;
-        }
-
-        arr.resize(shape->dim_size());
-        for (int i = 0; i < shape->dim_size(); ++i) {
-          if (utils::HasDimValue(shape->dim(i))) {
-            arr[i] = py::cast(shape->dim(i).dim_value());
-          } else if (utils::HasDimParam(shape->dim(i))) {
-            arr[i] = py::cast(shape->dim(i).dim_param());
-          } else {
-            arr[i] = py::none();
-          }
-        }
-        return arr;
-      },
-                             "node shape (assuming the node holds a tensor)");
+            return arr;
+          },
+          "node shape (assuming the node holds a tensor)");
 
   py::class_<SessionObjectInitializer>(m, "SessionObjectInitializer");
   py::class_<InferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
@@ -680,22 +687,17 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def(py::init<SessionOptions, SessionObjectInitializer>())
       .def(
           "load_model", [](InferenceSession* sess, const std::string& path, std::vector<std::string>& provider_types) {
-            auto status = sess->Load(path);
-            if (!status.IsOK()) {
-              throw std::runtime_error(status.ToString().c_str());
-            }
+            OrtPybindThrowIfError(sess->Load(path));
             InitializeSession(sess, provider_types);
           },
           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
-      .def("read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel, std::vector<std::string>& provider_types) {
-        std::istringstream buffer(serializedModel);
-        auto status = sess->Load(buffer);
-        if (!status.IsOK()) {
-          throw std::runtime_error(status.ToString().c_str());
-        }
-        InitializeSession(sess, provider_types);
-      },
-           R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
+      .def(
+          "read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel, std::vector<std::string>& provider_types) {
+            std::istringstream buffer(serializedModel);
+            OrtPybindThrowIfError(sess->Load(buffer));
+            InitializeSession(sess, provider_types);
+          },
+          R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
       .def("run", [](InferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr) -> std::vector<py::object> {
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {
@@ -724,15 +726,10 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           // release GIL to allow multiple python threads to invoke Run() in parallel.
           py::gil_scoped_release release;
           if (run_options != nullptr) {
-            status = sess->Run(*run_options, feeds, output_names, &fetches);
+            OrtPybindThrowIfError(sess->Run(*run_options, feeds, output_names, &fetches));
           } else {
-            status = sess->Run(feeds, output_names, &fetches);
+            OrtPybindThrowIfError(sess->Run(feeds, output_names, &fetches));
           }
-        }
-
-        if (!status.IsOK()) {
-          auto mes = status.ToString();
-          throw std::runtime_error(std::string("Method run failed due to: ") + std::string(mes.c_str()));
         }
 
         std::vector<py::object> rfetch;
@@ -754,40 +751,29 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       })
       .def_property_readonly("inputs_meta", [](const InferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
         auto res = sess->GetModelInputs();
-        if (!res.first.IsOK()) {
-          throw std::runtime_error(res.first.ToString().c_str());
-        } else {
-          return *(res.second);
-        }
+        OrtPybindThrowIfError(res.first);
+        return *(res.second);
       })
       .def_property_readonly("outputs_meta", [](const InferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
         auto res = sess->GetModelOutputs();
-        if (!res.first.IsOK()) {
-          throw std::runtime_error(res.first.ToString().c_str());
-        } else {
-          return *(res.second);
-        }
+        OrtPybindThrowIfError(res.first);
+        return *(res.second);
       })
       .def_property_readonly("overridable_initializers", [](const InferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
         auto res = sess->GetOverridableInitializers();
-        if (!res.first.IsOK()) {
-          throw std::runtime_error(res.first.ToString().c_str());
-        } else {
-          return *res.second;
-        }
+        OrtPybindThrowIfError(res.first);
+        return *(res.second);
       })
       .def_property_readonly("model_meta", [](const InferenceSession* sess) -> const onnxruntime::ModelMetadata& {
         auto res = sess->GetModelMetadata();
-        if (!res.first.IsOK()) {
-          throw std::runtime_error(res.first.ToString().c_str());
-        } else {
-          return *(res.second);
-        }
+        OrtPybindThrowIfError(res.first);
+        return *(res.second);
       });
 }
 
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
+  RegisterExceptions(m);
 
   auto initialize = [&]() {
     // Initialization of the module
@@ -797,10 +783,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
     })();
 
     static std::unique_ptr<Environment> env;
-    auto status = Environment::Create(env);
-    if (!status.IsOK()) {
-      throw std::runtime_error(status.ToString().c_str());
-    }
+    OrtPybindThrowIfError(Environment::Create(env));
 
     static bool initialized = false;
     if (initialized) {

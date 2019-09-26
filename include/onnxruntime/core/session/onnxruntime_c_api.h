@@ -122,8 +122,7 @@ typedef enum OrtErrorCode {
   ORT_MODEL_LOADED,
   ORT_NOT_IMPLEMENTED,
   ORT_INVALID_GRAPH,
-  ORT_SHAPE_INFERENCE_NOT_REGISTERED,
-  ORT_REQUIREMENT_NOT_REGISTERED,
+  ORT_EP_FAIL,
 } OrtErrorCode;
 
 // __VA_ARGS__ on Windows and Linux are different
@@ -503,6 +502,11 @@ struct OrtApi {
   // The returned pointer doesn't have to be freed.
   // Always returns the same instance on every invocation.
   OrtStatus*(ORT_API_CALL* GetAllocatorWithDefaultOptions)(_Outptr_ OrtAllocator** out)NO_EXCEPTION;
+
+  // Override symbolic dimensions with actual values if known at session initialization time to enable
+  // optimizations that can take advantage of fixed values (such as memory planning, etc)
+  OrtStatus*(ORT_API_CALL* OrtAddFreeDimensionOverride)(_Inout_ OrtSessionOptions* options,
+                                                        _In_ const char* symbolic_dim, _In_ int64_t dim_override)NO_EXCEPTION;
 
   /**
    * APIs to support non-tensor types - map and sequence.

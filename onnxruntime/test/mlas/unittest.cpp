@@ -35,7 +35,7 @@ Abstract:
 #endif
 
 #if defined(_M_IX86) || defined(__i386__) || defined(_M_AMD64) || defined(__x86_64__)
-#define MLAS_HAS_QGEMM_U8U8
+#define MLAS_HAS_QGEMM_U8X8
 #endif
 
 MLAS_THREADPOOL* threadpool = nullptr;
@@ -452,9 +452,10 @@ public:
     }
 };
 
-#ifdef MLAS_HAS_QGEMM_U8U8
+#ifdef MLAS_HAS_QGEMM_U8X8
 
-class MlasQgemmU8U8Test : public MlasTestBase
+template <typename xint8_t>
+class MlasQgemmU8X8Test : public MlasTestBase
 {
 private:
     void
@@ -467,11 +468,11 @@ private:
         )
     {
         const uint8_t* A = BufferA.GetBuffer(K * M);
-        const uint8_t* B = BufferB.GetBuffer(N * K);
+        const xint8_t* B = BufferB.GetBuffer(N * K);
         int32_t* C = BufferC.GetBuffer(N * M);
         int32_t* CReference = BufferCReference.GetBuffer(N * M);
 
-        Test(M, N, K, A, K, offa, B, N, offb, C, CReference, N);
+        Test(M, N, K, A, K, offa, B, N, xint8_t(offb), C, CReference, N);
     }
 
     void
@@ -482,9 +483,9 @@ private:
         const uint8_t* A,
         size_t lda,
         uint8_t offa,
-        const uint8_t* B,
+        const xint8_t* B,
         size_t ldb,
-        uint8_t offb,
+        xint8_t offb,
         int32_t* C,
         int32_t* CReference,
         size_t ldc
@@ -493,7 +494,7 @@ private:
         std::fill_n(C, M * N, -1);
         std::fill_n(CReference, M * N, -1);
 
-        MlasQgemm(M, N, K, A, lda, offa, B, ldb, offb, C, ldc, threadpool);
+        MlasGemm(M, N, K, A, lda, offa, B, ldb, offb, C, ldc, threadpool);
         ReferenceQgemm(M, N, K, A, lda, offa, B, ldb, offb, CReference, ldc);
 
         for (size_t f = 0; f < M * N; f++) {
@@ -511,9 +512,9 @@ private:
         const uint8_t* A,
         size_t lda,
         uint8_t offa,
-        const uint8_t* B,
+        const xint8_t* B,
         size_t ldb,
-        uint8_t offb,
+        xint8_t offb,
         int32_t* C,
         size_t ldc
         )
@@ -523,7 +524,7 @@ private:
             for (size_t n = 0; n < N; n++) {
 
                 const uint8_t* a = A + (m * lda);
-                const uint8_t* b = B + n;
+                const xint8_t* b = B + n;
                 int32_t* c = C + (m * ldc) + n;
                 int32_t sum = 0;
 
@@ -539,7 +540,7 @@ private:
     }
 
     MatrixGuardBuffer<uint8_t> BufferA;
-    MatrixGuardBuffer<uint8_t> BufferB;
+    MatrixGuardBuffer<xint8_t> BufferB;
     MatrixGuardBuffer<int32_t> BufferC;
     MatrixGuardBuffer<int32_t> BufferCReference;
 
@@ -565,7 +566,7 @@ public:
         void
         ) override
     {
-        static const uint8_t zero_points[] = { 0, 18, 128, 157, 231, 255 };
+        static const uint8_t zero_points[] = { 0, 18, 75, 128, 157, 231, 255 };
 
         for (size_t a = 0; a < _countof(zero_points); a++) {
             uint8_t offa = zero_points[a];
@@ -1970,9 +1971,10 @@ main(
         printf("SGEMM tests.\n");
         std::make_unique<MlasSgemmTest>()->ExecuteShort();
 
-#ifdef MLAS_HAS_QGEMM_U8U8
+#ifdef MLAS_HAS_QGEMM_U8X8
         printf("QGEMM tests.\n");
-        std::make_unique<MlasQgemmU8U8Test>()->ExecuteShort();
+        std::make_unique<MlasQgemmU8X8Test<int8_t>>()->ExecuteShort();
+        std::make_unique<MlasQgemmU8X8Test<uint8_t>>()->ExecuteShort();
 #endif
 
         printf("Conv2D tests.\n");
