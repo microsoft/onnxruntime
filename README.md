@@ -14,13 +14,14 @@
 
 **[Key Features](#key-features)**
 
+**[Samples and Tutorials](./#samples)**
+
 **Setup**
 * [Installation](#installation)
-* [APIs and Official Binaries](#apis-and-official-builds)
-* [Building from Source](#building-from-source)
+  * [APIs and Official Binaries](#apis-and-official-builds)
+  * [Building from Source](#building-from-source)
 
 **Usage**
-* [Samples and Tutorials](./#samples)
 * [Getting ONNX Models](#getting-onnx-models)
 * [Deploying ONNX Runtime](#deploying-onnx-runtime)
 * [Performance Tuning](#performance-tuning)
@@ -73,7 +74,7 @@ If you have specific scenarios that are not supported, please share your suggest
 # Installation
 **Quick Start:** The [ONNX-Ecosystem Docker container image](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem) is available on Dockerhub and includes ONNX Runtime (CPU, Python), dependencies, tools to convert from various frameworks, and Jupyter notebooks to help get started.
 
-Additional dockerfiles for some features can be found [here](./dockerfiles).
+Additional dockerfiles can be found [here](./dockerfiles).
 
 ## APIs and Official Builds
 
@@ -129,11 +130,6 @@ ONNX Runtime can be deployed to the cloud for model inferencing using [Azure Mac
 
 **ONNX Runtime Server (beta)** is a hosted application for serving ONNX models using ONNX Runtime, providing a REST API for prediction. Usage details can be found [here](./docs/ONNX_Runtime_Server_Usage.md), and image installation instructions are [here](./dockerfiles#onnx-runtime-server-preview).
 
-### Local applications
-ONNX Runtime packages are published to PyPi and Nuget (see [Official Packages](#official-packages) and/or can be [built from source](./BUILD.md) for local application development. Find samples [here](https://github.com/microsoft/onnxruntime/tree/master/samples/c_cxx) using the C++ API. 
-
-On newer Windows 10 devices (1809+), ONNX Runtime is available by default as part of the OS and is accessible via the [Windows Machine Learning APIs](https://docs.microsoft.com/en-us/windows/ai/windows-ml/). Find tutorials [here](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-desktop) for building a Windows Desktop or UWP application using WinML.
-
 ### IoT and edge devices
 The expanding focus and selection of IoT devices with sensors and consistent signal streams introduces new opportunities to move AI workloads to the edge.
  
@@ -141,6 +137,10 @@ This is particularly important when there are massive volumes of incoming data/s
  
 To deploy AI workloads to these edge devices and take advantage of hardware acceleration capabilities on the target device, see [these reference implementations](https://github.com/Azure-Samples/onnxruntime-iot-edge).
 
+### Local applications
+ONNX Runtime packages are published to PyPi and Nuget (see [Official Builds](#official-builds) and/or can be [built from source](./BUILD.md) for local application development. Find samples [here](https://github.com/microsoft/onnxruntime/tree/master/samples/c_cxx) using the C++ API. 
+
+On newer Windows 10 devices (1809+), ONNX Runtime is available by default as part of the OS and is accessible via the [Windows Machine Learning APIs](https://docs.microsoft.com/en-us/windows/ai/windows-ml/). Find tutorials [here](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-desktop) for building a Windows Desktop or UWP application using WinML.
 
 ## Performance Tuning
 ONNX Runtime is open and extensible, supporting a broad set of configurations and execution providers for model acceleration. For performance tuning guidance, please see [this page](./docs/ONNX_Runtime_Perf_Tuning.md).
