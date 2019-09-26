@@ -20,16 +20,18 @@ parser.add_argument('--subscription', type=str, default='ea482afa-3a32-437c-aa10
 parser.add_argument('--resource_group', type=str, default='onnx_training', help='Azure resource group containing the AzureML Workspace')
 parser.add_argument('--workspace', type=str, default='ort_training_dev', help='AzureML Workspace to run the Experiment in')
 parser.add_argument('--compute_target', type=str, default='onnx-training', help='AzureML Compute target to run the Experiment on')
-parser.add_argument('--datastore', type=str, default='bert', help='AzureML Datastore to be mounted into the Experiment')
 parser.add_argument('--experiment', type=str, default='BERT-ONNX', help='Name of the AzureML Experiment')
+parser.add_argument('--tags', type=str, default=None, help='Tags to be added to the submitted run (--tag1=value1 --tag2=value2 --tag3=value3)')
+
+parser.add_argument('--datastore', type=str, default='bert_premium', help='AzureML Datastore to be mounted into the Experiment')
+parser.add_argument('--train_dir', type=str, default='book/train', help='Path in the AzureML Datastore containing the train files')
+parser.add_argument('--test_dir', type=str, default='book/test', help='Path in the AzureML Datastore containing the test files')
 
 parser.add_argument('--container', type=str, default='onnxtraining.azurecr.io/azureml/bert:latest-openmpi4.0.0-cuda10.1-cudnn7-ubuntu16.04', help='Docker container to use to run the Experiment')
 parser.add_argument('--container_registry_resource_group', type=str, default='onnx_training', help='Azure resource group containing the Azure Container Registry (if not public)')
 
 parser.add_argument('--node_count', type=int, default=1, help='Number of nodes to use for the Experiment. If greater than 1, an MPI distributed job will be run.')
 parser.add_argument('--gpu_count', type=int, default=1, help='Number of GPUs to use per node. If greater than 1, an MPI distributed job will be run.')
-
-parser.add_argument('--tensorboard_dir', type=str, default=None, help='Specify a local directory to enable tensorboard monitoring of the AzureML Experiment. This will cause the script to block until the Experiment completes.')
 
 parser.add_argument('--model_name', type=str, default='bert_L-24_H-1024_A-16_V_30528_optimized_layer_norm', help='Model to be trained (must exist in the AzureML Datastore)')
 parser.add_argument('--script_params', type=str, default='', help='Training script parameters (--param1=value1 --param2=value2 --param3=value3)')
@@ -47,8 +49,8 @@ ds = Datastore.get(workspace=ws, datastore_name=args.datastore)
 # Construct common script parameters
 script_params = {
   '--model_name': ds.path(args.model_name).as_download(),
-  '--train_data_dir': ds.path('bert_data/train').as_mount(),
-  '--test_data_dir': ds.path('bert_data/test').as_mount(),
+  '--train_data_dir': ds.path(args.train_dir).as_mount(),
+  '--test_data_dir': ds.path(args.test_dir).as_mount(),
 }
 
 # Allow additional custom script parameters
@@ -56,11 +58,12 @@ for params in args.script_params.split(' '):
   key, value = params.split('=')
   script_params[key] = value
 
-# Validate tensorboard will run correctly with given parameters
-if args.tensorboard_dir:
-  if '--log_dir' not in script_params or not script_params['--log_dir'].endswith('/'):
-    print("WARNING - To monitor tensorboard logs, you must specify --log_dir and it must end in a '/'. Ex: --script_params='--log_dir=logs/tensorboard/'")
-    sys.exit()
+# Allow custom tags on the run
+tags = {}
+if args.tags:
+  for tag in args.tags.split(' '):
+    key, value = tag.split('=')
+    tags[key] = value
 
 # Get container registry information (if private)
 container_image = args.container
@@ -101,25 +104,5 @@ estimator = Estimator(source_directory='./',
 
 # Start the AzureML Experiment
 experiment = Experiment(workspace=ws, name=args.experiment)
-run = experiment.submit(estimator)
+run = experiment.submit(estimator, tags)
 print('Experiment running at: {}'.format(run.get_portal_url()))
-
-# Monitor Tensorboard logs, if requested
-if args.tensorboard_dir:
-  from azureml._run_impl.run_watcher import RunWatcher
-  from concurrent.futures import ThreadPoolExecutor
-  from requests import Session
-  from threading import Event, Thread
-
-  local_root = os.path.join(os.path.normpath(args.tensorboard_dir), run.id)
-  remote_root = script_params['--log_dir']
-  executor = ThreadPoolExecutor()
-  event = Event()
-  session = Session()
-
-  print("Streaming tensorboard logs from remote directory: '{}' to local directory: '{}'".format(remote_root, local_root))
-  watcher = RunWatcher(run, local_root=local_root, remote_root=remote_root, executor=executor, event=event, session=session)
-  executor.submit(watcher.refresh_requeue)
-
-  # Block until run completes, to keep the tensorboard logs updating
-  run.wait_for_completion(show_output=True)
