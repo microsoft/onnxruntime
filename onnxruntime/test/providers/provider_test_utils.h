@@ -185,7 +185,7 @@ class OpTester {
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
-    input_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>()});
+    input_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>(), optional<bool>()});
   }
 
   template <typename T>
@@ -196,9 +196,8 @@ class OpTester {
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
-    input_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>()});
+    input_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>(), optional<bool>()});
   }
-
 
   template <typename TKey, typename TVal>
   void AddInput(const char* name, const std::map<TKey, TVal>& val) {
@@ -207,29 +206,29 @@ class OpTester {
     value.Init(ptr.release(),
                DataTypeImpl::GetType<std::map<TKey, TVal>>(),
                DataTypeImpl::GetType<std::map<TKey, TVal>>()->GetDeleteFunc());
-    input_data_.push_back({{name, &s_map_type_proto<TKey, TVal>}, value, optional<float>(), optional<float>()});
+    input_data_.push_back({{name, &s_map_type_proto<TKey, TVal>}, value, optional<float>(), optional<float>(), optional<bool>()});
   }
 
   template <typename T>
   void AddMissingOptionalInput() {
     std::string name;  // empty == input doesn't exist
-    input_data_.push_back({{name, &s_type_proto<T>}, {}, optional<float>(), optional<float>()});
+    input_data_.push_back({{name, &s_type_proto<T>}, {}, optional<float>(), optional<float>(), optional<bool>()});
   }
 
   template <typename T>
-  void AddOutput(const char* name, const std::vector<int64_t>& dims, const std::initializer_list<T>& expected_values) {
-    AddData(output_data_, name, dims, expected_values.begin(), expected_values.size());
+  void AddOutput(const char* name, const std::vector<int64_t>& dims, const std::initializer_list<T>& expected_values, bool check_contents_in_order = true) {
+    AddData(output_data_, name, dims, expected_values.begin(), expected_values.size(), false, check_contents_in_order);
   }
 
   template <typename T>
-  void AddOutput(const char* name, const std::vector<int64_t>& dims, const std::vector<T>& expected_values) {
-    AddData(output_data_, name, dims, expected_values.data(), expected_values.size());
+  void AddOutput(const char* name, const std::vector<int64_t>& dims, const std::vector<T>& expected_values, bool check_contents_in_order = true) {
+    AddData(output_data_, name, dims, expected_values.data(), expected_values.size(), false, check_contents_in_order);
   }
 
   template <typename T>
   void AddMissingOptionalOutput() {
     std::string name;  // empty == input doesn't exist
-    output_data_.push_back({{name, &s_type_proto<T>}, {}, optional<float>(), optional<float>()});
+    output_data_.push_back({{name, &s_type_proto<T>}, {}, optional<float>(), optional<float>(), optional<bool>()});
   }
 
   // Add other registered types, possibly experimental
@@ -241,7 +240,7 @@ class OpTester {
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
-    output_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>()});
+    output_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>(), optional<bool>()});
   }
 
   template <typename T>
@@ -252,7 +251,7 @@ class OpTester {
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
-    output_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>()});
+    output_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>(), optional<bool>()});
   }
 
   // Add non tensor output
@@ -263,7 +262,7 @@ class OpTester {
     ml_value.Init(ptr.release(),
                   DataTypeImpl::GetType<std::vector<std::map<TKey, TVal>>>(),
                   DataTypeImpl::GetType<std::vector<std::map<TKey, TVal>>>()->GetDeleteFunc());
-    output_data_.push_back({{name, &s_vec_map_type_proto<TKey, TVal>}, ml_value, optional<float>(), optional<float>()});
+    output_data_.push_back({{name, &s_vec_map_type_proto<TKey, TVal>}, ml_value, optional<float>(), optional<float>(), optional<bool>()});
   }
 
   void AddCustomOpRegistry(std::shared_ptr<CustomRegistry> registry) {
@@ -304,6 +303,7 @@ class OpTester {
     OrtValue data_;
     optional<float> relative_error_;
     optional<float> absolute_error_;
+    optional<bool> check_contents_in_order_;
   };
 
  protected:
@@ -329,7 +329,8 @@ class OpTester {
   template <typename T>
   void AddData(std::vector<Data>& data, const char* name,
                const std::vector<int64_t>& dims, const T* values,
-               int64_t values_count, bool is_initializer = false) {
+               int64_t values_count, bool is_initializer = false,
+               bool check_contents_in_order = true) {
     try {
       TensorShape shape{dims};
       ORT_ENFORCE(shape.Size() == values_count, values_count,
@@ -354,7 +355,7 @@ class OpTester {
       TTypeProto<T> type_proto(add_shape_to_tensor_data_ ? &dims_for_proto : nullptr);
       OrtValue value;
       value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-      data.push_back({{name, &type_proto}, value, optional<float>(), optional<float>()});
+      data.push_back({{name, &type_proto}, value, optional<float>(), optional<float>(), optional<bool>(check_contents_in_order)});
       if (is_initializer)
         initializer_index_.push_back(data.size() - 1);
     } catch (const std::exception& ex) {

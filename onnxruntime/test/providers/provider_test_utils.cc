@@ -25,6 +25,18 @@ namespace onnxruntime {
 namespace test {
 
 // Check functions for tensor types
+template <typename T>
+void sort_expected_and_actual_buffers(const T* expected, const T* accepted, int64_t size) {
+  std::sort(const_cast<T*>(expected), const_cast<T*>(expected + size));
+  std::sort(const_cast<T*>(accepted), const_cast<T*>(accepted + size));
+}
+
+// Check functions for tensor types
+template <typename T>
+void sort_expected_and_actual_buffers(std::vector<T> expected, std::vector<T> accepted) {
+  ORT_ENFORCE(expected.size() == accepted.size(), "The 2 containers contain different number of elements");
+  sort_expected_and_actual_buffers(expected.data(), accepted.data(), expected.size());
+}
 
 // The default implementation compares for equality, specialized versions for other types are below
 template <typename T>
@@ -33,6 +45,13 @@ void Check(const OpTester::Data& expected_data, const Tensor& output_tensor, con
   auto* expected = expected_tensor.template Data<T>();
   auto* output = output_tensor.template Data<T>();
   auto size = output_tensor.Shape().Size();
+
+  if (expected_data.check_contents_in_order_.has_value() && !expected_data.check_contents_in_order_.value()) {
+    // if order can be jumbled in the output of an operator, sort both the expected and output buffers prior to comparison
+    // this is a "best-effort" algo and should satisfy the requirement for the few ops that do require this support
+    // without investing in a more sophisticated infrastructure for the same
+    sort_expected_and_actual_buffers<T>(expected, output, size);
+  }
 
   for (int i = 0; i < size; ++i) {
     EXPECT_EQ(expected[i], output[i]) << "i:" << i << ", provider_type: " << provider_type;
@@ -48,6 +67,11 @@ void Check<double>(const OpTester::Data& expected_data, const Tensor& output_ten
 
   bool has_abs_err = expected_data.absolute_error_.has_value();
   bool has_rel_err = expected_data.relative_error_.has_value();
+
+  // deal with rare cases in which order of output data from a kernel might be undefined
+  if (expected_data.check_contents_in_order_.has_value() && !expected_data.check_contents_in_order_.value()) {
+    sort_expected_and_actual_buffers<double>(expected, output, size);
+  }
 
   double threshold = 0.001;
 #ifdef USE_CUDA
@@ -86,6 +110,11 @@ void Check<float>(const OpTester::Data& expected_data, const Tensor& output_tens
 
   bool has_abs_err = expected_data.absolute_error_.has_value();
   bool has_rel_err = expected_data.relative_error_.has_value();
+
+  // deal with rare cases in which order of output data from a kernel might be undefined
+  if (expected_data.check_contents_in_order_.has_value() && !expected_data.check_contents_in_order_.value()) {
+    sort_expected_and_actual_buffers<float>(expected, output, size);
+  }
 
   float threshold = 0.001f;
 #ifdef USE_CUDA
@@ -127,6 +156,11 @@ void Check<MLFloat16>(const OpTester::Data& expected_data, const Tensor& output_
   ConvertMLFloat16ToFloat(expected, f_expected.data(), static_cast<int>(size));
   ConvertMLFloat16ToFloat(output, f_output.data(), static_cast<int>(size));
 
+  // deal with rare cases in which order of output data from a kernel might be undefined
+  if (expected_data.check_contents_in_order_.has_value() && !expected_data.check_contents_in_order_.value()) {
+    sort_expected_and_actual_buffers<float>(f_expected, f_output);
+  }
+
   float threshold = 0.001f;
   for (int i = 0; i < size; ++i) {
     if (std::isinf(f_expected[i]))  // Test infinity for equality
@@ -149,6 +183,11 @@ void Check<BFloat16>(const OpTester::Data& expected_data, const Tensor& output_t
   std::vector<float> f_output(size);
   BFloat16ToFloat(expected, f_expected.data(), static_cast<size_t>(size));
   BFloat16ToFloat(output, f_output.data(), static_cast<size_t>(size));
+
+  // deal with rare cases in which order of output data from a kernel might be undefined
+  if (expected_data.check_contents_in_order_.has_value() && !expected_data.check_contents_in_order_.value()) {
+    sort_expected_and_actual_buffers<float>(f_expected, f_output);
+  }
 
   /// XXX: May need to adjust threshold as BFloat is coarse
   float threshold = 0.001f;
@@ -214,8 +253,8 @@ void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, OrtValu
 
 void Check(const OpTester::Data& expected_data, OrtValue& ort_value, const std::string& provider_type) {
 #ifdef MICROSOFT_AUTOML
-  CheckDispatch<dtf::TimePoint,VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
-                                                               provider_type);
+  CheckDispatch<dtf::TimePoint, VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
+                                                                               provider_type);
 #else
   CheckDispatch<VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
                                                                provider_type);
