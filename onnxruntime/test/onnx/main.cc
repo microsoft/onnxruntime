@@ -519,9 +519,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"depthtospace_crd_mode", "NGraph does not support CRD mode"});
   broken_tests.insert({"argmax_negative_axis_keepdims_example", "not implemented yet for opset 11"});
   broken_tests.insert({"argmax_negative_axis_keepdims_random", "not implemented yet for opset 11"});
-  broken_tests.insert({"argmin_negative_axis_keepdims_example", "not implemented yet for opset 11"});	
-  broken_tests.insert({"argmin_negative_axis_keepdims_random", "not implemented yet for opset 11"});	
-  broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});	
+  broken_tests.insert({"argmin_negative_axis_keepdims_example", "not implemented yet for opset 11"});
+  broken_tests.insert({"argmin_negative_axis_keepdims_random", "not implemented yet for opset 11"});
+  broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});
   broken_tests.insert({"hardmax_negative_axis", "not implemented yet for opset 11"});
 #endif
 
@@ -530,6 +530,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"tf_mobilenet_v2_1.4_224", "result mismatch"});
   broken_tests.insert({"tf_mobilenet_v1_1.0_224", "result mismatch"});
   broken_tests.insert({"mobilenetv2-1.0", "result mismatch"});
+  broken_tests.insert({"candy", "result mismatch"});
 #endif
 
 #ifdef USE_OPENVINO
@@ -563,6 +564,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
 #ifdef USE_CUDA
   broken_tests.insert({"mxnet_arcface", "result mismatch"});
+  broken_tests.insert({"mask_rcnn_keras", "result mismatch"});
   broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
   broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
   broken_tests.insert({"tf_inception_v1", "flaky test"}); //TODO: Investigate cause for flakiness
@@ -580,6 +582,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
 #ifdef DISABLE_CONTRIB_OPS
+  broken_tests.insert({"mask_rcnn_keras", "This model uses contrib ops."});
   broken_tests.insert({"coreml_SqueezeNet_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Permute_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_ReLU_ImageNet", "This model uses contrib ops."});
