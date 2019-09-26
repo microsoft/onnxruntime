@@ -1007,7 +1007,7 @@ const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& ru
 
 void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
   // create logger for session, using provided logging manager if possible
-  if (logging_manager != nullptr && !session_options_.session_logid.empty()) {
+  if (logging_manager != nullptr) {
     logging::Severity severity = logging::Severity::kWARNING;
     if (session_options_.session_log_severity_level == -1) {
       severity = logging::LoggingManager::DefaultLogger().GetSeverity();

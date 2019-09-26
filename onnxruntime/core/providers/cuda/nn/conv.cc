@@ -59,27 +59,28 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
       const int64_t N = X->Shape()[0];
       const int64_t M = W->Shape()[0];
 
-      ORT_RETURN_IF_ERROR(ValidateInputShape(X, W));
+      ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
 
       std::vector<int64_t> kernel_shape;
-      ORT_RETURN_IF_ERROR(ComputeKernelShape(W->Shape(), kernel_shape));
+      ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
       auto rank = kernel_shape.size();
-      std::vector<int64_t> pads(pads_);
+      std::vector<int64_t> pads(conv_attrs_.pads);
       if (pads.empty()) {
         pads.resize(rank * 2, 0);
       }
-      std::vector<int64_t> dilations(dilations_);
+      std::vector<int64_t> dilations(conv_attrs_.dilations);
       if (dilations.empty()) {
         dilations.resize(rank, 1);
       }
-      std::vector<int64_t> strides(strides_);
+      std::vector<int64_t> strides(conv_attrs_.strides);
       if (strides.empty()) {
         strides.resize(rank, 1);
       }
 
       std::vector<int64_t> y_dims;
       y_dims.insert(y_dims.begin(), {N, M});
-      ORT_RETURN_IF_ERROR(InferOutputShape<true>(x_shape.Slice(2), kernel_shape, strides, dilations, &pads, &y_dims));
+      ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape<true>(x_shape.Slice(2), kernel_shape,
+                                                             strides, dilations, &pads, &y_dims));
       s_.y_dims = y_dims;
 
       std::vector<int64_t> x_dims_cudnn = x_dims;
@@ -102,8 +103,9 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
         ORT_RETURN_IF_ERROR(s_.filter_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
 
       cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
-      ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations, mode, CudnnTensor::GetDataType<CudaT>()));
-      CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(s_.conv_desc, gsl::narrow_cast<int>(group_)));
+      ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
+                                           mode, CudnnTensor::GetDataType<CudaT>()));
+      CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(s_.conv_desc, gsl::narrow_cast<int>(conv_attrs_.group)));
 
       if (has_bias) {
         const Tensor* B = context->Input<Tensor>(2);
