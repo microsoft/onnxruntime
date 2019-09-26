@@ -38,11 +38,13 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("learning_rate", "The initial learning rate for the optimizer.", cxxopts::value<float>()->default_value("5e-5"))
       ("num_train_steps", "Total number of training steps to perform.", cxxopts::value<int>()->default_value("100000"))
       ("warmup_ratio", "Fraction of training steps for learning rate warmup.", cxxopts::value<float>()->default_value("0"))
+      ("do_eval", "Whether to run eval on the dev set.", cxxopts::value<bool>()->default_value("false"))
       ("evaluation_period",
         "How many training steps to make before making an evaluation.",
         cxxopts::value<size_t>()->default_value("100"))
+      ("display_loss_steps", "How often to dump loss into tensorboard", cxxopts::value<size_t>()->default_value("10"))
       ("gradient_accumulation_steps", "The number of gradient accumulation steps before performing a backward/update pass.",
-        cxxopts::value<int>()->default_value("1"))
+        cxxopts::value<int>()->default_value("1")) 
       ("save_checkpoint_steps", "How often to save the model checkpoint.", cxxopts::value<int>()->default_value("1000"))
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
@@ -96,7 +98,10 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid gradient_accumulation_steps parameter: should be >= 1");
     }
 
+    params.do_eval = flags["do_eval"].as<bool>();
     params.evaluation_period = flags["evaluation_period"].as<size_t>();
+    params.display_loss_steps = flags["display_loss_steps"].as<size_t>();
+
     params.use_profiler = flags.count("use_profiler") > 0;
     params.max_profile_records = flags["max_profile_records"].as<size_t>();
 
@@ -245,22 +250,19 @@ void setup_training_params(TrainingRunner::Parameters& params) {
   if (!params.log_dir.empty() && params.mpi_context.world_rank == 0)
     tensorboard = std::make_shared<EventWriter>(params.log_dir);
 
-  params.post_evaluation_callback = [tensorboard](size_t num_samples, size_t step) {
-    float average_total_loss = total_loss / float(num_samples);
-    float average_mlm_loss = mlm_loss / float(num_samples);
-    float average_nsp_loss = nsp_loss / float(num_samples);
-
+  params.post_evaluation_callback = [tensorboard](size_t num_samples, size_t step, const std::string tag) {
     if (tensorboard != nullptr) {
-      for (const std::string& summary : summary_loss)
-        tensorboard->AddSummary(summary, step);
+      for (const std::string& summary : summary_loss){
+        tensorboard->AddSummary(summary, step, tag);
+      }
     }
 
     printf("Step: %zu, #examples: %d, total_loss: %0.04f, mlm_loss: %0.04f, nsp_loss: %0.04f \n\n",
            step,
            static_cast<int>(num_samples),
-           average_total_loss,
-           average_mlm_loss,
-           average_nsp_loss);
+           total_loss,
+           mlm_loss,
+           nsp_loss);
     total_loss = 0.0f;
     mlm_loss = 0.0f;
     nsp_loss = 0.0f;

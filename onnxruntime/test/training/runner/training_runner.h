@@ -69,6 +69,8 @@ class TrainingRunner {
     size_t eval_batch_size;
     size_t num_train_steps;
     size_t evaluation_period;
+    bool do_eval = false;
+    size_t display_loss_steps;
 
     // error_function_ is called when evaluating the error for a single sample.
     std::function<void(const std::vector<std::string>& feed_names,
@@ -78,7 +80,10 @@ class TrainingRunner {
         error_function;
 
     // post_evaluation_callback_ is called when a batch of evaluation is done.
-    std::function<void(size_t /*eval_batch_size*/, size_t /*step*/)> post_evaluation_callback;
+    std::function<void(size_t /*eval_batch_size*/,
+                       size_t /*step*/,
+                       const std::string& /*tag*/)>
+        post_evaluation_callback;
 
     // Use CUDA providers or not.
     // TODO: support a list of providers.

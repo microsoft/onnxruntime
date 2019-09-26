@@ -155,7 +155,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
   if (!params.log_dir.empty() && params.mpi_context.world_rank == 0)
     tensorboard = std::make_shared<EventWriter>(params.log_dir);
 
-  params.post_evaluation_callback = [tensorboard](size_t num_samples, size_t step) {
+  params.post_evaluation_callback = [tensorboard](size_t num_samples, size_t step, const std::string /**/) {
     float precision = float(true_count) / num_samples;
     float average_loss = total_loss / float(num_samples);
     if (tensorboard != nullptr) {

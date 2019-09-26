@@ -91,21 +91,39 @@ void EventWriter::AddScalar(const std::string& tag, float value, int64_t step) {
   AddSummary(summary, step);
 }
 
-void EventWriter::AddSummary(const ::tensorboard::Summary& summary, int64_t step) {
+void EventWriter::AddSummary(const ::tensorboard::Summary& summary, int64_t step, const std::string& tag_prefix) {
   ::tensorboard::Event event;
   event.set_step(step);
   event.set_wall_time(static_cast<double>(std::time(0)));
 
-  event.mutable_summary()->CopyFrom(summary);
+  ::tensorboard::Summary* event_summary = event.mutable_summary();
+  event_summary->CopyFrom(summary);
+
+  if (!tag_prefix.empty()) {
+    for (int i = 0; i < event_summary->value_size(); ++i) {
+      ::tensorboard::Summary::Value* summary_value = event_summary->mutable_value(i);
+      summary_value->set_tag(tag_prefix + "/" + summary_value->tag());
+    }
+  }
+
   AddEvent(event);
 }
 
-void EventWriter::AddSummary(const std::string& summary, int64_t step) {
+void EventWriter::AddSummary(const std::string& summary, int64_t step, const std::string& tag_prefix) {
   ::tensorboard::Event event;
   event.set_step(step);
   event.set_wall_time(static_cast<double>(std::time(0)));
 
-  event.mutable_summary()->ParseFromString(summary);
+  ::tensorboard::Summary* event_summary = event.mutable_summary();
+  event_summary->ParseFromString(summary);
+
+  if (!tag_prefix.empty()) {
+    for (int i = 0; i < event_summary->value_size(); ++i) {
+      ::tensorboard::Summary::Value* summary_value = event_summary->mutable_value(i);
+      summary_value->set_tag(tag_prefix + "/" + summary_value->tag());
+    }
+  }
+
   AddEvent(event);
 }
 

@@ -244,7 +244,16 @@ Status TrainingRunner::TrainingLoop() {
                static_cast<int>(batch * params_.batch_size),
                static_cast<int>((batch + 1) * params_.batch_size - 1));
 
-        if (step_ % params_.evaluation_period == 0) {
+        if (weight_update_step_count % params_.display_loss_steps == 0) {
+          if (params_.error_function) {
+            params_.error_function(feed_names, feeds, fetch_names, fetches);
+          }
+          if (params_.post_evaluation_callback) {
+            params_.post_evaluation_callback(params_.batch_size, step_, "train");
+          }
+        }
+
+        if (params_.do_eval && step_ % params_.evaluation_period == 0) {
           ORT_RETURN_IF_ERROR(Evaluate(session_));
         }
       }  // end of one file/shard
@@ -359,7 +368,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
 
   // Call after a test batch.
   if (params_.post_evaluation_callback) {
-    params_.post_evaluation_callback(evaluation_batch_size, step_);
+    params_.post_evaluation_callback(evaluation_batch_size, step_, "test");
   }
 
   return Status::OK();
