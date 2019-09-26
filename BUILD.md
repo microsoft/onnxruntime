@@ -1,11 +1,11 @@
-# Building ONNX Runtime - Getting Started
+# Building ONNX Runtime
 *Dockerfiles are available [here](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/linux/docker) to help you get started.*
 
 *Pre-built packages are available at the locations indicated [here](https://github.com/microsoft/onnxruntime#official-builds).*
 
-## To build the baseline CPU version of ONNX Runtime from source:
+## Getting Started: Build the baseline CPU version of ONNX Runtime from source
 
-## Pre-Requisites
+### Pre-Requisites
 * Checkout the source tree:
    ```
    git clone --recursive https://github.com/Microsoft/onnxruntime
@@ -21,19 +21,19 @@
     pip3 install --upgrade dist/*.whl
     ```
 
-## Build Instructions
-### Windows
+### Build Instructions
+#### Windows
 ```
 build.bat --config RelWithDebInfo --build_shared_lib --parallel
 ```
 The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat
 
-### Linux
+#### Linux
 ```
 ./build.sh --config RelWithDebInfo --build_shared_lib --parallel
 ```
 
-### Notes
+#### Notes
 
 * The build script runs all unit tests by default (for native builds and skips tests by default for cross-compiled builds).
 
@@ -68,7 +68,8 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 |Windows 10   | YES          | Not tested       |
 |Linux        | NO           | YES(gcc>=5.0)    |
 
-ONNX Runtime Python bindings support Python 3.5, 3.6 and 3.7.
+## System Requirements
+For other system requirements and other dependencies, please see [this section](./README.md#system-requirements-pre-requisite-dependencies).
 
 ---
 
@@ -110,7 +111,7 @@ Read more about ONNX Runtime Server [here](https://github.com/microsoft/onnxrunt
 
 ONNX Runtime Server supports sending logs to [rsyslog](https://www.rsyslog.com/) daemon. To enable it, please build with an additional parameter: `--cmake_extra_defines onnxruntime_USE_SYSLOG=1`.
 
-The build command will look like this: 
+Build command: 
 ```
 ./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel --cmake_extra_defines onnxruntime_USE_SYSLOG=1
 ```
@@ -122,8 +123,7 @@ The build command will look like this:
 ### CUDA
 #### Pre-Requisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-  * ONNX Runtime is built and tested with CUDA 10.0 and cuDNN 7.3 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3)
-  * CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017.
+  * ONNX Runtime is built and tested with CUDA 10.0 and cuDNN 7.3 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3). CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017.
   * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`
   * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`. The cuDNN path should contain `bin`, `include` and `lib` directories.
   * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
@@ -160,7 +160,7 @@ If you want to build with an earlier version, you must temporarily remove the 'C
 ---
 
 ### TensorRT
-See more information on the TensorRT Execution Provider [here](./docs/execution_providers/TensorRT-ExecutionProvider.md)
+See more information on the TensorRT Execution Provider [here](./docs/execution_providers/TensorRT-ExecutionProvider.md).
 
 #### Pre-Requisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn) 
@@ -183,7 +183,7 @@ Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 ---
 
 ### MKLDNN and MKLML
-See more information on MKL-DNN and MKL-ML [here](./docs/execution_providers/MKL-DNN-ExecutionProvider.md)
+See more information on MKL-DNN and MKL-ML [here](./docs/execution_providers/MKL-DNN-ExecutionProvider.md).
 
 #### Build Instructions
 ##### Linux
@@ -194,7 +194,7 @@ MKL-DNN built with dependency on MKL small libraries: `./build.sh --use_mkldnn -
 ---
 
 ### nGraph
-See more information on the nGraph Execution Provider [here](./docs/execution_providers/nGraph-ExecutionProvider.md)
+See more information on the nGraph Execution Provider [here](./docs/execution_providers/nGraph-ExecutionProvider.md).
 
 #### Build Instructions
 #### Windows
@@ -210,7 +210,7 @@ See more information on the nGraph Execution Provider [here](./docs/execution_pr
 ---
 
 ### OpenVINO
-See more information on the OpenVINO Execution Provider [here](./docs/execution_providers/OpenVINO-ExecutionProvider.md)
+See more information on the OpenVINO Execution Provider [here](./docs/execution_providers/OpenVINO-ExecutionProvider.md).
 
 #### Pre-Requisites
 * Install the OpenVINO release along with its dependencies: [Windows]([https://software.intel.com/en-us/openvino-toolkit](https://software.intel.com/en-us/openvino-toolkit), [Linux](https://software.intel.com/en-us/openvino-toolkit).
@@ -265,7 +265,7 @@ Dockerfile instructions are available [here](./dockerfiles#openvino-public-previ
 3. Denote the unzip destination in step 1 as $ANDROID_NDK, append `-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=path/to/protoc` to your cmake args, run cmake and make to build it.
 
 #### Notes
-* For 32-bit devices, replace `-DANDROID_ABI=arm64-v8a` to `-DANDROID_ABI=armeabi-v7a`.
+* For 32-bit devices, replace `-DANDROID_ABI=arm64-v8a` with `-DANDROID_ABI=armeabi-v7a`.
 
 ---
 
@@ -306,12 +306,11 @@ build.bat --use_tvm --use_llvm --llvm_path=\llvm\install\path\lib\cmake\llvm --u
 ./build.sh --use_tvm --use_llvm --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
-* Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#nuphar-public-preview)
----
+Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#nuphar-public-preview)
 
 #### Notes
-* These instructions build the release flavor. The Debug build of LLVM would be needed to build with the Debug flavor of ONNX Runtime
-
+* These instructions build the release flavor. The Debug build of LLVM would be needed to build with the Debug flavor of ONNX Runtime.
+---
 
 ## Options
 ### OpenMP
