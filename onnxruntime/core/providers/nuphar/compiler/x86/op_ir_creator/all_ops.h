@@ -21,12 +21,6 @@ namespace nuphar {
 #define NUPHAR_TVM_X86_OP_IR_CREATOR_STRING(OP) \
   STRINGIZE(NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(OP))
 
-#define LIST_X86_POOL_OPS()  \
-  POOL_OP(MaxPool)           \
-  POOL_OP(AveragePool)       \
-  POOL_OP(GlobalMaxPool)     \
-  POOL_OP(GlobalAveragePool)
-
 #define LIST_X86_UNARY_OPS()   \
   UNARY_OP(Erf)                \
   UNARY_OP(Exp)                \
@@ -45,7 +39,6 @@ namespace nuphar {
 
 #define LIST_ALL_X86_OPS()     \
   LIST_REDUCE_V_OPS()          \
-  LIST_X86_POOL_OPS()          \
   LIST_X86_UNARY_OPS()         \
   ADD_OP_ITEM(Gemm)            \
   ADD_OP_ITEM(LogSoftmax)      \
@@ -58,7 +51,6 @@ namespace nuphar {
 
 // Define all OPs for NupharTVMX86
 #define ADD_OP_ITEM(OP) DECLARE_NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(OP)
-#define POOL_OP(OP) ADD_OP_ITEM(OP)
 #define REDUCE_V_OP(OP) ADD_OP_ITEM(OP)
 #define UNARY_OP(OP) ADD_OP_ITEM(OP)
 
@@ -66,7 +58,6 @@ LIST_ALL_X86_OPS()
 
 #undef ADD_OP_ITEM
 #undef REDUCE_V_OP
-#undef POOL_OP
 #undef UNARY_OP
 
 }  // namespace nuphar
