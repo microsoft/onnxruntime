@@ -16,7 +16,6 @@ The *DirectML Execution Provider* is an optional component of ONNX Runtime that 
     - [`OrtSessionOptionsAppendExecutionProvider_DML` function](#ortsessionoptionsappendexecutionproviderdml-function)
     - [`OrtSessionOptionsAppendExecutionProviderEx_DML` function](#ortsessionoptionsappendexecutionproviderexdml-function)
     - [ONNX opset support](#onnx-opset-support)
-  - [Performance](#performance)
   - [Samples](#samples)
   - [See also](#see-also)
 
@@ -83,13 +82,9 @@ The DirectML execution provider currently supports ONNX opset 9 ([ONNX v1.4](htt
 
 
 
-## Performance
-
-[TODO]
-
 ## Samples
 
-Samples are available at XYZ (TODO)
+A complete sample of onnxruntime using the DirectML execution provider can be found under [samples/c_cxx/fns_candy_style_transfer](../../samples/c_cxx/README.md).
 
 
 
