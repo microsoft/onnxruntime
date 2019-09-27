@@ -449,6 +449,7 @@ Status AddLearningRateGraphInputs(Graph& graph, const std::vector<OptimizerNodeC
     if (added_feed_names.find(cfg.lr_feed_name) == added_feed_names.end()) {
       TypeProto tensor_float;
       tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+      tensor_float.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
       const auto& out_def = graph.GetOrCreateNodeArg(cfg.lr_feed_name, &tensor_float);
       inputs_args_sets.push_back(&out_def);
       added_feed_names.emplace(cfg.lr_feed_name);

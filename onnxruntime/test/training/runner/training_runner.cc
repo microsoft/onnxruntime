@@ -166,7 +166,7 @@ Status TrainingRunner::TrainingLoop() {
     for (size_t batch = 0; batch < params_.perf_warm_up_iters; ++batch) {
       std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch);
       OrtValue lr_ort_val;
-      TrainingUtil::CreateMLValue(TrainingUtil::GetCpuAllocator(), {}, std::vector<float>{params_.lr_params.initial_lr}, &lr_ort_val);
+      TrainingUtil::CreateMLValue(TrainingUtil::GetCpuAllocator(), {1}, std::vector<float>{params_.lr_params.initial_lr}, &lr_ort_val);
       feeds.push_back(lr_ort_val);
 
       vector<MLValue> fetches;
@@ -202,7 +202,7 @@ Status TrainingRunner::TrainingLoop() {
         std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch);
         float learning_rate = lr_scheduler->GetLearningRate(step_ + 1);
         OrtValue lr_ort_val;
-        TrainingUtil::CreateMLValue(TrainingUtil::GetCpuAllocator(), {}, std::vector<float>{learning_rate}, &lr_ort_val);
+        TrainingUtil::CreateMLValue(TrainingUtil::GetCpuAllocator(), {1}, std::vector<float>{learning_rate}, &lr_ort_val);
         feeds.push_back(lr_ort_val);
 
         vector<MLValue> fetches;
