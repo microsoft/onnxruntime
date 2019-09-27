@@ -26,9 +26,10 @@ Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) co
   auto input_shape   = input_tensor->Shape();
   auto indice_shape  = indice_tensor->Shape();
   auto update_shape  = update_tensor->Shape();
-  if (indice_shape.NumDimensions() == 0) {
+  if (indice_shape.NumDimensions() == 0 || input_shape.NumDimensions() == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-      "indices tensor must has rank larger than 0");
+      "input tensor and indices tensor must has rank larger than 0. ",
+      "input shape: ", input_shape, ", indices shape: ", indice_shape);
   }
 
   auto indice_rank = indice_shape.NumDimensions();
