@@ -148,7 +148,6 @@ def create_backend_test(testname=None):
                                  '^test_reduce_*',
                                  '^test_onehot_*',
                                  '^test_constant_pad_cpu.*',
-                                 '^test_gather_negative_indices_cpu.*',
                                  '^test_edge_pad_cpu.*',
                                  '^test_reflect_pad_cpu.*'                                 
                                  )
