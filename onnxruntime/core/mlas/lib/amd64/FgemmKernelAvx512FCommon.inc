@@ -6,26 +6,22 @@
 ;
 ; Module Name:
 ;
-;   SgemmKernelAvx512F.asm
+;   FgemmKernelAvx512FCommon.inc
 ;
 ; Abstract:
 ;
-;   This module implements the kernels for the single precision matrix/matrix
-;   multiply operation (SGEMM).
+;   This module implements the kernels for the floating point matrix/matrix
+;   multiply operation (SGEMM and DGEMM).
 ;
 ;   This implementation uses AVX512F instructions.
 ;
 ;--
 
-        .xlist
-INCLUDE mlasi.inc
-INCLUDE SgemmKernelCommon.inc
-        .list
-
 ;
 ; Macro Description:
 ;
-;   This macro multiplies and accumulates for a 32xN block of the output matrix.
+;   This macro multiplies and accumulates for 2 ZMMWORDs by N rows of the output
+;   matrix.
 ;
 ; Arguments:
 ;
@@ -55,55 +51,55 @@ INCLUDE SgemmKernelCommon.inc
 ;   zmm4-zmm27 - Supplies the block accumulators.
 ;
 
-ComputeBlockAvx512FBy32 MACRO RowCount, VectorOffset, BroadcastOffset, PrefetchOffset
+ComputeBlockAvx512FBy2 MACRO RowCount, VectorOffset, BroadcastOffset, PrefetchOffset
 
 IFNB <PrefetchOffset>
         prefetcht0 [rdx+VectorOffset+PrefetchOffset]
         prefetcht0 [rdx+r12+VectorOffset+PrefetchOffset]
 ENDIF
 IF RowCount EQ 1
-        vbroadcastss zmm3,DWORD PTR [rcx+BroadcastOffset]
-        vfmadd231ps zmm4,zmm3,ZMMWORD PTR [rdx+VectorOffset]
-        vfmadd231ps zmm5,zmm3,ZMMWORD PTR [rdx+r12+VectorOffset]
+        vbroadcastsf zmm3,FgemmElementPtr [rcx+BroadcastOffset]
+        vfmadd231pf zmm4,zmm3,ZMMWORD PTR [rdx+VectorOffset]
+        vfmadd231pf zmm5,zmm3,ZMMWORD PTR [rdx+r12+VectorOffset]
 ELSE
-        vmovaps zmm0,ZMMWORD PTR [rdx+VectorOffset]
-        vmovaps zmm1,ZMMWORD PTR [rdx+r12+VectorOffset]
-        EmitIfCountGE RowCount, 1, <vbroadcastss zmm3,DWORD PTR [rcx+BroadcastOffset]>
-        EmitIfCountGE RowCount, 1, <vfmadd231ps zmm4,zmm3,zmm0>
-        EmitIfCountGE RowCount, 1, <vfmadd231ps zmm5,zmm3,zmm1>
-        EmitIfCountGE RowCount, 2, <vbroadcastss zmm3,DWORD PTR [rcx+r10+BroadcastOffset]>
-        EmitIfCountGE RowCount, 2, <vfmadd231ps zmm6,zmm3,zmm0>
-        EmitIfCountGE RowCount, 2, <vfmadd231ps zmm7,zmm3,zmm1>
-        EmitIfCountGE RowCount, 3, <vbroadcastss zmm3,DWORD PTR [rcx+r10*2+BroadcastOffset]>
-        EmitIfCountGE RowCount, 3, <vfmadd231ps zmm8,zmm3,zmm0>
-        EmitIfCountGE RowCount, 3, <vfmadd231ps zmm9,zmm3,zmm1>
-        EmitIfCountGE RowCount, 4, <vbroadcastss zmm3,DWORD PTR [rbx+BroadcastOffset]>
-        EmitIfCountGE RowCount, 4, <vfmadd231ps zmm10,zmm3,zmm0>
-        EmitIfCountGE RowCount, 4, <vfmadd231ps zmm11,zmm3,zmm1>
-        EmitIfCountGE RowCount, 5, <vbroadcastss zmm3,DWORD PTR [rbx+r10+BroadcastOffset]>
-        EmitIfCountGE RowCount, 5, <vfmadd231ps zmm12,zmm3,zmm0>
-        EmitIfCountGE RowCount, 5, <vfmadd231ps zmm13,zmm3,zmm1>
-        EmitIfCountGE RowCount, 6, <vbroadcastss zmm3,DWORD PTR [rbx+r10*2+BroadcastOffset]>
-        EmitIfCountGE RowCount, 6, <vfmadd231ps zmm14,zmm3,zmm0>
-        EmitIfCountGE RowCount, 6, <vfmadd231ps zmm15,zmm3,zmm1>
-        EmitIfCountGE RowCount, 12, <vbroadcastss zmm3,DWORD PTR [r13+BroadcastOffset]>
-        EmitIfCountGE RowCount, 12, <vfmadd231ps zmm16,zmm3,zmm0>
-        EmitIfCountGE RowCount, 12, <vfmadd231ps zmm17,zmm3,zmm1>
-        EmitIfCountGE RowCount, 12, <vbroadcastss zmm3,DWORD PTR [r13+r10+BroadcastOffset]>
-        EmitIfCountGE RowCount, 12, <vfmadd231ps zmm18,zmm3,zmm0>
-        EmitIfCountGE RowCount, 12, <vfmadd231ps zmm19,zmm3,zmm1>
-        EmitIfCountGE RowCount, 12, <vbroadcastss zmm3,DWORD PTR [r13+r10*2+BroadcastOffset]>
-        EmitIfCountGE RowCount, 12, <vfmadd231ps zmm20,zmm3,zmm0>
-        EmitIfCountGE RowCount, 12, <vfmadd231ps zmm21,zmm3,zmm1>
-        EmitIfCountGE RowCount, 12, <vbroadcastss zmm3,DWORD PTR [r14+BroadcastOffset]>
-        EmitIfCountGE RowCount, 12, <vfmadd231ps zmm22,zmm3,zmm0>
-        EmitIfCountGE RowCount, 12, <vfmadd231ps zmm23,zmm3,zmm1>
-        EmitIfCountGE RowCount, 12, <vbroadcastss zmm3,DWORD PTR [r14+r10+BroadcastOffset]>
-        EmitIfCountGE RowCount, 12, <vfmadd231ps zmm24,zmm3,zmm0>
-        EmitIfCountGE RowCount, 12, <vfmadd231ps zmm25,zmm3,zmm1>
-        EmitIfCountGE RowCount, 12, <vbroadcastss zmm3,DWORD PTR [r14+r10*2+BroadcastOffset]>
-        EmitIfCountGE RowCount, 12, <vfmadd231ps zmm26,zmm3,zmm0>
-        EmitIfCountGE RowCount, 12, <vfmadd231ps zmm27,zmm3,zmm1>
+        vmovapf zmm0,ZMMWORD PTR [rdx+VectorOffset]
+        vmovapf zmm1,ZMMWORD PTR [rdx+r12+VectorOffset]
+        EmitIfCountGE RowCount, 1, <vbroadcastsf zmm3,FgemmElementPtr [rcx+BroadcastOffset]>
+        EmitIfCountGE RowCount, 1, <vfmadd231pf zmm4,zmm3,zmm0>
+        EmitIfCountGE RowCount, 1, <vfmadd231pf zmm5,zmm3,zmm1>
+        EmitIfCountGE RowCount, 2, <vbroadcastsf zmm3,FgemmElementPtr [rcx+r10+BroadcastOffset]>
+        EmitIfCountGE RowCount, 2, <vfmadd231pf zmm6,zmm3,zmm0>
+        EmitIfCountGE RowCount, 2, <vfmadd231pf zmm7,zmm3,zmm1>
+        EmitIfCountGE RowCount, 3, <vbroadcastsf zmm3,FgemmElementPtr [rcx+r10*2+BroadcastOffset]>
+        EmitIfCountGE RowCount, 3, <vfmadd231pf zmm8,zmm3,zmm0>
+        EmitIfCountGE RowCount, 3, <vfmadd231pf zmm9,zmm3,zmm1>
+        EmitIfCountGE RowCount, 4, <vbroadcastsf zmm3,FgemmElementPtr [rbx+BroadcastOffset]>
+        EmitIfCountGE RowCount, 4, <vfmadd231pf zmm10,zmm3,zmm0>
+        EmitIfCountGE RowCount, 4, <vfmadd231pf zmm11,zmm3,zmm1>
+        EmitIfCountGE RowCount, 5, <vbroadcastsf zmm3,FgemmElementPtr [rbx+r10+BroadcastOffset]>
+        EmitIfCountGE RowCount, 5, <vfmadd231pf zmm12,zmm3,zmm0>
+        EmitIfCountGE RowCount, 5, <vfmadd231pf zmm13,zmm3,zmm1>
+        EmitIfCountGE RowCount, 6, <vbroadcastsf zmm3,FgemmElementPtr [rbx+r10*2+BroadcastOffset]>
+        EmitIfCountGE RowCount, 6, <vfmadd231pf zmm14,zmm3,zmm0>
+        EmitIfCountGE RowCount, 6, <vfmadd231pf zmm15,zmm3,zmm1>
+        EmitIfCountGE RowCount, 12, <vbroadcastsf zmm3,FgemmElementPtr [r13+BroadcastOffset]>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm16,zmm3,zmm0>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm17,zmm3,zmm1>
+        EmitIfCountGE RowCount, 12, <vbroadcastsf zmm3,FgemmElementPtr [r13+r10+BroadcastOffset]>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm18,zmm3,zmm0>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm19,zmm3,zmm1>
+        EmitIfCountGE RowCount, 12, <vbroadcastsf zmm3,FgemmElementPtr [r13+r10*2+BroadcastOffset]>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm20,zmm3,zmm0>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm21,zmm3,zmm1>
+        EmitIfCountGE RowCount, 12, <vbroadcastsf zmm3,FgemmElementPtr [r14+BroadcastOffset]>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm22,zmm3,zmm0>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm23,zmm3,zmm1>
+        EmitIfCountGE RowCount, 12, <vbroadcastsf zmm3,FgemmElementPtr [r14+r10+BroadcastOffset]>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm24,zmm3,zmm0>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm25,zmm3,zmm1>
+        EmitIfCountGE RowCount, 12, <vbroadcastsf zmm3,FgemmElementPtr [r14+r10*2+BroadcastOffset]>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm26,zmm3,zmm0>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm27,zmm3,zmm1>
 ENDIF
 
         ENDM
@@ -111,7 +107,8 @@ ENDIF
 ;
 ; Macro Description:
 ;
-;   This macro multiplies and accumulates for a 16xN block of the output matrix.
+;   This macro multiplies and accumulates for 1 ZMMWORD by N rows of the output
+;   matrix.
 ;
 ; Arguments:
 ;
@@ -141,24 +138,24 @@ ENDIF
 ;   zmm4-zmm27 - Supplies the block accumulators.
 ;
 
-ComputeBlockAvx512FBy16 MACRO RowCount, VectorOffset, BroadcastOffset, PrefetchOffset
+ComputeBlockAvx512FBy1 MACRO RowCount, VectorOffset, BroadcastOffset, PrefetchOffset
 
 IFNB <PrefetchOffset>
         prefetcht0 [rdx+VectorOffset+PrefetchOffset]
 ENDIF
-        vmovaps zmm0,ZMMWORD PTR [rdx+VectorOffset]
-        EmitIfCountGE RowCount, 1, <vfmadd231ps zmm5,zmm0,DWORD BCST [rcx+BroadcastOffset]>
-        EmitIfCountGE RowCount, 2, <vfmadd231ps zmm7,zmm0,DWORD BCST [rcx+r10+BroadcastOffset]>
-        EmitIfCountGE RowCount, 3, <vfmadd231ps zmm9,zmm0,DWORD BCST [rcx+r10*2+BroadcastOffset]>
-        EmitIfCountGE RowCount, 4, <vfmadd231ps zmm11,zmm0,DWORD BCST [rbx+BroadcastOffset]>
-        EmitIfCountGE RowCount, 5, <vfmadd231ps zmm13,zmm0,DWORD BCST [rbx+r10+BroadcastOffset]>
-        EmitIfCountGE RowCount, 6, <vfmadd231ps zmm15,zmm0,DWORD BCST [rbx+r10*2+BroadcastOffset]>
-        EmitIfCountGE RowCount, 12, <vfmadd231ps zmm17,zmm0,DWORD BCST [r13+BroadcastOffset]>
-        EmitIfCountGE RowCount, 12, <vfmadd231ps zmm19,zmm0,DWORD BCST [r13+r10+BroadcastOffset]>
-        EmitIfCountGE RowCount, 12, <vfmadd231ps zmm21,zmm0,DWORD BCST [r13+r10*2+BroadcastOffset]>
-        EmitIfCountGE RowCount, 12, <vfmadd231ps zmm23,zmm0,DWORD BCST [r14+BroadcastOffset]>
-        EmitIfCountGE RowCount, 12, <vfmadd231ps zmm25,zmm0,DWORD BCST [r14+r10+BroadcastOffset]>
-        EmitIfCountGE RowCount, 12, <vfmadd231ps zmm27,zmm0,DWORD BCST [r14+r10*2+BroadcastOffset]>
+        vmovapf zmm0,ZMMWORD PTR [rdx+VectorOffset]
+        EmitIfCountGE RowCount, 1, <vfmadd231pf zmm5,zmm0,FgemmElementBcst [rcx+BroadcastOffset]>
+        EmitIfCountGE RowCount, 2, <vfmadd231pf zmm7,zmm0,FgemmElementBcst [rcx+r10+BroadcastOffset]>
+        EmitIfCountGE RowCount, 3, <vfmadd231pf zmm9,zmm0,FgemmElementBcst [rcx+r10*2+BroadcastOffset]>
+        EmitIfCountGE RowCount, 4, <vfmadd231pf zmm11,zmm0,FgemmElementBcst [rbx+BroadcastOffset]>
+        EmitIfCountGE RowCount, 5, <vfmadd231pf zmm13,zmm0,FgemmElementBcst [rbx+r10+BroadcastOffset]>
+        EmitIfCountGE RowCount, 6, <vfmadd231pf zmm15,zmm0,FgemmElementBcst [rbx+r10*2+BroadcastOffset]>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm17,zmm0,FgemmElementBcst [r13+BroadcastOffset]>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm19,zmm0,FgemmElementBcst [r13+r10+BroadcastOffset]>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm21,zmm0,FgemmElementBcst [r13+r10*2+BroadcastOffset]>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm23,zmm0,FgemmElementBcst [r14+BroadcastOffset]>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm25,zmm0,FgemmElementBcst [r14+r10+BroadcastOffset]>
+        EmitIfCountGE RowCount, 12, <vfmadd231pf zmm27,zmm0,FgemmElementBcst [r14+r10*2+BroadcastOffset]>
 
         ENDM
 
@@ -176,14 +173,14 @@ ENDIF
 ;
 ; Implicit Arguments:
 ;
-;   rbx - Supplies the address into the matrix A data plus N rows.
-;
 ;   rcx - Supplies the address into the matrix A data.
 ;
 ;   rdx - Supplies the address into the matrix B data.
 ;
 ;   r9 - Supplies the number of columns from matrix A and the number of rows
 ;       from matrix B to iterate over.
+;
+;   r10 - Supplies the length in bytes of a row from matrix A.
 ;
 ;   ymm4-ymm15 - Supplies the block accumulators.
 ;
@@ -244,161 +241,174 @@ ENDIF
 
 ProcessCountM MACRO RowCount
 
-        LOCAL   ProcessNextColumnLoop32xN
-        LOCAL   MultiplyAlpha32xNBlock
-        LOCAL   Store32xNBlock
-        LOCAL   Output16xNBlock
-        LOCAL   Output16xNBlockWithMask
-        LOCAL   MultiplyAlpha16xNBlockWithMask
-        LOCAL   Store16xNBlockWithMask
+        LOCAL   ProcessNextColumnLoop2xN
+        LOCAL   MultiplyAlpha2xNBlock
+        LOCAL   Store2xNBlock
+        LOCAL   Output1xNBlock
+        LOCAL   Output1xNBlockWithMask
+        LOCAL   MultiplyAlpha1xNBlockWithMask
+        LOCAL   Store1xNBlockWithMask
         LOCAL   ProcessRemainingCountN
 
-        cmp     rbp,16
+        cmp     rbp,FgemmZmmElementCount
         jbe     ProcessRemainingCountN
 
-ProcessNextColumnLoop32xN:
-        EmitIfCountGE RowCount, 12, <vmovaps zmm16,zmm4>
+ProcessNextColumnLoop2xN:
+        EmitIfCountGE RowCount, 12, <vmovapf zmm16,zmm4>
                                             ; clear upper block accumulators
-        EmitIfCountGE RowCount, 12, <vmovaps zmm17,zmm5>
-        EmitIfCountGE RowCount, 12, <vmovaps zmm18,zmm4>
-        EmitIfCountGE RowCount, 12, <vmovaps zmm19,zmm5>
-        EmitIfCountGE RowCount, 12, <vmovaps zmm20,zmm4>
-        EmitIfCountGE RowCount, 12, <vmovaps zmm21,zmm5>
-        EmitIfCountGE RowCount, 12, <vmovaps zmm22,zmm4>
-        EmitIfCountGE RowCount, 12, <vmovaps zmm23,zmm5>
-        EmitIfCountGE RowCount, 12, <vmovaps zmm24,zmm4>
-        EmitIfCountGE RowCount, 12, <vmovaps zmm25,zmm5>
-        EmitIfCountGE RowCount, 12, <vmovaps zmm26,zmm4>
-        EmitIfCountGE RowCount, 12, <vmovaps zmm27,zmm5>
-        ComputeBlockAvx512FLoop ComputeBlockAvx512FBy32, RowCount
-        add     rdx,r12                     ; advance matrix B by 16*CountK floats
+        EmitIfCountGE RowCount, 12, <vmovapf zmm17,zmm5>
+        EmitIfCountGE RowCount, 12, <vmovapf zmm18,zmm4>
+        EmitIfCountGE RowCount, 12, <vmovapf zmm19,zmm5>
+        EmitIfCountGE RowCount, 12, <vmovapf zmm20,zmm4>
+        EmitIfCountGE RowCount, 12, <vmovapf zmm21,zmm5>
+        EmitIfCountGE RowCount, 12, <vmovapf zmm22,zmm4>
+        EmitIfCountGE RowCount, 12, <vmovapf zmm23,zmm5>
+        EmitIfCountGE RowCount, 12, <vmovapf zmm24,zmm4>
+        EmitIfCountGE RowCount, 12, <vmovapf zmm25,zmm5>
+        EmitIfCountGE RowCount, 12, <vmovapf zmm26,zmm4>
+        EmitIfCountGE RowCount, 12, <vmovapf zmm27,zmm5>
+        ComputeBlockAvx512FLoop ComputeBlockAvx512FBy2, RowCount
+        add     rdx,r12                     ; advance matrix B by 64*CountK bytes
         test    r15b,r15b                   ; ZeroMode?
-        jnz     MultiplyAlpha32xNBlock
-        EmitIfCountGE RowCount, 1, <vfmadd213ps zmm4,zmm31,ZMMWORD PTR [r8]>
-        EmitIfCountGE RowCount, 2, <vfmadd213ps zmm6,zmm31,ZMMWORD PTR [r8+rax]>
-        EmitIfCountGE RowCount, 3, <vfmadd213ps zmm8,zmm31,ZMMWORD PTR [r8+rax*2]>
-        EmitIfCountGE RowCount, 4, <vfmadd213ps zmm10,zmm31,ZMMWORD PTR [rbx]>
-        EmitIfCountGE RowCount, 5, <vfmadd213ps zmm12,zmm31,ZMMWORD PTR [rbx+rax]>
-        EmitIfCountGE RowCount, 6, <vfmadd213ps zmm14,zmm31,ZMMWORD PTR [rbx+rax*2]>
-        EmitIfCountGE RowCount, 12, <vfmadd213ps zmm16,zmm31,ZMMWORD PTR [r13]>
-        EmitIfCountGE RowCount, 12, <vfmadd213ps zmm18,zmm31,ZMMWORD PTR [r13+rax]>
-        EmitIfCountGE RowCount, 12, <vfmadd213ps zmm20,zmm31,ZMMWORD PTR [r13+rax*2]>
-        EmitIfCountGE RowCount, 12, <vfmadd213ps zmm22,zmm31,ZMMWORD PTR [r14]>
-        EmitIfCountGE RowCount, 12, <vfmadd213ps zmm24,zmm31,ZMMWORD PTR [r14+rax]>
-        EmitIfCountGE RowCount, 12, <vfmadd213ps zmm26,zmm31,ZMMWORD PTR [r14+rax*2]>
-        jmp     Store32xNBlock
+        jnz     MultiplyAlpha2xNBlock
+        EmitIfCountGE RowCount, 1, <vfmadd213pf zmm4,zmm31,ZMMWORD PTR [r8]>
+        EmitIfCountGE RowCount, 2, <vfmadd213pf zmm6,zmm31,ZMMWORD PTR [r8+rax]>
+        EmitIfCountGE RowCount, 3, <vfmadd213pf zmm8,zmm31,ZMMWORD PTR [r8+rax*2]>
+        EmitIfCountGE RowCount, 4, <vfmadd213pf zmm10,zmm31,ZMMWORD PTR [rbx]>
+        EmitIfCountGE RowCount, 5, <vfmadd213pf zmm12,zmm31,ZMMWORD PTR [rbx+rax]>
+        EmitIfCountGE RowCount, 6, <vfmadd213pf zmm14,zmm31,ZMMWORD PTR [rbx+rax*2]>
+        EmitIfCountGE RowCount, 12, <vfmadd213pf zmm16,zmm31,ZMMWORD PTR [r13]>
+        EmitIfCountGE RowCount, 12, <vfmadd213pf zmm18,zmm31,ZMMWORD PTR [r13+rax]>
+        EmitIfCountGE RowCount, 12, <vfmadd213pf zmm20,zmm31,ZMMWORD PTR [r13+rax*2]>
+        EmitIfCountGE RowCount, 12, <vfmadd213pf zmm22,zmm31,ZMMWORD PTR [r14]>
+        EmitIfCountGE RowCount, 12, <vfmadd213pf zmm24,zmm31,ZMMWORD PTR [r14+rax]>
+        EmitIfCountGE RowCount, 12, <vfmadd213pf zmm26,zmm31,ZMMWORD PTR [r14+rax*2]>
+        jmp     Store2xNBlock
 
-MultiplyAlpha32xNBlock:
-        EmitIfCountGE RowCount, 1, <vmulps zmm4,zmm4,zmm31>
-        EmitIfCountGE RowCount, 2, <vmulps zmm6,zmm6,zmm31>
-        EmitIfCountGE RowCount, 3, <vmulps zmm8,zmm8,zmm31>
-        EmitIfCountGE RowCount, 4, <vmulps zmm10,zmm10,zmm31>
-        EmitIfCountGE RowCount, 5, <vmulps zmm12,zmm12,zmm31>
-        EmitIfCountGE RowCount, 6, <vmulps zmm14,zmm14,zmm31>
-        EmitIfCountGE RowCount, 12, <vmulps zmm16,zmm16,zmm31>
-        EmitIfCountGE RowCount, 12, <vmulps zmm18,zmm18,zmm31>
-        EmitIfCountGE RowCount, 12, <vmulps zmm20,zmm20,zmm31>
-        EmitIfCountGE RowCount, 12, <vmulps zmm22,zmm22,zmm31>
-        EmitIfCountGE RowCount, 12, <vmulps zmm24,zmm24,zmm31>
-        EmitIfCountGE RowCount, 12, <vmulps zmm26,zmm26,zmm31>
+MultiplyAlpha2xNBlock:
+        EmitIfCountGE RowCount, 1, <vmulpf zmm4,zmm4,zmm31>
+        EmitIfCountGE RowCount, 2, <vmulpf zmm6,zmm6,zmm31>
+        EmitIfCountGE RowCount, 3, <vmulpf zmm8,zmm8,zmm31>
+        EmitIfCountGE RowCount, 4, <vmulpf zmm10,zmm10,zmm31>
+        EmitIfCountGE RowCount, 5, <vmulpf zmm12,zmm12,zmm31>
+        EmitIfCountGE RowCount, 6, <vmulpf zmm14,zmm14,zmm31>
+        EmitIfCountGE RowCount, 12, <vmulpf zmm16,zmm16,zmm31>
+        EmitIfCountGE RowCount, 12, <vmulpf zmm18,zmm18,zmm31>
+        EmitIfCountGE RowCount, 12, <vmulpf zmm20,zmm20,zmm31>
+        EmitIfCountGE RowCount, 12, <vmulpf zmm22,zmm22,zmm31>
+        EmitIfCountGE RowCount, 12, <vmulpf zmm24,zmm24,zmm31>
+        EmitIfCountGE RowCount, 12, <vmulpf zmm26,zmm26,zmm31>
 
-Store32xNBlock:
-        EmitIfCountGE RowCount, 1, <vmovups ZMMWORD PTR [r8],zmm4>
-        EmitIfCountGE RowCount, 2, <vmovups ZMMWORD PTR [r8+rax],zmm6>
-        EmitIfCountGE RowCount, 3, <vmovups ZMMWORD PTR [r8+rax*2],zmm8>
-        EmitIfCountGE RowCount, 4, <vmovups ZMMWORD PTR [rbx],zmm10>
-        EmitIfCountGE RowCount, 5, <vmovups ZMMWORD PTR [rbx+rax],zmm12>
-        EmitIfCountGE RowCount, 6, <vmovups ZMMWORD PTR [rbx+rax*2],zmm14>
-        EmitIfCountGE RowCount, 12, <vmovups ZMMWORD PTR [r13],zmm16>
-        EmitIfCountGE RowCount, 12, <vmovups ZMMWORD PTR [r13+rax],zmm18>
-        EmitIfCountGE RowCount, 12, <vmovups ZMMWORD PTR [r13+rax*2],zmm20>
-        EmitIfCountGE RowCount, 12, <vmovups ZMMWORD PTR [r14],zmm22>
-        EmitIfCountGE RowCount, 12, <vmovups ZMMWORD PTR [r14+rax],zmm24>
-        EmitIfCountGE RowCount, 12, <vmovups ZMMWORD PTR [r14+rax*2],zmm26>
-        add     r8,16*4                     ; advance matrix C by 16 columns
+Store2xNBlock:
+        EmitIfCountGE RowCount, 1, <vmovupf ZMMWORD PTR [r8],zmm4>
+        EmitIfCountGE RowCount, 2, <vmovupf ZMMWORD PTR [r8+rax],zmm6>
+        EmitIfCountGE RowCount, 3, <vmovupf ZMMWORD PTR [r8+rax*2],zmm8>
+        EmitIfCountGE RowCount, 4, <vmovupf ZMMWORD PTR [rbx],zmm10>
+        EmitIfCountGE RowCount, 5, <vmovupf ZMMWORD PTR [rbx+rax],zmm12>
+        EmitIfCountGE RowCount, 6, <vmovupf ZMMWORD PTR [rbx+rax*2],zmm14>
+        EmitIfCountGE RowCount, 12, <vmovupf ZMMWORD PTR [r13],zmm16>
+        EmitIfCountGE RowCount, 12, <vmovupf ZMMWORD PTR [r13+rax],zmm18>
+        EmitIfCountGE RowCount, 12, <vmovupf ZMMWORD PTR [r13+rax*2],zmm20>
+        EmitIfCountGE RowCount, 12, <vmovupf ZMMWORD PTR [r14],zmm22>
+        EmitIfCountGE RowCount, 12, <vmovupf ZMMWORD PTR [r14+rax],zmm24>
+        EmitIfCountGE RowCount, 12, <vmovupf ZMMWORD PTR [r14+rax*2],zmm26>
+        add     r8,64                       ; advance matrix C by ZMMWORD
 IF RowCount GT 3
-        add     rbx,16*4                    ; advance matrix C plus 3 rows by 16 columns
+        add     rbx,64                      ; advance matrix C plus 3 rows by ZMMWORD
 IF RowCount EQ 12
-        add     r13,16*4                    ; advance matrix C plus 6 rows by 16 columns
-        add     r14,16*4                    ; advance matrix C plus 9 rows by 16 columns
+        add     r13,64                      ; advance matrix C plus 6 rows by ZMMWORD
+        add     r14,64                      ; advance matrix C plus 9 rows by ZMMWORD
 ENDIF
 ENDIF
-        sub     rbp,16
+        sub     rbp,FgemmZmmElementCount
 
-Output16xNBlock:
-        sub     rbp,16
-        jae     Output16xNBlockWithMask
-        lea     ecx,[ebp+16]                ; correct for over-subtract above
+Output1xNBlock:
+        sub     rbp,FgemmZmmElementCount
+        jae     Output1xNBlockWithMask
+        lea     ecx,[ebp+FgemmZmmElementCount]
+                                            ; correct for over-subtract above
         mov     edi,1
         shl     edi,cl
         dec     edi
         kmovw   k1,edi                      ; update mask for remaining columns
         xor     ebp,ebp                     ; no more columns remaining
 
-Output16xNBlockWithMask:
+Output1xNBlockWithMask:
         test    r15b,r15b                   ; ZeroMode?
-        jnz     MultiplyAlpha16xNBlockWithMask
-        EmitIfCountGE RowCount, 1, <vfmadd213ps zmm5{k1},zmm31,ZMMWORD PTR [r8]>
-        EmitIfCountGE RowCount, 2, <vfmadd213ps zmm7{k1},zmm31,ZMMWORD PTR [r8+rax]>
-        EmitIfCountGE RowCount, 3, <vfmadd213ps zmm9{k1},zmm31,ZMMWORD PTR [r8+rax*2]>
-        EmitIfCountGE RowCount, 4, <vfmadd213ps zmm11{k1},zmm31,ZMMWORD PTR [rbx]>
-        EmitIfCountGE RowCount, 5, <vfmadd213ps zmm13{k1},zmm31,ZMMWORD PTR [rbx+rax]>
-        EmitIfCountGE RowCount, 6, <vfmadd213ps zmm15{k1},zmm31,ZMMWORD PTR [rbx+rax*2]>
-        EmitIfCountGE RowCount, 12, <vfmadd213ps zmm17{k1},zmm31,ZMMWORD PTR [r13]>
-        EmitIfCountGE RowCount, 12, <vfmadd213ps zmm19{k1},zmm31,ZMMWORD PTR [r13+rax]>
-        EmitIfCountGE RowCount, 12, <vfmadd213ps zmm21{k1},zmm31,ZMMWORD PTR [r13+rax*2]>
-        EmitIfCountGE RowCount, 12, <vfmadd213ps zmm23{k1},zmm31,ZMMWORD PTR [r14]>
-        EmitIfCountGE RowCount, 12, <vfmadd213ps zmm25{k1},zmm31,ZMMWORD PTR [r14+rax]>
-        EmitIfCountGE RowCount, 12, <vfmadd213ps zmm27{k1},zmm31,ZMMWORD PTR [r14+rax*2]>
-        jmp     Store16xNBlockWithMask
+        jnz     MultiplyAlpha1xNBlockWithMask
+        EmitIfCountGE RowCount, 1, <vfmadd213pf zmm5{k1},zmm31,ZMMWORD PTR [r8]>
+        EmitIfCountGE RowCount, 2, <vfmadd213pf zmm7{k1},zmm31,ZMMWORD PTR [r8+rax]>
+        EmitIfCountGE RowCount, 3, <vfmadd213pf zmm9{k1},zmm31,ZMMWORD PTR [r8+rax*2]>
+        EmitIfCountGE RowCount, 4, <vfmadd213pf zmm11{k1},zmm31,ZMMWORD PTR [rbx]>
+        EmitIfCountGE RowCount, 5, <vfmadd213pf zmm13{k1},zmm31,ZMMWORD PTR [rbx+rax]>
+        EmitIfCountGE RowCount, 6, <vfmadd213pf zmm15{k1},zmm31,ZMMWORD PTR [rbx+rax*2]>
+        EmitIfCountGE RowCount, 12, <vfmadd213pf zmm17{k1},zmm31,ZMMWORD PTR [r13]>
+        EmitIfCountGE RowCount, 12, <vfmadd213pf zmm19{k1},zmm31,ZMMWORD PTR [r13+rax]>
+        EmitIfCountGE RowCount, 12, <vfmadd213pf zmm21{k1},zmm31,ZMMWORD PTR [r13+rax*2]>
+        EmitIfCountGE RowCount, 12, <vfmadd213pf zmm23{k1},zmm31,ZMMWORD PTR [r14]>
+        EmitIfCountGE RowCount, 12, <vfmadd213pf zmm25{k1},zmm31,ZMMWORD PTR [r14+rax]>
+        EmitIfCountGE RowCount, 12, <vfmadd213pf zmm27{k1},zmm31,ZMMWORD PTR [r14+rax*2]>
+        jmp     Store1xNBlockWithMask
 
-MultiplyAlpha16xNBlockWithMask:
-        EmitIfCountGE RowCount, 1, <vmulps zmm5,zmm5,zmm31>
-        EmitIfCountGE RowCount, 2, <vmulps zmm7,zmm7,zmm31>
-        EmitIfCountGE RowCount, 3, <vmulps zmm9,zmm9,zmm31>
-        EmitIfCountGE RowCount, 4, <vmulps zmm11,zmm11,zmm31>
-        EmitIfCountGE RowCount, 5, <vmulps zmm13,zmm13,zmm31>
-        EmitIfCountGE RowCount, 6, <vmulps zmm15,zmm15,zmm31>
-        EmitIfCountGE RowCount, 12, <vmulps zmm17,zmm17,zmm31>
-        EmitIfCountGE RowCount, 12, <vmulps zmm19,zmm19,zmm31>
-        EmitIfCountGE RowCount, 12, <vmulps zmm21,zmm21,zmm31>
-        EmitIfCountGE RowCount, 12, <vmulps zmm23,zmm23,zmm31>
-        EmitIfCountGE RowCount, 12, <vmulps zmm25,zmm25,zmm31>
-        EmitIfCountGE RowCount, 12, <vmulps zmm27,zmm27,zmm31>
+MultiplyAlpha1xNBlockWithMask:
+        EmitIfCountGE RowCount, 1, <vmulpf zmm5,zmm5,zmm31>
+        EmitIfCountGE RowCount, 2, <vmulpf zmm7,zmm7,zmm31>
+        EmitIfCountGE RowCount, 3, <vmulpf zmm9,zmm9,zmm31>
+        EmitIfCountGE RowCount, 4, <vmulpf zmm11,zmm11,zmm31>
+        EmitIfCountGE RowCount, 5, <vmulpf zmm13,zmm13,zmm31>
+        EmitIfCountGE RowCount, 6, <vmulpf zmm15,zmm15,zmm31>
+        EmitIfCountGE RowCount, 12, <vmulpf zmm17,zmm17,zmm31>
+        EmitIfCountGE RowCount, 12, <vmulpf zmm19,zmm19,zmm31>
+        EmitIfCountGE RowCount, 12, <vmulpf zmm21,zmm21,zmm31>
+        EmitIfCountGE RowCount, 12, <vmulpf zmm23,zmm23,zmm31>
+        EmitIfCountGE RowCount, 12, <vmulpf zmm25,zmm25,zmm31>
+        EmitIfCountGE RowCount, 12, <vmulpf zmm27,zmm27,zmm31>
 
-Store16xNBlockWithMask:
-        EmitIfCountGE RowCount, 1, <vmovups ZMMWORD PTR [r8]{k1},zmm5>
-        EmitIfCountGE RowCount, 2, <vmovups ZMMWORD PTR [r8+rax]{k1},zmm7>
-        EmitIfCountGE RowCount, 3, <vmovups ZMMWORD PTR [r8+rax*2]{k1},zmm9>
-        EmitIfCountGE RowCount, 4, <vmovups ZMMWORD PTR [rbx]{k1},zmm11>
-        EmitIfCountGE RowCount, 5, <vmovups ZMMWORD PTR [rbx+rax]{k1},zmm13>
-        EmitIfCountGE RowCount, 6, <vmovups ZMMWORD PTR [rbx+rax*2]{k1},zmm15>
-        EmitIfCountGE RowCount, 12, <vmovups ZMMWORD PTR [r13]{k1},zmm17>
-        EmitIfCountGE RowCount, 12, <vmovups ZMMWORD PTR [r13+rax]{k1},zmm19>
-        EmitIfCountGE RowCount, 12, <vmovups ZMMWORD PTR [r13+rax*2]{k1},zmm21>
-        EmitIfCountGE RowCount, 12, <vmovups ZMMWORD PTR [r14]{k1},zmm23>
-        EmitIfCountGE RowCount, 12, <vmovups ZMMWORD PTR [r14+rax]{k1},zmm25>
-        EmitIfCountGE RowCount, 12, <vmovups ZMMWORD PTR [r14+rax*2]{k1},zmm27>
-        add     r8,16*4                     ; advance matrix C by 16 columns
+Store1xNBlockWithMask:
+        EmitIfCountGE RowCount, 1, <vmovupf ZMMWORD PTR [r8]{k1},zmm5>
+        EmitIfCountGE RowCount, 2, <vmovupf ZMMWORD PTR [r8+rax]{k1},zmm7>
+        EmitIfCountGE RowCount, 3, <vmovupf ZMMWORD PTR [r8+rax*2]{k1},zmm9>
+        EmitIfCountGE RowCount, 4, <vmovupf ZMMWORD PTR [rbx]{k1},zmm11>
+        EmitIfCountGE RowCount, 5, <vmovupf ZMMWORD PTR [rbx+rax]{k1},zmm13>
+        EmitIfCountGE RowCount, 6, <vmovupf ZMMWORD PTR [rbx+rax*2]{k1},zmm15>
+        EmitIfCountGE RowCount, 12, <vmovupf ZMMWORD PTR [r13]{k1},zmm17>
+        EmitIfCountGE RowCount, 12, <vmovupf ZMMWORD PTR [r13+rax]{k1},zmm19>
+        EmitIfCountGE RowCount, 12, <vmovupf ZMMWORD PTR [r13+rax*2]{k1},zmm21>
+        EmitIfCountGE RowCount, 12, <vmovupf ZMMWORD PTR [r14]{k1},zmm23>
+        EmitIfCountGE RowCount, 12, <vmovupf ZMMWORD PTR [r14+rax]{k1},zmm25>
+        EmitIfCountGE RowCount, 12, <vmovupf ZMMWORD PTR [r14+rax*2]{k1},zmm27>
+        add     r8,64                       ; advance matrix C by ZMMWORD
         mov     rcx,rsi                     ; reload matrix A
         vzeroall
-        cmp     rbp,16
-        ja      ProcessNextColumnLoop32xN
+        cmp     rbp,FgemmZmmElementCount
+        ja      ProcessNextColumnLoop2xN
         test    rbp,rbp
         jz      ExitKernel
 
 ProcessRemainingCountN:
-        EmitIfCountGE RowCount, 12, <vmovaps zmm17,zmm5>
+        EmitIfCountGE RowCount, 12, <vmovapf zmm17,zmm5>
                                             ; clear upper block accumulators
-        EmitIfCountGE RowCount, 12, <vmovaps zmm19,zmm5>
-        EmitIfCountGE RowCount, 12, <vmovaps zmm21,zmm5>
-        EmitIfCountGE RowCount, 12, <vmovaps zmm23,zmm5>
-        EmitIfCountGE RowCount, 12, <vmovaps zmm25,zmm5>
-        EmitIfCountGE RowCount, 12, <vmovaps zmm27,zmm5>
-        ComputeBlockAvx512FLoop ComputeBlockAvx512FBy16, RowCount
-        jmp     Output16xNBlock
+        EmitIfCountGE RowCount, 12, <vmovapf zmm19,zmm5>
+        EmitIfCountGE RowCount, 12, <vmovapf zmm21,zmm5>
+        EmitIfCountGE RowCount, 12, <vmovapf zmm23,zmm5>
+        EmitIfCountGE RowCount, 12, <vmovapf zmm25,zmm5>
+        EmitIfCountGE RowCount, 12, <vmovapf zmm27,zmm5>
+        ComputeBlockAvx512FLoop ComputeBlockAvx512FBy1, RowCount
+        jmp     Output1xNBlock
 
         ENDM
+
+;
+; Macro Description:
+;
+;   This macro generates the inner kernel to compute matrix multiplication.
+;
+; Arguments:
+;
+;   Type - Supplies the element type string for function tags.
+;
+
+FgemmKernelAvx512FFunction MACRO Type
 
 ;++
 ;
@@ -441,15 +451,15 @@ ProcessRemainingCountN:
 ;
 ;--
 
-        NESTED_ENTRY MlasGemmFloatKernelAvx512F, _TEXT
+        NESTED_ENTRY MlasGemm&Type&KernelAvx512F, _TEXT
 
-        SgemmKernelAvxEntry SaveExtra
+        FgemmKernelEntry Avx512F
 
         mov     r12,r9
-        shl     r12,6                       ; compute 16*CountK*sizeof(float)
+        shl     r12,6                       ; compute 64*CountK bytes
         mov     edi,-1
         kmovw   k1,edi                      ; update mask to write all columns
-        vbroadcastss zmm31,DWORD PTR SgemmKernelFrame.Alpha[rsp]
+        vbroadcastsf zmm31,FgemmElementPtr FgemmKernelFrame.Alpha[rsp]
 
 ;
 ; Process CountM rows of the matrices.
@@ -485,7 +495,7 @@ ProcessCountM6:
 ;
 
 ExitKernel:
-        SgemmKernelAvxExit RestoreExtra
+        FgemmKernelExit Avx512F
 
 ProcessCountM1:
         ProcessCountM 1
@@ -496,6 +506,6 @@ ProcessCountM3:
 ProcessCountM5:
         ProcessCountM 5
 
-        NESTED_END MlasGemmFloatKernelAvx512F, _TEXT
+        NESTED_END MlasGemm&Type&KernelAvx512F, _TEXT
 
-        END
+        ENDM

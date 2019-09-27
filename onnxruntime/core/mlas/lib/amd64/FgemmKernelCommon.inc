@@ -6,20 +6,20 @@
 ;
 ; Module Name:
 ;
-;   SgemmKernelCommon.inc
+;   FgemmKernelCommon.inc
 ;
 ; Abstract:
 ;
-;   This module contains common kernel macros and structures for the single
-;   precision matrix/matrix multiply operation (SGEMM).
+;   This module contains common kernel macros and structures for the floating
+;   point matrix/matrix multiply operation (SGEMM and DGEMM).
 ;
 ;--
 
 ;
-; Stack frame layout for the SGEMM kernels.
+; Stack frame layout for the floating point kernels.
 ;
 
-SgemmKernelFrame STRUCT
+FgemmKernelFrame STRUCT
 
         SavedXmm6 OWORD ?
         SavedXmm7 OWORD ?
@@ -52,41 +52,25 @@ SgemmKernelFrame STRUCT
         Alpha QWORD ?
         ZeroMode QWORD ?
 
-SgemmKernelFrame ENDS
+FgemmKernelFrame ENDS
 
 ;
-; Stack frame layout for the SGEMM M=1 kernels.
+; Define the number of elements per vector register.
 ;
 
-SgemmKernelM1Frame STRUCT
-
-        SavedXmm6 OWORD ?
-        SavedXmm7 OWORD ?
-        SavedXmm8 OWORD ?
-        SavedRsi QWORD ?
-        SavedRbx QWORD ?
-        SavedRbp QWORD ?
-        ReturnAddress QWORD ?
-        PreviousP1Home QWORD ?
-        PreviousP2Home QWORD ?
-        PreviousP3Home QWORD ?
-        PreviousP4Home QWORD ?
-        CountN QWORD ?
-        ldb QWORD ?
-        Beta QWORD ?
-
-SgemmKernelM1Frame ENDS
+FgemmXmmElementCount    EQU     (16 / FgemmElementSize)
+FgemmYmmElementCount    EQU     (32 / FgemmElementSize)
+FgemmZmmElementCount    EQU     (64 / FgemmElementSize)
 
 ;
 ; Macro Description:
 ;
-;   This macro implements the common prologue code for the AVX based SGEMM
+;   This macro implements the common prologue code for the SGEMM and DGEMM
 ;   kernels.
 ;
 ; Arguments:
 ;
-;   SaveExtra - Supplies a non-blank value if registers r12-r14 should also be
-;       saved to make available as temporaries.
+;   Isa - Supplies the instruction set architecture string.
 ;
 ; Return Registers:
 ;
@@ -106,80 +90,80 @@ SgemmKernelM1Frame ENDS
 ;   r15 - Stores the ZeroMode argument from the stack frame.
 ;
 
-SgemmKernelAvxEntry MACRO SaveExtra
+FgemmKernelEntry MACRO Isa
 
         rex_push_reg rbp
         push_reg rbx
         push_reg rsi
         push_reg rdi
         push_reg r15
-        alloc_stack (SgemmKernelFrame.SavedR15)
-IFNB <SaveExtra>
-        save_reg r12, SgemmKernelFrame.SavedR12
-        save_reg r13, SgemmKernelFrame.SavedR13
-        save_reg r14, SgemmKernelFrame.SavedR14
+        alloc_stack (FgemmKernelFrame.SavedR15)
+IFIDNI <Isa>, <Avx512F>
+        save_reg r12,FgemmKernelFrame.SavedR12
+        save_reg r13,FgemmKernelFrame.SavedR13
+        save_reg r14,FgemmKernelFrame.SavedR14
 ENDIF
-        save_xmm128_avx xmm6,SgemmKernelFrame.SavedXmm6
-        save_xmm128_avx xmm7,SgemmKernelFrame.SavedXmm7
-        save_xmm128_avx xmm8,SgemmKernelFrame.SavedXmm8
-        save_xmm128_avx xmm9,SgemmKernelFrame.SavedXmm9
-        save_xmm128_avx xmm10,SgemmKernelFrame.SavedXmm10
-        save_xmm128_avx xmm11,SgemmKernelFrame.SavedXmm11
-        save_xmm128_avx xmm12,SgemmKernelFrame.SavedXmm12
-        save_xmm128_avx xmm13,SgemmKernelFrame.SavedXmm13
-        save_xmm128_avx xmm14,SgemmKernelFrame.SavedXmm14
-        save_xmm128_avx xmm15,SgemmKernelFrame.SavedXmm15
+        save_xmm128 xmm6,FgemmKernelFrame.SavedXmm6
+        save_xmm128 xmm7,FgemmKernelFrame.SavedXmm7
+        save_xmm128 xmm8,FgemmKernelFrame.SavedXmm8
+        save_xmm128 xmm9,FgemmKernelFrame.SavedXmm9
+        save_xmm128 xmm10,FgemmKernelFrame.SavedXmm10
+        save_xmm128 xmm11,FgemmKernelFrame.SavedXmm11
+        save_xmm128 xmm12,FgemmKernelFrame.SavedXmm12
+        save_xmm128 xmm13,FgemmKernelFrame.SavedXmm13
+        save_xmm128 xmm14,FgemmKernelFrame.SavedXmm14
+        save_xmm128 xmm15,FgemmKernelFrame.SavedXmm15
 
         END_PROLOGUE
 
+IFDIFI <Isa>, <Sse>
         vzeroall
-
+ENDIF
         mov     rsi,rcx
-        mov     rbp,SgemmKernelFrame.CountN[rsp]
-        mov     rax,SgemmKernelFrame.ldc[rsp]
-        shl     rax,2
-        mov     r10,SgemmKernelFrame.lda[rsp]
-        shl     r10,2
-        mov     r11,SgemmKernelFrame.CountM[rsp]
-        movzx   r15,BYTE PTR SgemmKernelFrame.ZeroMode[rsp]
+        mov     rbp,FgemmKernelFrame.CountN[rsp]
+        mov     rax,FgemmKernelFrame.ldc[rsp]
+        shl     rax,FgemmElementShift       ; convert ldc to bytes
+        mov     r10,FgemmKernelFrame.lda[rsp]
+        shl     r10,FgemmElementShift       ; convert lda to bytes
+        mov     r11,FgemmKernelFrame.CountM[rsp]
+        movzx   r15,BYTE PTR FgemmKernelFrame.ZeroMode[rsp]
 
         ENDM
 
 ;
 ; Macro Description:
 ;
-;   This macro implements the common epilogue code for the AVX and FMA3
-;   SGEMM kernels.
+;   This macro implements the common epilogue code for the SGEMM and DGEMM
+;   kernels.
 ;
 ; Arguments:
 ;
-;   RestoreExtra - Supplies a non-blank value if registers r12-r14 should also
-;       be restored.
+;   Isa - Supplies the instruction set architecture string.
 ;
 ; Implicit Arguments:
 ;
 ;   r11d - Stores the number of rows handled.
 ;
 
-SgemmKernelAvxExit MACRO RestoreExtra
+FgemmKernelExit MACRO Isa
 
         mov     eax,r11d
-        vmovaps xmm6,SgemmKernelFrame.SavedXmm6[rsp]
-        vmovaps xmm7,SgemmKernelFrame.SavedXmm7[rsp]
-        vmovaps xmm8,SgemmKernelFrame.SavedXmm8[rsp]
-        vmovaps xmm9,SgemmKernelFrame.SavedXmm9[rsp]
-        vmovaps xmm10,SgemmKernelFrame.SavedXmm10[rsp]
-        vmovaps xmm11,SgemmKernelFrame.SavedXmm11[rsp]
-        vmovaps xmm12,SgemmKernelFrame.SavedXmm12[rsp]
-        vmovaps xmm13,SgemmKernelFrame.SavedXmm13[rsp]
-        vmovaps xmm14,SgemmKernelFrame.SavedXmm14[rsp]
-        vmovaps xmm15,SgemmKernelFrame.SavedXmm15[rsp]
-IFNB <RestoreExtra>
-        mov     r12,SgemmKernelFrame.SavedR12[rsp]
-        mov     r13,SgemmKernelFrame.SavedR13[rsp]
-        mov     r14,SgemmKernelFrame.SavedR14[rsp]
+        vmovaps xmm6,FgemmKernelFrame.SavedXmm6[rsp]
+        vmovaps xmm7,FgemmKernelFrame.SavedXmm7[rsp]
+        vmovaps xmm8,FgemmKernelFrame.SavedXmm8[rsp]
+        vmovaps xmm9,FgemmKernelFrame.SavedXmm9[rsp]
+        vmovaps xmm10,FgemmKernelFrame.SavedXmm10[rsp]
+        vmovaps xmm11,FgemmKernelFrame.SavedXmm11[rsp]
+        vmovaps xmm12,FgemmKernelFrame.SavedXmm12[rsp]
+        vmovaps xmm13,FgemmKernelFrame.SavedXmm13[rsp]
+        vmovaps xmm14,FgemmKernelFrame.SavedXmm14[rsp]
+        vmovaps xmm15,FgemmKernelFrame.SavedXmm15[rsp]
+IFIDNI <Isa>, <Avx512F>
+        mov     r12,FgemmKernelFrame.SavedR12[rsp]
+        mov     r13,FgemmKernelFrame.SavedR13[rsp]
+        mov     r14,FgemmKernelFrame.SavedR14[rsp]
 ENDIF
-        add     rsp,(SgemmKernelFrame.SavedR15)
+        add     rsp,(FgemmKernelFrame.SavedR15)
 
         BEGIN_EPILOGUE
 
@@ -233,18 +217,18 @@ ComputeBlockLoop MACRO ComputeBlock, RowCount, AdvanceMatrixAPlusRows
         jb      ProcessRemainingBlocks
 
 ComputeBlockBy4Loop:
-        ComputeBlock RowCount, 0, 0, 64*4
-        ComputeBlock RowCount, 16*4, 4, 64*4
-        sub     rdx,-32*4                   ; advance matrix B by 32 columns
-        ComputeBlock RowCount, 0, 8, 64*4
-        ComputeBlock RowCount, 16*4, 12, 64*4
-        sub     rdx,-32*4                   ; advance matrix B by 32 columns
-        add     rcx,4*4                     ; advance matrix A by 4 columns
+        ComputeBlock RowCount, 0, FgemmElementSize*0, 64*4
+        ComputeBlock RowCount, 2*32, FgemmElementSize*1, 64*4
+        add_immed rdx,2*2*32                ; advance matrix B by 128 bytes
+        ComputeBlock RowCount, 0, FgemmElementSize*2, 64*4
+        ComputeBlock RowCount, 2*32, FgemmElementSize*3, 64*4
+        add_immed rdx,2*2*32                ; advance matrix B by 128 bytes
+        add     rcx,4*FgemmElementSize      ; advance matrix A by 4 elements
 IF AdvanceMatrixAPlusRows
-        add     rbx,4*4                     ; advance matrix A plus rows by 4 columns
+        add     rbx,4*FgemmElementSize      ; advance matrix A plus rows by 4 elements
 IF RowCount GE 12
-        add     r13,4*4
-        add     r14,4*4
+        add     r13,4*FgemmElementSize
+        add     r14,4*FgemmElementSize
 ENDIF
 ENDIF
         sub     rdi,4
@@ -256,13 +240,13 @@ ProcessRemainingBlocks:
 
 ComputeBlockBy1Loop:
         ComputeBlock RowCount, 0, 0
-        add     rdx,16*4                    ; advance matrix B by 16 columns
-        add     rcx,4                       ; advance matrix A by 1 column
+        add     rdx,2*32                    ; advance matrix B by 64 bytes
+        add     rcx,FgemmElementSize        ; advance matrix A by 1 element
 IF AdvanceMatrixAPlusRows
-        add     rbx,4                       ; advance matrix A plus rows by 1 column
+        add     rbx,FgemmElementSize        ; advance matrix A plus rows by 1 element
 IF RowCount GE 12
-        add     r13,4
-        add     r14,4
+        add     r13,FgemmElementSize
+        add     r14,FgemmElementSize
 ENDIF
 ENDIF
         dec     rdi
