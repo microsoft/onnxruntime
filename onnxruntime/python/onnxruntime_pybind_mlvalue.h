@@ -15,8 +15,6 @@
 #include "core/framework/ml_value.h"
 #include "core/session/inference_session.h"
 
-
-using namespace std;
 namespace onnxruntime {
 namespace python {
 

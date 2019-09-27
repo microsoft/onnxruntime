@@ -43,40 +43,52 @@ plt.axis('off')
 #############################################
 # Let's load the model with onnxruntime.
 import onnxruntime as rt
+from onnxruntime.capi.onnxruntime_pybind11_state import InvalidGraph
 
-sess = rt.InferenceSession('dense121.onnx')
+try:
+    sess = rt.InferenceSession('dense121.onnx')
+    ok = True
+except (InvalidGraph, TypeError, RuntimeError) as e:
+    # Probably a mismatch between onnxruntime and onnx version.
+    print(e)
+    ok = False
 
-print("The model expects input shape:", sess.get_inputs()[0].shape)
-print("image shape:", ximg.shape)
+if ok:
+    print("The model expects input shape:", sess.get_inputs()[0].shape)
+    print("image shape:", ximg.shape)
 
 #######################################
 # Let's resize the image.
-from skimage.transform import resize
-import numpy
 
-ximg224 = resize(ximg / 255, (224, 224, 3), anti_aliasing=True)
-ximg = ximg224[numpy.newaxis, :, :, :]
-ximg = ximg.astype(numpy.float32)
+if ok:
+    from skimage.transform import resize
+    import numpy
 
-print("new shape:", ximg.shape)
+    ximg224 = resize(ximg / 255, (224, 224, 3), anti_aliasing=True)
+    ximg = ximg224[numpy.newaxis, :, :, :]
+    ximg = ximg.astype(numpy.float32)
+
+    print("new shape:", ximg.shape)
 
 ##################################
 # Let's compute the output.
 
-input_name = sess.get_inputs()[0].name
-res = sess.run(None, {input_name: ximg})
-prob = res[0]
-print(prob.ravel()[:10])  # Too big to be displayed.
+if ok:
+    input_name = sess.get_inputs()[0].name
+    res = sess.run(None, {input_name: ximg})
+    prob = res[0]
+    print(prob.ravel()[:10])  # Too big to be displayed.
 
 
 ##################################
 # Let's get more comprehensive results.
 
-from keras.applications.densenet import decode_predictions
-decoded = decode_predictions(prob)
+if ok:
+    from keras.applications.densenet import decode_predictions
+    decoded = decode_predictions(prob)
 
-import pandas
-df = pandas.DataFrame(decoded[0], columns=["class_id", "name", "P"])
-print(df)
+    import pandas
+    df = pandas.DataFrame(decoded[0], columns=["class_id", "name", "P"])
+    print(df)
 
 

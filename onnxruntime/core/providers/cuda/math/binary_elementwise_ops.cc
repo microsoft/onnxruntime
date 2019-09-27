@@ -396,24 +396,24 @@ Status Min<T>::ComputeInternal(OpKernelContext* context) const {
 
 //Greater op output tensor type is bool, so it cannot directly fit in the macros
 //for other elementwise ops
-template <typename T>
-Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
-  const onnxruntime::Node& node = OpKernel::Node();
-  const std::string& name = node.Name();
-
-  const Tensor* input0 = context->Input<Tensor>(0);
-  const Tensor* input1 = context->Input<Tensor>(1);
-  TensorShape output_shape;
-  ORT_RETURN_IF_ERROR(ComputeOutputShape(name, input0->Shape(), input1->Shape(), output_shape));
-  size_t output_size = output_shape.Size();
-  Tensor* output_tensor = context->Output(0, output_shape);
-
+template <typename T, typename CudaT>
+Status CompareFunction<T, CudaT>::CompareMethod(OpKernelContext* context, void (*Impl_Compare)(
+                                                                 size_t output_rank_or_simple_broadcast,
+                                                                 const int64_t* lhs_padded_strides,
+                                                                 const CudaT* lhs_data,
+                                                                 const int64_t* rhs_padded_strides,
+                                                                 const CudaT* rhs_data,
+                                                                 const fast_divmod* fdm_output_strides,
+                                                                 const fast_divmod& fdm_H,
+                                                                 const fast_divmod& fdm_C,
+                                                                 CudaT* output_data,
+                                                                 size_t count)) const {
   BinaryElementwisePreparation prepare(this);
-  ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(input0, input1, output_tensor, &prepare));
-
+  Prepare(context, &prepare);
+  size_t output_size = prepare.output_tensor->Shape().Size();
   IAllocatorUniquePtr<T> output_buffer = GetScratchBuffer<T>(output_size);
-  Impl_Greater<CudaT>(
+  ORT_RETURN_IF_ERROR(prepare.CopyToGpu());
+  Impl_Compare(
       prepare.output_rank_or_simple_broadcast,
       prepare.lhs_padded_strides.GpuPtr(),
       reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
@@ -423,48 +423,31 @@ Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
       prepare.fdm_H,
       prepare.fdm_C,
       reinterpret_cast<CudaT*>(output_buffer.get()),
-      output_size);
+      prepare.output_tensor->Shape().Size());
 
   Impl_Cast<CudaT, ToCudaType<bool>::MappedType>(
       reinterpret_cast<CudaT*>(output_buffer.get()),
-      reinterpret_cast<ToCudaType<bool>::MappedType*>(output_tensor->template MutableData<bool>()),
+      reinterpret_cast<ToCudaType<bool>::MappedType*>(prepare.output_tensor->template MutableData<bool>()),
       output_size);
+
+  return Status::OK();
+}
+
+//Greater op output tensor type is bool, so it cannot directly fit in the macros
+//for other elementwise ops
+template <typename T>
+Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
+
+  this->CompareMethod(context, &Impl_Greater);
+
   return Status::OK();
 }
 
 template <typename T>
 Status Equal<T>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
-  const onnxruntime::Node& node = OpKernel::Node();
-  const std::string& name = node.Name();
 
-  const Tensor* input0 = context->Input<Tensor>(0);
-  const Tensor* input1 = context->Input<Tensor>(1);
-  TensorShape output_shape;
-  ORT_RETURN_IF_ERROR(ComputeOutputShape(name, input0->Shape(), input1->Shape(), output_shape));
-  size_t output_size = output_shape.Size();
-  Tensor* output_tensor = context->Output(0, output_shape);
+  this->CompareMethod(context, &Impl_Equal);
 
-  BinaryElementwisePreparation prepare(this);
-  ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(input0, input1, output_tensor, &prepare));
-
-  IAllocatorUniquePtr<T> output_buffer = GetScratchBuffer<T>(output_size);
-  Impl_Equal<CudaT>(
-      prepare.output_rank_or_simple_broadcast,
-      prepare.lhs_padded_strides.GpuPtr(),
-      reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
-      prepare.rhs_padded_strides.GpuPtr(),
-      reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
-      prepare.fdm_output_strides.GpuPtr(),
-      prepare.fdm_H,
-      prepare.fdm_C,
-      reinterpret_cast<CudaT*>(output_buffer.get()),
-      output_size);
-
-  Impl_Cast<CudaT, ToCudaType<bool>::MappedType>(
-      reinterpret_cast<CudaT*>(output_buffer.get()),
-      reinterpret_cast<ToCudaType<bool>::MappedType*>(output_tensor->template MutableData<bool>()),
-      output_size);
   return Status::OK();
 }
 
@@ -472,37 +455,9 @@ Status Equal<T>::ComputeInternal(OpKernelContext* context) const {
 //for other elementwise ops
 template <typename T>
 Status Less<T>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
-  const onnxruntime::Node& node = OpKernel::Node();
-  const std::string& name = node.Name();
 
-  const Tensor* input0 = context->Input<Tensor>(0);
-  const Tensor* input1 = context->Input<Tensor>(1);
-  TensorShape output_shape;
-  ORT_RETURN_IF_ERROR(ComputeOutputShape(name, input0->Shape(), input1->Shape(), output_shape));
-  size_t output_size = output_shape.Size();
-  Tensor* output_tensor = context->Output(0, output_shape);
+  this->CompareMethod(context, &Impl_Less);
 
-  BinaryElementwisePreparation prepare(this);
-  ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(input0, input1, output_tensor, &prepare));
-
-  IAllocatorUniquePtr<T> output_buffer = GetScratchBuffer<T>(output_size);
-  Impl_Less<CudaT>(
-      prepare.output_rank_or_simple_broadcast,
-      prepare.lhs_padded_strides.GpuPtr(),
-      reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
-      prepare.rhs_padded_strides.GpuPtr(),
-      reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
-      prepare.fdm_output_strides.GpuPtr(),
-      prepare.fdm_H,
-      prepare.fdm_C,
-      reinterpret_cast<CudaT*>(output_buffer.get()),
-      output_size);
-
-  Impl_Cast<CudaT, ToCudaType<bool>::MappedType>(
-      reinterpret_cast<CudaT*>(output_buffer.get()),
-      reinterpret_cast<ToCudaType<bool>::MappedType*>(output_tensor->template MutableData<bool>()),
-      output_size);
   return Status::OK();
 }
 

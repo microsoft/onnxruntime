@@ -19,6 +19,8 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 
+const OrtApi* Ort::g_api = OrtGetApi(ORT_API_VERSION);
+
 // Data container used to ferry data through C API
 extern "C" struct ExperimentalDataContainer {
   // This is a string Tensor
@@ -117,7 +119,7 @@ ONNX_OPERATOR_KERNEL_EX(
   ONNX_TEST_OPERATOR_SCHEMA_UNIQ_HELPER(__COUNTER__, name)
 #define ONNX_TEST_OPERATOR_SCHEMA_UNIQ_HELPER(Counter, name) \
   ONNX_TEST_OPERATOR_SCHEMA_UNIQ(Counter, name)
-#define ONNX_TEST_OPERATOR_SCHEMA_UNIQ(Counter, name)         \
+#define ONNX_TEST_OPERATOR_SCHEMA_UNIQ(Counter, name)            \
   static ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce( \
       op_schema_register_once##name##Counter) ONNX_UNUSED =      \
       ONNX_NAMESPACE::OpSchema(#name, __FILE__, __LINE__)
@@ -232,7 +234,7 @@ TEST_F(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
 
     // No C++ Api to either create a string Tensor or to fill one with string, so we use C
     const char* const input_char_string[] = {input_string.c_str()};
-    ORT_THROW_ON_ERROR(OrtFillStringTensor(static_cast<OrtValue*>(container_str), input_char_string, 1U));
+    ORT_THROW_ON_ERROR(Ort::g_api->FillStringTensor(static_cast<OrtValue*>(container_str), input_char_string, 1U));
 
     // We put this into our container now
     // This container life-span is supposed to eclipse the model running time
@@ -240,7 +242,7 @@ TEST_F(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
 
     // Now we put our container into OrtValue
     Ort::Value container_val = Ort::Value::CreateOpaque(kMsTestDomain, kTestOpaqueType, container);
-    Ort::Value output_val(nullptr); // empty
+    Ort::Value output_val(nullptr);  // empty
 
     Ort::RunOptions run_options;
     session.Run(run_options, input_names, &container_val, num_input_nodes,
