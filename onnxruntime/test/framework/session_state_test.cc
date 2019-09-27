@@ -40,7 +40,7 @@ TEST(SessionStateTest, AddGetKernelTest) {
       .SetDoc("Input variable.")
       .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
   ExecutionProviders execution_providers;
-  SessionState s{execution_providers, true, &tp};
+  SessionState s{execution_providers, true, &tp, nullptr};
 
   onnxruntime::Model model("graph_1");
   auto& graph = model.MainGraph();
@@ -111,7 +111,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   status = krm.RegisterKernels(execution_providers);
   ASSERT_TRUE(status.IsOK()) << status;
 
-  SessionState session_state(execution_providers, param.enable_mem_pattern, &tp);
+  SessionState session_state(execution_providers, param.enable_mem_pattern, &tp, nullptr);
   SessionStateInitializer session_initializer(param.enable_mem_pattern, ToWideString(model_path), graph, session_state,
                                               execution_providers, krm);
 

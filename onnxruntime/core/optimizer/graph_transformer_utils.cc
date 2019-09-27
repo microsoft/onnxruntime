@@ -17,7 +17,9 @@
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/shape_to_initializer.h"
 #include "core/optimizer/nchwc_transformer.h"
+#include "core/optimizer/free_dim_override_transformer.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/session/inference_session.h"
 
 namespace onnxruntime {
 
@@ -87,6 +89,7 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(Tra
 }
 
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerLevel level,
+                                                                    gsl::span<const FreeDimensionOverride> free_dimension_overrides,
                                                                     const std::vector<std::string>& transformers_and_rules_to_enable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
@@ -95,6 +98,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       std::unordered_set<std::string> l1_execution_providers = {};
 
       transformers.emplace_back(std::make_unique<ConstantFolding>(l1_execution_providers));
+      transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
 
       rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
     } break;

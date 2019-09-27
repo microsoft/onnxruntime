@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "onnxruntime_pybind_exceptions.h"
 #include "onnxruntime_pybind_mlvalue.h"
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
@@ -44,8 +45,21 @@
 #define BACKEND_NGRAPH ""
 #endif
 
-#if USE_OPENVINO
-#define BACKEND_OPENVINO "-OPENVINO"
+#if OPENVINO_CONFIG_CPU_FP32
+#define BACKEND_OPENVINO "-OPENVINO_CPU_FP32"
+
+#elif OPENVINO_CONFIG_GPU_FP32
+#define BACKEND_OPENVINO "-OPENVINO_GPU_FP32"
+
+#elif OPENVINO_CONFIG_GPU_FP16
+#define BACKEND_OPENVINO "-OPENVINO_GPU_FP16"
+
+#elif OPENVINO_CONFIG_MYRIAD
+#define BACKEND_OPENVINO "-OPENVINO_MYRIAD"
+
+#elif OPENVINO_CONFIG_VAD_M
+#define BACKEND_OPENVINO "-OPENVINO_VAD_M"
+
 #else
 #define BACKEND_OPENVINO ""
 #endif
@@ -112,7 +126,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainS
 #pragma warning(disable : 4267 4996 4503 4003)
 #endif  // _MSC_VER
 
-using namespace std;
 namespace onnxruntime {
 namespace python {
 
@@ -131,10 +144,10 @@ static const SessionOptions& GetDefaultCPUSessionOptions() {
 }
 
 template <typename T>
-void AddNonTensor(OrtValue& val, vector<py::object>& pyobjs) {
+void AddNonTensor(OrtValue& val, std::vector<py::object>& pyobjs) {
   pyobjs.push_back(py::cast(val.Get<T>()));
 }
-void AddNonTensorAsPyObj(OrtValue& val, vector<py::object>& pyobjs) {
+void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   // Should be in sync with core/framework/datatypes.h
   if (val.Type() == DataTypeImpl::GetType<MapStringToString>()) {
     AddNonTensor<MapStringToString>(val, pyobjs);
@@ -169,7 +182,7 @@ void AddNonTensorAsPyObj(OrtValue& val, vector<py::object>& pyobjs) {
   }
 }
 
-void AddTensorAsPyObj(OrtValue& val, vector<py::object>& pyobjs) {
+void AddTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   const Tensor& rtensor = val.Get<Tensor>();
   std::vector<npy_intp> npy_dims;
   const TensorShape& shape = rtensor.Shape();
@@ -222,10 +235,7 @@ class SessionObjectInitializer {
 
 inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExecutionProviderFactory& f) {
   auto p = f.CreateProvider();
-  auto status = sess->RegisterExecutionProvider(std::move(p));
-  if (!status.IsOK()) {
-    throw std::runtime_error(status.ErrorMessage().c_str());
-  }
+  OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(p)));
 }
 
 // ordered by default priority. highest to lowest.
@@ -314,11 +324,7 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
   } else {
     RegisterExecutionProviders(sess, provider_types);
   }
-  onnxruntime::common::Status status;
-  status = sess->Initialize();
-  if (!status.IsOK()) {
-    throw std::runtime_error(status.ToString().c_str());
-  }
+  OrtPybindThrowIfError(sess->Initialize());
 }
 
 void addGlobalMethods(py::module& m) {
@@ -326,8 +332,20 @@ void addGlobalMethods(py::module& m) {
   m.def(
       "get_device", []() -> std::string { return BACKEND_DEVICE; },
       "Return the device used to compute the prediction (CPU, MKL, ...)");
-  m.def("get_all_providers", []() -> const std::vector<std::string>& { return GetAllProviders(); });
-  m.def("get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableProviders(); });
+  m.def(
+      "set_default_logger_severity", [](int severity) {
+        ORT_ENFORCE(severity >= 0 && severity <= 4,
+                    "Invalid logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
+        logging::LoggingManager* default_logging_manager = SessionObjectInitializer::Get();
+        default_logging_manager->SetDefaultLoggerSeverity(static_cast<logging::Severity>(severity));
+      },
+      "Sets the default logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
+  m.def(
+      "get_all_providers", []() -> const std::vector<std::string>& { return GetAllProviders(); },
+      "Return list of Execution Providers that this version of Onnxruntime can support.");
+  m.def(
+      "get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableProviders(); },
+      "Return list of available Execution Providers available in this installed version of Onnxruntime.");
 
 #ifdef USE_NUPHAR
   m.def("set_nuphar_settings", [](const std::string& str) {
@@ -528,14 +546,15 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
       .def_readwrite("logid", &SessionOptions::session_logid,
                      R"pbdoc(Logger id to use for session output.)pbdoc")
       .def_readwrite("log_severity_level", &SessionOptions::session_log_severity_level,
-                     R"pbdoc(Log severity level. Applies to session load, initialization, etc. 
+                     R"pbdoc(Log severity level. Applies to session load, initialization, etc.
 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.)pbdoc")
       .def_readwrite("log_verbosity_level", &SessionOptions::session_log_verbosity_level,
-                     R"pbdoc(VLOG level if DEBUG build and session_log_verbosity_level is 0. 
+                     R"pbdoc(VLOG level if DEBUG build and session_log_verbosity_level is 0.
 Applies to session load, initialization, etc. Default is 0.)pbdoc")
-      .def_readwrite("thread_pool_size", &SessionOptions::session_thread_pool_size,
-                     R"pbdoc(How many threads in the session thread pool. Default is 0 to let onnxruntime choose.
-This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
+      .def_readwrite("intra_op_num_threads", &SessionOptions::intra_op_num_threads,
+                     R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
+      .def_readwrite("inter_op_num_threads", &SessionOptions::inter_op_num_threads,
+                     R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")
       .def_property(
           "graph_optimization_level",
           [](const SessionOptions* options) -> GraphOptimizationLevel {
@@ -584,7 +603,7 @@ This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
       .def_readwrite("log_severity_level", &RunOptions::run_log_severity_level,
                      R"pbdoc(Log severity level for a particular Run() invocation. 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.)pbdoc")
       .def_readwrite("log_verbosity_level", &RunOptions::run_log_verbosity_level,
-                     R"pbdoc(VLOG level if DEBUG build and run_log_severity_level is 0. 
+                     R"pbdoc(VLOG level if DEBUG build and run_log_severity_level is 0.
 Applies to a particular Run() invocation. Default is 0.)pbdoc")
       .def_readwrite("logid", &RunOptions::run_tag,
                      "To identify logs generated by a particular Run() invocation.")
@@ -668,20 +687,14 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def(py::init<SessionOptions, SessionObjectInitializer>())
       .def(
           "load_model", [](InferenceSession* sess, const std::string& path, std::vector<std::string>& provider_types) {
-            auto status = sess->Load(path);
-            if (!status.IsOK()) {
-              throw std::runtime_error(status.ToString().c_str());
-            }
+            OrtPybindThrowIfError(sess->Load(path));
             InitializeSession(sess, provider_types);
           },
           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
       .def(
           "read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel, std::vector<std::string>& provider_types) {
             std::istringstream buffer(serializedModel);
-            auto status = sess->Load(buffer);
-            if (!status.IsOK()) {
-              throw std::runtime_error(status.ToString().c_str());
-            }
+            OrtPybindThrowIfError(sess->Load(buffer));
             InitializeSession(sess, provider_types);
           },
           R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
@@ -713,15 +726,10 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           // release GIL to allow multiple python threads to invoke Run() in parallel.
           py::gil_scoped_release release;
           if (run_options != nullptr) {
-            status = sess->Run(*run_options, feeds, output_names, &fetches);
+            OrtPybindThrowIfError(sess->Run(*run_options, feeds, output_names, &fetches));
           } else {
-            status = sess->Run(feeds, output_names, &fetches);
+            OrtPybindThrowIfError(sess->Run(feeds, output_names, &fetches));
           }
-        }
-
-        if (!status.IsOK()) {
-          auto mes = status.ToString();
-          throw std::runtime_error(std::string("Method run failed due to: ") + std::string(mes.c_str()));
         }
 
         std::vector<py::object> rfetch;
@@ -743,32 +751,29 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       })
       .def_property_readonly("inputs_meta", [](const InferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
         auto res = sess->GetModelInputs();
-        if (!res.first.IsOK()) {
-          throw std::runtime_error(res.first.ToString().c_str());
-        } else {
-          return *(res.second);
-        }
+        OrtPybindThrowIfError(res.first);
+        return *(res.second);
       })
       .def_property_readonly("outputs_meta", [](const InferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
         auto res = sess->GetModelOutputs();
-        if (!res.first.IsOK()) {
-          throw std::runtime_error(res.first.ToString().c_str());
-        } else {
-          return *(res.second);
-        }
+        OrtPybindThrowIfError(res.first);
+        return *(res.second);
+      })
+      .def_property_readonly("overridable_initializers", [](const InferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
+        auto res = sess->GetOverridableInitializers();
+        OrtPybindThrowIfError(res.first);
+        return *(res.second);
       })
       .def_property_readonly("model_meta", [](const InferenceSession* sess) -> const onnxruntime::ModelMetadata& {
         auto res = sess->GetModelMetadata();
-        if (!res.first.IsOK()) {
-          throw std::runtime_error(res.first.ToString().c_str());
-        } else {
-          return *(res.second);
-        }
+        OrtPybindThrowIfError(res.first);
+        return *(res.second);
       });
 }
 
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
+  RegisterExceptions(m);
 
   auto initialize = [&]() {
     // Initialization of the module
@@ -778,10 +783,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
     })();
 
     static std::unique_ptr<Environment> env;
-    auto status = Environment::Create(env);
-    if (!status.IsOK()) {
-      throw std::runtime_error(status.ToString().c_str());
-    }
+    OrtPybindThrowIfError(Environment::Create(env));
 
     static bool initialized = false;
     if (initialized) {

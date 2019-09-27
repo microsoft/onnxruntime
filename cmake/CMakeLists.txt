@@ -102,7 +102,7 @@ if(onnxruntime_USE_OPENMP)
     endif()
   else()
     set(onnxruntime_USE_OPENMP OFF)
-  endif()  
+  endif()
 endif()
 if(onnxruntime_ENABLE_LTO)
   #TODO: figure out why nsync doesn't work
@@ -473,7 +473,7 @@ if (onnxruntime_USE_JEMALLOC)
 endif()
 
 include_directories(
-  ${ONNXRUNTIME_INCLUDE_DIR} 
+  ${ONNXRUNTIME_INCLUDE_DIR}
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
 
@@ -518,10 +518,6 @@ endif()
 
 if(onnxruntime_USE_OPENVINO)
 
-    if(WIN32)
-        message(FATAL_ERROR "Building on Windows using OpenVINO execution provider is not supported")
-    endif()
-
     add_definitions(-DUSE_OPENVINO=1)
 
 	if (onnxruntime_USE_OPENVINO_SOURCE)
@@ -553,6 +549,10 @@ if(onnxruntime_USE_OPENVINO)
 
 	if(onnxruntime_USE_OPENVINO_VAD_M)
 		add_definitions(-DOPENVINO_CONFIG_VAD_M=1)
+    endif()
+
+	if(onnxruntime_USE_OPENVINO_VAD_F)
+		add_definitions(-DOPENVINO_CONFIG_VAD_F=1)
 	endif()
 
 endif()

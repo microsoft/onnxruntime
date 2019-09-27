@@ -412,27 +412,6 @@ value at X[t][n] >= seqLengths[n].
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.");
 
-  static const char* ATen_ver1_doc = R"DOC(
-Experimental allowing ATen operations to be accessed directly from Caffe2
-to allow for quick prototyping when ONNX is missing standard versions of
-and op)DOC";
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)
-      .SinceVersion(1)
-      .AllowUncheckedAttributes()
-      .SetDoc(ATen_ver1_doc)
-      .Input(0, "input", "Arbitrary input", "T", OpSchema::Variadic)
-      .Output(0, "output", "Arbitrary output", "T", OpSchema::Variadic)
-      .TypeConstraint(
-          "T",
-          {"tensor(bool)",
-           "tensor(int32)",
-           "tensor(int64)",
-           "tensor(float16)",
-           "tensor(float)",
-           "tensor(double)"},
-          "Constrain output types to bool, int32, int64, float16, float, double tensors.");
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(GivenTensorFill)
       .SinceVersion(10)
       .Deprecate()
@@ -514,23 +493,6 @@ and op)DOC";
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.");
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)
-      .SinceVersion(10)
-      .Deprecate()
-      .AllowUncheckedAttributes()
-      .SetDoc(ATen_ver1_doc)
-      .Input(0, "input", "Arbitrary input", "T", OpSchema::Variadic)
-      .Output(0, "output", "Arbitrary output", "T", OpSchema::Variadic)
-      .TypeConstraint(
-          "T",
-          {"tensor(bool)",
-           "tensor(int32)",
-           "tensor(int64)",
-           "tensor(float16)",
-           "tensor(float)",
-           "tensor(double)"},
-          "Constrain output types to bool, int32, int64, float16, float, double tensors.");
 
   ONNX_OPERATOR_SCHEMA(MeanVarianceNormalization)
       .SinceVersion(1)
@@ -1647,6 +1609,23 @@ Example 4:
                 output_idx = [0, 1, 1, 2, 3, 2]
                 output_counts = [1, 2, 2, 1]
               )DOC");
+
+  //see:https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.cdist.html
+  ONNX_CONTRIB_OPERATOR_SCHEMA(CDist)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("metric",
+            "The distance metric to use. If a string, the distance function can be \"braycurtis\", \"canberra\", "
+            "\"chebyshev\", \"cityblock\", \"correlation\", \"cosine\", \"dice\", \"euclidean\", \"hamming\", \"jaccard\", "
+            "\"jensenshannon\", \"kulsinski\", \"mahalanobis\", \"matching\", \"minkowski\", \"rogerstanimoto\", \"russellrao\", "
+            "\"seuclidean\", \"sokalmichener\", \"sokalsneath\", \"sqeuclidean\", \"wminkowski\", \"yule\".",
+            AttributeProto::STRING, std::string("sqeuclidean"))     
+      .Input(0, "A", "2D matrix with shape (M,N)", "T")
+	  .Input(1, "B", "2D matrix with shape (K,N)", "T")
+      .Output(0, "C",
+              "A 2D Matrix that represents the distance between each pair of the two collections of inputs.",
+              "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(double)"}, "Constrains input to only numeric types.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(CropAndResize)
       .SetDomain(kMSDomain)

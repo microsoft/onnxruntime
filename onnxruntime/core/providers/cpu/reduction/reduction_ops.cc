@@ -102,8 +102,9 @@ bool PrepareForReduce(OpKernelContext* ctx,
 
   if (axes.empty()) {
     // This is the default case for non-arg kind reductions. Reduce on all dimensions.
-    for (size_t i = 0; i < ndim; i++)
+    for (size_t i = 0; i < ndim; i++) {
       axes.push_back(i);
+    }
   }
 
   std::sort(axes.begin(), axes.end());
@@ -320,12 +321,20 @@ Status ReduceMax<T>::Compute(OpKernelContext* ctx) const {
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
-  PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_);
+  bool no_transpose = PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_, true);
 
   T* output_data = reduced->template MutableData<T>();
 
-  EigenVectorMap<T> out_vec(output_data, block_size);
-  out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().maxCoeff();
+  if (no_transpose) {
+    const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
+
+    for (int64_t i = 0; i < block_size; ++i) {
+      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).maxCoeff();
+    }
+  } else {
+    EigenVectorMap<T> out_vec(output_data, block_size);
+    out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().maxCoeff();
+  }
 
   return Status::OK();
 }
@@ -363,12 +372,20 @@ Status ReduceMin<T>::Compute(OpKernelContext* ctx) const {
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
-  PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_);
+  bool no_transpose = PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_, true);
 
   T* output_data = reduced->template MutableData<T>();
 
-  EigenVectorMap<T> out_vec(output_data, block_size);
-  out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().minCoeff();
+  if (no_transpose) {
+    const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
+
+    for (int64_t i = 0; i < block_size; ++i) {
+      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).minCoeff();
+    }
+  } else {
+    EigenVectorMap<T> out_vec(output_data, block_size);
+    out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().minCoeff();
+  }
 
   return Status::OK();
 }
