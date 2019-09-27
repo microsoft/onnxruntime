@@ -29,12 +29,15 @@ class NeuralNet(nn.Module):
         out = self.fc1(x)
         out = self.relu(out)
         out = self.fc2(out)
-        return F.log_softmax(out, dim=1)
+        return out
 
 def parameter_count(parameters):
     count = 0
     for p in parameters:
         print(p.shape)
+
+def my_loss(x, target):
+    return F.nll_loss(F.log_softmax(x, dim=1), target)
 
 
 def train(args, trainer, device, train_loader, epoch):    
@@ -49,16 +52,15 @@ def train(args, trainer, device, train_loader, epoch):
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.item()))
 
-# TODO: comple this once ORT training can do evaluation.
-def test(args, model, device, test_loader):
-    model.eval()
+#TODO : comple this once ORT training can do evaluation.
+def test(args, trainer, device, test_loader):
     test_loss = 0
     correct = 0
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             data = data.reshape(data.shape[0], -1)
-            output = model(data)
+            output = F.log_softmax(trainer.eval(data), dim=1)
             test_loss += F.nll_loss(output, target, reduction='sum').item() # sum up batch loss
             pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
@@ -70,7 +72,7 @@ def test(args, model, device, test_loader):
         100. * correct / len(test_loader.dataset)))
 
 def main():
-    # Training settings
+#Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 64)')
@@ -125,22 +127,21 @@ def main():
     num_classes = 10
     model = NeuralNet(input_size, hidden_size, num_classes).to(device)
 
-    loss_fn = F.nll_loss
     optimizer_constructor_lambda = lambda model_parameters: optim.SGD(model_parameters, args.lr, args.momentum)
 
-    trainer = ORTTrainer(model, loss_fn, optimizer_constructor_lambda)
+    trainer = ORTTrainer(model, my_loss, optimizer_constructor_lambda)
 
     if args.use_ort:
-        # call trainer.compile() to setup ORT backend for training.
-        # if trainer.compile() is not called, it will use PyTorch as training backend
+#call trainer.compile() to setup ORT backend for training.
+#if trainer.compile() is not called, it will use PyTorch as training backend
         trainer.compile(batch_size = 64, feature_shape = 28 * 28, input_dtype = torch.float32, number_classes = 10, label_type=torch.int64)
 
     for epoch in range(1, args.epochs + 1):
         train(args, trainer, device, train_loader, epoch)
-        test(args, model, device, test_loader)
+        test(args, trainer, device, test_loader)
 
-    # if (args.save_model):
-    #     torch.save(model.state_dict(),"mnist_cnn.pt")
+#if (args.save_model) :
+#torch.save(model.state_dict(), "mnist_cnn.pt")
         
 if __name__ == '__main__':
     main()

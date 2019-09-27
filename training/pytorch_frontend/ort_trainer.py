@@ -7,6 +7,7 @@ import torch
 import torch.nn
 import torch.onnx
 import onnxruntime as ort
+import pdb
 
 class model_loss_cls(torch.nn.Module):
     def __init__(self, model, loss_fn):
@@ -59,12 +60,18 @@ def FuseSofmaxNLLToSoftmaxCE(onnx_model):
         del onnx_model.graph.node[nll_loss_node_index]
         del onnx_model.graph.node[softmax_node_index]
 
+    prediction = onnx.helper.make_tensor_value_info(
+        softmax_node.input[0],
+        1,      # float32
+        ['batch', 10])
+    onnx_model.graph.output.extend([prediction])
+
     # add addition probability output to the softmaxCE node
     probability_output = onnx.helper.make_tensor_value_info(
         "probability", 
         1,      # float32
         ['batch', 10])
-    onnx_model.graph.output.extend([probability_output])
+    #onnx_model.graph.output.extend([probability_output])
 
     node = onnx_model.graph.node.add()
     node.CopyFrom(onnx.helper.make_node("SparseSoftmaxCrossEntropy", [softmax_node.input[0], target_input_name], 
@@ -123,14 +130,14 @@ class ORTTrainer():
         input, target = self.GenerateSampleDataForJit(batch_size, feature_shape, input_dtype, number_classes, label_type)
         # combine model and loss and create the combined ONNX model
         model_loss = model_loss_cls(self.model_, self.loss_fn_)
-        dynamic_axes = {self.input_name:{0:'batch'}, self.label_name:{0:'batch'}}
+        self.dynamic_axes = {self.input_name:{0:'batch'}, self.label_name:{0:'batch'}}
 
         f = io.BytesIO()
 
         torch.onnx._export(model_loss, (input, target), f,
             input_names = [self.input_name, self.label_name],
             opset_version=12,
-            dynamic_axes = dynamic_axes,
+            dynamic_axes = self.dynamic_axes,
             example_outputs=torch.zeros((1,), dtype=torch.float))
         
         model = onnx.load_model_from_string(f.getvalue())
@@ -139,6 +146,8 @@ class ORTTrainer():
         # onnx.save_model(model, "ORTTrainer2_model_loss.onnx")
 
         model = FuseSofmaxNLLToSoftmaxCE(model)
+
+        self.prediction_name = model.graph.output[1].name
 
         self.ort_parameters = ort.TrainingParameters()
         self.ort_parameters.loss_output_name = self.output_name
@@ -162,15 +171,18 @@ class ORTTrainer():
         self.session = ort.TrainingSession(model.SerializeToString(), self.ort_parameters)
 
 
-        self.iobinding = self.session.io_binding()
+        self.train_io_binding = self.session.io_binding()
+        self.eval_io_binding = self.session.io_binding()
         for param in self.torch_params.keys():
             torch_tensor = self.torch_params[param]
 
-            self.iobinding.bind_input(param, torch_tensor.device.type, torch_tensor.device.index, 
+            self.train_io_binding.bind_input(param, torch_tensor.device.type, torch_tensor.device.index, 
+                dtype_torch_to_numpy(input_dtype), list(torch_tensor.size()), torch_tensor.data_ptr())
+            self.eval_io_binding.bind_input(param, torch_tensor.device.type, torch_tensor.device.index, 
                 dtype_torch_to_numpy(input_dtype), list(torch_tensor.size()), torch_tensor.data_ptr())
             torch_tensor.grad = torch.zeros(torch_tensor.size(), dtype=torch.float32).cuda()
             #hardcode grad name
-            self.iobinding.bind_output(param + "_grad",
+            self.train_io_binding.bind_output(param + "_grad",
                                        torch_tensor.grad.device.type,
                                        torch_tensor.grad.device.index,
                                        np.float32,
@@ -184,6 +196,16 @@ class ORTTrainer():
             self.compile_ort(batch_size, feature_shape, input_dtype, number_classes, label_type)
         else:
             self.compile_torch()
+
+    def _resolve_dims(self, input_shapes):
+        result = {}
+        for name in input_shapes:
+            if name in self.dynamic_axes.keys():
+                shape = input_shapes[name]
+                dynamic_dims = self.dynamic_axes[name]
+                for index in dynamic_dims.keys():
+                    result[dynamic_dims[index]] = shape[index]
+        return result
 
     def train_step(self, input, label, fetches = None):
         if self.optimizer_ is None:
@@ -202,22 +224,23 @@ class ORTTrainer():
             if fetches is None:
                 fetches = [self.ort_parameters.loss_output_name]
 
-            self.iobinding.bind_input(self.input_name, input.device.type, input.device.index, dtype_torch_to_numpy(input.dtype),
+            self.train_io_binding.bind_input(self.input_name, input.device.type, input.device.index, dtype_torch_to_numpy(input.dtype),
                                         list(input.size()), input.data_ptr())
 
-            self.iobinding.bind_input(self.label_name, label.device.type, label.device.index, dtype_torch_to_numpy(label.dtype),
+            self.train_io_binding.bind_input(self.label_name, label.device.type, label.device.index, dtype_torch_to_numpy(label.dtype),
                                         list(label.size()), label.data_ptr())
+            dynamic_dims = self._resolve_dims({self.input_name : list(input.size()), self.label_name : list(label.size())})
 
             # only loss output is fetched for now. 
             torch_outputs = {}
             for fetch_name in fetches:
                 dims = self.output_types[fetch_name].shape.dim
-                shape = [_.dim_value for _ in dims]
+                shape = [dynamic_dims[_.dim_param] if _.dim_param else _.dim_value for _ in dims]
                 torch_tensor = torch.zeros(shape, device='cuda', dtype=torch.float32)
-                self.iobinding.bind_output(fetch_name,torch_tensor.device.type, torch_tensor.device.index, np.float32, list(torch_tensor.size()), torch_tensor.data_ptr())
+                self.train_io_binding.bind_output(fetch_name,torch_tensor.device.type, torch_tensor.device.index, np.float32, list(torch_tensor.size()), torch_tensor.data_ptr())
                 torch_outputs[fetch_name] = torch_tensor
 
-            self.session.run_with_iobinding(self.iobinding)
+            self.session.run_with_iobinding(self.train_io_binding)
             self.optimizer_.step()
             
             if len(fetches) == 1:
@@ -226,5 +249,34 @@ class ORTTrainer():
             else:
                 return torch_outputs
 
+    def eval(self, input, fetches = None):
+        if self.session is None:
+            self.model_.eval()
+            return self.model_(input)
+        else:
+            if fetches is None:
+                fetches = [self.prediction_name]
 
+            self.eval_io_binding.bind_input(self.input_name, input.device.type, input.device.index,
+                                             dtype_torch_to_numpy(input.dtype),
+                                             list(input.size()), input.data_ptr())
 
+            dynamic_dims = self._resolve_dims(
+                {self.input_name: list(input.size())})
+
+            torch_outputs = {}
+            for fetch_name in fetches:
+                dims = self.output_types[fetch_name].shape.dim
+                shape = [dynamic_dims[_.dim_param] if _.dim_param else _.dim_value for _ in dims]
+                torch_tensor = torch.zeros(shape, device='cuda', dtype=torch.float32)
+                self.eval_io_binding.bind_output(fetch_name,torch_tensor.device.type, torch_tensor.device.index, np.float32, list(torch_tensor.size()), torch_tensor.data_ptr())
+                torch_outputs[fetch_name] = torch_tensor
+
+            run_options = ort.RunOptions()
+            run_options.only_execute_path_to_fetches = True
+            self.session.run_with_iobinding(self.eval_io_binding, run_options)
+            if len(fetches) == 1:
+                # TODO: most time it returns loss tensor for caller to report training progress.
+                return torch_outputs[fetches[0]]
+            else:
+                return torch_outputs
