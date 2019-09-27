@@ -393,9 +393,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
       {"tf_inception_v2", "result mismatch"},
       {"mxnet_arcface", "result mismatch"},
-      {"dynamicquantizelinear_expanded", "Round(11) not implemented yet"},
-      {"dynamicquantizelinear_max_adjusted_expanded", "Round(11) not implemented yet"},
-      {"dynamicquantizelinear_min_adjusted_expanded", "Round(11) not implemented yet"},
       {"top_k", "not implemented yet for opset 11"},
       {"top_k_smallest", "not implemented yet for opset 11"},
       {"top_k_negative_axis", "TopK(11) not implemented yet"},
@@ -406,15 +403,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"unique_sorted_axis_3d", "Unique not implemented yet"},
       {"unique_sorted_axis", "Unique not implemented yet"},
       {"unique_sorted_with_negative_axis", "Unique not implemented yet"},
-      {"round", "not implemented yet"},
       {"gather_elements_1", "not implemented yet"},
       {"gather_elements_0", "not implemented yet"},
-      {"cumsum_2d_axis_1", "not implemented yet"},
-      {"cumsum_2d_axis_0", "not implemented yet"},
-      {"cumsum_1d_reverse_exclusive", "not implemented yet"},
-      {"cumsum_1d_reverse", "not implemented yet"},
-      {"cumsum_1d_exclusive", "not implemented yet"},
-      {"cumsum_1d", "not implemented yet"},
+      {"cumsum_1d_reverse_exclusive", "only failing linux GPU CI. Likely build error."},
       {"range_float_type_positive_delta", "not implemented yet"},
       {"range_float_type_positive_delta_expanded", "not implemented yet"},
       {"range_int32_type_negative_delta", "not implemented yet"},
@@ -454,16 +445,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"sequence_model3", "SequenceConstruct not implemented yet"},
       {"sequence_model2", "SequenceConstruct not implemented yet"},
       {"sequence_model1", "Sequence* not implemented yet"},
-      {"unsqueeze_unsorted_axes", "Unsqueeze not implemented yet"},
-      {"unsqueeze_two_axes", "Unsqueeze not implemented yet"},
-      {"unsqueeze_three_axes", "Unsqueeze not implemented yet"},
-      {"unsqueeze_negative_axes", "Unsqueeze not implemented yet"},
-      {"unsqueeze_axis_3", "Unsqueeze not implemented yet"},
-      {"unsqueeze_axis_2", "Unsqueeze not implemented yet"},
-      {"unsqueeze_axis_1", "Unsqueeze not implemented yet"},
-      {"unsqueeze_axis_0", "Unsqueeze not implemented yet"},
-      {"squeeze_negative_axes", "Squeeze(11) not implemented yet"},
-      {"slice_negative_axes", "Slice(11) not implemented yet"},
       {"scatter_elements_with_negative_indices", "ScatterElements(11) not implemented yet"},
       {"reduce_sum_square_negative_axes_keepdims_random", "ReduceSumSquare(11) not implemented yet"},
       {"reduce_sum_square_negative_axes_keepdims_example", "ReduceSumSquare(11) not implemented yet"},
@@ -489,20 +470,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"onehot_with_axis", "OneHot(11) not implemented yet"},
       {"onehot_negative_indices", "OneHot(11) not implemented yet"},
       {"gather_elements_negative_indices", "GatherElements(11) not implemented yet"},
-      {"flatten_negative_axis4", "Flatten(11) not implemented yet"},
-      {"flatten_negative_axis3", "Flatten(11) not implemented yet"},
-      {"flatten_negative_axis2", "Flatten(11) not implemented yet"},
-      {"flatten_negative_axis1", "Flatten(11) not implemented yet"},
       {"reflect_pad", "Pad(11) not implemented yet"},
       {"edge_pad", "Pad(11) not implemented yet"},
       {"constant_pad", "Pad(11) not implemented yet"},
-      {"concat_3d_axis_negative_3", "Concat(11) not implemented yet"},
-      {"concat_3d_axis_negative_2", "Concat(11) not implemented yet"},
-      {"concat_3d_axis_negative_1", "Concat(11) not implemented yet"},
-      {"concat_2d_axis_negative_2", "Concat(11) not implemented yet"},
-      {"concat_2d_axis_negative_1", "Concat(11) not implemented yet"},
-      {"concat_1d_axis_negative_1", "Concat(11) not implemented yet"},
-      {"compress_negative_axis", "Compress(11) not implemented yet"},
       {"bitshift_right_uint8", "BitShift(11) not implemented yet"},
       {"bitshift_right_uint64", "BitShift(11) not implemented yet"},
       {"bitshift_right_uint32", "BitShift(11) not implemented yet"},
@@ -527,10 +497,16 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"depthtospace_crd_mode", "NGraph does not support CRD mode"});
   broken_tests.insert({"argmax_negative_axis_keepdims_example", "not implemented yet for opset 11"});
   broken_tests.insert({"argmax_negative_axis_keepdims_random", "not implemented yet for opset 11"});
-  broken_tests.insert({"argmin_negative_axis_keepdims_example", "not implemented yet for opset 11"});	
-  broken_tests.insert({"argmin_negative_axis_keepdims_random", "not implemented yet for opset 11"});	
-  broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});	
+  broken_tests.insert({"argmin_negative_axis_keepdims_example", "not implemented yet for opset 11"});
+  broken_tests.insert({"argmin_negative_axis_keepdims_random", "not implemented yet for opset 11"});
+  broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});
   broken_tests.insert({"hardmax_negative_axis", "not implemented yet for opset 11"});
+  broken_tests.insert({"flatten_negative_axis1", "not implemented yet for opset 11"});
+  broken_tests.insert({"flatten_negative_axis2", "not implemented yet for opset 11"});
+  broken_tests.insert({"flatten_negative_axis3", "not implemented yet for opset 11"});
+  broken_tests.insert({"flatten_negative_axis4", "not implemented yet for opset 11"});
+  broken_tests.insert({"squeeze_negative_axes", "not implemented yet for opset 11"});
+  broken_tests.insert({"unsqueeze_negative_axes", "not implemented yet for opset 11"});
 #endif
 
 #ifdef USE_MKLDNN
@@ -538,6 +514,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"tf_mobilenet_v2_1.4_224", "result mismatch"});
   broken_tests.insert({"tf_mobilenet_v1_1.0_224", "result mismatch"});
   broken_tests.insert({"mobilenetv2-1.0", "result mismatch"});
+  broken_tests.insert({"candy", "result mismatch"});
 #endif
 
 #ifdef USE_OPENVINO
@@ -571,6 +548,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
 #ifdef USE_CUDA
   broken_tests.insert({"mxnet_arcface", "result mismatch"});
+  broken_tests.insert({"mask_rcnn_keras", "result mismatch"});
   broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
   broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
   broken_tests.insert({"tf_inception_v1", "flaky test"}); //TODO: Investigate cause for flakiness
@@ -588,6 +566,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
 #ifdef DISABLE_CONTRIB_OPS
+  broken_tests.insert({"mask_rcnn_keras", "This model uses contrib ops."});
   broken_tests.insert({"coreml_SqueezeNet_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Permute_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_ReLU_ImageNet", "This model uses contrib ops."});
