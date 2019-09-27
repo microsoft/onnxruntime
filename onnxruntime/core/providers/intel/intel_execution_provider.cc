@@ -9,7 +9,6 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "intel_execution_provider.h"
-//#include "intel_custom_op.h"
 #include "intel_graph.h"
 
 #include "core/framework/tensorprotoutils.h"
@@ -36,7 +35,6 @@
 namespace onnxruntime {
 
 constexpr const char* Intel = "Intel";
-//const onnxruntime::Node* fused_node_copy;
 
 IntelExecutionProvider::IntelExecutionProvider(const IntelExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kIntelExecutionProvider} {
@@ -499,7 +497,6 @@ IntelExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
 
 static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node) {
-  std::cout << "In Get model proto from fused node" << std::endl;
   const auto* node_function = fused_node->GetFunctionBody();
 
   ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", fused_node->Name());
@@ -526,7 +523,8 @@ common::Status IntelExecutionProvider::Compile(
     NodeComputeInfo compute_info;
     std::shared_ptr<intel_ep::IntelGraph> intel_graph;
     intel_graph = std::make_shared<intel_ep::IntelGraph>(fused_node); 
-    auto model_proto = GetModelProtoFromFusedNode(fused_node);  
+    auto model_proto = GetModelProtoFromFusedNode(fused_node);
+
     compute_info.create_state_func = 
 	    [intel_graph](ComputeContext* context, FunctionState* state) {
 	    IntelEPFunctionState* p = new IntelEPFunctionState();
@@ -541,7 +539,6 @@ common::Status IntelExecutionProvider::Compile(
       auto function_state = static_cast<IntelEPFunctionState*>(state);
           try {
             function_state->intel_graph->Infer(model_proto,*api, context);
-            std::cout << "After Infer" << std::endl;
           } catch (const char* msg) {
             return common::Status(common::ONNXRUNTIME, common::FAIL);
           }

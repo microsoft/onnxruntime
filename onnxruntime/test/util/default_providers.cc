@@ -17,7 +17,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainS
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_id);
-
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Intel(const char* device_id);
 namespace test {
 
 std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena) {
@@ -39,6 +39,15 @@ std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
   return nullptr;
 #endif
 }
+
+std::unique_ptr<IExecutionProvider> DefaultIntelExecutionProvider() {
+#ifdef USE_INTEL
+   return CreateExecutionProviderFactory_Intel("CPU")->CreateProvider();
+#else
+   return nullptr;
+#endif
+}
+
 
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #ifdef USE_CUDA

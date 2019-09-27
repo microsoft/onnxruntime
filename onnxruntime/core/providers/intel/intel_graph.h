@@ -44,7 +44,7 @@ class IntelGraph {
   static void ConvertONNXModelToIntelIR(const std::string& onnx_model, std::string& intel_xml, std::string& intel_bin, bool precision_fp32);
 
   static const std::string log_tag;
-  void CreateNGraphFunc(const ONNX_NAMESPACE::ModelProto& model_proto, Ort::CustomOpApi api, OrtKernelContext* context) const;
+  void CreateNGraphFunc(const ONNX_NAMESPACE::ModelProto& model_proto);//, Ort::CustomOpApi api, OrtKernelContext* context) const;
 
   //static std::shared_ptr<InferenceEngine::CNNNetwork> cnetwork;
   static InferenceEngine::CNNNetwork cnetwork;
