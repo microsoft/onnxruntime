@@ -46,12 +46,19 @@ ONNX_OPERATOR_SET_SCHEMA(
         .TypeConstraint("B", {"tensor(bool)"}, "Only bool"));
 */
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
+                                   1, 10,
+                                   KernelDefBuilder()
+                                     .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                     .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                                   If);
+
 ONNX_CPU_OPERATOR_KERNEL(If,
-                         1,
-                         KernelDefBuilder()
-                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
-                         If);
+                        11,
+                        KernelDefBuilder()
+                            .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                            .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                        If);
 
 struct If::Info {
   Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in) : subgraph{subgraph_in} {

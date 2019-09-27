@@ -101,7 +101,7 @@ class IfOpTester : public OpTester {
   RunOptions options_;
 };
 
-/* Subgraphs looks like this. All inputs come from outer scope so we just
+   /* Subgraphs looks like this. All inputs come from outer scope so we just
    create a NodeArg with the input name. The numbers in [] are the values the tests are expected to produce
    as output from each node.
 
@@ -180,6 +180,92 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const R
 
   return proto;
 }
+
+
+// The following subgraph creator is to test the opset-11 "If" node
+// which is allowed to produce different shape outputs on the "then" and "else" branches 
+
+/* Subgraphs looks like this.
+                                                              if_cond    
+THEN branch                                                    /
+         [Constant]                            [Identity]-----/
+             |                                     |
+         constant_out_0                       identity_out_0   
+ (output_shape: [1]. output_value = [1])     (output_shape: [1]. output_value = [true]) 
+
+
+                                                               if_cond     
+ELSE branch                                                    /
+         [Constant]                            [Identity]-----/
+             |                                     |
+         constant_out_0                       identity_out_0   
+ (output_shape: [2]. output_value = [1, 1])     (output_shape: [1]. output_value = [false]) 
+*/
+
+static const ONNX_NAMESPACE::GraphProto CreateSubgraphWithConstantNode(bool then_branch) {
+  Model model(then_branch ? "If_then" : "If_else");
+  auto& graph = model.MainGraph();
+
+  std::vector<NodeArg*> inputs;
+  std::vector<NodeArg*> outputs;
+
+  // graph output types
+  // constant_out
+  TypeProto float_proto;
+  float_proto.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+
+  // "then" branch produces 1D output of shape [1]
+  if (then_branch) {
+    float_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);  
+  } 
+  else {
+    // "else" branch produces 1D output of shape [2]
+    float_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);  
+  }
+  
+
+  // graph outputs
+  auto& constant_out = graph.GetOrCreateNodeArg("constant_out", &float_proto);
+
+  // produce constant_out
+  {
+    outputs = {&constant_out};
+
+    TensorProto constant_tensor_proto;
+
+    auto& constant_node = graph.AddNode("constant_out", "Constant", "Produce constant_out", {}, outputs);
+
+    AttributeProto attr_proto;
+    attr_proto.set_name("value");
+    attr_proto.set_type(AttributeProto_AttributeType_TENSOR);
+
+    auto* constant_attribute_tensor_proto = attr_proto.mutable_t();
+    // "then" branch produces 1D output of shape [1]
+    if (then_branch) {
+      *constant_attribute_tensor_proto->mutable_dims()->Add() = 1;  // 1D output of shape [1]
+    } else {
+      // "else" branch produces 1D output of shape [2]
+      *constant_attribute_tensor_proto->mutable_dims()->Add() = 2;  // 1D output of shape [2]
+    }
+
+    constant_attribute_tensor_proto->set_data_type(TensorProto_DataType_FLOAT);  // float output
+    *constant_attribute_tensor_proto->mutable_float_data()->Add() = 1.0f;        // float output with value 1.0f in the data container
+
+    if (!then_branch) {
+      // "else" branch produces 1D output of shape [2], hence add the extra value in the data container
+      *constant_attribute_tensor_proto->mutable_float_data()->Add() = 1.0f;  // 1D float output with value 1.0f
+    }
+
+    constant_node.AddAttribute("value", attr_proto);
+  }
+
+  graph.SetOutputs({&constant_out});
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+
+  return graph.ToGraphProto();
+};
 
 void RunTest(bool condition_value,
              RunOptions options,
@@ -284,6 +370,22 @@ TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_False) {
   options.include_dim_values_in_subgraph = false;
 
   RunTest(false, options, false);
+}
+
+TEST(If, Opset11ThenAndElseBranchesProduceDifferentOutputShapes) {
+  OpTester test("If", 11);
+
+  // add the attributes
+  test.AddAttribute<GraphProto>("then_branch", CreateSubgraphWithConstantNode(true));
+  test.AddAttribute<GraphProto>("else_branch", CreateSubgraphWithConstantNode(false));
+
+  // "else" subgraph should be executed
+  test.AddInput<bool>("if_cond", {1}, {false});
+
+  // output is a tensor of shape [2] with values - [1.0f, 1.0f]
+  test.AddOutput<float>("if_out_0", {2}, {1.0f, 1.0f});
+
+  test.Run();
 }
 
 }  // namespace test
