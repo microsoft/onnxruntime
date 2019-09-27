@@ -63,6 +63,13 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
   precision_str = "FP16";
 #endif
 
+#ifdef OPENVINO_CONFIG_VAD_F
+  device_id_ = "HETERO:FPGA,CPU";
+  precision_ = InferenceEngine::Precision::FP32;
+  precision_str = "FP32";
+#endif
+
+
   // Infer Request class represents OpenVINO's logical hardware instance. These logical
   // instances are bound to physical hardware instances at runtime depending
   // on the physical hardware availability. If multiple Infer Requests are mapped to
@@ -100,15 +107,27 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
     input_indexes_.push_back(index);
   }
 
+  class FPGA_ErrorListener : public InferenceEngine::IErrorListener{
+
+        void onError(const char *msg) noexcept override {
+          LOGS_DEFAULT(INFO) << log_tag << msg;
+        }
+  };
+
+  FPGA_ErrorListener err_listener;
+
   // Create hardware agnostic OpenVINO network representation
   openvino_network_ = BuildOpenVINONetworkWithMO();
 
   // Create hardware specific OpenVINO network representation
   GetExecutableHandle(openvino_network_);
 
-  
 
-   plugin_ = InferenceEngine::PluginDispatcher().getPluginByDevice(device_id_);
+
+  plugin_ = InferenceEngine::PluginDispatcher().getPluginByDevice(device_id_);
+
+  static_cast<InferenceEngine::InferenceEnginePluginPtr>(plugin_)->SetLogCallback(err_listener);
+
   //Loading model to the plugin
   InferenceEngine::ExecutableNetwork exeNetwork = plugin_.LoadNetwork(*openvino_network_, {});
 
@@ -121,19 +140,6 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
     infer_requests_.push_back(infRequest);
   }
   LOGS_DEFAULT(INFO) << log_tag << "Infer requests created: " << num_inf_reqs_;
-}
-
-std::vector<std::string> OpenVINOGraph::GetEnvLdLibraryPath() const {
-  std::string plugin_path = std::getenv("LD_LIBRARY_PATH");
-  std::vector<std::string> paths;
-  std::string token;
-  std::istringstream tokenStream(plugin_path);
-  char delimiter = ':';
-
-  while (std::getline(tokenStream, token, delimiter)) {
-    paths.push_back(token);
-  }
-  return paths;
 }
 
 void OpenVINOGraph::ConvertONNXModelToOpenVINOIR(const std::string& onnx_model,

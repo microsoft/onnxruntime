@@ -20,7 +20,7 @@
     python3 setup.py bdist_wheel
     pip3 install --upgrade dist/*.whl
     ```
-5. Run `build.bat --config RelWithDebInfo --build_shared_lib --parallel`. 
+5. Run `build.bat --config RelWithDebInfo --build_shared_lib --parallel`.
 
 *Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat.*
 
@@ -132,7 +132,7 @@ Then run it
 
 ## Build ONNX Runtime Server on Linux
 Read more about ONNX Runtime Server [here](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Server_Usage.md)
-1. ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL. 
+1. ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL.
     See https://golang.org/doc/install for installation instructions.
 2. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
 3. ONNX Runtime Server supports sending log to [rsyslog](https://www.rsyslog.com/) daemon. To enable it, please build with an additional parameter: `--cmake_extra_defines onnxruntime_USE_SYSLOG=1`. The build command will look like this: `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel --cmake_extra_defines onnxruntime_USE_SYSLOG=1`
@@ -146,7 +146,7 @@ For Linux, please use [this Dockerfile](https://github.com/microsoft/onnxruntime
 
 ONNX Runtime supports CUDA builds. You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn).
 
-ONNX Runtime is built and tested with CUDA 10.0 and cuDNN 7.3 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3). 
+ONNX Runtime is built and tested with CUDA 10.0 and cuDNN 7.3 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3).
 CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017.
 
  - The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`.
@@ -246,6 +246,8 @@ The OpenVINO Execution Provider can be built using the following commands:
 - To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow the configuration guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#install-VPU (Linux))
 (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_windows.html#hddl-myriad (Windows))
 
+- To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow the configuration guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_VisionAcceleratorFPGA_Configure_2019R1.html)
+
 
 - Build ONNX Runtime using the below command.
 
@@ -270,9 +272,10 @@ The OpenVINO Execution Provider can be built using the following commands:
 | <code>GPU_FP16</code> | Intel<sup>®</sup> Integrated Graphics with FP16 quantization of models |
 | <code>MYRIAD_FP16</code> | Intel<sup>®</sup> Movidius<sup>TM</sup> USB sticks | 
 | <code>VAD-M_FP16</code> | Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs |
+| <code>VAD-F_FP32</code> | Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA |
 
 For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document OpenVINO-ExecutionProvider.md in <code>$onnxruntime_root/docs/execution_providers</code>
- 
+
 ---
 
 ### Android
@@ -350,7 +353,7 @@ Once you have the OpenBLAS binaries, build ONNX Runtime with `./build.bat --use_
 For Linux (e.g. Ubuntu 16.04), install libopenblas-dev package
 `sudo apt-get install libopenblas-dev` and build with `./build.sh --use_openblas`
 
---- 
+---
 
 ## Architectures
 ### x86
