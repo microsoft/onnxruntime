@@ -3,14 +3,17 @@
 
 #pragma once
 
-#include "core/providers/cpu/nn/conv_base.h"
+#include "core/framework/op_kernel.h"
+#include "core/providers/cpu/nn/conv_attributes.h"
 
 namespace onnxruntime {
-class ConvInteger : public OpKernel, public ConvBase {
+class ConvInteger : public OpKernel {
  public:
-  explicit ConvInteger(const OpKernelInfo& info) : OpKernel(info), ConvBase(info) {
+  explicit ConvInteger(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
+
+  ConvAttributes conv_attrs_;
 };
 }  // namespace onnxruntime

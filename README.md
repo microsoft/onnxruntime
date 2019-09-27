@@ -118,7 +118,7 @@ Dockerfiles are available [here](./tools/ci_build/github/linux/docker) to help y
 
 ## Getting ONNX Models
 * The [ONNX Model Zoo](https://github.com/onnx/models) has popular ready-to-use pre-trained models.
-* To export or convert a trained ONNX model trained from various frameworks, see [ONNX Tutorials](https://github.com/onnx/tutorials). Versioning comptability information can be found under [Versioning](docs/Versioning.md#tool-compatibility)
+* To export or convert a trained ONNX model trained from various frameworks, see [ONNX Tutorials](https://github.com/onnx/tutorials). Versioning compatibility information can be found under [Versioning](docs/Versioning.md#tool-compatibility)
 * Other services that can be used to create ONNX models include:
   * [AutoML from AzureML SDK](https://aka.ms/automatedmldocs)
   * [Custom Vision](https://www.customvision.ai/)

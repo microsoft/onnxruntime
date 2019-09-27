@@ -137,6 +137,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtReleaseStatus = (DOrtReleaseStatus)Marshal.GetDelegateForFunctionPointer(api_.ReleaseStatus, typeof(DOrtReleaseStatus));
 
             OrtCreateSession = (DOrtCreateSession)Marshal.GetDelegateForFunctionPointer(api_.CreateSession, typeof(DOrtCreateSession));
+            OrtCreateSessionFromArray = (DOrtCreateSessionFromArray)Marshal.GetDelegateForFunctionPointer(api_.CreateSessionFromArray, typeof(DOrtCreateSessionFromArray));
             OrtRun = (DOrtRun)Marshal.GetDelegateForFunctionPointer(api_.Run, typeof(DOrtRun));
             OrtSessionGetInputCount = (DOrtSessionGetInputCount)Marshal.GetDelegateForFunctionPointer(api_.SessionGetInputCount, typeof(DOrtSessionGetInputCount));
             OrtSessionGetOutputCount = (DOrtSessionGetOutputCount)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOutputCount, typeof(DOrtSessionGetOutputCount));
@@ -242,6 +243,14 @@ namespace Microsoft.ML.OnnxRuntime
                                                 out IntPtr /**/ session);
         public static DOrtCreateSession OrtCreateSession;
 
+        public delegate IntPtr /* OrtStatus* */DOrtCreateSessionFromArray(
+                                                IntPtr /* (OrtEnv*) */ environment,
+                                                byte[] modelData,
+                                                UIntPtr modelSize,
+                                                IntPtr /* (OrtSessionOptions*) */sessionOptions,
+                                                out IntPtr /**/ session);
+        public static DOrtCreateSessionFromArray OrtCreateSessionFromArray;
+
         public delegate IntPtr /*(ONNStatus*)*/ DOrtRun(
                                                 IntPtr /*(OrtSession*)*/ session,
                                                 IntPtr /*(OrtSessionRunOptions*)*/ runOptions,  // can be null to use the default options
@@ -250,8 +259,6 @@ namespace Microsoft.ML.OnnxRuntime
                                                 UIntPtr inputCount,
                                                 string[] outputNames,
                                                 UIntPtr outputCount,
-
-                                                [MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 5 /*index of outputCount*/)][In, Out]
                                                 IntPtr[] outputValues /* An array of output value pointers. Array must be allocated by the caller */
                                                 );
         public static DOrtRun OrtRun;

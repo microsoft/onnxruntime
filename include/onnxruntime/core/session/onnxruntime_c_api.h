@@ -122,8 +122,7 @@ typedef enum OrtErrorCode {
   ORT_MODEL_LOADED,
   ORT_NOT_IMPLEMENTED,
   ORT_INVALID_GRAPH,
-  ORT_SHAPE_INFERENCE_NOT_REGISTERED,
-  ORT_REQUIREMENT_NOT_REGISTERED,
+  ORT_EP_FAIL,
 } OrtErrorCode;
 
 // __VA_ARGS__ on Windows and Linux are different

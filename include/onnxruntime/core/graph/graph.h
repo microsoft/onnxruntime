@@ -774,6 +774,11 @@ class Graph {
   /** Returns the Node containing the GraphProto for this Graph instance if IsSubgraph is true */
   const Node* ParentNode() const { return parent_node_; }
 
+  /** Returns true if the name is for a value that is coming from outer scope */
+  bool IsOuterScopeValue(const std::string& name) const {
+    return resolve_context_.outer_scope_node_args.find(name) != resolve_context_.outer_scope_node_args.cend();
+  }
+
   /** Construct a Graph instance for a subgraph that is created from a GraphProto attribute in a Node.
   Inherits some properties from the parent graph.
   @param parent_graph The Graph containing the Node that has the GraphProto attribute.
