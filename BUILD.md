@@ -11,15 +11,7 @@
    git clone --recursive https://github.com/Microsoft/onnxruntime
    cd onnxruntime
    ```
-* Install cmake-3.13 or better from https://cmake.org/download/.
-* (Optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
-   * If you installed your protobuf in a non standard location it would be helpful to set the following env var:`export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=full path to protoc"` so the ONNX build can find it. Also run `ldconfig <protobuf lib folder path>` so the linker can find protobuf libraries.
-* (Optional) Install onnx from source code (cmake/external/onnx)
-    ```
-    export ONNX_ML=1
-    python3 setup.py bdist_wheel
-    pip3 install --upgrade dist/*.whl
-    ```
+* Install cmake-3.13 or higher from https://cmake.org/download/.
 
 ### Build Instructions
 #### Windows
@@ -36,7 +28,15 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 #### Notes
 
 * The build script runs all unit tests by default (for native builds and skips tests by default for cross-compiled builds).
-
+* If you need to install protobuf 3.6.1 from source code (cmake/external/protobuf), please note:
+   * CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
+   * If you installed your protobuf in a non standard location it would be helpful to set the following env var:`export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=full path to protoc"` so the ONNX build can find it. Also run `ldconfig <protobuf lib folder path>` so the linker can find protobuf libraries.
+* If you'd like to install onnx from source code (cmake/external/onnx), use:
+    ```
+    export ONNX_ML=1
+    python3 setup.py bdist_wheel
+    pip3 install --upgrade dist/*.whl
+    ```
 ---
 
 # Supported architectures and build environments
