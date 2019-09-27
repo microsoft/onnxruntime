@@ -298,10 +298,8 @@ get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
 set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
-add_subdirectory(external/gsl-lite EXCLUDE_FROM_ALL)
 add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
 set_target_properties(re2 PROPERTIES FOLDER "External/re2")
-add_library(gsl ALIAS gsl-lite)
 
 # bounds checking behavior.
 # throw instead of calling terminate if there's a bounds checking violation.
@@ -325,7 +323,7 @@ function(onnxruntime_add_include_to_target dst_target)
     endforeach()
 endfunction()
 
-set(onnxruntime_EXTERNAL_DEPENDENCIES gsl onnx_proto re2)
+set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto re2)
 
 # TVM
 if (onnxruntime_USE_TVM)

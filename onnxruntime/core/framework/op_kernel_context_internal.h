@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <functional>
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -22,7 +23,7 @@ class OpKernelContextInternal : public OpKernelContext {
                                    const logging::Logger& logger,
                                    const bool& terminate_flag)
       : OpKernelContext(&frame, &kernel, logger),
-        session_state_{session_state},
+        session_state_{std::cref(session_state)},
         terminate_flag_{terminate_flag} {
     const auto& implicit_inputs = kernel.Node().ImplicitInputDefs();
     int num_implicit_inputs = static_cast<int>(implicit_inputs.size());
@@ -37,7 +38,7 @@ class OpKernelContextInternal : public OpKernelContext {
   }
 
   const SessionState* SubgraphSessionState(const std::string& attribute_name) {
-    return session_state_.GetSubgraphSessionState(GetNodeIndex(), attribute_name);
+    return session_state_.get().GetSubgraphSessionState(GetNodeIndex(), attribute_name);
   }
 
   const OrtValue* GetInputMLValue(int index) const {
@@ -59,11 +60,11 @@ class OpKernelContextInternal : public OpKernelContext {
 
   const bool& GetTerminateFlag() const noexcept { return terminate_flag_; }
 
-  _Ret_maybenull_ const onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return session_state_.GetThreadPool(); }
-  _Ret_maybenull_ onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() { return session_state_.GetThreadPool(); }
+  _Ret_maybenull_ const onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return session_state_.get().GetThreadPool(); }
+  _Ret_maybenull_ onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() { return session_state_.get().GetThreadPool(); }
 
  private:
-  const SessionState& session_state_;
+  std::reference_wrapper<const SessionState> session_state_;
   const bool& terminate_flag_;
   std::vector<const OrtValue*> implicit_input_values_;
 };

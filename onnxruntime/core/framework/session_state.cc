@@ -83,7 +83,7 @@ Status SessionState::CreateKernels(const KernelRegistryManager& custom_registry_
       onnxruntime::ProviderType exec_provider_name = node.GetExecutionProviderType();
 
       const IExecutionProvider* exec_provider = nullptr;
-      if (exec_provider_name.empty() || (exec_provider = execution_providers_.Get(exec_provider_name)) == nullptr) {
+      if (exec_provider_name.empty() || (exec_provider = execution_providers_.get().Get(exec_provider_name)) == nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not create kernel for node: ", node.Name(),
                                " as there's no execution provider allocated.");
       }
