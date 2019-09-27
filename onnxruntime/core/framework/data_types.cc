@@ -28,7 +28,7 @@ template <>
 MLDataType DataTypeImpl::GetType<Tensor>() {
   return TensorTypeBase::Type();
 }
-} // namespace onnxruntime
+}  // namespace onnxruntime
 
 // This conflics with the above GetType<>() specialization
 #include "core/framework/tensorprotoutils.h"
@@ -507,7 +507,7 @@ void NonTensorTypeBase::FromDataContainer(const void* /* data */, size_t /*data_
   ORT_ENFORCE(false, "Not implemented");
 }
 
-void NonTensorTypeBase::ToDataContainer (const OrtValue& /* input */, size_t /*data_size */, void* /* data */) const {
+void NonTensorTypeBase::ToDataContainer(const OrtValue& /* input */, size_t /*data_size */, void* /* data */) const {
   ORT_ENFORCE(false, "Not implemented");
 }
 
@@ -550,10 +550,7 @@ ORT_REGISTER_MAP(MapInt64ToInt64);
 ORT_REGISTER_MAP(MapInt64ToFloat);
 ORT_REGISTER_MAP(MapInt64ToDouble);
 
-ORT_REGISTER_SEQ(VectorString);
-ORT_REGISTER_SEQ(VectorFloat);
-ORT_REGISTER_SEQ(VectorInt64);
-ORT_REGISTER_SEQ(VectorDouble);
+ORT_REGISTER_SEQ(VectorTensor);
 
 ORT_REGISTER_SEQ(VectorMapStringToFloat);
 ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
@@ -619,10 +616,7 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_ONNX_PROTO(MapInt64ToFloat, reg_fn);
   REGISTER_ONNX_PROTO(MapInt64ToDouble, reg_fn);
 
-  REGISTER_ONNX_PROTO(VectorString, reg_fn);
-  REGISTER_ONNX_PROTO(VectorFloat, reg_fn);
-  REGISTER_ONNX_PROTO(VectorInt64, reg_fn);
-  REGISTER_ONNX_PROTO(VectorDouble, reg_fn);
+  REGISTER_ONNX_PROTO(VectorTensor, reg_fn);
 
   REGISTER_ONNX_PROTO(VectorMapStringToFloat, reg_fn);
   REGISTER_ONNX_PROTO(VectorMapInt64ToFloat, reg_fn);
@@ -868,19 +862,7 @@ MLDataType DataTypeImpl::TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto) {
         }  // MapType
         break;
         case TypeProto::ValueCase::kTensorType: {
-          auto val_elem_type = val_type.tensor_type().elem_type();
-          switch (val_elem_type) {
-            case TensorProto_DataType_STRING:
-              return DataTypeImpl::GetType<VectorString>();
-            case TensorProto_DataType_INT64:
-              return DataTypeImpl::GetType<VectorInt64>();
-            case TensorProto_DataType_FLOAT:
-              return DataTypeImpl::GetType<VectorFloat>();
-            case TensorProto_DataType_DOUBLE:
-              return DataTypeImpl::GetType<VectorDouble>();
-            default:
-              break;
-          }
+          return DataTypeImpl::GetType<VectorTensor>();
         }  // kTensorType
         break;
         default:
@@ -897,7 +879,7 @@ MLDataType DataTypeImpl::TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto) {
     ORT_NOT_IMPLEMENTED("type: ", *str_type, " is not currently registered or supported");
   }
   return type;
-}
+}  // namespace onnxruntime
 
 //Below are the types the we need to execute the runtime
 //They are not compatible with TypeProto in ONNX.

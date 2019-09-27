@@ -57,6 +57,8 @@ using BufferNakedPtr = void*;
 */
 class Tensor final {
  public:
+  Tensor() = default;
+
   /**
    * Create tensor with given type, shape, pre-allocate memory and allocator info.
    * This function won't check if the preallocated buffer(p_data) has enough room for the shape.
@@ -72,7 +74,7 @@ class Tensor final {
    * However, this function will allocate the buffer for the shape, and do placement new if p_type is string tensor.
    */
   Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, int64_t offset = 0);
-
+  void InitTensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, int64_t offset = 0);
   ~Tensor();
 
   //Move is allowed

@@ -81,6 +81,8 @@ inline bool operator!=(const OrtDevice& left, const OrtDevice& other) {
 }
 
 struct OrtMemoryInfo {
+  OrtMemoryInfo() = default;  // TODO(pranav)
+
   // use string for name, so we could have customized allocator in execution provider.
   const char* name;
   int id;

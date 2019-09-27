@@ -17,6 +17,11 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const 
 
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, int64_t offset)
     : alloc_info_(allocator->Info()) {
+  InitTensor(p_type, shape, allocator, offset);
+}
+
+void Tensor::InitTensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, int64_t offset) {
+  alloc_info_ = allocator->Info();
   ORT_ENFORCE(p_type != nullptr);
   int64_t shape_size = shape.Size();
   if (shape_size < 0 || static_cast<uint64_t>(shape_size) >= std::numeric_limits<size_t>::max())
