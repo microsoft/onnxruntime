@@ -62,7 +62,7 @@ TEST(ConcatOpTest, Concat1D_2) {
   test.AddInput<float>("input2", {2}, {2.0f, 3.0f});
   test.AddInput<float>("input3", {0}, {});
   test.AddOutput<float>("concat_result", {3}, {1.0f, 2.0f, 3.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: no support for dynamic shape tensor
 }
 
 TEST(ConcatOpTest, Concat2D_1) {
