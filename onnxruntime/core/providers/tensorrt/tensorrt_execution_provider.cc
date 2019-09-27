@@ -19,6 +19,7 @@
 #include "cuda_runtime_api.h"
 #include "gsl/pointers"
 #include "core/graph/model.h"
+#include "core/providers/cuda/gpu_data_transfer.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -92,16 +93,20 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider}, device_id_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
-  DeviceAllocatorRegistrationInfo default_allocator_info(
+  DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault, [](int id) { return std::make_unique<CUDAAllocator>(id, TRT); }, std::numeric_limits<size_t>::max()});
-  InsertAllocator(CreateAllocator(default_allocator_info, device_id_));
+  InsertAllocator(CreateAllocator(default_memory_info, device_id_));
 
-  DeviceAllocatorRegistrationInfo pinned_allocator_info(
+  DeviceAllocatorRegistrationInfo pinned_memory_info(
       {OrtMemTypeCPUOutput, [](int) { return std::make_unique<CUDAPinnedAllocator>(0, TRT_PINNED); }, std::numeric_limits<size_t>::max()});
-  InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_));
+  InsertAllocator(CreateAllocator(pinned_memory_info, device_id_));
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {}
+
+std::unique_ptr<onnxruntime::IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
+  return std::make_unique<onnxruntime::GPUDataTransfer>();
+}
 
 std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index, const onnxruntime::GraphViewer& graph) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();

@@ -23,6 +23,7 @@ def parse_arguments():
     parser.add_argument("--test_data_url", help="Test data URL.")
     parser.add_argument("--azure_region", help="Azure region")
     parser.add_argument("--build_dir", required=True, help="Path to the build directory.")
+    parser.add_argument("--edge_device", action="store_true", help="Edge device with limit disk space.")
     return parser.parse_args()
 
 
@@ -61,21 +62,29 @@ def download_and_unzip(build_dir, url, dest_folder):
     os.unlink(local_file_name)
 
 args = parse_arguments()
-hostname = get_server_hostname(args.azure_region)
-url = args.test_data_url.replace('onnxruntimetestdata', hostname)
-print('data url=%s' % url)
-download_and_unzip(args.build_dir, url, 'models')
-if is_windows():
-    url = 'https://onnxruntimetestdata.blob.core.windows.net/models/cmake-3.15.1-win64-x64.zip'
-    url = url.replace('onnxruntimetestdata', hostname)
-    download_and_unzip(args.build_dir, url, 'cmake_temp')
-    dest_dir = os.path.join(args.build_dir,'cmake')
-    if os.path.exists(dest_dir):
-        print('deleting %s' % dest_dir)
-        shutil.rmtree(dest_dir)
-    shutil.move(os.path.join(args.build_dir,'cmake_temp','cmake-3.15.1-win64-x64'),dest_dir)
-    url = 'https://onnxruntimetestdata.blob.core.windows.net/models/OpenCppCoverageSetup-x64-0.9.7.0.exe'
-    url = url.replace('onnxruntimetestdata', hostname)
-    dest_folder = os.path.join(args.build_dir, 'installer','opencppcoverage')
-    os.makedirs(dest_folder,exist_ok=True)
-    subprocess.run([os.path.join(args.build_dir,'azcopy'),'cp', '--log-level','ERROR', url, os.path.join(dest_folder,'installer.exe')],check=True)
+models_folder = 'models'
+if args.edge_device:
+    dest_folder = os.path.join(args.build_dir, models_folder)
+    #For edge device, the model zip file is persist at /mnt/ubuntu/tmp/model.zip
+    local_file_name = '/mnt/ubuntu/tmp/model.zip'
+    if os.path.exists(local_file_name):
+       subprocess.run(['unzip','-qd', dest_folder ,local_file_name], check=True)
+else:
+    hostname = get_server_hostname(args.azure_region)
+    url = args.test_data_url.replace('onnxruntimetestdata', hostname)
+    print('data url=%s' % url)
+    download_and_unzip(args.build_dir, url, models_folder)
+    if is_windows():
+        url = 'https://onnxruntimetestdata.blob.core.windows.net/models/cmake-3.15.1-win64-x64.zip'
+        url = url.replace('onnxruntimetestdata', hostname)
+        download_and_unzip(args.build_dir, url, 'cmake_temp')
+        dest_dir = os.path.join(args.build_dir,'cmake')
+        if os.path.exists(dest_dir):
+            print('deleting %s' % dest_dir)
+            shutil.rmtree(dest_dir)
+        shutil.move(os.path.join(args.build_dir,'cmake_temp','cmake-3.15.1-win64-x64'),dest_dir)
+        url = 'https://onnxruntimetestdata.blob.core.windows.net/models/OpenCppCoverageSetup-x64-0.9.7.0.exe'
+        url = url.replace('onnxruntimetestdata', hostname)
+        dest_folder = os.path.join(args.build_dir, 'installer','opencppcoverage')
+        os.makedirs(dest_folder,exist_ok=True)
+        subprocess.run([os.path.join(args.build_dir,'azcopy'),'cp', '--log-level','ERROR', url, os.path.join(dest_folder,'installer.exe')],check=True)

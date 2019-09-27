@@ -22,6 +22,23 @@ namespace onnxruntime {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()), \
       x<int32_t>);
 
+#define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(x, startVer, endVer)              \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                           \
+      x,                                                                              \
+      startVer,                                                                       \
+      endVer,                                                                         \
+      float,                                                                          \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),   \
+      x<float>);                                                                      \
+                                                                                      \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                           \
+      x,                                                                              \
+      startVer,                                                                       \
+      endVer,                                                                         \
+      int32_t,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()), \
+      x<int32_t>);
+
 #define REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(x, sinceVersion)               \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                    \
       x,                                                                             \
@@ -46,14 +63,17 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMax, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceMax, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMean, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMin, 1);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceMin, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceProd, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSum, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceSum, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSum, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSumSquare, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSumSquare, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMax, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 1);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMax, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMax, 11);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMin, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 11);
 
 // When all reduce axises located at the tail of the dims, quite general cases, transpose and extra
 // copy could be skiped to improve performance, if required by check_no_transpose = true;
@@ -82,8 +102,9 @@ bool PrepareForReduce(OpKernelContext* ctx,
 
   if (axes.empty()) {
     // This is the default case for non-arg kind reductions. Reduce on all dimensions.
-    for (size_t i = 0; i < ndim; i++)
+    for (size_t i = 0; i < ndim; i++) {
       axes.push_back(i);
+    }
   }
 
   std::sort(axes.begin(), axes.end());
@@ -300,12 +321,20 @@ Status ReduceMax<T>::Compute(OpKernelContext* ctx) const {
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
-  PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_);
+  bool no_transpose = PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_, true);
 
   T* output_data = reduced->template MutableData<T>();
 
-  EigenVectorMap<T> out_vec(output_data, block_size);
-  out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().maxCoeff();
+  if (no_transpose) {
+    const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
+
+    for (int64_t i = 0; i < block_size; ++i) {
+      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).maxCoeff();
+    }
+  } else {
+    EigenVectorMap<T> out_vec(output_data, block_size);
+    out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().maxCoeff();
+  }
 
   return Status::OK();
 }
@@ -343,12 +372,20 @@ Status ReduceMin<T>::Compute(OpKernelContext* ctx) const {
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
-  PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_);
+  bool no_transpose = PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_, true);
 
   T* output_data = reduced->template MutableData<T>();
 
-  EigenVectorMap<T> out_vec(output_data, block_size);
-  out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().minCoeff();
+  if (no_transpose) {
+    const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
+
+    for (int64_t i = 0; i < block_size; ++i) {
+      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).minCoeff();
+    }
+  } else {
+    EigenVectorMap<T> out_vec(output_data, block_size);
+    out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().minCoeff();
+  }
 
   return Status::OK();
 }

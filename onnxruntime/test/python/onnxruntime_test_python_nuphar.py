@@ -38,9 +38,9 @@ class TestNuphar(unittest.TestCase):
 
         # run onnx_test_runner to verify results
         # use -M to disable memory pattern
-        # use -c 1 to run one model/session at a time when running multiple models
+        # use -j 1 -c 1 to run one model/session at a time when running multiple models
         onnx_test_runner = os.path.join(cwd, 'onnx_test_runner')
-        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-M', '-c', '1', '-n', 'bidaf', cwd], check=True, cwd=cwd)
+        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-M', '-c', '1', '-j', '1', '-n', 'bidaf', cwd], check=True, cwd=cwd)
 
         # test AOT on the quantized model
         cache_dir = os.path.join(cwd, 'nuphar_cache')
@@ -63,6 +63,7 @@ class TestNuphar(unittest.TestCase):
             feed[tp.name] = numpy_helper.to_array(tp)
 
         sess = onnxrt.InferenceSession(bidaf_int8_scan_only_model) # JIT cache happens when initializing session
+        assert 'NupharExecutionProvider' in sess.get_providers()
         output = sess.run([], feed)
 
         cache_dir_content = os.listdir(cache_dir)
@@ -78,6 +79,7 @@ class TestNuphar(unittest.TestCase):
         nuphar_settings = 'nuphar_cache_path:{}'.format(cache_dir) + ', nuphar_cache_force_no_jit:{}'.format('on')
         onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings)
         sess = onnxrt.InferenceSession(bidaf_int8_scan_only_model) # JIT cache happens when initializing session
+        assert 'NupharExecutionProvider' in sess.get_providers()
         sess.run([], feed)
 
 

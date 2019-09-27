@@ -20,7 +20,7 @@ class ITensorAllocator {
   const ExecutionProviders& exec_providers_;
 
  public:
-  AllocatorPtr GetAllocator(const OrtMemoryInfo& allocator_info);
+  AllocatorPtr GetAllocator(const OrtMemoryInfo& memory_info);
 
   virtual common::Status FinalizePlan() = 0;
   /**

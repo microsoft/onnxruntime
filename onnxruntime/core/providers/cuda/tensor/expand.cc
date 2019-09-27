@@ -11,7 +11,6 @@ namespace cuda {
 Status Expand::ComputeInternal(OpKernelContext* ctx) const {
   const auto& input0 = *ctx->Input<Tensor>(0);
   const auto& input1 = *ctx->Input<Tensor>(1);
-  int device_id = GetDeviceId();
 
   // new shape to be expanded to
   const auto* p_shape = input1.template Data<int64_t>();
@@ -34,9 +33,9 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   // create fast_divmod using dimension values
-  CudaAsyncBuffer<fast_divmod> fdm_input_dims(this, device_id, rank);
-  CudaAsyncBuffer<fast_divmod> fdm_output_dims(this, device_id, rank);
-  CudaAsyncBuffer<fast_divmod> fdm_output_subdim_size(this, device_id, rank);
+  CudaAsyncBuffer<fast_divmod> fdm_input_dims(this, rank);
+  CudaAsyncBuffer<fast_divmod> fdm_output_dims(this, rank);
+  CudaAsyncBuffer<fast_divmod> fdm_output_subdim_size(this, rank);
   {
     auto in_span = fdm_input_dims.CpuSpan();
     auto out_span = fdm_output_dims.CpuSpan();
