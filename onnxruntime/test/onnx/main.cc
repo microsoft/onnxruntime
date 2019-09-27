@@ -406,6 +406,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"unique_sorted_axis_3d", "Unique not implemented yet"},
       {"unique_sorted_axis", "Unique not implemented yet"},
       {"unique_sorted_with_negative_axis", "Unique not implemented yet"},
+      {"gather_elements_1", "not implemented yet"},
+      {"gather_elements_0", "not implemented yet"},
       {"round", "not implemented yet"},
       {"cumsum_2d_axis_1", "not implemented yet"},
       {"cumsum_2d_axis_0", "not implemented yet"},
@@ -476,6 +478,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"onehot_with_negative_axis", "OneHot(11) not implemented yet"},
       {"onehot_with_axis", "OneHot(11) not implemented yet"},
       {"onehot_negative_indices", "OneHot(11) not implemented yet"},
+      {"gather_elements_negative_indices", "GatherElements(11) not implemented yet"},
       {"reflect_pad", "Pad(11) not implemented yet"},
       {"edge_pad", "Pad(11) not implemented yet"},
       {"constant_pad", "Pad(11) not implemented yet"},
@@ -508,6 +511,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"argmin_negative_axis_keepdims_random", "not implemented yet for opset 11"});	
   broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});	
   broken_tests.insert({"hardmax_negative_axis", "not implemented yet for opset 11"});
+  broken_tests.insert({"flatten_negative_axis1", "not implemented yet for opset 11"});
+  broken_tests.insert({"flatten_negative_axis2", "not implemented yet for opset 11"});
+  broken_tests.insert({"flatten_negative_axis3", "not implemented yet for opset 11"});
+  broken_tests.insert({"flatten_negative_axis4", "not implemented yet for opset 11"});
+  broken_tests.insert({"squeeze_negative_axes", "not implemented yet for opset 11"});
+  broken_tests.insert({"unsqueeze_negative_axes", "not implemented yet for opset 11"});
 #endif
 
 #ifdef USE_MKLDNN

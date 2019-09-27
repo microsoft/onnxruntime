@@ -114,6 +114,7 @@ def create_backend_test(testname=None):
                                  '^test_dynamicquantizelinear_expanded*',
                                  '^test_dynamicquantizelinear_max_adjusted_expanded*',
                                  '^test_dynamicquantizelinear_min_adjusted_expanded*',
+                                 '^test_gather_elements*',
                                  '^test_top_k*',
                                  '^test_unique_*',
                                  '^test_mod_float_mixed_sign_example_cpu.*', #onnxruntime::Mod::Compute fmod_ was false. fmod attribute must be true for float, float16 and double types
