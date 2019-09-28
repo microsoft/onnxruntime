@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/tensor/slice.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/common.h"
 #include <unordered_map>
 #include <limits>
 
@@ -33,8 +34,9 @@ ADD_TYPED_SLICE_V9_OP(bool);
 ADD_TYPED_SLICE_V9_OP(string);
 
 #define ADD_TYPED_SLICE_V10_OP(data_type)                                                   \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                           \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                 \
       Slice,                                                                                \
+      10,                                                                                   \
       10,                                                                                   \
       data_type,                                                                            \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())      \
@@ -55,6 +57,30 @@ ADD_TYPED_SLICE_V10_OP(double);
 ADD_TYPED_SLICE_V10_OP(MLFloat16);
 ADD_TYPED_SLICE_V10_OP(bool);
 ADD_TYPED_SLICE_V10_OP(string);
+
+#define ADD_TYPED_SLICE_V11_OP(data_type)                                                   \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                           \
+      Slice,                                                                                \
+      11,                                                                                   \
+      data_type,                                                                            \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())      \
+                        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),    \
+                                                 DataTypeImpl::GetTensorType<int64_t>()}),  \
+      Slice<data_type, true>);
+
+ADD_TYPED_SLICE_V11_OP(uint8_t);
+ADD_TYPED_SLICE_V11_OP(uint16_t);
+ADD_TYPED_SLICE_V11_OP(uint32_t);
+ADD_TYPED_SLICE_V11_OP(uint64_t);
+ADD_TYPED_SLICE_V11_OP(int8_t);
+ADD_TYPED_SLICE_V11_OP(int16_t);
+ADD_TYPED_SLICE_V11_OP(int32_t);
+ADD_TYPED_SLICE_V11_OP(int64_t);
+ADD_TYPED_SLICE_V11_OP(float);
+ADD_TYPED_SLICE_V11_OP(double);
+ADD_TYPED_SLICE_V11_OP(MLFloat16);
+ADD_TYPED_SLICE_V11_OP(bool);
+ADD_TYPED_SLICE_V11_OP(string);
 
 namespace {
 // std::clamp doesn't exist until C++17 so create a local version
@@ -85,7 +111,7 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
   std::unordered_set<int64_t> unique_axes;
   const auto& dimension_count = input_dimensions.size();
   for (size_t axis_index = 0, axes_count = axes.size(); axis_index < axes_count; ++axis_index) {
-    auto axis = axes[axis_index] < 0 ? axes[axis_index] + static_cast<int64_t>(dimension_count) : axes[axis_index];
+    auto axis = HandleNegativeAxis(axes[axis_index], dimension_count); // handle negative and enforce axis is valid
     if (axis >= static_cast<int64_t>(dimension_count) || axis < 0)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an axis outside of the tensor dimension count");
     if (unique_axes.find(axis) != unique_axes.end())

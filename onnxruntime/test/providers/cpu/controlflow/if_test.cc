@@ -44,7 +44,7 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const R
 
 class IfOpTester : public OpTester {
  public:
-  IfOpTester(const RunOptions& options) : OpTester("If"), options_{options} {
+  IfOpTester(const RunOptions& options, int opset_version = 11) : OpTester("If", 11), options_{options}, opset_version_(opset_version) {
   }
 
  protected:
@@ -73,7 +73,18 @@ class IfOpTester : public OpTester {
       inputs = {split_input};
       outputs = {&split_out_0, &split_out_1};
 
-      graph.AddNode("split", "Split", "Split into 2", inputs, outputs);
+      auto& split_node = graph.AddNode("split", "Split", "Split into 2", inputs, outputs);
+      if (opset_version_ == 11) {
+        AttributeProto attr_proto;
+        attr_proto.set_name("split");
+        attr_proto.set_type(AttributeProto_AttributeType_INTS);
+
+        auto* split_attribute = attr_proto.mutable_ints();
+        *split_attribute->Add() = 1; // split "unevenly" to create different shapes across the "then" and "else" branches
+        *split_attribute->Add() = 2;
+
+        split_node.AddAttribute("split", attr_proto);
+      }
     }
 
     // add If node
@@ -95,10 +106,13 @@ class IfOpTester : public OpTester {
       outputs = {&graph.GetOrCreateNodeArg("if_input_0", if_input->TypeAsProto())};
       graph.AddNode("identity", "Identity", "Pass if input through from graph inputs.", inputs, outputs);
     }
+
+     EXPECT_EQ(graph.Resolve(), Status::OK());
   }
 
  private:
   RunOptions options_;
+  int opset_version_;
 };
 
    /* Subgraphs looks like this. All inputs come from outer scope so we just
@@ -202,77 +216,13 @@ ELSE branch                                                    /
  (output_shape: [2]. output_value = [1, 1])     (output_shape: [1]. output_value = [false]) 
 */
 
-static const ONNX_NAMESPACE::GraphProto CreateSubgraphWithConstantNode(bool then_branch) {
-  Model model(then_branch ? "If_then" : "If_else");
-  auto& graph = model.MainGraph();
-
-  std::vector<NodeArg*> inputs;
-  std::vector<NodeArg*> outputs;
-
-  // graph output types
-  // constant_out
-  TypeProto float_proto;
-  float_proto.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-
-  // "then" branch produces 1D output of shape [1]
-  if (then_branch) {
-    float_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);  
-  } 
-  else {
-    // "else" branch produces 1D output of shape [2]
-    float_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);  
-  }
-  
-
-  // graph outputs
-  auto& constant_out = graph.GetOrCreateNodeArg("constant_out", &float_proto);
-
-  // produce constant_out
-  {
-    outputs = {&constant_out};
-
-    TensorProto constant_tensor_proto;
-
-    auto& constant_node = graph.AddNode("constant_out", "Constant", "Produce constant_out", {}, outputs);
-
-    AttributeProto attr_proto;
-    attr_proto.set_name("value");
-    attr_proto.set_type(AttributeProto_AttributeType_TENSOR);
-
-    auto* constant_attribute_tensor_proto = attr_proto.mutable_t();
-    // "then" branch produces 1D output of shape [1]
-    if (then_branch) {
-      *constant_attribute_tensor_proto->mutable_dims()->Add() = 1;  // 1D output of shape [1]
-    } else {
-      // "else" branch produces 1D output of shape [2]
-      *constant_attribute_tensor_proto->mutable_dims()->Add() = 2;  // 1D output of shape [2]
-    }
-
-    constant_attribute_tensor_proto->set_data_type(TensorProto_DataType_FLOAT);  // float output
-    *constant_attribute_tensor_proto->mutable_float_data()->Add() = 1.0f;        // float output with value 1.0f in the data container
-
-    if (!then_branch) {
-      // "else" branch produces 1D output of shape [2], hence add the extra value in the data container
-      *constant_attribute_tensor_proto->mutable_float_data()->Add() = 1.0f;  // 1D float output with value 1.0f
-    }
-
-    constant_node.AddAttribute("value", attr_proto);
-  }
-
-  graph.SetOutputs({&constant_out});
-
-  auto status = graph.Resolve();
-  EXPECT_EQ(status, Status::OK());
-
-  return graph.ToGraphProto();
-};
-
 void RunTest(bool condition_value,
              RunOptions options,
              bool is_tensorrt_supported = true,
              OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-             const std::string& failure_message = "") {
-  IfOpTester test{options};
+             const std::string& failure_message = "",
+             int opset_version = 7) {
+  IfOpTester test{options, opset_version};
 
   test.AddShapeToTensorData(options.include_dim_values_in_main_graph,
                             options.symbolic_dim_value_in_main_graph);
@@ -282,7 +232,12 @@ void RunTest(bool condition_value,
   // it's outputs are 1:1 with the graph outputs.
 
   // simple tensor that we split into 2, and use one output for the 'then' and one for the 'else' branch in the If
-  test.AddInput<float>("split_input", {2}, {1.f, 10.f});
+  if (opset_version != 11) {
+    test.AddInput<float>("split_input", {2}, {1.f, 10.f});
+  } else {
+    // in the opset 11 test case, we are going to split "unevenly", to create different shapes in "then" and "else" branches
+    test.AddInput<float>("split_input", {3}, {1.f, 10.f, 10.f});
+  }
 
   // graph input to specify which branch to take
   test.AddInput<bool>("if_cond", {1}, {condition_value});
@@ -293,7 +248,7 @@ void RunTest(bool condition_value,
   if (condition_value) {
     test.AddOutput<float>("if_out_0", output_shape, {2.f});
   } else {
-    test.AddOutput<float>("if_out_0", output_shape, {11.f});
+    test.AddOutput<float>("if_out_0", {2}, {11.f, 11.f});
   }
 
   std::unordered_set<std::string> excluded_providers;
@@ -373,19 +328,11 @@ TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_False) {
 }
 
 TEST(If, Opset11ThenAndElseBranchesProduceDifferentOutputShapes) {
-  OpTester test("If", 11);
+  RunOptions options{};
+  options.include_dim_values_in_main_graph = false;
+  options.include_dim_values_in_subgraph = false;
 
-  // add the attributes
-  test.AddAttribute<GraphProto>("then_branch", CreateSubgraphWithConstantNode(true));
-  test.AddAttribute<GraphProto>("else_branch", CreateSubgraphWithConstantNode(false));
-
-  // "else" subgraph should be executed
-  test.AddInput<bool>("if_cond", {1}, {false});
-
-  // output is a tensor of shape [2] with values - [1.0f, 1.0f]
-  test.AddOutput<float>("if_out_0", {2}, {1.0f, 1.0f});
-
-  test.Run();
+  RunTest(false, options, false, OpTester::ExpectResult::kExpectSuccess, "", 11);
 }
 
 }  // namespace test
