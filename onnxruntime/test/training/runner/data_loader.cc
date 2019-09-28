@@ -27,6 +27,10 @@ vector<PATH_STRING_TYPE> GetAllDataFiles(const PATH_STRING_TYPE& dir_path) {
             data_files.push_back(ConcatPathComponent<PATH_CHAR_TYPE>(dir_path, filename_str));
             return true;
           });
+
+  // Sort to ensure the view on training files are identical on all the workers
+  sort(data_files.begin(), data_files.end());
+
   return data_files;
 }
 
