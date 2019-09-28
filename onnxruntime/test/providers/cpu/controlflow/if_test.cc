@@ -44,7 +44,7 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const R
 
 class IfOpTester : public OpTester {
  public:
-  IfOpTester(const RunOptions& options, int opset_version = 7) : 
+  IfOpTester(const RunOptions& options, int opset_version = 10) : 
       OpTester("If", opset_version), options_{options}, opset_version_(opset_version) {
   }
 
@@ -107,8 +107,6 @@ class IfOpTester : public OpTester {
       outputs = {&graph.GetOrCreateNodeArg("if_input_0", if_input->TypeAsProto())};
       graph.AddNode("identity", "Identity", "Pass if input through from graph inputs.", inputs, outputs);
     }
-
-     EXPECT_EQ(graph.Resolve(), Status::OK());
   }
 
  private:
@@ -201,7 +199,7 @@ void RunTest(bool condition_value,
              bool is_tensorrt_supported = true,
              OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
              const std::string& failure_message = "",
-             int opset_version = 7) {
+             int opset_version = 10) {
   IfOpTester test{options, opset_version};
 
   test.AddShapeToTensorData(options.include_dim_values_in_main_graph,
@@ -309,7 +307,7 @@ TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_False) {
 
 TEST(If, Opset11ThenAndElseBranchesProduceDifferentOutputShapes) {
   RunOptions options{};
-  options.include_dim_values_in_main_graph = false;
+  options.include_dim_values_in_main_graph = true;
   options.include_dim_values_in_subgraph = false;
 
   RunTest(false, options, false, OpTester::ExpectResult::kExpectSuccess, "", 11);
