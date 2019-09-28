@@ -44,8 +44,8 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const R
 
 class IfOpTester : public OpTester {
  public:
-  IfOpTester(const RunOptions& options, int opset_version = 11) : 
-      OpTester("If", 11), options_{options}, opset_version_(opset_version) {
+  IfOpTester(const RunOptions& options, int opset_version = 7) : 
+      OpTester("If", opset_version), options_{options}, opset_version_(opset_version) {
   }
 
  protected:
