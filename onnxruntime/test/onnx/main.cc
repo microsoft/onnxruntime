@@ -396,6 +396,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"top_k", "not implemented yet for opset 11"},
       {"top_k_smallest", "not implemented yet for opset 11"},
       {"top_k_negative_axis", "TopK(11) not implemented yet"},
+      {"unique_not_sorted_without_axis", "not implemented yet"},
       {"unique_sorted_with_axis", "Unique not implemented yet"},
       {"unique_sorted_with_axis_3d", "Unique not implemented yet"},
       {"unique_sorted_without_axis", "Unique not implemented yet"},
@@ -479,7 +480,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"bitshift_left_uint16", "BitShift(11) not implemented yet"},
       {"gemm_default_scalar_bias", "Gemm ValidBroadcast() has bug to be fixed."},
 };
->>>>>>> origin/master
 
 #ifdef USE_NGRAPH
   broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
