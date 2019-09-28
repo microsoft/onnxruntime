@@ -21,6 +21,64 @@ Abstract:
 
 Macro Description:
 
+    This stores the block accumulators to the output matrix with an optional
+    accumulation of the existing contents of the output matrix.
+
+Arguments:
+
+    RowCount - Supplies the number of rows to process.
+
+    VectorCount - Supplies the number of vector columns to process.
+
+Implicit Arguments:
+
+    rax - Supplies the length in bytes of a row from matrix C.
+
+    rdx - Supplies the address of matrix C.
+
+    r15 - Stores the ZeroMode argument from the stack frame.
+
+    xmm8-xmm15 - Supplies the block accumulators.
+
+--*/
+
+        .macro AccumulateAndStoreBlock RowCount, VectorCount
+
+        test    r15b,r15b                   # ZeroMode?
+        jnz     .LSkipAccumulateOutput\@
+        EmitIfCount2GE \RowCount\(), 1, \VectorCount\(), 1, "movupf xmm0,XMMWORD PTR [rdx]"
+        EmitIfCount2GE \RowCount\(), 1, \VectorCount\(), 2, "movupf xmm1,XMMWORD PTR [rdx+16]"
+        EmitIfCount2GE \RowCount\(), 1, \VectorCount\(), 3, "movupf xmm2,XMMWORD PTR [rdx+32]"
+        EmitIfCount2GE \RowCount\(), 1, \VectorCount\(), 4, "movupf xmm3,XMMWORD PTR [rdx+48]"
+        EmitIfCount2GE \RowCount\(), 2, \VectorCount\(), 1, "movupf xmm4,XMMWORD PTR [rdx+rax]"
+        EmitIfCount2GE \RowCount\(), 2, \VectorCount\(), 2, "movupf xmm5,XMMWORD PTR [rdx+rax+16]"
+        EmitIfCount2GE \RowCount\(), 2, \VectorCount\(), 3, "movupf xmm6,XMMWORD PTR [rdx+rax+32]"
+        EmitIfCount2GE \RowCount\(), 2, \VectorCount\(), 4, "movupf xmm7,XMMWORD PTR [rdx+rax+48]"
+        EmitIfCount2GE \RowCount\(), 1, \VectorCount\(), 1, "addpf xmm8,xmm0"
+        EmitIfCount2GE \RowCount\(), 1, \VectorCount\(), 2, "addpf xmm9,xmm1"
+        EmitIfCount2GE \RowCount\(), 1, \VectorCount\(), 3, "addpf xmm10,xmm2"
+        EmitIfCount2GE \RowCount\(), 1, \VectorCount\(), 4, "addpf xmm11,xmm3"
+        EmitIfCount2GE \RowCount\(), 2, \VectorCount\(), 1, "addpf xmm12,xmm4"
+        EmitIfCount2GE \RowCount\(), 2, \VectorCount\(), 2, "addpf xmm13,xmm5"
+        EmitIfCount2GE \RowCount\(), 2, \VectorCount\(), 3, "addpf xmm14,xmm6"
+        EmitIfCount2GE \RowCount\(), 2, \VectorCount\(), 4, "addpf xmm15,xmm7"
+
+.LSkipAccumulateOutput\@:
+        EmitIfCount2GE \RowCount\(), 1, \VectorCount\(), 1, "movupf XMMWORD PTR [rdx],xmm8"
+        EmitIfCount2GE \RowCount\(), 1, \VectorCount\(), 2, "movupf XMMWORD PTR [rdx+16],xmm9"
+        EmitIfCount2GE \RowCount\(), 1, \VectorCount\(), 3, "movupf XMMWORD PTR [rdx+32],xmm10"
+        EmitIfCount2GE \RowCount\(), 1, \VectorCount\(), 4, "movupf XMMWORD PTR [rdx+48],xmm11"
+        EmitIfCount2GE \RowCount\(), 2, \VectorCount\(), 1, "movupf XMMWORD PTR [rdx+rax],xmm12"
+        EmitIfCount2GE \RowCount\(), 2, \VectorCount\(), 2, "movupf XMMWORD PTR [rdx+rax+16],xmm13"
+        EmitIfCount2GE \RowCount\(), 2, \VectorCount\(), 3, "movupf XMMWORD PTR [rdx+rax+32],xmm14"
+        EmitIfCount2GE \RowCount\(), 2, \VectorCount\(), 4, "movupf XMMWORD PTR [rdx+rax+48],xmm15"
+
+        .endm
+
+/*++
+
+Macro Description:
+
     This macro generates the inner kernel to compute matrix multiplication.
 
 Arguments:

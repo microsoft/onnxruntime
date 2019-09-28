@@ -180,12 +180,6 @@ Implicit Arguments:
 
     rdi - Supplies the address into the matrix A data.
 
-    rbx - Supplies the address into the matrix A data plus 3 rows.
-
-    r13 - Supplies the address into the matrix A data plus 6 rows.
-
-    r14 - Supplies the address into the matrix A data plus 9 rows.
-
     rsi - Supplies the address into the matrix B data.
 
     rcx - Supplies the number of columns from matrix A and the number of rows

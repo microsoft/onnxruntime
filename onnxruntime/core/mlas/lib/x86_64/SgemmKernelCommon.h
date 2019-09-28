@@ -29,7 +29,9 @@ Abstract:
 // Define the typed instructions for single precision.
 //
 
+FGEMM_TYPED_INSTRUCTION(addpf, addps)
 FGEMM_TYPED_INSTRUCTION(movsf, movss)
+FGEMM_TYPED_INSTRUCTION(movupf, movups)
 
 FGEMM_TYPED_INSTRUCTION(vaddpf, vaddps)
 FGEMM_TYPED_INSTRUCTION(vbroadcastsf, vbroadcastss)

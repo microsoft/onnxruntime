@@ -93,64 +93,6 @@ Implicit Arguments:
 
 Macro Description:
 
-    This stores the block accumulators to the output matrix with an optional
-    accumulation of the existing contents of the output matrix.
-
-Arguments:
-
-    RowCount - Supplies the number of rows to process.
-
-    ColumnCount - Supplies the number of columns to process.
-
-Implicit Arguments:
-
-    rax - Supplies the length in bytes of a row from matrix C.
-
-    rdx - Supplies the address of matrix C.
-
-    r15 - Stores the ZeroMode argument from the stack frame.
-
-    xmm8-xmm15 - Supplies the block accumulators.
-
---*/
-
-        .macro AccumulateAndStoreBlock RowCount, ColumnCount
-
-        test    r15b,r15b                   # ZeroMode?
-        jnz     .LSkipAccumulateOutput\@
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 4, "movups xmm0,XMMWORD PTR [rdx]"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 8, "movups xmm1,XMMWORD PTR [rdx+16]"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 12, "movups xmm2,XMMWORD PTR [rdx+32]"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 16, "movups xmm3,XMMWORD PTR [rdx+48]"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 4, "movups xmm4,XMMWORD PTR [rdx+rax]"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 8, "movups xmm5,XMMWORD PTR [rdx+rax+16]"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 12, "movups xmm6,XMMWORD PTR [rdx+rax+32]"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 16, "movups xmm7,XMMWORD PTR [rdx+rax+48]"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 4, "addps xmm8,xmm0"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 8, "addps xmm9,xmm1"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 12, "addps xmm10,xmm2"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 16, "addps xmm11,xmm3"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 4, "addps xmm12,xmm4"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 8, "addps xmm13,xmm5"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 12, "addps xmm14,xmm6"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 16, "addps xmm15,xmm7"
-
-.LSkipAccumulateOutput\@:
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 4, "movups XMMWORD PTR [rdx],xmm8"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 8, "movups XMMWORD PTR [rdx+16],xmm9"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 12, "movups XMMWORD PTR [rdx+32],xmm10"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 16, "movups XMMWORD PTR [rdx+48],xmm11"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 4, "movups XMMWORD PTR [rdx+rax],xmm12"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 8, "movups XMMWORD PTR [rdx+rax+16],xmm13"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 12, "movups XMMWORD PTR [rdx+rax+32],xmm14"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 16, "movups XMMWORD PTR [rdx+rax+48],xmm15"
-
-        .endm
-
-/*++
-
-Macro Description:
-
     This macro generates code to compute matrix multiplication for a fixed set
     of rows.
 
@@ -240,7 +182,7 @@ Implicit Arguments:
         EmitIfCountGE \RowCount\(), 2, "mulps xmm15,xmm2"
         sub     r9,16
         jb      .LOutputPartial16xNBlock\@
-        AccumulateAndStoreBlock \RowCount\(), 16
+        AccumulateAndStoreBlock \RowCount\(), 4
         add     rdx,16*4                    # advance matrix C by 16 columns
         mov     rdi,r11                     # reload matrix A
         test    r9,r9
@@ -259,7 +201,7 @@ Implicit Arguments:
         jb      .LOutputPartialLessThan8xNBlock\@
         cmp     r9,12
         jb      .LOutputPartialLessThan12xNBlock\@
-        AccumulateAndStoreBlock \RowCount\(), 12
+        AccumulateAndStoreBlock \RowCount\(), 3
         and     r9d,3                       # check if remaining count is small
         jz      .LExitKernel
         EmitIfCountGE \RowCount\(), 1, "movaps xmm8,xmm11"
@@ -269,7 +211,7 @@ Implicit Arguments:
         jmp     .LOutputPartialLessThan4xNBlock\@
 
 .LOutputPartialLessThan12xNBlock\@:
-        AccumulateAndStoreBlock \RowCount\(), 8
+        AccumulateAndStoreBlock \RowCount\(), 2
         and     r9d,3                       # check if remaining count is small
         jz      .LExitKernel
         EmitIfCountGE \RowCount\(), 1, "movaps xmm8,xmm10"
@@ -279,7 +221,7 @@ Implicit Arguments:
         jmp     .LOutputPartialLessThan4xNBlock\@
 
 .LOutputPartialLessThan8xNBlock\@:
-        AccumulateAndStoreBlock \RowCount\(), 4
+        AccumulateAndStoreBlock \RowCount\(), 1
         and     r9d,3                       # check if remaining count is small
         jz      .LExitKernel
         EmitIfCountGE \RowCount\(), 1, "movaps xmm8,xmm9"

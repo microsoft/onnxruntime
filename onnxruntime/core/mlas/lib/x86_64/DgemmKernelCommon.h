@@ -29,7 +29,9 @@ Abstract:
 // Define the typed instructions for double precision.
 //
 
+FGEMM_TYPED_INSTRUCTION(addpf, addpd)
 FGEMM_TYPED_INSTRUCTION(movsf, movsd)
+FGEMM_TYPED_INSTRUCTION(movupf, movupd)
 
 FGEMM_TYPED_INSTRUCTION(vaddpf, vaddpd)
 FGEMM_TYPED_INSTRUCTION(vbroadcastsf, vbroadcastsd)
