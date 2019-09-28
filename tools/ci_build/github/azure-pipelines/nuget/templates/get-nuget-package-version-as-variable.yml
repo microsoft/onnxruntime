@@ -9,6 +9,8 @@ steps:
     workingDirectory: '${{ parameters.packageFolder }}'
     script: |
       @echo processing nupkg
+      pwd
+      dir
       SETLOCAL ENABLEDELAYEDEXPANSION
       FOR /R %%i IN (Microsoft.ML.OnnxRuntime*.nupkg) do (
         set filename=%%~ni

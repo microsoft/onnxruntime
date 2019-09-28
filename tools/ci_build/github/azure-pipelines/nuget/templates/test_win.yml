@@ -21,11 +21,11 @@ jobs:
     displayName: 'Download Pipeline Artifact'
     inputs:
       artifactName: 'drop-signed-nuget'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+      targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
 
   - template: get-nuget-package-version-as-variable.yml
     parameters:
-      packageFolder: '$(Build.BinariesDirectory)/nuget-artifact'
+      packageFolder: '$(Build.BinariesDirectory)\nuget-artifact'
     
   - script: |
      @echo "Running download_test_data.py"
