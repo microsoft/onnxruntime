@@ -96,7 +96,7 @@ ONNX_CPU_OPERATOR_KERNEL(Loop,
 
 struct Loop::Info {
   Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in)
-      : subgraph{subgraph_in} {
+      : subgraph(subgraph_in) {
     num_loop_carried_vars = static_cast<int>(node.InputDefs().size()) - 2;  // skip 'M' and 'cond'
     num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
     num_subgraph_inputs = 2 + num_loop_carried_vars;  // iter_num, cond, loop carried vars
@@ -272,10 +272,10 @@ Status Loop::Compute(OpKernelContext* ctx) const {
 LoopImpl::LoopImpl(OpKernelContextInternal& context,
                    const SessionState& session_state,
                    const Loop::Info& subgraph_info)
-    : context_{context},
-      session_state_{session_state},
-      info_{subgraph_info},
-      implicit_inputs_{context_.GetImplicitInputs()} {
+    : context_(context),
+      session_state_(session_state),
+      info_(subgraph_info),
+      implicit_inputs_(context_.GetImplicitInputs()) {
   auto* max_trip_count_tensor = context.Input<Tensor>(0);
   max_trip_count_ = max_trip_count_tensor ? *max_trip_count_tensor->Data<int64_t>() : INT64_MAX;
 

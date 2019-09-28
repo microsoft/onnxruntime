@@ -237,14 +237,14 @@ ScanImpl::ScanImpl(OpKernelContextInternal& context,
                    const std::vector<int64_t>& output_directions,
                    const std::vector<int64_t>& input_axes,
                    const std::vector<int64_t>& output_axes)
-    : context_{context},
-      session_state_{session_state},
-      info_{info},
-      input_directions_{input_directions},
-      output_directions_{output_directions},
-      input_axes_from_attribute_{input_axes},
-      output_axes_from_attribute_{output_axes},
-      implicit_inputs_{context_.GetImplicitInputs()} {
+    : context_(context),
+      session_state_(session_state),
+      info_(info),
+      input_directions_(input_directions),
+      output_directions_(output_directions),
+      input_axes_from_attribute_(input_axes),
+      output_axes_from_attribute_(output_axes),
+      implicit_inputs_(context_.GetImplicitInputs()) {
   inputs_.reserve(info_.num_scan_inputs);
   input_axes_.reserve(info_.num_scan_inputs);
 }
