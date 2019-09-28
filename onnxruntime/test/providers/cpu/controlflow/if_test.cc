@@ -222,10 +222,13 @@ void RunTest(bool condition_value,
 
   test.AddInput<float>("if_graph_input_0", {1}, {1.f});
 
-  std::vector<int64_t> output_shape{1};
-  if (condition_value) {
-    test.AddOutput<float>("if_out_0", output_shape, {2.f});
-  } else {
+  if (opset_version != 11 && condition_value) {
+    test.AddOutput<float>("if_out_0", {1}, {2.f});
+  } else if (opset_version != 11) {
+    test.AddOutput<float>("if_out_0", {1}, {11.f});
+  } else if (opset_version == 11 && condition_value) {
+    test.AddOutput<float>("if_out_0", {1}, {2.f});
+  } else if (opset_version == 11) {
     test.AddOutput<float>("if_out_0", {2}, {11.f, 11.f});
   }
 
