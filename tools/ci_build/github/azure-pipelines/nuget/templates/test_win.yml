@@ -28,10 +28,19 @@ jobs:
       packageFolder: '$(Build.BinariesDirectory)/nuget-artifact'
     
   - script: |
-     @echo "Running build.py --update"
-     $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --config Debug --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe  --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --update --download_test_data --test_data_url=$(TestDataUrl) --test_data_checksum=$(TestDataChecksum)
+     @echo "Running download_test_data.py"
+     $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
 
     displayName: 'Download Test Data'
+
+- task: PythonScript@0
+  displayName: 'Download test data'
+  inputs:
+    scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
+    arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
+    pythonInterpreter: '/usr/bin/python3'
+    workingDirectory: $(Build.BinariesDirectory)
+
 
   - script: |
      @echo "Running Runtest.bat"
