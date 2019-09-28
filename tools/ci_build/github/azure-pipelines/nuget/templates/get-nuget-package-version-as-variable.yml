@@ -12,7 +12,8 @@ steps:
       SETLOCAL ENABLEDELAYEDEXPANSION
       FOR /R %%i IN (Microsoft.ML.OnnxRuntime*.nupkg) do (
         set filename=%%~ni
-        @echo ##vso[task.setvariable variable=NuGetPackageVersionNumber;]%filename:~25%
+        set ortversion=%filename:~25%
+        @echo ##vso[task.setvariable variable=NuGetPackageVersionNumber;]%ortversion%
       )
       @echo "NugetPackageVersionNumber = $(NuGetPackageVersionNumber)"
 
