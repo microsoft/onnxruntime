@@ -76,7 +76,7 @@ void RunTypedTest()
   test5.AddOutput<T>("output", {2, 2},
                      {1, 1,
                       4, 4});
-  test5.Run(OpTester::ExpectResult::kExpectFailure, "GatherElements op: Value in indices must be within bounds [-2 , 1]");
+  test5.Run(OpTester::ExpectResult::kExpectFailure, "GatherElements op: Value in indices must be within bounds [-2 , 1]. Actual value is 2");
 
   // 3D input - axis 1
   OpTester test6("GatherElements", 11);
@@ -90,6 +90,19 @@ void RunTypedTest()
                           {0, 1});
   test6.AddOutput<T>("output", {1, 2, 1}, {1, 3});
   test6.Run();
+
+  // 3D input - axis 2
+  OpTester test7("GatherElements", 11);
+  test7.AddAttribute<int64_t>("axis", 2LL);
+  test7.AddInput<T>("data", {2, 2, 2},
+                    {1, 2,
+                     3, 4,
+                     5, 6,
+                     7, 8});
+  test7.AddInput<int64_t>("indices", {1, 2, 1},
+                          {0, 1});
+  test7.AddOutput<T>("output", {1, 2, 1}, {1, 4});
+  test7.Run();
 }
 
 template <>
@@ -145,7 +158,7 @@ void RunTypedTest<std::string>() {
   test4.AddOutput<std::string>("output", {2, 2},
                                {"a", "a",
                                 "d", "d"});
-  test4.Run(OpTester::ExpectResult::kExpectFailure, "GatherElements op: Value in indices must be within bounds [-2 , 1]");
+  test4.Run(OpTester::ExpectResult::kExpectFailure, "GatherElements op: Value in indices must be within bounds [-2 , 1]. Actual value is -3");
 
   // 3D input - axis 1
   OpTester test5("GatherElements", 11);
@@ -160,6 +173,20 @@ void RunTypedTest<std::string>() {
   test5.AddOutput<std::string>("output", {1, 2, 1},
                                {"a", "c"});
   test5.Run();
+
+  // 3D input - axis 2
+  OpTester test6("GatherElements", 11);
+  test6.AddAttribute<int64_t>("axis", 2LL);
+  test6.AddInput<std::string>("data", {2, 2, 2},
+                              {"a", "b",
+                               "c", "d",
+                               "e", "f",
+                               "g", "h"});
+  test6.AddInput<int32_t>("indices", {1, 2, 1},
+                          {0, 1});
+  test6.AddOutput<std::string>("output", {1, 2, 1},
+                               {"a", "d"});
+  test6.Run();
 }
 
 TEST(GatherElementsOpTest, int8_t) {
@@ -193,6 +220,7 @@ TEST(GatherElementsOpTest, uint32_t) {
 TEST(GatherElementsOpTest, uint64_t) {
   RunTypedTest<uint64_t>();
 }
+
 TEST(GatherElementsOpTest, string) {
   RunTypedTest<std::string>();
 }
