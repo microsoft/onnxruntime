@@ -44,7 +44,8 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const R
 
 class IfOpTester : public OpTester {
  public:
-  IfOpTester(const RunOptions& options, int opset_version = 11) : OpTester("If", 11), options_{options}, opset_version_(opset_version) {
+  IfOpTester(const RunOptions& options, int opset_version = 11) : 
+      OpTester("If", 11), options_{options}, opset_version_(opset_version) {
   }
 
  protected:
@@ -194,27 +195,6 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const R
 
   return proto;
 }
-
-
-// The following subgraph creator is to test the opset-11 "If" node
-// which is allowed to produce different shape outputs on the "then" and "else" branches 
-
-/* Subgraphs looks like this.
-                                                              if_cond    
-THEN branch                                                    /
-         [Constant]                            [Identity]-----/
-             |                                     |
-         constant_out_0                       identity_out_0   
- (output_shape: [1]. output_value = [1])     (output_shape: [1]. output_value = [true]) 
-
-
-                                                               if_cond     
-ELSE branch                                                    /
-         [Constant]                            [Identity]-----/
-             |                                     |
-         constant_out_0                       identity_out_0   
- (output_shape: [2]. output_value = [1, 1])     (output_shape: [1]. output_value = [false]) 
-*/
 
 void RunTest(bool condition_value,
              RunOptions options,
