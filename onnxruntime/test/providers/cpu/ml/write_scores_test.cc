@@ -11,9 +11,8 @@ using namespace onnxruntime;
 using namespace onnxruntime::ml;
 class WriteScores : public ::testing::Test {
  protected:
-  WriteScores() : r(), rd(r()) {}
   std::random_device r;
-  std::default_random_engine rd;
+  std::default_random_engine rd{r()};
 };
 
 TEST_F(WriteScores, multiple_scores_transform_none) {
