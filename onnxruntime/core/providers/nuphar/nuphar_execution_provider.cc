@@ -85,12 +85,12 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
 
   whole_graph_shape_infer_ = std::make_shared<ShapeExprContext>();
 
-  DeviceAllocatorRegistrationInfo allocator_info(
+  DeviceAllocatorRegistrationInfo memory_info(
       {OrtMemTypeDefault,
-       [](int /*id*/) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>("Nuphar", OrtAllocatorType::OrtDeviceAllocator)); },
+       [](int /*id*/) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>("Nuphar", OrtAllocatorType::OrtDeviceAllocator)); },
        std::numeric_limits<size_t>::max()});
 
-  InsertAllocator(CreateAllocator(allocator_info, tvm_ctx_.device_id));
+  InsertAllocator(CreateAllocator(memory_info, tvm_ctx_.device_id));
 
   // TODO add multi-target support
   tvm_codegen_manager_ = std::make_unique<TVMCodeGenManager>();
@@ -180,7 +180,7 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         all_shape_defined = false;
       } else {
         for (const auto& dim : def.Shape()->dim()) {
-          if (!((dim.has_dim_value() && dim.dim_value() > 0) || dim.has_dim_param()))
+          if (!((utils::HasDimValue(dim) && dim.dim_value() > 0) || utils::HasDimParam(dim)))
             all_shape_defined = false;
         }
       }
@@ -192,6 +192,23 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     const auto& inputs = node.InputDefs();
     if (node.OpType() == "Tile" && !graph_viewer.IsConstantInitializer(inputs[1]->Name(), true))
       return false;  // do not support tile that has dynamic repeats
+
+    if (node.OpType() == "MaxPool") {
+      // TODO: enable support for Indices
+      if (node.OutputDefs().size() > 1) {
+        return false;
+      }
+      // TODO: enable support for non-default dilations
+      const onnxruntime::NodeAttributes& attrs = node.GetAttributes();
+      auto it = attrs.find("dilations");
+      if (it != attrs.end()) {
+        for (int i = 0; i < it->second.ints_size(); i++) {
+          if (it->second.ints(i) > 1) {
+            return false;
+          }
+        }
+      }
+    }
 
     if (node.OpType() == "Slice") {
       auto num_inputs = inputs.size();

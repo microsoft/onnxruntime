@@ -63,5 +63,15 @@ TEST(TensorOpTest, Unsqueeze_OutOfRange) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "Mismatch between number of source and target dimensions.");
 }
 
+TEST(TensorOpTest, UnsqueezeNegAxis_3) {
+  OpTester test("Unsqueeze", 11);
+
+  test.AddAttribute("axes", std::vector<int64_t>{-4, 1, -6});
+  test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
+  test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
+  // nGraph does not support negative axis.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",  {kNGraphExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

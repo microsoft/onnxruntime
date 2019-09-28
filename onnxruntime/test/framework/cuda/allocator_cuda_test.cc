@@ -11,10 +11,10 @@ namespace onnxruntime {
 namespace test {
 TEST(AllocatorTest, CUDAAllocatorTest) {
   int cuda_device_id = 0;
-  DeviceAllocatorRegistrationInfo default_allocator_info({OrtMemTypeDefault,
+  DeviceAllocatorRegistrationInfo default_memory_info({OrtMemTypeDefault,
                                                           [](int id) { return std::make_unique<CUDAAllocator>(id, CUDA); }, std::numeric_limits<size_t>::max()});
 
-  auto cuda_arena = CreateAllocator(default_allocator_info, cuda_device_id);
+  auto cuda_arena = CreateAllocator(default_memory_info, cuda_device_id);
 
   size_t size = 1024;
 
@@ -27,10 +27,10 @@ TEST(AllocatorTest, CUDAAllocatorTest) {
   auto cuda_addr = cuda_arena->Alloc(size);
   EXPECT_TRUE(cuda_addr);
 
-  DeviceAllocatorRegistrationInfo pinned_allocator_info({OrtMemTypeCPUOutput,
+  DeviceAllocatorRegistrationInfo pinned_memory_info({OrtMemTypeCPUOutput,
                                                          [](int) { return std::make_unique<CUDAPinnedAllocator>(0, CUDA_PINNED); }, std::numeric_limits<size_t>::max()});
 
-  auto pinned_allocator = CreateAllocator(pinned_allocator_info);
+  auto pinned_allocator = CreateAllocator(pinned_memory_info);
 
   EXPECT_STREQ(pinned_allocator->Info().name, CUDA_PINNED);
   EXPECT_EQ(pinned_allocator->Info().id, 0);

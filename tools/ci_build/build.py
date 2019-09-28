@@ -124,6 +124,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--skip_submodule_sync", action='store_true', help="Don't do a 'git submodule update'. Makes the Update phase faster.")
 
     parser.add_argument("--use_jemalloc", action='store_true', help="Use jemalloc.")
+    parser.add_argument("--use_mimalloc", action='store_true', help="Use mimalloc.")
     parser.add_argument("--use_openblas", action='store_true', help="Build with OpenBLAS.")
     parser.add_argument("--use_mkldnn", action='store_true', help="Build with MKLDNN.")
     parser.add_argument("--use_mklml", action='store_true', help="Build with MKLML.")
@@ -131,7 +132,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_automl", action='store_true', help="Build with AutoML support.")
     parser.add_argument("--use_ngraph", action='store_true', help="Build with nGraph.")
     parser.add_argument("--use_openvino", nargs="?", const="CPU_FP32",
-                        choices=["CPU_FP32","GPU_FP32","GPU_FP16","VAD-M_FP16","MYRIAD_FP16"], help="Build with OpenVINO for specific hardware.")
+                        choices=["CPU_FP32","GPU_FP32","GPU_FP16","VAD-M_FP16","MYRIAD_FP16","VAD-F_FP32"], help="Build with OpenVINO for specific hardware.")
     parser.add_argument("--use_dnnlibrary", action='store_true', help="Build with DNNLibrary.")
     parser.add_argument("--use_nsync", action='store_true', help="Build with NSYNC.")
     parser.add_argument("--use_preinstalled_eigen", action='store_true', help="Use pre-installed eigen.")
@@ -155,7 +156,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--skip_onnx_tests", action='store_true', help="Explicitly disable all onnx related tests")
     parser.add_argument("--enable_msvc_static_runtime", action='store_true', help="Enable static linking of MSVC runtimes.")
     parser.add_argument("--enable_language_interop_ops", action='store_true', help="Enable operator implemented in language other than cpp")
-    parser.add_argument("--cmake_generator", choices=['Visual Studio 15 2017', 'Visual Studio 16 2019'], 
+    parser.add_argument("--cmake_generator", choices=['Visual Studio 15 2017', 'Visual Studio 16 2019'],
                         default='Visual Studio 15 2017', help="Specify the generator that CMake invokes. This is only supported on Windows")
     return parser.parse_args()
 
@@ -328,9 +329,10 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
                  "-Donnxruntime_USE_NSYNC=" + ("OFF" if is_windows() or not args.use_nsync else "ON"),
                  "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
-                 "-Donnxruntime_USE_AUTOML=" + ("ON" if args.use_automl else "OFF"),				 
+                 "-Donnxruntime_USE_AUTOML=" + ("ON" if args.use_automl else "OFF"),
                  "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
                  "-Donnxruntime_USE_JEMALLOC=" + ("ON" if args.use_jemalloc else "OFF"),
+                 "-Donnxruntime_USE_MIMALLOC=" + ("ON" if args.use_mimalloc else "OFF"),
                  "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
                  "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
                  "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib or args.build_server else "OFF"),
@@ -348,6 +350,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_OPENVINO_GPU_FP16=" + ("ON" if args.use_openvino == "GPU_FP16" else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_CPU_FP32=" + ("ON" if args.use_openvino == "CPU_FP32" else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_VAD_M=" + ("ON" if args.use_openvino == "VAD-M_FP16" else "OFF"),
+                 "-Donnxruntime_USE_OPENVINO_VAD_F=" + ("ON" if args.use_openvino == "VAD-F_FP32" else "OFF"),
                  "-Donnxruntime_USE_NNAPI=" + ("ON" if args.use_dnnlibrary else "OFF"),
                  "-Donnxruntime_USE_OPENMP=" + ("ON" if args.use_openmp and not args.use_dnnlibrary and not args.use_mklml and not args.use_ngraph else "OFF"),
                  "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
@@ -512,7 +515,7 @@ def setup_cuda_vars(args):
                                  "Current version is {}. CUDA 9.2 requires version 14.11.*".format(vc_ver_str),
                                  "If necessary manually install the 14.11 toolset using the Visual Studio 2017 updater.",
                                  "See 'Windows CUDA Build' in build.md in the root directory of this repository.")
-            
+
             # TODO: check if cuda_version >=10.1, when cuda is enabled and VS version >=2019
 
     return cuda_home, cudnn_home
@@ -751,7 +754,7 @@ def run_server_model_tests(build_dir, configs):
         run_subprocess([sys.executable, 'model_zoo_tests.py', server_app_path, test_raw_data_folder, server_test_data_folder, python_package_path, server_test_folder], cwd=server_test_folder, dll_path=None)
 
 
-def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, use_openvino, nightly_build = False):
+def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, use_openvino, use_nuphar, nightly_build = False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -767,6 +770,8 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use
             args.append('--use_ngraph')
         elif use_openvino:
             args.append('--use_openvino')
+        elif use_nuphar:
+            args.append('--use_nuphar')
         run_subprocess(args, cwd=cwd)
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
@@ -832,7 +837,7 @@ def generate_documentation(source_dir, build_dir, configs):
     except subprocess.CalledProcessError:
         print('git diff returned non-zero error code')
     if len(docdiff) > 0:
-        # Show warning instead of throwing exception, because it is dependent on build configuration for including execution propviders 
+        # Show warning instead of throwing exception, because it is dependent on build configuration for including execution propviders
         log.warning('The updated opkernel document file '+str(opkernel_doc_path)+' is different from the checked in version. Consider regenrating the file with CPU, MKLDNN and CUDA providers enabled.')
         log.debug('diff:\n'+str(docdiff))
 
@@ -870,6 +875,10 @@ def main():
 
     if args.build_csharp:
         args.build_shared_lib = True
+
+    # Disabling unit tests for VAD-F as FPGA only supports models with NCHW layout
+    if args.use_openvino == "VAD-F_FP32":
+        args.test = False
 
     configs = set(args.config)
 
@@ -981,8 +990,8 @@ def main():
                 mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
 
         # run nuphar python tests last, as it installs ONNX 1.5.0
-        #if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
-        #    nuphar_run_python_tests(build_dir, configs, args.azure_sas_key)
+        if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
+            nuphar_run_python_tests(build_dir, configs, args.azure_sas_key)
 
     if args.build_server:
         split_server_binary_and_symbol(build_dir, configs)
@@ -994,7 +1003,7 @@ def main():
     if args.build:
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
-            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_ngraph, args.use_tensorrt, args.use_openvino, nightly_build)
+            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_ngraph, args.use_tensorrt, args.use_openvino, args.use_nuphar, nightly_build)
 
     if args.gen_doc and (args.build or args.test):
         generate_documentation(source_dir, build_dir, configs)

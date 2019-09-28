@@ -56,9 +56,8 @@ ENV LANG en_US.UTF-8
 WORKDIR /code
 ENV PATH /opt/miniconda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:$PATH
 
-ADD scripts /tmp/scripts
-RUN /bin/sh /tmp/scripts/install_common_deps.sh && \
-    git clone --recursive -b $ONNXRUNTIME_BRANCH $ONNXRUNTIME_REPO /onnxruntime && \
+RUN git clone --recursive -b $ONNXRUNTIME_BRANCH $ONNXRUNTIME_REPO /onnxruntime && \
+    /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh && \
     cd /onnxruntime/cmake/external/onnx && python3 setup.py install && \
     cp /onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt && \
     cp /onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt && \

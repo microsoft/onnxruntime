@@ -20,7 +20,7 @@
     python3 setup.py bdist_wheel
     pip3 install --upgrade dist/*.whl
     ```
-5. Run `build.bat --config RelWithDebInfo --build_shared_lib --parallel`. 
+5. Run `build.bat --config RelWithDebInfo --build_shared_lib --parallel`.
 
 *Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat.*
 
@@ -132,7 +132,7 @@ Then run it
 
 ## Build ONNX Runtime Server on Linux
 Read more about ONNX Runtime Server [here](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Server_Usage.md)
-1. ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL. 
+1. ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL.
     See https://golang.org/doc/install for installation instructions.
 2. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
 3. ONNX Runtime Server supports sending log to [rsyslog](https://www.rsyslog.com/) daemon. To enable it, please build with an additional parameter: `--cmake_extra_defines onnxruntime_USE_SYSLOG=1`. The build command will look like this: `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel --cmake_extra_defines onnxruntime_USE_SYSLOG=1`
@@ -146,7 +146,7 @@ For Linux, please use [this Dockerfile](https://github.com/microsoft/onnxruntime
 
 ONNX Runtime supports CUDA builds. You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn).
 
-ONNX Runtime is built and tested with CUDA 10.0 and cuDNN 7.3 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3). 
+ONNX Runtime is built and tested with CUDA 10.0 and cuDNN 7.3 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3).
 CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017.
 
  - The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`.
@@ -219,26 +219,48 @@ ONNX Runtime supports OpenVINO Execution Provider to enable deep learning infere
 
 The OpenVINO Execution Provider can be built using the following commands:
 
-- Currently supports and validated on two versions of OpenVINO: OpenVINO 2018 R5.0.1 and OpenVINO 2019 R1.1(Recommended). Install the OpenVINO release along with its dependencies from ([https://software.intel.com/en-us/openvino-toolkit](https://software.intel.com/en-us/openvino-toolkit)).
+- Currently supports and validated on two versions of OpenVINO: OpenVINO 2018 R5.0.1 and OpenVINO 2019 R1.1(Recommended). Install the OpenVINO release along with its dependencies from ([https://software.intel.com/en-us/openvino-toolkit](https://software.intel.com/en-us/openvino-toolkit)).For windows, please download 2019 R1.1 windows installer
 
 - Install the model optimizer prerequisites for ONNX by running
-<code><openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.sh</code>
 
-- Initialize the OpenVINO environment by running the setupvars.sh in <code>\<openvino\_install\_directory\>\/bin</code> using the below command:
+   For Linux:
 
-   <code>source setupvars.sh</code>
+    <code><openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.sh</code>
 
-- To configure Intel<sup>®</sup> Processor Graphics(GPU), please follow the installation steps from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
+    For Windows:
 
-- To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow the getting started guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+    <code><openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.bat</code>
 
-- To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow the configuration guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#install-VPU)
+- Initialize the OpenVINO environment by running the setupvars in <code>\<openvino\_install\_directory\>\/bin</code> using the below command:
+
+   <code>source setupvars.sh (Linux)</code>
+
+   <code>setupvars.bat (Windows)</code>
+
+- To configure Intel<sup>®</sup> Processor Graphics(GPU), please follow the installation steps from    (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps  (Linux))
+ (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_windows.html#Install-GPU (Windows))
+
+- To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow the getting started guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps (Linux))
+(https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_windows.html#usb-myriad (Windows))
+
+- To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow the configuration guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#install-VPU (Linux))
+(https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_windows.html#hddl-myriad (Windows))
+
+- To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow the configuration guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_VisionAcceleratorFPGA_Configure_2019R1.html)
 
 
 - Build ONNX Runtime using the below command.
 
+  For Linux:
+  
    <code>./build.sh --config RelWithDebInfo --use_openvino <hardware_option>  </code>
 
+  For Windows:
+  
+  <code> build.bat --config RelWithDebInfo  --use_openvino <hardware_option> </code>
+ 
+   *Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat.*
+ 
    <code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
 
    <code><hardware_option></code>: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
@@ -250,9 +272,10 @@ The OpenVINO Execution Provider can be built using the following commands:
 | <code>GPU_FP16</code> | Intel<sup>®</sup> Integrated Graphics with FP16 quantization of models |
 | <code>MYRIAD_FP16</code> | Intel<sup>®</sup> Movidius<sup>TM</sup> USB sticks | 
 | <code>VAD-M_FP16</code> | Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs |
+| <code>VAD-F_FP32</code> | Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA |
 
 For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document OpenVINO-ExecutionProvider.md in <code>$onnxruntime_root/docs/execution_providers</code>
- 
+
 ---
 
 ### Android
@@ -330,7 +353,7 @@ Once you have the OpenBLAS binaries, build ONNX Runtime with `./build.bat --use_
 For Linux (e.g. Ubuntu 16.04), install libopenblas-dev package
 `sudo apt-get install libopenblas-dev` and build with `./build.sh --use_openblas`
 
---- 
+---
 
 ## Architectures
 ### x86

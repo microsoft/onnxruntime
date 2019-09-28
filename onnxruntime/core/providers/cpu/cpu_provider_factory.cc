@@ -5,6 +5,7 @@
 #include <atomic>
 #include "cpu_execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/ort_apis.h"
 
 namespace onnxruntime {
 
@@ -34,7 +35,7 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CPU, _In_ OrtSessio
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtCreateCpuAllocatorInfo, enum OrtAllocatorType type, enum OrtMemType mem_type, _Out_ OrtAllocatorInfo** out) {
-  *out = new OrtAllocatorInfo(onnxruntime::CPU, type, OrtDevice(), 0, mem_type);
+ORT_API_STATUS_IMPL(OrtApis::CreateCpuMemoryInfo, enum OrtAllocatorType type, enum OrtMemType mem_type, _Out_ OrtMemoryInfo** out) {
+  *out = new OrtMemoryInfo(onnxruntime::CPU, type, OrtDevice(), 0, mem_type);
   return nullptr;
 }

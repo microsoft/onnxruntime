@@ -32,7 +32,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.True(opt.EnableCpuMemArena);
                 Assert.Equal("", opt.LogId);
                 Assert.Equal(LogLevel.Verbose, opt.LogVerbosityLevel);
-                Assert.Equal(0, opt.ThreadPoolSize);
+                Assert.Equal(0, opt.IntraOpNumThreads);
+                Assert.Equal(0, opt.InterOpNumThreads);
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_BASIC, opt.GraphOptimizationLevel);
 
                 // try setting options 
@@ -58,13 +59,38 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.LogVerbosityLevel = LogLevel.Error;
                 Assert.Equal(LogLevel.Error, opt.LogVerbosityLevel);
 
-                opt.ThreadPoolSize = 4;
-                Assert.Equal(4, opt.ThreadPoolSize);
+                opt.IntraOpNumThreads = 4;
+                Assert.Equal(4, opt.IntraOpNumThreads);
+
+                opt.InterOpNumThreads = 4;
+                Assert.Equal(4, opt.InterOpNumThreads);
 
                 opt.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_EXTENDED;
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, opt.GraphOptimizationLevel);
-                
+
                 Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; });
+
+                opt.AppendExecutionProvider_CPU(1);
+#if USE_MKLDNN
+                opt.AppendExecutionProvider_Mkldnn(0);
+#endif
+#if USE_CUDA
+                opt.AppendExecutionProvider_CUDA(0);
+#endif
+#if USE_NGRAPH
+                opt.AppendExecutionProvider_NGraph("CPU");  //TODO: this API should be refined
+#endif
+#if USE_OPENVINO
+                opt.AppendExecutionProvider_OpenVINO(null);  //TODO: this won't work, because the native side copies the const char*
+#endif
+#if USE_TENSORRT
+                opt.AppendExecutionProvider_Tensorrt(0);
+#endif
+#if USE_NNAPI
+                opt.AppendExecutionProvider_Nnapi();
+#endif
+
+
             }
         }
 
@@ -78,7 +104,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 //verify default options
                 Assert.False(opt.Terminate);
                 Assert.Equal(LogLevel.Verbose, opt.LogVerbosityLevel);
-                Assert.Equal("", opt.LogTag);
+                Assert.Equal("", opt.LogId);
 
                 // try setting options
                 opt.Terminate = true;
@@ -87,8 +113,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.LogVerbosityLevel = LogLevel.Error;
                 Assert.Equal(LogLevel.Error, opt.LogVerbosityLevel);
 
-                opt.LogTag = "MyLogTag";
-                Assert.Equal("MyLogTag", opt.LogTag);
+                opt.LogId = "MyLogTag";
+                Assert.Equal("MyLogTag", opt.LogId);
             }
         }
 
@@ -163,7 +189,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 // Run Inference with RunOptions
                 using (var runOptions = new RunOptions())
                 {
-                    runOptions.LogTag = "CsharpTest";
+                    runOptions.LogId = "CsharpTest";
                     runOptions.Terminate = false;  // TODO: Test terminate = true, it currently crashes
                     runOptions.LogVerbosityLevel = LogLevel.Error;
                     IReadOnlyCollection<string> outputNames = session.OutputMetadata.Keys.ToList();
@@ -732,7 +758,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact(Skip="The Model Serialization Test fails on linux. Test skipped until fixed. Serialization API should not be used before fix.")]
+        [Fact(Skip = "The Model Serialization Test fails on linux. Test skipped until fixed. Serialization API should not be used before fix.")]
         private void TestModelSerialization()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
@@ -766,6 +792,26 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        [Fact]
+        private void TestInferenceSessionWithByteArray()
+        {
+            // model takes 1x5 input of fixed type, echoes back
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_FLOAT.pb");
+            byte[] modelData = File.ReadAllBytes(modelPath);
+
+            using (var session = new InferenceSession(modelData))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<float>(new float[] { 1.0f, 2.0f, -3.0f, float.MinValue, float.MaxValue }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                using (var res = session.Run(container))
+                {
+                    var tensorOut = res.First().AsTensor<float>();
+                    Assert.True(tensorOut.SequenceEqual(tensorIn));
+                }
+            }
+        }
 
         [DllImport("kernel32", SetLastError = true)]
         static extern IntPtr LoadLibrary(string lpFileName);
@@ -780,20 +826,27 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 return;
             var entryPointNames = new[]{
-            "OrtCreateEnv","OrtReleaseEnv",
-            "OrtGetErrorCode","OrtGetErrorMessage", "OrtReleaseStatus",
-            "OrtCreateSession","OrtRun",
-            "OrtSessionGetInputCount", "OrtSessionGetOutputCount","OrtSessionGetInputName","OrtSessionGetOutputName",
-            "OrtSessionGetInputTypeInfo", "OrtSessionGetOutputTypeInfo","OrtReleaseSession",
-            "OrtCreateSessionOptions","OrtCloneSessionOptions",
-            "OrtEnableSequentialExecution","OrtDisableSequentialExecution","OrtEnableProfiling","OrtDisableProfiling",
-            "OrtEnableMemPattern","OrtDisableMemPattern","OrtEnableCpuMemArena","OrtDisableCpuMemArena",
-            "OrtSetSessionLogId","OrtSetSessionLogVerbosityLevel","OrtSetSessionThreadPoolSize","OrtSetSessionGraphOptimizationLevel",
-            "OrtSetOptimizedModelFilePath", "OrtSessionOptionsAppendExecutionProvider_CPU","OrtCreateAllocatorInfo","OrtCreateCpuAllocatorInfo",
-            "OrtGetAllocatorWithDefaultOptions","OrtAllocatorFree","OrtAllocatorGetInfo",
-            "OrtCreateTensorWithDataAsOrtValue","OrtGetTensorMutableData", "OrtReleaseAllocatorInfo",
-            "OrtCastTypeInfoToTensorInfo","OrtGetTensorTypeAndShape","OrtGetTensorElementType","OrtGetDimensionsCount",
-            "OrtGetDimensions","OrtGetTensorShapeElementCount","OrtReleaseValue"};
+            "OrtGetApi",
+            "OrtSessionOptionsAppendExecutionProvider_CPU"
+#if USE_MKLDNN
+            ,"OrtSessionOptionsAppendExecutionProvider_Mkldnn"
+#endif
+#if USE_CUDA
+            ,"OrtSessionOptionsAppendExecutionProvider_CUDA"
+#endif
+#if USE_NGRAPH
+            ,"OrtSessionOptionsAppendExecutionProvider_NGraph"
+#endif
+#if USE_OPENVINO
+            ,"OrtSessionOptionsAppendExecutionProvider_OpenVINO"
+#endif
+#if USE_TENSORRT
+            ,"OrtSessionOptionsAppendExecutionProvider_Tensorrt"
+#endif
+#if USE_NNAPI
+            ,"OrtSessionOptionsAppendExecutionProvider_Nnapi"
+#endif
+    };
 
             var hModule = LoadLibrary(module);
             foreach (var ep in entryPointNames)
@@ -846,8 +899,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet(int? cudaDeviceId = null)
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+            var option = new SessionOptions();
+#if USE_CUDA
+            if (cudaDeviceId.HasValue)
+            {
+                option = SessionOptions.MakeSessionOptionWithCudaProvider(cudaDeviceId.Value);
+            }
+#endif
             var session = (cudaDeviceId.HasValue)
-                ? new InferenceSession(modelPath, SessionOptions.MakeSessionOptionWithCudaProvider(cudaDeviceId.Value))
+                ? new InferenceSession(modelPath, option)
                 : new InferenceSession(modelPath);
             float[] inputData = LoadTensorFromFile(@"bench.in");
             float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
