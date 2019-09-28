@@ -215,6 +215,16 @@ Status TrainingRunner::TrainingLoop() {
                                            feeds,
                                            fetch_names,
                                            &fetches));
+
+          if (weight_update_step_count % params_.display_loss_steps == 0) {
+            if (params_.error_function) {
+              params_.error_function(feed_names, feeds, fetch_names, fetches);
+            }
+            if (params_.post_evaluation_callback) {
+              params_.post_evaluation_callback(params_.batch_size, weight_update_step_count, "train");
+            }
+          }
+
           weight_update_step_count++;
         } else {
           RunOptions run_options;
@@ -243,15 +253,6 @@ Status TrainingRunner::TrainingLoop() {
         printf("Training data range: [%d - %d)\n",
                static_cast<int>(batch * params_.batch_size),
                static_cast<int>((batch + 1) * params_.batch_size - 1));
-
-        if (weight_update_step_count % params_.display_loss_steps == 0) {
-          if (params_.error_function) {
-            params_.error_function(feed_names, feeds, fetch_names, fetches);
-          }
-          if (params_.post_evaluation_callback) {
-            params_.post_evaluation_callback(params_.batch_size, step_, "train");
-          }
-        }
 
         if (params_.do_eval && step_ % params_.evaluation_period == 0) {
           ORT_RETURN_IF_ERROR(Evaluate(session_));
