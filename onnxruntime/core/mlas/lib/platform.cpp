@@ -26,6 +26,18 @@ MLAS_PLATFORM MlasPlatform;
 #ifdef MLAS_TARGET_AMD64_IX86
 
 //
+// Stores a vector to build a conditional load/store mask for vmaskmovps.
+//
+
+MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveAvx[8], 32) = { 0, 1, 2, 3, 4, 5, 6, 7 };
+
+//
+// Stores a vector to build a conditional load/store mask for vmaskmovpd.
+//
+
+MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint64_t MlasMaskMoveAvx64[4], 32) = { 0, 1, 2, 3 };
+
+//
 // Reads the processor extended control register to determine platform
 // capabilities.
 //
@@ -95,6 +107,7 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64)
 
     this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Sse;
+    this->GemmDoubleKernel = MlasGemmDoubleKernelSse;
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelSse;
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelSse;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelSse;
@@ -138,6 +151,7 @@ Return Value:
             this->KernelM1Routine = MlasSgemmKernelM1Avx;
             this->KernelM1TransposeBRoutine = MlasSgemmKernelM1TransposeBAvx;
             this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Avx;
+            this->GemmDoubleKernel = MlasGemmDoubleKernelAvx;
             this->ConvNchwFloatKernel = MlasConvNchwFloatKernelAvx;
             this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelAvx;
             this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelAvx;
@@ -158,7 +172,7 @@ Return Value:
             __cpuid_count(7, 0, Cpuid7[0], Cpuid7[1], Cpuid7[2], Cpuid7[3]);
 #endif
 
-            if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
+            if (false && ((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
 
                 this->GemmU8S8CopyPackARoutine = MlasGemmU8S8CopyPackAAvx2;
                 this->GemmU8S8CopyPackBRoutine = MlasGemmU8S8CopyPackBAvx2;
@@ -170,6 +184,7 @@ Return Value:
                 if (((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
 
                     this->GemmFloatKernel = MlasGemmFloatKernelAvx512F;
+                    this->GemmDoubleKernel = MlasGemmDoubleKernelAvx512F;
                     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelAvx512F;
                     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelAvx512F;
                     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelAvx512F;
@@ -203,6 +218,7 @@ Return Value:
                 } else {
 
                     this->GemmFloatKernel = MlasGemmFloatKernelFma3;
+                    this->GemmDoubleKernel = MlasGemmDoubleKernelFma3;
                     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelFma3;
                     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelFma3;
                     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelFma3;
