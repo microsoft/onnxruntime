@@ -9,16 +9,6 @@ SET CurrentOnnxRuntimeVersion=%3
 
 SETLOCAL enableextensions disabledelayedexpansion
 
-REM WorkingDirectory is Build.SourcesDirectory\csharp
-REM SET /p MajorVersionNumber=<..\VERSION_NUMBER
-REM SET VersionSuffix=
-REM IF NOT DEFINED IsReleaseBuild (
-REM     FOR /F "tokens=* USEBACKQ" %%F IN (`git rev-parse --short HEAD`) DO (
-REM         SET VersionSuffix=-dev-%%F
-REM     )
-REM )
-
-REM SET CurrentOnnxRuntimeVersion=%MajorVersionNumber%%VersionSuffix%
 @ECHO %CurrentOnnxRuntimeVersion%
 
 PUSHD test\Microsoft.ML.OnnxRuntime.EndToEndTests.Capi

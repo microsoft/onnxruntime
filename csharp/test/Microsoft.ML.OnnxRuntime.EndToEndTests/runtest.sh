@@ -11,12 +11,6 @@ set -x
 OldDir=`pwd`
 cd $SourceRoot
 
-# MajorVersion=$(cat $SourceRoot/VERSION_NUMBER)
-# VersionSuffix=
-# if [ "$IsReleaseBuild" != "true" ]; then
-#     VersionSuffix=-dev.$(date +"%Y%m%d").$(git rev-parse --short=8 HEAD)
-# fi
-# export CurrentOnnxRuntimeVersion=$MajorVersion$VersionSuffix
 echo "Current NuGet package version is $CurrentOnnxRuntimeVersion"
 
 if [ $RunTestCsharp = "true" ]; then

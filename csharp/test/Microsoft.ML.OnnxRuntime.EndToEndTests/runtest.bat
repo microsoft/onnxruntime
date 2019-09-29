@@ -24,20 +24,6 @@ IF "%TargetArch%"=="x86" (
 )
 
 ECHO Target Framework is %TargetFramework%
-REM WorkingDirectory is Build.SourcesDirectory\csharp
-REM SET /p MajorVersionNumber=<..\VERSION_NUMBER
-REM SET VersionSuffix=
-REM IF NOT DEFINED IsReleaseBuild (
-REM     SETLOCAL EnableDelayedExpansion
-REM     SET CurrentDate=%date:~10,4%%date:~7,2%%date:~4,2%
-REM     SET CurrentTime=%time:~0,2%%time:~3,2%
-REM     FOR /F "tokens=* USEBACKQ" %%F IN (`git rev-parse --short HEAD`) DO ( 
-REM         set GitHash=-dev.%%F 
-REM     )
-REM )
-REM IF "%CurrentOnnxRuntimeVersion%"=="" (
-REM     SET CurrentOnnxRuntimeVersion=%MajorVersionNumber%%VersionSuffix%
-REM )
 
 REM Update if CUDA lib paths if set
 SET PATH=%CUDA_PATH%\bin;%CUDNN_PATH%\bin;%PATH%
