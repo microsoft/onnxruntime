@@ -9,7 +9,7 @@ steps:
     workingDirectory: '${{ parameters.packageFolder }}'
     script: |
       @echo processing nupkg
-      @cho %cd%
+      @echo %cd%
       dir
       SETLOCAL EnableDelayedExpansion
       FOR /R %%i IN (Microsoft.ML.OnnxRuntime*.nupkg) do (
@@ -18,10 +18,10 @@ steps:
         set filename=%%~ni
         @echo FileName is %filename%
         @echo Filename 2 is !filename!
-        set ortversion=%filename:~25%
+        set ortversion=!filename:~25!
         @echo ortversion is %ortversion%
         @echo ortversion 2 is !ortversion!
-        @echo ##vso[task.setvariable variable=NuGetPackageVersionNumber;]%ortversion%
+        @echo ##vso[task.setvariable variable=NuGetPackageVersionNumber;]!ortversion!
       )
       @echo "NugetPackageVersionNumber = $(NuGetPackageVersionNumber)"
 
