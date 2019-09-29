@@ -172,7 +172,7 @@ Return Value:
             __cpuid_count(7, 0, Cpuid7[0], Cpuid7[1], Cpuid7[2], Cpuid7[3]);
 #endif
 
-            if (false && ((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
+            if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
 
                 this->GemmU8S8CopyPackARoutine = MlasGemmU8S8CopyPackAAvx2;
                 this->GemmU8S8CopyPackBRoutine = MlasGemmU8S8CopyPackBAvx2;
