@@ -1972,7 +1972,6 @@ main(
     void
     )
 {
-        std::make_unique<MlasFgemmTest<double>>()->ExecuteLong();
     for (int i = 0; i != 2; ++i) {
 
         printf("SGEMM tests.\n");
