@@ -6,88 +6,47 @@ Licensed under the MIT License.
 
 Module Name:
 
-   SgemmKernelCommon.h
+    SgemmKernelCommon.h
 
 Abstract:
 
-   This module contains common kernel macros and structures for the single
-   precision matrix/matrix multiply operation (SGEMM).
+    This module contains common kernel macros and structures for the single
+    precision matrix/matrix multiply operation (SGEMM).
 
 --*/
 
-/*++
+//
+// Define the single precision parameters.
+//
 
-Macro Description:
+        .equ    .LFgemmElementShift, 2
+        .equ    .LFgemmElementSize, 1 << .LFgemmElementShift
+        .equ    .LFgemmMaskMoveVector, C_UNDERSCORE(MlasMaskMoveAvx)
 
-    This macro generates code to execute the block compute macro multiple
-    times and advancing the matrix A and matrix B data pointers.
+#include "FgemmKernelCommon.h"
 
-Arguments:
+//
+// Define the typed instructions for single precision.
+//
 
-    ComputeBlock - Supplies the macro to compute a single block.
+FGEMM_TYPED_INSTRUCTION(addpf, addps)
+FGEMM_TYPED_INSTRUCTION(movsf, movss)
+FGEMM_TYPED_INSTRUCTION(movupf, movups)
 
-    RowCount - Supplies the number of rows to process.
+FGEMM_TYPED_INSTRUCTION(vaddpf, vaddps)
+FGEMM_TYPED_INSTRUCTION(vbroadcastsf, vbroadcastss)
+FGEMM_TYPED_INSTRUCTION(vfmadd213pf, vfmadd213ps)
+FGEMM_TYPED_INSTRUCTION(vfmadd231pf, vfmadd231ps)
+FGEMM_TYPED_INSTRUCTION(vmaskmovpf, vmaskmovps)
+FGEMM_TYPED_INSTRUCTION(vmovapf, vmovaps)
+FGEMM_TYPED_INSTRUCTION(vmovsf, vmovss)
+FGEMM_TYPED_INSTRUCTION(vmovupf, vmovups)
+FGEMM_TYPED_INSTRUCTION(vmulpf, vmulps)
+FGEMM_TYPED_INSTRUCTION(vpcmpgtf, vpcmpgtd)
+FGEMM_TYPED_INSTRUCTION(vxorpf, vxorps)
 
-    AdvanceMatrixAPlusRows - Supplies a non-zero value if the data pointer
-        in rbx should also be advanced as part of the loop.
+        .macro vfmadd231pf_bcst DestReg, SrcReg, Address
 
-Implicit Arguments:
-
-    rdi - Supplies the address into the matrix A data.
-
-    rbx - Supplies the address into the matrix A data plus 3 rows.
-
-    rsi - Supplies the address into the matrix B data.
-
-    rcx - Supplies the number of columns from matrix A and the number of rows
-        from matrix B to iterate over.
-
-    ymm4-ymm15 - Supplies the block accumulators.
-
---*/
-
-        .macro ComputeBlockLoop ComputeBlock, RowCount, AdvanceMatrixAPlusRows
-
-        mov     rbp,rcx                     # reload CountK
-        sub     rbp,4
-        jb      .LProcessRemainingBlocks\@
-
-.LComputeBlockBy4Loop\@:
-        \ComputeBlock\() \RowCount\(), 0, 0, 64*4
-        \ComputeBlock\() \RowCount\(), 16*4, 4, 64*4
-        sub     rsi,-32*4                   # advance matrix B by 32 columns
-        \ComputeBlock\() \RowCount\(), 0, 8, 64*4
-        \ComputeBlock\() \RowCount\(), 16*4, 12, 64*4
-        sub     rsi,-32*4                   # advance matrix B by 32 columns
-        add     rdi,4*4                     # advance matrix A by 4 columns
-.if \RowCount\() > 3
-        add     rbx,4*4                     # advance matrix A plus rows by 4 columns
-.if \RowCount\() == 12
-        add     r13,4*4
-        add     r14,4*4
-.endif
-.endif
-        sub     rbp,4
-        jae     .LComputeBlockBy4Loop\@
-
-.LProcessRemainingBlocks\@:
-        add     rbp,4                       # correct for over-subtract above
-        jz      .LOutputBlock\@
-
-.LComputeBlockBy1Loop\@:
-        \ComputeBlock\() \RowCount\(), 0, 0
-        add     rsi,16*4                    # advance matrix B by 16 columns
-        add     rdi,4                       # advance matrix A by 1 column
-.if \RowCount\() > 3
-        add     rbx,4                       # advance matrix A plus rows by 1 column
-.if \RowCount\() == 12
-        add     r13,4
-        add     r14,4
-.endif
-.endif
-        dec     rbp
-        jne     .LComputeBlockBy1Loop\@
-
-.LOutputBlock\@:
+        vfmadd231ps \DestReg\(), \SrcReg\(), \Address\(){1to16}
 
         .endm

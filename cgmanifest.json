@@ -49,7 +49,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "a20ba2f1dc3fbd1109fcc67bf42247531832bb60",
+               "commitHash": "2873fea8bd4679fdf337d64d1140e80a61986c29",
                "repositoryUrl": "https://github.com/onnx/onnx.git"
             }
          }
@@ -418,6 +418,15 @@
                "repositoryUrl": "https://github.com/abseil/abseil-cpp"
             },
             "comments": "used by onnxruntime"
+         }
+      },
+      {
+         "component": {
+            "git": {
+               "commitHash": "c3cceac115c072fb63df1836ff46d8c60d9eb304",
+               "repositoryUrl": "https://github.com/NVlabs/cub.git"
+            },
+            "type": "git"
          }
       }
    ],

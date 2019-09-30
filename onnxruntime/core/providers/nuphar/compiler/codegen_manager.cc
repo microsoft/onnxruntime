@@ -3,7 +3,6 @@
 
 #include "core/providers/nuphar/compiler/codegen_manager.h"
 
-#include "core/codegen/common/op_macro.h"
 #include "core/codegen/passes/op_ir_creator/all_ops.h"
 #include "core/codegen/passes/scheduler/all_schedules.h"
 #include "core/codegen/passes/weight_layout/transpose_2d.h"
@@ -27,6 +26,7 @@ namespace nuphar {
 #define ADD_OP_ITEM(name) \
   op_ir_registry->Register(std::move(std::make_unique<NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(name)>()));
 
+#define POOL_OP(OP) ADD_OP_ITEM(OP)
 #define REDUCE_V_OP(name) ADD_OP_ITEM(name)
 #define UNARY_OP(name) ADD_OP_ITEM(name)
 
@@ -35,6 +35,7 @@ static void RegisterAllNupharX86OpIRCreators(tvm_codegen::OpIRRegistry* op_ir_re
 }
 
 #undef ADD_OP_ITEM
+#undef POOL_OP
 #undef REDUCE_V_OP
 #undef UNARY_OP
 
@@ -117,6 +118,7 @@ static void RegisterAllNupharWeightLayouts(tvm_codegen::WeightLayoutRegistry* la
 #define ADD_OP_ITEM(name) \
   dispatcher->Register(#name, registry->Get(NUPHAR_TVM_X86_OP_IR_CREATOR_STRING(name)));
 
+#define POOL_OP(OP) ADD_OP_ITEM(OP)
 #define REDUCE_V_OP(name) ADD_OP_ITEM(name)
 #define UNARY_OP(name) ADD_OP_ITEM(name)
 
@@ -128,6 +130,7 @@ static void RegisterNupharX86Dispatcher(const std::shared_ptr<tvm_codegen::TVMIR
 }
 
 #undef ADD_OP_ITEM
+#undef POOL_OP
 #undef REDUCE_V_OP
 #undef UNARY_OP
 // END: Nuphar TVM X86 IR creator classes
