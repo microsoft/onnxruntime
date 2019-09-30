@@ -136,11 +136,11 @@ class InferenceSession:
             return self._sess.run(output_names, input_feed, run_options)
         except C.EPFail as err:
             if self._enable_fallback:
-                print("EP Error: {} using {}".format(err.msg, _providers))
-                print("Falling back to {} and retrying.".format(_fallback_providers))
-                self.set_providers(_fallback_providers)
+                print("EP Error: {} using {}".format(str(err), self._providers))
+                print("Falling back to {} and retrying.".format(self._fallback_providers))
+                self.set_providers(self._fallback_providers)
                 # Fallback only once.
-                self._sess.disable_fallback()
+                self.disable_fallback()
                 return self._sess.run(output_names, input_feed, run_options)
             else:
                 raise
