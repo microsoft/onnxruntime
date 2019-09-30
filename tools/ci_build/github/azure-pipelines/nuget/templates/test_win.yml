@@ -21,24 +21,28 @@ jobs:
     displayName: 'Download Pipeline Artifact'
     inputs:
       artifactName: 'drop-signed-nuget'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+      targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
 
+  - template: get-nuget-package-version-as-variable.yml
+    parameters:
+      packageFolder: '$(Build.BinariesDirectory)\nuget-artifact'
+    
   - script: |
-     @echo "Running build.py --update"
-     $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --config Debug --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe  --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --update --download_test_data --test_data_url=$(TestDataUrl) --test_data_checksum=$(TestDataChecksum)
+     @echo "Running download_test_data.py"
+     $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
 
     displayName: 'Download Test Data'
 
   - script: |
      @echo "Running Runtest.bat"
-     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact
+     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .Net Core'
     continueOnError: true
 
   - script: |
      @echo "Running Runtest.bat"
-     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x86
+     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x86 $(NuGetPackageVersionNumber)
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .Net Core x86'
     enabled: false
@@ -46,14 +50,14 @@ jobs:
 
   - script: |
      @echo "Running Runtest.bat"
-     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461
+     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x64 $(NuGetPackageVersionNumber)
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .NetFramework'
     continueOnError: true
 
   - script: |
      @echo "Running Runtest.bat"
-     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x86
+     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x86 $(NuGetPackageVersionNumber)
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .NetFramework x86'
     enabled: false
@@ -61,7 +65,7 @@ jobs:
 
   - script: |
      @echo "Running runtest.bat"
-     test\Microsoft.ML.OnnxRuntime.EndToEndTests.Capi\runtest.bat $(Build.BinariesDirectory)\nuget-artifact
+     test\Microsoft.ML.OnnxRuntime.EndToEndTests.Capi\runtest.bat $(Build.BinariesDirectory)\nuget-artifact x64 $(NuGetPackageVersionNumber)
      REM Need an ErrorLevel check, since the script uses Exit /B
      IF NOT %ERRORLEVEL% EQU 0 {
          EXIT 1
@@ -77,7 +81,7 @@ jobs:
 
   - script: |
      @echo "Running runtest.bat"
-     test\Microsoft.ML.OnnxRuntime.EndToEndTests.Capi\runtest.bat $(Build.BinariesDirectory)\nuget-artifact
+     test\Microsoft.ML.OnnxRuntime.EndToEndTests.Capi\runtest.bat $(Build.BinariesDirectory)\nuget-artifact x64 $(NuGetPackageVersionNumber)
      REM Need an ErrorLevel check, since the script uses Exit /B
      IF NOT %ERRORLEVEL% EQU 0 {
          EXIT 1
