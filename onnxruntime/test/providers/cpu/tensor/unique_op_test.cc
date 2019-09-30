@@ -58,6 +58,28 @@ TEST(Unique, Flatten_Unsorted) {
                        inverse_indices_dims, inverse_indices, counts_dims, counts);
 }
 
+// TEMPORARY. The ONNX test expected data for Y for unique_not_sorted_without_axis doesn't match the comments in that
+// test and is in sorted order. This unit test validates we have the correct behavior, pending fixing the onnx test
+// data.
+TEST(Unique, Flatten_Unsorted_MatchOnnxTest) {
+  const std::vector<int64_t> X_dims{6};
+  const std::vector<float> X{2.f, 1.f, 1.f, 3.f, 4.f, 3.f};
+  const int64_t* axis = nullptr;
+  bool sorted = false;
+  const std::vector<int64_t> Y_dims{4};
+  const std::vector<float> Y{2.f, 1.f, 3.f, 4.f};
+
+  const std::vector<int64_t> indices_dims{4};
+  const std::vector<int64_t> indices{0, 1, 3, 4};
+  const std::vector<int64_t> inverse_indices_dims{6};
+  const std::vector<int64_t> inverse_indices{0, 1, 1, 2, 3, 2};
+  const std::vector<int64_t> counts_dims{4};
+  const std::vector<int64_t> counts{1, 2, 2, 1};
+
+  RunUniqueTest<float>(X_dims, X, axis, sorted, Y_dims, Y, indices_dims, indices,
+                       inverse_indices_dims, inverse_indices, counts_dims, counts);
+}
+
 TEST(Unique, Flatten_Sorted) {
   const std::vector<int64_t> X_dims{2, 3};
   const std::vector<float> X{1.f, 4.f, 1.f, 2.f, 2.f, 0.f};
