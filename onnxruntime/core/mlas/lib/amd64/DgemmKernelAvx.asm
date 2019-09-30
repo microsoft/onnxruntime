@@ -6,12 +6,12 @@
 ;
 ; Module Name:
 ;
-;   SgemmKernelAvx.asm
+;   DgemmKernelAvx.asm
 ;
 ; Abstract:
 ;
-;   This module implements the kernels for the single precision matrix/matrix
-;   multiply operation (SGEMM).
+;   This module implements the kernels for the double precision matrix/matrix
+;   multiply operation (DGEMM).
 ;
 ;   This implementation uses AVX instructions.
 ;
@@ -19,7 +19,7 @@
 
         .xlist
 INCLUDE mlasi.inc
-INCLUDE SgemmKernelCommon.inc
+INCLUDE DgemmKernelCommon.inc
 INCLUDE FgemmKernelAvxCommon.inc
         .list
 
@@ -27,6 +27,6 @@ INCLUDE FgemmKernelAvxCommon.inc
 ; Generate the GEMM kernel.
 ;
 
-FgemmKernelAvxFunction Float
+FgemmKernelAvxFunction Double
 
         END
