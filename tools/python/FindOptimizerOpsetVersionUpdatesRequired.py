@@ -13,8 +13,12 @@ log = logging.getLogger()
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Find optimizers that involve operators which may need an update to the supported opset versions.')
-    root_arg = parser.add_argument('--ort-root', '-o', required=True, type=str, help='The root directory of the ONNX Runtime repository to search.')
+    parser = argparse.ArgumentParser(
+        description='Find optimizers that involve operators which may need an update to the supported opset versions.')
+
+    root_arg = parser.add_argument('--ort-root', '-o', required=True, type=str,
+                                   help='The root directory of the ONNX Runtime repository to search.')
+
     args = parser.parse_args()
 
     if not os.path.isdir(args.ort_root):
@@ -32,7 +36,6 @@ def get_call_args_from_file(filename, function_or_declaration):
         line_num = 0
         for line in f.readlines():
             for match in re.finditer(function_or_declaration, line):
-                # print("file:{} line:{} match:".format(file, line, match.group[0]))
                 # check we have both the opening and closing brackets for the function call/declaration.
                 # if we do we have all the arguments
                 start = line.find('(', match.end())
@@ -42,9 +45,9 @@ def get_call_args_from_file(filename, function_or_declaration):
                 if have_all_args:
                     results.append(line[start + 1: end])
                 else:
-                    log.error("Call/Declaration is split over multiple lines. Please check manually." \
-                              "File:{} Line:{} "
-                              "TODO: handle automatically.".format(filename, line_num))
+                    # TODO: handle automatically by merging lines
+                    log.error("Call/Declaration is split over multiple lines. Please check manually."
+                              "File:{} Line:{}".format(filename, line_num))
                     continue
 
             line_num += 1
@@ -60,7 +63,7 @@ def get_latest_op_versions(root_dir):
              os.path.join(root_dir, "onnxruntime/contrib_ops/cpu_contrib_kernels.cc")]
 
     for file in files:
-        # class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 11, Clip);
+        # e.g. class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 11, Clip);
         calls = get_call_args_from_file(file, 'ONNX_OPERATOR_KERNEL_CLASS_NAME')
         for call in calls:
             args = call.split(',')
@@ -69,7 +72,7 @@ def get_latest_op_versions(root_dir):
             op = args[3].strip()
             op_to_opset[domain + '.' + op] = opset
 
-        # class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 11, float, ArgMax);
+        # e.g. class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 11, float, ArgMax);
         calls = get_call_args_from_file(file, 'ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME')
         for call in calls:
             args = call.split(',')
@@ -91,9 +94,10 @@ def find_potential_issues(root_dir, op_to_opset):
     for file in files:
         calls = get_call_args_from_file(file, 'graph_utils::IsSupportedOptypeVersionAndDomain')
         for call in calls:
+            # Need to handle multiple comma separated version numbers, and the optional domain argument.
             # e.g. IsSupportedOptypeVersionAndDomain(node, "MaxPool", {1, 8, 10})
             #      IsSupportedOptypeVersionAndDomain(node, "FusedConv", {1}, kMSDomain)
-            args = call.split(',', 2)
+            args = call.split(',', 2)  # first 2 args are simple, remainder need custom processing
             op = args[1].strip()
             versions_and_domain_arg = args[2]
             v1 = versions_and_domain_arg.find('{')
@@ -117,7 +121,7 @@ def find_potential_issues(root_dir, op_to_opset):
                 latest = op_to_opset[op]
                 if int(latest) != int(last_version):
                     log.warning("Newer opset found for {}. Latest:{} Optimizer support ends at {}. File:{}"
-                              .format(op, latest, last_version, file))
+                                .format(op, latest, last_version, file))
             else:
                 log.error("Failed to find version information for {}. File:{}".format(op, file))
 
