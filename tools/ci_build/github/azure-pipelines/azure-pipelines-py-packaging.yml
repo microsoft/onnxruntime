@@ -28,7 +28,8 @@ jobs:
       displayName: 'Run build script'
       inputs:
         scriptPath: 'tools/ci_build/github/linux/run_dockerbuild.sh'
-        args: '-c Release -o manylinux2010 -d cpu -r $(Build.BinariesDirectory) -p $(python.version) -x "--use_openmp --enable_language_interop_ops --build_wheel"'
+        # args: '-c Release -o manylinux2010 -d cpu -r $(Build.BinariesDirectory) -p $(python.version) -x "--use_openmp --enable_language_interop_ops --build_wheel"'
+        args: '-c Release -d cpu -r $(Build.BinariesDirectory) -p $(python.version) -x "--use_openmp --enable_language_interop_ops --build_wheel"'
 
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
