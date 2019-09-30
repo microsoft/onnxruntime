@@ -1977,7 +1977,7 @@ main(
     for (int i = 0; i != 2; ++i) {
 
         printf("SGEMM tests.\n");
-        onnxruntime::make_unique<MlasFgemmTest<double>>()->ExecuteShort();
+        onnxruntime::make_unique<MlasFgemmTest<float>>()->ExecuteShort();
 #ifdef MLAS_HAS_DGEMM
         printf("DGEMM tests.\n");
         onnxruntime::make_unique<MlasFgemmTest<double>>()->ExecuteShort();

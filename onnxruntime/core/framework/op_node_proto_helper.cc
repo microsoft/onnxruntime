@@ -80,7 +80,7 @@ inline bool HasTyped<GraphProto>(const AttributeProto* attr) {
     if (!attr) {                                                                   \
       return Status(ONNXRUNTIME, FAIL, "No attribute with this name is defined."); \
     }                                                                              \
-    ORT_ENFORCE(values.size() == attr->list##_size());                             \
+    ORT_ENFORCE(values.size() == static_cast<size_t>(attr->list##_size()));        \
     for (int i = 0; i < attr->list##_size(); ++i) {                                \
       values[i] = static_cast<T>(attr->list(i));                                   \
     }                                                                              \
