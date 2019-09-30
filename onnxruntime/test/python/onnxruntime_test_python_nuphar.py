@@ -7,7 +7,7 @@ import onnx
 from onnx import numpy_helper
 import onnxruntime as onnxrt
 import os
-from rnn_benchmark import perf_test, generate_model
+from onnxruntime.nuphar.rnn_benchmark import perf_test
 import sys
 import subprocess
 import tarfile
@@ -33,8 +33,8 @@ class TestNuphar(unittest.TestCase):
         bidaf_model = os.path.join(bidaf_dir, 'bidaf.onnx')
         bidaf_scan_model = os.path.join(bidaf_dir, 'bidaf_scan.onnx')
         bidaf_int8_scan_only_model = os.path.join(bidaf_dir, 'bidaf_int8_scan_only.onnx')
-        subprocess.run([sys.executable, 'model_editor.py', '--input', bidaf_model, '--output', bidaf_scan_model, '--mode', 'to_scan'], check=True, cwd=cwd)
-        subprocess.run([sys.executable, 'model_quantizer.py', '--input', bidaf_scan_model, '--output', bidaf_int8_scan_only_model, '--only_for_scan'], check=True, cwd=cwd)
+        subprocess.run([sys.executable, '-m', 'onnxruntime.nuphar.model_editor', '--input', bidaf_model, '--output', bidaf_scan_model, '--mode', 'to_scan'], check=True, cwd=cwd)
+        subprocess.run([sys.executable, '-m', 'onnxruntime.nuphar.model_quantizer', '--input', bidaf_scan_model, '--output', bidaf_int8_scan_only_model, '--only_for_scan'], check=True, cwd=cwd)
 
         # run onnx_test_runner to verify results
         # use -M to disable memory pattern
@@ -70,9 +70,9 @@ class TestNuphar(unittest.TestCase):
         assert len(cache_dir_content) == 1
         cache_versioned_dir = os.path.join(cache_dir, cache_dir_content[0])
         if os.name == 'nt': # Windows
-            subprocess.run(['cmd', '/c', os.path.join(cwd, 'create_shared.cmd'), cache_versioned_dir], check=True, cwd=cwd)
+            subprocess.run(['cmd', '/c', os.path.join(cwd, 'onnxruntime', 'nuphar', 'create_shared.cmd'), cache_versioned_dir], check=True, cwd=cwd)
         elif os.name == 'posix': #Linux
-            subprocess.run(['bash', os.path.join(cwd, 'create_shared.sh'), '-c', cache_versioned_dir], check=True, cwd=cwd)
+            subprocess.run(['bash', os.path.join(cwd, 'onnxruntime', 'nuphar', 'create_shared.sh'), '-c', cache_versioned_dir], check=True, cwd=cwd)
         else:
             return # don't run the rest of test if AOT is not supported
 

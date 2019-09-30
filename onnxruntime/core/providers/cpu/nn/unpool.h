@@ -54,7 +54,6 @@ class MaxUnpool : public OpKernel {
   }
 
   ~MaxUnpool() override = default;
-  ;
 
   Status Compute(OpKernelContext* context) const override;
 

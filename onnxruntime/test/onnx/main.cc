@@ -327,7 +327,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     std::unordered_set<std::string> cuda_flaky_tests = {
         "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
-    std::unordered_set<std::string> nuphar_flaky_tests = {"logsoftmax_axis_0", "softmax_axis_0"};
+
 #if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
     //Minimize mem consumption
     LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&stat, &sf, enable_cuda, &cuda_flaky_tests, &env](ITestCase* l) {
@@ -355,17 +355,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         }
       }
     }
-    if (enable_nuphar) {
-      for (auto it = tests.begin(); it != tests.end();) {
-        auto iter = nuphar_flaky_tests.find((*it)->GetTestCaseName());
-        if (iter != nuphar_flaky_tests.end()) {
-          delete *it;
-          it = tests.erase(it);
-        } else {
-          ++it;
-        }
-      }
-    }
+
     TestEnv args(tests, stat, env, sf);
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
                          GetDefaultThreadPool(Env::Default()));
@@ -458,16 +448,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"sequence_model3", "SequenceConstruct not implemented yet"},
       {"sequence_model2", "SequenceConstruct not implemented yet"},
       {"sequence_model1", "Sequence* not implemented yet"},
-      {"unsqueeze_unsorted_axes", "Unsqueeze not implemented yet"},
-      {"unsqueeze_two_axes", "Unsqueeze not implemented yet"},
-      {"unsqueeze_three_axes", "Unsqueeze not implemented yet"},
-      {"unsqueeze_negative_axes", "Unsqueeze not implemented yet"},
-      {"unsqueeze_axis_3", "Unsqueeze not implemented yet"},
-      {"unsqueeze_axis_2", "Unsqueeze not implemented yet"},
-      {"unsqueeze_axis_1", "Unsqueeze not implemented yet"},
-      {"unsqueeze_axis_0", "Unsqueeze not implemented yet"},
-      {"squeeze_negative_axes", "Squeeze(11) not implemented yet"},
-      {"slice_negative_axes", "Slice(11) not implemented yet"},
       {"scatter_elements_with_negative_indices", "ScatterElements(11) not implemented yet"},
       {"reduce_sum_square_negative_axes_keepdims_random", "ReduceSumSquare(11) not implemented yet"},
       {"reduce_sum_square_negative_axes_keepdims_example", "ReduceSumSquare(11) not implemented yet"},
@@ -493,20 +473,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"onehot_with_axis", "OneHot(11) not implemented yet"},
       {"onehot_negative_indices", "OneHot(11) not implemented yet"},
       {"gather_elements_negative_indices", "GatherElements(11) not implemented yet"},
-      {"flatten_negative_axis4", "Flatten(11) not implemented yet"},
-      {"flatten_negative_axis3", "Flatten(11) not implemented yet"},
-      {"flatten_negative_axis2", "Flatten(11) not implemented yet"},
-      {"flatten_negative_axis1", "Flatten(11) not implemented yet"},
       {"reflect_pad", "Pad(11) not implemented yet"},
       {"edge_pad", "Pad(11) not implemented yet"},
       {"constant_pad", "Pad(11) not implemented yet"},
-      {"concat_3d_axis_negative_3", "Concat(11) not implemented yet"},
-      {"concat_3d_axis_negative_2", "Concat(11) not implemented yet"},
-      {"concat_3d_axis_negative_1", "Concat(11) not implemented yet"},
-      {"concat_2d_axis_negative_2", "Concat(11) not implemented yet"},
-      {"concat_2d_axis_negative_1", "Concat(11) not implemented yet"},
-      {"concat_1d_axis_negative_1", "Concat(11) not implemented yet"},
-      {"compress_negative_axis", "Compress(11) not implemented yet"},
       {"bitshift_right_uint8", "BitShift(11) not implemented yet"},
       {"bitshift_right_uint64", "BitShift(11) not implemented yet"},
       {"bitshift_right_uint32", "BitShift(11) not implemented yet"},
@@ -536,6 +505,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"argmin_negative_axis_keepdims_random", "not implemented yet for opset 11"});
   broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});
   broken_tests.insert({"hardmax_negative_axis", "not implemented yet for opset 11"});
+  broken_tests.insert({"flatten_negative_axis1", "not implemented yet for opset 11"});
+  broken_tests.insert({"flatten_negative_axis2", "not implemented yet for opset 11"});
+  broken_tests.insert({"flatten_negative_axis3", "not implemented yet for opset 11"});
+  broken_tests.insert({"flatten_negative_axis4", "not implemented yet for opset 11"});
+  broken_tests.insert({"squeeze_negative_axes", "not implemented yet for opset 11"});
+  broken_tests.insert({"unsqueeze_negative_axes", "not implemented yet for opset 11"});
 #endif
 
 #ifdef USE_MKLDNN
