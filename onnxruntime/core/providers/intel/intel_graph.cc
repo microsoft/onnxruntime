@@ -16,6 +16,9 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/logging/logging.h"
+#include "ngraph/ngraph.hpp" 
+#include "ngraph/pass/manager.hpp" 
+#include "ngraph/pass/opset1_upgrade.hpp" 
 
 #include "intel_graph.h"
 //#include "intel_custom_op.h"
@@ -355,7 +358,12 @@ void IntelGraph::CreateNGraphFunc(const ONNX_NAMESPACE::ModelProto& model_proto)
   }
 
   //IE wrapper for nGraph function
-  InferenceEngine::CNNNetwork network(ng_function);
+  //InferenceEngine::CNNNetwork network(ng_function);
+  ngraph::pass::Manager pass_manager; 
+  pass_manager.register_pass<ngraph::pass::Opset1Upgrade>(); 
+  pass_manager.run_passes(ng_function);
+  InferenceEngine::CNNNetwork network(ng_function); 
+
   intel_network_ = std::make_shared<InferenceEngine::CNNNetwork>(network);
   
 }  
