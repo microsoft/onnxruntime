@@ -528,5 +528,17 @@ TEST(SliceTest, OptionalAxesInputAloneMissing) {
   testv10.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(SliceTest, Slice2D_ReverseSubsetOfNegAxes_1) {
+  RunSliceTest<float>({2, 2},
+                      {1.0f, 2.0f, 3.0f, 4.0f},
+                      {-1},
+                      {std::numeric_limits<int64_t>::max()},
+                      {-1}, // axis = -1 only
+                      {-1},
+                      {2, 2},
+                      {2.0f, 1.0f, 4.0f, 3.0f},
+                      true);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

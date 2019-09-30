@@ -485,11 +485,19 @@ Status ScanImpl::TransposeOutput() {
   return status;
 }
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Scan,
+                                   9,
+                                   10,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                                   Scan<9>);
+
+// Opset 11 starts to support Neg Axis.
 ONNX_CPU_OPERATOR_KERNEL(Scan,
-                         9,
+                         11,
                          KernelDefBuilder()
                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                              .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                          Scan<9>);
-
 }  // namespace onnxruntime

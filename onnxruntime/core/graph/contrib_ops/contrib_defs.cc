@@ -412,27 +412,6 @@ value at X[t][n] >= seqLengths[n].
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.");
 
-  static const char* ATen_ver1_doc = R"DOC(
-Experimental allowing ATen operations to be accessed directly from Caffe2
-to allow for quick prototyping when ONNX is missing standard versions of
-and op)DOC";
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)
-      .SinceVersion(1)
-      .AllowUncheckedAttributes()
-      .SetDoc(ATen_ver1_doc)
-      .Input(0, "input", "Arbitrary input", "T", OpSchema::Variadic)
-      .Output(0, "output", "Arbitrary output", "T", OpSchema::Variadic)
-      .TypeConstraint(
-          "T",
-          {"tensor(bool)",
-           "tensor(int32)",
-           "tensor(int64)",
-           "tensor(float16)",
-           "tensor(float)",
-           "tensor(double)"},
-          "Constrain output types to bool, int32, int64, float16, float, double tensors.");
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(GivenTensorFill)
       .SinceVersion(10)
       .Deprecate()
@@ -514,23 +493,6 @@ and op)DOC";
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.");
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)
-      .SinceVersion(10)
-      .Deprecate()
-      .AllowUncheckedAttributes()
-      .SetDoc(ATen_ver1_doc)
-      .Input(0, "input", "Arbitrary input", "T", OpSchema::Variadic)
-      .Output(0, "output", "Arbitrary output", "T", OpSchema::Variadic)
-      .TypeConstraint(
-          "T",
-          {"tensor(bool)",
-           "tensor(int32)",
-           "tensor(int64)",
-           "tensor(float16)",
-           "tensor(float)",
-           "tensor(double)"},
-          "Constrain output types to bool, int32, int64, float16, float, double tensors.");
 
   ONNX_OPERATOR_SCHEMA(MeanVarianceNormalization)
       .SinceVersion(1)

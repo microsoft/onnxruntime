@@ -98,7 +98,7 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
   const auto* B = context->Input<Tensor>(2);
   const auto* Sum = context->Input<Tensor>(3);
 
-  ORT_RETURN_IF_ERROR(ConvBase::ValidateInputShape(X, W));
+  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
 
   const auto& X_shape = X->Shape();
   const auto& W_shape = W->Shape();
@@ -108,20 +108,20 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
   ORT_ENFORCE((static_cast<size_t>(X_shape[1]) < nchwc_block_size) || ((X_shape[1] % nchwc_block_size) == 0));
 
   std::vector<int64_t> kernel_shape;
-  ORT_RETURN_IF_ERROR(ConvBase::ComputeKernelShape(W_shape, kernel_shape));
+  ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W_shape, kernel_shape));
   if (kernel_shape.size() != 2) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unsupported convolution size.");
   }
 
-  std::vector<int64_t> pads(ConvBase::pads_);
+  std::vector<int64_t> pads(conv_attrs_.pads);
   if (pads.empty()) {
     pads.resize(kernel_shape.size() * 2, 0);
   }
-  std::vector<int64_t> dilations(ConvBase::dilations_);
+  std::vector<int64_t> dilations(conv_attrs_.dilations);
   if (dilations.empty()) {
     dilations.resize(kernel_shape.size(), 1);
   }
-  std::vector<int64_t> strides(ConvBase::strides_);
+  std::vector<int64_t> strides(conv_attrs_.strides);
   if (strides.empty()) {
     strides.resize(kernel_shape.size(), 1);
   }
@@ -129,7 +129,7 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
   std::vector<int64_t> Y_dims;
   Y_dims.insert(Y_dims.begin(), {X_shape[0], W_shape[0]});
   TensorShape input_shape = X->Shape().Slice(2);
-  ORT_RETURN_IF_ERROR(ConvBase::InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
+  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
   auto* Y = context->Output(0, Y_dims);
   auto* y_data = Y->template MutableData<float>();
 
@@ -151,7 +151,7 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
                 pads.data(),
                 strides.data(),
                 Y_dims.data(),
-                static_cast<size_t>(ConvBase::group_),
+                static_cast<size_t>(conv_attrs_.group),
                 X->template Data<float>(),
                 W->template Data<float>(),
                 B != nullptr ? B->template Data<float>() : nullptr,

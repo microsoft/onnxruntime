@@ -333,6 +333,14 @@ void addGlobalMethods(py::module& m) {
       "get_device", []() -> std::string { return BACKEND_DEVICE; },
       "Return the device used to compute the prediction (CPU, MKL, ...)");
   m.def(
+      "set_default_logger_severity", [](int severity) {
+        ORT_ENFORCE(severity >= 0 && severity <= 4,
+                    "Invalid logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
+        logging::LoggingManager* default_logging_manager = SessionObjectInitializer::Get();
+        default_logging_manager->SetDefaultLoggerSeverity(static_cast<logging::Severity>(severity));
+      },
+      "Sets the default logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
+  m.def(
       "get_all_providers", []() -> const std::vector<std::string>& { return GetAllProviders(); },
       "Return list of Execution Providers that this version of Onnxruntime can support.");
   m.def(
