@@ -129,7 +129,7 @@ else:
   libs.extend(['tvm.dll'])
 
 if is_manylinux2010:
-    data = []
+    data = ['onnxruntime/capi/libonnxruntime_pywrapper.so']
     ext_modules = [
         Extension(
             'onnxruntime.capi.onnxruntime_pybind11_state',
