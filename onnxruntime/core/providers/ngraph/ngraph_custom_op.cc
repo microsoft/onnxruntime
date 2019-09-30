@@ -200,9 +200,9 @@ Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* cont
       ng_inputs.emplace_back(ng_backend_->create_tensor(ng_param->get_output_element_type(0), ng_param->get_output_shape(0), input_data));
     }
   } catch (const std::exception& exp) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Exception while copying input data to nGraph: " + std::string(exp.what()));
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, name_ + ": Exception while copying input data to nGraph: " + std::string(exp.what()));
   } catch (...) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Unknown exception while copying input data to nGraph");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, name_ + ": Unknown exception while copying input data to nGraph");
   }
 
   // Initialize output tensors
@@ -220,20 +220,20 @@ Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* cont
       ng_outputs.emplace_back(ng_backend_->create_tensor(dtype, shape, output_data));
     }
   } catch (const std::exception& exp) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Exception while creating nGraph output Tensor: " + std::string(exp.what()));
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, name_ + ": Exception while creating nGraph output Tensor: " + std::string(exp.what()));
   } catch (...) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Unknown exception while creating nGraph output Tensor");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, name_ + ": Unknown exception while creating nGraph output Tensor");
   }
 
   // Run the graph through nGraph.
   try {
     std::lock_guard<std::mutex> lock(compute_lock_);
     if (!ng_curr_exe_->call(ng_outputs, ng_inputs))
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Error while executing nGraph computation");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, name_ + ": Error while executing nGraph computation");
   } catch (const std::exception& exp) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Exception while executing nGraph computation: " + std::string(exp.what()));
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, name_ + ": Exception while executing nGraph computation: " + std::string(exp.what()));
   } catch (...) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, name_ + ": Unknown exception while executing nGraph computation");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, name_ + ": Unknown exception while executing nGraph computation");
   }
 
   return Status::OK();
