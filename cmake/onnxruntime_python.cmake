@@ -154,6 +154,7 @@ else()
 endif()
 
 add_custom_command(
+  TARGET onnxruntime_pywrapper POST_BUILD
   TARGET onnxruntime_pybind11_state POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/backend
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi
@@ -176,6 +177,9 @@ add_custom_command(
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/backend/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_srcs}
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      $<TARGET_FILE:onnxruntime_pywrapper>
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   COMMAND ${CMAKE_COMMAND} -E copy
       $<TARGET_FILE:onnxruntime_pybind11_state>
