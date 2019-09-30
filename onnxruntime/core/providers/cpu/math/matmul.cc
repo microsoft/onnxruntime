@@ -23,6 +23,7 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
     MatMul<double>);
 
+// opset 9 supports more types
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     MatMul,
     9,

@@ -12,6 +12,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Gemm<float>);
 
+// input 'C' was made optional
 ONNX_CPU_OPERATOR_KERNEL(
     Gemm,
     9,

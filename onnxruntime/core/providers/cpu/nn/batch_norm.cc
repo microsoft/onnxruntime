@@ -32,6 +32,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("var", DataTypeImpl::GetTensorType<float>()),
     BatchNorm<float>);
 
+// 'spatial' attribute was removed.
 ONNX_CPU_OPERATOR_KERNEL(
     BatchNormalization,
     9,
