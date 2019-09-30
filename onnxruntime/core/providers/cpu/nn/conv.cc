@@ -278,9 +278,15 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    Conv,
+    1, 10,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Conv<float>);
+
 ONNX_CPU_OPERATOR_KERNEL(
     Conv,
-    1,
+    11,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Conv<float>);
 

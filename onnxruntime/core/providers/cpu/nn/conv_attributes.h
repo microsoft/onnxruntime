@@ -68,7 +68,7 @@ struct ConvAttributes {
     kernel_shape_specified = info.GetAttrs<int64_t>("kernel_shape", kernel_shape_).IsOK();
 
     status = info.GetAttrs<int64_t>("strides", strides);
-    if (!status.IsOK()) {
+    if (!status.IsOK() || strides.empty()) {
       strides.resize(kernel_shape_.size(), 1);
     }
 
@@ -78,7 +78,7 @@ struct ConvAttributes {
     }
 
     status = info.GetAttrs<int64_t>("dilations", dilations);
-    if (!status.IsOK()) {
+    if (!status.IsOK() || dilations.empty()) {
       dilations.resize(kernel_shape_.size(), 1);
     }
 
@@ -89,6 +89,7 @@ struct ConvAttributes {
 
 #if false
     // TODO: Re-enable when attributes values are guaranteed to be filled.
+    // Make sure empty strides or dilations are defaulted to 1 if necessary
     std::string auto_pad_str;
     ORT_ENFORCE(info.GetAttr<std::string>("auto_pad", &auto_pad_str).IsOK());
     auto_pad = StringToAutoPadType(auto_pad_str);
