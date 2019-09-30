@@ -38,7 +38,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     auto* node = graph.GetNode(index);
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*node, "Conv", {1}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*node, "Conv", {1, 11}) ||
         !graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders()) ||
         node->GetOutputEdgesCount() != 1) {
       continue;
@@ -84,7 +84,6 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     if (!graph.IsNodeOutputsInGraphOutputs(next_node)) {
-
       HandleActivationNodeEdges(graph, next_node, fused_conv);
 
       // Replace the input of the node following activation node

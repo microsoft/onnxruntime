@@ -49,16 +49,6 @@ struct MLAS_SGEMM_WORK_BLOCK {
     } Segments[MLAS_MAXIMUM_THREAD_COUNT];
 };
 
-#if defined(MLAS_TARGET_AMD64_IX86)
-
-//
-// Stores a vector to build a conditional load/store mask for vmaskmovps.
-//
-
-MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveAvx[8], 8 * sizeof(float)) = { 0, 1, 2, 3, 4, 5, 6, 7 };
-
-#endif
-
 void
 MlasSgemmMultiplyBeta(
     float* C,
@@ -1230,7 +1220,7 @@ Return Value:
 
 void
 MLASCALL
-MlasSgemm(
+MlasGemm(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t M,

@@ -8,8 +8,8 @@ import json
 import numpy as np
 import onnx
 from onnx import helper, numpy_helper
-from node_factory import NodeFactory, ensure_opset
-from symbolic_shape_infer import SymbolicShapeInference
+from .node_factory import NodeFactory, ensure_opset
+from .symbolic_shape_infer import SymbolicShapeInference
 
 class QuantizeConfig:
     def __init__(self, signed, reserved_bits, type_bits):

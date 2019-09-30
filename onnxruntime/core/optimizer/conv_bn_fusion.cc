@@ -141,7 +141,7 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
 }
 
 bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11}) ||
       node.GetOutputEdgesCount() != 1) {
     return false;
   }
