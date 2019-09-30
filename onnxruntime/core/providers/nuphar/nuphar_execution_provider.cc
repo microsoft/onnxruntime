@@ -193,6 +193,23 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     if (node.OpType() == "Tile" && !graph_viewer.IsConstantInitializer(inputs[1]->Name(), true))
       return false;  // do not support tile that has dynamic repeats
 
+    if (node.OpType() == "MaxPool") {
+      // TODO: enable support for Indices
+      if (node.OutputDefs().size() > 1) {
+        return false;
+      }
+      // TODO: enable support for non-default dilations
+      const onnxruntime::NodeAttributes& attrs = node.GetAttributes();
+      auto it = attrs.find("dilations");
+      if (it != attrs.end()) {
+        for (int i = 0; i < it->second.ints_size(); i++) {
+          if (it->second.ints(i) > 1) {
+            return false;
+          }
+        }
+      }
+    }
+
     if (node.OpType() == "Slice") {
       auto num_inputs = inputs.size();
       ORT_ENFORCE(num_inputs > 0);

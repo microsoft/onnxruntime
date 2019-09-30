@@ -5,7 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/cpu/nn/conv_base.h"
+#include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/providers/cpu/nn/pool.h"
 #include "contrib_ops/cpu/fused_activation.h"
 
@@ -35,15 +35,17 @@ class ReorderOutput : public OpKernel {
   int64_t channels_;
 };
 
-class NchwcConv : public OpKernel, public ConvBase {
+class NchwcConv : public OpKernel {
  public:
-  NchwcConv(const OpKernelInfo& info) : OpKernel(info), ConvBase(info) {
+  NchwcConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
     ORT_ENFORCE(GetFusedActivationAttr(info, activation_).IsOK());
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
+  ConvAttributes conv_attrs_;
+
   MLAS_ACTIVATION activation_;
 };
 

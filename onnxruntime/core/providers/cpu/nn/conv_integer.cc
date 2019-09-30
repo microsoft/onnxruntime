@@ -41,20 +41,20 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
-  ORT_RETURN_IF_ERROR(ValidateInputShape(X, W));
+  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
 
   std::vector<int64_t> kernel_shape;
-  ORT_RETURN_IF_ERROR(ComputeKernelShape(W->Shape(), kernel_shape));
+  ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
 
-  std::vector<int64_t> pads(pads_);
+  std::vector<int64_t> pads(conv_attrs_.pads);
   if (pads.empty()) {
     pads.resize(kernel_shape.size() * 2, 0);
   }
-  std::vector<int64_t> dilations(dilations_);
+  std::vector<int64_t> dilations(conv_attrs_.dilations);
   if (dilations.empty()) {
     dilations.resize(kernel_shape.size(), 1);
   }
-  std::vector<int64_t> strides(strides_);
+  std::vector<int64_t> strides(conv_attrs_.strides);
   if (strides.empty()) {
     strides.resize(kernel_shape.size(), 1);
   }
@@ -62,7 +62,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   std::vector<int64_t> Y_dims;
   Y_dims.insert(Y_dims.begin(), {N, M});
   TensorShape input_shape = X->Shape().Slice(2);
-  ORT_RETURN_IF_ERROR(InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
+  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   TensorShape output_shape = Y->Shape().Slice(2);
 
@@ -75,10 +75,10 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   const int64_t input_image_size = input_shape.Size();
   const int64_t output_image_size = output_shape.Size();
   const int64_t kernel_size = TensorShape(kernel_shape).Size();
-  const int64_t X_offset = C / group_ * input_image_size;
-  const int64_t Y_offset = Y->Shape().Size() / Y->Shape()[0] / group_;
-  const int64_t W_offset = W->Shape().Size() / group_;
-  const int64_t kernel_dim = C / group_ * kernel_size;
+  const int64_t X_offset = C / conv_attrs_.group * input_image_size;
+  const int64_t Y_offset = Y->Shape().Size() / Y->Shape()[0] / conv_attrs_.group;
+  const int64_t W_offset = W->Shape().Size() / conv_attrs_.group;
+  const int64_t kernel_dim = C / conv_attrs_.group * kernel_size;
   const int64_t col_buffer_size = kernel_dim * output_image_size;
 
   auto col_data = alloc->Alloc(sizeof(uint8_t) * col_buffer_size);
@@ -91,7 +91,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
                           output_shape.GetDims().end());
 
   for (int image_id = 0; image_id < N; ++image_id) {
-    for (int group_id = 0; group_id < group_; ++group_id) {
+    for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
       math::Im2colNd<uint8_t, CPUMathUtil, StorageOrder::NCHW>()(
           Xdata + group_id * X_offset,
           image_shape.GetDims().data(),
@@ -108,7 +108,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
           false,
           input_offset);
 
-      QGemmu8u8_s32(static_cast<int>(M / group_),
+      QGemmu8u8_s32(static_cast<int>(M / conv_attrs_.group),
                     static_cast<int>(output_image_size),
                     static_cast<int>(kernel_dim),
                     W->template Data<uint8_t>() + group_id * W_offset,
@@ -122,8 +122,8 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
                     nullptr);
     }
 
-    Xdata += X_offset * group_;
-    Ydata += Y_offset * group_;
+    Xdata += X_offset * conv_attrs_.group;
+    Ydata += Y_offset * conv_attrs_.group;
   }
 
   return Status::OK();
