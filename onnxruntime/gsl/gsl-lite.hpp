@@ -830,13 +830,13 @@ gsl_DISABLE_MSVC_WARNINGS(26410 26415 26418 26472 26439 26440 26473 26481 26482 
 
 #if gsl_CONFIG(CONTRACT_VIOLATION_THROWS_V)
 
-  gsl_api gsl_constexpr14 inline void fail_fast_assert(bool cond, char const* const message) {
+  gsl_api inline void fail_fast_assert(bool cond, char const* const message) {
 #ifdef __CUDA_ARCH__
     assert(cond);
-#else  // __CUDA_ARCH__
+#else   // __CUDA_ARCH__
     if (!cond)
       throw fail_fast(message);
-#endif   // __CUDA_ARCH__
+#endif  // __CUDA_ARCH__
   }
 
 #elif gsl_CONFIG(CONTRACT_VIOLATION_CALLS_HANDLER_V)
@@ -844,18 +844,18 @@ gsl_DISABLE_MSVC_WARNINGS(26410 26415 26418 26472 26439 26440 26473 26481 26482 
   // Should be defined by user
   gsl_api void fail_fast_assert_handler(char const* const expression, char const* const message, char const* const file, int line);
 
-  gsl_api gsl_constexpr14 inline void fail_fast_assert(bool cond, char const* const expression, char const* const message, char const* const file, int line) {
+  gsl_api inline void fail_fast_assert(bool cond, char const* const expression, char const* const message, char const* const file, int line) {
 #ifdef __CUDA_ARCH__
     assert(cond);
-#else  // __CUDA_ARCH__
+#else   // __CUDA_ARCH__
     if (!cond)
       fail_fast_assert_handler(expression, message, file, line);
-#endif   // __CUDA_ARCH__
+#endif  // __CUDA_ARCH__
   }
 
 #else
 
-  gsl_api gsl_constexpr14 inline void fail_fast_assert(bool cond) gsl_noexcept {
+  gsl_api inline void fail_fast_assert(bool cond) gsl_noexcept {
 #ifdef __CUDA_ARCH__
     assert(cond);
 #else   // __CUDA_ARCH__
@@ -2610,14 +2610,14 @@ gsl_api inline std::basic_string< typename std::remove_const<T>::type > to_strin
 #endif  // gsl_HAVE( WCHAR )
 #endif  // to_string()
 
+// Disable stream support since Apple std lib is broken
+#if 0  // Apple stream
   //
   // Stream output for string_span types
   //
 
   namespace detail {
 
-// <iosfwd> does not define std::streamsize
-// so we fix it in our copy
 #ifdef __APPLE__
   using streamoff = long long;
   using streamsize = long long;
@@ -2685,6 +2685,7 @@ gsl_api inline std::basic_string< typename std::remove_const<T>::type > to_strin
   }
 
 #endif  // gsl_HAVE( WCHAR )
+#endif  // Apple stream
 
   //
   // ensure_sentinel()

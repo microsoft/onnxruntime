@@ -922,20 +922,20 @@ void BroadCastFMod(const Tensor& X, const Tensor& Y, OpKernelContext* context) {
       mod_broadcaster, mod_broadcast_output,
       [](gsl::span<T> output, const T& X, gsl::span<const T> Y) {
         std::transform(Y.cbegin(), Y.cend(), output.begin(),
-                       [X](auto y) {
+                       [X](T y) {
                          return static_cast<T>(std::fmod(X, y));
                        });
       },
       [](gsl::span<T> output, gsl::span<const T> X, const T& Y) {
         std::transform(X.cbegin(), X.cend(), output.begin(),
-                       [Y](auto x) {
+                       [Y](T x) {
                          return static_cast<T>(std::fmod(x, Y));
                        });
       },
       [](gsl::span<T> output, gsl::span<const T> X, gsl::span<const T> Y) {
         std::transform(
             X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
-            [](auto x, auto y) {
+            [](T x, T y) {
               return static_cast<T>(std::fmod(x, y));
             });
       });
@@ -965,20 +965,20 @@ void BroadCastMod(const Tensor& X, const Tensor& Y, OpKernelContext* context) {
       mod_broadcaster, mod_broadcast_output,
       [](gsl::span<T> output, const T& X, gsl::span<const T> Y) {
         std::transform(Y.cbegin(), Y.cend(), output.begin(),
-                       [X](auto y) {
+                       [X](T y) {
                          return Modulus(X, y);
                        });
       },
       [](gsl::span<T> output, gsl::span<const T> X, const T& Y) {
         std::transform(X.cbegin(), X.cend(), output.begin(),
-                       [Y](auto x) {
+                       [Y](T x) {
                          return Modulus(x, Y);
                        });
       },
       [](gsl::span<T> output, gsl::span<const T> X, gsl::span<const T> Y) {
         std::transform(
             X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
-            [](auto x, auto y) {
+            [](T x, T y) {
               return Modulus(x, y);
             });
       });

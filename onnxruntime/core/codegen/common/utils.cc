@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/codegen/common/utils.h"
+#include "core/common/make_unique.h"
 
 #include <stdlib.h>
 #include <string.h>

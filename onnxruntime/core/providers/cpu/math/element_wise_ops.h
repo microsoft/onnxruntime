@@ -321,8 +321,8 @@ struct BroadcastIterator {
   }
 
   void Reserve(int64_t max_dims) {
-    deltas_.reserve(max_dims);
-    counts_.reserve(max_dims);
+    deltas_.reserve(static_cast<size_t>(max_dims));
+    counts_.reserve(static_cast<size_t>(max_dims));
   }
 
   void Init(int64_t axis, int64_t largest) {

@@ -30,7 +30,7 @@ Abstract:
 #include "core/platform/threadpool.h"
 #endif
 
-#include <core/common/make_unique.h>
+#include "core/common/make_unique.h"
 
 #if !defined(_countof)
 #define _countof(_Array) (sizeof(_Array) / sizeof(_Array[0]))
@@ -1980,7 +1980,7 @@ main(
         onnxruntime::make_unique<MlasFgemmTest<double>>()->ExecuteShort();
 #ifdef MLAS_HAS_DGEMM
         printf("DGEMM tests.\n");
-        std::make_unique<MlasFgemmTest<double>>()->ExecuteShort();
+        onnxruntime::make_unique<MlasFgemmTest<double>>()->ExecuteShort();
 #endif
 
 #ifdef MLAS_HAS_QGEMM_U8X8
@@ -1998,7 +1998,7 @@ main(
         printf("Pool2D tests.\n");
         onnxruntime::make_unique<MlasPool2DTest>()->ExecuteShort();
         if (MlasNchwcGetBlockSize() > 1) {
-            std::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
+          onnxruntime::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
         }
 
         printf("Pool3D tests.\n");

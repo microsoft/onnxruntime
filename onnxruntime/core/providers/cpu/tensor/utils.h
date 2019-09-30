@@ -272,7 +272,7 @@ inline void CopyCpuTensor(const Tensor* src, Tensor* tgt) {
       for (int64_t i = 0; i < src->Shape().Size(); ++i)
         static_cast<std::string*>(target)[i] = static_cast<const std::string*>(source)[i];
     } else {
-      memcpy(target, source, src->Shape().Size() * src->DataType()->Size());
+      memcpy(target, source, static_cast<size_t>(src->Shape().Size() * src->DataType()->Size()));
     }
   }
 }
