@@ -133,7 +133,7 @@ if is_manylinux2010:
     ext_modules = [
         Extension(
             'onnxruntime.capi.onnxruntime_pybind11_state',
-            ['onnxruntime/capi/onnxruntime_pybind11_state_manylinux2010.so'],
+            ['onnxruntime/capi/onnxruntime_pybind11_state_manylinux2010.so', 'onnxruntime/capi/libonnxruntime_pywrapper.so'],
         ),
     ]
 else:
