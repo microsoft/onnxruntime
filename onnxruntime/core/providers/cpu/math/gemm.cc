@@ -8,7 +8,13 @@ namespace onnxruntime {
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Gemm,
     7,
+    8,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Gemm<float>);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Gemm,
     9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Gemm<float>);
-}
+}  // namespace onnxruntime
