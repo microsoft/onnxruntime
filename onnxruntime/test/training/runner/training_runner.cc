@@ -216,7 +216,7 @@ Status TrainingRunner::TrainingLoop() {
                                            fetch_names,
                                            &fetches));
 
-          if (weight_update_step_count % params_.display_loss_steps == 0) {
+          if (!params_.is_perf_test && weight_update_step_count % params_.display_loss_steps == 0) {
             if (params_.error_function) {
               params_.error_function(feed_names, feeds, fetch_names, fetches);
             }

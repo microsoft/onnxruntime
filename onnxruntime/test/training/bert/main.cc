@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "cxxopts.hpp"
+#include "core/util/math.h"
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
@@ -44,7 +45,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
         cxxopts::value<size_t>()->default_value("100"))
       ("display_loss_steps", "How often to dump loss into tensorboard", cxxopts::value<size_t>()->default_value("10"))
       ("gradient_accumulation_steps", "The number of gradient accumulation steps before performing a backward/update pass.",
-        cxxopts::value<int>()->default_value("1")) 
+        cxxopts::value<int>()->default_value("1"))
       ("save_checkpoint_steps", "How often to save the model checkpoint.", cxxopts::value<int>()->default_value("1000"))
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
@@ -157,6 +158,16 @@ float mlm_loss = 0.0f;
 float nsp_loss = 0.0f;
 std::vector<std::string> summary_loss;
 
+float GetLossValue(const Tensor& loss_tensor) {
+  float loss = 0;
+  if (DataTypeImpl::GetType<float>() == loss_tensor.DataType()) {
+    loss = *(loss_tensor.template Data<float>());
+  } else if (DataTypeImpl::GetType<MLFloat16>() == loss_tensor.DataType()) {
+    loss = math::halfToFloat(loss_tensor.template Data<MLFloat16>()->val);
+  }
+  return loss;
+}
+
 void setup_training_params(TrainingRunner::Parameters& params) {
   params.model_path = params.model_name + ".onnx";
   params.model_with_loss_func_path = params.model_name + "_with_cost.onnx";
@@ -227,15 +238,10 @@ void setup_training_params(TrainingRunner::Parameters& params) {
     const Tensor& nsp_loss_t = fetches[2].Get<Tensor>();
     const Tensor& summary_loss_t = fetches[3].Get<Tensor>();
 
-    const float* total_loss_val = total_loss_t.template Data<float>();
-    const float* mlm_loss_val = mlm_loss_t.template Data<float>();
-    const float* nsp_loss_val = nsp_loss_t.template Data<float>();
-    const std::string* summary_loss_val = summary_loss_t.template Data<std::string>();
-
-    total_loss += *total_loss_val;
-    mlm_loss += *mlm_loss_val;
-    nsp_loss += *nsp_loss_val;
-    summary_loss.push_back(*summary_loss_val);
+    total_loss += GetLossValue(total_loss_t);
+    mlm_loss += GetLossValue(mlm_loss_t);
+    nsp_loss += GetLossValue(nsp_loss_t);
+    summary_loss.push_back(*(summary_loss_t.template Data<std::string>()));
 
     if (params.dump_fetches) {
       ofstream ofs("fetches_dump.txt");
@@ -252,7 +258,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
 
   params.post_evaluation_callback = [tensorboard](size_t num_samples, size_t step, const std::string tag) {
     if (tensorboard != nullptr) {
-      for (const std::string& summary : summary_loss){
+      for (const std::string& summary : summary_loss) {
         tensorboard->AddSummary(summary, step, tag);
       }
     }
