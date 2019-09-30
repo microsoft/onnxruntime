@@ -6,19 +6,19 @@ Licensed under the MIT License.
 
 Module Name:
 
-    SgemmKernelAvx.s
+    DgemmKernelAvx.s
 
 Abstract:
 
-    This module implements the kernels for the single precision matrix/matrix
-    multiply operation (SGEMM).
+    This module implements the kernels for the double precision matrix/matrix
+    multiply operation (DGEMM).
 
     This implementation uses AVX instructions.
 
 --*/
 
 #include "asmmacro.h"
-#include "SgemmKernelCommon.h"
+#include "DgemmKernelCommon.h"
 #include "FgemmKernelAvxCommon.h"
 
         .intel_syntax noprefix
@@ -29,6 +29,6 @@ Abstract:
 // Generate the GEMM kernel.
 //
 
-FgemmKernelAvxFunction C_UNDERSCORE(MlasGemmFloatKernelAvx)
+FgemmKernelAvxFunction C_UNDERSCORE(MlasGemmDoubleKernelAvx)
 
         .end
