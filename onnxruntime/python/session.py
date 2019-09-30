@@ -48,7 +48,7 @@ class InferenceSession:
         self._providers = self._sess.get_providers()
 
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
-        if 'TensorrtExecutionProvider' in self._sess.get_available_providers():
+        if 'TensorrtExecutionProvider' in C.get_available_providers():
           self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         else:
           self._fallback_providers = ['CPUExecutionProvider']
@@ -136,8 +136,8 @@ class InferenceSession:
             return self._sess.run(output_names, input_feed, run_options)
         except C.EPFail as err:
             if self._enable_fallback:
-                print "EP Error: {} using {}".format(err.msg, _providers)
-                print "Falling back to {} and retrying.".format(_fallback_providers)
+                print("EP Error: {} using {}".format(err.msg, _providers))
+                print("Falling back to {} and retrying.".format(_fallback_providers))
                 self.set_providers(_fallback_providers)
                 # Fallback only once.
                 self._sess.disable_fallback()
