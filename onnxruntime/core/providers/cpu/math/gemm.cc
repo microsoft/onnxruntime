@@ -12,7 +12,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Gemm<float>);
 
-// input 'C' was made optional
+// opset 9 added support for additional types (int32, uint32, int64, uint64), however we haven't enabled those yet.
 ONNX_CPU_OPERATOR_KERNEL(
     Gemm,
     9,
