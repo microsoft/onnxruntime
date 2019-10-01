@@ -106,14 +106,14 @@ class PlannerImpl {
               const std::vector<const NodeArg*>& outer_scope_node_args, const ExecutionProviders& providers,
               const KernelRegistryManager& kernel_registry, const OrtValueNameIdxMap& ort_value_name_idx_map,
               const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
-      : context_{context},
-        plan_{plan},
-        parent_node_{parent_node},
-        graph_viewer_{graph_viewer},
-        outer_scope_node_args_{outer_scope_node_args},
-        execution_providers_{providers},
-        kernel_registry_{kernel_registry},
-        ort_value_name_idx_map_{ort_value_name_idx_map} {}
+      : context_(context),
+        plan_(plan),
+        parent_node_(parent_node),
+        graph_viewer_(graph_viewer),
+        outer_scope_node_args_(outer_scope_node_args),
+        execution_providers_(providers),
+        kernel_registry_(kernel_registry),
+        ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
   Status CreatePlan();
 
