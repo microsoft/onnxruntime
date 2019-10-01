@@ -236,13 +236,14 @@ if (onnxruntime_USE_MKLML)
 endif()
 
 if (onnxruntime_USE_NUPHAR)
-  file(GLOB onnxruntime_python_nuphar_test_srcs CONFIGURE_DEPENDS
+  file(GLOB onnxruntime_python_nuphar_python_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/nuphar/scripts/*.*"
   )
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/nuphar
     COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_nuphar_test_srcs}
-      $<TARGET_FILE_DIR:${test_data_target}>
+      ${onnxruntime_python_nuphar_python_srcs}
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/nuphar/
   )
 endif()

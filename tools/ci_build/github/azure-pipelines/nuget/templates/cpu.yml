@@ -127,7 +127,6 @@ jobs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
-
 - template: test_all_os.yml
 
 - job: Publish_NuGet_Package_And_Report
@@ -148,11 +147,15 @@ jobs:
   steps:
 
   - template: ../../templates/set-version-number-variables-step.yml
+
   - template: upload-binary-sizes-from-nuget-package.yml
     parameters:
       downloadPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
       gitCommitHash: $(OnnxRuntimeGitCommitHashShort)  
 
+  - template: get-nuget-package-version-as-variable.yml
+    parameters:
+      packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
 
   - task: PowerShell@2
     displayName: 'Get Current Date'
@@ -166,7 +169,7 @@ jobs:
     displayName: 'Copy Signed NuGet Package to Blob Store'
     condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
     inputs:
-      sourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
+      sourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(NuGetPackageVersionNumber).nupkg'
       azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
       destination: azureBlob
       storage: ortpackages
@@ -178,5 +181,5 @@ jobs:
     condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
     inputs:
       command: 'push'
-      searchPatternPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
+      searchPatternPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(NuGetPackageVersionNumber).nupkg'
       feedPublish: 'OnnxRuntime'

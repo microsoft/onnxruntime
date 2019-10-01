@@ -661,11 +661,11 @@ void NchwcTransformerImpl::TransformActivation(Node& node) {
 }
 
 void NchwcTransformerImpl::Transform(Node& node) {
-  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1}) ||
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11}) ||
       graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedConv", {1}, kMSDomain)) {
     TransformConv(node);
-  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {1, 8, 10}) ||
-             graph_utils::IsSupportedOptypeVersionAndDomain(node, "AveragePool", {1, 7, 10}) ||
+  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {1, 8, 10, 11}) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(node, "AveragePool", {1, 7, 10, 11}) ||
              graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalMaxPool", {1}) ||
              graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalAveragePool", {1})) {
     TransformPool(node);
