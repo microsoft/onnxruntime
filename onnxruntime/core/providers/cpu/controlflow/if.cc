@@ -53,6 +53,8 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
                                      .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                                    If);
 
+// output shape rules requiring the output shapes of the 'THEN' and 'ELSE'
+// branches to be the same were relaxed in opset-11
 ONNX_CPU_OPERATOR_KERNEL(If,
                         11,
                         KernelDefBuilder()

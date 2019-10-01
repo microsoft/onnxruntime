@@ -75,7 +75,7 @@ class IfOpTester : public OpTester {
       outputs = {&split_out_0, &split_out_1};
 
       auto& split_node = graph.AddNode("split", "Split", "Split into 2", inputs, outputs);
-      if (opset_version_ == 11) {
+      if (opset_version_ > 10) {
         AttributeProto attr_proto;
         attr_proto.set_name("split");
         attr_proto.set_type(AttributeProto_AttributeType_INTS);
@@ -118,7 +118,7 @@ class IfOpTester : public OpTester {
    create a NodeArg with the input name. The numbers in [] are the values the tests are expected to produce
    as output from each node.
 
-THEN branch
+THEN branch (all opset versions)
     split_out_0    if_input_0   [1]
              \          |
        [1]    \         |
@@ -126,13 +126,21 @@ THEN branch
                         |
                    add_out_0    [2]
 
-ELSE branch
+ELSE branch (opset 10 and below)
     split_out_1    if_input_0   [1]
             \          |
       [10]   \         |
               \------[Add]
                         |
                    add_out_1    [11]
+
+ELSE branch (opset 11 and above)
+    split_out_1    if_input_0   [1]
+            \          |
+  [10, 10]   \         |
+              \------[Add]
+                        |
+                   add_out_1    [11, 11]
 */
 
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const RunOptions& options) {
