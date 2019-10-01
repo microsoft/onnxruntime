@@ -160,6 +160,7 @@ target_include_directories(onnxruntime_server_lib PRIVATE
   ${ONNXRUNTIME_ROOT}/server/logging
   ${ONNXRUNTIME_ROOT}/server/core
   PUBLIC
+  ${ONNXRUNTIME_ROOT}
   ${ONNXRUNTIME_ROOT}/server
   ${Boost_INCLUDE_DIR}
   ${re2_src}
