@@ -12,6 +12,7 @@
 
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
+#include "core/framework/tensor.h"
 
 struct OrtValue;
 
@@ -20,7 +21,6 @@ class TypeProto;
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
-class Tensor;
 
 /// Predefined registered types
 //maps
@@ -188,6 +188,9 @@ class DataTypeImpl {
   // Return the types for a concrete tensor type, like Tensor_Float
   template <typename elemT>
   static MLDataType GetTensorType();
+
+  template <typename elemT>
+  static MLDataType GetSequenceTensorType();
 
   // Return the MLDataType for a concrete sparse tensor type.
   template <typename elemT>
@@ -629,6 +632,21 @@ class SequenceType : public NonTensorType<CPPType> {
   }
 };
 
+template <typename TensorElemType>
+class SequenceTensorType : public NonTensorType<VectorTensor> {
+ public:
+  static MLDataType Type();
+
+  bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const override {
+    return this->IsSequenceCompatible(type_proto);
+  }
+
+ private:
+  SequenceTensorType() {
+    data_types_internal::SetSequenceType<TensorElemType>::Set(this->mutable_type_proto());
+  }
+};
+
 /**
  * \brief OpaqueType
  *
@@ -742,6 +760,18 @@ class NonOnnxType : public DataTypeImpl {
   template <>                                \
   MLDataType DataTypeImpl::GetType<TYPE>() { \
     return SequenceType<TYPE>::Type();       \
+  }
+
+#define ORT_REGISTER_SEQ_TENSOR_TYPE(TYPE, ELEM_TYPE)           \
+  ORT_REGISTER_SEQ(TYPE)                                        \
+  template <>                                                   \
+  MLDataType SequenceTensorType<ELEM_TYPE>::Type() {            \
+    static SequenceTensorType<ELEM_TYPE> sequence_tensor_type;  \
+    return &sequence_tensor_type;                               \
+  }                                                             \
+  template <>                                                   \
+  MLDataType DataTypeImpl::GetSequenceTensorType<ELEM_TYPE>() { \
+    return SequenceTensorType<ELEM_TYPE>::Type();               \
   }
 
 #define ORT_REGISTER_NON_ONNX_TYPE(TYPE)     \

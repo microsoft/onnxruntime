@@ -28,6 +28,7 @@ template <>
 MLDataType DataTypeImpl::GetType<Tensor>() {
   return TensorTypeBase::Type();
 }
+
 }  // namespace onnxruntime
 
 // This conflics with the above GetType<>() specialization
@@ -550,7 +551,7 @@ ORT_REGISTER_MAP(MapInt64ToInt64);
 ORT_REGISTER_MAP(MapInt64ToFloat);
 ORT_REGISTER_MAP(MapInt64ToDouble);
 
-ORT_REGISTER_SEQ(VectorTensor);
+ORT_REGISTER_SEQ_TENSOR_TYPE(VectorTensor, float);
 
 ORT_REGISTER_SEQ(VectorMapStringToFloat);
 ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
@@ -560,6 +561,12 @@ ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
   {                                                          \
     MLDataType mltype = DataTypeImpl::GetTensorType<TYPE>(); \
     reg_fn(mltype);                                          \
+  }
+
+#define REGISTER_SEQ_TENSOR_PROTO(TYPE, reg_fn)                      \
+  {                                                                  \
+    MLDataType mltype = DataTypeImpl::GetSequenceTensorType<TYPE>(); \
+    reg_fn(mltype);                                                  \
   }
 
 #define REGISTER_SPARSE_TENSOR_PROTO(TYPE, reg_fn)                 \
@@ -616,7 +623,7 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_ONNX_PROTO(MapInt64ToFloat, reg_fn);
   REGISTER_ONNX_PROTO(MapInt64ToDouble, reg_fn);
 
-  REGISTER_ONNX_PROTO(VectorTensor, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(float, reg_fn);
 
   REGISTER_ONNX_PROTO(VectorMapStringToFloat, reg_fn);
   REGISTER_ONNX_PROTO(VectorMapInt64ToFloat, reg_fn);

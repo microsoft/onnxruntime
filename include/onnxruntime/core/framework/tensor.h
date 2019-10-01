@@ -10,12 +10,13 @@
 #include "gsl/span"
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
-#include "core/framework/data_types.h"
+//#include "core/framework/data_types.h"
 #include "core/framework/tensor_shape.h"
 #include "onnxruntime_config.h"
 
 namespace onnxruntime {
-
+class DataTypeImpl;
+using MLDataType = const DataTypeImpl*;
 // TODO: Do we need this class or is IAllocator::MakeUniquePtr sufficient/better
 class BufferDeleter {
  public:
@@ -173,19 +174,13 @@ class Tensor final {
   The number of bytes of data.
   */
   size_t SizeInBytes() const {
-    size_t ret;
-    int64_t l = shape_.Size();
-    if (l >= static_cast<int64_t>(std::numeric_limits<ptrdiff_t>::max())) {
-      ORT_THROW("tensor size overflow");
-    }
-    if (!IAllocator::CalcMemSizeForArray(static_cast<size_t>(shape_.Size()), dtype_->Size(), &ret)) {
-      ORT_THROW("tensor size overflow");
-    }
-    return ret;
+    return SizeInBytesPrivate();
   }
 
   // More API methods.
  private:
+  size_t SizeInBytesPrivate() const;
+
   void Init(MLDataType p_type,
             const TensorShape& shape,
             void* p_raw_data,
