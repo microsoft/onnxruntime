@@ -20,7 +20,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T",    DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),DataTypeImpl::GetTensorType<int64_t>()}), // contrib spec supports `int32_t` and `int64_t` for indices
+        // contrib spec supports `int32_t` and `int64_t` for indices
+        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     GatherND);
 
 }  // namespace contrib
@@ -32,7 +33,8 @@ ONNX_CPU_OPERATOR_KERNEL(
     11,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int64_t>()}),  // official spec only supports `int64_t` for indices
+        // official spec only supports `int64_t` for indices
+        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
     GatherND);
 
 template<typename Tind>
