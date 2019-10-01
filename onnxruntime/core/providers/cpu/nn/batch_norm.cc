@@ -23,8 +23,25 @@ namespace onnxruntime {
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     BatchNormalization,
     7,
+    8,
+    KernelDefBuilder()
+        .TypeConstraint("X", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("scale", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("mean", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("var", DataTypeImpl::GetTensorType<float>()),
+    BatchNorm<float>);
+
+// 'spatial' attribute was removed.
+ONNX_CPU_OPERATOR_KERNEL(
+    BatchNormalization,
     9,
-    KernelDefBuilder().TypeConstraint("X", DataTypeImpl::GetTensorType<float>()).TypeConstraint("scale", DataTypeImpl::GetTensorType<float>()).TypeConstraint("B", DataTypeImpl::GetTensorType<float>()).TypeConstraint("mean", DataTypeImpl::GetTensorType<float>()).TypeConstraint("var", DataTypeImpl::GetTensorType<float>()),
+    KernelDefBuilder()
+        .TypeConstraint("X", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("scale", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("mean", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("var", DataTypeImpl::GetTensorType<float>()),
     BatchNorm<float>);
 
 template <>
