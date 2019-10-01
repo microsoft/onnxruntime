@@ -415,9 +415,15 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Pool<float, AveragePool>);
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    AveragePool,
+    10, 10,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Pool<float, AveragePool>);
+
 ONNX_CPU_OPERATOR_KERNEL(
     AveragePool,
-    10,
+    11,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Pool<float, AveragePool>);
 
@@ -433,15 +439,27 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
     Pool<float, MaxPool<8 /*VERSION*/>>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     MaxPool,
-    10,
+    10, 10,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
     Pool<float, MaxPool<8 /*VERSION*/>>);
 
 ONNX_CPU_OPERATOR_KERNEL(
+    MaxPool,
+    11,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
+    Pool<float, MaxPool<8 /*VERSION*/>>);
+
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     LpPool,
-    2,
+    2, 10,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Pool<float, LpPool>);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    LpPool,
+    11,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Pool<float, LpPool>);
 

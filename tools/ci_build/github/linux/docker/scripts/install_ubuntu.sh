@@ -21,6 +21,8 @@ apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         git apt-transport-https apt-utils \
         ca-certificates \
+[InternetShortcut]
+URL=https://github.com/microsoft/onnxruntime/pull/1966/conflict?name=tools%252Fci_build%252Fgithub%252Flinux%252Fdocker%252Fscripts%252Finstall_ubuntu.sh&ancestor_oid=afa037c187f11c214591d1bf2f9a2675282d73bb&base_oid=b8b1b7a07ebb033bb560d88f20e6ee6ac907d02f&head_oid=fbdf14e1105d4cc16bc1a2975f180bc2a9fc15da
         pkg-config \
         wget \
         zlib1g \
@@ -83,5 +85,6 @@ fi
 /usr/bin/python3 -m pip install --upgrade --force-reinstall sympy==1.1.1
 rm -rf /var/lib/apt/lists/*
 
-aria2c -q -d /tmp -o llvm.tar.xz http://releases.llvm.org/6.0.1/clang+llvm-6.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz
+if [ $DEVICE_TYPE = "Normal" ]; then
+aria2c -q -d /tmp -o llvm.tar.xz http://releases.llvm.org/9.0.0/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz
 tar --strip 1 -Jxf /tmp/llvm.tar.xz -C /usr
