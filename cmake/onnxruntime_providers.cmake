@@ -314,7 +314,7 @@ if (onnxruntime_USE_TENSORRT)
   include_directories(${ONNXRUNTIME_ROOT}/../cmake/external/onnx-tensorrt)
   include_directories(${TENSORRT_INCLUDE_DIR})
   set(trt_link_libs cudnn ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
-  set(onnxparser_link_libs nvonnxparser_static)# nvonnxparser_plugin #slx
+  set(onnxparser_link_libs nvonnxparser_static)
 
   file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.h"
