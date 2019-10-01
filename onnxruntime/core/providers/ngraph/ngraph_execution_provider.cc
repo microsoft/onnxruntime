@@ -123,6 +123,12 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
           return true;
       }
     }
+    const auto mode_attr = attributes.find("mode");
+    if(mode_attr != attributes.end())
+    {
+        const auto mode = mode_attr->second.s();
+        return mode != "constant";
+    }
   } else if (optype == "Slice") {
     //Slice in opset 10 is currently not supported.
     //unsupported inputs: starts, ends, axes, steps
