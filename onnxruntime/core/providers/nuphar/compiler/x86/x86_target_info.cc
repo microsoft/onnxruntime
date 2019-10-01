@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/nuphar/compiler/x86/x86_target_info.h"
+#include "core/common/common.h"
 
 namespace onnxruntime {
 
