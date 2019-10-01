@@ -32,7 +32,7 @@ void TestReduceOp(const std::string& op,
     } else {
       test.AddAttribute("axes", axes);
       for (auto& x : axes) {
-        has_neg_axis &&= (x < 0);
+        has_neg_axis = (has_neg_axis && (x < 0));
       }
     }
   }
