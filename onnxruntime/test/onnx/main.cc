@@ -497,6 +497,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"flatten_negative_axis4", "not implemented yet for opset 11"});
   broken_tests.insert({"squeeze_negative_axes", "not implemented yet for opset 11"});
   broken_tests.insert({"unsqueeze_negative_axes", "not implemented yet for opset 11"});
+  broken_tests.insert({"constant_pad", "not implemented yet for opset 11"});
 #endif
 
 #ifdef USE_MKLDNN
