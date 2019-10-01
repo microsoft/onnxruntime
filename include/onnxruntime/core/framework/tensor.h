@@ -3,11 +3,12 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <iostream>
 #include <string>
 #include <vector>
 
-#include "gsl/span"
+#include "gsl/gsl"
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
 #include "core/framework/data_types.h"

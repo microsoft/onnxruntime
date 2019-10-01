@@ -22,7 +22,7 @@ struct NupharExecutionProviderFactory : IExecutionProviderFactory {
 
 std::unique_ptr<IExecutionProvider> NupharExecutionProviderFactory::CreateProvider() {
   NupharExecutionProviderInfo info(allow_unaligned_buffers_, settings_, /*per_node_parallel*/ true);
-  return std::make_unique<NupharExecutionProvider>(info);
+  return onnxruntime::make_unique<NupharExecutionProvider>(info);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool allow_unaligned_buffers, const char* settings) {

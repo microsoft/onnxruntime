@@ -112,7 +112,7 @@ common::Status AllocateHelper(const IExecutionProvider& execution_provider, cons
     return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator");
   }
 
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(fetched_tensor.DataType(),
+  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(fetched_tensor.DataType(),
                                                               fetched_tensor.Shape(),
                                                               allocator);
   output_mlvalue.Init(p_tensor.release(),

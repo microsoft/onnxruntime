@@ -22,7 +22,7 @@ class RoiAlignBase {
     // mode
     std::string mode;
     if (info.GetAttr<std::string>("mode", &mode).IsOK()) {
-      std::transform(mode.begin(), mode.end(), mode.begin(), [](auto& i) { return static_cast<char>(::tolower(i)); });
+      std::transform(mode.begin(), mode.end(), mode.begin(), [](char i) { return static_cast<char>(::tolower(i)); });
       if (mode != "avg" && mode != "max") {
         ORT_THROW("Invalid mode of value ", mode, " specified. It should be either avg or max");
       }

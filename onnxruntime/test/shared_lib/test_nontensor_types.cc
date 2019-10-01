@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <core/common/make_unique.h>
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test_fixture.h"
 #include <functional>
@@ -26,7 +27,7 @@ struct RelAllocations {
 
 TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type seq(map(int64, float))
   // Creation
-  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
   const int N = 3;
@@ -86,7 +87,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output ty
 
 TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output type seq(map(string, float))
   // Creation
-  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
   const int N = 3;

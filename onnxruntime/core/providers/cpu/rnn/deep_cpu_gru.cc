@@ -580,11 +580,11 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
   span_T_iter cur_h_local = cur_h_.begin();
   span_T_iter cur_h_local_end = cur_h_.end();
 
-  span_T_const_iter batched_bias_WRz_local;
-  span_T_const_iter batched_bias_WRr_local;
-  span_T_const_iter batched_bias_WRh_local;
-  span_T_const_iter batched_bias_Wh_local;
-  span_T_const_iter batched_bias_Rh_local;
+  span_T_const_iter batched_bias_WRz_local{};
+  span_T_const_iter batched_bias_WRr_local{};
+  span_T_const_iter batched_bias_WRh_local{};
+  span_T_const_iter batched_bias_Wh_local{};
+  span_T_const_iter batched_bias_Rh_local{};
 
   if (use_bias_) {
     batched_bias_WRz_local = batched_bias_WRz_.cbegin();

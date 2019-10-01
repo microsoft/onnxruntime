@@ -128,7 +128,7 @@ class ReluPrimitivePool : public PrimitivePool<T> {
         ReluPrimitivePool<T>::GetInstance().GetPrimitive(params.ToString()));
 
     if (primitive == nullptr) {
-      auto relu_primitive = std::make_unique<ReluPrimitive<T>>(params);
+      auto relu_primitive = onnxruntime::make_unique<ReluPrimitive<T>>(params);
       primitive = relu_primitive.get();
       ReluPrimitivePool<T>::GetInstance().SetPrimitive(params.ToString(), 
 		std::move(relu_primitive));
