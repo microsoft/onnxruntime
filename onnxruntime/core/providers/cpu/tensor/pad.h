@@ -13,7 +13,7 @@ enum class Mode : int {
 };
 
 template <typename T>
-class PadCpu final : public OpKernel {
+class PadCpu : public OpKernel {
  public:
   explicit PadCpu(const OpKernelInfo& info) : OpKernel(info), value_(info.GetAttrOrDefault("value", 0.f)) {
     std::string mode;
