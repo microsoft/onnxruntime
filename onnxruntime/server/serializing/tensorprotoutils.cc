@@ -6,7 +6,7 @@
 #include <memory>
 #include <algorithm>
 #include <limits>
-#include <gsl/pointers>
+#include <gsl/gsl>
 #include "core/framework/data_types.h"
 #include "core/framework/allocator.h"
 #include "onnx-ml.pb.h"

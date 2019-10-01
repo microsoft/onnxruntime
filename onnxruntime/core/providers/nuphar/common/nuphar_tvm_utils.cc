@@ -11,7 +11,7 @@
 #include "core/common/logging/logging.h"
 #include "core/platform/env.h"
 #include "core/providers/common.h"
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 #include <topi/detail/extern.h>
 #include <tvm/ir_pass.h>
 #include <experimental/filesystem>
