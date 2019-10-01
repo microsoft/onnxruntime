@@ -196,22 +196,6 @@ class Sum final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-template <typename T>
-class Greater final : public CudaKernel {
- public:
-  Greater(const OpKernelInfo& info) : CudaKernel(info) {}
-
-  Status ComputeInternal(OpKernelContext* context) const override;
-};
-
-template <typename T>
-class Equal final : public CudaKernel {
- public:
-  Equal(const OpKernelInfo& info) : CudaKernel(info) {}
-
-  Status ComputeInternal(OpKernelContext* context) const override;
-};
-
 
 template <typename T>
 class Max final : public CudaKernel {
@@ -231,10 +215,44 @@ class Min final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-template <typename T>
-class Less final : public CudaKernel {
+template <typename T, typename CudaT>
+class CompareFunction : public BinaryElementwise<ShouldBroadcast> {
  public:
-  Less(const OpKernelInfo& info) : CudaKernel(info) {}
+  CompareFunction(const OpKernelInfo& info) : BinaryElementwise(info) {}
+
+  Status CompareMethod(OpKernelContext* context, void (*Impl_Compare)(
+                                               size_t output_rank_or_simple_broadcast,
+                                               const int64_t* lhs_padded_strides,
+                                               const CudaT* lhs_data,
+                                               const int64_t* rhs_padded_strides,
+                                               const CudaT* rhs_data,
+                                               const fast_divmod* fdm_output_strides,
+                                               const fast_divmod& fdm_H,
+                                               const fast_divmod& fdm_C,
+                                               CudaT* output_data,
+                                               size_t count)) const;
+};
+
+template <typename T>
+class Greater final : public CompareFunction<T, typename ToCudaType<T>::MappedType> {
+ public:
+  Greater(const OpKernelInfo& info) : CompareFunction<T, typename ToCudaType<T>::MappedType>(info) {}
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class Equal final : public CompareFunction<T, typename ToCudaType<T>::MappedType> {
+ public:
+  Equal(const OpKernelInfo& info) : CompareFunction<T, typename ToCudaType<T>::MappedType>(info) {}
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class Less final : public CompareFunction<T, typename ToCudaType<T>::MappedType> {
+ public:
+  Less(const OpKernelInfo& info) : CompareFunction<T, typename ToCudaType<T>::MappedType>(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };

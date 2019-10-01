@@ -519,6 +519,14 @@ class Graph {
     return graph_inputs_including_initializers_;
   }
 
+  /** Gets the Graph inputs that are initializers
+  These are overridable initializers. This is a difference between 
+  graph_inputs_including_initializers_ and graph_inputs_excluding_initializers_
+  @remarks Contains no nullptr values. */
+  const std::vector<const NodeArg*>& GetOverridableInitializers () const {
+    return graph_overridable_initializers_;
+  }
+
   /** Gets the Graph outputs.
   @remarks Contains no nullptr values.*/
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return graph_outputs_; }
@@ -766,6 +774,11 @@ class Graph {
   /** Returns the Node containing the GraphProto for this Graph instance if IsSubgraph is true */
   const Node* ParentNode() const { return parent_node_; }
 
+  /** Returns true if the name is for a value that is coming from outer scope */
+  bool IsOuterScopeValue(const std::string& name) const {
+    return resolve_context_.outer_scope_node_args.find(name) != resolve_context_.outer_scope_node_args.cend();
+  }
+
   /** Construct a Graph instance for a subgraph that is created from a GraphProto attribute in a Node.
   Inherits some properties from the parent graph.
   @param parent_graph The Graph containing the Node that has the GraphProto attribute.
@@ -851,6 +864,9 @@ class Graph {
 
   // Initialize all the graph inputs, initializers and outputs
   common::Status InitInputsInitializersOutputs();
+
+  // Initialize overridable initializers container
+  void ComputeOverridableInitializers();
 
   // recursively accumulate and set the outer scope node args in the resolve context for all subgraphs
   // so they can be used to resolve outer scope dependencies when running BuildConnections for the subgraphs.
@@ -964,6 +980,10 @@ class Graph {
 
   // Graph inputs excluding initializers.
   std::vector<const NodeArg*> graph_inputs_excluding_initializers_;
+
+  // Overridable Initializers. The difference between graph_inputs_including_initializers_
+  // and graph_inputs_excluding_initializers_
+  std::vector<const NodeArg*> graph_overridable_initializers_;
 
   // Graph outputs.
   std::vector<const NodeArg*> graph_outputs_;

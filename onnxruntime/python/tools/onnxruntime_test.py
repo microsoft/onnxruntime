@@ -74,6 +74,25 @@ def main():
                 input_meta.type, input_meta.name))
             sys.exit(-1)
 
+    # Starting with IR4 some initializers provide default values
+    # and can be overridden (available in IR4). For IR < 4 models
+    # the list would be empty
+    for initializer in sess.get_overridable_initializers():
+        shape = [dim if dim else 1 for dim in initializer.shape]
+        if initializer.type in float_dict:
+            feeds[initializer.name] = np.random.rand(
+                *shape).astype(float_dict[initializer.type])
+        elif initializer.type in integer_dict:
+            feeds[initializer.name] = np.random.uniform(
+                high=1000, size=tuple(shape)).astype(integer_dict[initializer.type])
+        elif initializer.type == 'tensor(bool)':
+            feeds[initializer.name] = np.random.randint(
+                2, size=tuple(shape)).astype('bool')
+        else:
+            print("unsupported initializer type {} for initializer {}".format(
+                initializer.type, initializer.name))
+            sys.exit(-1)
+
     start = timer()
     for i in range(iters):
         sess.run([], feeds)  # fetch all outputs

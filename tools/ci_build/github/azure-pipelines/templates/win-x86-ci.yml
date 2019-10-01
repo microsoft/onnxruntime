@@ -133,7 +133,7 @@ jobs:
         displayName: 'Setup VS2017 env vars'
         inputs:
           filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
-          arguments: 'x86 -vcvars_ver=14.11'
+          arguments: 'x86'
           modifyEnvironment: true
 
       # Esrp signing
