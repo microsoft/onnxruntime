@@ -7,7 +7,7 @@
 
 using namespace onnxruntime::common;
 namespace onnxruntime {
-namespace cuda {    
+namespace cuda {
 
 template <>
 Status BinaryElementwise<ShouldNotBroadcast>::Prepare(OpKernelContext* context, BinaryElementwisePreparation* p) const {
@@ -251,8 +251,6 @@ Status VariadicInputBase<T, CudaT>::ComputeMethod(OpKernelContext* context, Impl
     auto rhs_tensor = context->Input<Tensor>(1);
     if (input_count == 2) {
       // special case for 2 tensors to avoid memset zero
-      const auto& lhs_shape = lhs_tensor->Shape();
-      const auto& rhs_shape = rhs_tensor->Shape();
       ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(lhs_tensor, rhs_tensor, output_tensor, &prepare));
       ORT_RETURN_IF_ERROR(prepare.CopyToGpu());
       Impl_Compute(
@@ -308,7 +306,7 @@ Status Sum<T>::ComputeInternal(OpKernelContext* context) const {
   this->ComputeMethod(context, &Impl_Add);
 
   return Status::OK();
-  }
+}
 
 template <typename T>
 Status Max<T>::ComputeInternal(OpKernelContext* context) const {
@@ -316,7 +314,7 @@ Status Max<T>::ComputeInternal(OpKernelContext* context) const {
   this->ComputeMethod(context, &Impl_Max);
 
   return Status::OK();
-  }
+}
 
 template <typename T>
 Status Min<T>::ComputeInternal(OpKernelContext* context) const {
