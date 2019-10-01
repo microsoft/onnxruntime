@@ -142,9 +142,13 @@ class NgramEntry<std::string> : public NgramEntryBase {
 
   bool operator==(const NgramEntry& o) const {
     if (items_.size() == o.items_.size()) {
-      return std::equal(items_.cbegin(), items_.cend(),
-                        o.items_.cbegin(), o.items_.cend(),
-                        std::equal_to<std::string>());
+      std::equal_to<std::string> pred;
+      for (size_t i = 0; i < items_.size(); ++i) {
+        if (!pred(items_[i], o.items_[i])) {
+          return false;
+        }
+      }
+      return true;
     }
     return false;
   }
