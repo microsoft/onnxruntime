@@ -1,11 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cpu/gather_nd.h"
+#include "gather_nd.h"
 
 namespace onnxruntime {
-namespace contrib     {
 
+// Register a kernel for kMsDomain (contrib op) Pad
+#ifndef DISABLE_CONTRIB_OPS
+
+namespace contrib {
+// TODO: Remove this contrib kernel registration and the schema from the appropriate places
+// once Keras Mask RCNN is shipped with all ONNX domain ops
+
+// Currently this kernel is required to support Keras Mask-RCNN
 ONNX_OPERATOR_KERNEL_EX(
     GatherND,
     kMSDomain,
@@ -13,7 +20,19 @@ ONNX_OPERATOR_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T",    DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),DataTypeImpl::GetTensorType<int64_t>()}),
+        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),DataTypeImpl::GetTensorType<int64_t>()}), // contrib spec supports `int32_t` and `int64_t` for indices
+    GatherND);
+
+}  // namespace contrib
+
+#endif
+
+ONNX_CPU_OPERATOR_KERNEL(
+    GatherND,
+    11,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int64_t>()}),  // official spec only supports `int64_t` for indices
     GatherND);
 
 template<typename Tind>
@@ -122,5 +141,4 @@ Status GatherND::GatherString(const Prepare& p) const {
   return Status::OK();
 }
 
-}
-}
+} // namespace onnxruntime

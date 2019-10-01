@@ -402,8 +402,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"range_int32_type_negative_delta_expanded", "not implemented yet"},
       {"det_2d", "not implemented yet"},
       {"det_nd", "not implemented yet"},
-      {"gathernd_example_float32", "not implemented yet"},
-      {"gathernd_example_int32", "not implemented yet"},
       {"resize_downsample_scales_cubic_A_n0p5_exclude_outside", "not implemented yet"},
       {"resize_downsample_scales_cubic_align_corners", "not implemented yet"},
       {"resize_downsample_scales_cubic", "not implemented yet"},

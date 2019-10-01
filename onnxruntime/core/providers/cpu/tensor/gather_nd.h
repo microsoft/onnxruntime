@@ -8,7 +8,6 @@
 #include "core/platform/threadpool.h"
 
 namespace onnxruntime {
-namespace contrib {
 
 class GatherNDBase
 {
@@ -46,5 +45,4 @@ private:
   Status GatherString(const Prepare& p) const;
 };
 
-} // namespace contrib
 } // namespace onnxruntime
