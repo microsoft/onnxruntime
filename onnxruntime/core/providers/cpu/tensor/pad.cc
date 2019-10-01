@@ -23,7 +23,7 @@ ONNX_OPERATOR_KERNEL_EX(Pad,
                         1,
                         kCpuExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                        onnxruntime::Pad<float>);
+                        onnxruntime::PadCpu<float>);
 
 }  // namespace contrib
 
@@ -31,7 +31,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Pad,
     2, 10,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Pad<float>);
+    PadCpu<float>);
 
 // The interface for the 'Pad' op was changed in opset-11
 // 'pads' and 'value' (attributes previously) became inputs in this version
@@ -40,7 +40,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     Pad,
     11,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Pad<float>);
+    PadCpu<float>);
 
 // This is the general padding method to n-dimensionally do edge or reflection padding (based on the inputDelta values)
 template <typename T>
