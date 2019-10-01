@@ -14,13 +14,20 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     MaxUnpool,
-    9,
+    9, 10,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),
-        // .TypeConstraint("Y", DataTypeImpl::GetTensorType<float>()),
+    MaxUnpool);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    MaxUnpool,
+    11,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),
     MaxUnpool);
 
 Status MaxUnpool::Compute(OpKernelContext* context) const {

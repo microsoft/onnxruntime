@@ -51,7 +51,8 @@ class GemmHelper {
 
  private:
   bool IsValidBroadcast(const TensorShape& bias_shape, int64_t M, int64_t N) {
-    if (bias_shape.NumDimensions() != 0 && bias_shape.NumDimensions() != 1 && bias_shape.NumDimensions() != 2)
+    // valid shapes are (,) , (1, N) , (M, 1) , (M, N)
+    if (bias_shape.NumDimensions() > 2)
       return false;
     // shape is (1,) or (1, 1), or (,)
     if (bias_shape.Size() == 1)

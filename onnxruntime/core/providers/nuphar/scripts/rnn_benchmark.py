@@ -17,7 +17,7 @@ from onnx import shape_inference
 import os
 from timeit import default_timer as timer
 
-def generate_model(rnn_type, input_dim, hidden_dim, bidirectional, layers, model_name, batch_one, has_seq_len=False):
+def generate_model(rnn_type, input_dim, hidden_dim, bidirectional, layers, model_name, batch_one=True, has_seq_len=False):
     model = onnx.ModelProto()
     opset = model.opset_import.add()
     opset.domain == 'onnx'
@@ -109,8 +109,8 @@ def perf_test(rnn_type, num_threads, input_dim, hidden_dim, bidirectional, layer
     print('perf_rnn {}: run for {} iterations, top {} avg {} ms'.format(model_name, count, top_n, avg_rnn))
 
     # run Scan model converted from original
-    from model_editor import convert_to_scan_model
-    from symbolic_shape_infer import SymbolicShapeInference
+    from .model_editor import convert_to_scan_model
+    from .symbolic_shape_infer import SymbolicShapeInference
     scan_model_name = os.path.splitext(model_name)[0] + '_scan.onnx'
     convert_to_scan_model(model_name, scan_model_name)
     # note that symbolic shape inference is needed because model has symbolic batch dim, thus init_state is ConstantOfShape
@@ -121,7 +121,7 @@ def perf_test(rnn_type, num_threads, input_dim, hidden_dim, bidirectional, layer
     print('perf_scan {}: run for {} iterations, top {} avg {} ms'.format(scan_model_name, count, top_n, avg_scan))
 
     # quantize Scan model to int8
-    from model_quantizer import convert_matmul_model
+    from .model_quantizer import convert_matmul_model
     int8_model_name = os.path.splitext(model_name)[0] + '_int8.onnx'
     convert_matmul_model(scan_model_name, int8_model_name)
     SymbolicShapeInference.infer_shapes(int8_model_name, int8_model_name)
