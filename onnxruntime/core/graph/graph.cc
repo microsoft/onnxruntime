@@ -1246,7 +1246,7 @@ using SubgraphInferencingFunc =
 class GraphInferencerImpl : public ONNX_NAMESPACE::GraphInferencer {
  public:
   GraphInferencerImpl(const Node& node, Graph& graph, SubgraphInferencingFunc& inferencing_func)
-      : node_{node}, graph_{graph}, inferencing_func_{inferencing_func} {
+      : node_(node), graph_(graph), inferencing_func_(inferencing_func) {
   }
 
   // Perform inferencing on the graph contained in GraphInferencer.
@@ -1544,7 +1544,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
     return Status(ONNXRUNTIME, FAIL, ex.what());
   }
 
-  const auto& onnx_inferred_types{context.InferredOutputTypes()};
+  const auto& onnx_inferred_types(context.InferredOutputTypes());
 
   // Infer and verify node output arg type information.
   int i = -1;
