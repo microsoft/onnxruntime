@@ -1185,6 +1185,29 @@ class ONNXQuantizer:
 
         return [node]
 
+def check_opset_version(org_model, fuse_dynamic_quant):
+    '''
+        Check opset version of original model and set opset version and fuse_dynamic_quant accordingly.
+        If opset version < 10, set quantized model opset version to 10.
+        If opset version == 10, do quantization without using dynamicQuantizeLinear operator.
+        If opset version == 11, do quantization using dynamicQuantizeLinear operator.
+
+        :return: fuse_dynamic_quant boolean value.
+    '''
+    global onnx_op_set_version
+    opset_version = org_model.opset_import[0].version
+    if opset_version < 10:
+        print("Warning: The original model opset version is {}, which does not support quantized operators.\n\
+            The opset version of quantized model will be set to 10.".format(opset_version))
+        onnx_op_set_version = 10
+        fuse_dynamic_quant = False
+    elif opset_version == 10:
+        onnx_op_set_version = 10
+        fuse_dynamic_quant = False
+    else:
+        onnx_op_set_version = 11
+        fuse_dynamic_quant = True
+    return fuse_dynamic_quant
 
 def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMode.IntegerOps,
     static=False, fuse_dynamic_quant=True, asymmetric_input_types=False, 
@@ -1241,6 +1264,7 @@ def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMo
         mode = quantization_mode
         copy_model = onnx_proto.ModelProto()
         copy_model.CopyFrom(model)
+        fuse_dynamic_quant = check_opset_version(copy_model, fuse_dynamic_quant)
         quantizer = ONNXQuantizer(copy_model, per_channel, mode, static, fuse_dynamic_quant, weight_qType, input_qType,
                         quantization_params, nodes_to_quantize)
         quantizer.quantize_model()
