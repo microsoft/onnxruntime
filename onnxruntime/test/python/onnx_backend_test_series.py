@@ -148,6 +148,8 @@ def create_backend_test(testname=None):
                                  '^test_reduce_*',
                                  '^test_onehot_*',
                                  '^test_gemm_default_scalar_bias_cpu.*',
+                                 '^test_edge_pad_cpu.*',  # test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests
+                                 '^test_reflect_pad_cpu.*',  # test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests
                                  '^test_gemm_*'                              
                                  )
 

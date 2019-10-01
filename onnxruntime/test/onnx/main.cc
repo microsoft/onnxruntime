@@ -469,6 +469,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"bitshift_left_uint32", "BitShift(11) not implemented yet"},
       {"bitshift_left_uint16", "BitShift(11) not implemented yet"},
       {"gemm_default_scalar_bias", "Gemm ValidBroadcast() has bug to be fixed."},
+      {"reflect_pad", "test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests"},
+      {"edge_pad", "test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests"},
 };
 
 #ifdef USE_NGRAPH
