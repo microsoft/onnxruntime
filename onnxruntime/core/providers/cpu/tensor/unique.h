@@ -9,7 +9,7 @@
 namespace onnxruntime {
 class Unique final : public OpKernel {
  public:
-  Unique(const OpKernelInfo& info) : OpKernel(info) {
+  explicit Unique(const OpKernelInfo& info) : OpKernel(info) {
     if (!info.GetAttr<int64_t>("axis", &axis_).IsOK()) {
       flatten_ = true;
     }

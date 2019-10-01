@@ -80,7 +80,17 @@ Status Unique::Compute(OpKernelContext* context) const {
   Status status;
   auto data_type = input.DataType();
 
-  DispatchOnTensorTypeWithReturn(data_type, status, ComputeImpl, *context);
+  // arbitrary set of types to support initially
+  if (data_type == DataTypeImpl::GetType<float>())
+    status = ComputeImpl<float>(*context);
+  else if (data_type == DataTypeImpl::GetType<int64_t>())
+    status = ComputeImpl<int64_t>(*context);
+  else if (data_type == DataTypeImpl::GetType<int8_t>())
+    status = ComputeImpl<int8_t>(*context);
+  else if (data_type == DataTypeImpl::GetType<std::string>())
+    status = ComputeImpl<std::string>(*context);
+  else
+    status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported tensor type of ", data_type);
 
   return status;
 }
@@ -124,7 +134,7 @@ class Subtensor {
 
 template <typename T>
 static void CreateFlattenedOutput(OpKernelContext& context,
-                                  const std::map<const T, int64_t>& offsets,         // sorted:unsorted idx
+                                  const std::map<const T, int64_t>& offsets,         // map sorted key to unsorted idx
                                   const std::vector<std::vector<int64_t>>& indices,  // unsorted
                                   const std::vector<int64_t>& inverse_index,         // unsorted
                                   bool sorted) {
@@ -185,7 +195,7 @@ template <typename T>
 static void CreateOutput(OpKernelContext& context,
                          const TensorShape& subtensor_shape,
                          int64_t axis,
-                         const std::map<const Subtensor<T>, int64_t>& offsets,  // sorted:unsorted idx
+                         const std::map<const Subtensor<T>, int64_t>& offsets,  // map sorted key to unsorted idx
                          const std::vector<std::vector<int64_t>>& indices,      // unsorted
                          const std::vector<int64_t>& inverse_index,             // unsorted
                          bool sorted) {

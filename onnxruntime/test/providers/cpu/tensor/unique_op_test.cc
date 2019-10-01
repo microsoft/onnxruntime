@@ -212,26 +212,26 @@ TEST(Unique, Axis0_Unsorted_String) {
 
 TEST(Unique, Axis1_Unsorted) {
   const std::vector<int64_t> X_dims{2, 4, 2};
-  const std::vector<int32_t> X{1, 1,
-                               0, 1,
-                               2, 1,
-                               0, 1,
+  const std::vector<int8_t> X{1, 1,
+                              0, 1,
+                              2, 1,
+                              0, 1,
 
-                               1, 1,
-                               0, 1,
-                               2, 1,
-                               0, 1};
+                              1, 1,
+                              0, 1,
+                              2, 1,
+                              0, 1};
 
   const int64_t axis = 1;
   bool sorted = false;
   const std::vector<int64_t> Y_dims{2, 3, 2};
-  const std::vector<int32_t> Y{1, 1,
-                               0, 1,
-                               2, 1,
+  const std::vector<int8_t> Y{1, 1,
+                              0, 1,
+                              2, 1,
 
-                               1, 1,
-                               0, 1,
-                               2, 1};
+                              1, 1,
+                              0, 1,
+                              2, 1};
 
   const std::vector<int64_t> indices_dims{3};
   const std::vector<int64_t> indices{0, 1, 2};
@@ -240,13 +240,13 @@ TEST(Unique, Axis1_Unsorted) {
   const std::vector<int64_t> counts_dims{3};
   const std::vector<int64_t> counts{1, 2, 1};
 
-  RunUniqueTest<int32_t>(X_dims, X, &axis, sorted, Y_dims, Y, indices_dims, indices,
-                         inverse_indices_dims, inverse_indices, counts_dims, counts);
+  RunUniqueTest<int8_t>(X_dims, X, &axis, sorted, Y_dims, Y, indices_dims, indices,
+                        inverse_indices_dims, inverse_indices, counts_dims, counts);
 }
 
 TEST(Unique, Axis1_Sorted) {
   const std::vector<int64_t> X_dims{2, 4, 2};
-  const std::vector<int32_t> X{1, 1,
+  const std::vector<int64_t> X{1, 1,
                                0, 1,
                                2, 1,
                                0, 1,
@@ -259,7 +259,7 @@ TEST(Unique, Axis1_Sorted) {
   const int64_t axis = 1;
   bool sorted = true;
   const std::vector<int64_t> Y_dims{2, 3, 2};
-  const std::vector<int32_t> Y{0, 1,
+  const std::vector<int64_t> Y{0, 1,
                                1, 1,
                                2, 1,
 
@@ -274,13 +274,13 @@ TEST(Unique, Axis1_Sorted) {
   const std::vector<int64_t> counts_dims{3};
   const std::vector<int64_t> counts{2, 1, 1};
 
-  RunUniqueTest<int32_t>(X_dims, X, &axis, sorted, Y_dims, Y, indices_dims, indices,
+  RunUniqueTest<int64_t>(X_dims, X, &axis, sorted, Y_dims, Y, indices_dims, indices,
                          inverse_indices_dims, inverse_indices, counts_dims, counts);
 }
 
 TEST(Unique, Axis2_Unsorted) {
   const std::vector<int64_t> X_dims{2, 2, 4};
-  const std::vector<int32_t> X{1, 1, 0, 1,
+  const std::vector<int64_t> X{1, 1, 0, 1,
                                2, 1, 0, 1,
 
                                1, 1, 0, 1,
@@ -289,7 +289,7 @@ TEST(Unique, Axis2_Unsorted) {
   const int64_t axis = 2;
   bool sorted = false;
   const std::vector<int64_t> Y_dims{2, 2, 3};
-  const std::vector<int32_t> Y{1, 1, 0,
+  const std::vector<int64_t> Y{1, 1, 0,
                                2, 1, 0,
 
                                1, 1, 0,
@@ -302,13 +302,13 @@ TEST(Unique, Axis2_Unsorted) {
   const std::vector<int64_t> counts_dims{3};
   const std::vector<int64_t> counts{1, 2, 1};
 
-  RunUniqueTest<int32_t>(X_dims, X, &axis, sorted, Y_dims, Y, indices_dims, indices,
+  RunUniqueTest<int64_t>(X_dims, X, &axis, sorted, Y_dims, Y, indices_dims, indices,
                          inverse_indices_dims, inverse_indices, counts_dims, counts);
 }
 
 TEST(Unique, Axis2_Sorted) {
   const std::vector<int64_t> X_dims{2, 2, 4};
-  const std::vector<int32_t> X{1, 1, 0, 1,
+  const std::vector<int64_t> X{1, 1, 0, 1,
                                2, 1, 0, 1,
 
                                1, 1, 0, 1,
@@ -317,7 +317,7 @@ TEST(Unique, Axis2_Sorted) {
   const int64_t axis = 2;
   bool sorted = true;
   const std::vector<int64_t> Y_dims{2, 2, 3};
-  const std::vector<int32_t> Y{0, 1, 1,
+  const std::vector<int64_t> Y{0, 1, 1,
                                0, 1, 2,
 
                                0, 1, 1,
@@ -330,7 +330,7 @@ TEST(Unique, Axis2_Sorted) {
   const std::vector<int64_t> counts_dims{3};
   const std::vector<int64_t> counts{1, 2, 1};
 
-  RunUniqueTest<int32_t>(X_dims, X, &axis, sorted, Y_dims, Y, indices_dims, indices,
+  RunUniqueTest<int64_t>(X_dims, X, &axis, sorted, Y_dims, Y, indices_dims, indices,
                          inverse_indices_dims, inverse_indices, counts_dims, counts);
 }
 
