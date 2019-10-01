@@ -558,7 +558,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           buffers[i] = const_cast<float*>(ort.GetTensorData<float>(input_tensor));
         } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8) {
           buffers[i] = const_cast<int8_t*>(ort.GetTensorData<int8_t>(input_tensor));
-        } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {  // || tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64
+        } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
           buffers[i] = const_cast<int32_t*>(ort.GetTensorData<int32_t>(input_tensor));
         } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
           // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
