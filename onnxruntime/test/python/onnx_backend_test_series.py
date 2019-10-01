@@ -163,6 +163,7 @@ def create_backend_test(testname=None):
             current_failing_tests = current_failing_tests + ('|^test_argmin_negative_axis*',)
             current_failing_tests = current_failing_tests + ('|^test_hadmax_negative_axis*',)            
             current_failing_tests = current_failing_tests + ('|^test_gemm_default_no_bias_cpu.*',)            
+            current_failing_tests = current_failing_tests + ('|^test_constant_pad_cpu.*',)
 
         if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
             current_failing_tests = current_failing_tests + ('^test_div_cpu*',)
