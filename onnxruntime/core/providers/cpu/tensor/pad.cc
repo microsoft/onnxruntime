@@ -12,9 +12,30 @@
 
 namespace onnxruntime {
 
+// Register a kernel for kMsDomain (contrib op) Pad
+namespace contrib {
+// TODO: Remove this contrib kernel registration and the schema from the appropriate places
+// once Keras Mask RCNN is shipped with all ONNX domain ops
+
+// Currently this kernel is required to support Keras Mask-RCNN
+ONNX_OPERATOR_KERNEL_EX(Pad,
+                        kMSDomain,
+                        1,
+                        kCpuExecutionProvider,
+                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                        onnxruntime::Pad<float>);
+
+}  // namespace contrib
+
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    Pad,
+    2, 10,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Pad<float>);
+
 ONNX_CPU_OPERATOR_KERNEL(
     Pad,
-    2,
+    11,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Pad<float>);
 
@@ -93,7 +114,7 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
                          const std::vector<int64_t>& slices,
                          const Mode& mode,
                          float value) {
-  auto& input_tensor = *ctx->Input<Tensor>(0);
+  const auto& input_tensor = *ctx->Input<Tensor>(0);
   std::vector<int64_t> output_dims(input_tensor.Shape().GetDims());
   size_t dimension_count = output_dims.size();
 
@@ -247,6 +268,51 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
 
 template <>
 Status Pad<float>::Compute(OpKernelContext* ctx) const {
-  return PadCpuImpl<float>(ctx, pads_, slices_, mode_, value_);
+  // kOnnxDomain Pad opset >= 11 (Or) kMsDomain opset == 1
+  if (is_dynamic_) {
+    const Tensor& input_tensor = *ctx->Input<Tensor>(0);
+    std::vector<int64_t> output_dims(input_tensor.Shape().GetDims());
+    size_t dimension_count = output_dims.size();
+
+    const Tensor& pads_tensor = *ctx->Input<Tensor>(1);
+    const std::vector<int64_t>& pads_tensor_dims = pads_tensor.Shape().GetDims();
+    ORT_ENFORCE(pads_tensor.DataType() == DataTypeImpl::GetType<int64_t>(),
+                "Pads tensor should be an INT64 tensor");
+    ORT_ENFORCE(pads_tensor_dims.size() == 1 || (pads_tensor_dims.size() == 2 && pads_tensor_dims[0] == 1),
+                "Pads tensor should be a 1D tensor of shape [2 * input_rank] or a 2D tensor of shape [1, 2 * input_rank]");
+
+    std::vector<int64_t> pads(2 * dimension_count, 0);
+    const int64_t* pads_tensor_raw_data = pads_tensor.template Data<int64_t>();
+    size_t pads_size = static_cast<size_t>(pads_tensor.Shape().Size());
+    ORT_ENFORCE(pads_size == 2 * dimension_count,
+                "Pads tensor size should be equal to twice the input dimension count ");
+
+    for (size_t i = 0; i < pads_size; ++i) {
+      pads[i] = pads_tensor_raw_data[i];
+    }
+
+    // Separate out any negative pads into the slices array
+    std::vector<int64_t> slices(pads.size(), 0);
+    for (size_t index = 0; index < pads.size(); index++) {
+      if (pads[index] < 0) {
+        slices[index] = pads[index];
+        pads[index] = 0;
+      }
+    }
+
+    float value = 0;
+    const Tensor* value_tensor = ctx->Input<Tensor>(2);
+    if (nullptr != value_tensor) {
+      ORT_ENFORCE(value_tensor->DataType() == DataTypeImpl::GetType<float>() &&
+                      value_tensor->Shape().Size() == 1,
+                  "Value tensor should be a 1D tensor of size 1 with the same type as that of the input tensor");
+      value = value_tensor->template Data<float>()[0];
+    }
+
+    return PadCpuImpl<float>(ctx, pads, slices, mode_, value);
+  } else {
+    // kOnnxDomain Pad opset < 11
+    return PadCpuImpl<float>(ctx, pads_, slices_, mode_, value_);
+  }
 }
 };  // namespace onnxruntime
