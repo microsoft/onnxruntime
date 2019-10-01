@@ -33,6 +33,8 @@ static void RunTest(
   test2.AddOutput<float>("output", output_dims, output);
   test2.Run();
 
+  #ifndef DISABLE_CONTRIB_OPS
+  
   // MSFT domain opset-1 (contrib op)
   OpTester test3("Pad", 1, kMSDomain);
   if (mode != "constant") test3.AddAttribute("mode", mode);
@@ -41,6 +43,8 @@ static void RunTest(
   test3.AddInput<float>("value", {1}, {value});
   test3.AddOutput<float>("output", output_dims, output);
   test3.Run();
+
+  #endif
 }
 
 // Some of the tests can't run on TensorrtExecutionProvider because only constant mode and value 0 of "Pad" node is supported.
