@@ -270,7 +270,7 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
 }
 
 template <>
-Status Pad<float>::Compute(OpKernelContext* ctx) const {
+Status PadCpu<float>::Compute(OpKernelContext* ctx) const {
   // kOnnxDomain Pad opset >= 11 (Or) kMsDomain opset == 1
   if (is_dynamic_) {
     const Tensor& input_tensor = *ctx->Input<Tensor>(0);
