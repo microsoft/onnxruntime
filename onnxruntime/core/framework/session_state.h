@@ -7,7 +7,7 @@
 #include <map>
 #include <unordered_map>
 #include <vector>
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 #include "core/platform/ort_mutex.h"
 #include "core/common/common.h"
@@ -53,7 +53,7 @@ class SessionState {
                bool enable_mem_pattern,
                concurrency::ThreadPool* thread_pool,
                concurrency::ThreadPool* inter_op_thread_pool)
-      : execution_providers_{execution_providers},
+      : execution_providers_(execution_providers),
         enable_mem_pattern_(enable_mem_pattern),
         thread_pool_(thread_pool),
         inter_op_thread_pool_(inter_op_thread_pool) {
@@ -225,7 +225,7 @@ class SessionState {
   std::vector<OpKernel*> session_kernels_;
   std::unique_ptr<GraphViewer> graph_viewer_;
 
-  const ExecutionProviders& execution_providers_;  // owned by InferenceSession
+  std::reference_wrapper<const ExecutionProviders> execution_providers_;  // owned by InferenceSession
   OrtValueNameIdxMap ort_value_name_idx_map_;
 
   // initialized tensors

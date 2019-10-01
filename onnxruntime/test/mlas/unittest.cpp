@@ -30,6 +30,8 @@ Abstract:
 #include "core/platform/threadpool.h"
 #endif
 
+#include "core/common/make_unique.h"
+
 #if !defined(_countof)
 #define _countof(_Array) (sizeof(_Array) / sizeof(_Array[0]))
 #endif
@@ -1975,36 +1977,35 @@ main(
     for (int i = 0; i != 2; ++i) {
 
         printf("SGEMM tests.\n");
-        std::make_unique<MlasFgemmTest<float>>()->ExecuteShort();
-
+        onnxruntime::make_unique<MlasFgemmTest<float>>()->ExecuteShort();
 #ifdef MLAS_HAS_DGEMM
         printf("DGEMM tests.\n");
-        std::make_unique<MlasFgemmTest<double>>()->ExecuteShort();
+        onnxruntime::make_unique<MlasFgemmTest<double>>()->ExecuteShort();
 #endif
 
 #ifdef MLAS_HAS_QGEMM_U8X8
         printf("QGEMM tests.\n");
-        std::make_unique<MlasQgemmU8X8Test<int8_t>>()->ExecuteShort();
-        std::make_unique<MlasQgemmU8X8Test<uint8_t>>()->ExecuteShort();
+        onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t>>()->ExecuteShort();
+        onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t>>()->ExecuteShort();
 #endif
 
         printf("Conv2D tests.\n");
-        std::make_unique<MlasConv2DTest>()->ExecuteShort();
+        onnxruntime::make_unique<MlasConv2DTest>()->ExecuteShort();
         if (MlasNchwcGetBlockSize() > 1) {
-            std::make_unique<MlasNchwcConv2DTest>()->ExecuteShort();
+          onnxruntime::make_unique<MlasNchwcConv2DTest>()->ExecuteShort();
         }
 
         printf("Pool2D tests.\n");
-        std::make_unique<MlasPool2DTest>()->ExecuteShort();
+        onnxruntime::make_unique<MlasPool2DTest>()->ExecuteShort();
         if (MlasNchwcGetBlockSize() > 1) {
-            std::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
+          onnxruntime::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
         }
 
         printf("Pool3D tests.\n");
-        std::make_unique<MlasPool3DTest>()->ExecuteShort();
+        onnxruntime::make_unique<MlasPool3DTest>()->ExecuteShort();
 
         printf("Activation tests.\n");
-        std::make_unique<MlasActivationTest>()->ExecuteShort();
+        onnxruntime::make_unique<MlasActivationTest>()->ExecuteShort();
 
         printf("Done.\n");
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)

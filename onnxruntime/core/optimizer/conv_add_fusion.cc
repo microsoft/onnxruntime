@@ -57,8 +57,8 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
       return Status::OK();
     }
 
-    auto conv_B = std::make_unique<Initializer>(conv_B_tensor_proto);
-    auto add_B = std::make_unique<Initializer>(add_B_tensor_proto);
+    auto conv_B = onnxruntime::make_unique<Initializer>(conv_B_tensor_proto);
+    auto add_B = onnxruntime::make_unique<Initializer>(add_B_tensor_proto);
 
     if (conv_B->size() != add_B->size()) {
       return Status::OK();

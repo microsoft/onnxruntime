@@ -192,7 +192,7 @@ class BatchNormPrimitivePool : public PrimitivePool<T> {
         BatchNormPrimitivePool<T>::GetInstance().GetPrimitive(params.ToString()));
 
     if (primitive == nullptr) {
-      auto BatchNorm_primitive = std::make_unique<BatchNormPrimitive<T>>(params);
+      auto BatchNorm_primitive = onnxruntime::make_unique<BatchNormPrimitive<T>>(params);
       primitive = BatchNorm_primitive.get();
       BatchNormPrimitivePool<T>::GetInstance().SetPrimitive(
         params.ToString(), std::move(BatchNorm_primitive));

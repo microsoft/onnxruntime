@@ -55,7 +55,7 @@ TEST(SessionStateTest, AddGetKernelTest) {
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
   auto kernel_def = KernelDefBuilder().SetName("Variable").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
-  auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
+  auto cpu_execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
 
   OpKernelInfo p_info(node, *kernel_def, *cpu_execution_provider.get(), s.GetConstantInitializedTensors(),
                       s.GetOrtValueNameIdxMap(), s.GetFuncMgr(), s.GetDataTransferMgr());
@@ -104,7 +104,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
 
   ExecutionProviders execution_providers;
   CPUExecutionProviderInfo epi{false};
-  status = execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
+  status = execution_providers.Add(onnxruntime::kCpuExecutionProvider, onnxruntime::make_unique<CPUExecutionProvider>(epi));
   ASSERT_TRUE(status.IsOK()) << status;
 
   KernelRegistryManager krm;

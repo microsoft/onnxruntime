@@ -400,7 +400,7 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       Graph* subgraph = entry.second;
       ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
 
-      auto subgraph_session_state = std::make_unique<SessionState>(execution_providers_,
+      auto subgraph_session_state = onnxruntime::make_unique<SessionState>(execution_providers_,
                                                                    session_state.GetEnableMemoryPattern(),
                                                                    session_state.GetThreadPool(),
                                                                    session_state.GetInterOpThreadPool());
@@ -489,7 +489,7 @@ common::Status InferenceSession::Initialize() {
     if (!execution_providers_.Get(onnxruntime::kCpuExecutionProvider)) {
       LOGS(*session_logger_, INFO) << "Adding default CPU execution provider.";
       CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
-      auto p_cpu_exec_provider = std::make_unique<CPUExecutionProvider>(epi);
+      auto p_cpu_exec_provider = onnxruntime::make_unique<CPUExecutionProvider>(epi);
       ORT_RETURN_IF_ERROR(RegisterExecutionProvider(std::move(p_cpu_exec_provider)));
     }
 

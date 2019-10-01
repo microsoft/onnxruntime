@@ -841,6 +841,6 @@ std::shared_ptr<KernelRegistry> CPUExecutionProvider::GetKernelRegistry() const 
 }
 
 std::unique_ptr<IDataTransfer> CPUExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<CPUDataTransfer>();
+  return onnxruntime::make_unique<CPUDataTransfer>();
 }
 }  // namespace onnxruntime
