@@ -148,7 +148,7 @@ def create_backend_test(testname=None):
                                  '^test_reduce_*',
                                  '^test_onehot_*',
                                  '^test_gemm_default_scalar_bias_cpu.*',
-                                 '^test_gemm_*',                              
+                                 '^test_gemm_*'                              
                                  )
 
         # Example of how to disable tests for a specific provider.
