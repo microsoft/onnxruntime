@@ -585,8 +585,9 @@ const Graph* Node::GetGraphAttribute(const std::string& attr_name) const {
 std::vector<gsl::not_null<const Graph*>> Node::GetSubgraphs() const {
   std::vector<gsl::not_null<const Graph*>> subgraphs;
   subgraphs.reserve(attr_to_subgraph_map_.size());
+  using value_type = std::unordered_map<std::string, gsl::not_null<Graph*>>::value_type;
   std::transform(attr_to_subgraph_map_.cbegin(), attr_to_subgraph_map_.cend(), std::back_inserter(subgraphs),
-                 [](const auto& entry) { return entry.second; });
+                 [](const value_type& entry) { return entry.second; });
 
   return subgraphs;
 }
