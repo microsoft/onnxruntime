@@ -500,7 +500,7 @@ class PlannerImpl {
 
   // Should only be used after ProcessDef()
   Status ComputeReusePlan() {
-    std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan{plan_.execution_plan};
+    std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
 
     // Identify allocation/deallocation plan for every ml-value
 
