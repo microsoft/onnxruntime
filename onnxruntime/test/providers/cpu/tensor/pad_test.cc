@@ -32,7 +32,7 @@ static void RunTest(
   test2.AddInput<float>("value", {1}, {value});
   test2.AddOutput<float>("output", output_dims, output);
   // NGraph does not yet support opset-11 and builds break on this test, hence exclude the EP
-  test2.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphDomain});
+  test2.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 
   #ifndef DISABLE_CONTRIB_OPS
   
