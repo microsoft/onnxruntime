@@ -78,11 +78,11 @@ INSTANTIATE_TEST_CASE_P(
     testing::Values(LinearRegressorParam("NONE", {32.0f, 14.0f, -166.0f}, 1),
                     LinearRegressorParam("SOFTMAX", {32.0f, 14.0f, -166.0f}, 1),
                     LinearRegressorParam("LOGISTIC", {32.0f, 14.0f, -166.0f}, 1),
-                    LinearRegressorParam("SOFTMAX", {32.0f, 14.0f, -166.0f}, 1),
+                    LinearRegressorParam("SOFTMAX_ZERO", {32.0f, 14.0f, -166.0f}, 1),
                     LinearRegressorParam("NONE", {1.0f, 32.0f, 3.0f, 14.0f, 23.0f, -166.0f}, 2),
                     LinearRegressorParam("SOFTMAX", {3.442477e-14f, 1.f, 1.670142e-05f, 1.f, 1.0f, 0.f}, 2),
                     LinearRegressorParam("LOGISTIC", {0.731058f, 1.0f, 0.9525741f, 1.f, 1.0f, 0.f}, 2),
-                    LinearRegressorParam("SOFTMAX", {3.442477e-14f, 1.f, 1.670142e-05f, 1.f, 1.0f, 0.f}, 2)
+                    LinearRegressorParam("SOFTMAX_ZERO", {3.442477e-14f, 1.f, 1.670142e-05f, 1.f, 1.0f, 0.f}, 2)
 
                         ));
 }  // namespace test
