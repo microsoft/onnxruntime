@@ -152,10 +152,9 @@ target_link_libraries(onnxruntime_server_http_core_lib PRIVATE
 
 # Server library
 add_library(onnxruntime_server_lib ${onnxruntime_server_lib_srcs})
-onnxruntime_add_include_to_target(onnxruntime_server_lib onnx_proto server_proto onnxruntime_common)
+onnxruntime_add_include_to_target(onnxruntime_server_lib onnx_proto server_proto)
 target_include_directories(onnxruntime_server_lib PRIVATE
   ${ONNXRUNTIME_INCLUDE_DIR}
-  ${ONNXRUNTIME_ROOT}/core/common
   ${ONNXRUNTIME_ROOT}/server
   ${ONNXRUNTIME_ROOT}/server/http
   ${ONNXRUNTIME_ROOT}/server/logging
