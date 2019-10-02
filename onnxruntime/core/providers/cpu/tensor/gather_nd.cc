@@ -5,7 +5,7 @@
 
 namespace onnxruntime {
 
-// Register a kernel for kMsDomain (contrib op) Pad
+// Register a kernel for kMsDomain (contrib op) GatherND
 #ifndef DISABLE_CONTRIB_OPS
 
 namespace contrib {
