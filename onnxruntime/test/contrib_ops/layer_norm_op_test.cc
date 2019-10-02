@@ -6,6 +6,7 @@
 #include "core/framework/tensor.h"
 #include "core/session/inference_session.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/framework/test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -28,13 +29,11 @@ static void CheckTensor(const Tensor& expected_tensor, const Tensor& output_tens
   auto output = output_tensor.Data<float>();
   for (auto i = 0; i < expected_tensor.Shape().Size(); ++i) {
     const auto expected_value = expected[i], actual_value = output[i];
-    // TODO enable these checks for non-finite values
-    /*if (std::isnan(expected_value)) {
+    if (std::isnan(expected_value)) {
       ASSERT_TRUE(std::isnan(actual_value)) << "value mismatch at index " << i << "; expected is NaN, actual is not NaN";
     } else if (std::isinf(expected_value)) {
       ASSERT_EQ(expected_value, actual_value) << "value mismatch at index " << i;
-    } else*/
-    {
+    } else {
       double diff = fabs(expected_value - actual_value);
       ASSERT_TRUE(diff <= (atol + rtol * fabs(expected_value))) << "value mismatch at index " << i << "; expected: " << expected_value << ", actual: " << actual_value;
     }
@@ -43,114 +42,105 @@ static void CheckTensor(const Tensor& expected_tensor, const Tensor& output_tens
 
 class LayerNormOpTester : public OpTester {
  public:
-  LayerNormOpTester(const char* op, int opset_version = 1, const char* domain = onnxruntime::kOnnxDomain) : OpTester(op, opset_version, domain) {}
-  void CompareCUDAWithCPU(double rtol, double atol);
-  void ComparLayerNormWithSubGraph(double rtol, double atol);
-};
+  LayerNormOpTester(const char* op,
+                    const std::vector<int64_t>& X_dims,
+                    const std::vector<int64_t>& scale_dims,
+                    const std::vector<int64_t>& B_dims,
+                    const std::vector<int64_t>& Y_dims,
+                    float epsilon,
+                    int64_t axis = -1,
+                    int64_t keep_dims = 1,
+                    int opset_version = 1,
+                    const char* domain = onnxruntime::kOnnxDomain) : OpTester(op, opset_version, domain),
+                                                                     X_dims_(X_dims),
+                                                                     scale_dims_(scale_dims),
+                                                                     B_dims_(B_dims),
+                                                                     Y_dims_(Y_dims),
+                                                                     epsilon_(epsilon),
+                                                                     axis_(axis),
+                                                                     keep_dims_(keep_dims) {
+    Init();
+  }
+  void Init() {
+    AddAttribute("axis", axis_);
+    AddAttribute("keep_dims", keep_dims_);
+    AddAttribute("epsilon", epsilon_);
 
-void LayerNormOpTester::CompareCUDAWithCPU(double rtol, double atol) {
+    int64_t X_size = std::accumulate(X_dims_.cbegin(), X_dims_.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+    int64_t scale_size = std::accumulate(scale_dims_.cbegin(), scale_dims_.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+    int64_t B_size = std::accumulate(B_dims_.cbegin(), B_dims_.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+    int64_t Y_size = std::accumulate(Y_dims_.cbegin(), Y_dims_.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+
+    // create rand inputs
+    X_data_.resize(X_size, 1.f);
+    scale_data_.resize(scale_size, 1.f);
+    B_data_.resize(B_size, 2.f);
+    Y_data_.resize(Y_size);
+
+    FillRandom<float>(X_data_, 0.0f, 1.0f);
+    FillRandom<float>(scale_data_, 0.0f, 1.0f);
+    FillRandom<float>(B_data_, 0.0f, 1.0f);
+
+    AddInput<float>("X", X_dims_, X_data_);
+    AddInput<float>("scale", scale_dims_, scale_data_, true);
+    AddInput<float>("B", B_dims_, B_data_, true);
+
+    AddOutput<float>("output", Y_dims_, Y_data_);
+  }
+  void Run() {
 #ifndef NDEBUG
-  run_called_ = true;
+     run_called_ = true;
 #endif
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    return;
-  }
-  auto p_model = BuildGraph();
-  auto& graph = p_model->MainGraph();
+    std::vector<MLValue> cpu_fetches;
+    std::vector<MLValue> cuda_fetches;
+    std::vector<MLValue> subgraph_fetches;
+    ComputeWithCPU(cpu_fetches);
+    ComputeWithCUDA(cuda_fetches);
+    ComputeOriSubgraphWithCPU(subgraph_fetches);
 
-  Status status = graph.Resolve();
-  ASSERT_TRUE( status.IsOK() ) << status;
+    // Compare CPU with original subgraph
+    ASSERT_TRUE(cpu_fetches.size() == subgraph_fetches.size());
+    for (auto i = 0; i < cpu_fetches.size(); i++) {
+      if (cpu_fetches[i].IsTensor() && subgraph_fetches[i].IsTensor()) {
+        VLOGS_DEFAULT(1) << "Checking tensor " << i;
+        CheckTensor(subgraph_fetches[i].Get<Tensor>(), cpu_fetches[i].Get<Tensor>(), 1e-3, 1e-3);
+      }
+    }
 
-  // Hookup the inputs and outputs
-  std::unordered_map<std::string, MLValue> feeds;
-  std::vector<std::string> output_names;
-  FillFeedsAndOutputNames(feeds, output_names);
-
-  // Run the model
-  SessionOptions so;
-  so.session_logid = op_;
-  so.session_log_verbosity_level = 1;
-
-  InferenceSession cpu_session_object{so};
-
-  // first run with cpu
-  std::string s1;
-  p_model->ToProto().SerializeToString(&s1);
-  std::istringstream str(s1);
-  status = cpu_session_object.Load(str);
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << "Load failed with status: " << status.ErrorMessage();
-    return;
-  }
-
-  status = cpu_session_object.Initialize();
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << "Initialize failed with status: " << status.ErrorMessage();
-    return;
-  }
-
-  RunOptions run_options;
-  run_options.run_tag = op_;
-  run_options.run_log_verbosity_level = 1;
-
-  std::vector<MLValue> cpu_fetches;
-  status = cpu_session_object.Run(run_options, feeds, output_names, &cpu_fetches);
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << "Run failed with status: " << status.ErrorMessage();
-    return;
-  }
-
-  // run with CUDA
-  auto cuda_execution_provider = DefaultCudaExecutionProvider();
-
-  InferenceSession cuda_session_object{so};
-  EXPECT_TRUE(cuda_session_object.RegisterExecutionProvider(std::move(cuda_execution_provider)).IsOK());
-
-  auto p_model_2 = BuildGraph();
-  auto& graph_2 = p_model_2->MainGraph();
-
-  status = graph_2.Resolve();
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-  if (!status.IsOK()) {
-    return;
-  }
-
-  std::string s2;
-  p_model_2->ToProto().SerializeToString(&s2);
-  std::istringstream str2(s2);
-
-  status = cuda_session_object.Load(str2);
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << "Load failed with status: " << status.ErrorMessage();
-    return;
-  }
-
-  status = cuda_session_object.Initialize();
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << "Initialize failed with status: " << status.ErrorMessage();
-    return;
-  }
-
-  std::vector<MLValue> cuda_fetches;
-  status = cuda_session_object.Run(run_options, feeds, output_names, &cuda_fetches);
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-
-  //compare
-  ASSERT_TRUE(cpu_fetches.size() == cuda_fetches.size());
-  for (auto i = 0; i < cpu_fetches.size(); i++) {
-    if (cpu_fetches[i].IsTensor() && cuda_fetches[i].IsTensor()) {
-      VLOGS_DEFAULT(1) << "Checking tensor " << i;
-      CheckTensor(cpu_fetches[i].Get<Tensor>(), cuda_fetches[i].Get<Tensor>(), rtol, atol);
+    // Compare GPU with original subgraph
+    if (DefaultCudaExecutionProvider()) {
+      ASSERT_TRUE(cuda_fetches.size() == subgraph_fetches.size());
+      for (auto i = 0; i < cuda_fetches.size(); i++) {
+        if (cuda_fetches[i].IsTensor() && subgraph_fetches[i].IsTensor()) {
+          VLOGS_DEFAULT(1) << "Checking tensor " << i;
+          CheckTensor(subgraph_fetches[i].Get<Tensor>(), cuda_fetches[i].Get<Tensor>(), 1e-3, 1e-3);
+        }
+      }
     }
   }
-}
 
-void LayerNormOpTester::ComparLayerNormWithSubGraph(double rtol, double atol) {
+ private:
+  void ComputeWithCPU(std::vector<MLValue>& cpu_fetches);
+  void ComputeWithCUDA(std::vector<MLValue>& cuda_fetches);
+  void ComputeOriSubgraphWithCPU(std::vector<MLValue>& subgraph_fetches);
+
+ private:
+  std::vector<int64_t> X_dims_;
+  std::vector<int64_t> scale_dims_;
+  std::vector<int64_t> B_dims_;
+  std::vector<int64_t> Y_dims_;
+
+  std::vector<float> X_data_;
+  std::vector<float> scale_data_;
+  std::vector<float> B_data_;
+  std::vector<float> Y_data_;
+
+  float epsilon_;
+  int64_t axis_;
+  int64_t keep_dims_;
+};
+
+void LayerNormOpTester::ComputeWithCPU(std::vector<MLValue>& cpu_fetches) {
   auto p_model = BuildGraph();
   auto& graph = p_model->MainGraph();
 
@@ -177,76 +167,81 @@ void LayerNormOpTester::ComparLayerNormWithSubGraph(double rtol, double atol) {
   std::istringstream str(s1);
   ASSERT_TRUE((status = layernorm_session_object.Load(str)).IsOK()) << status;
   ASSERT_TRUE((status = layernorm_session_object.Initialize()).IsOK()) << status;
-
-  std::vector<MLValue> cpu_fetches;
-  ASSERT_TRUE = layernorm_session_object.Run(run_options, feeds, output_names, &cpu_fetches);
-  ASSERT_TRUE( status.IsOK() ) << status;
-
-  // run with subgraph
-  InferenceSession subgraph_session_object{so, &DefaultLoggingManager()};
-  ASSERT_TRUE((status = subgraph_session_object.Load("test/layernorm_subgraph")).IsOK()) << status;
-  ASSERT_TRUE((status = subgraph_session_object.Initialize()).IsOK()) << status;
-
-  std::vector<MLValue> subgraph_fetches;
-  status = subgraph_session_object.Run(run_options, feeds, output_names, &subgraph_fetches);
-  ASSERT_TRUE(status.IsOK()) << status;
-
-  //compare
-  ASSERT_TRUE(cpu_fetches.size() == subgraph_fetches.size());
-  for (auto i = 0; i < cpu_fetches.size(); i++) {
-    if (cpu_fetches[i].IsTensor() && subgraph_fetches[i].IsTensor()) {
-      VLOGS_DEFAULT(1) << "Checking tensor " << i;
-      CheckTensor(cpu_fetches[i].Get<Tensor>(), subgraph_fetches[i].Get<Tensor>(), rtol, atol);
-    }
-  }
+  ASSERT_TRUE((status = layernorm_session_object.Run(run_options, feeds, output_names, &cpu_fetches)).IsOK());
 }
 
-static void TestLayerNorm(const std::vector<int64_t>& X_dims,
-                          const std::vector<int64_t>& scale_dims,
-                          const std::vector<int64_t>& B_dims,
-                          const std::vector<int64_t>& Y_dims,
-                          optional<float> epsilon,
-                          int64_t axis = -1,
-                          int64_t keep_dims = 1) {
-  LayerNormOpTester test("LayerNormalization");
-  test.AddAttribute("axis", axis);
-  test.AddAttribute("keep_dims", keep_dims);
-  if (epsilon.has_value()) {
-    test.AddAttribute("epsilon", epsilon.value());
+void LayerNormOpTester::ComputeWithCUDA(std::vector<MLValue>& cuda_fetches) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
   }
 
-  int64_t X_size = std::accumulate(X_dims.cbegin(), X_dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
-  int64_t scale_size = std::accumulate(scale_dims.cbegin(), scale_dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
-  int64_t B_size = std::accumulate(B_dims.cbegin(), B_dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
-  int64_t Y_size = std::accumulate(Y_dims.cbegin(), Y_dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+  auto p_model = BuildGraph();
+  auto& graph = p_model->MainGraph();
 
-  // create rand inputs
-  std::vector<float> X_data(X_size, 1.0f);
-  std::vector<float> scale_data(scale_size, 1.0f);
-  std::vector<float> B_data(B_size, 2.0f);
-  std::vector<float> Y_data(Y_size);
+  Status status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status;
 
-  FillRandom<float>(X_data, 0.0f, 1.0f);
-  FillRandom<float>(scale_data, 0.0f, 1.0f);
-  FillRandom<float>(B_data, 0.0f, 1.0f);
+  // Hookup the inputs and outputs
+  std::unordered_map<std::string, MLValue> feeds;
+  std::vector<std::string> output_names;
+  FillFeedsAndOutputNames(feeds, output_names);
 
-  test.AddInput<float>("X", X_dims, X_data);
-  test.AddInput<float>("scale", scale_dims, scale_data, true);
-  test.AddInput<float>("B", B_dims, B_data, true);
+  SessionOptions so;
+  so.session_logid = op_;
+  so.session_log_verbosity_level = 1;
 
-  test.AddOutput<float>("output", Y_dims, Y_data);
+  RunOptions run_options;
+  run_options.run_tag = op_;
+  run_options.run_log_verbosity_level = 1;
 
-  test.ComparLayerNormWithSubGraph( 1e-3, 1e-3 );
-  test.CompareCUDAWithCPU(1e-3, 1e-3);
+  auto cuda_execution_provider = DefaultCudaExecutionProvider();
+  InferenceSession cuda_session_object{so};
+  EXPECT_TRUE(cuda_session_object.RegisterExecutionProvider(std::move(cuda_execution_provider)).IsOK());
+
+  std::string s;
+  p_model->ToProto().SerializeToString(&s);
+  std::istringstream str2(s);
+
+  EXPECT_TRUE((status = cuda_session_object.Load(str2)).IsOK()) << status;
+  EXPECT_TRUE((status = cuda_session_object.Initialize()).IsOK()) << status;
+  EXPECT_TRUE((status = cuda_session_object.Run(run_options, feeds, output_names, &cuda_fetches)).IsOK()) << status;
+}
+
+void LayerNormOpTester::ComputeOriSubgraphWithCPU(std::vector<MLValue>& subgraph_fetches) {
+  NameMLValMap feeds;
+  OrtValue ml_value;
+  std::vector<std::string> output_names{"Y"};
+
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), X_dims_, X_data_, &ml_value);
+  feeds.insert(std::make_pair("X", ml_value));
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), scale_dims_, scale_data_, &ml_value);
+  feeds.insert(std::make_pair("Scale", ml_value));
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), B_dims_, B_data_, &ml_value);
+  feeds.insert(std::make_pair("B", ml_value));
+
+  SessionOptions so;
+  so.session_logid = op_;
+  so.session_log_verbosity_level = 1;
+
+  RunOptions run_options;
+  run_options.run_tag = op_;
+  run_options.run_log_verbosity_level = 1;
+
+  Status status;
+  InferenceSession subgraph_session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE((status = subgraph_session_object.Load("testdata/layernorm.onnx")).IsOK()) << status;
+  ASSERT_TRUE((status = subgraph_session_object.Initialize()).IsOK()) << status;
+  ASSERT_TRUE((status = subgraph_session_object.Run(run_options, feeds, output_names, &subgraph_fetches)).IsOK()) << status;
 }
 
 TEST(LayerNormTest, BERTLayerNorm) {
-  float epsilon = 1e-05f;
+  float epsilon = 1e-12f;
   std::vector<int64_t> X_dims{4, 128};
   std::vector<int64_t> scale_dims{128};
   std::vector<int64_t> B_dims{128};
   std::vector<int64_t> Y_dims{4, 128};
-  TestLayerNorm(X_dims, scale_dims, B_dims, Y_dims, mean_dims, var_dims, epsilon);
+  LayerNormOpTester test("LayerNormalization", X_dims, scale_dims, B_dims, Y_dims, epsilon, -1, 1);
+  test.Run();
 }
 
 }  // namespace test
