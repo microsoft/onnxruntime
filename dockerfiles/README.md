@@ -1,6 +1,6 @@
 # Docker containers for ONNX Runtime
 
-#### Build Instructions
+#### Build Flavors: Dockerfiles
 
 - [Arm 32v7](Dockerfile.arm32v7)
 - [Build from source (CPU)](Dockerfile.source)
@@ -17,14 +17,14 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 
 **Example**: Run `docker pull mcr.microsoft.com/azureml/onnxruntime:latest-cuda` to pull the latest released docker image with ONNX Runtime GPU, CUDA, and CUDNN support.
 
-| Build Flavor      | Base Image                            | ONNX Runtime Docker Image tags                   | Latest           |
-|-------------------|---------------------------------------|--------------------------------------------------|------------------|
-| Source (CPU)      | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0, :v0.5.0                                 | :latest          |
-| CUDA (GPU)        | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0-cuda10.0-cudnn7, :v0.5.0-cuda10.1-cudnn7 | :latest-cuda     |
-| TensorRT (x86)    | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0-tensorrt19.03, :v0.5.0-tensorrt19.06     | :latest-tensorrt |
-| OpenVino (VAD-M)  | mcr.microsoft.com/azureml/onnxruntime | TBA                                              | TBA              |
-| OpenVino (MYRIAD) | mcr.microsoft.com/azureml/onnxruntime | TBA                                              | TBA              |
-| Server            | mcr.microsoft.com/onnxruntime/server  | :v0.4.0, :v0.5.0                                 | :latest          |
+| Build Flavor      | Base Image                            | ONNX Runtime Docker Image tags                   | Latest                  |
+|-------------------|---------------------------------------|--------------------------------------------------|-------------------------|
+| Source (CPU)      | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0, :v0.5.0                                 | :latest                 |
+| CUDA (GPU)        | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0-cuda10.0-cudnn7, :v0.5.0-cuda10.1-cudnn7 | :latest-cuda            |
+| TensorRT (x86)    | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0-tensorrt19.03, :v0.5.0-tensorrt19.06     | :latest-tensorrt        |
+| OpenVino (VAD-M)  | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-vadm                       | :latest-openvino-vadm   |
+| OpenVino (MYRIAD) | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-myriad                     | :latest-openvino-myriad |
+| Server            | mcr.microsoft.com/onnxruntime/server  | :v0.4.0, :v0.5.0                                 | :latest                 |
 
 ## Build from Source
 #### Linux 16.04, CPU, Python Bindings
@@ -101,11 +101,11 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 ## OpenVINO (Public Preview)
 #### Linux 16.04, Python Bindings
 
-1. Build the onnxruntime image for all the accelerators supported as below
+1. Build the onnxruntime image for one of the accelerators supported below.
 
    Retrieve your docker image in one of the following ways.
 
-    -  For building the docker image, download OpenVINO online installer version 2019 R1.1 from [here](https://software.intel.com/en-us/openvino-toolkit/choose-download) and copy the openvino tar file in the same directory and build the image. The online installer size is only 16MB and the components needed for the accelerators are mentioned in the dockerfile. Providing the argument device enables onnxruntime for that particular device. You can also provide arguments ONNXRUNTIME_REPO and ONNXRUNTIME_BRANCH to test that particular repo and branch. Default values are http://github.com/microsoft/onnxruntime and repo is master
+    -  To build your docker image, download the OpenVINO online installer version 2019 R1.1 for Linux from [this link](https://software.intel.com/en-us/openvino-toolkit/choose-download) and copy the OpenVINO tar file to the same directory before building the Docker image. The online installer size is 16MB and the components needed for the accelerators are mentioned in the dockerfile. Providing the docker build argument DEVICE enables the onnxruntime build for that particular device. You can also provide arguments ONNXRUNTIME_REPO and ONNXRUNTIME_BRANCH to test that particular repo and branch. Default repository is http://github.com/microsoft/onnxruntime and default branch is master.
        ```
        docker build -t onnxruntime --build-arg DEVICE=$DEVICE .
        ```
