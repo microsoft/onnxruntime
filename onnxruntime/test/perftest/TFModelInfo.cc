@@ -8,7 +8,7 @@
 #include <core/platform/env.h>
 
 TestModelInfo* TFModelInfo::Create(_In_ const PATH_CHAR_TYPE* model_url) {
-  auto ret = std::make_unique<TFModelInfo>();
+  auto ret = std::unique_ptr<TFModelInfo>(new TFModelInfo{});
   ret->model_url_ = model_url;
   std::basic_string<PATH_CHAR_TYPE> meta_file_path = model_url;
   meta_file_path.append(ORT_TSTR(".meta"));

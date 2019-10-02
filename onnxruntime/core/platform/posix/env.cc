@@ -146,7 +146,7 @@ class PosixEnv : public Env {
       gsl::span<char> buffer) const override {
     ORT_RETURN_IF_NOT(file_path);
     ORT_RETURN_IF_NOT(offset >= 0);
-    ORT_RETURN_IF_NOT(buffer.size() >= 0 && static_cast<size_t>(buffer.size()) < length);
+    ORT_RETURN_IF_NOT(buffer.size() >= 0 && length <= static_cast<size_t>(buffer.size()));
 
     ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
     if (!file_descriptor.IsValid()) {

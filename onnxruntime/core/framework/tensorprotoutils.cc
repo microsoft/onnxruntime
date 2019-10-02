@@ -360,12 +360,17 @@ static void DeleteCharArray(void* param) noexcept {
 }
 
 static Status GetFileContent(
-    const Env& env, const ORTCHAR_T* file_path, Env::OffsetType offset, size_t length,
+    const Env& env, const ORTCHAR_T* file_path, OffsetType offset, size_t length,
     void*& raw_buffer, OrtCallback& deleter) {
+  // query length if it is 0
+  if (length == 0) {
+    ORT_RETURN_IF_ERROR(env.GetFileLength(file_path, length));
+  }
+
   // first, try to map into memory
   {
     Env::MappedMemoryPtr mapped_memory{};
-    auto status = env.Default().MapFileIntoMemory(file_path, offset, length, mapped_memory);
+    auto status = env.MapFileIntoMemory(file_path, offset, length, mapped_memory);
     if (status.IsOK()) {
       deleter = mapped_memory.get_deleter().callback;
       raw_buffer = mapped_memory.release();
@@ -375,7 +380,7 @@ static Status GetFileContent(
 
   // if that fails, try to copy
   auto buffer = std::make_unique<char[]>(length);
-  ORT_RETURN_IF_ERROR(env.Default().ReadFileIntoBuffer(
+  ORT_RETURN_IF_ERROR(env.ReadFileIntoBuffer(
       file_path, offset, length, gsl::make_span(buffer.get(), length)));
 
   deleter = OrtCallback{DeleteCharArray, buffer.get()};
