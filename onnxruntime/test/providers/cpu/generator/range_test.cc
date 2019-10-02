@@ -16,9 +16,9 @@ static void RunTest(
     const std::vector<T>& output) {
   // ONNX domain opset-11
   OpTester test1("Range", 11);
-  test1.AddInput<T>("start", {}, start);
-  test1.AddInput<T>("limit", {}, limit);
-  test1.AddInput<T>("delta", {}, delta);
+  test1.AddInput<T>("start", {}, {start});
+  test1.AddInput<T>("limit", {}, {limit});
+  test1.AddInput<T>("delta", {}, {delta});
   test1.AddOutput<T>("output", output_dims, output);
   // NGraph does not yet support opset-11 and builds break on this test, hence exclude the EP
   test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
@@ -27,11 +27,11 @@ static void RunTest(
 
   // MSFT domain opset-1 (contrib op)
   OpTester test2("Range", 1, kMSDomain);
-  test2.AddInput<T>("start", {}, start);
-  test2.AddInput<T>("limit", {}, limit);
+  test2.AddInput<T>("start", {}, {start});
+  test2.AddInput<T>("limit", {}, {limit});
 
   if (delta != T{1})  // only contrib schema allows optional 'delta' input
-    test2.AddInput<T>("delta", {}, delta);
+    test2.AddInput<T>("delta", {}, {delta});
 
   test2.AddOutput<T>("output", output_dims, output);
   test2.Run();
@@ -45,10 +45,6 @@ TEST(RangeTest, Int32_DeltaDefault) {
 
 TEST(RangeTest, Int64_DeltaDefault) {
   RunTest<int64_t>(0, 5, 1, {5}, {0, 1, 2, 3, 4});
-}
-
-TEST(RangeTest, Int16_DeltaDefault) {
-  RunTest<int16_t>(0, 5, 1, {5}, {0, 1, 2, 3, 4});
 }
 
 TEST(RangeTest, Float_DeltaDefault) {
