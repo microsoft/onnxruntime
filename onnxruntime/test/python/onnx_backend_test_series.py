@@ -80,6 +80,7 @@ def unsupported_usages_filters():
 
     return filters
 
+
 def other_tests_failing_permanently_filters():
     # Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
     # e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8, which
@@ -87,6 +88,7 @@ def other_tests_failing_permanently_filters():
     filters = ['^test_cast_FLOAT_to_STRING_cpu.*']
 
     return filters
+
 
 def create_backend_test(testname=None):
     backend_test = OrtBackendTest(c2, __name__)
@@ -158,17 +160,17 @@ def create_backend_test(testname=None):
 
         # Example of how to disable tests for a specific provider.
         # if c2.supports_device('NGRAPH'):
-        #    current_failing_tests = current_failing_tests + ('|^test_operator_repeat_dim_overflow_cpu.*',)
+        #    current_failing_tests.append('^test_operator_repeat_dim_overflow_cpu.*')
         if c2.supports_device('NGRAPH'):
-            current_failing_tests = current_failing_tests + ('|^test_clip*',)
-            current_failing_tests = current_failing_tests + ('|^test_depthtospace_crd*',)
-            current_failing_tests = current_failing_tests + ('|^test_argmax_negative_axis*',)
-            current_failing_tests = current_failing_tests + ('|^test_argmin_negative_axis*',)
-            current_failing_tests = current_failing_tests + ('|^test_hadmax_negative_axis*',)
-            current_failing_tests = current_failing_tests + ('|^test_gemm_default_no_bias_cpu.*',)
+            current_failing_tests += ['^test_clip*',
+                                      '^test_depthtospace_crd*',
+                                      '^test_argmax_negative_axis*',
+                                      '^test_argmin_negative_axis*',
+                                      '^test_hadmax_negative_axis*',
+                                      '^test_gemm_default_no_bias_cpu.*']
 
         if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
-            current_failing_tests = current_failing_tests + ('^test_div_cpu*',)
+            current_failing_tests.append('^test_div_cpu*')
 
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \
