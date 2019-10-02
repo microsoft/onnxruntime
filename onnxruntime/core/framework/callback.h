@@ -12,4 +12,19 @@ struct OrtCallback {
  *  f will be freed in this call
  */
 void OrtRunCallback(OrtCallback* f) noexcept;
+
+/**
+ * Invokes the contained OrtCallback with operator()(T).
+ * Useful for something like a std::unique_ptr<> deleter.
+ */
+struct OrtCallbackInvoker {
+  OrtCallback callback{};
+
+  template <typename T>
+  void operator()(T) {
+    if (callback.f) {
+      callback.f(callback.param);
+    }
+  }
+};
 }  // namespace onnxruntime

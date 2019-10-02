@@ -16,6 +16,7 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/env.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.h"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/scoped_resource.h"
 )
 
 if(WIN32)
