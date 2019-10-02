@@ -145,7 +145,6 @@ def create_backend_test(testname=None):
                                  '^test_scatternd_cpu.*',
                                  '^test_sequence_*',
                                  '^test_scatter_*',
-                                 '^test_reduce_*',
                                  '^test_onehot_*',
                                  '^test_constant_pad_cpu.*',
                                  '^test_edge_pad_cpu.*',
