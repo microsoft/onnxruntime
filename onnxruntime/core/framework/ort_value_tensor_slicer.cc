@@ -27,10 +27,10 @@ OrtValueTensorSlicer<T> OrtValueTensorSlicer<T>::Create(T& ort_value, int64_t sl
 template <typename T>
 OrtValueTensorSlicer<T>::Iterator::Iterator(T& ort_value, size_t slice_dimension, size_t dim0_offset, int64_t position,
                                             Direction direction)
-    : ort_value_{&ort_value},
-      position_{position},
-      increment_by_{direction == Direction::kForward ? 1 : -1},
-      position_materialized_{-1} {
+    : ort_value_(&ort_value),
+      position_(position),
+      increment_by_(direction == Direction::kForward ? 1 : -1),
+      position_materialized_(-1) {
   const auto& tensor = ort_value.template Get<Tensor>();
   tensor_data_type_ = tensor.DataType();
   tensor_location_ = &tensor.Location();
