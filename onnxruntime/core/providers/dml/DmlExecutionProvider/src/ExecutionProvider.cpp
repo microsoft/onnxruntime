@@ -483,7 +483,7 @@ namespace Dml
         return onnxruntime::common::Status::OK();
     }
 
-    Status ExecutionProviderImpl::Sync()
+    Status ExecutionProviderImpl::WaitForGpuCompletion()
     {
         assert(!m_closed);
 
@@ -683,7 +683,13 @@ namespace Dml
         ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
         dmlexecutionprovider->TrimUploadHeap();
     }
-    
+
+    void WaitForGpuCompletion(onnxruntime::IExecutionProvider * provider)
+    {
+        ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
+        dmlexecutionprovider->WaitForGpuCompletion();
+    }
+
     onnxruntime::common::Status CopyTensor(
         onnxruntime::IExecutionProvider* provider, 
         const onnxruntime::Tensor& src, 
