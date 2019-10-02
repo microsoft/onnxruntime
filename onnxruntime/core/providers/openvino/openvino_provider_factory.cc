@@ -21,7 +21,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
   OpenVINOExecutionProviderInfo info;
   info.device = device_;
-  return std::make_unique<OpenVINOExecutionProvider>(info);
+  return onnxruntime::make_unique<OpenVINOExecutionProvider>(info);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(

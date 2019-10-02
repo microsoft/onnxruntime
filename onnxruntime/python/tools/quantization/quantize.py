@@ -309,9 +309,10 @@ class ONNXQuantizer:
             # Removing input weight to a convolution
             try:
                 weight_input = next(val for val in self.model.graph.input if val.name == weight.name)
+                self.model.graph.input.remove(weight_input)
             except StopIteration:
-                raise ValueError('invalid weight name {} found in the graph '.format(weight.name))
-            self.model.graph.input.remove(weight_input)
+                if self.model.ir_version < 4:
+                    raise ValueError('invalid weight name {} found in the graph (not a graph input) '.format(weight.name))
 
 
     def _update_graph(self, weight):

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <gsl/span>
+#include <gsl/gsl>
 
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/rule_based_graph_transformer.h"

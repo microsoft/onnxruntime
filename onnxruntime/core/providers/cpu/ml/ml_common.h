@@ -322,13 +322,10 @@ void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, in
       scores[0] = ComputeProbit(scores[0]);
     } else {
       switch (add_second_class) {
-        case 0:  //0=all positive weights, winning class is positive
+        case 0:
+        case 1:
           scores.push_back(scores[0]);
-          scores[0] = 1.f - scores[0];  //put opposite score in positive slot
-          break;
-        case 1:  //1 = all positive weights, winning class is negative
-          scores.push_back(scores[0]);
-          scores[0] = 1.f - scores[0];  //put opposite score in positive slot
+          scores[0] = 1.f - scores[0];
           break;
         case 2:  //2 = mixed weights, winning class is positive
           if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {

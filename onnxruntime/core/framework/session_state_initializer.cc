@@ -149,7 +149,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                                   MemBuffer(data.get(), cpu_tensor_length, info), tmp_ort_value, d));
   const Tensor& p_deserialize_tensor = tmp_ort_value.Get<Tensor>();
 
-  p_tensor = std::make_unique<Tensor>(p_deserialize_tensor.DataType(), p_deserialize_tensor.Shape(), m.GetBuffer(),
+  p_tensor = onnxruntime::make_unique<Tensor>(p_deserialize_tensor.DataType(), p_deserialize_tensor.Shape(), m.GetBuffer(),
                                       m.GetAllocInfo());
   // TODO: does this function work for string tensor?
   Status copy_status = data_transfer_mgr.CopyTensor(p_deserialize_tensor, *p_tensor);

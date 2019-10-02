@@ -369,7 +369,7 @@ void addGlobalMethods(py::module& m) {
         // default logger is needed to create the MklDNNExecutionProvider
         std::string default_logger_id{"DefaultLogger"};
         std::unique_ptr<onnxruntime::logging::LoggingManager> default_logging_manager =
-            std::make_unique<LoggingManager>(
+            onnxruntime::make_unique<LoggingManager>(
                 std::unique_ptr<onnxruntime::logging::ISink>{new onnxruntime::logging::CLogSink{}},
                 onnxruntime::logging::Severity::kWARNING,
                 false,

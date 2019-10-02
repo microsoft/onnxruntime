@@ -238,7 +238,7 @@ class ConvPrimitivePool : public PrimitivePool<T> {
         ConvPrimitivePool<T>::GetInstance().GetPrimitive(params.ToString()));
 
     if (primitive == nullptr) {
-      auto conv_primitive = std::make_unique<ConvPrimitive<T>>(params);
+      auto conv_primitive = onnxruntime::make_unique<ConvPrimitive<T>>(params);
       primitive = conv_primitive.get();
       ConvPrimitivePool<T>::GetInstance().SetPrimitive(params.ToString(), std::move(conv_primitive));
     }
