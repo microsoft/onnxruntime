@@ -81,7 +81,7 @@ else
         bzip2 \
         unzip \
         zip \
-        rsync libunwind8 libpng16-dev libexpat1-dev \
+        rsync libunwind8 libpng-dev libexpat1-dev \
         python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest \
         libprotobuf-dev libprotobuf9v5 protobuf-compiler"
 fi
