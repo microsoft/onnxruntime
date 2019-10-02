@@ -298,7 +298,6 @@ if (onnxruntime_USE_TENSORRT)
     unset(OLD_CMAKE_CXX_FLAGS)
     unset(OLD_CMAKE_CUDA_FLAGS)
     set_target_properties(nvonnxparser PROPERTIES LINK_FLAGS "/ignore:4199")
-    set_target_properties(nvonnxparser_runtime PROPERTIES LINK_FLAGS "/ignore:4199")
     set_target_properties(trt_onnxify PROPERTIES LINK_FLAGS "/ignore:4199")
     target_compile_definitions(trt_onnxify PRIVATE ONNXIFI_BUILD_LIBRARY=1)
     target_sources(onnx2trt PRIVATE ${ONNXRUNTIME_ROOT}/test/win_getopt/mb/getopt.cc)
@@ -314,7 +313,7 @@ if (onnxruntime_USE_TENSORRT)
   include_directories(${ONNXRUNTIME_ROOT}/../cmake/external/onnx-tensorrt)
   include_directories(${TENSORRT_INCLUDE_DIR})
   set(trt_link_libs cudnn ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
-  set(onnxparser_link_libs nvonnxparser_static nvonnxparser_plugin)
+  set(onnxparser_link_libs nvonnxparser_static)
 
   file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.h"
@@ -464,7 +463,7 @@ if (onnxruntime_USE_NUPHAR)
   add_dependencies(onnxruntime_providers_nuphar ${onnxruntime_EXTERNAL_DEPENDENCIES})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/nuphar  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 endif()
- 
+
 if (onnxruntime_USE_NNAPI)
   add_definitions(-DUSE_NNAPI=1)
   option(DNN_READ_ONNX "" ON)
