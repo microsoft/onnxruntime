@@ -12,8 +12,8 @@ set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 
-# Set C++14 as standard for the whole project
-set(CMAKE_CXX_STANDARD 14)
+# Set C++11 as standard for the whole project
+set(CMAKE_CXX_STANDARD 11)
 
 # General C# prperties
 if (onnxruntime_BUILD_CSHARP)

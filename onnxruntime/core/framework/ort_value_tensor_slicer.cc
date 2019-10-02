@@ -14,7 +14,7 @@ OrtValueTensorSlicer<T> OrtValueTensorSlicer<T>::Create(T& ort_value, int64_t sl
   ORT_ENFORCE(ort_value.IsTensor(), "Can't slice a non-tensor OrtValue. Type was ", ort_value.Type());
   ORT_ENFORCE(ort_value.IsAllocated(), "OrtValue has not been allocated so can't be sliced.");
 
-  auto& tensor_shape{ort_value.template Get<Tensor>().Shape()};
+  auto& tensor_shape = ort_value.template Get<Tensor>().Shape();
   ORT_ENFORCE(gsl::narrow_cast<int64_t>(tensor_shape.NumDimensions()) >= slice_dimension,
               "Insufficient dimensions to slice on ", slice_dimension, ". Shape:", tensor_shape);
 
