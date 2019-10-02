@@ -42,7 +42,7 @@ class OrtValueTensorSlicer {
     using difference_type = ptrdiff_t;
     using pointer = T*;
     using reference = T&;
-    using const_reference = std::add_const_t<reference>;
+    using const_reference = const T&;
 
     enum class Direction { kForward,
                            kReverse };
@@ -84,7 +84,7 @@ class OrtValueTensorSlicer {
     }
 
     // non-const is only enabled if T is not const (i.e. is 'OrtValue' not 'const OrtValue')
-    std::enable_if_t<!std::is_const<reference>::value, reference> operator*() {
+    typename std::enable_if<!std::is_const<reference>::value, reference>::type operator*() {
       ORT_ENFORCE(position_ >= 0 && position_ < sequence_length_);
       if (position_ != position_materialized_) {
         MaterializeMLValue();

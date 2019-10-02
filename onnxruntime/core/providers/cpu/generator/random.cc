@@ -30,7 +30,7 @@ limitations under the License.
 #include <random>
 #include "core/util/math_cpuonly.h"
 #include "core/util/eigen_common_wrapper.h"
-#include "gsl/span"
+#include "gsl/gsl"
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {

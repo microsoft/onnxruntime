@@ -74,11 +74,12 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
 
   max_tree_depth_ = 1000;
   offset_ = four_billion_;
+  using LeafNodeData = std::tuple<int64_t, int64_t, int64_t, float>;
   //leafnode data, these are the votes that leaves do
   for (size_t i = 0; i < target_nodeids_.size(); i++) {
     leafnode_data_.push_back(std::make_tuple(target_treeids_[i], target_nodeids_[i], target_ids_[i], target_weights_[i]));
   }
-  std::sort(begin(leafnode_data_), end(leafnode_data_), [](auto const& t1, auto const& t2) {
+  std::sort(begin(leafnode_data_), end(leafnode_data_), [](LeafNodeData const& t1, LeafNodeData const& t2) {
     if (std::get<0>(t1) != std::get<0>(t2))
       return std::get<0>(t1) < std::get<0>(t2);
 

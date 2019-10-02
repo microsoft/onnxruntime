@@ -26,7 +26,7 @@ TEST(MemcpyTest, copy1) {
 
   ExecutionProviders execution_providers;
   CPUExecutionProviderInfo epi;
-  auto st = execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
+  auto st = execution_providers.Add(onnxruntime::kCpuExecutionProvider, onnxruntime::make_unique<CPUExecutionProvider>(epi));
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
   SessionState s{execution_providers, true, &tp, nullptr};
   s.SetLogger(logging::LoggingManager::DefaultLogger());
@@ -51,7 +51,7 @@ TEST(MemcpyTest, copy1) {
   AllocatorPtr allocator =
       execution_providers.Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault);
   auto* data_type = DataTypeImpl::GetType<float>();
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(data_type, TensorShape({3, 2}), allocator);
+  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(data_type, TensorShape({3, 2}), allocator);
   float data[] = {1.f, 1.f, 0.f, 1.f, 1.f, 1.f};
   memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
   OrtValue input =

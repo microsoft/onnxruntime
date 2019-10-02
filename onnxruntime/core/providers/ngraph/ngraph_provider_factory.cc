@@ -15,7 +15,7 @@ struct NGraphProviderFactory : IExecutionProviderFactory {
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
     NGRAPHExecutionProviderInfo info{ng_backend_type_};
-    return std::make_unique<NGRAPHExecutionProvider>(info);
+    return onnxruntime::make_unique<NGRAPHExecutionProvider>(info);
   }
 
   private:

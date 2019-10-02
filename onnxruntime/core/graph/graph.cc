@@ -11,7 +11,7 @@
 #include <numeric>
 #include <stack>
 
-#include "gsl/pointers"
+#include "gsl/gsl"
 #include "core/common/logging/logging.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensorprotoutils.h"
@@ -1342,7 +1342,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     auto* subgraph = node_.GetMutableGraphAttribute(attribute_name);
 
     if (subgraph) {
-      auto inferencer = std::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_);
+      auto inferencer = onnxruntime::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_);
       graph_inferencer = inferencer.get();
       graph_inferencers_.push_back(std::move(inferencer));
     } else {
@@ -1721,7 +1721,7 @@ Status Graph::VerifyNodeAndOpMatch() {
     auto iter = model_functions_.find(node.OpType());
     if (iter != model_functions_.end()) {
       const ONNX_NAMESPACE::FunctionProto* model_function_proto = iter->second;
-      auto model_func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), model_function_proto);
+      auto model_func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), model_function_proto);
       function_container_.emplace_back(std::move(model_func_ptr));
       node.SetFunctionBody(*function_container_.back());
     }
@@ -1742,7 +1742,7 @@ Status Graph::VerifyNodeAndOpMatch() {
 
       if (node.op_ && node.op_->HasFunction()) {
         auto onnx_function_proto = node.op_->GetFunction();
-        auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto);
+        auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto);
         function_container_.emplace_back(std::move(func_ptr));
         node.SetFunctionBody(*function_container_.back());
       }

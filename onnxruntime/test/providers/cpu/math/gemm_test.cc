@@ -232,5 +232,24 @@ TEST(GemmOpTest, GemmEmptyTensor) {
   test.Run();
 }
 
+TEST(GemmOpTest, GemmNoBiasOpset11) {
+  OpTester test("Gemm", 11);
+
+  test.AddAttribute("transA", static_cast<int64_t>(0));
+  test.AddAttribute("transB", static_cast<int64_t>(0));
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+
+  test.AddInput<float>("A", {2, 4},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<float>("B", {4, 3}, std::vector<float>(12, 1.0f));
+  test.AddOutput<float>("Y", {2, 3},
+                        {10.0f, 10.0f, 10.0f,
+                         -10.0f, -10.0f, -10.0f});
+  // NGraph and tensorRT don't seem to support missing bias
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime
