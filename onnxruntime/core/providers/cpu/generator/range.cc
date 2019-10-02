@@ -97,7 +97,7 @@ Status Range::Compute(OpKernelContext* ctx) const {
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                         "Range op: Unsupportted tensor data type:", data_type);
+                         "Range op: Unsupported tensor data type:", data_type);
 }
 
 }  // namespace onnxruntime
