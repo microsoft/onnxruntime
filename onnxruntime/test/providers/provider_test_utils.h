@@ -26,6 +26,11 @@ namespace onnxruntime {
 class InferenceSession;
 
 namespace test {
+template <typename T>
+struct SeqTensors {
+  std::vector<std::pair<std::vector<int64_t>, std::vector<T>>> tensors;
+};
+
 // unfortunately std::optional is in C++17 so use a miniversion of it
 template <typename T>
 class optional {
@@ -138,6 +143,20 @@ struct VectorOfMapTypeProto : ONNX_NAMESPACE::TypeProto {
 template <typename TKey, typename TVal>
 const VectorOfMapTypeProto<TKey, TVal> s_vec_map_type_proto;
 
+template <typename ElemType>
+struct SequenceTensorTypeProto : ONNX_NAMESPACE::TypeProto {
+  SequenceTensorTypeProto() {
+    MLDataType dt = DataTypeImpl::GetTensorType<ElemType>();
+    const auto* elem_proto = dt->GetTypeProto();
+    mutable_sequence_type()->mutable_elem_type()->CopyFrom(*elem_proto);
+    auto* tensor_type = mutable_sequence_type()->mutable_elem_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(TypeToDataType<ElemType>());
+  }
+};
+
+template <typename ElemType>
+const SequenceTensorTypeProto<ElemType> s_sequence_tensor_type_proto;
+
 // To use OpTester:
 //  1. Create one with the op name
 //  2. Call AddAttribute with any attributes
@@ -199,6 +218,36 @@ class OpTester {
     input_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>()});
   }
 
+  template <typename T>
+  void AddSeqInput(const char* name, const SeqTensors<T>& seq_tensors) {
+    auto mltype = DataTypeImpl::GetType<VectorTensor>();
+    ORT_ENFORCE(mltype != nullptr, "VectorTensor must be a registered cpp type");
+    auto ptr = std::make_unique<VectorTensor>();
+    auto num_tensors = seq_tensors.tensors.size();
+    ptr->resize(num_tensors);
+    for (int i = 0; i < num_tensors; ++i) {
+      TensorShape shape{seq_tensors.tensors[i].first};
+      auto values_count = static_cast<int64_t>(seq_tensors.tensors[i].second.size());
+      ORT_ENFORCE(shape.Size() == values_count, values_count,
+                  " input values doesn't match tensor size of ", shape.Size());
+
+      auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+      auto& p_tensor = (*ptr)[i];
+      p_tensor.InitTensor(DataTypeImpl::GetType<T>(),
+                          shape,
+                          allocator);
+
+      auto* data_ptr = p_tensor.template MutableData<T>();
+      for (int64_t x = 0; x < values_count; x++) {
+        data_ptr[x] = seq_tensors.tensors[i].second[x];
+      }
+    }
+
+    OrtValue value;
+    value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
+    ptr.release();
+    input_data_.push_back({{name, &s_sequence_tensor_type_proto<T>}, value, optional<float>(), optional<float>()});
+  }
 
   template <typename TKey, typename TVal>
   void AddInput(const char* name, const std::map<TKey, TVal>& val) {

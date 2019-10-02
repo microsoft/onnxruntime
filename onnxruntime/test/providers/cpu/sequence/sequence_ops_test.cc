@@ -9,8 +9,11 @@ namespace test {
 
 TEST(SequenceLengthOpTest, SequenceLengthPositive) {
   OpTester test("SequenceLength", 11);
-  test.AddInput<float>("T1", {3, 2}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
-  test.AddOutput<float>("T2", {3, 2}, {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f});
+  SeqTensors<float> input;
+  input.tensors.push_back(std::make_pair<std::vector<int64_t>, std::vector<float>>({3, 2}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}));
+  input.tensors.push_back(std::make_pair<std::vector<int64_t>, std::vector<float>>({3, 3}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}));
+  test.AddSeqInput("S", input);
+  test.AddOutput<int64_t>("I", {}, {2});
   test.Run();
 }
 

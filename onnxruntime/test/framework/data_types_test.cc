@@ -397,7 +397,7 @@ TEST_F(DataTypeTest, DataUtilsTest) {
   // Test simple seq
   {
     const std::string seq_float("seq(tensor(float))");
-    const auto* seq_proto = DataTypeImpl::GetType<VectorTensor>()->GetTypeProto();
+    const auto* seq_proto = DataTypeImpl::GetSequenceTensorType<float>()->GetTypeProto();
     EXPECT_NE(seq_proto, nullptr);
     DataType seq_dt = DataTypeUtils::ToType(*seq_proto);
     EXPECT_NE(seq_dt, nullptr);
@@ -406,196 +406,196 @@ TEST_F(DataTypeTest, DataUtilsTest) {
     // Expect internalized strings
     EXPECT_EQ(seq_dt, seq_from_str);
     const auto& from_dt_proto = DataTypeUtils::ToTypeProto(seq_dt);
-    EXPECT_TRUE(DataTypeImpl::GetType<VectorTensor>()->IsCompatible(from_dt_proto));
+    EXPECT_TRUE(DataTypeImpl::GetSequenceTensorType<float>()->IsCompatible(from_dt_proto));
   }
-  // // Test Tensor
-  // {
-  //   const std::string tensor_uint64("tensor(uint64)");
-  //   const auto* ten_proto = DataTypeImpl::GetTensorType<uint64_t>()->GetTypeProto();
-  //   EXPECT_NE(ten_proto, nullptr);
-  //   DataType ten_dt = DataTypeUtils::ToType(*ten_proto);
-  //   EXPECT_NE(ten_dt, nullptr);
-  //   EXPECT_EQ(tensor_uint64, *ten_dt);
-  //   DataType ten_from_str = DataTypeUtils::ToType(*ten_dt);
-  //   // Expect internalized strings
-  //   EXPECT_EQ(ten_dt, ten_from_str);
-  //   const auto& from_dt_proto = DataTypeUtils::ToTypeProto(ten_dt);
-  //   EXPECT_TRUE(DataTypeImpl::GetTensorType<uint64_t>()->IsCompatible(from_dt_proto));
-  // }
-  // // Test Tensor with bfloat16
-  // {
-  //   const std::string tensor_uint64("tensor(bfloat16)");
-  //   const auto* ten_proto = DataTypeImpl::GetTensorType<BFloat16>()->GetTypeProto();
-  //   EXPECT_NE(ten_proto, nullptr);
-  //   DataType ten_dt = DataTypeUtils::ToType(*ten_proto);
-  //   EXPECT_NE(ten_dt, nullptr);
-  //   EXPECT_EQ(tensor_uint64, *ten_dt);
-  //   DataType ten_from_str = DataTypeUtils::ToType(*ten_dt);
-  //   // Expect internalized strings
-  //   EXPECT_EQ(ten_dt, ten_from_str);
-  //   const auto& from_dt_proto = DataTypeUtils::ToTypeProto(ten_dt);
-  //   EXPECT_TRUE(DataTypeImpl::GetTensorType<BFloat16>()->IsCompatible(from_dt_proto));
-  // }
-  // // SparseTensor
-  // // Currently test only with proto, no MLDataType yet.
-  // {
-  //   const std::string tensor_uint64("sparse_tensor(uint64)");
-  //   // We expect that the above string will be matched in both cases
-  //   // where we have shape and where we don't
-  //   SparseTensorTypeProto<TensorProto_DataType_UINT64> sparse_proto;
-  //   DataType ten_dt = DataTypeUtils::ToType(sparse_proto);
-  //   EXPECT_NE(ten_dt, nullptr);
-  //   EXPECT_EQ(tensor_uint64, *ten_dt);
-  //   DataType ten_from_str = DataTypeUtils::ToType(*ten_dt);
-  //   // Expect internalized strings
-  //   EXPECT_EQ(ten_dt, ten_from_str);
+  // Test Tensor
+  {
+    const std::string tensor_uint64("tensor(uint64)");
+    const auto* ten_proto = DataTypeImpl::GetTensorType<uint64_t>()->GetTypeProto();
+    EXPECT_NE(ten_proto, nullptr);
+    DataType ten_dt = DataTypeUtils::ToType(*ten_proto);
+    EXPECT_NE(ten_dt, nullptr);
+    EXPECT_EQ(tensor_uint64, *ten_dt);
+    DataType ten_from_str = DataTypeUtils::ToType(*ten_dt);
+    // Expect internalized strings
+    EXPECT_EQ(ten_dt, ten_from_str);
+    const auto& from_dt_proto = DataTypeUtils::ToTypeProto(ten_dt);
+    EXPECT_TRUE(DataTypeImpl::GetTensorType<uint64_t>()->IsCompatible(from_dt_proto));
+  }
+  // Test Tensor with bfloat16
+  {
+    const std::string tensor_uint64("tensor(bfloat16)");
+    const auto* ten_proto = DataTypeImpl::GetTensorType<BFloat16>()->GetTypeProto();
+    EXPECT_NE(ten_proto, nullptr);
+    DataType ten_dt = DataTypeUtils::ToType(*ten_proto);
+    EXPECT_NE(ten_dt, nullptr);
+    EXPECT_EQ(tensor_uint64, *ten_dt);
+    DataType ten_from_str = DataTypeUtils::ToType(*ten_dt);
+    // Expect internalized strings
+    EXPECT_EQ(ten_dt, ten_from_str);
+    const auto& from_dt_proto = DataTypeUtils::ToTypeProto(ten_dt);
+    EXPECT_TRUE(DataTypeImpl::GetTensorType<BFloat16>()->IsCompatible(from_dt_proto));
+  }
+  // SparseTensor
+  // Currently test only with proto, no MLDataType yet.
+  {
+    const std::string tensor_uint64("sparse_tensor(uint64)");
+    // We expect that the above string will be matched in both cases
+    // where we have shape and where we don't
+    SparseTensorTypeProto<TensorProto_DataType_UINT64> sparse_proto;
+    DataType ten_dt = DataTypeUtils::ToType(sparse_proto);
+    EXPECT_NE(ten_dt, nullptr);
+    EXPECT_EQ(tensor_uint64, *ten_dt);
+    DataType ten_from_str = DataTypeUtils::ToType(*ten_dt);
+    // Expect internalized strings
+    EXPECT_EQ(ten_dt, ten_from_str);
 
-  //   // Now add empty shape, we expect the same string
-  //   TensorShapeTypeProto<> shape_no_dims;
-  //   sparse_proto.SetShape(shape_no_dims);
-  //   ten_dt = DataTypeUtils::ToType(sparse_proto);
-  //   EXPECT_NE(ten_dt, nullptr);
-  //   EXPECT_EQ(tensor_uint64, *ten_dt);
-  //   ten_from_str = DataTypeUtils::ToType(*ten_dt);
-  //   // Expect internalized strings
-  //   EXPECT_EQ(ten_dt, ten_from_str);
+    // Now add empty shape, we expect the same string
+    TensorShapeTypeProto<> shape_no_dims;
+    sparse_proto.SetShape(shape_no_dims);
+    ten_dt = DataTypeUtils::ToType(sparse_proto);
+    EXPECT_NE(ten_dt, nullptr);
+    EXPECT_EQ(tensor_uint64, *ten_dt);
+    ten_from_str = DataTypeUtils::ToType(*ten_dt);
+    // Expect internalized strings
+    EXPECT_EQ(ten_dt, ten_from_str);
 
-  //   // Now add shape with dimensions, we expect no difference
-  //   sparse_proto.ClearShape();
-  //   TensorShapeTypeProto<10, 12> shape_with_dim;
-  //   sparse_proto.SetShape(shape_with_dim);
-  //   ten_dt = DataTypeUtils::ToType(sparse_proto);
-  //   EXPECT_NE(ten_dt, nullptr);
-  //   EXPECT_EQ(tensor_uint64, *ten_dt);
-  //   ten_from_str = DataTypeUtils::ToType(*ten_dt);
-  //   // Expect internalized strings
-  //   EXPECT_EQ(ten_dt, ten_from_str);
-  // }
-  // // Test Simple map
-  // {
-  //   const std::string map_string_string("map(string,tensor(string))");
-  //   const auto* map_proto = DataTypeImpl::GetType<MapStringToString>()->GetTypeProto();
-  //   EXPECT_NE(map_proto, nullptr);
-  //   DataType map_dt = DataTypeUtils::ToType(*map_proto);
-  //   EXPECT_NE(map_dt, nullptr);
-  //   EXPECT_EQ(map_string_string, *map_dt);
-  //   DataType map_from_str = DataTypeUtils::ToType(*map_dt);
-  //   // Expect internalized strings
-  //   EXPECT_EQ(map_dt, map_from_str);
-  //   const auto& from_dt_proto = DataTypeUtils::ToTypeProto(map_dt);
-  //   EXPECT_TRUE(DataTypeImpl::GetType<MapStringToString>()->IsCompatible(from_dt_proto));
-  // }
-  // // Test map with recursive value
-  // {
-  //   const std::string map_int_map_int_float("map(int64,map(int64,tensor(float)))");
-  //   const auto* map_proto = DataTypeImpl::GetType<TestMapToMapInt64ToFloat>()->GetTypeProto();
-  //   EXPECT_NE(map_proto, nullptr);
-  //   DataType map_dt = DataTypeUtils::ToType(*map_proto);
-  //   EXPECT_NE(map_dt, nullptr);
-  //   EXPECT_EQ(map_int_map_int_float, *map_dt);
-  //   DataType map_from_str = DataTypeUtils::ToType(*map_dt);
-  //   // Expect internalized strings
-  //   EXPECT_EQ(map_dt, map_from_str);
-  //   const auto& from_dt_proto = DataTypeUtils::ToTypeProto(map_dt);
-  //   EXPECT_TRUE(DataTypeImpl::GetType<TestMapToMapInt64ToFloat>()->IsCompatible(from_dt_proto));
-  // }
-  // {
-  //   const std::string opaque_map_2("map(int64,opaque(test_domain_2,test_name_2))");
-  //   const auto* map_proto = DataTypeImpl::GetType<MyOpaqueMapCpp_2>()->GetTypeProto();
-  //   EXPECT_NE(map_proto, nullptr);
-  //   DataType map_dt = DataTypeUtils::ToType(*map_proto);
-  //   EXPECT_NE(map_dt, nullptr);
-  //   EXPECT_EQ(opaque_map_2, *map_dt);
-  //   DataType map_from_str = DataTypeUtils::ToType(*map_dt);
-  //   // Expect internalized strings
-  //   EXPECT_EQ(map_dt, map_from_str);
-  //   const auto& from_dt_proto = DataTypeUtils::ToTypeProto(map_dt);
-  //   EXPECT_TRUE(DataTypeImpl::GetType<MyOpaqueMapCpp_2>()->IsCompatible(from_dt_proto));
-  // }
-  //   // Test Sequence with recursion
-  // {
-  //   const std::string seq_map_str_float("seq(map(string,tensor(float)))");
-  //   const auto* seq_proto = DataTypeImpl::GetType<VectorMapStringToFloat>()->GetTypeProto();
-  //   EXPECT_NE(seq_proto, nullptr);
-  //   DataType seq_dt = DataTypeUtils::ToType(*seq_proto);
-  //   EXPECT_NE(seq_dt, nullptr);
-  //   EXPECT_EQ(seq_map_str_float, *seq_dt);
-  //   DataType seq_from_str = DataTypeUtils::ToType(*seq_dt);
-  //   // Expect internalized strings
-  //   EXPECT_EQ(seq_dt, seq_from_str);
-  //   const auto& from_dt_proto = DataTypeUtils::ToTypeProto(seq_dt);
-  //   EXPECT_TRUE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(from_dt_proto));
-  // }
-  // // Test Sequence with opaque_2
-  // {
-  //   const std::string seq_opaque_2("seq(opaque(test_domain_2,test_name_2))");
-  //   const auto* seq_proto = DataTypeImpl::GetType<MyOpaqueSeqCpp_2>()->GetTypeProto();
-  //   EXPECT_NE(seq_proto, nullptr);
-  //   DataType seq_dt = DataTypeUtils::ToType(*seq_proto);
-  //   EXPECT_NE(seq_dt, nullptr);
-  //   EXPECT_EQ(seq_opaque_2, *seq_dt);
-  //   DataType seq_from_str = DataTypeUtils::ToType(*seq_dt);
-  //   // Expect internalized strings
-  //   EXPECT_EQ(seq_dt, seq_from_str);
-  //   const auto& from_dt_proto = DataTypeUtils::ToTypeProto(seq_dt);
-  //   EXPECT_TRUE(DataTypeImpl::GetType<MyOpaqueSeqCpp_2>()->IsCompatible(from_dt_proto));
-  // }
-  // // Test Opaque type opaque_1
-  // {
-  //   const std::string opaque_q("seq(opaque(test_domain_1,test_name_1))");
-  //   const auto* op_proto = DataTypeImpl::GetType<MyOpaqueSeqCpp_1>()->GetTypeProto();
-  //   EXPECT_NE(op_proto, nullptr);
-  //   DataType op_dt = DataTypeUtils::ToType(*op_proto);
-  //   EXPECT_NE(op_dt, nullptr);
-  //   EXPECT_EQ(opaque_q, *op_dt);
-  //   DataType op_from_str = DataTypeUtils::ToType(*op_dt);
-  //   // Expect internalized strings
-  //   EXPECT_EQ(op_dt, op_from_str);
-  //   const auto& from_dt_proto = DataTypeUtils::ToTypeProto(op_dt);
-  //   EXPECT_TRUE(DataTypeImpl::GetType<MyOpaqueSeqCpp_1>()->IsCompatible(from_dt_proto));
-  // }
-  // // Test TestOpaqueDomainOnly
-  // {
-  //   const std::string opaque_q("opaque(test_domain_1,)");
-  //   const auto* op_proto = DataTypeImpl::GetType<TestOpaqueDomainOnly>()->GetTypeProto();
-  //   EXPECT_NE(op_proto, nullptr);
-  //   DataType op_dt = DataTypeUtils::ToType(*op_proto);
-  //   EXPECT_NE(op_dt, nullptr);
-  //   EXPECT_EQ(opaque_q, *op_dt);
-  //   DataType op_from_str = DataTypeUtils::ToType(*op_dt);
-  //   // Expect internalized strings
-  //   EXPECT_EQ(op_dt, op_from_str);
-  //   const auto& from_dt_proto = DataTypeUtils::ToTypeProto(op_dt);
-  //   EXPECT_TRUE(DataTypeImpl::GetType<TestOpaqueDomainOnly>()->IsCompatible(from_dt_proto));
-  // }
-  // // Test TestOpaqueNameOnly
-  // {
-  //   const std::string opaque_q("opaque(test_name_1)");
-  //   const auto* op_proto = DataTypeImpl::GetType<TestOpaqueNameOnly>()->GetTypeProto();
-  //   EXPECT_NE(op_proto, nullptr);
-  //   DataType op_dt = DataTypeUtils::ToType(*op_proto);
-  //   EXPECT_NE(op_dt, nullptr);
-  //   EXPECT_EQ(opaque_q, *op_dt);
-  //   DataType op_from_str = DataTypeUtils::ToType(*op_dt);
-  //   // Expect internalized strings
-  //   EXPECT_EQ(op_dt, op_from_str);
-  //   const auto& from_dt_proto = DataTypeUtils::ToTypeProto(op_dt);
-  //   EXPECT_TRUE(DataTypeImpl::GetType<TestOpaqueNameOnly>()->IsCompatible(from_dt_proto));
-  // }
-  // // Test TestOpaqueNoNames
-  // {
-  //   const std::string opaque_q("opaque()");
-  //   const auto* op_proto = DataTypeImpl::GetType<TestOpaqueNoNames>()->GetTypeProto();
-  //   EXPECT_NE(op_proto, nullptr);
-  //   DataType op_dt = DataTypeUtils::ToType(*op_proto);
-  //   EXPECT_NE(op_dt, nullptr);
-  //   EXPECT_EQ(opaque_q, *op_dt);
-  //   DataType op_from_str = DataTypeUtils::ToType(*op_dt);
-  //   // Expect internalized strings
-  //   EXPECT_EQ(op_dt, op_from_str);
-  //   const auto& from_dt_proto = DataTypeUtils::ToTypeProto(op_dt);
-  //   EXPECT_TRUE(DataTypeImpl::GetType<TestOpaqueNoNames>()->IsCompatible(from_dt_proto));
-  // }
+    // Now add shape with dimensions, we expect no difference
+    sparse_proto.ClearShape();
+    TensorShapeTypeProto<10, 12> shape_with_dim;
+    sparse_proto.SetShape(shape_with_dim);
+    ten_dt = DataTypeUtils::ToType(sparse_proto);
+    EXPECT_NE(ten_dt, nullptr);
+    EXPECT_EQ(tensor_uint64, *ten_dt);
+    ten_from_str = DataTypeUtils::ToType(*ten_dt);
+    // Expect internalized strings
+    EXPECT_EQ(ten_dt, ten_from_str);
+  }
+  // Test Simple map
+  {
+    const std::string map_string_string("map(string,tensor(string))");
+    const auto* map_proto = DataTypeImpl::GetType<MapStringToString>()->GetTypeProto();
+    EXPECT_NE(map_proto, nullptr);
+    DataType map_dt = DataTypeUtils::ToType(*map_proto);
+    EXPECT_NE(map_dt, nullptr);
+    EXPECT_EQ(map_string_string, *map_dt);
+    DataType map_from_str = DataTypeUtils::ToType(*map_dt);
+    // Expect internalized strings
+    EXPECT_EQ(map_dt, map_from_str);
+    const auto& from_dt_proto = DataTypeUtils::ToTypeProto(map_dt);
+    EXPECT_TRUE(DataTypeImpl::GetType<MapStringToString>()->IsCompatible(from_dt_proto));
+  }
+  // Test map with recursive value
+  {
+    const std::string map_int_map_int_float("map(int64,map(int64,tensor(float)))");
+    const auto* map_proto = DataTypeImpl::GetType<TestMapToMapInt64ToFloat>()->GetTypeProto();
+    EXPECT_NE(map_proto, nullptr);
+    DataType map_dt = DataTypeUtils::ToType(*map_proto);
+    EXPECT_NE(map_dt, nullptr);
+    EXPECT_EQ(map_int_map_int_float, *map_dt);
+    DataType map_from_str = DataTypeUtils::ToType(*map_dt);
+    // Expect internalized strings
+    EXPECT_EQ(map_dt, map_from_str);
+    const auto& from_dt_proto = DataTypeUtils::ToTypeProto(map_dt);
+    EXPECT_TRUE(DataTypeImpl::GetType<TestMapToMapInt64ToFloat>()->IsCompatible(from_dt_proto));
+  }
+  {
+    const std::string opaque_map_2("map(int64,opaque(test_domain_2,test_name_2))");
+    const auto* map_proto = DataTypeImpl::GetType<MyOpaqueMapCpp_2>()->GetTypeProto();
+    EXPECT_NE(map_proto, nullptr);
+    DataType map_dt = DataTypeUtils::ToType(*map_proto);
+    EXPECT_NE(map_dt, nullptr);
+    EXPECT_EQ(opaque_map_2, *map_dt);
+    DataType map_from_str = DataTypeUtils::ToType(*map_dt);
+    // Expect internalized strings
+    EXPECT_EQ(map_dt, map_from_str);
+    const auto& from_dt_proto = DataTypeUtils::ToTypeProto(map_dt);
+    EXPECT_TRUE(DataTypeImpl::GetType<MyOpaqueMapCpp_2>()->IsCompatible(from_dt_proto));
+  }
+  // Test Sequence with recursion
+  {
+    const std::string seq_map_str_float("seq(map(string,tensor(float)))");
+    const auto* seq_proto = DataTypeImpl::GetType<VectorMapStringToFloat>()->GetTypeProto();
+    EXPECT_NE(seq_proto, nullptr);
+    DataType seq_dt = DataTypeUtils::ToType(*seq_proto);
+    EXPECT_NE(seq_dt, nullptr);
+    EXPECT_EQ(seq_map_str_float, *seq_dt);
+    DataType seq_from_str = DataTypeUtils::ToType(*seq_dt);
+    // Expect internalized strings
+    EXPECT_EQ(seq_dt, seq_from_str);
+    const auto& from_dt_proto = DataTypeUtils::ToTypeProto(seq_dt);
+    EXPECT_TRUE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(from_dt_proto));
+  }
+  // Test Sequence with opaque_2
+  {
+    const std::string seq_opaque_2("seq(opaque(test_domain_2,test_name_2))");
+    const auto* seq_proto = DataTypeImpl::GetType<MyOpaqueSeqCpp_2>()->GetTypeProto();
+    EXPECT_NE(seq_proto, nullptr);
+    DataType seq_dt = DataTypeUtils::ToType(*seq_proto);
+    EXPECT_NE(seq_dt, nullptr);
+    EXPECT_EQ(seq_opaque_2, *seq_dt);
+    DataType seq_from_str = DataTypeUtils::ToType(*seq_dt);
+    // Expect internalized strings
+    EXPECT_EQ(seq_dt, seq_from_str);
+    const auto& from_dt_proto = DataTypeUtils::ToTypeProto(seq_dt);
+    EXPECT_TRUE(DataTypeImpl::GetType<MyOpaqueSeqCpp_2>()->IsCompatible(from_dt_proto));
+  }
+  // Test Opaque type opaque_1
+  {
+    const std::string opaque_q("seq(opaque(test_domain_1,test_name_1))");
+    const auto* op_proto = DataTypeImpl::GetType<MyOpaqueSeqCpp_1>()->GetTypeProto();
+    EXPECT_NE(op_proto, nullptr);
+    DataType op_dt = DataTypeUtils::ToType(*op_proto);
+    EXPECT_NE(op_dt, nullptr);
+    EXPECT_EQ(opaque_q, *op_dt);
+    DataType op_from_str = DataTypeUtils::ToType(*op_dt);
+    // Expect internalized strings
+    EXPECT_EQ(op_dt, op_from_str);
+    const auto& from_dt_proto = DataTypeUtils::ToTypeProto(op_dt);
+    EXPECT_TRUE(DataTypeImpl::GetType<MyOpaqueSeqCpp_1>()->IsCompatible(from_dt_proto));
+  }
+  // Test TestOpaqueDomainOnly
+  {
+    const std::string opaque_q("opaque(test_domain_1,)");
+    const auto* op_proto = DataTypeImpl::GetType<TestOpaqueDomainOnly>()->GetTypeProto();
+    EXPECT_NE(op_proto, nullptr);
+    DataType op_dt = DataTypeUtils::ToType(*op_proto);
+    EXPECT_NE(op_dt, nullptr);
+    EXPECT_EQ(opaque_q, *op_dt);
+    DataType op_from_str = DataTypeUtils::ToType(*op_dt);
+    // Expect internalized strings
+    EXPECT_EQ(op_dt, op_from_str);
+    const auto& from_dt_proto = DataTypeUtils::ToTypeProto(op_dt);
+    EXPECT_TRUE(DataTypeImpl::GetType<TestOpaqueDomainOnly>()->IsCompatible(from_dt_proto));
+  }
+  // Test TestOpaqueNameOnly
+  {
+    const std::string opaque_q("opaque(test_name_1)");
+    const auto* op_proto = DataTypeImpl::GetType<TestOpaqueNameOnly>()->GetTypeProto();
+    EXPECT_NE(op_proto, nullptr);
+    DataType op_dt = DataTypeUtils::ToType(*op_proto);
+    EXPECT_NE(op_dt, nullptr);
+    EXPECT_EQ(opaque_q, *op_dt);
+    DataType op_from_str = DataTypeUtils::ToType(*op_dt);
+    // Expect internalized strings
+    EXPECT_EQ(op_dt, op_from_str);
+    const auto& from_dt_proto = DataTypeUtils::ToTypeProto(op_dt);
+    EXPECT_TRUE(DataTypeImpl::GetType<TestOpaqueNameOnly>()->IsCompatible(from_dt_proto));
+  }
+  // Test TestOpaqueNoNames
+  {
+    const std::string opaque_q("opaque()");
+    const auto* op_proto = DataTypeImpl::GetType<TestOpaqueNoNames>()->GetTypeProto();
+    EXPECT_NE(op_proto, nullptr);
+    DataType op_dt = DataTypeUtils::ToType(*op_proto);
+    EXPECT_NE(op_dt, nullptr);
+    EXPECT_EQ(opaque_q, *op_dt);
+    DataType op_from_str = DataTypeUtils::ToType(*op_dt);
+    // Expect internalized strings
+    EXPECT_EQ(op_dt, op_from_str);
+    const auto& from_dt_proto = DataTypeUtils::ToTypeProto(op_dt);
+    EXPECT_TRUE(DataTypeImpl::GetType<TestOpaqueNoNames>()->IsCompatible(from_dt_proto));
+  }
 }
 
 }  // namespace test

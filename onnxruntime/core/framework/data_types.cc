@@ -725,6 +725,41 @@ const TensorTypeBase* DataTypeImpl::TensorTypeFromONNXEnum(int type) {
   }
 }
 
+const NonTensorTypeBase* DataTypeImpl::SequenceTensorTypeFromONNXEnum(int type) {
+  switch (type) {
+    case TensorProto_DataType_FLOAT:
+      return DataTypeImpl::GetSequenceTensorType<float>()->AsNonTensorTypeBase();
+    // case TensorProto_DataType_BOOL:
+    //   return DataTypeImpl::GetSequenceTensorType<bool>()->AsNonTensorTypeBase();
+    // case TensorProto_DataType_INT32:
+    //   return DataTypeImpl::GetSequenceTensorType<int32_t>()->AsNonTensorTypeBase();
+    // case TensorProto_DataType_DOUBLE:
+    //   return DataTypeImpl::GetSequenceTensorType<double>()->AsNonTensorTypeBase();
+    // case TensorProto_DataType_STRING:
+    //   return DataTypeImpl::GetSequenceTensorType<std::string>()->AsNonTensorTypeBase();
+    // case TensorProto_DataType_UINT8:
+    //   return DataTypeImpl::GetSequenceTensorType<uint8_t>()->AsNonTensorTypeBase();
+    // case TensorProto_DataType_UINT16:
+    //   return DataTypeImpl::GetSequenceTensorType<uint16_t>()->AsNonTensorTypeBase();
+    // case TensorProto_DataType_INT8:
+    //   return DataTypeImpl::GetSequenceTensorType<int8_t>()->AsNonTensorTypeBase();
+    // case TensorProto_DataType_INT16:
+    //   return DataTypeImpl::GetSequenceTensorType<int16_t>()->AsNonTensorTypeBase();
+    // case TensorProto_DataType_INT64:
+    //   return DataTypeImpl::GetSequenceTensorType<int64_t>()->AsNonTensorTypeBase();
+    // case TensorProto_DataType_UINT32:
+    //   return DataTypeImpl::GetSequenceTensorType<uint32_t>()->AsNonTensorTypeBase();
+    // case TensorProto_DataType_UINT64:
+    //   return DataTypeImpl::GetSequenceTensorType<uint64_t>()->AsNonTensorTypeBase();
+    // case TensorProto_DataType_FLOAT16:
+    //   return DataTypeImpl::GetSequenceTensorType<MLFloat16>()->AsNonTensorTypeBase();
+    // case TensorProto_DataType_BFLOAT16:
+    //   return DataTypeImpl::GetSequenceTensorType<BFloat16>()->AsNonTensorTypeBase();
+    default:
+      ORT_NOT_IMPLEMENTED("tensor type ", type, " is not supported");
+  }
+}
+
 const SparseTensorTypeBase* DataTypeImpl::SparseTensorTypeFromONNXEnum(int type) {
   switch (type) {
     case TensorProto_DataType_FLOAT:
