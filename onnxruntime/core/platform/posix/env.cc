@@ -146,8 +146,10 @@ class PosixEnv : public Env {
       return ReportSystemError("open", file_path);
     }
 
+    if (length == 0) return Status::OK();
+
     if (offset > 0) {
-      off_t seek_result = lseek(file_descriptor.Get(), offset, SEEK_SET);
+      OffsetType seek_result = lseek(file_descriptor.Get(), offset, SEEK_SET);
       if (seek_result == -1) {
         return ReportSystemError("lseek", file_path);
       }
@@ -155,7 +157,7 @@ class PosixEnv : public Env {
 
     size_t total_bytes_read = 0;
     while (total_bytes_read < length) {
-      constexpr size_t k_max_bytes_to_read = 1 << 30;
+      constexpr size_t k_max_bytes_to_read = 1 << 30;  // read at most 1GB each time
       const size_t bytes_remaining = length - total_bytes_read;
       const size_t bytes_to_read = std::min(bytes_remaining, k_max_bytes_to_read);
 

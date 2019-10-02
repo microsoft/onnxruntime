@@ -19,10 +19,11 @@ limitations under the License.
 #include <Shlwapi.h>
 #include <Windows.h>
 
+#include <fstream>
 #include <string>
 #include <thread>
+
 #include <fcntl.h>
-#include <fstream>
 #include <io.h>
 
 #include "core/common/logging/logging.h"
@@ -119,23 +120,17 @@ class WindowsEnv : public Env {
 
     size_t total_bytes_read = 0;
     while (total_bytes_read < length) {
-      const size_t length_remaining = length - total_bytes_read;
-      DWORD bytes_to_read, bytes_read;
-
-      // read at most 1GB each time
-      constexpr DWORD k_max_read_size = 1 << 30;
-
-      if (length_remaining > k_max_read_size) {
-        bytes_to_read = k_max_read_size;
-      } else {
-        bytes_to_read = static_cast<DWORD>(length_remaining);
-      }
+      constexpr DWORD k_max_bytes_to_read = 1 << 30; // read at most 1GB each time
+      const size_t bytes_remaining = length - total_bytes_read;
+      const DWORD bytes_to_read = static_cast<DWORD>(std::min<size_t>(bytes_remaining, k_max_bytes_to_read));
+      DWORD bytes_read;
 
       if (!ReadFile(
               file_handle.Get(), buffer.data() + total_bytes_read, bytes_to_read, &bytes_read, nullptr)) {
         const int err = GetLastError();
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(file_path), " fail, errcode = ", err);
       }
+
       if (bytes_read != bytes_to_read) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(file_path), " fail: unexpected end");
       }
