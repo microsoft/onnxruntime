@@ -1,4 +1,7 @@
 #pragma once
+
+#include<random>
+
 #include "core/util/math.h"
 #include "test/providers/provider_test_utils.h"
 
