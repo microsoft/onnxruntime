@@ -142,7 +142,6 @@ def create_backend_test(testname=None):
                                  '^test_resize_upsample_sizes_nearest_cpu.*',
                                  '^test_resize_upsample_sizes_nearest_floor_align_corners_cpu.*',
                                  '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu.*',
-                                 '^test_scatternd_cpu.*',
                                  '^test_sequence_*',
                                  '^test_scatter_*',
                                  '^test_onehot_*',
