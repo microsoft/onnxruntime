@@ -24,7 +24,7 @@ template <typename TResourceTraits>
 class ScopedResource {
  public:
   using Handle = typename TResourceTraits::Handle;
-  using Traits = typename TResourceTraits;
+  using Traits = TResourceTraits;
 
   explicit ScopedResource(Handle handle = Traits::GetInvalidHandleValue()) noexcept
       : handle_{handle} {}

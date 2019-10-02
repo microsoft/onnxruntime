@@ -97,7 +97,7 @@ class WindowsEnv : public Env {
       const gsl::span<char> buffer) const override {
     ORT_RETURN_IF_NOT(file_path);
     ORT_RETURN_IF_NOT(offset >= 0);
-    ORT_RETURN_IF_NOT(buffer.size() >= 0 && length <= static_cast<size_t>(buffer.size()));
+    ORT_RETURN_IF_NOT(length <= buffer.size());
 
     ScopedFileHandle file_handle{CreateFileW(
         file_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};

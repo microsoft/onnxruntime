@@ -35,29 +35,11 @@ limitations under the License.
 #include "core/common/logging/logging.h"
 #include "core/platform/scoped_resource.h"
 
-// MAC OS X doesn't have this macro
-#ifndef TEMP_FAILURE_RETRY
-#define TEMP_FAILURE_RETRY(X) X
-#endif
-
 namespace onnxruntime {
 
 namespace {
 
-// non-macro equivalent of TEMP_FAILURE_RETRY, described here:
-// https://www.gnu.org/software/libc/manual/html_node/Interrupted-Primitives.html
-template<typename TFunc, typename... TFuncArgs>
-long int TempFailureRetry(TFunc retriable_operation, TFuncArgs&&... args) {
-  long int result;
-  do {
-    result = retriable_operation(std::forward<TFuncArgs>(args)...);
-  } while (result == -1 && errno == EINTR);
-  return result;
-}
-
 constexpr int OneMillion = 1000000;
-
-static void DeleteBuffer(void* param) noexcept { ::free(param); }
 
 class UnmapFileParam {
  public:
@@ -79,9 +61,20 @@ struct FileDescriptorTraits {
   using Handle = int;
   static Handle GetInvalidHandleValue() { return -1; }
   static void CleanUp(Handle h) { close(h); }
-}
+};
 
 using ScopedFileDescriptor = ScopedResource<FileDescriptorTraits>;
+
+// non-macro equivalent of TEMP_FAILURE_RETRY, described here:
+// https://www.gnu.org/software/libc/manual/html_node/Interrupted-Primitives.html
+template<typename TFunc, typename... TFuncArgs>
+long int TempFailureRetry(TFunc retriable_operation, TFuncArgs&&... args) {
+  long int result;
+  do {
+    result = retriable_operation(std::forward<TFuncArgs>(args)...);
+  } while (result == -1 && errno == EINTR);
+  return result;
+}
 
 class PosixEnv : public Env {
  public:
@@ -146,7 +139,7 @@ class PosixEnv : public Env {
       gsl::span<char> buffer) const override {
     ORT_RETURN_IF_NOT(file_path);
     ORT_RETURN_IF_NOT(offset >= 0);
-    ORT_RETURN_IF_NOT(buffer.size() >= 0 && length <= static_cast<size_t>(buffer.size()));
+    ORT_RETURN_IF_NOT(length <= buffer.size());
 
     ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
     if (!file_descriptor.IsValid()) {
@@ -166,7 +159,7 @@ class PosixEnv : public Env {
       const size_t bytes_remaining = length - total_bytes_read;
       const size_t bytes_to_read = std::min(bytes_remaining, k_max_bytes_to_read);
 
-      ssize_t bytes_read = TempFailureRetry(read(file_descriptor.Get(), buffer.data() + total_bytes_read, bytes_to_read));
+      ssize_t bytes_read = TempFailureRetry(read, file_descriptor.Get(), buffer.data() + total_bytes_read, bytes_to_read);
 
       if (bytes_read == -1) {
         return ReportSystemError("read", file_path);
@@ -200,7 +193,7 @@ class PosixEnv : public Env {
       return Status::OK();
     }
 
-    const long page_size = sysconf(_SC_PAGESIZE);
+    static const long page_size = sysconf(_SC_PAGESIZE);
     const OffsetType offset_to_page = offset % static_cast<OffsetType>(page_size);
     const size_t mapped_length = length + offset_to_page;
     const OffsetType mapped_offset = offset - offset_to_page;
@@ -215,7 +208,7 @@ class PosixEnv : public Env {
 
     mapped_memory = MappedMemoryPtr{
       reinterpret_cast<char*>(mapped_base) + offset_to_page,
-      OrtCallbackInvoker{OrtCallback{UnmapFile, new UnmapFileParam{mapped_base, mapped_length}}};
+      OrtCallbackInvoker{OrtCallback{UnmapFile, new UnmapFileParam{mapped_base, mapped_length}}}};
 
     return Status::OK();
   }
