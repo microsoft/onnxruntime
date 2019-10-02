@@ -21,11 +21,11 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   // Create CPU execution provider
   // For now, CPU execution provider will be created every time when initializing Info.
   // Later, it will be changed to pass by Info ctor.
-  cpu_execution_provider_ = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  cpu_execution_provider_ = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   allocator_ptr_ = cpu_execution_provider_->GetAllocator(device_id_, mem_type_);
   ORT_ENFORCE(allocator_ptr_ != nullptr, "Failed to get allocator for optimizer");
 
-  data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
+  data_transfer_mgr_.RegisterDataTransfer(onnxruntime::make_unique<CPUDataTransfer>());
 
   // Create MLValues related maps
   auto initialize_maps = [this, &initialized_tensor_set](const NodeArg& arg, size_t /*index*/) -> Status {
@@ -61,7 +61,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
     onnxruntime::Node::ForEachWithIndex(node->OutputDefs(), initialize_maps);
   }
 
-  node_index_info_ = std::make_unique<NodeIndexInfo>(nodes, ort_value_name_idx_map_);
+  node_index_info_ = onnxruntime::make_unique<NodeIndexInfo>(nodes, ort_value_name_idx_map_);
 
   // create kernels for these nodes
   for (auto* node : nodes) {
@@ -103,7 +103,7 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
   if (ml_type->IsSparseTensorType()) {
     auto element_type = ml_type->AsSparseTensorType()->GetElementType();
     auto container_type = DataTypeImpl::GetType<SparseTensor>();
-    auto sparse = std::make_unique<SparseTensor>(element_type, *shape, nnz, info_.GetAllocator());
+    auto sparse = onnxruntime::make_unique<SparseTensor>(element_type, *shape, nnz, info_.GetAllocator());
     ort_value.Init(sparse.release(), container_type, container_type->GetDeleteFunc());
     return Status::OK();
   }
@@ -117,7 +117,7 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
   // tensors
   auto element_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
   AllocatorPtr allocator_ptr = info_.GetAllocator();
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
+  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type,
                                                               *shape,
                                                               allocator_ptr);
 

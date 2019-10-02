@@ -211,7 +211,7 @@ class PoolPrimitivePool : public PrimitivePool<T> {
     PoolPrimitive<T, PoolType>* primitive = dynamic_cast<PoolPrimitive<T, PoolType>*>(
         PoolPrimitivePool<T, PoolType>::GetInstance().GetPrimitive(params.ToString()));
     if (primitive == nullptr) {
-      auto pool_primitive = std::make_unique<PoolPrimitive<T, PoolType>>(params);
+      auto pool_primitive = onnxruntime::make_unique<PoolPrimitive<T, PoolType>>(params);
       primitive = pool_primitive.get();
       PoolPrimitivePool<T, PoolType>::GetInstance().SetPrimitive(params.ToString(), std::move(pool_primitive));
     }

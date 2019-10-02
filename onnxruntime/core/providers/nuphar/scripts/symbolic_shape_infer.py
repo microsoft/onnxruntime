@@ -74,6 +74,7 @@ class SymbolicShapeInference:
             'Gather'            : self._infer_Gather,
             'GatherElements'    : self._infer_GatherElements,
             'Loop'              : self._infer_Loop,
+            'MatMulInteger16'   : self._infer_MatMulInteger,
             'MaxPool'           : self._infer_Pool,
             'Max'               : self._infer_binary_ops,
             'Min'               : self._infer_binary_ops,
@@ -264,20 +265,24 @@ class SymbolicShapeInference:
                         self.symbolic_dims_[str(new_dim)] = new_dim
 
     def _onnx_infer_single_node(self, node):
-        # run single node inference with self.known_vi_ shapes
-        # note that inference rely on initializer values is not handled
-        # as we don't copy initializer weights to tmp_graph for inference speed purpose
-        tmp_graph = helper.make_graph([node],
-                                      'tmp',
-                                      [self.known_vi_[i] for i in node.input if i],
-                                      [helper.make_tensor_value_info(i, onnx.TensorProto.UNDEFINED, None) for i in node.output])
-        self.tmp_mp_.graph.CopyFrom(tmp_graph)
-        self.tmp_mp_ = shape_inference.infer_shapes(self.tmp_mp_)
+        # skip onnx shape inference for Scan/Loop
+        skip_infer = node.op_type in ['Scan', 'Loop']
+        if not skip_infer:
+            # run single node inference with self.known_vi_ shapes
+            # note that inference rely on initializer values is not handled
+            # as we don't copy initializer weights to tmp_graph for inference speed purpose
+            tmp_graph = helper.make_graph([node],
+                                          'tmp',
+                                          [self.known_vi_[i] for i in node.input if i],
+                                          [helper.make_tensor_value_info(i, onnx.TensorProto.UNDEFINED, None) for i in node.output])
+            self.tmp_mp_.graph.CopyFrom(tmp_graph)
+            self.tmp_mp_ = shape_inference.infer_shapes(self.tmp_mp_)
         for i_o in range(len(node.output)):
             o = node.output[i_o]
             vi = self.out_mp_.graph.value_info.add()
-            vi.CopyFrom(self.tmp_mp_.graph.output[i_o])
-            self.known_vi_[vi.name] = vi
+            if not skip_infer:
+                vi.CopyFrom(self.tmp_mp_.graph.output[i_o])
+            self.known_vi_[o] = vi
 
     def _onnx_infer_subgraph(self, node, subgraph):
         if self.verbose_ > 2:
@@ -422,6 +427,16 @@ class SymbolicShapeInference:
             sympy_shape[-rank + i] = strided_kernel_positions + 1
         return sympy_shape
 
+    def _infer_binary_ops(self, node):
+        funcs = {'Add' : lambda l: l[0] + l[1],
+                 'Div' : lambda l: l[0] // l[1], # integer div in sympy
+                 'Max' : lambda l: sympy.Max(l[0], l[1]),
+                 'Min' : lambda l: sympy.Min(l[0], l[1]),
+                 'Mul' : lambda l: l[0] * l[1],
+                 'Sub' : lambda l: l[0] - l[1]}
+        assert node.op_type in funcs
+        self._compute_on_sympy_data(node, funcs[node.op_type])
+
     def _infer_Cast(self, node):
         self._pass_on_sympy_data(node)
 
@@ -558,24 +573,22 @@ class SymbolicShapeInference:
                     vi_dim.add().dim_param = loop_iter_dim
             vi.name = node.output[i]
 
-    def _infer_Pool(self, node):
-        sympy_shape = self._compute_conv_pool_shape(node)
-        self._update_computed_dims(sympy_shape)
-        for o in node.output:
-            if not o:
-                continue
-            vi = self.known_vi_[o]
-            vi.CopyFrom(helper.make_tensor_value_info(o, vi.type.tensor_type.elem_type, get_shape_from_sympy_shape(sympy_shape)))
-
-    def _infer_binary_ops(self, node):
-        funcs = {'Add' : lambda l: l[0] + l[1],
-                 'Div' : lambda l: l[0] // l[1], # integer div in sympy
-                 'Max' : lambda l: sympy.Max(l[0], l[1]),
-                 'Min' : lambda l: sympy.Min(l[0], l[1]),
-                 'Mul' : lambda l: l[0] * l[1],
-                 'Sub' : lambda l: l[0] - l[1]}
-        assert node.op_type in funcs
-        self._compute_on_sympy_data(node, funcs[node.op_type])
+    def _infer_MatMulInteger(self, node):
+        lhs_shape = self._get_shape(node, 0)
+        rhs_shape = self._get_shape(node, 1)
+        lhs_rank = len(lhs_shape)
+        rhs_rank = len(rhs_shape)
+        assert lhs_rank > 0 and rhs_rank > 0
+        if lhs_rank == 1 and rhs_rank == 1:
+            new_shape = []
+        elif lhs_rank == 1:
+            new_shape = rhs_shape[:-2] + [rhs_shape[-1]]
+        elif rhs_rank == 1:
+            new_shape = lhs_shape[:-1]
+        else:
+            new_shape = self._broadcast_shapes(lhs_shape[:-2], rhs_shape[:-2]) + [lhs_shape[-2]] + [rhs_shape[-1]]
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT32, new_shape))
 
     def _infer_NonMaxSuppression(self, node):
         selected = self._new_symbolic_dim_from_output(node)
@@ -607,6 +620,15 @@ class SymbolicShapeInference:
             new_shape = [d + pad_up + pad_down for d, pad_up, pad_down in zip(sympy_shape, pads[:rank], pads[rank:])]
             self._update_computed_dims(new_shape)
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0], vi.type.tensor_type.elem_type, get_shape_from_sympy_shape(new_shape)))
+
+    def _infer_Pool(self, node):
+        sympy_shape = self._compute_conv_pool_shape(node)
+        self._update_computed_dims(sympy_shape)
+        for o in node.output:
+            if not o:
+                continue
+            vi = self.known_vi_[o]
+            vi.CopyFrom(helper.make_tensor_value_info(o, vi.type.tensor_type.elem_type, get_shape_from_sympy_shape(sympy_shape)))
 
     def _infer_Range(self, node):
         vi = self.known_vi_[node.output[0]]

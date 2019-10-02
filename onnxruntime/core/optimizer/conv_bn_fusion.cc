@@ -60,11 +60,11 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
     return Status::OK();
   }
 
-  auto bn_scale = std::make_unique<Initializer>(bn_scale_tensor_proto);
-  auto bn_B = std::make_unique<Initializer>(bn_B_tensor_proto);
-  auto bn_mean = std::make_unique<Initializer>(bn_mean_tensor_proto);
-  auto bn_var = std::make_unique<Initializer>(bn_var_tensor_proto);
-  auto conv_W = std::make_unique<Initializer>(conv_W_tensor_proto);
+  auto bn_scale = onnxruntime::make_unique<Initializer>(bn_scale_tensor_proto);
+  auto bn_B = onnxruntime::make_unique<Initializer>(bn_B_tensor_proto);
+  auto bn_mean = onnxruntime::make_unique<Initializer>(bn_mean_tensor_proto);
+  auto bn_var = onnxruntime::make_unique<Initializer>(bn_var_tensor_proto);
+  auto conv_W = onnxruntime::make_unique<Initializer>(conv_W_tensor_proto);
 
   std::unique_ptr<Initializer> conv_B = nullptr;
   const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
@@ -78,7 +78,7 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
         conv_B_tensor_proto->data_type() != bn_B_tensor_proto->data_type()) {
       return Status::OK();
     }
-    conv_B = std::make_unique<Initializer>(conv_B_tensor_proto);
+    conv_B = onnxruntime::make_unique<Initializer>(conv_B_tensor_proto);
   }
 
   // Calculate new value of initializers of conv node
@@ -141,7 +141,7 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
 }
 
 bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11}) ||
       node.GetOutputEdgesCount() != 1) {
     return false;
   }

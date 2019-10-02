@@ -17,8 +17,7 @@
 #endif
 #include "core/util/protobuf_parsing_utils.h"
 
-#include "gsl/pointers"
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 #include "core/platform/env.h"
 #include "core/graph/schema_registry.h"
@@ -33,7 +32,7 @@ Model::Model(const std::string& graph_name,
              const IOnnxRuntimeOpSchemaRegistryList& local_registries,
              const std::unordered_map<std::string, int>& domain_to_version,
              const std::vector<ONNX_NAMESPACE::FunctionProto>& model_functions) {
-  model_proto_ = std::make_unique<ModelProto>();
+  model_proto_ = onnxruntime::make_unique<ModelProto>();
   model_proto_->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   model_proto_->mutable_graph()->set_name(graph_name);
   model_metadata_ = model_metadata;
@@ -74,7 +73,7 @@ Model::Model(const std::string& graph_name,
 }
 
 Model::Model(const ModelProto& model_proto, const IOnnxRuntimeOpSchemaRegistryList* local_registries)
-    : Model(std::make_unique<ModelProto>(model_proto), local_registries) {
+    : Model(onnxruntime::make_unique<ModelProto>(model_proto), local_registries) {
 }
 
 Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
@@ -352,7 +351,7 @@ Status Model::Save(Model& model, const std::string& file_path) {
 }
 
 Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
-  std::unique_ptr<ModelProto> modelProto = std::make_unique<ModelProto>();
+  std::unique_ptr<ModelProto> modelProto = onnxruntime::make_unique<ModelProto>();
   const bool result = modelProto->ParseFromArray(p_bytes, count);
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
@@ -374,7 +373,7 @@ Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOp
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
   }
 
-  std::unique_ptr<ModelProto> model_proto = std::make_unique<ModelProto>();
+  std::unique_ptr<ModelProto> model_proto = onnxruntime::make_unique<ModelProto>();
 #if GOOGLE_PROTOBUF_VERSION >= 3002000
   FileInputStream fs(fd);
   const bool result = model_proto->ParseFromZeroCopyStream(&fs) && fs.GetErrno() == 0;
