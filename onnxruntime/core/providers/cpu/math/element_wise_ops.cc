@@ -18,12 +18,14 @@ namespace onnxruntime {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
       KERNEL_CLASS<TYPE>);
 
-#define REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(OP_TYPE, VERSION, TYPE, KERNEL_CLASS)                                                         \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                                                            \
-      OP_TYPE,                                                                                                                               \
-      VERSION,                                                                                                                               \
-      TYPE,                                                                                                                                  \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
+#define REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(OP_TYPE, VERSION, TYPE, KERNEL_CLASS) \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                    \
+      OP_TYPE,                                                                       \
+      VERSION,                                                                       \
+      TYPE,                                                                          \
+      KernelDefBuilder()                                                             \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>())                  \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),                \
       KERNEL_CLASS<TYPE>);
 
 #define REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, TYPE, KERNEL_CLASS) \
@@ -34,12 +36,14 @@ namespace onnxruntime {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()),                    \
       KERNEL_CLASS<TYPE>);
 
-#define REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, TYPE, KERNEL_CLASS)                              \
-  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                                                                  \
-      OP_TYPE,                                                                                                                               \
-      VERSION_FROM, VERSION_TO,                                                                                                              \
-      TYPE,                                                                                                                                  \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
+#define REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, TYPE, KERNEL_CLASS) \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                                     \
+      OP_TYPE,                                                                                                  \
+      VERSION_FROM, VERSION_TO,                                                                                 \
+      TYPE,                                                                                                     \
+      KernelDefBuilder()                                                                                        \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>())                                             \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),                                           \
       KERNEL_CLASS<TYPE>);
 
 REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, float, Add);
@@ -137,25 +141,33 @@ REG_ELEMENTWISE_TYPED_KERNEL(Erf, 9, float, Erf);
 ONNX_CPU_OPERATOR_KERNEL(
     Not,
     1,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Not);
 
 ONNX_CPU_OPERATOR_KERNEL(
     And,
     7,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     And);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Or,
     7,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Or);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Xor,
     7,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Xor);
 
 template <typename T>

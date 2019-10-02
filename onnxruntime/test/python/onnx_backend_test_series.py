@@ -89,6 +89,7 @@ def other_tests_failing_permanently_filters():
 
     return filters
 
+
 def test_with_types_disabled_due_to_binary_size_concerns_filters():
     filters = ['^test_bitshift_right_uint16_cpu.*',
                '^test_bitshift_right_uint8_cpu.*',
