@@ -62,6 +62,13 @@ CPUIDInfo::CPUIDInfo() noexcept {
         GetCPUID(7, data);
         has_avx2_ = has_avx && (data[1] & (1 << 5));
         has_avx512f_ = has_avx512 && (data[1] & (1 << 16));
+        // Add check for two more target feature according to Halide:https://github.com/halide/Halide/blob/c9d5ffd1647c6cc41d3e5780e9a5fb7808d1350c/src/Target.cpp
+        // The reason is that to have AVX512 GEMM/GEMV support avx512f is not enough, it also need intrinsics from avx512bw/avx512dq.
+        // Moreover, production pipleline to support AVX512 will be Skylake machine.
+        // avx512 = avx512f | avx512cd
+        has_avx512_ = has_avx512 && (data[1] & ((1 << 16) | (1 << 28)));
+        // avx512_skylake = avx512 | avx512vl | avx512bw | avx512dq
+        has_avx512_skylake_ = has_avx512 && (data[1] & ((1 << 16) | (1 << 17) | (1 << 28) | (1 << 30) | (1 << 31)));
       }
     }
   }
