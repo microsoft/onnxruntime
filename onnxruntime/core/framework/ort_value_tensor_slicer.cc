@@ -8,7 +8,7 @@ namespace onnxruntime {
 
 template <typename T>
 OrtValueTensorSlicer<T> OrtValueTensorSlicer<T>::Create(T& ort_value, int64_t slice_dimension, int64_t dim0_offset) {
-  static_assert(std::is_same<std::remove_const_t<T>, OrtValue>::value,
+  static_assert(std::is_same<typename std::remove_const<T>::type, OrtValue>::value,
                 "OrtValueTensorSlicer can only be used with 'OrtValue' or 'const OrtValue'");
 
   ORT_ENFORCE(ort_value.IsTensor(), "Can't slice a non-tensor OrtValue. Type was ", ort_value.Type());
