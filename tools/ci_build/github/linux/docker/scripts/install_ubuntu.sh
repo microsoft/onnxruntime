@@ -53,6 +53,7 @@ if [ $TENSORRT_EN = "False" ]; then
         python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest \
         libprotobuf-dev libprotobuf9v5 protobuf-compiler"
 else
+    add-apt-repository "deb http://security.ubuntu.com/ubuntu xenial-security main"
     PACKAGE_LIST="autotools-dev \
         automake \
         build-essential \
