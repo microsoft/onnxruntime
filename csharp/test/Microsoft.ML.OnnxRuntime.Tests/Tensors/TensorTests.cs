@@ -171,6 +171,14 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(1, tensor.Dimensions[0]);
             Assert.Equal(2, tensor.Dimensions[1]);
             Assert.Equal(3, tensor.Dimensions[2]);
+
+            // test creation of a Tensor with 0 in the dimension values
+            dimensions = new[] { 1, 0 };
+            tensor = tensorConstructor.CreateFromDimensions<int>(dimensions: dimensions);
+            dimensions[0] = dimensions[1] = 0;
+            Assert.Equal(1, tensor.Dimensions[0]);
+            Assert.Equal(0, tensor.Dimensions[1]);
+
         }
 
         [Theory()]
