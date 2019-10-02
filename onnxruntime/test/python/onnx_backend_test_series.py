@@ -148,8 +148,6 @@ def create_backend_test(testname=None):
                                  '^test_reduce_*',
                                  '^test_onehot_*',
                                  '^test_constant_pad_cpu.*',
-                                 '^test_gemm_default_scalar_bias_cpu.*',
-                                 '^test_gemm_*', 
                                  '^test_edge_pad_cpu.*',
                                  '^test_reflect_pad_cpu.*'                                 
                                  )
