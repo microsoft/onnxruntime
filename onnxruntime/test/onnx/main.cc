@@ -479,6 +479,25 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"flatten_negative_axis4", "not implemented yet for opset 11"});
   broken_tests.insert({"squeeze_negative_axes", "not implemented yet for opset 11"});
   broken_tests.insert({"unsqueeze_negative_axes", "not implemented yet for opset 11"});
+  broken_tests.insert({"reduce_sum_square_negative_axes_keepdims_random", "ReduceSumSquare(11) not implemented yet"});
+  broken_tests.insert({"reduce_sum_square_negative_axes_keepdims_example", "ReduceSumSquare(11) not implemented yet"});
+  broken_tests.insert({"reduce_sum_negative_axes_keepdims_random", "ReduceSum(11) not implemented yet"});
+  broken_tests.insert({"reduce_sum_negative_axes_keepdims_example", "ReduceSum(11) not implemented yet"});
+  broken_tests.insert({"reduce_prod_negative_axes_keepdims_random", "ReduceProd(11) not implemented yet"});
+  broken_tests.insert({"reduce_prod_negative_axes_keepdims_example", "ReduceProd(11) not implemented yet"});
+  broken_tests.insert({"reduce_min_negative_axes_keepdims_random", "ReduceMin(11) not implemented yet"});
+  broken_tests.insert({"reduce_min_negative_axes_keepdims_example", "ReduceMin(11) not implemented yet"});
+  broken_tests.insert({"reduce_mean_negative_axes_keepdims_random", "ReduceMean(11) not implemented yet"});
+  broken_tests.insert({"reduce_mean_negative_axes_keepdims_example", "ReduceMean(11) not implemented yet"});
+  broken_tests.insert({"reduce_max_negative_axes_keepdims_random", "ReduceMax(11) not implemented yet"});
+  broken_tests.insert({"reduce_max_negative_axes_keepdims_example", "ReduceMax(11) not implemented yet"});
+  broken_tests.insert({"reduce_log_sum_negative_axes", "ReduceLogSum(11) not implemented yet"});
+  broken_tests.insert({"reduce_log_sum_exp_negative_axes_keepdims_random", "ReduceLogSumExp(11) not implemented yet"});
+  broken_tests.insert({"reduce_log_sum_exp_negative_axes_keepdims_example", "ReduceLogSumExp(11) not implemented yet"});
+  broken_tests.insert({"reduce_l2_negative_axes_keep_dims_random", "ReduceL2(11) not implemented yet"});
+  broken_tests.insert({"reduce_l2_negative_axes_keep_dims_example", "ReduceL2(11) not implemented yet"});
+  broken_tests.insert({"reduce_l1_negative_axes_keep_dims_random", "ReduceL1(11) not implemented yet"});
+  broken_tests.insert({"reduce_l1_negative_axes_keep_dims_example", "ReduceL1(11) not implemented yet"});
 #endif
 
 #ifdef USE_MKLDNN
