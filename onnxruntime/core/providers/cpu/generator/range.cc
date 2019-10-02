@@ -4,7 +4,6 @@
 #include <cmath>
 
 namespace onnxruntime {
-namespace contrib {
 
 template <typename T>
 static Status ComputeRange(OpKernelContext* ctx) {
@@ -85,6 +84,4 @@ ONNX_OPERATOR_KERNEL_EX(
         DataTypeImpl::GetTensorType<int64_t>()}),
     Range);
 
-
-}  // namespace contrib
 }  // namespace onnxruntime

@@ -8,7 +8,6 @@
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
-namespace contrib {
 
 class Range : public OpKernel {
  public:
@@ -17,5 +16,4 @@ class Range : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-}  // namespace contrib
 }  // namespace onnxruntime
