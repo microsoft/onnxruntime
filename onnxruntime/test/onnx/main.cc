@@ -444,14 +444,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"reflect_pad", "Pad(11) not implemented yet"},
       {"edge_pad", "Pad(11) not implemented yet"},
       {"constant_pad", "Pad(11) not implemented yet"},
-      {"bitshift_right_uint8", "BitShift(11) not implemented yet"},
-      {"bitshift_right_uint64", "BitShift(11) not implemented yet"},
-      {"bitshift_right_uint32", "BitShift(11) not implemented yet"},
-      {"bitshift_right_uint16", "BitShift(11) not implemented yet"},
-      {"bitshift_left_uint8", "BitShift(11) not implemented yet"},
-      {"bitshift_left_uint64", "BitShift(11) not implemented yet"},
-      {"bitshift_left_uint32", "BitShift(11) not implemented yet"},
-      {"bitshift_left_uint16", "BitShift(11) not implemented yet"},
+      {"bitshift_right_uint8", "BitShift(11) uint8 support not enabled currently"},
+      {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
+      {"bitshift_left_uint8", "BitShift(11) uint8 support not enabled currently"},
+      {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
 };
 
 #ifdef USE_NGRAPH
