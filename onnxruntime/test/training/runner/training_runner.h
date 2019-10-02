@@ -11,7 +11,6 @@
 #include "core/training/mpi_setup.h"
 #include "core/training/training_session.h"
 #include "test/training/runner/data_loader.h"
-#include "test/training/runner/training_util.h"
 
 namespace onnxruntime {
 namespace training {

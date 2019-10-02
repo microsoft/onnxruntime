@@ -71,15 +71,12 @@ size_t DataSet::TotalBatch(size_t batch_size) const {
 
 std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th) const {
   batch_size = min(batch_size, data_.size());
-  AllocatorPtr alloc = TrainingUtil::GetCpuAllocator();
-  auto location = alloc->Info();
 
   std::vector<OrtValue> result;
   for (size_t input_index = 0; input_index < NumInputs(); ++input_index) {
     const Tensor& first_tensor = data_[0]->at(input_index).Get<Tensor>();
 
     MLDataType element_type = first_tensor.DataType();
-
     TensorShape shape = first_tensor.Shape();
     if (shape.Size() > 1) {
       shape.insert(shape.begin(), batch_size);
@@ -88,10 +85,10 @@ std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th) const
       shape.emplace_back(batch_size);
     }
 
+    AllocatorPtr alloc = TrainingUtil::GetCpuAllocator();
+    auto p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
+    void* buffer = p_tensor->MutableDataRaw();
     size_t memory_size_per_sample = first_tensor.SizeInBytes();
-    size_t buffer_size = memory_size_per_sample * batch_size;
-    void* buffer = alloc->Alloc(buffer_size);
-    void* origin_buffer = buffer;
 
     size_t offset = k_th * batch_size;
     for (size_t i = offset; i < offset + batch_size; ++i) {
@@ -100,11 +97,6 @@ std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th) const
       memcpy(buffer, raw_value, memory_size_per_sample);
       buffer = static_cast<char*>(buffer) + memory_size_per_sample;
     }
-
-    std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
-                                                                shape,
-                                                                origin_buffer,
-                                                                location);
 
     result.emplace_back(p_tensor.release(),
                         DataTypeImpl::GetType<Tensor>(),
@@ -119,43 +111,21 @@ void DataSet::RandomShuffle() {
 }
 
 std::vector<OrtValue> RandomDataSet::GetKthBatch(size_t /*batch_size*/, size_t /*k_th*/) const {
-  AllocatorPtr alloc = TrainingUtil::GetCpuAllocator();
-  auto location = alloc->Info();
   std::vector<OrtValue> result;
 
   for (size_t input_index = 0; input_index < NumInputs(); ++input_index) {
     MLDataType element_type;
     TensorShape shape = tensor_shapes_[input_index];
 
-    void* buffer;
-
     if (tensor_types_[input_index] == onnx::TensorProto_DataType_INT64) {
       element_type = NonOnnxType<int64_t>::Type();
-      size_t buffer_size = sizeof(int64_t) * shape.Size();
-      buffer = alloc->Alloc(buffer_size);
-
-      std::vector<int64_t> temp(shape.Size(), 0);
-      memcpy(buffer, temp.data(), buffer_size);
     } else if (tensor_types_[input_index] == onnx::TensorProto_DataType_INT32) {
       element_type = NonOnnxType<int32_t>::Type();
-      size_t buffer_size = sizeof(int) * shape.Size();
-      buffer = alloc->Alloc(buffer_size);
-
-      std::vector<int32_t> temp(shape.Size(), 0);
-      memcpy(buffer, temp.data(), buffer_size);
     } else if (tensor_types_[input_index] == onnx::TensorProto_DataType_FLOAT) {
       element_type = NonOnnxType<float>::Type();
-      size_t buffer_size = sizeof(float) * shape.Size();
-      buffer = alloc->Alloc(buffer_size);
-
-      std::vector<float> temp(shape.Size(), 0.1f);
-      memcpy(buffer, temp.data(), buffer_size);
     }
-
-    std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
-                                                                shape,
-                                                                buffer,
-                                                                location);
+    auto p_tensor = std::make_unique<Tensor>(element_type, shape, TrainingUtil::GetCpuAllocator());
+    memset(p_tensor->MutableDataRaw(), 0, p_tensor->SizeInBytes());
 
     result.emplace_back(p_tensor.release(),
                         DataTypeImpl::GetType<Tensor>(),
@@ -163,12 +133,6 @@ std::vector<OrtValue> RandomDataSet::GetKthBatch(size_t /*batch_size*/, size_t /
   }
 
   return result;
-}
-
-AllocatorPtr TrainingUtil::GetCpuAllocator() {
-  static CPUExecutionProviderInfo info;
-  static CPUExecutionProvider cpu_provider(info);
-  return cpu_provider.GetAllocator(0, OrtMemTypeDefault);
 }
 
 void TrainingUtil::PrintNameMLValMap(const NameMLValMap& mlvalue_map) {

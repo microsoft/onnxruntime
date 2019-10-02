@@ -25,33 +25,6 @@ constexpr auto GIST_MODEL_PATH = "testdata/temp_backward_model_with_gist.onnx";
 
 constexpr auto TAB = "\t";
 
-AllocatorPtr GetAllocator() {
-  static CPUExecutionProviderInfo info;
-  static CPUExecutionProvider cpu_provider(info);
-  return cpu_provider.GetAllocator(0, OrtMemTypeDefault);
-}
-template <typename T>
-static void CreateMLValue(const AllocatorPtr& alloc,
-                          const std::vector<int64_t>& dims,
-                          const std::vector<T>& value,
-                          MLValue* p_mlvalue) {
-  TensorShape shape(dims);
-  auto location = alloc->Info();
-  auto element_type = DataTypeImpl::GetType<T>();
-  void* buffer = alloc->Alloc(element_type->Size() * shape.Size());
-  if (!value.empty()) {
-    memcpy(buffer, &value[0], element_type->Size() * shape.Size());
-  }
-
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
-                                                              shape,
-                                                              buffer,
-                                                              location);
-  p_mlvalue->Init(p_tensor.release(),
-                  DataTypeImpl::GetType<Tensor>(),
-                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-}
-
 static std::string BuildBackPropGraph(const TrainingRunner::Parameters& params) {
   const std::string forward_model_file = params.model_path;
   const std::string backward_model_file = params.model_with_training_graph_path;
@@ -140,9 +113,9 @@ static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
   std::vector<float> label_value(10, 1);
 
   MLValue imageMLValue;
-  CreateMLValue(GetAllocator(), image_dims, image_value, &imageMLValue);
+  TrainingUtil::CreateCpuMLValue(image_dims, image_value, &imageMLValue);
   MLValue labelMLValue;
-  CreateMLValue(GetAllocator(), label_dims, label_value, &labelMLValue);
+  TrainingUtil::CreateCpuMLValue(label_dims, label_value, &labelMLValue);
 
   auto fw_feeds = std::make_pair<std::vector<std::string>, std::vector<MLValue>>({"X", "labels"}, {imageMLValue, labelMLValue});
 
@@ -477,9 +450,9 @@ static void RunBertTrainingWithChecks(
 
   std::vector<OrtValue> feeds(feed_names.size());
   for (size_t i = 0; i < 6; ++i) {
-    CreateMLValue(GetAllocator(), tensor_shapes[i].GetDims(), tensor_values[i], &feeds[i]);
+    TrainingUtil::CreateCpuMLValue(tensor_shapes[i].GetDims(), tensor_values[i], &feeds[i]);
   }
-  CreateMLValue(GetAllocator(), tensor_shapes[6].GetDims(), masked_lm_weights, &feeds[6]);
+  TrainingUtil::CreateCpuMLValue(tensor_shapes[6].GetDims(), masked_lm_weights, &feeds[6]);
 
   auto output_names_include_gradients = training_session->GetModelOutputNames();
   std::vector<std::string> fetch_names(output_names_include_gradients.begin(), output_names_include_gradients.end());

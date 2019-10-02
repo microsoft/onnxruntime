@@ -93,28 +93,28 @@ class RandomDataSet : public DataSet {
 class TrainingUtil {
  public:
   template <typename T>
-  static void CreateMLValue(AllocatorPtr alloc,
-                            const std::vector<int64_t>& dims,
-                            const std::vector<T>& value,
-                            MLValue* p_mlvalue) {
+  static void CreateCpuMLValue(const std::vector<int64_t>& dims,
+                               const std::vector<T>& value,
+                               MLValue* p_mlvalue) {
     TensorShape shape(dims);
-    auto location = alloc->Info();
+    assert(shape.Size() == static_cast<int64_t>(value.size()));
     auto element_type = DataTypeImpl::GetType<T>();
-    void* buffer = alloc->Alloc(element_type->Size() * shape.Size());
+    auto p_tensor = std::make_unique<Tensor>(element_type, shape, GetCpuAllocator());
+
     if (value.size() > 0) {
-      memcpy(buffer, &value[0], element_type->Size() * shape.Size());
+      memcpy(p_tensor->MutableDataRaw(), value.data(), p_tensor->SizeInBytes());
     }
 
-    std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
-                                                                shape,
-                                                                buffer,
-                                                                location);
     p_mlvalue->Init(p_tensor.release(),
                     DataTypeImpl::GetType<Tensor>(),
                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
   }
 
-  static AllocatorPtr GetCpuAllocator();
+  static AllocatorPtr GetCpuAllocator() {
+    static CPUExecutionProviderInfo info;
+    static CPUExecutionProvider cpu_provider(info);
+    return cpu_provider.GetAllocator(0, OrtMemTypeDefault);
+  }
 
   static void PrintNameMLValMap(const NameMLValMap& mlvalue_map);
 
