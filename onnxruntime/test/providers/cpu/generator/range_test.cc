@@ -7,127 +7,89 @@
 namespace onnxruntime {
 namespace test {
 
-TEST(RangeTest, PositiveInt32DeltaDefault) {
-  OpTester test("Range", 1, onnxruntime::kMSDomain);
-  std::vector<int32_t> start = {0};
-  std::vector<int32_t> limit = {5};
-  std::vector<int32_t> expected_output = {0, 1, 2, 3, 4};
+template <typename T>
+static void RunTest(
+    T start,
+    T limit,
+    T delta,
+    const std::vector<int64_t>& output_dims,
+    const std::vector<T>& output) {
+  // ONNX domain opset-11
+  OpTester test1("Range", 11);
+  test1.AddInput<T>("start", {}, start);
+  test1.AddInput<T>("limit", {}, limit);
+  test1.AddInput<T>("delta", {}, delta);
+  test1.AddOutput<T>("output", output_dims, output);
+  // NGraph does not yet support opset-11 and builds break on this test, hence exclude the EP
+  test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 
-  test.AddInput<int32_t>("start", {1}, start);
-  test.AddInput<int32_t>("limit", {1}, limit);
-  test.AddOutput<int32_t>("Y", {5LL}, expected_output);
-  test.Run();
+#ifndef DISABLE_CONTRIB_OPS
+
+  // MSFT domain opset-1 (contrib op)
+  OpTester test2("Range", 1, kMSDomain);
+  test2.AddInput<T>("start", {}, start);
+  test2.AddInput<T>("limit", {}, limit);
+
+  if (delta != T{1})  // only contrib schema allows optional 'delta' input
+    test2.AddInput<T>("delta", {}, delta);
+
+  test2.AddOutput<T>("output", output_dims, output);
+  test2.Run();
+
+#endif
+}  // namespace test
+
+TEST(RangeTest, Int32_DeltaDefault) {
+  RunTest<int32_t>(0, 5, 1, {5}, {0, 1, 2, 3, 4});
 }
 
-TEST(RangeTest, PositiveInt32Delta_0) {
-  OpTester test("Range", 1, onnxruntime::kMSDomain);
-  std::vector<int32_t> start = {0};
-  std::vector<int32_t> limit = {10};
-  std::vector<int32_t> delta = {2};
-  std::vector<int32_t> expected_output = {0, 2, 4, 6, 8};
-
-  test.AddInput<int32_t>("start", {1}, start);
-  test.AddInput<int32_t>("limit", {1}, limit);
-  test.AddInput<int32_t>("delta", {1}, delta);
-  test.AddOutput<int32_t>("Y", {5LL}, expected_output);
-  test.Run();
+TEST(RangeTest, Int64_DeltaDefault) {
+  RunTest<int64_t>(0, 5, 1, {5}, {0, 1, 2, 3, 4});
 }
 
-TEST(RangeTest, PositiveInt32Delta_1) {
-  OpTester test("Range", 1, onnxruntime::kMSDomain);
-  std::vector<int32_t> start = {0};
-  std::vector<int32_t> limit = {9};
-  std::vector<int32_t> delta = {2};
-  std::vector<int32_t> expected_output = {0, 2, 4, 6, 8};
-
-  test.AddInput<int32_t>("start", {1}, start);
-  test.AddInput<int32_t>("limit", {1}, limit);
-  test.AddInput<int32_t>("delta", {1}, delta);
-  test.AddOutput<int32_t>("Y", {5LL}, expected_output);
-  test.Run();
+TEST(RangeTest, Int16_DeltaDefault) {
+  RunTest<int16_t>(0, 5, 1, {5}, {0, 1, 2, 3, 4});
 }
 
-TEST(RangeTest, PositiveInt32Delta_2) {
-  OpTester test("Range", 1, onnxruntime::kMSDomain);
-  std::vector<int32_t> start = {1};
-  std::vector<int32_t> limit = {2};
-  std::vector<int32_t> delta = {2};
-  std::vector<int32_t> expected_output = {1};
-
-  test.AddInput<int32_t>("start", {1}, start);
-  test.AddInput<int32_t>("limit", {1}, limit);
-  test.AddInput<int32_t>("delta", {1}, delta);
-  test.AddOutput<int32_t>("Y", {1LL}, expected_output);
-  test.Run();
+TEST(RangeTest, Float_DeltaDefault) {
+  RunTest<float>(0.f, 5.f, 1.f, {5}, {0.f, 1.f, 2.f, 3.f, 4.f});
 }
 
-TEST(RangeTest, Int32ScalarNegativeDelta_0) {
-  OpTester test("Range", 1, onnxruntime::kMSDomain);
-  std::vector<int32_t> start = {2};
-  std::vector<int32_t> limit = {-9};
-  std::vector<int32_t> delta = {-2};
-  std::vector<int32_t> expected_output = {2, 0, -2, -4, -6, -8};
-
-  test.AddInput<int32_t>("start", {}, start);
-  test.AddInput<int32_t>("limit", {}, limit);
-  test.AddInput<int32_t>("delta", {}, delta);
-  test.AddOutput<int32_t>("Y", {6LL}, expected_output);
-  test.Run();
+TEST(RangeTest, Double_DeltaDefault) {
+  RunTest<double>(0., 5., 1., {5}, {0., 1., 2., 3., 4.});
 }
 
-
-TEST(RangeTest, Int32ScalarNegativeDelta_1) {
-  OpTester test("Range", 1, onnxruntime::kMSDomain);
-  std::vector<int32_t> start = {2};
-  std::vector<int32_t> limit = {9};
-  std::vector<int32_t> delta = {-2};
-  std::vector<int32_t> expected_output = {};
-
-  test.AddInput<int32_t>("start", {}, start);
-  test.AddInput<int32_t>("limit", {}, limit);
-  test.AddInput<int32_t>("delta", {}, delta);
-  test.AddOutput<int32_t>("Y", {0}, expected_output);
-  test.Run();
+TEST(RangeTest, Int32_Delta_NonDefault) {
+  RunTest<int32_t>(0, 10, 2, {5}, {0, 2, 4, 6, 8});
 }
 
-TEST(RangeTest, ScalarFloatNegativeDelta) {
-  OpTester test("Range", 1, onnxruntime::kMSDomain);
-  std::vector<float> start = {2.0f};
-  std::vector<float> limit = {-8.1f};
-  std::vector<float> delta = {-2.0f};
-  std::vector<float> expected_output = {2.0f, 0.0f, -2.0f, -4.0f, -6.0f, -8.0f};
-  
-  test.AddInput<float>("start", {}, start);
-  test.AddInput<float>("limit", {}, limit);
-  test.AddInput<float>("delta", {}, delta);
-  test.AddOutput<float>("Y", {6LL}, expected_output);
-  test.Run();
+TEST(RangeTest, Int64_Delta_NonDefault_0) {
+  RunTest<int64_t>(0, 9, 2, {5}, {0, 2, 4, 6, 8});
 }
 
-TEST(RangeTest, SameStartAndLimit) {
-  OpTester test("Range", 1, onnxruntime::kMSDomain);
-  std::vector<float> start = {2.0f};
-  std::vector<float> limit = {2.0f};
-  std::vector<float> expected_output = {};
+TEST(RangeTest, Int64_Delta_NonDefault_1) {
+  RunTest<int64_t>(1, 2, 2, {1}, {1});
+}
 
-  test.AddInput<float>("start", {}, start);
-  test.AddInput<float>("limit", {}, limit);
-  test.AddOutput<float>("Y", {0}, expected_output);
-  test.Run();
+TEST(RangeTest, Int32_NegativeDelta_0) {
+  RunTest<int32_t>(2, -9, -2, {6}, {2, 0, -2, -4, -6, -8});
+}
+
+TEST(RangeTest, Int32_NegativeDelta_1) {
+  RunTest<int32_t>(2, 9, -2, {0}, {});
+}
+
+TEST(RangeTest, Float_NegativeDelta_0) {
+  RunTest<float>(2.0f, -8.1f, -2.0f, {6}, {2.0f, 0.0f, -2.0f, -4.0f, -6.0f, -8.0f});
+}
+
+TEST(RangeTest, Float_SameStartAndLimit) {
+  RunTest<float>(2.0f, 2.0f, 1, {0}, {});
 }
 
 TEST(RangeTest, AlmostSameStartAndLimitHighDelta) {
-  OpTester test("Range", 1, onnxruntime::kMSDomain);
-  std::vector<float> start = {2.0f};
-  std::vector<float> limit = {2.01f};
-  std::vector<float> delta = {1000000.0f};
-  std::vector<float> expected_output = {2.0f};
-
-  test.AddInput<float>("start", {}, start);
-  test.AddInput<float>("limit", {}, limit);
-  test.AddInput<float>("delta", {}, delta);
-  test.AddOutput<float>("Y", {1}, expected_output);
-  test.Run();
+  RunTest<float>(2.0f, 2.01f, 1000000.0f, {1}, {2.0f});
 }
+
 }  // namespace test
 }  // namespace onnxruntime
