@@ -132,6 +132,7 @@ if (onnxruntime_USE_CUDA)
   if (NOT onnxruntime_USE_HOROVOD)
     list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/collective/horovod_kernels.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/collective/ready_event.cc"
     )
   endif()
 
