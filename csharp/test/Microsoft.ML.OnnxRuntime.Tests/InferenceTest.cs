@@ -792,6 +792,26 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        [Fact]
+        private void TestInferenceSessionWithByteArray()
+        {
+            // model takes 1x5 input of fixed type, echoes back
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_FLOAT.pb");
+            byte[] modelData = File.ReadAllBytes(modelPath);
+
+            using (var session = new InferenceSession(modelData))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<float>(new float[] { 1.0f, 2.0f, -3.0f, float.MinValue, float.MaxValue }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                using (var res = session.Run(container))
+                {
+                    var tensorOut = res.First().AsTensor<float>();
+                    Assert.True(tensorOut.SequenceEqual(tensorIn));
+                }
+            }
+        }
 
         [DllImport("kernel32", SetLastError = true)]
         static extern IntPtr LoadLibrary(string lpFileName);

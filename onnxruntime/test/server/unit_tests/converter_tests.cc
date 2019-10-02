@@ -1098,7 +1098,7 @@ void CreateMLValueBool(AllocatorPtr alloc, const std::vector<int64_t>& dims, con
   TensorShape shape(dims);
   OrtValue* p_mlvalue = new OrtValue{};
   auto element_type = DataTypeImpl::GetType<bool>();
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
+  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type,
                                                               shape,
                                                               alloc);
   memcpy(p_tensor->MutableData<bool>(), &value[0], element_type->Size() * shape.Size());

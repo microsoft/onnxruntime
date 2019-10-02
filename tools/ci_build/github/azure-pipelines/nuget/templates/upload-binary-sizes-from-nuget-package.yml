@@ -24,6 +24,7 @@ steps:
 
 - task: CmdLine@2
   displayName: 'Post binary sizes to the dashboard database using command line'
+  continueOnError: true # Recently the database connection is failing, so ignoring the error until that is fixed
   inputs:
     script: |
       echo changing directory to artifact download path
@@ -33,7 +34,7 @@ steps:
         echo processing %%~ni.nupkg
         copy %%~ni.nupkg %%~ni.zip
         echo copied to zip
-        echo listing lib files in the zip
+        echo listing lib files in the zip 
         REM use a single .csv file to put the data 
         echo os,arch,build_config,size > binary_size_data.txt
         7z.exe l -slt %%~ni.zip runtimes\linux-x64\native\libonnxruntime.so | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo linux,x64,openmp,%%a >> binary_size_data.txt

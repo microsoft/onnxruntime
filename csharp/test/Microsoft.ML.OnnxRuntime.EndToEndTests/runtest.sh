@@ -5,28 +5,12 @@
 LocalNuGetRepo=$1
 SourceRoot=$2
 BuildDir=$3
-#TestDataUrl=$4
-#TestDataChecksum=$5
-
-#TestDataUrl and TestDataChecksum comes from the build env variable
-
-#echo "Downloading test data"
-#python3 $SourceRoot/tools/ci_build/build.py --update --download_test_data --build_dir $BuildDir --test_data_url $TestDataUrl --test_data_checksum $TestDataChecksum
-#if [ $? -ne 0 ]; then
-#    echo "Failed to download test data"
-#    exit 1
-#fi
+export CurrentOnnxRuntimeVersion=$4
 set -x
 
 OldDir=`pwd`
 cd $SourceRoot
 
-MajorVersion=$(cat $SourceRoot/VERSION_NUMBER)
-VersionSuffix=
-if [ "$IsReleaseBuild" != "true" ]; then
-    VersionSuffix=-dev-$(git rev-parse --short=8 HEAD)
-fi
-export CurrentOnnxRuntimeVersion=$MajorVersion$VersionSuffix
 echo "Current NuGet package version is $CurrentOnnxRuntimeVersion"
 
 if [ $RunTestCsharp = "true" ]; then

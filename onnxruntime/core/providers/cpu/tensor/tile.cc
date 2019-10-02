@@ -9,7 +9,7 @@
 #pragma warning(disable : 4996)
 #endif
 
-#include "gsl/gsl_algorithm"
+#include "gsl/gsl"
 #include "core/providers/cpu/tensor/tile.h"
 #include "core/providers/cpu/tensor/utils.h"
 
