@@ -11,7 +11,6 @@
 #include "gsl/gsl"
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
-//#include "core/framework/data_types.h"
 #include "core/framework/tensor_shape.h"
 #include "onnxruntime_config.h"
 
@@ -59,7 +58,7 @@ using BufferNakedPtr = void*;
 */
 class Tensor final {
  public:
-  Tensor() = default;
+  Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
 
   /**
    * Create tensor with given type, shape, pre-allocate memory and allocator info.
@@ -76,6 +75,7 @@ class Tensor final {
    * However, this function will allocate the buffer for the shape, and do placement new if p_type is string tensor.
    */
   Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, int64_t offset = 0);
+
   void InitTensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, int64_t offset = 0);
   ~Tensor();
 
@@ -174,14 +174,10 @@ class Tensor final {
   /**
   The number of bytes of data.
   */
-  size_t SizeInBytes() const {
-    return SizeInBytesPrivate();
-  }
+  size_t SizeInBytes() const;
 
   // More API methods.
  private:
-  size_t SizeInBytesPrivate() const;
-
   void Init(MLDataType p_type,
             const TensorShape& shape,
             void* p_raw_data,

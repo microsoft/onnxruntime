@@ -8,7 +8,6 @@
 #include <type_traits>
 #include <map>
 #include <unordered_map>
-#include <memory>
 
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
@@ -217,6 +216,7 @@ class DataTypeImpl {
   static MLDataType GetDataType(const std::string&);
 
   static const std::vector<MLDataType>& AllTensorTypes();
+  static const std::vector<MLDataType>& AllSequenceTensorTypes();
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes();
   static const std::vector<MLDataType>& AllNumericTensorTypes();
   static const std::vector<MLDataType>& AllIEEEFloatTensorTypes();
@@ -763,8 +763,7 @@ class NonOnnxType : public DataTypeImpl {
     return SequenceType<TYPE>::Type();       \
   }
 
-#define ORT_REGISTER_SEQ_TENSOR_TYPE(TYPE, ELEM_TYPE)           \
-  ORT_REGISTER_SEQ(TYPE)                                        \
+#define ORT_REGISTER_SEQ_TENSOR_TYPE(ELEM_TYPE)                 \
   template <>                                                   \
   MLDataType SequenceTensorType<ELEM_TYPE>::Type() {            \
     static SequenceTensorType<ELEM_TYPE> sequence_tensor_type;  \

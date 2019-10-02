@@ -81,7 +81,7 @@ inline bool operator!=(const OrtDevice& left, const OrtDevice& other) {
 }
 
 struct OrtMemoryInfo {
-  OrtMemoryInfo() = default;  // TODO(pranav)
+  OrtMemoryInfo() = default;  // to allow default construction of Tensor
 
   // use string for name, so we could have customized allocator in execution provider.
   const char* name;

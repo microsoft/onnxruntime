@@ -34,7 +34,7 @@ void Tensor::InitTensor(MLDataType p_type, const TensorShape& shape, std::shared
   Init(p_type, shape, p_data, allocator, offset);
 }
 
-size_t Tensor::SizeInBytesPrivate() const {
+size_t Tensor::SizeInBytes() const {
   size_t ret;
   int64_t l = shape_.Size();
   if (l >= static_cast<int64_t>(std::numeric_limits<ptrdiff_t>::max())) {

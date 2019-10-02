@@ -7,14 +7,71 @@
 namespace onnxruntime {
 namespace test {
 
-TEST(SequenceLengthOpTest, SequenceLengthPositive) {
+TEST(SequenceOpsTest, SequenceLengthPositive) {
   OpTester test("SequenceLength", 11);
   SeqTensors<float> input;
-  input.tensors.push_back(std::make_pair<std::vector<int64_t>, std::vector<float>>({3, 2}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}));
-  input.tensors.push_back(std::make_pair<std::vector<int64_t>, std::vector<float>>({3, 3}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}));
+  using PairType = std::pair<std::vector<int64_t>, std::vector<float>>;
+  input.tensors.push_back(PairType({3, 2}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}));
+  input.tensors.push_back(PairType({3, 3}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}));
   test.AddSeqInput("S", input);
   test.AddOutput<int64_t>("I", {}, {2});
   test.Run();
+}
+
+TEST(SequenceOpsTest, SequenceAtPositiveIdx) {
+  OpTester test("SequenceAt", 11);
+  SeqTensors<float> input;
+  using PairType = std::pair<std::vector<int64_t>, std::vector<float>>;
+  std::vector<float> output_vec{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  std::vector<int64_t> output_shape{3, 3};
+  input.tensors.push_back(PairType({3, 2}, {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f}));
+  input.tensors.push_back(PairType(output_shape, output_vec));
+  test.AddSeqInput("S", input);
+  test.AddInput("I", {}, {1});
+  test.AddOutput<float>("T", output_shape, output_vec);
+  test.Run();
+}
+
+TEST(SequenceOpsTest, SequenceAtNegativeIdx) {
+  OpTester test("SequenceAt", 11);
+  SeqTensors<float> input;
+  using PairType = std::pair<std::vector<int64_t>, std::vector<float>>;
+  std::vector<float> output_vec{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  std::vector<int64_t> output_shape{3, 3};
+  input.tensors.push_back(PairType({3, 2}, {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f}));
+  input.tensors.push_back(PairType(output_shape, output_vec));
+  test.AddSeqInput("S", input);
+  test.AddInput("I", {}, {-1});
+  test.AddOutput<float>("T", output_shape, output_vec);
+  test.Run();
+}
+
+TEST(SequenceOpsTest, SequenceAtInvalidPositiveIdx) {
+  OpTester test("SequenceAt", 11);
+  SeqTensors<float> input;
+  using PairType = std::pair<std::vector<int64_t>, std::vector<float>>;
+  std::vector<float> output_vec{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  std::vector<int64_t> output_shape{3, 3};
+  input.tensors.push_back(PairType({3, 2}, {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f}));
+  input.tensors.push_back(PairType(output_shape, output_vec));
+  test.AddSeqInput("S", input);
+  test.AddInput("I", {}, {10});
+  test.AddOutput<float>("T", output_shape, output_vec);
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid sequence index");
+}
+
+TEST(SequenceOpsTest, SequenceAtInvalidNegativeIdx) {
+  OpTester test("SequenceAt", 11);
+  SeqTensors<float> input;
+  using PairType = std::pair<std::vector<int64_t>, std::vector<float>>;
+  std::vector<float> output_vec{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  std::vector<int64_t> output_shape{3, 3};
+  input.tensors.push_back(PairType({3, 2}, {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f}));
+  input.tensors.push_back(PairType(output_shape, output_vec));
+  test.AddSeqInput("S", input);
+  test.AddInput("I", {}, {-10});
+  test.AddOutput<float>("T", output_shape, output_vec);
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid sequence index");
 }
 
 }  // namespace test

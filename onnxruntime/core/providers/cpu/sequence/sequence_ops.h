@@ -8,10 +8,17 @@
 
 namespace onnxruntime {
 
-template <typename T>
 class SequenceLength final : public OpKernel {
  public:
   SequenceLength(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
+class SequenceAt final : public OpKernel {
+ public:
+  SequenceAt(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;

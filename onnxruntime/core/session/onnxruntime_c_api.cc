@@ -144,14 +144,16 @@ OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, OrtAllocator
 }
 
 template <typename T>
-OrtStatus* CreateTensorImpl2(const int64_t* shape, size_t shape_len,
-                             Tensor& out) {
+OrtStatus* CreateTensorImplForSeq(const int64_t* shape, size_t shape_len,
+                                  Tensor& out) {
   std::vector<int64_t> shapes(shape_len);
   for (size_t i = 0; i != shape_len; ++i) {
     shapes[i] = shape[i];
   }
   OrtAllocator* allocator;
-  auto st = OrtApis::GetAllocatorWithDefaultOptions(&allocator);  // TODO(pranav)
+  // TODO(pranav): what allocator should be used to create the tensor here?
+  // for the sake of simplicity of the API using the default one here
+  auto st = OrtApis::GetAllocatorWithDefaultOptions(&allocator);
   if (st) {
     return st;
   }
@@ -794,15 +796,37 @@ OrtStatus* OrtGetValueImplSeqOfTensorsHelper(OrtAllocator* allocator, const Tens
 }
 
 template <typename T>
-OrtStatus* OrtGetValueImplSeqOfTensors(const OrtValue* p_ml_value, int index, OrtAllocator* allocator,  // TODO (pranav) change name of this function to SeqOfTensors
+OrtStatus* OrtGetValueImplSeqOfTensors(const OrtValue* p_ml_value, int index, OrtAllocator* allocator,
                                        OrtValue** out) {
   auto& data = p_ml_value->Get<T>();
   auto& one_tensor = data.at(index);
 
   auto tensor_elem_type = one_tensor.DataType();
   OrtStatus* st{};
-  if (tensor_elem_type == DataTypeImpl::GetType<float>()) {
+  if (tensor_elem_type == DataTypeImpl::GetType<bool>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<bool>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<float>()) {
     st = OrtGetValueImplSeqOfTensorsHelper<float>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<MLFloat16>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<MLFloat16>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<double>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<double>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<int8_t>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<int8_t>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<uint8_t>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<uint8_t>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<int16_t>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<int16_t>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<uint16_t>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<uint16_t>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<int32_t>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<int32_t>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<uint32_t>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<uint32_t>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<int64_t>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<int64_t>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<std::string>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<std::string>(allocator, one_tensor, out);
   } else {
     st = OrtApis::CreateStatus(ORT_FAIL, "Only sequences that contain float tensors are supported.");
   }
@@ -942,7 +966,7 @@ static OrtStatus* OrtCreateValueImplSeqHelperTensor(const Tensor& tensor,
     return st;
   }
 
-  st = CreateTensorImpl2<TensorElemType>(tensor.Shape().GetDims().data(), tensor.Shape().NumDimensions(), out);
+  st = CreateTensorImplForSeq<TensorElemType>(tensor.Shape().GetDims().data(), tensor.Shape().NumDimensions(), out);
   if (st) {
     return st;
   }
