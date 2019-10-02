@@ -22,27 +22,16 @@ void TestReduceOp(const std::string& op,
 
 {
   OpTester test(op.c_str());
-  bool has_neg_axis = false;
-
   if (!axes.empty()) {
-    if (op.compare("ArgMax") == 0 || op.compare("ArgMin") == 0) {
+    if (op.compare("ArgMax") == 0 || op.compare("ArgMin") == 0)
       test.AddAttribute("axis", axes[0]);
-      if (axes[0] < 0)
-        has_neg_axis = true;
-    }
     else
       test.AddAttribute("axes", axes);
   }
   test.AddAttribute("keepdims", keepdims);
   test.AddInput<float>("data", input_dims, data);
   test.AddOutput<OutT>("reduced", expected_dims, expected_data);
-
-  std::unordered_set<std::string> excluded_eps = {kCudaExecutionProvider, kTensorrtExecutionProvider}; //TensorRT: result differs
-  if (has_neg_axis) {
-    excluded_eps.insert(kNGraphExecutionProvider); // NGraph EP cannot handle negative axis values
-  }
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps); 
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider}); //TensorRT: result differs
 }
 
 TEST(ReductionOpTest, ReductionVariationTest) {
@@ -1134,9 +1123,8 @@ TEST(ReductionOpTest, ArgMax_int32_neg_axis) {
                           {1, 1,
                            1, 1,
                            1, 1});
-                           
-  std::unordered_set<std::string> excluded_eps = {kNGraphExecutionProvider}; // NGraph EP cannot handle negative axis values
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps); 
+
+  test.Run();
 }
 
 TEST(ReductionOpTest, ArgMax2D) {
@@ -1236,8 +1224,7 @@ TEST(ReductionOpTest, ArgMin_int32_neg_axis) {
                           {0, 0,
                            0, 0});
 
-  std::unordered_set<std::string> excluded_eps = {kNGraphExecutionProvider}; // NGraph EP cannot handle negative axis values
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps); 
+  test.Run();
 }
 
 }  // namespace test
