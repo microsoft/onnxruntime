@@ -52,8 +52,7 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
   }
 
   std::vector<int64_t> shape(indice_shape.GetDims().begin(), indice_shape.GetDims().end() - 1);
-  shape.insert(shape.end(), input_shape.GetDims().begin() + last_indice_dimension,
-               input_shape.GetDims().end());
+  shape.insert(shape.end(), input_shape.GetDims().begin() + last_indice_dimension, input_shape.GetDims().end());
   auto output_tensor = context->Output(0, TensorShape(shape));
   std::vector<int64_t> element_counts(last_indice_dimension,
                                       0LL);  // Number of elements for each input dimension
