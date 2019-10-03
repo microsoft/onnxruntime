@@ -54,13 +54,13 @@ CPUIDInfo::CPUIDInfo() noexcept {
       const int AVX_MASK = 0x6;
       const int AVX512_MASK = 0xE6;
       int value = XGETBV();
-      bool has_avx = (data[2] & (1 << 28)) && ((value & AVX_MASK) == AVX_MASK);
+      has_avx_ = (data[2] & (1 << 28)) && ((value & AVX_MASK) == AVX_MASK);
       bool has_avx512 = (value & AVX512_MASK) == AVX512_MASK;
-      has_f16c_ = has_avx && (data[2] & (1 << 29)) && (data[3] & (1 << 26));
+      has_f16c_ = has_avx_ && (data[2] & (1 << 29)) && (data[3] & (1 << 26));
 
       if (num_IDs >= 7) {
         GetCPUID(7, data);
-        has_avx2_ = has_avx && (data[1] & (1 << 5));
+        has_avx2_ = has_avx_ && (data[1] & (1 << 5));
         has_avx512f_ = has_avx512 && (data[1] & (1 << 16));
         // Add check for two more target feature according to Halide:https://github.com/halide/Halide/blob/c9d5ffd1647c6cc41d3e5780e9a5fb7808d1350c/src/Target.cpp
         // The reason is that to have AVX512 GEMM/GEMV support avx512f is not enough, it also need intrinsics from avx512bw/avx512dq.
