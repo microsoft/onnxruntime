@@ -5,7 +5,6 @@
 
 #include "core/codegen/mti/mti_tvm_utils.h"
 #include "core/common/common.h"
-#include "gsl/gsl_util"
 #include <topi/detail/extern.h>
 
 namespace onnxruntime {
@@ -142,11 +141,11 @@ static tvm::Tensor MakeExternScatter(const tvm::Tensor& t,
                                      const std::string& name,
                                      const char* extern_scatter) {
   // handle negative axis
-  int64_t input_rank = gsl::narrow<int64_t>(t->shape.size());
+  int64_t input_rank = static_cast<int64_t>(t->shape.size());
   DCHECK(input_rank >= 1);
-  DCHECK(input_rank == gsl::narrow<int64_t>(indices->shape.size()));
-  DCHECK(input_rank == gsl::narrow<int64_t>(updates->shape.size()));
-  int axis = gsl::narrow<int>(tvm_codegen::HandleNegativeAxis(axis_p, input_rank));
+  DCHECK(input_rank == static_cast<int64_t>(indices->shape.size()));
+  DCHECK(input_rank == static_cast<int64_t>(updates->shape.size()));
+  int axis = static_cast<int>(tvm_codegen::HandleNegativeAxis(axis_p, input_rank));
 
   // output has the same shape as input
   tvm::Array<tvm::Expr> output_shape;
