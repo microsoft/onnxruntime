@@ -91,14 +91,14 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
         err_index = index;
       }
       if (index < 0) {
-        index += upper_limit;
+        index += static_cast<Tind>(upper_limit);
       }
       p.element_offsets[i] += index * element_counts[j];
     }
   }
 
   return err_index == 0 ? Status::OK()
-                        : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index found, index = ", err_indice);
+                        : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index found, index = ", err_index);
 }
 
 template Status GatherNDBase::PrepareForCompute<int32_t>(OpKernelContext*, Prepare&) const;
