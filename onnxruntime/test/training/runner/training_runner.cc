@@ -218,7 +218,7 @@ Status TrainingRunner::TrainingLoop() {
 
           if (!params_.is_perf_test && weight_update_step_count % params_.display_loss_steps == 0) {
             if (params_.error_function) {
-              params_.error_function(feed_names, feeds, fetch_names, fetches);
+              params_.error_function(feed_names, feeds, fetch_names, fetches, weight_update_step_count);
             }
             if (params_.post_evaluation_callback) {
               params_.post_evaluation_callback(params_.batch_size, weight_update_step_count, "train");
@@ -356,7 +356,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
 
     // Call error function
     if (params_.error_function) {
-      params_.error_function(feed_names, feeds, params_.fetch_names, fetches);
+      params_.error_function(feed_names, feeds, params_.fetch_names, fetches, step_);
     }
 
     // Set to next batch

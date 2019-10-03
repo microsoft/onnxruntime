@@ -232,7 +232,8 @@ void setup_training_params(TrainingRunner::Parameters& params) {
   params.error_function = [params](const std::vector<std::string>& /*feed_names*/,
                                    const std::vector<OrtValue>& /*feeds*/,
                                    const std::vector<std::string>& fetch_names,
-                                   const std::vector<OrtValue>& fetches) {
+                                   const std::vector<OrtValue>& fetches,
+                                   size_t step) {
     const Tensor& total_loss_t = fetches[0].Get<Tensor>();
     const Tensor& mlm_loss_t = fetches[1].Get<Tensor>();
     const Tensor& nsp_loss_t = fetches[2].Get<Tensor>();
@@ -244,7 +245,9 @@ void setup_training_params(TrainingRunner::Parameters& params) {
     summary_loss.push_back(*(summary_loss_t.template Data<std::string>()));
 
     if (params.dump_fetches) {
-      ofstream ofs("fetches_dump.txt");
+      std::ostringstream filename;
+      filename << "./fetch_dumps/rank_" << params.mpi_context.world_rank << "_step_" << step << ".txt";
+      ofstream ofs(filename.str());
       for (size_t i = 0; i < fetch_names.size(); ++i) {
         TrainingUtil::PrintTensor(fetch_names[i], fetches[i].Get<Tensor>(), ofs);
       }

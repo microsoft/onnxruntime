@@ -122,7 +122,8 @@ void setup_training_params(TrainingRunner::Parameters& params) {
   params.error_function = [](const std::vector<std::string>& /*feed_names*/,
                              const std::vector<OrtValue>& feeds,
                              const std::vector<std::string>& /*fetch_names*/,
-                             const std::vector<OrtValue>& fetches) {
+                             const std::vector<OrtValue>& fetches,
+                             size_t /*step*/) {
     const Tensor& label_t = feeds[1].Get<Tensor>();
     const Tensor& predict_t = fetches[0].Get<Tensor>();
     const Tensor& loss_t = fetches[1].Get<Tensor>();

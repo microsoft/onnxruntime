@@ -75,7 +75,8 @@ class TrainingRunner {
     std::function<void(const std::vector<std::string>& feed_names,
                        const std::vector<OrtValue>& feeds,
                        const std::vector<std::string>& fetch_names,
-                       const std::vector<OrtValue>& fetches)>
+                       const std::vector<OrtValue>& fetches,
+                       size_t step)>
         error_function;
 
     // post_evaluation_callback_ is called when a batch of evaluation is done.
