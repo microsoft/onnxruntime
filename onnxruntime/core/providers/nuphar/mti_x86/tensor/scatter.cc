@@ -206,41 +206,5 @@ tvm::Tensor Scatter(const tvm::Tensor& t,
 #undef STRINGIFY
 #undef GET_EXTERN_SCATTER_STR
 
-#if 0
-  tvm::Array<tvm::Expr> block_sizes;
-  for (int64_t i = input_rank - 1; i >= 0; i--) {
-    block_sizes.push_back(SizeToDimension(t->shape, i));
-  }
-
-  auto l = [&](const tvm::Array<tvm::Var>& vars) {
-    tvm::Array<tvm::Expr> ivars;
-    tvm::Expr curr_offset = tvm::make_zero(t->dtype);
-    for (int64_t i = 0; i < input_rank; i++) {
-      curr_offset = curr_offset + vars[i] * block_sizes[i];
-    }
-
-    // a flag to tell if vars are valid for accessing indices
-    tvm::Expr valid_indices = tvm::const_true(t->dtype.lanes());
-    for (int64_t i = 0; i < input_rank; ++i) {
-      valid_indices = valid_indices && (vars[i] < indices->shape[i]);
-      if (i == axis) {
-        tvm::Array<tvm::Expr> idx_vars;
-        for (size_t d = 0; d < input_rank; d++) {
-          idx_vars.push_back(vars[d]);
-        }
-        // tvm index is of Int32
-        tvm::Expr idx_expr = tvm::cast(tvm::Int(32), indices(idx_vars));
-        ivars.push_back(tvm::ir::Select::make(idx_expr < 0, idx_expr + t->shape[axis], idx_expr));
-        ivars.push_back(idx_expr);
-      } else {
-        ivars.push_back(vars[i]);
-      }
-    }
-    return tvm::ir::Select::make(valid_indices, updates(ivars), t(ivars));
-  };
-
-  return tvm::compute(output_shape, l, name);
-#endif
-
 }  // namespace tvm_codegen
 }  // namespace onnxruntime
