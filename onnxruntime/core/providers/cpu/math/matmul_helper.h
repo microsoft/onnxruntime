@@ -23,23 +23,25 @@ class MatMulComputeHelper {
     size_t right_num_dims = right_shape.NumDimensions();
     ORT_RETURN_IF_NOT(left_num_dims >= 1 && right_num_dims >= 1);
 
-    // special case for right_shape being 2D and left_shape > 2D by flattening left_shape to 2D
-    // note that padding 1s in front of the right_shape can be flattened too
-    if (!transa && !transb) {
-      // note that padding 1s in front of the right shape can be flattened too
-      if (left_num_dims >= 2 && right_num_dims >= 2 &&
-          right_shape.SizeToDimension(right_num_dims - 1) == right_shape[right_num_dims - 2]) {
-        M_ = left_shape.SizeToDimension(left_num_dims - 1);
-        K_ = left_shape[left_num_dims - 1];
-        N_ = right_shape[right_num_dims - 1];
-        output_shape_ = left_shape;
-        output_shape_[left_num_dims - 1] = N_;
-        output_offsets_ = {0};
-        left_offsets_ = {0};
-        right_offsets_ = {0};
-        ORT_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2], "MatMul dimension mismatch");
-        return Status::OK();
-      }
+    // Special cases below for right_shape being 2D and left_shape > 2D by flattening left_shape to 2D
+    // Note that padding 1s in front of the right_shape can be flattened too
+    // A: [M1, M2, ... K], B: [K, N]
+    // A: [M1, M2, ... K], B: [N, K]^T
+    // A: [M1, M2, ... K], B: [1, ..., 1, K, N]
+    // A: [M1, M2, ... K], B: [1, ..., 1, N, K]^T
+    if (!transa && left_num_dims >= 2 && right_num_dims >= 2 &&
+      right_shape.SizeToDimension(right_num_dims - 1) == right_shape[right_num_dims - 2]) {
+      M_ = left_shape.SizeToDimension(left_num_dims - 1);
+      K_ = left_shape[left_num_dims - 1];
+      N_ = transb ? right_shape[right_num_dims - 2] : right_shape[right_num_dims - 1];
+      output_shape_ = left_shape;
+      output_shape_[left_num_dims - 1] = N_;
+      output_offsets_ = {0};
+      left_offsets_ = {0};
+      right_offsets_ = {0};
+      ORT_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2] ||
+                        transb && K_ == right_shape[right_num_dims - 1], "MatMul dimension mismatch");
+      return Status::OK();
     }
 
     bool has_1D_input = (left_num_dims == 1 || right_num_dims == 1);
