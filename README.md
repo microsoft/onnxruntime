@@ -60,15 +60,14 @@ Currently ONNX Runtime supports the following accelerators:
 * [Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)
 * [Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md)
 
-Not all variations are supported in the [official release builds](#apis-and-official-builds), but can be built from source following [these instructions](./BUILD.md). Find Dockerfiles [here](./dockerfiles).
+Not all variations are supported in the [official release builds](#apis-and-official-builds), but can be built from source following [these instructions](./BUILD.md).
 
 We are continuously working to integrate new execution providers for further improvements in latency and efficiency. If you are interested in contributing a new execution provider, please see [this page](docs/AddingExecutionProvider.md).
 
 
 ## Cross Platform
-[API documentation and package installation](#installation)
+ONNX Runtime is currently available for Linux, Windows, and Mac with Python, C#, C++, and C APIs. Please see [API documentation and package installation](#installation). 
 
-ONNX Runtime is currently available for Linux, Windows, and Mac with Python, C#, C++, and C APIs.
 If you have specific scenarios that are not supported, please share your suggestions and scenario details via [Github Issues](https://github.com/microsoft/onnxruntime/issues).
 ***
 # Installation
