@@ -3,6 +3,7 @@
 
 #include "core/providers/nuphar/mti_x86/tensor/scatter.h"
 
+#include "core/codegen/common/utils.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
 #include "core/common/common.h"
 #include <topi/detail/extern.h>
@@ -64,15 +65,8 @@ void ScatterCommon(tvm::TVMArgs args, tvm::TVMRetValue* /*ret*/) {
          static_cast<char*>(input->data) + input->byte_offset,
          input_size * input->dtype.bits / 8);
 
-  // Record the size of each input dimension, i.e. the number of
-  // elements contained by a single element of current dimension.
-  // For example, for input[3][4][5][6], dimension_sizes will be
-  // [4*5*6, 5*6, 6, 1], i.e. [120, 30, 6, 1]
-  std::vector<int64_t> dimension_sizes(num_dims, 0);
-  dimension_sizes[num_dims - 1] = 1;
-  for (int64_t i = num_dims - 2; i >= 0; i--) {
-    dimension_sizes[i] = dimension_sizes[i+1] * input->shape[i+1];
-  }
+  std::vector<int64_t> input_strides;
+  GetStrides(input->shape, num_dims, input_strides);
 
   T* output_data = reinterpret_cast<T*>(static_cast<char*>(output->data) + output->byte_offset);
   T* updates_data = reinterpret_cast<T*>(static_cast<char*>(updates->data) + updates->byte_offset);
@@ -91,7 +85,7 @@ void ScatterCommon(tvm::TVMArgs args, tvm::TVMRetValue* /*ret*/) {
     // get the index into output_data
     int64_t output_idx = 0;
     for (int j = 0; j < num_dims; j++) {
-      output_idx += curr_output_indices[j] * dimension_sizes[j];
+      output_idx += curr_output_indices[j] * input_strides[j];
     }
 
     // update data

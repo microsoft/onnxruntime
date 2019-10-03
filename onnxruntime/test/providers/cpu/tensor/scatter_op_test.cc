@@ -206,5 +206,21 @@ TEST(Scatter, ValidNegativeIndex) {
   scatter_valid_negative_index("ScatterElements", 11);
 }
 
+static void scatter_bool_with_axis_tests(const char* op_name, int op_version) {
+  OpTester test(op_name, op_version);
+  test.AddAttribute<int64_t>("axis", 1);
+
+  test.AddInput<bool>("data", {1, 5}, {false, false, false, true, false});
+  test.AddInput<int64_t>("indices", {1, 2}, {1, 3});
+  test.AddInput<bool>("updates", {1, 2}, {true, false});
+  test.AddOutput<bool>("y", {1, 5}, {false, true, false, false, false});
+  test.Run();
+}
+
+TEST(Scatter, BoolInputWithAxis) {
+  scatter_bool_with_axis_tests("Scatter", 9);
+  scatter_bool_with_axis_tests("ScatterElements", 11);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
