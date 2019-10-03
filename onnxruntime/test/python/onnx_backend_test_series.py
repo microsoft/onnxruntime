@@ -151,7 +151,7 @@ def create_backend_test(testname=None):
                                  '^test_scatter_*',
                                  '^test_onehot_*',
                                  '^test_edge_pad_cpu.*',  # test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests
-                                 '^test_reflect_pad_cpu.*',  # test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests
+                                 '^test_reflect_pad_cpu.*'  # test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests
                                  ]
 
         # Example of how to disable tests for a specific provider.
@@ -162,7 +162,7 @@ def create_backend_test(testname=None):
             current_failing_tests = current_failing_tests + ('|^test_depthtospace_crd*',)
             current_failing_tests = current_failing_tests + ('|^test_argmax_negative_axis*',)
             current_failing_tests = current_failing_tests + ('|^test_argmin_negative_axis*',)
-            current_failing_tests = current_failing_tests + ('|^test_hardmax_negative_axis*',)            
+            current_failing_tests = current_failing_tests + ('|^test_hadmax_negative_axis*',)            
             current_failing_tests = current_failing_tests + ('|^test_constant_pad_cpu.*',)
 
         if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
