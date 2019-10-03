@@ -123,11 +123,11 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
                          float value) {
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   std::vector<int64_t> output_dims(input_tensor.Shape().GetDims());
-  size_t dimension_count = output_dims.size();
+  size_t data_rank = output_dims.size();
 
   // make copy of raw_pads as it may be mutated below
-  ORT_ENFORCE(dimension_count > 0, "Input tensor has no dimensions");
-  ORT_ENFORCE(dimension_count * 2 == pads.size(), "'pads' has wrong number of values");
+  ORT_ENFORCE(data_rank > 0, "Input tensor has no dimensions");
+  ORT_ENFORCE(data_rank * 2 == pads.size(), "'pads' has wrong number of values");
 
   // Reshape input dims
   std::vector<int64_t> reshaped_input_dims;
@@ -138,8 +138,8 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
   size_t inner_axis = new_dims_count - 1;
   size_t inner_no_pad_size = reshaped_input_dims[inner_axis] / output_dims[inner_axis];
   std::vector<int64_t> reshaped_pad(2 * new_dims_count), reshaped_slice(2 * new_dims_count);
-  ReshapePads(pads, dimension_count, new_dims_count, inner_no_pad_size, reshaped_pad);
-  ReshapePads(slices, dimension_count, new_dims_count, inner_no_pad_size, reshaped_slice);
+  ReshapePads(pads, data_rank, new_dims_count, inner_no_pad_size, reshaped_pad);
+  ReshapePads(slices, data_rank, new_dims_count, inner_no_pad_size, reshaped_slice);
 
   std::vector<int64_t> reshaped_output_dims = reshaped_input_dims;
   std::vector<int64_t> input_starts;
@@ -154,8 +154,8 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
     reshaped_output_dims[i] += reshaped_pad[i] + reshaped_pad[i + new_dims_count] + reshaped_slice[i] + reshaped_slice[i + new_dims_count];
   }
 
-  for (size_t i = 0; i < dimension_count; i++) {
-    output_dims[i] += pads[i] + pads[i + dimension_count] + slices[i] + slices[i + dimension_count];
+  for (size_t i = 0; i < data_rank; i++) {
+    output_dims[i] += pads[i] + pads[i + data_rank] + slices[i] + slices[i + data_rank];
   }
   TensorShape output_shape(output_dims);
 
@@ -278,8 +278,7 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
   // kOnnxDomain Pad opset >= 11 (Or) kMsDomain opset == 1
   if (is_dynamic_) {
     const Tensor& input_tensor = *ctx->Input<Tensor>(0);
-    std::vector<int64_t> output_dims(input_tensor.Shape().GetDims());
-    size_t dimension_count = output_dims.size();
+    size_t data_rank = input_tensor.Shape().NumDimensions();
 
     const Tensor& pads_tensor = *ctx->Input<Tensor>(1);
     const std::vector<int64_t>& pads_tensor_dims = pads_tensor.Shape().GetDims();
@@ -288,22 +287,26 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
     ORT_ENFORCE(pads_tensor_dims.size() == 1 || (pads_tensor_dims.size() == 2 && pads_tensor_dims[0] == 1),
                 "Pads tensor should be a 1D tensor of shape [2 * input_rank] or a 2D tensor of shape [1, 2 * input_rank]");
 
-    std::vector<int64_t> pads(2 * dimension_count, 0);
     const int64_t* pads_tensor_raw_data = pads_tensor.template Data<int64_t>();
     size_t pads_size = static_cast<size_t>(pads_tensor.Shape().Size());
-    ORT_ENFORCE(pads_size == 2 * dimension_count,
+    ORT_ENFORCE(pads_size == 2 * data_rank,
                 "Pads tensor size should be equal to twice the input dimension count ");
 
+    std::vector<int64_t> pads;
+    pads.reserve(2 * data_rank);
     for (size_t i = 0; i < pads_size; ++i) {
-      pads[i] = pads_tensor_raw_data[i];
+      pads.push_back(pads_tensor_raw_data[i]);
     }
 
     // Separate out any negative pads into the slices array
-    std::vector<int64_t> slices(pads.size(), 0);
+    std::vector<int64_t> slices;
+    slices.reserve(2 * data_rank);
     for (size_t index = 0; index < pads.size(); index++) {
       if (pads[index] < 0) {
-        slices[index] = pads[index];
+        slices.push_back(pads[index]);
         pads[index] = 0;
+      } else {
+        slices.push_back(0);
       }
     }
 
