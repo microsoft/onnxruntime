@@ -157,13 +157,13 @@ TEST_F(CApiTest, CreateGetSeqTensors) {
 
   std::vector<Ort::Value> in;
   std::vector<int64_t> vals{3, 1, 2, 0};
-  std::vector<int64_t> dims = {4};
+  std::vector<int64_t> dims{1, 4};
   const int N = 2;
   for (int i = 0; i < N; ++i) {
     // create tensor
     Ort::Value tensor = Ort::Value::CreateTensor(info, vals.data(), vals.size() * sizeof(int64_t),
                                                  dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
-    in.emplace_back(tensor);
+    in.push_back(std::move(tensor));
   }
 
   Ort::Value seq_ort = Ort::Value::CreateSequence(in);

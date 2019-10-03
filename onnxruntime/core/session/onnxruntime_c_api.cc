@@ -986,10 +986,34 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t 
   for (size_t idx = 0; idx < num_values; ++idx) {
     auto& one_tensor = reinterpret_cast<const OrtValue*>(in[idx])->Get<Tensor>();
     auto tensor_elem_type = one_tensor.DataType();
-    if (tensor_elem_type == DataTypeImpl::GetType<float>()) {
-      OrtCreateValueImplSeqHelperTensor<float>(one_tensor, vec_ptr->operator[](idx));
+    OrtStatus* st{};
+    if (tensor_elem_type == DataTypeImpl::GetType<bool>()) {
+      st = OrtCreateValueImplSeqHelperTensor<bool>(one_tensor, vec_ptr->operator[](idx));
+    } else if (tensor_elem_type == DataTypeImpl::GetType<float>()) {
+      st = OrtCreateValueImplSeqHelperTensor<float>(one_tensor, vec_ptr->operator[](idx));
+    } else if (tensor_elem_type == DataTypeImpl::GetType<double>()) {
+      st = OrtCreateValueImplSeqHelperTensor<double>(one_tensor, vec_ptr->operator[](idx));
+    } else if (tensor_elem_type == DataTypeImpl::GetType<int8_t>()) {
+      st = OrtCreateValueImplSeqHelperTensor<int8_t>(one_tensor, vec_ptr->operator[](idx));
+    } else if (tensor_elem_type == DataTypeImpl::GetType<uint8_t>()) {
+      st = OrtCreateValueImplSeqHelperTensor<uint8_t>(one_tensor, vec_ptr->operator[](idx));
+    } else if (tensor_elem_type == DataTypeImpl::GetType<int16_t>()) {
+      st = OrtCreateValueImplSeqHelperTensor<int16_t>(one_tensor, vec_ptr->operator[](idx));
+    } else if (tensor_elem_type == DataTypeImpl::GetType<uint16_t>()) {
+      st = OrtCreateValueImplSeqHelperTensor<uint16_t>(one_tensor, vec_ptr->operator[](idx));
+    } else if (tensor_elem_type == DataTypeImpl::GetType<int32_t>()) {
+      st = OrtCreateValueImplSeqHelperTensor<int32_t>(one_tensor, vec_ptr->operator[](idx));
+    } else if (tensor_elem_type == DataTypeImpl::GetType<uint32_t>()) {
+      st = OrtCreateValueImplSeqHelperTensor<uint32_t>(one_tensor, vec_ptr->operator[](idx));
+    } else if (tensor_elem_type == DataTypeImpl::GetType<int64_t>()) {
+      st = OrtCreateValueImplSeqHelperTensor<int64_t>(one_tensor, vec_ptr->operator[](idx));
     } else {
-      return OrtApis::CreateStatus(ORT_FAIL, "Only sequences with float tensors are supported at this time.");
+      std::string err_msg = std::string("Unsupported data type: ") + DataTypeImpl::ToString(tensor_elem_type);
+      st = OrtApis::CreateStatus(ORT_FAIL, err_msg.c_str());
+    }
+
+    if (st) {
+      return st;
     }
   }
   // create OrtValue with this vector
