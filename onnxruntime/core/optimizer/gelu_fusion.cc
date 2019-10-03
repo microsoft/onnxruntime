@@ -49,21 +49,6 @@ static bool CheckConstantInput(const Graph& graph, const NodeArg& input_arg, flo
   return true;
 }
 
-static bool HasConsumers(Graph& graph, const NodeArg* arg) {
-  for (auto& node : graph.Nodes()) {
-    auto ret = std::find(node.MutableInputDefs().begin(), node.MutableInputDefs().end(), arg);
-    if (ret != node.MutableInputDefs().end()) {
-      return true;
-    }
-
-    ret = std::find(node.MutableImplicitInputDefs().begin(), node.MutableImplicitInputDefs().end(), arg);
-    if (ret != node.MutableImplicitInputDefs().end()) {
-      return true;
-    }
-  }
-  return false;
-}
-
 // Gelu supports limited data types.
 static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)"};
 
