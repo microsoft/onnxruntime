@@ -364,6 +364,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     std::string test_name_;
     std::string reason_;
     std::set<std::string> broken_versions_ = {}; // apply to all versions if empty
+    BrokenTest(std::string name, std::string reason) : test_name_(std::move(name)), reason_(std::move(reason)) {}
+    BrokenTest(std::string name, std::string reason, const std::initializer_list<std::string>& versions) :
+      test_name_(std::move(name)), reason_(std::move(reason)), broken_versions_(versions) {}
     bool operator < (const struct BrokenTest& test) const {
         return strcmp(test_name_.c_str(), test.test_name_.c_str()) < 0;
     }
