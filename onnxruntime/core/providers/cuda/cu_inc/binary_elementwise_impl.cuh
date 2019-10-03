@@ -51,7 +51,7 @@ __global__ void _BinaryElementWiseSimple(
     const T* lhs_data,
     const T* rhs_data,
     T* output_data,
-    FuncT func,
+    const FuncT& func,
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   output_data[id] = func(lhs_data[IncL ? id : 0], rhs_data[IncR ? id : 0]);
