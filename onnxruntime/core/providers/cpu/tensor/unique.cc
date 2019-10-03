@@ -4,7 +4,7 @@
 #include "core/providers/cpu/tensor/unique.h"
 
 #include <map>
-#include "gsl/gsl"
+#include "gsl/span"
 #include "core/framework/utils.h"
 #include "core/providers/common.h"
 
