@@ -194,7 +194,7 @@ void RegisterNchwcSchemas() {
 void RegisterBertSchemas() {
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
-      .SetDomain(kOnnxDomain)
+      .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Multi-Head Self Attention")

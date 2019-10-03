@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 #include <iterator>
 #include <vector>
@@ -11,9 +12,6 @@
 
 namespace onnxruntime {
 namespace test {
-
-// Attention only has CUDA kernel, so disable these tests for non-CUDA build.
-#ifdef USE_CUDA
 
 //   Input 0 - input       : (batch_size, sequence_length, hidden_size)
 //   Input 1 - weights     : (hidden_size, 3 * hidden_size)
@@ -32,7 +30,7 @@ static void RunAttentionTest(
     int hidden_size,
     int number_of_heads)
   {
-      OpTester test("Attention", 1, onnxruntime::kOnnxDomain);
+      OpTester test("Attention", 1, onnxruntime::kMSDomain);
       test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
 
       std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
@@ -47,7 +45,11 @@ static void RunAttentionTest(
       test.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
       test.AddOutput<float>("output", output_dims, output_data);
 
-      test.Run();
+      // Run test on CUDA provider only since it only have CUDA kernel.
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+      std::unordered_set<std::string> excluded_providers;
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers, nullptr, &execution_providers);
 }
 
 TEST(AttentionTest, AttentionBatch1) {
@@ -172,7 +174,6 @@ TEST(AttentionTest, AttentionMaskExceedSequence) {
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads);
 }
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

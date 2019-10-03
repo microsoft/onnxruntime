@@ -18,7 +18,7 @@ namespace cuda {
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       Attention,                                                  \
-      kOnnxDomain,                                                \
+      kMSDomain,                                                  \
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
