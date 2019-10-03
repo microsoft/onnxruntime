@@ -48,27 +48,29 @@ Status CopyIfNotSameBuffer(const Tensor& source_tensor, Tensor& target_tensor) {
 }
 
 // TODO: Once Schema is checked in to onnx lets fix this to match that
-#define REGISTER_ADAM_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD)                           \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                     \
-      AdamOptimizer,                                                                 \
-      kOnnxDomain,                                                                   \
-      9,                                                                             \
-      T1##_##T2##_##T3##_##T4##_##T_GRAD,                                            \
-      kCudaExecutionProvider,                                                        \
-      KernelDefBuilder()                                                             \
-          .Alias(1, 3)                            /* Update step count in-place */   \
-          .Alias(2, 0)                            /* Update weights in-place */      \
-          .Alias(4, 1)                            /* Update moment-1 in-place */     \
-          .Alias(5, 2)                            /* Update moment-2 in-place */     \
-          .Alias(6, 4)                            /* Update FP16 weights in-place */ \
-          .InputMemoryType<OrtMemTypeCPUInput>(7) /* Keep noop_flag in CPU */        \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                   \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                   \
-          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                   \
-          .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>())                   \
-          .TypeConstraint("T_GRAD", DataTypeImpl::GetTensorType<T_GRAD>())           \
-          .TypeConstraint("T_FP16", DataTypeImpl::GetTensorType<MLFloat16>())        \
-          .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()),                 \
+#define REGISTER_ADAM_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD)                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                      \
+      AdamOptimizer,                                                                  \
+      kOnnxDomain,                                                                    \
+      9,                                                                              \
+      T1##_##T2##_##T3##_##T4##_##T_GRAD,                                             \
+      kCudaExecutionProvider,                                                         \
+      KernelDefBuilder()                                                              \
+          .Alias(1, 3)                             /* Update step count in-place */   \
+          .Alias(2, 0)                             /* Update weights in-place */      \
+          .Alias(4, 1)                             /* Update moment-1 in-place */     \
+          .Alias(5, 2)                             /* Update moment-2 in-place */     \
+          .Alias(6, 4)                             /* Update FP16 weights in-place */ \
+          .InputMemoryType<OrtMemTypeCPUInput>(1)  /* Keep step count in CPU */       \
+          .InputMemoryType<OrtMemTypeCPUInput>(7)  /* Keep noop_flag in CPU */        \
+          .OutputMemoryType<OrtMemTypeCPUInput>(3) /* Keep step count in CPU */       \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                    \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                    \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                    \
+          .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>())                    \
+          .TypeConstraint("T_GRAD", DataTypeImpl::GetTensorType<T_GRAD>())            \
+          .TypeConstraint("T_FP16", DataTypeImpl::GetTensorType<MLFloat16>())         \
+          .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()),                  \
       AdamOptimizer<T1, T2, T3, T4, T_GRAD>);
 
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, float)
@@ -81,7 +83,6 @@ REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, MLFloat16)
 template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD>
 Status AdamOptimizer<T1, T2, T3, T4, T_GRAD>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<T1>::MappedType CudaT1;
-  typedef typename ToCudaType<T2>::MappedType CudaT2;
   typedef typename ToCudaType<T3>::MappedType CudaT3;
   typedef typename ToCudaType<T4>::MappedType CudaT4;
   typedef typename ToCudaType<T_GRAD>::MappedType CudaT_GRAD;
@@ -99,12 +100,14 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD>::ComputeInternal(OpKernelContext* c
   Tensor& NS = *ctx->Output(3, S.Shape());
 
   half* fp16_weights_out = nullptr;
+
   if (ctx->InputCount() >= 7 && ctx->OutputCount() >= 5) {
     const Tensor& W_FP16 = *ctx->Input<Tensor>(6);
     Tensor& NW_FP16 = *ctx->Output(4, W_FP16.Shape());
     fp16_weights_out = reinterpret_cast<half*>(NW_FP16.template MutableData<MLFloat16>());
   }
 
+  const T2* S_in = S.template Data<T2>();
   if (ctx->InputCount() >= 8) {
     const Tensor& do_update_tensor = *ctx->Input<Tensor>(7);
     const bool do_update = *do_update_tensor.template Data<bool>();
@@ -112,7 +115,9 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD>::ComputeInternal(OpKernelContext* c
       ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T3>(W, NW));
       ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T4>(M1, NM1));
       ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T4>(M2, NM2));
-      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T2>(S, NS));
+      if (S_in != NS.template MutableData<T2>()) {
+        *(NS.template MutableData<T2>()) = *(S_in);
+      }
 
       if (fp16_weights_out) {
         const Tensor& W_FP16 = *ctx->Input<Tensor>(6);
@@ -125,7 +130,7 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD>::ComputeInternal(OpKernelContext* c
 
   AdamOptimizerImpl(
       reinterpret_cast<const CudaT1*>(ETA.template Data<T1>()),
-      reinterpret_cast<const CudaT2*>(S.template Data<T2>()),
+      *S_in,
       reinterpret_cast<const CudaT3*>(W.template Data<T3>()),
       reinterpret_cast<const CudaT_GRAD*>(G.template Data<T_GRAD>()),
       reinterpret_cast<const CudaT4*>(M1.template Data<T4>()),
@@ -137,9 +142,10 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD>::ComputeInternal(OpKernelContext* c
       reinterpret_cast<CudaT3*>(NW.template MutableData<T3>()),
       reinterpret_cast<CudaT4*>(NM1.template MutableData<T4>()),
       reinterpret_cast<CudaT4*>(NM2.template MutableData<T4>()),
-      reinterpret_cast<CudaT2*>(NS.template MutableData<T2>()),
       fp16_weights_out,
       W.Shape().Size());
+
+  *(NS.template MutableData<T2>()) = *(S_in) + 1;
 
   return Status::OK();
 }

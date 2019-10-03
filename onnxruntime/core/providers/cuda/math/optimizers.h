@@ -26,7 +26,7 @@ class SGDOptimizer final : public CudaKernel {
 template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD>
 void AdamOptimizerImpl(
     const T1* eta,
-    const T2* update_count,
+    const T2 update_count,
     const T3* weights,
     const T_GRAD* grads,
     const T4* moment_1,
@@ -38,7 +38,6 @@ void AdamOptimizerImpl(
     T3* weight_out,
     T4* moment_1_out,
     T4* moment_2_out,
-    T2* update_count_out,
     half* fp16_weights_out,
     size_t count);
 
