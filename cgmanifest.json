@@ -266,8 +266,8 @@
             "Type": "other",
             "Other": {
                "Name": "LLVM",
-               "Version": "6.0.1",
-               "DownloadUrl": "https://releases.llvm.org/6.0.1/llvm-6.0.1.src.tar.xz"
+               "Version": "9.0.0",
+               "DownloadUrl": "https://releases.llvm.org/9.0.0/llvm-9.0.0.src.tar.xz"
             }
          }
       },
