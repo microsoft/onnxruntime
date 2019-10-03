@@ -13,29 +13,24 @@ namespace contrib {
 // once Keras Mask RCNN is shipped with all ONNX domain ops
 
 // Currently this kernel is required to support Keras Mask-RCNN
-ONNX_OPERATOR_KERNEL_EX(
-    GatherND,
-    kMSDomain,
-    1,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        // contrib spec supports `int32_t` and `int64_t` for indices
-        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
-    GatherND);
+ONNX_OPERATOR_KERNEL_EX(GatherND, kMSDomain, 1, kCpuExecutionProvider,
+                        KernelDefBuilder()
+                            .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+                            // contrib spec supports `int32_t` and `int64_t` for indices
+                            .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),
+                                                     DataTypeImpl::GetTensorType<int64_t>()}),
+                        GatherND);
 
 }  // namespace contrib
 
 #endif
 
-ONNX_CPU_OPERATOR_KERNEL(
-    GatherND,
-    11,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        // official ONNX spec only supports `int64_t` for indices
-        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
-    GatherND);
+ONNX_CPU_OPERATOR_KERNEL(GatherND, 11,
+                         KernelDefBuilder()
+                             .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+                             // official ONNX spec only supports `int64_t` for indices
+                             .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
+                         GatherND);
 
 template <typename Tind>
 Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
@@ -53,17 +48,17 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
 
   auto last_indice_dimension = indice_shape[indice_shape.NumDimensions() - 1];
   if (last_indice_dimension > static_cast<int64_t>(input_shape.NumDimensions())) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "last dimension of indices must not be larger than rank of input tensor");
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "last dimension of indices must not be larger than rank of input tensor");
   }
 
-  std::vector<int64_t> shape(indice_shape.GetDims().begin(),
-                             indice_shape.GetDims().end() - 1);
-  shape.insert(shape.end(),
-               input_shape.GetDims().begin() + last_indice_dimension,
+  std::vector<int64_t> shape(indice_shape.GetDims().begin(), indice_shape.GetDims().end() - 1);
+  shape.insert(shape.end(), input_shape.GetDims().begin() + last_indice_dimension,
                input_shape.GetDims().end());
   auto output_tensor = context->Output(0, TensorShape(shape));
-  std::vector<int64_t> element_counts(last_indice_dimension, 0LL);  // Number of elements for each input dimension
+  std::vector<int64_t> element_counts(last_indice_dimension,
+                                      0LL);  // Number of elements for each input dimension
 
 #ifdef USE_OPENMP
 #pragma omp parallel for
@@ -101,8 +96,9 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
     }
   }
 
-  return err_indice == 0 ? Status::OK() : 
-         ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid indice found, indice = ", err_indice);
+  return err_indice == 0 ? Status::OK()
+                         : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                           "invalid indice found, indice = ", err_indice);
 }
 
 template Status GatherNDBase::PrepareForCompute<int32_t>(OpKernelContext*, Prepare&) const;
@@ -110,8 +106,9 @@ template Status GatherNDBase::PrepareForCompute<int64_t>(OpKernelContext*, Prepa
 
 Status GatherND::Compute(OpKernelContext* context) const {
   Prepare p;
-  ORT_RETURN_IF_ERROR(context->Input<Tensor>(1)->DataType() == DataTypeImpl::GetType<int32_t>() ? 
-                      PrepareForCompute<int32_t>(context, p) : PrepareForCompute<int64_t>(context, p));
+  ORT_RETURN_IF_ERROR(context->Input<Tensor>(1)->DataType() == DataTypeImpl::GetType<int32_t>()
+                          ? PrepareForCompute<int32_t>(context, p)
+                          : PrepareForCompute<int64_t>(context, p));
 
   return nullptr == p.input_str_base ? GatherNumber(p) : GatherString(p);
 }
@@ -122,8 +119,7 @@ Status GatherND::GatherNumber(const Prepare& p) const {
 #endif
   for (int64_t i = 0; i < static_cast<int64_t>(p.element_offsets.size()); ++i) {
     memcpy(p.output_base + i * p.bytes_to_copy,
-           p.input_base + p.element_offsets[i] * p.element_bytes,
-           p.bytes_to_copy);
+           p.input_base + p.element_offsets[i] * p.element_bytes, p.bytes_to_copy);
   }
 
   return Status::OK();
