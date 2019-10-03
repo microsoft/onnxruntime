@@ -28,10 +28,14 @@ struct TempFilePath {
   TempFilePath(const PathString& base)
       : path{
             [&base]() {
-              PathString path_template = base + "XXXXXX";
+              PathString path_template = base + ORT_TSTR("XXXXXX");
               int fd;
               CreateTestFile(fd, path_template);
+#ifdef _WIN32
+              _close(fd);
+#else
               close(fd);
+#endif
               return path_template;
             }()} {}
 
@@ -46,11 +50,12 @@ struct TempFilePath {
 
 std::vector<char> GenerateData(size_t length, uint32_t seed = 0) {
   auto engine = std::default_random_engine{seed};
-  auto dist = std::uniform_int_distribution<char>{};
+  auto dist = std::uniform_int_distribution<int>{
+      std::numeric_limits<char>::min(), std::numeric_limits<char>::max()};
   std::vector<char> result{};
   result.reserve(length);
   for (size_t i = 0; i < length; ++i) {
-    result.push_back(dist(engine));
+    result.push_back(static_cast<char>(dist(engine)));
   }
   return result;
 }
@@ -72,7 +77,7 @@ std::vector<std::pair<OffsetType, size_t>> GenerateValidOffsetLengthPairs(size_t
 }  // namespace
 
 TEST(FileIoTest, ReadFileIntoBuffer) {
-  TempFilePath tmp("read_test_");
+  TempFilePath tmp(ORT_TSTR("read_test_"));
   const auto expected_data = GenerateData(32);
   WriteDataToFile(gsl::make_span(expected_data), tmp.path);
 
@@ -109,7 +114,7 @@ TEST(FileIoTest, MapFileIntoMemory) {
   static const auto page_size = sysconf(_SC_PAGESIZE);
   ASSERT_GT(page_size, 0);
 
-  TempFilePath tmp("map_file_test_");
+  TempFilePath tmp(ORT_TSTR("map_file_test_"));
   const auto expected_data = GenerateData(page_size * 3 / 2);
   WriteDataToFile(gsl::make_span(expected_data), tmp.path);
 
