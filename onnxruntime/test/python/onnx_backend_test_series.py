@@ -168,7 +168,7 @@ def create_backend_test(testname=None):
                                       '^test_hardmax_negative_axis.*',
                                       '^test_gemm_default_no_bias_cpu',
                                       '^test_flatten_negative_axis.*',
-                                      '^test_reduce_[a-z1-9]*_negative_axes_.*',
+                                      '^test_reduce_[a-z1-9_]*_negative_axes_.*',
                                       'test_squeeze_negative_axes_cpu',
                                       'test_unsqueeze_negative_axes_cpu']
 
