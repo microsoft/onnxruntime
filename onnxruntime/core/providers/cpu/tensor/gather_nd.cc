@@ -101,7 +101,8 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
     }
   }
 
-  return err_indice == 0 ? Status::OK() : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid indice found, indice = ", err_indice);
+  return err_indice == 0 ? Status::OK() : 
+         ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid indice found, indice = ", err_indice);
 }
 
 template Status GatherNDBase::PrepareForCompute<int32_t>(OpKernelContext*, Prepare&) const;
@@ -109,7 +110,8 @@ template Status GatherNDBase::PrepareForCompute<int64_t>(OpKernelContext*, Prepa
 
 Status GatherND::Compute(OpKernelContext* context) const {
   Prepare p;
-  ORT_RETURN_IF_ERROR(context->Input<Tensor>(1)->DataType() == DataTypeImpl::GetType<int32_t>() ? PrepareForCompute<int32_t>(context, p) : PrepareForCompute<int64_t>(context, p));
+  ORT_RETURN_IF_ERROR(context->Input<Tensor>(1)->DataType() == DataTypeImpl::GetType<int32_t>() ? 
+                      PrepareForCompute<int32_t>(context, p) : PrepareForCompute<int64_t>(context, p));
 
   return nullptr == p.input_str_base ? GatherNumber(p) : GatherString(p);
 }
