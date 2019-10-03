@@ -113,6 +113,9 @@ struct TTensorType {
   static const TTypeProto<T> s_type_proto;
 };
 
+template <typename T>
+const TTypeProto<T> TTensorType<T>::s_type_proto;
+
 //TypeProto for map<TKey, TVal>
 template <typename TKey, typename TVal>
 struct MTypeProto : ONNX_NAMESPACE::TypeProto {
@@ -127,6 +130,9 @@ template <typename TKey, typename TVal>
 struct MMapType {
   static const MTypeProto<TKey, TVal> s_map_type_proto;
 };
+
+template <typename TKey, typename TVal>
+const MTypeProto<TKey, TVal> MMapType<TKey, TVal>::s_map_type_proto;
 
 //TypeProto for vector<map<TKey, TVal>>
 template <typename TKey, typename TVal>
@@ -143,6 +149,9 @@ template <typename TKey, typename TVal>
 struct VectorOfMapType {
   static const VectorOfMapTypeProto<TKey, TVal> s_vec_map_type_proto;
 };
+
+template <typename TKey, typename TVal>
+const VectorOfMapTypeProto<TKey, TVal> VectorOfMapType<TKey, TVal>::s_vec_map_type_proto;
 
 // To use OpTester:
 //  1. Create one with the op name
@@ -191,7 +200,7 @@ class OpTester {
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
-    input_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), value, optional<float>(), optional<float>()));
+    input_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(), optional<float>()));
   }
 
   template <typename T>
@@ -202,9 +211,8 @@ class OpTester {
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
-    input_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), value, optional<float>(), optional<float>()));
+    input_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(), optional<float>()));
   }
-
 
   template <typename TKey, typename TVal>
   void AddInput(const char* name, const std::map<TKey, TVal>& val) {
@@ -213,7 +221,7 @@ class OpTester {
     value.Init(ptr.release(),
                DataTypeImpl::GetType<std::map<TKey, TVal>>(),
                DataTypeImpl::GetType<std::map<TKey, TVal>>()->GetDeleteFunc());
-    input_data_.push_back(Data(NodeArg(name, &MMapType<TKey, TVal>::s_map_type_proto), value, optional<float>(), optional<float>()));
+    input_data_.push_back(Data(NodeArg(name, &MMapType<TKey, TVal>::s_map_type_proto), std::move(value), optional<float>(), optional<float>()));
   }
 
   template <typename T>
@@ -247,7 +255,7 @@ class OpTester {
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
-    output_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), value, optional<float>(), optional<float>()));
+    output_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(), optional<float>()));
   }
 
   template <typename T>
@@ -258,7 +266,7 @@ class OpTester {
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
-    output_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), value, optional<float>(), optional<float>()));
+    output_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(), optional<float>()));
   }
 
   // Add non tensor output
@@ -269,7 +277,7 @@ class OpTester {
     ml_value.Init(ptr.release(),
                   DataTypeImpl::GetType<std::vector<std::map<TKey, TVal>>>(),
                   DataTypeImpl::GetType<std::vector<std::map<TKey, TVal>>>()->GetDeleteFunc());
-    output_data_.push_back(Data(NodeArg(name, &VectorOfMapType<TKey, TVal>::s_vec_map_type_proto), ml_value, optional<float>(), optional<float>()));
+    output_data_.push_back(Data(NodeArg(name, &VectorOfMapType<TKey, TVal>::s_vec_map_type_proto), std::move(ml_value), optional<float>(), optional<float>()));
   }
 
   void AddCustomOpRegistry(std::shared_ptr<CustomRegistry> registry) {
@@ -310,6 +318,10 @@ class OpTester {
     OrtValue data_;
     optional<float> relative_error_;
     optional<float> absolute_error_;
+    Data(onnxruntime::NodeArg&& def, OrtValue&& data, optional<float>&& rel, optional<float>&& abs) : 
+      def_(std::move(def)), data_(std::move(data)), relative_error_(std::move(rel)), absolute_error_(abs) {}
+    Data(Data&&) = default;
+    Data& operator=(Data&&) = default;
   };
 
  protected:
@@ -343,8 +355,8 @@ class OpTester {
 
       auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
       auto p_tensor = onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
-                                               shape,
-                                               allocator);
+                                                       shape,
+                                                       allocator);
 
       auto* data_ptr = p_tensor->template MutableData<T>();
       for (int64_t i = 0; i < values_count; i++) {
@@ -360,7 +372,7 @@ class OpTester {
       TTypeProto<T> type_proto(add_shape_to_tensor_data_ ? &dims_for_proto : nullptr);
       OrtValue value;
       value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-      data.push_back({{name, &type_proto}, value, optional<float>(), optional<float>()});
+      data.push_back(Data(NodeArg(name, &type_proto), std::move(value), optional<float>(), optional<float>()));
       if (is_initializer)
         initializer_index_.push_back(data.size() - 1);
     } catch (const std::exception& ex) {
