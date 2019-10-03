@@ -14,7 +14,7 @@
 #include "core/framework/func_kernel.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 #include <functional>
 #include <mutex>

@@ -34,15 +34,15 @@ class Initializer final {
 
     switch (data_type_) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
-        float16_data_.assign(size_, 0);
+        float16_data_.assign(static_cast<size_t>(size_), 0);
         break;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
-        float_data_.assign(size_, 0.0f);
+        float_data_.assign(static_cast<size_t>(size_), 0.0f);
         break;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
-        double_data_.assign(size_, 0.0);
+        double_data_.assign(static_cast<size_t>(size_), 0.0);
         break;
       }
       default:

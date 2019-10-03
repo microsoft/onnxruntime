@@ -6,7 +6,7 @@
 #include "core/codegen/common/common.h"
 #include "core/codegen/common/profile.h"
 #include "core/codegen/passes/utils/ort_tvm_utils.h"
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 #include <tvm/tvm.h>
 
 // from onnxruntime_typeinf.cc, in global namespace

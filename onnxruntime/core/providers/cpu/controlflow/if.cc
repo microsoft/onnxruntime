@@ -46,15 +46,24 @@ ONNX_OPERATOR_SET_SCHEMA(
         .TypeConstraint("B", {"tensor(bool)"}, "Only bool"));
 */
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
+                                   1, 10,
+                                   KernelDefBuilder()
+                                     .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                     .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                                   If);
+
+// output shape rules requiring the output shapes of the 'THEN' and 'ELSE'
+// branches to be the same were relaxed in opset-11
 ONNX_CPU_OPERATOR_KERNEL(If,
-                         1,
-                         KernelDefBuilder()
-                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
-                         If);
+                        11,
+                        KernelDefBuilder()
+                            .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                            .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                        If);
 
 struct If::Info {
-  Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in) : subgraph{subgraph_in} {
+  Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in) : subgraph(subgraph_in) {
     num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
     used_implicit_inputs = std::vector<bool>(num_implicit_inputs, true);
     num_outputs = static_cast<int>(node.OutputDefs().size());
@@ -137,7 +146,7 @@ common::Status If::SetupSubgraphExecutionInfo(const SessionState& session_state,
   ORT_ENFORCE(info == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
 
   const auto& node = Node();
-  info = std::make_unique<If::Info>(node, *subgraph_session_state.GetGraphViewer());
+  info = onnxruntime::make_unique<If::Info>(node, *subgraph_session_state.GetGraphViewer());
 
   // all inputs for the If subgraph are implicit
   std::vector<std::string> feed_names;
@@ -219,10 +228,10 @@ Status If::Compute(OpKernelContext* ctx) const {
 IfImpl::IfImpl(OpKernelContextInternal& context,
                const SessionState& session_state,
                const If::Info& info)
-    : context_{context},
-      session_state_{session_state},
-      info_{info},
-      implicit_inputs_{context_.GetImplicitInputs()} {
+    : context_(context),
+      session_state_(session_state),
+      info_(info),
+      implicit_inputs_(context_.GetImplicitInputs()) {
 }
 
 Status IfImpl::Initialize() {
