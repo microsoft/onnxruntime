@@ -12,8 +12,11 @@ set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 
-# Set C++11 as standard for the whole project
-set(CMAKE_CXX_STANDARD 11)
+# CentOS compiler is old but it does allow certain C++14 features
+# such as lambda captures and they are convinient
+# On the other hand it does not allow some others.
+# So we cant' regulate simply with the standard.
+set(CMAKE_CXX_STANDARD 14)
 
 # General C# prperties
 if (onnxruntime_BUILD_CSHARP)
