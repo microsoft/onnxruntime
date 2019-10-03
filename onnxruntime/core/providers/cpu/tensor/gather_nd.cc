@@ -42,15 +42,13 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
   auto input_shape = input_tensor->Shape();
   auto indice_shape = indice_tensor->Shape();
   if (indice_shape.NumDimensions() == 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "indices tensor must has rank larger than 0");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices tensor must has rank larger than 0");
   }
 
   auto last_indice_dimension = indice_shape[indice_shape.NumDimensions() - 1];
   if (last_indice_dimension > static_cast<int64_t>(input_shape.NumDimensions())) {
-    return ORT_MAKE_STATUS(
-        ONNXRUNTIME, INVALID_ARGUMENT,
-        "last dimension of indices must not be larger than rank of input tensor");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "last dimension of indices must not be larger than rank of input tensor");
   }
 
   std::vector<int64_t> shape(indice_shape.GetDims().begin(), indice_shape.GetDims().end() - 1);
@@ -96,9 +94,9 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
     }
   }
 
-  return err_indice == 0 ? Status::OK()
-                         : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                           "invalid indice found, indice = ", err_indice);
+  return err_indice == 0
+             ? Status::OK()
+             : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid indice found, indice = ", err_indice);
 }
 
 template Status GatherNDBase::PrepareForCompute<int32_t>(OpKernelContext*, Prepare&) const;
@@ -118,8 +116,8 @@ Status GatherND::GatherNumber(const Prepare& p) const {
 #pragma omp parallel for
 #endif
   for (int64_t i = 0; i < static_cast<int64_t>(p.element_offsets.size()); ++i) {
-    memcpy(p.output_base + i * p.bytes_to_copy,
-           p.input_base + p.element_offsets[i] * p.element_bytes, p.bytes_to_copy);
+    memcpy(p.output_base + i * p.bytes_to_copy, p.input_base + p.element_offsets[i] * p.element_bytes,
+           p.bytes_to_copy);
   }
 
   return Status::OK();
