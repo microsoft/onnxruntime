@@ -300,7 +300,6 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
 
     // Separate out any negative pads into the slices array
     std::vector<int64_t> slices(pads.size(), 0);
-    slices.reserve(2 * data_rank);
     for (size_t index = 0; index < pads.size(); index++) {
       if (pads[index] < 0) {
         slices[index] = pads[index];
