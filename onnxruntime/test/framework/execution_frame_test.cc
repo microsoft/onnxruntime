@@ -195,7 +195,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  const OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
+  const OrtValueNameIdxMap& mlvalue_name_idx_map(state.GetOrtValueNameIdxMap());
 
   int x1_idx, x2_idx, x3_idx;
   int t1_idx, t2_idx, t3_idx;

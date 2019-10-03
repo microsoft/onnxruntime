@@ -169,8 +169,8 @@ TEST(GraphTransformationTests, ConstantFoldingSubgraph) {
   GraphProto subgraph;
   create_subgraph(subgraph);
 
-  if_node.AddAttribute("then_branch", {subgraph});
-  if_node.AddAttribute("else_branch", {subgraph});
+  if_node.AddAttribute("then_branch", subgraph);
+  if_node.AddAttribute("else_branch", subgraph);
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status;
