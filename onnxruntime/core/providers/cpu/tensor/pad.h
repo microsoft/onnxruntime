@@ -51,8 +51,6 @@ class PadBase {
           pads_[index] = 0;
         }
       }
-
-      ;  // Value is optional and initialized to 0 by default
     }
   }
 
