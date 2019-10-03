@@ -298,9 +298,9 @@ class Erf final : public OpKernel {
 };
 
 template <typename T>
-auto MakeEigenArrayMap(Tensor& t) { return EigenVectorArrayMap<T>(t.template MutableData<T>(), t.Shape().Size()); }
+auto MakeEigenArrayMap(Tensor& t) -> EigenVectorArrayMap<T> { return EigenVectorArrayMap<T>(t.template MutableData<T>(), t.Shape().Size()); }
 template <typename T>
-auto MakeEigenArrayMap(const Tensor& t) { return ConstEigenVectorArrayMap<T>(t.template Data<T>(), t.Shape().Size()); }
+auto MakeEigenArrayMap(const Tensor& t) -> ConstEigenVectorArrayMap<T> { return ConstEigenVectorArrayMap<T>(t.template Data<T>(), t.Shape().Size()); }
 
 struct BroadcastIterator {
   size_t AdvanceBy(size_t delta) {
