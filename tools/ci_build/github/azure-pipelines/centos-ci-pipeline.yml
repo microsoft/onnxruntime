@@ -1,0 +1,12 @@
+jobs:
+- job: linux_centos_ci
+  timeoutInMinutes:  120
+  pool:
+    vmImage: 'ubuntu-latest'
+  steps:
+#    - template: linux-set-variables-and-download.yml
+    - script: tools/ci_build/github/linux/run_dockerbuild.sh -p 3.6 -o centos7 -d cpu -r $(Build.BinariesDirectory) -x "--use_automl --build_wheel"
+      displayName: 'Command Line Script'
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: succeeded()

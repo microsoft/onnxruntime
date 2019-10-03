@@ -1,5 +1,8 @@
 ARG OS_VERSION=27
 FROM fedora:${OS_VERSION}
+
+ARG PYTHON_VERSION=3.6
+
 # nvidia-container-runtime
 ENV NVIDIA_VISIBLE_DEVICES=all \
  NVIDIA_DRIVER_CAPABILITIES=compute,utility \
