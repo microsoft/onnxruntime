@@ -80,12 +80,6 @@ if [ $PYTHON_VER != "3.5" ]; then
     /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
 fi
 
-/usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall numpy==1.15.0
-/usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall requests==2.21.0
-if [ $DEVICE_TYPE = "Normal" ]; then
-    /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall sympy==1.1.1
-fi
-/usr/bin/python${PYTHON_VER} -m pip install --upgrade scipy
 rm -rf /var/lib/apt/lists/*
 
 if [ $DEVICE_TYPE = "Normal" ]; then
