@@ -360,7 +360,7 @@ static void DeleteCharArray(void* param) noexcept {
 }
 
 static Status GetFileContent(
-    const Env& env, const ORTCHAR_T* file_path, OffsetType offset, size_t length,
+    const Env& env, const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
     void*& raw_buffer, OrtCallback& deleter) {
   // query length if it is 0
   if (length == 0) {
@@ -379,7 +379,7 @@ static Status GetFileContent(
   }
 
   // if that fails, try to copy
-  auto buffer = std::make_unique<char[]>(length);
+  auto buffer = onnxruntime::make_unique<char[]>(length);
   ORT_RETURN_IF_ERROR(env.ReadFileIntoBuffer(
       file_path, offset, length, gsl::make_span(buffer.get(), length)));
 
@@ -429,7 +429,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
     } else if (utils::HasRawData(tensor_proto)) {
       if (ele_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not have raw data");
-      auto buffer = std::make_unique<char[]>(tensor_proto.raw_data().size());
+      auto buffer = onnxruntime::make_unique<char[]>(tensor_proto.raw_data().size());
       std::memcpy(buffer.get(), tensor_proto.raw_data().data(), tensor_proto.raw_data().size());
       deleter_for_file_data.d = OrtCallback{DeleteCharArray, buffer.get()};
       raw_data = buffer.release();

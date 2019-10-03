@@ -60,9 +60,16 @@ static void UnmapFile(void* param) noexcept {
 struct FileDescriptorTraits {
   using Handle = int;
   static Handle GetInvalidHandleValue() { return -1; }
-  static void CleanUp(Handle h) { close(h); }
+  static void CleanUp(Handle h) {
+    if (close(h) == -1) {
+      const int err = errno;
+      LOGS_DEFAULT(ERROR) << "Failed to close file descriptor " << h << " - error code: " << err;
+    }
+  }
 };
 
+// Note: File descriptor cleanup may fail but this class doesn't expose a way to check if it failed.
+//       If that's important, consider using another cleanup method.
 using ScopedFileDescriptor = ScopedResource<FileDescriptorTraits>;
 
 // non-macro equivalent of TEMP_FAILURE_RETRY, described here:
@@ -135,7 +142,7 @@ class PosixEnv : public Env {
   }
 
   Status ReadFileIntoBuffer(
-      const ORTCHAR_T* file_path, OffsetType offset, size_t length,
+      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
       gsl::span<char> buffer) const override {
     ORT_RETURN_IF_NOT(file_path);
     ORT_RETURN_IF_NOT(offset >= 0);
@@ -149,7 +156,7 @@ class PosixEnv : public Env {
     if (length == 0) return Status::OK();
 
     if (offset > 0) {
-      OffsetType seek_result = lseek(file_descriptor.Get(), offset, SEEK_SET);
+      const FileOffsetType seek_result = lseek(file_descriptor.Get(), offset, SEEK_SET);
       if (seek_result == -1) {
         return ReportSystemError("lseek", file_path);
       }
@@ -161,7 +168,7 @@ class PosixEnv : public Env {
       const size_t bytes_remaining = length - total_bytes_read;
       const size_t bytes_to_read = std::min(bytes_remaining, k_max_bytes_to_read);
 
-      ssize_t bytes_read = TempFailureRetry(read, file_descriptor.Get(), buffer.data() + total_bytes_read, bytes_to_read);
+      const ssize_t bytes_read = TempFailureRetry(read, file_descriptor.Get(), buffer.data() + total_bytes_read, bytes_to_read);
 
       if (bytes_read == -1) {
         return ReportSystemError("read", file_path);
@@ -180,7 +187,7 @@ class PosixEnv : public Env {
   }
 
   Status MapFileIntoMemory(
-      const ORTCHAR_T* file_path, OffsetType offset, size_t length,
+      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
       MappedMemoryPtr& mapped_memory) const override {
     ORT_RETURN_IF_NOT(file_path);
     ORT_RETURN_IF_NOT(offset >= 0);
@@ -196,9 +203,9 @@ class PosixEnv : public Env {
     }
 
     static const long page_size = sysconf(_SC_PAGESIZE);
-    const OffsetType offset_to_page = offset % static_cast<OffsetType>(page_size);
+    const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
     const size_t mapped_length = length + offset_to_page;
-    const OffsetType mapped_offset = offset - offset_to_page;
+    const FileOffsetType mapped_offset = offset - offset_to_page;
     void* const mapped_base = mmap(
         nullptr, mapped_length,
         PROT_READ | PROT_WRITE, MAP_PRIVATE,

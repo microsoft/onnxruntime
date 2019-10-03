@@ -65,11 +65,11 @@ void WriteDataToFile(gsl::span<const char> data, const PathString& path) {
   out.write(data.data(), data.size());
 }
 
-std::vector<std::pair<OffsetType, size_t>> GenerateValidOffsetLengthPairs(size_t begin, size_t end, size_t interval = 1) {
-  std::vector<std::pair<OffsetType, size_t>> offset_length_pairs;
+std::vector<std::pair<FileOffsetType, size_t>> GenerateValidOffsetLengthPairs(size_t begin, size_t end, size_t interval = 1) {
+  std::vector<std::pair<FileOffsetType, size_t>> offset_length_pairs;
   for (size_t range_begin = begin; range_begin < end; range_begin += interval) {
     for (size_t range_end = range_begin; range_end <= end; range_end += interval) {
-      offset_length_pairs.emplace_back(static_cast<OffsetType>(range_begin), range_end - range_begin);
+      offset_length_pairs.emplace_back(static_cast<FileOffsetType>(range_begin), range_end - range_begin);
     }
   }
   return offset_length_pairs;

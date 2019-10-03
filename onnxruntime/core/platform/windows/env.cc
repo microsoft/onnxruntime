@@ -36,9 +36,16 @@ namespace {
 struct FileHandleTraits {
   using Handle = HANDLE;
   static Handle GetInvalidHandleValue() noexcept { return INVALID_HANDLE_VALUE; }
-  static void CleanUp(Handle h) noexcept { CloseHandle(h); }
+  static void CleanUp(Handle h) noexcept {
+    if (!CloseHandle(h)) {
+      const int err = GetLastError();
+      LOGS_DEFAULT(ERROR) << "Failed to close file handle " << h << " - error code: " << err;
+    }
+  }
 };
 
+// Note: File handle cleanup may fail but this class doesn't expose a way to check if it failed.
+//       If that's important, consider using another cleanup method.
 using ScopedFileHandle = ScopedResource<FileHandleTraits>;
 
 class WindowsEnv : public Env {
@@ -83,7 +90,7 @@ class WindowsEnv : public Env {
         file_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
     LARGE_INTEGER filesize;
     if (!GetFileSizeEx(file_handle.Get(), &filesize)) {
-      int err = GetLastError();
+      const int err = GetLastError();
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileSizeEx ", ToMBString(file_path), " fail, errcode = ", err);
     }
     if (static_cast<ULONGLONG>(filesize.QuadPart) > std::numeric_limits<size_t>::max()) {
@@ -94,7 +101,7 @@ class WindowsEnv : public Env {
   }
 
   Status ReadFileIntoBuffer(
-      const ORTCHAR_T* const file_path, const OffsetType offset, const size_t length,
+      const ORTCHAR_T* const file_path, const FileOffsetType offset, const size_t length,
       const gsl::span<char> buffer) const override {
     ORT_RETURN_IF_NOT(file_path);
     ORT_RETURN_IF_NOT(offset >= 0);
@@ -142,7 +149,7 @@ class WindowsEnv : public Env {
   }
 
   Status MapFileIntoMemory(
-      const ORTCHAR_T* file_path, OffsetType offset, size_t length,
+      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
       MappedMemoryPtr& mapped_memory) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "MapFileIntoMemory is not implemented on Windows.");
   }

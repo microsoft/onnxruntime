@@ -37,10 +37,10 @@ namespace onnxruntime {
 
 #ifdef _WIN32
 using PIDType = unsigned long;
-using OffsetType = int64_t;
+using FileOffsetType = int64_t;
 #else
 using PIDType = pid_t;
-using OffsetType = off_t;
+using FileOffsetType = off_t;
 #endif
 
 /// \brief An interface used by the onnxruntime implementation to
@@ -90,7 +90,7 @@ class Env {
    * @param buffer The buffer in which to write.
    */
   virtual common::Status ReadFileIntoBuffer(
-      const ORTCHAR_T* file_path, OffsetType offset, size_t length,
+      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
       gsl::span<char> buffer) const = 0;
 
   using MappedMemoryPtr = std::unique_ptr<char[], OrtCallbackInvoker>;
@@ -106,7 +106,7 @@ class Env {
    *             unmaps the memory (unless release()'d) when destroyed.
    */
   virtual common::Status MapFileIntoMemory(
-      const ORTCHAR_T* file_path, OffsetType offset, size_t length,
+      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
       MappedMemoryPtr& mapped_memory) const = 0;
 
 #ifdef _WIN32
