@@ -439,9 +439,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"onehot_with_negative_axis", "OneHot(11) not implemented yet"},
       {"onehot_with_axis", "OneHot(11) not implemented yet"},
       {"onehot_negative_indices", "OneHot(11) not implemented yet"},
-      {"reflect_pad", "Pad(11) not implemented yet"},
-      {"edge_pad", "Pad(11) not implemented yet"},
-      {"constant_pad", "Pad(11) not implemented yet"},
       {"bitshift_right_uint8", "BitShift(11) not implemented yet"},
       {"bitshift_right_uint64", "BitShift(11) not implemented yet"},
       {"bitshift_right_uint32", "BitShift(11) not implemented yet"},
@@ -450,6 +447,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"bitshift_left_uint64", "BitShift(11) not implemented yet"},
       {"bitshift_left_uint32", "BitShift(11) not implemented yet"},
       {"bitshift_left_uint16", "BitShift(11) not implemented yet"},
+      {"reflect_pad", "test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests"},
+      {"edge_pad", "test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests"},
 };
 
 #ifdef USE_NGRAPH
@@ -495,6 +494,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"reduce_l2_negative_axes_keep_dims_example", "ReduceL2(11) not implemented yet"});
   broken_tests.insert({"reduce_l1_negative_axes_keep_dims_random", "ReduceL1(11) not implemented yet"});
   broken_tests.insert({"reduce_l1_negative_axes_keep_dims_example", "ReduceL1(11) not implemented yet"});
+  broken_tests.insert({"constant_pad", "not implemented yet for opset 11"});
 #endif
 
 #ifdef USE_MKLDNN
