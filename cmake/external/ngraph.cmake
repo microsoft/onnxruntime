@@ -14,7 +14,7 @@ set(ngraph_URL "https://github.com/NervanaSystems/ngraph.git")
 # TODO: change to v0.26.0 tag when it's ready
 # set(ngraph_TAG "v0.26.0-rc.2")
 # Temporary ngraph version with fix for gather operator
-set(ngraph_TAG "tsocha/temporary-ngraph")
+set(ngraph_TAG "c63afa5")
 
 # Libraries for python package.
 if (WIN32)

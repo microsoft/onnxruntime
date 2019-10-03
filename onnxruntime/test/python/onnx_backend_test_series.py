@@ -36,7 +36,7 @@ class OrtBackendTest(onnx.backend.test.BackendTest):
 
 # ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
 def tests_with_pre_opset7_dependencies_filters():
-    filters = ('^test_AvgPool1d_cpu.*',
+    filters = ['^test_AvgPool1d_cpu.*',
                '^test_AvgPool1d_stride_cpu.*',
                '^test_AvgPool2d_cpu.*',
                '^test_AvgPool2d_stride_cpu.*',
@@ -69,14 +69,23 @@ def tests_with_pre_opset7_dependencies_filters():
                '^test_operator_mm_cpu.*',
                '^test_operator_non_float_params_cpu.*',
                '^test_operator_params_cpu.*',
-               '^test_operator_pow_cpu.*')
+               '^test_operator_pow_cpu.*']
 
     return filters
 
 
 def unsupported_usages_filters():
-    filters = ('^test_convtranspose_1d_cpu.*',  # ConvTransponse supports 4-D only
-               '^test_convtranspose_3d_cpu.*')
+    filters = ['^test_convtranspose_1d_cpu.*',  # ConvTransponse supports 4-D only
+               '^test_convtranspose_3d_cpu.*']
+
+    return filters
+
+
+def other_tests_failing_permanently_filters():
+    # Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
+    # e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8, which
+    # doesn't match the expected output that was generated with numpy.
+    filters = ['^test_cast_FLOAT_to_STRING_cpu.*']
 
     return filters
 
@@ -91,8 +100,7 @@ def create_backend_test(testname=None):
         backend_test.include(testname + '.*')
     else:
         # Tests that are failing temporarily and should be fixed
-        current_failing_tests = ('^test_cast_STRING_to_FLOAT_cpu.*',
-                                 '^test_cast_FLOAT_to_STRING_cpu.*',
+        current_failing_tests = [#'^test_cast_STRING_to_FLOAT_cpu.*',  # old test data that is bad on Linux CI builds
                                  '^test_qlinearconv_cpu.*',
                                  '^test_gru_seq_length_cpu.*',
                                  '^test_bitshift_right_uint16_cpu.*',
@@ -106,7 +114,6 @@ def create_backend_test(testname=None):
                                  '^test_dynamicquantizelinear_expanded*',
                                  '^test_dynamicquantizelinear_max_adjusted_expanded*',
                                  '^test_dynamicquantizelinear_min_adjusted_expanded*',
-                                 '^test_gather_elements*',
                                  '^test_top_k*',
                                  '^test_unique_*',
                                  '^test_mod_float_mixed_sign_example_cpu.*', #onnxruntime::Mod::Compute fmod_ was false. fmod attribute must be true for float, float16 and double types
@@ -142,38 +149,35 @@ def create_backend_test(testname=None):
                                  '^test_resize_upsample_sizes_nearest_cpu.*',
                                  '^test_resize_upsample_sizes_nearest_floor_align_corners_cpu.*',
                                  '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu.*',
-                                 '^test_scatternd_cpu.*',
                                  '^test_sequence_*',
                                  '^test_scatter_*',
-                                 '^test_reduce_*',
                                  '^test_onehot_*',
                                  '^test_constant_pad_cpu.*',
-                                 '^test_gemm_default_scalar_bias_cpu.*',
-                                 '^test_gemm_*', 
                                  '^test_edge_pad_cpu.*',
-                                 '^test_reflect_pad_cpu.*'                                 
-                                 )
+                                 '^test_reflect_pad_cpu.*'
+        ]
 
         # Example of how to disable tests for a specific provider.
         # if c2.supports_device('NGRAPH'):
-        #    current_failing_tests = current_failing_tests + ('|^test_operator_repeat_dim_overflow_cpu.*',)
+        #    current_failing_tests.append('^test_operator_repeat_dim_overflow_cpu.*')
         if c2.supports_device('NGRAPH'):
-            current_failing_tests = current_failing_tests + ('|^test_clip*',)
-            current_failing_tests = current_failing_tests + ('|^test_depthtospace_crd*',)
-            current_failing_tests = current_failing_tests + ('|^test_argmax_negative_axis*',)            
-            current_failing_tests = current_failing_tests + ('|^test_argmin_negative_axis*',)
-            current_failing_tests = current_failing_tests + ('|^test_hadmax_negative_axis*',)            
-            current_failing_tests = current_failing_tests + ('|^test_gemm_default_no_bias_cpu.*',)            
+            current_failing_tests += ['^test_clip*',
+                                      '^test_depthtospace_crd*',
+                                      '^test_argmax_negative_axis*',
+                                      '^test_argmin_negative_axis*',
+                                      '^test_hadmax_negative_axis*',
+                                      '^test_gemm_default_no_bias_cpu.*']
 
         if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
-            current_failing_tests = current_failing_tests + ('^test_div_cpu*',)
+            current_failing_tests.append('^test_div_cpu*')
 
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \
-                  unsupported_usages_filters()
+                  unsupported_usages_filters() + \
+                  other_tests_failing_permanently_filters()
 
         backend_test.exclude('(' + '|'.join(filters) + ')')
-        print ('excluded tests:', filters)
+        print('excluded tests:', filters)
 
     # import all test cases at global scope to make
     # them visible to python.unittest.

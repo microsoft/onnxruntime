@@ -3,7 +3,7 @@
 
 #include "constant_of_shape.h"
 #include "core/providers/common.h"
-#include "gsl/span"
+#include "gsl/gsl"
 
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;

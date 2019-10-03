@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <core/common/make_unique.h>
 #include "core/session/onnxruntime_cxx_api.h"
 #include "providers.h"
 #include <memory>
@@ -92,7 +93,7 @@ void TestInference(Ort::Env& env, T model_uri,
   }
 
   Ort::Session session(env, model_uri, session_options);
-  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   // Now run
   //without preallocated output tensor
   RunSession(default_allocator.get(),
@@ -257,7 +258,7 @@ TEST_F(CApiTest, create_session_without_session_option) {
 TEST_F(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};
   int64_t expected_len = 2;
-  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
 
   Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
@@ -295,7 +296,7 @@ TEST_F(CApiTest, create_tensor_with_data) {
 
 TEST_F(CApiTest, override_initializer) {
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
-  auto allocator = std::make_unique<MockedOrtAllocator>();
+  auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   // CreateTensor which is not owning this ptr
   bool Label_input[] = {true};
   std::vector<int64_t> dims = {1, 1};

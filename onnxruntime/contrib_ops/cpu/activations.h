@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
+#include <unsupported/Eigen/SpecialFunctions>
 
 namespace onnxruntime {
 namespace contrib {
@@ -26,6 +27,20 @@ class ScaledTanh final : public OpKernel {
  private:
   const float alpha_;
   const float beta_;
+};
+
+template <typename T>
+class Gelu : public OpKernel {
+ public:
+  Gelu(const OpKernelInfo& info) : OpKernel(info) {}
+
+  Status Compute(OpKernelContext* context) const override {
+    const auto* X = context->Input<Tensor>(0);
+    Tensor* Y = context->Output(0, X->Shape());
+    EIGEN_X_VAR(xm);
+    EIGEN_Y = xm * 0.5f * ((xm * static_cast<float>(M_SQRT1_2)).erf() + 1.0f);
+    return Status::OK();
+  }
 };
 
 }  // namespace contrib
