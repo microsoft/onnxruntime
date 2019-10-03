@@ -10,8 +10,6 @@
 namespace onnxruntime {
 namespace nuphar {
 
-// DCHECK(tvm::runtime::TypeMatch(X->dtype, kDLFloat, 32));
-
 #define STRINGIFY_1(x) #x
 #define STRINGIFY(x) STRINGIFY_1(x)
 #define GET_EXTERN_SCATTER_STR(input_type, index_type)                \

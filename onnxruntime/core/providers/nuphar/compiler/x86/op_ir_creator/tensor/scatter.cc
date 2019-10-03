@@ -19,10 +19,7 @@ static Status ScatterCommon(
   OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
 
   // The default value of optional attribute axis is 0
-  int64_t axis;
-  if (!attrs.GetAttr<int64_t>("axis", &axis).IsOK()) {
-    axis = 0;
-  }
+  int64_t axis = attrs.GetAttrOrDefault<int64_t>("axis", 0);
 
   tvm::Tensor Y = Scatter(inputs[0], axis, inputs[1], inputs[2], name);
   outputs.push_back(Y);
