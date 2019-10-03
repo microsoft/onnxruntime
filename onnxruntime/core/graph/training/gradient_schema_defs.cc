@@ -311,6 +311,11 @@ void RegisterGradientSchemas() {
           "Small scalar to avoid dividing by zero.",
           AttributeProto::FLOAT,
           1e-6f)
+      .Attr(
+          "threshold",
+          "The max ratio of tensor norm and its gradient.",
+          AttributeProto::FLOAT,
+          1.0f)
       .TypeConstraint(
           "T1",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},

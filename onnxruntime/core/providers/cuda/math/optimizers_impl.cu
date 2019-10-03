@@ -272,14 +272,16 @@ __global__ void _LambUpdate(
     const T2* r_norm,
     const T2* w_norm,
     const T2* weights,
+    const T2 threshold,
     const T1* update_direction,
     T2* weights_out,
     half* fp16_weights_out,
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  // The confidence level should not exceed 1 for numerical stability.
+  const auto ratio = _Min(threshold, _Sqrt((*w_norm) / (*r_norm)));
   // Compute new weight using the saved update direction.
-  weights_out[id] = weights[id] - \
-    _Sqrt((*w_norm) / (*r_norm)) * T2((*eta) * update_direction[id]);
+  weights_out[id] = weights[id] - ratio * T2((*eta) * update_direction[id]);
 
   if (update_fp16_weight) {
     fp16_weights_out[id] = static_cast<half>(weights_out[id]);
@@ -292,6 +294,7 @@ void LambUpdateImpl(
     const T2* r_norm,
     const T2* w_norm,
     const T2* weights,
+    const T2 threshold,
     const T1* update_direction,
     T2* weights_out,
     half* fp16_weights_out,
@@ -305,6 +308,7 @@ void LambUpdateImpl(
       r_norm,
       w_norm,
       weights,
+      threshold,
       update_direction,
       weights_out,
       fp16_weights_out,
@@ -315,6 +319,7 @@ void LambUpdateImpl(
       r_norm,
       w_norm,
       weights,
+      threshold,
       update_direction,
       weights_out,
       nullptr,
@@ -328,9 +333,10 @@ template void LambUpdateImpl(               \
     const T2* r_norm,                       \
     const T2* w_norm,                       \
     const T2* weights,                      \
+    const T2 threshold,                     \
     const T1* update_direction,             \
     T2* weights_out,                        \
-    half* fp16_weights_out,                        \
+    half* fp16_weights_out,                 \
     size_t count);
 
 SPECIALIZED_IMPL_LambUpdate(float, float)

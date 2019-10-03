@@ -281,6 +281,7 @@ Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) cons
       reinterpret_cast<const CudaT2*>(direction_norm_buffer.get()),
       reinterpret_cast<const CudaT2*>(weights_norm_buffer.get()),
       reinterpret_cast<const CudaT2*>(weights_tensor.template Data<T2>()),
+      ToCudaType<T2>::FromFloat(threshold_),
       reinterpret_cast<CudaT3*>(update_direction_buffer.get()),
       reinterpret_cast<CudaT2*>(weights_tensor_updated.template MutableData<T2>()),
       fp16_weights_updated,

@@ -1704,6 +1704,9 @@ void run_lamb_test_with_baseline(
   test.AddAttribute<float>("beta", beta);
   test.AddAttribute<float>("lambda", lambda);
   test.AddAttribute<float>("epsilon", epsilon);
+  // Tests should not trigger the thresholding mechnism,
+  // so we assign a big value here.
+  test.AddAttribute<float>("threshold", 10000.0f);
 
   test.AddOutput<T1>("W_Out", shape, w_new);
   test.AddOutput<T3>("Moment_1_Out", shape, m_new);
