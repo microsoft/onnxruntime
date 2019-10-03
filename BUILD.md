@@ -13,12 +13,14 @@
    ```
 * Install cmake-3.13 or higher from https://cmake.org/download/.
 
+
 ### Build Instructions
 #### Windows
 ```
 build.bat --config RelWithDebInfo --build_shared_lib --parallel
 ```
 The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat
+
 
 #### Linux
 ```
@@ -118,6 +120,7 @@ Build command:
 
 ---
 
+
 ## Execution Providers
 
 ### CUDA
@@ -130,6 +133,7 @@ Build command:
 
 #### Build Instructions
 ##### Windows
+
 ```
 ./build.bat --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path>
 ```
@@ -193,6 +197,7 @@ MKL-DNN built with dependency on MKL small libraries: `./build.sh --use_mkldnn -
 
 ---
 
+
 ### nGraph
 See more information on the nGraph Execution Provider [here](./docs/execution_providers/nGraph-ExecutionProvider.md).
 
@@ -237,10 +242,19 @@ build.bat --config RelWithDebInfo --use_openvino <hardware_option>
 ./build.sh --config RelWithDebInfo --use_openvino <hardware_option> 
 ```
 
-Dockerfile instructions are available [here](./dockerfiles#openvino-public-preview)
 
-#### Notes
-* `--use_openvino`: Builds the OpenVINO Execution Provider in ONNX Runtime
+  For Linux:
+  
+   <code>./build.sh --config RelWithDebInfo --use_openvino <hardware_option>  </code>
+
+  For Windows:
+  
+  <code> build.bat --config RelWithDebInfo  --use_openvino <hardware_option> </code>
+ 
+   *Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat.*
+ 
+   <code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
+
 
 * `<hardware_option>`: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
 
@@ -251,7 +265,10 @@ Dockerfile instructions are available [here](./dockerfiles#openvino-public-previ
 | <code>GPU_FP16</code> | Intel<sup>®</sup> Integrated Graphics with FP16 quantization of models |
 | <code>MYRIAD_FP16</code> | Intel<sup>®</sup> Movidius<sup>TM</sup> USB sticks | 
 | <code>VAD-M_FP16</code> | Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs |
- 
+| <code>VAD-F_FP32</code> | Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA |
+
+For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO-ExecutionProvider.md](./docs/execution_providers/OpenVINO-ExecutionProvider.md) in <code>$onnxruntime_root/docs/execution_providers</code>
+
 ---
 
 ### Android
@@ -269,21 +286,53 @@ Dockerfile instructions are available [here](./dockerfiles#openvino-public-previ
 
 ---
 
-### Nuphar
-See more information on the Nuphar Execution Provider [here](./docs/execution_providers/Nuphar-ExecutionProvider.md).
+### NUPHAR
+See more information on the Nuphar Execution Provider [here](./docs/execution_providers/Nuphar-ExecutionProvider.md). 
 
 #### Pre-Requisites
-* The Nuphar execution provider for ONNX Runtime is built and tested with LLVM 6.0.1. Because of TVM's requirement when building with LLVM, you need to build LLVM from source.
+* The Nuphar execution provider for ONNX Runtime is built and tested with LLVM 9.0.0. Because of TVM's requirement when building with LLVM, you need to build LLVM from source. To build the debug flavor of ONNX Runtime, you need the debug build of LLVM.
    * Windows (Visual Studio 2017): 
    ```
-   REM download llvm source code 6.0.1 and unzip to \llvm\source\path, then install to \llvm\install\path
+   REM download llvm source code 9.0.0 and unzip to \llvm\source\path, then install to \llvm\install\path
    cd \llvm\source\path
    mkdir build
    cd build
-   cmake .. -G "Visual Studio 15 2017 Win64" -DLLVM_TARGETS_TO_BUILD=X86
+   cmake .. -G "Visual Studio 15 2017 Win64" -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_ENABLE_DIA_SDK=OFF
    msbuild llvm.sln /maxcpucount /p:Configuration=Release /p:Platform=x64
    cmake -DCMAKE_INSTALL_PREFIX=\llvm\install\path -DBUILD_TYPE=Release -P cmake_install.cmake
    ```
+ 
+*Note that following LLVM cmake patch is necessary to make the build work on Windows, Linux does not need to apply the patch.*
+The patch is to fix the linking warning LNK4199 caused by this [LLVM commit](https://github.com/llvm-mirror/llvm/commit/148f823e4845c9a13faea62e3105abb80b39e4bc)
+
+```
+diff --git "a/lib\\Support\\CMakeLists.txt" "b/lib\\Support\\CMakeLists.txt"
+index 7dfa97c..6d99e71 100644
+--- "a/lib\\Support\\CMakeLists.txt"
++++ "b/lib\\Support\\CMakeLists.txt"
+@@ -38,12 +38,6 @@ elseif( CMAKE_HOST_UNIX )
+   endif()
+ endif( MSVC OR MINGW )
+
+-# Delay load shell32.dll if possible to speed up process startup.
+-set (delayload_flags)
+-if (MSVC)
+-  set (delayload_flags delayimp -delayload:shell32.dll -delayload:ole32.dll)
+-endif()
+-
+ # Link Z3 if the user wants to build it.
+ if(LLVM_WITH_Z3)
+   set(Z3_LINK_FILES ${Z3_LIBRARIES})
+@@ -187,7 +181,7 @@ add_llvm_library(LLVMSupport
+   ${LLVM_MAIN_INCLUDE_DIR}/llvm/ADT
+   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Support
+   ${Backtrace_INCLUDE_DIRS}
+-  LINK_LIBS ${system_libs} ${delayload_flags} ${Z3_LINK_FILES}
++  LINK_LIBS ${system_libs} ${Z3_LINK_FILES}
+   )
+
+ set_property(TARGET LLVMSupport PROPERTY LLVM_SYSTEM_LIBS "${system_libs}")
+```
    * Linux
    Download llvm source code 6.0.1 and unzip to /llvm/source/path, then install to /llvm/install/path
    ```
@@ -345,7 +394,7 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 ./build.sh --use_openblas
 ```
 
---- 
+---
 
 ## Architectures
 ### x86

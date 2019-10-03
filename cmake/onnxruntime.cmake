@@ -29,7 +29,7 @@ add_library(onnxruntime SHARED ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
 set_target_properties(onnxruntime PROPERTIES VERSION ${ORT_VERSION})
 add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT})
-onnxruntime_add_include_to_target(onnxruntime gsl)
+onnxruntime_add_include_to_target(onnxruntime)
 
 if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})

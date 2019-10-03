@@ -6,7 +6,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 #include "reshape_helper.h"
 #include "utils.h"
 

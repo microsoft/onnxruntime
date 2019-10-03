@@ -94,6 +94,7 @@ The most widely used enviroment variables are:
   * Use PASSIVE if your CPU usage already high, and use ACTIVE when you want to trade CPU with latency
 
 
+
 ## Profiling and Performance Report
 
 You can enable ONNX Runtime latency profiling in code:

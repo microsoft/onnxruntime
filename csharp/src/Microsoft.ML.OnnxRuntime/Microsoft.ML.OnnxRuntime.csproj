@@ -200,14 +200,17 @@
     </Exec>
 
     <PropertyGroup>
+      <CurrentDate>$([System.DateTime]::UtcNow.ToString(yyyyMMdd))</CurrentDate>
+      <CurrentTime>$([System.DateTime]::UtcNow.ToString(hhmm))</CurrentTime>
       <PackageVersion>@(MajorVersionNumber)</PackageVersion>
       <Version>$(PackageVersion)</Version>
-      <PackageVersion Condition="'$(IsReleaseBuild)'!='true'">$(PackageVersion)-dev-$(GitCommitHashShort)</PackageVersion>
+      <PackageVersion Condition="'$(IsReleaseBuild)'!='true'">$(PackageVersion)-dev-$(CurrentDate)-$(CurrentTime)-$(GitCommitHashShort)</PackageVersion>
     </PropertyGroup>
     <Message Importance="High" Text="PackageVersion=$(PackageVersion)" />
     <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeCsharpRoot)\..\%(Filename).txt')"/>
     <Copy SourceFiles="@(PropertiesFile)" DestinationFiles="@(PropertiesFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).props')"/>
     <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).targets')"/>
+
   </Target>
 
   <ItemGroup>

@@ -56,7 +56,6 @@ endif()
 
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${PYTHON_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR})
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${pybind11_INCLUDE_DIRS})
-onnxruntime_add_include_to_target(onnxruntime_pybind11_state gsl)
 if(APPLE)
   set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
 elseif(UNIX)
@@ -237,13 +236,14 @@ if (onnxruntime_USE_MKLML)
 endif()
 
 if (onnxruntime_USE_NUPHAR)
-  file(GLOB onnxruntime_python_nuphar_test_srcs CONFIGURE_DEPENDS
+  file(GLOB onnxruntime_python_nuphar_python_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/nuphar/scripts/*.*"
   )
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/nuphar
     COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_nuphar_test_srcs}
-      $<TARGET_FILE_DIR:${test_data_target}>
+      ${onnxruntime_python_nuphar_python_srcs}
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/nuphar/
   )
 endif()

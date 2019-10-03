@@ -11,7 +11,7 @@
 
 #include "core/providers/cpu/controlflow/scan_utils.h"
 
-#include "gsl/gsl_algorithm"
+#include "gsl/gsl"
 
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/op_kernel_context_internal.h"
@@ -32,7 +32,7 @@ namespace scan {
 namespace detail {
 
 Info::Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs_in, bool is_v8)
-    : subgraph{subgraph_in}, num_scan_inputs{num_scan_inputs_in} {
+    : subgraph(subgraph_in), num_scan_inputs(num_scan_inputs_in) {
   num_inputs = static_cast<int>(node.InputDefs().size());
   num_variadic_inputs = is_v8 ? num_inputs - 1 : num_inputs;  // allow for sequence_lens input in v8
   num_loop_state_variables = num_variadic_inputs - num_scan_inputs;
@@ -91,7 +91,7 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
   }
 
   TensorShape output_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
-  auto& graph_output_dims{output_shape.GetDims()};
+  auto& graph_output_dims(output_shape.GetDims());
 
   std::vector<int64_t> scan_output_dims;
   scan_output_dims.reserve(graph_output_dims.size() + 2);
@@ -107,7 +107,7 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
     scan_output_dims.push_back(sequence_len);
   }
 
-  scan_output_dims.insert(scan_output_dims.cend(), graph_output_dims.cbegin(), graph_output_dims.cend());
+  std::copy(graph_output_dims.cbegin(), graph_output_dims.cend(), std::back_inserter(scan_output_dims));
 
   if (!temporary) {
     OutputIterator::Create(context, output_index, is_loop_state_var, is_v8, TensorShape(scan_output_dims),
@@ -267,7 +267,7 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 }
 
 OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator) {
-  auto new_tensor = std::make_unique<Tensor>(data_type,
+  auto new_tensor = onnxruntime::make_unique<Tensor>(data_type,
                                              shape,
                                              allocator);
 
@@ -390,14 +390,14 @@ OutputIterator::OutputIterator(OpKernelContextInternal& context,
                                ScanDirection direction,
                                bool temporary,
                                MLDataType data_type)
-    : context_{context},
-      is_v8_{is_v8},
-      output_index_{output_index},
-      final_shape_{final_shape},
-      is_loop_state_var_{is_loop_state_var},
-      direction_{direction},
-      cur_iteration_{0},
-      temporary_{temporary},
+    : context_(context),
+      is_v8_(is_v8),
+      output_index_(output_index),
+      final_shape_(final_shape),
+      is_loop_state_var_(is_loop_state_var),
+      direction_(direction),
+      cur_iteration_(0),
+      temporary_(temporary),
       data_type_{data_type} {
   is_concrete_shape_ = final_shape_.Size() >= 0;
 

@@ -30,6 +30,8 @@ list(APPEND automl_featurizers_tests_srcs
 add_executable(automl_featurizers_unittests ${automl_featurizers_tests_srcs})
 add_dependencies(automl_featurizers_unittests automl_featurizers)
 target_link_libraries(automl_featurizers_unittests PRIVATE gtest automl_featurizers)
+# Need make_unique
+target_include_directories(automl_featurizers_unittests PRIVATE ${ONNXRUNTIME_ROOT})
 source_group(TREE ${ONNXRUNTIME_ROOT}/core/automl/ FILES ${automl_featurizers_tests_srcs})
 set_target_properties(automl_featurizers_unittests PROPERTIES FOLDER "AutoMLFeaturizers")
 add_test(NAME automl_featurizers_unittests

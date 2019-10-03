@@ -21,6 +21,7 @@ class InferenceSession:
         self._path_or_bytes = path_or_bytes
         self._sess_options = sess_options
         self._load_model()
+        self._enable_fallback = True
 
     def _load_model(self, providers=[]):
         if self._sess_options:
@@ -45,6 +46,12 @@ class InferenceSession:
         self._overridable_initializers = self._sess.overridable_initializers
         self._model_meta = self._sess.model_meta
         self._providers = self._sess.get_providers()
+
+        # Tensorrt can fall back to CUDA. All others fall back to CPU.
+        if 'TensorrtExecutionProvider' in C.get_available_providers():
+          self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        else:
+          self._fallback_providers = ['CPUExecutionProvider']
 
     def _reset_session(self):
         "release underlying session object."
@@ -78,11 +85,33 @@ class InferenceSession:
         return self._providers
 
     def set_providers(self, providers):
-        "Register the input list of execution providers. The underlying session is re-created."
+        """
+        Register the input list of execution providers. The underlying session is re-created.
+
+        :param providers: list of execution providers
+
+        The list of providers is ordered by Priority. For example ['CUDAExecutionProvider', 'CPUExecutionProvider'] means
+        execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
+        """
         if not set(providers).issubset(C.get_available_providers()):
-          raise ValueError("{} does not contain a subset of available providers {}".format(providers, C.get_available_providers()))
+            raise ValueError("{} does not contain a subset of available providers {}".format(providers, C.get_available_providers()))
         self._reset_session()
         self._load_model(providers)
+
+    def disable_fallback(self):
+        """
+        Disable session.run() fallback mechanism.
+        """
+        self._enable_fallback = False
+
+    def enable_fallback(self):
+        """
+        Enable session.Run() fallback mechanism. If session.Run() fails due to an internal Execution Provider failure, reset the Execution Providers
+        enabled for this session.
+        If GPU is enabled, fall back to CUDAExecutionProvider.
+        otherwise fall back to CPUExecutionProvider.
+        """
+        self._enable_fallback = True
 
     def run(self, output_names, input_feed, run_options=None):
         """
@@ -103,7 +132,19 @@ class InferenceSession:
             raise ValueError("Model requires {} inputs. Input Feed contains {}".format(num_required_inputs, num_inputs))
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
-        return self._sess.run(output_names, input_feed, run_options)
+        try:
+            return self._sess.run(output_names, input_feed, run_options)
+        except C.EPFail as err:
+            if self._enable_fallback:
+                print("EP Error: {} using {}".format(str(err), self._providers))
+                print("Falling back to {} and retrying.".format(self._fallback_providers))
+                self.set_providers(self._fallback_providers)
+                # Fallback only once.
+                self.disable_fallback()
+                return self._sess.run(output_names, input_feed, run_options)
+            else:
+                raise
+
 
     def end_profiling(self):
         """
