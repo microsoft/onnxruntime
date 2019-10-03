@@ -34,42 +34,41 @@ ONNX_CPU_OPERATOR_KERNEL(GatherND, 11,
 
 template <typename Tind>
 Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
-  auto input_tensor = context->Input<Tensor>(0);
-  auto indice_tensor = context->Input<Tensor>(1);
-  ORT_ENFORCE(input_tensor != nullptr);
-  ORT_ENFORCE(indice_tensor != nullptr);
+  const auto* input_tensor = context->Input<Tensor>(0);
+  const auto* indices_tensor = context->Input<Tensor>(1);
+  ORT_ENFORCE(input_tensor != nullptr && indices_tensor != nullptr, "GatherND op: Input count mismatch");
 
-  auto input_shape = input_tensor->Shape();
-  auto indice_shape = indice_tensor->Shape();
-  if (indice_shape.NumDimensions() == 0) {
+  const auto& input_shape = input_tensor->Shape();
+  const auto& indices_shape = indices_tensor->Shape();
+  if (indices_shape.NumDimensions() == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices tensor must has rank larger than 0");
   }
 
-  auto last_indice_dimension = indice_shape[indice_shape.NumDimensions() - 1];
-  if (last_indice_dimension > static_cast<int64_t>(input_shape.NumDimensions())) {
+  int64_t last_indices_dimension = indices_shape[indices_shape.NumDimensions() - 1];
+  if (last_indices_dimension > static_cast<int64_t>(input_shape.NumDimensions())) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "last dimension of indices must not be larger than rank of input tensor");
   }
 
-  std::vector<int64_t> shape(indice_shape.GetDims().begin(), indice_shape.GetDims().end() - 1);
-  shape.insert(shape.end(), input_shape.GetDims().begin() + last_indice_dimension, input_shape.GetDims().end());
-  auto output_tensor = context->Output(0, TensorShape(shape));
-  std::vector<int64_t> element_counts(last_indice_dimension,
+  std::vector<int64_t> shape(indices_shape.GetDims().begin(), indices_shape.GetDims().end() - 1);
+  shape.insert(shape.end(), input_shape.GetDims().begin() + last_indices_dimension, input_shape.GetDims().end());
+  auto* output_tensor = context->Output(0, TensorShape(shape));
+  std::vector<int64_t> element_counts(last_indices_dimension,
                                       0LL);  // Number of elements for each input dimension
 
 #ifdef USE_OPENMP
 #pragma omp parallel for
 #endif
-  for (int64_t i = 0; i < last_indice_dimension; ++i) {
+  for (int64_t i = 0; i < last_indices_dimension; ++i) {
     element_counts[i] = input_shape.SizeFromDimension(i + 1);
   }
 
-  int64_t err_indice = 0;
+  int64_t err_index = 0;
   p.element_bytes = input_tensor->DataType()->Size();
-  p.element_to_copy = input_shape.SizeFromDimension(last_indice_dimension);
+  p.element_to_copy = input_shape.SizeFromDimension(last_indices_dimension);
   p.bytes_to_copy = p.element_bytes * p.element_to_copy;
-  auto indice_offset = indice_tensor->Data<Tind>();
-  auto offset_count = indice_shape.Size() / last_indice_dimension;  // Times to copy
+  const auto* indices_data = indices_tensor->Data<Tind>();
+  const int64_t offset_count = indices_shape.Size() / last_indices_dimension;  // Times to copy
   p.element_offsets.assign(offset_count, 0LL);
 
   if (input_tensor->DataType() == DataTypeImpl::GetType<std::string>()) {
@@ -84,18 +83,22 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
 #pragma omp parallel for
 #endif
   for (int64_t i = 0; i < offset_count; ++i) {
-    for (int64_t j = 0; j < last_indice_dimension; ++j) {
-      auto indice = *(indice_offset + i * last_indice_dimension + j);
-      if (indice < 0 || indice >= input_shape[j]) {
-        err_indice = indice;
+    for (int64_t j = 0; j < last_indices_dimension; ++j) {
+      auto index = *(indices_data + i * last_indices_dimension + j);
+      auto upper_limit = input_shape[j];
+      auto lower_limit = -upper_limit;
+      if (index < lower_limit || index >= upper_limit) {
+        err_index = index;
       }
-      p.element_offsets[i] += indice * element_counts[j];
+      if (index < 0) {
+        index += upper_limit;
+      }
+      p.element_offsets[i] += index * element_counts[j];
     }
   }
 
-  return err_indice == 0
-             ? Status::OK()
-             : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid indice found, indice = ", err_indice);
+  return err_index == 0 ? Status::OK()
+                        : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index found, index = ", err_indice);
 }
 
 template Status GatherNDBase::PrepareForCompute<int32_t>(OpKernelContext*, Prepare&) const;
