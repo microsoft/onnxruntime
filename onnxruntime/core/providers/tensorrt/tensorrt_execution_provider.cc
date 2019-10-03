@@ -407,7 +407,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     }
 
     trt_builder->setMaxBatchSize(max_batch_size_);
-    std::cout << "max_batch_size_: " << max_batch_size_ << std::endl;
     auto trt_config = unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
     trt_config->setMaxWorkspaceSize(max_workspace_size_);
 
