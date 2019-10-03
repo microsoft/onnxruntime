@@ -8,6 +8,8 @@
 #include <Windows.h>
 #include <psapi.h>
 
+#include <core/common/make_unique.h>
+
 namespace onnxruntime {
 namespace perftest {
 namespace utils {
@@ -72,7 +74,7 @@ class CPUUsage : public ICPUUsage {
 };
 
 std::unique_ptr<ICPUUsage> CreateICPUUsage() {
-  return std::make_unique<CPUUsage>();
+  return onnxruntime::make_unique<CPUUsage>();
 }
 
 }  // namespace utils
