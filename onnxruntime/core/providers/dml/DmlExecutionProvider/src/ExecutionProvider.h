@@ -94,7 +94,7 @@ namespace Dml
         uint32_t GetSuppportedDeviceDataTypeMask() const;
 
         onnxruntime::common::Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const;
-        onnxruntime::common::Status Sync();
+        onnxruntime::common::Status WaitForGpuCompletion();
 
         // IWinmlExecutionProvider methods
         void QueueReference(IUnknown* object) override;
@@ -239,9 +239,12 @@ namespace Dml
             GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const onnxruntime::KernelRegistry*>& kernel_registries) const final;
 
-        onnxruntime::common::Status Sync()
+        // Not to be confused with IExecutionProvider::Sync() const.  The DML provider handles 
+        // synchronization when copying inputs and outputs, therefore doesn't override the 
+        // default ORT method, which does nothin.
+        onnxruntime::common::Status WaitForGpuCompletion()
         {
-            return m_impl->Sync();
+            return m_impl->WaitForGpuCompletion();
         }
 
         void Flush()
