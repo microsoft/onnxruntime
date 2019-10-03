@@ -31,8 +31,8 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "cee3125af7208258d024a75e24f73977eddaec5b",
-               "repositoryUrl": "https://github.com/Microsoft/GSL.git"
+               "commitHash": "58123b93bd7f12d17ac0c46379a0f2c0255d9213",
+               "repositoryUrl": "https://github.com/martinmoene/gsl-lite.git"
             }
          }
       },
@@ -266,8 +266,8 @@
             "Type": "other",
             "Other": {
                "Name": "LLVM",
-               "Version": "6.0.1",
-               "DownloadUrl": "https://releases.llvm.org/6.0.1/llvm-6.0.1.src.tar.xz"
+               "Version": "9.0.0",
+               "DownloadUrl": "https://releases.llvm.org/9.0.0/llvm-9.0.0.src.tar.xz"
             }
          }
       },
@@ -418,6 +418,15 @@
                "repositoryUrl": "https://github.com/abseil/abseil-cpp"
             },
             "comments": "used by onnxruntime"
+         }
+      },
+      {
+         "component": {
+            "git": {
+               "commitHash": "c3cceac115c072fb63df1836ff46d8c60d9eb304",
+               "repositoryUrl": "https://github.com/NVlabs/cub.git"
+            },
+            "type": "git"
          }
       }
    ],

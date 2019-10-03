@@ -19,8 +19,7 @@
 #include "core/graph/node_arg.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/function.h"
-#include "gsl/gsl_util"
-#include "gsl/pointers"
+#include "gsl/gsl"
 
 namespace onnxruntime {
 class Graph;
@@ -319,7 +318,7 @@ class Node {
   */
   class Definitions {
    public:
-    Definitions() noexcept = default;
+    Definitions() = default;
 
     /** The Node's explicit input definitions. */
     std::vector<NodeArg*> input_defs;
@@ -597,7 +596,7 @@ class Graph {
       return *(iter->second);
     }
 
-    auto result = node_args_.insert(std::make_pair(name, std::make_unique<NodeArg>(name, p_arg_type)));
+    auto result = node_args_.insert(std::make_pair(name, onnxruntime::make_unique<NodeArg>(name, p_arg_type)));
     return *(result.first->second);
   }
 
@@ -773,6 +772,11 @@ class Graph {
 
   /** Returns the Node containing the GraphProto for this Graph instance if IsSubgraph is true */
   const Node* ParentNode() const { return parent_node_; }
+
+  /** Returns true if the name is for a value that is coming from outer scope */
+  bool IsOuterScopeValue(const std::string& name) const {
+    return resolve_context_.outer_scope_node_args.find(name) != resolve_context_.outer_scope_node_args.cend();
+  }
 
   /** Construct a Graph instance for a subgraph that is created from a GraphProto attribute in a Node.
   Inherits some properties from the parent graph.

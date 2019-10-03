@@ -17,7 +17,7 @@
 #include "core/framework/sparse_tensor.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
-#include "gsl/span"
+#include "gsl/gsl"
 #include "onnx/defs/schema.h"
 
 namespace onnxruntime {

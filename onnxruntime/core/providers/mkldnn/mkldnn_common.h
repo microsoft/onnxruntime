@@ -151,7 +151,7 @@ class MemoryReorderPrimitivePool : public PrimitivePool<T> {
     MemoryReorderPrimitive* primitive = static_cast<MemoryReorderPrimitive*>(
         MemoryReorderPrimitivePool<T>::GetInstance().GetPrimitive(params.ToString()));
     if (primitive == nullptr) {
-      auto reorder_primitive = std::make_unique<MemoryReorderPrimitive>(params);
+      auto reorder_primitive = onnxruntime::make_unique<MemoryReorderPrimitive>(params);
       primitive = reorder_primitive.get();
       MemoryReorderPrimitivePool<T>::GetInstance().SetPrimitive(params.ToString(), std::move(reorder_primitive));
     }
