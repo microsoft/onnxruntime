@@ -1417,9 +1417,7 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
 
   // now that we have handled the input types, do the type/shape inferencing for the subgraph
   // to flow the type/shape info through it
-  // TODO: Handle override-type option correctly for subgraphs.
-  Graph::ResolveOptions options;
-  status = subgraph.PerformTypeAndShapeInferencing(options);
+  status = subgraph.PerformTypeAndShapeInferencing();
   ORT_RETURN_IF_ERROR(status);
 
   auto& subgraph_outputs = subgraph.GetOutputs();
@@ -1432,7 +1430,7 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
 
 // Implementation of type-inference and type-checking for a single node
 GSL_SUPPRESS(f .23)  // spurious warning about inferred_type never being checked for null
-Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const ResolveOptions& options) {
+Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
   auto& node_name = node.Name();
 
   // if we're building a graph we permit outer scope node args to have no type
@@ -1576,27 +1574,22 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
 
     if ((existing_type != inferred_type) && (existing_type != nullptr)) {
       // A type exists for this output but does not match the inferred type.
+      // For mixed precision training, the type mismatch is expected since the model is loaded with float32 first
+      // and then transformed to float16.
+      // TODO verify that a warning (and not a failure) is ok for cases other than mixed precision
 
-      if (options.override_types) {
-        // Replace existing type by inferred type: for use after graph-transformations
-        // that change types of variables such as mixed-precision transformation.
-        // Note: This reuses the original shape, with inferred type. Transformations
-        // that can affect the shape are not yet supported.
-
-        // The "SetType" call will override the shape information to empty.
-        // If the original tensor has shape information, need to set it back.
-        if (output_def->Shape()) {
-          auto old_shape = *output_def->Shape();
-          output_def->SetType(inferred_type);
-          output_def->SetShape(old_shape);
-        } else {
-          output_def->SetType(inferred_type);
-        }
-      } else
-        return Status(ONNXRUNTIME, FAIL,
-                      "Type Error: Type (" + *existing_type + ") of output arg (" +
-                          output_def->Name() + ") of node (" + node_name +
-                          ") does not match expected type (" + *inferred_type + ").");
+      // The "SetType" call will override the shape information to empty.
+      // If the original tensor has shape information, need to set it back.
+      if (output_def->Shape()) {
+        auto old_shape = *output_def->Shape();
+        output_def->SetType(inferred_type);
+        output_def->SetShape(old_shape);
+      } else {
+        output_def->SetType(inferred_type);
+      }
+      LOGS_DEFAULT(WARNING) << "Type Mismatch: Type (" + *existing_type + ") of output arg (" +
+                                   output_def->Name() + ") of node (" + node_name +
+                                   ") does not match expected type (" + *inferred_type + ").";
     }
 
     if (existing_type == nullptr)
@@ -1685,7 +1678,7 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
   return Status::OK();
 }
 
-Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
+Status Graph::VerifyNodeAndOpMatch() {
   CheckerContext ctx;
   ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
   ctx.set_opset_imports(DomainToVersionMap());
@@ -1781,7 +1774,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       }
     }
 
-    NO_CHANGE_ON_SYNC_FLAG(ORT_RETURN_IF_ERROR(InferAndVerifyTypeMatch(node, *p_op, options)));
+    NO_CHANGE_ON_SYNC_FLAG(ORT_RETURN_IF_ERROR(InferAndVerifyTypeMatch(node, *p_op)));
 
     // Accumulate output names of the iterated Node
     for (auto& output_name : node_proto.output()) {
@@ -1848,7 +1841,7 @@ Status Graph::InitInputsInitializersOutputs() {
   return Status::OK();
 }
 
-Status Graph::PerformTypeAndShapeInferencing(const ResolveOptions& options) {
+Status Graph::PerformTypeAndShapeInferencing() {
   ORT_RETURN_IF_ERROR(TypeCheckInputsAndInitializers());
 
   // type/shape inferencing on the nodes is done recursively as we need subgraph outputs
@@ -1863,7 +1856,7 @@ Status Graph::PerformTypeAndShapeInferencing(const ResolveOptions& options) {
   //        for all nodes in the subgraph. This leads to recursively handling all subgraphs contained in the node.
   //      - once we finish processing the subgraph/s we apply resultant type/shape information to the outputs
   //        of the node that contains the subgraph.
-  ORT_RETURN_IF_ERROR(VerifyNodeAndOpMatch(options));
+  ORT_RETURN_IF_ERROR(VerifyNodeAndOpMatch());
 
   return Status::OK();
 }
@@ -1880,12 +1873,15 @@ Status Graph::ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::
   return status;
 }
 
-Status Graph::Resolve(const ResolveOptions& options) {
-  // (bool no_proto_sync_required, const std::unordered_set<std::string>* initializer_names_to_preserve) {
+Status Graph::Resolve(const std::unordered_set<std::string>* initializer_names_to_preserve) {
+  return Resolve(false, initializer_names_to_preserve);
+}
+
+Status Graph::Resolve(bool no_proto_sync_required, const std::unordered_set<std::string>* initializer_names_to_preserve) {
   if (parent_graph_) {
     // Resolve must start at the top level graph in-order to handle outer scope
     // connections correctly, so recurse up to that level to start
-    return parent_graph_->Resolve(options);
+    return parent_graph_->Resolve(no_proto_sync_required);
   }
 
   // find all subgraphs including nested ones.
@@ -1922,16 +1918,16 @@ Status Graph::Resolve(const ResolveOptions& options) {
   // type/shape validation and inferencing on this and any subgraphs
   // recurses into subgraphs via the ONNX checker, which descends into the GraphProto in node attributes
   // which define a subgraph.
-  ORT_RETURN_IF_ERROR(PerformTypeAndShapeInferencing(options));
+  ORT_RETURN_IF_ERROR(PerformTypeAndShapeInferencing());
 
   // perform the final steps for this graph and all subgraphs
-  auto finalize_func = [&options](Graph& graph) {
-            graph.CleanUnusedInitializers(options.initializer_names_to_preserve);
+  auto finalize_func = [&no_proto_sync_required, &initializer_names_to_preserve](Graph& graph) {
+            graph.CleanUnusedInitializers(initializer_names_to_preserve);
             graph.GraphResolveNeeded(false);
 
             // if we are resolving immediately after loading from a GraphProto, we don't need to
             // do a proto sync
-            if (options.no_proto_sync_required) {
+            if (no_proto_sync_required) {
                 graph.GraphProtoSyncNeeded(false);
             }
 

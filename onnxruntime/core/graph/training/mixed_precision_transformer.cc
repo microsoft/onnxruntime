@@ -277,7 +277,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
 
   // Convert initializers including trainable weights from FP32 to FP16
   const auto& initialized_tensors = graph.GetAllInitializedTensors();
-  std::vector<std::pair<std::string, const ONNX_NAMESPACE::TensorProto*>> fp16_initializers;
+  std::vector<std::pair<std::string, const ONNX_NAMESPACE::TensorProto*> > fp16_initializers;
   for (const auto& kv : initialized_tensors) {
     NodeArg* input = graph.GetNodeArg(kv.first);
     if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
@@ -321,11 +321,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
   ORT_RETURN_IF_ERROR(HandleFunctionCalls(graph, stage1_fp32_node_args));
 
   // At this point, the model has been transformed to a valid FP16 model.
-  Graph::ResolveOptions options;
-  options.initializer_names_to_preserve = &weights_to_train;
-  options.override_types = true;
-
-  ORT_RETURN_IF_ERROR(graph.Resolve(options));
+  ORT_RETURN_IF_ERROR(graph.Resolve(&weights_to_train));
 
   // Stage 2: Keep nodes such as ReduceSum in FP32
   // Add cast node for nodes which need to be computed in FP32
@@ -349,8 +345,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
       }
     }
   }
-
-  ORT_RETURN_IF_ERROR(graph.Resolve(options));
+  ORT_RETURN_IF_ERROR(graph.Resolve(&weights_to_train));
 
   return Status::OK();
 }

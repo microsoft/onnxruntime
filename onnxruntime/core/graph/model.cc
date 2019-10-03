@@ -116,7 +116,7 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
                                "with opset version 7 or above for opset domain 'ai.onnx'. "
                                "Please upgrade your model to opset 7 or higher. "
                                "For now, this opset "
-                            << version
+                            <<  version
                             << " model may run depending upon legacy support "
                                "of some older opset version operators.";
     }
@@ -245,9 +245,7 @@ Status Model::Load(const ModelProto& model_proto, std::shared_ptr<Model>& model,
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
   }
 
-  Graph::ResolveOptions options;
-  options.no_proto_sync_required = true;
-  ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(options));
+  ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(true));
 
   return Status::OK();
 }
@@ -266,9 +264,7 @@ Status Model::Load(std::unique_ptr<ModelProto> p_model_proto, std::shared_ptr<Mo
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
   }
 
-  Graph::ResolveOptions options;
-  options.no_proto_sync_required = true;
-  ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(options));
+  ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(true));
 
   return Status::OK();
 }
@@ -357,9 +353,7 @@ Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Mo
 
   p_model = std::make_shared<Model>(std::move(modelProto), local_registries);
 
-  Graph::ResolveOptions options;
-  options.no_proto_sync_required = true;
-  ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(options));
+  ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
 
   return Status::OK();
 }
@@ -396,9 +390,7 @@ Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOp
 #endif
   p_model = std::make_shared<Model>(std::move(model_proto), local_registries);
 
-  Graph::ResolveOptions options;
-  options.no_proto_sync_required = true;
-  ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(options));
+  ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
 
   return Status::OK();
 }
