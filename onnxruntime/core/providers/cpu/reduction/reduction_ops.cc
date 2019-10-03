@@ -47,6 +47,15 @@ namespace onnxruntime {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()), \
       x<double>);
 
+#define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(x, startVer, endVer) \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                          \
+      x,                                                                             \
+      startVer,                                                                      \
+      endVer,                                                                        \
+      double,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()), \
+      x<double>);
+
 #define REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(x, sinceVersion)                 \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                     \
       x,                                                                              \
@@ -55,21 +64,56 @@ namespace onnxruntime {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()), \
       x<int64_t>);
 
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceL1, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceL2, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceLogSum, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceLogSumExp, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMax, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceMax, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMean, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMin, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceMin, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceProd, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSum, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceSum, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSum, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSumSquare, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSumSquare, 1);
+#define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(x, startVer, endVer)   \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                     \
+      x,                                                                              \
+      startVer,                                                                       \
+      endVer,                                                                         \
+      int64_t,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()), \
+      x<int64_t>);
+
+
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL1, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceL1, 11);
+
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL2, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceL2, 11);
+
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceLogSum, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceLogSum, 11);
+
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceLogSumExp, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceLogSumExp, 11);
+
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMax, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMax, 11);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceMax, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceMax, 11);
+
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMean, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMean, 11);
+
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMin, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMin, 11);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceMin, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceMin, 11);
+
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceProd, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceProd, 11);
+
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSum, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSum, 11);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceSum, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceSum, 11);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceSum, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSum, 11);
+
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSumSquare, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSumSquare, 11);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceSumSquare, 1, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSumSquare, 11);
+
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMax, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMax, 11);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMin, 1, 10);

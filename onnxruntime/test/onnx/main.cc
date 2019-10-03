@@ -374,8 +374,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
       {"convtranspose_1d", "1d convtranspose not supported yet"},
       {"convtranspose_3d", "3d convtranspose not supported yet"},
-      {"cast_STRING_to_FLOAT", "result differs"},
-      {"cast_FLOAT_to_STRING", "result differs"},
+      {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
+      // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8. 
+      // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
+      // which doesn't match the expected output that was generated with numpy.
+      {"cast_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results."},
       {"tf_nasnet_large", "disable temporarily"},
       {"tf_nasnet_mobile", "disable temporarily"},
       {"tf_pnasnet_large", "disable temporarily"},
@@ -393,8 +396,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"unique_sorted_axis_3d", "Unique not implemented yet"},
       {"unique_sorted_axis", "Unique not implemented yet"},
       {"unique_sorted_with_negative_axis", "Unique not implemented yet"},
-      {"gather_elements_1", "not implemented yet"},
-      {"gather_elements_0", "not implemented yet"},
       {"cumsum_1d_reverse_exclusive", "only failing linux GPU CI. Likely build error."},
       {"range_float_type_positive_delta", "not implemented yet"},
       {"range_float_type_positive_delta_expanded", "not implemented yet"},
@@ -436,30 +437,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"sequence_model2", "SequenceConstruct not implemented yet"},
       {"sequence_model1", "Sequence* not implemented yet"},
       {"scatter_elements_with_negative_indices", "ScatterElements(11) not implemented yet"},
-      {"reduce_sum_square_negative_axes_keepdims_random", "ReduceSumSquare(11) not implemented yet"},
-      {"reduce_sum_square_negative_axes_keepdims_example", "ReduceSumSquare(11) not implemented yet"},
-      {"reduce_sum_negative_axes_keepdims_random", "ReduceSum(11) not implemented yet"},
-      {"reduce_sum_negative_axes_keepdims_example", "ReduceSum(11) not implemented yet"},
-      {"reduce_prod_negative_axes_keepdims_random", "ReduceProd(11) not implemented yet"},
-      {"reduce_prod_negative_axes_keepdims_example", "ReduceProd(11) not implemented yet"},
-      {"reduce_min_negative_axes_keepdims_random", "ReduceMin(11) not implemented yet"},
-      {"reduce_min_negative_axes_keepdims_example", "ReduceMin(11) not implemented yet"},
-      {"reduce_mean_negative_axes_keepdims_random", "ReduceMean(11) not implemented yet"},
-      {"reduce_mean_negative_axes_keepdims_example", "ReduceMean(11) not implemented yet"},
-      {"reduce_max_negative_axes_keepdims_random", "ReduceMax(11) not implemented yet"},
-      {"reduce_max_negative_axes_keepdims_example", "ReduceMax(11) not implemented yet"},
-      {"reduce_log_sum_negative_axes", "ReduceLogSum(11) not implemented yet"},
-      {"reduce_log_sum_exp_negative_axes_keepdims_random", "ReduceLogSumExp(11) not implemented yet"},
-      {"reduce_log_sum_exp_negative_axes_keepdims_example", "ReduceLogSumExp(11) not implemented yet"},
-      {"reduce_l2_negative_axes_keep_dims_random", "ReduceL2(11) not implemented yet"},
-      {"reduce_l2_negative_axes_keep_dims_example", "ReduceL2(11) not implemented yet"},
-      {"reduce_l1_negative_axes_keep_dims_random", "ReduceL1(11) not implemented yet"},
-      {"reduce_l1_negative_axes_keep_dims_example", "ReduceL1(11) not implemented yet"},
       {"onehot_without_axis", "OneHot(11) not implemented yet"},
       {"onehot_with_negative_axis", "OneHot(11) not implemented yet"},
       {"onehot_with_axis", "OneHot(11) not implemented yet"},
       {"onehot_negative_indices", "OneHot(11) not implemented yet"},
-      {"gather_elements_negative_indices", "GatherElements(11) not implemented yet"},
       {"reflect_pad", "Pad(11) not implemented yet"},
       {"edge_pad", "Pad(11) not implemented yet"},
       {"constant_pad", "Pad(11) not implemented yet"},
@@ -497,6 +478,25 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"flatten_negative_axis4", "not implemented yet for opset 11"});
   broken_tests.insert({"squeeze_negative_axes", "not implemented yet for opset 11"});
   broken_tests.insert({"unsqueeze_negative_axes", "not implemented yet for opset 11"});
+  broken_tests.insert({"reduce_sum_square_negative_axes_keepdims_random", "ReduceSumSquare(11) not implemented yet"});
+  broken_tests.insert({"reduce_sum_square_negative_axes_keepdims_example", "ReduceSumSquare(11) not implemented yet"});
+  broken_tests.insert({"reduce_sum_negative_axes_keepdims_random", "ReduceSum(11) not implemented yet"});
+  broken_tests.insert({"reduce_sum_negative_axes_keepdims_example", "ReduceSum(11) not implemented yet"});
+  broken_tests.insert({"reduce_prod_negative_axes_keepdims_random", "ReduceProd(11) not implemented yet"});
+  broken_tests.insert({"reduce_prod_negative_axes_keepdims_example", "ReduceProd(11) not implemented yet"});
+  broken_tests.insert({"reduce_min_negative_axes_keepdims_random", "ReduceMin(11) not implemented yet"});
+  broken_tests.insert({"reduce_min_negative_axes_keepdims_example", "ReduceMin(11) not implemented yet"});
+  broken_tests.insert({"reduce_mean_negative_axes_keepdims_random", "ReduceMean(11) not implemented yet"});
+  broken_tests.insert({"reduce_mean_negative_axes_keepdims_example", "ReduceMean(11) not implemented yet"});
+  broken_tests.insert({"reduce_max_negative_axes_keepdims_random", "ReduceMax(11) not implemented yet"});
+  broken_tests.insert({"reduce_max_negative_axes_keepdims_example", "ReduceMax(11) not implemented yet"});
+  broken_tests.insert({"reduce_log_sum_negative_axes", "ReduceLogSum(11) not implemented yet"});
+  broken_tests.insert({"reduce_log_sum_exp_negative_axes_keepdims_random", "ReduceLogSumExp(11) not implemented yet"});
+  broken_tests.insert({"reduce_log_sum_exp_negative_axes_keepdims_example", "ReduceLogSumExp(11) not implemented yet"});
+  broken_tests.insert({"reduce_l2_negative_axes_keep_dims_random", "ReduceL2(11) not implemented yet"});
+  broken_tests.insert({"reduce_l2_negative_axes_keep_dims_example", "ReduceL2(11) not implemented yet"});
+  broken_tests.insert({"reduce_l1_negative_axes_keep_dims_random", "ReduceL1(11) not implemented yet"});
+  broken_tests.insert({"reduce_l1_negative_axes_keep_dims_example", "ReduceL1(11) not implemented yet"});
 #endif
 
 #ifdef USE_MKLDNN
