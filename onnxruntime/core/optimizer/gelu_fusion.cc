@@ -19,23 +19,26 @@ static bool CheckConstantInput(const Graph& graph, const NodeArg& input_arg, flo
     return false;
   }
 
-  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-  graph.GetInitializedTensor(input_arg.Name(), tensor_proto);
+  const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
+  if (tensor_proto == nullptr) {
+    return false;
+  }
+
   auto init_const = std::make_unique<Initializer>(tensor_proto);
-  auto data_type = *(input_arg.Type());
-  if (data_type == "tensor(float)") {
+  const auto data_type = tensor_proto->data_type();
+  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     float* val = init_const->data<float>();
     float diff = std::abs(val[0] - static_cast<float>(expected_value));
     if (diff > FLT_EPSILON) {
       return false;
     }
-  } else if (data_type == "tensor(double)") {
+  } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
     double* val = init_const->data<double>();
     double diff = std::abs(val[0] - static_cast<double>(expected_value));
     if (diff > DBL_EPSILON) {
       return false;
     }
-  } else if (data_type == "tensor(float16)") {
+  } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     MLFloat16* val = init_const->data<MLFloat16>();
     float diff = std::abs(math::halfToFloat(val[0].val) - static_cast<float>(expected_value));
     if (diff > FLT_EPSILON) {
@@ -43,7 +46,7 @@ static bool CheckConstantInput(const Graph& graph, const NodeArg& input_arg, flo
     }
   }
 
-  return graph_utils::NodeArgIsConstant(graph, input_arg);
+  return true;
 }
 
 static bool HasConsumers(Graph& graph, const NodeArg* arg) {
@@ -78,7 +81,6 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) cons
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   std::deque<onnxruntime::NodeIndex> removed_nodes;
-  std::deque<NodeArg*> removed_initializers;
 
   for (auto node_index : node_topology_list) {
     auto& div = *graph.GetNode(node_index);
@@ -176,12 +178,6 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) cons
     removed_nodes.push_front(add_node.Index());
     removed_nodes.push_front(mul2_node->Index());
     removed_nodes.push_front(mul_node.Index());
-
-    // The initializers will be candidiates for removal.
-    // While we will check their usage before removing them from graph.
-    removed_initializers.push_front(div.MutableInputDefs()[1]);
-    removed_initializers.push_front(const_cast<NodeArg*>(add_const_input_arg));
-    removed_initializers.push_front(const_cast<NodeArg*>(mul_const_input_arg));
   }
 
   // Have to remove node in reversed order for now to walk around the issue in RemoveNode
@@ -189,13 +185,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) cons
     graph.RemoveNode(removed_node);
   }
 
-  for (auto& tensor_arg : removed_initializers) {
-    if (!HasConsumers(graph, tensor_arg)) {
-      graph.RemoveInitializedTensor(tensor_arg->Name());
-    }
-  }
-
-  if (!removed_nodes.empty() || !removed_initializers.empty()) {
+  if (!removed_nodes.empty()) {
     modified = true;
   }
 
