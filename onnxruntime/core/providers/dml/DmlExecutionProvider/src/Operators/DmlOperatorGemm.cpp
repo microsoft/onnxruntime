@@ -23,6 +23,7 @@ public:
             2,
             TensorAxis::DoNotCoerce,
             TensorAxis::W,
+            TensorAxis::RightAligned,
             kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0)
             );
 
