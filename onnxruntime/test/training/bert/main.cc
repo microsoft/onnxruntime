@@ -72,7 +72,11 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
       ("max_predictions_per_seq",
         "Maximum number of masked LM predictions per sequence. "
         "Must match data generation.", cxxopts::value<int>()->default_value("80"))
-      ("optimizer", "Adam or Lamb", cxxopts::value<std::string>()->default_value("Adam"));
+      ("optimizer", "Adam or Lamb", cxxopts::value<std::string>()->default_value("Adam"))
+      ("alpha", "Adam/Lamb alpha parameter", cxxopts::value<float>()->default_value("0.9"))
+      ("beta", "Adam/Lamb beta parameter", cxxopts::value<float>()->default_value("0.999"))
+      ("lambda", "Adam/Lamb lambda parameter", cxxopts::value<float>()->default_value("0"))
+      ("epsilon", "Adam/Lamb epsilon parameter", cxxopts::value<float>()->default_value("1e-6"));
   // clang-format on
 
   try {
@@ -154,6 +158,20 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
     } else {
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Incorrect optimizer type: it must be one of [Adam|Lamb]");
     }
+
+    float alpha = flags["alpha"].as<float>();
+    float beta = flags["beta"].as<float>();
+    float lambda = flags["lambda"].as<float>();
+    float epsilon = flags["epsilon"].as<float>();
+    ORT_RETURN_IF_NOT(alpha >= 0.f && alpha <= 1.f, "alpha is not in valid range [0.0, 1.0]");
+    ORT_RETURN_IF_NOT(beta >= 0.f && beta <= 1.f, "alpha is not in valid range [0.0, 1.0]");
+
+    params.optimizer_attributes = {
+        {"alpha", alpha},
+        {"beta", beta},
+        {"lambda", lambda},
+        {"epsilon", epsilon},
+    };
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
     cerr << msg << ": " << e.what() << "\n"
@@ -222,13 +240,6 @@ void setup_training_params(BertParameters& params) {
       {"Add", {{1, 1.0f}, {1, 9.999999960041972e-13f}}},
       {"Mul", {{1, 0.5f}, {1, -10000.0f}}},
       {"Sub", {{0, 1.0f}}}};
-
-  params.optimizer_attributes = {
-      {"alpha", 0.9f},
-      {"beta", 0.999f},
-      {"lambda", 0.0f},
-      {"epsilon", 1e-6f},
-  };
 
   params.shuffle_data = false;
 
