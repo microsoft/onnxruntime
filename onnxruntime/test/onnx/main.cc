@@ -394,10 +394,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"top_k_negative_axis", "TopK(11) not implemented yet"},
       {"unique_not_sorted_without_axis", "Expected data for 'Y' is incorrect and in sorted order."},
       {"cumsum_1d_reverse_exclusive", "only failing linux GPU CI. Likely build error."},
-      {"range_float_type_positive_delta", "not implemented yet"},
-      {"range_float_type_positive_delta_expanded", "not implemented yet"},
-      {"range_int32_type_negative_delta", "not implemented yet"},
-      {"range_int32_type_negative_delta_expanded", "not implemented yet"},
       {"det_2d", "not implemented yet"},
       {"det_nd", "not implemented yet"},
       {"resize_downsample_scales_cubic_A_n0p5_exclude_outside", "not implemented yet"},
@@ -500,6 +496,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"tf_mobilenet_v1_1.0_224", "result mismatch"});
   broken_tests.insert({"mobilenetv2-1.0", "result mismatch"});
   broken_tests.insert({"candy", "result mismatch"});
+  broken_tests.insert({"range_float_type_positive_delta_expanded", "get unknown exception from MKLDNN EP"});
+  broken_tests.insert({"range_int32_type_negative_delta_expanded", "get unknown exception from MKLDNN EP"});
 #endif
 
 #ifdef USE_OPENVINO
