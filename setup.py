@@ -135,7 +135,7 @@ else:
     libs.extend(['onnxruntime_pywrapper.dll'])
 
 if is_manylinux2010:
-    data = [] if nightly_build else ['capi/libonnxruntime_pywrapper.so']
+    data = ['capi/libonnxruntime_pywrapper.so'] if nightly_build else []
     ext_modules = [
         Extension(
             'onnxruntime.capi.onnxruntime_pybind11_state',
