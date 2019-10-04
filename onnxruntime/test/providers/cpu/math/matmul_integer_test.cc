@@ -85,12 +85,6 @@ TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8) {
   RunMatMulIntegerU8S8Test(2, 51, 40);
   RunMatMulIntegerU8S8Test(6, 10, 34);
   RunMatMulIntegerU8S8Test(8, 16, 64);
-
-  RunMatMulIntegerU8S8Test(1, 3328, 400);
-  RunMatMulIntegerU8S8Test(1, 400, 3328);
-  RunMatMulIntegerU8S8Test(40, 3328, 80);
-  RunMatMulIntegerU8S8Test(40, 3328, 800);
-  RunMatMulIntegerU8S8Test(40, 9404, 800);
 }
 
 }  // namespace test

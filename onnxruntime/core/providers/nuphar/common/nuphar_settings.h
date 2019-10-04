@@ -23,6 +23,8 @@ constexpr static const char* kNupharIMatMulForceMkl = "nuphar_imatmul_force_mkl"
 
 constexpr static const char* kNupharMatMulExec_ExternCpu = "extern_cpu";
 
+constexpr static const char* kNupharForceNoTensorize = "nuphar_force_no_tensorize";
+
 constexpr static const char* kNupharTensorize_IGEMM_Tile_M = "nuphar_igemm_tile_m";
 constexpr static const char* kNupharTensorize_IGEMM_Tile_N = "nuphar_igemm_tile_n";
 constexpr static const char* kNupharTensorize_IGEMM_Tile_K = "nuphar_igemm_tile_k";
@@ -32,12 +34,6 @@ constexpr static const char* kNupharTensorize_IGEMM_Permute_Inner = "inner";
 constexpr static const char* kNupharTensorize_IGEMM_Permute_Outer = "outer";
 constexpr static const char* kNupharTensorize_IGEMM_Permute_All = "all";
 constexpr static const char* kNupharTensorize_IGEMM_Split_Last_Tile = "nuphar_igemm_split_last_tile";
-
-constexpr static const char* kNupharForceNoTensorize = "nuphar_force_no_tensorize";
-constexpr static const char* kNupharTensorize_Int8Gemm = "i8gemm";
-constexpr static const char* kNupharTensorize_Int8Gemv = "i8gemv";
-constexpr static const char* kNupharTensorize_Int16Gemm = "i16gemm";
-constexpr static const char* kNupharTensorize_Int16Gemv = "i16gemv";
 
 constexpr static const char* kNupharFastMath = "nuphar_fast_math";                         // fast math
 constexpr static const char* kNupharFastMath_Polynormial = "polynormial_math";             // generic polynormial fast math for exp and log
