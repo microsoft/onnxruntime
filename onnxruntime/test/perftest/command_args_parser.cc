@@ -127,7 +127,7 @@ namespace perftest {
         test_config.run_config.inter_op_num_threads = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
         if (test_config.run_config.inter_op_num_threads < 0) {
           return false;
-        } else {
+        } else if (test_config.run_config.inter_op_num_threads != 1) {
           test_config.run_config.enable_sequential_execution = false;
         }
         break;
