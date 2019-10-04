@@ -78,7 +78,7 @@ TEST_F(WriteScores, single_score_transform_none_add_second_class) {
     Tensor t(DataTypeImpl::GetType<float>(), {2}, alloc);
     write_scores<float>(v1, POST_EVAL_TRANSFORM::NONE, 0, &t, i);
     const float* output_data = t.Data<float>();
-	EXPECT_NEAR(output_data[1] + output_data[0], i == 0 || i == 1 ? 1 : 0, 1e-6);
+	EXPECT_NEAR(output_data[1] + output_data[0], i == 0 || i == 1 ? 1 : 0, 1e-5);
     if (i == 0 || i == 1) {
       EXPECT_FLOAT_EQ(v2[0], output_data[1]);
       EXPECT_FLOAT_EQ(1 - v2[0], output_data[0]);

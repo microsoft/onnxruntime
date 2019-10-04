@@ -3,7 +3,7 @@
 
 #include "core/providers/cpu/ml/feature_vectorizer.h"
 
-#include <gsl/span>
+#include <gsl/gsl>
 
 namespace onnxruntime {
 namespace ml {
@@ -120,7 +120,7 @@ static void CopyWithCast(typename gsl::span<const T>::const_iterator begin,
                          typename gsl::span<const T>::const_iterator end,
                          gsl::span<float>::iterator out_iter) {
   std::for_each(begin, end,
-                [&out_iter](const typename gsl::span<T>::const_iterator::reference value) {
+                [&out_iter](const typename gsl::span<T>::const_reference value) {
                   *out_iter = static_cast<float>(value);
                   ++out_iter;
                 });

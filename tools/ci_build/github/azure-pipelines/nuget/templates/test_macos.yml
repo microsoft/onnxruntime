@@ -18,11 +18,16 @@ jobs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
+  - template: get-nuget-package-version-as-variable.yml
+    parameters:
+      packageFolder: '$(Build.BinariesDirectory)/nuget-artifact'
+
   - script: |
      $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
                $(Build.BinariesDirectory)/nuget-artifact \
                $(Build.SourcesDirectory) \
-               $(Build.BinariesDirectory) 
+               $(Build.BinariesDirectory) \
+               $(NuGetPackageVersionNumber)
 
      if [ $? -ne 0 ]; then
          echo "Failed to run test"

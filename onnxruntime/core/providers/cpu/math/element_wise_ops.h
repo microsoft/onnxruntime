@@ -298,9 +298,9 @@ class Erf final : public OpKernel {
 };
 
 template <typename T>
-auto MakeEigenArrayMap(Tensor& t) { return EigenVectorArrayMap<T>(t.template MutableData<T>(), t.Shape().Size()); }
+auto MakeEigenArrayMap(Tensor& t) -> EigenVectorArrayMap<T> { return EigenVectorArrayMap<T>(t.template MutableData<T>(), t.Shape().Size()); }
 template <typename T>
-auto MakeEigenArrayMap(const Tensor& t) { return ConstEigenVectorArrayMap<T>(t.template Data<T>(), t.Shape().Size()); }
+auto MakeEigenArrayMap(const Tensor& t) -> ConstEigenVectorArrayMap<T> { return ConstEigenVectorArrayMap<T>(t.template Data<T>(), t.Shape().Size()); }
 
 struct BroadcastIterator {
   size_t AdvanceBy(size_t delta) {
@@ -321,8 +321,8 @@ struct BroadcastIterator {
   }
 
   void Reserve(int64_t max_dims) {
-    deltas_.reserve(max_dims);
-    counts_.reserve(max_dims);
+    deltas_.reserve(static_cast<size_t>(max_dims));
+    counts_.reserve(static_cast<size_t>(max_dims));
   }
 
   void Init(int64_t axis, int64_t largest) {
@@ -535,7 +535,7 @@ struct TensorAllocator {
   }
 
   std::unique_ptr<Tensor> Allocate(const TensorShape& shape) {
-    return std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
+    return onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
                                     shape,
                                     allocator_);
   }

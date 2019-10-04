@@ -90,7 +90,7 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
 
   TensorrtExecutionProviderInfo epi;
   epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::TensorrtExecutionProvider>(epi)).IsOK());
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<::onnxruntime::TensorrtExecutionProvider>(epi)).IsOK());
 
   status = session_object.Load(model_file_name);
   ASSERT_TRUE(status.IsOK());

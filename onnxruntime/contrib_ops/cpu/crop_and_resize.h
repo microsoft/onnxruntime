@@ -17,7 +17,7 @@ class CropAndResize final : public OpKernel {
     std::string mode_tmp;
     if (info.GetAttr<std::string>("mode", &mode_tmp).IsOK()) {
       mode_ = mode_tmp;
-      std::transform(mode_.begin(), mode_.end(), mode_.begin(), [](auto& i) { return static_cast<char>(::tolower(i)); });
+      std::transform(mode_.begin(), mode_.end(), mode_.begin(), [](char i) { return static_cast<char>(::tolower(i)); });
       if (mode_ != "bilinear" && mode_ != "nearest") {
         ORT_THROW("Invalid mode of value ", mode_, " specified. It should be either bilinear or nearest");
       }

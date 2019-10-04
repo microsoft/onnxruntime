@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "gsl/gsl_algorithm"
+#include "gsl/gsl"
 namespace onnxruntime {
 
 struct TensorPitches : std::vector<int64_t> {
@@ -126,8 +126,8 @@ struct SliceSkips : std::vector<int64_t> {
   SliceSkips(const TensorShape& input_shape, gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
       : std::vector<int64_t>(input_shape.NumDimensions(), 0) {
     auto& dims = input_shape.GetDims();
-    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == extents.size() &&
-                static_cast<ptrdiff_t>(dims.size()) >= steps.size());
+    ORT_ENFORCE(dims.size() == extents.size() &&
+                dims.size() >= steps.size());
 
     int64_t inner_most_dim = dims.size() - 1;
     // assume step == 1 if not present
@@ -179,9 +179,9 @@ struct SliceIterator {
   // Initialize initial skip and inner_extent.
   void Init(const std::vector<int64_t>& dims, gsl::span<const int64_t> starts,
             gsl::span<const int64_t> steps) {
-    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == starts.size() &&
-                static_cast<ptrdiff_t>(dims.size()) == extents_.size() &&
-                static_cast<ptrdiff_t>(dims.size()) >= steps.size());
+    ORT_ENFORCE(dims.size() == starts.size() &&
+                dims.size() == extents_.size() &&
+                dims.size() >= steps.size());
 
     size_t pitch = 1;
     // Initial skip, so that input_ points to the first element to copy
@@ -191,7 +191,7 @@ struct SliceIterator {
     }
 
     inner_extent_ = extents_[dims.size() - 1];
-    inner_step_ = static_cast<ptrdiff_t>(dims.size()) == steps.size()
+    inner_step_ = dims.size() == steps.size()
                       ? steps[dims.size() - 1]
                       : 1;
   }
@@ -272,7 +272,7 @@ inline void CopyCpuTensor(const Tensor* src, Tensor* tgt) {
       for (int64_t i = 0; i < src->Shape().Size(); ++i)
         static_cast<std::string*>(target)[i] = static_cast<const std::string*>(source)[i];
     } else {
-      memcpy(target, source, src->Shape().Size() * src->DataType()->Size());
+      memcpy(target, source, static_cast<size_t>(src->Shape().Size() * src->DataType()->Size()));
     }
   }
 }
@@ -301,13 +301,13 @@ struct WritableSliceIterator {
   // Initialize initial skip and inner_extent.
   void Init(const std::vector<int64_t>& dims, gsl::span<const int64_t> starts,
             gsl::span<const int64_t> steps) {
-    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == starts.size(),
+    ORT_ENFORCE(dims.size() == starts.size(),
                 "dims.size()=", dims.size(), " != ", "starts.size()=", starts.size());
 
-    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == extents_.size(),
+    ORT_ENFORCE(dims.size() == extents_.size(),
                 "dims.size()=", dims.size(), " != ", "extents.size()=", extents_.size());
 
-    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == steps.size(),
+    ORT_ENFORCE(dims.size() == steps.size(),
                 "dims.size()=", dims.size(), " != ", "steps.size()=", steps.size());
 
     size_t pitch = 1;
@@ -318,7 +318,7 @@ struct WritableSliceIterator {
     }
 
     inner_extent_ = extents_[dims.size() - 1];
-    inner_step_ = static_cast<ptrdiff_t>(dims.size()) == steps.size()
+    inner_step_ = dims.size() == steps.size()
                       ? steps[dims.size() - 1]
                       : 1;
   }

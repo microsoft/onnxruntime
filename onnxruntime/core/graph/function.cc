@@ -89,13 +89,13 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   customized_func_body_ = std::move(customized_func);
 
   // Construct body.
-  body_ = std::make_unique<onnxruntime::Model>("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
+  body_ = onnxruntime::make_unique<onnxruntime::Model>("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
                                                IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
                                                graph.DomainToVersionMap());
   auto& sub_graph = body_->MainGraph();
 
   auto meta_def = customized_func_body_->GetMetaDef();
-  op_schema_ = std::make_unique<ONNX_NAMESPACE::OpSchema>();
+  op_schema_ = onnxruntime::make_unique<ONNX_NAMESPACE::OpSchema>();
   op_schema_->SetName(meta_def->name);
   op_schema_->SetDomain(meta_def->domain);
   op_schema_->SetDoc(meta_def->doc_string);
@@ -161,7 +161,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     : parent_graph_(&graph) {
   onnx_func_proto_ = onnx_func_proto;
   auto node_in_parent_graph = parent_graph_->GetNode(node_index);
-  op_schema_ = std::make_unique<ONNX_NAMESPACE::OpSchema>();
+  op_schema_ = onnxruntime::make_unique<ONNX_NAMESPACE::OpSchema>();
   op_schema_->SetName(onnx_func_proto_->name());
   op_schema_->SetDomain(onnx_func_proto_->node().Get(0).domain());
   op_schema_->SetDoc(onnx_func_proto_->doc_string());
@@ -220,7 +220,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   std::unordered_map<std::string, int> domain_to_version;
   //TODO: set correct domain and version
   domain_to_version[onnxruntime::kOnnxDomain] = static_cast<int>(onnx_func_proto_->since_version());
-  body_ = std::make_unique<onnxruntime::Model>(onnx_func_proto_->name(), false, onnxruntime::ModelMetaData(),
+  body_ = onnxruntime::make_unique<onnxruntime::Model>(onnx_func_proto_->name(), false, onnxruntime::ModelMetaData(),
                                                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
   auto& sub_graph = body_->MainGraph();
   // Add node and node args into subgraph
@@ -309,6 +309,6 @@ const ONNX_NAMESPACE::FunctionProto* FunctionImpl::GetFuncProto() const {
 
 std::unique_ptr<Function> MakeFunction(const onnxruntime::Graph& graph,
                                        std::unique_ptr<IndexedSubGraph> customized_func) {
-  return std::make_unique<FunctionImpl>(graph, std::move(customized_func));
+  return onnxruntime::make_unique<FunctionImpl>(graph, std::move(customized_func));
 }
 }  // namespace onnxruntime

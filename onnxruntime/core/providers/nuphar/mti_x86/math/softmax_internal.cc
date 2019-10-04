@@ -9,7 +9,7 @@
 
 #include "core/providers/nuphar/mti_x86/math/unary_ops.h"
 #include "core/providers/nuphar/mti_x86/math/reduce_ops.h"
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 namespace onnxruntime {
 namespace nuphar {
