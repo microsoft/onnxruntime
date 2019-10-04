@@ -70,23 +70,24 @@ static void extract_top_k_elements(const Tensor* input, const TensorShape& input
   // This is basically the number of elements within each of the "k" rows
   const int64_t block_slice = reduced_cols / k;
   const int64_t num_blocks = input_shape[axis_parsed];
-  // Sort preserving indices
+
   for (int64_t i = 0; i < rows; ++i) {
     for (int64_t j = 0; j < block_slice; ++j) {
-      // If the request is to sort the TopK values, we will use a Heap to
-      // hold the top K values in sorted fashion
+      // Since sorted == true, we will use a Heap to hold the top K values in sorted fashion
       if (sorted) {  // the optimizer will clean-up the redundant condition based on the template parameter 'sorted'
         // Build a min-heap/max-heap, the heap element is pair of (value, idx)
         // the top of the heap is the smallest/largest value depending on whether it is a min-heap/max-heap
 
-        // This is a min-heap if largest == true, this is a max-heap largest == false
+        // This is a min-heap if largest == true, this is a max-heap if largest == false
         priority_queue<pair<float, int64_t>, vector<pair<float, int64_t>>, Comparator> heap;
         // Maintain the size of heap to be less or equal to k, so the
         // heap will hold the k largest/smallest values
         for (int64_t l = 0; l < num_blocks; ++l) {
           const auto value = input_map(i, l * block_slice + j);
-          // largest == true: insert into the min-heap if the size is < k or if the new element is greater than the min
-          // element in the min-heap largest == false: insert into the min-heap if the size is < k or if the new
+          // largest == true: insert into the min-heap if the size is < k or if the new
+          // element is greater than the min element in the min-heap
+
+          // largest == false: insert into the min-heap if the size is < k or if the new
           // element is lesser than the max element in the max-heap
           if ((heap.size() < k) || (largest && value > heap.top().first) ||
               (!largest && value < heap.top().first)) {  // the optimizer will clean-up the redundant condition based
@@ -105,12 +106,15 @@ static void extract_top_k_elements(const Tensor* input, const TensorShape& input
           indices_map(i, col_index) = elem.second;
           heap.pop();
         }
-      } else {  // sorted == false
+      } else {
+        // sorted == false
+        // the optimizer will clean-up the redundant condition based on the template parameter 'sorted'
+
         // If the top K values are not required to be sorted, we use a more optimal selection algorithm
 
         // create a data holder and insert elements
         vector<pair<float, int64_t>> data_holder;
-        // data_holder.reserve(num_blocks);
+        data_holder.reserve(num_blocks);
         for (int64_t l = 0; l < num_blocks; ++l) {
           data_holder.push_back({input_map(i, l * block_slice + j), l});
         }
