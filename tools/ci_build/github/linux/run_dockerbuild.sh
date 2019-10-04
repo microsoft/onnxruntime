@@ -44,6 +44,10 @@ elif [ $BUILD_OS = "manylinux2010" ]; then
         DOCKER_FILE=Dockerfile.manylinux2010
     fi
     docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
+elif [ $BUILD_OS = "centos7" ]; then
+    IMAGE="centos7"
+    DOCKER_FILE=Dockerfile.centos
+    docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=7 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
 elif [ $BUILD_OS = "ubuntu16.04" ]; then
     if [ $BUILD_DEVICE = "gpu" ]; then
         IMAGE="ubuntu16.04-$CUDA_VER"
@@ -51,11 +55,6 @@ elif [ $BUILD_OS = "ubuntu16.04" ]; then
         if [ $CUDA_VER = "cuda9.1-cudnn7.1" ]; then
         DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
         fi
-        docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
-    elif [ $BUILD_DEVICE = "tensorrt" ]; then
-        # TensorRT container release 19.06
-        IMAGE="ubuntu16.04-cuda10.1-cudnn7.6-tensorrt5.1"
-        DOCKER_FILE=Dockerfile.ubuntu_tensorrt
         docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
     elif [ $BUILD_DEVICE = "openvino" ]; then
         IMAGE="ubuntu16.04-openvino"

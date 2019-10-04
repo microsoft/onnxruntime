@@ -106,14 +106,14 @@ class PlannerImpl {
               const std::vector<const NodeArg*>& outer_scope_node_args, const ExecutionProviders& providers,
               const KernelRegistryManager& kernel_registry, const OrtValueNameIdxMap& ort_value_name_idx_map,
               const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
-      : context_{context},
-        plan_{plan},
-        parent_node_{parent_node},
-        graph_viewer_{graph_viewer},
-        outer_scope_node_args_{outer_scope_node_args},
-        execution_providers_{providers},
-        kernel_registry_{kernel_registry},
-        ort_value_name_idx_map_{ort_value_name_idx_map} {}
+      : context_(context),
+        plan_(plan),
+        parent_node_(parent_node),
+        graph_viewer_(graph_viewer),
+        outer_scope_node_args_(outer_scope_node_args),
+        execution_providers_(providers),
+        kernel_registry_(kernel_registry),
+        ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
   Status CreatePlan();
 
@@ -500,7 +500,7 @@ class PlannerImpl {
 
   // Should only be used after ProcessDef()
   Status ComputeReusePlan() {
-    std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan{plan_.execution_plan};
+    std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
 
     // Identify allocation/deallocation plan for every ml-value
 
@@ -717,7 +717,7 @@ Status SequentialPlanner::CreatePlan(const Node* parent_node, const onnxruntime:
                                      const ISequentialPlannerContext& context,
                                      std::unique_ptr<SequentialExecutionPlan>& plan) {
   // allocate/reset here so we know it's clean
-  plan = std::make_unique<SequentialExecutionPlan>();
+  plan = onnxruntime::make_unique<SequentialExecutionPlan>();
 
   PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers, kernel_registry,
                       ort_value_name_idx_map, context, *plan);

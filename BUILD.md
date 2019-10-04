@@ -297,22 +297,54 @@ Note: For 32-bit devices, replace `-DANDROID_ABI=arm64-v8a` to `-DANDROID_ABI=ar
 ### Nuphar
 ONNX Runtime supports Nuphar execution provider (released as preview). It is an execution provider built on top of [TVM](https://github.com/dmlc/tvm) and [LLVM](https://llvm.org). Currently it targets to X64 CPU.
 
-The Nuphar execution provider for ONNX Runtime is built and tested with LLVM 6.0.1. Because of TVM's requirement when building with LLVM, you need to build LLVM from source:
+The Nuphar execution provider for ONNX Runtime is built and tested with LLVM 9.0.0. Because of TVM's requirement when building with LLVM, you need to build LLVM from source:
 
-Window with Visual Studio 2017: (Note here builds release flavor. Debug build of LLVM would be needed to build with Debug flavor of ONNX Runtime)
+Windows with Visual Studio 2017: (Note here builds release flavor. Debug build of LLVM would be needed to build with Debug flavor of ONNX Runtime)
 ```
-REM download llvm source code 6.0.1 and unzip to \llvm\source\path, then install to \llvm\install\path
+REM download llvm source code 9.0.0 and unzip to \llvm\source\path, then install to \llvm\install\path
 cd \llvm\source\path
 mkdir build
 cd build
-cmake .. -G "Visual Studio 15 2017 Win64" -DLLVM_TARGETS_TO_BUILD=X86
+cmake .. -G "Visual Studio 15 2017 Win64" -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_ENABLE_DIA_SDK=OFF
 msbuild llvm.sln /maxcpucount /p:Configuration=Release /p:Platform=x64
 cmake -DCMAKE_INSTALL_PREFIX=\llvm\install\path -DBUILD_TYPE=Release -P cmake_install.cmake
 ```
 
+Note that following LLVM cmake patch is necessary to make the build work on Windows, Linux does not need to apply the patch.
+The patch is to fix the linking warning LNK4199 caused by [LLVM commit](https://github.com/llvm-mirror/llvm/commit/148f823e4845c9a13faea62e3105abb80b39e4bc)
+
+```
+diff --git "a/lib\\Support\\CMakeLists.txt" "b/lib\\Support\\CMakeLists.txt"
+index 7dfa97c..6d99e71 100644
+--- "a/lib\\Support\\CMakeLists.txt"
++++ "b/lib\\Support\\CMakeLists.txt"
+@@ -38,12 +38,6 @@ elseif( CMAKE_HOST_UNIX )
+   endif()
+ endif( MSVC OR MINGW )
+
+-# Delay load shell32.dll if possible to speed up process startup.
+-set (delayload_flags)
+-if (MSVC)
+-  set (delayload_flags delayimp -delayload:shell32.dll -delayload:ole32.dll)
+-endif()
+-
+ # Link Z3 if the user wants to build it.
+ if(LLVM_WITH_Z3)
+   set(Z3_LINK_FILES ${Z3_LIBRARIES})
+@@ -187,7 +181,7 @@ add_llvm_library(LLVMSupport
+   ${LLVM_MAIN_INCLUDE_DIR}/llvm/ADT
+   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Support
+   ${Backtrace_INCLUDE_DIRS}
+-  LINK_LIBS ${system_libs} ${delayload_flags} ${Z3_LINK_FILES}
++  LINK_LIBS ${system_libs} ${Z3_LINK_FILES}
+   )
+
+ set_property(TARGET LLVMSupport PROPERTY LLVM_SYSTEM_LIBS "${system_libs}")
+```
+
 Linux:
 ```
-# download llvm source code 6.0.1 and unzip to /llvm/source/path, then install to /llvm/install/path
+# download llvm source code 9.0.0 and unzip to /llvm/source/path, then install to /llvm/install/path
 cd /llvm/source/path
 mkdir build
 cd build

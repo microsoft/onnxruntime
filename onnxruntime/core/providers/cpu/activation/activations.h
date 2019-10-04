@@ -188,5 +188,4 @@ class ThresholdedRelu final : public OpKernel {
  private:
   const float alpha_;
 };
-
 }  // namespace onnxruntime
