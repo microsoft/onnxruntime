@@ -4,12 +4,14 @@ jobs:
   pool:
     vmImage: 'ubuntu-latest'
   steps:
-    - script: docker build -t onnxruntime-centos7 --build-arg BUILD_USER=onnxruntimedev --build-arg
-    BUILD_UID=1001 --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos .
-      workingDirectory: $(Agent.SourcesDirectory)/tools/ci_build/github/linux/docker
-      displayName: 'build docker image'
-    - script: docker run --rm --volume $(Agent.SourcesDirectory):/onnxruntime_src --volume $(Agent.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos7 /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh -d cpu -x '--use_automl --build_wheel' -o centos7
-      displayName: 'run docker image'
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
-      condition: succeeded()
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker build -t onnxruntime-centos7 --build-arg BUILD_USER=onnxruntimedev --build-arg
+              BUILD_UID=1001 --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos .
+        workingDirectory: '$(Agent.SourcesDirectory)/tools/ci_build/github/linux/docker'
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker run --rm --volume $(Agent.SourcesDirectory):/onnxruntime_src --volume $(Agent.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos7 /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh -d cpu -x '--use_automl --build_wheel' -o centos7
+        workingDirectory: '$(Agent.SourcesDirectory)'
