@@ -52,7 +52,7 @@ TensorDesc::TensorDesc(
     gsl::span<const uint32_t> nonBroadcastDimensions,
     uint32_t coerceAxis,
     int32_t placement, // Adjustment offset of the passed dimensions within the minDimensionCount.
-    int32_t leftAlignedDimensionCount, // Number of dimensions that are left aligned (INT32_MAX means all, 0 means all right aligned).
+    int32_t leftAlignedDimensionCount, // Number of dimensions that remain left aligned when expanded to minimum count (INT32_MAX means all, 0 means all right aligned).
     uint32_t minDimensionCount,
     uint32_t guaranteedBaseOffsetAlignment
     )
@@ -63,11 +63,10 @@ TensorDesc::TensorDesc(
     m_bufferTensorDesc.DataType = GetDmlDataTypeFromMlDataType(dataType);
     ML_CHECK_VALID_ARGUMENT(ApiTraits::IsValidEnumValue(m_bufferTensorDesc.DataType));
 
-    // Coercion isn't always possible when striding is used to broadcast tensors, and must be different
-    // among dimensions flattened together. Placement is not implemented in combination with broadcasting, 
-    // though could be.
-    // todo::: ML_CHECK_VALID_ARGUMENT((nonBroadcastDimensions == dimensions) || ((coerceAxis == TensorAxis::DoNotCoerce) && (placement == W) && && (leadingDims == W)));
-    ML_CHECK_VALID_ARGUMENT((nonBroadcastDimensions == dimensions) || ((coerceAxis == TensorAxis::DoNotCoerce) && (placement == W)));
+    // Flattening coercion isn't always possible when striding is used to broadcast tensors.
+    // Also, placement and split alignment is not implemented in combination with broadcasting.
+    ML_CHECK_VALID_ARGUMENT((nonBroadcastDimensions == dimensions)
+                        || ((coerceAxis == TensorAxis::DoNotCoerce) && (placement == W) && (leftAlignedDimensionCount == RightAligned)));
 
     gsl::span<const uint32_t> sizes;
 
@@ -120,11 +119,11 @@ TensorDesc::TensorDesc(
     {
         // Compute the total number of additional dimensions to fill with 1's,
         // before, after, and in the middle.
-        const int32_t fillerCount = m_bufferTensorDesc.DimensionCount - rank;
-        const int32_t leadingFillerCount = std::clamp(placement, 0, fillerCount);
-        const int32_t remainingFillerCount = fillerCount - leadingFillerCount;
-        const int32_t trailingFillerCount = std::clamp(-placement, 0, remainingFillerCount);
-        const int32_t middleFillerCount = remainingFillerCount - trailingFillerCount;
+        const int32_t totalFillerCount     = m_bufferTensorDesc.DimensionCount - rank;
+        const int32_t leadingFillerCount   = std::clamp(placement, 0, totalFillerCount);
+        const int32_t remainingFillerCount = totalFillerCount - leadingFillerCount;
+        const int32_t trailingFillerCount  = std::clamp(-placement, 0, remainingFillerCount);
+        const int32_t middleFillerCount    = remainingFillerCount - trailingFillerCount;
         const int32_t firstRightAlignedDim = leadingFillerCount + leftAlignedDimensionCount + middleFillerCount;
 
         int i = 0, j = 0;

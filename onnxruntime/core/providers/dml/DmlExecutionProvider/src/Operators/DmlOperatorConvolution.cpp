@@ -37,7 +37,7 @@ public:
             uint32_t inputDimSize = kernelInfo.GetTensorShapeDescription().GetInputTensorDimensionCount(0);
             ML_CHECK_VALID_ARGUMENT(
                 inputDimSize >= 3 && inputDimSize <= 5,
-                "Bias can only be used with 4D or 5D tensors."
+                "Bias can only be used with 3D/4D/5D tensors."
                 );
             uint32_t dmlDimSize = m_inputTensorDescs[0].GetDimensionCount();
 
@@ -66,8 +66,8 @@ public:
         // so that all output tensor size computations are correct.
         KernelArgs kernelArgs(m_kernel, NchwSpatialDimensionCount);
 
-        // Output padding wasn't implemented based on PyTorch compatible semantics
-        // and should just be ignored. So pass zeroes instead.
+        // Zero the output padding before sending to DirectML. Although it was needed to compute
+        // the output size, we don't want DML to see the values, which should just be ignored.
         memset(kernelArgs.outputPadding, 0, sizeof(kernelArgs.outputPadding));
 
         DML_CONVOLUTION_OPERATOR_DESC convDesc = {};
