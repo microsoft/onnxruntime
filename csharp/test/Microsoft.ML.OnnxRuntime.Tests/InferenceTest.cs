@@ -393,11 +393,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var modelsDir = GetTestModelsDir();
             string onnxModelFileName = null;
             var modelDir = new DirectoryInfo(modelPath);
-            var useParams = opset + modelName;
 
             try
             {
-                var onnxModelNames = /*(new DirectoryInfo(Path.Combine(modelsDir, opset, modelName)))*/modelDir.GetFiles("*.onnx");
+                var onnxModelNames = modelDir.GetFiles("*.onnx");
                 if (onnxModelNames.Length > 1)
                 {
                     // TODO remove file "._resnet34v2.onnx" from test set
@@ -414,7 +413,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     if (!validModelFound)
                     {
                         var modelNamesList = string.Join(",", onnxModelNames.Select(x => x.ToString()));
-                        throw new Exception($"Model {modelDir.FullName}. Can't determine model file name. Found these :{modelNamesList}");
+                        throw new Exception($"Opset {opset} Model {modelName}. Can't determine model file name. Found these :{modelNamesList}");
                     }
                 }
 
@@ -447,7 +446,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
             catch (Exception ex)
             {
-                var msg = $"Model {modelDir.FullName}: ModelFile = {onnxModelFileName} error = {ex.Message}";
+                var msg = $"Opset {opset}, Model {modelName}: ModelFile = {onnxModelFileName} error = {ex.Message}";
                 throw new Exception(msg+"\n"+ex.StackTrace);
             }
         }
