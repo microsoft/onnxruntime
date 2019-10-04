@@ -20,6 +20,8 @@
 #include "core/optimizer/free_dim_override_transformer.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
+#include "core/providers/dml/GraphTransformers/bn_add_fusion.h"
+#include "core/providers/dml/GraphTransformers/bn_mul_fusion.h"
 
 namespace onnxruntime {
 
@@ -40,12 +42,14 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
       rules.push_back(std::make_unique<EliminateDropout>());
       rules.push_back(std::make_unique<FuseReluClip>());
       rules.push_back(std::make_unique<ShapeToInitializer>());
-      break;
-
-    case TransformerLevel::Level2:
       rules.push_back(std::make_unique<ConvAddFusion>());
       rules.push_back(std::make_unique<ConvMulFusion>());
       rules.push_back(std::make_unique<ConvBNFusion>());
+      rules.push_back(std::make_unique<BatchNormalizationAddFusion>());
+      rules.push_back(std::make_unique<BatchNormalizationMulFusion>());
+      break;
+
+    case TransformerLevel::Level2:
       break;
 
     case TransformerLevel::Level3:
