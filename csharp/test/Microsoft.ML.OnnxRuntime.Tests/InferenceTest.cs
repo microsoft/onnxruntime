@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Threading.Tasks;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Microsoft.ML.OnnxRuntime.Tests
 {
@@ -16,6 +17,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
     {
         private const string module = "onnxruntime.dll";
         private const string propertiesFile = "Properties.txt";
+        private readonly ITestOutputHelper output;
+
+        public InferenceTest(ITestOutputHelper o)
+        {
+            this.output = o;
+        }
 
         [Fact]
         public void TestSessionOptions()
@@ -309,92 +316,140 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             session.Dispose();
         }
 
-        [x64Fact]
-        private void TestPreTrainedModelsOpset7And8()
+        private static Dictionary<string, string> GetSkippedModels()
         {
-            var skipModels = new List<String>() {
-                "mxnet_arcface",  // Model not supported by CPU execution provider
-                "tf_inception_v2",  // TODO: Debug failing model, skipping for now
-                "fp16_inception_v1",  // 16-bit float not supported type in C#.
-                "fp16_shufflenet",  // 16-bit float not supported type in C#.
-                "fp16_tiny_yolov2" };  // 16-bit float not supported type in C#.
+            var skipModels = new Dictionary<string, string>() {
+                { "mxnet_arcface", "Model not supported by CPU execution provider" } ,
+                { "tf_inception_v2", "TODO: Debug failing model, skipping for now" },
+                { "fp16_inception_v1", "16-bit float not supported type in C#." },
+                { "fp16_shufflenet", "16-bit float not supported type in C#." },
+                { "fp16_tiny_yolov2", "16-bit float not supported type in C#." },
+                { "LSTM_Seq_lens_unpacked", "Sequence contains no elements" },
+                { "BERT_Squad", "Could not find an implementation for the node bert / embeddings / one_hot:OneHot(9)" },
+                { "faster_rcnn", "Length of memory(2611200) must match product of dimensions(3)" },
+                { "mask_rcnn", "Length of memory (3456000) must match product of dimensions (3)" },
+                { "mask_rcnn_keras", "Length of memory (3145728) must match product of dimensions (3)" },
+                { "mlperf_resnet", "Value cannot be null" },
+                { "mlperf_ssd_mobilenet_300", "Could not find file output_0.pb" },
+                { "yolov3", "Length of memory(519168) must match product of dimensions(3)" }
+            };
 
             var disableContribOpsEnvVar = Environment.GetEnvironmentVariable("DisableContribOps");
             var isContribOpsDisabled = (disableContribOpsEnvVar != null) ? disableContribOpsEnvVar.Equals("ON") : false;
             if (isContribOpsDisabled)
             {
-                skipModels.Add("test_tiny_yolov2");
+                skipModels["test_tiny_yolov2"] =  "Fails when ContribOps is disabled";
             }
 
-            var opsets = new[] { "opset7", "opset8" };
+            return skipModels;
+        }
+
+        public static IEnumerable<object[]> GetModelsForTest()
+        {
             var modelsDir = GetTestModelsDir();
-            foreach (var opset in opsets)
+            var modelsDirInfo = new DirectoryInfo(modelsDir);
+            var skipModels = GetSkippedModels();
+
+            foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
             {
-                var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opset));
-                foreach (var modelDir in modelRoot.EnumerateDirectories())
+                //var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opsetDir.Name));
+                foreach (var modelDir in opsetDir.EnumerateDirectories())
                 {
-                    String onnxModelFileName = null;
-
-                    if (skipModels.Contains(modelDir.Name))
-                        continue;
-
-                    try
+                    if (!skipModels.ContainsKey(modelDir.Name))
                     {
-                        var onnxModelNames = modelDir.GetFiles("*.onnx");
-                        if (onnxModelNames.Length > 1)
-                        {
-                            // TODO remove file "._resnet34v2.onnx" from test set
-                            bool validModelFound = false;
-                            for (int i = 0; i < onnxModelNames.Length; i++)
-                            {
-                                if (onnxModelNames[i].Name != "._resnet34v2.onnx")
-                                {
-                                    onnxModelNames[0] = onnxModelNames[i];
-                                    validModelFound = true;
-                                }
-                            }
-
-                            if (!validModelFound)
-                            {
-                                var modelNamesList = string.Join(",", onnxModelNames.Select(x => x.ToString()));
-                                throw new Exception($"Opset {opset}: Model {modelDir}. Can't determine model file name. Found these :{modelNamesList}");
-                            }
-                        }
-
-                        onnxModelFileName = Path.Combine(modelsDir, opset, modelDir.Name, onnxModelNames[0].Name);
-                        using (var session = new InferenceSession(onnxModelFileName))
-                        {
-                            var inMeta = session.InputMetadata;
-                            var innodepair = inMeta.First();
-                            var innodename = innodepair.Key;
-                            var innodedims = innodepair.Value.Dimensions;
-                            for (int i = 0; i < innodedims.Length; i++)
-                            {
-                                if (innodedims[i] < 0)
-                                    innodedims[i] = -1 * innodedims[i];
-                            }
-
-                            var testRoot = new DirectoryInfo(Path.Combine(modelsDir, opset, modelDir.Name));
-                            var testData = testRoot.EnumerateDirectories("test_data*").First();
-                            var dataIn = LoadTensorFromFilePb(Path.Combine(modelsDir, opset, modelDir.Name, testData.ToString(), "input_0.pb"));
-                            var dataOut = LoadTensorFromFilePb(Path.Combine(modelsDir, opset, modelDir.Name, testData.ToString(), "output_0.pb"));
-                            var tensorIn = new DenseTensor<float>(dataIn, innodedims);
-                            var nov = new List<NamedOnnxValue>();
-                            nov.Add(NamedOnnxValue.CreateFromTensor<float>(innodename, tensorIn));
-                            using (var resnov = session.Run(nov))
-                            {
-                                var res = resnov.ToArray()[0].AsTensor<float>().ToArray<float>();
-                                Assert.Equal(res, dataOut, new floatComparer());
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        var msg = $"Opset {opset}: Model {modelDir}: ModelFile = {onnxModelFileName} error = {ex.Message}";
-                        throw new Exception(msg);
+                        yield return new object[] { modelDir.Parent.Name, modelDir.Name, modelDir.FullName };
                     }
                 } //model
             } //opset
+        }
+
+        public static IEnumerable<object[]> GetSkippedModelForTest()
+        {
+            var modelsDir = GetTestModelsDir();
+            var modelsDirInfo = new DirectoryInfo(modelsDir);
+            var skipModels = GetSkippedModels();
+
+            foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
+            {
+                var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opsetDir.Name));
+                foreach (var modelDir in modelRoot.EnumerateDirectories())
+                {
+                    if (skipModels.ContainsKey(modelDir.Name))
+                    {
+                        //Console.WriteLine("Model {0} is skipped due to the error: {1}", modelDir.FullName, skipModels[modelDir.Name]);
+                        yield return new object[] { modelDir.Parent.Name, modelDir.Name, modelDir.FullName };
+                    }
+                        
+                }
+            }
+        }
+
+
+        [x64Theory]
+        [MemberData(nameof(GetModelsForTest))]
+        [MemberData(nameof(GetSkippedModelForTest), Skip ="Skipped due to Error, please fix the error and enable the test")]
+        private void TestPreTrainedModels(string opset, string modelName, string modelPath)
+        {
+            var modelsDir = GetTestModelsDir();
+            string onnxModelFileName = null;
+            var modelDir = new DirectoryInfo(modelPath);
+            var useParams = opset + modelName;
+
+            try
+            {
+                var onnxModelNames = /*(new DirectoryInfo(Path.Combine(modelsDir, opset, modelName)))*/modelDir.GetFiles("*.onnx");
+                if (onnxModelNames.Length > 1)
+                {
+                    // TODO remove file "._resnet34v2.onnx" from test set
+                    bool validModelFound = false;
+                    for (int i = 0; i < onnxModelNames.Length; i++)
+                    {
+                        if (onnxModelNames[i].Name != "._resnet34v2.onnx")
+                        {
+                            onnxModelNames[0] = onnxModelNames[i];
+                            validModelFound = true;
+                        }
+                    }
+
+                    if (!validModelFound)
+                    {
+                        var modelNamesList = string.Join(",", onnxModelNames.Select(x => x.ToString()));
+                        throw new Exception($"Model {modelDir.FullName}. Can't determine model file name. Found these :{modelNamesList}");
+                    }
+                }
+
+                onnxModelFileName = Path.Combine(modelDir.FullName, onnxModelNames[0].Name);
+
+                using (var session = new InferenceSession(onnxModelFileName))
+                {
+                    var inMeta = session.InputMetadata;
+                    var innodepair = inMeta.First();
+                    var innodename = innodepair.Key;
+                    var innodedims = innodepair.Value.Dimensions;
+                    for (int i = 0; i < innodedims.Length; i++)
+                    {
+                        if (innodedims[i] < 0)
+                            innodedims[i] = -1 * innodedims[i];
+                    }
+
+                    var testData = modelDir.EnumerateDirectories("test_data*").First();
+                    var dataIn = LoadTensorFromFilePb(Path.Combine(modelDir.FullName, testData.ToString(), "input_0.pb"));
+                    var dataOut = LoadTensorFromFilePb(Path.Combine(modelDir.FullName, testData.ToString(), "output_0.pb"));
+                    var tensorIn = new DenseTensor<float>(dataIn, innodedims);
+                    var nov = new List<NamedOnnxValue>();
+                    nov.Add(NamedOnnxValue.CreateFromTensor<float>(innodename, tensorIn));
+                    using (var resnov = session.Run(nov))
+                    {
+                        var res = resnov.ToArray()[0].AsTensor<float>().ToArray<float>();
+                        Assert.Equal(res, dataOut, new floatComparer());
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                var msg = $"Model {modelDir.FullName}: ModelFile = {onnxModelFileName} error = {ex.Message}";
+                throw new Exception(msg+"\n"+ex.StackTrace);
+            }
         }
 
         [Fact]
@@ -943,9 +998,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        private class x64Fact : FactAttribute
+        private class x64Theory : TheoryAttribute
         {
-            public x64Fact()
+            public x64Theory()
             {
                 if (System.Environment.Is64BitProcess == false)
                 {
