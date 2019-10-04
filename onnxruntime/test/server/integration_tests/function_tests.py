@@ -62,7 +62,7 @@ class HttpJsonPayloadTests(unittest.TestCase):
             'x-ms-client-request-id': 'This~is~my~id'
         }
 
-        url = self.url_pattern.format(self.server_ip, self.server_port, 'default', 12345)
+        url = self.url_pattern.format(self.server_ip, self.server_port, 'default', 1)
         test_util.test_log(url)
         r = requests.post(url, headers=request_headers, data=request_payload)
         self.assertEqual(r.status_code, 200)
@@ -108,7 +108,7 @@ class HttpJsonPayloadTests(unittest.TestCase):
 
     def test_mnist_invalid_content_type(self):
         input_data_file = os.path.join(self.test_data_path, 'mnist_test_data_set_0_input.json')
-        url = self.url_pattern.format(self.server_ip, self.server_port, 'default', 12345)
+        url = self.url_pattern.format(self.server_ip, self.server_port, 'default', 1)
         test_util.test_log(url)
 
         request_headers = {
@@ -130,7 +130,7 @@ class HttpJsonPayloadTests(unittest.TestCase):
 
     def test_mnist_missing_content_type(self):
         input_data_file = os.path.join(self.test_data_path, 'mnist_test_data_set_0_input.json')
-        url = self.url_pattern.format(self.server_ip, self.server_port, 'default', 12345)
+        url = self.url_pattern.format(self.server_ip, self.server_port, 'default', 1)
         test_util.test_log(url)
 
         request_headers = {
@@ -238,7 +238,7 @@ class HttpProtobufPayloadTests(unittest.TestCase):
                 'Accept': 'application/x-protobuf'
             }
 
-            url = self.url_pattern.format(self.server_ip, self.server_port, 'default', 12345)
+            url = self.url_pattern.format(self.server_ip, self.server_port, 'default', 1)
             test_util.test_log(url)
             r = requests.post(url, headers=request_headers, data=request_payload)
             self.assertEqual(r.status_code, 200)
@@ -282,7 +282,7 @@ class HttpProtobufPayloadTests(unittest.TestCase):
                 'Accept': h
             }
 
-            url = self.url_pattern.format(self.server_ip, self.server_port, 'default', 12345)
+            url = self.url_pattern.format(self.server_ip, self.server_port, 'default', 1)
             test_util.test_log(url)
             r = requests.post(url, headers=request_headers, data=request_payload)
             self.assertEqual(r.status_code, 200)
@@ -299,7 +299,7 @@ class HttpProtobufPayloadTests(unittest.TestCase):
             'Content-Type': 'application/x-protobuf',
         }
 
-        url = self.url_pattern.format(self.server_ip, self.server_port, 'default', 12345)
+        url = self.url_pattern.format(self.server_ip, self.server_port, 'default', 1)
         test_util.test_log(url)
         r = requests.post(url, headers=request_headers, data=request_payload)
         self.assertEqual(r.status_code, 200)
@@ -317,7 +317,7 @@ class HttpProtobufPayloadTests(unittest.TestCase):
             'Accept': '*/*'
         }
 
-        url = self.url_pattern.format(self.server_ip, self.server_port, 'default', 12345)
+        url = self.url_pattern.format(self.server_ip, self.server_port, 'default', 1)
         test_util.test_log(url)
         r = requests.post(url, headers=request_headers, data=request_payload)
         self.assertEqual(r.status_code, 200)
