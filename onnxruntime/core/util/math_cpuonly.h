@@ -61,11 +61,12 @@ template <typename T>
 using ConstEigenMatrixMapRowMajor = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
 
 template <typename T>
-auto EigenMap(Tensor& t) {
+auto EigenMap(Tensor& t) -> EigenVectorMap<T> {
   return EigenVectorMap<T>(t.template MutableData<T>(), t.Shape().Size());
 }
 template <typename T>
-auto EigenMap(const Tensor& t) {
+auto EigenMap(const Tensor& t) -> ConstEigenVectorMap<T> {
+
   return ConstEigenVectorMap<T>(t.template Data<T>(), t.Shape().Size());
 }
 
