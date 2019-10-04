@@ -43,7 +43,8 @@ static void RunTest(
   test3.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
   test3.AddInput<float>("value", {1}, {value});
   test3.AddOutput<float>("output", output_dims, output);
-  test3.Run();
+  //TensorRT does not support pads as an input
+  test3.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 
   #endif
 }
