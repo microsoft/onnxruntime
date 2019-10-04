@@ -19,13 +19,23 @@ Status GatherBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const
   p.indices_tensor = context->Input<Tensor>(1);
   const TensorShape& indices_shape = p.indices_tensor->Shape();
 
-  p.axis = HandleNegativeAxis(axis_, input_data_shape.NumDimensions());
+  const auto input_rank = input_data_shape.NumDimensions();
+  p.axis = HandleNegativeAxis(axis_, input_rank);
 
-  std::vector<int64_t> shape(indices_shape.GetDims().begin(), indices_shape.GetDims().end());
-  shape.insert(shape.begin(), input_data_shape.GetDims().begin(), input_data_shape.GetDims().begin() + p.axis);
-  shape.insert(shape.end(), input_data_shape.GetDims().begin() + p.axis + 1, input_data_shape.GetDims().end());
+  std::vector<int64_t> shape;
+  shape.reserve(input_rank - 1 + indices_shape.NumDimensions());
 
-  p.output_tensor = context->Output(0, TensorShape(shape));
+  // replace the dimension for p.axis with the shape from the indices
+  for (int64_t i = 0; i < p.axis; ++i)
+    shape.push_back(input_data_shape[i]);
+
+  for (const auto dim : indices_shape.GetDims())
+    shape.push_back(dim);
+
+  for (int64_t i = p.axis + 1; i < static_cast<int64_t>(input_rank); ++i)
+    shape.push_back(input_data_shape[i]);
+
+  p.output_tensor = context->Output(0, TensorShape(std::move(shape)));
 
   return Status::OK();
 }

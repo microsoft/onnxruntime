@@ -25,6 +25,8 @@
 
 namespace Ort {
 
+extern const OrtApi* g_api;
+
 using std::nullptr_t;
 
 // All C++ methods that can fail will throw an exception of this type
@@ -41,7 +43,7 @@ struct Exception : std::exception {
 
 // This Macro is to make it easy to generate overloaded methods for all of the various OrtRelease* functions for every Ort* type
 #define ORT_DEFINE_RELEASE(NAME) \
-  inline void OrtRelease(Ort##NAME* ptr) { OrtRelease##NAME(ptr); }
+  inline void OrtRelease(Ort##NAME* ptr) { g_api->Release##NAME(ptr); }
 
 ORT_DEFINE_RELEASE(MemoryInfo);
 ORT_DEFINE_RELEASE(CustomOpDomain);
@@ -72,6 +74,7 @@ struct Base {
 
  protected:
   Base(const Base&) = delete;
+  Base& operator=(const Base&) = delete;
   Base(Base&& v) noexcept : p_{v.p_} { v.p_ = nullptr; }
   void operator=(Base&& v) noexcept {
     OrtRelease(p_);
@@ -93,7 +96,7 @@ struct Unowned : T {
 };
 
 struct AllocatorWithDefaultOptions;
-struct AllocatorInfo;
+struct MemoryInfo;
 struct Env;
 struct TypeInfo;
 struct Value;
@@ -103,6 +106,8 @@ struct Env : Base<OrtEnv> {
   Env(OrtLoggingLevel default_logging_level, _In_ const char* logid);
   Env(OrtLoggingLevel default_logging_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
+
+  static const OrtApi* s_api;
 };
 
 struct CustomOpDomain : Base<OrtCustomOpDomain> {
@@ -138,7 +143,8 @@ struct SessionOptions : Base<OrtSessionOptions> {
 
   SessionOptions Clone() const;
 
-  SessionOptions& SetThreadPoolSize(int session_thread_pool_size);
+  SessionOptions& SetIntraOpNumThreads(int intra_op_num_threads);
+  SessionOptions& SetInterOpNumThreads(int inter_op_num_threads);
   SessionOptions& SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);
 
   SessionOptions& EnableCpuMemArena();
@@ -174,12 +180,15 @@ struct Session : Base<OrtSession> {
 
   size_t GetInputCount() const;
   size_t GetOutputCount() const;
+  size_t GetOverridableInitializerCount() const;
 
   char* GetInputName(size_t index, OrtAllocator* allocator) const;
   char* GetOutputName(size_t index, OrtAllocator* allocator) const;
+  char* GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const;
 
   TypeInfo GetInputTypeInfo(size_t index) const;
   TypeInfo GetOutputTypeInfo(size_t index) const;
+  TypeInfo GetOverridableInitializerTypeInfo(size_t index) const;
 };
 
 struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
@@ -214,8 +223,16 @@ struct Value : Base<OrtValue> {
   static Value CreateMap(Value& keys, Value& values);
   static Value CreateSequence(std::vector<Value>& values);
 
+  template <typename T>
+  static Value CreateOpaque(const char* domain, const char* type_name, const T&);
+
+  template <typename T>
+  void GetOpaqueData(const char* domain, const char* type_name, T&);
+
   explicit Value(nullptr_t) {}
   explicit Value(OrtValue* p) : Base<OrtValue>{p} {}
+  Value(Value&&) = default;
+  Value& operator=(Value&&) = default;
 
   bool IsTensor() const;
   size_t GetCount() const;  // If a non tensor, returns 2 for map and N for sequence, where N is the number of elements
@@ -246,13 +263,13 @@ struct AllocatorWithDefaultOptions {
   OrtAllocator* p_{};
 };
 
-struct AllocatorInfo : Base<OrtMemoryInfo> {
-  static AllocatorInfo CreateCpu(OrtAllocatorType type, OrtMemType mem_type1);
+struct MemoryInfo : Base<OrtMemoryInfo> {
+  static MemoryInfo CreateCpu(OrtAllocatorType type, OrtMemType mem_type1);
 
-  explicit AllocatorInfo(nullptr_t) {}
-  AllocatorInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type);
+  explicit MemoryInfo(nullptr_t) {}
+  MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type);
 
-  explicit AllocatorInfo(OrtMemoryInfo* p) : Base<OrtMemoryInfo>{p} {}
+  explicit MemoryInfo(OrtMemoryInfo* p) : Base<OrtMemoryInfo>{p} {}
 };
 
 //
@@ -260,7 +277,7 @@ struct AllocatorInfo : Base<OrtMemoryInfo> {
 //
 
 struct CustomOpApi {
-  CustomOpApi(const OrtCustomOpApi& api) : api_(api) {}
+  CustomOpApi(const OrtApi& api) : api_(api) {}
 
   template <typename T>  // T is only implemented for float, int64_t, and string
   T KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name);
@@ -268,7 +285,7 @@ struct CustomOpApi {
   OrtTensorTypeAndShapeInfo* GetTensorTypeAndShape(_In_ const OrtValue* value);
   size_t GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info);
   ONNXTensorElementDataType GetTensorElementType(const OrtTensorTypeAndShapeInfo* info);
-  size_t GetDimensionCount(_In_ const OrtTensorTypeAndShapeInfo* info);
+  size_t GetDimensionsCount(_In_ const OrtTensorTypeAndShapeInfo* info);
   void GetDimensions(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
   void SetDimensions(OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
 
@@ -284,15 +301,17 @@ struct CustomOpApi {
   size_t KernelContext_GetOutputCount(const OrtKernelContext* context);
   OrtValue* KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count);
 
+  void ThrowOnError(OrtStatus* result);
+
  private:
-  const OrtCustomOpApi& api_;
+  const OrtApi& api_;
 };
 
 template <typename TOp, typename TKernel>
 struct CustomOpBase : OrtCustomOp {
   CustomOpBase() {
     OrtCustomOp::version = ORT_API_VERSION;
-    OrtCustomOp::CreateKernel = [](OrtCustomOp* this_, const OrtCustomOpApi* api, const OrtKernelInfo* info) { return static_cast<TOp*>(this_)->CreateKernel(*api, info); };
+    OrtCustomOp::CreateKernel = [](OrtCustomOp* this_, const OrtApi* api, const OrtKernelInfo* info) { return static_cast<TOp*>(this_)->CreateKernel(*api, info); };
     OrtCustomOp::GetName = [](OrtCustomOp* this_) { return static_cast<TOp*>(this_)->GetName(); };
 
     OrtCustomOp::GetExecutionProviderType = [](OrtCustomOp* this_) { return static_cast<TOp*>(this_)->GetExecutionProviderType(); };

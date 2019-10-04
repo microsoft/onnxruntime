@@ -37,21 +37,11 @@ DmlOrtSessionBuilder::CreateSessionOptions(
   RETURN_HR_IF_NULL(E_POINTER, p_options);
 
   *p_options = onnxruntime::SessionOptions();
-
-  // Currently the only transformer in ORT's transform manager will be the DML transformer.
-  // ORT applies these transformers a certain number of times (currently 5) unless overridden here.
-  p_options->max_num_graph_transformation_steps = 1;
+  
+  p_options->graph_optimization_level = onnxruntime::TransformerLevel::Level3;
 
   // Disable the mem pattern session option for DML. It will cause problems with how memory is allocated.
   p_options->enable_mem_pattern = false;
-
-  // Disable automatic graph optimization pass control; see comments below.
-  // TODO: Remove this when these issues are addressed.
-  static_assert(
-      static_cast<int>(onnxruntime::TransformerLevel::Default) == 0,
-      "Ensure default graph optimization level is unoptimized");
-
-  p_options->graph_optimization_level = onnxruntime::TransformerLevel::Default;
 
   return S_OK;
 }

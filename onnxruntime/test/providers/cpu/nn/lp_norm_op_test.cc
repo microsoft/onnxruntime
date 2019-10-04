@@ -80,5 +80,32 @@ TEST(LpNormalizationTest, LpNormalizationDefaultAxisAndP) {
   test.AddOutput<float>("Y", input_dims, expected_output);
   test.Run();
 }
+
+TEST(LpNormalizationTest, L1NormalizationWithValidNegativeAxis) {
+  OpTester test("LpNormalization");
+  test.AddAttribute("axis", static_cast<int64_t>(-2));
+  test.AddAttribute("p", static_cast<int64_t>(1));
+
+  vector<float> input = {5.93932154F, 7.4367043F, 6.42487038F, 5.90394865F,
+                         4.81289319F, 6.81304702F, 4.9382849F, 9.02595701F,
+                         9.67296484F, 4.45097367F, 8.12552534F, 5.76005428F,
+
+                         6.11240105F, 9.33036974F, 1.63932452F, 1.7841637F,
+                         1.18196558F, 8.49357861F, 8.00341076F, 8.83010933F,
+                         9.80756508F, 8.19242708F, 5.15331426F, 8.02476259F};
+  vector<int64_t> input_dims = {2, 3, 4};
+  test.AddInput<float>("input", input_dims, input);
+
+  vector<float> expected_output = {0.2907843F, 0.3976693F, 0.3296719F, 0.28535331F,
+                                   0.23563529F, 0.36431994F, 0.25339247F, 0.43624816F,
+                                   0.47358041F, 0.23801075F, 0.41693563F, 0.27839852F,
+
+                                   0.35740998F, 0.3586345F, 0.11079474F, 0.09572189F,
+                                   0.06911299F, 0.32647048F, 0.54091538F, 0.47374282F,
+                                   0.57347703F, 0.31489502F, 0.34828988F, 0.43053529F};
+  test.AddOutput<float>("Y", input_dims, expected_output);
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

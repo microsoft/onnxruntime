@@ -35,7 +35,7 @@ CpuOrtSessionBuilder::CreateSessionOptions(
   // by default. This causes MLAS to not exercise every logical core.
   // We force the thread pool size to be maxxed out to ensure that WinML always
   // runs the fastest.
-  p_options->session_thread_pool_size = std::thread::hardware_concurrency();
+  p_options->intra_op_num_threads = std::thread::hardware_concurrency();
 
   return S_OK;
 }

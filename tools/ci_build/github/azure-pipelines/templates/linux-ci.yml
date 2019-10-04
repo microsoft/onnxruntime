@@ -5,7 +5,7 @@ parameters:
   DoNugetPack: 'false'
   NuPackScript: ''
   ArtifactName: 'drop-linux'
-  TimeoutInMinutes: 60
+  TimeoutInMinutes: 120
 
 jobs:
 - job: ${{ parameters.JobName }}

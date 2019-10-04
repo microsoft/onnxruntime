@@ -21,6 +21,9 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 
+const OrtApi* g_ort = OrtGetApi(ORT_API_VERSION);
+const OrtApi* Ort::g_api = OrtGetApi(ORT_API_VERSION);
+
 using namespace onnxruntime;
 
 namespace {
@@ -392,10 +395,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   std::set<BrokenTest> broken_tests = {
       {"constantofshape_float_ones", "test data bug", {"onnx141","onnx150"}},
       {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
-      {"convtranspose_1d", "disable reason"},
-      {"convtranspose_3d", "disable reason"},
-      {"cast_STRING_to_FLOAT", "Cast opset 9 not supported yet"},
-      {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
+      {"convtranspose_1d", "1d convtranspose not supported yet"},
+      {"convtranspose_3d", "3d convtranspose not supported yet"},
+      {"cast_STRING_to_FLOAT", "result differs"},
+      {"cast_FLOAT_to_STRING", "result differs"},
       {"tf_nasnet_large", "disable temporarily"},
       {"tf_nasnet_mobile", "disable temporarily"},
       {"tf_pnasnet_large", "disable temporarily"},
@@ -406,37 +409,144 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"dynamicquantizelinear_expanded", "Round(11) not implemented yet"},
       {"dynamicquantizelinear_max_adjusted_expanded", "Round(11) not implemented yet"},
       {"dynamicquantizelinear_min_adjusted_expanded", "Round(11) not implemented yet"},
-      {"top_k", "not implemented yet for opset 11", {"onnxtip"}},
-      {"top_k_smallest", "not implemented yet for opset 11", {"onnxtip"}},
+      {"top_k", "not implemented yet for opset 11"},
+      {"top_k_smallest", "not implemented yet for opset 11"},
+      {"top_k_negative_axis", "TopK(11) not implemented yet"},
       {"unique_not_sorted_without_axis", "not implemented yet"},
-      {"unique_sorted_with_axis", "not implemented yet"},
-      {"unique_sorted_with_axis_3d", "not implemented yet"},
-      {"unique_sorted_without_axis", "not implemented yet"},
+      {"unique_sorted_with_axis", "Unique not implemented yet"},
+      {"unique_sorted_with_axis_3d", "Unique not implemented yet"},
+      {"unique_sorted_without_axis", "Unique not implemented yet"},
+      {"unique_sorted_axis_3d", "Unique not implemented yet"},
+      {"unique_sorted_axis", "Unique not implemented yet"},
+      {"unique_sorted_with_negative_axis", "Unique not implemented yet"},
       {"scatter_elements_with_axis", "not implemented yet"},
       {"scatter_elements_without_axis", "not implemented yet"},
       {"round", "not implemented yet"},
       {"gather_elements_1", "not implemented yet"},
       {"gather_elements_0", "not implemented yet"},
-      {"depthtospace_crd_mode_example", "not implemented yet"},
-      {"depthtospace_crd_mode", "not implemented yet"},
       {"cumsum_2d_axis_1", "not implemented yet"},
       {"cumsum_2d_axis_0", "not implemented yet"},
       {"cumsum_1d_reverse_exclusive", "not implemented yet"},
       {"cumsum_1d_reverse", "not implemented yet"},
       {"cumsum_1d_exclusive", "not implemented yet"},
-      {"cumsum_1d", "not implemented yet"},      
-  };
+      {"cumsum_1d", "not implemented yet"},
+      {"range_float_type_positive_delta", "not implemented yet"},
+      {"range_float_type_positive_delta_expanded", "not implemented yet"},
+      {"range_int32_type_negative_delta", "not implemented yet"},
+      {"range_int32_type_negative_delta_expanded", "not implemented yet"},
+      {"det_2d", "not implemented yet"},
+      {"det_nd", "not implemented yet"},
+      {"gathernd_example_float32", "not implemented yet"},
+      {"gathernd_example_int32", "not implemented yet"},
+      {"resize_downsample_scales_cubic_A_n0p5_exclude_outside", "not implemented yet"},
+      {"resize_downsample_scales_cubic_align_corners", "not implemented yet"},
+      {"resize_downsample_scales_cubic", "not implemented yet"},
+      {"resize_downsample_scales_linear_align_corners", "not implemented yet"},
+      {"resize_downsample_scales_linear", "not implemented yet"},
+      {"resize_downsample_scales_nearest", "not implemented yet"},
+      {"resize_downsample_sizes_cubic", "not implemented yet"},
+      {"resize_downsample_sizes_linear_pytorch_half_pixel", "not implemented yet"},
+      {"resize_downsample_sizes_nearest", "not implemented yet"},
+      {"resize_downsample_sizes_nearest_tf_half_pixel_for_nn", "not implemented yet"},
+      {"resize_tf_crop_and_resize", "not implemented yet"},
+      {"resize_upsample_scales_cubic_A_n0p5_exclude_outside", "not implemented yet"},
+      {"resize_upsample_scales_cubic_align_corners", "not implemented yet"},
+      {"resize_upsample_scales_cubic_asymmetric", "not implemented yet"},
+      {"resize_upsample_scales_cubic", "not implemented yet"},
+      {"resize_upsample_scales_linear_align_corners", "not implemented yet"},
+      {"resize_upsample_scales_linear", "not implemented yet"},
+      {"resize_upsample_scales_nearest", "not implemented yet"},
+      {"resize_upsample_sizes_cubic", "not implemented yet"},
+      {"resize_upsample_sizes_nearest_ceil_half_pixel", "not implemented yet"},
+      {"resize_upsample_sizes_nearest", "not implemented yet"},
+      {"resize_upsample_sizes_nearest_floor_align_corners", "not implemented yet"},
+      {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "not implemented yet"},
+      {"scatternd", "not implemented yet"},
+      {"sequence_model7", "SplitToSequence not implemented yet"},
+      {"sequence_model6", "SplitToSequence not implemented yet"},
+      {"sequence_model5", "SequenceConstruct not implemented yet"},
+      {"sequence_model4", "SequenceConstruct not implemented yet"},
+      {"sequence_model3", "SequenceConstruct not implemented yet"},
+      {"sequence_model2", "SequenceConstruct not implemented yet"},
+      {"sequence_model1", "Sequence* not implemented yet"},
+      {"unsqueeze_two_axes", "Unsqueeze not implemented yet"},
+      {"unsqueeze_three_axes", "Unsqueeze not implemented yet"},
+      {"unsqueeze_negative_axes", "Unsqueeze not implemented yet"},
+      {"unsqueeze_axis_3", "Unsqueeze not implemented yet"},
+      {"unsqueeze_axis_2", "Unsqueeze not implemented yet"},
+      {"unsqueeze_axis_1", "Unsqueeze not implemented yet"},
+      {"unsqueeze_axis_0", "Unsqueeze not implemented yet"},
+      {"squeeze_negative_axes", "Squeeze(11) not implemented yet"},
+      {"slice_negative_axes", "Slice(11) not implemented yet"},
+      {"scatter_elements_with_negative_indices", "ScatterElements(11) not implemented yet"},
+      {"reduce_sum_square_negative_axes_keepdims_random", "ReduceSumSquare(11) not implemented yet"},
+      {"reduce_sum_square_negative_axes_keepdims_example", "ReduceSumSquare(11) not implemented yet"},
+      {"reduce_sum_negative_axes_keepdims_random", "ReduceSum(11) not implemented yet"},
+      {"reduce_sum_negative_axes_keepdims_example", "ReduceSum(11) not implemented yet"},
+      {"reduce_prod_negative_axes_keepdims_random", "ReduceProd(11) not implemented yet"},
+      {"reduce_prod_negative_axes_keepdims_example", "ReduceProd(11) not implemented yet"},
+      {"reduce_min_negative_axes_keepdims_random", "ReduceMin(11) not implemented yet"},
+      {"reduce_min_negative_axes_keepdims_example", "ReduceMin(11) not implemented yet"},
+      {"reduce_mean_negative_axes_keepdims_random", "ReduceMean(11) not implemented yet"},
+      {"reduce_mean_negative_axes_keepdims_example", "ReduceMean(11) not implemented yet"},
+      {"reduce_max_negative_axes_keepdims_random", "ReduceMax(11) not implemented yet"},
+      {"reduce_max_negative_axes_keepdims_example", "ReduceMax(11) not implemented yet"},
+      {"reduce_log_sum_negative_axes", "ReduceLogSum(11) not implemented yet"},
+      {"reduce_log_sum_exp_negative_axes_keepdims_random", "ReduceLogSumExp(11) not implemented yet"},
+      {"reduce_log_sum_exp_negative_axes_keepdims_example", "ReduceLogSumExp(11) not implemented yet"},
+      {"reduce_l2_negative_axes_keep_dims_random", "ReduceL2(11) not implemented yet"},
+      {"reduce_l2_negative_axes_keep_dims_example", "ReduceL2(11) not implemented yet"},
+      {"reduce_l1_negative_axes_keep_dims_random", "ReduceL1(11) not implemented yet"},
+      {"reduce_l1_negative_axes_keep_dims_example", "ReduceL1(11) not implemented yet"},
+      {"onehot_without_axis", "OneHot(11) not implemented yet"},
+      {"onehot_with_negative_axis", "OneHot(11) not implemented yet"},
+      {"onehot_with_axis", "OneHot(11) not implemented yet"},
+      {"onehot_negative_indices", "OneHot(11) not implemented yet"},
+      {"gather_elements_negative_indices", "GatherElements(11) not implemented yet"},
+      {"flatten_negative_axis4", "Flatten(11) not implemented yet"},
+      {"flatten_negative_axis3", "Flatten(11) not implemented yet"},
+      {"flatten_negative_axis2", "Flatten(11) not implemented yet"},
+      {"flatten_negative_axis1", "Flatten(11) not implemented yet"},
+      {"reflect_pad", "Pad(11) not implemented yet"},
+      {"edge_pad", "Pad(11) not implemented yet"},
+      {"constant_pad", "Pad(11) not implemented yet"},
+      {"concat_3d_axis_negative_3", "Concat(11) not implemented yet"},
+      {"concat_3d_axis_negative_2", "Concat(11) not implemented yet"},
+      {"concat_3d_axis_negative_1", "Concat(11) not implemented yet"},
+      {"concat_2d_axis_negative_2", "Concat(11) not implemented yet"},
+      {"concat_2d_axis_negative_1", "Concat(11) not implemented yet"},
+      {"concat_1d_axis_negative_1", "Concat(11) not implemented yet"},
+      {"compress_negative_axis", "Compress(11) not implemented yet"},
+      {"bitshift_right_uint8", "BitShift(11) not implemented yet"},
+      {"bitshift_right_uint64", "BitShift(11) not implemented yet"},
+      {"bitshift_right_uint32", "BitShift(11) not implemented yet"},
+      {"bitshift_right_uint16", "BitShift(11) not implemented yet"},
+      {"bitshift_left_uint8", "BitShift(11) not implemented yet"},
+      {"bitshift_left_uint64", "BitShift(11) not implemented yet"},
+      {"bitshift_left_uint32", "BitShift(11) not implemented yet"},
+      {"bitshift_left_uint16", "BitShift(11) not implemented yet"},
+      {"gemm_default_scalar_bias", "Gemm ValidBroadcast() has bug to be fixed."},
+      {"mlperf_ssd_mobilenet_300", "Shape Inference Error. Possibly the model has issues."},
+};
 
 #ifdef USE_NGRAPH
   broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
   broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
   broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
   broken_tests.insert({"clip_splitbounds", "not implemented yet for opset 11"});
-  broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});	
-  broken_tests.insert({"clip_example", "not implemented yet for opset 11"});	
-  broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});	
+  broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});
+  broken_tests.insert({"clip_example", "not implemented yet for opset 11"});
+  broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});
   broken_tests.insert({"clip_default_max", "not implemented yet for opset 11"});
   broken_tests.insert({"clip", "not implemented yet for opset 11"});
+  broken_tests.insert({"depthtospace_crd_mode_example", "NGraph does not support CRD mode"});
+  broken_tests.insert({"depthtospace_crd_mode", "NGraph does not support CRD mode"});
+  broken_tests.insert({"argmax_negative_axis_keepdims_example", "not implemented yet for opset 11"});
+  broken_tests.insert({"argmax_negative_axis_keepdims_random", "not implemented yet for opset 11"});
+  broken_tests.insert({"argmin_negative_axis_keepdims_example", "not implemented yet for opset 11"});	
+  broken_tests.insert({"argmin_negative_axis_keepdims_random", "not implemented yet for opset 11"});	
+  broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});	
+  broken_tests.insert({"hardmax_negative_axis", "not implemented yet for opset 11"});
 #endif
 
 #ifdef USE_MKLDNN
@@ -452,6 +562,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"fp16_tiny_yolov2", "accuaracy mismatch with fp16 precision"});
 #ifdef OPENVINO_CONFIG_GPU_FP32
   broken_tests.insert({"tiny_yolov2", "accuracy mismatch"});
+  broken_tests.insert({"div", "will be fixed in the next release"});
+#ifdef OPENVINO_CONFIG_GPU_FP16
+  broken_tests.insert({"div", "will be fixed in the next release"});
+#endif
 #endif
 #endif
 

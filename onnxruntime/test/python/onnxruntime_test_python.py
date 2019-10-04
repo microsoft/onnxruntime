@@ -41,6 +41,28 @@ class TestInferenceSession(unittest.TestCase):
         onnxrt.InferenceSession(self.get_name("mul_1.onnx"), sess_options=so)
         self.assertTrue(os.path.isfile(so.optimized_model_filepath))
 
+    def testGetProviders(self):
+        self.assertTrue('CPUExecutionProvider' in onnxrt.get_available_providers())
+        self.assertTrue('CPUExecutionProvider' in onnxrt.get_all_providers())
+        sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"))
+        self.assertTrue('CPUExecutionProvider' in sess.get_providers())
+
+    def testSetProviders(self):
+        if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
+          sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"))
+          # confirm that CUDA Provider is in list of registered providers.
+          self.assertTrue('CUDAExecutionProvider' in sess.get_providers())
+          # reset the session and register only CPU Provider.
+          sess.set_providers(['CPUExecutionProvider'])
+          # confirm only CPU Provider is registered now.
+          self.assertEqual(['CPUExecutionProvider'], sess.get_providers())
+
+    def testInvalidSetProviders(self):
+        with self.assertRaises(ValueError) as context:
+          sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"))
+          sess.set_providers(['InvalidProvider'])
+        self.assertTrue('[\'InvalidProvider\'] does not contain a subset of available providers' in str(context.exception))
+
     def testRunModel(self):
         sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"))
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
