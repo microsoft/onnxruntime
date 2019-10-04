@@ -27,11 +27,8 @@ tvm::Tensor GatherElements(const tvm::Tensor& t,
         tvm::Array<tvm::Expr> idx_vars;
         for (int64_t j = 0; j < indices_rank; j++)
           idx_vars.push_back(ovars[j]);
-        tvm::Expr idx = indices(idx_vars);
-        // when idx >= 0, we take tvm::max(..., 0), because (idx < 0) is 0
-        // when idx < 0, we take idx_upper_bound + tvm::max(...), because tvm::max(idx, 0) is 0
-        tvm::Expr real_idx = tvm::max(tvm::min(idx, idx_upper_bound - 1), 0) +
-                             (idx < 0) * (idx_upper_bound + tvm::max(idx, -idx_upper_bound));
+        // make sure idx is within [-idx_upper_bound, idx_upper_bound - 1]
+        tvm::Expr real_idx = tvm_codegen::SafeIndex(indices(idx_vars), idx_upper_bound);
         // tvm idx must be of Int(32)
         ivars.push_back(tvm::cast(tvm::Int(32), real_idx));
       } else {
