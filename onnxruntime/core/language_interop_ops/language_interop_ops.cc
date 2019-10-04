@@ -38,8 +38,9 @@ void LoadInterOp(const ONNX_NAMESPACE::GraphProto& graph_proto, InterOpDomains& 
     const auto& node_proto = graph_proto.node(i);
     if (node_proto.op_type() == "PyOp") {
       OrtCustomOpDomain* pyop_domain = nullptr;
-      ORT_THROW_ON_ERROR(OrtCreateCustomOpDomain(node_proto.domain().c_str(), &pyop_domain));
-      ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(pyop_domain, LoadPyOp(node_proto, log_func)));
+      const OrtApi* ort = OrtGetApi(ORT_API_VERSION);
+      Ort::ThrowOnError(ort, ort->CreateCustomOpDomain(node_proto.domain().c_str(), &pyop_domain));
+      Ort::ThrowOnError(ort, ort->CustomOpDomain_Add(pyop_domain, LoadPyOp(node_proto, log_func)));
       auto ort_domain = std::unique_ptr<OrtCustomOpDomain, decltype(&InterOpDomainDeleter)>(pyop_domain, &InterOpDomainDeleter);
       domains.push_back(std::move(ort_domain));
     } else {

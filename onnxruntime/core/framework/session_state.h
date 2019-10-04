@@ -7,7 +7,7 @@
 #include <map>
 #include <unordered_map>
 #include <vector>
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 #include "core/platform/ort_mutex.h"
 #include "core/common/common.h"
@@ -49,9 +49,15 @@ struct MemoryPatternGroup;
  */
 class SessionState {
  public:
-  SessionState(const ExecutionProviders& execution_providers, bool enable_mem_pattern,
-               concurrency::ThreadPool* thread_pool)
-      : execution_providers_{execution_providers}, enable_mem_pattern_(enable_mem_pattern), thread_pool_(thread_pool) {}
+  SessionState(const ExecutionProviders& execution_providers,
+               bool enable_mem_pattern,
+               concurrency::ThreadPool* thread_pool,
+               concurrency::ThreadPool* inter_op_thread_pool)
+      : execution_providers_(execution_providers),
+        enable_mem_pattern_(enable_mem_pattern),
+        thread_pool_(thread_pool),
+        inter_op_thread_pool_(inter_op_thread_pool) {
+  }
 
   ~SessionState() {
     for (auto* p : session_kernels_) {
@@ -197,6 +203,7 @@ class SessionState {
   void RemoveSubgraphSessionState(onnxruntime::NodeIndex index);
 
   concurrency::ThreadPool* GetThreadPool() const { return thread_pool_; }
+  concurrency::ThreadPool* GetInterOpThreadPool() const { return inter_op_thread_pool_; }
 
   bool ExportDll() const { return export_fused_dll_; }
   void SetExportDllFlag(bool flag) { export_fused_dll_ = flag; }
@@ -218,7 +225,7 @@ class SessionState {
   std::vector<OpKernel*> session_kernels_;
   std::unique_ptr<GraphViewer> graph_viewer_;
 
-  const ExecutionProviders& execution_providers_;  // owned by InferenceSession
+  std::reference_wrapper<const ExecutionProviders> execution_providers_;  // owned by InferenceSession
   OrtValueNameIdxMap ort_value_name_idx_map_;
 
   // initialized tensors
@@ -233,7 +240,7 @@ class SessionState {
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan_ = nullptr;
 
   const logging::Logger* logger_ = nullptr;
-  profiling::Profiler* profiler_;
+  profiling::Profiler* profiler_ = nullptr;
 
   // switch for enable memory pattern optimization or not.
   const bool enable_mem_pattern_;
@@ -252,11 +259,12 @@ class SessionState {
   SubgraphSessionStateMap subgraph_session_states_;
 
   // It could be NULL
-  concurrency::ThreadPool* const thread_pool_;
+  concurrency::ThreadPool* const thread_pool_{};
+  concurrency::ThreadPool* const inter_op_thread_pool_{};
 
   bool export_fused_dll_ = false;
   FuncManager fused_funcs_mgr_;
-  const DataTransferManager* data_transfer_mgr_;
+  const DataTransferManager* data_transfer_mgr_ = nullptr;
 
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;

@@ -219,7 +219,7 @@ class SubgraphPrimitivePool : public PrimitivePool<T> {
         SubgraphPrimitivePool<T>::GetInstance().GetPrimitive(params.subgraph_key + dims_str));
 
     if (primitive == nullptr) {
-      auto subgraph_primitive = std::make_unique<SubgraphPrimitive<T>>(api, context, params);
+      auto subgraph_primitive = onnxruntime::make_unique<SubgraphPrimitive<T>>(api, context, params);
       primitive = subgraph_primitive.get();
       SubgraphPrimitivePool<T>::GetInstance().SetPrimitive(params.subgraph_key + dims_str, std::move(subgraph_primitive));
     }

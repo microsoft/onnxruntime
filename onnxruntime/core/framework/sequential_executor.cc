@@ -149,12 +149,18 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     {
       diagnostic::span span(series, "%s.%d", node.OpType().c_str(), node.Index());
 #endif
+      Status compute_status;
 
-      Status compute_status = p_op_kernel->Compute(&op_kernel_context);
+      try {
+        compute_status = p_op_kernel->Compute(&op_kernel_context);
+      } catch (const std::exception& ex) {
+        compute_status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
+      }
+
       if (!compute_status.IsOK()) {
         std::ostringstream ss;
-        ss << "Non-zero status code returned while running Node: " << node.Name()
-           << " Status Message: " << compute_status.ErrorMessage();
+        ss << "Non-zero status code returned while running " << node.OpType() << " node. Name:'" << node.Name()
+           << "' Status Message: " << compute_status.ErrorMessage();
         const auto msg_string = ss.str();
         LOGS(logger, ERROR) << msg_string;
         return Status(compute_status.Category(), compute_status.Code(), msg_string);
@@ -231,7 +237,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
     if (all_tensors) {
-      auto mem_patterns = std::make_unique<MemoryPatternGroup>();
+      auto mem_patterns = onnxruntime::make_unique<MemoryPatternGroup>();
       ORT_RETURN_IF_ERROR(frame.GeneratePatterns(mem_patterns.get()));
       ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(input_shapes, std::move(mem_patterns)));
     }

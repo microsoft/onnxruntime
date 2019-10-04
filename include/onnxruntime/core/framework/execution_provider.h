@@ -4,7 +4,7 @@
 #pragma once
 
 #include <unordered_map>
-#include "gsl/pointers"
+#include "gsl/gsl"
 
 #include "core/common/status.h"
 #include "core/framework/tensor.h"
@@ -29,7 +29,7 @@ typedef std::map<int, AllocatorPtr> AllocatorMap;
 // if we are export the fused function to dll, the function will still in the same binary as lotus
 // use std function to give execution provider some chance to capture some state.
 using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
-using ComputeFunc = std::function<Status(FunctionState, const OrtCustomOpApi*, OrtKernelContext*)>;
+using ComputeFunc = std::function<Status(FunctionState, const OrtApi*, OrtKernelContext*)>;
 using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
 
 struct NodeComputeInfo {

@@ -7,7 +7,7 @@ FROM nvidia/cuda@sha256:362e4e25aa46a18dfa834360140e91b61cdb0a3a2796c8e09dadb268
 ARG PYTHON_VERSION=3.5
 
 ADD scripts /tmp/scripts
-RUN /tmp/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} && /tmp/scripts/install_deps.sh && rm -rf /tmp/scripts
+RUN /tmp/scripts/install_ubuntu.sh -p $PYTHON_VERSION && /tmp/scripts/install_deps.sh -p $PYTHON_VERSION && rm -rf /tmp/scripts
 
 WORKDIR /root
 

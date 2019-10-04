@@ -1,9 +1,5 @@
 This folder contains scripts for Nuphar:
 
-* cntk_converter.py
-
-Converts CNTK model to ONNX and generate test data, requires CNTK python wheels to run
-
 * create_shared.cmd/sh
 
 Generates JIT dll from where env NUPHAR_CACHE_PATH is set, to reduce JIT cost at runtime

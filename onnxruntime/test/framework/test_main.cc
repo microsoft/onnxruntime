@@ -4,6 +4,10 @@
 #include "core/session/environment.h"
 #include "gtest/gtest.h"
 #include "test/test_environment.h"
+#include "core/session/onnxruntime_cxx_api.h"
+
+const OrtApi* g_ort = OrtGetApi(ORT_API_VERSION);
+const OrtApi* Ort::g_api = OrtGetApi(ORT_API_VERSION);
 
 GTEST_API_ int main(int argc, char** argv) {
   int status = 0;

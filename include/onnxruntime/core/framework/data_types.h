@@ -58,6 +58,10 @@ inline bool operator!=(const MLFloat16& left, const MLFloat16& right) {
   return left.val != right.val;
 }
 
+inline bool operator<(const MLFloat16& left, const MLFloat16& right) {
+  return left.val < right.val;
+}
+
 struct ort_endian {
   union q {
     uint16_t v_;
@@ -85,6 +89,7 @@ struct BFloat16 {
       val = dst[0];
     }
   }
+
   float ToFloat() const {
     float result;
     uint16_t* dst = reinterpret_cast<uint16_t*>(&result);
@@ -121,6 +126,10 @@ inline bool operator==(const BFloat16& left, const BFloat16& right) {
 
 inline bool operator!=(const BFloat16& left, const BFloat16& right) {
   return left.val != right.val;
+}
+
+inline bool operator<(const BFloat16& left, const BFloat16& right) {
+  return left.val < right.val;
 }
 
 // DataTypeImpl pointer as unique DataTypeImpl identifier.
@@ -650,12 +659,12 @@ class OpaqueType : public NonTensorType<T> {
     return this->IsOpaqueCompatible(type_proto);
   }
 
-  void FromDataContainer (const void* data, size_t data_size, OrtValue& output) const override {
+  void FromDataContainer(const void* data, size_t data_size, OrtValue& output) const override {
     NonTensorTypeConverter<T>::FromContainer(this, data, data_size, output);
   }
 
-  void ToDataContainer (const OrtValue& input, size_t data_size, void* data) const override {
-    NonTensorTypeConverter<T>::ToContainer(input, data_size, data); 
+  void ToDataContainer(const OrtValue& input, size_t data_size, void* data) const override {
+    NonTensorTypeConverter<T>::ToContainer(input, data_size, data);
   }
 
  private:
