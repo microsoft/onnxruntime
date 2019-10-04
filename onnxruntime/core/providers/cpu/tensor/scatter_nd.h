@@ -5,12 +5,10 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
-namespace contrib {
 
-class GatherNDBase
+class ScatterNDBase
 {
 protected:
   struct Prepare {
@@ -35,16 +33,15 @@ protected:
 
   template<typename Tind>
   Status PrepareForCompute(OpKernelContext* context, Prepare& p) const;
-}; // class GatherNDBase
+}; // class ScatterNDBase
 
-class GatherND final : public OpKernel, protected GatherNDBase {
+class ScatterND final : public OpKernel, protected ScatterNDBase {
 public:
-  explicit GatherND(const OpKernelInfo& info) : OpKernel(info) {}
+  explicit ScatterND(const OpKernelInfo& info) : OpKernel(info) {}
   Status Compute(OpKernelContext* context) const override;
 private:
-  Status GatherNumber(const Prepare& p) const;
-  Status GatherString(const Prepare& p) const;
+  Status ScatterNumber(const Prepare& p) const;
+  Status ScatterString(const Prepare& p) const;
 };
 
-} // namespace contrib
 } // namespace onnxruntime
