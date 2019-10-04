@@ -58,6 +58,8 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
         cxxopts::value<size_t>()->default_value(to_string(profiling::Profiler::DEFAULT_MAX_PROFILER_EVENTS)))
       ("mode", "mode for running, can be one of [train|perf]", cxxopts::value<std::string>()->default_value("train"))
       ("perf_warm_up_iters", "Num of warm-up iterations to run before the perf test", cxxopts::value<int>()->default_value("10"))
+      ("histogram", "Tensor(s) to display a histogram on tensorboard (e.g. '417,3347,417_grad,3347_grad' for bert-large or '81,449,81_grad,449_grad' for bert-tiny)",
+        cxxopts::value<std::vector<std::string>>()->default_value({}))
       ("max_seq_length",
         "The maximum total input sequence length after WordPiece tokenization. "
         "Sequences longer than this will be truncated, and sequences shorter "
@@ -112,6 +114,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     params.train_data_dir.assign(train_data_dir.begin(), train_data_dir.end());
     params.test_data_dir.assign(test_data_dir.begin(), test_data_dir.end());
     params.log_dir.assign(log_dir.begin(), log_dir.end());
+    params.histogram_names = flags["histogram"].as<std::vector<std::string>>();
 
     std::string mode = flags["mode"].as<std::string>();
     if (mode == "perf" || mode == "train") {
@@ -176,6 +179,10 @@ void setup_training_params(TrainingRunner::Parameters& params) {
   params.model_trained_path = params.model_name + "_trained.onnx";
   params.model_trained_with_loss_func_path = params.model_name + "_with_cost_trained.onnx";
 
+#ifdef USE_HOROVOD
+  params.mpi_context = setup_horovod();
+#endif
+
   params.loss_func_info = LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
                                            "total_loss",
                                            {/*prediction_masked_lm*/ "output1",
@@ -188,13 +195,19 @@ void setup_training_params(TrainingRunner::Parameters& params) {
                                             /*nsp_loss*/ "nsp_loss",
                                             /*batch_size*/ std::to_string(params.batch_size),
                                             /*max_sequence_len*/ std::to_string(512),
-                                            /*max_predictions_per_sequence*/ std::to_string(80),
-                                            /*summary_loss*/ "summary"});
+                                            /*max_predictions_per_sequence*/ std::to_string(80)
+                                           });
+
   params.weights_not_to_train = {
       "position_01",            // Slice's dat input
       "op_min_ends_expand_10",  //op_min_ends_expand_10
   };
-  params.fetch_names = {"total_loss", "mlm_loss", "nsp_loss", "summary"};
+  params.fetch_names = {"total_loss", "mlm_loss", "nsp_loss"};
+
+  if (params.EnableTensorboard()) {
+    params.fetch_names.push_back(params.summary_name);
+    params.scalar_names = {"total_loss", "mlm_loss", "nsp_loss"};
+  }
 
   params.immutable_weights = {
       {"Div", {{1, 8.0f}, {1, 1.4142135381698608f}}},
@@ -225,10 +238,6 @@ void setup_training_params(TrainingRunner::Parameters& params) {
 
   params.skip_evaluation = params.is_perf_test;
 
-#ifdef USE_HOROVOD
-  params.mpi_context = setup_horovod();
-#endif
-
   params.error_function = [params](const std::vector<std::string>& /*feed_names*/,
                                    const std::vector<OrtValue>& /*feeds*/,
                                    const std::vector<std::string>& fetch_names,
@@ -237,12 +246,15 @@ void setup_training_params(TrainingRunner::Parameters& params) {
     const Tensor& total_loss_t = fetches[0].Get<Tensor>();
     const Tensor& mlm_loss_t = fetches[1].Get<Tensor>();
     const Tensor& nsp_loss_t = fetches[2].Get<Tensor>();
-    const Tensor& summary_loss_t = fetches[3].Get<Tensor>();
 
     total_loss += GetLossValue(total_loss_t);
     mlm_loss += GetLossValue(mlm_loss_t);
     nsp_loss += GetLossValue(nsp_loss_t);
-    summary_loss.push_back(*(summary_loss_t.template Data<std::string>()));
+
+    if (params.EnableTensorboard()) {
+      const Tensor& summary_loss_t = fetches[3].Get<Tensor>();
+      summary_loss.push_back(*(summary_loss_t.template Data<std::string>()));
+    }
 
     if (params.dump_fetches) {
       std::ostringstream filename;
@@ -256,7 +268,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
   };
 
   std::shared_ptr<EventWriter> tensorboard;
-  if (!params.log_dir.empty() && params.mpi_context.world_rank == 0)
+  if (params.EnableTensorboard())
     tensorboard = std::make_shared<EventWriter>(params.log_dir);
 
   params.post_evaluation_callback = [tensorboard](size_t num_samples, size_t step, const std::string tag) {

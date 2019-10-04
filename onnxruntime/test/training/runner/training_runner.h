@@ -38,7 +38,6 @@ class TrainingRunner {
 
     PATH_STRING_TYPE train_data_dir;
     PATH_STRING_TYPE test_data_dir;
-    PATH_STRING_TYPE log_dir;  // Path to write Tensorboard events to.
 
     bool is_perf_test;
     size_t perf_warm_up_iters;
@@ -103,6 +102,16 @@ class TrainingRunner {
     bool use_mixed_precision = false;
     bool use_fp16_moments = false;
     bool use_fp16_initializer = true;
+
+    // Tensorboard configuration.
+    PATH_STRING_TYPE log_dir; // Path to write Tensorboard events to.
+    std::string summary_name = "summary";
+    VectorString scalar_names;
+    VectorString histogram_names;
+
+    bool EnableTensorboard() const {
+      return !is_perf_test && !log_dir.empty() && mpi_context.world_rank == 0;
+    }
   };
 
   TrainingRunner(std::shared_ptr<IDataLoader> training_data_loader,

@@ -12,6 +12,7 @@
 #include "core/optimizer/insert_output_rewriter.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/graph/training/mixed_precision_transformer.h"
+#include "core/graph/training/tensorboard_transformer.h"
 #include "core/graph/training/gradient_builder_base.h"
 
 //Gist Encoding
@@ -90,6 +91,13 @@ Status TrainingSession::AddGistEncoding() {
   } catch (const OnnxRuntimeException& exp) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to add Gist Encoding:", exp.what());
   }
+  return DoPostLoadProcessing(*model_);
+}
+
+Status TrainingSession::AddTensorboard(const std::string& summary_name,
+                                       const std::vector<std::string>& scalar_nodes,
+                                       const std::vector<std::string>& histogram_nodes) {
+  ORT_RETURN_IF_ERROR(TransformGraphForTensorboard(model_->MainGraph(), summary_name, scalar_nodes, histogram_nodes));
   return DoPostLoadProcessing(*model_);
 }
 

@@ -91,6 +91,11 @@ Status TrainingRunner::Initialize() {
   ORT_RETURN_IF_ERROR(session_.BuildOptimizer(opt_graph_config, opt_configs, opt_graph_outputs));
   opt_graph_outputs_ = opt_graph_outputs;
 
+  // Add tensorboard
+  if (params_.EnableTensorboard()) {
+    ORT_RETURN_IF_ERROR(session_.AddTensorboard(params_.summary_name, params_.scalar_names, params_.histogram_names));
+  }
+
   // Expose all fetches as graph outputs
   VectorString fetch_names = params_.fetch_names;
   for (const auto& it : opt_graph_outputs) {

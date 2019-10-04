@@ -42,6 +42,15 @@ class TrainingSession : public InferenceSession {
 
   common::Status AddGistEncoding();
 
+  /** Add tensorboard summary nodes to the graph.
+  @param summary_name name for the merged summary node.
+  @param scalar_nodes tensor names to add scalar summary nodes for.
+  @param histogram_nodes tensor names to add histogram summary nodes for.
+  */
+  common::Status AddTensorboard(const std::string& summary_name,
+                                const std::vector<std::string>& scalar_nodes,
+                                const std::vector<std::string>& histogram_nodes);
+
   common::Status ApplyTransformationsToMainGraph();
 
   /** Perform auto-diff to add backward graph into the model.

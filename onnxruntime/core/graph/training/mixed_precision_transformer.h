@@ -12,5 +12,6 @@ Status TransformGraphForMixedPrecision(Graph& graph,
                                        const std::unordered_set<std::string>& weights_to_train,
                                        bool use_fp16_initializer,
                                        std::unordered_map<std::string, NodeArg*>& fp16_weights_map);
-};
+
+}  // namespace training
 }  // namespace onnxruntime

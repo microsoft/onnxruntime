@@ -510,8 +510,8 @@ TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
                                             /*nsp_loss*/ "nsp_loss",
                                             /*batch_size*/ std::to_string(13),
                                             /*max_sequence_len*/ std::to_string(7),
-                                            /*max_predictions_per_sequence*/ std::to_string(7),
-                                            /*summary_loss*/ "summary"});
+                                            /*max_predictions_per_sequence*/ std::to_string(7)
+                                           });
   params.weights_not_to_train = {
       "position_01",            // Slice's dat input
       "op_min_ends_expand_10",  //op_min_ends_expand_10

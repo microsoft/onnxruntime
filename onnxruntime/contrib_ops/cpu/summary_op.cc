@@ -179,8 +179,9 @@ Status SummaryHistogramOp::ComputeImpl(OpKernelContext& context, const Tensor& i
   Histogram histogram;
   for (int i = 0; i < input_size; i++) {
     double value = static_cast<double>(input_data[i]);
-    ORT_RETURN_IF(std::isnan(value), "SummaryHistogram input contains a NaN value");
-    ORT_RETURN_IF(std::isinf(value), "SummaryHistogram input contains an infinite value");
+    if (std::isnan(value) || std::isinf(value)) continue;
+    //ORT_RETURN_IF(std::isnan(value), "SummaryHistogram input contains a NaN value");
+    //ORT_RETURN_IF(std::isinf(value), "SummaryHistogram input contains an infinite value");
     histogram.Add(value);
   }
 
