@@ -60,7 +60,7 @@ namespace Dml
             m_capacity = ComputeNewCapacity(c_initialCapacity, dst.size());
             m_readbackHeap = CreateReadbackHeap(m_device.Get(), m_capacity);
         }
-        else if (gsl::narrow_cast<ptrdiff_t>(m_capacity) < dst.size())
+        else if (m_capacity < dst.size())
         {
             // Ensure there's sufficient capacity
             m_capacity = ComputeNewCapacity(m_capacity, dst.size());
@@ -69,7 +69,7 @@ namespace Dml
             m_readbackHeap = CreateReadbackHeap(m_device.Get(), m_capacity);
         }
 
-        assert(gsl::narrow_cast<ptrdiff_t>(m_readbackHeap->GetDesc().Width) >= dst.size());
+        assert(m_readbackHeap->GetDesc().Width >= dst.size());
 
         // Copy from the source resource into the readback heap
         m_executionContext->CopyBufferRegion(

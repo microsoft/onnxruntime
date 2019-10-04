@@ -16,6 +16,7 @@
 #include <deque>
 #include <chrono>
 #include <variant>
+#include <cassert>
 
 #include <wrl/client.h>
 #include <wrl/implements.h>

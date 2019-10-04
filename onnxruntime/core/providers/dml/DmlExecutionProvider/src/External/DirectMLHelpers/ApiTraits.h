@@ -1519,7 +1519,7 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
 }
 
 
-inline gsl::czstring<> ToString(DML_OPERATOR_TYPE value)
+inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
 {
     switch (value)
     {

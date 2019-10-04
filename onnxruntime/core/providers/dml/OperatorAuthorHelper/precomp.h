@@ -7,6 +7,7 @@
 #include <cassert>
 #include <chrono>
 #include <vector>
+#include <numeric>
 
 #include <wrl/client.h>
 #include <wrl/implements.h>
