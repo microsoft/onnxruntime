@@ -113,7 +113,7 @@ public:
             // PRelu is unique and accepts its parameters as a second input tensor.
 
             // The slope tensor is unidirectionally broadcastable. Reshape it based on the desired output sizes.
-            m_inputTensorDescs[1] = CreateTensorDescFromInput(kernelCreationContext, 1, TensorAxis::DoNotCoerce, TensorAxis::W, outputSizes);
+            m_inputTensorDescs[1] = CreateTensorDescFromInput(kernelCreationContext, 1, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, outputSizes);
 
             inputDescs = GetDmlInputDescs();
             outputDescs = GetDmlOutputDescs();

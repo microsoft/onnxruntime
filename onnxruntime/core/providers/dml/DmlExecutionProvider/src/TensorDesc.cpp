@@ -51,7 +51,8 @@ TensorDesc::TensorDesc(
     gsl::span<const uint32_t> dimensions,
     gsl::span<const uint32_t> nonBroadcastDimensions,
     uint32_t coerceAxis,
-    uint32_t placement,
+    int32_t placement, // Adjustment offset of the passed dimensions within the minDimensionCount.
+    int32_t leftAlignedDimensionCount, // Number of dimensions that are left aligned (INT32_MAX means all, 0 means all right aligned).
     uint32_t minDimensionCount,
     uint32_t guaranteedBaseOffsetAlignment
     )
@@ -65,11 +66,13 @@ TensorDesc::TensorDesc(
     // Coercion isn't always possible when striding is used to broadcast tensors, and must be different
     // among dimensions flattened together. Placement is not implemented in combination with broadcasting, 
     // though could be.
+    // todo::: ML_CHECK_VALID_ARGUMENT((nonBroadcastDimensions == dimensions) || ((coerceAxis == TensorAxis::DoNotCoerce) && (placement == W) && && (leadingDims == W)));
     ML_CHECK_VALID_ARGUMENT((nonBroadcastDimensions == dimensions) || ((coerceAxis == TensorAxis::DoNotCoerce) && (placement == W)));
 
     gsl::span<const uint32_t> sizes;
 
-    // If needed, perform tensor coercion to 2D tensor of size [a_0 * ... * a_{coerceAxis-1}, a_{coerceAxis} * ... * a_{n-1}]
+    // If needed, flatten the tensor dimensions to a 2D tensor of size [a_0 * ... * a_{coerceAxis-1}, a_{coerceAxis} * ... * a_{n-1}]
+    // e.g. Flattening [1,2,3,4] with axis 2 yields [2,12].
     uint32_t coercedSizes[2];
     if (dimensions.size() > 1 && coerceAxis < gsl::narrow_cast<uint32_t>(dimensions.size()))
     {
@@ -96,24 +99,40 @@ TensorDesc::TensorDesc(
         sizes = dimensions;
     }
 
-    ML_CHECK_VALID_ARGUMENT(sizes.size() <= MaximumDimensionCount);
-    m_bufferTensorDesc.DimensionCount = std::max(gsl::narrow_cast<uint32_t>(sizes.size()), minDimensionCount);
+    // Determine the number of dimensions that should be aligned to the left edge when promoting to the minimum dimension count.
+    // Negative values mean align from the right.
+    const int32_t rank = gsl::narrow_cast<int32_t>(sizes.size());
+    leftAlignedDimensionCount = leftAlignedDimensionCount < 0 ? std::max(0, leftAlignedDimensionCount + rank) : std::min(rank, leftAlignedDimensionCount);
 
-    int leadingDims = std::max<int>(0, placement + 1 - gsl::narrow_cast<int>(sizes.size()));
+    ML_CHECK_VALID_ARGUMENT(rank <= MaximumDimensionCount);
+    m_bufferTensorDesc.DimensionCount = std::max(rank, int32_t(minDimensionCount));
 
-    for (int i = 0; i < leadingDims; ++i)
+    // Many DirectML operators accept only certain dimension counts, but it's very common for ONNX models
+    // to have fewer dimensions than that. So this logic massages the dimension count up to what is needed
+    // by filling unused dimensions with size 1, by left-aligning, right-aligning, or even mid-filling.
+    //
+    // e.g.:
+    //
+    //      elementwise addition - [H W]   -> [1 1 H W], leftAlignedCount = 0, placement = 0
+    //      1D convolution       - [N C W] -> [N C 1 W], leftAlignedCount = 2, placement = 0
+    //      batch normalization  - [C]     -> [1 C 1 1], leftAlignedCount = 1, placement = 1
+    //
     {
-        m_sizes[i] = 1;
-    }
+        // Compute the total number of additional dimensions to fill with 1's,
+        // before, after, and in the middle.
+        const int32_t fillerCount = m_bufferTensorDesc.DimensionCount - rank;
+        const int32_t leadingFillerCount = std::clamp(placement, 0, fillerCount);
+        const int32_t remainingFillerCount = fillerCount - leadingFillerCount;
+        const int32_t trailingFillerCount = std::clamp(-placement, 0, remainingFillerCount);
+        const int32_t middleFillerCount = remainingFillerCount - trailingFillerCount;
+        const int32_t firstRightAlignedDim = leadingFillerCount + leftAlignedDimensionCount + middleFillerCount;
 
-    for (int i = 0, ci = gsl::narrow_cast<int>(sizes.size()); i < ci; ++i)
-    {
-        m_sizes[leadingDims + i] = gsl::narrow_cast<uint32_t>(sizes[i]);
-    }
-
-    for (int i = leadingDims + gsl::narrow_cast<int>(sizes.size()); i < MaximumDimensionCount; ++i)
-    {
-        m_sizes[i] = 1;
+        int i = 0, j = 0;
+        while (j < leadingFillerCount)          { m_sizes[j++] = 1; }
+        while (i < leftAlignedDimensionCount)   { m_sizes[j++] = sizes[i++]; }
+        while (j < firstRightAlignedDim)        { m_sizes[j++] = 1; }
+        while (i < rank)                        { m_sizes[j++] = sizes[i++]; }
+        while (j < MaximumDimensionCount)       { m_sizes[j++] = 1; }
     }
 
     // By default, assume strides are not necessary.

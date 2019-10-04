@@ -456,6 +456,7 @@ public:
                     gsl::make_span(adjustedInputTensorShape),
                     TensorAxis::DoNotCoerce,
                     TensorAxis::W,
+                    TensorAxis::RightAligned,
                     NchwDimensionCount, // minDimensionCount
                     0 // guaranteedBaseOffsetAlignment
                 );

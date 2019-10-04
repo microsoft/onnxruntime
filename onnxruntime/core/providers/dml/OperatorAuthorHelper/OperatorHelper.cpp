@@ -60,7 +60,6 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
     )
     {
         ML_CHECK_VALID_ARGUMENT(gsl::narrow_cast<uint32_t>(inputDimensions.size()) >= args.spatialDimensionCount);
-
         int dimOffset = gsl::narrow_cast<int>(inputDimensions.size()) - args.spatialDimensionCount;
 
         std::vector<DimensionType> outputDimensions(inputDimensions.begin(), inputDimensions.end());
@@ -86,6 +85,7 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         const KernelArgs& args
     )
     {
+        ML_CHECK_VALID_ARGUMENT(gsl::narrow_cast<uint32_t>(inputDimensions.size()) >= args.spatialDimensionCount);
         int dimOffset = gsl::narrow_cast<int>(inputDimensions.size()) - args.spatialDimensionCount;
 
         std::vector<DimensionType> outputDimensions(inputDimensions.begin(), inputDimensions.end());
@@ -104,12 +104,10 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
     // Creates a kernel that spans the entire spatial dimensions of the input.
     KernelArgs InitializeGlobalKernel(gsl::span<const DimensionType> inputDimensions)
     {
-        static_assert(NchwSpatialDimensionCount == 2, "Spatial dim count changed. Update logic in InitGlobalKernelArgs.");
+        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() > NonspatialDimensionCount); // Must be at least 1D convolution (in 3D tensor)
+        uint32_t spatialDimensionCount = gsl::narrow_cast<uint32_t>(inputDimensions.size()) - NonspatialDimensionCount;
+        ML_CHECK_VALID_ARGUMENT(spatialDimensionCount <= NcdhwSpatialDimensionCount); // Support up to 3D convolution (in 5D tensor).
 
-        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() >= NchwDimensionCount);
-
-        uint32_t spatialDimensionCount = NchwSpatialDimensionCount + gsl::narrow_cast<uint32_t>(inputDimensions.size()) - NchwDimensionCount;
-        
         KernelArgs args(spatialDimensionCount);
 
         for (size_t dim = 0; dim < spatialDimensionCount; ++dim)
@@ -131,7 +129,6 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         gsl::span<const uint32_t> filterTensorShape
     )
     {
-        static_assert(NchwSpatialDimensionCount == 2, "Spatial dim count changed. Update logic in InitKernelArgs.");
         static_assert(std::extent<decltype(OperatorHelper::KernelArgs::strides)>::value       == NcdhwSpatialDimensionCount);
         static_assert(std::extent<decltype(OperatorHelper::KernelArgs::dilations)>::value     == NcdhwSpatialDimensionCount);
         static_assert(std::extent<decltype(OperatorHelper::KernelArgs::windowSize)>::value    == NcdhwSpatialDimensionCount);
@@ -139,9 +136,9 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         static_assert(std::extent<decltype(OperatorHelper::KernelArgs::endPadding)>::value    == NcdhwSpatialDimensionCount);
         static_assert(std::extent<decltype(OperatorHelper::KernelArgs::outputPadding)>::value == NcdhwSpatialDimensionCount);
 
-        ML_CHECK_VALID_ARGUMENT(inputDimensionCount > NchwDimensionCount - NchwSpatialDimensionCount);
-        uint32_t spatialDimensionCount = NchwSpatialDimensionCount + inputDimensionCount - NchwDimensionCount;
-        ML_CHECK_VALID_ARGUMENT(spatialDimensionCount <= NcdhwDimensionCount);
+        ML_CHECK_VALID_ARGUMENT(inputDimensionCount > NonspatialDimensionCount); // Must be at least 1D convolution (in 3D tensor)
+        uint32_t spatialDimensionCount = inputDimensionCount - NonspatialDimensionCount;
+        ML_CHECK_VALID_ARGUMENT(spatialDimensionCount <= NcdhwSpatialDimensionCount); // Support up to 3D convolution (in 5D tensor).
 
         KernelArgs args(spatialDimensionCount);
 
@@ -225,7 +222,7 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         {
             std::vector<int> outputPadding = kernelInfo.GetOptionalAttributeVectorInt32(AttrName::OutputPadding);
             ML_CHECK_VALID_ARGUMENT(outputPadding.size() >= 2);
-
+        
             std::copy(outputPadding.begin(), outputPadding.begin() + spatialDimensionCount, args.outputPadding);
         }
         else
@@ -246,8 +243,9 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
             return;
         }
 
-        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() > NchwDimensionCount - NchwSpatialDimensionCount);
-        uint32_t spatialDimensionCount = NchwSpatialDimensionCount + gsl::narrow_cast<uint32_t>(inputDimensions.size()) - NchwDimensionCount;
+        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() > NonspatialDimensionCount); // Must be at least 1D convolution (in 3D tensor)
+        uint32_t spatialDimensionCount = gsl::narrow_cast<uint32_t>(inputDimensions.size()) - NonspatialDimensionCount;
+        ML_CHECK_VALID_ARGUMENT(spatialDimensionCount <= NcdhwSpatialDimensionCount); // Support up to 3D convolution (in 5D tensor).
 
         const int dimOffset = gsl::narrow_cast<int>(inputDimensions.size()) - spatialDimensionCount;
 

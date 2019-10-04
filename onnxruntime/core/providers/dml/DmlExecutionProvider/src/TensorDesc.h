@@ -26,7 +26,8 @@ namespace Dml
             gsl::span<const uint32_t> dimensions, // Desired dimensions of tensor (after any broadcasting).
             gsl::span<const uint32_t> nonBroadcastDimensions, // Original dimensions (before any broadcasting). Usually same as 'dimensions'.
             uint32_t coerceAxis,
-            uint32_t placement,
+            int32_t placement, // Adjustment offset of the passed dimensions within the minDimensionCount.
+            int32_t leftAlignedDimensionCount, // Number of dimensions that are left aligned (INT32_MAX means all, 0 means all right aligned).
             uint32_t minDimensionCount,
             uint32_t guaranteedBaseOffsetAlignment
             );
@@ -104,6 +105,12 @@ namespace Dml
             return *this;
         }
 
+        inline TensorDescBuilder& SetLeftAlignedDimensionCount(uint32_t leftAlignedDimensionCount)
+        {
+            m_leftAlignedDimensionCount = leftAlignedDimensionCount;
+            return *this;
+        }
+
         inline TensorDesc Create()
         {
             return TensorDesc(
@@ -112,8 +119,10 @@ namespace Dml
                 m_nonBroadcastDimensions.size() > 0 ? m_nonBroadcastDimensions : m_dimensions,
                 m_coerceAxis,
                 m_placement,
+                m_leftAlignedDimensionCount,
                 m_minDimensionCount,
-                m_guaranteedBaseOffsetAlignment);
+                m_guaranteedBaseOffsetAlignment
+                );
         }
 
     private:
@@ -121,7 +130,8 @@ namespace Dml
         gsl::span<const uint32_t> m_dimensions = {};
         gsl::span<const uint32_t> m_nonBroadcastDimensions = {};
         TensorAxis m_coerceAxis = TensorAxis::DoNotCoerce;
-        TensorAxis m_placement = TensorAxis::W;
+        TensorAxis m_placement = TensorAxis::NoPlacementAdjustment;
+        int32_t m_leftAlignedDimensionCount = TensorAxis::RightAligned;
         uint32_t m_minDimensionCount = NchwDimensionCount;
         uint32_t m_guaranteedBaseOffsetAlignment = 0;
     };

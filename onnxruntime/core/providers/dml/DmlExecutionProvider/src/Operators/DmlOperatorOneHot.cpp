@@ -36,6 +36,7 @@ public:
                 gsl::make_span(indicesDimensions),
                 TensorAxis::DoNotCoerce,
                 TensorAxis::W,
+                TensorAxis::RightAligned,
                 NchwDimensionCount, // minDimensionCount
                 0
             );
@@ -47,6 +48,7 @@ public:
                 gsl::make_span(m_outputDimensions),
                 TensorAxis::DoNotCoerce,
                 TensorAxis::W,
+                TensorAxis::RightAligned,
                 NchwDimensionCount, // minDimensionCount
                 0
             );
