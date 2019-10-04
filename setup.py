@@ -47,6 +47,10 @@ if '--nightly_build' in sys.argv:
     nightly_build = True
     sys.argv.remove('--nightly_build')
 
+if '--enable_language_interop_ops' in sys.argv:
+    package_name = 'pyop'
+    sys.argv.remove('--enable_language_interop_ops')
+
 is_manylinux2010 = False
 if environ.get('AUDITWHEEL_PLAT', None) == 'manylinux2010_x86_64':
     is_manylinux2010 = True
@@ -120,16 +124,22 @@ if platform.system() == 'Linux':
   libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
   # Nuphar Libs
   libs.extend(['libtvm.so.0.5.1'])
+  if package_name == 'pyop':
+    libs.extends(['libonnxruntime_pywrapper.so'])
 elif platform.system() == "Darwin":
   libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.0.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
+  if package_name == 'pyop':
+    libs.extends(['libonnxruntime_pywrapper.dylib'])
 else:
   libs = ['onnxruntime_pybind11_state.pyd', 'mkldnn.dll', 'mklml.dll', 'libiomp5md.dll']
   libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll', 'mimalloc-override.dll', 'mimalloc-redirect.dll', 'mimalloc-redirect32.dll'])
   # Nuphar Libs
   libs.extend(['tvm.dll'])
+  if package_name == 'pyop':
+    libs.extend(['onnxruntime_pywrapper.dll'])
 
 if is_manylinux2010:
-    data = []
+    data = ['capi/libonnxruntime_pywrapper.so'] if package_name == 'pyop' else []
     ext_modules = [
         Extension(
             'onnxruntime.capi.onnxruntime_pybind11_state',
