@@ -1,18 +1,18 @@
 /**
-* Copyright (c) 2016-present, Facebook, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+ * Copyright (c) 2016-present, Facebook, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include "core/providers/cpu/math/top_k.h"
 #include "core/providers/common.h"
@@ -29,27 +29,21 @@ namespace onnxruntime {
 
 template <typename T>
 struct GreaterValueCmp {
-  bool operator()(
-      const pair<T, int64_t>& lhs,
-      const pair<T, int64_t>& rhs) {
-    return (
-        lhs.first > rhs.first ||
-        // when values are equal, we want lhs to get higher "priority"
-        // if its corresponding index comes first (i.e.) is lower
-        (lhs.first == rhs.first && lhs.second < rhs.second));
+  bool operator()(const pair<T, int64_t>& lhs, const pair<T, int64_t>& rhs) {
+    return (lhs.first > rhs.first ||
+            // when values are equal, we want lhs to get higher "priority"
+            // if its corresponding index comes first (i.e.) is lower
+            (lhs.first == rhs.first && lhs.second < rhs.second));
   }
 };
 
 template <typename T>
 struct LesserValueCmp {
-  bool operator()(
-      const pair<T, int64_t>& lhs,
-      const pair<T, int64_t>& rhs) {
-    return (
-        lhs.first < rhs.first ||
-        // when values are equal, we want lhs to get higher "priority"
-        // if its corresponding index comes first (i.e.) is lower
-        (lhs.first == rhs.first && lhs.second < rhs.second));
+  bool operator()(const pair<T, int64_t>& lhs, const pair<T, int64_t>& rhs) {
+    return (lhs.first < rhs.first ||
+            // when values are equal, we want lhs to get higher "priority"
+            // if its corresponding index comes first (i.e.) is lower
+            (lhs.first == rhs.first && lhs.second < rhs.second));
   }
 };
 
@@ -59,23 +53,19 @@ struct LesserValueCmp {
 // this method will extract the sorted top k largest/smallest elements and place them in the output tensor 'values'
 // along with the metadata output 'indices'
 template <bool largest, bool sorted, class Comparator>
-static void extract_top_k_elements(const Tensor* input, const TensorShape& input_shape,
-                                   Tensor* values, Tensor* indices, const TensorShape& output_shape,
-                                   const unsigned k, const unsigned axis_parsed) {
+static void extract_top_k_elements(const Tensor* input, const TensorShape& input_shape, Tensor* values,
+                                   Tensor* indices, const TensorShape& output_shape, const unsigned k,
+                                   const unsigned axis_parsed) {
   // Cache some values that will be used in the implementation below
   const int64_t rows = input_shape.SizeToDimension(static_cast<size_t>(axis_parsed));
   const int64_t cols = input->Shape().Size() / rows;
-  auto input_map = ConstEigenMatrixMapRowMajor<float>(
-      static_cast<const float*>(input->template Data<float>()),
-      rows,
-      cols);
+  auto input_map =
+      ConstEigenMatrixMapRowMajor<float>(static_cast<const float*>(input->template Data<float>()), rows, cols);
 
   // Use Eigen maps to allow indexing into the 2d tensors like Values_map(i,j)
   const int64_t reduced_cols = output_shape.SizeFromDimension(static_cast<size_t>(axis_parsed));
-  auto values_map = EigenMatrixMapRowMajor<float>(
-      values->template MutableData<float>(), rows, reduced_cols);
-  auto indices_map = EigenMatrixMapRowMajor<int64_t>(
-      indices->template MutableData<int64_t>(), rows, reduced_cols);
+  auto values_map = EigenMatrixMapRowMajor<float>(values->template MutableData<float>(), rows, reduced_cols);
+  auto indices_map = EigenMatrixMapRowMajor<int64_t>(indices->template MutableData<int64_t>(), rows, reduced_cols);
 
   // This is basically the number of elements within each of the "k" rows
   const int64_t block_slice = reduced_cols / k;
@@ -87,22 +77,20 @@ static void extract_top_k_elements(const Tensor* input, const TensorShape& input
       // hold the top K values in sorted fashion
       if (sorted) {  // the optimizer will clean-up the redundant condition based on the template parameter 'sorted'
         // Build a min-heap/max-heap, the heap element is pair of (value, idx)
-        // the top of the heap is the smallest value
+        // the top of the heap is the smallest/largest value depending on whether it is a min-heap/max-heap
+
         // This is a min-heap if largest == true, this is a max-heap largest == false
-        priority_queue<
-            pair<float, int64_t>,
-            vector<pair<float, int64_t>>,
-            Comparator>
-            heap;
+        priority_queue<pair<float, int64_t>, vector<pair<float, int64_t>>, Comparator> heap;
         // Maintain the size of heap to be less or equal to k, so the
         // heap will hold the k largest/smallest values
         for (int64_t l = 0; l < num_blocks; ++l) {
           const auto value = input_map(i, l * block_slice + j);
-          // largest == true: insert into the min-heap if the size is < k or if the new element is greater than the min element in the min-heap
-          // largest == false: insert into the min-heap if the size is < k or if the new element is lesser than the max element in the max-heap
-          if ((heap.size() < k) ||
-              (largest && value > heap.top().first) ||
-              (!largest && value < heap.top().first)) {  // the optimizer will clean-up the redundant condition based on the template parameter 'largest'
+          // largest == true: insert into the min-heap if the size is < k or if the new element is greater than the min
+          // element in the min-heap largest == false: insert into the min-heap if the size is < k or if the new
+          // element is lesser than the max element in the max-heap
+          if ((heap.size() < k) || (largest && value > heap.top().first) ||
+              (!largest && value < heap.top().first)) {  // the optimizer will clean-up the redundant condition based
+                                                         // on the template parameter 'largest'
             heap.push({value, l});
           }
           if (heap.size() > k) {
@@ -120,10 +108,10 @@ static void extract_top_k_elements(const Tensor* input, const TensorShape& input
       }
 
       // If the top K values are not required to be sorted, we use a more (on average) optimal selection algorithm
-      else { // sorted == false
+      else {  // sorted == false
         // create a data holder and insert elements
         vector<pair<float, int64_t>> data_holder;
-        //data_holder.reserve(num_blocks);
+        // data_holder.reserve(num_blocks);
         for (int64_t l = 0; l < num_blocks; ++l) {
           data_holder.push_back({input_map(i, l * block_slice + j), l});
         }
@@ -151,7 +139,8 @@ Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input, const
   const auto axis_parsed = HandleNegativeAxis(axis, static_cast<int64_t>(input_shape.NumDimensions()));
   // Check to ensure k is within the bounds of what is available in that specific axis
   if (input_shape[axis_parsed] < k) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k argument [" , k , "] should not be greater than specified axis dim value [" , input_shape[axis_parsed] , "]");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k argument [", k,
+                           "] should not be greater than specified axis dim value [", input_shape[axis_parsed], "]");
   }
 
   // Resize output tensors to be the same shape as the input except
@@ -164,7 +153,7 @@ Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input, const
 
   if (values == nullptr || indices == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                  "output count mismatch, expected 2 outputs to be present for TopK operator");
+                           "output count mismatch, expected 2 outputs to be present for TopK operator");
   }
 
   // no-op - no output buffers to fill - return silently
@@ -172,28 +161,28 @@ Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input, const
     return Status::OK();
   }
 
-  // extract sorted largest TopK elements
   if (sorted && largest) {
+    // extract sorted largest TopK elements
     // Average - O(NlogK). Worst - O(NlogK), where 'N' is the number of input elements
-    extract_top_k_elements<true, true, GreaterValueCmp<float>>(input, input_shape, values, indices, output_shape, k, gsl::narrow_cast<unsigned>(axis_parsed));
-  }
-
-  // extract sorted smallest TopK elements
-  else if (sorted && !largest) {
+    extract_top_k_elements<true, true, GreaterValueCmp<float>>(input, input_shape, values, indices, output_shape, k,
+                                                               gsl::narrow_cast<unsigned>(axis_parsed));
+  } else if (sorted && !largest) {
+    // extract sorted smallest TopK elements
     // Average - O(NlogK). Worst - O(NlogK), where 'N' is the number of input elements
-    extract_top_k_elements<false, true, LesserValueCmp<float>>(input, input_shape, values, indices, output_shape, k, gsl::narrow_cast<unsigned>(axis_parsed));
-  }
-
-  // extract unsorted (order undefined) largest TopK elements
-  else if (largest) {
-    // Average - O(N). Worst - O(NlogN)/O(N^2) depending on underlying implementation, where 'N' is the number of input elements
-    extract_top_k_elements<true, false, GreaterValueCmp<float>>(input, input_shape, values, indices, output_shape, k, gsl::narrow_cast<unsigned>(axis_parsed));
-  }
-
-  // extract unsorted (order undefined) smallest TopK elements
-  else if (!largest) {
-    // Average - O(N). Worst - O(NlogN)/O(N^2) depending on underlying implementation, where 'N' is the number of input elements
-    extract_top_k_elements<false, false, LesserValueCmp<float>>(input, input_shape, values, indices, output_shape, k, gsl::narrow_cast<unsigned>(axis_parsed));
+    extract_top_k_elements<false, true, LesserValueCmp<float>>(input, input_shape, values, indices, output_shape, k,
+                                                               gsl::narrow_cast<unsigned>(axis_parsed));
+  } else if (largest) {
+    // extract unsorted (order undefined) largest TopK elements
+    // Average - O(N). Worst - O(NlogN)/O(N^2) depending on the implementation, where 'N' is the number of input
+    // elements
+    extract_top_k_elements<true, false, GreaterValueCmp<float>>(input, input_shape, values, indices, output_shape, k,
+                                                                gsl::narrow_cast<unsigned>(axis_parsed));
+  } else {
+    // extract unsorted (order undefined) smallest TopK elements
+    // Average - O(N). Worst - O(NlogN)/O(N^2) depending on the implementation, where 'N' is the number of input
+    // elements
+    extract_top_k_elements<false, false, LesserValueCmp<float>>(input, input_shape, values, indices, output_shape, k,
+                                                                gsl::narrow_cast<unsigned>(axis_parsed));
   }
 
   return Status::OK();
@@ -216,8 +205,10 @@ TopK<9, float>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_in
 template <>
 Status TopK<9, float>::Compute(OpKernelContext* p_op_kernel_context) const {
   const auto* X = p_op_kernel_context->Input<Tensor>(0);
-  if (X == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                          "input count mismatch, expected 1 input - the tensor to be processed");
+  if (X == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "input count mismatch, expected 1 input - the tensor to be processed");
+  }
+
   return TopKImpl(p_op_kernel_context, X, axis_, k_);
 }
 
@@ -234,13 +225,22 @@ template <>
 Status TopK<10, float>::Compute(OpKernelContext* p_op_kernel_context) const {
   const auto* X = p_op_kernel_context->Input<Tensor>(0);
   const auto* Y = p_op_kernel_context->Input<Tensor>(1);
-  if (X == nullptr || Y == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                                  "input count mismatch, expected 2 inputs - "
-                                                  "the tensor to be processed and a tensor containing k value");
+  if (X == nullptr || Y == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "input count mismatch, expected 2 inputs - "
+                           "the tensor to be processed and a tensor containing k value");
+  }
+
   const vector<int64_t>& y_shape = Y->Shape().GetDims();
-  if (y_shape.size() != 1 || y_shape[0] != 1) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k tensor should be a 1D tensor of size 1");
+  if (y_shape.size() != 1 || y_shape[0] != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k tensor should be a 1D tensor of size 1");
+  }
+
   auto parsed_input_k = Y->template Data<int64_t>()[0];
-  if (parsed_input_k < 0) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "value of k must not be negative");
+  if (parsed_input_k < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "value of k must not be negative");
+  }
+
   return TopKImpl(p_op_kernel_context, X, axis_, gsl::narrow_cast<unsigned>(parsed_input_k));
 }
 
@@ -265,34 +265,43 @@ template <>
 Status TopK<11, float>::Compute(OpKernelContext* p_op_kernel_context) const {
   const auto* X = p_op_kernel_context->Input<Tensor>(0);
   const auto* Y = p_op_kernel_context->Input<Tensor>(1);
-  if (X == nullptr || Y == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                                  "input count mismatch, expected 2 inputs - "
-                                                  "the tensor to be processed and a tensor containing k value");
+  if (X == nullptr || Y == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "input count mismatch, expected 2 inputs - "
+                           "the tensor to be processed and a tensor containing k value");
+  }
+
   const vector<int64_t>& y_shape = Y->Shape().GetDims();
-  if (y_shape.size() != 1 || y_shape[0] != 1) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k tensor should be a 1D tensor of size 1");
+  if (y_shape.size() != 1 || y_shape[0] != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k tensor should be a 1D tensor of size 1");
+  }
+
   auto parsed_input_k = Y->template Data<int64_t>()[0];
-  if (parsed_input_k < 0) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "value of k must not be negative");
+  if (parsed_input_k < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "value of k must not be negative");
+  }
+
   return TopKImpl(p_op_kernel_context, X, axis_, gsl::narrow_cast<unsigned>(parsed_input_k), largest_, sorted_);
 }
 
 // Register necessary kernels
 // spec https://github.com/onnx/onnx/blob/master/docs/Operators.md#TopK
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    TopK,
-    1, 9,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
-    TopK<9, float>);
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(TopK, 1, 9,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
+                                   TopK<9, float>);
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    TopK,
-    10, 10,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
-    TopK<10, float>);
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(TopK, 10, 10,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
+                                   TopK<10, float>);
 
-ONNX_CPU_OPERATOR_KERNEL(
-    TopK,
-    11,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
-    TopK<11, float>);
+ONNX_CPU_OPERATOR_KERNEL(TopK, 11,
+                         KernelDefBuilder()
+                             .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
+                         TopK<11, float>);
 
 }  // namespace onnxruntime
