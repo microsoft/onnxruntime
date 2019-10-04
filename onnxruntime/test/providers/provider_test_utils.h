@@ -232,7 +232,6 @@ class OpTester {
     ptr.release();
     input_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(),
                                optional<float>(), optional<bool>()));
->>>>>>> origin/master
   }
 
   template <typename T>
