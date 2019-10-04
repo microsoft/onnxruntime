@@ -24,7 +24,7 @@ static bool CheckConstantInput(const Graph& graph, const NodeArg& input_arg, flo
     return false;
   }
 
-  auto init_const = std::make_unique<Initializer>(tensor_proto);
+  auto init_const = onnxruntime::make_unique<Initializer>(tensor_proto);
   const auto data_type = tensor_proto->data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     float* val = init_const->data<float>();

@@ -1780,24 +1780,24 @@ gsl_DISABLE_MSVC_WARNINGS(26410 26415 26418 26472 26439 26440 26473 26481 26482 
     // 26.7.3.3 Subviews [span.sub]
 
     gsl_api gsl_constexpr14 span first(index_type count) const gsl_noexcept {
-      Expects(0 <= count && count <= this->size());
+      Expects(count <= this->size());
       return span(this->data(), count);
     }
 
     gsl_api gsl_constexpr14 span last(index_type count) const gsl_noexcept {
-      Expects(0 <= count && count <= this->size());
+      Expects(count <= this->size());
       return span(this->data() + this->size() - count, count);
     }
 
     gsl_api gsl_constexpr14 span subspan(index_type offset) const gsl_noexcept {
-      Expects(0 <= offset && offset <= this->size());
+      Expects(offset <= this->size());
       return span(this->data() + offset, this->size() - offset);
     }
 
     gsl_api gsl_constexpr14 span subspan(index_type offset, index_type count) const gsl_noexcept {
       Expects(
-          0 <= offset && offset <= this->size() &&
-          0 <= count && count <= this->size() - offset);
+          offset <= this->size() &&
+          count <= this->size() - offset);
       return span(this->data() + offset, count);
     }
 

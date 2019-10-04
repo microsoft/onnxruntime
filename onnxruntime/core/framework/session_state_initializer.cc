@@ -48,11 +48,11 @@ SessionStateInitializer::SessionStateInitializer(bool enable_mem_pattern,
                                                  const ExecutionProviders& providers,
                                                  KernelRegistryManager& kernel_registry_manager)
     : graph_loc_(graph_loc),
-      graph_{graph},
-      session_state_{session_state},
-      execution_providers_{providers},
-      kernel_registry_manager_{kernel_registry_manager},
-      logger_{session_state.Logger()},
+      graph_(graph),
+      session_state_(session_state),
+      execution_providers_(providers),
+      kernel_registry_manager_(kernel_registry_manager),
+      logger_(session_state.Logger()),
       enable_mem_pattern_(enable_mem_pattern) {}
 
 common::Status SessionStateInitializer::CreatePlan(

@@ -227,4 +227,27 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
     nuphar::NupharKernel);
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Scatter,
+    kOnnxDomain,
+    9,
+    10,
+    kNupharExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
+                                                        DataTypeImpl::GetTensorType<int64_t>()}),
+    nuphar::NupharKernel);
+
+ONNX_OPERATOR_KERNEL_EX(
+    ScatterElements,
+    kOnnxDomain,
+    11,
+    kNupharExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
+                                                        DataTypeImpl::GetTensorType<int64_t>()}),
+    nuphar::NupharKernel);
+
 }  // namespace onnxruntime
