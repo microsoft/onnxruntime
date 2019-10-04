@@ -32,9 +32,9 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   for (auto& node : graph.Nodes()) {
     for (auto registry : kernel_registries) {
       if (registry->TryFindKernel(node, Type()) != nullptr) {
-        std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+        std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
         sub_graph->nodes.push_back(node.Index());
-        result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+        result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
         break;
       }
     }

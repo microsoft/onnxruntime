@@ -46,7 +46,7 @@ TEST(TensorOpTest, ShapeTest2D) {
 
   test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
   test.AddOutput<int64_t>("shape", {2}, {2, 3});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//TensorRT: volume of dimensions is not consistent with weights size
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: volume of dimensions is not consistent with weights size
 }
 
 TEST(TensorOpTest, ShapeTest3D) {
@@ -54,7 +54,7 @@ TEST(TensorOpTest, ShapeTest3D) {
 
   test.AddInput<float>("data", {2, 3, 4}, std::vector<float>(24, 1.0f));
   test.AddOutput<int64_t>("shape", {3}, {2, 3, 4});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//TensorRT: volume of dimensions is not consistent with weights size
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: volume of dimensions is not consistent with weights size
 }
 
 template <typename SrcType,
@@ -264,8 +264,11 @@ TEST(TensorOpTest, CastFromFloat16) {
 
 TEST(TensorOpTest, CastFromString) {
   const std::vector<int64_t> shape{2, 2, 2};
-  std::initializer_list<std::string> string_data = {"-inf", "+INF", "2.0f", "3.0f", "4.0f", "5.0f", "NaN", "nan"};
-  const std::initializer_list<float> float_output = {-(std::numeric_limits<float>::infinity()), std::numeric_limits<float>::infinity(), 2.0f, 3.0f, 4.0f, 5.0f, NAN, NAN};
+  std::initializer_list<std::string> string_data = {"-inf", "+INF", "0.9767611f", "0.28280696f",
+                                                    "-0.12019656f", "5.0f", "NaN", "nan"};
+  const std::initializer_list<float> float_output = {-(std::numeric_limits<float>::infinity()), std::numeric_limits<float>::infinity(),
+                                                     0.9767611f, 0.28280696f,
+                                                     -0.12019656f, 5.0f, NAN, NAN};
   TestCastOp(string_data, float_output, shape, TensorProto::FLOAT);
 
   std::initializer_list<std::string> int_16_string_data = {"0", "1", "2", "3", "4", "5", "-32768", "32767"};
@@ -279,8 +282,13 @@ TEST(TensorOpTest, CastFromString) {
 
 TEST(TensorOpTest, CastToString) {
   const std::vector<int64_t> shape{2, 2, 2};
-  const std::initializer_list<float> float_input = {NAN, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity()};
-  std::initializer_list<std::string> string_output = {"NaN", "1", "2", "3", "4", "5", "-INF", "INF"};
+  const std::initializer_list<float> float_input = {NAN, -1.f, 0.0391877927f, 0.296140194f, -0.120196559f, 5.0f,
+                                                    -std::numeric_limits<float>::infinity(),
+                                                    std::numeric_limits<float>::infinity()};
+
+  // float output precision is 8, so the expected output differs slightly from the input due to that
+  std::initializer_list<std::string> string_output = {"NaN", "-1", "0.039187793", "0.29614019",
+                                                      "-0.12019656", "5", "-INF", "INF"};
   TestCastOp(float_input, string_output, shape, TensorProto::STRING);
 
   std::initializer_list<std::string> int_string_data = {"0", "1", "2", "3", "4", "5", "6", "7"};
@@ -375,7 +383,6 @@ void MeanVarianceNormalizationFunctionAcrossChannels(std::vector<int64_t> axes) 
 }
 
 TEST(TensorOpTest, MeanVarianceNormalizationCPUTest) {
-
   // axes: {0, 1, 2, 3} for across_channels
   MeanVarianceNormalizationFunctionAcrossChannels({0, 1, 2, 3});
 

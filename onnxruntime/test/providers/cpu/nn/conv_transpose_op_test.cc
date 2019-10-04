@@ -28,16 +28,23 @@ void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
                          const std::string& err_str = "") {
   OpTester test("ConvTranspose");
   test.AddAttribute("kernel_shape", attributes.kernel_shape);
+  test.AddAttribute("pads", attributes.pads);
+  test.AddAttribute("group", attributes.group);
+
   if (!attributes.output_padding.empty()) {
     test.AddAttribute("output_padding", attributes.output_padding);
   }
   if (!attributes.output_shape.empty()) {
     test.AddAttribute("output_shape", attributes.output_shape);
   }
-  test.AddAttribute("pads", attributes.pads);
-  test.AddAttribute("strides", attributes.strides);
-  test.AddAttribute("dilations", attributes.dilations);
-  test.AddAttribute("group", attributes.group);
+
+  if (!attributes.strides.empty()) {
+    test.AddAttribute("strides", attributes.strides);
+  }
+
+  if (!attributes.dilations.empty()) {
+    test.AddAttribute("dilations", attributes.dilations);
+  }
 
   ORT_ENFORCE(inputs.size() <= 3, "Our name array is only setup to handle 3 inputs");
   const char* szNames[] = {"X", "W", "B"};
@@ -45,7 +52,7 @@ void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
     test.AddInput<float>(szNames[i], input_shapes[i], inputs[i]);
   }
   test.AddOutput<float>("Y", expected_output_shape, expected_output);
-  test.Run(expect_result, err_str, {kTensorrtExecutionProvider});// Disable TensorRT because weight as input is not supported
+  test.Run(expect_result, err_str, {kTensorrtExecutionProvider});  // Disable TensorRT because weight as input is not supported
 }
 }  // namespace
 
@@ -350,127 +357,158 @@ TEST(ConvTransposeTest, ConvTranspose_onnx_group) {
 
 TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_1) {
   ConvTransposeOpAttributes attrs = {
-    vector<int64_t>{2, 2},
-    {}, {},
-    vector<int64_t>{0,0,0,0},
-    vector<int64_t>{1,1},
-    {2,2},
-    1
-  };
+      vector<int64_t>{2, 2},
+      {},
+      {},
+      vector<int64_t>{0, 0, 0, 0},
+      vector<int64_t>{1, 1},
+      {2, 2},
+      1};
 
-  vector<float> X = {11.0f,12.0f,21.0f,22.0f};
-  vector<int64_t> X_shape = {1,1,2,2};
-  vector<float> W = {1.0f,1.0f,1.0f,1.0f};
-  vector<int64_t> W_shape = {1,1,2,2};
-  vector<int64_t> Y_shape = {1,1,4,4};
-  auto expected_vals = {11.0f,12.0f,11.0f,12.0f,
-                        21.0f,22.0f,21.0f,22.0f,
-                        11.0f,12.0f,11.0f,12.0f,
-                        21.0f,22.0f,21.0f,22.0f};
+  vector<float> X = {11.0f, 12.0f, 21.0f, 22.0f};
+  vector<int64_t> X_shape = {1, 1, 2, 2};
+  vector<float> W = {1.0f, 1.0f, 1.0f, 1.0f};
+  vector<int64_t> W_shape = {1, 1, 2, 2};
+  vector<int64_t> Y_shape = {1, 1, 4, 4};
+  auto expected_vals = {11.0f, 12.0f, 11.0f, 12.0f,
+                        21.0f, 22.0f, 21.0f, 22.0f,
+                        11.0f, 12.0f, 11.0f, 12.0f,
+                        21.0f, 22.0f, 21.0f, 22.0f};
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_2) {
   ConvTransposeOpAttributes attrs = {
-    vector<int64_t>{2, 2},
-    {}, {},
-    vector<int64_t>{0,0,0,0},
-    vector<int64_t>{1,1},
-    {3,3},
-    1
-  };
+      vector<int64_t>{2, 2},
+      {},
+      {},
+      vector<int64_t>{0, 0, 0, 0},
+      vector<int64_t>{1, 1},
+      {3, 3},
+      1};
 
-  vector<float> X = {11.0f,12.0f,21.0f,22.0f};
-  vector<int64_t> X_shape = {1,1,2,2};
-  vector<float> W = {1.0f,1.0f,1.0f,1.0f};
-  vector<int64_t> W_shape = {1,1,2,2};
-  vector<int64_t> Y_shape = {1,1,5,5};
-  auto expected_vals = {11.0f,12.0f,0.0f,11.0f,12.0f,
-                        21.0f,22.0f,0.0f,21.0f,22.0f,
-                        0.0f, 0.0f, 0.0f,0.0f, 0.0f,
-                        11.0f,12.0f,0.0f,11.0f,12.0f,
-                        21.0f,22.0f,0.0f,21.0f,22.0f};
+  vector<float> X = {11.0f, 12.0f, 21.0f, 22.0f};
+  vector<int64_t> X_shape = {1, 1, 2, 2};
+  vector<float> W = {1.0f, 1.0f, 1.0f, 1.0f};
+  vector<int64_t> W_shape = {1, 1, 2, 2};
+  vector<int64_t> Y_shape = {1, 1, 5, 5};
+  auto expected_vals = {11.0f, 12.0f, 0.0f, 11.0f, 12.0f,
+                        21.0f, 22.0f, 0.0f, 21.0f, 22.0f,
+                        0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                        11.0f, 12.0f, 0.0f, 11.0f, 12.0f,
+                        21.0f, 22.0f, 0.0f, 21.0f, 22.0f};
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_3) {
   ConvTransposeOpAttributes attrs = {
-    vector<int64_t>{2, 2},
-    {}, {},
-    vector<int64_t>{0,0,0,0},
-    vector<int64_t>{1,1},
-    {2,2},
-    1
-  };
+      vector<int64_t>{2, 2},
+      {},
+      {},
+      vector<int64_t>{0, 0, 0, 0},
+      vector<int64_t>{1, 1},
+      {2, 2},
+      1};
 
-  vector<float> X = {3.0f,8.0f,1.0f,9.0f,5.0f,7.0f,3.0f,2.0f,6.0f};
-  vector<int64_t> X_shape = {1,1,3,3};
-  vector<float> W = {7.0f,2.0f,1.0f,9.0f};
-  vector<int64_t> W_shape = {1,1,2,2};
-  vector<int64_t> Y_shape = {1,1,5,5};
-  auto expected_vals = {21.0f, 56.0f, 13.0f, 16.0f,  2.0f,
+  vector<float> X = {3.0f, 8.0f, 1.0f, 9.0f, 5.0f, 7.0f, 3.0f, 2.0f, 6.0f};
+  vector<int64_t> X_shape = {1, 1, 3, 3};
+  vector<float> W = {7.0f, 2.0f, 1.0f, 9.0f};
+  vector<int64_t> W_shape = {1, 1, 2, 2};
+  vector<int64_t> Y_shape = {1, 1, 5, 5};
+  auto expected_vals = {21.0f, 56.0f, 13.0f, 16.0f, 2.0f,
                         63.0f, 35.0f, 67.0f, 10.0f, 14.0f,
                         24.0f, 22.0f, 76.0f, 76.0f, 21.0f,
-                         9.0f,  5.0f, 88.0f, 45.0f, 63.0f,
-                         3.0f,  2.0f, 33.0f, 18.0f, 54.0f};
+                        9.0f, 5.0f, 88.0f, 45.0f, 63.0f,
+                        3.0f, 2.0f, 33.0f, 18.0f, 54.0f};
 
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_4) {
   ConvTransposeOpAttributes attrs = {
-    vector<int64_t>{2, 2},
-    {}, {},
-    vector<int64_t>{0,0,0,0},
-    vector<int64_t>{1,1},
-    {3,3},
-    1
-  };
+      vector<int64_t>{2, 2},
+      {},
+      {},
+      vector<int64_t>{0, 0, 0, 0},
+      vector<int64_t>{1, 1},
+      {3, 3},
+      1};
 
-  vector<float> X = {3.0f,8.0f,1.0f,9.0f,5.0f,7.0f,3.0f,2.0f,6.0f};
-  vector<int64_t> X_shape = {1,1,3,3};
-  vector<float> W = {7.0f,2.0f,1.0f,9.0f};
-  vector<int64_t> W_shape = {1,1,2,2};
-  vector<int64_t> Y_shape = {1,1,6,6};
-  auto expected_vals = {21.0f, 56.0f,  7.0f,  6.0f, 16.0f,  2.0f,
+  vector<float> X = {3.0f, 8.0f, 1.0f, 9.0f, 5.0f, 7.0f, 3.0f, 2.0f, 6.0f};
+  vector<int64_t> X_shape = {1, 1, 3, 3};
+  vector<float> W = {7.0f, 2.0f, 1.0f, 9.0f};
+  vector<int64_t> W_shape = {1, 1, 2, 2};
+  vector<int64_t> Y_shape = {1, 1, 6, 6};
+  auto expected_vals = {21.0f, 56.0f, 7.0f, 6.0f, 16.0f, 2.0f,
                         63.0f, 35.0f, 49.0f, 18.0f, 10.0f, 14.0f,
-                        21.0f, 14.0f, 42.0f,  6.0f,  4.0f, 12.0f,
-                        3.0f,  8.0f,  1.0f, 27.0f, 72.0f,  9.0f,
-                        9.0f,  5.0f,  7.0f, 81.0f, 45.0f, 63.0f,
-                        3.0f,  2.0f,  6.0f, 27.0f, 18.0f, 54.0f};
+                        21.0f, 14.0f, 42.0f, 6.0f, 4.0f, 12.0f,
+                        3.0f, 8.0f, 1.0f, 27.0f, 72.0f, 9.0f,
+                        9.0f, 5.0f, 7.0f, 81.0f, 45.0f, 63.0f,
+                        3.0f, 2.0f, 6.0f, 27.0f, 18.0f, 54.0f};
 
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_Group_1) {
   ConvTransposeOpAttributes attrs = {
-    vector<int64_t>{2, 2},
-    {}, {},
-    vector<int64_t>{0,0,0,0},
-    vector<int64_t>{1,1},
-    {2,2},
-    2
-  };
+      vector<int64_t>{2, 2},
+      {},
+      {},
+      vector<int64_t>{0, 0, 0, 0},
+      vector<int64_t>{1, 1},
+      {2, 2},
+      2};
 
-  vector<float> X = {3.0f,8.0f,1.0f,9.0f,5.0f,7.0f,3.0f,2.0f,3.0f,7.0f,9.0f,1.0f,5.0f,2.0f,3.0f,9.0f,0.0f,2.0f};
-  vector<int64_t> X_shape = {1,2,3,3};
-  vector<float> W = {9.0f,3.0f,1.0f,2.0f,3.0f,7.0f,0.0f,8.0f};
-  vector<int64_t> W_shape = {2,1,2,2};
-  vector<int64_t> Y_shape = {1,2,5,5};
-  auto expected_vals = {27.0f,  72.0f,  18.0f,   24.0f,   3.0f,
-                        81.0f,  45.0f,  90.0f,   15.0f,   21.0f,
-                        30.0f,  26.0f,  43.0f,   22.0f,   11.0f,
-                        9.0f,   5.0f,   25.0f,   10.0f,   14.0f,
-                        3.0f,   2.0f,   9.0f,    4.0f,    6.0f,
-                        21.0f,  27.0f,  52.0f,   63.0f,   7.0f,
-                        15.0f,  6.0f,   44.0f,   14.0f,   21.0f,
-                        27.0f,  0.0f,   125.0f,  72.0f,   22.0f,
-                        0.0f,   0.0f,   40.0f,   16.0f,   24.0f,
-                        0.0f,   0.0f,   72.0f,   0.0f,    16.0f};
+  vector<float> X = {3.0f, 8.0f, 1.0f, 9.0f, 5.0f, 7.0f, 3.0f, 2.0f, 3.0f, 7.0f, 9.0f, 1.0f, 5.0f, 2.0f, 3.0f, 9.0f, 0.0f, 2.0f};
+  vector<int64_t> X_shape = {1, 2, 3, 3};
+  vector<float> W = {9.0f, 3.0f, 1.0f, 2.0f, 3.0f, 7.0f, 0.0f, 8.0f};
+  vector<int64_t> W_shape = {2, 1, 2, 2};
+  vector<int64_t> Y_shape = {1, 2, 5, 5};
+  auto expected_vals = {27.0f, 72.0f, 18.0f, 24.0f, 3.0f,
+                        81.0f, 45.0f, 90.0f, 15.0f, 21.0f,
+                        30.0f, 26.0f, 43.0f, 22.0f, 11.0f,
+                        9.0f, 5.0f, 25.0f, 10.0f, 14.0f,
+                        3.0f, 2.0f, 9.0f, 4.0f, 6.0f,
+                        21.0f, 27.0f, 52.0f, 63.0f, 7.0f,
+                        15.0f, 6.0f, 44.0f, 14.0f, 21.0f,
+                        27.0f, 0.0f, 125.0f, 72.0f, 22.0f,
+                        0.0f, 0.0f, 40.0f, 16.0f, 24.0f,
+                        0.0f, 0.0f, 72.0f, 0.0f, 16.0f};
 
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
+TEST(ConvTransposeTest, ConvTranspose_DefaultStridesAndDilations) {
+  ConvTransposeOpAttributes attrs = {
+      vector<int64_t>{2, 2},        // kernel_shape
+      {},                           // output_padding
+      {},                           // output_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{},            // strides
+      vector<int64_t>{},            // dilations
+      1                             // group
+  };
+  vector<float> X = {0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.};
+  vector<int64_t> X_shape = {1, 2, 3, 3};
+  vector<float> W = {0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17., 18., 19., 20., 21., 22., 23.};
+  vector<int64_t> W_shape = {2, 3, 2, 2};  // this requires weight transpose
+  vector<int64_t> Y_shape = {1, 3, 4, 4};
+  auto expected_vals = {
+      108.f, 237.f, 263.f, 145.f,
+      270.f, 592.f, 652.f, 358.f,
+      354.f, 772.f, 832.f, 454.f,
+      222.f, 481.f, 515.f, 279.f,
+      144.f, 317.f, 359.f, 197.f,
+      366.f, 800.f, 892.f, 486.f,
+      498.f, 1076.f, 1168.f, 630.f,
+      306.f, 657.f, 707.f, 379.f,
+      180.f, 397.f, 455.f, 249.f,
+      462.f, 1008.f, 1132.f, 614.f,
+      642.f, 1380.f, 1504.f, 806.f,
+      390.f, 833.f, 899.f, 479.f};
+
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+}
 
 }  // namespace test
 }  // namespace onnxruntime

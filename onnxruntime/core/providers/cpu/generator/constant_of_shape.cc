@@ -3,7 +3,7 @@
 
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/cpu/generator/constant_of_shape.h"
-#include "gsl/span"
+#include "gsl/gsl"
 
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;

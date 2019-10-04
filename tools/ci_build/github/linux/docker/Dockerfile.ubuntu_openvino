@@ -6,8 +6,8 @@ ARG OPENVINO_VERSION=2019_R1.1
 
 ADD scripts /tmp/scripts
 ENV PATH="/opt/cmake/bin:${PATH}"
-RUN /tmp/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} -d EdgeDevice && \
-    /tmp/scripts/install_deps.sh
+RUN /tmp/scripts/install_ubuntu.sh -p $PYTHON_VERSION -d EdgeDevice && \
+    /tmp/scripts/install_deps.sh -p $PYTHON_VERSION
 
 RUN apt update && apt install -y libnuma1 ocl-icd-libopencl1 && \
     rm -rf /var/lib/apt/lists/*

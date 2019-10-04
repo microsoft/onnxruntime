@@ -80,15 +80,9 @@ if [ $PYTHON_VER != "3.5" ]; then
     /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
 fi
 
-/usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall numpy==1.15.0
-/usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall requests==2.21.0
-if [ $DEVICE_TYPE = "Normal" ]; then
-    /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall sympy==1.1.1
-fi
-/usr/bin/python${PYTHON_VER} -m pip install --upgrade scipy
 rm -rf /var/lib/apt/lists/*
 
 if [ $DEVICE_TYPE = "Normal" ]; then
-aria2c -q -d /tmp -o llvm.tar.xz http://releases.llvm.org/6.0.1/clang+llvm-6.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz
+aria2c -q -d /tmp -o llvm.tar.xz http://releases.llvm.org/9.0.0/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz
 tar --strip 1 -Jxf /tmp/llvm.tar.xz -C /usr
 fi
