@@ -7,8 +7,16 @@ using System.Runtime.InteropServices;
 namespace Microsoft.ML.OnnxRuntime
 {
     [StructLayout(LayoutKind.Sequential)]
+    public struct OrtApiBase
+    {
+        public IntPtr GetApi;
+        public IntPtr GetVersionString;
+    };
+
+    [StructLayout(LayoutKind.Sequential)]
     public struct OrtApi
     {
+        public OrtApiBase base_;
         public IntPtr CreateStatus;
         public IntPtr GetErrorCode;
         public IntPtr GetErrorMessage;
@@ -39,6 +47,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CreateCustomOpDomain;
         public IntPtr CustomOpDomain_Add;
         public IntPtr AddCustomOpDomain;
+        public IntPtr RegisterCustomOpsLibrary;
 
         public IntPtr SessionGetInputCount;
         public IntPtr SessionGetOutputCount;
@@ -126,10 +135,15 @@ namespace Microsoft.ML.OnnxRuntime
 
         static OrtApi api_;
 
+        public delegate ref OrtApi DOrtGetApi(UInt32 version);
+
         static NativeMethods()
         {
+            DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetApi, typeof(DOrtGetApi));
+
             // TODO: Make this save the pointer, and not copy the whole structure across
-            api_ = OrtGetApi(1 /*ORT_API_VERSION*/);
+            api_ = (OrtApi)OrtGetApi(1 /*ORT_API_VERSION*/);
+
             OrtCreateEnv = (DOrtCreateEnv)Marshal.GetDelegateForFunctionPointer(api_.CreateEnv, typeof(DOrtCreateEnv));
             OrtReleaseEnv = (DOrtReleaseEnv)Marshal.GetDelegateForFunctionPointer(api_.ReleaseEnv, typeof(DOrtReleaseEnv));
             OrtGetErrorCode = (DOrtGetErrorCode)Marshal.GetDelegateForFunctionPointer(api_.GetErrorCode, typeof(DOrtGetErrorCode));
@@ -206,7 +220,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern ref OrtApi OrtGetApi(UInt32 version);
+        public static extern ref OrtApiBase OrtGetApiBase();
 
         #region Runtime/Environment API
 

@@ -21,8 +21,8 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 
-const OrtApi* g_ort = OrtGetApi(ORT_API_VERSION);
-const OrtApi* Ort::g_api = OrtGetApi(ORT_API_VERSION);
+const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+const OrtApi* Ort::g_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
 using namespace onnxruntime;
 
@@ -46,7 +46,7 @@ void usage() {
       "\t-h: help\n"
       "\n"
       "onnxruntime version: %s\n",
-      OrtGetVersionString());
+      g_ort->base_.GetVersionString());
 }
 
 #ifdef _WIN32
