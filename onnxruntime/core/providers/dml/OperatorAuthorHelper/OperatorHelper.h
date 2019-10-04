@@ -125,10 +125,11 @@ struct KernelArgs
         fillCount = std::min(fillCount, gsl::narrow_cast<uint32_t>(output.size()));
         std::fill_n(output.data(), fillCount, value);
         size_t copyCount = std::min(output.size() - fillCount, input.size());
-        memcpy(output.data() + fillCount, input.data(), copyCount * sizeof(input[0]));
+        std::copy_n(input.data(), copyCount, output.data() + fillCount);
     }
 
-    // Create a copy of an existing kernel args with a minimum dimension count.
+    // Create a copy of an existing kernel args with a minimum dimension count,
+    // filling the leading attribute values with 1's or 0's respectively.
     KernelArgs(KernelArgs const& kernelArgs, uint32_t minimumDimensionCount) :
         autoPad(kernelArgs.autoPad),
         autoPadSameUpper(kernelArgs.autoPadSameUpper),
@@ -322,7 +323,7 @@ public:
         const std::vector<DimensionType> filterDims = shapeInfo.GetInputTensorShape(1);
 
         ML_CHECK_VALID_ARGUMENT(
-            inputDimensions.size() == 3 || inputDimensions.size() == NchwDimensionCount || inputDimensions.size() == NcdhwDimensionCount,
+            inputDimensions.size() >= 3 && inputDimensions.size() <= 5,
             "Input dimensions must be: 3, 4, 5."
         );
         
@@ -349,7 +350,7 @@ public:
         const std::vector<DimensionType> inputDimensions = shapeInfo.GetInputTensorShape(0);
         const std::vector<DimensionType> filterDims = shapeInfo.GetInputTensorShape(1);
 
-        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() > NonspatialDimensionCount, "Input dimensions must be > 2");
+        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() > NonspatialDimensionCount, "Input dimensions must be >= 3");
 
         ResolvingPadding(inputDimensions);
         m_outputShapes.resize(1);
