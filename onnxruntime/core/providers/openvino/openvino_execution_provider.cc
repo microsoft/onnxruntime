@@ -29,7 +29,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(OpenVINOExecutionProviderIn
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider} {
   ORT_UNUSED_PARAMETER(info);
 
-  DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(OPENVINO, OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return onnxruntime::make_unique<CPUAllocator>(onnxruntime::make_unique<OrtMemoryInfo>(OPENVINO, OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(device_info));
 }
 
@@ -463,9 +463,13 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
   device_id = "HDDL";
 #endif
 
+#ifdef OPENVINO_CONFIG_VAD_F
+  device_id = "FPGA";
+#endif
+
   int counter = 0;
 
-  std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
 
   auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
 
@@ -527,7 +531,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
   weights_str_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
   weights_str_attr.set_s(weights_string);
 
-  auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+  auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
   meta_def->attributes["xml_str"] = xml_str_attr;
   meta_def->attributes["weights_str"] = weights_str_attr;
   meta_def->name = "OpenVINOKernel_" + std::to_string(counter++);
@@ -543,7 +547,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
   }
 
   sub_graph->SetMetaDef(meta_def);
-  result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+  result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
 
   return result;
 }

@@ -262,7 +262,7 @@ class CPUAllocator : public IDeviceAllocator {
   }
 
   CPUAllocator() {
-    memory_info_ = std::make_unique<OrtMemoryInfo>(CPU, OrtAllocatorType::OrtDeviceAllocator);
+    memory_info_ = onnxruntime::make_unique<OrtMemoryInfo>(CPU, OrtAllocatorType::OrtDeviceAllocator);
   }
 
   void* Alloc(size_t size) override;

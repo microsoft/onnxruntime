@@ -37,8 +37,8 @@ NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderIn
   ORT_ENFORCE(info.ng_backend_type == "CPU", "nGraph Execution Provider for onnxruntime currently is only supported for CPU backend.");
 
   auto default_allocator_factory = [](int) {
-    auto memory_info = std::make_unique<OrtMemoryInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator);
-    return std::make_unique<CPUAllocator>(std::move(memory_info));
+    auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator);
+    return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
   };
 
   DeviceAllocatorRegistrationInfo default_memory_info{
@@ -51,9 +51,9 @@ NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderIn
 
 
   auto cpu_allocator_factory = [](int) {
-    auto memory_info = std::make_unique<OrtMemoryInfo>(
+    auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(
       NGRAPH, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput);
-    return std::make_unique<CPUAllocator>(std::move(memory_info));
+    return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
   };
 
   DeviceAllocatorRegistrationInfo cpu_memory_info{
@@ -290,7 +290,7 @@ static void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
                                     std::vector<std::unique_ptr<ComputeCapability>>& result) {
   static size_t op_counter = 0;
 
-  auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
+  auto meta_def = onnxruntime::make_unique<IndexedSubGraph::MetaDef>();
   meta_def->name = "NGRAPHCustomOp_" + std::to_string(++op_counter);
   meta_def->domain = kNGraphDomain;
   meta_def->since_version = 1;
@@ -305,10 +305,10 @@ static void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
   graph_name.set_s(graph_viewer.Name());
   meta_def->attributes["graph_name"] = graph_name;
 
-  std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
   sub_graph->nodes = nodes;
   sub_graph->SetMetaDef(meta_def);
-  result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+  result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
 }
 
 static int GetOnnxOpSet(const GraphViewer& graph_viewer) {

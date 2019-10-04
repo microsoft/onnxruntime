@@ -19,8 +19,7 @@
 #include "core/graph/node_arg.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/function.h"
-#include "gsl/gsl_util"
-#include "gsl/pointers"
+#include "gsl/gsl"
 
 namespace onnxruntime {
 class Graph;
@@ -319,7 +318,7 @@ class Node {
   */
   class Definitions {
    public:
-    Definitions() noexcept = default;
+    Definitions() = default;
 
     /** The Node's explicit input definitions. */
     std::vector<NodeArg*> input_defs;
@@ -597,7 +596,7 @@ class Graph {
       return *(iter->second);
     }
 
-    auto result = node_args_.insert(std::make_pair(name, std::make_unique<NodeArg>(name, p_arg_type)));
+    auto result = node_args_.insert(std::make_pair(name, onnxruntime::make_unique<NodeArg>(name, p_arg_type)));
     return *(result.first->second);
   }
 

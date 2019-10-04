@@ -38,11 +38,13 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph', 'openvino' or 'nuphar'. "
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph', "
+      "'openvino' or 'nuphar'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
-      "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. \n"
+      "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. "
+      "\n"
       "\t-h: help\n"
       "\n"
       "onnxruntime version: %s\n",
@@ -291,7 +293,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (enable_ngraph) {  //TODO: Re-order the priority?
+    if (enable_ngraph) {  // TODO: Re-order the priority?
 #ifdef USE_NGRAPH
       ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_NGraph(sf, "CPU"));
 #else
@@ -312,25 +314,26 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.SetGraphOptimizationLevel(graph_optimization_level);
     }
 
-    std::unordered_set<std::string> cuda_flaky_tests = {
-        "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
-    std::unordered_set<std::string> nuphar_flaky_tests = {"logsoftmax_axis_0", "softmax_axis_0"};
+    std::unordered_set<std::string> cuda_flaky_tests = {"fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
+
 #if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
-    //Minimize mem consumption
-    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&stat, &sf, enable_cuda, &cuda_flaky_tests, &env](ITestCase* l) {
-      std::unique_ptr<ITestCase> test_case_ptr(l);
-      if (enable_cuda && cuda_flaky_tests.find(l->GetTestCaseName()) != cuda_flaky_tests.end()) {
-        return;
-      }
-      TestResultStat per_case_stat;
-      std::vector<ITestCase*> per_case_tests = {l};
-      TestEnv per_case_args(per_case_tests, per_case_stat, env, sf);
-      RunTests(per_case_args, 1, 1, 1, GetDefaultThreadPool(Env::Default()));
-      stat += per_case_stat;
-    });
+    // Minimize mem consumption
+    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
+              [&stat, &sf, enable_cuda, &cuda_flaky_tests, &env](ITestCase* l) {
+                std::unique_ptr<ITestCase> test_case_ptr(l);
+                if (enable_cuda && cuda_flaky_tests.find(l->GetTestCaseName()) != cuda_flaky_tests.end()) {
+                  return;
+                }
+                TestResultStat per_case_stat;
+                std::vector<ITestCase*> per_case_tests = {l};
+                TestEnv per_case_args(per_case_tests, per_case_stat, env, sf);
+                RunTests(per_case_args, 1, 1, 1, GetDefaultThreadPool(Env::Default()));
+                stat += per_case_stat;
+              });
 #else
     std::vector<ITestCase*> tests;
-    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&tests](ITestCase* l) { tests.push_back(l); });
+    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
+              [&tests](ITestCase* l) { tests.push_back(l); });
     if (enable_cuda) {
       for (auto it = tests.begin(); it != tests.end();) {
         auto iter = cuda_flaky_tests.find((*it)->GetTestCaseName());
@@ -342,17 +345,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         }
       }
     }
-    if (enable_nuphar) {
-      for (auto it = tests.begin(); it != tests.end();) {
-        auto iter = nuphar_flaky_tests.find((*it)->GetTestCaseName());
-        if (iter != nuphar_flaky_tests.end()) {
-          delete *it;
-          it = tests.erase(it);
-        } else {
-          ++it;
-        }
-      }
-    }
+
     TestEnv args(tests, stat, env, sf);
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
                          GetDefaultThreadPool(Env::Default()));
@@ -374,6 +367,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     std::string test_name_;
     std::string reason_;
     std::set<std::string> broken_versions_ = {}; // apply to all versions if empty
+    BrokenTest(std::string name, std::string reason) : test_name_(std::move(name)), reason_(std::move(reason)) {}
+    BrokenTest(std::string name, std::string reason, const std::initializer_list<std::string>& versions) :
+      test_name_(std::move(name)), reason_(std::move(reason)), broken_versions_(versions) {}
     bool operator < (const struct BrokenTest& test) const {
         return strcmp(test_name_.c_str(), test.test_name_.c_str()) < 0;
     }
@@ -384,8 +380,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
       {"convtranspose_1d", "1d convtranspose not supported yet"},
       {"convtranspose_3d", "3d convtranspose not supported yet"},
-      {"cast_STRING_to_FLOAT", "result differs"},
-      {"cast_FLOAT_to_STRING", "result differs"},
+      {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
+      // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8. 
+      // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
+      // which doesn't match the expected output that was generated with numpy.
+      {"cast_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results."},
       {"tf_nasnet_large", "disable temporarily"},
       {"tf_nasnet_mobile", "disable temporarily"},
       {"tf_pnasnet_large", "disable temporarily"},
@@ -393,24 +392,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
       {"tf_inception_v2", "result mismatch"},
       {"mxnet_arcface", "result mismatch"},
-      {"unique_not_sorted_without_axis", "not implemented yet"},
-      {"unique_sorted_with_axis", "Unique not implemented yet"},
-      {"unique_sorted_with_axis_3d", "Unique not implemented yet"},
-      {"unique_sorted_without_axis", "Unique not implemented yet"},
-      {"unique_sorted_axis_3d", "Unique not implemented yet"},
-      {"unique_sorted_axis", "Unique not implemented yet"},
-      {"unique_sorted_with_negative_axis", "Unique not implemented yet"},
-      {"gather_elements_1", "not implemented yet"},
-      {"gather_elements_0", "not implemented yet"},
+      {"unique_not_sorted_without_axis", "Expected data for 'Y' is incorrect and in sorted order."},
       {"cumsum_1d_reverse_exclusive", "only failing linux GPU CI. Likely build error."},
-      {"range_float_type_positive_delta", "not implemented yet"},
-      {"range_float_type_positive_delta_expanded", "not implemented yet"},
-      {"range_int32_type_negative_delta", "not implemented yet"},
-      {"range_int32_type_negative_delta_expanded", "not implemented yet"},
       {"det_2d", "not implemented yet"},
       {"det_nd", "not implemented yet"},
-      {"gathernd_example_float32", "not implemented yet"},
-      {"gathernd_example_int32", "not implemented yet"},
       {"resize_downsample_scales_cubic_A_n0p5_exclude_outside", "not implemented yet"},
       {"resize_downsample_scales_cubic_align_corners", "not implemented yet"},
       {"resize_downsample_scales_cubic", "not implemented yet"},
@@ -442,55 +427,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"sequence_model3", "SequenceConstruct not implemented yet"},
       {"sequence_model2", "SequenceConstruct not implemented yet"},
       {"sequence_model1", "Sequence* not implemented yet"},
-      {"unsqueeze_unsorted_axes", "Unsqueeze not implemented yet"},
-      {"unsqueeze_two_axes", "Unsqueeze not implemented yet"},
-      {"unsqueeze_three_axes", "Unsqueeze not implemented yet"},
-      {"unsqueeze_negative_axes", "Unsqueeze not implemented yet"},
-      {"unsqueeze_axis_3", "Unsqueeze not implemented yet"},
-      {"unsqueeze_axis_2", "Unsqueeze not implemented yet"},
-      {"unsqueeze_axis_1", "Unsqueeze not implemented yet"},
-      {"unsqueeze_axis_0", "Unsqueeze not implemented yet"},
-      {"squeeze_negative_axes", "Squeeze(11) not implemented yet"},
-      {"slice_negative_axes", "Slice(11) not implemented yet"},
       {"scatter_elements_with_negative_indices", "ScatterElements(11) not implemented yet"},
-      {"reduce_sum_square_negative_axes_keepdims_random", "ReduceSumSquare(11) not implemented yet"},
-      {"reduce_sum_square_negative_axes_keepdims_example", "ReduceSumSquare(11) not implemented yet"},
-      {"reduce_sum_negative_axes_keepdims_random", "ReduceSum(11) not implemented yet"},
-      {"reduce_sum_negative_axes_keepdims_example", "ReduceSum(11) not implemented yet"},
-      {"reduce_prod_negative_axes_keepdims_random", "ReduceProd(11) not implemented yet"},
-      {"reduce_prod_negative_axes_keepdims_example", "ReduceProd(11) not implemented yet"},
-      {"reduce_min_negative_axes_keepdims_random", "ReduceMin(11) not implemented yet"},
-      {"reduce_min_negative_axes_keepdims_example", "ReduceMin(11) not implemented yet"},
-      {"reduce_mean_negative_axes_keepdims_random", "ReduceMean(11) not implemented yet"},
-      {"reduce_mean_negative_axes_keepdims_example", "ReduceMean(11) not implemented yet"},
-      {"reduce_max_negative_axes_keepdims_random", "ReduceMax(11) not implemented yet"},
-      {"reduce_max_negative_axes_keepdims_example", "ReduceMax(11) not implemented yet"},
-      {"reduce_log_sum_negative_axes", "ReduceLogSum(11) not implemented yet"},
-      {"reduce_log_sum_exp_negative_axes_keepdims_random", "ReduceLogSumExp(11) not implemented yet"},
-      {"reduce_log_sum_exp_negative_axes_keepdims_example", "ReduceLogSumExp(11) not implemented yet"},
-      {"reduce_l2_negative_axes_keep_dims_random", "ReduceL2(11) not implemented yet"},
-      {"reduce_l2_negative_axes_keep_dims_example", "ReduceL2(11) not implemented yet"},
-      {"reduce_l1_negative_axes_keep_dims_random", "ReduceL1(11) not implemented yet"},
-      {"reduce_l1_negative_axes_keep_dims_example", "ReduceL1(11) not implemented yet"},
       {"onehot_without_axis", "OneHot(11) not implemented yet"},
       {"onehot_with_negative_axis", "OneHot(11) not implemented yet"},
       {"onehot_with_axis", "OneHot(11) not implemented yet"},
       {"onehot_negative_indices", "OneHot(11) not implemented yet"},
-      {"gather_elements_negative_indices", "GatherElements(11) not implemented yet"},
-      {"flatten_negative_axis4", "Flatten(11) not implemented yet"},
-      {"flatten_negative_axis3", "Flatten(11) not implemented yet"},
-      {"flatten_negative_axis2", "Flatten(11) not implemented yet"},
-      {"flatten_negative_axis1", "Flatten(11) not implemented yet"},
-      {"reflect_pad", "Pad(11) not implemented yet"},
-      {"edge_pad", "Pad(11) not implemented yet"},
-      {"constant_pad", "Pad(11) not implemented yet"},
-      {"concat_3d_axis_negative_3", "Concat(11) not implemented yet"},
-      {"concat_3d_axis_negative_2", "Concat(11) not implemented yet"},
-      {"concat_3d_axis_negative_1", "Concat(11) not implemented yet"},
-      {"concat_2d_axis_negative_2", "Concat(11) not implemented yet"},
-      {"concat_2d_axis_negative_1", "Concat(11) not implemented yet"},
-      {"concat_1d_axis_negative_1", "Concat(11) not implemented yet"},
-      {"compress_negative_axis", "Compress(11) not implemented yet"},
       {"bitshift_right_uint8", "BitShift(11) not implemented yet"},
       {"bitshift_right_uint64", "BitShift(11) not implemented yet"},
       {"bitshift_right_uint32", "BitShift(11) not implemented yet"},
@@ -499,7 +440,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"bitshift_left_uint64", "BitShift(11) not implemented yet"},
       {"bitshift_left_uint32", "BitShift(11) not implemented yet"},
       {"bitshift_left_uint16", "BitShift(11) not implemented yet"},
-      {"gemm_default_scalar_bias", "Gemm ValidBroadcast() has bug to be fixed."},
+      {"reflect_pad", "test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests"},
+      {"edge_pad", "test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests"},
 };
 
 #ifdef USE_NGRAPH
@@ -520,6 +462,32 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"argmin_negative_axis_keepdims_random", "not implemented yet for opset 11"});
   broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});
   broken_tests.insert({"hardmax_negative_axis", "not implemented yet for opset 11"});
+  broken_tests.insert({"flatten_negative_axis1", "not implemented yet for opset 11"});
+  broken_tests.insert({"flatten_negative_axis2", "not implemented yet for opset 11"});
+  broken_tests.insert({"flatten_negative_axis3", "not implemented yet for opset 11"});
+  broken_tests.insert({"flatten_negative_axis4", "not implemented yet for opset 11"});
+  broken_tests.insert({"squeeze_negative_axes", "not implemented yet for opset 11"});
+  broken_tests.insert({"unsqueeze_negative_axes", "not implemented yet for opset 11"});
+  broken_tests.insert({"reduce_sum_square_negative_axes_keepdims_random", "ReduceSumSquare(11) not implemented yet"});
+  broken_tests.insert({"reduce_sum_square_negative_axes_keepdims_example", "ReduceSumSquare(11) not implemented yet"});
+  broken_tests.insert({"reduce_sum_negative_axes_keepdims_random", "ReduceSum(11) not implemented yet"});
+  broken_tests.insert({"reduce_sum_negative_axes_keepdims_example", "ReduceSum(11) not implemented yet"});
+  broken_tests.insert({"reduce_prod_negative_axes_keepdims_random", "ReduceProd(11) not implemented yet"});
+  broken_tests.insert({"reduce_prod_negative_axes_keepdims_example", "ReduceProd(11) not implemented yet"});
+  broken_tests.insert({"reduce_min_negative_axes_keepdims_random", "ReduceMin(11) not implemented yet"});
+  broken_tests.insert({"reduce_min_negative_axes_keepdims_example", "ReduceMin(11) not implemented yet"});
+  broken_tests.insert({"reduce_mean_negative_axes_keepdims_random", "ReduceMean(11) not implemented yet"});
+  broken_tests.insert({"reduce_mean_negative_axes_keepdims_example", "ReduceMean(11) not implemented yet"});
+  broken_tests.insert({"reduce_max_negative_axes_keepdims_random", "ReduceMax(11) not implemented yet"});
+  broken_tests.insert({"reduce_max_negative_axes_keepdims_example", "ReduceMax(11) not implemented yet"});
+  broken_tests.insert({"reduce_log_sum_negative_axes", "ReduceLogSum(11) not implemented yet"});
+  broken_tests.insert({"reduce_log_sum_exp_negative_axes_keepdims_random", "ReduceLogSumExp(11) not implemented yet"});
+  broken_tests.insert({"reduce_log_sum_exp_negative_axes_keepdims_example", "ReduceLogSumExp(11) not implemented yet"});
+  broken_tests.insert({"reduce_l2_negative_axes_keep_dims_random", "ReduceL2(11) not implemented yet"});
+  broken_tests.insert({"reduce_l2_negative_axes_keep_dims_example", "ReduceL2(11) not implemented yet"});
+  broken_tests.insert({"reduce_l1_negative_axes_keep_dims_random", "ReduceL1(11) not implemented yet"});
+  broken_tests.insert({"reduce_l1_negative_axes_keep_dims_example", "ReduceL1(11) not implemented yet"});
+  broken_tests.insert({"constant_pad", "not implemented yet for opset 11"});
 #endif
 
 #ifdef USE_MKLDNN
@@ -528,6 +496,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"tf_mobilenet_v1_1.0_224", "result mismatch"});
   broken_tests.insert({"mobilenetv2-1.0", "result mismatch"});
   broken_tests.insert({"candy", "result mismatch"});
+  broken_tests.insert({"range_float_type_positive_delta_expanded", "get unknown exception from MKLDNN EP"});
+  broken_tests.insert({"range_int32_type_negative_delta_expanded", "get unknown exception from MKLDNN EP"});
 #endif
 
 #ifdef USE_OPENVINO
@@ -573,7 +543,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
 #if defined(__GNUG__) && !defined(__LP64__)
-  broken_tests.insert({"nonzero_example", "failed: type mismatch", {"onnx123", "onnx130", "onnx141", "onnx150", "onnxtip"}});
+  broken_tests.insert(
+      {"nonzero_example", "failed: type mismatch", {"onnx123", "onnx130", "onnx141", "onnx150", "onnxtip"}});
   broken_tests.insert({"slice_neg_steps", "failed: type mismatch"});
   broken_tests.insert({"mod_float_mixed_sign_example", "failed: type mismatch"});
 #endif
@@ -622,8 +593,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   for (const auto& p : stat.GetFailedTest()) {
     BrokenTest t = {p.first, ""};
     auto iter = broken_tests.find(t);
-    if (iter == broken_tests.end() ||
-        (p.second != TestModelInfo::unknown_version && !iter->broken_versions_.empty() && iter->broken_versions_.find(p.second) == iter->broken_versions_.end())) {
+    if (iter == broken_tests.end() || (p.second != TestModelInfo::unknown_version && !iter->broken_versions_.empty() &&
+                                       iter->broken_versions_.find(p.second) == iter->broken_versions_.end())) {
       fprintf(stderr, "test %s failed, please fix it\n", p.first.c_str());
       result = -1;
     }

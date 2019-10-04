@@ -7,7 +7,7 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
-#include "gsl/span"
+#include "gsl/gsl"
 #include <type_traits>
 
 using namespace ::onnxruntime::common;

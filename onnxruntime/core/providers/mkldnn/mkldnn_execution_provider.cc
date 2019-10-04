@@ -20,10 +20,10 @@ constexpr const char* MKLDNN_CPU = "MklDnnCpu";
 MKLDNNExecutionProvider::MKLDNNExecutionProvider(const MKLDNNExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kMklDnnExecutionProvider} {
   DeviceAllocatorRegistrationInfo default_memory_info({OrtMemTypeDefault,
-                                                       [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(MKLDNN, OrtAllocatorType::OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
+                                                       [](int) { return onnxruntime::make_unique<CPUAllocator>(onnxruntime::make_unique<OrtMemoryInfo>(MKLDNN, OrtAllocatorType::OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
 
   DeviceAllocatorRegistrationInfo cpu_memory_info({OrtMemTypeCPUOutput,
-                                                   [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(MKLDNN_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); }, std::numeric_limits<size_t>::max()});
+                                                   [](int) { return onnxruntime::make_unique<CPUAllocator>(onnxruntime::make_unique<OrtMemoryInfo>(MKLDNN_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); }, std::numeric_limits<size_t>::max()});
 
   if (info.create_arena) {
     InsertAllocator(CreateAllocator(default_memory_info));
@@ -31,10 +31,10 @@ MKLDNNExecutionProvider::MKLDNNExecutionProvider(const MKLDNNExecutionProviderIn
     InsertAllocator(CreateAllocator(cpu_memory_info));
   } else {
     InsertAllocator(std::shared_ptr<IArenaAllocator>(
-        std::make_unique<DummyArena>(default_memory_info.factory(0))));
+        onnxruntime::make_unique<DummyArena>(default_memory_info.factory(0))));
 
     InsertAllocator(std::shared_ptr<IArenaAllocator>(
-        std::make_unique<DummyArena>(cpu_memory_info.factory(0))));
+        onnxruntime::make_unique<DummyArena>(cpu_memory_info.factory(0))));
   }
 }  // namespace onnxruntime
 
@@ -376,7 +376,7 @@ void MKLDNNExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& grap
     }
   }
 
-  auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+  auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
   meta_def->attributes["initializers"] = initializers;
   meta_def->name = "MkldnnCustomOp" + std::to_string(subgraph_index_);
   meta_def->domain = kMSDomain;
@@ -399,10 +399,10 @@ void MKLDNNExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& grap
   ap.set_s(subgraph_id);
   ap.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
   meta_def->attributes["subgraph_id"] = ap;
-  std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
   sub_graph->nodes = sub_var.subgraph_node_indexes;
   sub_graph->SetMetaDef(meta_def);
-  result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+  result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
   mkl_subgraphs_.insert(std::make_pair(subgraph_id, subgraph_ptr));
 
   // Reset subgraph and meta_Def

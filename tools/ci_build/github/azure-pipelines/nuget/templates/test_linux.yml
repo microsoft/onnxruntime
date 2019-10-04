@@ -19,10 +19,14 @@ jobs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
+  - template: get-nuget-package-version-as-variable.yml
+    parameters:
+      packageFolder: '$(Build.BinariesDirectory)/nuget-artifact'
+
   - ${{ if eq(parameters['TestGPU'], 'false') }}:
     - script: |
        set -e -x
-       $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-docker.sh $(Build.SourcesDirectory) $(Build.BinariesDirectory) nuget-artifact
+       $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-docker.sh $(Build.SourcesDirectory) $(Build.BinariesDirectory) nuget-artifact $(NuGetPackageVersionNumber)
       displayName: 'Run Package Test (x64)'
       env:
         OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
@@ -30,7 +34,7 @@ jobs:
   - ${{ if eq(parameters['TestGPU'], 'true') }}:
     - script: |
        set -e -x
-       $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-docker-gpu.sh $(Build.SourcesDirectory) $(Build.BinariesDirectory) nuget-artifact
+       $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-docker-gpu.sh $(Build.SourcesDirectory) $(Build.BinariesDirectory) nuget-artifact $(NuGetPackageVersionNumber)
       displayName: 'Run Package Test GPU (x64)'
       env:
         OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)

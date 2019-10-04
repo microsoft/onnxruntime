@@ -12,7 +12,7 @@
 #pragma warning(disable : 4996)
 #endif
 
-#include "gsl/gsl_algorithm"
+#include "gsl/gsl"
 
 #ifdef _MSC_VER
 #pragma warning(pop)

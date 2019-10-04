@@ -44,6 +44,10 @@ elif [ $BUILD_OS = "manylinux2010" ]; then
         DOCKER_FILE=Dockerfile.manylinux2010
     fi
     docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
+elif [ $BUILD_OS = "centos7" ]; then
+    IMAGE="centos7"
+    DOCKER_FILE=Dockerfile.centos
+    docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
 else
     if [ $BUILD_DEVICE = "gpu" ]; then
         IMAGE="ubuntu16.04-$CUDA_VER"

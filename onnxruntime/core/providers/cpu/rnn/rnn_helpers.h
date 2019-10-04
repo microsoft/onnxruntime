@@ -13,8 +13,7 @@
 #include <string>
 #include <vector>
 
-#include "gsl/span"
-#include "gsl/gsl_algorithm"
+#include "gsl/gsl"
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"

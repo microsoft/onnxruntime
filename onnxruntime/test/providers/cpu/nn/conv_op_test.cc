@@ -29,13 +29,20 @@ void TestConvOp(const ConvOpAttributes& attributes,
                 const std::string& err_str = "") {
   OpTester test("Conv");
   test.AddAttribute("auto_pad", attributes.auto_pad);
-  test.AddAttribute("dilations", attributes.dilations);
   test.AddAttribute("group", attributes.group);
   test.AddAttribute("kernel_shape", attributes.kernel_shape);
+
+  if (!attributes.dilations.empty()) {
+    test.AddAttribute("dilations", attributes.dilations);
+  }
+
   if (!attributes.pads.empty()) {
     test.AddAttribute("pads", attributes.pads);
   }
-  test.AddAttribute("strides", attributes.strides);
+
+  if (!attributes.strides.empty()) {
+    test.AddAttribute("strides", attributes.strides);
+  }
 
   ORT_ENFORCE(inputs.size() <= 3, "Our name array is only setup to handle 3 inputs");
   const char* szNames[] = {"X", "W", "B"};
@@ -50,7 +57,7 @@ void TestConvOp(const ConvOpAttributes& attributes,
   if (!is_mkldnn_supported) {
     excluded_providers.insert(kMklDnnExecutionProvider);
   }
-  excluded_providers.insert(kTensorrtExecutionProvider);// Disable TensorRT because weight as input is not supported
+  excluded_providers.insert(kTensorrtExecutionProvider);  // Disable TensorRT because weight as input is not supported
   test.Run(expect_result, err_str, excluded_providers);
 }
 
@@ -65,6 +72,27 @@ TEST(ConvTest, Conv1D_1) {
       vector<int64_t>{1},     // kernel_shape
       vector<int64_t>{0, 0},  // pads
       vector<int64_t>{1}      // strides
+  };
+  vector<float> X = {-0.21559301018714905f, 0.4691687822341919f, 0.4426700472831726f, -0.4517466723918915f,
+                     -0.05216419696807861f, 0.29067182540893555f, 0.251010000705719f};
+  vector<int64_t> X_shape = {1, 1, 7};
+  vector<float> W = {0.24472862482070923f};
+  vector<int64_t> W_shape = {1, 1, 1};
+  vector<int64_t> Y_shape = {1, 1, 7};
+  auto expected_vals = {-0.052761781960725784f, 0.11481902748346329f, 0.10833403468132019f, -0.11055534332990646f,
+                        -0.012766072526574135f, 0.07113571465015411f, 0.061429332941770554f};
+
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+}
+
+TEST(ConvTest, Conv1D_1_DefaultStridesAndDilations) {
+  ConvOpAttributes attrs = {
+      "",                     // auto_pad
+      vector<int64_t>{},      // dilations
+      1,                      // group
+      vector<int64_t>{1},     // kernel_shape
+      vector<int64_t>{0, 0},  // pads
+      vector<int64_t>{}       // strides
   };
   vector<float> X = {-0.21559301018714905f, 0.4691687822341919f, 0.4426700472831726f, -0.4517466723918915f,
                      -0.05216419696807861f, 0.29067182540893555f, 0.251010000705719f};
@@ -179,7 +207,8 @@ TEST(ConvTest, Conv1D_Invalid_Input_Shape) {
   vector<int64_t> dummy_shape = {1, 1, 2};
   auto dummy_vals = {0.0f, 0.0f};
   TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, true, true,
-             OpTester::ExpectResult::kExpectFailure, "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
+             OpTester::ExpectResult::kExpectFailure,
+             "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
              "Both source and target dimension have values but they differ. Source=0 Target=2 Dimension=2");
 }
 
@@ -198,7 +227,8 @@ TEST(ConvTest, Conv2D_Invalid_Input_Shape) {
   auto dummy_vals = {-0.0f, 0.0f, -0.0f, -0.0f,
                      -0.0f, 0.0f, -0.0f, -0.0f};
   TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, true, true,
-             OpTester::ExpectResult::kExpectFailure, "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
+             OpTester::ExpectResult::kExpectFailure,
+             "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
              "Both source and target dimension have values but they differ. Source=1 Target=2 Dimension=0");
 }
 
