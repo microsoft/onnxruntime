@@ -158,7 +158,7 @@ OrtStatus* CreateTensorImplForSeq(const int64_t* shape, size_t shape_len,
     return st;
   }
   std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::AllocatorWrapper>(allocator);
-  out.InitTensor(DataTypeImpl::GetType<T>(), onnxruntime::TensorShape(shapes), alloc_ptr);
+  out = std::move(Tensor(DataTypeImpl::GetType<T>(), onnxruntime::TensorShape(shapes), alloc_ptr));
   return nullptr;
 }
 

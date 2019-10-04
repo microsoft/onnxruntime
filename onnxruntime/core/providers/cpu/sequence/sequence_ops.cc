@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/sequence/sequence_ops.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/providers/cpu/tensor/utils.h"
 
 using namespace onnxruntime::common;
 
@@ -77,52 +78,6 @@ static void CopyTensor(const Tensor& indexed_tensor, Tensor& output_tensor) {
   memcpy(output_data, input_data, indexed_tensor.SizeInBytes());
 }
 
-static void FillOutputTensor(const Tensor& indexed_tensor, Tensor& output_tensor) {
-  auto tensor_dtype = utils::GetTensorProtoType(indexed_tensor);
-  switch (tensor_dtype) {
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      CopyTensor<float>(indexed_tensor, output_tensor);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-      CopyTensor<bool>(indexed_tensor, output_tensor);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      CopyTensor<int32_t>(indexed_tensor, output_tensor);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-      CopyTensor<double>(indexed_tensor, output_tensor);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-      CopyTensor<int8_t>(indexed_tensor, output_tensor);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      CopyTensor<uint8_t>(indexed_tensor, output_tensor);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
-      CopyTensor<uint16_t>(indexed_tensor, output_tensor);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT16:
-      CopyTensor<int16_t>(indexed_tensor, output_tensor);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      CopyTensor<int64_t>(indexed_tensor, output_tensor);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      CopyTensor<uint32_t>(indexed_tensor, output_tensor);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      CopyTensor<uint64_t>(indexed_tensor, output_tensor);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_STRING:
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
-      ORT_THROW("String, float16 and bloat16 Not implemented");
-      break;
-    default:
-      ORT_THROW("Unsupported data type for index tensor: ", tensor_dtype);
-  }
-}
-
 Status SequenceAt::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<VectorTensor>(0);
   ORT_ENFORCE(X != nullptr, "Got nullptr for sequence input.");
@@ -140,7 +95,7 @@ Status SequenceAt::Compute(OpKernelContext* context) const {
   }
   const Tensor& indexed_tensor = (*X)[input_seq_idx];
   auto* Y = context->Output(0, indexed_tensor.Shape().GetDims());
-  FillOutputTensor(indexed_tensor, *Y);
+  CopyCpuTensor(&indexed_tensor, Y);
 
   return Status::OK();
 }

@@ -28,7 +28,16 @@ class InferenceSession;
 namespace test {
 template <typename T>
 struct SeqTensors {
-  std::vector<std::pair<std::vector<int64_t>, std::vector<T>>> tensors;
+  void AddTensor(const std::vector<int64_t>& shape0, const std::vector<T>& data0) {
+    tensors.push_back(Tensor<T>{shape0, data0});
+  }
+
+  template <typename U>
+  struct Tensor {
+    std::vector<int64_t> shape;
+    std::vector<U> data;
+  };
+  std::vector<Tensor<T>> tensors;
 };
 
 // unfortunately std::optional is in C++17 so use a miniversion of it
@@ -226,20 +235,20 @@ class OpTester {
     auto num_tensors = seq_tensors.tensors.size();
     ptr->resize(num_tensors);
     for (int i = 0; i < num_tensors; ++i) {
-      TensorShape shape{seq_tensors.tensors[i].first};
-      auto values_count = static_cast<int64_t>(seq_tensors.tensors[i].second.size());
+      TensorShape shape{seq_tensors.tensors[i].shape};
+      auto values_count = static_cast<int64_t>(seq_tensors.tensors[i].data.size());
       ORT_ENFORCE(shape.Size() == values_count, values_count,
                   " input values doesn't match tensor size of ", shape.Size());
 
       auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-      auto& p_tensor = (*ptr)[i];
-      p_tensor.InitTensor(DataTypeImpl::GetType<T>(),
-                          shape,
-                          allocator);
+      auto& tensor = (*ptr)[i];
+      tensor = std::move(Tensor(DataTypeImpl::GetType<T>(),
+                                shape,
+                                allocator));
 
-      auto* data_ptr = p_tensor.template MutableData<T>();
+      auto* data_ptr = tensor.template MutableData<T>();
       for (int64_t x = 0; x < values_count; x++) {
-        data_ptr[x] = seq_tensors.tensors[i].second[x];
+        data_ptr[x] = seq_tensors.tensors[i].data[x];
       }
     }
 
@@ -386,8 +395,8 @@ class OpTester {
 
       auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
       auto p_tensor = onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
-                                               shape,
-                                               allocator);
+                                                       shape,
+                                                       allocator);
 
       auto* data_ptr = p_tensor->template MutableData<T>();
       for (int64_t i = 0; i < values_count; i++) {

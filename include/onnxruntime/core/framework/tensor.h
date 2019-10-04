@@ -76,7 +76,6 @@ class Tensor final {
    */
   Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, int64_t offset = 0);
 
-  void InitTensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, int64_t offset = 0);
   ~Tensor();
 
   //Move is allowed
