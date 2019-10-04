@@ -271,7 +271,9 @@ __global__ void _LambUpdate(
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   // The confidence level should not exceed 1 for numerical stability.
-  const auto ratio = _Min(threshold, _Sqrt((*w_norm) / (*r_norm)));
+  // The threshold will be used even if r_norm is 0 because
+  // NaN > threshold ? NaN : threshold returns threshold.
+  const auto ratio = _Min(_Sqrt((*w_norm) / (*r_norm)), threshold);
   // Compute new weight using the saved update direction.
   weights_out[id] = weights[id] - ratio * T2((*eta) * update_direction[id]);
 
