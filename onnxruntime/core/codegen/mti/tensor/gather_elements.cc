@@ -27,8 +27,8 @@ tvm::Tensor GatherElements(const tvm::Tensor& t,
         tvm::Array<tvm::Expr> idx_vars;
         for (int64_t j = 0; j < indices_rank; j++)
           idx_vars.push_back(ovars[j]);
-        // make sure idx is within [-idx_upper_bound, idx_upper_bound - 1]
-        tvm::Expr real_idx = tvm_codegen::SafeIndex(indices(idx_vars), idx_upper_bound);
+        // make sure idx is clamped in the range of [-idx_upper_bound, idx_upper_bound - 1]
+        tvm::Expr real_idx = tvm_codegen::ClampIndex(indices(idx_vars), idx_upper_bound);
         // tvm idx must be of Int(32)
         ivars.push_back(tvm::cast(tvm::Int(32), real_idx));
       } else {
