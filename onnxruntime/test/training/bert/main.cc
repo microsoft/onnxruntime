@@ -20,7 +20,12 @@ using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
 using namespace std;
 
-Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params) {
+struct BertParameters : public TrainingRunner::Parameters {
+  int max_sequence_length = 512;
+  int max_predictions_per_sequence = 80;
+};
+
+Status ParseArguments(int argc, char* argv[], BertParameters& params) {
   cxxopts::Options options("BERT Training", "Main Program to train BERT");
   // clang-format off
   options
@@ -95,6 +100,9 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     } else {
       params.eval_batch_size = params.batch_size;
     }
+
+    params.max_sequence_length = flags["max_seq_length"].as<int>();
+    params.max_predictions_per_sequence = flags["max_predictions_per_seq"].as<int>();
 
     params.gradient_accumulation_steps = flags["gradient_accumulation_steps"].as<int>();
     if (params.gradient_accumulation_steps < 1) {
@@ -171,7 +179,7 @@ float GetLossValue(const Tensor& loss_tensor) {
   return loss;
 }
 
-void setup_training_params(TrainingRunner::Parameters& params) {
+void setup_training_params(BertParameters& params) {
   params.model_path = params.model_name + ".onnx";
   params.model_with_loss_func_path = params.model_name + "_with_cost.onnx";
   params.model_with_training_graph_path = params.model_name + "_bw.onnx";
@@ -194,8 +202,8 @@ void setup_training_params(TrainingRunner::Parameters& params) {
                                             /*mlm_loss*/ "mlm_loss",
                                             /*nsp_loss*/ "nsp_loss",
                                             /*batch_size*/ std::to_string(params.batch_size),
-                                            /*max_sequence_len*/ std::to_string(512),
-                                            /*max_predictions_per_sequence*/ std::to_string(80)
+                                            /*max_sequence_len*/ std::to_string(params.max_sequence_length),
+                                            /*max_predictions_per_sequence*/ std::to_string(params.max_predictions_per_sequence)
                                            });
 
   params.weights_not_to_train = {
@@ -296,7 +304,7 @@ int main(int argc, char* argv[]) {
   printf("BERT training is not supported in non-CUDA build. ");
 #endif
 
-  TrainingRunner::Parameters params;
+  BertParameters params;
   RETURN_IF_FAIL(ParseArguments(argc, argv, params));
   setup_training_params(params);
 
@@ -317,7 +325,6 @@ int main(int argc, char* argv[]) {
   if (params.is_perf_test) {
     // setup fake data
     int batch_size = static_cast<int>(params.batch_size);
-    int max_seq_len_in_batch = 512;
     std::vector<std::string> tensor_names = {"input1", /*input_ids*/
                                              "input2", /*token_type_ids*/
                                              "input3", /*input_mask*/
@@ -325,12 +332,12 @@ int main(int argc, char* argv[]) {
                                              "masked_lm_ids",
                                              "masked_lm_weights",
                                              "next_sentence_labels"};
-    std::vector<TensorShape> tensor_shapes = {{batch_size, max_seq_len_in_batch},
-                                              {batch_size, max_seq_len_in_batch},
-                                              {batch_size, max_seq_len_in_batch},
-                                              {batch_size, 80},
-                                              {batch_size, 80},
-                                              {batch_size, 80},
+    std::vector<TensorShape> tensor_shapes = {{batch_size, params.max_sequence_length},
+                                              {batch_size, params.max_sequence_length},
+                                              {batch_size, params.max_sequence_length},
+                                              {batch_size, params.max_predictions_per_sequence},
+                                              {batch_size, params.max_predictions_per_sequence},
+                                              {batch_size, params.max_predictions_per_sequence},
                                               {batch_size}};
     std::vector<onnx::TensorProto_DataType> tensor_types = {onnx::TensorProto_DataType_INT64,
                                                             onnx::TensorProto_DataType_INT64,
