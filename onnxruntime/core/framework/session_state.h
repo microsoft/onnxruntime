@@ -240,7 +240,7 @@ class SessionState {
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan_ = nullptr;
 
   const logging::Logger* logger_ = nullptr;
-  profiling::Profiler* profiler_;
+  profiling::Profiler* profiler_ = nullptr;
 
   // switch for enable memory pattern optimization or not.
   const bool enable_mem_pattern_;
@@ -264,7 +264,7 @@ class SessionState {
 
   bool export_fused_dll_ = false;
   FuncManager fused_funcs_mgr_;
-  const DataTransferManager* data_transfer_mgr_;
+  const DataTransferManager* data_transfer_mgr_ = nullptr;
 
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;

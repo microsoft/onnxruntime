@@ -133,7 +133,7 @@ class OrtValueTensorSlicer {
 
  private:
   OrtValueTensorSlicer(T& ort_value, int64_t slice_dimension, int64_t dim0_offset) noexcept
-      : ort_value_{&ort_value}, slice_dimension_{slice_dimension}, dim0_offset_{dim0_offset} {}
+      : ort_value_(&ort_value), slice_dimension_(slice_dimension), dim0_offset_(dim0_offset) {}
 
   T* ort_value_;
   int64_t slice_dimension_;

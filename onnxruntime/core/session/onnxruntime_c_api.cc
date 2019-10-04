@@ -75,7 +75,7 @@ struct OrtEnv {
 class LoggingWrapper : public ISink {
  public:
   LoggingWrapper(OrtLoggingFunction logging_function, void* logger_param)
-      : logging_function_{logging_function}, logger_param_{logger_param} {
+      : logging_function_(logging_function), logger_param_(logger_param) {
   }
 
   void SendImpl(const Timestamp& /*timestamp*/ /*timestamp*/, const std::string& logger_id,

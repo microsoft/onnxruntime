@@ -58,6 +58,10 @@ inline bool operator!=(const MLFloat16& left, const MLFloat16& right) {
   return left.val != right.val;
 }
 
+inline bool operator<(const MLFloat16& left, const MLFloat16& right) {
+  return left.val < right.val;
+}
+
 struct ort_endian {
   union q {
     uint16_t v_;
@@ -85,6 +89,7 @@ struct BFloat16 {
       val = dst[0];
     }
   }
+
   float ToFloat() const {
     float result;
     uint16_t* dst = reinterpret_cast<uint16_t*>(&result);
@@ -121,6 +126,10 @@ inline bool operator==(const BFloat16& left, const BFloat16& right) {
 
 inline bool operator!=(const BFloat16& left, const BFloat16& right) {
   return left.val != right.val;
+}
+
+inline bool operator<(const BFloat16& left, const BFloat16& right) {
+  return left.val < right.val;
 }
 
 // DataTypeImpl pointer as unique DataTypeImpl identifier.
