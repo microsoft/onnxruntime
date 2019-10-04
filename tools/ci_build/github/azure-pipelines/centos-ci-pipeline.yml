@@ -3,8 +3,9 @@ jobs:
   timeoutInMinutes:  60
   pool:
     vmImage: 'ubuntu-latest'
-  maxParallel: 2
-  matrix: 
+  strategy:
+    maxParallel: 2
+    matrix: 
       Debug:
         BuildType: Debug
       Release:
