@@ -97,8 +97,8 @@ class IfOpTester : public OpTester {
 
       auto then_proto = CreateSubgraph(true, options_);
       auto else_proto = CreateSubgraph(false, options_);
-      if_node.AddAttribute("then_branch", {then_proto});
-      if_node.AddAttribute("else_branch", {else_proto});
+      if_node.AddAttribute("then_branch", then_proto);
+      if_node.AddAttribute("else_branch", else_proto);
     }
 
     // add Identity node so if_graph_input_0 comes from graph inputs

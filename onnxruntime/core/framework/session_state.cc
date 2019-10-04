@@ -281,7 +281,7 @@ SessionState* SessionState::GetMutableSubgraphSessionState(onnxruntime::NodeInde
 
   auto node_entry = subgraph_session_states_.find(index);
   if (node_entry != subgraph_session_states_.cend()) {
-    const auto& attribute_state_map{node_entry->second};
+    const auto& attribute_state_map = node_entry->second;
 
     const auto& subgraph_entry = attribute_state_map.find(attribute_name);
     if (subgraph_entry != attribute_state_map.cend()) {
