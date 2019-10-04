@@ -90,6 +90,16 @@ def other_tests_failing_permanently_filters():
     return filters
 
 
+
+def test_with_types_disabled_due_to_binary_size_concerns_filters():
+    filters = ['^test_bitshift_right_uint16_cpu',
+               '^test_bitshift_right_uint8_cpu',
+               '^test_bitshift_left_uint16_cpu',
+               '^test_bitshift_left_uint8_cpu']
+
+    return filters
+
+
 def create_backend_test(testname=None):
     backend_test = OrtBackendTest(c2, __name__)
 
@@ -103,14 +113,6 @@ def create_backend_test(testname=None):
         current_failing_tests = [#'^test_cast_STRING_to_FLOAT_cpu',  # old test data that is bad on Linux CI builds
                                  '^test_qlinearconv_cpu',
                                  '^test_gru_seq_length_cpu',
-                                 '^test_bitshift_right_uint16_cpu',
-                                 '^test_bitshift_right_uint32_cpu',
-                                 '^test_bitshift_right_uint64_cpu',
-                                 '^test_bitshift_right_uint8_cpu',
-                                 '^test_bitshift_left_uint16_cpu',
-                                 '^test_bitshift_left_uint32_cpu',
-                                 '^test_bitshift_left_uint64_cpu',
-                                 '^test_bitshift_left_uint8_cpu',
                                  '^test_dynamicquantizelinear_expanded.*',
                                  '^test_dynamicquantizelinear_max_adjusted_expanded.*',
                                  '^test_dynamicquantizelinear_min_adjusted_expanded.*',
@@ -176,7 +178,8 @@ def create_backend_test(testname=None):
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \
                   unsupported_usages_filters() + \
-                  other_tests_failing_permanently_filters()
+                  other_tests_failing_permanently_filters() + \
+                  test_with_types_disabled_due_to_binary_size_concerns_filters()
 
         backend_test.exclude('(' + '|'.join(filters) + ')')
         print('excluded tests:', filters)
