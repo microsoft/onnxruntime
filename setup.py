@@ -48,8 +48,8 @@ if '--nightly_build' in sys.argv:
     sys.argv.remove('--nightly_build')
 
 if '--enable_language_interop_ops' in sys.argv:
-    package_name = 'pyop'
-    sys.argv.remove('--enable_language_interop_ops')
+    package_name = package_name + '-pyop'
+    #sys.argv.remove('--enable_language_interop_ops')
 
 is_manylinux2010 = False
 if environ.get('AUDITWHEEL_PLAT', None) == 'manylinux2010_x86_64':
