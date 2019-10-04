@@ -18,7 +18,7 @@ namespace Microsoft.ML.OnnxRuntime
     public class InferenceSession : IDisposable
     {
         protected IntPtr _nativeHandle;
-        protected Dictionary<string, NodeMetadata> _inputMetadata, _outputMetadata;
+        protected Dictionary<string, NodeMetadata> _inputMetadata, _outputMetadata, _overridableInitializerMetadata;
         private SessionOptions _builtInSessionOptions = null;
         private RunOptions _builtInRunOptions = null;
 
@@ -88,6 +88,16 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Metadata regarding the overridable initializers, keyed by node names
+        /// </summary>
+        public IReadOnlyDictionary<string, NodeMetadata> OverridableInitializerMetadata
+        {
+            get
+            {
+                return _overridableInitializerMetadata;
+            }
+        }
 
         /// <summary>
         /// Runs the loaded model for the given inputs, and fetches all the outputs.
@@ -238,12 +248,13 @@ namespace Microsoft.ML.OnnxRuntime
                 // Initialize input/output metadata
                 _inputMetadata = new Dictionary<string, NodeMetadata>();
                 _outputMetadata = new Dictionary<string, NodeMetadata>();
+                _overridableInitializerMetadata = new Dictionary<string, NodeMetadata>();
 
                 // get input count
                 UIntPtr inputCount = UIntPtr.Zero;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputCount(_nativeHandle, out inputCount));
 
-                // get all the output names
+                // get all the input names and metadata
                 for (ulong i = 0; i < (ulong)inputCount; i++)
                 {
                     var iname = GetInputName(i);
@@ -253,10 +264,20 @@ namespace Microsoft.ML.OnnxRuntime
                 UIntPtr outputCount = UIntPtr.Zero;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputCount(_nativeHandle, out outputCount));
 
-                // get all the output names
+                // get all the output names and metadata
                 for (ulong i = 0; i < (ulong)outputCount; i++)
                 {
                     _outputMetadata[GetOutputName(i)] = GetOutputMetadata(i);
+                }
+
+                // get overridable initializer count
+                UIntPtr initilaizerCount = UIntPtr.Zero;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOverridableInitializerCount(_nativeHandle, out initilaizerCount));
+
+                // get all the overridable initializer names and metadata
+                for (ulong i = 0; i < (ulong)initilaizerCount; i++)
+                {
+                    _overridableInitializerMetadata[GetOverridableInitializerName(i)] = GetOverridableInitializerMetadata(i);
                 }
 
             }
@@ -326,6 +347,31 @@ namespace Microsoft.ML.OnnxRuntime
             return str;
         }
 
+        private string GetOverridableInitializerName(ulong index)
+        {
+            IntPtr nameHandle = IntPtr.Zero;
+            string str = null;
+
+            IntPtr status = NativeMethods.OrtSessionGetOverridableInitializerName(
+                                                _nativeHandle,
+                                                (UIntPtr)index,
+                                                NativeMemoryAllocator.DefaultInstance.Handle,
+                                                out nameHandle);
+            try
+            {
+
+                NativeApiStatus.VerifySuccess(status);
+                str = Marshal.PtrToStringAnsi(nameHandle); //assumes charset = ANSI
+            }
+            finally
+            {
+                if (nameHandle != IntPtr.Zero)
+                {
+                    NativeMemoryAllocator.DefaultInstance.FreeMemory(nameHandle);
+                }
+            }
+            return str;
+        }
 
         private NodeMetadata GetInputMetadata(ulong index)
         {
@@ -350,6 +396,23 @@ namespace Microsoft.ML.OnnxRuntime
             try
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputTypeInfo(_nativeHandle, (UIntPtr)index, out typeInfo));
+                return GetMetadataFromTypeInfo(typeInfo);
+            }
+            finally
+            {
+                if (typeInfo != IntPtr.Zero)
+                {
+                    NativeMethods.OrtReleaseTypeInfo(typeInfo);
+                }
+            }
+        }
+
+        private NodeMetadata GetOverridableInitializerMetadata(ulong index)
+        {
+            IntPtr typeInfo = IntPtr.Zero;
+            try
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOverridableInitializerTypeInfo(_nativeHandle, (UIntPtr)index, out typeInfo));
                 return GetMetadataFromTypeInfo(typeInfo);
             }
             finally
