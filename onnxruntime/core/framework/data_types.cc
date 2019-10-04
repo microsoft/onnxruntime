@@ -308,6 +308,7 @@ class DataTypeRegistry {
     const auto* proto = mltype->GetTypeProto();
     ORT_ENFORCE(proto != nullptr, "Only ONNX MLDataType can be registered");
     DataType type = Utils::DataTypeUtils::ToType(*proto);
+    std::cout << "Registering..." << *type << std::endl;
     auto p = mapping_.insert(std::make_pair(type, mltype));
     ORT_ENFORCE(p.second, "We do not expect duplicate registration of types for: ", type);
   }
@@ -638,7 +639,20 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_ONNX_PROTO(MapInt64ToFloat, reg_fn);
   REGISTER_ONNX_PROTO(MapInt64ToDouble, reg_fn);
 
+  REGISTER_SEQ_TENSOR_PROTO(int32_t, reg_fn);
   REGISTER_SEQ_TENSOR_PROTO(float, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(bool, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(std::string, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(int8_t, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(uint8_t, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(uint16_t, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(int16_t, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(int64_t, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(double, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(uint32_t, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(uint64_t, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(MLFloat16, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(BFloat16, reg_fn);
 
   REGISTER_ONNX_PROTO(VectorMapStringToFloat, reg_fn);
   REGISTER_ONNX_PROTO(VectorMapInt64ToFloat, reg_fn);
@@ -936,7 +950,7 @@ MLDataType DataTypeImpl::TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto) {
     ORT_NOT_IMPLEMENTED("type: ", *str_type, " is not currently registered or supported");
   }
   return type;
-}  // namespace onnxruntime
+}
 
 //Below are the types the we need to execute the runtime
 //They are not compatible with TypeProto in ONNX.

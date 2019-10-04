@@ -40,7 +40,8 @@ ONNX_CPU_OPERATOR_KERNEL(
                                  DataTypeImpl::GetTensorType<int64_t>()}),
     SequenceAt);
 
-static void GetSeqIdx(const Tensor& idx_tensor, int64_t& seq_idx) {
+static int64_t GetSeqIdx(const Tensor& idx_tensor) {
+  int64_t seq_idx = INT_MAX;
   auto idx_tensor_dtype = utils::GetTensorProtoType(idx_tensor);
   switch (idx_tensor_dtype) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
@@ -56,6 +57,7 @@ static void GetSeqIdx(const Tensor& idx_tensor, int64_t& seq_idx) {
     default:
       ORT_THROW("Unsupported data type: ", idx_tensor_dtype);
   }
+  return seq_idx;
 }
 
 bool ValidateSeqIdx(int64_t input_seq_idx, int64_t seq_size) {
@@ -127,8 +129,7 @@ Status SequenceAt::Compute(OpKernelContext* context) const {
 
   const auto* I = context->Input<Tensor>(1);
   ORT_ENFORCE(I != nullptr, "Got nullptr input for index tensor");
-  int64_t input_seq_idx;
-  GetSeqIdx(*I, input_seq_idx);
+  int64_t input_seq_idx = GetSeqIdx(*I);
   if (!ValidateSeqIdx(input_seq_idx, static_cast<int64_t>(X->size()))) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Invalid sequence index (", input_seq_idx, ") specified for sequence of size (", X->size(), ")");

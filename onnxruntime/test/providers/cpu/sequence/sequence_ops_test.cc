@@ -18,6 +18,17 @@ TEST(SequenceOpsTest, SequenceLengthPositive) {
   test.Run();
 }
 
+TEST(SequenceOpsTest, SequenceLengthPositive2) {
+  OpTester test("SequenceLength", 11);
+  SeqTensors<int64_t> input;
+  using PairType = std::pair<std::vector<int64_t>, std::vector<int64_t>>;
+  input.tensors.push_back(PairType({3, 2}, {1, 2, 3, 4, 5, 6}));
+  input.tensors.push_back(PairType({3, 3}, {1, 2, 3, 4, 5, 6, 7, 8, 9}));
+  test.AddSeqInput("S", input);
+  test.AddOutput<int64_t>("I", {}, {2});
+  test.Run();
+}
+
 TEST(SequenceOpsTest, SequenceAtPositiveIdx) {
   OpTester test("SequenceAt", 11);
   SeqTensors<float> input;
