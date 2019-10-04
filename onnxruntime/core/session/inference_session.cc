@@ -94,9 +94,9 @@ inline std::basic_string<T> GetCurrentTimeString() {
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    logging::LoggingManager* logging_manager)
-    : session_options_{session_options},
-      graph_transformation_mgr_{session_options.max_num_graph_transformation_steps},
-      logging_manager_{logging_manager},
+    : session_options_(session_options),
+      graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+      logging_manager_(logging_manager),
       thread_pool_(concurrency::CreateThreadPool("intra_op_thread_pool",
                                                  session_options.intra_op_num_threads)),
       inter_op_thread_pool_(!session_options.enable_sequential_execution
@@ -107,7 +107,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
                      session_options.enable_mem_pattern && session_options.enable_sequential_execution,
                      thread_pool_.get(),
                      inter_op_thread_pool_.get()),
-      insert_cast_transformer_{"CastFloat16Transformer"} {
+      insert_cast_transformer_("CastFloat16Transformer") {
   ORT_ENFORCE(Environment::IsInitialized(),
               "Environment must be initialized before creating an InferenceSession.");
 

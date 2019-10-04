@@ -124,8 +124,6 @@ def create_backend_test(testname=None):
                                  '^test_range_int32_type_negative_delta_expanded_cpu',
                                  '^test_det_2d_cpu',
                                  '^test_det_nd_cpu',
-                                 '^test_gathernd_example_float32_cpu',
-                                 '^test_gathernd_example_int32_cpu',
                                  '^test_resize_downsample_scales_cubic_A_n0p5_exclude_outside_cpu',
                                  '^test_resize_downsample_scales_cubic_align_corners_cpu',
                                  '^test_resize_downsample_scales_cubic_cpu',
@@ -152,9 +150,8 @@ def create_backend_test(testname=None):
                                  '^test_sequence_*',
                                  '^test_scatter_.*',
                                  '^test_onehot_.*',
-                                 '^test_constant_pad_cpu',
-                                 '^test_edge_pad_cpu',
-                                 '^test_reflect_pad_cpu'
+                                 '^test_edge_pad_cpu.*',  # test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests
+                                 '^test_reflect_pad_cpu.*'  # test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests
         ]
 
         # Example of how to disable tests for a specific provider.
