@@ -115,7 +115,7 @@ def create_backend_test(testname=None):
                                  '^test_dynamicquantizelinear_max_adjusted_expanded.*',
                                  '^test_dynamicquantizelinear_min_adjusted_expanded.*',
                                  '^test_top_k.*',
-                                 '^test_unique_.*',
+                                 '^test_unique_not_sorted_without_axis_cpu', # bad expected data. enable after https://github.com/onnx/onnx/pull/2381 is picked up
                                  '^test_mod_float_mixed_sign_example_cpu', #onnxruntime::Mod::Compute fmod_ was false. fmod attribute must be true for float, float16 and double types
                                  '^test_shrink_cpu', #Invalid rank for input: x Got: 1 Expected: 2 Please fix either the inputs or the model.
                                  '^test_range_float_type_positive_delta_cpu',
