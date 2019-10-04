@@ -110,10 +110,14 @@ struct NchwcTestHelper {
                           output_args);
   }
 
-  Node& AddConvNode(NodeArg* input_arg, NodeArg* output_arg, const std::vector<int64_t>& weights_shape) {
+  Node& AddConvNode(NodeArg* input_arg, NodeArg* output_arg, const std::vector<int64_t>& weights_shape, bool no_bias = false) {
     auto* weights_arg = MakeInitializer(weights_shape);
-    auto* biases_arg = MakeInitializer({weights_shape[0]});
-    return AddNode("Conv", {input_arg, weights_arg, biases_arg}, {output_arg});
+    std::vector<NodeArg*> input_args = {input_arg, weights_arg};
+    if (!no_bias) {
+      auto* biases_arg = MakeInitializer({weights_shape[0]});
+      input_args.push_back(biases_arg);
+    }
+    return AddNode("Conv", input_args, {output_arg});
   }
 
   std::vector<float> FillRandomData(size_t count) {
@@ -536,6 +540,31 @@ TEST(NchwcOptimizerTests, ConvAddFusion) {
       test_case(op_type, opset_version, true);
     }
   }
+}
+
+TEST(NchwcOptimizerTests, ConvNoBiasAddFusion) {
+  auto build_test_case = [&](NchwcTestHelper& helper) {
+    auto* input_arg = helper.MakeInput({1, 32, 28, 28});
+    auto* conv1_output_arg = helper.MakeIntermediate();
+    auto* conv2_output_arg = helper.MakeIntermediate();
+    auto* output_arg = helper.MakeOutput();
+
+    helper.AddConvNode(input_arg, conv1_output_arg, {32, 32, 3, 3}, true);
+    helper.AddConvNode(input_arg, conv2_output_arg, {32, 32, 3, 3}, true);
+    helper.AddNode("Add", {conv1_output_arg, conv2_output_arg}, {output_arg});
+  };
+
+  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
+    auto op_to_count = session.CountOpsInGraph();
+    EXPECT_EQ(op_to_count["nchwc.Conv"], 2);
+    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    EXPECT_EQ(op_to_count["Add"], 0);
+  };
+
+  // Verify that the optimizer can do the Conv/Add fusion when the Conv nodes
+  // are missing the optional bias tensor.
+  NchwcOptimizerTester(build_test_case, check_nchwc_graph);
 }
 
 TEST(NchwcOptimizerTests, FusedConvAddFusion) {

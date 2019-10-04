@@ -115,7 +115,7 @@ def create_backend_test(testname=None):
                                  '^test_dynamicquantizelinear_max_adjusted_expanded.*',
                                  '^test_dynamicquantizelinear_min_adjusted_expanded.*',
                                  '^test_top_k.*',
-                                 '^test_unique_.*',
+                                 '^test_unique_not_sorted_without_axis_cpu', # bad expected data. enable after https://github.com/onnx/onnx/pull/2381 is picked up
                                  '^test_mod_float_mixed_sign_example_cpu', #onnxruntime::Mod::Compute fmod_ was false. fmod attribute must be true for float, float16 and double types
                                  '^test_shrink_cpu', #Invalid rank for input: x Got: 1 Expected: 2 Please fix either the inputs or the model.
                                  '^test_range_float_type_positive_delta_cpu',
@@ -124,8 +124,6 @@ def create_backend_test(testname=None):
                                  '^test_range_int32_type_negative_delta_expanded_cpu',
                                  '^test_det_2d_cpu',
                                  '^test_det_nd_cpu',
-                                 '^test_gathernd_example_float32_cpu',
-                                 '^test_gathernd_example_int32_cpu',
                                  '^test_resize_downsample_scales_cubic_A_n0p5_exclude_outside_cpu',
                                  '^test_resize_downsample_scales_cubic_align_corners_cpu',
                                  '^test_resize_downsample_scales_cubic_cpu',
@@ -169,7 +167,8 @@ def create_backend_test(testname=None):
                                       '^test_flatten_negative_axis.*',
                                       '^test_reduce_[a-z1-9_]*_negative_axes_.*',
                                       'test_squeeze_negative_axes_cpu',
-                                      'test_unsqueeze_negative_axes_cpu']
+                                      'test_unsqueeze_negative_axes_cpu',
+                                      'test_constant_pad_cpu']
 
         if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
             current_failing_tests.append('^test_div_cpu*')
