@@ -4,9 +4,10 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/conv_bn_fusion.h"
+#include "core/optimizer/utils.h"
 
 using namespace ONNX_NAMESPACE;
-using namespace ::onnxruntime::common;
+using namespace onnxruntime::common;
 namespace onnxruntime {
 
 Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
@@ -39,12 +40,12 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   const auto* conv_W_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[1]->Name());
   ORT_ENFORCE(conv_W_tensor_proto);
 
-  // Currently, fusion is only supported for float or double data type.
-  if (!Initializer::IsSupportedDataType(bn_scale_tensor_proto) ||
-      !Initializer::IsSupportedDataType(bn_B_tensor_proto) ||
-      !Initializer::IsSupportedDataType(bn_mean_tensor_proto) ||
-      !Initializer::IsSupportedDataType(bn_var_tensor_proto) ||
-      !Initializer::IsSupportedDataType(conv_W_tensor_proto) ||
+  // Conv only supports floating point data types, so can only fuse with an initializer containing those types
+  if (!optimizer::IsFloatingPointDataType(*bn_scale_tensor_proto) ||
+      !optimizer::IsFloatingPointDataType(*bn_B_tensor_proto) ||
+      !optimizer::IsFloatingPointDataType(*bn_mean_tensor_proto) ||
+      !optimizer::IsFloatingPointDataType(*bn_var_tensor_proto) ||
+      !optimizer::IsFloatingPointDataType(*conv_W_tensor_proto) ||
       bn_scale_tensor_proto->dims_size() != 1 ||
       bn_B_tensor_proto->dims_size() != 1 ||
       bn_mean_tensor_proto->dims_size() != 1 ||
@@ -60,11 +61,11 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
     return Status::OK();
   }
 
-  auto bn_scale = onnxruntime::make_unique<Initializer>(bn_scale_tensor_proto);
-  auto bn_B = onnxruntime::make_unique<Initializer>(bn_B_tensor_proto);
-  auto bn_mean = onnxruntime::make_unique<Initializer>(bn_mean_tensor_proto);
-  auto bn_var = onnxruntime::make_unique<Initializer>(bn_var_tensor_proto);
-  auto conv_W = onnxruntime::make_unique<Initializer>(conv_W_tensor_proto);
+  auto bn_scale = onnxruntime::make_unique<Initializer>(*bn_scale_tensor_proto);
+  auto bn_B = onnxruntime::make_unique<Initializer>(*bn_B_tensor_proto);
+  auto bn_mean = onnxruntime::make_unique<Initializer>(*bn_mean_tensor_proto);
+  auto bn_var = onnxruntime::make_unique<Initializer>(*bn_var_tensor_proto);
+  auto conv_W = onnxruntime::make_unique<Initializer>(*conv_W_tensor_proto);
 
   std::unique_ptr<Initializer> conv_B = nullptr;
   const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
@@ -72,13 +73,13 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
     conv_B_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[2]->Name());
     ORT_ENFORCE(conv_B_tensor_proto);
 
-    if (!Initializer::IsSupportedDataType(conv_B_tensor_proto) ||
+    if (!optimizer::IsFloatingPointDataType(*conv_B_tensor_proto) ||
         conv_B_tensor_proto->dims_size() != 1 ||
         conv_B_tensor_proto->dims(0) != bn_B_tensor_proto->dims(0) ||
         conv_B_tensor_proto->data_type() != bn_B_tensor_proto->data_type()) {
       return Status::OK();
     }
-    conv_B = onnxruntime::make_unique<Initializer>(conv_B_tensor_proto);
+    conv_B = onnxruntime::make_unique<Initializer>(*conv_B_tensor_proto);
   }
 
   // Calculate new value of initializers of conv node
@@ -98,14 +99,14 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
 
   // Create new initializers of conv
   ONNX_NAMESPACE::TensorProto new_conv_W_tensor_proto(*conv_W_tensor_proto);
-  conv_W->ToProto(&new_conv_W_tensor_proto);
+  conv_W->ToProto(new_conv_W_tensor_proto);
 
   ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto;
   NodeArg* bn_B_node_arg = nullptr;
   if (conv_inputs.size() == 3) {
-    conv_B->ToProto(&new_conv_B_tensor_proto);
+    conv_B->ToProto(new_conv_B_tensor_proto);
   } else {
-    bn_B->ToProto(&new_conv_B_tensor_proto);
+    bn_B->ToProto(new_conv_B_tensor_proto);
     bn_B_node_arg = graph.GetNodeArg(bn_B_tensor_proto->name());
     if (bn_B_node_arg == nullptr) {
       return Status::OK();

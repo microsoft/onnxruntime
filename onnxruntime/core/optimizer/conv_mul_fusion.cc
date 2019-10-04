@@ -4,9 +4,10 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/conv_mul_fusion.h"
+#include "core/optimizer/utils.h"
 
 using namespace ONNX_NAMESPACE;
-using namespace ::onnxruntime::common;
+using namespace onnxruntime::common;
 namespace onnxruntime {
 
 Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
@@ -21,8 +22,9 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
   const auto* mul_B_tensor_proto = graph_utils::GetConstantInitializer(graph, mul_inputs[1]->Name());
   ORT_ENFORCE(mul_B_tensor_proto);
 
-  if (!Initializer::IsSupportedDataType(conv_W_tensor_proto) ||
-      !Initializer::IsSupportedDataType(mul_B_tensor_proto) ||
+  // Conv only supports floating point data types, so can only fuse with an initializer containing those types
+  if (!optimizer::IsFloatingPointDataType(*conv_W_tensor_proto) ||
+      !optimizer::IsFloatingPointDataType(*mul_B_tensor_proto) ||
       conv_W_tensor_proto->data_type() != mul_B_tensor_proto->data_type() ||
       conv_W_tensor_proto->dims_size() < 4) {
     return Status::OK();
@@ -50,8 +52,8 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
     }
   }
 
-  auto conv_W = onnxruntime::make_unique<Initializer>(conv_W_tensor_proto);
-  auto mul_B = onnxruntime::make_unique<Initializer>(mul_B_tensor_proto);
+  auto conv_W = onnxruntime::make_unique<Initializer>(*conv_W_tensor_proto);
+  auto mul_B = onnxruntime::make_unique<Initializer>(*mul_B_tensor_proto);
 
   const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
   std::unique_ptr<Initializer> conv_B = nullptr;
@@ -60,13 +62,14 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
     conv_B_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[2]->Name());
     ORT_ENFORCE(conv_B_tensor_proto);
 
-    if (!Initializer::IsSupportedDataType(conv_B_tensor_proto) ||
+    if (!optimizer::IsFloatingPointDataType(*conv_B_tensor_proto) ||
         conv_B_tensor_proto->data_type() != mul_B_tensor_proto->data_type() ||
         conv_B_tensor_proto->dims_size() != 1 ||
         conv_B_tensor_proto->dims(0) != conv_W_tensor_proto->dims(0)) {
       return Status::OK();
     }
-    conv_B = onnxruntime::make_unique<Initializer>(conv_B_tensor_proto);
+
+    conv_B = onnxruntime::make_unique<Initializer>(*conv_B_tensor_proto);
   }
 
   // Calculate new value of initializers of conv node
@@ -82,14 +85,14 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
 
   // Create new initializers of conv
   ONNX_NAMESPACE::TensorProto new_conv_W_tensor_proto(*conv_W_tensor_proto);
-  conv_W->ToProto(&new_conv_W_tensor_proto);
+  conv_W->ToProto(new_conv_W_tensor_proto);
 
   // Replace initializers of conv node
   graph_utils::ReplaceInitializer(graph, conv_inputs[1]->Name(), new_conv_W_tensor_proto);
 
   if (is_3d) {
     ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto(*conv_B_tensor_proto);
-    conv_B->ToProto(&new_conv_B_tensor_proto);
+    conv_B->ToProto(new_conv_B_tensor_proto);
     graph_utils::ReplaceInitializer(graph, conv_inputs[2]->Name(), new_conv_B_tensor_proto);
   }
 
