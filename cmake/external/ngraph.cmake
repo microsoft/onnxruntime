@@ -12,9 +12,7 @@ set(prebuilt_ONNX_SOURCE_DIR "${PROJECT_SOURCE_DIR}/external/onnx")
 set(prebuilt_ONNX_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 set(ngraph_URL "https://github.com/NervanaSystems/ngraph.git")
 # TODO: change to v0.26.0 tag when it's ready
-# set(ngraph_TAG "v0.26.0-rc.2")
-# Temporary ngraph version with fix for gather operator
-set(ngraph_TAG "c63afa5")
+set(ngraph_TAG "v0.26.0-rc.4")
 
 # Libraries for python package.
 if (WIN32)
