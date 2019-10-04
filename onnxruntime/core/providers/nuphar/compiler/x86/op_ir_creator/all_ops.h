@@ -52,6 +52,8 @@ namespace nuphar {
   ADD_OP_ITEM(MatMul)          \
   ADD_OP_ITEM(MatMulInteger)   \
   ADD_OP_ITEM(MatMulInteger16) \
+  ADD_OP_ITEM(Scatter)         \
+  ADD_OP_ITEM(ScatterElements) \
   ADD_OP_ITEM(Slice)           \
   ADD_OP_ITEM(Softmax)         \
   ADD_OP_ITEM(Tile)
