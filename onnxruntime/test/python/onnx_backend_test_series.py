@@ -124,8 +124,6 @@ def create_backend_test(testname=None):
                                  '^test_range_int32_type_negative_delta_expanded_cpu',
                                  '^test_det_2d_cpu',
                                  '^test_det_nd_cpu',
-                                 '^test_gathernd_example_float32_cpu',
-                                 '^test_gathernd_example_int32_cpu',
                                  '^test_resize_downsample_scales_cubic_A_n0p5_exclude_outside_cpu',
                                  '^test_resize_downsample_scales_cubic_align_corners_cpu',
                                  '^test_resize_downsample_scales_cubic_cpu',
