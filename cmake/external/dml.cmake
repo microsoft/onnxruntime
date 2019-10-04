@@ -31,7 +31,7 @@ if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
   add_custom_target(RESTORE_PACKAGES ALL DEPENDS restore_packages.stamp)
   add_dependencies(RESTORE_PACKAGES nuget)
 
-  link_libraries(${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/build/DirectML.targets)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES RESTORE_PACKAGES)
 else()
   include_directories(${dml_INCLUDE_DIR})
   link_directories(${dml_LIB_DIR})

@@ -547,6 +547,17 @@ def setup_tensorrt_vars(args):
 
     return tensorrt_home
 
+def setup_dml_build(args, cmake_path, build_dir, configs):
+    if (args.use_dml):
+        for config in configs:
+            # Run the RESTORE_PACKAGES target to perform the initial NuGet setup
+            cmd_args = [cmake_path,
+                        "--build", get_config_build_dir(build_dir, config),
+                        "--config", config,
+                        "--target", "RESTORE_PACKAGES"]
+            run_subprocess(cmd_args)
+
+
 def adb_push(source_dir, src, dest, **kwargs):
     return run_subprocess([os.path.join(source_dir, 'tools', 'ci_build', 'github', 'android', 'adb-push.sh'), src, dest], **kwargs)
 
@@ -955,6 +966,9 @@ def main():
 
     if (args.clean):
         clean_targets(cmake_path, build_dir, configs)
+
+    # if using DML, perform initial nuget package restore
+    setup_dml_build(args, cmake_path, build_dir, configs)
 
     if (args.build):
         build_targets(cmake_path, build_dir, configs, args.parallel)
