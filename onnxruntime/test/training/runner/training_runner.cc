@@ -187,7 +187,6 @@ Status TrainingRunner::TrainingLoop() {
   const auto lr_scheduler = LearningRateScheduler::Create(params_.lr_params, params_.num_train_steps);
   double total_time{0};
   size_t epoch = 0;
-  size_t total_batch_num = 0;
   size_t gradient_accumulation_step_count = 0, weight_update_step_count = 0;
 
   while (step_ < params_.num_train_steps) {
@@ -202,7 +201,6 @@ Status TrainingRunner::TrainingLoop() {
 
       // loop through the data
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
-      total_batch_num += batch_num_cur_shard;
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
         std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch);
         float learning_rate = lr_scheduler->GetLearningRate(step_ + 1);
@@ -248,13 +246,15 @@ Status TrainingRunner::TrainingLoop() {
         total_time += duration_seconds.count();
 
         // Print some info when reaching the end of the batch.
-        printf("Step: %d, epoch: %d, batch: %d/%d, shard_iteration: %d/%d \n",
+        printf("Step: %d, epoch: %d, batch: %d/%d, shard_iteration: %d/%d, time: %.2f ms, throughput: %.2f ex/sec \n",
                static_cast<int>(step_),
                static_cast<int>(epoch),
                static_cast<int>(batch),
                static_cast<int>(batch_num_cur_shard),
                static_cast<int>(shard_it + 1),
-               static_cast<int>(num_shards_to_visit));
+               static_cast<int>(num_shards_to_visit),
+               duration_seconds.count() * 1000,
+               params_.batch_size * step_ / total_time);
         printf("Training data range: [%d - %d)\n",
                static_cast<int>(batch * params_.batch_size),
                static_cast<int>((batch + 1) * params_.batch_size - 1));
@@ -272,12 +272,12 @@ Status TrainingRunner::TrainingLoop() {
     epoch++;
   }
 
-  std::cout << "Number of Batches: " << total_batch_num << "\n"
+  std::cout << "Number of Batches: " << step_ << "\n"
             << "Gradient Accumulation Steps: " << gradient_accumulation_step_count << "\n"
             << "Weight Update Steps: " << weight_update_step_count << "\n"
             << "Total Running Time: " << total_time << " Seconds \n"
-            << "Average Running Time Per Batch: " << total_time / total_batch_num * 1000 << " ms\n"
-            << "Throughput: " << params_.batch_size * total_batch_num / total_time << " Examples / Second\n";
+            << "Average Running Time Per Batch: " << total_time / step_ * 1000 << " ms\n"
+            << "Throughput: " << params_.batch_size * step_ / total_time << " Examples / Second\n";
   return Status::OK();
 }
 
