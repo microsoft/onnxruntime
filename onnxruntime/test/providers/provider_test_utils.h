@@ -230,11 +230,8 @@ class OpTester {
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
-<<<<<<< HEAD
-    input_data_.push_back(
-        {{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>(), optional<bool>()});
-    == == == = input_data_.push_back(
-                 Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(), optional<float>()));
+    input_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(),
+                               optional<float>(), optional<bool>()));
 >>>>>>> origin/master
   }
 
