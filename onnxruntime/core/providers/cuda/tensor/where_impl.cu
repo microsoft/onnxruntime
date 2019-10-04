@@ -108,17 +108,17 @@ void WhereImpl(
   }
 }
 
-#define SPECIALIZED_IMPL(T)                                              \
-  template void WhereImpl<float>(size_t output_rank_or_simple_broadcast, \
-                                 const int64_t* cond_padded_strides,     \
-                                 const bool* cond_data,                  \
-                                 const int64_t* x_padded_strides,        \
-                                 const T* x_data,                        \
-                                 const int64_t* y_padded_strides,        \
-                                 const T* y_data,                        \
-                                 const fast_divmod* fdm_output_strides,  \
-                                 T* output_data,                         \
-                                 size_t count);
+#define SPECIALIZED_IMPL(T)                                          \
+  template void WhereImpl<T>(size_t output_rank_or_simple_broadcast, \
+                             const int64_t* cond_padded_strides,     \
+                             const bool* cond_data,                  \
+                             const int64_t* x_padded_strides,        \
+                             const T* x_data,                        \
+                             const int64_t* y_padded_strides,        \
+                             const T* y_data,                        \
+                             const fast_divmod* fdm_output_strides,  \
+                             T* output_data,                         \
+                             size_t count);
 
 SPECIALIZED_IMPL(int32_t)
 SPECIALIZED_IMPL(int64_t)
