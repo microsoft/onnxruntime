@@ -105,10 +105,9 @@ static void extract_top_k_elements(const Tensor* input, const TensorShape& input
           indices_map(i, col_index) = elem.second;
           heap.pop();
         }
-      }
+      } else {  // sorted == false
+        // If the top K values are not required to be sorted, we use a more optimal selection algorithm
 
-      // If the top K values are not required to be sorted, we use a more (on average) optimal selection algorithm
-      else {  // sorted == false
         // create a data holder and insert elements
         vector<pair<float, int64_t>> data_holder;
         // data_holder.reserve(num_blocks);
