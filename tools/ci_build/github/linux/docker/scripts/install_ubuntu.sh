@@ -52,7 +52,7 @@ if [ $OS_VERSION = "16.04" ]; then
         rsync libunwind8 libpng16-dev libexpat1-dev \
         python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest \
         libprotobuf-dev libprotobuf9v5 protobuf-compiler"
-else
+else # ubuntu18.04
     add-apt-repository "deb http://security.ubuntu.com/ubuntu xenial-security main"
     PACKAGE_LIST="autotools-dev \
         automake \
@@ -125,7 +125,7 @@ if [ $OS_VERSION = "16.04" ]; then
         aria2c -q -d /tmp -o llvm.tar.xz http://releases.llvm.org/9.0.0/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz
         tar --strip 1 -Jxf /tmp/llvm.tar.xz -C /usr
     fi
-else
+else # ubuntu18.04
     if [ $PYTHON_VER != "3.6" ]; then
         apt-get install -y --no-install-recommends \
                 python${PYTHON_VER} \
