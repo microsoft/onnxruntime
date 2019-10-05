@@ -440,7 +440,7 @@ TEST(TopKOperator, SelectFirstSortNext) {
   std::vector<int64_t> expected_indices = {49, 48, 47, 46, 45};
   std::vector<int64_t> expected_dimensions = {5};
   int64_t axis = 0;
-  RunTest(11, 5, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis);
+  RunTest(11, 5, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis);  // largest values
 }
 
 TEST(TopKOperator, SortedSelection) {
@@ -448,13 +448,13 @@ TEST(TopKOperator, SortedSelection) {
   // Select + Sort  = O(n + k * ln(k)) = 10 + 5 * ln(5) = 18.04
   // Sorted selection: O(n * ln(k)) = 10 * ln(5) = 16.09
   // The algorithm used will be Sorted selection
-  std::vector<float> input_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0};
+  std::vector<float> input_vals = {10.0f, 8.0f, 7.0f, 4.0f, 5.0f, 6.0f, 1.0f, 2.0f, 9.0f, 3.0};
   std::vector<int64_t> input_dimensions = {10};
-  std::vector<float> expected_vals = {10.0f, 9.0f, 8.0f, 7.0f, 6.0f};
-  std::vector<int64_t> expected_indices = {9, 8, 7, 6, 5};
+  std::vector<float> expected_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+  std::vector<int64_t> expected_indices = {6, 7, 9, 3, 4};
   std::vector<int64_t> expected_dimensions = {5};
   int64_t axis = 0;
-  RunTest(11, 5, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis);
+  RunTest(11, 5, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 0);  // smallest values
 }
 
 }  // namespace test
