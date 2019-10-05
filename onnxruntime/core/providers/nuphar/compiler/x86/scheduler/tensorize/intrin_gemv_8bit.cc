@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "intrin_gemv_8bit.h"
+#include "core/providers/nuphar/compiler/x86/scheduler/tensorize/intrin_gemv_8bit.h"
 #include "core/providers/nuphar/compiler/x86/scheduler/tensorize/tensorize_utilities.h"
 #include <tvm/buffer.h>
 #include <tvm/codegen.h>
@@ -10,10 +10,11 @@
 namespace onnxruntime {
 namespace nuphar {
 
-Gemv8bitTensorization::Gemv8bitTensorization(const std::string& name, const std::vector<int32_t>& vshape)
-    : TensorizeBase(name, "Gemv8bitTensorization_Parameter", {vshape[0], vshape[1]}) {}
+TensorizeIntGemv8bit::TensorizeIntGemv8bit(const std::string& name, const std::vector<int32_t>& vshape)
+    : TensorizeBase(name, "TensorizeIntGemv8bit_Parameter", {vshape[0], vshape[1]}) {
+}
 
-tvm::TensorIntrin Gemv8bitTensorization::CreateTensorIntrin() {
+tvm::TensorIntrin TensorizeIntGemv8bit::CreateTensorIntrin() {
   tvm::Expr m(shape_[0]);
   tvm::Expr l(shape_[1]);
 
