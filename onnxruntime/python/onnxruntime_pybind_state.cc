@@ -165,8 +165,8 @@ void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
     AddNonTensor<MapInt64ToFloat>(val, pyobjs);
   } else if (val.Type() == DataTypeImpl::GetType<MapInt64ToDouble>()) {
     AddNonTensor<MapInt64ToDouble>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<VectorTensor>()) {
-    AddNonTensor<VectorTensor>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<TensorSeq>()) {
+    AddNonTensor<TensorSeq>(val, pyobjs);
   } else if (val.Type() == DataTypeImpl::GetType<VectorMapStringToFloat>()) {
     AddNonTensor<VectorMapStringToFloat>(val, pyobjs);
   } else if (val.Type() == DataTypeImpl::GetType<VectorMapInt64ToFloat>()) {

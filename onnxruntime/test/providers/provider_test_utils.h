@@ -244,11 +244,11 @@ class OpTester {
 
   template <typename T>
   void AddSeqInput(const char* name, const SeqTensors<T>& seq_tensors) {
-    auto mltype = DataTypeImpl::GetType<VectorTensor>();
-    ORT_ENFORCE(mltype != nullptr, "VectorTensor must be a registered cpp type");
-    auto ptr = std::make_unique<VectorTensor>();
+    auto mltype = DataTypeImpl::GetType<TensorSeq>();
+    ORT_ENFORCE(mltype != nullptr, "TensorSeq must be a registered cpp type");
+    auto ptr = std::make_unique<TensorSeq>();
     auto num_tensors = seq_tensors.tensors.size();
-    ptr->resize(num_tensors);
+    ptr->tensors.resize(num_tensors);
     for (int i = 0; i < num_tensors; ++i) {
       TensorShape shape{seq_tensors.tensors[i].shape};
       auto values_count = static_cast<int64_t>(seq_tensors.tensors[i].data.size());
@@ -256,13 +256,13 @@ class OpTester {
                   " input values doesn't match tensor size of ", shape.Size());
 
       auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-      auto& tensor = (*ptr)[i];
+      auto& tensor = ptr->tensors[i];
       tensor = std::move(Tensor(DataTypeImpl::GetType<T>(),
                                 shape,
                                 allocator));
 
       auto* data_ptr = tensor.template MutableData<T>();
-      for (int64_t x = 0; x < values_count; x++) {
+      for (int64_t x = 0; x < values_count; ++x) {
         data_ptr[x] = seq_tensors.tensors[i].data[x];
       }
     }

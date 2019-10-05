@@ -20,6 +20,7 @@ class TypeProto;
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
+using MLDataType = const DataTypeImpl*;
 
 /// Predefined registered types
 //maps
@@ -33,7 +34,11 @@ using MapInt64ToFloat = std::map<int64_t, float>;
 using MapInt64ToDouble = std::map<int64_t, double>;
 
 //vectors/sequences
-using VectorTensor = std::vector<Tensor>;
+struct TensorSeq {
+  typedef Tensor value_type;
+  MLDataType dtype;
+  std::vector<Tensor> tensors;
+};
 using VectorMapStringToFloat = std::vector<MapStringToFloat>;
 using VectorMapInt64ToFloat = std::vector<MapInt64ToFloat>;
 
@@ -133,7 +138,6 @@ inline bool operator<(const BFloat16& left, const BFloat16& right) {
 }
 
 // DataTypeImpl pointer as unique DataTypeImpl identifier.
-using MLDataType = const DataTypeImpl*;
 // be used with class MLValue
 using DeleteFunc = void (*)(void*);
 using CreateFunc = void* (*)();
@@ -643,7 +647,7 @@ class SequenceType : public NonTensorType<CPPType> {
 };
 
 template <typename TensorElemType>
-class SequenceTensorType : public NonTensorType<VectorTensor> {
+class SequenceTensorType : public NonTensorType<TensorSeq> {
  public:
   static MLDataType Type();
 

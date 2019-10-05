@@ -19,12 +19,12 @@ ONNX_CPU_OPERATOR_KERNEL(
     SequenceLength);
 
 Status SequenceLength::Compute(OpKernelContext* context) const {
-  const auto* X = context->Input<VectorTensor>(0);
+  const auto* X = context->Input<TensorSeq>(0);
   ORT_ENFORCE(X != nullptr, "Got nullptr for sequence input.");
 
   auto* Y = context->Output(0, {});
   auto* Y_data = Y->template MutableData<int64_t>();
-  *Y_data = static_cast<int64_t>(X->size());
+  *Y_data = static_cast<int64_t>(X->tensors.size());
 
   return Status::OK();
 }
@@ -79,21 +79,21 @@ static void CopyTensor(const Tensor& indexed_tensor, Tensor& output_tensor) {
 }
 
 Status SequenceAt::Compute(OpKernelContext* context) const {
-  const auto* X = context->Input<VectorTensor>(0);
+  const auto* X = context->Input<TensorSeq>(0);
   ORT_ENFORCE(X != nullptr, "Got nullptr for sequence input.");
 
   const auto* I = context->Input<Tensor>(1);
   ORT_ENFORCE(I != nullptr, "Got nullptr input for index tensor");
   int64_t input_seq_idx = GetSeqIdx(*I);
-  if (!ValidateSeqIdx(input_seq_idx, static_cast<int64_t>(X->size()))) {
+  if (!ValidateSeqIdx(input_seq_idx, static_cast<int64_t>(X->tensors.size()))) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Invalid sequence index (", input_seq_idx, ") specified for sequence of size (", X->size(), ")");
+                           "Invalid sequence index (", input_seq_idx, ") specified for sequence of size (", X->tensors.size(), ")");
   }
 
   if (input_seq_idx < 0) {
-    input_seq_idx = static_cast<int64_t>(X->size()) + input_seq_idx;
+    input_seq_idx = static_cast<int64_t>(X->tensors.size()) + input_seq_idx;
   }
-  const Tensor& indexed_tensor = (*X)[input_seq_idx];
+  const Tensor& indexed_tensor = X->tensors[input_seq_idx];
   auto* Y = context->Output(0, indexed_tensor.Shape().GetDims());
   CopyCpuTensor(&indexed_tensor, Y);
 

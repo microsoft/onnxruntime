@@ -683,6 +683,13 @@ OrtStatus* OrtGetNumSequenceElements(const OrtValue* p_ml_value, size_t* out) {
   return nullptr;
 }
 
+template <>
+OrtStatus* OrtGetNumSequenceElements<TensorSeq>(const OrtValue* p_ml_value, size_t* out) {
+  auto& data = p_ml_value->Get<TensorSeq>();
+  *out = data.tensors.size();
+  return nullptr;
+}
+
 static OrtStatus* OrtGetValueCountImpl(const OrtValue* value, size_t* out) {
   ONNXType value_type;
   if (auto status = OrtApis::GetValueType(value, &value_type))
@@ -695,8 +702,8 @@ static OrtStatus* OrtGetValueCountImpl(const OrtValue* value, size_t* out) {
     auto v = reinterpret_cast<const OrtValue*>(value);
     auto type = v->Type();
     // Note: keep these in sync with the registered types in data_types.h
-    if (type == DataTypeImpl::GetType<VectorTensor>()) {
-      return OrtGetNumSequenceElements<VectorTensor>(v, out);
+    if (type == DataTypeImpl::GetType<TensorSeq>()) {
+      return OrtGetNumSequenceElements<TensorSeq>(v, out);
     } else if (type == DataTypeImpl::GetType<VectorMapStringToFloat>()) {
       return OrtGetNumSequenceElements<VectorMapStringToFloat>(v, out);
     } else if (type == DataTypeImpl::GetType<VectorMapInt64ToFloat>()) {
@@ -799,7 +806,7 @@ template <typename T>
 OrtStatus* OrtGetValueImplSeqOfTensors(const OrtValue* p_ml_value, int index, OrtAllocator* allocator,
                                        OrtValue** out) {
   auto& data = p_ml_value->Get<T>();
-  auto& one_tensor = data.at(index);
+  auto& one_tensor = data.tensors.at(index);
 
   auto tensor_elem_type = one_tensor.DataType();
   OrtStatus* st{};
@@ -838,8 +845,8 @@ static OrtStatus* OrtGetValueImplSeq(const OrtValue* value, int index, OrtAlloca
   auto p_ml_value = reinterpret_cast<const OrtValue*>(value);
   auto type = p_ml_value->Type();
   // Note: keep these in sync with the registered types in data_types.h
-  if (type == DataTypeImpl::GetType<VectorTensor>()) {
-    return OrtGetValueImplSeqOfTensors<VectorTensor>(p_ml_value, index, allocator, out);
+  if (type == DataTypeImpl::GetType<TensorSeq>()) {
+    return OrtGetValueImplSeqOfTensors<TensorSeq>(p_ml_value, index, allocator, out);
   } else if (type == DataTypeImpl::GetType<VectorMapStringToFloat>()) {
     return OrtGetValueImplSeqOfMap<VectorMapStringToFloat>(p_ml_value, index, out);
   } else if (type == DataTypeImpl::GetType<VectorMapInt64ToFloat>()) {
@@ -938,15 +945,15 @@ ORT_API_STATUS_IMPL(OrtApis::GetValue, const OrtValue* value, int index, OrtAllo
 template <typename T>
 static OrtStatus* OrtCreateValueImplSeqHelperMap(const OrtValue* const* in, size_t num_values, OrtValue** out) {
   using SeqType = std::vector<T>;
-  auto vec_ptr = onnxruntime::make_unique<SeqType>();
-  vec_ptr->reserve(num_values);
+  auto seq_ptr = onnxruntime::make_unique<SeqType>();
+  seq_ptr->reserve(num_values);
   for (size_t idx = 0; idx < num_values; ++idx) {
     auto& m = reinterpret_cast<const OrtValue*>(in[idx])->Get<T>();
-    vec_ptr->push_back(m);
+    seq_ptr->push_back(m);
   }
   // create OrtValue with this vector
   auto value = onnxruntime::make_unique<OrtValue>();
-  value->Init(vec_ptr.release(),
+  value->Init(seq_ptr.release(),
               DataTypeImpl::GetType<SeqType>(),
               DataTypeImpl::GetType<SeqType>()->GetDeleteFunc());
   *out = value.release();
@@ -980,33 +987,44 @@ static OrtStatus* OrtCreateValueImplSeqHelperTensor(const Tensor& tensor,
 }
 
 static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t num_values,
-                                              OrtValue** out) {  // pranav FIX THIS
-  auto vec_ptr = std::make_unique<VectorTensor>();
-  vec_ptr->resize(num_values);
+                                              OrtValue** out) {
+  auto seq_ptr = std::make_unique<TensorSeq>();
+  seq_ptr->tensors.resize(num_values);
+
+  // use the data type of the first tensor as the data type of the seq
+  seq_ptr->dtype = reinterpret_cast<const OrtValue*>(in[0])->Get<Tensor>().DataType();
+
   for (size_t idx = 0; idx < num_values; ++idx) {
     auto& one_tensor = reinterpret_cast<const OrtValue*>(in[idx])->Get<Tensor>();
     auto tensor_elem_type = one_tensor.DataType();
+
+    // sequences must have tensors of the same data type
+    if (idx > 0 && (tensor_elem_type != seq_ptr->dtype)) {
+      return OrtApis::CreateStatus(ORT_FAIL,
+                                   "Sequences must have tensors of the same data type. There was at least one tensor in the input that was different.");
+    }
+
     OrtStatus* st{};
     if (tensor_elem_type == DataTypeImpl::GetType<bool>()) {
-      st = OrtCreateValueImplSeqHelperTensor<bool>(one_tensor, vec_ptr->operator[](idx));
+      st = OrtCreateValueImplSeqHelperTensor<bool>(one_tensor, seq_ptr->tensors[idx]);
     } else if (tensor_elem_type == DataTypeImpl::GetType<float>()) {
-      st = OrtCreateValueImplSeqHelperTensor<float>(one_tensor, vec_ptr->operator[](idx));
+      st = OrtCreateValueImplSeqHelperTensor<float>(one_tensor, seq_ptr->tensors[idx]);
     } else if (tensor_elem_type == DataTypeImpl::GetType<double>()) {
-      st = OrtCreateValueImplSeqHelperTensor<double>(one_tensor, vec_ptr->operator[](idx));
+      st = OrtCreateValueImplSeqHelperTensor<double>(one_tensor, seq_ptr->tensors[idx]);
     } else if (tensor_elem_type == DataTypeImpl::GetType<int8_t>()) {
-      st = OrtCreateValueImplSeqHelperTensor<int8_t>(one_tensor, vec_ptr->operator[](idx));
+      st = OrtCreateValueImplSeqHelperTensor<int8_t>(one_tensor, seq_ptr->tensors[idx]);
     } else if (tensor_elem_type == DataTypeImpl::GetType<uint8_t>()) {
-      st = OrtCreateValueImplSeqHelperTensor<uint8_t>(one_tensor, vec_ptr->operator[](idx));
+      st = OrtCreateValueImplSeqHelperTensor<uint8_t>(one_tensor, seq_ptr->tensors[idx]);
     } else if (tensor_elem_type == DataTypeImpl::GetType<int16_t>()) {
-      st = OrtCreateValueImplSeqHelperTensor<int16_t>(one_tensor, vec_ptr->operator[](idx));
+      st = OrtCreateValueImplSeqHelperTensor<int16_t>(one_tensor, seq_ptr->tensors[idx]);
     } else if (tensor_elem_type == DataTypeImpl::GetType<uint16_t>()) {
-      st = OrtCreateValueImplSeqHelperTensor<uint16_t>(one_tensor, vec_ptr->operator[](idx));
+      st = OrtCreateValueImplSeqHelperTensor<uint16_t>(one_tensor, seq_ptr->tensors[idx]);
     } else if (tensor_elem_type == DataTypeImpl::GetType<int32_t>()) {
-      st = OrtCreateValueImplSeqHelperTensor<int32_t>(one_tensor, vec_ptr->operator[](idx));
+      st = OrtCreateValueImplSeqHelperTensor<int32_t>(one_tensor, seq_ptr->tensors[idx]);
     } else if (tensor_elem_type == DataTypeImpl::GetType<uint32_t>()) {
-      st = OrtCreateValueImplSeqHelperTensor<uint32_t>(one_tensor, vec_ptr->operator[](idx));
+      st = OrtCreateValueImplSeqHelperTensor<uint32_t>(one_tensor, seq_ptr->tensors[idx]);
     } else if (tensor_elem_type == DataTypeImpl::GetType<int64_t>()) {
-      st = OrtCreateValueImplSeqHelperTensor<int64_t>(one_tensor, vec_ptr->operator[](idx));
+      st = OrtCreateValueImplSeqHelperTensor<int64_t>(one_tensor, seq_ptr->tensors[idx]);
     } else {
       std::string err_msg = std::string("Unsupported data type: ") + DataTypeImpl::ToString(tensor_elem_type);
       st = OrtApis::CreateStatus(ORT_FAIL, err_msg.c_str());
@@ -1018,9 +1036,9 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t 
   }
   // create OrtValue with this vector
   auto value = onnxruntime::make_unique<OrtValue>();
-  value->Init(vec_ptr.release(),
-              DataTypeImpl::GetType<VectorTensor>(),
-              DataTypeImpl::GetType<VectorTensor>()->GetDeleteFunc());
+  value->Init(seq_ptr.release(),
+              DataTypeImpl::GetType<TensorSeq>(),
+              DataTypeImpl::GetType<TensorSeq>()->GetDeleteFunc());
   *out = value.release();
   return nullptr;
 }
