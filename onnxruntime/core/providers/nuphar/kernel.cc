@@ -194,6 +194,17 @@ ONNX_OPERATOR_KERNEL_EX(
     nuphar::NupharKernel);
 
 ONNX_OPERATOR_KERNEL_EX(
+    GatherElements,
+    kOnnxDomain,
+    11,
+    kNupharExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
+                                                        DataTypeImpl::GetTensorType<int64_t>()}),
+    nuphar::NupharKernel);
+
+ONNX_OPERATOR_KERNEL_EX(
     MatMulInteger,
     kOnnxDomain,
     10,
