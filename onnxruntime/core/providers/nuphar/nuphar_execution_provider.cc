@@ -263,9 +263,6 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     for (const auto& node_idx : result->sub_graph->nodes) {
       const auto& node = graph_viewer.GetNode(node_idx);
 
-      if (node->Name() == "Times73164MatMulInteger_14")
-        std::cout << "name: const inti" << node->Name() << std::endl;
-
       node->ForEachDef(
           [this, &all_initialized_tensors, &graph_viewer](const NodeArg& def, bool is_input) {
             auto iter = all_initialized_tensors.find(def.Name());
