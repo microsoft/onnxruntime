@@ -165,14 +165,8 @@ void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
     AddNonTensor<MapInt64ToFloat>(val, pyobjs);
   } else if (val.Type() == DataTypeImpl::GetType<MapInt64ToDouble>()) {
     AddNonTensor<MapInt64ToDouble>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<VectorString>()) {
-    AddNonTensor<VectorString>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<VectorInt64>()) {
-    AddNonTensor<VectorInt64>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<VectorFloat>()) {
-    AddNonTensor<VectorFloat>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<VectorDouble>()) {
-    AddNonTensor<VectorDouble>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<VectorTensor>()) {
+    AddNonTensor<VectorTensor>(val, pyobjs);
   } else if (val.Type() == DataTypeImpl::GetType<VectorMapStringToFloat>()) {
     AddNonTensor<VectorMapStringToFloat>(val, pyobjs);
   } else if (val.Type() == DataTypeImpl::GetType<VectorMapInt64ToFloat>()) {
@@ -629,57 +623,55 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             return *(na.Type());
           },
           "node type")
-      .def(
-          "__str__", [](const onnxruntime::NodeArg& na) -> std::string {
-            std::ostringstream res;
-            res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
-            auto shape = na.Shape();
-            std::vector<py::object> arr;
-            if (shape == nullptr || shape->dim_size() == 0) {
-              res << "[]";
+      .def("__str__", [](const onnxruntime::NodeArg& na) -> std::string {
+        std::ostringstream res;
+        res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
+        auto shape = na.Shape();
+        std::vector<py::object> arr;
+        if (shape == nullptr || shape->dim_size() == 0) {
+          res << "[]";
+        } else {
+          res << "[";
+          for (int i = 0; i < shape->dim_size(); ++i) {
+            if (utils::HasDimValue(shape->dim(i))) {
+              res << shape->dim(i).dim_value();
+            } else if (utils::HasDimParam(shape->dim(i))) {
+              res << "'" << shape->dim(i).dim_param() << "'";
             } else {
-              res << "[";
-              for (int i = 0; i < shape->dim_size(); ++i) {
-                if (utils::HasDimValue(shape->dim(i))) {
-                  res << shape->dim(i).dim_value();
-                } else if (utils::HasDimParam(shape->dim(i))) {
-                  res << "'" << shape->dim(i).dim_param() << "'";
-                } else {
-                  res << "None";
-                }
-
-                if (i < shape->dim_size() - 1) {
-                  res << ", ";
-                }
-              }
-              res << "]";
-            }
-            res << ")";
-
-            return std::string(res.str());
-          },
-          "converts the node into a readable string")
-      .def_property_readonly(
-          "shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
-            auto shape = na.Shape();
-            std::vector<py::object> arr;
-            if (shape == nullptr || shape->dim_size() == 0) {
-              return arr;
+              res << "None";
             }
 
-            arr.resize(shape->dim_size());
-            for (int i = 0; i < shape->dim_size(); ++i) {
-              if (utils::HasDimValue(shape->dim(i))) {
-                arr[i] = py::cast(shape->dim(i).dim_value());
-              } else if (utils::HasDimParam(shape->dim(i))) {
-                arr[i] = py::cast(shape->dim(i).dim_param());
-              } else {
-                arr[i] = py::none();
-              }
+            if (i < shape->dim_size() - 1) {
+              res << ", ";
             }
-            return arr;
-          },
-          "node shape (assuming the node holds a tensor)");
+          }
+          res << "]";
+        }
+        res << ")";
+
+        return std::string(res.str());
+      },
+           "converts the node into a readable string")
+      .def_property_readonly("shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
+        auto shape = na.Shape();
+        std::vector<py::object> arr;
+        if (shape == nullptr || shape->dim_size() == 0) {
+          return arr;
+        }
+
+        arr.resize(shape->dim_size());
+        for (int i = 0; i < shape->dim_size(); ++i) {
+          if (utils::HasDimValue(shape->dim(i))) {
+            arr[i] = py::cast(shape->dim(i).dim_value());
+          } else if (utils::HasDimParam(shape->dim(i))) {
+            arr[i] = py::cast(shape->dim(i).dim_param());
+          } else {
+            arr[i] = py::none();
+          }
+        }
+        return arr;
+      },
+                             "node shape (assuming the node holds a tensor)");
 
   py::class_<SessionObjectInitializer>(m, "SessionObjectInitializer");
   py::class_<InferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
@@ -691,13 +683,12 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             InitializeSession(sess, provider_types);
           },
           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
-      .def(
-          "read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel, std::vector<std::string>& provider_types) {
-            std::istringstream buffer(serializedModel);
-            OrtPybindThrowIfError(sess->Load(buffer));
-            InitializeSession(sess, provider_types);
-          },
-          R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
+      .def("read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel, std::vector<std::string>& provider_types) {
+        std::istringstream buffer(serializedModel);
+        OrtPybindThrowIfError(sess->Load(buffer));
+        InitializeSession(sess, provider_types);
+      },
+           R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
       .def("run", [](InferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr) -> std::vector<py::object> {
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {

@@ -308,7 +308,6 @@ class DataTypeRegistry {
     const auto* proto = mltype->GetTypeProto();
     ORT_ENFORCE(proto != nullptr, "Only ONNX MLDataType can be registered");
     DataType type = Utils::DataTypeUtils::ToType(*proto);
-    std::cout << "Registering..." << *type << std::endl;
     auto p = mapping_.insert(std::make_pair(type, mltype));
     ORT_ENFORCE(p.second, "We do not expect duplicate registration of types for: ", type);
   }
