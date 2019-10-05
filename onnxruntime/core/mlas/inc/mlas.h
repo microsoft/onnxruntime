@@ -130,6 +130,27 @@ MlasSgemm(
     );
 
 //
+// Quantized integer matrix/matrix multiply routine.
+//
+
+void
+MLASCALL
+MlasQgemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    uint8_t offa,
+    const uint8_t* B,
+    size_t ldb,
+    uint8_t offb,
+    int32_t* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+//
 // Convolution routines.
 //
 

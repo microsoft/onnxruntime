@@ -4,7 +4,7 @@ jobs:
     AgentPool : 'Win-CPU'
     DoDebugBuild: 'true'
     DoCompliance: 'false'
-    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests'
+    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --use_automl --enable_pybind --use_mkldnn --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests'
     JobName: 'Windows_CI_Dev'
     DoNugetPack:  'false'
     NuPackScript : ''

@@ -70,5 +70,9 @@ bool CodeGenSettings::OptionMatches(const std::string& key, const std::string& v
 #endif
 }
 
+void CodeGenSettings::Clear() {
+  options_.clear();
+}
+
 }  // namespace codegen
 }  // namespace onnxruntime

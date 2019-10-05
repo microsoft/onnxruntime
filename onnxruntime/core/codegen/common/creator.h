@@ -25,7 +25,7 @@ class CreatorBase {
   CreatorBase(const std::string& name)
       : name_(name) {}
 
-  ~CreatorBase() = default;
+  virtual ~CreatorBase() = default;
 
   virtual RETURN_TYPE Evaluate(INPUT_TYPE,
                                NODE_TYPE,

@@ -54,22 +54,6 @@ jobs:
      cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
      ls -al $(Build.ArtifactStagingDirectory)
 
-- template: ../../templates/linux-ci.yml
-  parameters:
-    AgentPool : $(AgentPoolLinux)
-    JobName: 'Linux_CI_Dev_x86'
-    BuildCommand : 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -a x86 -x "--x86"'
-    DoNugetPack : 'true'
-    ArtifactName: 'drop-linux-x86'
-    NuPackScript: |
-     set -e -x
-     mkdir $(Build.BinariesDirectory)/linux-x86
-     cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x86
-     cd $(Build.BinariesDirectory)
-     zip -r linux-x86.zip linux-x86
-     cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
-     ls -al $(Build.ArtifactStagingDirectory)
-
 - template: ../../templates/mac-ci.yml
   parameters:
     AgentPool : $(AgentPoolMacOS)
@@ -96,7 +80,6 @@ jobs:
   - Windows_CI_Dev
   - Windows_CI_Dev_x86
   - Linux_CI_Dev
-  - Linux_CI_Dev_x86
   - MacOS_CI_Dev
   condition: succeeded()
   steps:  
@@ -120,13 +103,6 @@ jobs:
     displayName: 'Download Pipeline Artifact - Linux'
     inputs:
       artifactName: 'drop-linux'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-    continueOnError: true
-
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - Linux-x86'
-    inputs:
-      artifactName: 'drop-linux-x86'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
     continueOnError: true
 
@@ -177,13 +153,30 @@ jobs:
       downloadPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
       gitCommitHash: $(OnnxRuntimeGitCommitHashShort)  
 
+
+  - task: PowerShell@2
+    displayName: 'Get Current Date'
+    inputs:
+      targetType: 'inline'
+      script: |
+          $date = $(Get-Date -Format "yyyy-MM-dd")
+          Write-Host "##vso[task.setvariable variable=CurrentDate]$date"
+
   - task: AzureFileCopy@3
     displayName: 'Copy Signed NuGet Package to Blob Store'
-    condition: ne(variables['IsReleaseBuild'], 'true') # rlease build has a different package naming scheme
+    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
     inputs:
       sourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
       azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
       destination: azureBlob
       storage: ortpackages
       containerName: ortpackages
+      blobPrefix: '$(CurrentDate)/'
 
+  - task: DotNetCoreCLI@2
+    displayName: 'Copy Signed NuGet Package to Internal NuGet Feed'
+    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
+    inputs:
+      command: 'push'
+      searchPatternPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
+      feedPublish: 'OnnxRuntime'

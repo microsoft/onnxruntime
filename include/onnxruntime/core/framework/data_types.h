@@ -12,6 +12,8 @@
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
 
+struct OrtValue;
+
 namespace ONNX_NAMESPACE {
 class TypeProto;
 }  // namespace ONNX_NAMESPACE
@@ -38,6 +40,7 @@ using VectorMapInt64ToFloat = std::vector<MapInt64ToFloat>;
 class DataTypeImpl;
 class TensorTypeBase;
 class SparseTensorTypeBase;
+class NonTensorTypeBase;
 
 // MLFloat16
 union MLFloat16 {
@@ -173,8 +176,12 @@ class DataTypeImpl {
     return nullptr;
   }
 
+  virtual const NonTensorTypeBase* AsNonTensorTypeBase() const {
+    return nullptr;
+  }
+
   // Return the type meta that we are using in the runtime.
-  template <typename T, typename... Types>
+  template <typename T>
   static MLDataType GetType();
 
   // Return the types for a concrete tensor type, like Tensor_Float
@@ -187,8 +194,9 @@ class DataTypeImpl {
 
   /**
    * Convert an ONNX TypeProto to onnxruntime DataTypeImpl.
-   * However, this conversion is lossy. Don't try to use 'this->GetTypeProto()' converting it back
-   * Don't pass the returned value to OrtValue::OrtValue(...) function
+   * However, this conversion is lossy. Don't try to use 'this->GetTypeProto()' converting it back.
+   * Even though GetTypeProto() will not have the original information, it will still have enough to correctly
+   * map to MLDataType.
    * \param proto
    */
   static MLDataType TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto);
@@ -201,10 +209,14 @@ class DataTypeImpl {
   // MLDataType. DataType is produced by internalizing an instance of
   // TypeProto contained within MLDataType
   static void RegisterDataType(MLDataType);
+  static MLDataType GetDataType(const std::string&);
 
   static const std::vector<MLDataType>& AllTensorTypes();
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes();
   static const std::vector<MLDataType>& AllNumericTensorTypes();
+  static const std::vector<MLDataType>& AllIEEEFloatTensorTypes();
+  static const std::vector<MLDataType>& AllFixedSizeTensorExceptHalfTypes();
+  static const std::vector<MLDataType>& AllIEEEFloatTensorExceptHalfTypes();
 };
 
 std::ostream& operator<<(std::ostream& out, MLDataType data_type);
@@ -461,6 +473,25 @@ class SparseTensorType : public SparseTensorTypeBase {
 };
 
 /**
+  * \brief Provide a specialization for your C++ Non-tensor type
+  *        so your implementation FromDataTypeContainer/ToDataTypeContainer
+  *        functions correctly. Otherwise you get a default implementation
+  *        which may not be what you need/want.
+  *
+  * This class is used to create OrtValue, fetch data from OrtValue via
+  * C/C++ APIs
+  */
+template <class T>
+struct NonTensorTypeConverter {
+  static void FromContainer(MLDataType /*dtype*/, const void* /*data*/, size_t /*data_size*/, OrtValue& /*output*/) {
+    ORT_THROW("Not implemented");
+  }
+  static void ToContainer(const OrtValue& /*input*/, size_t /*data_size*/, void* /*data*/) {
+    ORT_THROW("Not implemented");
+  }
+};
+
+/**
  * \brief Base type for all non-tensors, maps, sequences and opaques
  */
 class NonTensorTypeBase : public DataTypeImpl {
@@ -472,6 +503,32 @@ class NonTensorTypeBase : public DataTypeImpl {
   virtual CreateFunc GetCreateFunc() const = 0;
 
   const ONNX_NAMESPACE::TypeProto* GetTypeProto() const override;
+
+  const NonTensorTypeBase* AsNonTensorTypeBase() const override {
+    return this;
+  }
+
+  // \brief Override for Non-tensor types to initialize non-tensor CPP
+  // data representation from data. The caller of the interface
+  // should have a shared definition of the data which is used to initialize
+  // CPP data representation. This is used from C API.
+  //
+  // \param data - pointer to a data container structure non_tensor type specific
+  // \param data_size - size of the data container structure, used for rudimentary checks
+  // \param output - reference to a default constructed non-tensor type
+  // \returns OrtValue
+  // \throw if there is an error
+  virtual void FromDataContainer(const void* data, size_t data_size, OrtValue& output) const;
+
+  // \brief Override for Non-tensor types to fetch data from the internal CPP data representation
+  // The caller of the interface should have a shared definition of the data which is used to initialize
+  // CPP data representation. This is used from C API.
+  //
+  // \param input - OrtValue containing data
+  // \param data_size - size of the structure that is being passed for receiving data, used for
+  //                    validation
+  // \param data - pointer to receiving data structure
+  virtual void ToDataContainer(const OrtValue& input, size_t data_size, void* data) const;
 
   NonTensorTypeBase(const NonTensorTypeBase&) = delete;
   NonTensorTypeBase& operator=(const NonTensorTypeBase&) = delete;
@@ -551,7 +608,7 @@ class MapType : public NonTensorType<CPPType> {
  * \brief SequenceType. Use to register sequences.
  *
  *  \param T - CPP type that you wish to register as Sequence
- *             runtime type.
+ *             runtime type. 
  *
  * \details Usage: ORT_REGISTER_SEQ(C++Type)
  *          The type is required to have value_type defined
@@ -591,6 +648,14 @@ class OpaqueType : public NonTensorType<T> {
 
   bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const override {
     return this->IsOpaqueCompatible(type_proto);
+  }
+
+  void FromDataContainer (const void* data, size_t data_size, OrtValue& output) const override {
+    NonTensorTypeConverter<T>::FromContainer(this, data, data_size, output);
+  }
+
+  void ToDataContainer (const OrtValue& input, size_t data_size, void* data) const override {
+    NonTensorTypeConverter<T>::ToContainer(input, data_size, data); 
   }
 
  private:

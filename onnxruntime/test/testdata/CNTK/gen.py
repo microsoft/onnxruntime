@@ -5,22 +5,17 @@ import cntk as C
 import numpy as np
 import onnx
 import os
+from onnx import numpy_helper
 
 model_file = 'model.onnx'
 data_dir = 'test_data_set_0'
 
 def SaveTensorProto(file_path, variable, data, name):
-    tp = onnx.TensorProto()
-    tp.name = name if name else variable.uid
     # ONNX input shape always has sequence axis as the first dimension, if sequence axis exists
-    for i in range(len(variable.dynamic_axes)):
-        tp.dims.append(data.shape[len(variable.dynamic_axes) - 1 - i])
-    for (i,d) in enumerate(variable.shape):
-        tp.dims.append(d) if d > 0 else tp.dims.append(data.shape[len(data.shape)-len(variable.shape)+i])
-    tp.data_type = onnx.TensorProto.FLOAT
-    tp.raw_data = data.tobytes()
-    with open(file_path, 'wb') as f:
-        f.write(tp.SerializeToString())
+    if len(variable.dynamic_axes) == 2:
+        data = data.transpose((1,0,)+tuple(range(2,len(data.shape))))
+    tp = numpy_helper.from_array(data, name if name else variable.uid)
+    onnx.save_tensor(tp, file_path)
 
 def SaveData(test_data_dir, prefix, variables, data_list, name_replacements=None):
     if isinstance(data_list, np.ndarray):
@@ -36,10 +31,7 @@ def Save(dir, func, feed, outputs):
 
     # onnx model may have different name for RNN initial states as inputs
     cntk_to_actual_names = {}
-    with open(onnx_file, 'rb') as ff:
-        sf = ff.read()
-    model = onnx.ModelProto()
-    model.ParseFromString(sf)
+    model = onnx.load(onnx_file)
     for actual_input in model.graph.input:
         actual_input_name = actual_input.name
         for cntk_input in func.arguments:
@@ -140,13 +132,46 @@ def GenScan():
     feature = C.sequence.input_variable((3,), np.float32)
     model = C.layers.For(range(4), lambda : C.layers.Recurrence(LSTM(2, use_scan=True)))(feature)
 
-    data_feature = np.random.rand(1,5,3).astype(np.float32)
+    data_feature = np.random.rand(2,5,3).astype(np.float32)
     data_output = np.asarray(model.eval(data_feature))
 
-    # print values for test as ground truth
-    print("Scan input\n", data_feature, "\nScan output\n", data_output)
-
     Save('test_Scan', model, data_feature, data_output)
+    
+    # Currently CNTK only outputs batch == 1, do some editing
+    in_mp = onnx.load('test_Scan/model.onnx')
+    out_mp = onnx.ModelProto()
+    out_mp.CopyFrom(in_mp)
+    out_mp.graph.ClearField('initializer')
+
+    # change LSTM init_c/h into inputs to support truncated sequence
+    # as batch dimension is unknown on those data when building model
+    # note here we assume init_c/h starts from 0
+    # if not the case, user need to manually broadcast it for feed
+    num_inputs = 1
+    for i in in_mp.graph.initializer:
+        if i.name.startswith("Constant"):
+            shape = i.dims
+            shape[0] = 2
+            aa = np.zeros(shape, dtype=np.float32)
+            tp = numpy_helper.from_array(aa, i.name)
+            with open('test_Scan/test_data_set_0/input_' + str(num_inputs) + '.pb', 'wb') as ff:
+                ff.write(tp.SerializeToString())
+            num_inputs = num_inputs + 1
+        else:
+            out_mp.graph.initializer.add().CopyFrom(i)
+
+    for vi in list(out_mp.graph.input) + list(out_mp.graph.output) + list(out_mp.graph.value_info):
+        dim = vi.type.tensor_type.shape.dim
+        dim[len(dim) - 2].dim_param = 'batch'
+        
+    for n in out_mp.graph.node:
+        if n.op_type == 'Scan':
+            body = [attr for attr in n.attribute if attr.name == 'body'][0]
+            for vi in list(body.g.input) + list(body.g.output) + list(body.g.value_info):
+                dim = vi.type.tensor_type.shape.dim
+                dim[0].dim_param = 'batch'
+
+    onnx.save(out_mp, 'test_Scan/model.onnx', 'wb')
 
 def GenSimpleScan():
     feature = C.sequence.input_variable((128,), np.float32)
@@ -157,35 +182,21 @@ def GenSimpleScan():
     data_output = np.asarray(model.eval(data_feature), dtype=np.float32)
     Save('test_SimpleScan', model, data_feature, data_output)
 
-def GenLCBLSTM():
-    nc_len = 16
-    nr_len = 16
-    in_dim = 128
-    cell_dim = 256
-    batch_size = 1
-    input = C.sequence.input_variable((in_dim,))
-    init_h = C.input_variable((cell_dim,))
-    init_c = C.input_variable((cell_dim,))
+def GenGRU():
+    feature = C.sequence.input_variable((64,), np.float32)
+    gru_fw = C.layers.Recurrence(C.layers.GRU(128))(feature)
+    gru_bw = C.layers.Recurrence(C.layers.GRU(128), go_backwards=True)(feature)
+    model = C.splice(gru_fw, gru_bw, axis=0)
+    data_feature = np.random.rand(1,16,64).astype(np.float32)
+    data_output = np.asarray(model.eval(data_feature))
+    Save('test_GRU', model, data_feature, data_output)
 
-    fwd_cell = LSTM(cell_dim, use_scan=True)
-    fwd_hc = C.layers.RecurrenceFrom(fwd_cell, go_backwards=False, return_full_state=True)(init_h, init_c, input)
-
-    fwd_h_nc = C.sequence.slice(fwd_hc[0], -nr_len-1, -nr_len)
-    fwd_c_nc = C.sequence.slice(fwd_hc[1], -nr_len-1, -nr_len)
-
-    bwd_cell = LSTM(cell_dim, use_scan=True)
-    bwd = C.layers.Recurrence(bwd_cell, go_backwards=True)(input)
-
-    nr = C.splice(fwd_hc[0], bwd)
-    # workaround CNTK bug in slice output name by + 0
-    model = C.combine([C.sequence.reduce_sum(nr), fwd_h_nc + 0, fwd_c_nc + 0])
-    
-    input_data = np.random.rand(batch_size, nc_len+nr_len, in_dim).astype(np.float32)
-    init_h_data = np.random.rand(batch_size, cell_dim).astype(np.float32)
-    init_c_data = np.random.rand(batch_size, cell_dim).astype(np.float32)
-    feed = {input:input_data, init_h:init_h_data, init_c:init_c_data}
-    data_output = model.eval(feed)
-    Save('test_LCBLSTM', model, feed, data_output)
+def GenRNN():
+    feature = C.sequence.input_variable((64,), np.float32)
+    model = C.optimized_rnnstack(feature, C.parameter((C.InferredDimension, 64,), init=C.glorot_uniform()), 128, 2, True, 'rnnReLU')
+    data_feature = np.random.rand(1,16,64).astype(np.float32)
+    data_output = np.asarray(model.eval(data_feature))
+    Save('test_RNN', model, data_feature, data_output)
 
 if __name__=='__main__':
     np.random.seed(0)
@@ -196,5 +207,6 @@ if __name__=='__main__':
     GenLSTMx4(use_scan=True)
     GenLSTMx4(use_scan=False)
     GenSimpleScan()
-    GenLCBLSTM()
     GenScan()
+    GenGRU()
+    GenRNN()

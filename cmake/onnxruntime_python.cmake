@@ -73,6 +73,7 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
+    ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
     onnxruntime_optimizer
     onnxruntime_providers
@@ -232,5 +233,17 @@ if (onnxruntime_USE_MKLML)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${MKLML_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB}
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+  )
+endif()
+
+if (onnxruntime_USE_NUPHAR)
+  file(GLOB onnxruntime_python_nuphar_test_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/scripts/*.*"
+  )
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_nuphar_test_srcs}
+      $<TARGET_FILE_DIR:${test_data_target}>
   )
 endif()

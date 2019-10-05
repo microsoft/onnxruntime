@@ -54,23 +54,25 @@ jobs:
           arguments: '$(BuildCommand) --test --config Debug'
           workingFolder: '$(Build.BinariesDirectory)'
 
-      - task: VSBuild@1
+      - task: MSBuild@1
         displayName: 'Build C# Debug'
         inputs:
-          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-          platform: 'any cpu'
+          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+          platform: 'Any CPU'
           configuration: 'Debug'
-          restoreNugetPackages: false
           msbuildArchitecture: 'x86'
-          workingFolder: '$(Build.SourcesDirectory)\csharp'
           msbuildArguments: '/m'
+          workingFolder: '$(Build.SourcesDirectory)\csharp'
 
-      - task: CmdLine@2
+      - task: MSBuild@1
         displayName: 'Test C# Debug'
         inputs:
-          script: |
-           FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
-          workingDirectory: '$(Build.SourcesDirectory)\csharp'
+          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+          platform: 'Any CPU'
+          configuration: 'Debug'
+          msbuildArchitecture: 'x86'
+          msbuildArguments: '/t:RunTest'
+          workingFolder: '$(Build.SourcesDirectory)\csharp'
 
     # Build RelWithDebInfo -- this variable required to build C#
     - task: CmdLine@2
@@ -97,23 +99,25 @@ jobs:
         arguments: '$(BuildCommand) --test --config RelWithDebInfo'
         workingFolder: "$(Build.BinariesDirectory)"
 
-    - task: VSBuild@1
+    - task: MSBuild@1
       displayName: 'Build C# RelWithDebInfo'
       inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        platform: 'any cpu'
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        platform: 'Any CPU'
         configuration: 'RelWithDebInfo'
         msbuildArchitecture: 'x86'
-        restoreNugetPackages: false
-        workingFolder: '$(Build.SourcesDirectory)\csharp'
         msbuildArguments: '/m'
+        workingFolder: '$(Build.SourcesDirectory)\csharp'
 
-    - task: CmdLine@2
+    - task: MSBuild@1
       displayName: 'Test C# RelWithDebInfo'
       inputs:
-        script: |
-         FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        platform: 'Any CPU'
+        configuration: 'RelWithDebInfo'
+        msbuildArchitecture: 'x86'
+        msbuildArguments: '/t:RunTest'
+        workingfolder: '$(Build.SourcesDirectory)\csharp'
 
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'

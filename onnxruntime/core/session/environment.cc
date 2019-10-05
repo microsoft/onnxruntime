@@ -10,6 +10,9 @@
 #ifndef DISABLE_CONTRIB_OPS
 #include "core/graph/contrib_ops/contrib_defs.h"
 #endif
+#ifdef MICROSOFT_AUTOML
+#include "core/graph/automl_ops/automl_defs.h"
+#endif
 
 namespace onnxruntime {
 using namespace ::onnxruntime::common;
@@ -30,14 +33,17 @@ Status Environment::Initialize(const std::string& default_logger_id) {
     // Register Microsoft domain with min/max op_set version as 1/1.
     ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
     ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
+    ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSAutoMLDomain, 1, 1);    
 
     // Register contributed op schemas.
     // The corresponding kernels are registered inside the appropriate execution provider.
 #ifndef DISABLE_CONTRIB_OPS
     contrib::RegisterContribSchemas();
 #endif
-
-    // Register ONNX op schemas.
+#ifdef MICROSOFT_AUTOML
+    automl::RegisterAutoMLSchemas();
+#endif
+    // Register ONNX op schemas.    
     RegisterOnnxOperatorSetSchema();
     RegisterOnnxMLOperatorSetSchema();
 

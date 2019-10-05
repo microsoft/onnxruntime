@@ -33,4 +33,13 @@ inline bool IsScalarOr1ElementVector(const Tensor* input) {
   }
 }
 
+/**
+Clamps input between provided min and max values
+**/
+inline float clamp(float v, float lo, float hi) {
+  if (v < lo) return lo;
+  if (v > hi) return hi;
+  return v;
+}
+
 }  // namespace onnxruntime

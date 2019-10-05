@@ -16,7 +16,6 @@ Abstract:
 --*/
 
 #pragma once
-// clang-format off
 
 #include <mlas.h>
 #include <memory.h>
@@ -57,6 +56,18 @@ Abstract:
 #endif
 
 //
+// Macro to tag globals as internal data shared with kernels written in
+// assembly. These globals are marked with having hidden visibility to avoid
+// needing to access the data through the global object table.
+//
+
+#if defined(_MSC_VER)
+#define MLAS_INTERNAL_DATA extern "C"
+#else
+#define MLAS_INTERNAL_DATA extern "C" __attribute ((visibility("hidden")))
+#endif
+
+//
 // Macro to suppress unreferenced parameter warnings.
 //
 
@@ -69,7 +80,7 @@ Abstract:
 #if defined(_M_AMD64) || defined(__x86_64__)
 #define MLAS_TARGET_AMD64
 #endif
-#if (defined(_M_IX86) && !defined(_M_HYBRID_X86_ARM64)) || defined(__i386__)
+#if defined(_M_IX86) || defined(__i386__)
 #define MLAS_TARGET_IX86
 #endif
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
@@ -92,8 +103,6 @@ Abstract:
 
 #if defined(_OPENMP)
 #include <omp.h>
-#elif defined(_WIN32)
-#define MLAS_USE_WIN32_THREADPOOL
 #endif
 
 //
@@ -124,9 +133,28 @@ Abstract:
 // Define the prototypes of the platform optimized routines.
 //
 
+#if defined(MLAS_TARGET_AMD64_IX86)
+
 typedef
 size_t
-(MLASCALL MLAS_SGEMM_KERNEL_ROUTINE)(
+(MLASCALL MLAS_GEMM_FLOAT_KERNEL)(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t CountK,
+    size_t CountM,
+    size_t CountN,
+    size_t lda,
+    size_t ldc,
+    float alpha,
+    bool ZeroMode
+    );
+
+#else
+
+typedef
+size_t
+(MLASCALL MLAS_GEMM_FLOAT_KERNEL)(
     const float* A,
     const float* B,
     float* C,
@@ -138,7 +166,9 @@ size_t
     float alpha
     );
 
-typedef MLAS_SGEMM_KERNEL_ROUTINE* PMLAS_SGEMM_KERNEL_ROUTINE;
+#endif
+
+typedef MLAS_GEMM_FLOAT_KERNEL* PMLAS_GEMM_FLOAT_KERNEL;
 
 typedef
 void
@@ -163,6 +193,52 @@ void
     );
 
 typedef MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE;
+
+typedef
+void
+(MLASCALL MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE)(
+    int16_t* D,
+    const uint8_t* A,
+    size_t lda,
+    size_t CountM,
+    size_t CountK,
+    int32_t* RowSumVector,
+    int16_t offb
+    );
+
+typedef MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE* PMLAS_GEMM_U8U8_COPY_PACKA_ROUTINE;
+
+typedef
+void
+(MLASCALL MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE)(
+    uint8_t* D,
+    const uint8_t* B,
+    size_t ldb,
+    size_t CountN,
+    size_t CountK,
+    int32_t* ColumnSumVector,
+    int16_t offa
+    );
+
+typedef MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE* PMLAS_GEMM_U8U8_COPY_PACKB_ROUTINE;
+
+typedef
+size_t
+(MLASCALL MLAS_GEMM_U8U8_KERNEL)(
+    const int16_t* A,
+    const uint8_t* B,
+    int32_t* C,
+    size_t PairedCountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    const int32_t* RowSumVector,
+    const int32_t* ColumnSumVector,
+    int32_t DepthValue,
+    bool ZeroMode
+    );
+
+typedef MLAS_GEMM_U8U8_KERNEL* PMLAS_GEMM_U8U8_KERNEL;
 
 typedef
 void
@@ -266,19 +342,15 @@ typedef MLAS_ELEMENTWISE_KERNEL_ROUTINE* PMLAS_ELEMENTWISE_KERNEL_ROUTINE;
 extern "C" {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
-    MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZeroSse;
-    MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelAddSse;
-    MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZeroAvx;
-    MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelAddAvx;
+    MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelSse;
+    MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelAvx;
 #if defined(MLAS_TARGET_AMD64)
-    MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZeroFma3;
-    MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelAddFma3;
-    MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZeroAvx512F;
-    MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelAddAvx512F;
+    MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelFma3;
+    MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelAvx512F;
 #endif
 #else
-    MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZero;
-    MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelAdd;
+    MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
+    MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
@@ -289,6 +361,19 @@ extern "C" {
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4Sse;
     MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4Avx;
+#endif
+
+#if defined(MLAS_TARGET_AMD64_IX86)
+    MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE MlasGemmU8U8CopyPackASse;
+    MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE MlasGemmU8U8CopyPackBSse;
+    MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelSse;
+#if defined(MLAS_TARGET_AMD64)
+    MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE MlasGemmU8U8CopyPackAAvx2;
+    MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE MlasGemmU8U8CopyPackBAvx2;
+    MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx2;
+    MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512BW;
+    MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512Vnni;
+#endif
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
@@ -404,8 +489,10 @@ struct MLAS_PLATFORM {
     MLAS_PLATFORM(void);
 
 #if defined(MLAS_TARGET_AMD64_IX86)
-    PMLAS_SGEMM_KERNEL_ROUTINE KernelZeroRoutine;
-    PMLAS_SGEMM_KERNEL_ROUTINE KernelAddRoutine;
+    PMLAS_GEMM_FLOAT_KERNEL GemmFloatKernel;
+    PMLAS_GEMM_U8U8_COPY_PACKA_ROUTINE GemmU8U8CopyPackARoutine;
+    PMLAS_GEMM_U8U8_COPY_PACKB_ROUTINE GemmU8U8CopyPackBRoutine;
+    PMLAS_GEMM_U8U8_KERNEL GemmU8U8Kernel;
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
@@ -422,10 +509,6 @@ struct MLAS_PLATFORM {
     PMLAS_ELEMENTWISE_KERNEL_ROUTINE ErfKernelRoutine;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
-#endif
-
-#if defined(MLAS_USE_WIN32_THREADPOOL)
-    int32_t MaximumThreadCount;
 #endif
 };
 
@@ -462,13 +545,11 @@ MlasGetMaximumThreadCount(
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
 #else
     if (ThreadPool != nullptr) {
-        return ThreadPool->NumThreads();
+        return ThreadPool->NumThreads() + 1;
     }
 #endif
 
-#if defined(MLAS_USE_WIN32_THREADPOOL)
-    return MlasPlatform.MaximumThreadCount;
-#elif _OPENMP
+#if defined(_OPENMP)
     return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
 #else
     return 1;
@@ -495,7 +576,7 @@ MlasGetMaximumThreadCount(
 #if defined(MLAS_TARGET_ARM)
 #define MLAS_NEON_INTRINSICS
 #define MLAS_NEON32_INTRINSICS
-#elif defined(MLAS_TARGET_ARM64) || defined(_M_HYBRID_X86_ARM64)
+#elif defined(MLAS_TARGET_ARM64)
 #define MLAS_NEON_INTRINSICS
 #define MLAS_NEON64_INTRINSICS
 #elif defined(MLAS_TARGET_AMD64_IX86)
