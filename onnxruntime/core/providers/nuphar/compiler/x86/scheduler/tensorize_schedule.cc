@@ -292,7 +292,7 @@ static bool IMatMulTensorizeSchedule(
                                                           "avx512-skylake")
                                          .IsOK();
     } else if (CPUIDInfo::GetCPUIDInfo().HasAVX2()) {
-      ORT_ENFORCE(is_scalar, "scalar AVX2 is not supported!");
+      ORT_ENFORCE(!is_scalar, "scalar AVX2 is not supported!");
       // TODO: release 8bit tensorize GEMV for AVX2
       status_tensorize = isGEMV ? TensorizeGEMVInteger(imatmul, *p_input_dim, ctx_sched).IsOK()
                                 : TensorizeGEMMInteger(imatmul, ctx_codegen, ctx_sched, batchseq_expr,
