@@ -36,6 +36,8 @@ static std::string GetCurrentHostTargetString() {
     return CodeGenTargetX86::LLVM_TARGET_AVX512;
   } else if (cpu_id_info.HasAVX2()) {
     return CodeGenTargetX86::LLVM_TARGET_AVX2;
+  } else if (cpu_id_info.HasAVX()) {
+    return CodeGenTargetX86::LLVM_TARGET_AVX;
   }
   return llvm_target_str;
 #else
@@ -64,9 +66,13 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
       codegen_target_ = CodeGenTarget_AVX512();
     } else if (cpu_id_info.HasAVX2()) {
       codegen_target_ = CodeGenTarget_AVX2();
+    } else if (cpu_id_info.HasAVX()) {
+      codegen_target_ = CodeGenTarget_AVX();
     } else {
       codegen_target_ = onnxruntime::make_unique<CodeGenTargetX86>(target_str, 128, 1);  // TODO: use real values
     }
+  } else if (target_str == "avx") {
+    codegen_target_ = CodeGenTarget_AVX();
   } else if (target_str == "avx2") {
     codegen_target_ = CodeGenTarget_AVX2();
   } else if (target_str == "avx512") {
@@ -74,14 +80,14 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
   } else if (target_str != stackvm_target_str) {
     codegen_target_ = onnxruntime::make_unique<CodeGenTarget>(target_str);
   } else {
-    ORT_NOT_IMPLEMENTED("Not supported target, should be one of stackvm/llvm/avx2/avx512.");
+    ORT_NOT_IMPLEMENTED("Not supported target, should be one of stackvm/llvm/avx/avx2/avx512.");
   }
 
   CreateTVMTarget();
 
   tvm_host_target_ = tvm::Target::create(GetCurrentHostTargetString());
   tvm_ctx_.device_type = static_cast<DLDeviceType>(tvm_target_->device_type);
-  tvm_ctx_.device_id = 0; // use the default device id for CPU allocator
+  tvm_ctx_.device_id = 0;  // use the default device id for CPU allocator
 
   whole_graph_shape_infer_ = std::make_shared<ShapeExprContext>();
 
