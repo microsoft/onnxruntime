@@ -34,11 +34,22 @@ using MapInt64ToFloat = std::map<int64_t, float>;
 using MapInt64ToDouble = std::map<int64_t, double>;
 
 //vectors/sequences
+// Data type to represent a sequence of tensors of the same type
 struct TensorSeq {
-  uisng value_type = Tensor;  // to satisfy SequenceType template
+  using value_type = Tensor;  // to satisfy SequenceType template
+
+  // A sequence must be associated with only one data type and all tensors in the seq must be of that type
+  // One other alternative of storing the data type of a seq is to templatize the TensorSeq class.
+  // The current design follows the Tensor methodology.
+  // We also require this because the SequenceEmpty op expects the creation of a seq of a specific type
+  // and the SequenceInsert op expects validation of tensors to be added to the seq against this type.
   MLDataType dtype;
+
+  // TODO: optimization opportunity - if all tensors in the seq are scalars, we can potentially represent them
+  // as vector<primitive type>
   std::vector<Tensor> tensors;
 };
+
 using VectorMapStringToFloat = std::vector<MapStringToFloat>;
 using VectorMapInt64ToFloat = std::vector<MapInt64ToFloat>;
 
