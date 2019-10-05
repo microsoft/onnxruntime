@@ -552,7 +552,7 @@ ORT_REGISTER_MAP(MapInt64ToFloat);
 ORT_REGISTER_MAP(MapInt64ToDouble);
 
 // Register sequence of tensor types
-ORT_REGISTER_SEQ(TensorSeq)
+ORT_REGISTER_SEQ(TensorSeq)  // required to ensure GetType<TensorSeq> works
 ORT_REGISTER_SEQ_TENSOR_TYPE(int32_t);
 ORT_REGISTER_SEQ_TENSOR_TYPE(float);
 ORT_REGISTER_SEQ_TENSOR_TYPE(bool);

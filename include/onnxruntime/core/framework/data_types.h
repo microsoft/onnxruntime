@@ -35,7 +35,7 @@ using MapInt64ToDouble = std::map<int64_t, double>;
 
 //vectors/sequences
 struct TensorSeq {
-  typedef Tensor value_type;
+  uisng value_type = Tensor;  // to satisfy SequenceType template
   MLDataType dtype;
   std::vector<Tensor> tensors;
 };
