@@ -102,7 +102,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction loggi
   std::unique_ptr<ISink> logger = onnxruntime::make_unique<LoggingWrapper>(logging_function, logger_param);
   auto default_logging_manager = onnxruntime::make_unique<LoggingManager>(std::move(logger),
                                                                           static_cast<Severity>(default_warning_level), false,
-                                                                          LoggingManager::InstanceType::Temporal,
+                                                                          LoggingManager::InstanceType::Default,
                                                                           &name);
   std::unique_ptr<Environment> env;
   Status status = Environment::Create(env);

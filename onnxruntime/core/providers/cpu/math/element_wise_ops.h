@@ -269,6 +269,16 @@ class Mean_8 final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
+template <typename T>
+class BitShift final : public OpKernel {
+ public:
+  explicit BitShift(const OpKernelInfo& info);
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  bool shift_left_;
+};
+
 // PRelu is activation function, but it's closer to binary elementwise ops in implementation
 template <typename T>
 class PRelu final : public OpKernel {
@@ -536,8 +546,8 @@ struct TensorAllocator {
 
   std::unique_ptr<Tensor> Allocate(const TensorShape& shape) {
     return onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
-                                    shape,
-                                    allocator_);
+                                            shape,
+                                            allocator_);
   }
 
  private:
