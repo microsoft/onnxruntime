@@ -11,9 +11,13 @@
 namespace onnxruntime {
 namespace test {
 
-inline bool HasCudaEnvironment(int min_cuda_architecture = 0) {
+inline bool HasCudaEnvironment(int min_cuda_architecture) {
   if (DefaultCudaExecutionProvider().get() == nullptr) {
     return false;
+  }
+
+  if (min_cuda_architecture == 0) {
+    return true;
   }
 
 #ifdef USE_CUDA
@@ -26,7 +30,7 @@ inline bool HasCudaEnvironment(int min_cuda_architecture = 0) {
   }
 
   int cuda_architecture = prop.major * 100 + prop.minor;
-  if (min_cuda_architecture > 0 && cuda_architecture < min_cuda_architecture) {
+  if (cuda_architecture < min_cuda_architecture) {
     return false;
   }
 #endif
