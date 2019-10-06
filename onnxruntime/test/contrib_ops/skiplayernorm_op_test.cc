@@ -2,26 +2,11 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
-#include "test/common/tensor_op_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/util/include/default_providers.h"
-
-#include <iterator>
-#include <vector>
-#include <string>
-#include <algorithm>
 
 namespace onnxruntime {
 namespace test {
-
-static const std::vector<MLFloat16> ToFloat16(const std::vector<float>& data) {
-  std::vector<MLFloat16> result;
-  result.reserve(data.size());
-  for (int i = 0; i < data.size(); i++) {
-    result.push_back(MLFloat16(math::floatToHalf(data[i])));
-  }
-  return result;
-}
 
 static void RunTest(
     const std::vector<float>& input_data,
@@ -33,10 +18,8 @@ static void RunTest(
     int sequence_length,
     int hidden_size,
     bool use_float16 = false) {
-  // Run test on CUDA provider since Attention only have CUDA kernel.
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  if (execution_providers[0].get() != nullptr) {
+  int min_cuda_architecture = use_float16 ? 530 : 0;
+  if (HasCudaEnvironment(min_cuda_architecture)) {
     OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
 
     // Input and output shapes
@@ -65,6 +48,8 @@ static void RunTest(
       test.AddOutput<float>("output", output_dims, output_data);
     }
 
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
