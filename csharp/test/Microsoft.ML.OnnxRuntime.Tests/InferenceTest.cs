@@ -324,15 +324,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "fp16_inception_v1", "16-bit float not supported type in C#." },
                 { "fp16_shufflenet", "16-bit float not supported type in C#." },
                 { "fp16_tiny_yolov2", "16-bit float not supported type in C#." },
-                { "LSTM_Seq_lens_unpacked", "Sequence contains no elements" },
                 { "BERT_Squad", "Could not find an implementation for the node bert / embeddings / one_hot:OneHot(9)" },
-                //{ "faster_rcnn", "Length of memory(2611200) must match product of dimensions(3)" },
-                //{ "mask_rcnn", "Length of memory (3456000) must match product of dimensions (3)" },
-                //{ "mask_rcnn_keras", "Length of memory (3145728) must match product of dimensions (3)" },
-                { "mlperf_resnet", "Value cannot be null" },
                 { "mlperf_ssd_mobilenet_300", "Could not find file output_0.pb" }
-                //,
-                //{ "yolov3", "Length of memory(519168) must match product of dimensions(3)" }
             };
 
             var disableContribOpsEnvVar = Environment.GetEnvironmentVariable("DisableContribOps");
@@ -358,7 +351,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     if (!skipModels.ContainsKey(modelDir.Name))
                     {
-                        yield return new object[] { modelDir.Parent.Name, modelDir.Name, modelDir.FullName };
+                        yield return new object[] { modelDir.Parent.Name, modelDir.Name };
                     }
                 } //model
             } //opset
@@ -378,7 +371,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     if (skipModels.ContainsKey(modelDir.Name))
                     {
                         //Console.WriteLine("Model {0} is skipped due to the error: {1}", modelDir.FullName, skipModels[modelDir.Name]);
-                        yield return new object[] { modelDir.Parent.Name, modelDir.Name, modelDir.FullName };
+                        yield return new object[] { modelDir.Parent.Name, modelDir.Name };
                     }
                         
                 }
@@ -389,19 +382,20 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [x64Theory]
         [MemberData(nameof(GetModelsForTest))]
         [MemberData(nameof(GetSkippedModelForTest), Skip ="Skipped due to Error, please fix the error and enable the test")]
-        private void TestPreTrainedModels(string opset, string modelName, string modelPath)
+        private void TestPreTrainedModels(string opset, string modelName)
         {
             var modelsDir = GetTestModelsDir();
             string onnxModelFileName = null;
-            var modelDir = new DirectoryInfo(modelPath);
+
+            var modelDir = new DirectoryInfo(Path.Combine(modelsDir, opset, modelName));
 
             try
             {
                 var onnxModelNames = modelDir.GetFiles("*.onnx");
-                if (onnxModelNames.Length > 1)
+                bool validModelFound = false;
+                if (onnxModelNames.Length > 0)
                 {
                     // TODO remove file "._resnet34v2.onnx" from test set
-                    bool validModelFound = false;
                     for (int i = 0; i < onnxModelNames.Length; i++)
                     {
                         if (onnxModelNames[i].Name != "._resnet34v2.onnx")
@@ -410,20 +404,27 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             validModelFound = true;
                         }
                     }
-
-                    if (!validModelFound)
-                    {
-                        var modelNamesList = string.Join(",", onnxModelNames.Select(x => x.ToString()));
-                        throw new Exception($"Opset {opset} Model {modelName}. Can't determine model file name. Found these :{modelNamesList}");
-                    }
                 }
 
-                onnxModelFileName = Path.Combine(modelDir.FullName, onnxModelNames[0].Name);
-
+                if (validModelFound)
+                {
+                    onnxModelFileName = Path.Combine(modelDir.FullName, onnxModelNames[0].Name);
+                }
+                else
+                {
+                    var modelNamesList = string.Join(",", onnxModelNames.Select(x => x.ToString()));
+                    throw new Exception($"Opset {opset} Model {modelName}. Can't determine model file name. Found these :{modelNamesList}");
+                }
+                
                 using (var session = new InferenceSession(onnxModelFileName))
                 {
                     var inMeta = session.InputMetadata;
-                    var testDataDir = modelDir.EnumerateDirectories("test_data*").First();
+                    string testDataDirNamePattern = "test_data*";
+                    if (opset == "opset9" && modelName == "LSTM_Seq_lens_unpacked")
+                    {
+                        testDataDirNamePattern = "seq_lens*"; // discrepency in data directory
+                    }
+                    var testDataDir = modelDir.EnumerateDirectories(testDataDirNamePattern).First();
                     var inputContainer = new List<NamedOnnxValue>();
                     var outputContainer = new List<NamedOnnxValue>();
                     foreach (var f in testDataDir.EnumerateFiles("input_*.pb"))
@@ -449,6 +450,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                                     outputValue = o;
                                     break;
                                 }
+                            }
+                            if (outputValue == null)
+                            {
+                                outputValue = outputContainer.First(); // in case the output data file does not contain the name
                             }
                             if (outputMeta.IsTensor)
                             {
@@ -996,65 +1001,123 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return tensorData.ToArray();
         }
 
-        static NamedOnnxValue LoadTensorFromFilePb(string filename, IReadOnlyDictionary<string, NodeMetadata> inpuMeta)
+        static NamedOnnxValue LoadTensorFromFilePb(string filename, IReadOnlyDictionary<string, NodeMetadata> nodeMetaDict)
         {
             var file = File.OpenRead(filename);
             var tensor = Onnx.TensorProto.Parser.ParseFrom(file);
             file.Close();
-            var nodeMeta = inpuMeta[tensor.Name];
-            Assert.True(nodeMeta.IsTensor, "LoadTensorFromFile can load Tensor types only");
-            //TODO: support other types when models are available in Onnx model zoo/ test data
-            Type t = null;
+
+            Type tensorElemType = null;
             int width = 0;
-            TensorElementTypeConverter.GetTypeAndWidth((TensorElementType)tensor.DataType, out t, out width);
-            Assert.Equal(t, nodeMeta.ElementType);
-            Assert.Equal(nodeMeta.Dimensions.Length, tensor.Dims.Count);
+            TensorElementTypeConverter.GetTypeAndWidth((TensorElementType)tensor.DataType, out tensorElemType, out width);
             var intDims = new int[tensor.Dims.Count];
-            for (int i = 0; i < nodeMeta.Dimensions.Length; i++)
+            for (int i = 0; i < tensor.Dims.Count; i++)
             {
                 intDims[i] = (int)tensor.Dims[i];
+            }
+
+            NodeMetadata nodeMeta = null; 
+            string nodeName = "";
+            if (nodeMetaDict.Count == 1)
+            {
+                nodeMeta = nodeMetaDict.Values.First();
+                nodeName = nodeMetaDict.Keys.First(); // valid for single node input
+            }
+            else if (nodeMetaDict.Count > 1) 
+            {
+                if (tensor.Name != "")
+                {
+                    nodeMeta = nodeMetaDict[tensor.Name];
+                    nodeName = tensor.Name;
+                }
+                else
+                {
+                    bool matchfound = false;
+                    // try to find from matching type and shape
+                    foreach (var key in nodeMetaDict.Keys)
+                    {
+                        var meta = nodeMetaDict[key];
+                        if (tensorElemType == meta.ElementType && tensor.Dims.Count == meta.Dimensions.Length)
+                        {
+                            int i = 0;
+                            for (; i < meta.Dimensions.Length; i++)
+                            {
+                                if (meta.Dimensions[i] != -1 && meta.Dimensions[i] != intDims[i])
+                                {
+                                    break;
+                                }
+                            }
+                            if (i >= meta.Dimensions.Length)
+                            {
+                                matchfound = true;
+                                nodeMeta = meta;
+                                nodeName = key;
+                                break;
+                            }
+                        }
+                    }
+                    if (!matchfound)
+                    {
+                        // throw error
+                        throw new Exception("No Matching Tensor found in InputOutputMetadata corresponding to the serliazed tensor loaded from "+ filename);
+                    }
+                }
+            }
+            else
+            {
+                // throw error
+                throw new Exception("While reading the serliazed tensor loaded from " + filename + ", metaDataDict has 0 elements");
+            }
+
+            Assert.True(nodeMeta.IsTensor, "LoadTensorFromFile can load Tensor types only");
+            //TODO: support other types when models are available in Onnx model zoo/ test data
+
+            Assert.Equal(tensorElemType, nodeMeta.ElementType);
+            Assert.Equal(nodeMeta.Dimensions.Length, tensor.Dims.Count);
+            for (int i = 0; i < nodeMeta.Dimensions.Length; i++)
+            {
                 Assert.True((nodeMeta.Dimensions[i] == -1) || (nodeMeta.Dimensions[i] == intDims[i]));
             }
 
             if (nodeMeta.ElementType == typeof(float))
             {
-                return CreateNamedOnnxValueFromRawData<float>(tensor.Name, tensor.RawData.ToArray(), sizeof(float), intDims);
+                return CreateNamedOnnxValueFromRawData<float>(nodeName, tensor.RawData.ToArray(), sizeof(float), intDims);
             }
             else if (nodeMeta.ElementType == typeof(double))
             {
-                return CreateNamedOnnxValueFromRawData<double>(tensor.Name, tensor.RawData.ToArray(), sizeof(double), intDims);
+                return CreateNamedOnnxValueFromRawData<double>(nodeName, tensor.RawData.ToArray(), sizeof(double), intDims);
             }
             else if (nodeMeta.ElementType == typeof(int))
             {
-                return CreateNamedOnnxValueFromRawData<int>(tensor.Name, tensor.RawData.ToArray(), sizeof(int), intDims);
+                return CreateNamedOnnxValueFromRawData<int>(nodeName, tensor.RawData.ToArray(), sizeof(int), intDims);
             }
             else if (nodeMeta.ElementType == typeof(uint))
             {
-                return CreateNamedOnnxValueFromRawData<uint>(tensor.Name, tensor.RawData.ToArray(), sizeof(uint), intDims);
+                return CreateNamedOnnxValueFromRawData<uint>(nodeName, tensor.RawData.ToArray(), sizeof(uint), intDims);
             }
             else if (nodeMeta.ElementType == typeof(long))
             {
-                return CreateNamedOnnxValueFromRawData<long>(tensor.Name, tensor.RawData.ToArray(), sizeof(long), intDims);
+                return CreateNamedOnnxValueFromRawData<long>(nodeName, tensor.RawData.ToArray(), sizeof(long), intDims);
             }
             else if (nodeMeta.ElementType == typeof(ulong))
             {
-                return CreateNamedOnnxValueFromRawData<ulong>(tensor.Name, tensor.RawData.ToArray(), sizeof(ulong), intDims);
+                return CreateNamedOnnxValueFromRawData<ulong>(nodeName, tensor.RawData.ToArray(), sizeof(ulong), intDims);
             }
             else if (nodeMeta.ElementType == typeof(short))
             {
-                return CreateNamedOnnxValueFromRawData<short>(tensor.Name, tensor.RawData.ToArray(), sizeof(short), intDims);
+                return CreateNamedOnnxValueFromRawData<short>(nodeName, tensor.RawData.ToArray(), sizeof(short), intDims);
             }
             else if (nodeMeta.ElementType == typeof(ushort))
             {
-                return CreateNamedOnnxValueFromRawData<ushort>(tensor.Name, tensor.RawData.ToArray(), sizeof(ushort), intDims);
+                return CreateNamedOnnxValueFromRawData<ushort>(nodeName, tensor.RawData.ToArray(), sizeof(ushort), intDims);
             }
             else if (nodeMeta.ElementType == typeof(byte))
             {
-                return CreateNamedOnnxValueFromRawData<byte>(tensor.Name, tensor.RawData.ToArray(), sizeof(byte), intDims);
+                return CreateNamedOnnxValueFromRawData<byte>(nodeName, tensor.RawData.ToArray(), sizeof(byte), intDims);
             }
             else if (nodeMeta.ElementType == typeof(bool))
             {
-                return CreateNamedOnnxValueFromRawData<bool>(tensor.Name, tensor.RawData.ToArray(), sizeof(bool), intDims);
+                return CreateNamedOnnxValueFromRawData<bool>(nodeName, tensor.RawData.ToArray(), sizeof(bool), intDims);
             }
             else
             {
