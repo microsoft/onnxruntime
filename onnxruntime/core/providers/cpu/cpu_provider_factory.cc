@@ -21,7 +21,7 @@ struct CpuProviderFactory : IExecutionProviderFactory {
 std::unique_ptr<IExecutionProvider> CpuProviderFactory::CreateProvider() {
   CPUExecutionProviderInfo info;
   info.create_arena = create_arena_;
-  return std::make_unique<CPUExecutionProvider>(info);
+  return onnxruntime::make_unique<CPUExecutionProvider>(info);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena) {

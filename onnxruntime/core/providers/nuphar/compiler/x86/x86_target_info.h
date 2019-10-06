@@ -22,9 +22,12 @@ class CodeGenTargetX86 final : public CodeGenTarget {
   ~CodeGenTargetX86() override = default;
 
  public:
+  static const std::string LLVM_TARGET_AVX;
   static const std::string LLVM_TARGET_AVX2;
   static const std::string LLVM_TARGET_AVX512;
 };
+
+std::unique_ptr<CodeGenTarget> CodeGenTarget_AVX();
 
 std::unique_ptr<CodeGenTarget> CodeGenTarget_AVX2();
 

@@ -33,7 +33,7 @@ std::shared_ptr<onnxruntime::Model> DummyGraphWithClip() {
 
 std::unique_ptr<IExecutionProvider> CreateCPUExecutionProvider() {
   CPUExecutionProviderInfo info;
-  return std::make_unique<CPUExecutionProvider>(info);
+  return onnxruntime::make_unique<CPUExecutionProvider>(info);
 }
 
 class ExecutionFrameTest : public ::testing::Test {
@@ -126,7 +126,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   std::vector<float> fdata(static_cast<size_t>(shape.Size()));
   //create fake ml value with owned buffer.
   OrtMemoryInfo cpuinfo(kCpuExecutionProvider, OrtDeviceAllocator);
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type, shape, fdata.data(), cpuinfo);
+  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, fdata.data(), cpuinfo);
   OrtValue value;
   value.Init(p_tensor.release(),
              DataTypeImpl::GetType<Tensor>(),
@@ -195,7 +195,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  const OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
+  const OrtValueNameIdxMap& mlvalue_name_idx_map(state.GetOrtValueNameIdxMap());
 
   int x1_idx, x2_idx, x3_idx;
   int t1_idx, t2_idx, t3_idx;
@@ -220,7 +220,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
                        std::vector<int64_t>{2, 3},
                        std::vector<float>(6, 1.0f), &v3);
 
-  std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan = std::make_unique<SequentialExecutionPlan>();
+  std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan = onnxruntime::make_unique<SequentialExecutionPlan>();
   SequentialPlannerContext context(false);
   status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers, kernel_registry_manager,
                                          mlvalue_name_idx_map, context, p_seq_exec_plan);
@@ -265,8 +265,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   EXPECT_EQ(p->GetBlock(4)->offset_, 64);
 }
 
-// TODO: Re-enable after registering a kernel for opset 11 'ReduceSum' op
-TEST(ExecutionFrameTestWithoutSessionState, DISABLED_BadModelInvalidDimParamUsage) {
+TEST(ExecutionFrameTestWithoutSessionState, BadModelInvalidDimParamUsage) {
   // load model with 2 Scan ops that both incorrectly use shapes of { 'None', 'None' } for their outputs.
   // as 'None' is not a special value it's treated as a variable name, leading to a runtime error when we
   // attempt to re-use the output from the first Scan node for the second. validate we detect this and error out.

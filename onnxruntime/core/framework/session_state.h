@@ -7,7 +7,7 @@
 #include <map>
 #include <unordered_map>
 #include <vector>
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 #include "core/platform/ort_mutex.h"
 #include "core/common/common.h"
@@ -53,7 +53,7 @@ class SessionState {
                bool enable_mem_pattern,
                concurrency::ThreadPool* thread_pool,
                concurrency::ThreadPool* inter_op_thread_pool)
-      : execution_providers_{execution_providers},
+      : execution_providers_(execution_providers),
         enable_mem_pattern_(enable_mem_pattern),
         thread_pool_(thread_pool),
         inter_op_thread_pool_(inter_op_thread_pool) {
@@ -225,7 +225,7 @@ class SessionState {
   std::vector<OpKernel*> session_kernels_;
   std::unique_ptr<GraphViewer> graph_viewer_;
 
-  const ExecutionProviders& execution_providers_;  // owned by InferenceSession
+  std::reference_wrapper<const ExecutionProviders> execution_providers_;  // owned by InferenceSession
   OrtValueNameIdxMap ort_value_name_idx_map_;
 
   // initialized tensors
@@ -240,7 +240,7 @@ class SessionState {
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan_ = nullptr;
 
   const logging::Logger* logger_ = nullptr;
-  profiling::Profiler* profiler_;
+  profiling::Profiler* profiler_ = nullptr;
 
   // switch for enable memory pattern optimization or not.
   const bool enable_mem_pattern_;
@@ -264,7 +264,7 @@ class SessionState {
 
   bool export_fused_dll_ = false;
   FuncManager fused_funcs_mgr_;
-  const DataTransferManager* data_transfer_mgr_;
+  const DataTransferManager* data_transfer_mgr_ = nullptr;
 
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;

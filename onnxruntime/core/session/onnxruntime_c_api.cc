@@ -75,7 +75,7 @@ struct OrtEnv {
 class LoggingWrapper : public ISink {
  public:
   LoggingWrapper(OrtLoggingFunction logging_function, void* logger_param)
-      : logging_function_{logging_function}, logger_param_{logger_param} {
+      : logging_function_(logging_function), logger_param_(logger_param) {
   }
 
   void SendImpl(const Timestamp& /*timestamp*/ /*timestamp*/, const std::string& logger_id,
@@ -99,10 +99,10 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction loggi
                     _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
   std::string name = logid;
-  std::unique_ptr<ISink> logger = std::make_unique<LoggingWrapper>(logging_function, logger_param);
-  auto default_logging_manager = std::make_unique<LoggingManager>(std::move(logger),
+  std::unique_ptr<ISink> logger = onnxruntime::make_unique<LoggingWrapper>(logging_function, logger_param);
+  auto default_logging_manager = onnxruntime::make_unique<LoggingManager>(std::move(logger),
                                                                   static_cast<Severity>(default_warning_level), false,
-                                                                  LoggingManager::InstanceType::Temporal,
+                                                                  LoggingManager::InstanceType::Default,
                                                                   &name);
   std::unique_ptr<Environment> env;
   Status status = Environment::Create(env);
@@ -116,7 +116,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel default_warning_level,
                     _In_ const char* logid, _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
   std::string name = logid;
-  auto default_logging_manager = std::make_unique<LoggingManager>(std::unique_ptr<ISink>{new CLogSink{}},
+  auto default_logging_manager = onnxruntime::make_unique<LoggingManager>(std::unique_ptr<ISink>{new CLogSink{}},
                                                                   static_cast<Severity>(default_warning_level), false,
                                                                   LoggingManager::InstanceType::Default,
                                                                   &name);
@@ -139,7 +139,7 @@ OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, OrtAllocator
     shapes[i] = shape[i];
   }
   std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::AllocatorWrapper>(allocator);
-  *out = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), onnxruntime::TensorShape(shapes), alloc_ptr);
+  *out = onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<T>(), onnxruntime::TensorShape(shapes), alloc_ptr);
   return nullptr;
 }
 
@@ -166,7 +166,7 @@ OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, const OrtMem
     oss << "not enough space: expected " << size_to_allocate << ", got " << p_data_len;
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
   }
-  *out = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), onnxruntime::TensorShape(shapes), p_data, *info);
+  *out = onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<T>(), onnxruntime::TensorShape(shapes), p_data, *info);
   return nullptr;
 }
 
@@ -227,7 +227,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorWithDataAsOrtValue, _In_ const OrtMemor
       return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, errmsg.c_str());
     }
   }
-  auto value = std::make_unique<OrtValue>();
+  auto value = onnxruntime::make_unique<OrtValue>();
   value->Init(tensor.release(),
               DataTypeImpl::GetType<Tensor>(),
               DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
@@ -293,7 +293,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorAsOrtValue, _Inout_ OrtAllocator* alloc
       return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, errmsg.c_str());
     }
   }
-  auto value = std::make_unique<OrtValue>();
+  auto value = onnxruntime::make_unique<OrtValue>();
   value->Init(tensor.release(),
               DataTypeImpl::GetType<Tensor>(),
               DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
@@ -304,7 +304,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorAsOrtValue, _Inout_ OrtAllocator* alloc
 
 ORT_API_STATUS_IMPL(OrtApis::CreateCustomOpDomain, _In_ const char* domain, _Outptr_ OrtCustomOpDomain** out) {
   API_IMPL_BEGIN
-  auto custom_op_domain = std::make_unique<OrtCustomOpDomain>();
+  auto custom_op_domain = onnxruntime::make_unique<OrtCustomOpDomain>();
   custom_op_domain->domain_ = domain;
   *out = custom_op_domain.release();
   return nullptr;
@@ -333,7 +333,7 @@ namespace {
 template <typename Loader>
 OrtStatus* CreateSessionImpl(_In_ const OrtEnv* env, _In_ const OrtSessionOptions* options,
                              Loader loader, _Outptr_ OrtSession** out) {
-  auto sess = std::make_unique<::onnxruntime::InferenceSession>(
+  auto sess = onnxruntime::make_unique<::onnxruntime::InferenceSession>(
       options == nullptr ? onnxruntime::SessionOptions() : options->value, env->loggingManager);
   Status status;
   if (options != nullptr) {
@@ -712,8 +712,8 @@ static OrtStatus* OrtGetValueImplSeqOfMap(const OrtValue* p_ml_value, int index,
   using MapType = std::map<TKey, TVal>;
   auto& data_vec = p_ml_value->Get<T>();
   auto& data_elem = data_vec.at(index);
-  auto copy_data_elem = std::make_unique<MapType>(data_elem);
-  auto value = std::make_unique<OrtValue>();
+  auto copy_data_elem = onnxruntime::make_unique<MapType>(data_elem);
+  auto value = onnxruntime::make_unique<OrtValue>();
   value->Init(copy_data_elem.release(),
               DataTypeImpl::GetType<MapType>(),
               DataTypeImpl::GetType<MapType>()->GetDeleteFunc());
@@ -897,14 +897,14 @@ ORT_API_STATUS_IMPL(OrtApis::GetValue, const OrtValue* value, int index, OrtAllo
 template <typename T>
 static OrtStatus* OrtCreateValueImplSeqHelperMap(const OrtValue* const* in, size_t num_values, OrtValue** out) {
   using SeqType = std::vector<T>;
-  auto vec_ptr = std::make_unique<SeqType>();
+  auto vec_ptr = onnxruntime::make_unique<SeqType>();
   vec_ptr->reserve(num_values);
   for (size_t idx = 0; idx < num_values; ++idx) {
     auto& m = reinterpret_cast<const OrtValue*>(in[idx])->Get<T>();
     vec_ptr->push_back(m);
   }
   // create OrtValue with this vector
-  auto value = std::make_unique<OrtValue>();
+  auto value = onnxruntime::make_unique<OrtValue>();
   value->Init(vec_ptr.release(),
               DataTypeImpl::GetType<SeqType>(),
               DataTypeImpl::GetType<SeqType>()->GetDeleteFunc());
@@ -915,7 +915,7 @@ static OrtStatus* OrtCreateValueImplSeqHelperMap(const OrtValue* const* in, size
 template <typename T>
 static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t num_values, OrtValue** out) {
   using SeqType = std::vector<T>;
-  auto vec_ptr = std::make_unique<SeqType>();
+  auto vec_ptr = onnxruntime::make_unique<SeqType>();
   vec_ptr->reserve(num_values);
   for (size_t idx = 0; idx < num_values; ++idx) {
     auto& tensor = reinterpret_cast<const OrtValue*>(in[idx])->Get<Tensor>();
@@ -926,7 +926,7 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t 
     vec_ptr->push_back(*data);
   }
   // create OrtValue with this vector
-  auto value = std::make_unique<OrtValue>();
+  auto value = onnxruntime::make_unique<OrtValue>();
   value->Init(vec_ptr.release(),
               DataTypeImpl::GetType<SeqType>(),
               DataTypeImpl::GetType<SeqType>()->GetDeleteFunc());
@@ -996,7 +996,7 @@ template <typename KeyType, typename ValueType>
 static OrtStatus* OrtCreateMapMLValue(const Tensor& key_tensor, const Tensor& value_tensor,
                                       OrtValue** out) {
   using MapType = std::map<KeyType, ValueType>;
-  auto map_ptr = std::make_unique<MapType>();
+  auto map_ptr = onnxruntime::make_unique<MapType>();
   // iterate through the key and value tensors and populate map
   auto key_data = key_tensor.Data<KeyType>();
   auto value_data = value_tensor.Data<ValueType>();
@@ -1005,7 +1005,7 @@ static OrtStatus* OrtCreateMapMLValue(const Tensor& key_tensor, const Tensor& va
     map_ptr->insert({*key_data, *value_data});
   }
   // create ort_value with this map
-  auto value = std::make_unique<OrtValue>();
+  auto value = onnxruntime::make_unique<OrtValue>();
   value->Init(map_ptr.release(),
               DataTypeImpl::GetType<MapType>(),
               DataTypeImpl::GetType<MapType>()->GetDeleteFunc());

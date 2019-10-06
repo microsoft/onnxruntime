@@ -76,7 +76,7 @@ class ValidNodes {
     using difference_type = typename TIterator::difference_type;
     using pointer = T*;
     using reference = T&;
-    using const_reference = std::add_const_t<reference>;
+    using const_reference = const T&;
 
     /** Construct a NodeInterator and move to the first valid node. */
     NodeIterator<TIterator>(const TIterator current, const TIterator end) noexcept : current_{current}, end_{end} {
