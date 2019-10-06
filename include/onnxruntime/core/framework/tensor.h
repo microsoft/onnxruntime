@@ -13,10 +13,9 @@
 #include "core/framework/allocator.h"
 #include "core/framework/tensor_shape.h"
 #include "onnxruntime_config.h"
+#include "core/framework/data_types.h"
 
 namespace onnxruntime {
-class DataTypeImpl;
-using MLDataType = const DataTypeImpl*;
 // TODO: Do we need this class or is IAllocator::MakeUniquePtr sufficient/better
 class BufferDeleter {
  public:

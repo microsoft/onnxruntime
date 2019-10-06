@@ -3,6 +3,7 @@
 
 #include "core/framework/data_types.h"
 #include "core/framework/tensor.h"
+#include "core/framework/TensorSeq.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/graph/onnx_protobuf.h"
 

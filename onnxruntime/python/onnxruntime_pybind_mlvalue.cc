@@ -12,6 +12,7 @@
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
 #include "core/framework/allocator.h"
+#include "core/framework/TensorSeq.h"
 
 using namespace std;
 namespace onnxruntime {

@@ -4,6 +4,7 @@
 #include "core/providers/cpu/sequence/sequence_ops.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/framework/TensorSeq.h"
 
 using namespace onnxruntime::common;
 

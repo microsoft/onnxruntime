@@ -11,7 +11,6 @@
 
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
-#include "core/framework/tensor.h"
 
 struct OrtValue;
 
@@ -20,9 +19,8 @@ class TypeProto;
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
-using MLDataType = const DataTypeImpl*;
-
 /// Predefined registered types
+
 //maps
 using MapStringToString = std::map<std::string, std::string>;
 using MapStringToInt64 = std::map<std::string, int64_t>;
@@ -34,22 +32,6 @@ using MapInt64ToFloat = std::map<int64_t, float>;
 using MapInt64ToDouble = std::map<int64_t, double>;
 
 //vectors/sequences
-// Data type to represent a sequence of tensors of the same type
-struct TensorSeq {
-  using value_type = Tensor;  // to satisfy SequenceType template
-
-  // A sequence must be associated with only one data type and all tensors in the seq must be of that type
-  // One other alternative of storing the data type of a seq is to templatize the TensorSeq class.
-  // The current design follows the Tensor methodology.
-  // We also require this because the SequenceEmpty op expects the creation of a seq of a specific type
-  // and the SequenceInsert op expects validation of tensors to be added to the seq against this type.
-  MLDataType dtype;
-
-  // TODO: optimization opportunity - if all tensors in the seq are scalars, we can potentially represent them
-  // as vector<primitive type>
-  std::vector<Tensor> tensors;
-};
-
 using VectorMapStringToFloat = std::vector<MapStringToFloat>;
 using VectorMapInt64ToFloat = std::vector<MapInt64ToFloat>;
 
@@ -149,6 +131,7 @@ inline bool operator<(const BFloat16& left, const BFloat16& right) {
 }
 
 // DataTypeImpl pointer as unique DataTypeImpl identifier.
+using MLDataType = const DataTypeImpl*;
 // be used with class MLValue
 using DeleteFunc = void (*)(void*);
 using CreateFunc = void* (*)();
@@ -654,21 +637,6 @@ class SequenceType : public NonTensorType<CPPType> {
  private:
   SequenceType() {
     data_types_internal::SetSequenceType<typename CPPType::value_type>::Set(this->mutable_type_proto());
-  }
-};
-
-template <typename TensorElemType>
-class SequenceTensorType : public NonTensorType<TensorSeq> {
- public:
-  static MLDataType Type();
-
-  bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const override {
-    return this->IsSequenceCompatible(type_proto);
-  }
-
- private:
-  SequenceTensorType() {
-    data_types_internal::SetSequenceType<TensorElemType>::Set(this->mutable_type_proto());
   }
 };
 

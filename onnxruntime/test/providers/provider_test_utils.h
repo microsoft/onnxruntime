@@ -16,6 +16,7 @@
 #include "core/framework/data_types.h"
 #include "test/test_environment.h"
 #include "test/framework/TestAllocatorManager.h"
+#include "core/framework/TensorSeq.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"

@@ -24,6 +24,7 @@
 #include "core/session/ort_apis.h"
 #include "core/framework/data_types.h"
 #include "abi_session_options_impl.h"
+#include "core/framework/TensorSeq.h"
 
 using namespace onnxruntime::logging;
 using onnxruntime::BFloat16;
@@ -980,7 +981,7 @@ static OrtStatus* OrtCreateValueImplSeqHelperTensor(const Tensor& tensor,
 
   size_t num_elems = tensor.Shape().Size();
   auto* out_data = out.MutableData<TensorElemType>();
-  for (int i = 0; i < num_elems; ++i) {
+  for (size_t i = 0; i < num_elems; ++i) {
     *out_data++ = *data++;
   }
   return nullptr;
