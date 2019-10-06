@@ -3,25 +3,11 @@
 
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/util/include/default_providers.h"
-
-#include <iterator>
-#include <vector>
-#include <string>
-#include <algorithm>
 
 namespace onnxruntime {
 namespace test {
-
-static const std::vector<MLFloat16> ToFloat16(const std::vector<float>& data) {
-  std::vector<MLFloat16> result;
-  result.reserve(data.size());
-  for (size_t i = 0; i < data.size(); i++) {
-    result.push_back(MLFloat16(math::floatToHalf(data[i])));
-  }
-  return result;
-}
 
 static void RunAttentionTest(
     const std::vector<float>& input_data,         // input:      [batch_size, sequence_length, hidden_size]
@@ -34,12 +20,10 @@ static void RunAttentionTest(
     int hidden_size,
     int number_of_heads,
     bool use_float16 = false) {
-  // Run test on CUDA provider only since Attention only have CUDA kernel.
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  if (execution_providers[0].get() != nullptr) {
-    OpTester test("Attention", 1, onnxruntime::kMSDomain);
-    test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
+  int min_cuda_architecture = use_float16 ? 530 : 0;
+  if (HasCudaEnvironment(min_cuda_architecture)) {
+    OpTester tester("Attention", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
 
     std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
     std::vector<int64_t> weights_dims = {hidden_size, 3 * hidden_size};
@@ -48,19 +32,22 @@ static void RunAttentionTest(
     std::vector<int64_t> output_dims = input_dims;
 
     if (use_float16) {
-      test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
-      test.AddInput<MLFloat16>("weight", weights_dims, ToFloat16(weights_data));
-      test.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
-      test.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
-      test.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
+      tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
+      tester.AddInput<MLFloat16>("weight", weights_dims, ToFloat16(weights_data));
+      tester.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
+      tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
+      tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
     } else {
-      test.AddInput<float>("input", input_dims, input_data);
-      test.AddInput<float>("weight", weights_dims, weights_data);
-      test.AddInput<float>("bias", bias_dims, bias_data);
-      test.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
-      test.AddOutput<float>("output", output_dims, output_data);
+      tester.AddInput<float>("input", input_dims, input_data);
+      tester.AddInput<float>("weight", weights_dims, weights_data);
+      tester.AddInput<float>("bias", bias_dims, bias_data);
+      tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
+      tester.AddOutput<float>("output", output_dims, output_data);
     }
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
 
