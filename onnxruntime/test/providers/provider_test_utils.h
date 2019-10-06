@@ -258,9 +258,10 @@ class OpTester {
 
       auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
       auto& tensor = ptr->tensors[i];
-      tensor = std::move(Tensor(DataTypeImpl::GetType<T>(),
-                                shape,
-                                allocator));
+
+      tensor = Tensor(DataTypeImpl::GetType<T>(),
+                      shape,
+                      allocator);
 
       auto* data_ptr = tensor.template MutableData<T>();
       for (int64_t x = 0; x < values_count; ++x) {

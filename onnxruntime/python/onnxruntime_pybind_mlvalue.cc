@@ -116,7 +116,7 @@ std::unique_ptr<Tensor> CreateTensor(AllocatorPtr alloc, const std::string& name
 
     TensorShape shape(dims);
     auto element_type = NumpyToOnnxRuntimeTensorType(npy_type);
-    p_tensor = std::move(onnxruntime::make_unique<Tensor>(element_type, shape, alloc));
+    p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
     if (npy_type == NPY_UNICODE) {
       // Copy string data which needs to be done after Tensor is allocated.
       // Strings are Python strings or numpy.unicode string.
@@ -200,13 +200,13 @@ void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_input, 
                              OrtValue* p_mlvalue) {
   auto list_size = PyList_Size(pylist_obj);
   if (list_size <= 0) {
-    throw std::runtime_error("Got exception while creating seq(tensor) because input list size is " + list_size);
+    throw std::runtime_error("Got exception while creating seq(tensor) because input list size is " + std::to_string(list_size));
   }
   auto p_seq_tensors = onnxruntime::make_unique<TensorSeq>();
   p_seq_tensors->tensors.resize(list_size);
   for (Py_ssize_t i = 0; i < list_size; ++i) {
     auto* py_obj = PyList_GetItem(pylist_obj, i);
-    auto p_tensor = std::move(CreateTensor(alloc, name_input, reinterpret_cast<PyArrayObject*>(py_obj)));
+    auto p_tensor = CreateTensor(alloc, name_input, reinterpret_cast<PyArrayObject*>(py_obj));
     p_seq_tensors->tensors[i] = std::move(*p_tensor);
   }
 
@@ -217,7 +217,7 @@ void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_input, 
 
 void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyArrayObject* pyObject,
                          OrtValue* p_mlvalue) {
-  auto p_tensor = std::move(CreateTensor(alloc, name_input, pyObject));
+  auto p_tensor = CreateTensor(alloc, name_input, pyObject);
   if (!p_tensor) {
     throw std::runtime_error("Got exception while creating tensor for input: " + name_input);
   }
