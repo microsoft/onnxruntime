@@ -326,12 +326,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "fp16_tiny_yolov2", "16-bit float not supported type in C#." },
                 { "LSTM_Seq_lens_unpacked", "Sequence contains no elements" },
                 { "BERT_Squad", "Could not find an implementation for the node bert / embeddings / one_hot:OneHot(9)" },
-                { "faster_rcnn", "Length of memory(2611200) must match product of dimensions(3)" },
-                { "mask_rcnn", "Length of memory (3456000) must match product of dimensions (3)" },
-                { "mask_rcnn_keras", "Length of memory (3145728) must match product of dimensions (3)" },
+                //{ "faster_rcnn", "Length of memory(2611200) must match product of dimensions(3)" },
+                //{ "mask_rcnn", "Length of memory (3456000) must match product of dimensions (3)" },
+                //{ "mask_rcnn_keras", "Length of memory (3145728) must match product of dimensions (3)" },
                 { "mlperf_resnet", "Value cannot be null" },
-                { "mlperf_ssd_mobilenet_300", "Could not find file output_0.pb" },
-                { "yolov3", "Length of memory(519168) must match product of dimensions(3)" }
+                { "mlperf_ssd_mobilenet_300", "Could not find file output_0.pb" }
+                //,
+                //{ "yolov3", "Length of memory(519168) must match product of dimensions(3)" }
             };
 
             var disableContribOpsEnvVar = Environment.GetEnvironmentVariable("DisableContribOps");
@@ -422,25 +423,81 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 using (var session = new InferenceSession(onnxModelFileName))
                 {
                     var inMeta = session.InputMetadata;
-                    var innodepair = inMeta.First();
-                    var innodename = innodepair.Key;
-                    var innodedims = innodepair.Value.Dimensions;
-                    for (int i = 0; i < innodedims.Length; i++)
+                    var testDataDir = modelDir.EnumerateDirectories("test_data*").First();
+                    var inputContainer = new List<NamedOnnxValue>();
+                    var outputContainer = new List<NamedOnnxValue>();
+                    foreach (var f in testDataDir.EnumerateFiles("input_*.pb"))
                     {
-                        if (innodedims[i] < 0)
-                            innodedims[i] = -1 * innodedims[i];
+                        inputContainer.Add(LoadTensorFromFilePb(f.FullName, inMeta));
+                    }
+                    foreach (var f in testDataDir.EnumerateFiles("output_*.pb"))
+                    {
+                        outputContainer.Add(LoadTensorFromFilePb(f.FullName, session.OutputMetadata));
                     }
 
-                    var testData = modelDir.EnumerateDirectories("test_data*").First();
-                    var dataIn = LoadTensorFromFilePb(Path.Combine(modelDir.FullName, testData.ToString(), "input_0.pb"));
-                    var dataOut = LoadTensorFromFilePb(Path.Combine(modelDir.FullName, testData.ToString(), "output_0.pb"));
-                    var tensorIn = new DenseTensor<float>(dataIn, innodedims);
-                    var nov = new List<NamedOnnxValue>();
-                    nov.Add(NamedOnnxValue.CreateFromTensor<float>(innodename, tensorIn));
-                    using (var resnov = session.Run(nov))
+                    using (var resultCollection = session.Run(inputContainer))
                     {
-                        var res = resnov.ToArray()[0].AsTensor<float>().ToArray<float>();
-                        Assert.Equal(res, dataOut, new floatComparer());
+                        foreach (var result in resultCollection)
+                        {
+                            Assert.True(session.OutputMetadata.ContainsKey(result.Name));
+                            var outputMeta = session.OutputMetadata[result.Name];
+                            NamedOnnxValue outputValue = null;
+                            foreach (var o in outputContainer)
+                            {
+                                if (o.Name == result.Name)
+                                {
+                                    outputValue = o;
+                                    break;
+                                }
+                            }
+                            if (outputMeta.IsTensor)
+                            {
+                                if (outputMeta.ElementType == typeof (float))
+                                {
+                                    Assert.Equal(result.AsTensor<float>(), outputValue.AsTensor<float>(), new floatComparer());
+                                }
+                                else if (outputMeta.ElementType == typeof(int))
+                                {
+                                    Assert.Equal(result.AsTensor<int>(), outputValue.AsTensor<int>(), new ExactComparer<int>());
+                                }
+                                else if (outputMeta.ElementType == typeof(uint))
+                                {
+                                    Assert.Equal(result.AsTensor<uint>(), outputValue.AsTensor<uint>(), new ExactComparer<uint>());
+                                }
+                                else if (outputMeta.ElementType == typeof(short))
+                                {
+                                    Assert.Equal(result.AsTensor<short>(), outputValue.AsTensor<short>(), new ExactComparer<short>());
+                                }
+                                else if (outputMeta.ElementType == typeof(ushort))
+                                {
+                                    Assert.Equal(result.AsTensor<ushort>(), outputValue.AsTensor<ushort>(), new ExactComparer<ushort>());
+                                }
+                                else if (outputMeta.ElementType == typeof(long))
+                                {
+                                    Assert.Equal(result.AsTensor<long>(), outputValue.AsTensor<long>(), new ExactComparer<long>());
+                                }
+                                else if (outputMeta.ElementType == typeof(ulong))
+                                {
+                                    Assert.Equal(result.AsTensor<ulong>(), outputValue.AsTensor<ulong>(), new ExactComparer<ulong>());
+                                }
+                                else if (outputMeta.ElementType == typeof(byte))
+                                {
+                                    Assert.Equal(result.AsTensor<byte>(), outputValue.AsTensor<byte>(), new ExactComparer<byte>());
+                                }
+                                else if (outputMeta.ElementType == typeof(bool))
+                                {
+                                    Assert.Equal(result.AsTensor<bool>(), outputValue.AsTensor<bool>(), new ExactComparer<bool>());
+                                }
+                                else
+                                {
+                                    Assert.True(false, "The TestPretrainedModels does not yet support output of type " + nameof(outputMeta.ElementType));
+                                }
+                            }
+                            else
+                            {
+                                Assert.True(false, "TestPretrainedModel cannot handle non-tensor outputs yet");
+                            }
+                        }
                     }
                 }
             }
@@ -939,15 +996,80 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return tensorData.ToArray();
         }
 
-        static float[] LoadTensorFromFilePb(string filename)
+        static NamedOnnxValue LoadTensorFromFilePb(string filename, IReadOnlyDictionary<string, NodeMetadata> inpuMeta)
         {
             var file = File.OpenRead(filename);
             var tensor = Onnx.TensorProto.Parser.ParseFrom(file);
             file.Close();
-            var raw = tensor.RawData.ToArray();
-            var floatArr = new float[raw.Length / sizeof(float)];
-            Buffer.BlockCopy(raw, 0, floatArr, 0, raw.Length);
-            return floatArr;
+            var nodeMeta = inpuMeta[tensor.Name];
+            Assert.True(nodeMeta.IsTensor, "LoadTensorFromFile can load Tensor types only");
+            //TODO: support other types when models are available in Onnx model zoo/ test data
+            Type t = null;
+            int width = 0;
+            TensorElementTypeConverter.GetTypeAndWidth((TensorElementType)tensor.DataType, out t, out width);
+            Assert.Equal(t, nodeMeta.ElementType);
+            Assert.Equal(nodeMeta.Dimensions.Length, tensor.Dims.Count);
+            var intDims = new int[tensor.Dims.Count];
+            for (int i = 0; i < nodeMeta.Dimensions.Length; i++)
+            {
+                intDims[i] = (int)tensor.Dims[i];
+                Assert.True((nodeMeta.Dimensions[i] == -1) || (nodeMeta.Dimensions[i] == intDims[i]));
+            }
+
+            if (nodeMeta.ElementType == typeof(float))
+            {
+                return CreateNamedOnnxValueFromRawData<float>(tensor.Name, tensor.RawData.ToArray(), sizeof(float), intDims);
+            }
+            else if (nodeMeta.ElementType == typeof(double))
+            {
+                return CreateNamedOnnxValueFromRawData<double>(tensor.Name, tensor.RawData.ToArray(), sizeof(double), intDims);
+            }
+            else if (nodeMeta.ElementType == typeof(int))
+            {
+                return CreateNamedOnnxValueFromRawData<int>(tensor.Name, tensor.RawData.ToArray(), sizeof(int), intDims);
+            }
+            else if (nodeMeta.ElementType == typeof(uint))
+            {
+                return CreateNamedOnnxValueFromRawData<uint>(tensor.Name, tensor.RawData.ToArray(), sizeof(uint), intDims);
+            }
+            else if (nodeMeta.ElementType == typeof(long))
+            {
+                return CreateNamedOnnxValueFromRawData<long>(tensor.Name, tensor.RawData.ToArray(), sizeof(long), intDims);
+            }
+            else if (nodeMeta.ElementType == typeof(ulong))
+            {
+                return CreateNamedOnnxValueFromRawData<ulong>(tensor.Name, tensor.RawData.ToArray(), sizeof(ulong), intDims);
+            }
+            else if (nodeMeta.ElementType == typeof(short))
+            {
+                return CreateNamedOnnxValueFromRawData<short>(tensor.Name, tensor.RawData.ToArray(), sizeof(short), intDims);
+            }
+            else if (nodeMeta.ElementType == typeof(ushort))
+            {
+                return CreateNamedOnnxValueFromRawData<ushort>(tensor.Name, tensor.RawData.ToArray(), sizeof(ushort), intDims);
+            }
+            else if (nodeMeta.ElementType == typeof(byte))
+            {
+                return CreateNamedOnnxValueFromRawData<byte>(tensor.Name, tensor.RawData.ToArray(), sizeof(byte), intDims);
+            }
+            else if (nodeMeta.ElementType == typeof(bool))
+            {
+                return CreateNamedOnnxValueFromRawData<bool>(tensor.Name, tensor.RawData.ToArray(), sizeof(bool), intDims);
+            }
+            else
+            {
+                //TODO: Add support for remaining types
+                Assert.True(false, "Tensors of type "+nameof(nodeMeta.ElementType)+" not currently supported in the LoadTensorFromFile");
+                return null;
+            }
+        }
+
+        static NamedOnnxValue CreateNamedOnnxValueFromRawData<T>(string name, byte[] rawData, int elemWidth, int[] dimensions)
+        {
+            T[] floatArr = new T[rawData.Length / elemWidth];
+            Buffer.BlockCopy(rawData, 0, floatArr, 0, rawData.Length);
+            var dt = new DenseTensor<T>(floatArr,dimensions);
+            return NamedOnnxValue.CreateFromTensor<T>(name, dt);
         }
 
         static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet(int? cudaDeviceId = null)
@@ -984,6 +1106,19 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 return 0;
             }
         }
+
+        class ExactComparer<T> : IEqualityComparer<T>
+        {
+            public bool Equals(T x, T y)
+            {
+                return x.Equals(y);
+            }
+            public int GetHashCode(T x)
+            {
+                return 0;
+            }
+        }
+
 
         private class GpuFact : FactAttribute
         {
