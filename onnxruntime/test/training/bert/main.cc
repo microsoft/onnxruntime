@@ -44,6 +44,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
       ("learning_rate", "The initial learning rate for the optimizer.", cxxopts::value<float>()->default_value("5e-5"))
       ("num_train_steps", "Total number of training steps to perform.", cxxopts::value<int>()->default_value("100000"))
       ("warmup_ratio", "Fraction of training steps for learning rate warmup.", cxxopts::value<float>()->default_value("0"))
+      ("warmup_mode", "Warmup mode, one of [None|Cosine|Constant|Linear|Poly], defaults None.", 
+       cxxopts::value<std::string>()->default_value("None"))
       ("do_eval", "Whether to run eval on the dev set.", cxxopts::value<bool>()->default_value("false"))
       ("evaluation_period",
         "How many training steps to make before making an evaluation.",
@@ -147,10 +149,21 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
     if (params.use_mixed_precision && params.use_fp16_initializer) {
       printf("FP16 initializer is enabled.\n");
     }
+   
+    std::string warmup_mode = flags["warmup_mode"].as<std::string>();
+    if (warmup_mode == LRSchedule_NoWarmup || 
+        warmup_mode == LRSchedule_Cosine ||
+        warmup_mode == LRSchedule_Constant ||
+        warmup_mode == LRSchedule_Linear ||
+        warmup_mode == LRSchedule_Poly) {
+      params.lr_params.warmup_mode = warmup_mode;  
+      printf("Using learning rate warmup mode: %s \n", warmup_mode.c_str());
+    } else {
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, 
+                    "Incorrect warup_mode: it must be one of [None|Cosine|Constant|Linear|Poly]");
+    }
 
     std::string optimizer_name = flags["optimizer"].as<std::string>();
-    // todo: let's change the warm up as required later.
-    params.lr_params.warmup_mode = LRSchedule_NoWarmup;
     if (optimizer_name == "adam" || optimizer_name == "Adam") {
       params.training_optimizer_name = "AdamOptimizer";
     } else if (optimizer_name == "lamb" || optimizer_name == "Lamb") {
@@ -232,7 +245,7 @@ void setup_training_params(BertParameters& params) {
 
   if (params.EnableTensorboard()) {
     params.fetch_names.push_back(params.summary_name);
-    params.scalar_names = {"total_loss", "mlm_loss", "nsp_loss"};
+    params.scalar_names = {"total_loss", "mlm_loss", "nsp_loss", params.lr_params.feed_name};
   }
 
   params.immutable_weights = {
