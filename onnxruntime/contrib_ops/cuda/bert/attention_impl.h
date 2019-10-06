@@ -9,7 +9,7 @@ namespace contrib {
 namespace cuda {
   size_t GetAttentionWorkspaceSize(size_t element_size, int batchsize, int num_heads, int head_size, int sequence_length);
 
-  void LaunchAttentionKernel(
+  bool LaunchAttentionKernel(
    const void* input,         // Input tensor
    const int* mask_index,     // Nask index where each element is length of a sequence
    void* output,              // Output tensor
