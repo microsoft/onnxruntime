@@ -378,5 +378,25 @@ TEST(UnpoolTest, MaxUnPool3D_WithPaddedOutput) {
   test.Run();
 }
 
+TEST(UnpoolTest, MaxUnPool_DefaultStrides) {
+  OpTester test("MaxUnpool", 11);
+
+  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+
+  std::vector<float> t_vals = {1, 2, 4, 8};
+  std::vector<int64_t> t_dims = {1, 1, 4};
+
+  std::vector<int64_t> i_vals = {1, 2, 3, 4};
+  std::vector<int64_t> i_dims = {1, 1, 4};
+
+  std::vector<int64_t> expected_dims = {1, 1, 5};
+  std::vector<float> expected_vals = {0, 1, 2, 4, 8};
+
+  test.AddInput<float>("xT", t_dims, t_vals);
+  test.AddInput<int64_t>("xI", i_dims, i_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

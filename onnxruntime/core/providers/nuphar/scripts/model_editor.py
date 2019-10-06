@@ -6,8 +6,8 @@ import argparse
 from enum import Enum
 import numpy as np
 import onnx
-from node_factory import NodeFactory, ensure_opset
-from symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto
+from .node_factory import NodeFactory, ensure_opset
+from .symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto
 
 # trim outputs of LSTM/GRU/RNN if not used or outputed
 def trim_unused_outputs(node, graph):

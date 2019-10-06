@@ -117,9 +117,11 @@ Abstract:
 
 #define MLAS_SGEMM_STRIDEN                          128
 #define MLAS_SGEMM_STRIDEK                          128
+#define MLAS_DGEMM_STRIDEN                          64
+#define MLAS_DGEMM_STRIDEK                          128
 
 //
-// Define the alignment for segmenting a SGEMM operation across multiple
+// Define the alignment for segmenting a GEMM operation across multiple
 // threads.
 //
 // All of the SGEMM kernels can efficiently handle 16 elements. AVX512F can
@@ -128,6 +130,7 @@ Abstract:
 //
 
 #define MLAS_SGEMM_STRIDEN_THREAD_ALIGN             16
+#define MLAS_DGEMM_STRIDEN_THREAD_ALIGN             8
 
 //
 // Define the prototypes of the platform optimized routines.
@@ -150,6 +153,21 @@ size_t
     bool ZeroMode
     );
 
+typedef
+size_t
+(MLASCALL MLAS_GEMM_DOUBLE_KERNEL)(
+    const double* A,
+    const double* B,
+    double* C,
+    size_t CountK,
+    size_t CountM,
+    size_t CountN,
+    size_t lda,
+    size_t ldc,
+    double alpha,
+    bool ZeroMode
+    );
+
 #else
 
 typedef
@@ -166,9 +184,25 @@ size_t
     float alpha
     );
 
+typedef
+size_t
+(MLASCALL MLAS_GEMM_DOUBLE_KERNEL)(
+    const double* A,
+    const double* B,
+    double* C,
+    size_t CountK,
+    size_t CountM,
+    size_t CountN,
+    size_t lda,
+    size_t ldc,
+    double alpha
+    );
+
 #endif
 
 typedef MLAS_GEMM_FLOAT_KERNEL* PMLAS_GEMM_FLOAT_KERNEL;
+
+typedef MLAS_GEMM_DOUBLE_KERNEL* PMLAS_GEMM_DOUBLE_KERNEL;
 
 typedef
 void
@@ -193,6 +227,52 @@ void
     );
 
 typedef MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE;
+
+typedef
+void
+(MLASCALL MLAS_GEMM_U8S8_COPY_PACKA_ROUTINE)(
+    uint8_t* D,
+    const uint8_t* A,
+    size_t lda,
+    size_t CountM,
+    size_t CountK,
+    int32_t* RowSumVector,
+    int16_t offb
+    );
+
+typedef MLAS_GEMM_U8S8_COPY_PACKA_ROUTINE* PMLAS_GEMM_U8S8_COPY_PACKA_ROUTINE;
+
+typedef
+void
+(MLASCALL MLAS_GEMM_U8S8_COPY_PACKB_ROUTINE)(
+    int8_t* D,
+    const int8_t* B,
+    size_t ldb,
+    size_t CountN,
+    size_t CountK,
+    int32_t* ColumnSumVector,
+    int16_t offa
+    );
+
+typedef MLAS_GEMM_U8S8_COPY_PACKB_ROUTINE* PMLAS_GEMM_U8S8_COPY_PACKB_ROUTINE;
+
+typedef
+size_t
+(MLASCALL MLAS_GEMM_U8S8_KERNEL)(
+    const uint8_t* A,
+    const int8_t* B,
+    int32_t* C,
+    size_t QuadCountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    const int32_t* RowSumVector,
+    const int32_t* ColumnSumVector,
+    int32_t DepthValue,
+    bool ZeroMode
+    );
+
+typedef MLAS_GEMM_U8S8_KERNEL* PMLAS_GEMM_U8S8_KERNEL;
 
 typedef
 void
@@ -228,7 +308,7 @@ size_t
     const int16_t* A,
     const uint8_t* B,
     int32_t* C,
-    size_t PairedCountK,
+    size_t PairCountK,
     size_t CountM,
     size_t CountN,
     size_t ldc,
@@ -347,10 +427,16 @@ extern "C" {
 #if defined(MLAS_TARGET_AMD64)
     MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelFma3;
     MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelAvx512F;
+    MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelSse;
+    MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelAvx;
+    MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelFma3;
+    MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelAvx512F;
 #endif
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
+    MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelZero;
+    MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelAdd;
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
@@ -364,10 +450,18 @@ extern "C" {
 #endif
 
 #if defined(MLAS_TARGET_AMD64_IX86)
+    MLAS_GEMM_U8S8_COPY_PACKA_ROUTINE MlasGemmU8S8CopyPackASse;
+    MLAS_GEMM_U8S8_COPY_PACKB_ROUTINE MlasGemmU8S8CopyPackBSse;
+    MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelSse;
     MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE MlasGemmU8U8CopyPackASse;
     MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE MlasGemmU8U8CopyPackBSse;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelSse;
 #if defined(MLAS_TARGET_AMD64)
+    MLAS_GEMM_U8S8_COPY_PACKA_ROUTINE MlasGemmU8S8CopyPackAAvx2;
+    MLAS_GEMM_U8S8_COPY_PACKB_ROUTINE MlasGemmU8S8CopyPackBAvx2;
+    MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx2;
+    MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512BW;
+    MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512Vnni;
     MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE MlasGemmU8U8CopyPackAAvx2;
     MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE MlasGemmU8U8CopyPackBAvx2;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx2;
@@ -459,6 +553,8 @@ extern "C" {
 #endif
 #endif
 
+#define MLAS_DGEMM_THREAD_COMPLEXITY                (64 * 1024)
+
 //
 // Single-threaded single precision matrix/matrix multiply operation.
 //
@@ -490,6 +586,9 @@ struct MLAS_PLATFORM {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
     PMLAS_GEMM_FLOAT_KERNEL GemmFloatKernel;
+    PMLAS_GEMM_U8S8_COPY_PACKA_ROUTINE GemmU8S8CopyPackARoutine;
+    PMLAS_GEMM_U8S8_COPY_PACKB_ROUTINE GemmU8S8CopyPackBRoutine;
+    PMLAS_GEMM_U8S8_KERNEL GemmU8S8Kernel;
     PMLAS_GEMM_U8U8_COPY_PACKA_ROUTINE GemmU8U8CopyPackARoutine;
     PMLAS_GEMM_U8U8_COPY_PACKB_ROUTINE GemmU8U8CopyPackBRoutine;
     PMLAS_GEMM_U8U8_KERNEL GemmU8U8Kernel;
@@ -499,6 +598,7 @@ struct MLAS_PLATFORM {
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1Routine;
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1TransposeBRoutine;
     PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE TransposePackB16x4Routine;
+    PMLAS_GEMM_DOUBLE_KERNEL GemmDoubleKernel;
     PMLAS_CONV_FLOAT_KERNEL ConvNchwFloatKernel;
     PMLAS_CONV_FLOAT_KERNEL ConvNchwcFloatKernel;
     PMLAS_CONV_DEPTHWISE_FLOAT_KERNEL ConvDepthwiseFloatKernel;
@@ -570,7 +670,7 @@ MlasGetMaximumThreadCount(
 #endif
 
 //
-// Cross-platform wrappers for vector intrinsics.
+// Cross-platform wrappers for 32-bit vector intrinsics.
 //
 
 #if defined(MLAS_TARGET_ARM)
@@ -711,7 +811,7 @@ MlasBroadcastFloat32x4(float Value)
 #if defined(MLAS_NEON_INTRINSICS)
     return vdupq_n_f32(Value);
 #elif defined(MLAS_SSE2_INTRINSICS)
-    return _mm_set_ps1(Value);
+    return _mm_set1_ps(Value);
 #endif
 }
 
@@ -879,6 +979,74 @@ MlasPowerOf2Float32x4(MLAS_FLOAT32X4 Vector)
     return _mm_castsi128_ps(_mm_slli_epi32(emm0, 23));
 #endif
 }
+
+//
+// Cross-platform wrappers for 64-bit vector intrinsics.
+//
+
+#if defined(MLAS_SSE2_INTRINSICS)
+typedef __m128d MLAS_FLOAT64X2;
+#else
+#define MLAS_FLOAT64X2_UNSUPPORTED
+#endif
+
+#ifndef MLAS_FLOAT64X2_UNSUPPORTED
+
+inline
+MLAS_FLOAT64X2
+MlasZeroFloat64x2(void)
+{
+#if defined(MLAS_SSE2_INTRINSICS)
+    return _mm_setzero_pd();
+#endif
+}
+
+inline
+MLAS_FLOAT64X2
+MlasLoadFloat64x2(const double* Buffer)
+{
+#if defined(MLAS_SSE2_INTRINSICS)
+    return _mm_loadu_pd(Buffer);
+#endif
+}
+
+inline
+void
+MlasStoreFloat64x2(double* Buffer, MLAS_FLOAT64X2 Vector)
+{
+#if defined(MLAS_SSE2_INTRINSICS)
+    _mm_storeu_pd(Buffer, Vector);
+#endif
+}
+
+inline
+void
+MlasStoreAlignedFloat64x2(double* Buffer, MLAS_FLOAT64X2 Vector)
+{
+#if defined(MLAS_SSE2_INTRINSICS)
+    _mm_store_pd(Buffer, Vector);
+#endif
+}
+
+inline
+MLAS_FLOAT64X2
+MlasBroadcastFloat64x2(double Value)
+{
+#if defined(MLAS_SSE2_INTRINSICS)
+    return _mm_set1_pd(Value);
+#endif
+}
+
+inline
+MLAS_FLOAT64X2
+MlasMultiplyFloat64x2(MLAS_FLOAT64X2 Vector1, MLAS_FLOAT64X2 Vector2)
+{
+#if defined(MLAS_SSE2_INTRINSICS)
+    return _mm_mul_pd(Vector1, Vector2);
+#endif
+}
+
+#endif
 
 //
 // Reads a platform specific time stamp counter.

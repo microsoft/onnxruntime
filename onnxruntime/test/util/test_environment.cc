@@ -31,10 +31,10 @@ TestEnvironment::TestEnvironment(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
 
   std::string default_logger_id{"Default"};
-  auto logging_manager = std::make_unique<LoggingManager>(std::unique_ptr<ISink>{new CLogSink{}},
-                                                          Severity::kWARNING,  // TODO cmd-line configurable?
-                                                          false);
-  runtime_environment_ = std::make_unique<Environment>(std::move(logging_manager));
+  auto logging_manager = onnxruntime::make_unique<LoggingManager>(std::unique_ptr<ISink>{new CLogSink{}},
+                                                                  Severity::kWARNING,  // TODO cmd-line configurable?
+                                                                  false);
+  runtime_environment_ = onnxruntime::make_unique<Environment>(std::move(logging_manager));
   Status status = runtime_environment_->Initialize(default_logger_id);
   ORT_ENFORCE(status == Status::OK(), "Failed creating runtime environment. ", status.ErrorMessage());
 }

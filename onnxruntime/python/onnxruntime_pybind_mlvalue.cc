@@ -115,7 +115,7 @@ void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyAr
 
     TensorShape shape(dims);
     auto element_type = NumpyToOnnxRuntimeTensorType(npy_type);
-    std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
+    std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
     if (npy_type == NPY_UNICODE) {
       // Copy string data which needs to be done after Tensor is allocated.
       // Strings are Python strings or numpy.unicode string.
@@ -252,7 +252,7 @@ void CreateMapMLValue_Map(Py_ssize_t& pos, PyObject*& key, const std::string& na
                           PyObject* item, AllocatorPtr /*alloc*/, OrtValue* p_mlvalue, KeyGetterType keyGetter,
                           ValueGetterType valueGetter) {
   std::unique_ptr<std::map<KeyType, ValueType>> dst;
-  dst = std::make_unique<std::map<KeyType, ValueType>>();
+  dst = onnxruntime::make_unique<std::map<KeyType, ValueType>>();
   CreateMapMLValue_LoopIntoMap(pos, key, name_input, value, item, *dst, keyGetter, valueGetter);
   p_mlvalue->Init(dst.release(), DataTypeImpl::GetType<std::map<KeyType, ValueType>>(),
                   DataTypeImpl::GetType<std::map<KeyType, ValueType>>()->GetDeleteFunc());
@@ -263,7 +263,7 @@ void CreateMapMLValue_VectorMap(Py_ssize_t& pos, PyObject*& key, const std::stri
                                 PyObject* iterator, PyObject* item, AllocatorPtr /*alloc*/, OrtValue* p_mlvalue,
                                 KeyGetterType keyGetter, ValueGetterType valueGetter) {
   std::unique_ptr<std::vector<std::map<KeyType, ValueType>>> dstVector;
-  dstVector = std::make_unique<std::vector<std::map<KeyType, ValueType>>>();
+  dstVector = onnxruntime::make_unique<std::vector<std::map<KeyType, ValueType>>>();
   int index = 0;
   do {
     dstVector->push_back(std::map<KeyType, ValueType>());

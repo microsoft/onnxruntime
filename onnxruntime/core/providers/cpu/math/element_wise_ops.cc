@@ -18,13 +18,14 @@ namespace onnxruntime {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
       KERNEL_CLASS<TYPE>);
 
-#define REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(OP_TYPE, VERSION, TYPE, KERNEL_CLASS)         \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
-      OP_TYPE,                                                                     \
-      VERSION,                                                                     \
-      TYPE,                                                                        \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>())  \
-                        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
+#define REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(OP_TYPE, VERSION, TYPE, KERNEL_CLASS) \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                    \
+      OP_TYPE,                                                                       \
+      VERSION,                                                                       \
+      TYPE,                                                                          \
+      KernelDefBuilder()                                                             \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>())                  \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),                \
       KERNEL_CLASS<TYPE>);
 
 #define REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, TYPE, KERNEL_CLASS) \
@@ -36,12 +37,13 @@ namespace onnxruntime {
       KERNEL_CLASS<TYPE>);
 
 #define REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, TYPE, KERNEL_CLASS) \
-  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                           \
-      OP_TYPE,                                                                                        \
-      VERSION_FROM, VERSION_TO,                                                                       \
-      TYPE,                                                                                           \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>())                    \
-                        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),                    \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                                     \
+      OP_TYPE,                                                                                                  \
+      VERSION_FROM, VERSION_TO,                                                                                 \
+      TYPE,                                                                                                     \
+      KernelDefBuilder()                                                                                        \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>())                                             \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),                                           \
       KERNEL_CLASS<TYPE>);
 
 REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, float, Add);
@@ -124,6 +126,11 @@ REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 11, float, Equal);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mean, 6, 7, float, Mean_6);
 REG_ELEMENTWISE_TYPED_KERNEL(Mean, 8, float, Mean_8);
 
+//REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint8_t, BitShift);
+//REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint16_t, BitShift);
+REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint32_t, BitShift);
+REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint64_t, BitShift);
+
 REG_ELEMENTWISE_TYPED_KERNEL(Erf, 9, float, Erf);
 
 // REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Not, 1, bool, Not);
@@ -134,29 +141,33 @@ REG_ELEMENTWISE_TYPED_KERNEL(Erf, 9, float, Erf);
 ONNX_CPU_OPERATOR_KERNEL(
     Not,
     1,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
-                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Not);
 
 ONNX_CPU_OPERATOR_KERNEL(
     And,
     7,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
-                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     And);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Or,
     7,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
-                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Or);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Xor,
     7,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
-                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Xor);
 
 template <typename T>
@@ -502,6 +513,67 @@ Status Mean_8<float>::Compute(OpKernelContext* context) const {
 }
 
 template <typename T>
+BitShift<T>::BitShift(const OpKernelInfo& info) : OpKernel(info) {
+  std::string direction;
+  auto status = info.GetAttr("direction", &direction);
+  ORT_ENFORCE(status.IsOK(), status);
+
+  if (direction == "LEFT")
+    shift_left_ = true;
+  else if (direction == "RIGHT")
+    shift_left_ = false;
+  else
+    ORT_THROW("Invalid direction value of '", direction, "'. Valid values are 'LEFT' or 'RIGHT'.");
+}
+
+template <typename T>
+Status BitShift<T>::Compute(OpKernelContext* context) const {
+  return BroadcastTwo<T, T>(
+      *context,
+      [this](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) {
+        int64_t i = 0;
+        if (shift_left_) {
+          for (const auto& input : input1.array()) {
+            output[i++] = input0 << input;
+          }
+        } else {
+          for (const auto& input : input1.array()) {
+            output[i++] = input0 >> input;
+          }
+        }
+      },
+      [this](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) {
+        int64_t i = 0;
+        if (shift_left_) {
+          for (const auto& input : input0.array()) {
+            output[i++] = input << input1;
+          }
+        } else {
+          for (const auto& input : input0.array()) {
+            output[i++] = input >> input1;
+          }
+        }
+      },
+      [this](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) {
+        auto cur0 = input0.begin(), end0 = input0.end();
+        auto cur1 = input1.begin(), end1 = input1.end();
+        auto cur_out = output.begin(), end_out = output.end();
+        if (shift_left_) {
+          for (; cur0 != end0; ++cur0, ++cur1, ++cur_out) {
+            *cur_out = *cur0 << *cur1;
+          }
+        } else {
+          for (; cur0 != end0; ++cur0, ++cur1, ++cur_out) {
+            *cur_out = *cur0 >> *cur1;
+          }
+        }
+
+        ORT_ENFORCE(cur1 == end1);
+        ORT_ENFORCE(cur_out == end_out);
+      });
+}
+
+template <typename T>
 class Sin final : public OpKernel {
  public:
   Sin(const OpKernelInfo& info) : OpKernel(info) {
@@ -685,7 +757,7 @@ class Asinh final : public OpKernel {
     auto in = gsl::make_span(X_data, X.Shape().Size());
     auto out = gsl::make_span(Y_data, Y.Shape().Size());
 
-    for (int64_t index = 0; index < in.size(); ++index) {
+    for (size_t index = 0; index < in.size(); ++index) {
       out[index] = std::asinh(in[index]);
     }
     return Status::OK();
@@ -717,7 +789,7 @@ class Acosh final : public OpKernel {
     auto in = gsl::make_span(X_data, X.Shape().Size());
     auto out = gsl::make_span(Y_data, Y.Shape().Size());
 
-    for (int64_t index = 0; index < in.size(); ++index) {
+    for (size_t index = 0; index < in.size(); ++index) {
       out[index] = std::acosh(in[index]);
     }
     return Status::OK();
@@ -749,7 +821,7 @@ class Atanh final : public OpKernel {
     auto in = gsl::make_span(X_data, X.Shape().Size());
     auto out = gsl::make_span(Y_data, Y.Shape().Size());
 
-    for (int64_t index = 0; index < in.size(); ++index) {
+    for (size_t index = 0; index < in.size(); ++index) {
       out[index] = std::atanh(in[index]);
     }
     return Status::OK();
@@ -922,20 +994,20 @@ void BroadCastFMod(const Tensor& X, const Tensor& Y, OpKernelContext* context) {
       mod_broadcaster, mod_broadcast_output,
       [](gsl::span<T> output, const T& X, gsl::span<const T> Y) {
         std::transform(Y.cbegin(), Y.cend(), output.begin(),
-                       [X](auto y) {
+                       [X](T y) {
                          return static_cast<T>(std::fmod(X, y));
                        });
       },
       [](gsl::span<T> output, gsl::span<const T> X, const T& Y) {
         std::transform(X.cbegin(), X.cend(), output.begin(),
-                       [Y](auto x) {
+                       [Y](T x) {
                          return static_cast<T>(std::fmod(x, Y));
                        });
       },
       [](gsl::span<T> output, gsl::span<const T> X, gsl::span<const T> Y) {
         std::transform(
             X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
-            [](auto x, auto y) {
+            [](T x, T y) {
               return static_cast<T>(std::fmod(x, y));
             });
       });
@@ -965,20 +1037,20 @@ void BroadCastMod(const Tensor& X, const Tensor& Y, OpKernelContext* context) {
       mod_broadcaster, mod_broadcast_output,
       [](gsl::span<T> output, const T& X, gsl::span<const T> Y) {
         std::transform(Y.cbegin(), Y.cend(), output.begin(),
-                       [X](auto y) {
+                       [X](T y) {
                          return Modulus(X, y);
                        });
       },
       [](gsl::span<T> output, gsl::span<const T> X, const T& Y) {
         std::transform(X.cbegin(), X.cend(), output.begin(),
-                       [Y](auto x) {
+                       [Y](T x) {
                          return Modulus(x, Y);
                        });
       },
       [](gsl::span<T> output, gsl::span<const T> X, gsl::span<const T> Y) {
         std::transform(
             X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
-            [](auto x, auto y) {
+            [](T x, T y) {
               return Modulus(x, y);
             });
       });

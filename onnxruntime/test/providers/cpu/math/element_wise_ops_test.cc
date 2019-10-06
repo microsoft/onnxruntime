@@ -33,11 +33,11 @@ TEST(MathOpTest, Add_float) {
   test.AddInput<float>("A", dims,
                        {1.0f, 2.0f, -1.0f,
                         0.0f, 1.5f, -100.0f,
-                        -5.4f, 9.3f, -10'000.0f});
+                        -5.4f, 9.3f, -10000.0f});
   test.AddInput<float>("B", dims,
                        {-1.0f, 4.4f, 432.3f,
                         0.0f, 3.5f, 64.0f,
-                        -5.4f, 9.3f, 10'000.0f});
+                        -5.4f, 9.3f, 10000.0f});
   test.AddOutput<float>("C", dims,
                         {0.0f, 6.4f, 431.3f,
                          0.0f, 5.0f, -36.0f,
@@ -56,11 +56,11 @@ TEST(MathOpTest, Add_double) {
   test.AddInput<double>("A", dims,
                         {1.0, 2.0, -1.0,
                          0.0, 1.5, -100.0,
-                         -5.4, 9.3, -10'000.0});
+                         -5.4, 9.3, -10000.0});
   test.AddInput<double>("B", dims,
                         {-1.0, 4.4, 432.3,
                          0.0, 3.5, 64.0,
-                         -5.4, 9.3, 10'000.0});
+                         -5.4, 9.3, 10000.0});
   test.AddOutput<double>("C", dims,
                          {0.0, 6.4, 431.3,
                           0.0, 5.0, -36.0,
@@ -287,15 +287,15 @@ TEST(MathOpTest, Sub) {
   test.AddInput<float>("A", dims,
                        {1.0f, 2.0f, -1.0f,
                         0.0f, 1.5f, -100.0f,
-                        -5.4f, 9.3f, -10'000.0f});
+                        -5.4f, 9.3f, -10000.0f});
   test.AddInput<float>("B", dims,
                        {-1.0f, 4.4f, 432.3f,
                         0.0f, 3.5f, 64.0f,
-                        -5.4f, 9.3f, 10'000.0f});
+                        -5.4f, 9.3f, 10000.0f});
   test.AddOutput<float>("C", dims,
                         {2.0f, -2.4f, -433.3f,
                          0.0f, -2.0f, -164.0f,
-                         0.0f, 0.0f, -20'000.0f});
+                         0.0f, 0.0f, -20000.0f});
   test.Run();
 }
 
@@ -305,12 +305,12 @@ TEST(MathOpTest, Sub_Broadcast_Scalar) {
   test.AddInput<float>("A", dims,
                        {1.0f, 2.0f, -1.0f,
                         0.0f, 1.5f, -100.0f,
-                        -5.4f, 9.3f, -10'000.0f});
+                        -5.4f, 9.3f, -10000.0f});
   test.AddInput<float>("B", {}, {5.0f});
   test.AddOutput<float>("C", dims,
                         {-4.0f, -3.0f, -6.0f,
                          -5.0f, -3.5f, -105.0f,
-                         -10.4f, 4.3f, -10'005.0f});
+                         -10.4f, 4.3f, -10005.0f});
   test.Run();
 }
 
@@ -336,15 +336,15 @@ TEST(MathOpTest, Mul) {
   test.AddInput<float>("A", dims,
                        {1.0f, 2.0f, -1.0f,
                         0.0f, 1.5f, -100.0f, -5.4f,
-                        9.30f, -10'000.0f});
+                        9.30f, -10000.0f});
   test.AddInput<float>("B", dims,
                        {-1.0f, 4.4f, 432.3f,
                         0.0f, 3.5f, 64.0f, -5.4f,
-                        9.30f, 10'000.0f});
+                        9.30f, 10000.0f});
   test.AddOutput<float>("C", dims,
                         {-1.0f, 8.8f, -432.3f,
-                         0.0f, 5.25f, -6'400.0f,
-                         29.16f, 86.49f, -100'000'000.0f});
+                         0.0f, 5.25f, -6400.0f,
+                         29.16f, 86.49f, -100000000.0f});
 
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_VAD_M)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  //OpenVINO: Disabled due to accuracy issues for MYRIAD FP16
@@ -373,10 +373,10 @@ TEST(MathOpTest, Div) {
   OpTester test("Div");
   std::vector<int64_t> dims{2, 3};
   test.AddInput<float>("A", dims,
-                       {1'000.0f, 1.0f, 6.0f,
+                       {1000.0f, 1.0f, 6.0f,
                         0.0f, -10.0f, -1.0f});
   test.AddInput<float>("B", dims,
-                       {1'000.0f, 2.0f, 3.0f,
+                       {1000.0f, 2.0f, 3.0f,
                         1.0f, -1.0f, 4.0f});
   test.AddOutput<float>("C", dims,
                         {1.0f, 0.5f, 2.0f,
@@ -596,7 +596,7 @@ TEST(MathOpTest, Sum_6) {
   test.AddInput<float>("data_0", dims,
                        {1.0f, 0.0f, 1.0f,
                         -1.0f, 1.1f, -100.0f,
-                        -5.4f, 0.01f, -10'000.0f});
+                        -5.4f, 0.01f, -10000.0f});
   test.AddInput<float>("data_1", dims,
                        {1.0f, 0.0f, 2.0f,
                         -2.0f, 2.2f, 64.0f,
@@ -604,7 +604,7 @@ TEST(MathOpTest, Sum_6) {
   test.AddInput<float>("data_3", dims,
                        {1.0f, 0.0f, 3.0f,
                         -3.0f, 3.3f, 64.0f,
-                        5.4f, 0.03f, 10'000.0f});
+                        5.4f, 0.03f, 10000.0f});
   test.AddOutput<float>("sum", dims,
                         {3.0f, 0.0f, 6.0f,
                          -6.0f, 6.6f, 28.0f,
@@ -684,7 +684,7 @@ TEST(MathOpTest, Min_6) {
   test.AddInput<float>("data_0", dims,
                        {1.0f, 0.0f, 1.0f,
                         -1.0f, 1.1f, -100.0f,
-                        -5.4f, 0.01f, -10'000.0f});
+                        -5.4f, 0.01f, -10000.0f});
   test.AddInput<float>("data_1", dims,
                        {1.0f, 0.0f, 2.0f,
                         -2.0f, 2.2f, 64.0f,
@@ -692,11 +692,11 @@ TEST(MathOpTest, Min_6) {
   test.AddInput<float>("data_3", dims,
                        {1.0f, 0.0f, 3.0f,
                         -3.0f, 3.3f, 64.0f,
-                        5.4f, 0.03f, 10'000.0f});
+                        5.4f, 0.03f, 10000.0f});
   test.AddOutput<float>("sum", dims,
                         {1.0f, 0.0f, 1.0f,
                          -3.0f, 1.1f, -100.0f,
-                         -5.4f, 0.01f, -10'000.0f});
+                         -5.4f, 0.01f, -10000.0f});
   test.Run();
 }
 
@@ -706,7 +706,7 @@ TEST(MathOpTest, Min_8) {
   test.AddInput<float>("data_0", dims,
                        {1.0f, 0.0f, 1.0f,
                         -1.0f, 1.1f, -100.0f,
-                        -5.4f, 0.01f, -10'000.0f});
+                        -5.4f, 0.01f, -10000.0f});
   test.AddInput<float>("data_1", dims,
                        {1.0f, 0.0f, 2.0f,
                         -2.0f, 2.2f, 64.0f,
@@ -714,11 +714,11 @@ TEST(MathOpTest, Min_8) {
   test.AddInput<float>("data_3", dims,
                        {1.0f, 0.0f, 3.0f,
                         -3.0f, 3.3f, 64.0f,
-                        5.4f, 0.03f, 10'000.0f});
+                        5.4f, 0.03f, 10000.0f});
   test.AddOutput<float>("min", dims,
                         {1.0f, 0.0f, 1.0f,
                          -3.0f, 1.1f, -100.0f,
-                         -5.4f, 0.01f, -10'000.0f});
+                         -5.4f, 0.01f, -10000.0f});
   test.Run();
 }
 
@@ -728,7 +728,7 @@ TEST(MathOpTest, Max_6) {
   test.AddInput<float>("data_0", dims,
                        {1.0f, 0.0f, 1.0f,
                         -1.0f, 1.1f, -100.0f,
-                        -5.4f, 0.01f, -10'000.0f});
+                        -5.4f, 0.01f, -10000.0f});
   test.AddInput<float>("data_1", dims,
                        {1.0f, 0.0f, 2.0f,
                         -2.0f, 2.2f, 64.0f,
@@ -736,11 +736,11 @@ TEST(MathOpTest, Max_6) {
   test.AddInput<float>("data_2", dims,
                        {1.0f, 0.0f, 3.0f,
                         -3.0f, 3.3f, 64.0f,
-                        5.4f, 0.03f, 10'000.0f});
+                        5.4f, 0.03f, 10000.0f});
   test.AddOutput<float>("max", dims,
                         {1.0f, 0.0f, 3.0f,
                          -1.0f, 3.3f, 64.0f,
-                         5.4f, 0.03f, 10'000.0f});
+                         5.4f, 0.03f, 10000.0f});
   test.Run();
 }
 
@@ -1544,6 +1544,78 @@ TEST(ModOpTest, Int32_mod_bcast) {
   test.AddOutput<int32_t>("Z", {3, 2, 5},
                           {0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1});
 
+  test.Run();
+}
+
+TEST(BitShiftOpTest, SimpleLeft) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "LEFT");
+  test.AddInput<uint32_t>("X", {3}, {16, 4, 1});
+  test.AddInput<uint32_t>("Y", {3}, {1, 2, 3});
+  test.AddOutput<uint32_t>("Z", {3}, {32, 16, 8});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, SimpleRight) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint32_t>("X", {3}, {16, 4, 1});
+  test.AddInput<uint32_t>("Y", {3}, {1, 2, 3});
+  test.AddOutput<uint32_t>("Z", {3}, {8, 1, 0});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, ScalarLeftX) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "LEFT");
+  test.AddInput<uint32_t>("X", {1}, {16});
+  test.AddInput<uint32_t>("Y", {3}, {1, 2, 3});
+  test.AddOutput<uint32_t>("Z", {3}, {32, 64, 128});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, ScalarLeftY) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "LEFT");
+  test.AddInput<uint32_t>("X", {3}, {16, 4, 1});
+  test.AddInput<uint32_t>("Y", {1}, {1});
+  test.AddOutput<uint32_t>("Z", {3}, {32, 8, 2});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, ScalarRightX) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint32_t>("X", {1}, {16});
+  test.AddInput<uint32_t>("Y", {3}, {1, 2, 3});
+  test.AddOutput<uint32_t>("Z", {3}, {8, 4, 2});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, ScalarRightY) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint32_t>("X", {3}, {16, 4, 1});
+  test.AddInput<uint32_t>("Y", {1}, {1});
+  test.AddOutput<uint32_t>("Z", {3}, {8, 2, 0});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, BroadcastYLeft) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "LEFT");
+  test.AddInput<uint64_t>("X", {3, 2}, {1, 2, 3, 4, 5, 6});
+  test.AddInput<uint64_t>("Y", {2}, {1, 2});
+  test.AddOutput<uint64_t>("Z", {3, 2}, {2, 8, 6, 16, 10, 24});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, BroadcastXRight) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint64_t>("X", {2}, {64, 32});
+  test.AddInput<uint64_t>("Y", {3, 2}, {1, 2, 3, 4, 5, 6});
+  test.AddOutput<uint64_t>("Z", {3, 2}, {32, 8, 8, 2, 2, 0});
   test.Run();
 }
 

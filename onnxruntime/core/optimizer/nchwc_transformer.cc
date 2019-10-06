@@ -166,7 +166,7 @@ void NchwcTransformerImpl::CreateNchwcArgument(Node& node,
   std::string output_reorder_def_name = graph_.GenerateNodeArgName("reorder");
   auto* output_nchwc_arg = &graph_.GetOrCreateNodeArg(output_reorder_def_name, nullptr);
   nchwc_args_[output_original_arg] =
-      std::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, channels, shape);
+      onnxruntime::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, channels, shape);
   output_defs[0] = output_nchwc_arg;
 }
 
@@ -178,7 +178,7 @@ void NchwcTransformerImpl::FuseNchwcArgument(Node& node, const NchwcArgument& nc
   auto& nchwc_node = nchwc_arg.output_node_;
   auto* output_nchwc_arg = nchwc_node.MutableOutputDefs()[0];
   nchwc_args_[output_original_arg] =
-      std::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, nchwc_arg.channels_, nchwc_arg.shape_);
+      onnxruntime::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, nchwc_arg.channels_, nchwc_arg.shape_);
 }
 
 void NchwcTransformerImpl::InsertReorderInput(Node& node) {
@@ -364,7 +364,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     // Reuse the existing NodeArg.
     nchwc_conv_W_arg = filters_it->second;
   } else {
-    auto conv_W = std::make_unique<Initializer>(conv_W_tensor_proto);
+    auto conv_W = onnxruntime::make_unique<Initializer>(conv_W_tensor_proto);
 
     std::vector<float> reordered_filter(conv_W->size() / output_channels * nchwc_output_channels);
 
@@ -400,7 +400,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
       // Reuse the existing NodeArg.
       nchwc_conv_B_arg = biases_it->second;
     } else {
-      auto conv_B = std::make_unique<Initializer>(conv_B_tensor_proto);
+      auto conv_B = onnxruntime::make_unique<Initializer>(conv_B_tensor_proto);
 
       std::vector<float> aligned_bias(nchwc_output_channels);
       std::copy_n(conv_B->data<float>(), output_channels, aligned_bias.data());
@@ -564,18 +564,24 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
       auto& nchwc_node = nchwc_input_n->output_node_;
       auto& nchwc_input_defs = nchwc_node.MutableInputDefs();
       auto& nchwc_input_args_count = nchwc_node.MutableInputArgsCount();
+      size_t nchwc_input_defs_count = nchwc_input_defs.size();
       // Check if this is a single use NCHWc convolution that hasn't already
       // been fused with another Add/Sum node. The Add/Sum can also only be
       // fused if the convolution isn't itself fused with an activation.
       if ((nchwc_node.OpType() == "Conv") && (nchwc_node.Domain() == kMSNchwcDomain) &&
-          (nchwc_input_defs.size() < 4) && (nchwc_input_args_count.size() < 4) &&
+          (nchwc_input_defs_count < 4) && (nchwc_input_args_count.size() < 4) &&
           (nchwc_input_n->starting_original_uses_ == 1) &&
           (graph_utils::GetNodeAttribute(nchwc_node, "activation") == nullptr)) {
         // Feed the output of the other NCHWc node into the selected convolution
         // node.
         nchwc_input_defs.resize(4);
-        nchwc_input_defs[3] = nchwc_inputs[n ^ 1]->output_node_.MutableOutputDefs()[0];
         nchwc_input_args_count.resize(4);
+        if (nchwc_input_defs_count < 3) {
+          // The optional bias parameter is empty so set to an empty string.
+          nchwc_input_defs[2] = &graph_.GetOrCreateNodeArg("", nullptr);
+          nchwc_input_args_count[2] = 1;
+        }
+        nchwc_input_defs[3] = nchwc_inputs[n ^ 1]->output_node_.MutableOutputDefs()[0];
         nchwc_input_args_count[3] = 1;
 
         FuseNchwcArgument(node, *nchwc_input_n);
@@ -661,11 +667,11 @@ void NchwcTransformerImpl::TransformActivation(Node& node) {
 }
 
 void NchwcTransformerImpl::Transform(Node& node) {
-  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1}) ||
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11}) ||
       graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedConv", {1}, kMSDomain)) {
     TransformConv(node);
-  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {1, 8, 10}) ||
-             graph_utils::IsSupportedOptypeVersionAndDomain(node, "AveragePool", {1, 7, 10}) ||
+  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {1, 8, 10, 11}) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(node, "AveragePool", {1, 7, 10, 11}) ||
              graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalMaxPool", {1}) ||
              graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalAveragePool", {1})) {
     TransformPool(node);

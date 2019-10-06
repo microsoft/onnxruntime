@@ -7,7 +7,7 @@
 #include "core/codegen/passes/utils/codegen_context.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 #include <topi/detail/extern.h>
 

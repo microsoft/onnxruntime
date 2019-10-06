@@ -2,13 +2,23 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/compress.h"
+#include "core/providers/common.h"
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Compress,
     9,
+    10,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+    Compress);
+
+// Opset 11 starts to support Neg Axis.
+ONNX_CPU_OPERATOR_KERNEL(
+    Compress,
+    11,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes())
                       .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Compress);
@@ -17,8 +27,10 @@ Status Compress::Compute(OpKernelContext* ctx) const {
   const auto* input_tensor = ctx->Input<Tensor>(0);
   size_t rank = input_tensor->Shape().NumDimensions();
   auto& input_dimensions = input_tensor->Shape().GetDims();
+  int64_t axis = axis_;
   if (has_axis_) {
-    ORT_ENFORCE(axis_ < static_cast<int64_t>(rank), "axis greater than input data dimension!");
+    axis = HandleNegativeAxis(axis, rank);  // handle negative and enforce axis is valid
+    ORT_ENFORCE(axis < static_cast<int64_t>(rank), "axis greater than input data dimension!");
   }
 
   const auto* condition = ctx->Input<Tensor>(1);
@@ -27,7 +39,7 @@ Status Compress::Compute(OpKernelContext* ctx) const {
 
   int64_t positive_condition_count = 0;
   // if has axis, we need to compress on dimension[axis], otherwise compress on the flattened input data
-  int64_t compress_input_length = has_axis_ ? input_dimensions[axis_] : input_tensor->Shape().Size();
+  int64_t compress_input_length = has_axis_ ? input_dimensions[axis] : input_tensor->Shape().Size();
   int64_t valid_condition_length = compress_input_length < condition_length ? compress_input_length : condition_length;
 
   // Figure out output shape
@@ -39,7 +51,7 @@ Status Compress::Compute(OpKernelContext* ctx) const {
 
   std::vector<int64_t> output_dims(input_dimensions);
   if (has_axis_) {
-    output_dims[axis_] = positive_condition_count;
+    output_dims[axis] = positive_condition_count;
   } else {
     output_dims.resize(1);
     output_dims[0] = positive_condition_count;
@@ -60,14 +72,14 @@ Status Compress::Compute(OpKernelContext* ctx) const {
   if (has_axis_) {
     int64_t axes_left_stride = 1;
     int64_t axes_right_stride = 1;
-    for (int i = 0; i < axis_; ++i) {
+    for (int i = 0; i < axis; ++i) {
       axes_left_stride *= input_dimensions[i];
     }
 
-    for (auto i = static_cast<size_t>(axis_ + 1); i < rank; ++i) {
+    for (auto i = static_cast<size_t>(axis + 1); i < rank; ++i) {
       axes_right_stride *= input_dimensions[i];
     }
-    int64_t axes_included_right_stride = axes_right_stride * input_dimensions[axis_];
+    int64_t axes_included_right_stride = axes_right_stride * input_dimensions[axis];
     int64_t axes_included_right_stride_bytes = axes_included_right_stride * element_bytes;
     ORT_ENFORCE(axes_right_stride >= 0 &&
                 static_cast<uint64_t>(axes_right_stride) < std::numeric_limits<size_t>::max());

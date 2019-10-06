@@ -16,7 +16,7 @@ namespace onnxruntime {
 
 const GraphViewer* SessionState::GetGraphViewer() const { return graph_viewer_.get(); }
 Status SessionState::SetGraph(const Graph& graph) {
-  graph_viewer_ = std::make_unique<onnxruntime::GraphViewer>(graph);
+  graph_viewer_ = onnxruntime::make_unique<onnxruntime::GraphViewer>(graph);
   auto& logger = Logger();
   // use graph_viewer_ to initialize ort_value_name_idx_map_
   LOGS(logger, INFO) << "SaveMLValueNameIndexMapping";
@@ -83,7 +83,7 @@ Status SessionState::CreateKernels(const KernelRegistryManager& custom_registry_
       onnxruntime::ProviderType exec_provider_name = node.GetExecutionProviderType();
 
       const IExecutionProvider* exec_provider = nullptr;
-      if (exec_provider_name.empty() || (exec_provider = execution_providers_.Get(exec_provider_name)) == nullptr) {
+      if (exec_provider_name.empty() || (exec_provider = execution_providers_.get().Get(exec_provider_name)) == nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not create kernel for node: ", node.Name(),
                                " as there's no execution provider allocated.");
       }
@@ -99,7 +99,7 @@ Status SessionState::CreateKernels(const KernelRegistryManager& custom_registry_
       session_kernels_[node.Index()] = op_kernel.release();
     }
   }
-  node_index_info_ = std::make_unique<NodeIndexInfo>(*graph_viewer_, ort_value_name_idx_map_);
+  node_index_info_ = onnxruntime::make_unique<NodeIndexInfo>(*graph_viewer_, ort_value_name_idx_map_);
   return Status::OK();
 }
 
@@ -281,7 +281,7 @@ SessionState* SessionState::GetMutableSubgraphSessionState(onnxruntime::NodeInde
 
   auto node_entry = subgraph_session_states_.find(index);
   if (node_entry != subgraph_session_states_.cend()) {
-    const auto& attribute_state_map{node_entry->second};
+    const auto& attribute_state_map = node_entry->second;
 
     const auto& subgraph_entry = attribute_state_map.find(attribute_name);
     if (subgraph_entry != attribute_state_map.cend()) {

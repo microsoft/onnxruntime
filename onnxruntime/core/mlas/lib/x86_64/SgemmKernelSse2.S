@@ -19,17 +19,9 @@ Abstract:
 
 #include "asmmacro.h"
 #include "SgemmKernelCommon.h"
+#include "FgemmKernelSse2Common.h"
 
         .intel_syntax noprefix
-
-        .equ    .LSgemmKernelFrame_alpha, -8
-        .equ    .LSgemmKernelFrame_SavedR15, 0
-        .equ    .LSgemmKernelFrame_SavedRbx, 8
-        .equ    .LSgemmKernelFrame_SavedRbp, 16
-        .equ    .LSgemmKernelFrame_ReturnAddress, 24
-        .equ    .LSgemmKernelFrame_lda, 32
-        .equ    .LSgemmKernelFrame_ldc, 40
-        .equ    .LSgemmKernelFrame_ZeroMode, 48
 
         .text
 
@@ -94,64 +86,6 @@ Implicit Arguments:
         addps   xmm14,xmm6
         addps   xmm15,xmm7
 .endif
-
-        .endm
-
-/*++
-
-Macro Description:
-
-    This stores the block accumulators to the output matrix with an optional
-    accumulation of the existing contents of the output matrix.
-
-Arguments:
-
-    RowCount - Supplies the number of rows to process.
-
-    ColumnCount - Supplies the number of columns to process.
-
-Implicit Arguments:
-
-    rax - Supplies the length in bytes of a row from matrix C.
-
-    rdx - Supplies the address of matrix C.
-
-    r15 - Stores the ZeroMode argument from the stack frame.
-
-    xmm8-xmm15 - Supplies the block accumulators.
-
---*/
-
-        .macro AccumulateAndStoreBlock RowCount, ColumnCount
-
-        test    r15b,r15b                   # ZeroMode?
-        jnz     .LSkipAccumulateOutput\@
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 4, "movups xmm0,XMMWORD PTR [rdx]"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 8, "movups xmm1,XMMWORD PTR [rdx+16]"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 12, "movups xmm2,XMMWORD PTR [rdx+32]"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 16, "movups xmm3,XMMWORD PTR [rdx+48]"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 4, "movups xmm4,XMMWORD PTR [rdx+rax]"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 8, "movups xmm5,XMMWORD PTR [rdx+rax+16]"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 12, "movups xmm6,XMMWORD PTR [rdx+rax+32]"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 16, "movups xmm7,XMMWORD PTR [rdx+rax+48]"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 4, "addps xmm8,xmm0"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 8, "addps xmm9,xmm1"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 12, "addps xmm10,xmm2"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 16, "addps xmm11,xmm3"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 4, "addps xmm12,xmm4"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 8, "addps xmm13,xmm5"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 12, "addps xmm14,xmm6"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 16, "addps xmm15,xmm7"
-
-.LSkipAccumulateOutput\@:
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 4, "movups XMMWORD PTR [rdx],xmm8"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 8, "movups XMMWORD PTR [rdx+16],xmm9"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 12, "movups XMMWORD PTR [rdx+32],xmm10"
-        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 16, "movups XMMWORD PTR [rdx+48],xmm11"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 4, "movups XMMWORD PTR [rdx+rax],xmm12"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 8, "movups XMMWORD PTR [rdx+rax+16],xmm13"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 12, "movups XMMWORD PTR [rdx+rax+32],xmm14"
-        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 16, "movups XMMWORD PTR [rdx+rax+48],xmm15"
 
         .endm
 
@@ -226,8 +160,8 @@ Implicit Arguments:
         jz      .LOutput16xNBlock\@
 
 .LCompute16xNBlockBy1Loop\@:
-        EmitIfCountGE \RowCount\(), 1, "movss xmm0,DWORD PTR [rdi]"
-        EmitIfCountGE \RowCount\(), 2, "movss xmm1,DWORD PTR [rdi+r10]"
+        EmitIfCountGE \RowCount\(), 1, "movss xmm0,[rdi]"
+        EmitIfCountGE \RowCount\(), 2, "movss xmm1,[rdi+r10]"
         ComputeBlockSseBy16 2, 0, 0x00
         add     rsi,16*4                    # advance matrix B by 16 columns
         add     rdi,4                       # advance matrix A by 1 column
@@ -235,7 +169,7 @@ Implicit Arguments:
         jne     .LCompute16xNBlockBy1Loop\@
 
 .LOutput16xNBlock\@:
-        movss   xmm2,DWORD PTR .LSgemmKernelFrame_alpha[rsp]
+        movss   xmm2,.LFgemmKernelFrame_alpha[rsp]
         shufps  xmm2,xmm2,0
         EmitIfCountGE \RowCount\(), 1, "mulps xmm8,xmm2"
                                             # multiply by alpha
@@ -248,7 +182,7 @@ Implicit Arguments:
         EmitIfCountGE \RowCount\(), 2, "mulps xmm15,xmm2"
         sub     r9,16
         jb      .LOutputPartial16xNBlock\@
-        AccumulateAndStoreBlock \RowCount\(), 16
+        AccumulateAndStoreBlock \RowCount\(), 4
         add     rdx,16*4                    # advance matrix C by 16 columns
         mov     rdi,r11                     # reload matrix A
         test    r9,r9
@@ -267,7 +201,7 @@ Implicit Arguments:
         jb      .LOutputPartialLessThan8xNBlock\@
         cmp     r9,12
         jb      .LOutputPartialLessThan12xNBlock\@
-        AccumulateAndStoreBlock \RowCount\(), 12
+        AccumulateAndStoreBlock \RowCount\(), 3
         and     r9d,3                       # check if remaining count is small
         jz      .LExitKernel
         EmitIfCountGE \RowCount\(), 1, "movaps xmm8,xmm11"
@@ -277,7 +211,7 @@ Implicit Arguments:
         jmp     .LOutputPartialLessThan4xNBlock\@
 
 .LOutputPartialLessThan12xNBlock\@:
-        AccumulateAndStoreBlock \RowCount\(), 8
+        AccumulateAndStoreBlock \RowCount\(), 2
         and     r9d,3                       # check if remaining count is small
         jz      .LExitKernel
         EmitIfCountGE \RowCount\(), 1, "movaps xmm8,xmm10"
@@ -287,7 +221,7 @@ Implicit Arguments:
         jmp     .LOutputPartialLessThan4xNBlock\@
 
 .LOutputPartialLessThan8xNBlock\@:
-        AccumulateAndStoreBlock \RowCount\(), 4
+        AccumulateAndStoreBlock \RowCount\(), 1
         and     r9d,3                       # check if remaining count is small
         jz      .LExitKernel
         EmitIfCountGE \RowCount\(), 1, "movaps xmm8,xmm9"
@@ -318,98 +252,22 @@ Implicit Arguments:
 .LOutputPartial1xNBlock\@:
         test    r15b,r15b                   # ZeroMode?
         jnz     .LSkipAccumulateOutput1xN\@
-        EmitIfCountGE \RowCount\(), 1, "addss xmm8,DWORD PTR [rdx]"
-        EmitIfCountGE \RowCount\(), 2, "addss xmm12,DWORD PTR [rdx+rax]"
+        EmitIfCountGE \RowCount\(), 1, "addss xmm8,[rdx]"
+        EmitIfCountGE \RowCount\(), 2, "addss xmm12,[rdx+rax]"
 
 .LSkipAccumulateOutput1xN\@:
-        EmitIfCountGE \RowCount\(), 1, "movss DWORD PTR [rdx],xmm8"
-        EmitIfCountGE \RowCount\(), 2, "movss DWORD PTR [rdx+rax],xmm12"
+        EmitIfCountGE \RowCount\(), 1, "movss [rdx],xmm8"
+        EmitIfCountGE \RowCount\(), 2, "movss [rdx+rax],xmm12"
 .ifb \Fallthrough\()
         jmp     .LExitKernel
 .endif
 
         .endm
 
-/*++
-
-Routine Description:
-
-    This routine is an inner kernel to compute matrix multiplication for a
-    set of rows.
-
-Arguments:
-
-    A (rdi) - Supplies the address of matrix A.
-
-    B (rsi) - Supplies the address of matrix B. The matrix data has been packed
-        using MlasSgemmCopyPackB or MlasSgemmTransposePackB.
-
-    C (rdx) - Supplies the address of matrix C.
-
-    CountK (rcx) - Supplies the number of columns from matrix A and the number
-        of rows from matrix B to iterate over.
-
-    CountM (r8) - Supplies the maximum number of rows that can be processed for
-        matrix A and matrix C. The actual number of rows handled for this
-        invocation depends on the kernel implementation.
-
-    CountN (r9) - Supplies the number of columns from matrix B and matrix C to
-        iterate over.
-
-    lda - Supplies the first dimension of matrix A.
-
-    ldc - Supplies the first dimension of matrix C.
-
-    Alpha (xmm0) - Supplies the scalar alpha multiplier (see SGEMM definition).
-
-    ZeroMode - Supplies true if the output matrix must be zero initialized,
-        else false if the output matrix is accumulated into.
-
-Return Value:
-
-    Returns the number of rows handled.
-
---*/
-
-        .globl  C_UNDERSCORE(MlasGemmFloatKernelSse)
-C_UNDERSCORE(MlasGemmFloatKernelSse):
-
-        push    rbp
-        push    rbx
-        push    r15
-        mov     r11,rdi
-        mov     r10,.LSgemmKernelFrame_lda[rsp]
-        shl     r10,2                       # convert lda to bytes
-        mov     rax,.LSgemmKernelFrame_ldc[rsp]
-        shl     rax,2                       # convert ldc to bytes
-        movzx   r15,BYTE PTR .LSgemmKernelFrame_ZeroMode[rsp]
-        movss   DWORD PTR .LSgemmKernelFrame_alpha[rsp],xmm0
-
 //
-// Process CountM rows of the matrices.
+// Generate the GEMM kernel.
 //
 
-        cmp     r8,2
-        jb      .LProcessCountM1
-        mov     r8d,2                       # return 2 rows handled
-        ProcessCountM 2, Fallthrough
-
-//
-// Restore non-volatile registers and return.
-//
-
-.LExitKernel:
-        mov     eax,r8d
-        pop     r15
-        pop     rbx
-        pop     rbp
-        ret
-
-//
-// Process 1 row of the matrices.
-//
-
-.LProcessCountM1:
-        ProcessCountM 1
+FgemmKernelSse2Function C_UNDERSCORE(MlasGemmFloatKernelSse)
 
         .end

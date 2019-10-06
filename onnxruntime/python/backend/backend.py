@@ -67,6 +67,9 @@ class OnnxRuntimeBackend(Backend):
                 if hasattr(options, k):
                     setattr(options, k, v)
             inf = InferenceSession(model, options)
+            # backend API is primarily used for ONNX test/validation. As such, we should disable session.run() fallback
+            # which may hide test failures.
+            inf.disable_fallback()
             if device is not None and not cls.supports_device(device):
                 raise RuntimeError("Incompatible device expected '{0}', got '{1}'".format(device, get_device()))
             return cls.prepare(inf, device, **kwargs)

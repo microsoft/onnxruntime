@@ -17,14 +17,14 @@ constexpr const char* NNAPI = "Nnapi";
 NnapiExecutionProvider::NnapiExecutionProvider()
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider} {
   DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
-                                              [](int) { return std::make_unique<CPUAllocator>(
-                                                            std::make_unique<OrtMemoryInfo>(NNAPI,
+                                              [](int) { return onnxruntime::make_unique<CPUAllocator>(
+                                                            onnxruntime::make_unique<OrtMemoryInfo>(NNAPI,
                                                                                                OrtAllocatorType::OrtDeviceAllocator)); },
                                               std::numeric_limits<size_t>::max()};
   InsertAllocator(CreateAllocator(device_info));
 
   DeviceAllocatorRegistrationInfo cpu_memory_info({OrtMemTypeCPUOutput,
-                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(NNAPI, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); },
+                                                      [](int) { return onnxruntime::make_unique<CPUAllocator>(onnxruntime::make_unique<OrtMemoryInfo>(NNAPI, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); },
                                                       std::numeric_limits<size_t>::max()});
 
   InsertAllocator(CreateAllocator(cpu_memory_info));
@@ -72,7 +72,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
   const auto supported_nodes_vector = GetSupportedNodes(model_proto);
 
-  std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
 
   // Find inputs, initializers and outputs for each supported subgraph
   std::vector<std::unique_ptr<ComputeCapability>> result;
@@ -86,7 +86,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       for (const auto& index : group) {
         node_set.insert(node_index[index]);
       }
-      std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+      std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
       // Find inputs and outputs of the subgraph
       std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add;
       std::unordered_set<const NodeArg*> erased;
@@ -170,7 +170,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       }
 
       // Assign inputs and outputs to subgraph's meta_def
-      auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+      auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
       meta_def->name = "NNAPI_" + std::to_string(counter++);
       meta_def->domain = kMSDomain;
 
@@ -185,7 +185,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       meta_def->since_version = 1;
       sub_graph->SetMetaDef(meta_def);
 
-      result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+      result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
     }
   }
 

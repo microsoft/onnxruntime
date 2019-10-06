@@ -10,7 +10,7 @@
 #include <DbgHelp.h>
 
 #include "core/session/environment.h"
-#include "gsl/span"
+#include "gsl/gsl"
 
 namespace onnxruntime {
 

@@ -6,13 +6,25 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Split,
     2,
+    10,
+    KernelDefBuilder().TypeConstraint("T",
+                                      std::vector<MLDataType>{
+                                          DataTypeImpl::GetTensorType<float>(),
+                                          DataTypeImpl::GetTensorType<int32_t>(),
+                                          DataTypeImpl::GetTensorType<std::string>()}),
+    Split);
+
+// Opset 11 starts to support Neg Axis.
+ONNX_CPU_OPERATOR_KERNEL(
+    Split,
+    11,
     KernelDefBuilder().TypeConstraint("T",
                                       std::vector<MLDataType>{
                                           DataTypeImpl::GetTensorType<float>(),
