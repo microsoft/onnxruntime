@@ -48,11 +48,11 @@ SessionStateInitializer::SessionStateInitializer(bool enable_mem_pattern,
                                                  const ExecutionProviders& providers,
                                                  KernelRegistryManager& kernel_registry_manager)
     : graph_loc_(graph_loc),
-      graph_{graph},
-      session_state_{session_state},
-      execution_providers_{providers},
-      kernel_registry_manager_{kernel_registry_manager},
-      logger_{session_state.Logger()},
+      graph_(graph),
+      session_state_(session_state),
+      execution_providers_(providers),
+      kernel_registry_manager_(kernel_registry_manager),
+      logger_(session_state.Logger()),
       enable_mem_pattern_(enable_mem_pattern) {}
 
 common::Status SessionStateInitializer::CreatePlan(
@@ -140,7 +140,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error. The preallocated buffer is too small. Requires ",
                            cpu_tensor_length, ", Got ", m.GetLen());
   }
-  OrtMemoryInfo info = exec_providers.GetDefaultCpuAllocatorInfo();
+  OrtMemoryInfo info = exec_providers.GetDefaultCpuMemoryInfo();
   std::unique_ptr<char[]> data(new char[cpu_tensor_length]);
   std::unique_ptr<Tensor> p_tensor;
   OrtValue tmp_ort_value;
@@ -149,7 +149,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                                   MemBuffer(data.get(), cpu_tensor_length, info), tmp_ort_value, d));
   const Tensor& p_deserialize_tensor = tmp_ort_value.Get<Tensor>();
 
-  p_tensor = std::make_unique<Tensor>(p_deserialize_tensor.DataType(), p_deserialize_tensor.Shape(), m.GetBuffer(),
+  p_tensor = onnxruntime::make_unique<Tensor>(p_deserialize_tensor.DataType(), p_deserialize_tensor.Shape(), m.GetBuffer(),
                                       m.GetAllocInfo());
   // TODO: does this function work for string tensor?
   Status copy_status = data_transfer_mgr.CopyTensor(p_deserialize_tensor, *p_tensor);
@@ -195,7 +195,7 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
   //3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {
     int ort_value_index = entry.first;
-    const char* name = entry.second->has_name() ? entry.second->name().c_str() : "";
+    const char* name = (entry.second->name().empty()) ? "" : entry.second->name().c_str();
     const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
 
     std::unique_ptr<MemBuffer> m;
@@ -276,10 +276,11 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
                 }
               }
 
-              if (IsArgNameInInputsOutputs(arg.Name(), graph_outputs)) {
-                session_state.AddOutputNameToNodeInfoMapping(arg.Name(), node_info);
-                return Status::OK();
-              }
+              // ??? Why are we checking if an input to a node is also in the graph output
+              //if (IsArgNameInInputsOutputs(arg.Name(), graph_outputs)) {
+              //  session_state.AddOutputNameToNodeInfoMapping(arg.Name(), node_info);
+              //  return Status::OK();
+              //}
 
               return Status::OK();
             }));
@@ -296,14 +297,34 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
       // copy to a different device is required
       for (const auto& input_def : node_implicit_inputs) {
         int arg_index;
-        //Question: the implicit input may not be found in this session state name to id map, but in parent session state name to id map.
-        //@Scott
         ORT_RETURN_IF_ERROR(name_to_id.GetIdx(input_def->Name(), arg_index));
         auto& device = exec_plan->GetLocation(arg_index).device;
         SessionState::NodeInfo node_info(std::numeric_limits<size_t>::max(), &node, kci, device);
         ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(input_def->Name(), node_info));
       }
     }
+
+    ORT_RETURN_IF_ERROR(
+        onnxruntime::Node::ForEachWithIndex(
+            node.OutputDefs(),
+            [&](const onnxruntime::NodeArg& arg, size_t index) {
+              if (arg.Name().empty()) {
+                return Status::OK();
+              }
+
+              int arg_index;
+              ORT_RETURN_IF_ERROR(name_to_id.GetIdx(arg.Name(), arg_index));
+              const auto& device = exec_plan->GetLocation(arg_index).device;
+
+              SessionState::NodeInfo node_info(index, &node, kci, device);
+
+              if (IsArgNameInInputsOutputs(arg.Name(), graph_outputs)) {
+                session_state.AddOutputNameToNodeInfoMapping(arg.Name(), node_info);
+                return Status::OK();
+              }
+
+              return Status::OK();
+            }));
   }
 
   // It's possible (although assumably rare) for a graph to have inputs that aren't used. one reasonable occurrence

@@ -49,7 +49,7 @@ void ComputeImpl(const Tensor& X, Tensor& Y, bool detect_positive, bool detect_n
     auto input_data = X.template Data<T>();
     auto end_data = input_data + total_items;
     std::transform(
-        input_data, end_data, output_data, [](auto v) {
+        input_data, end_data, output_data, [](T v) {
           return (v == std::numeric_limits<T>::infinity());
         });
 
@@ -57,7 +57,7 @@ void ComputeImpl(const Tensor& X, Tensor& Y, bool detect_positive, bool detect_n
     auto input_data = X.template Data<T>();
     auto end_data = input_data + total_items;
     std::transform(
-        input_data, end_data, output_data, [](auto v) {
+        input_data, end_data, output_data, [](T v) {
           return (v == -std::numeric_limits<T>::infinity());
         });
   } else {

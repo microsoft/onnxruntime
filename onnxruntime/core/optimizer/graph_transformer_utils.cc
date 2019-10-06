@@ -17,7 +17,10 @@
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/shape_to_initializer.h"
 #include "core/optimizer/nchwc_transformer.h"
+#include "core/optimizer/free_dim_override_transformer.h"
+#include "core/optimizer/gelu_fusion.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/session/inference_session.h"
 
 namespace onnxruntime {
 
@@ -32,18 +35,18 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
   std::vector<std::unique_ptr<RewriteRule>> rules;
   switch (level) {
     case TransformerLevel::Level1:
-      rules.push_back(std::make_unique<EliminateIdentity>());
-      rules.push_back(std::make_unique<EliminateSlice>());
-      rules.push_back(std::make_unique<UnsqueezeElimination>());
-      rules.push_back(std::make_unique<EliminateDropout>());
-      rules.push_back(std::make_unique<FuseReluClip>());
-      rules.push_back(std::make_unique<ShapeToInitializer>());
+      rules.push_back(onnxruntime::make_unique<EliminateIdentity>());
+      rules.push_back(onnxruntime::make_unique<EliminateSlice>());
+      rules.push_back(onnxruntime::make_unique<UnsqueezeElimination>());
+      rules.push_back(onnxruntime::make_unique<EliminateDropout>());
+      rules.push_back(onnxruntime::make_unique<FuseReluClip>());
+      rules.push_back(onnxruntime::make_unique<ShapeToInitializer>());
       break;
 
     case TransformerLevel::Level2:
-      rules.push_back(std::make_unique<ConvAddFusion>());
-      rules.push_back(std::make_unique<ConvMulFusion>());
-      rules.push_back(std::make_unique<ConvBNFusion>());
+      rules.push_back(onnxruntime::make_unique<ConvAddFusion>());
+      rules.push_back(onnxruntime::make_unique<ConvMulFusion>());
+      rules.push_back(onnxruntime::make_unique<ConvBNFusion>());
       break;
 
     case TransformerLevel::Level3:
@@ -77,7 +80,7 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(Tra
   }
 
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      std::make_unique<RuleBasedGraphTransformer>(transformer_utils::GenerateRuleBasedTransformerName(level),
+      onnxruntime::make_unique<RuleBasedGraphTransformer>(transformer_utils::GenerateRuleBasedTransformerName(level),
                                                   compatible_execution_providers);
   for (auto& entry : rewrite_rules_to_register) {
     rule_transformer->Register(std::move(entry));
@@ -87,6 +90,7 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(Tra
 }
 
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerLevel level,
+                                                                    gsl::span<const FreeDimensionOverride> free_dimension_overrides,
                                                                     const std::vector<std::string>& transformers_and_rules_to_enable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
@@ -94,7 +98,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     case TransformerLevel::Level1: {
       std::unordered_set<std::string> l1_execution_providers = {};
 
-      transformers.emplace_back(std::make_unique<ConstantFolding>(l1_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(l1_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
 
       rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
     } break;
@@ -107,9 +112,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 
       // create standalone transformers
 #ifndef DISABLE_CONTRIB_OPS
-      transformers.emplace_back(std::make_unique<GemmActivationFusion>(l2_execution_providers));
-      transformers.emplace_back(std::make_unique<MatMulAddFusion>(l2_execution_providers));
-      transformers.emplace_back(std::make_unique<ConvActivationFusion>(l2_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<GemmActivationFusion>(l2_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l2_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(l2_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(l2_execution_providers));
 #endif
     } break;
 
@@ -117,7 +123,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 #ifndef DISABLE_CONTRIB_OPS
       // Register the NCHWc layout transformer if supported by the platform.
       if (MlasNchwcGetBlockSize() > 1) {
-        transformers.emplace_back(std::make_unique<NchwcTransformer>());
+        transformers.emplace_back(onnxruntime::make_unique<NchwcTransformer>());
       }
 #endif
 

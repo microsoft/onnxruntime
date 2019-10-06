@@ -8,6 +8,7 @@
 #include <cmath>
 
 #include "core/common/common.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/util/math.h"
 
@@ -33,15 +34,15 @@ class Initializer final {
 
     switch (data_type_) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
-        float16_data_.assign(size_, 0);
+        float16_data_.assign(static_cast<size_t>(size_), 0);
         break;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
-        float_data_.assign(size_, 0.0f);
+        float_data_.assign(static_cast<size_t>(size_), 0.0f);
         break;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
-        double_data_.assign(size_, 0.0);
+        double_data_.assign(static_cast<size_t>(size_), 0.0);
         break;
       }
       default:
@@ -52,7 +53,7 @@ class Initializer final {
 
   Initializer(const ONNX_NAMESPACE::TensorProto* tensor_proto) : size_(0) {
     data_type_ = tensor_proto->data_type();
-    if (tensor_proto->has_name()) {
+    if (utils::HasName(*tensor_proto)) {
       name_ = tensor_proto->name();
     }
     dims_.reserve(tensor_proto->dims_size());
@@ -62,7 +63,7 @@ class Initializer final {
 
     size_ = std::accumulate(dims_.begin(), dims_.end(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
 
-    if (tensor_proto->has_raw_data()) {
+    if (utils::HasRawData(*tensor_proto)) {
       raw_data_ = tensor_proto->raw_data();
     } else {
       switch (data_type_) {

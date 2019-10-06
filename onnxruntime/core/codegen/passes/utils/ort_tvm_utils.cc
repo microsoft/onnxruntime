@@ -5,8 +5,9 @@
 
 #include "core/codegen/common/profile.h"
 #include "core/codegen/passes/utils/codegen_context.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 #include <topi/detail/extern.h>
 
@@ -89,9 +90,9 @@ tvm::Array<tvm::Expr> ShapeToTvmArray(const NodeArg* def, CodeGenContext& ctx) {
 }
 
 tvm::Expr ShapeDimToTvmDim(const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim, CodeGenContext& ctx) {
-  if (dim.has_dim_param()) {
+  if (utils::HasDimParam(dim)) {
     return ctx.GetOrCreateDynamicDim(dim.dim_param());
-  } else if (dim.has_dim_value()) {
+  } else if (utils::HasDimValue(dim)) {
     return tvm::Expr(gsl::narrow_cast<int32_t>(dim.dim_value()));
   }
   return ctx.GetOrCreateDynamicDim(ctx.CreateUnnamedSymbol());

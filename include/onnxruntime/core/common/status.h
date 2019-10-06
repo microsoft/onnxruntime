@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 #include <ostream>
 #include <string>
-#include "core/common/ml_status.h"
 
 namespace onnxruntime {
 namespace common {
@@ -31,20 +30,50 @@ enum StatusCategory {
    Error code for ONNXRuntime.
 */
 enum StatusCode {
-  OK = static_cast<unsigned int>(MLStatus::OK),
-  FAIL = static_cast<unsigned int>(MLStatus::FAIL),
-  INVALID_ARGUMENT = static_cast<unsigned int>(MLStatus::INVALID_ARGUMENT),
-  NO_SUCHFILE = static_cast<unsigned int>(MLStatus::NO_SUCHFILE),
-  NO_MODEL = static_cast<unsigned int>(MLStatus::NO_MODEL),
-  ENGINE_ERROR = static_cast<unsigned int>(MLStatus::ENGINE_ERROR),
-  RUNTIME_EXCEPTION = static_cast<unsigned int>(MLStatus::RUNTIME_EXCEPTION),
-  INVALID_PROTOBUF = static_cast<unsigned int>(MLStatus::INVALID_PROTOBUF),
-  MODEL_LOADED = static_cast<unsigned int>(MLStatus::MODEL_LOADED),
-  NOT_IMPLEMENTED = static_cast<unsigned int>(MLStatus::NOT_IMPLEMENTED),
-  INVALID_GRAPH = static_cast<unsigned int>(MLStatus::INVALID_GRAPH),
-  SHAPE_INFERENCE_NOT_REGISTERED = static_cast<unsigned int>(MLStatus::SHAPE_INFERENCE_NOT_REGISTERED),
-  REQUIREMENT_NOT_REGISTERED = static_cast<unsigned int>(MLStatus::REQUIREMENT_NOT_REGISTERED),
+  OK = 0,
+  FAIL = 1,
+  INVALID_ARGUMENT = 2,
+  NO_SUCHFILE = 3,
+  NO_MODEL = 4,
+  ENGINE_ERROR = 5,
+  RUNTIME_EXCEPTION = 6,
+  INVALID_PROTOBUF = 7,
+  MODEL_LOADED = 8,
+  NOT_IMPLEMENTED = 9,
+  INVALID_GRAPH = 10,
+  EP_FAIL = 11
 };
+
+inline const char* StatusCodeToString(StatusCode status) noexcept {
+  switch (status) {
+    case StatusCode::OK:
+      return "SUCCESS";
+    case StatusCode::FAIL:
+      return "FAIL";
+    case StatusCode::INVALID_ARGUMENT:
+      return "INVALID_ARGUMENT";
+    case StatusCode::NO_SUCHFILE:
+      return "NO_SUCHFILE";
+    case StatusCode::NO_MODEL:
+      return "NO_MODEL";
+    case StatusCode::ENGINE_ERROR:
+      return "ENGINE_ERROR";
+    case StatusCode::RUNTIME_EXCEPTION:
+      return "RUNTIME_EXCEPTION";
+    case StatusCode::INVALID_PROTOBUF:
+      return "INVALID_PROTOBUF";
+    case StatusCode::MODEL_LOADED:
+      return "MODEL_LOADED";
+    case StatusCode::NOT_IMPLEMENTED:
+      return "NOT_IMPLEMENTED";
+    case StatusCode::INVALID_GRAPH:
+      return "INVALID_GRAPH";
+    case StatusCode::EP_FAIL:
+      return "EP_FAIL";
+    default:
+      return "GENERAL ERROR";
+  }
+}
 
 class Status {
  public:
@@ -57,21 +86,21 @@ class Status {
   Status(StatusCategory category, int code);
 
   Status(const Status& other)
-      : state_((other.state_ == nullptr) ? nullptr : std::make_unique<State>(*other.state_)) {}
+      : state_((other.state_ == nullptr) ? nullptr : new State(*other.state_)) {}
 
   Status& operator=(const Status& other) {
     if (state_ != other.state_) {
       if (other.state_ == nullptr) {
         state_.reset();
       } else {
-        state_ = std::make_unique<State>(*other.state_);
+        state_.reset(new State(*other.state_));
       }
     }
     return *this;
   }
 
-  Status(Status&& other) = default;
-  Status& operator=(Status&& other) = default;
+  Status(Status&&) = default;
+  Status& operator=(Status&&) = default;
   ~Status() = default;
 
   bool IsOK() const {

@@ -14,12 +14,12 @@ struct DummyAllocator : IAllocator {
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
-  const OrtMemoryInfo& Info() const override { return allocator_info_; }
+  const OrtMemoryInfo& Info() const override { return memory_info_; }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(DummyAllocator);
 
-  OrtMemoryInfo allocator_info_;
+  OrtMemoryInfo memory_info_;
 };
 }  // namespace test
 }  // namespace onnxruntime

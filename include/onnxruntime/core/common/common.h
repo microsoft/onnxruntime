@@ -33,6 +33,7 @@
 
 #include "core/common/code_location.h"
 #include "core/common/exceptions.h"
+#include "core/common/make_unique.h"
 #include "core/common/status.h"
 
 namespace onnxruntime {
@@ -140,6 +141,12 @@ std::vector<std::string> GetStackTrace();
   do {                                     \
     auto _status = (expr);                 \
     if ((!_status.IsOK())) return _status; \
+  } while (0)
+
+#define ORT_THROW_IF_ERROR(expr)               \
+  do {                                         \
+    auto _status = (expr);                     \
+    if ((!_status.IsOK())) ORT_THROW(_status); \
   } while (0)
 
 // use this macro when cannot early return

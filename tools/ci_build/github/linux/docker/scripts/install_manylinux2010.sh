@@ -31,6 +31,7 @@ python -m pip install --upgrade --force-reinstall requests==2.21.0
 python -m pip install --upgrade --force-reinstall wheel==0.31.1
 python -m pip install --upgrade --force-reinstall setuptools==41.0.1
 python -m pip install --upgrade --force-reinstall pytest==4.6.2
+python -m pip install --upgrade scipy
 
 ls -al /opt/onnxruntime-python/bin
 

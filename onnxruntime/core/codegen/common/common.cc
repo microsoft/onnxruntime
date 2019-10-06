@@ -105,7 +105,7 @@ const onnxruntime::Node* GetInputNode(const Node& node, const NodeArg* def) {
 // create capacity from subgraph
 std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& graph,
                                               std::unique_ptr<IndexedSubGraph>& subgraph) {
-  auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+  auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
   static int fuse_count = 0;
   meta_def->name = "Fuse" + std::to_string(fuse_count++);
   meta_def->domain = "Fuse";
@@ -215,7 +215,7 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
   std::unique_ptr<IndexedSubGraph> finished_subgraph(subgraph.release());
   finished_subgraph->SetMetaDef(meta_def);
-  return std::make_unique<ComputeCapability>(std::move(finished_subgraph));
+  return onnxruntime::make_unique<ComputeCapability>(std::move(finished_subgraph));
 }
 
 int64_t ShapeRank(const NodeArg* def) {
@@ -227,14 +227,14 @@ bool ShapeHasValue(const NodeArg* def, int i) {
   ORT_ENFORCE_DEBUG(nullptr != def);
   ORT_ENFORCE_DEBUG(i >= 0);
   ORT_ENFORCE_DEBUG(i < def->Shape()->dim_size());
-  return def->Shape()->dim(i).has_dim_value();
+  return utils::HasDimValue(def->Shape()->dim(i));
 }
 
 bool ShapeHasSymbol(const NodeArg* def, int i) {
   ORT_ENFORCE_DEBUG(nullptr != def);
   ORT_ENFORCE_DEBUG(i >= 0);
   ORT_ENFORCE_DEBUG(i < def->Shape()->dim_size());
-  return def->Shape()->dim(i).has_dim_param();
+  return utils::HasDimParam(def->Shape()->dim(i));
 }
 
 int64_t ShapeValue(const NodeArg* def, int i) {

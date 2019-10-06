@@ -12,7 +12,10 @@ set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 
-# Set C++14 as standard for the whole project
+# CentOS compiler is old but it does allow certain C++14 features
+# such as lambda captures and they are convinient
+# On the other hand it does not allow some others.
+# So we cant' regulate simply with the standard.
 set(CMAKE_CXX_STANDARD 14)
 
 # General C# prperties
@@ -87,13 +90,21 @@ set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
 
 if(onnxruntime_USE_OPENMP)
-  # MKLML and NGraph depend on their own OpenMP library that may be different with the compiler's.
-  # Disable the options to build mklml/NGraph and OpenMP together.
-  if(onnxruntime_USE_MKLML)
-    message(FATAL_ERROR "Please use only one of onnxruntime_USE_MKLML, onnxruntime_USE_OPENMP")
-  endif()
-  if(onnxruntime_USE_NGRAPH)
-    message(FATAL_ERROR "Please use only one of onnxruntime_USE_NGRAPH, onnxruntime_USE_OPENMP")
+  find_package(OpenMP)
+  if (OPENMP_FOUND)
+    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    add_definitions(-DUSE_OPENMP)
+    # MKLML and NGraph depend on their own OpenMP library that may be different with the compiler's.
+    # Disable the options to build mklml/NGraph and OpenMP together.
+    if(onnxruntime_USE_MKLML)
+      message(FATAL_ERROR "Please use only one of onnxruntime_USE_MKLML, onnxruntime_USE_OPENMP")
+    endif()
+    if(onnxruntime_USE_NGRAPH)
+      message(FATAL_ERROR "Please use only one of onnxruntime_USE_NGRAPH, onnxruntime_USE_OPENMP")
+    endif()
+  else()
+    set(onnxruntime_USE_OPENMP OFF)
   endif()
 endif()
 if(onnxruntime_ENABLE_LTO)
@@ -115,15 +126,6 @@ endif()
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
 file (STRINGS "${REPO_ROOT}/VERSION_NUMBER" ORT_VERSION)
-
-if(onnxruntime_USE_OPENMP)
-  find_package(OpenMP)
-  if (OPENMP_FOUND)
-    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-    add_definitions(-DUSE_OPENMP)
-  endif()
-endif()
 
 # Guarantee that the Eigen code that you are #including is licensed
 # under the MPL2 and possibly more permissive licenses (like BSD).
@@ -299,14 +301,14 @@ get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
 set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
-add_subdirectory(external/gsl EXCLUDE_FROM_ALL)
 add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
 set_target_properties(re2 PROPERTIES FOLDER "External/re2")
-add_library(gsl ALIAS GSL)
 
 # bounds checking behavior.
 # throw instead of calling terminate if there's a bounds checking violation.
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGSL_THROW_ON_CONTRACT_VIOLATION")
+# we make it through via a handler so CUDA does not complain
+# The following -DGSL macros are recognized by gsl-lite along with -Dgsl macros
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Dgsl_CONFIG_CONTRACT_VIOLATION_THROWS")
 # no bounds checking in release build so no perf cost
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DGSL_UNENFORCED_ON_CONTRACT_VIOLATION")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -DGSL_UNENFORCED_ON_CONTRACT_VIOLATION")
@@ -324,7 +326,7 @@ function(onnxruntime_add_include_to_target dst_target)
     endforeach()
 endfunction()
 
-set(onnxruntime_EXTERNAL_DEPENDENCIES gsl onnx_proto re2)
+set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto re2)
 
 # TVM
 if (onnxruntime_USE_TVM)
@@ -460,6 +462,10 @@ else()
 endif()
 
 if (onnxruntime_USE_JEMALLOC)
+  if (onnxruntime_USE_MIMALLOC)
+    message( FATAL_ERROR "You cannot specify both jemalloc and mimalloc." )
+  endif()
+
   if (Win32)
     message( FATAL_ERROR "Jemalloc is not supported on Windows." )
   endif()
@@ -470,7 +476,7 @@ if (onnxruntime_USE_JEMALLOC)
 endif()
 
 include_directories(
-  ${ONNXRUNTIME_INCLUDE_DIR} 
+  ${ONNXRUNTIME_INCLUDE_DIR}
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
 
@@ -515,10 +521,6 @@ endif()
 
 if(onnxruntime_USE_OPENVINO)
 
-    if(WIN32)
-        message(FATAL_ERROR "Building on Windows using OpenVINO execution provider is not supported")
-    endif()
-
     add_definitions(-DUSE_OPENVINO=1)
 
 	if (onnxruntime_USE_OPENVINO_SOURCE)
@@ -550,6 +552,10 @@ if(onnxruntime_USE_OPENVINO)
 
 	if(onnxruntime_USE_OPENVINO_VAD_M)
 		add_definitions(-DOPENVINO_CONFIG_VAD_M=1)
+    endif()
+
+	if(onnxruntime_USE_OPENVINO_VAD_F)
+		add_definitions(-DOPENVINO_CONFIG_VAD_F=1)
 	endif()
 
 endif()
@@ -609,6 +615,8 @@ endif()
 if (onnxruntime_USE_TENSORRT)
   if (WIN32)
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:nvinfer.dll")
+  else()
+    set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
   endif()
 endif()
 

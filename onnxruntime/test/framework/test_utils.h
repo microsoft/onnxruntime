@@ -10,7 +10,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/framework/ml_value.h"
 
-#include "gsl/gsl_algorithm"
+#include "gsl/gsl"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider.h"
@@ -69,7 +69,7 @@ void CreateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, const s
                    OrtValue* p_mlvalue) {
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
+  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type,
                                                               shape,
                                                               alloc);
   if (value.size() > 0) {
@@ -85,7 +85,7 @@ template <typename T>
 void AllocateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, OrtValue* p_mlvalue) {
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
+  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type,
                                                               shape,
                                                               alloc);
   p_mlvalue->Init(p_tensor.release(),

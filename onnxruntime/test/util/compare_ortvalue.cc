@@ -13,6 +13,7 @@
 
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/utils.h"
 #include "Eigen/Core"
 #include "Eigen/src/Core/arch/GPU/Half.h"
 
@@ -284,12 +285,23 @@ bool AreShapesEqual(const std::vector<int64_t>& real_shape, const ::ONNX_NAMESPA
   if (len < 0) return false;
   if (real_shape.size() != static_cast<size_t>(len)) return false;
   for (int i = 0; i != len; ++i) {
-    if (!expected_shape.dim(i).has_dim_value()) {
-      // symbolic shape, cannot validate it right now, assume it matches every thing
-      continue;
+    const auto& dim = expected_shape.dim(i);
+    switch (dim.value_case()) {
+      case ONNX_NAMESPACE::TensorShapeProto::Dimension::kDimValue:
+        if (dim.dim_value() != real_shape[i]) return false;
+        break;
+      case ONNX_NAMESPACE::TensorShapeProto::Dimension::kDimParam:
+        // symbolic shape, cannot validate it right now, assume it matches every thing
+        // fall through
+      case ONNX_NAMESPACE::TensorShapeProto::Dimension::VALUE_NOT_SET:
+        // Value not set is treated as can not be validated
+        continue;
+        break;
+      // This is for unlikely case when we add new oneof value
+      default:
+        assert(false);
+        break;
     }
-    ::google::protobuf::int64 d = expected_shape.dim(i).dim_value();
-    if (d != real_shape[i]) return false;
   }
   return true;
 }

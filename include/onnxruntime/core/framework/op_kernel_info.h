@@ -8,8 +8,7 @@
 #include "core/framework/ml_value.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph_viewer.h"
-#include "gsl/span"
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 namespace onnxruntime {
 
@@ -32,7 +31,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   OpKernelInfo(const OpKernelInfo& other);
 
-  const OrtMemoryInfo& GetAllocatorInfo(int device_id, OrtMemType mem_type) const;
+  const OrtMemoryInfo& GetMemoryInfo(int device_id, OrtMemType mem_type) const;
 
   AllocatorPtr GetAllocator(int device_id, OrtMemType mem_type) const;
 

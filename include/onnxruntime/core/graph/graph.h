@@ -19,8 +19,7 @@
 #include "core/graph/node_arg.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/function.h"
-#include "gsl/gsl_util"
-#include "gsl/pointers"
+#include "gsl/gsl"
 
 namespace onnxruntime {
 class Graph;
@@ -252,6 +251,7 @@ class Node {
   ADD_ATTR_INTERFACES(std::string)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TensorProto)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::GraphProto)
+  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::SparseTensorProto)
 
   /** Remove the specified attribute from this Node */
   bool ClearAttribute(const std::string& attr_name);
@@ -318,7 +318,7 @@ class Node {
   */
   class Definitions {
    public:
-    Definitions() noexcept = default;
+    Definitions() = default;
 
     /** The Node's explicit input definitions. */
     std::vector<NodeArg*> input_defs;
@@ -518,6 +518,14 @@ class Graph {
     return graph_inputs_including_initializers_;
   }
 
+  /** Gets the Graph inputs that are initializers
+  These are overridable initializers. This is a difference between 
+  graph_inputs_including_initializers_ and graph_inputs_excluding_initializers_
+  @remarks Contains no nullptr values. */
+  const std::vector<const NodeArg*>& GetOverridableInitializers () const {
+    return graph_overridable_initializers_;
+  }
+
   /** Gets the Graph outputs.
   @remarks Contains no nullptr values.*/
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return graph_outputs_; }
@@ -588,7 +596,7 @@ class Graph {
       return *(iter->second);
     }
 
-    auto result = node_args_.insert(std::make_pair(name, std::make_unique<NodeArg>(name, p_arg_type)));
+    auto result = node_args_.insert(std::make_pair(name, onnxruntime::make_unique<NodeArg>(name, p_arg_type)));
     return *(result.first->second);
   }
 
@@ -762,12 +770,21 @@ class Graph {
   /** Returns the mutable parent graph if this is a subgraph */
   Graph* MutableParentGraph() { return parent_graph_; }
 
+  /** Returns the Node containing the GraphProto for this Graph instance if IsSubgraph is true */
+  const Node* ParentNode() const { return parent_node_; }
+
+  /** Returns true if the name is for a value that is coming from outer scope */
+  bool IsOuterScopeValue(const std::string& name) const {
+    return resolve_context_.outer_scope_node_args.find(name) != resolve_context_.outer_scope_node_args.cend();
+  }
+
   /** Construct a Graph instance for a subgraph that is created from a GraphProto attribute in a Node.
   Inherits some properties from the parent graph.
-  @param parent_graph The Graph containing the Node which has a GraphProto attribute.
+  @param parent_graph The Graph containing the Node that has the GraphProto attribute.
+  @param parent_node The Node that has the GraphProto attribute.
   @param subgraph_proto The GraphProto from the Node attribute.
   */
-  Graph(Graph& parent_graph, ONNX_NAMESPACE::GraphProto& subgraph_proto);
+  Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::GraphProto& subgraph_proto);
 
   virtual ~Graph();
 
@@ -794,6 +811,7 @@ class Graph {
         Version ir_version,
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         Graph* parent_graph,
+        const Node* parent_node,
         const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
 
   // Add node with specified <node_proto>.
@@ -845,6 +863,9 @@ class Graph {
 
   // Initialize all the graph inputs, initializers and outputs
   common::Status InitInputsInitializersOutputs();
+
+  // Initialize overridable initializers container
+  void ComputeOverridableInitializers();
 
   // recursively accumulate and set the outer scope node args in the resolve context for all subgraphs
   // so they can be used to resolve outer scope dependencies when running BuildConnections for the subgraphs.
@@ -959,6 +980,10 @@ class Graph {
   // Graph inputs excluding initializers.
   std::vector<const NodeArg*> graph_inputs_excluding_initializers_;
 
+  // Overridable Initializers. The difference between graph_inputs_including_initializers_
+  // and graph_inputs_excluding_initializers_
+  std::vector<const NodeArg*> graph_overridable_initializers_;
+
   // Graph outputs.
   std::vector<const NodeArg*> graph_outputs_;
   bool graph_outputs_manually_set_ = false;
@@ -982,6 +1007,8 @@ class Graph {
 
   // the parent graph if this is a subgraph.
   Graph* parent_graph_;
+  // the node containing the graph if parent_graph_ is not nullptr
+  const Node* parent_node_;
 
   // NodeArgs that come from outer scope. Used when building a graph so that
   // these don't get recorded as graph inputs in the GraphProto.

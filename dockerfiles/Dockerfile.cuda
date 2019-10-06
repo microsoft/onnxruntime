@@ -4,8 +4,8 @@
 # --------------------------------------------------------------
 # Dockerfile to run ONNXRuntime with CUDA, CUDNN integration
 
-# nVidia cuda 10.0 Base Image
-FROM nvidia/cuda:10.0-cudnn7-devel
+# nVidia cuda 10.1 Base Image
+FROM nvidia/cuda:10.1-cudnn7-devel
 MAINTAINER Vinitra Swamy "viswamy@microsoft.com"
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
@@ -17,10 +17,9 @@ RUN apt-get update &&\
 WORKDIR /code
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:/opt/miniconda/bin:${PATH}
 
-# Prepare onnxruntime repository & build onnxruntime with TensorRT
-ADD scripts /tmp/scripts
-RUN /bin/sh /tmp/scripts/install_common_deps.sh && \
-    git clone --single-branch --branch ${ONNXRUNTIME_SERVER_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
+# Prepare onnxruntime repository & build onnxruntime with CUDA
+RUN git clone --single-branch --branch ${ONNXRUNTIME_SERVER_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
+    /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh &&\
     cp onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt &&\
     cp onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt &&\
     cd onnxruntime &&\

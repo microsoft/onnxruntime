@@ -19,7 +19,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include <gsl/gsl_byte>
+#include <gsl/gsl>
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
@@ -109,7 +109,12 @@ struct TTypeProto : ONNX_NAMESPACE::TypeProto {
 
 // Variable template for ONNX_NAMESPACE::TensorProto_DataTypes, s_type_proto<float>, etc..
 template <typename T>
-const TTypeProto<T> s_type_proto;
+struct TTensorType {
+  static const TTypeProto<T> s_type_proto;
+};
+
+template <typename T>
+const TTypeProto<T> TTensorType<T>::s_type_proto;
 
 //TypeProto for map<TKey, TVal>
 template <typename TKey, typename TVal>
@@ -122,7 +127,12 @@ struct MTypeProto : ONNX_NAMESPACE::TypeProto {
 };
 
 template <typename TKey, typename TVal>
-const MTypeProto<TKey, TVal> s_map_type_proto;
+struct MMapType {
+  static const MTypeProto<TKey, TVal> s_map_type_proto;
+};
+
+template <typename TKey, typename TVal>
+const MTypeProto<TKey, TVal> MMapType<TKey, TVal>::s_map_type_proto;
 
 //TypeProto for vector<map<TKey, TVal>>
 template <typename TKey, typename TVal>
@@ -136,7 +146,12 @@ struct VectorOfMapTypeProto : ONNX_NAMESPACE::TypeProto {
 };
 
 template <typename TKey, typename TVal>
-const VectorOfMapTypeProto<TKey, TVal> s_vec_map_type_proto;
+struct VectorOfMapType {
+  static const VectorOfMapTypeProto<TKey, TVal> s_vec_map_type_proto;
+};
+
+template <typename TKey, typename TVal>
+const VectorOfMapTypeProto<TKey, TVal> VectorOfMapType<TKey, TVal>::s_vec_map_type_proto;
 
 // To use OpTester:
 //  1. Create one with the op name
@@ -181,39 +196,38 @@ class OpTester {
   void AddInput(const char* name, const T& val) {
     auto mltype = DataTypeImpl::GetType<T>();
     ORT_ENFORCE(mltype != nullptr, "T must be a registered cpp type");
-    auto ptr = std::make_unique<T>(val);
+    auto ptr = onnxruntime::make_unique<T>(val);
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
-    input_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>()});
+    input_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(), optional<float>()));
   }
 
   template <typename T>
   void AddInput(const char* name, T&& val) {
     auto mltype = DataTypeImpl::GetType<T>();
     ORT_ENFORCE(mltype != nullptr, "T must be a registered cpp type");
-    auto ptr = std::make_unique<T>(std::move(val));
+    auto ptr = onnxruntime::make_unique<T>(std::move(val));
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
-    input_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>()});
+    input_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(), optional<float>()));
   }
-
 
   template <typename TKey, typename TVal>
   void AddInput(const char* name, const std::map<TKey, TVal>& val) {
-    std::unique_ptr<std::map<TKey, TVal>> ptr = std::make_unique<std::map<TKey, TVal>>(val);
+    std::unique_ptr<std::map<TKey, TVal>> ptr = onnxruntime::make_unique<std::map<TKey, TVal>>(val);
     OrtValue value;
     value.Init(ptr.release(),
                DataTypeImpl::GetType<std::map<TKey, TVal>>(),
                DataTypeImpl::GetType<std::map<TKey, TVal>>()->GetDeleteFunc());
-    input_data_.push_back({{name, &s_map_type_proto<TKey, TVal>}, value, optional<float>(), optional<float>()});
+    input_data_.push_back(Data(NodeArg(name, &MMapType<TKey, TVal>::s_map_type_proto), std::move(value), optional<float>(), optional<float>()));
   }
 
   template <typename T>
   void AddMissingOptionalInput() {
     std::string name;  // empty == input doesn't exist
-    input_data_.push_back({{name, &s_type_proto<T>}, {}, optional<float>(), optional<float>()});
+    input_data_.push_back(Data(NodeArg(name, &TTensorType<T>::s_type_proto), OrtValue(), optional<float>(), optional<float>()));
   }
 
   template <typename T>
@@ -229,7 +243,7 @@ class OpTester {
   template <typename T>
   void AddMissingOptionalOutput() {
     std::string name;  // empty == input doesn't exist
-    output_data_.push_back({{name, &s_type_proto<T>}, {}, optional<float>(), optional<float>()});
+    output_data_.push_back(Data(NodeArg(name, &TTensorType<T>::s_type_proto), OrtValue(), optional<float>(), optional<float>()));
   }
 
   // Add other registered types, possibly experimental
@@ -237,33 +251,33 @@ class OpTester {
   void AddOutput(const char* name, const T& val) {
     auto mltype = DataTypeImpl::GetType<T>();
     ORT_ENFORCE(mltype != nullptr, "T must be a registered cpp type");
-    auto ptr = std::make_unique<T>(val);
+    auto ptr = onnxruntime::make_unique<T>(val);
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
-    output_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>()});
+    output_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(), optional<float>()));
   }
 
   template <typename T>
   void AddOutput(const char* name, T&& val) {
     auto mltype = DataTypeImpl::GetType<T>();
     ORT_ENFORCE(mltype != nullptr, "T must be a registered cpp type");
-    auto ptr = std::make_unique<T>(std::move(val));
+    auto ptr = onnxruntime::make_unique<T>(std::move(val));
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
-    output_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>()});
+    output_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(), optional<float>()));
   }
 
   // Add non tensor output
   template <typename TKey, typename TVal>
   void AddOutput(const char* name, const std::vector<std::map<TKey, TVal>>& val) {
-    auto ptr = std::make_unique<std::vector<std::map<TKey, TVal>>>(val);
+    auto ptr = onnxruntime::make_unique<std::vector<std::map<TKey, TVal>>>(val);
     OrtValue ml_value;
     ml_value.Init(ptr.release(),
                   DataTypeImpl::GetType<std::vector<std::map<TKey, TVal>>>(),
                   DataTypeImpl::GetType<std::vector<std::map<TKey, TVal>>>()->GetDeleteFunc());
-    output_data_.push_back({{name, &s_vec_map_type_proto<TKey, TVal>}, ml_value, optional<float>(), optional<float>()});
+    output_data_.push_back(Data(NodeArg(name, &VectorOfMapType<TKey, TVal>::s_vec_map_type_proto), std::move(ml_value), optional<float>(), optional<float>()));
   }
 
   void AddCustomOpRegistry(std::shared_ptr<CustomRegistry> registry) {
@@ -304,6 +318,10 @@ class OpTester {
     OrtValue data_;
     optional<float> relative_error_;
     optional<float> absolute_error_;
+    Data(onnxruntime::NodeArg&& def, OrtValue&& data, optional<float>&& rel, optional<float>&& abs) : 
+      def_(std::move(def)), data_(std::move(data)), relative_error_(std::move(rel)), absolute_error_(abs) {}
+    Data(Data&&) = default;
+    Data& operator=(Data&&) = default;
   };
 
  protected:
@@ -336,9 +354,9 @@ class OpTester {
                   " input values doesn't match tensor size of ", shape.Size());
 
       auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-      auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
-                                               shape,
-                                               allocator);
+      auto p_tensor = onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
+                                                       shape,
+                                                       allocator);
 
       auto* data_ptr = p_tensor->template MutableData<T>();
       for (int64_t i = 0; i < values_count; i++) {
@@ -354,7 +372,7 @@ class OpTester {
       TTypeProto<T> type_proto(add_shape_to_tensor_data_ ? &dims_for_proto : nullptr);
       OrtValue value;
       value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-      data.push_back({{name, &type_proto}, value, optional<float>(), optional<float>()});
+      data.push_back(Data(NodeArg(name, &type_proto), std::move(value), optional<float>(), optional<float>()));
       if (is_initializer)
         initializer_index_.push_back(data.size() - 1);
     } catch (const std::exception& ex) {

@@ -182,14 +182,14 @@ jobs:
       displayName: 'Setup VS2017 env vars'
       inputs:
         filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars64.bat'
-        arguments: 'amd64 -vcvars_ver=14.11'
+        arguments: 'amd64'
         modifyEnvironment: true
 
     - task: BatchScript@1
       displayName: 'Run build script'
       inputs:
         filename: 'build.bat'
-        arguments: ' --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10_trt515dll"
+        arguments: ' --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10_trt6015dll"
       --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --build_dir $(buildDirectory) --config Release --use_openmp --build_wheel'
         workingFolder: "$(Build.SourcesDirectory)"
 

@@ -62,13 +62,12 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   // kernel
-  int device_id = GetDeviceId();
   TensorPitches input_pitches(X_dims);
-  CudaAsyncBuffer<int64_t> input_strides(this, device_id, rank);
+  CudaAsyncBuffer<int64_t> input_strides(this, rank);
   gsl::span<int64_t> input_stride_span = input_strides.CpuSpan();
 
   TensorPitches output_pitches(Y_dims);
-  CudaAsyncBuffer<fast_divmod> output_div_pitches(this, device_id, rank);
+  CudaAsyncBuffer<fast_divmod> output_div_pitches(this, rank);
   gsl::span<fast_divmod> div_strides_span = output_div_pitches.CpuSpan();
 
   for (int i = 0; i < rank; ++i) {
@@ -81,7 +80,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
   size_t output_count = Y->Shape().Size();
 
   if (is_resize) {
-    CudaAsyncBuffer<float> scales_vals(this, device_id, scales);
+    CudaAsyncBuffer<float> scales_vals(this, scales);
     scales_vals.CopyToGpu();
     ResizeImpl(mode_,
                rank,
@@ -93,7 +92,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
                reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
                output_count);
   } else {
-    CudaAsyncBuffer<fast_divmod> scales_div(this, device_id, rank);
+    CudaAsyncBuffer<fast_divmod> scales_div(this, rank);
     gsl::span<fast_divmod> scales_div_span = scales_div.CpuSpan();
 
     for (int i = 0; i < rank; ++i) {

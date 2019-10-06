@@ -57,8 +57,8 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
       return Status::OK();
     }
 
-    auto conv_B = std::make_unique<Initializer>(conv_B_tensor_proto);
-    auto add_B = std::make_unique<Initializer>(add_B_tensor_proto);
+    auto conv_B = onnxruntime::make_unique<Initializer>(conv_B_tensor_proto);
+    auto add_B = onnxruntime::make_unique<Initializer>(add_B_tensor_proto);
 
     if (conv_B->size() != add_B->size()) {
       return Status::OK();
@@ -105,7 +105,7 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
 }
 
 bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11}) ||
       node.GetOutputEdgesCount() != 1) {
     return false;
   }
