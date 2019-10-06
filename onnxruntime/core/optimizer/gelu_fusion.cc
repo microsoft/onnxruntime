@@ -13,6 +13,11 @@ namespace onnxruntime {
 
 static bool CheckConstantInput(const Graph& graph, const NodeArg& input_arg, float expected_value) {
   auto shape = input_arg.Shape();
+  if (shape == nullptr) {
+    // shape inferencing wasn't able to populate shape information for this NodeArg
+    return false;
+  }
+
   auto dim_size = shape->dim_size();
   if (dim_size != 0) {
     // only check scalar.
