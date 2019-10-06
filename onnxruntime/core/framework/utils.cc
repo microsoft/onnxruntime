@@ -113,8 +113,8 @@ common::Status AllocateHelper(const IExecutionProvider& execution_provider, cons
   }
 
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(fetched_tensor.DataType(),
-                                                              fetched_tensor.Shape(),
-                                                              allocator);
+                                                                      fetched_tensor.Shape(),
+                                                                      allocator);
   output_mlvalue.Init(p_tensor.release(),
                       DataTypeImpl::GetType<Tensor>(),
                       DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
@@ -439,7 +439,13 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
   if (sequential_execution) {
     p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag));
   } else {
-    p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
+    auto* p_inter_op_thread_pool = session_state.GetInterOpThreadPool();
+    if (!p_inter_op_thread_pool) {
+      LOGS(logger, WARNING) << "Only one thread was configured for parallel execution. Hence will use sequential execution.";
+      p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag));
+    } else {
+      p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
+    }
   }
 
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
