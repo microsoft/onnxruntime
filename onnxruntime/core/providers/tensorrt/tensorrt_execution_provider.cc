@@ -604,10 +604,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
       // Run TRT inference
       std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
-      if (!trt_state->context->enqueueV2(&buffers[0], nullptr, nullptr)) {
-        // return FAIL rather than EP_FAIL because the enqueue failure may be transient.
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP Execution Context Enqueue Failed.");
-      }
+      trt_state->context->enqueueV2(&buffers[0], nullptr, nullptr);
 
       // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
       for (int i = 0, end = num_binding_outputs; i < end; ++i) {
