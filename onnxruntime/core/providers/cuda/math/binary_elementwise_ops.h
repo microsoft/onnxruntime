@@ -206,7 +206,7 @@ class VariadicInputBase : public CudaKernel {
                               CudaT* output_data,
                               size_t count);
 
-  Status ComputeMethod(OpKernelContext* context, ImplCompute Impl_Compute) const override;
+  Status ComputeMethod(OpKernelContext* context, ImplCompute Impl_Compute) const;
 };
 
 // Sum allows varadic inputs, and it uses binary elementwise Add in implementation
