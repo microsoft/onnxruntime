@@ -57,8 +57,8 @@ TEST(MathOpTest, Clip) {
                          -5.0f, 0.0f, 5.0f,
                          -5.0f, 2.0f, 5.0f});
 
-  // nGraph does not support Clip opset 11 yet.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  // nGraph and Tensorrt does not support Clip opset 11 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
 }
 
 }  // namespace test

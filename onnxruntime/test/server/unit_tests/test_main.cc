@@ -10,7 +10,7 @@ GTEST_API_ int main(int argc, char** argv) {
 
   try {
     onnxruntime::server::test::TestServerEnvironment server_env{};
-    onnxruntime::test::TestEnvironment env{argc, argv, true};
+    onnxruntime::test::TestEnvironment env{argc, argv, false};
     status = RUN_ALL_TESTS();
   } catch (const std::exception& ex) {
     std::cerr << ex.what();

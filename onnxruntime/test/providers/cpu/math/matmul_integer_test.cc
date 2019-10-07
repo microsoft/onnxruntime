@@ -74,11 +74,11 @@ void RunMatMulIntegerU8S8Test(const int M, const int N, const int K) {
 
 TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8) {
   // GEMV
-  RunMatMulIntegerU8S8Test(1, 2, 64);
-  RunMatMulIntegerU8S8Test(1, 2, 16);
-  RunMatMulIntegerU8S8Test(1, 1, 288);
   RunMatMulIntegerU8S8Test(1, 1, 32);
   RunMatMulIntegerU8S8Test(1, 1, 260);
+  RunMatMulIntegerU8S8Test(1, 1, 288);
+  RunMatMulIntegerU8S8Test(1, 2, 16);
+  RunMatMulIntegerU8S8Test(1, 2, 64);
   // GEMM
   RunMatMulIntegerU8S8Test(2, 2, 40);
   RunMatMulIntegerU8S8Test(2, 48, 33);

@@ -394,10 +394,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"top_k_negative_axis", "TopK(11) not implemented yet"},
       {"unique_not_sorted_without_axis", "Expected data for 'Y' is incorrect and in sorted order."},
       {"cumsum_1d_reverse_exclusive", "only failing linux GPU CI. Likely build error."},
-      {"range_float_type_positive_delta", "not implemented yet"},
-      {"range_float_type_positive_delta_expanded", "not implemented yet"},
-      {"range_int32_type_negative_delta", "not implemented yet"},
-      {"range_int32_type_negative_delta_expanded", "not implemented yet"},
       {"det_2d", "not implemented yet"},
       {"det_nd", "not implemented yet"},
       {"resize_downsample_scales_cubic_A_n0p5_exclude_outside", "not implemented yet"},
@@ -436,14 +432,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"onehot_with_negative_axis", "OneHot(11) not implemented yet"},
       {"onehot_with_axis", "OneHot(11) not implemented yet"},
       {"onehot_negative_indices", "OneHot(11) not implemented yet"},
-      {"bitshift_right_uint8", "BitShift(11) not implemented yet"},
-      {"bitshift_right_uint64", "BitShift(11) not implemented yet"},
-      {"bitshift_right_uint32", "BitShift(11) not implemented yet"},
-      {"bitshift_right_uint16", "BitShift(11) not implemented yet"},
-      {"bitshift_left_uint8", "BitShift(11) not implemented yet"},
-      {"bitshift_left_uint64", "BitShift(11) not implemented yet"},
-      {"bitshift_left_uint32", "BitShift(11) not implemented yet"},
-      {"bitshift_left_uint16", "BitShift(11) not implemented yet"},
+      {"bitshift_right_uint8", "BitShift(11) uint8 support not enabled currently"},
+      {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
+      {"bitshift_left_uint8", "BitShift(11) uint8 support not enabled currently"},
+      {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"reflect_pad", "test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests"},
       {"edge_pad", "test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests"},
 };
@@ -500,6 +492,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"tf_mobilenet_v1_1.0_224", "result mismatch"});
   broken_tests.insert({"mobilenetv2-1.0", "result mismatch"});
   broken_tests.insert({"candy", "result mismatch"});
+  broken_tests.insert({"range_float_type_positive_delta_expanded", "get unknown exception from MKLDNN EP"});
+  broken_tests.insert({"range_int32_type_negative_delta_expanded", "get unknown exception from MKLDNN EP"});
 #endif
 
 #ifdef USE_OPENVINO
@@ -513,6 +507,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"div", "will be fixed in the next release"});
 #endif
 #endif
+#endif
+
+#ifdef USE_NNAPI
+  broken_tests.insert({"scan9_sum", "Error with the extra graph"});
+  broken_tests.insert({"scan_sum", "Error with the extra graph"});
+  broken_tests.insert({"mvn_expanded", "Failed to find kernel for MemcpyFromHost(1) (node Memcpy_1)"});
 #endif
 
 #ifdef USE_TENSORRT

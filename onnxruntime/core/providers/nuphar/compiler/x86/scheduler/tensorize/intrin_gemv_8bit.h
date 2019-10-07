@@ -2,16 +2,16 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "tensorize_base.h"
+#include "core/providers/nuphar/compiler/x86/scheduler/tensorize/tensorize_base.h"
 
 namespace onnxruntime {
 namespace nuphar {
 
-class Gemv8bitTensorization : public tvm_codegen::TensorizeBase {
+class TensorizeIntGemv8bit : public tvm_codegen::TensorizeBase {
  public:
-  Gemv8bitTensorization(const std::string& name, const std::vector<int32_t>& vshape);
+  TensorizeIntGemv8bit(const std::string& name, const std::vector<int32_t>& vshape);
 
-  virtual ~Gemv8bitTensorization() = default;
+  virtual ~TensorizeIntGemv8bit() = default;
 
   tvm::TensorIntrin CreateTensorIntrin() override;
 };

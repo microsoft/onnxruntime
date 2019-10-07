@@ -138,6 +138,7 @@ TEST(CApiTest, load_float_tensor_with_external_data) {
 }
 
 #if defined(__amd64__) || defined(_M_X64)
+#ifndef __ANDROID__
 #ifdef NDEBUG
 TEST(CApiTest, load_huge_tensor_with_external_data) {
   FILE* fp;
@@ -185,6 +186,7 @@ TEST(CApiTest, load_huge_tensor_with_external_data) {
     OrtRunCallback(deleter.release());
   }
 }
+#endif
 #endif
 #endif
 }  // namespace test
