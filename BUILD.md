@@ -334,13 +334,13 @@ index 7dfa97c..6d99e71 100644
  set_property(TARGET LLVMSupport PROPERTY LLVM_SYSTEM_LIBS "${system_libs}")
 ```
    * Linux
-   Download llvm source code 6.0.1 and unzip to /llvm/source/path, then install to /llvm/install/path
+   Download llvm source code 9.0.0 and unzip to /llvm/source/path, then install to /llvm/install/path
    ```
    cd /llvm/source/path
    mkdir build
    cd build
    cmake .. -DLLVM_TARGETS_TO_BUILD=X86 -DCMAKE_BUILD_TYPE=Release
-   cmake --build.
+   make -j$(nproc)
    cmake -DCMAKE_INSTALL_PREFIX=/llvm/install/path -DBUILD_TYPE=Release -P cmake_install.cmake
    ```
 
@@ -350,6 +350,8 @@ index 7dfa97c..6d99e71 100644
 build.bat --use_tvm --use_llvm --llvm_path=\llvm\install\path\lib\cmake\llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
+* These instructions build the release flavor. The Debug build of LLVM would be needed to build with the Debug flavor of ONNX Runtime.
+
 ##### Linux:
 ```
 ./build.sh --use_tvm --use_llvm --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
@@ -357,8 +359,6 @@ build.bat --use_tvm --use_llvm --llvm_path=\llvm\install\path\lib\cmake\llvm --u
 
 Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#nuphar-public-preview)
 
-#### Notes
-* These instructions build the release flavor. The Debug build of LLVM would be needed to build with the Debug flavor of ONNX Runtime.
 ---
 
 ## Options
