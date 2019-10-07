@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gather_elements.h"
+#include "onnxruntime_config.h"
 
 namespace onnxruntime {
 
@@ -124,7 +125,12 @@ static std::vector<int64_t> parse_and_validate_indices_tensor(const Tensor* indi
 
   return indices_data;
 }
-
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#ifdef HAS_CLASS_MEMACCESS
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
+#endif
+#endif
 template<bool is_string, typename T>
 static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
                                       Tensor* output_tensor, int64_t axis) {
@@ -203,7 +209,9 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
     }
   }
 }
-
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 Status GatherElements::Compute(OpKernelContext* context) const {
   const Tensor* input_tensor = context->Input<Tensor>(0);
   const TensorShape& input_data_shape = input_tensor->Shape();
