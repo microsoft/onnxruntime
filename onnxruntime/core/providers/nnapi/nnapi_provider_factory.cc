@@ -16,7 +16,7 @@ struct NnapiProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> NnapiProviderFactory::CreateProvider() {
-  return std::make_unique<NnapiExecutionProvider>();
+  return onnxruntime::make_unique<NnapiExecutionProvider>();
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi() {

@@ -45,6 +45,9 @@ void Predict(const std::string& name,
   auto logger = env->GetLogger(context.request_id);
   logger->info("Model Name: {}, Version: {}, Action: {}", name, version, action);
 
+  auto effective_name = name.empty() ? "default" : name;
+  auto effective_version = version.empty() ? "1" : version;
+
   if (!context.client_request_id.empty()) {
     logger->info("{}: [{}]", util::MS_CLIENT_REQUEST_ID_HEADER, context.client_request_id);
   }
@@ -72,7 +75,7 @@ void Predict(const std::string& name,
   PredictResponse predict_response{};
   // Log inference (prediction only) time, do not record json serde
   auto begin = std::chrono::high_resolution_clock::now();
-  auto status = executor.Predict(name, version, predict_request, predict_response);
+  auto status = executor.Predict(effective_name, effective_version, predict_request, predict_response);
   auto end = std::chrono::high_resolution_clock::now();
   if (!status.ok()) {
     GenerateErrorResponse(logger, GetHttpStatusCode((status)), status.error_message(), context);

@@ -149,6 +149,7 @@ add_library(onnxruntime_server_http_core_lib STATIC
   ${onnxruntime_server_http_core_lib_srcs})
 target_include_directories(onnxruntime_server_http_core_lib
   PUBLIC
+  ${ONNXRUNTIME_ROOT}
   ${ONNXRUNTIME_ROOT}/server/http/core
   ${ONNXRUNTIME_ROOT}/server/core
   ${Boost_INCLUDE_DIR}
@@ -163,9 +164,10 @@ target_link_libraries(onnxruntime_server_http_core_lib PRIVATE
 
 # Server library
 add_library(onnxruntime_server_lib ${onnxruntime_server_lib_srcs})
-onnxruntime_add_include_to_target(onnxruntime_server_lib gsl onnx_proto server_proto)
+onnxruntime_add_include_to_target(onnxruntime_server_lib onnx_proto server_proto)
 target_include_directories(onnxruntime_server_lib PRIVATE
   ${ONNXRUNTIME_INCLUDE_DIR}
+  ${ONNXRUNTIME_ROOT}
   ${ONNXRUNTIME_ROOT}/server
   ${ONNXRUNTIME_ROOT}/server/http
   ${ONNXRUNTIME_ROOT}/server/logging
@@ -215,7 +217,7 @@ set(onnxruntime_LATEST_COMMIT_ID "default" CACHE STRING "The latest commit i
 target_compile_definitions(${SERVER_APP_NAME} PUBLIC LATEST_COMMIT_ID="${onnxruntime_LATEST_COMMIT_ID}")
 message(STATUS "ONNX Runtime Server latest commit id is: ${onnxruntime_LATEST_COMMIT_ID}")
 
-onnxruntime_add_include_to_target(${SERVER_APP_NAME} onnxruntime_session onnxruntime_server_lib gsl onnx onnx_proto server_proto)
+onnxruntime_add_include_to_target(${SERVER_APP_NAME} onnxruntime_session onnxruntime_server_lib onnx onnx_proto server_proto)
 
 target_include_directories(${SERVER_APP_NAME} PRIVATE
     ${ONNXRUNTIME_INCLUDE_DIR}

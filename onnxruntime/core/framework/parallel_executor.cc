@@ -19,7 +19,7 @@
 namespace onnxruntime {
 
 ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool& terminate_flag)
-    : out_standings_(0), terminate_flag_{terminate_flag}, executor_pool_(session_state.GetInterOpThreadPool()) {
+    : out_standings_(0), terminate_flag_(terminate_flag), executor_pool_(session_state.GetInterOpThreadPool()) {
   auto graph_viewer = session_state.GetGraphViewer();
   node_refs_.resize(graph_viewer->MaxNodeIndex());
   for (auto& node : graph_viewer->Nodes()) {
@@ -38,7 +38,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
     tp = session_state.Profiler().StartTime();
   }
 
-  root_frame_ = std::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
+  root_frame_ = onnxruntime::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
                                                  fetch_allocators, session_state);
   //std::cout << "start nodes:" << std::endl;
   for (auto node_index : session_state.GetGraphViewer()->GetRootNodes()) {
@@ -94,7 +94,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
     }
 
     if (all_tensors) {
-      auto mem_patterns = std::make_unique<MemoryPatternGroup>();
+      auto mem_patterns = onnxruntime::make_unique<MemoryPatternGroup>();
       ORT_RETURN_IF_ERROR(root_frame_->GeneratePatterns(mem_patterns.get()));
       ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(input_shapes, std::move(mem_patterns)));
     }

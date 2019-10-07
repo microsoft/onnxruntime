@@ -11,9 +11,9 @@
 namespace onnxruntime {
 namespace nuphar {
 
-static tvm::Array<tvm::Expr> GetOutputShape(const Node& node,
-                                            const PoolAttributes& pool_attrs,
-                                            tvm_codegen::CodeGenContext& ctx_codegen) {
+static tvm::Array<tvm::Expr> GetOutputShapeAndPads(const Node& node,
+                                                   PoolAttributes& pool_attrs,
+                                                   tvm_codegen::CodeGenContext& ctx_codegen) {
   const NodeArg* input = node.InputDefs()[0];
   ORT_ENFORCE(input);
   const ONNX_NAMESPACE::TensorShapeProto* shape_proto = input->Shape();
@@ -26,13 +26,14 @@ static tvm::Array<tvm::Expr> GetOutputShape(const Node& node,
   // output channel
   output_shape.push_back(ShapeDimToTvmDim(shape_proto->dim(1), ctx_codegen));
 
+  size_t kernel_sz = pool_attrs.kernel_shape.size();
   if (pool_attrs.global_pooling) {
+    pool_attrs.pads.assign(kernel_sz, 0);
     // skip batch and channel dimensions, so dim starts from 2
     for (size_t dim = 2; dim < num_input_dims; dim++) {
       output_shape.push_back(tvm::make_const(tvm::Int(32), 1));
     }
   } else {
-    size_t kernel_sz = pool_attrs.kernel_shape.size();
     ORT_ENFORCE(num_input_dims > kernel_sz);
     size_t kernel_idx_offset = num_input_dims - kernel_sz;
     for (size_t dim = 0; dim < kernel_sz; dim++) {
@@ -40,13 +41,11 @@ static tvm::Array<tvm::Expr> GetOutputShape(const Node& node,
       ORT_ENFORCE(ShapeHasValue(input, dim + kernel_idx_offset));
       int64_t dim_val = ShapeValue(input, dim + kernel_idx_offset);
       int64_t dim_size = 0;
-      // workaround for const constraints on pool_attrs
-      std::vector<int64_t> pads = pool_attrs.pads;
       pool_attrs.ComputeSizePadDilations(static_cast<int>(dim_val),
                                          pool_attrs.strides[dim],
                                          pool_attrs.kernel_shape[dim],
-                                         &(pads[dim]),
-                                         &(pads[kernel_sz + dim]),
+                                         &(pool_attrs.pads[dim]),
+                                         &(pool_attrs.pads[kernel_sz + dim]),
                                          pool_attrs.dilations[dim],
                                          &dim_size);
       output_shape.push_back(tvm::make_const(tvm::Int(32), dim_size));
@@ -62,6 +61,7 @@ static tvm::Array<tvm::Expr> GetOutputShape(const Node& node,
       tvm_codegen::CodeGenContext& ctx_codegen,                                                   \
       tvm::Array<tvm::Tensor>& outputs) {                                                         \
     ORT_RETURN_IF_NOT(node.OutputDefs().size() == 1, " multiple outputs are not supported yet!"); \
+    ORT_RETURN_IF_NOT(inputs[0]->dtype == HalideIR::Float(32), " non-float32 not supported yet"); \
     ProtoHelperNodeContext ctx(node);                                                             \
     OpNodeProtoHelper<ProtoHelperNodeContext> info(&ctx);                                         \
     int version = ctx_codegen.GetCodeGenHandle()->domain_version_lookup_func(node.Domain());      \
@@ -69,7 +69,7 @@ static tvm::Array<tvm::Expr> GetOutputShape(const Node& node,
     for (auto n : pool_attrs.dilations) {                                                         \
       ORT_RETURN_IF_NOT(n <= 1, "dilations are not supported yet!");                              \
     }                                                                                             \
-    tvm::Array<tvm::Expr> output_shape = GetOutputShape(node, pool_attrs, ctx_codegen);           \
+    tvm::Array<tvm::Expr> output_shape = GetOutputShapeAndPads(node, pool_attrs, ctx_codegen);    \
     tvm::Tensor Y = name(inputs[0], pool_attrs, output_shape);                                    \
     outputs.push_back(Y);                                                                         \
     return Status::OK();                                                                          \

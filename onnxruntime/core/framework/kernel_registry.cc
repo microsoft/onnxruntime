@@ -62,10 +62,10 @@ void TraverseFormalParametersWithTypeProto(const Node& node,
 class TypeBindingResolver {
  public:
   TypeBindingResolver(const Node& node, bool use_lookup_map)
-      : node_{node},
-        type_binding_map_{} {
+      : node_(node),
+        type_binding_map_() {
     if (use_lookup_map) {
-      type_binding_map_ = std::make_unique<TypeBindingMap>();
+      type_binding_map_ = onnxruntime::make_unique<TypeBindingMap>();
       TraverseFormalParametersWithTypeProto(
           node_,
           [](const ONNX_NAMESPACE::OpSchema::FormalParameter&) -> bool { return true; },

@@ -79,6 +79,7 @@ namespace onnxruntime {
   ADD_OP_ITEM(Dropout)         \
   ADD_OP_ITEM(Flatten)         \
   ADD_OP_ITEM(Gather)          \
+  ADD_OP_ITEM(GatherElements)  \
   ADD_OP_ITEM(Gemm)            \
   ADD_OP_ITEM(Identity)        \
   ADD_OP_ITEM(LogSoftmax)      \

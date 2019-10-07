@@ -269,6 +269,16 @@ class Mean_8 final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
+template <typename T>
+class BitShift final : public OpKernel {
+ public:
+  explicit BitShift(const OpKernelInfo& info);
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  bool shift_left_;
+};
+
 // PRelu is activation function, but it's closer to binary elementwise ops in implementation
 template <typename T>
 class PRelu final : public OpKernel {
@@ -298,9 +308,9 @@ class Erf final : public OpKernel {
 };
 
 template <typename T>
-auto MakeEigenArrayMap(Tensor& t) { return EigenVectorArrayMap<T>(t.template MutableData<T>(), t.Shape().Size()); }
+auto MakeEigenArrayMap(Tensor& t) -> EigenVectorArrayMap<T> { return EigenVectorArrayMap<T>(t.template MutableData<T>(), t.Shape().Size()); }
 template <typename T>
-auto MakeEigenArrayMap(const Tensor& t) { return ConstEigenVectorArrayMap<T>(t.template Data<T>(), t.Shape().Size()); }
+auto MakeEigenArrayMap(const Tensor& t) -> ConstEigenVectorArrayMap<T> { return ConstEigenVectorArrayMap<T>(t.template Data<T>(), t.Shape().Size()); }
 
 struct BroadcastIterator {
   size_t AdvanceBy(size_t delta) {
@@ -321,8 +331,8 @@ struct BroadcastIterator {
   }
 
   void Reserve(int64_t max_dims) {
-    deltas_.reserve(max_dims);
-    counts_.reserve(max_dims);
+    deltas_.reserve(static_cast<size_t>(max_dims));
+    counts_.reserve(static_cast<size_t>(max_dims));
   }
 
   void Init(int64_t axis, int64_t largest) {
@@ -535,9 +545,9 @@ struct TensorAllocator {
   }
 
   std::unique_ptr<Tensor> Allocate(const TensorShape& shape) {
-    return std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
-                                    shape,
-                                    allocator_);
+    return onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
+                                            shape,
+                                            allocator_);
   }
 
  private:

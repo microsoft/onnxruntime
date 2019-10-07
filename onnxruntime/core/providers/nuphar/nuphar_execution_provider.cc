@@ -36,6 +36,8 @@ static std::string GetCurrentHostTargetString() {
     return CodeGenTargetX86::LLVM_TARGET_AVX512;
   } else if (cpu_id_info.HasAVX2()) {
     return CodeGenTargetX86::LLVM_TARGET_AVX2;
+  } else if (cpu_id_info.HasAVX()) {
+    return CodeGenTargetX86::LLVM_TARGET_AVX;
   }
   return llvm_target_str;
 #else
@@ -64,40 +66,44 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
       codegen_target_ = CodeGenTarget_AVX512();
     } else if (cpu_id_info.HasAVX2()) {
       codegen_target_ = CodeGenTarget_AVX2();
+    } else if (cpu_id_info.HasAVX()) {
+      codegen_target_ = CodeGenTarget_AVX();
     } else {
-      codegen_target_ = std::make_unique<CodeGenTargetX86>(target_str, 128, 1);  // TODO: use real values
+      codegen_target_ = onnxruntime::make_unique<CodeGenTargetX86>(target_str, 128, 1);  // TODO: use real values
     }
+  } else if (target_str == "avx") {
+    codegen_target_ = CodeGenTarget_AVX();
   } else if (target_str == "avx2") {
     codegen_target_ = CodeGenTarget_AVX2();
   } else if (target_str == "avx512") {
     codegen_target_ = CodeGenTarget_AVX512();
   } else if (target_str != stackvm_target_str) {
-    codegen_target_ = std::make_unique<CodeGenTarget>(target_str);
+    codegen_target_ = onnxruntime::make_unique<CodeGenTarget>(target_str);
   } else {
-    ORT_NOT_IMPLEMENTED("Not supported target, should be one of stackvm/llvm/avx2/avx512.");
+    ORT_NOT_IMPLEMENTED("Not supported target, should be one of stackvm/llvm/avx/avx2/avx512.");
   }
 
   CreateTVMTarget();
 
   tvm_host_target_ = tvm::Target::create(GetCurrentHostTargetString());
   tvm_ctx_.device_type = static_cast<DLDeviceType>(tvm_target_->device_type);
-  tvm_ctx_.device_id = 0; // use the default device id for CPU allocator
+  tvm_ctx_.device_id = 0;  // use the default device id for CPU allocator
 
   whole_graph_shape_infer_ = std::make_shared<ShapeExprContext>();
 
   DeviceAllocatorRegistrationInfo memory_info(
       {OrtMemTypeDefault,
-       [](int /*id*/) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>("Nuphar", OrtAllocatorType::OrtDeviceAllocator)); },
+       [](int /*id*/) { return onnxruntime::make_unique<CPUAllocator>(onnxruntime::make_unique<OrtMemoryInfo>("Nuphar", OrtAllocatorType::OrtDeviceAllocator)); },
        std::numeric_limits<size_t>::max()});
 
   InsertAllocator(CreateAllocator(memory_info, tvm_ctx_.device_id));
 
   // TODO add multi-target support
-  tvm_codegen_manager_ = std::make_unique<TVMCodeGenManager>();
+  tvm_codegen_manager_ = onnxruntime::make_unique<TVMCodeGenManager>();
 
   // Create codegen handle for one target for now
   codegen_handles_.clear();
-  auto handle = std::make_unique<NupharCodeGenHandle>();
+  auto handle = onnxruntime::make_unique<NupharCodeGenHandle>();
   tvm_codegen_manager_->Initialization();
   tvm_codegen_manager_->SetCodeGenHandle(handle.get());
   handle->allocator = GetAllocator(tvm_ctx_.device_id, OrtMemTypeDefault);
@@ -117,7 +123,7 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
   codegen_handles_.push_back(std::move(handle));
 
   // Runtime Handle
-  runtime_handle_ = std::make_unique<nuphar::NupharRuntimeHandle>(tvm_ctx_);
+  runtime_handle_ = onnxruntime::make_unique<nuphar::NupharRuntimeHandle>(tvm_ctx_);
   runtime_handle_->allocator = GetAllocator(tvm_ctx_.device_id, OrtMemTypeDefault);
   runtime_handle_->allow_unaligned_buffers = info.allow_unaligned_buffers;
   runtime_handle_->enable_model_parallelism = false;
@@ -291,7 +297,7 @@ Status NupharExecutionProvider::SaveInitializer(
 
     const TensorShape& shape = TensorShape::ReinterpretBaseType(shape_dims);
     auto data_type = ElementTypeFromProto(proto->data_type());
-    auto t = std::make_unique<Tensor>(
+    auto t = onnxruntime::make_unique<Tensor>(
         data_type,
         shape,
         GetAllocator(0, OrtMemTypeDefault)->Alloc(shape.Size() * data_type->Size()),
@@ -345,7 +351,7 @@ Status NupharExecutionProvider::Compile(
     info.create_state_func =
         [&, node](ComputeContext* ctx, FunctionState* state) {
           std::unique_ptr<NupharKernelState> s =
-              std::make_unique<NupharKernelState>(
+              onnxruntime::make_unique<NupharKernelState>(
                   *node,
                   *ctx,
                   *this);
@@ -391,9 +397,12 @@ LIST_NUPHAR_OPS()
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 6, 8, Cast);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 9, Cast);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 1, Gather);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, GatherElements);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 10, MatMulInteger);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kMSDomain, 1, MatMulInteger16);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 9, Scan);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 9, 10, Scatter);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, ScatterElements);
 
 static void RegisterStandaloneNupharKernels(KernelRegistry& kernel_registry) {
 #define NUPHAR_OP(name, ver, types) \
@@ -411,9 +420,12 @@ static void RegisterStandaloneNupharKernels(KernelRegistry& kernel_registry) {
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 6, 8, Cast)>());
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 9, Cast)>());
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 1, Gather)>());
+  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, GatherElements)>());
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 10, MatMulInteger)>());
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kMSDomain, 1, MatMulInteger16)>());
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 9, Scan)>());
+  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 9, 10, Scatter)>());
+  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, ScatterElements)>());
 }
 
 std::shared_ptr<KernelRegistry> NupharExecutionProvider::GetKernelRegistryInternal() const {

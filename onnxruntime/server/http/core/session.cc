@@ -127,11 +127,6 @@ http::status HttpSession::ExecuteUserFunction(HttpContext& context) {
     context.client_request_id = context.request[util::MS_CLIENT_REQUEST_ID_HEADER].to_string();
   }
 
-  if (path == "/score") {
-    // This is a shortcut since we have only one model instance currently.
-    // This code path will be removed once we start supporting multiple models or multiple versions of one model.
-    path = "/v1/models/default/versions/1:predict";
-  }
 
   auto status = routes_.ParseUrl(context.request.method(), path, model_name, model_version, action, func);
 

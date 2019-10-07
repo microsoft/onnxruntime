@@ -1,9 +1,21 @@
 #pragma once
+
+#include<random>
+
 #include "core/util/math.h"
 #include "test/providers/provider_test_utils.h"
 
-namespace onnxruntime{
-namespace test{
+namespace onnxruntime {
+namespace test {
+
+template <class T>
+inline void FillRandom(std::vector<T>& val, T min, T max) {
+  static std::default_random_engine generator;
+  std::uniform_real_distribution<float> distribution(min, max);
+  for (size_t i = 0; i < val.size(); ++i) {
+    val[i] = T(distribution(generator));
+  }
+}
 
 inline std::pair<float, float> MeanStdev(std::vector<float>& v) {
   float sum = std::accumulate(v.begin(), v.end(), 0.0f);
@@ -19,7 +31,7 @@ inline std::pair<float, float> MeanStdev(std::vector<float>& v) {
 }
 
 inline void Normalize(std::vector<float>& v,
-               std::pair<float, float>& mean_stdev, bool normalize_variance) {
+                      std::pair<float, float>& mean_stdev, bool normalize_variance) {
   float mean = mean_stdev.first;
   float stdev = mean_stdev.second;
 
@@ -31,5 +43,5 @@ inline void Normalize(std::vector<float>& v,
                    std::bind(std::divides<float>(), std::placeholders::_1, stdev));
   }
 }
-}
-}
+}  // namespace test
+}  // namespace onnxruntime
