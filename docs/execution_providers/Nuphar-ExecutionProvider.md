@@ -77,7 +77,7 @@ NGEMM has default tiling parameters, but users can overwrite them through enviro
 * NUPHAR_IGEMM_PERMUTE
 
     This enviornment variable is to control the loop permutation in GEMM.
-    The default is to not apply any loop permutation. Other options are "inner/outer/all",referring to apply permutation to only inner tile loops / only outer loops / both inner and outer loops, respectively.
+    The default is to not apply any loop permutation. Other options are "inner/outer/all",referring to apply permutations to only inner tile loops / only outer loops / both inner and outer loops, respectively.
 
 ### Debugging
 There are several [environment variables](../../onnxruntime/core/codegen/common/settings.h) to dump debug information during code generation, plus [some more environment variables](../../onnxruntime/core/providers/nuphar/common/nuphar_settings.h) to dump/control the Nuphar execution provider. You can set environment variables prior to inference to dump debug info to the console. To list some most useful ones:
