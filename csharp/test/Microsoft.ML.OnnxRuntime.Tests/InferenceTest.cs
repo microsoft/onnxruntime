@@ -380,7 +380,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
 
-        [x64Theory]
+        [Theory]
         [MemberData(nameof(GetModelsForTest))]
         [MemberData(nameof(GetSkippedModelForTest), Skip ="Skipped due to Error, please fix the error and enable the test")]
         private void TestPreTrainedModels(string opset, string modelName)
