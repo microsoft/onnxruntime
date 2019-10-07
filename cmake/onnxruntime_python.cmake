@@ -95,6 +95,11 @@ set(onnxruntime_pybind11_state_dependencies
 )
 
 add_dependencies(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_dependencies})
+
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  add_dependencies(onnxruntime_pybind11_state onnxruntime_pywrapper)
+endif()
+
 if (MSVC)
   # if MSVC, pybind11 looks for release version of python lib (pybind11/detail/common.h undefs _DEBUG)
   target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs}
