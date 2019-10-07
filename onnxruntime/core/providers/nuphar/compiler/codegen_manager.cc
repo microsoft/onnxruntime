@@ -6,6 +6,7 @@
 #include "core/codegen/passes/op_ir_creator/all_ops.h"
 #include "core/codegen/passes/scheduler/all_schedules.h"
 #include "core/codegen/passes/weight_layout/transpose_2d.h"
+#include "core/codegen/passes/weight_layout/tiling_2d.h"
 #include "core/codegen/passes/weight_layout/vertical_stripes_2d.h"
 #include "core/providers/nuphar/compiler/x86/op_ir_creator/all_ops.h"
 #include "core/providers/nuphar/compiler/x86/scheduler/nuphar_scheduler.h"
@@ -98,6 +99,14 @@ static void RegisterAllNupharSchedulers(tvm_codegen::TVMScheduleRegistry* sched_
 // BEGIN: Nuphar Weight Layouts classes
 static void RegisterAllNupharWeightLayouts(tvm_codegen::WeightLayoutRegistry* layout_registry) {
   layout_registry->Register(
+      std::move(onnxruntime::make_unique<tvm_codegen::WeightLayoutTiling2D>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8, 64)));
+  layout_registry->Register(
+      std::move(onnxruntime::make_unique<tvm_codegen::WeightLayoutTiling2D>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16, 64)));
+  layout_registry->Register(
+      std::move(onnxruntime::make_unique<tvm_codegen::WeightLayoutTiling2D>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8, 32)));
+  layout_registry->Register(
+      std::move(onnxruntime::make_unique<tvm_codegen::WeightLayoutTiling2D>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16, 32)));
+  layout_registry->Register(
       std::move(onnxruntime::make_unique<tvm_codegen::WeightLayoutVerticalStripe2D>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, 8)));
   layout_registry->Register(
       std::move(onnxruntime::make_unique<tvm_codegen::WeightLayoutTranspose2D>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)));
@@ -152,6 +161,18 @@ static void RegisterNupharX86TVMRuleSchedulers(const std::shared_ptr<tvm_codegen
   builder->InsertDispatcher(std::move(dispatcher));
 }
 // END: TVM rule Scheduler
+
+// BEGIN: Tensorization Scheduler
+static void RegisterNupharX86TensorizeScheduler(const std::shared_ptr<tvm_codegen::TVMScheduleBuilder>& builder,
+                                                const tvm_codegen::TVMScheduleRegistry* registry) {
+  auto dispatcher = onnxruntime::make_unique<SCHEDULE_DISPATCHER_CLASS(NupharX86Tensorize)>("NupharOrtTensorizeScheduler");
+
+  // Register a scheduler for Ort MatMulInteger
+  dispatcher->Register("MatMulInteger",
+                       registry->Get(TVM_SCHEDULER_STRING(MatMulInteger, NupharX86Tensorize)));
+  builder->InsertDispatcher(std::move(dispatcher));
+}
+// END: Tensorization Scheduler
 
 // BEGIN: ORT OpType Scheduler
 static void RegisterNupharX86OrtOpTypeSchedulers(const std::shared_ptr<tvm_codegen::TVMScheduleBuilder>& builder,
@@ -227,6 +248,7 @@ void TVMCodeGenManager::SetCodeGenHandle(NupharCodeGenHandle* handle) {
       std::make_shared<tvm_codegen::TVMScheduleBuilder>("Nuphar_Schedule_Builder");
 
   RegisterNupharX86TVMRuleSchedulers(handle->schedule_builder, schedule_registry_.get());
+  RegisterNupharX86TensorizeScheduler(handle->schedule_builder, schedule_registry_.get());
   RegisterNupharX86OrtOpTypeSchedulers(handle->schedule_builder, schedule_registry_.get());
   RegisterNupharX86UseCountSchedulers(handle->schedule_builder, schedule_registry_.get());
   RegisterNupharX86PartialResultSchedulers(handle->schedule_builder, schedule_registry_.get());
