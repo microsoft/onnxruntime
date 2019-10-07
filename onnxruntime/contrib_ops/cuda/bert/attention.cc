@@ -131,19 +131,23 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length);
   auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);
-  bool is_ok = LaunchAttentionKernel(
-      reinterpret_cast<const CudaT*>(gemm_buffer.get()),
-      mask_index->template Data<int>(),
-      output->template MutableData<T>(),
-      batch_size,
-      sequence_length,
-      num_heads_,
-      head_size,
-      temp_buffer.get(),
-      cublas,
-      element_size);
+  if (!LaunchAttentionKernel(
+          reinterpret_cast<const CudaT*>(gemm_buffer.get()),
+          mask_index->template Data<int>(),
+          output->template MutableData<T>(),
+          batch_size,
+          sequence_length,
+          num_heads_,
+          head_size,
+          temp_buffer.get(),
+          cublas,
+          element_size)) {
+    // Get last error to reset it to cudaSuccess.
+    CUDA_CALL(cudaGetLastError());
+    return Status(common::ONNXRUNTIME, common::FAIL);
+  }
 
-  return is_ok ? Status::OK() : Status(common::ONNXRUNTIME, common::FAIL);
+  return Status::OK();
 }
 
 }  // namespace cuda

@@ -373,7 +373,7 @@ bool QkvToContext(
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
   if (!CUBLAS_CALL(CublasGemmStridedBatched(
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, head_size, sequence_length, sequence_length, 1.f, v, head_size, size_per_batch,
-          scratch2, sequence_length, temp_matrix_size, 0.f, scratch3, head_size, size_per_batch, batches))) {
+        scratch2, sequence_length, temp_matrix_size, 0.f, scratch3, head_size, size_per_batch, batches))) {
     return false;
   }
 
