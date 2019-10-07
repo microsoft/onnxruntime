@@ -15,7 +15,6 @@ namespace onnxruntime {
 namespace training {
 
 constexpr const char* kGradientAccumulationOutputKey = "GRADIENT_ACCUMULATION_OUTPUT";
-constexpr const char* kWeightUpdateOutputKey = "WEIGHT_UPDATE_OUTPUT";
 
 /**
  * Builds the optimizer components on top of an existing training graph.

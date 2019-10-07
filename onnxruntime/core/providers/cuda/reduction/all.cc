@@ -19,7 +19,7 @@ namespace cuda {
 template <typename T>
 Status All<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor& input = *ctx->Input<Tensor>(0);
-  Tensor& output = *ctx->Output(0, {});
+  Tensor& output = *ctx->Output(0, {1});
 
   const auto size = input.Shape().Size();
   ORT_ENFORCE(size <= std::numeric_limits<int>::max(), "Number of reduced elements (",

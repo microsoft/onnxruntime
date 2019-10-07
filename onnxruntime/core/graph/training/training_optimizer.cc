@@ -13,6 +13,7 @@ namespace training {
 Status SGDOptimizerBuilder::Build(
     const ArgDef& weight_argdef,
     const ArgDef& gradient_argdef,
+    const ArgDef* /*do_update_argdef*/,
     const OptimizerNodeConfig& opt_config,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& external_inputs_including_initializers,
@@ -43,6 +44,7 @@ Status SGDOptimizerBuilder::Build(
 Status AdamOptimizerBuilder::Build(
     const ArgDef& weight_argdef,
     const ArgDef& gradient_argdef,
+    const ArgDef* do_update_argdef,
     const OptimizerNodeConfig& opt_config,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& external_inputs_including_initializers,
@@ -70,6 +72,10 @@ Status AdamOptimizerBuilder::Build(
     num_inputs += 1;
     num_outputs += 1;
   }
+  if (do_update_argdef) {
+    num_inputs += 1;
+  }
+
   std::vector<ArgDef> input_args(num_inputs);
   input_args[0] = ArgDef(opt_config.lr_feed_name);
   input_args[1] = ArgDef(update_count_string);
@@ -115,10 +121,14 @@ Status AdamOptimizerBuilder::Build(
   output_args[3] = ArgDef(gradient_name + "_Step_Out", step_type_proto);
 
   if (opt_config.fp16_weight_arg != nullptr) {
-    input_args[input_idx++] = ArgDef(opt_config.fp16_weight_arg->Name(), opt_config.fp16_weight_arg->TypeAsProto());
+    input_args[6] = ArgDef(opt_config.fp16_weight_arg->Name(), opt_config.fp16_weight_arg->TypeAsProto());
 
     std::string output_name = opt_config.fp16_weight_arg->Name() + "_Adam_out";
     output_args[4] = ArgDef(output_name, opt_config.fp16_weight_arg->TypeAsProto());
+  }
+
+  if (do_update_argdef) {
+    input_args[7] = *do_update_argdef;
   }
 
   graph_defs.AddNodeDefs({NodeDef(OpType(),
@@ -137,6 +147,7 @@ Status AdamOptimizerBuilder::Build(
 Status LambOptimizerBuilder::Build(
     const ArgDef& weight_argdef,
     const ArgDef& gradient_argdef,
+    const ArgDef* do_update_argdef,
     const OptimizerNodeConfig& opt_config,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& external_inputs_including_initializers,
@@ -149,12 +160,24 @@ Status LambOptimizerBuilder::Build(
 
   std::vector<TensorProto> new_initializers{};
 
-  std::vector<ArgDef> input_args(num_inputs_);
+  int num_inputs = num_inputs_;
+  int num_outputs = num_outputs_;
+  // When mixed precision is enabled by using FP16 initializer, optimizer consumes fp32 weight tensor and its fp16 copy.
+  // Thus, each optimizer will get one extra input and one extra output.
+  if (opt_config.fp16_weight_arg != nullptr) {
+    num_inputs += 1;
+    num_outputs += 1;
+  }
+  if (do_update_argdef) {
+    num_inputs += 1;
+  }
+
+  std::vector<ArgDef> input_args(num_inputs);
   input_args[0] = ArgDef(opt_config.lr_feed_name);
   input_args[1] = weight_argdef;
   input_args[2] = gradient_argdef;
 
-  std::vector<ArgDef> output_args(num_outputs_);
+  std::vector<ArgDef> output_args(num_outputs);
   output_args[0] = ArgDef(weight_name + "_Lamb_out", weight_type_proto);
 
   // The tensor proto for first and second moments of grad
@@ -187,6 +210,17 @@ Status LambOptimizerBuilder::Build(
 
     input_args[input_idx++] = ArgDef(gradient_moment_name, moment_type_proto);
     output_args[output_idx++] = ArgDef(gradient_moment_name + "_Out", moment_type_proto);
+  }
+
+  if (opt_config.fp16_weight_arg != nullptr) {
+    input_args[5] = ArgDef(opt_config.fp16_weight_arg->Name(), opt_config.fp16_weight_arg->TypeAsProto());
+
+    std::string output_name = opt_config.fp16_weight_arg->Name() + "_Lamb_out";
+    output_args[3] = ArgDef(output_name, opt_config.fp16_weight_arg->TypeAsProto());
+  }
+
+  if (do_update_argdef) {
+    input_args[6] = *do_update_argdef;
   }
 
   graph_defs.AddNodeDefs({NodeDef(OpType(),

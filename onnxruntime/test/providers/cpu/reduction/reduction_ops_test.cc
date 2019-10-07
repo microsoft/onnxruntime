@@ -1270,7 +1270,7 @@ void test_all_1d_true(size_t size) {
 
   OpTester test("All", 9);
   test.AddInput<bool>("data", {static_cast<int64_t>(size)}, p_data.get(), size);
-  test.AddOutput<bool>("result", {}, {true});
+  test.AddOutput<bool>("result", {1}, {true});
   test.Run();
 }
 
@@ -1282,7 +1282,7 @@ void test_all_1d_false(size_t size) {
 
   OpTester test("All", 9);
   test.AddInput<bool>("data", {static_cast<int64_t>(size)}, p_data.get(), size);
-  test.AddOutput<bool>("result", {}, {false});
+  test.AddOutput<bool>("result", {1}, {false});
   test.Run();
 }
 
@@ -1295,7 +1295,7 @@ void test_all_1d_first_false(size_t size) {
 
   OpTester test("All", 9);
   test.AddInput<bool>("data", {static_cast<int64_t>(size)}, p_data.get(), size);
-  test.AddOutput<bool>("result", {}, {false});
+  test.AddOutput<bool>("result", {1}, {false});
   test.Run();
 }
 
@@ -1308,7 +1308,7 @@ void test_all_1d_last_false(size_t size) {
 
   OpTester test("All", 9);
   test.AddInput<bool>("data", {static_cast<int64_t>(size)}, p_data.get(), size);
-  test.AddOutput<bool>("result", {}, {false});
+  test.AddOutput<bool>("result", {1}, {false});
   test.Run();
 }
 

@@ -28,10 +28,27 @@ using namespace std;
 namespace onnxruntime {
 namespace training {
 
-static Status AddLossFuncionInternal(Graph& graph,
-                                     std::shared_ptr<ILossFunction>& loss_graph_builder,
-                                     const LossFunctionInfo& loss_func_info) {
-  return GraphAugmenter::AugmentGraph(graph, loss_graph_builder->operator()(graph, loss_func_info));
+static Status AddLossFunctionInternal(Graph& graph,
+                                      ILossFunction& loss_graph_builder,
+                                      const LossFunctionInfo& loss_func_info,
+                                      const std::string& loss_scale_input_name,
+                                      std::string& actual_loss_name) {
+  auto loss_function_graph_defs = loss_graph_builder(graph, loss_func_info);
+
+  if (!loss_scale_input_name.empty()) {
+    // add node to scale by loss_scale_input_name
+    TypeProto* loss_type_proto = loss_function_graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    actual_loss_name = graph.GenerateNodeArgName("scaled_loss");
+    loss_function_graph_defs.AddNodeDefs(
+        {NodeDef{
+            "Mul",
+            {ArgDef{loss_func_info.loss_name}, ArgDef{loss_scale_input_name, loss_type_proto}},
+            {ArgDef{actual_loss_name, loss_type_proto}}}});
+  } else {
+    actual_loss_name = loss_func_info.loss_name;
+  }
+
+  return GraphAugmenter::AugmentGraph(graph, loss_function_graph_defs);
 }
 
 static Status BuildGradientGraphInternal(Graph& graph,
@@ -94,6 +111,16 @@ Status TrainingSession::AddGistEncoding() {
   return DoPostLoadProcessing(*model_);
 }
 
+Status TrainingSession::BuildLossScalingFactorInput(const float loss_scale, std::string& loss_scale_input_name) {
+  const std::string input_name = model_->MainGraph().GenerateNodeArgName("loss_scale");
+  GraphAugmenter::GraphDefs defs{};
+  defs.AddInitializers({CreateTensorProto(input_name, loss_scale, {1})});
+  ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(model_->MainGraph(), defs));
+  ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_));
+  loss_scale_input_name = input_name;
+  return Status::OK();
+}
+
 Status TrainingSession::AddTensorboard(const std::string& summary_name,
                                        const std::vector<std::string>& scalar_nodes,
                                        const std::vector<std::string>& histogram_nodes) {
@@ -101,16 +128,21 @@ Status TrainingSession::AddTensorboard(const std::string& summary_name,
   return DoPostLoadProcessing(*model_);
 }
 
-Status TrainingSession::BuildLossFunction(const LossFunctionInfo& loss_func_info) {
-  if (loss_func_info.op_def.type.empty() || loss_func_info.loss_name.empty()) {
-    ORT_THROW("BuildLossFuncion's loss_function_info is invalid.");
-  }
-
-  loss_func_info_ = loss_func_info;
-  loss_graph_builder_ = LossFunctionBuilder::Build(loss_func_info_.op_def.type);
-
+Status TrainingSession::BuildLossFunction(const LossFunctionInfo& loss_func_info,
+                                          const std::string& loss_scale_input_name,
+                                          std::string& actual_loss_name) {
   try {
-    ORT_RETURN_IF_ERROR(AddLossFuncionInternal(model_->MainGraph(), loss_graph_builder_, loss_func_info_));
+    ORT_RETURN_IF(loss_func_info.op_def.type.empty() || loss_func_info.loss_name.empty(),
+                  "BuildLossFunction's loss_function_info is invalid.");
+
+    loss_func_info_ = loss_func_info;
+    loss_graph_builder_ = LossFunctionBuilder::Build(loss_func_info_.op_def.type);
+    loss_scale_input_name_ = loss_scale_input_name;
+
+    ORT_RETURN_IF_NOT(loss_graph_builder_);
+    ORT_RETURN_IF_ERROR(AddLossFunctionInternal(
+        model_->MainGraph(), *loss_graph_builder_, loss_func_info_,
+        loss_scale_input_name_, actual_loss_name));
   } catch (const OnnxRuntimeException& exp) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to add loss function:", exp.what());
   }
@@ -237,14 +269,19 @@ Status TrainingSession::Save(const string& model_uri, TrainingSession::SaveOptio
   ORT_RETURN_IF_ERROR(Model::Load(model_location_, new_model));
   ORT_RETURN_IF_ERROR(UpdateWeightsBeforeSaving(new_model->MainGraph(), GetWeights()));
 
+  std::string actual_loss_name{};
   if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC /* with weights and loss func*/ ||
       opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS /*with everything*/) {
-    ORT_RETURN_IF_ERROR(AddLossFuncionInternal(new_model->MainGraph(), loss_graph_builder_, loss_func_info_));
+    ORT_RETURN_IF_NOT(loss_graph_builder_);
+    ORT_RETURN_IF_ERROR(AddLossFunctionInternal(
+        new_model->MainGraph(),
+        *loss_graph_builder_, loss_func_info_,
+        loss_scale_input_name_, actual_loss_name));
   }
 
   if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS) {
     ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(new_model->MainGraph(),
-                                                   loss_func_info_.loss_name,
+                                                   actual_loss_name,
                                                    weights_to_train_,
                                                    false));
 

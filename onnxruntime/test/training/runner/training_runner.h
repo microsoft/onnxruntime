@@ -100,6 +100,7 @@ class TrainingRunner {
     VectorString fetch_names;
 
     bool use_mixed_precision = false;
+    float loss_scale = 1.0f;
     bool use_fp16_moments = false;
     bool use_fp16_initializer = true;
 
@@ -129,6 +130,7 @@ class TrainingRunner {
   Status LoadAndEvaluate(const std::string& model_path);
   Status SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
                               const std::unordered_map<std::string, NodeArg*>& fp16_weights_map,
+                              const std::string& loss_scale_input_name,
                               OptimizerGraphConfig& opt_graph_config,
                               std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs);
 
@@ -137,6 +139,8 @@ class TrainingRunner {
 
   size_t step_;
   std::unordered_map<std::string, std::string> opt_graph_outputs_;
+
+  std::string loss_scale_input_name_;
 
   Parameters params_;
   TrainingSession session_;

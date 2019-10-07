@@ -58,8 +58,9 @@ static std::string BuildBackPropGraph(const TrainingRunner::Parameters& params) 
   }
   std::cout << "]" << std::endl;
 
-  EXPECT_TRUE(training_session.BuildLossFunction(params.loss_func_info).IsOK());
-  EXPECT_TRUE(training_session.BuildGradientGraph(weights_to_train, params.loss_func_info.loss_name, true).IsOK());
+  std::string actual_loss_name{};
+  EXPECT_TRUE(training_session.BuildLossFunction(params.loss_func_info, "", actual_loss_name).IsOK());
+  EXPECT_TRUE(training_session.BuildGradientGraph(weights_to_train, actual_loss_name, true).IsOK());
 
   if (params.use_gist) {
     EXPECT_TRUE(training_session.AddGistEncoding().IsOK());

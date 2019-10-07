@@ -86,9 +86,9 @@ struct NodeDef {
        Note: during Graph::Resolve(), input and output will be infered from the nodes, in which:
              1. A node arg becomes a graph input if it is not used by any node's output.
              2. A node arg becomes a graph output if it is not used by any node's input.
-             So we don't have to worry about input, but sometimes need to explicitly 
+             So we don't have to worry about input, but sometimes need to explicitly
              set an intermediate node arg as graph output.
-    3. Initializers    
+    3. Initializers
 */
 class GraphAugmenter {
  public:
@@ -147,14 +147,14 @@ class GraphAugmenter {
     }
 
     TypeProto* CopyTypeProto(const NodeArg* node_arg) {
-      ORT_ENFORCE(node_arg != nullptr, "CopyTypeProto's node_arg is null.");
+      ORT_ENFORCE(node_arg != nullptr, "During CopyTypeProto, ", node_arg->Name(), "'s node_arg is null.");
       TypeProto* type_proto = CreateTypeProto();
       type_proto->CopyFrom(*(node_arg->TypeAsProto()));
       return type_proto;
     }
 
     TypeProto* CopyTypeProto(const ArgDef& argdef) {
-      ORT_ENFORCE(argdef.type_proto, "CopyTypeProto's argdef.type_proto is null.");
+      ORT_ENFORCE(argdef.type_proto, "During CopyTypeProto, ", argdef.name, "'s type_proto is null.");
       TypeProto* type_proto = CreateTypeProto();
       type_proto->CopyFrom(*argdef.type_proto);
       return type_proto;

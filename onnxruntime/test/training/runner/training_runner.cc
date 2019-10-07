@@ -55,8 +55,16 @@ Status TrainingRunner::Initialize() {
   ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
   ORT_RETURN_IF_ERROR(session_.ApplyTransformationsToMainGraph());
 
+  std::string loss_scale_input_name{};
+  if (params_.use_mixed_precision) {
+    ORT_RETURN_IF_ERROR(session_.BuildLossScalingFactorInput(params_.loss_scale, loss_scale_input_name));
+    loss_scale_input_name_ = loss_scale_input_name;
+  }
+
   // Add loss func
-  ORT_RETURN_IF_ERROR(session_.BuildLossFunction(params_.loss_func_info));
+  std::string actual_loss_name{};
+  ORT_RETURN_IF_ERROR(session_.BuildLossFunction(
+      params_.loss_func_info, loss_scale_input_name, actual_loss_name));
   if (params_.mpi_context.world_rank == 0 && !params_.model_with_loss_func_path.empty()) {
     session_.Save(params_.model_with_loss_func_path, TrainingSession::SaveOption::NO_RELOAD);
   }
@@ -76,7 +84,7 @@ Status TrainingRunner::Initialize() {
   }
 
   // Add gradient graph
-  ORT_RETURN_IF_ERROR(session_.BuildGradientGraph(weights_to_train, params_.loss_func_info.loss_name));
+  ORT_RETURN_IF_ERROR(session_.BuildGradientGraph(weights_to_train, actual_loss_name));
 
   std::unordered_map<std::string, NodeArg*> fp16_weights_map;
   if (params_.use_mixed_precision) {
@@ -87,7 +95,9 @@ Status TrainingRunner::Initialize() {
   OptimizerGraphConfig opt_graph_config{};
   std::unordered_map<std::string, OptimizerNodeConfig> opt_configs;
   std::unordered_map<std::string, std::string> opt_graph_outputs;
-  ORT_RETURN_IF_ERROR(SetupOptimizerParams(weights_to_train, fp16_weights_map, opt_graph_config, opt_configs));
+  ORT_RETURN_IF_ERROR(SetupOptimizerParams(
+      weights_to_train, fp16_weights_map, loss_scale_input_name,
+      opt_graph_config, opt_configs));
   ORT_RETURN_IF_ERROR(session_.BuildOptimizer(opt_graph_config, opt_configs, opt_graph_outputs));
   opt_graph_outputs_ = opt_graph_outputs;
 
@@ -152,7 +162,14 @@ Status TrainingRunner::Run() {
 Status TrainingRunner::TrainingLoop() {
   const VectorString fetch_names = params_.fetch_names;
   VectorString feed_names = training_data_loader_->DataSetTensorNames();
+  if (!loss_scale_input_name_.empty()) {
+    feed_names.push_back(loss_scale_input_name_);
+  }
   feed_names.push_back(params_.lr_params.feed_name);
+
+  OrtValue loss_scale_val;
+  TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{params_.loss_scale}, &loss_scale_val);
+
   VectorString fetch_grad_accumulator_output;
 
   if (params_.gradient_accumulation_steps > 1) {
@@ -170,6 +187,9 @@ Status TrainingRunner::TrainingLoop() {
     printf("Warming up for perf test.\n");
     for (size_t batch = 0; batch < params_.perf_warm_up_iters; ++batch) {
       std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch);
+      if (!loss_scale_input_name_.empty()) {
+        feeds.push_back(loss_scale_val);
+      }
       OrtValue lr_ort_val;
       TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{params_.lr_params.initial_lr}, &lr_ort_val);
       feeds.push_back(lr_ort_val);
@@ -203,6 +223,9 @@ Status TrainingRunner::TrainingLoop() {
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
         std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch);
+        if (!loss_scale_input_name_.empty()) {
+          feeds.push_back(loss_scale_val);
+        }
         float learning_rate = lr_scheduler->GetLearningRate(step_ + 1);
         OrtValue lr_ort_val;
         TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{learning_rate}, &lr_ort_val);
@@ -326,6 +349,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
   // A static batch index representing current test batch
   static size_t current_batch = 0;
   const vector<string> feed_names = test_data_loader_->DataSetTensorNames();
+  // TODO add loss scaling factor and learning rate to feeds
   auto test_data = test_data_loader_->CurrentDataSet();
   if (params_.shuffle_data && current_batch == 0) {
     printf("Randomly shuffle test data.\n");
@@ -393,6 +417,7 @@ Status TrainingRunner::LoadAndEvaluate(const std::string& model_path) {
 
 Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
                                             const std::unordered_map<std::string, NodeArg*>& fp16_weights_map,
+                                            const std::string& loss_scale_input_name,
                                             OptimizerGraphConfig& opt_graph_config_result,
                                             std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs) {
   // Prepare the weight<->optimizer mapping.
@@ -415,7 +440,8 @@ Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string
 
   // set up optimizer graph config
   OptimizerGraphConfig opt_graph_config{};
-  opt_graph_config.use_mixed_precision = false;  //params_.use_mixed_precision;  // TODO enable when fully implemented
+  opt_graph_config.use_mixed_precision = params_.use_mixed_precision;
+  opt_graph_config.loss_scale_input_name = loss_scale_input_name;
   opt_graph_config.world_rank = params_.mpi_context.world_rank;
   opt_graph_config.world_size = params_.mpi_context.world_size;
   opt_graph_config.gradient_accumulation_steps = params_.gradient_accumulation_steps;

@@ -57,6 +57,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
       ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
+      ("loss_scaling_factor", "Mixed precision loss scaling factor.", cxxopts::value<float>()->default_value("1.0"))
       ("use_fp16_moments", "Whether to use fp16 version of moments.", cxxopts::value<bool>()->default_value("false"))
       ("use_fp16_initializer", "FP16 weights will be created. Otherwise, cast nodes will be inserted for converting weights from FP32 to FP16",
         cxxopts::value<bool>()->default_value("true"))
@@ -141,6 +142,18 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
     if (params.use_mixed_precision) {
       printf("Mixed precision training is enabled.\n");
     }
+
+    {
+      const float loss_scaling_factor = flags["loss_scaling_factor"].as<float>();
+      if (loss_scaling_factor < 1.0f) {
+        return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Loss scaling factor should be at least 1.0.");
+      }
+      params.loss_scale = loss_scaling_factor;
+      if (params.use_mixed_precision) {
+        printf("Mixed precision loss scaling factor is: %f\n", params.loss_scale);
+      }
+    }
+
     params.use_fp16_moments = flags["use_fp16_moments"].as<bool>();
     if (params.use_fp16_moments) {
       printf("Using fp16 version of moments.\n");

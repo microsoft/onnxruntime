@@ -47,7 +47,7 @@ inline void SetTypedDataToTensor<bool>(bool val, TensorProto& tensor, int64_t co
 
 template <class T>
 TensorProto CreateTensorProto(
-    std::string name,
+    const std::string& name,
     T val,
     std::vector<int64_t> dims = {1}) {
   TensorProto tensor_proto;
@@ -77,6 +77,8 @@ class OptimizerBuilder {
    * @param weight_argdef The ArgDef of the weight to optimize.
    * @param gradient_argdef The ArgDef of the gradient of the weight to
             optimize.
+   * @param do_update_argdef (Optional) The ArgDef for whether to perform the
+            weight update.
    * @param opt_config The optimizer configuration.
    * @param[out] graph_defs The GraphDefs corresponding to the graph (possibly
    *             a subgraph) that the component is to be added to.
@@ -95,6 +97,7 @@ class OptimizerBuilder {
   virtual Status Build(
       const ArgDef& weight_argdef,
       const ArgDef& gradient_argdef,
+      const ArgDef* do_update_argdef,
       const OptimizerNodeConfig& opt_config,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,
@@ -133,6 +136,7 @@ class SGDOptimizerBuilder final : public OptimizerBuilder {
   virtual Status Build(
       const ArgDef& weight_argdef,
       const ArgDef& gradient_argdef,
+      const ArgDef* do_update_argdef,
       const OptimizerNodeConfig& opt_config,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,
@@ -148,6 +152,7 @@ class AdamOptimizerBuilder final : public OptimizerBuilder {
   virtual Status Build(
       const ArgDef& weight_argdef,
       const ArgDef& gradient_argdef,
+      const ArgDef* do_update_argdef,
       const OptimizerNodeConfig& opt_config,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,
@@ -163,6 +168,7 @@ class LambOptimizerBuilder final : public OptimizerBuilder {
   virtual Status Build(
       const ArgDef& weight_argdef,
       const ArgDef& gradient_argdef,
+      const ArgDef* do_update_argdef,
       const OptimizerNodeConfig& opt_config,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,
