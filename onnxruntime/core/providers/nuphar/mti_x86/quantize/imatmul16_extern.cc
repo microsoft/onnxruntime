@@ -15,22 +15,22 @@ namespace nuphar {
 #ifdef NUPHAR_USE_MKL
 TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.imatmul16.extern.mkl")
     .set_body([](tvm::TVMArgs args, tvm::TVMRetValue* /*ret*/) {
-      DLTensor* B = args[0];
-      DLTensor* A = args[1];
-      DLTensor* batch_tensor = args[2];
+      DLTensor* A = args[0];
+      DLTensor* B = args[1];
+      DLTensor* batch_seq_tensor = args[2];
       DLTensor* Y = args[3];
       int input_dim = args[4];
       int embed_dim = args[5];
 
-      DCHECK(B->strides == nullptr);
       DCHECK(A->strides == nullptr);
+      DCHECK(B->strides == nullptr);
       DCHECK(Y->strides == nullptr);
-      DCHECK(batch_tensor->strides == nullptr);
+      DCHECK(batch_seq_tensor->strides == nullptr);
 
-      auto B_data = reinterpret_cast<int16_t*>(static_cast<char*>(B->data) + B->byte_offset);
       auto A_data = reinterpret_cast<int16_t*>(static_cast<char*>(A->data) + A->byte_offset);
+      auto B_data = reinterpret_cast<int16_t*>(static_cast<char*>(B->data) + B->byte_offset);
       auto Y_data = reinterpret_cast<int32_t*>(static_cast<char*>(Y->data) + Y->byte_offset);
-      auto batch_seq = *reinterpret_cast<int*>(static_cast<char*>(batch_tensor->data) + batch_tensor->byte_offset);
+      auto batch_seq = *reinterpret_cast<int*>(static_cast<char*>(batch_seq_tensor->data) + batch_seq_tensor->byte_offset);
 
       MKLIntGemvS16S16S32R(B_data, A_data, embed_dim, batch_seq, input_dim, Y_data);
     });
@@ -39,20 +39,20 @@ TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.imatmul16.extern.mkl")
 #ifdef NUPHAR_USE_AVX2
 TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.imatmul16.extern.avx2")
     .set_body([](tvm::TVMArgs args, tvm::TVMRetValue* /*ret*/) {
-      DLTensor* B = args[0];
-      DLTensor* A = args[1];
+      DLTensor* A = args[0];
+      DLTensor* B = args[1];
       DLTensor* batch_seq_tensor = args[2];
       DLTensor* Y = args[3];
       int input_dim = args[4];
       int embed_dim = args[5];
 
-      DCHECK(B->strides == nullptr);
       DCHECK(A->strides == nullptr);
+      DCHECK(B->strides == nullptr);
       DCHECK(Y->strides == nullptr);
       DCHECK(batch_seq_tensor->strides == nullptr);
 
-      auto B_data = reinterpret_cast<int16_t*>(static_cast<char*>(B->data) + B->byte_offset);
       auto A_data = reinterpret_cast<int16_t*>(static_cast<char*>(A->data) + A->byte_offset);
+      auto B_data = reinterpret_cast<int16_t*>(static_cast<char*>(B->data) + B->byte_offset);
       auto Y_data = reinterpret_cast<int32_t*>(static_cast<char*>(Y->data) + Y->byte_offset);
       auto batch_seq = *reinterpret_cast<int*>(static_cast<char*>(batch_seq_tensor->data) + batch_seq_tensor->byte_offset);
 
@@ -78,8 +78,8 @@ TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.imatmul16.extern.avx2")
 #endif
 
 tvm::Tensor
-IMatMul16ExternMKL(const tvm::Tensor& B,
-                   const tvm::Tensor& A,
+IMatMul16ExternMKL(const tvm::Tensor& A,
+                   const tvm::Tensor& B,
                    const tvm::Array<tvm::Expr>& output_shape,
                    int input_dim,
                    int embed_dim,
@@ -89,13 +89,16 @@ IMatMul16ExternMKL(const tvm::Tensor& B,
   std::string func_str;
 #ifdef NUPHAR_USE_MKL
   func_str = "tvm.contrib.onnxruntime.imatmul16.extern.mkl";
+#else
+  ORT_NOT_IMPLEMENTED("Not implemented. Please set NUPHAR_USE_MKL!");
+#endif
 
   // TODO: instead of calling Promote, we may consider to expose
   // tvm::Tensor and tvm::Expr version of op from topi
   return topi::detail::make_extern(
       {output_shape}, {tvm::Int(32)},
       tvm_codegen::MakeInputsForExtern(
-          {B, A, tvm_codegen::Promote(batch_seq_dim, {16}, name + "_batch_seq")}),
+          {A, B, tvm_codegen::Promote(batch_seq_dim, {16}, name + "_batch_seq")}),
       [&](tvm::Array<tvm::Buffer> ins, tvm::Array<tvm::Buffer> outs) {
         return topi::detail::call_packed({tvm::Expr(func_str),
                                           topi::detail::pack_buffer(ins[0]),
@@ -106,14 +109,11 @@ IMatMul16ExternMKL(const tvm::Tensor& B,
                                           embed_dim});
       },
       name, "", {})[0];
-#else
-  ORT_NOT_IMPLEMENTED("Not implemented. Please set NUPHAR_USE_MKL!");
-#endif
 }
 
 tvm::Tensor
-IMatMul16ExternAVX2(const tvm::Tensor& B,
-                    const tvm::Tensor& A,
+IMatMul16ExternAVX2(const tvm::Tensor& A,
+                    const tvm::Tensor& B,
                     const tvm::Array<tvm::Expr>& output_shape,
                     int input_dim,
                     int embed_dim,
@@ -123,13 +123,16 @@ IMatMul16ExternAVX2(const tvm::Tensor& B,
   std::string func_str;
 #ifdef NUPHAR_USE_AVX2
   func_str = "tvm.contrib.onnxruntime.imatmul16.extern.avx2";
+#else
+  ORT_NOT_IMPLEMENTED("Not implemented. Please set NUPHAR_USE_AVX2!");
+#endif
 
   // TODO: instead of calling Promote, we may consider to expose
   // tvm::Tensor and tvm::Expr version of op from topi
   return topi::detail::make_extern(
       {output_shape}, {tvm::Int(32)},
       tvm_codegen::MakeInputsForExtern(
-          {B, A, tvm_codegen::Promote(batch_seq_dim, {16}, name + "_batch_seq")}),
+          {A, B, tvm_codegen::Promote(batch_seq_dim, {16}, name + "_batch_seq")}),
       [&](tvm::Array<tvm::Buffer> ins, tvm::Array<tvm::Buffer> outs) {
         return topi::detail::call_packed({tvm::Expr(func_str),
                                           topi::detail::pack_buffer(ins[0]),
@@ -140,9 +143,7 @@ IMatMul16ExternAVX2(const tvm::Tensor& B,
                                           embed_dim});
       },
       name, "", {})[0];
-#else
-  ORT_NOT_IMPLEMENTED("Not implemented. Please set NUPHAR_USE_AVX2!");
-#endif
+
 }
 
 }  // namespace nuphar
