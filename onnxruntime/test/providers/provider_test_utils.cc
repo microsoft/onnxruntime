@@ -521,8 +521,14 @@ void OpTester::Run(ExpectResult expect_result, const std::string& expected_failu
     so.enable_sequential_execution = sequential_execution;
 
     static const std::string all_provider_types[] = {
-        kCpuExecutionProvider,    kCudaExecutionProvider,       kMklDnnExecutionProvider,   kNGraphExecutionProvider,
-        kNupharExecutionProvider, kBrainSliceExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider,
+        kCpuExecutionProvider,
+        kCudaExecutionProvider,
+        kMklDnnExecutionProvider,
+        kNGraphExecutionProvider,
+        kNupharExecutionProvider,
+        kBrainSliceExecutionProvider,
+        kTensorrtExecutionProvider,
+        kOpenVINOExecutionProvider,
     };
 
     bool has_run = false;
@@ -542,7 +548,8 @@ void OpTester::Run(ExpectResult expect_result, const std::string& expected_failu
                    provider_types);
     } else {
       for (const std::string& provider_type : all_provider_types) {
-        if (excluded_provider_types.count(provider_type) > 0) continue;
+        if (excluded_provider_types.count(provider_type) > 0)
+          continue;
 
         InferenceSession session_object{so};
 
@@ -569,13 +576,15 @@ void OpTester::Run(ExpectResult expect_result, const std::string& expected_failu
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
           execution_provider = DefaultNnapiExecutionProvider();
         // skip if execution provider is disabled
-        if (execution_provider == nullptr) continue;
+        if (execution_provider == nullptr)
+          continue;
 
         bool valid = true;
 
         // set execution provider for all nodes in the graph
         for (auto& node : graph.Nodes()) {
-          if (node.OpType() == kConstant) continue;
+          if (node.OpType() == kConstant)
+            continue;
 
           // if node is not registered for the provider, skip
           node.SetExecutionProviderType(provider_type);
@@ -599,7 +608,8 @@ void OpTester::Run(ExpectResult expect_result, const std::string& expected_failu
           }
         }
 
-        if (!valid) continue;
+        if (!valid)
+          continue;
 
         has_run = true;
 
