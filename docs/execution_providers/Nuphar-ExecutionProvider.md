@@ -71,13 +71,13 @@ Please refer to our paper for more details of NGEMM: ["NGEMM: Optimizing GEMM fo
 NGEMM has default tiling parameters, but users can overwrite them through environment variables:
 * NUPHAR_IGEMM_TILE_M / NUPHAR_IGEMM_TILE_N / NUPHAR_IGEMM_TILE_K
 
-    These 3 parameters are the tiling sizes for corresponded dimensions of GEMM ([M x K] x [K x N]).
-    Set them to different values will generate GEMM with different tiling sizes.
+    These 3 parameters are the tiling sizes for corresponding dimensions of GEMM ([M x K] x [K x N]).
+    Setting them to different values will generate GEMM with different tiling sizes.
 
 * NUPHAR_IGEMM_PERMUTE
 
     This enviornment variable is to control the loop permutation in GEMM.
-    Default is not apply any loop permutation. Other options are "inner/outer/all", corresponding to apply permutation for only inner tile loops / only outer loops / both inner and outer loops.
+    The default is to not apply any loop permutation. Other options are "inner/outer/all",referring to apply permutation to only inner tile loops / only outer loops / both inner and outer loops, respectively.
 
 ### Debugging
 There are several [environment variables](../../onnxruntime/core/codegen/common/settings.h) to dump debug information during code generation, plus [some more environment variables](../../onnxruntime/core/providers/nuphar/common/nuphar_settings.h) to dump/control the Nuphar execution provider. You can set environment variables prior to inference to dump debug info to the console. To list some most useful ones:
