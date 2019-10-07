@@ -231,7 +231,7 @@ class OpTester {
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
     input_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(),
-                               optional<float>(), optional<bool>()));
+                               optional<float>()));
   }
 
   template <typename T>
@@ -243,7 +243,7 @@ class OpTester {
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
     input_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(),
-                               optional<float>(), optional<bool>()));
+                               optional<float>()));
   }
 
   template <typename TKey, typename TVal>
@@ -253,33 +253,33 @@ class OpTester {
     value.Init(ptr.release(), DataTypeImpl::GetType<std::map<TKey, TVal>>(),
                DataTypeImpl::GetType<std::map<TKey, TVal>>()->GetDeleteFunc());
     input_data_.push_back(Data(NodeArg(name, &MMapType<TKey, TVal>::s_map_type_proto), std::move(value),
-                               optional<float>(), optional<float>(), optional<bool>()));
+                               optional<float>(), optional<float>()));
   }
 
   template <typename T>
   void AddMissingOptionalInput() {
     std::string name;  // empty == input doesn't exist
     input_data_.push_back(Data(NodeArg(name, &TTensorType<T>::s_type_proto), OrtValue(), optional<float>(),
-                               optional<float>(), optional<bool>()));
+                               optional<float>()));
   }
 
   template <typename T>
   void AddOutput(const char* name, const std::vector<int64_t>& dims, const std::initializer_list<T>& expected_values,
-                 bool check_contents_in_order = true) {
-    AddData(output_data_, name, dims, expected_values.begin(), expected_values.size(), false, check_contents_in_order);
+                 bool sort_output = false) {
+    AddData(output_data_, name, dims, expected_values.begin(), expected_values.size(), false, sort_output);
   }
 
   template <typename T>
   void AddOutput(const char* name, const std::vector<int64_t>& dims, const std::vector<T>& expected_values,
-                 bool check_contents_in_order = true) {
-    AddData(output_data_, name, dims, expected_values.data(), expected_values.size(), false, check_contents_in_order);
+                 bool sort_output = false) {
+    AddData(output_data_, name, dims, expected_values.data(), expected_values.size(), false, sort_output);
   }
 
   template <typename T>
   void AddMissingOptionalOutput() {
     std::string name;  // empty == input doesn't exist
     output_data_.push_back(Data(NodeArg(name, &TTensorType<T>::s_type_proto), OrtValue(), optional<float>(),
-                                optional<float>(), optional<bool>()));
+                                optional<float>()));
   }
 
   // Add other registered types, possibly experimental
@@ -292,7 +292,7 @@ class OpTester {
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
     output_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(),
-                                optional<float>(), optional<bool>()));
+                                optional<float>()));
   }
 
   template <typename T>
@@ -304,7 +304,7 @@ class OpTester {
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
     output_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(),
-                                optional<float>(), optional<bool>()));
+                                optional<float>()));
   }
 
   // Add non tensor output
@@ -315,7 +315,7 @@ class OpTester {
     ml_value.Init(ptr.release(), DataTypeImpl::GetType<std::vector<std::map<TKey, TVal>>>(),
                   DataTypeImpl::GetType<std::vector<std::map<TKey, TVal>>>()->GetDeleteFunc());
     output_data_.push_back(Data(NodeArg(name, &VectorOfMapType<TKey, TVal>::s_vec_map_type_proto), std::move(ml_value),
-                                optional<float>(), optional<float>(), optional<bool>()));
+                                optional<float>(), optional<float>()));
   }
 
   void AddCustomOpRegistry(std::shared_ptr<CustomRegistry> registry) {
@@ -341,7 +341,8 @@ class OpTester {
     });
   }
 
-  enum class ExpectResult { kExpectSuccess, kExpectFailure };
+  enum class ExpectResult { kExpectSuccess,
+                            kExpectFailure };
 
   void Run(ExpectResult expect_result = ExpectResult::kExpectSuccess, const std::string& expected_failure_string = "",
            const std::unordered_set<std::string>& excluded_provider_types = {},
@@ -354,14 +355,14 @@ class OpTester {
     OrtValue data_;
     optional<float> relative_error_;
     optional<float> absolute_error_;
-    optional<bool> check_contents_in_order_;
+    bool sort_output_;
     Data(onnxruntime::NodeArg&& def, OrtValue&& data, optional<float>&& rel, optional<float>&& abs,
-         optional<bool>&& check_contents_in_order)
+         bool sort_output = false)
         : def_(std::move(def)),
           data_(std::move(data)),
           relative_error_(std::move(rel)),
           absolute_error_(abs),
-          check_contents_in_order_(check_contents_in_order) {}
+          sort_output_(sort_output) {}
     Data(Data&&) = default;
     Data& operator=(Data&&) = default;
   };
@@ -387,7 +388,7 @@ class OpTester {
  private:
   template <typename T>
   void AddData(std::vector<Data>& data, const char* name, const std::vector<int64_t>& dims, const T* values,
-               int64_t values_count, bool is_initializer = false, bool check_contents_in_order = true) {
+               int64_t values_count, bool is_initializer = false, bool sort_output = false) {
     try {
       TensorShape shape{dims};
       ORT_ENFORCE(shape.Size() == values_count, values_count, " input values doesn't match tensor size of ",
@@ -411,8 +412,7 @@ class OpTester {
       OrtValue value;
       value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-      data.push_back(Data(NodeArg(name, &type_proto), std::move(value), optional<float>(), optional<float>(),
-                          optional<bool>(check_contents_in_order)));
+      data.push_back(Data(NodeArg(name, &type_proto), std::move(value), optional<float>(), optional<float>(), sort_output));
       if (is_initializer) initializer_index_.push_back(data.size() - 1);
     } catch (const std::exception& ex) {
       std::cerr << "AddData for '" << name << "' threw: " << ex.what();

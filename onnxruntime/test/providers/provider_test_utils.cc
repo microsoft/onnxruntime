@@ -46,7 +46,7 @@ void Check(const OpTester::Data& expected_data, const Tensor& output_tensor, con
   auto* output = output_tensor.template Data<T>();
   auto size = output_tensor.Shape().Size();
 
-  if (expected_data.check_contents_in_order_.has_value() && !expected_data.check_contents_in_order_.value()) {
+  if (expected_data.sort_output_) {
     // if order can be jumbled in the output of an operator, sort both the expected and output buffers prior to
     // comparison this is a "best-effort" algo and should satisfy the requirement for the few ops that do require this
     // support without investing in a more sophisticated infrastructure for the same
@@ -69,8 +69,8 @@ void Check<double>(const OpTester::Data& expected_data, const Tensor& output_ten
   bool has_abs_err = expected_data.absolute_error_.has_value();
   bool has_rel_err = expected_data.relative_error_.has_value();
 
-  // deal with rare cases in which order of output data from a kernel might be undefined
-  if (expected_data.check_contents_in_order_.has_value() && !expected_data.check_contents_in_order_.value()) {
+  // deal with rare cases in which order of output data from a kernel MAY be undefined
+  if (expected_data.sort_output_) {
     sort_expected_and_actual_buffers<double>(expected, output, size);
   }
 
@@ -112,8 +112,8 @@ void Check<float>(const OpTester::Data& expected_data, const Tensor& output_tens
   bool has_abs_err = expected_data.absolute_error_.has_value();
   bool has_rel_err = expected_data.relative_error_.has_value();
 
-  // deal with rare cases in which order of output data from a kernel might be undefined
-  if (expected_data.check_contents_in_order_.has_value() && !expected_data.check_contents_in_order_.value()) {
+  // deal with rare cases in which order of output data from a kernel MAY be undefined
+  if (expected_data.sort_output_) {
     sort_expected_and_actual_buffers<float>(expected, output, size);
   }
 
@@ -158,8 +158,8 @@ void Check<MLFloat16>(const OpTester::Data& expected_data, const Tensor& output_
   ConvertMLFloat16ToFloat(expected, f_expected.data(), static_cast<int>(size));
   ConvertMLFloat16ToFloat(output, f_output.data(), static_cast<int>(size));
 
-  // deal with rare cases in which order of output data from a kernel might be undefined
-  if (expected_data.check_contents_in_order_.has_value() && !expected_data.check_contents_in_order_.value()) {
+  // deal with rare cases in which order of output data from a kernel MAY be undefined
+  if (expected_data.sort_output_) {
     sort_expected_and_actual_buffers<float>(f_expected, f_output);
   }
 
@@ -187,8 +187,8 @@ void Check<BFloat16>(const OpTester::Data& expected_data, const Tensor& output_t
   BFloat16ToFloat(expected, f_expected.data(), static_cast<size_t>(size));
   BFloat16ToFloat(output, f_output.data(), static_cast<size_t>(size));
 
-  // deal with rare cases in which order of output data from a kernel might be undefined
-  if (expected_data.check_contents_in_order_.has_value() && !expected_data.check_contents_in_order_.value()) {
+  // deal with rare cases in which order of output data from a kernel MAY be undefined
+  if (expected_data.sort_output_) {
     sort_expected_and_actual_buffers<float>(f_expected, f_output);
   }
 
