@@ -12,6 +12,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/framework/TensorSeq.h"
 
 #if USE_CUDA
 #define BACKEND_PROC "GPU"
@@ -148,8 +149,16 @@ void AddNonTensor(OrtValue& val, std::vector<py::object>& pyobjs) {
   pyobjs.push_back(py::cast(val.Get<T>()));
 }
 
+// template <>
+// void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
+//   pyobjs.push_back(py::cast(val.Get<T>()));
+// }
+
 void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   // Should be in sync with core/framework/datatypes.h
+  /*if (val.Type() == DataTypeImpl::GetType<TensorSeq>()) {
+    AddNonTensor<TensorSeq>(val, pyobjs);
+  } else*/
   if (val.Type() == DataTypeImpl::GetType<MapStringToString>()) {
     AddNonTensor<MapStringToString>(val, pyobjs);
   } else if (val.Type() == DataTypeImpl::GetType<MapStringToInt64>()) {
