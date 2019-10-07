@@ -43,9 +43,7 @@ static void RunTest(int op_set,
     test.AddOutput<float>("Values", expected_dimensions, expected_vals);
     test.AddOutput<int64_t>("Indices", expected_dimensions, expected_indices);
   } else {
-    // false indicates contents could be jumbled
     test.AddOutput<float>("Values", expected_dimensions, expected_vals, true);
-    // false indicates contents could be jumbled
     test.AddOutput<int64_t>("Indices", expected_dimensions, expected_indices, true);
   }
 
