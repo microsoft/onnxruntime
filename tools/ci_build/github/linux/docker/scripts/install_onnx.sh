@@ -9,6 +9,17 @@
 
 set -e
 PYTHON_VER=$1
+
+if [[ "$PYTHON_VER" = "3.5" && -d "/opt/python/cp35-cp35m"  ]]; then
+   PYTHON_EXE="/opt/python/cp35-cp35m/bin/python3.5"
+elif [[ "$PYTHON_VER" = "3.6" && -d "/opt/python/cp36-cp36m"  ]]; then
+   PYTHON_EXE="/opt/python/cp36-cp36m/bin/python3.6"
+elif [[ "$PYTHON_VER" = "3.7" && -d "/opt/python/cp36-cp36m"  ]]; then
+   PYTHON_EXE="/opt/python/cp37-cp37m/bin/python3.7"
+else
+   PYTHON_EXE="/usr/bin/${PYTHON_EXE}"
+fi
+
 version2tag=(5af210ca8a1c73aa6bae8754c9346ec54d0a756e-onnx123
              bae6333e149a59a3faa9c4d9c44974373dcf5256-onnx130
              9e55ace55aad1ada27516038dfbdc66a8a0763db-onnx141
@@ -21,14 +32,14 @@ for v2t in ${version2tag[*]}; do
     echo "first pass";
   else
     echo "deleting old onnx-${lastest_onnx_version}";
-    python${PYTHON_VER} -m pip uninstall -y onnx
+    ${PYTHON_EXE} -m pip uninstall -y onnx
   fi
   lastest_onnx_version=$onnx_version
   aria2c -q -d /tmp/src  https://github.com/onnx/onnx/archive/$onnx_version.tar.gz
   tar -xf /tmp/src/onnx-$onnx_version.tar.gz -C /tmp/src
   cd /tmp/src/onnx-$onnx_version
   git clone https://github.com/pybind/pybind11.git third_party/pybind11
-  python${PYTHON_VER} -m pip install .
+  ${PYTHON_EXE} -m pip install .
   mkdir -p /data/onnx/${onnx_tag}
-  backend-test-tools generate-data -o /data/onnx/$onnx_tag
+  ${PYTHON_EXE} -m onnx.backend.test.cmd_tools generate-data -o /data/onnx/$onnx_tag
 done
