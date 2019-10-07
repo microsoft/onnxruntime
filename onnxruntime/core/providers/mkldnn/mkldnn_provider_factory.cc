@@ -22,7 +22,7 @@ struct MkldnnProviderFactory : IExecutionProviderFactory {
 std::unique_ptr<IExecutionProvider> MkldnnProviderFactory::CreateProvider() {
   MKLDNNExecutionProviderInfo info;
   info.create_arena = create_arena_;
-  return std::make_unique<MKLDNNExecutionProvider>(info);
+  return onnxruntime::make_unique<MKLDNNExecutionProvider>(info);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int device_id) {

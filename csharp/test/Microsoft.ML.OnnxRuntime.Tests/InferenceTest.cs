@@ -32,7 +32,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.True(opt.EnableCpuMemArena);
                 Assert.Equal("", opt.LogId);
                 Assert.Equal(LogLevel.Verbose, opt.LogVerbosityLevel);
-                Assert.Equal(0, opt.ThreadPoolSize);
+                Assert.Equal(0, opt.IntraOpNumThreads);
+                Assert.Equal(0, opt.InterOpNumThreads);
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_BASIC, opt.GraphOptimizationLevel);
 
                 // try setting options 
@@ -58,12 +59,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.LogVerbosityLevel = LogLevel.Error;
                 Assert.Equal(LogLevel.Error, opt.LogVerbosityLevel);
 
-                opt.ThreadPoolSize = 4;
-                Assert.Equal(4, opt.ThreadPoolSize);
+                opt.IntraOpNumThreads = 4;
+                Assert.Equal(4, opt.IntraOpNumThreads);
+
+                opt.InterOpNumThreads = 4;
+                Assert.Equal(4, opt.InterOpNumThreads);
 
                 opt.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_EXTENDED;
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, opt.GraphOptimizationLevel);
-                
+
                 Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; });
 
                 opt.AppendExecutionProvider_CPU(1);
@@ -392,6 +396,55 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 } //model
             } //opset
         }
+
+        [Fact]
+        private void TestOverridableInitializerMetadata()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "overridable_initializer.onnx");
+            using (var session = new InferenceSession(modelPath))
+            {
+                Assert.Equal(2, session.InputMetadata.Count);
+                Assert.True(session.InputMetadata.ContainsKey("Label"));
+                Assert.True(session.InputMetadata.ContainsKey("F2"));
+
+                Assert.Equal(1, session.OverridableInitializerMetadata.Count);
+                Assert.True(session.OverridableInitializerMetadata.ContainsKey("F1"));
+                Assert.True(session.OverridableInitializerMetadata["F1"].IsTensor);
+                Assert.Equal(typeof(float), session.OverridableInitializerMetadata["F1"].ElementType);
+                Assert.Equal(2, session.OverridableInitializerMetadata["F1"].Dimensions.Length);
+                Assert.Equal(1, session.OverridableInitializerMetadata["F1"].Dimensions[0]);
+                Assert.Equal(1, session.OverridableInitializerMetadata["F1"].Dimensions[1]);
+
+                var container = new List<NamedOnnxValue>();
+                var Label_input = new DenseTensor<bool>(new bool[] { true }, new int[] { 1, 1 });
+                container.Add(NamedOnnxValue.CreateFromTensor("Label", Label_input));
+                
+                var F2_input = new DenseTensor<string>(new string[] { "f2_string" }, new int[] { 1, 1 });
+                container.Add(NamedOnnxValue.CreateFromTensor("F2", F2_input));
+
+                var F1_initializer = new DenseTensor<float>(new float[] { 2.0f }, new int[] { 1, 1 });
+                container.Add(NamedOnnxValue.CreateFromTensor("F1", F1_initializer));
+
+                using (var result = session.Run(container))
+                {
+                    var resultMap = new Dictionary<string, NamedOnnxValue>();
+
+                    foreach (var output in result)
+                    {
+                        resultMap[output.Name] = output;
+                    }
+
+                    Assert.True(resultMap.ContainsKey("Label0"));
+                    Assert.True(resultMap.ContainsKey("F20"));
+                    Assert.True(resultMap.ContainsKey("F11"));
+
+                    var overriddenInitializer = resultMap["F11"].AsTensor<float>();
+                    Assert.NotNull(overriddenInitializer);
+                    Assert.True(overriddenInitializer.SequenceEqual(F1_initializer));
+                }
+            }
+        }
+
 
         [Fact]
         private void TestModelInputFloat()
@@ -754,7 +807,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact(Skip="The Model Serialization Test fails on linux. Test skipped until fixed. Serialization API should not be used before fix.")]
+        [Fact(Skip = "The Model Serialization Test fails on linux. Test skipped until fixed. Serialization API should not be used before fix.")]
         private void TestModelSerialization()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
@@ -788,6 +841,26 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        [Fact]
+        private void TestInferenceSessionWithByteArray()
+        {
+            // model takes 1x5 input of fixed type, echoes back
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_FLOAT.pb");
+            byte[] modelData = File.ReadAllBytes(modelPath);
+
+            using (var session = new InferenceSession(modelData))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<float>(new float[] { 1.0f, 2.0f, -3.0f, float.MinValue, float.MaxValue }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                using (var res = session.Run(container))
+                {
+                    var tensorOut = res.First().AsTensor<float>();
+                    Assert.True(tensorOut.SequenceEqual(tensorIn));
+                }
+            }
+        }
 
         [DllImport("kernel32", SetLastError = true)]
         static extern IntPtr LoadLibrary(string lpFileName);
@@ -802,20 +875,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 return;
             var entryPointNames = new[]{
-            "OrtCreateEnv","OrtReleaseEnv",
-            "OrtGetErrorCode","OrtGetErrorMessage", "OrtReleaseStatus",
-            "OrtCreateSession","OrtRun",
-            "OrtSessionGetInputCount", "OrtSessionGetOutputCount","OrtSessionGetInputName","OrtSessionGetOutputName",
-            "OrtSessionGetInputTypeInfo", "OrtSessionGetOutputTypeInfo","OrtReleaseSession",
-            "OrtCreateSessionOptions","OrtCloneSessionOptions",
-            "OrtEnableSequentialExecution","OrtDisableSequentialExecution","OrtEnableProfiling","OrtDisableProfiling",
-            "OrtEnableMemPattern","OrtDisableMemPattern","OrtEnableCpuMemArena","OrtDisableCpuMemArena",
-            "OrtSetSessionLogId","OrtSetSessionLogVerbosityLevel","OrtSetSessionThreadPoolSize","OrtSetSessionGraphOptimizationLevel",
-            "OrtSetOptimizedModelFilePath", "OrtSessionOptionsAppendExecutionProvider_CPU","OrtCreateMemoryInfo","OrtCreateCpuMemoryInfo",
-            "OrtGetAllocatorWithDefaultOptions","OrtAllocatorFree","OrtAllocatorGetInfo",
-            "OrtCreateTensorWithDataAsOrtValue","OrtGetTensorMutableData", "OrtReleaseMemoryInfo",
-            "OrtCastTypeInfoToTensorInfo","OrtGetTensorTypeAndShape","OrtGetTensorElementType","OrtGetDimensionsCount",
-            "OrtGetDimensions","OrtGetTensorShapeElementCount","OrtReleaseValue"
+            "OrtGetApi",
+            "OrtSessionOptionsAppendExecutionProvider_CPU"
 #if USE_MKLDNN
             ,"OrtSessionOptionsAppendExecutionProvider_Mkldnn"
 #endif

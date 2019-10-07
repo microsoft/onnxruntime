@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/math/softmax_shared.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
@@ -23,7 +22,13 @@ static void RunTest(const std::vector<float>& x_vals,
 
   test.AddInput<float>("X", dimensions, x_vals);
   test.AddOutput<float>("Y", dimensions, expected_vals);
-  test.Run(expect_result, expected_err_str);
+
+  std::unordered_set<std::string> excluded_eps; 
+  if (axis < 0) {
+    excluded_eps.insert(kNGraphExecutionProvider); // NGraph EP cannot handle negative axis values
+  }
+
+  test.Run(expect_result, expected_err_str, excluded_eps);
 }
 
 TEST(HardmaxOperator, Simple) {
@@ -135,17 +140,27 @@ TEST(HardmaxOperator, ThreeDimsAxis2) {
   RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 2);
 }
 
-TEST(HardmaxOperator, InvalidAxis) {
-  std::vector<float> x_vals = {-1.0f, 0.0f, 1.0f};
-  std::vector<float> expected_vals = {0.0f, 0.0f, 0.0f};
-  std::vector<int64_t> dimensions = {1, 3};
+TEST(HardmaxOperator, ThreeDimsNegAxis2) {
+  // x = <see x_vals_3dims>
+  // import cntk as C
+  // expected = C.hardmax(x.reshape(12,5)).eval().reshape(3, 4, 5)
+  std::vector<float> expected_vals = {
+      0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+      0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+      0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
 
-  RunTest(x_vals,
-          expected_vals,
-          dimensions,
-          /* invalid axis */ -1,
-          OpTester::ExpectResult::kExpectFailure,
-          "Invalid axis provided.");
+      0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+      0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+
+      0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ -1);
 }
 
 }  // namespace test

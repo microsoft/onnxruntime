@@ -20,8 +20,7 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 
-#include "gsl/gsl_algorithm"
-#include "gsl/span"
+#include "gsl/gsl"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -79,17 +78,25 @@ ONNX_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction(LoopInferenceFunction));
 */
 
-ONNX_CPU_OPERATOR_KERNEL(Loop,
-                         1,
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
+                         1, 10,
                          KernelDefBuilder()
                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
                              .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                          Loop);
 
+ONNX_CPU_OPERATOR_KERNEL(Loop,
+                                   11,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                                   Loop);
+
 struct Loop::Info {
   Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in)
-      : subgraph{subgraph_in} {
+      : subgraph(subgraph_in) {
     num_loop_carried_vars = static_cast<int>(node.InputDefs().size()) - 2;  // skip 'M' and 'cond'
     num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
     num_subgraph_inputs = 2 + num_loop_carried_vars;  // iter_num, cond, loop carried vars
@@ -195,7 +202,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
   ORT_UNUSED_PARAMETER(attribute_name);
 
   const auto& node = Node();
-  info_ = std::make_unique<Loop::Info>(node, *subgraph_session_state.GetGraphViewer());
+  info_ = onnxruntime::make_unique<Loop::Info>(node, *subgraph_session_state.GetGraphViewer());
 
   // the Loop inputs are matched to subgraph feeds based on order.
   // we first need the names of the Loop inputs to determine what device they are available on
@@ -265,10 +272,10 @@ Status Loop::Compute(OpKernelContext* ctx) const {
 LoopImpl::LoopImpl(OpKernelContextInternal& context,
                    const SessionState& session_state,
                    const Loop::Info& subgraph_info)
-    : context_{context},
-      session_state_{session_state},
-      info_{subgraph_info},
-      implicit_inputs_{context_.GetImplicitInputs()} {
+    : context_(context),
+      session_state_(session_state),
+      info_(subgraph_info),
+      implicit_inputs_(context_.GetImplicitInputs()) {
   auto* max_trip_count_tensor = context.Input<Tensor>(0);
   max_trip_count_ = max_trip_count_tensor ? *max_trip_count_tensor->Data<int64_t>() : INT64_MAX;
 
@@ -279,7 +286,7 @@ LoopImpl::LoopImpl(OpKernelContextInternal& context,
 template <typename T>
 static OrtValue MakeScalarMLValue(AllocatorPtr& allocator, T value, bool is_1d) {
   auto* data_type = DataTypeImpl::GetType<T>();
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(data_type,
+  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(data_type,
                                                               is_1d ? TensorShape({1}) : TensorShape({}),
                                                               allocator);
 

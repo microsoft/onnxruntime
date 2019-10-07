@@ -119,7 +119,7 @@ if platform.system() == 'Linux':
   # nGraph Libs
   libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
   # Nuphar Libs
-  libs.extend(['libtvm.so'])
+  libs.extend(['libtvm.so.0.5.1'])
 elif platform.system() == "Darwin":
   libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.0.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
 else:
@@ -187,7 +187,7 @@ setup(
               'onnxruntime.capi',
               'onnxruntime.datasets',
               'onnxruntime.tools',
-              ],
+              ] + (['onnxruntime.nuphar'] if package_name == 'onnxruntime-nuphar' else []),
     ext_modules=ext_modules,
     package_data={
         'onnxruntime': data + examples + extra,

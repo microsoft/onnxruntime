@@ -17,4 +17,6 @@ bool IsEnvVarDefined(const char* var);
 
 int64_t TotalSize(const std::vector<int64_t>& shape);
 
+void GetStrides(const int64_t* shape, int ndim, std::vector<int64_t>& strides);
+
 }  // namespace onnxruntime

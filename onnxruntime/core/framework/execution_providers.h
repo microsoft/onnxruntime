@@ -99,6 +99,10 @@ class ExecutionProviders {
   const std::vector<std::string>& GetIds() const { return exec_provider_ids_; }
 
  private:
+  // Some compilers emit incomprehensive output if this is allowed
+  // with a container that has unique_ptr or something move-only.
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(ExecutionProviders);
+
   std::vector<std::unique_ptr<IExecutionProvider>> exec_providers_;
   std::vector<std::string> exec_provider_ids_;
 
