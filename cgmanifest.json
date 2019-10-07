@@ -49,7 +49,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "2873fea8bd4679fdf337d64d1140e80a61986c29",
+               "commitHash": "553df22c67bee5f0fe6599cff60f1afc6748c635",
                "repositoryUrl": "https://github.com/onnx/onnx.git"
             }
          }
@@ -303,7 +303,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "90cb0f8d60b07e96ca7f0ba92fa50884010599ad",
+               "commitHash":"647d4c3f4d47d9cf63fb90ec175c414a005adea7",
                "repositoryUrl": "https://github.com/JDAI-CV/DNNLibrary.git"
             }
          }

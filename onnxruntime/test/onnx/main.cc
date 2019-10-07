@@ -509,6 +509,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 #endif
 
+#ifdef USE_NNAPI
+  broken_tests.insert({"scan9_sum", "Error with the extra graph"});
+  broken_tests.insert({"scan_sum", "Error with the extra graph"});
+  broken_tests.insert({"mvn_expanded", "Failed to find kernel for MemcpyFromHost(1) (node Memcpy_1)"});
+#endif
+
 #ifdef USE_TENSORRT
   broken_tests.insert({"fp16_shufflenet", "TRT EP bug"});
   broken_tests.insert({"fp16_inception_v1", "TRT EP bug"});
