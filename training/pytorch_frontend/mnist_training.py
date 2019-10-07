@@ -1,9 +1,12 @@
 ## This code is from https://github.com/pytorch/examples/blob/master/mnist/main.py
 ## with modification to do training using onnxruntime as backend on cuda device.
-## A private PyTorch build from https://aiinfra.visualstudio.com/Lotus/_git/pytorch is needed to run the demo.
+## A private PyTorch build from https://aiinfra.visualstudio.com/Lotus/_git/pytorch (ORTTraining branch) is needed to run the demo.
 ## To run the demo with ORT backend:
-##      python mnist_training.py --use_ort
-## When "--use_ort" is not given, it will run training with PyTorch as backend.
+##      python mnist_training.py --use-ort
+## or
+##      python mnist_training.py --use-ort --use-ort-trainer
+
+## When "--use-ort" is not given, it will run training with PyTorch as backend.
 ## Model testing is not complete.
 
 from __future__ import print_function
@@ -15,7 +18,7 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 import numpy as np
 
-from ort_trainer import ORTTrainer
+from ort_trainer import ORTTrainer, ORTModel, IODescription, ModelDescription
 
 ## 
 class NeuralNet(nn.Module):
@@ -31,16 +34,45 @@ class NeuralNet(nn.Module):
         out = self.fc2(out)
         return out
 
-def parameter_count(parameters):
-    count = 0
-    for p in parameters:
-        print(p.shape)
-
 def my_loss(x, target):
     return F.nll_loss(F.log_softmax(x, dim=1), target)
 
+def train_with_model(args, model, device, train_loader, optimizer, epoch):
+    model.train()
+    for batch_idx, (data, target) in enumerate(train_loader):
+        data, target = data.to(device), target.to(device)
+        data = data.reshape(data.shape[0], -1)
+        optimizer.zero_grad()
+        loss, pred = model.run(data, target)
+        optimizer.step()
+        if batch_idx % args.log_interval == 0:
+            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                epoch, batch_idx * len(data), len(train_loader.dataset),
+                100. * batch_idx / len(train_loader), loss.item()))
 
-def train(args, trainer, device, train_loader, epoch):    
+def test_with_model(args, model, device, train_loader, optimizer, epoch):
+    model.eval()
+    test_loss = 0
+    correct = 0
+    with torch.no_grad():
+        for data, target in test_loader:
+            data, target = data.to(device), target.to(device)
+            data = data.reshape(data.shape[0], -1)
+            
+            pred = model.run(data, target, )
+
+            output = F.log_softmax(trainer.eval(data), dim=1)
+            test_loss += F.nll_loss(output, target, reduction='sum').item() # sum up batch loss
+            pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
+            correct += pred.eq(target.view_as(pred)).sum().item()
+
+    test_loss /= len(test_loader.dataset)
+
+    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+        test_loss, correct, len(test_loader.dataset),
+        100. * correct / len(test_loader.dataset)))
+
+def train_with_trainer(args, trainer, device, train_loader, epoch):    
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         data = data.reshape(data.shape[0], -1)
@@ -52,8 +84,8 @@ def train(args, trainer, device, train_loader, epoch):
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.item()))
 
-#TODO : comple this once ORT training can do evaluation.
-def test(args, trainer, device, test_loader):
+# TODO: comple this once ORT training can do evaluation.
+def test_with_trainer(args, trainer, device, test_loader):
     test_loss = 0
     correct = 0
     with torch.no_grad():
@@ -70,6 +102,13 @@ def test(args, trainer, device, test_loader):
     print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss, correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
+
+def mnist_model_description():
+    input_desc = IODescription('input1', ['batch', 784], torch.float32)
+    label_desc = IODescription('label', ['batch',], torch.int64, num_classes = 10)
+    loss_desc = IODescription('loss', [], torch.float32)
+    probability_desc = IODescription('probability', ['batch', 10], torch.float32)
+    return ModelDescription([input_desc, label_desc], [loss_desc, probability_desc])
 
 def main():
 #Training settings
@@ -94,18 +133,18 @@ def main():
     parser.add_argument('--save-model', action='store_true', default=False,
                         help='For Saving the current Model')
 
-    parser.add_argument('--use_ort', action='store_true', default=False,
+    parser.add_argument('--use-ort', action='store_true', default=False,
+                        help='to use onnxruntime as training backend')
+
+    parser.add_argument('--use-ort-trainer', action='store_true', default=False,
                         help='to use onnxruntime as training backend')
 
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
-    if not use_cuda:
-        print("Training with ORT only works with CUDA")
-
     torch.manual_seed(args.seed)
 
-    device = torch.device("cuda")
+    device = torch.device("cuda" if use_cuda else "cpu")
 
     kwargs = {'num_workers': 0, 'pin_memory': True}
     train_loader = torch.utils.data.DataLoader(
@@ -127,18 +166,23 @@ def main():
     num_classes = 10
     model = NeuralNet(input_size, hidden_size, num_classes).to(device)
 
-    optimizer_constructor_lambda = lambda model_parameters: optim.SGD(model_parameters, args.lr, args.momentum)
+    model_desc = mnist_model_description()
 
-    trainer = ORTTrainer(model, my_loss, optimizer_constructor_lambda)
+    if args.use_ort_trainer:
+        optimizer_constructor_lambda = lambda model_parameters: optim.SGD(model_parameters, args.lr, args.momentum)
+        trainer = ORTTrainer(model, my_loss, model_desc, optimizer_constructor_lambda, device, args.use_ort)
 
-    if args.use_ort:
-#call trainer.compile() to setup ORT backend for training.
-#if trainer.compile() is not called, it will use PyTorch as training backend
-        trainer.compile(batch_size = 64, feature_shape = 28 * 28, input_dtype = torch.float32, number_classes = 10, label_type=torch.int64)
+        for epoch in range(1, args.epochs + 1):
+            train_with_trainer(args, trainer, device, train_loader, epoch)
+            test_with_trainer(args, trainer, device, test_loader)
+    else:
+        model = ORTModel(model, my_loss, model_desc, device)
 
-    for epoch in range(1, args.epochs + 1):
-        train(args, trainer, device, train_loader, epoch)
-        test(args, trainer, device, test_loader)
+        optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+
+        for epoch in range(1, args.epochs + 1):
+            train_with_model(args, model, device, train_loader, optimizer, epoch)
+            #test(args, model, device, test_loader)
 
 #if (args.save_model) :
 #torch.save(model.state_dict(), "mnist_cnn.pt")
