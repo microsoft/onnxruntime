@@ -12,12 +12,12 @@
 namespace onnxruntime {
 namespace cuda {
 
-enum class SimpleBroadcast : size_t {
-  NoBroadcast = (size_t)-1,
-  LeftScalar = (size_t)-2,
-  RightScalar = (size_t)-3,
-  RightPerChannelBatch1 = (size_t)-4,
-  RightPerChannelBatchN = (size_t)-5,
+enum class SimpleBroadcast : int32_t {
+  NoBroadcast = (int32_t)-1,
+  LeftScalar = (int32_t)-2,
+  RightScalar = (int32_t)-3,
+  RightPerChannelBatch1 = (int32_t)-4,
+  RightPerChannelBatchN = (int32_t)-5,
 };
 
 template <typename T>
@@ -32,6 +32,23 @@ std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes();
 
 template <typename T>
 void Fill(T* output, T value, int64_t count);
+
+constexpr int32_t MAX_ARRAY_SIZE = 8;
+template <typename T>
+struct TArray {
+  TArray() {
+    size_ = 0;
+    memset(data_, 0, sizeof(data_));
+  }
+
+  TArray(int32_t size) {
+    size_ = size;
+    memset(data_, 0, sizeof(data_));
+  }
+
+  T data_[MAX_ARRAY_SIZE];
+  int32_t size_;
+};
 
 }  // namespace cuda
 }  // namespace onnxruntime

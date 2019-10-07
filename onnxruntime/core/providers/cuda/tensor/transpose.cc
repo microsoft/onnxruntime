@@ -53,7 +53,7 @@ Status Transpose<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor& X = *X_ptr;
   const TensorShape& input_shape = X.Shape();
   const std::vector<int64_t>& input_dims = input_shape.GetDims();
-  size_t rank = input_dims.size();
+  int32_t rank = gsl::narrow_cast<int32_t>(input_dims.size());
 
   std::vector<int64_t> output_dims(rank);
   std::vector<size_t> default_perm(rank);
@@ -92,25 +92,26 @@ Status Transpose<T>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  int device_id = GetDeviceId();
-  CudaAsyncBuffer<int64_t> input_strides(this, device_id, rank);
-  CudaAsyncBuffer<size_t> perm(this, device_id, *p_perm);
-  CudaAsyncBuffer<fast_divmod> fdm_output_strides(this, device_id, rank);
-  ORT_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), input_dims));
-  ORT_ENFORCE(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_dims));
+  TensorPitches original_input_strides(input_dims);
+  TensorPitches original_output_strides(output_dims);
 
-  ORT_RETURN_IF_ERROR(input_strides.CopyToGpu());
-  ORT_RETURN_IF_ERROR(perm.CopyToGpu());
-  ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
+  ORT_ENFORCE(rank <= MAX_ARRAY_SIZE);
+  TArray<int64_t> input_strides(rank);
+  for (auto i = 0; i < rank; i++) {
+    input_strides.data_[i] = original_input_strides[(*p_perm)[i]];
+  }
+  TArray<fast_divmod> output_strides(rank);
+  for (auto i = 0; i < rank; i++) {
+    output_strides.data_[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
+  }
 
   TransposeImpl(
       rank,
-      input_strides.GpuPtr(),
-      perm.GpuPtr(),
+      output_shape.Size(),
+      input_strides,
       reinterpret_cast<const typename ToCudaType<T>::MappedType*>(X.template Data<T>()),
-      fdm_output_strides.GpuPtr(),
-      reinterpret_cast<typename ToCudaType<T>::MappedType*>(Y->template MutableData<T>()),
-      output_shape.Size());
+      output_strides,
+      reinterpret_cast<typename ToCudaType<T>::MappedType*>(Y->template MutableData<T>()));
 
   return Status::OK();
 }

@@ -43,23 +43,23 @@ template<typename Tind, bool dynamic>
 Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   auto input_tensor = ctx->Input<Tensor>(0);
   ORT_ENFORCE(nullptr != input_tensor);
-  auto& input_dimensions = input_tensor->Shape().GetDims();
+  auto& input_dims = input_tensor->Shape().GetDims();
 
   // Initialize the starts & ends to the actual tensor shape
-  const size_t dimension_count = input_dimensions.size();
-  std::vector<int64_t> starts(dimension_count, 0);
-  std::vector<int64_t> steps(dimension_count, 1);
-  std::vector<int64_t> output_dims(input_dimensions);
+  const int32_t rank = gsl::narrow_cast<int32_t>(input_dims.size());
+  std::vector<int64_t> starts(rank, 0);
+  std::vector<int64_t> steps(rank, 1);
+  std::vector<int64_t> output_dims(input_dims);
 
   if (dynamic) {
     std::vector<int64_t> input_starts, input_ends, input_axes, input_steps;
     FillVectorsFromInput(ctx, input_starts, input_ends, input_axes, input_steps);
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes,
-                        input_steps, input_dimensions, starts, steps, output_dims));
+                        input_steps, input_dims, starts, steps, output_dims));
 
   } else {
     ORT_RETURN_IF_ERROR(PrepareForCompute(attr_starts_, attr_ends_, attr_axes_, 
-	                    input_dimensions, starts, output_dims));
+	                    input_dims, starts, output_dims));
   }
 
   TensorShape output_shape(output_dims);
@@ -68,42 +68,37 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   if (output_size == 0) {
     return Status::OK();
   }
-  int device_id = GetDeviceId();
-  CudaAsyncBuffer<int64_t> starts_buffer(this, device_id, dimension_count);
-  gsl::span<int64_t> starts_buffer_span = starts_buffer.CpuSpan();
-  for (int i = 0; i < dimension_count; ++i) {
-    starts_buffer_span[i] = starts[i];
+
+  ORT_ENFORCE(rank <= MAX_ARRAY_SIZE);
+  TArray<int64_t> starts_buffer(gsl::narrow_cast<int32_t>(starts.size()));
+  for (auto i = 0; i < starts.size(); ++i) {
+    starts_buffer.data_[i] = starts[i];
   }
-  starts_buffer.CopyToGpu();
-
-  CudaAsyncBuffer<int64_t> steps_buffer(this, device_id, dimension_count);
-  gsl::span<int64_t> steps_buffer_span = steps_buffer.CpuSpan();
-  for (int i = 0; i < dimension_count; ++i) {
-    steps_buffer_span[i] = steps[i];
+  TArray<int64_t> steps_buffer(gsl::narrow_cast<int32_t>(steps.size()));
+  for (auto i = 0; i < steps.size(); ++i) {
+    steps_buffer.data_[i] = steps[i];
   }
-  steps_buffer.CopyToGpu();
 
-  CudaAsyncBuffer<int64_t> input_strides(this, device_id, dimension_count);
-  ORT_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), input_dimensions));
-  input_strides.CopyToGpu();
-
-  TensorPitches output_pitches(output_dims);
-
-  CudaAsyncBuffer<fast_divmod> div_strides(this, device_id, dimension_count);
-  gsl::span<fast_divmod> div_strides_span = div_strides.CpuSpan();
-  for (int i = 0; i < dimension_count; ++i) {
-    div_strides_span[i] = fast_divmod(gsl::narrow_cast<int>(output_pitches[i]));
+  TensorPitches original_input_strides(input_dims);
+  TArray<int64_t> input_strides(gsl::narrow_cast<int32_t>(original_input_strides.size()));
+  for (auto i = 0; i < original_input_strides.size(); ++i) {
+    input_strides.data_[i] = original_input_strides[i];
   }
-  div_strides.CopyToGpu();
+
+  TensorPitches original_output_strides(output_dims);
+  TArray<fast_divmod> output_strides(gsl::narrow_cast<int32_t>(original_output_strides.size()));
+  for (auto i = 0; i < original_output_strides.size(); ++i) {
+    output_strides.data_[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
+  }
 
   size_t element_size = input_tensor->DataType()->Size();
 
   ORT_RETURN_IF_ERROR(SliceImpl(element_size,
-                              gsl::narrow_cast<int32_t>(dimension_count),
-                              starts_buffer.GpuPtr(),
-                              steps_buffer.GpuPtr(),
-                              input_strides.GpuPtr(),
-                              div_strides.GpuPtr(),
+                              rank,
+                              &starts_buffer,
+                              &steps_buffer,
+                              &input_strides,
+                              &output_strides,
                               input_tensor->DataRaw(),
                               output_tensor->MutableDataRaw(),
                               output_size));

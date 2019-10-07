@@ -40,14 +40,14 @@ void ImplDivGradRhsPerChannelBatchN(
 
 template <typename T>
 void ImplDivGrad(
-    size_t output_rank,
-    const int64_t* a_padded_strides,
+    int32_t output_rank,
+    const TArray<int64_t>* a_padded_strides,
     const T* a_data,
-    const int64_t* b_padded_strides,
+    const TArray<int64_t>* b_padded_strides,
     const T* b_data,
     const T* dy_data,
     size_t count,
-    const fast_divmod* fdm_output_strides,
+    const TArray<fast_divmod>* fdm_output_strides,
     T* da_output_data,
     T* db_output_data);
 }  // namespace cuda

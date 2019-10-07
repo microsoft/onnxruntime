@@ -54,15 +54,10 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
   if (!da_output_tensor && !db_output_tensor)
     return Status::OK();
 
-  BinaryElementwisePreparation prepare(this);
-  ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(context->GetDeviceId(), a_tensor, b_tensor,
+  BinaryElementwisePreparation prepare;
+  ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(a_tensor, b_tensor,
                                                         // TODO: BinaryElementwiseBroadcastPrepare shall take dy_tensor as const Tensor*.
                                                         const_cast<Tensor*>(dy_tensor), &prepare));
-  prepare.CopyToGpu();
-
-  const int64_t* prepare_a_padded_strides = prepare.lhs_padded_strides.GpuPtr();
-  const int64_t* prepare_b_padded_strides = prepare.rhs_padded_strides.GpuPtr();
-  const fast_divmod* prepare_dy_strides = prepare.fdm_output_strides.GpuPtr();
   const CudaT* prepare_a_data = reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>());
   const CudaT* prepare_b_data = reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>());
   const CudaT* prepare_dy_data = reinterpret_cast<const CudaT*>(prepare.output_tensor->template Data<T>());
@@ -70,7 +65,7 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
   T* db_data = db_output_tensor ? db_output_tensor->template MutableData<T>() : nullptr;
 
   switch (prepare.output_rank_or_simple_broadcast) {
-    case static_cast<size_t>(SimpleBroadcast::NoBroadcast):
+    case static_cast<int32_t>(SimpleBroadcast::NoBroadcast):
       ImplDivGradSimple<CudaT>(
           SimpleBroadcast::NoBroadcast,
           prepare_a_data,
@@ -80,7 +75,7 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
           reinterpret_cast<CudaT*>(da_data),
           reinterpret_cast<CudaT*>(db_data));
       break;
-    case static_cast<size_t>(SimpleBroadcast::LeftScalar): {
+    case static_cast<int32_t>(SimpleBroadcast::LeftScalar): {
       T* temp_da_data = nullptr;
       IAllocatorUniquePtr<T> temp_da_allocator;
       if (da_output_tensor) {
@@ -109,7 +104,7 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
         }
       break;
     }
-    case static_cast<size_t>(SimpleBroadcast::RightScalar): {
+    case static_cast<int32_t>(SimpleBroadcast::RightScalar): {
       T* temp_db_data = nullptr;
       IAllocatorUniquePtr<T> temp_db_allocator;
       if (db_output_tensor) {
@@ -137,15 +132,15 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
       }
       break;
     }
-    case static_cast<size_t>(SimpleBroadcast::RightPerChannelBatch1):
-    case static_cast<size_t>(SimpleBroadcast::RightPerChannelBatchN): {
+    case static_cast<int32_t>(SimpleBroadcast::RightPerChannelBatch1):
+    case static_cast<int32_t>(SimpleBroadcast::RightPerChannelBatchN): {
       T* temp_db_data = nullptr;
       IAllocatorUniquePtr<T> temp_db_allocator;
       if (db_output_tensor) {
         temp_db_allocator = GetScratchBuffer<T>(dy_shape.Size());
         temp_db_data = temp_db_allocator.get();
       }
-      if (prepare.output_rank_or_simple_broadcast == static_cast<size_t>(SimpleBroadcast::RightPerChannelBatch1)) {
+      if (prepare.output_rank_or_simple_broadcast == static_cast<int32_t>(SimpleBroadcast::RightPerChannelBatch1)) {
         // lhs(1,C,H) and rhs (C,1)
         ImplDivGradRhsPerChannelBatch1<CudaT>(
             prepare_a_data,
@@ -203,13 +198,13 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
 
       ImplDivGrad<CudaT>(
           prepare.output_rank_or_simple_broadcast,
-          prepare_a_padded_strides,
+          &prepare.lhs_padded_strides,
           prepare_a_data,
-          prepare_b_padded_strides,
+          &prepare.rhs_padded_strides,
           prepare_b_data,
           prepare_dy_data,
           dy_shape.Size(),
-          prepare_dy_strides,
+          &prepare.fdm_output_strides,
           reinterpret_cast<CudaT*>(da_data_ref),
           reinterpret_cast<CudaT*>(db_data_ref));
 

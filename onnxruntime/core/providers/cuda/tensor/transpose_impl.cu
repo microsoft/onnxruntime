@@ -8,34 +8,39 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-__global__ void _TransposeKernel(size_t shape_rank, const int64_t* input_strides, const size_t* perm,
-                                 const T* input_data, const fast_divmod* fdm_output_strides, T* output_data, size_t N) {
+__global__ void _TransposeKernel(int32_t rank, CUDA_LONG N,
+                                 const TArray<int64_t> input_strides, const T* input_data,
+                                 const TArray<fast_divmod> output_strides, T* output_data) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG input_index = 0;
   CUDA_LONG output_index = id;
 
-  for (int dim = 0; dim < shape_rank; ++dim) {
+  #pragma unroll
+  for (auto dim = 0; dim < MAX_ARRAY_SIZE; ++dim) {
+    if (dim >= rank) {
+      break;
+    }
     int out_coord, r;
-    fdm_output_strides[dim].divmod(output_index, out_coord, r);
+    output_strides.data_[dim].divmod(output_index, out_coord, r);
     output_index = r;
-    input_index += input_strides[perm[dim]] * out_coord;
+    input_index += input_strides.data_[dim] * out_coord;
   }
   output_data[id] = input_data[input_index];
 }
 
 template <typename T>
-void TransposeImpl(size_t shape_rank, const int64_t* input_strides, const size_t* perm, const T* input_data,
-                   const fast_divmod* fdm_output_strides, T* output_data, size_t N) {
+void TransposeImpl(int32_t rank, int64_t N,
+                   const TArray<int64_t>& input_strides, const T* input_data,
+                   const TArray<fast_divmod>& output_strides, T* output_data) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   _TransposeKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-      shape_rank, input_strides, perm, input_data,
-      fdm_output_strides, output_data, N);
+      rank, (CUDA_LONG)N, input_strides, input_data, output_strides, output_data);
 }
 
-#define SPECIALIZED_IMPL(T)                                                                                  \
-  template void TransposeImpl<T>(size_t shape_rank, const int64_t* input_strides, const size_t* perm,        \
-                                 const T* input_data, const fast_divmod* fdm_output_strides, T* output_data, \
-                                 size_t N);
+#define SPECIALIZED_IMPL(T)                                                           \
+  template void TransposeImpl<T>(int32_t rank, int64_t N,                             \
+                      const TArray<int64_t>& input_strides, const T* input_data,      \
+                      const TArray<fast_divmod>& output_strides, T* output_data);
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)

@@ -71,9 +71,8 @@ UNARY_ACTIVATION_OP_HFD(Gelu, 9);
 #define BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                         \
   template <>                                                                                                    \
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
-    BinaryElementwisePreparation prepare(this);                                                                  \
-    Prepare(context, context->GetDeviceId(), &prepare);                                                          \
-    ORT_RETURN_IF_ERROR(prepare.CopyToGpu());                                                                    \
+    BinaryElementwisePreparation prepare;                                                                  \
+    Prepare(context, &prepare);                                                          \
     CudaAsyncBuffer<Ctx##x> func_ctx(this, context->GetDeviceId(), MakeFuncCtx(), 1);                            \
     if (!std::is_same<CtxNull, Ctx##x>::value) ORT_RETURN_IF_ERROR(func_ctx.CopyToGpu());                        \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \

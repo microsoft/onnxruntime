@@ -106,7 +106,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
     if (calculate_sqt_) {
       input_data = reinterpret_cast<CudaT*>(GetScratchBuffer<T>(input_count).get());
       fast_divmod tmp_div;
-      Impl_Mul<CudaT>(static_cast<size_t>(SimpleBroadcast::NoBroadcast), nullptr,
+      Impl_Mul<CudaT>(static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
                       reinterpret_cast<const CudaT*>(X), nullptr,
                       reinterpret_cast<const CudaT*>(X), nullptr,
                       tmp_div, tmp_div,
@@ -127,15 +127,14 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
       const TensorShape output_shape(output_dims);
       auto exp_result = GetScratchBuffer<T>(input_count).get();
       auto log_sum_result = GetScratchBuffer<T>(output_count).get();
-      BinaryElementwisePreparation prepare(this);
-      prepare.BinaryElementwiseBroadcastPrepareHelper(0, input_shape, output_shape, input_shape);
-      prepare.CopyToGpu();
+      BinaryElementwisePreparation prepare;
+      prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, output_shape, input_shape);
       Impl_Sub<CudaT>(prepare.output_rank_or_simple_broadcast,
-                      prepare.lhs_padded_strides.GpuPtr(),
+                      &prepare.lhs_padded_strides,
                       reinterpret_cast<const CudaT*>(X),
-                      prepare.rhs_padded_strides.GpuPtr(),
+                      &prepare.rhs_padded_strides,
                       reinterpret_cast<CudaT*>(Y),
-                      prepare.fdm_output_strides.GpuPtr(),
+                      &prepare.fdm_output_strides,
                       prepare.fdm_H, prepare.fdm_C,
                       reinterpret_cast<CudaT*>(exp_result), input_count);
 
@@ -156,7 +155,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
 
       // Log + ReduceMax
       fast_divmod tmp_div;
-      Impl_Add<CudaT>(static_cast<size_t>(SimpleBroadcast::NoBroadcast), nullptr,
+      Impl_Add<CudaT>(static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
                       reinterpret_cast<CudaT*>(log_sum_result), nullptr,
                       reinterpret_cast<CudaT*>(Y), nullptr,
                       tmp_div, tmp_div,

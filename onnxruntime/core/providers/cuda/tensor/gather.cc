@@ -29,8 +29,9 @@ ONNX_OPERATOR_KERNEL_EX(
       GatherImpl(                                                             \
           input_block_size,                                                   \
           indices_max,                                                        \
+          &divmod_output_block_size,                                          \
+          &divmod_block_size,                                                 \
           p.indices_tensor->template Data<int32_t>(),                         \
-          div_strides.GpuPtr(),                                               \
           reinterpret_cast<const ToCudaType<T>::MappedType*>(input_data),     \
           reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_data), \
           p.output_tensor->Shape().Size());                                   \
@@ -40,8 +41,9 @@ ONNX_OPERATOR_KERNEL_EX(
       GatherImpl(                                                             \
           input_block_size,                                                   \
           indices_max,                                                        \
+          &divmod_output_block_size,                                          \
+          &divmod_block_size,                                                 \
           p.indices_tensor->template Data<int64_t>(),                         \
-          div_strides.GpuPtr(),                                               \
           reinterpret_cast<const ToCudaType<T>::MappedType*>(input_data),     \
           reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_data), \
           p.output_tensor->Shape().Size());                                   \
@@ -61,13 +63,8 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
   const int64_t output_block_size = N * block_size;
   const int64_t indices_max = input_shape[p.axis];
 
-  // Put the output_block_size and block_size into div_strides
-  // for divmod calling in _GatherKernel to calculate the input index
-  CudaAsyncBuffer<fast_divmod> div_strides(this, GetDeviceId(), 2);
-  gsl::span<fast_divmod> div_strides_span = div_strides.CpuSpan();
-  div_strides_span[0] = fast_divmod(gsl::narrow_cast<int>(output_block_size));
-  div_strides_span[1] = fast_divmod(gsl::narrow_cast<int>(block_size));
-  ORT_RETURN_IF_ERROR(div_strides.CopyToGpu());
+  const fast_divmod divmod_output_block_size(gsl::narrow_cast<int>(output_block_size));
+  const fast_divmod divmod_block_size(gsl::narrow_cast<int>(block_size));
 
   MLDataType T_type = p.input_tensor->DataType();
   MLDataType Tin_type = p.indices_tensor->DataType();
@@ -111,8 +108,9 @@ ONNX_OPERATOR_KERNEL_EX(
       GatherGradImpl(                                                         \
           input_block_size,                                                   \
           indices_max,                                                        \
+          &divmod_output_block_size,                                          \
+          &divmod_block_size,                                                 \
           indices->template Data<int32_t>(),                                  \
-          div_strides.GpuPtr(),                                               \
           reinterpret_cast<const ToCudaType<T>::MappedType*>(grad_data),      \
           reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_data), \
           grad->Shape().Size());                                              \
@@ -122,8 +120,9 @@ ONNX_OPERATOR_KERNEL_EX(
       GatherGradImpl(                                                         \
           input_block_size,                                                   \
           indices_max,                                                        \
+          &divmod_output_block_size,                                          \
+          &divmod_block_size,                                                 \
           indices->template Data<int64_t>(),                                  \
-          div_strides.GpuPtr(),                                               \
           reinterpret_cast<const ToCudaType<T>::MappedType*>(grad_data),      \
           reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_data), \
           grad->Shape().Size());                                              \
@@ -147,13 +146,8 @@ Status GatherGrad::ComputeInternal(OpKernelContext* context) const {
   const int64_t output_block_size = N * block_size;
   const int64_t indices_max = data_shape[axis];
 
-  // Put the output_block_size and block_size into div_strides
-  // for divmod calling in _GatherKernel to calculate the input index
-  CudaAsyncBuffer<fast_divmod> div_strides(this, GetDeviceId(), 2);
-  gsl::span<fast_divmod> div_strides_span = div_strides.CpuSpan();
-  div_strides_span[0] = fast_divmod(gsl::narrow_cast<int>(output_block_size));
-  div_strides_span[1] = fast_divmod(gsl::narrow_cast<int>(block_size));
-  ORT_RETURN_IF_ERROR(div_strides.CopyToGpu());
+  const fast_divmod divmod_output_block_size(gsl::narrow_cast<int>(output_block_size));
+  const fast_divmod divmod_block_size(gsl::narrow_cast<int>(block_size));
 
   MLDataType T_type = grad->DataType();
   MLDataType Tin_type = indices->DataType();
