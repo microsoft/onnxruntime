@@ -192,6 +192,25 @@ void RegisterNchwcSchemas() {
       .FillUsing(NchwcGlobalPoolOpSchemaGenerator);
 }
 
+void RegisterBertSchemas() {
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Multi-Head Self Attention")
+      .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "T")
+      .Input(1, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T")
+      .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
+      .Input(3, "mask_index", "Attention mask index with shape (batch_size)", "M")
+      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+      .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+}
+
 void RegisterContribSchemas() {
   // Register removed experimental ops for backward compatibility.
   // Experimental operators do not have version history. However, RS5 takes bunch of experimental operators
@@ -1772,6 +1791,8 @@ Example 4:
           saved_inv_std_var_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
         }
       });
+
+  RegisterBertSchemas();
 
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
