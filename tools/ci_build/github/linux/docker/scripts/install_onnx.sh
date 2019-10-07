@@ -35,8 +35,8 @@ for v2t in ${version2tag[*]}; do
     ${PYTHON_EXE} -m pip uninstall -y onnx
   fi
   lastest_onnx_version=$onnx_version
-  aria2c -q -d /tmp/src  https://github.com/onnx/onnx/archive/$onnx_version.tar.gz
-  tar -xf /tmp/src/onnx-$onnx_version.tar.gz -C /tmp/src
+  GetFile https://github.com/onnx/onnx/archive/$onnx_version.tar.gz /tmp/src/$onnx_version.tar.gz
+  tar -xf /tmp/src/$onnx_version.tar.gz -C /tmp/src
   cd /tmp/src/onnx-$onnx_version
   git clone https://github.com/pybind/pybind11.git third_party/pybind11
   ${PYTHON_EXE} -m pip install .

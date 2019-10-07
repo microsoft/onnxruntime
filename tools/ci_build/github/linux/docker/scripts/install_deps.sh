@@ -108,10 +108,7 @@ fi
 if [ "$PYTHON_VER" = "3.4" ];then
   echo "Python 3.5 and above is needed for running onnx tests!" 1>&2
 else
-#TODO:   
-if [[ $SYS_LONG_BIT = "64" && "$GLIBC_VERSION" -gt "9" ]]; then
   source ${0/%install_deps\.sh/install_onnx\.sh} $PYTHON_VER
-fi  
 fi
 
 #The last onnx version will be kept
