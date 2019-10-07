@@ -551,7 +551,7 @@ def adb_push(source_dir, src, dest, **kwargs):
 def adb_shell(*args, **kwargs):
     return run_subprocess(['adb', 'shell', *args], **kwargs)
 
-def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False, enable_ngraph = False):
+def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False, enable_ngraph = False, enable_nnapi=False):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
@@ -630,6 +630,7 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
           cmd += ["-j", str(num_parallel_models)]
 
         if config != 'Debug' and os.path.exists(model_dir):
+          # some models in opset9 and above are not supported by TensorRT yet
           if provider == 'tensorrt':
             model_dir = os.path.join(model_dir, "opset8")
           cmd.append(model_dir)
@@ -960,7 +961,8 @@ def main():
     if args.test :
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                               args.enable_pybind and not args.skip_onnx_tests,
-                              args.use_tvm, args.use_tensorrt, args.use_ngraph)
+                              args.use_tvm, args.use_tensorrt, args.use_ngraph,
+                              args.use_dnnlibrary)
         # run the onnx model tests if requested explicitly.
         if args.enable_onnx_tests and not args.skip_onnx_tests:
             # directory from ONNX submodule with ONNX test data
@@ -969,9 +971,10 @@ def main():
                 onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data")
 
             if args.use_tensorrt:
-              # Disable some onnx unit tests that TensorRT parser doesn't supported yet
-              onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data", "simple")
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'tensorrt', False, 1)
+              # Disable some onnx unit tests that TensorRT doesn't supported yet
+              if not is_windows():
+                onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data", "simple")
+                run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'tensorrt', False, 1)
             elif args.use_cuda:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False, 2)
             elif args.x86 or platform.system() == 'Darwin':

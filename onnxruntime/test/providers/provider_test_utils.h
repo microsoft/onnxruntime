@@ -16,6 +16,7 @@
 #include "core/framework/data_types.h"
 #include "test/test_environment.h"
 #include "test/framework/TestAllocatorManager.h"
+#include "core/framework/TensorSeq.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -24,8 +25,23 @@
 
 namespace onnxruntime {
 class InferenceSession;
+struct SessionOptions;
 
 namespace test {
+template <typename T>
+struct SeqTensors {
+  void AddTensor(const std::vector<int64_t>& shape0, const std::vector<T>& data0) {
+    tensors.push_back(Tensor<T>{shape0, data0});
+  }
+
+  template <typename U>
+  struct Tensor {
+    std::vector<int64_t> shape;
+    std::vector<U> data;
+  };
+  std::vector<Tensor<T>> tensors;
+};
+
 // unfortunately std::optional is in C++17 so use a miniversion of it
 template <typename T>
 class optional {
@@ -153,6 +169,20 @@ struct VectorOfMapType {
 template <typename TKey, typename TVal>
 const VectorOfMapTypeProto<TKey, TVal> VectorOfMapType<TKey, TVal>::s_vec_map_type_proto;
 
+template <typename ElemType>
+struct SequenceTensorTypeProto : ONNX_NAMESPACE::TypeProto {
+  SequenceTensorTypeProto() {
+    MLDataType dt = DataTypeImpl::GetTensorType<ElemType>();
+    const auto* elem_proto = dt->GetTypeProto();
+    mutable_sequence_type()->mutable_elem_type()->CopyFrom(*elem_proto);
+    auto* tensor_type = mutable_sequence_type()->mutable_elem_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(TypeToDataType<ElemType>());
+  }
+};
+
+template <typename ElemType>
+const SequenceTensorTypeProto<ElemType> s_sequence_tensor_type_proto;
+
 // To use OpTester:
 //  1. Create one with the op name
 //  2. Call AddAttribute with any attributes
@@ -212,6 +242,38 @@ class OpTester {
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
     input_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(), optional<float>()));
+  }
+
+  template <typename T>
+  void AddSeqInput(const char* name, const SeqTensors<T>& seq_tensors) {
+    auto mltype = DataTypeImpl::GetType<TensorSeq>();
+    ORT_ENFORCE(mltype != nullptr, "TensorSeq must be a registered cpp type");
+    auto ptr = std::make_unique<TensorSeq>();
+    auto num_tensors = seq_tensors.tensors.size();
+    ptr->tensors.resize(num_tensors);
+    for (int i = 0; i < num_tensors; ++i) {
+      TensorShape shape{seq_tensors.tensors[i].shape};
+      auto values_count = static_cast<int64_t>(seq_tensors.tensors[i].data.size());
+      ORT_ENFORCE(shape.Size() == values_count, values_count,
+                  " input values doesn't match tensor size of ", shape.Size());
+
+      auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+      auto& tensor = ptr->tensors[i];
+
+      tensor = Tensor(DataTypeImpl::GetType<T>(),
+                      shape,
+                      allocator);
+
+      auto* data_ptr = tensor.template MutableData<T>();
+      for (int64_t x = 0; x < values_count; ++x) {
+        data_ptr[x] = seq_tensors.tensors[i].data[x];
+      }
+    }
+
+    OrtValue value;
+    value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
+    ptr.release();
+    input_data_.push_back(Data(NodeArg(name, &s_sequence_tensor_type_proto<T>), std::move(value), optional<float>(), optional<float>()));
   }
 
   template <typename TKey, typename TVal>
@@ -313,13 +375,19 @@ class OpTester {
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
            bool sequential_execution = true);
 
+  void Run(const SessionOptions& session_options,
+           ExpectResult expect_result = ExpectResult::kExpectSuccess,
+           const std::string& expected_failure_string = "",
+           const std::unordered_set<std::string>& excluded_provider_types = {},
+           const RunOptions* run_options = nullptr,
+           std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr);
+
   struct Data {
     onnxruntime::NodeArg def_;
     OrtValue data_;
     optional<float> relative_error_;
     optional<float> absolute_error_;
-    Data(onnxruntime::NodeArg&& def, OrtValue&& data, optional<float>&& rel, optional<float>&& abs) : 
-      def_(std::move(def)), data_(std::move(data)), relative_error_(std::move(rel)), absolute_error_(abs) {}
+    Data(onnxruntime::NodeArg&& def, OrtValue&& data, optional<float>&& rel, optional<float>&& abs) : def_(std::move(def)), data_(std::move(data)), relative_error_(std::move(rel)), absolute_error_(abs) {}
     Data(Data&&) = default;
     Data& operator=(Data&&) = default;
   };

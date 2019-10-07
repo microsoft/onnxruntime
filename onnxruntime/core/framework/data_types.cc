@@ -3,6 +3,7 @@
 
 #include "core/framework/data_types.h"
 #include "core/framework/tensor.h"
+#include "core/framework/TensorSeq.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/graph/onnx_protobuf.h"
 
@@ -28,7 +29,8 @@ template <>
 MLDataType DataTypeImpl::GetType<Tensor>() {
   return TensorTypeBase::Type();
 }
-} // namespace onnxruntime
+
+}  // namespace onnxruntime
 
 // This conflics with the above GetType<>() specialization
 #include "core/framework/tensorprotoutils.h"
@@ -507,7 +509,7 @@ void NonTensorTypeBase::FromDataContainer(const void* /* data */, size_t /*data_
   ORT_ENFORCE(false, "Not implemented");
 }
 
-void NonTensorTypeBase::ToDataContainer (const OrtValue& /* input */, size_t /*data_size */, void* /* data */) const {
+void NonTensorTypeBase::ToDataContainer(const OrtValue& /* input */, size_t /*data_size */, void* /* data */) const {
   ORT_ENFORCE(false, "Not implemented");
 }
 
@@ -550,10 +552,22 @@ ORT_REGISTER_MAP(MapInt64ToInt64);
 ORT_REGISTER_MAP(MapInt64ToFloat);
 ORT_REGISTER_MAP(MapInt64ToDouble);
 
-ORT_REGISTER_SEQ(VectorString);
-ORT_REGISTER_SEQ(VectorFloat);
-ORT_REGISTER_SEQ(VectorInt64);
-ORT_REGISTER_SEQ(VectorDouble);
+// Register sequence of tensor types
+ORT_REGISTER_SEQ(TensorSeq)  // required to ensure GetType<TensorSeq> works
+ORT_REGISTER_SEQ_TENSOR_TYPE(int32_t);
+ORT_REGISTER_SEQ_TENSOR_TYPE(float);
+ORT_REGISTER_SEQ_TENSOR_TYPE(bool);
+ORT_REGISTER_SEQ_TENSOR_TYPE(std::string);
+ORT_REGISTER_SEQ_TENSOR_TYPE(int8_t);
+ORT_REGISTER_SEQ_TENSOR_TYPE(uint8_t);
+ORT_REGISTER_SEQ_TENSOR_TYPE(uint16_t);
+ORT_REGISTER_SEQ_TENSOR_TYPE(int16_t);
+ORT_REGISTER_SEQ_TENSOR_TYPE(int64_t);
+ORT_REGISTER_SEQ_TENSOR_TYPE(double);
+ORT_REGISTER_SEQ_TENSOR_TYPE(uint32_t);
+ORT_REGISTER_SEQ_TENSOR_TYPE(uint64_t);
+ORT_REGISTER_SEQ_TENSOR_TYPE(MLFloat16);
+ORT_REGISTER_SEQ_TENSOR_TYPE(BFloat16);
 
 ORT_REGISTER_SEQ(VectorMapStringToFloat);
 ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
@@ -563,6 +577,12 @@ ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
   {                                                          \
     MLDataType mltype = DataTypeImpl::GetTensorType<TYPE>(); \
     reg_fn(mltype);                                          \
+  }
+
+#define REGISTER_SEQ_TENSOR_PROTO(TYPE, reg_fn)                      \
+  {                                                                  \
+    MLDataType mltype = DataTypeImpl::GetSequenceTensorType<TYPE>(); \
+    reg_fn(mltype);                                                  \
   }
 
 #define REGISTER_SPARSE_TENSOR_PROTO(TYPE, reg_fn)                 \
@@ -619,10 +639,20 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_ONNX_PROTO(MapInt64ToFloat, reg_fn);
   REGISTER_ONNX_PROTO(MapInt64ToDouble, reg_fn);
 
-  REGISTER_ONNX_PROTO(VectorString, reg_fn);
-  REGISTER_ONNX_PROTO(VectorFloat, reg_fn);
-  REGISTER_ONNX_PROTO(VectorInt64, reg_fn);
-  REGISTER_ONNX_PROTO(VectorDouble, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(int32_t, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(float, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(bool, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(std::string, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(int8_t, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(uint8_t, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(uint16_t, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(int16_t, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(int64_t, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(double, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(uint32_t, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(uint64_t, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(MLFloat16, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(BFloat16, reg_fn);
 
   REGISTER_ONNX_PROTO(VectorMapStringToFloat, reg_fn);
   REGISTER_ONNX_PROTO(VectorMapInt64ToFloat, reg_fn);
@@ -719,6 +749,41 @@ const TensorTypeBase* DataTypeImpl::TensorTypeFromONNXEnum(int type) {
       return DataTypeImpl::GetTensorType<MLFloat16>()->AsTensorType();
     case TensorProto_DataType_BFLOAT16:
       return DataTypeImpl::GetTensorType<BFloat16>()->AsTensorType();
+    default:
+      ORT_NOT_IMPLEMENTED("tensor type ", type, " is not supported");
+  }
+}
+
+const NonTensorTypeBase* DataTypeImpl::SequenceTensorTypeFromONNXEnum(int type) {
+  switch (type) {
+    case TensorProto_DataType_FLOAT:
+      return DataTypeImpl::GetSequenceTensorType<float>()->AsNonTensorTypeBase();
+    case TensorProto_DataType_BOOL:
+      return DataTypeImpl::GetSequenceTensorType<bool>()->AsNonTensorTypeBase();
+    case TensorProto_DataType_INT32:
+      return DataTypeImpl::GetSequenceTensorType<int32_t>()->AsNonTensorTypeBase();
+    case TensorProto_DataType_DOUBLE:
+      return DataTypeImpl::GetSequenceTensorType<double>()->AsNonTensorTypeBase();
+    case TensorProto_DataType_STRING:
+      return DataTypeImpl::GetSequenceTensorType<std::string>()->AsNonTensorTypeBase();
+    case TensorProto_DataType_UINT8:
+      return DataTypeImpl::GetSequenceTensorType<uint8_t>()->AsNonTensorTypeBase();
+    case TensorProto_DataType_UINT16:
+      return DataTypeImpl::GetSequenceTensorType<uint16_t>()->AsNonTensorTypeBase();
+    case TensorProto_DataType_INT8:
+      return DataTypeImpl::GetSequenceTensorType<int8_t>()->AsNonTensorTypeBase();
+    case TensorProto_DataType_INT16:
+      return DataTypeImpl::GetSequenceTensorType<int16_t>()->AsNonTensorTypeBase();
+    case TensorProto_DataType_INT64:
+      return DataTypeImpl::GetSequenceTensorType<int64_t>()->AsNonTensorTypeBase();
+    case TensorProto_DataType_UINT32:
+      return DataTypeImpl::GetSequenceTensorType<uint32_t>()->AsNonTensorTypeBase();
+    case TensorProto_DataType_UINT64:
+      return DataTypeImpl::GetSequenceTensorType<uint64_t>()->AsNonTensorTypeBase();
+    case TensorProto_DataType_FLOAT16:
+      return DataTypeImpl::GetSequenceTensorType<MLFloat16>()->AsNonTensorTypeBase();
+    case TensorProto_DataType_BFLOAT16:
+      return DataTypeImpl::GetSequenceTensorType<BFloat16>()->AsNonTensorTypeBase();
     default:
       ORT_NOT_IMPLEMENTED("tensor type ", type, " is not supported");
   }
@@ -868,19 +933,7 @@ MLDataType DataTypeImpl::TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto) {
         }  // MapType
         break;
         case TypeProto::ValueCase::kTensorType: {
-          auto val_elem_type = val_type.tensor_type().elem_type();
-          switch (val_elem_type) {
-            case TensorProto_DataType_STRING:
-              return DataTypeImpl::GetType<VectorString>();
-            case TensorProto_DataType_INT64:
-              return DataTypeImpl::GetType<VectorInt64>();
-            case TensorProto_DataType_FLOAT:
-              return DataTypeImpl::GetType<VectorFloat>();
-            case TensorProto_DataType_DOUBLE:
-              return DataTypeImpl::GetType<VectorDouble>();
-            default:
-              break;
-          }
+          return DataTypeImpl::GetType<TensorSeq>();
         }  // kTensorType
         break;
         default:
@@ -987,6 +1040,26 @@ const std::vector<MLDataType>& DataTypeImpl::AllTensorTypes() {
        DataTypeImpl::GetTensorType<std::string>()};
 
   return all_tensor_types;
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllSequenceTensorTypes() {
+  static std::vector<MLDataType> all_sequence_tensor_types =
+      {DataTypeImpl::GetSequenceTensorType<float>(),
+       DataTypeImpl::GetSequenceTensorType<double>(),
+       DataTypeImpl::GetSequenceTensorType<int64_t>(),
+       DataTypeImpl::GetSequenceTensorType<uint64_t>(),
+       DataTypeImpl::GetSequenceTensorType<int32_t>(),
+       DataTypeImpl::GetSequenceTensorType<uint32_t>(),
+       DataTypeImpl::GetSequenceTensorType<int16_t>(),
+       DataTypeImpl::GetSequenceTensorType<uint16_t>(),
+       DataTypeImpl::GetSequenceTensorType<int8_t>(),
+       DataTypeImpl::GetSequenceTensorType<uint8_t>(),
+       DataTypeImpl::GetSequenceTensorType<MLFloat16>(),
+       DataTypeImpl::GetSequenceTensorType<BFloat16>(),
+       DataTypeImpl::GetSequenceTensorType<bool>(),
+       DataTypeImpl::GetSequenceTensorType<std::string>()};
+
+  return all_sequence_tensor_types;
 }
 
 const std::vector<MLDataType>& DataTypeImpl::AllNumericTensorTypes() {
