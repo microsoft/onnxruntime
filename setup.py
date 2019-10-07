@@ -188,7 +188,7 @@ setup(
               'onnxruntime.capi',
               'onnxruntime.datasets',
               'onnxruntime.tools',
-              ] + ['onnxruntime.nuphar'] if package_name == 'onnxruntime-nuphar' else [],
+              ] + (['onnxruntime.nuphar'] if package_name == 'onnxruntime-nuphar' else []),
     ext_modules=ext_modules,
     package_data={
         'onnxruntime': data + examples + extra,
