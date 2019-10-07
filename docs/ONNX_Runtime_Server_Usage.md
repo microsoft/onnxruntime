@@ -3,7 +3,7 @@
 # How to Use ONNX Runtime Server for Prediction
 
 ONNX Runtime Server provides an easy way to start an inferencing server for prediction with both HTTP and GRPC endpoints. The CLI command to start the server is shown below: 
-If you built onnxruntime from source the path to onnx runtime server on linux is: ./onnxruntime/build/Linux/RelWithDebInfo/onnxruntime_server
+If you built onnxruntime from source the path to onnx runtime server on linux is: ./onnxruntime/build/Linux/<Build_Config>/onnxruntime_server
 
 ```
 $ ./onnxruntime_server
