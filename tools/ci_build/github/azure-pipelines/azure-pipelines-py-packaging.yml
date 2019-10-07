@@ -11,7 +11,7 @@ jobs:
         python.dir: '/opt/python/cp36-cp36m'
       Python37:
         python.version: '3.7'
-        python.dir: '/opt/python/cp36-cp36m'
+        python.dir: '/opt/python/cp37-cp37m'
   steps:
     - task: CmdLine@2
       inputs:
@@ -21,14 +21,14 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-manylinux-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Debug --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --build_wheel --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.dir)/include/python$(python.version)m PYTHON_LIBRARY=/usr/lib64/librt.so
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-manylinux-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --build_wheel --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.dir)/include/python$(python.version)m PYTHON_LIBRARY=/usr/lib64/librt.so
         workingDirectory: $(Build.SourcesDirectory)
 
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)'
-        Contents: 'Release/dist/*-manylinux1_x86_64.whl'
+        Contents: 'Release/dist/onnxruntime-*-linux_x86_64.whl'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
     - task: PublishBuildArtifacts@1
