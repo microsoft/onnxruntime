@@ -24,4 +24,20 @@ class SequenceAt final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
+class SequenceEmpty final : public OpKernel {
+ public:
+  SequenceEmpty(const OpKernelInfo& info);
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  int64_t dtype_{};
+};
+
+class SequenceInsert final : public OpKernel {
+ public:
+  SequenceInsert(const OpKernelInfo& info) : OpKernel(info) {
+  }
+  Status Compute(OpKernelContext* context) const override;
+};
+
 }  //namespace onnxruntime

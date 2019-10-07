@@ -993,10 +993,10 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t 
   seq_ptr->tensors.resize(num_values);
 
   // use the data type of the first tensor as the data type of the seq
-  seq_ptr->dtype = reinterpret_cast<const OrtValue*>(in[0])->Get<Tensor>().DataType();
+  seq_ptr->dtype = static_cast<const OrtValue*>(in[0])->Get<Tensor>().DataType();
 
   for (size_t idx = 0; idx < num_values; ++idx) {
-    auto& one_tensor = reinterpret_cast<const OrtValue*>(in[idx])->Get<Tensor>();
+    auto& one_tensor = static_cast<const OrtValue*>(in[idx])->Get<Tensor>();
     auto tensor_elem_type = one_tensor.DataType();
 
     // sequences must have tensors of the same data type

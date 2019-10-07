@@ -246,34 +246,12 @@ class OpTester {
 
   template <typename T>
   void AddSeqInput(const char* name, const SeqTensors<T>& seq_tensors) {
-    auto mltype = DataTypeImpl::GetType<TensorSeq>();
-    ORT_ENFORCE(mltype != nullptr, "TensorSeq must be a registered cpp type");
-    auto ptr = std::make_unique<TensorSeq>();
-    auto num_tensors = seq_tensors.tensors.size();
-    ptr->tensors.resize(num_tensors);
-    for (int i = 0; i < num_tensors; ++i) {
-      TensorShape shape{seq_tensors.tensors[i].shape};
-      auto values_count = static_cast<int64_t>(seq_tensors.tensors[i].data.size());
-      ORT_ENFORCE(shape.Size() == values_count, values_count,
-                  " input values doesn't match tensor size of ", shape.Size());
+    AddSeqData<T>(input_data_, name, seq_tensors);
+  }
 
-      auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-      auto& tensor = ptr->tensors[i];
-
-      tensor = Tensor(DataTypeImpl::GetType<T>(),
-                      shape,
-                      allocator);
-
-      auto* data_ptr = tensor.template MutableData<T>();
-      for (int64_t x = 0; x < values_count; ++x) {
-        data_ptr[x] = seq_tensors.tensors[i].data[x];
-      }
-    }
-
-    OrtValue value;
-    value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
-    ptr.release();
-    input_data_.push_back(Data(NodeArg(name, &s_sequence_tensor_type_proto<T>), std::move(value), optional<float>(), optional<float>()));
+  template <typename T>
+  void AddSeqOutput(const char* name, const SeqTensors<T>& seq_tensors) {
+    AddSeqData<T>(output_data_, name, seq_tensors);
   }
 
   template <typename TKey, typename TVal>
@@ -447,6 +425,39 @@ class OpTester {
       std::cerr << "AddData for '" << name << "' threw: " << ex.what();
       throw;
     }
+  }
+
+  template <typename T>
+  void AddSeqData(std::vector<Data>& data, const char* name, const SeqTensors<T>& seq_tensors) {
+    auto mltype = DataTypeImpl::GetType<TensorSeq>();
+    ORT_ENFORCE(mltype != nullptr, "TensorSeq must be a registered cpp type");
+    auto ptr = std::make_unique<TensorSeq>();
+    ptr->dtype = DataTypeImpl::GetType<T>();
+    auto num_tensors = seq_tensors.tensors.size();
+    ptr->tensors.resize(num_tensors);
+    for (int i = 0; i < num_tensors; ++i) {
+      TensorShape shape{seq_tensors.tensors[i].shape};
+      auto values_count = static_cast<int64_t>(seq_tensors.tensors[i].data.size());
+      ORT_ENFORCE(shape.Size() == values_count, values_count,
+                  " input values doesn't match tensor size of ", shape.Size());
+
+      auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+      auto& tensor = ptr->tensors[i];
+
+      tensor = Tensor(DataTypeImpl::GetType<T>(),
+                      shape,
+                      allocator);
+
+      auto* data_ptr = tensor.template MutableData<T>();
+      for (int64_t x = 0; x < values_count; ++x) {
+        data_ptr[x] = seq_tensors.tensors[i].data[x];
+      }
+    }
+
+    OrtValue value;
+    value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
+    ptr.release();
+    data.push_back(Data(NodeArg(name, &s_sequence_tensor_type_proto<T>), std::move(value), optional<float>(), optional<float>()));
   }
 
   void ExecuteModel(Model& model, InferenceSession& session_object, ExpectResult expect_result,
