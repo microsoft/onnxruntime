@@ -71,7 +71,7 @@ Please refer to our paper for more details of NGEMM: ["NGEMM: Optimizing GEMM fo
 NGEMM has default tiling parameters, but users can overwrite them through environment variables:
 * NUPHAR_IGEMM_TILE_M / NUPHAR_IGEMM_TILE_N / NUPHAR_IGEMM_TILE_K
 
-    These 3 parameters are the tiling sizes for corresponding dimensions of GEMM ([M x K] x [K x N]).
+    These 3 parameters are the tiling sizes for the corresponding dimensions of GEMM ([M x K] x [K x N]).
     Setting them to different values will generate GEMM with different tiling sizes.
 
 * NUPHAR_IGEMM_PERMUTE
