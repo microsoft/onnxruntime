@@ -72,13 +72,12 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
                            "segment_embedding is expected to have 2 dimensions, got ", segment_embedding_dims.size());
   }
 
-  if (word_embedding_dims[1] != position_embedding_dims[1])
-  {
+  if (word_embedding_dims[1] != position_embedding_dims[1]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "word_embedding and position_embedding shall have same dimension 1");
   }
   int64_t hidden_size = word_embedding_dims[1];
- 
+
   std::vector<int64_t> out_dims;
   out_dims.reserve(3);
   out_dims.push_back(input_dims[0]);
@@ -96,21 +95,25 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   int sequence_length = static_cast<int>(input_dims[1]);
   size_t element_size = sizeof(T);
 
-  LaunchEmbedLayerNormKernel(
-      output->template MutableData<T>(),
-      mask_index->template MutableData<int32_t>(),
-      input_ids->template Data<int32_t>(),
-      segment_ids->template Data<int32_t>(),
-      mask->template Data<int32_t>(),
-      gamma->template Data<T>(),
-      beta->template Data<T>(),
-      word_embedding->template Data<T>(),
-      position_embedding->template Data<T>(),
-      segment_embedding->template Data<T>(),
-      static_cast<int>(hidden_size),
-      batch_size,
-      sequence_length,
-      element_size);
+  if (!LaunchEmbedLayerNormKernel(
+          output->template MutableData<T>(),
+          mask_index->template MutableData<int32_t>(),
+          input_ids->template Data<int32_t>(),
+          segment_ids->template Data<int32_t>(),
+          mask->template Data<int32_t>(),
+          gamma->template Data<T>(),
+          beta->template Data<T>(),
+          word_embedding->template Data<T>(),
+          position_embedding->template Data<T>(),
+          segment_embedding->template Data<T>(),
+          static_cast<int>(hidden_size),
+          batch_size,
+          sequence_length,
+          element_size)) {
+    // Get last error to reset it to cudaSuccess.
+    CUDA_CALL(cudaGetLastError());
+    return Status(common::ONNXRUNTIME, common::FAIL);
+  }
 
   return Status::OK();
 }

@@ -7,7 +7,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-void LaunchSkipLayerNormKernel(
+bool LaunchSkipLayerNormKernel(
     void* output,              // output tensor
     const void* input,         // input tensor
     const void* skip,          // skip tensor

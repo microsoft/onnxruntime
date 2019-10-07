@@ -12,15 +12,15 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                 \
-      SkipLayerNormalization,                                    \
-      kMSDomain,                                                 \
-      1,                                                         \
-      T,                                                         \
-      kCudaExecutionProvider,                                    \
-      KernelDefBuilder()                                         \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),\
+#define REGISTER_KERNEL_TYPED(T)                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      SkipLayerNormalization,                                     \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       SkipLayerNorm<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -56,7 +56,7 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "gamma is expected to have 1 dimension, got ", gamma_dims.size());
   }
-    if (gamma_dims[0] != input_dims[2]) {
+  if (gamma_dims[0] != input_dims[2]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Last dimension of gamma and input does not match");
   }
@@ -77,16 +77,20 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   int element_count = batch_size * sequence_length * hidden_size;
   size_t element_size = sizeof(T);
 
-  LaunchSkipLayerNormKernel(
-    output->template MutableData<T>(),
-    input->template Data<T>(),
-    skip->template Data<T>(),
-    gamma->template Data<T>(),
-    beta->template Data<T>(),
-    batch_size,
-    hidden_size,
-    element_count,
-    element_size);
+  if (!LaunchSkipLayerNormKernel(
+          output->template MutableData<T>(),
+          input->template Data<T>(),
+          skip->template Data<T>(),
+          gamma->template Data<T>(),
+          beta->template Data<T>(),
+          batch_size,
+          hidden_size,
+          element_count,
+          element_size)) {
+    // Get last error to reset it to cudaSuccess.
+    CUDA_CALL(cudaGetLastError());
+    return Status(common::ONNXRUNTIME, common::FAIL);
+  }
 
   return Status::OK();
 }
