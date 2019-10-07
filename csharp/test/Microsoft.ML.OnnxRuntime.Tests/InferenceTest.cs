@@ -333,6 +333,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             if (isContribOpsDisabled)
             {
                 skipModels["test_tiny_yolov2"] =  "Fails when ContribOps is disabled";
+                skipModels["mask_rcnn_keras"] = "Pad is not a registered function/op";
             }
 
             return skipModels;
