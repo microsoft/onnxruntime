@@ -11,12 +11,11 @@
 #include "gsl/gsl"
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
-#include "core/framework/data_types.h"
 #include "core/framework/tensor_shape.h"
 #include "onnxruntime_config.h"
+#include "core/framework/data_types.h"
 
 namespace onnxruntime {
-
 // TODO: Do we need this class or is IAllocator::MakeUniquePtr sufficient/better
 class BufferDeleter {
  public:
@@ -58,6 +57,8 @@ using BufferNakedPtr = void*;
 */
 class Tensor final {
  public:
+  Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
+
   /**
    * Create tensor with given type, shape, pre-allocate memory and allocator info.
    * This function won't check if the preallocated buffer(p_data) has enough room for the shape.
@@ -171,17 +172,7 @@ class Tensor final {
   /**
   The number of bytes of data.
   */
-  size_t SizeInBytes() const {
-    size_t ret;
-    int64_t l = shape_.Size();
-    if (l >= static_cast<int64_t>(std::numeric_limits<ptrdiff_t>::max())) {
-      ORT_THROW("tensor size overflow");
-    }
-    if (!IAllocator::CalcMemSizeForArray(static_cast<size_t>(shape_.Size()), dtype_->Size(), &ret)) {
-      ORT_THROW("tensor size overflow");
-    }
-    return ret;
-  }
+  size_t SizeInBytes() const;
 
   // More API methods.
  private:

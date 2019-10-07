@@ -12,6 +12,7 @@
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
 #include "core/framework/allocator.h"
+#include "core/framework/TensorSeq.h"
 
 using namespace std;
 namespace onnxruntime {
@@ -95,13 +96,13 @@ bool PyObjectCheck_Array(PyObject* o) {
   return PyObject_HasAttrString(o, "__array_finalize__");
 }
 
-void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyArrayObject* pyObject,
-                         OrtValue* p_mlvalue) {
+std::unique_ptr<Tensor> CreateTensor(AllocatorPtr alloc, const std::string& name_input, PyArrayObject* pyObject) {
   PyArrayObject* darray = PyArray_GETCONTIGUOUS(pyObject);
   if (darray == NULL) {
     throw std::runtime_error(std::string("The object must be a contiguous array for input '") + name_input + std::string("'."));
   }
   bool dref = false;
+  std::unique_ptr<Tensor> p_tensor;
   try {
     const int npy_type = PyArray_TYPE(darray);
 
@@ -115,7 +116,7 @@ void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyAr
 
     TensorShape shape(dims);
     auto element_type = NumpyToOnnxRuntimeTensorType(npy_type);
-    std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
+    p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
     if (npy_type == NPY_UNICODE) {
       // Copy string data which needs to be done after Tensor is allocated.
       // Strings are Python strings or numpy.unicode string.
@@ -176,10 +177,6 @@ void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyAr
       }
       memcpy(buffer, static_cast<void*>(PyArray_DATA(darray)), len);
     }
-
-    p_mlvalue->Init(p_tensor.release(),
-                    DataTypeImpl::GetType<Tensor>(),
-                    DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
   } catch (...) {
     if (!dref) {
       Py_XDECREF(darray);
@@ -195,6 +192,38 @@ void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyAr
   if (!dref) {
     Py_XDECREF(darray);
   }
+
+  return p_tensor;
+}
+
+void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_input, PyObject* pylist_obj,
+                             OrtValue* p_mlvalue) {
+  auto list_size = PyList_Size(pylist_obj);
+  if (list_size <= 0) {
+    throw std::runtime_error("Got exception while creating seq(tensor) because input list size is " + std::to_string(list_size));
+  }
+  auto p_seq_tensors = onnxruntime::make_unique<TensorSeq>();
+  p_seq_tensors->tensors.resize(list_size);
+  for (Py_ssize_t i = 0; i < list_size; ++i) {
+    auto* py_obj = PyList_GetItem(pylist_obj, i);
+    auto p_tensor = CreateTensor(alloc, name_input, reinterpret_cast<PyArrayObject*>(py_obj));
+    p_seq_tensors->tensors[i] = std::move(*p_tensor);
+  }
+
+  p_mlvalue->Init(p_seq_tensors.release(),
+                  DataTypeImpl::GetType<TensorSeq>(),
+                  DataTypeImpl::GetType<TensorSeq>()->GetDeleteFunc());
+}
+
+void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyArrayObject* pyObject,
+                         OrtValue* p_mlvalue) {
+  auto p_tensor = CreateTensor(alloc, name_input, pyObject);
+  if (!p_tensor) {
+    throw std::runtime_error("Got exception while creating tensor for input: " + name_input);
+  }
+  p_mlvalue->Init(p_tensor.release(),
+                  DataTypeImpl::GetType<Tensor>(),
+                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 }
 
 std::string _get_type_name(int64_t&) {
@@ -404,6 +433,9 @@ void CreateGenericMLValue(AllocatorPtr alloc, const std::string& name_input, py:
     // The most frequent case: input comes as an array.
     PyArrayObject* arr = reinterpret_cast<PyArrayObject*>(value.ptr());
     CreateTensorMLValue(alloc, name_input, arr, p_mlvalue);
+  } else if (PyList_Check(value.ptr())) {
+    auto* seq_tensors = reinterpret_cast<PyObject*>(value.ptr());
+    CreateSequenceOfTensors(alloc, name_input, seq_tensors, p_mlvalue);
   } else if (PyDict_Check(value.ptr())) {
     CreateMapMLValue_AgnosticVectorMap((PyObject*)NULL, value.ptr(), alloc, name_input, p_mlvalue);
   } else {
