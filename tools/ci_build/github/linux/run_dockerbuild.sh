@@ -8,7 +8,7 @@ CUDA_VER=cuda10.0-cudnn7.3
 while getopts c:o:d:r:p:x:a:v: parameter_Option
 do case "${parameter_Option}"
 in
-#android, ubuntu16.04, manylinux2010
+#android, ubuntu16.04, manylinux2010, ubuntu18.04
 o) BUILD_OS=${OPTARG};;
 #cpu, gpu, tensorrt
 d) BUILD_DEVICE=${OPTARG};;
@@ -44,29 +44,39 @@ elif [ $BUILD_OS = "manylinux2010" ]; then
         DOCKER_FILE=Dockerfile.manylinux2010
     fi
     docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
+elif [ $BUILD_OS = "centos7" ]; then
+    IMAGE="centos7"
+    DOCKER_FILE=Dockerfile.centos
+    docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
 else
+    if [ $BUILD_OS = "ubuntu16.04" ]; then
+        OS_VER=16.04
+    else
+        OS_VER=18.04
+    fi
     if [ $BUILD_DEVICE = "gpu" ]; then
-        IMAGE="ubuntu16.04-$CUDA_VER"
+        IMAGE="$BUILD_OS-$CUDA_VER"
         DOCKER_FILE=Dockerfile.ubuntu_gpu
         if [ $CUDA_VER = "cuda9.1-cudnn7.1" ]; then
         DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
         fi
         docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
     elif [ $BUILD_DEVICE = "tensorrt" ]; then
-        IMAGE="ubuntu16.04-cuda10.0-cudnn7.4-tensorrt5.0"
+        # TensorRT container release 19.09
+        IMAGE="$BUILD_OS-cuda10.1-cudnn7.6-tensorrt6.0"
         DOCKER_FILE=Dockerfile.ubuntu_tensorrt
-        docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
+        docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=${OS_VER} --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
     elif [ $BUILD_DEVICE = "openvino" ]; then
-        IMAGE="ubuntu16.04-openvino"
+        IMAGE="$BUILD_OS-openvino"
         DOCKER_FILE=Dockerfile.ubuntu_openvino
-        docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OPENVINO_VERSION=${OPENVINO_VERSION} -f $DOCKER_FILE .
+        docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=${OS_VER} --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OPENVINO_VERSION=${OPENVINO_VERSION} -f $DOCKER_FILE .
     else
-        IMAGE="ubuntu16.04"
+        IMAGE="$BUILD_OS"
         if [ $BUILD_ARCH = "x86" ]; then
             IMAGE="$IMAGE.x86"
-            docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu_x86 .
+            docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=${OS_VER} --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu_x86 .
         else
-            docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu .
+            docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=${OS_VER} --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu .
         fi
     fi
 fi

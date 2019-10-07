@@ -7,10 +7,15 @@
 #include "core/framework/tensor.h"
 
 #ifdef _MSC_VER
-#include <locale.h>
-#endif
-
 #include <codecvt>
+#include <locale.h>
+#elif (defined __APPLE__)
+#include <codecvt>
+#else
+#include <limits>
+#include <iconv.h>
+#endif  // _MSC_VER
+
 #include <locale>
 #include <functional>
 #include <unordered_set>
@@ -68,12 +73,15 @@ class Locale {
   _locale_t loc_;
 };
 
+using Utf8Converter = std::wstring_convert<std::codecvt_utf8<wchar_t>>;
+
 const std::string default_locale("en-US");
 
-#else
+#else // MS_VER
+
 class Locale {
  public:
-  explicit Locale(const std::string& name) try : loc_(name) {
+  explicit Locale(const std::string& name) try : loc_(name.c_str()) {
   } catch (const std::runtime_error& e) {
     ORT_THROW("Failed to construct locale with name:",
               name, ":", e.what(), ":Please, install necessary language-pack-XX and configure locales");
@@ -97,14 +105,93 @@ class Locale {
   std::locale loc_;
 };
 
-const std::string default_locale("en_US.UTF-8");
+#ifdef __APPLE__
+using Utf8Converter = std::wstring_convert<std::codecvt_utf8<wchar_t>>;
+#else
 
-#endif
+// All others (Linux)
+class Utf8Converter {
+ public:
+
+  Utf8Converter(const std::string&, const std::wstring&) {}
+
+  std::wstring from_bytes(const std::string& s) const {
+    std::wstring result;
+    if (s.empty()) {
+      return result;
+    }
+    // Order of arguments is to, from
+    auto icvt = iconv_open("WCHAR_T", "UTF-8");
+    // CentOS is not happy with -1
+    if (std::numeric_limits<iconv_t>::max() == icvt) {
+      return wconv_error;
+    }
+
+    char* iconv_in = const_cast<char*>(s.c_str());
+    size_t iconv_in_bytes = s.length();
+    // Temporary buffer assumes 1 byte to 1 wchar_t
+    // to make sure it is enough.
+    const size_t buffer_len = iconv_in_bytes * sizeof(wchar_t);
+    auto buffer = onnxruntime::make_unique<char[]>(buffer_len);
+    char* iconv_out = buffer.get();
+    size_t iconv_out_bytes = buffer_len;
+    auto ret = iconv(icvt, &iconv_in, &iconv_in_bytes, &iconv_out, &iconv_out_bytes);
+    if (static_cast<size_t>(-1) == ret) {
+      result = wconv_error;
+    } else {
+      size_t converted_bytes = buffer_len - iconv_out_bytes;
+      assert((converted_bytes % sizeof(wchar_t)) == 0);
+      result.assign(reinterpret_cast<const wchar_t*>(buffer.get()), converted_bytes / sizeof(wchar_t));
+    }
+    iconv_close(icvt);
+    return result;
+  }
+
+  std::string to_bytes(const std::wstring& wstr) const {
+    std::string result;
+    if (wstr.empty()) {
+      return result;
+    }
+    // Order of arguments is to, from
+    auto icvt = iconv_open("UTF-8", "WCHAR_T");
+    // CentOS is not happy with -1
+    if (std::numeric_limits<iconv_t>::max() == icvt) {
+      return conv_error;
+    }
+
+    // I hope this does not modify the incoming buffer
+    wchar_t* non_const_in = const_cast<wchar_t*>(wstr.c_str());
+    char* iconv_in = reinterpret_cast<char*>(non_const_in);
+    size_t iconv_in_bytes = wstr.length() * sizeof(wchar_t);
+    // Temp buffer, assume every code point converts into 3 bytes, this should be enough
+    // We do not convert terminating zeros
+    const size_t buffer_len = wstr.length() * 3;
+    auto buffer = onnxruntime::make_unique<char[]>(buffer_len);
+
+    char* iconv_out = buffer.get();
+    size_t iconv_out_bytes = buffer_len;
+    auto ret = iconv(icvt, &iconv_in, &iconv_in_bytes, &iconv_out, &iconv_out_bytes);
+    if (static_cast<size_t>(-1) == ret) {
+      result = conv_error;
+    } else {
+      size_t converted_len = buffer_len - iconv_out_bytes;
+      result.assign(buffer.get(), converted_len);
+    }
+    iconv_close(icvt);
+    return result;
+  }
+};
+
+#endif // __APPLE__
+
+const std::string default_locale("en_US.UTF-8"); // All non-MS
+
+#endif // MS_VER
 
 template <class ForwardIter>
 Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
                       const Locale& loc,
-                      std::wstring_convert<std::codecvt_utf8<wchar_t>>& converter,
+                      Utf8Converter& converter,
                       size_t N, size_t C,
                       StringNormalizer::CaseAction caseaction) {
   std::vector<int64_t> output_dims;
@@ -182,7 +269,7 @@ StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info),
 
   locale_name_ = info.GetAttrOrDefault("locale", default_locale);
   Locale locale(locale_name_);
-  std::wstring_convert<std::codecvt_utf8<wchar_t>> converter(conv_error, wconv_error);
+  Utf8Converter converter(conv_error, wconv_error);
 
   std::vector<std::string> swords = info.GetAttrsOrDefault<std::string>("stopwords");
   for (const auto& sw : swords) {
@@ -229,7 +316,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
 
   Status status;
   Locale locale(locale_name_);
-  std::wstring_convert<std::codecvt_utf8<wchar_t>> converter(conv_error, wconv_error);
+  Utf8Converter converter(conv_error, wconv_error);
   auto const input_data = X->template Data<std::string>();
   using StrRef = std::reference_wrapper<const std::string>;
   if (is_case_sensitive_) {

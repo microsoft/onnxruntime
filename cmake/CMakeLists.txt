@@ -12,7 +12,10 @@ set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 
-# Set C++14 as standard for the whole project
+# CentOS compiler is old but it does allow certain C++14 features
+# such as lambda captures and they are convinient
+# On the other hand it does not allow some others.
+# So we cant' regulate simply with the standard.
 set(CMAKE_CXX_STANDARD 14)
 
 # General C# prperties
@@ -612,6 +615,8 @@ endif()
 if (onnxruntime_USE_TENSORRT)
   if (WIN32)
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:nvinfer.dll")
+  else()
+    set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
   endif()
 endif()
 

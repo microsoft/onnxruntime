@@ -23,6 +23,18 @@ constexpr static const char* kNupharIMatMulForceMkl = "nuphar_imatmul_force_mkl"
 
 constexpr static const char* kNupharMatMulExec_ExternCpu = "extern_cpu";
 
+constexpr static const char* kNupharForceNoTensorize = "nuphar_force_no_tensorize";
+
+constexpr static const char* kNupharTensorize_IGEMM_Tile_M = "nuphar_igemm_tile_m";
+constexpr static const char* kNupharTensorize_IGEMM_Tile_N = "nuphar_igemm_tile_n";
+constexpr static const char* kNupharTensorize_IGEMM_Tile_K = "nuphar_igemm_tile_k";
+
+constexpr static const char* kNupharTensorize_IGEMM_Permute = "nuphar_igemm_permute";
+constexpr static const char* kNupharTensorize_IGEMM_Permute_Inner = "inner";
+constexpr static const char* kNupharTensorize_IGEMM_Permute_Outer = "outer";
+constexpr static const char* kNupharTensorize_IGEMM_Permute_All = "all";
+constexpr static const char* kNupharTensorize_IGEMM_Split_Last_Tile = "nuphar_igemm_split_last_tile";
+
 constexpr static const char* kNupharFastMath = "nuphar_fast_math";                         // fast math
 constexpr static const char* kNupharFastMath_Polynormial = "polynormial_math";             // generic polynormial fast math for exp and log
 constexpr static const char* kNupharFastMath_ShortPolynormial = "short_polynormial_math";  // generic shorter polynormial fast math for exp and log

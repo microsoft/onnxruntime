@@ -12,14 +12,13 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
                             std::function<float(float)> expected_func,
                             const std::unordered_map<std::string, float> attribs = {},
                             bool is_tensorrt_supported = true,
-                            int opset_version = 7) {
-  OpTester test(szOp, opset_version);
+                            int opset_version = 7, const char* domain = kOnnxDomain) {
+  OpTester test(szOp, opset_version, domain);
 
   for (auto attr : attribs)
     test.AddAttribute(attr.first, attr.second);
 
   std::vector<int64_t> dims{(int64_t)input_vals.size()};
-
 
   std::vector<float> expected_vals;
   for (const auto& iv : input_vals)
@@ -36,11 +35,11 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
 
 //Disabled because of accuracy issues for MYRIAD FP16 and VAD_M
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-    int relu = strcmp(szOp, "Relu");
-    int leaky = strcmp(szOp, "LeakyRelu");
-    if(relu == 0 || leaky == 0){
-        excluded_providers.insert(kOpenVINOExecutionProvider);
-    }
+  int relu = strcmp(szOp, "Relu");
+  int leaky = strcmp(szOp, "LeakyRelu");
+  if (relu == 0 || leaky == 0) {
+    excluded_providers.insert(kOpenVINOExecutionProvider);
+  }
 #endif
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
@@ -108,10 +107,11 @@ TEST(ActivationOpTest, LeakyRelu) {
 
 TEST(ActivationOpTest, ThresholdedRelu) {
   float alpha = 0.1f;
-  TestUnaryElementwiseOp("ThresholdedRelu",
-                         input_vals,
-                         [alpha](float x) { return (x >= alpha) ? x : 0; },
-                         {{"alpha", alpha}}, true, 10);
+  TestUnaryElementwiseOp(
+      "ThresholdedRelu",
+      input_vals,
+      [alpha](float x) { return (x >= alpha) ? x : 0; },
+      {{"alpha", alpha}}, true, 10);
 }
 
 TEST(ActivationOpTest, Selu) {
@@ -204,9 +204,10 @@ TEST(ActivationOpTest, Softplus) {
 }
 
 TEST(ActivationOpTest, Softsign) {
-  TestUnaryElementwiseOp("Softsign",
-                         no_inf_input_vals,
-                         [](float x) { return x / (1 + std::abs(x)); }, {}, false);  // Disable TensorRT because result mismatches
+  TestUnaryElementwiseOp(
+      "Softsign",
+      no_inf_input_vals,
+      [](float x) { return x / (1 + std::abs(x)); }, {}, false);  // Disable TensorRT because result mismatches
 }
 
 }  // namespace test

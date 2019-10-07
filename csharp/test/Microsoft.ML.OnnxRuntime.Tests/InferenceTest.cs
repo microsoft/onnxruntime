@@ -398,6 +398,55 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
+        private void TestOverridableInitializerMetadata()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "overridable_initializer.onnx");
+            using (var session = new InferenceSession(modelPath))
+            {
+                Assert.Equal(2, session.InputMetadata.Count);
+                Assert.True(session.InputMetadata.ContainsKey("Label"));
+                Assert.True(session.InputMetadata.ContainsKey("F2"));
+
+                Assert.Equal(1, session.OverridableInitializerMetadata.Count);
+                Assert.True(session.OverridableInitializerMetadata.ContainsKey("F1"));
+                Assert.True(session.OverridableInitializerMetadata["F1"].IsTensor);
+                Assert.Equal(typeof(float), session.OverridableInitializerMetadata["F1"].ElementType);
+                Assert.Equal(2, session.OverridableInitializerMetadata["F1"].Dimensions.Length);
+                Assert.Equal(1, session.OverridableInitializerMetadata["F1"].Dimensions[0]);
+                Assert.Equal(1, session.OverridableInitializerMetadata["F1"].Dimensions[1]);
+
+                var container = new List<NamedOnnxValue>();
+                var Label_input = new DenseTensor<bool>(new bool[] { true }, new int[] { 1, 1 });
+                container.Add(NamedOnnxValue.CreateFromTensor("Label", Label_input));
+                
+                var F2_input = new DenseTensor<string>(new string[] { "f2_string" }, new int[] { 1, 1 });
+                container.Add(NamedOnnxValue.CreateFromTensor("F2", F2_input));
+
+                var F1_initializer = new DenseTensor<float>(new float[] { 2.0f }, new int[] { 1, 1 });
+                container.Add(NamedOnnxValue.CreateFromTensor("F1", F1_initializer));
+
+                using (var result = session.Run(container))
+                {
+                    var resultMap = new Dictionary<string, NamedOnnxValue>();
+
+                    foreach (var output in result)
+                    {
+                        resultMap[output.Name] = output;
+                    }
+
+                    Assert.True(resultMap.ContainsKey("Label0"));
+                    Assert.True(resultMap.ContainsKey("F20"));
+                    Assert.True(resultMap.ContainsKey("F11"));
+
+                    var overriddenInitializer = resultMap["F11"].AsTensor<float>();
+                    Assert.NotNull(overriddenInitializer);
+                    Assert.True(overriddenInitializer.SequenceEqual(F1_initializer));
+                }
+            }
+        }
+
+
+        [Fact]
         private void TestModelInputFloat()
         {
             // model takes 1x5 input of fixed type, echoes back
