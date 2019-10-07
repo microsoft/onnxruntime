@@ -328,12 +328,19 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "mlperf_ssd_mobilenet_300", "Could not find file output_0.pb" }
             };
 
+            // The following models fails on nocontribops win CI
             var disableContribOpsEnvVar = Environment.GetEnvironmentVariable("DisableContribOps");
             var isContribOpsDisabled = (disableContribOpsEnvVar != null) ? disableContribOpsEnvVar.Equals("ON") : false;
             if (isContribOpsDisabled)
             {
                 skipModels["test_tiny_yolov2"] =  "Fails when ContribOps is disabled";
                 skipModels["mask_rcnn_keras"] = "Pad is not a registered function/op";
+            }
+
+            // This model fails on x86 Win CI
+            if (System.Environment.Is64BitProcess == false)
+            {
+                skipModels["test_vgg19"] = "Get preallocated buffer for initializer conv4_4_b_0 failed";
             }
 
             return skipModels;
@@ -1245,15 +1252,5 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        private class x64Theory : TheoryAttribute
-        {
-            public x64Theory()
-            {
-                if (System.Environment.Is64BitProcess == false)
-                {
-                    Skip = "Not 64-bit process";
-                }
-            }
-        }
     }
 }
