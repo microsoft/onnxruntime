@@ -401,7 +401,7 @@ TEST(MathOpTest, Abs_int8) {
   std::vector<int64_t> dims{4};
   test.AddInput<int8_t>("X", dims, {1, 2, -1, -5});
   test.AddOutput<int8_t>("Y", dims, {1, 2, 1, 5});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: INT8, Assertion `regionRanges != nullptr' failed
 }
 
 TEST(MathOpTest, Abs_int32) {
@@ -429,7 +429,7 @@ TEST(MathOpTest, Neg_int8) {
   std::vector<int64_t> dims{4};
   test.AddInput<int8_t>("X", dims, {1, -2, 0, -10});
   test.AddOutput<int8_t>("Y", dims, {-1, 2, 0, 10});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: INT8 is not supported
 }
 
 TEST(MathOpTest, Neg_int32) {
@@ -1544,6 +1544,78 @@ TEST(ModOpTest, Int32_mod_bcast) {
   test.AddOutput<int32_t>("Z", {3, 2, 5},
                           {0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 0, 1});
 
+  test.Run();
+}
+
+TEST(BitShiftOpTest, SimpleLeft) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "LEFT");
+  test.AddInput<uint32_t>("X", {3}, {16, 4, 1});
+  test.AddInput<uint32_t>("Y", {3}, {1, 2, 3});
+  test.AddOutput<uint32_t>("Z", {3}, {32, 16, 8});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, SimpleRight) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint32_t>("X", {3}, {16, 4, 1});
+  test.AddInput<uint32_t>("Y", {3}, {1, 2, 3});
+  test.AddOutput<uint32_t>("Z", {3}, {8, 1, 0});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, ScalarLeftX) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "LEFT");
+  test.AddInput<uint32_t>("X", {1}, {16});
+  test.AddInput<uint32_t>("Y", {3}, {1, 2, 3});
+  test.AddOutput<uint32_t>("Z", {3}, {32, 64, 128});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, ScalarLeftY) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "LEFT");
+  test.AddInput<uint32_t>("X", {3}, {16, 4, 1});
+  test.AddInput<uint32_t>("Y", {1}, {1});
+  test.AddOutput<uint32_t>("Z", {3}, {32, 8, 2});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, ScalarRightX) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint32_t>("X", {1}, {16});
+  test.AddInput<uint32_t>("Y", {3}, {1, 2, 3});
+  test.AddOutput<uint32_t>("Z", {3}, {8, 4, 2});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, ScalarRightY) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint32_t>("X", {3}, {16, 4, 1});
+  test.AddInput<uint32_t>("Y", {1}, {1});
+  test.AddOutput<uint32_t>("Z", {3}, {8, 2, 0});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, BroadcastYLeft) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "LEFT");
+  test.AddInput<uint64_t>("X", {3, 2}, {1, 2, 3, 4, 5, 6});
+  test.AddInput<uint64_t>("Y", {2}, {1, 2});
+  test.AddOutput<uint64_t>("Z", {3, 2}, {2, 8, 6, 16, 10, 24});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, BroadcastXRight) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint64_t>("X", {2}, {64, 32});
+  test.AddInput<uint64_t>("Y", {3, 2}, {1, 2, 3, 4, 5, 6});
+  test.AddOutput<uint64_t>("Z", {3, 2}, {32, 8, 8, 2, 2, 0});
   test.Run();
 }
 

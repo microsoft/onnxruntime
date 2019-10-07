@@ -192,5 +192,13 @@ tvm::Array<tvm::Tensor> MakeInputsForExtern(const tvm::Array<tvm::Tensor>& input
   return fixed_inputs;
 }
 
+// Make sure idx is clamped in the range of [-bound, bound - 1]
+tvm::Expr ClampIndex(const tvm::Expr& idx, const tvm::Expr& bound) {
+  // when idx >= 0, we take tvm::max(..., 0), because (idx < 0) is 0
+  // when idx < 0, we take bound + tvm::max(...), because tvm::max(idx, 0) is 0
+  return tvm::max(tvm::min(idx, bound - 1), 0) +
+         (idx < 0) * (bound + tvm::max(idx, -bound));
+}
+
 }  // namespace tvm_codegen
 }  // namespace onnxruntime

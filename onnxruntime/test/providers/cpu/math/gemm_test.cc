@@ -56,7 +56,7 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
   test.AddInput<MLFloat16>("B", {4, 3}, f_B);
   test.AddInput<MLFloat16>("C", {2, 3}, f_C);
   test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: fp16 is not supported
 }
 #endif
 
@@ -116,7 +116,7 @@ TEST(GemmOpTest, GemmAlphaBeta) {
   test.AddOutput<float>("Y", {2, 3},
                         {7.0f, 7.0f, 7.0f,
                          -3.0f, -3.0f, -3.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: Seg fault in parser
 }
 
 TEST(GemmOpTest, GemmNaN) {
@@ -135,7 +135,7 @@ TEST(GemmOpTest, GemmNaN) {
   test.AddOutput<float>("Y", {2, 3},
                         {10.0f, 10.0f, 10.0f,
                          -10.0f, -10.0f, -10.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: Seg fault in parser
 }
 
 TEST(GemmOpTest, GemmScalarBroadcast) {
@@ -229,7 +229,7 @@ TEST(GemmOpTest, GemmEmptyTensor) {
   test.AddInput<float>("C", {3}, std::vector<float>(3, 1.0f));
   test.AddOutput<float>("Y", {0, 3},
                         {});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: doesn't support dynamic shape yet
 }
 
 TEST(GemmOpTest, GemmNoBiasOpset11) {

@@ -24,6 +24,7 @@
 
 namespace onnxruntime {
 class InferenceSession;
+struct SessionOptions;
 
 namespace test {
 // unfortunately std::optional is in C++17 so use a miniversion of it
@@ -350,6 +351,13 @@ class OpTester {
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
            bool sequential_execution = true);
 
+  void Run(const SessionOptions& session_options,
+           ExpectResult expect_result = ExpectResult::kExpectSuccess,
+           const std::string& expected_failure_string = "",
+           const std::unordered_set<std::string>& excluded_provider_types = {},
+           const RunOptions* run_options = nullptr,
+           std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr);
+
   struct Data {
     onnxruntime::NodeArg def_;
     OrtValue data_;
@@ -363,6 +371,8 @@ class OpTester {
           relative_error_(std::move(rel)),
           absolute_error_(abs),
           sort_output_(sort_output) {}
+    Data(onnxruntime::NodeArg&& def, OrtValue&& data, optional<float>&& rel, optional<float>&& abs)
+        : def_(std::move(def)), data_(std::move(data)), relative_error_(std::move(rel)), absolute_error_(abs) {}
     Data(Data&&) = default;
     Data& operator=(Data&&) = default;
   };
