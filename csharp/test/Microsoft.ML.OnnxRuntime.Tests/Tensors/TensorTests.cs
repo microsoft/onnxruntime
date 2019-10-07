@@ -171,14 +171,61 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(1, tensor.Dimensions[0]);
             Assert.Equal(2, tensor.Dimensions[1]);
             Assert.Equal(3, tensor.Dimensions[2]);
+        }
 
-            // test creation of a Tensor with 0 in the dimension values
-            dimensions = new[] { 1, 0 };
-            tensor = tensorConstructor.CreateFromDimensions<int>(dimensions: dimensions);
+        [Theory()]
+        [MemberData(nameof(GetSingleTensorConstructors))]
+        public void ConstructEmptyTensors(TensorConstructor tensorConstructor)
+        {
+            // tests associated with empty tensors (i.e.) tensors with empty content
+
+            // test creation of empty tensors (from dimensions)
+            var dimensions = new[] { 1, 0 };
+            var emptyTensor1 = tensorConstructor.CreateFromDimensions<int>(dimensions: dimensions);
             dimensions[0] = dimensions[1] = 0;
-            Assert.Equal(1, tensor.Dimensions[0]);
-            Assert.Equal(0, tensor.Dimensions[1]);
+            Assert.Equal(1, emptyTensor1.Dimensions[0]);
+            Assert.Equal(0, emptyTensor1.Dimensions[1]);
 
+            dimensions = new[] { 0, 2 };
+            var emptyTensor2 = tensorConstructor.CreateFromDimensions<int>(dimensions: dimensions);
+            dimensions[0] = dimensions[1] = 0;
+            Assert.Equal(0, emptyTensor2.Dimensions[0]);
+            Assert.Equal(2, emptyTensor2.Dimensions[1]);
+
+            // test creation of empty tensors (from an empty array)
+            var emptyTensor3 = tensorConstructor.CreateFromArray<int>(new int[] { });
+            Assert.Equal(1, emptyTensor3.Dimensions.Length);
+            Assert.Equal(0, emptyTensor3.Dimensions[0]);
+
+            // ensure the lengths of the empty tensors are 0
+            Assert.Equal(0, emptyTensor1.Length);
+            Assert.Equal(0, emptyTensor2.Length);
+            Assert.Equal(0, emptyTensor3.Length);
+
+            // equality comparison of tensors with a dimension value of '0' along different axes throws an ArgumentException
+            Assert.Throws<ArgumentException>("other", () => StructuralComparisons.StructuralComparer.Compare(emptyTensor1, emptyTensor2));
+            Assert.Throws<ArgumentException>("other", () => StructuralComparisons.StructuralComparer.Compare(emptyTensor2, emptyTensor1));
+            Assert.Throws<ArgumentException>("other", () => StructuralComparisons.StructuralEqualityComparer.Equals(emptyTensor1, emptyTensor2));
+            Assert.Throws<ArgumentException>("other", () => StructuralComparisons.StructuralEqualityComparer.Equals(emptyTensor2, emptyTensor1));
+
+            // equality comparison of tensors with a dimension value of '0' along same axis is true
+            // equality comparison of an empty tensor with itself
+            Assert.Equal(0, StructuralComparisons.StructuralComparer.Compare(emptyTensor1, emptyTensor1));
+            Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(emptyTensor1, emptyTensor1));
+            // equality comparison of an empty tensor with another empty tensor with same dimensions as 'emptyTensor1'
+            dimensions = new[] { 1, 0 };
+            var emptyTensor4 = tensorConstructor.CreateFromDimensions<int>(dimensions: dimensions);
+            Assert.Equal(0, StructuralComparisons.StructuralComparer.Compare(emptyTensor1, emptyTensor4));
+            Assert.Equal(0, StructuralComparisons.StructuralComparer.Compare(emptyTensor4, emptyTensor1));
+            Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(emptyTensor1, emptyTensor4));
+            Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(emptyTensor4, emptyTensor1));
+
+            // create an empty DenseTensor 
+            dimensions = new[] { 0, 2, 1 };
+            var emptyDenseTensor = new DenseTensor<int>(new Span<int>(dimensions));
+            // accessing any index in the underlying buffer should result in an IndexOutOfRangeException
+            Assert.Throws<IndexOutOfRangeException>(() => emptyDenseTensor.GetValue(0));
+            Assert.Throws<IndexOutOfRangeException>(() => emptyDenseTensor.GetValue(5));
         }
 
         [Theory()]
