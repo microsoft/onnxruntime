@@ -397,7 +397,7 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
   test.AddOutput<float>("scan_output_3", calculate_output_shape(3), output_3);
 
   if (options.mixed_execution_providers) {
-    // we want the CUDA provider to be first, and the CPU provider second. all except the Scannode should run on
+    // we want the CUDA provider to be first, and the CPU provider second. all except the Scan node should run on
     // CUDA given that, which creates the scenario where we need to copy to/from CPU to execute the Scan node correctly.
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
@@ -1147,7 +1147,7 @@ void UnknownDimInSubgraphOutput(bool is_v8, bool mixed_execution_providers = fal
   test.AddOutput<float>("scan_output_1", seq_shape, {0.0, 1.0, 2.0});
 
   if (mixed_execution_providers) {
-    // we want the CUDA provider to be first, and the CPU provider second. all except the Scannode should run on
+    // we want the CUDA provider to be first, and the CPU provider second. all except the Scan node should run on
     // CUDA given that, which creates the scenario where we need to copy to/from CPU to execute the Scan node correctly.
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());

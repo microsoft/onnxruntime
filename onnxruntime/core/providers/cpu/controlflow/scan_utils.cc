@@ -245,9 +245,10 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
             const OrtValue& value = *iterator;
 
             // for now we only allocate on CPU as currently all 'Scan' outputs are on CPU.
-            // if that does not match the required location we don't update the provided OrtValue as the fetches copy
-            // logic in graph execution will handle moving it to CPU (and into the OrtValue we allocated here)
-            if (value.Get<Tensor>().Location() == location) {
+            // if that does not match the required device we don't update the provided OrtValue and return false for
+            // 'allocated'. the execution frame will allocate a buffer on the required device, and the fetches copy
+            // logic in utils::ExecuteSubgraph will handle moving it to CPU (and into the tensor we allocated here)
+            if (value.Get<Tensor>().Location().device == location.device) {
               // update OrtValue with a current slice from the iterator.
               ort_value = value;
               allocated = true;
@@ -522,9 +523,6 @@ Status OutputIterator::AllocateFinalOutput(const TensorShape& shape) {
   is_concrete_shape_ = true;
   status = AllocateFinalBuffer();
   ORT_RETURN_IF_ERROR(status);
-
-  // get OrtValue from operator*()
-  //ort_value = **this;
 
   return Status::OK();
 }
