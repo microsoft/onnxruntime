@@ -253,11 +253,11 @@ if (onnxruntime_USE_NUPHAR)
   )
 endif()
 
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  add_custom_command(
-    TARGET onnxruntime_pywrapper POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-      $<TARGET_FILE:onnxruntime_pywrapper>
-      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
-  )
-endif()
+#if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+#  add_custom_command(
+#    TARGET onnxruntime_pywrapper POST_BUILD
+#    COMMAND ${CMAKE_COMMAND} -E copy
+#      $<TARGET_FILE:onnxruntime_pywrapper>
+#      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+#  )
+#endif()
