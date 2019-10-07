@@ -181,7 +181,12 @@ struct SequenceTensorTypeProto : ONNX_NAMESPACE::TypeProto {
 };
 
 template <typename ElemType>
-const SequenceTensorTypeProto<ElemType> s_sequence_tensor_type_proto;
+struct SequenceTensorType {
+  static const SequenceTensorTypeProto<ElemType> s_sequence_tensor_type_proto;
+};
+
+template <typename ElemType>
+const SequenceTensorTypeProto<ElemType> SequenceTensorType<ElemType>::s_sequence_tensor_type_proto;
 
 // To use OpTester:
 //  1. Create one with the op name
@@ -248,7 +253,7 @@ class OpTester {
   void AddSeqInput(const char* name, const SeqTensors<T>& seq_tensors) {
     auto mltype = DataTypeImpl::GetType<TensorSeq>();
     ORT_ENFORCE(mltype != nullptr, "TensorSeq must be a registered cpp type");
-    auto ptr = std::make_unique<TensorSeq>();
+    auto ptr = onnxruntime::make_unique<TensorSeq>();
     auto num_tensors = seq_tensors.tensors.size();
     ptr->tensors.resize(num_tensors);
     for (int i = 0; i < num_tensors; ++i) {
@@ -273,7 +278,8 @@ class OpTester {
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
-    input_data_.push_back(Data(NodeArg(name, &s_sequence_tensor_type_proto<T>), std::move(value), optional<float>(), optional<float>()));
+    input_data_.push_back(Data(NodeArg(name, &SequenceTensorType<T>::s_sequence_tensor_type_proto), std::move(value),
+                               optional<float>(), optional<float>()));
   }
 
   template <typename TKey, typename TVal>
