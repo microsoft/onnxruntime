@@ -172,18 +172,19 @@ TEST(TopKOperator, InvalidKOpset9) {
           "Invalid value for attribute k");
 }
 
-static void top_0_default_axis(int opset_version) {
+static void top_0_default_axis(int opset_version, int64_t sorted = 1) {
   std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
   std::vector<int64_t> input_dimensions = {2, 4};
   std::vector<float> expected_vals = {};
   std::vector<int64_t> expected_indices = {};
   std::vector<int64_t> expected_dimensions = {2, 0};
-  RunTest(opset_version, 0, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
+  RunTest(opset_version, 0, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, -1, 1, sorted);
 }
 
 TEST(TopKOperator, Top0DefaultAxisLargestElements) {
   top_0_default_axis(10);
   top_0_default_axis(11);
+  top_0_default_axis(11, 0);  // unsorted
 }
 
 static void top_1_default_axis(int opset_version, int64_t sorted = 1) {
