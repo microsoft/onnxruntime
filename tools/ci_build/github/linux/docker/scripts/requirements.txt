@@ -1,0 +1,5 @@
+numpy==1.15.0
+requests==2.21.0
+scipy
+mypy
+pytest
