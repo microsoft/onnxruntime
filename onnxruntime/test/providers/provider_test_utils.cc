@@ -469,7 +469,8 @@ void OpTester::ExecuteModel(Model& model, InferenceSession& session_object, Expe
       ++idx;
 
       // skip missing trailing optional outputs
-      if (idx == fetches.size()) break;
+      if (idx == fetches.size())
+        break;
     }
   }
 }
@@ -615,7 +616,8 @@ void OpTester::Run(const SessionOptions& so,
               }
             }
 
-            if (!valid) break;
+            if (!valid)
+              break;
           }
         }
 

@@ -371,8 +371,6 @@ class OpTester {
           relative_error_(std::move(rel)),
           absolute_error_(abs),
           sort_output_(sort_output) {}
-    Data(onnxruntime::NodeArg&& def, OrtValue&& data, optional<float>&& rel, optional<float>&& abs)
-        : def_(std::move(def)), data_(std::move(data)), relative_error_(std::move(rel)), absolute_error_(abs) {}
     Data(Data&&) = default;
     Data& operator=(Data&&) = default;
   };
