@@ -185,18 +185,22 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             dimensions[0] = dimensions[1] = 0;
             Assert.Equal(1, emptyTensor1.Dimensions[0]);
             Assert.Equal(0, emptyTensor1.Dimensions[1]);
+            Assert.Equal(2, emptyTensor1.Rank);
 
-            dimensions = new[] { 0, 2 };
+            dimensions = new[] { 0, 2, 4};
             var emptyTensor2 = tensorConstructor.CreateFromDimensions<int>(dimensions: dimensions);
-            dimensions[0] = dimensions[1] = 0;
+            dimensions[0] = dimensions[1] = dimensions[2] = 0;
             Assert.Equal(0, emptyTensor2.Dimensions[0]);
             Assert.Equal(2, emptyTensor2.Dimensions[1]);
+            Assert.Equal(4, emptyTensor2.Dimensions[2]);
+            Assert.Equal(3, emptyTensor2.Rank);
 
             // test creation of empty tensors (from an empty array)
+            // by default it will create an empty tensor of shape: [0] (1D)
             var emptyTensor3 = tensorConstructor.CreateFromArray<int>(new int[] { });
-            Assert.Equal(1, emptyTensor3.Dimensions.Length);
             Assert.Equal(0, emptyTensor3.Dimensions[0]);
-
+            Assert.Equal(1, emptyTensor3.Rank);
+            
             // ensure the lengths of the empty tensors are 0
             Assert.Equal(0, emptyTensor1.Length);
             Assert.Equal(0, emptyTensor2.Length);
