@@ -37,16 +37,12 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
-  # If you have a Linux machine, preface this command with "sudo"
-
   docker build -t onnxruntime-source -f Dockerfile.source .
   ```
 
 2. Run the Docker image
 
   ```
-  # If you have a Linux machine, preface this command with "sudo"
-
   docker run -it onnxruntime-source
   ```
 
@@ -55,16 +51,12 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
-  # If you have a Linux machine, preface this command with "sudo"
-
   docker build -t onnxruntime-cuda -f Dockerfile.cuda .
   ```
 
 2. Run the Docker image
 
   ```
-  # If you have a Linux machine, preface this command with "sudo"
-
   docker run -it onnxruntime-cuda
   ```
 
@@ -75,16 +67,12 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
-  # If you have a Linux machine, preface this command with "sudo"
-
   docker build -t onnxruntime-ngraph -f Dockerfile.ngraph .
   ```
 
 2. Run the Docker image
 
   ```
-  # If you have a Linux machine, preface this command with "sudo"
-
   docker run -it onnxruntime-ngraph
   ```
 
@@ -93,16 +81,12 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
-  # If you have a Linux machine, preface this command with "sudo"
-
   docker build -t onnxruntime-trt -f Dockerfile.tensorrt .
   ```
 
 2. Run the Docker image
 
   ```
-  # If you have a Linux machine, preface this command with "sudo"
-
   docker run -it onnxruntime-trt
   ```
 
@@ -260,16 +244,12 @@ The Dockerfile used in these instructions specifically targets Raspberry Pi 3/3+
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
-  # If you have a Linux machine, preface this command with "sudo"
-
   docker build -t onnxruntime-nuphar -f Dockerfile.nuphar .
   ```
 
 2. Run the Docker image
 
   ```
-  # If you have a Linux machine, preface this command with "sudo"
-
   docker run -it onnxruntime-nuphar
   ```
 
