@@ -306,7 +306,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
       if (iter != input_name_idx_map.end()) {
         // Preserving NodeArg and input/output names
         const onnxruntime::NodeArg* node_arg = parent_graph_->GetNodeArg(function_op_node_proto.input()
-                                                                             .Get(input_name_idx_map[tensor_name]));
+                                                                             .Get(iter->second));
         auto& n_input = sub_graph.GetOrCreateNodeArg(
             function_op_node_proto.input().Get(iter->second), node_arg->TypeAsProto());
         inputs.push_back(&n_input);
@@ -322,7 +322,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
       if (iter != output_name_idx_map.end()) {
         // Preserving NodeArg and input/output names
         const onnxruntime::NodeArg* node_arg = parent_graph_->GetNodeArg(function_op_node_proto.output()
-                                                                             .Get(output_name_idx_map[tensor_name]));
+                                                                             .Get(iter->second));
         auto& n_output = sub_graph.GetOrCreateNodeArg(
             function_op_node_proto.output().Get(iter->second), node_arg->TypeAsProto());
         outputs.push_back(&n_output);
