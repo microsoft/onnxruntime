@@ -128,7 +128,9 @@ static void update_subgraphs_within_function_body(ONNX_NAMESPACE::GraphProto& su
 
     for (auto& attr : subgraph_node.attribute()) {
       if (attr.has_f()) {
-        ORT_THROW("A node with a function body within a subgraph within another function body is currently not supported in ORT");
+        ORT_THROW(
+            "A node with a function body within a subgraph within another function body "
+            "is currently not supported in ORT");
       }
       // Recurse into any subgraphs in the current subgraph being processed
       if (attr.has_g()) {
