@@ -140,7 +140,7 @@ Build command:
 
 ##### Linux
 ```
-./build.sh --use_cuda --cudnn_home /usr --cuda_home /usr/local/cuda
+./build.sh --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path>
 ```
 
 A Dockerfile is available [here](./tools/ci_build/github/linux/docker/Dockerfile.ubuntu_gpu).
