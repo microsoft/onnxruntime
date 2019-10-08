@@ -84,7 +84,7 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto
 }
 
 // This method updates the names of inputs/outputs of nodes in subgraphs
-// within nodes in an op that has a FunctioBody.
+// within nodes in an op that has a FunctionBody.
 // Subgraphs within an op with a FunctionBody could be referencing inputs/outputs in the OpSchema
 // and we need to replace these names with the corresponding input/output names from the actual model graph
 
