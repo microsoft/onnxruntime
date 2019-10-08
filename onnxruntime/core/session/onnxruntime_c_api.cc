@@ -989,7 +989,7 @@ static OrtStatus* OrtCreateValueImplSeqHelperTensor(const Tensor& tensor,
 
 static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t num_values,
                                               OrtValue** out) {
-  auto seq_ptr = std::make_unique<TensorSeq>();
+  auto seq_ptr = onnxruntime::make_unique<TensorSeq>();
   seq_ptr->tensors.resize(num_values);
 
   // use the data type of the first tensor as the data type of the seq
