@@ -14,9 +14,8 @@ This directory contains a few C/C++ sample applications for demoing onnxruntime 
 You may get a precompiled libpng library from [https://onnxruntimetestdata.blob.core.windows.net/models/libpng.zip](https://onnxruntimetestdata.blob.core.windows.net/models/libpng.zip)
 
 ## Install ONNX Runtime
-You may either get a prebuit onnxruntime from nuget.org, or build it from source by following the [BUILD.md document](../../../BUILD.md). 
-If you build it by yourself, you must append the "--build_shared_lib" flag to your build command. Like:
-
+You may either get a prebuit onnxruntime from nuget.org, or build it from source by following the [build instructions](../../BUILD.md). 
+If you build it by yourself, you must append the "--build_shared_lib" flag to your build command. 
 ```
 build.bat --config RelWithDebInfo --build_shared_lib --parallel
 ```
