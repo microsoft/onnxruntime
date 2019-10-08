@@ -10,6 +10,7 @@ namespace onnxruntime {
 namespace server {
 namespace test {
 
+static const std::string predict_regex = R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))";
 using test_data = std::tuple<http::verb, std::string, std::string, std::string, std::string, http::status>;
 
 void do_something(const std::string& name, const std::string& version,
@@ -20,7 +21,6 @@ void do_something(const std::string& name, const std::string& version,
 void run_route(const std::string& pattern, http::verb method, const std::vector<test_data>& data, bool does_validate_data);
 
 TEST(HttpRouteTests, RegisterTest) {
-  auto predict_regex = R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))";
   Routes routes;
   EXPECT_TRUE(routes.RegisterController(http::verb::post, predict_regex, do_something));
 
@@ -29,7 +29,6 @@ TEST(HttpRouteTests, RegisterTest) {
 }
 
 TEST(HttpRouteTests, PostRouteTest) {
-  auto predict_regex = R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))";
 
   std::vector<test_data> actions{
       std::make_tuple(http::verb::post, "/v1/models/abc/versions/23:predict", "abc", "23", "predict", http::status::ok),
@@ -42,7 +41,6 @@ TEST(HttpRouteTests, PostRouteTest) {
 }
 
 TEST(HttpRouteTests, PostRouteInvalidURLTest) {
-  auto predict_regex = R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))";
 
   std::vector<test_data> actions{
       std::make_tuple(http::verb::post, "", "", "", "", http::status::not_found),
@@ -66,7 +64,6 @@ TEST(HttpRouteTests, PostRouteInvalidURLTest) {
 // These tests are because we currently only support POST and GET
 // Some HTTP methods should be removed from test data if we support more (e.g. PUT)
 TEST(HttpRouteTests, PostRouteInvalidMethodTest) {
-  auto predict_regex = R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))";
 
   std::vector<test_data> actions{
       std::make_tuple(http::verb::get, "/v1/models/abc/versions/23:predict", "abc", "23", "predict", http::status::method_not_allowed),

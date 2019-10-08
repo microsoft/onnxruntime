@@ -149,3 +149,30 @@ TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output t
               std::set<float>(std::begin(values), std::end(values)));
   }
 }
+
+TEST_F(CApiTest, CreateGetSeqTensors) {
+  // Creation
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  std::vector<Ort::Value> in;
+  std::vector<int64_t> vals{3, 1, 2, 0};
+  std::vector<int64_t> dims{1, 4};
+  const int N = 2;
+  for (int i = 0; i < N; ++i) {
+    // create tensor
+    Ort::Value tensor = Ort::Value::CreateTensor(info, vals.data(), vals.size() * sizeof(int64_t),
+                                                 dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
+    in.push_back(std::move(tensor));
+  }
+
+  Ort::Value seq_ort = Ort::Value::CreateSequence(in);
+
+  // Fetch
+  for (int idx = 0; idx < N; ++idx) {
+    Ort::Value out = seq_ort.GetValue(idx, default_allocator.get());
+    int64_t* ret = out.GetTensorMutableData<int64_t>();
+    ASSERT_EQ(std::set<int64_t>(ret, ret + vals.size()),
+              std::set<int64_t>(std::begin(vals), std::end(vals)));
+  }
+}

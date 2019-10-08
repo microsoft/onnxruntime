@@ -43,6 +43,14 @@ ADD_TYPED_ROIALIGN_OP(double);
 
 namespace {
 template <typename T>
+void TryParallelFor(concurrency::ThreadPool* tp, int32_t total, T&& fn) {
+  if (tp != nullptr)
+    return tp->ParallelFor(total, fn);
+  for (int32_t i = 0; i != total; ++i) {
+    fn(i);
+  }
+}
+template <typename T>
 struct PreCalc {
   int64_t pos1;
   int64_t pos2;
@@ -270,7 +278,7 @@ void RoiAlignForward(
       }    // for ph
     }      // for c
   };       // for n
-  if (ttp != nullptr) const_cast<ThreadPool*>(ttp)->ParallelFor(static_cast<int32_t>(n_rois), work_object);
+  TryParallelFor(const_cast<ThreadPool*>(ttp), static_cast<int32_t>(n_rois), work_object);
 }
 }  // namespace
 

@@ -29,6 +29,7 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/shape_to_initializer.h"
+#include "core/optimizer/gelu_fusion.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -169,8 +170,8 @@ TEST(GraphTransformationTests, ConstantFoldingSubgraph) {
   GraphProto subgraph;
   create_subgraph(subgraph);
 
-  if_node.AddAttribute("then_branch", {subgraph});
-  if_node.AddAttribute("else_branch", {subgraph});
+  if_node.AddAttribute("then_branch", subgraph);
+  if_node.AddAttribute("else_branch", subgraph);
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status;
@@ -537,7 +538,6 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
 }
 
 TEST(GraphTransformationTests, ReluClipFusion) {
-
   // Clip op schema changed for opset version 11. Until Clip op is updated in ORT hard coding this model to use
   // older opset.
   Model model("ReluClipFusion", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 10}}, {});
@@ -605,6 +605,27 @@ TEST(GraphTransformationTests, ReluClipFusion) {
     }
   }
 }
+
+#ifndef DISABLE_CONTRIB_OPS
+TEST(GraphTransformationTests, GeluFusionTest) {
+  string model_uri = MODEL_FOLDER + "fusion/gelu.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Div"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Erf"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["Gelu"] == 1);
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
