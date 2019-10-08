@@ -184,21 +184,25 @@ else()
     # Some platforms do not support 512xx flags but still able to compile the source
     # Others support the flag and refuse to compile w/o the flag.
     # We have to run all 3 checks
-    set(512_TRIAL_SOURCE ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/DgemmKernelAvx512F.S)
     check_cxx_compiler_flag("-mavx512f" HAS_AVX512F)
     if(HAS_AVX512F)
-      set_source_files_properties(${512_TRIAL_SOURCE} PROPERTIES COMPILE_FLAGS "-mavx512f")
+      set(AVX512_NEEDED "-mavx512f")
     endif()
-
     check_cxx_compiler_flag("-mavx512bw" HAS_AVX512BW)
     if(HAS_AVX512BW)
-      set_source_files_properties(${512_TRIAL_SOURCE} PROPERTIES COMPILE_FLAGS "-mavx512bw")
+      set(AVX512_NEEDED "${AVX512_NEEDED} -mavx512bw")
     endif()
 
-    try_compile(512_COMPILES ${CMAKE_CURRENT_BINARY_DIR}
-               ${512_TRIAL_SOURCE}) 
+    set(CMAKE_REQUIRED_FLAGS ${AVX512_NEEDED})
+    check_cxx_source_compiles(
+"int main() {
+asm(\"vpxord %zmm0,%zmm0,%zmm0\");
+return 0;
+}"
+AVX512_COMPILES)
 
-    if(512_COMPILES)
+
+    if(AVX512_COMPILES)
       set(mlas_platform_srcs_avx512f
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/DgemmKernelAvx512F.S
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelAvx512F.S
