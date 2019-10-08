@@ -11,7 +11,7 @@
 - Nuphar: [Dockerfile](Dockerfile.nuphar), [Instructions](#nuphar)
 - ARM 32v7: [Dockerfile](Dockerfile.arm32v7), [Instructions](#arm-32v7)
 - ONNX-Ecosystem (CPU + Converters): [Dockerfile](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/Dockerfile), [Instructions](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem)
-- ONNX Runtime Server: [Dockerfile](Dockerfile.server), [Instructions](#onnx-runtimeserver)
+- ONNX Runtime Server: [Dockerfile](Dockerfile.server), [Instructions](#onnx-runtime-server)
 
 **Published Microsoft Container Registry (MCR) Images**
 
@@ -33,7 +33,7 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 # Building and using Docker images
 
 ## CPU
-**Linux 16.04, CPU, Python Bindings**
+**Ubuntu 16.04, CPU, Python Bindings**
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
@@ -47,7 +47,7 @@ Use `docker pull` with any of the images and tags below to pull an image and try
   ```
 
 ## CUDA
-**Linux 16.04, CUDA 10.0, CuDNN 7**
+**Ubuntu 16.04, CUDA 10.0, CuDNN 7**
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
@@ -63,7 +63,7 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 ## nGraph
 *Public Preview*
 
-**Linux 16.04, Python Bindings**
+**Ubuntu 16.04, Python Bindings**
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
@@ -77,7 +77,7 @@ Use `docker pull` with any of the images and tags below to pull an image and try
   ```
 
 ## TensorRT
-**Linux 16.04, TensorRT 5.0.2**
+**Ubuntu 16.04, TensorRT 5.0.2**
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
@@ -93,7 +93,7 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 ## OpenVINO
 *Public Preview*
 
-**Linux 16.04, Python Bindings**
+**Ubuntu 16.04, Python Bindings**
 
 1. Build the onnxruntime image for one of the accelerators supported below.
 
@@ -240,7 +240,7 @@ The Dockerfile used in these instructions specifically targets Raspberry Pi 3/3+
 ## Nuphar
 *Public Preview*
 
-**Linux 16.04, Python Bindings**
+**Ubuntu 16.04, Python Bindings**
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
@@ -256,7 +256,7 @@ The Dockerfile used in these instructions specifically targets Raspberry Pi 3/3+
 ## ONNX Runtime Server
 *Public Preview*
 
-**Linux 16.04**
+**Ubuntu 16.04**
 
 1. Build the docker image from the Dockerfile in this repository
   ```
