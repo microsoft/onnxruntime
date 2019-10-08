@@ -18,7 +18,7 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 import numpy as np
 
-from ort_trainer import ORTTrainer, ORTModel, IODescription, ModelDescription
+from onnxruntime.capi.ort_trainer import IODescription, ModelDescription, ORTTrainer, ORTModel
 
 ## 
 class NeuralNet(nn.Module):
