@@ -14,7 +14,7 @@ For a list of available dockerfiles and published images to help with getting st
 * [Model Inferencing (Resnet50) on CPU](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/resnet50_modelzoo_onnxruntime_inference.ipynb)
 * [Model Inferencing on CPU](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem/inference_demos) using [ONNX-Ecosystem Docker image](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem)
 * [Model Inferencing on CPU using ONNX Runtime Server (SSD Single Shot MultiBox Detector)](https://github.com/onnx/tutorials/blob/master/tutorials/OnnxRuntimeServerSSDModel.ipynb)
-* [Model Inferencing using NUPHAR Execution Provider](./docs/python/notebooks/onnxruntime-nuphar-tutorial.ipynb)
+* [Model Inferencing using NUPHAR Execution Provider](../docs/python/notebooks/onnxruntime-nuphar-tutorial.ipynb)
 
 **Inference with model conversion**
 * [SKL Pipeline: Train, Convert, and Inference](https://microsoft.github.io/onnxruntime/auto_examples/plot_train_convert_predict.html#sphx-glr-auto-examples-plot-train-convert-predict-py)
