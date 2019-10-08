@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace server {
 namespace test {
 
-static const std::string predict_regex = R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))";
+static const std::string predict_regex = R"(/(?:v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))|score)";
 using test_data = std::tuple<http::verb, std::string, std::string, std::string, std::string, http::status>;
 
 void do_something(const std::string& name, const std::string& version,
@@ -36,6 +36,10 @@ TEST(HttpRouteTests, PostRouteTest) {
       std::make_tuple(http::verb::post, "/v1/models/models/versions/45:predict", "models", "45", "predict", http::status::ok),
       std::make_tuple(http::verb::post, "/v1/models/??$$%%@@$^^/versions/45:predict", "??$$%%@@$^^", "45", "predict", http::status::ok),
       std::make_tuple(http::verb::post, "/v1/models/versions/versions/45:predict", "versions", "45", "predict", http::status::ok)};
+      std::make_tuple(http::verb::post, "/score", "", "", "", http::status::ok)};
+      std::make_tuple(http::verb::post, "/v1/models/versions:predict", "versions", "1", "predict", http::status::ok)};
+      std::make_tuple(http::verb::post, "/v1/models/default:predict", "default", "1", "predict", http::status::ok)};
+
 
   run_route(predict_regex, http::verb::post, actions, true);
 }
@@ -54,7 +58,6 @@ TEST(HttpRouteTests, PostRouteInvalidURLTest) {
       std::make_tuple(http::verb::post, "/models/abc/versions/2:predict", "", "", "", http::status::not_found),
       std::make_tuple(http::verb::post, "/v1/models/versions/2:predict", "", "", "", http::status::not_found),
       std::make_tuple(http::verb::post, "/v1/models/foo/versions/:predict", "", "", "", http::status::not_found),
-      std::make_tuple(http::verb::post, "/v1/models/foo/versions:predict", "", "", "", http::status::not_found),
       std::make_tuple(http::verb::post, "v1/models/foo/versions/12:predict", "", "", "", http::status::not_found),
       std::make_tuple(http::verb::post, "/v1/models/abc/versions/23:foo", "", "", "", http::status::not_found)};
 
