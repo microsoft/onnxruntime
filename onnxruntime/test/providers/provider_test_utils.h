@@ -181,7 +181,12 @@ struct SequenceTensorTypeProto : ONNX_NAMESPACE::TypeProto {
 };
 
 template <typename ElemType>
-const SequenceTensorTypeProto<ElemType> s_sequence_tensor_type_proto;
+struct SequenceTensorType {
+  static const SequenceTensorTypeProto<ElemType> s_sequence_tensor_type_proto;
+};
+
+template <typename ElemType>
+const SequenceTensorTypeProto<ElemType> SequenceTensorType<ElemType>::s_sequence_tensor_type_proto;
 
 // To use OpTester:
 //  1. Create one with the op name
@@ -457,7 +462,8 @@ class OpTester {
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
-    data.push_back(Data(NodeArg(name, &s_sequence_tensor_type_proto<T>), std::move(value), optional<float>(), optional<float>()));
+    data.push_back(Data(NodeArg(name, &SequenceTensorType<T>::s_sequence_tensor_type_proto), std::move(value),
+                        optional<float>(), optional<float>()));
   }
 
   void ExecuteModel(Model& model, InferenceSession& session_object, ExpectResult expect_result,
