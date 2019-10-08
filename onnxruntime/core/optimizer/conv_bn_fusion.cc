@@ -41,11 +41,11 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   ORT_ENFORCE(conv_W_tensor_proto);
 
   // Conv only supports floating point data types, so can only fuse with an initializer containing those types
-  if (!optimizer::IsFloatingPointDataType(*bn_scale_tensor_proto) ||
-      !optimizer::IsFloatingPointDataType(*bn_B_tensor_proto) ||
-      !optimizer::IsFloatingPointDataType(*bn_mean_tensor_proto) ||
-      !optimizer::IsFloatingPointDataType(*bn_var_tensor_proto) ||
-      !optimizer::IsFloatingPointDataType(*conv_W_tensor_proto) ||
+  if (!optimizer_utils::IsFloatingPointDataType(*bn_scale_tensor_proto) ||
+      !optimizer_utils::IsFloatingPointDataType(*bn_B_tensor_proto) ||
+      !optimizer_utils::IsFloatingPointDataType(*bn_mean_tensor_proto) ||
+      !optimizer_utils::IsFloatingPointDataType(*bn_var_tensor_proto) ||
+      !optimizer_utils::IsFloatingPointDataType(*conv_W_tensor_proto) ||
       bn_scale_tensor_proto->dims_size() != 1 ||
       bn_B_tensor_proto->dims_size() != 1 ||
       bn_mean_tensor_proto->dims_size() != 1 ||
@@ -73,7 +73,7 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
     conv_B_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[2]->Name());
     ORT_ENFORCE(conv_B_tensor_proto);
 
-    if (!optimizer::IsFloatingPointDataType(*conv_B_tensor_proto) ||
+    if (!optimizer_utils::IsFloatingPointDataType(*conv_B_tensor_proto) ||
         conv_B_tensor_proto->dims_size() != 1 ||
         conv_B_tensor_proto->dims(0) != bn_B_tensor_proto->dims(0) ||
         conv_B_tensor_proto->data_type() != bn_B_tensor_proto->data_type()) {

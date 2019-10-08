@@ -23,8 +23,8 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
   ORT_ENFORCE(mul_B_tensor_proto);
 
   // Conv only supports floating point data types, so can only fuse with an initializer containing those types
-  if (!optimizer::IsFloatingPointDataType(*conv_W_tensor_proto) ||
-      !optimizer::IsFloatingPointDataType(*mul_B_tensor_proto) ||
+  if (!optimizer_utils::IsFloatingPointDataType(*conv_W_tensor_proto) ||
+      !optimizer_utils::IsFloatingPointDataType(*mul_B_tensor_proto) ||
       conv_W_tensor_proto->data_type() != mul_B_tensor_proto->data_type() ||
       conv_W_tensor_proto->dims_size() < 4) {
     return Status::OK();
@@ -62,7 +62,7 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
     conv_B_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[2]->Name());
     ORT_ENFORCE(conv_B_tensor_proto);
 
-    if (!optimizer::IsFloatingPointDataType(*conv_B_tensor_proto) ||
+    if (!optimizer_utils::IsFloatingPointDataType(*conv_B_tensor_proto) ||
         conv_B_tensor_proto->data_type() != mul_B_tensor_proto->data_type() ||
         conv_B_tensor_proto->dims_size() != 1 ||
         conv_B_tensor_proto->dims(0) != conv_W_tensor_proto->dims(0)) {

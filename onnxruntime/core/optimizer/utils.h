@@ -6,7 +6,7 @@
 #include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
-namespace optimizer {
+namespace optimizer_utils {
 
 // Check if TensorProto contains a floating point type.
 static bool IsFloatingPointDataType(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
@@ -14,5 +14,5 @@ static bool IsFloatingPointDataType(const ONNX_NAMESPACE::TensorProto& tensor_pr
            tensor_proto.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
            tensor_proto.data_type() != ONNX_NAMESPACE::TensorProto_DataType_DOUBLE);
 }
-}  // namespace optimizer
+}  // namespace optimizer_utils
 }  // namespace onnxruntime
