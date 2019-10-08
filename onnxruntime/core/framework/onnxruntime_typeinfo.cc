@@ -14,8 +14,8 @@
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::MLFloat16;
-using onnxruntime::Tensor;
 using onnxruntime::SparseTensor;
+using onnxruntime::Tensor;
 using onnxruntime::TensorShape;
 
 namespace on = ONNX_NAMESPACE;
@@ -41,10 +41,13 @@ ORT_API(void, OrtApis::ReleaseTypeInfo, _Frees_ptr_opt_ OrtTypeInfo* ptr) {
   delete ptr;
 }
 
-OrtStatus* GetTensorShapeAndType(const TensorShape* shape, const onnxruntime::DataTypeImpl* tensor_data_type, OrtTensorTypeAndShapeInfo** out);
-OrtStatus* GetTensorShapeAndType(const TensorShape* shape, const ONNX_NAMESPACE::TypeProto* type_proto, OrtTensorTypeAndShapeInfo** out);
+OrtStatus* GetTensorShapeAndType(const TensorShape* shape, const onnxruntime::DataTypeImpl* tensor_data_type,
+                                 OrtTensorTypeAndShapeInfo** out);
+OrtStatus* GetTensorShapeAndType(const TensorShape* shape, const std::vector<std::string>* dim_params,
+                                 const ONNX_NAMESPACE::TypeProto* type_proto, OrtTensorTypeAndShapeInfo** out);
 
-OrtStatus* OrtTypeInfo::FromDataTypeImpl(const onnxruntime::DataTypeImpl* input, const TensorShape* shape, const onnxruntime::DataTypeImpl* tensor_data_type, OrtTypeInfo** out) {
+OrtStatus* OrtTypeInfo::FromDataTypeImpl(const onnxruntime::DataTypeImpl* input, const TensorShape* shape,
+                                         const onnxruntime::DataTypeImpl* tensor_data_type, OrtTypeInfo** out) {
   if (input == nullptr) {
     *out = new OrtTypeInfo(ONNX_TYPE_UNKNOWN, nullptr);
     return nullptr;
@@ -76,7 +79,7 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const onnxruntime::DataTypeImpl* input,
     // Place Opaque first as tensors will be
     // mostly handled above and maps and sequences
     // are not common
-    switch (type_proto->value_case ()) {
+    switch (type_proto->value_case()) {
       case on::TypeProto::kOpaqueType: {
         *out = new OrtTypeInfo(ONNX_TYPE_OPAQUE, nullptr);
         return nullptr;
@@ -93,7 +96,7 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const onnxruntime::DataTypeImpl* input,
       case on::TypeProto::kTensorType:
       case on::TypeProto::kSparseTensorType: {
         OrtTensorTypeAndShapeInfo* info = nullptr;
-        OrtStatus* st = GetTensorShapeAndType(shape, type_proto, &info);
+        OrtStatus* st = GetTensorShapeAndType(shape, nullptr, type_proto, &info);
         if (st != nullptr) return st;
         if (type_proto->value_case() == on::TypeProto::kTensorType) {
           *out = new OrtTypeInfo(ONNX_TYPE_TENSOR, info);
@@ -173,14 +176,17 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const ONNX_NAMESPACE::TypeProto* input,
       if (sp != nullptr) {
         const on::TensorShapeProto& s = *sp;
         std::vector<int64_t> dims(s.dim_size());
+        std::vector<std::string> dim_params(s.dim_size());
         TensorShape shape_data(std::move(dims));
         for (int i = 0; i < s.dim_size(); ++i) {
           auto& t = s.dim(i);
-          switch (t.value_case ()) {
+          switch (t.value_case()) {
             case on::TensorShapeProto::Dimension::kDimValue:
               shape_data[i] = t.dim_value();
               break;
             case on::TensorShapeProto::Dimension::kDimParam:
+              dim_params[i] = t.dim_param();
+              // fall through
             case on::TensorShapeProto::Dimension::VALUE_NOT_SET:
               shape_data[i] = -1;
               break;
@@ -188,9 +194,9 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const ONNX_NAMESPACE::TypeProto* input,
               assert(false);
           }
         }
-        st = GetTensorShapeAndType(&shape_data, input, &info);
+        st = GetTensorShapeAndType(&shape_data, &dim_params, input, &info);
       } else {
-        st = GetTensorShapeAndType(nullptr, input, &info);
+        st = GetTensorShapeAndType(nullptr, nullptr, input, &info);
       }
       if (st != nullptr) return st;
       *out = new OrtTypeInfo(ten_type, info);
@@ -211,7 +217,7 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const ONNX_NAMESPACE::TypeProto* input,
     case on::TypeProto::VALUE_NOT_SET:
       break;
     default:
-     // Not implemented
+      // Not implemented
       break;
   }
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "not implemented");

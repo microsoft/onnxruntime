@@ -1289,6 +1289,7 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::GetTensorElementType,
     &OrtApis::GetDimensionsCount,
     &OrtApis::GetDimensions,
+    &OrtApis::GetSymbolicDimensions,
     &OrtApis::GetTensorShapeElementCount,
     &OrtApis::GetTensorTypeAndShape,
     &OrtApis::GetTypeInfo,

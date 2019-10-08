@@ -120,6 +120,8 @@ void TestInference(Ort::Env& env, T model_uri,
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/overridable_initializer.onnx");
+static constexpr PATH_TYPE NAMED_AND_ANON_DIM_PARAM_URI = TSTR("testdata/capi_symbolic_dims.onnx");
+
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 static constexpr PATH_TYPE PYOP_FLOAT_MODEL_URI = TSTR("testdata/pyop_1.onnx");
 #endif
@@ -143,6 +145,34 @@ TEST_P(CApiTestWithProvider, simple) {
   std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 
   TestInference<PATH_TYPE>(env_, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(), nullptr);
+}
+
+TEST_F(CApiTest, dim_param) {
+  Ort::SessionOptions session_options;
+  Ort::Session session(env_, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
+
+  auto in0 = session.GetInputTypeInfo(0);
+  auto in0_ttsi = in0.GetTensorTypeAndShapeInfo();
+
+  auto num_input_dims = in0_ttsi.GetDimensionsCount();
+  ASSERT_GE(num_input_dims, 1);
+  // reading 1st dimension only so don't need to malloc int64_t* or const char** values for the Get*Dimensions calls
+  int64_t dim_value = 0;
+  const char* dim_param = nullptr;
+  in0_ttsi.GetDimensions(&dim_value, 1);
+  in0_ttsi.GetSymbolicDimensions(&dim_param, 1);
+  ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
+  ASSERT_EQ(strcmp(dim_param, "n"), 0);
+
+  auto out0 = session.GetOutputTypeInfo(0);
+  auto out0_ttsi = out0.GetTensorTypeAndShapeInfo();
+  auto num_output_dims = out0_ttsi.GetDimensionsCount();
+  ASSERT_EQ(num_output_dims, 1);
+
+  out0_ttsi.GetDimensions(&dim_value, 1);
+  out0_ttsi.GetSymbolicDimensions(&dim_param, 1);
+  ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
+  ASSERT_EQ(strcmp(dim_param, ""), 0);
 }
 
 INSTANTIATE_TEST_CASE_P(CApiTestWithProviders,
