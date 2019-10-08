@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 file(GLOB onnxruntime_optimizer_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_INCLUDE_DIR}/core/optimizer/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/*.cc"
     )
