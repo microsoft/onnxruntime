@@ -16,7 +16,7 @@ include(CheckLanguage)
 # such as lambda captures and they are convinient
 # On the other hand it does not allow some others.
 # So we cant' regulate simply with the standard.
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 11)
 
 # General C# prperties
 if (onnxruntime_BUILD_CSHARP)
@@ -589,7 +589,7 @@ if (onnxruntime_USE_CUDA)
   endif()
   string(APPEND CMAKE_CUDA_FLAGS "-cudart shared")
   enable_language(CUDA)
-  set(CMAKE_CUDA_STANDARD 14)
+  set(CMAKE_CUDA_STANDARD 11)
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
   list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn)
