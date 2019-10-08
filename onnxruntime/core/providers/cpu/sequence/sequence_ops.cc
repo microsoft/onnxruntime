@@ -10,6 +10,9 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
+// TODO: The current implementation of sequence ops relies on tensor copies. Ideally we should try to avoid
+// these copies. This has been postponed due to lack of time.
+
 // SequenceLength
 ONNX_CPU_OPERATOR_KERNEL(
     SequenceLength,
@@ -192,7 +195,7 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
   if (S->dtype != X->DataType()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Data type of the input tensor MUST be same as that of the input sequence. Sequence data type (",
-                           DataTypeImpl::ToString(S->dtype), ") input tensor data type (", DataTypeImpl::ToString(X->DataType()), ")");
+                           DataTypeImpl::ToString(S->dtype), "), input tensor data type (", DataTypeImpl::ToString(X->DataType()), ")");
   }
 
   const auto* I = context->Input<Tensor>(2);

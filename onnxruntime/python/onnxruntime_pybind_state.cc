@@ -149,16 +149,8 @@ void AddNonTensor(OrtValue& val, std::vector<py::object>& pyobjs) {
   pyobjs.push_back(py::cast(val.Get<T>()));
 }
 
-// template <>
-// void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
-//   pyobjs.push_back(py::cast(val.Get<T>()));
-// }
-
 void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   // Should be in sync with core/framework/datatypes.h
-  /*if (val.Type() == DataTypeImpl::GetType<TensorSeq>()) {
-    AddNonTensor<TensorSeq>(val, pyobjs);
-  } else*/
   if (val.Type() == DataTypeImpl::GetType<MapStringToString>()) {
     AddNonTensor<MapStringToString>(val, pyobjs);
   } else if (val.Type() == DataTypeImpl::GetType<MapStringToInt64>()) {
