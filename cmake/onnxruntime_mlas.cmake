@@ -181,26 +181,46 @@ else()
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
 
 
-    set(mlas_platform_srcs_avx512f
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/DgemmKernelAvx512F.S
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelAvx512F.S
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SconvKernelAvx512F.S
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SpoolKernelAvx512F.S
-    )
+    # Some platforms do not support 512xx flags but still able to compile the source
+    # Others support the flag and refuse to compile w/o the flag.
+    # We have to run all 3 checks
+    set(512_TRIAL_SOURCE ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/DgemmKernelAvx512F.S)
     check_cxx_compiler_flag("-mavx512f" HAS_AVX512F)
     if(HAS_AVX512F)
-      set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")
+      set_source_files_properties(${512_TRIAL_SOURCE} PROPERTIES COMPILE_FLAGS "-mavx512f")
     endif()
 
-    set(mlas_platform_srcs_avx512bw
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8S8KernelAvx512BW.S
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8S8KernelAvx512Vnni.S
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8U8KernelAvx512BW.S
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8U8KernelAvx512Vnni.S
-    )
     check_cxx_compiler_flag("-mavx512bw" HAS_AVX512BW)
     if(HAS_AVX512BW)
-      set_source_files_properties(${mlas_platform_srcs_avx512bw} PROPERTIES COMPILE_FLAGS "-mavx512bw")
+      set_source_files_properties(${512_TRIAL_SOURCE} PROPERTIES COMPILE_FLAGS "-mavx512bw")
+    endif()
+
+    try_compile(512_COMPILES ${CMAKE_CURRENT_BINARY_DIR}
+               ${512_TRIAL_SOURCE}) 
+
+    if(512_COMPILES)
+      set(mlas_platform_srcs_avx512f
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/DgemmKernelAvx512F.S
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelAvx512F.S
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SconvKernelAvx512F.S
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SpoolKernelAvx512F.S
+      )
+      if(HAS_AVX512F)
+        set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")
+      endif()
+
+      set(mlas_platform_srcs_avx512bw
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8S8KernelAvx512BW.S
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8S8KernelAvx512Vnni.S
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8U8KernelAvx512BW.S
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8U8KernelAvx512Vnni.S
+      )
+      if(HAS_AVX512BW)
+        set_source_files_properties(${mlas_platform_srcs_avx512bw} PROPERTIES COMPILE_FLAGS "-mavx512bw")
+      endif()
+    else()
+      # Do not compile CPP support for 512xx
+      set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512_UNSUPPORTED")
     endif()
 
     set(mlas_platform_srcs

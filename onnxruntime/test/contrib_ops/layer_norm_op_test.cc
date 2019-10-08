@@ -100,7 +100,7 @@ class LayerNormOpTester : public OpTester {
 
     // Compare CPU with original subgraph
     ASSERT_TRUE(cpu_fetches.size() == subgraph_fetches.size());
-    for (auto i = 0; i < cpu_fetches.size(); i++) {
+    for (size_t i = 0; i < cpu_fetches.size(); i++) {
       if (cpu_fetches[i].IsTensor() && subgraph_fetches[i].IsTensor()) {
         VLOGS_DEFAULT(1) << "Checking tensor " << i;
         CheckTensor(subgraph_fetches[i].Get<Tensor>(), cpu_fetches[i].Get<Tensor>(), 1e-3, 1e-3);
@@ -110,7 +110,7 @@ class LayerNormOpTester : public OpTester {
     // Compare GPU with original subgraph
     if (DefaultCudaExecutionProvider()) {
       ASSERT_TRUE(cuda_fetches.size() == subgraph_fetches.size());
-      for (auto i = 0; i < cuda_fetches.size(); i++) {
+      for(size_t i = 0; i < cuda_fetches.size(); i++) {
         if (cuda_fetches[i].IsTensor() && subgraph_fetches[i].IsTensor()) {
           VLOGS_DEFAULT(1) << "Checking tensor " << i;
           CheckTensor(subgraph_fetches[i].Get<Tensor>(), cuda_fetches[i].Get<Tensor>(), 1e-3, 1e-3);
