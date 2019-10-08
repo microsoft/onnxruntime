@@ -37,8 +37,9 @@ void ScatterCommon(tvm::TVMArgs args, tvm::TVMRetValue* /*ret*/) {
 
   for (int i = 0; i < num_dims; i++) {
     if (indices->shape[i] != updates->shape[i]) {
-      ORT_THROW("Indices vs updates dimensions differs at position=", i,
-                " ", indices->shape[i], " vs ", updates->shape[i]);
+      LOG(FATAL) <<
+        "Indices vs updates dimensions differs at position=" <<
+        i << " " << indices->shape[i] << " vs " << updates->shape[i];
     }
   }
 
@@ -53,9 +54,10 @@ void ScatterCommon(tvm::TVMArgs args, tvm::TVMRetValue* /*ret*/) {
     if (idx >= -axis_size && idx < axis_size) {
       indices_data_vec[i] = idx >= 0 ? idx : idx + static_cast<Tind>(axis_size);
     } else {
-      ORT_THROW("indices element out of data bounds, idx=", idx,
-                " must be within the inclusive range [", -axis_size,
-                ",", axis_size - 1, "]");
+      LOG(FATAL) <<
+        "indices element out of data bounds, idx=" << idx <<
+        " must be within the inclusive range [" << -axis_size <<
+        "," << axis_size - 1 << "]";
     }
   }
 
