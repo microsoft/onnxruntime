@@ -54,6 +54,10 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
   const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->template Data<SrcT>());
   size_t count = shape.Size();
 
+  if (count == 0) {
+    return Status::OK();
+  }
+
 #define CASE(TP_TYPE, DstT)                                                                        \
   case TP_TYPE:                                                                                    \
     Impl_Cast<CudaSrcT, typename ToCudaType<DstT>::MappedType>(                                    \

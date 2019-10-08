@@ -52,6 +52,10 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
   Prepare p;
   ORT_RETURN_IF_ERROR(PrepareForCompute(context, p));
 
+  if (p.output_tensor->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
   const TensorShape& input_shape = p.input_tensor->Shape();
 
   const int64_t block_size = input_shape.SizeFromDimension(p.axis + 1);
