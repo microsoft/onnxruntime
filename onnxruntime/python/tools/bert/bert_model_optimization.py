@@ -269,44 +269,6 @@ class OnnxModel:
             index += 1
         return -1
 
-    @staticmethod
-    def replace_node_inputs(node, old_input, new_inputs):
-        inputs = []
-        for input in node.input:
-            if input == old_input:
-                for i in new_inputs:
-                    inputs.append(i)
-            else:
-                inputs.append(input)
-
-        #TODO: copy node name and attributes
-        new_node = onnx.helper.make_node(node.op_type,
-            inputs=inputs,
-            outputs=node.output)
-        new_node.name = node.name
-        new_node.attribute = node.attribute
-        return new_node
-
-    @staticmethod
-    def delete_and_skip_node(nodes, node, nodes_to_remove, nodes_to_add):
-        nodes_to_remove.append(node)
-
-        all_nodes = nodes_to_add + [n for n in nodes if n not in nodes_to_remove]
-
-        # for all children, change their input to parent of current node.
-        for node_output in node.output:
-            for n in all_nodes:
-                if node_output in n.input:
-                    if len(node.input) == 1:
-                        OnnxModel.replace_node_input(n, node_output, node.input[0])
-                    else:
-                        new_node = OnnxModel.replace_node_inputs(n, node_output, node.input)
-                        nodes_to_add.append(new_node)
-                        if n in nodes:
-                            nodes_to_remove.append(n)
-                        else:
-                            nodes_to_add.remove(n)
-
 class BertOnnxModel(OnnxModel):
     def __init__(self, model, num_heads, head_size, batch_size, sequence_length):
         assert(batch_size >= 0)
@@ -638,11 +600,6 @@ class BertOnnxModel(OnnxModel):
         self.replace_input_of_all_nodes(normalize_node.output[0], 'embed_output')
         self.replace_input_of_all_nodes(mask_input_name, 'mask_idx')
 
-        # Link mask_idx to Attention node directly, and remove other nodes in between.
-        for n in nodes:
-            if 'mask_idx' in n.input and n.op_type != self.attention_name:
-                delete_and_skip_node(nodes, n, nodes_to_remove, nodes_to_add)
-        
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
         self.update_graph(verbose)
@@ -669,23 +626,6 @@ class BertOnnxModel(OnnxModel):
 
         self.model = onnx.helper.make_model(graph_def, producer_name='bert model optimizer')
 
-    # Update input and output using dynamic batch
-    def update_dynamic_batch_io(self):
-        assert(self.batch_size == 0)
-        dynamic_batch_inputs = {}
-        for input in self.model.graph.input:
-            index = 0
-            for embed_input in self.embed_node.input:
-                index += 1
-                if embed_input == input.name:
-                    if index <= 3:
-                        dim_proto = input.type.tensor_type.shape.dim[0]
-                        dim_proto.dim_param = 'batch'
-
-        for output in self.model.graph.output:
-            dim_proto = output.type.tensor_type.shape.dim[0]
-            dim_proto.dim_param = 'batch'
-
     def cast_input_to_int32(self):
         model = self.model
 
@@ -709,7 +649,24 @@ class BertOnnxModel(OnnxModel):
 
         model.graph.node.extend(nodes_to_add)
 
-    def fuse_layerNorm(self):
+    # Update input and output using dynamic batch
+    def update_dynamic_batch_io(self, dynamic_batch_dim = 'batch'):
+        assert(self.batch_size == 0)
+        dynamic_batch_inputs = {}
+        for input in self.model.graph.input:
+            index = 0
+            for embed_input in self.embed_node.input:
+                index += 1
+                if embed_input == input.name:
+                    if index <= 3: # only first 3 inputs has batch dim
+                        dim_proto = input.type.tensor_type.shape.dim[0]
+                        dim_proto.dim_param = dynamic_batch_dim
+
+        for output in self.model.graph.output:
+            dim_proto = output.type.tensor_type.shape.dim[0]
+            dim_proto.dim_param = dynamic_batch_dim
+
+    def fuse_layer_norm(self):
         graph = self.graph()
         nodes = self.nodes()
 
@@ -793,7 +750,7 @@ def main():
 
     bert_model = BertOnnxModel(model, args.num_heads, args.head_size, args.batch_size, args.sequence_length)
 
-    bert_model.fuse_layerNorm()
+    bert_model.fuse_layer_norm()
 
     bert_model.fuse_gelu()
 
