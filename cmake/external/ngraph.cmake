@@ -12,7 +12,7 @@ set(prebuilt_ONNX_SOURCE_DIR "${PROJECT_SOURCE_DIR}/external/onnx")
 set(prebuilt_ONNX_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 set(ngraph_URL "https://github.com/NervanaSystems/ngraph.git")
 # TODO: change to v0.26.0 tag when it's ready
-set(ngraph_TAG "v0.26.0-rc.4")
+set(ngraph_TAG "v0.26.0-rc.6")
 
 # Libraries for python package.
 if (WIN32)
@@ -59,7 +59,6 @@ if (MSVC)
             PATCH_COMMAND ${NGRAPH_PATCH_DISCARD_COMMAND}
             COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/patches/ngraph/ngraph_onnx.cmake ${ngraph_SRC}/cmake/external_onnx.cmake
             COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/ngraph/ngraph_protobuf.patch
-            COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/ngraph/ngraph_fix_memory.patch
             CMAKE_ARGS
                 -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                 -DNGRAPH_DEX_ONLY=ON
@@ -69,6 +68,7 @@ if (MSVC)
                 -DNGRAPH_ONNXIFI_ENABLE=FALSE
                 -DNGRAPH_UNIT_TEST_ENABLE=FALSE
                 -DNGRAPH_TOOLS_ENABLE=FALSE
+                -DNGRAPH_USE_LEGACY_MKLDNN=FALSE
                 -DCMAKE_INSTALL_PREFIX=${ngraph_INSTALL_DIR}
                 -Dprebuilt_ONNX_BINARY_DIR=${prebuilt_ONNX_BINARY_DIR}
                 -Dprebuilt_ONNX_SOURCE_DIR=${prebuilt_ONNX_SOURCE_DIR}
@@ -96,6 +96,7 @@ else()
                 -DNGRAPH_ONNXIFI_ENABLE=FALSE
                 -DNGRAPH_UNIT_TEST_ENABLE=FALSE
                 -DNGRAPH_TOOLS_ENABLE=FALSE
+                -DNGRAPH_USE_LEGACY_MKLDNN=FALSE
                 -DCMAKE_INSTALL_PREFIX=${ngraph_INSTALL_DIR}
                 -Dprebuilt_ONNX_BINARY_DIR=${prebuilt_ONNX_BINARY_DIR}
                 -Dprebuilt_ONNX_SOURCE_DIR=${prebuilt_ONNX_SOURCE_DIR}
