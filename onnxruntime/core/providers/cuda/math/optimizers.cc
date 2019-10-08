@@ -172,6 +172,7 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD>::ComputeInternal(OpKernelContext* c
           .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()),                 \
       LambOptimizer<T1, T2, T3, T4>);
 
+REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float)
 REGISTER_LAMB_KERNEL_TYPED(float, float, float, float)
 REGISTER_LAMB_KERNEL_TYPED(double, double, double, double)
 REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16)

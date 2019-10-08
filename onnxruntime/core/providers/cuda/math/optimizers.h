@@ -79,14 +79,14 @@ void LambComputeDirectionImpl(
 
 // Implementation can be found in cuda file, optimizers_impl.cu
 // T2's precision should be higher than T1.
-template <typename T1, typename T2>
+template <typename T1, typename T2, typename T3>
 void LambUpdateImpl(
     const T1* eta,
     const T2* r_norm,
     const T2* w_norm,
     const T2* weights,
     const T2 threshold,
-    const T1* update_direction,
+    const T3* update_direction,
     T2* weights_out,
     half* fp16_weights_out,
     size_t count);

@@ -1668,31 +1668,31 @@ void compute_lamb(
     w_new[i] = w[i] - eta * w_norm / r_norm * r[i];
 }
 
-template <typename T1, typename T2, typename T3>
+template <typename T1, typename T2, typename T3, typename T4>
 void run_lamb_test_with_baseline(
     const std::vector<int64_t>& shape,
-    const std::vector<T2>& eta,
-    const std::vector<T1>& w,
-    const std::vector<T2>& g,
-    const std::vector<T3>& m,
-    const std::vector<T3>& v,
+    const std::vector<T1>& eta,
+    const std::vector<T2>& w,
+    const std::vector<T3>& g,
+    const std::vector<T4>& m,
+    const std::vector<T4>& v,
     const float alpha,
     const float beta,
     const float lambda,
     const float epsilon,
-    const std::vector<T1>& w_new,
-    const std::vector<T3>& m_new,
-    const std::vector<T3>& v_new,
+    const std::vector<T2>& w_new,
+    const std::vector<T4>& m_new,
+    const std::vector<T4>& v_new,
     const std::vector<MLFloat16>& w_half = {},
     const std::vector<MLFloat16>& w_new_half = {},
     bool do_update = true) {
   OpTester test("LambOptimizer", 9, onnxruntime::kOnnxDomain, true);
 
-  test.AddInput<T2>("ETA", {}, eta);
-  test.AddInput<T1>("W", shape, w);
-  test.AddInput<T2>("G", shape, g);
-  test.AddInput<T3>("Moment_1", shape, m);
-  test.AddInput<T3>("Moment_2", shape, v);
+  test.AddInput<T1>("ETA", {}, eta);
+  test.AddInput<T2>("W", shape, w);
+  test.AddInput<T3>("G", shape, g);
+  test.AddInput<T4>("Moment_1", shape, m);
+  test.AddInput<T4>("Moment_2", shape, v);
   if (!w_half.empty()) {
     test.AddInput<MLFloat16>("FP16_W", shape, w_half);
   }
@@ -1708,9 +1708,9 @@ void run_lamb_test_with_baseline(
   // so we assign a big value here.
   test.AddAttribute<float>("threshold", 10000.0f);
 
-  test.AddOutput<T1>("W_Out", shape, w_new);
-  test.AddOutput<T3>("Moment_1_Out", shape, m_new);
-  test.AddOutput<T3>("Moment_2_Out", shape, v_new);
+  test.AddOutput<T2>("W_Out", shape, w_new);
+  test.AddOutput<T4>("Moment_1_Out", shape, m_new);
+  test.AddOutput<T4>("Moment_2_Out", shape, v_new);
   if (!w_new_half.empty()) {
     test.AddOutput<MLFloat16>("FP16_W_Out", shape, w_new_half);
   }
@@ -1810,6 +1810,14 @@ void run_lamb_mix_precision_test(
   // Float momentums, with fp16 weight, skip weight udpate
   run_lamb_test_with_baseline(
       shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w, m, v, w_half, w_half, false);
+
+  // float eta, float momentums, with fp16 weight
+  run_lamb_test_with_baseline(
+      shape, eta, w, g_half, m, v, alpha, beta, lambda, epsilon, w_new, m_new, v_new, w_half, w_new_half);
+
+  // Float momentums, with fp16 weight, skip weight udpate
+  run_lamb_test_with_baseline(
+      shape, eta, w, g_half, m, v, alpha, beta, lambda, epsilon, w, m, v, w_half, w_half, false);
 }
 
 // A optimizer test with an 2-element vector.

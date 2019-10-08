@@ -46,23 +46,23 @@ void SGDOptimizerImpl(
 
 SPECIALIZED_IMPL__SGDOptimizerImpl(float)
 
-    template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, bool update_fp16_weight>
-    __global__ void _AdamOptimizer(
-        const T1* eta,
-        const T2 update_count,
-        const T3* weights,
-        const T_GRAD* grads,
-        const T4* moment_1,
-        const T4* moment_2,
-        T4 alpha,
-        T4 beta,
-        T4 lambda,
-        T4 epsilon,
-        T3* weights_out,
-        T4* moment_1_out,
-        T4* moment_2_out,
-        half* fp16_weights_out,
-        CUDA_LONG N) {
+template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, bool update_fp16_weight>
+__global__ void _AdamOptimizer(
+    const T1* eta,
+    const T2 update_count,
+    const T3* weights,
+    const T_GRAD* grads,
+    const T4* moment_1,
+    const T4* moment_2,
+    T4 alpha,
+    T4 beta,
+    T4 lambda,
+    T4 epsilon,
+    T3* weights_out,
+    T4* moment_1_out,
+    T4* moment_2_out,
+    half* fp16_weights_out,
+    CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   // Regularize gradient.
   const T4 g_regularized = lambda * T4(weights[id]) + T4(grads[id]);
@@ -174,7 +174,7 @@ SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, float)
 SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, float)
 SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half)
 SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half) 
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half)
 template <typename T1, typename T2, typename T3>
 __global__ void _LambComputeDirection(
     const T1* weights,
@@ -258,14 +258,14 @@ SPECIALIZED_IMPL_LambComputeDirectionImpl(double, double, double)
 SPECIALIZED_IMPL_LambComputeDirectionImpl(float, half, half)
 SPECIALIZED_IMPL_LambComputeDirectionImpl(float, half, float)
 
-template <typename T1, typename T2, bool update_fp16_weight>
+template <typename T1, typename T2, typename T3, bool update_fp16_weight>
 __global__ void _LambUpdate(
     const T1* eta,
     const T2* r_norm,
     const T2* w_norm,
     const T2* weights,
     const T2 threshold,
-    const T1* update_direction,
+    const T3* update_direction,
     T2* weights_out,
     half* fp16_weights_out,
     CUDA_LONG N) {
@@ -275,21 +275,21 @@ __global__ void _LambUpdate(
   // NaN > threshold ? NaN : threshold returns threshold.
   const auto ratio = _Min(_Sqrt((*w_norm) / (*r_norm)), threshold);
   // Compute new weight using the saved update direction.
-  weights_out[id] = weights[id] - ratio * T2((*eta) * update_direction[id]);
+  weights_out[id] = weights[id] - ratio * T2((*eta) * T1(update_direction[id]));
 
   if (update_fp16_weight) {
     fp16_weights_out[id] = static_cast<half>(weights_out[id]);
   }
 }
 
-template <typename T1, typename T2>
+template <typename T1, typename T2, typename T3>
 void LambUpdateImpl(
     const T1* eta,
     const T2* r_norm,
     const T2* w_norm,
     const T2* weights,
     const T2 threshold,
-    const T1* update_direction,
+    const T3* update_direction,
     T2* weights_out,
     half* fp16_weights_out,
     size_t count) {
@@ -297,52 +297,53 @@ void LambUpdateImpl(
       (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   if (fp16_weights_out != nullptr) {
-    _LambUpdate<T1, T2, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-      eta,
-      r_norm,
-      w_norm,
-      weights,
-      threshold,
-      update_direction,
-      weights_out,
-      fp16_weights_out,
-      N);
+    _LambUpdate<T1, T2, T3, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        eta,
+        r_norm,
+        w_norm,
+        weights,
+        threshold,
+        update_direction,
+        weights_out,
+        fp16_weights_out,
+        N);
   } else {
-    _LambUpdate<T1, T2, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-      eta,
-      r_norm,
-      w_norm,
-      weights,
-      threshold,
-      update_direction,
-      weights_out,
-      nullptr,
-      N);
+    _LambUpdate<T1, T2, T3, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        eta,
+        r_norm,
+        w_norm,
+        weights,
+        threshold,
+        update_direction,
+        weights_out,
+        nullptr,
+        N);
   }
 }
 
-#define SPECIALIZED_IMPL_LambUpdate(T1, T2) \
-template void LambUpdateImpl(               \
-    const T1* eta,                          \
-    const T2* r_norm,                       \
-    const T2* w_norm,                       \
-    const T2* weights,                      \
-    const T2 threshold,                     \
-    const T1* update_direction,             \
-    T2* weights_out,                        \
-    half* fp16_weights_out,                 \
-    size_t count);
+#define SPECIALIZED_IMPL_LambUpdate(T1, T2, T3) \
+  template void LambUpdateImpl(                 \
+      const T1* eta,                            \
+      const T2* r_norm,                         \
+      const T2* w_norm,                         \
+      const T2* weights,                        \
+      const T2 threshold,                       \
+      const T3* update_direction,               \
+      T2* weights_out,                          \
+      half* fp16_weights_out,                   \
+      size_t count);
 
-SPECIALIZED_IMPL_LambUpdate(float, float)
-    SPECIALIZED_IMPL_LambUpdate(double, double)
-        SPECIALIZED_IMPL_LambUpdate(half, float)
+SPECIALIZED_IMPL_LambUpdate(float, float, float)
+SPECIALIZED_IMPL_LambUpdate(double, double, double)
+SPECIALIZED_IMPL_LambUpdate(half, float, half)
+SPECIALIZED_IMPL_LambUpdate(float, float, half)
 
-            template <typename T, typename T_GRAD>
-            __global__ void _AccumulateGradient(
-                const T* gradient_buffer,
-                const T_GRAD* gradient,
-                T* accumulated_gradient,
-                CUDA_LONG N) {
+template <typename T, typename T_GRAD>
+__global__ void _AccumulateGradient(
+    const T* gradient_buffer,
+    const T_GRAD* gradient,
+    T* accumulated_gradient,
+    CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   accumulated_gradient[id] = gradient_buffer[id] + T(gradient[id]);
 }
@@ -370,7 +371,7 @@ void AccumulateGradientImpl(
       size_t count);
 
 SPECIALIZED_IMPL_AccumulateGradient(float, float)
-    SPECIALIZED_IMPL_AccumulateGradient(float, half)
+SPECIALIZED_IMPL_AccumulateGradient(float, half)
 
 }  // namespace cuda
 }  // namespace onnxruntime
