@@ -12,6 +12,8 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
+static const std::vector<string> default_activations = {"sigmoid", "tanh"};
+
 static void RunGruTest(const std::vector<float>& X_data,
                        const std::vector<float>& W_data,
                        const std::vector<float>& R_data,
@@ -29,7 +31,7 @@ static void RunGruTest(const std::vector<float>& X_data,
                        bool output_sequence = true,
                        bool linear_before_reset = false,
                        // copy the following vectors as we may modify them
-                       std::vector<string> activations = {"sigmoid", "tanh"},
+                       std::vector<string> activations = default_activations,
                        std::vector<float> activation_alphas = {},
                        std::vector<float> activation_betas = {}) {
   OpTester test("GRU");
