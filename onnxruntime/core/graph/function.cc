@@ -96,11 +96,11 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto
 // E.g. For Range-11, {"start" : 0, "limit": 1, "delta": 2}
 // (5) A map containing the output name from the op schema to the corresponding index
 // E.g. For Range-11, {"output" : 0}
-static void update_subgraph_nodes_within_function_nodes(ONNX_NAMESPACE::GraphProto& subgraph_proto,
-                                                        const Graph& parent_graph,
-                                                        const ONNX_NAMESPACE::NodeProto& function_node_in_parent_graph,
-                                                        const std::unordered_map<std::string, int>& input_name_idx_map,
-                                                        const std::unordered_map<std::string, int>& output_name_idx_map) {
+static void update_subgraphs_within_function_body(ONNX_NAMESPACE::GraphProto& subgraph_proto,
+                                                  const Graph& parent_graph,
+                                                  const ONNX_NAMESPACE::NodeProto& function_node_in_parent_graph,
+                                                  const std::unordered_map<std::string, int>& input_name_idx_map,
+                                                  const std::unordered_map<std::string, int>& output_name_idx_map) {
   // Iterate through all the nodes in the subgraph
   for (const auto& subgraph_node : subgraph_proto.node()) {
     // Iterate through all the inputs of the current node
@@ -130,11 +130,11 @@ static void update_subgraph_nodes_within_function_nodes(ONNX_NAMESPACE::GraphPro
       if (attr.has_f()) {
         ORT_THROW("A node with a function body within a subgraph within another function body is currently not supported in ORT");
       }
-      // Recurse into any subgraphs in the current subgraph node being processed
+      // Recurse into any subgraphs in the current subgraph being processed
       if (attr.has_g()) {
-        update_subgraph_nodes_within_function_nodes(*const_cast<ONNX_NAMESPACE::AttributeProto&>(attr).mutable_g(),
-                                                    parent_graph, function_node_in_parent_graph,
-                                                    input_name_idx_map, output_name_idx_map);
+        update_subgraphs_within_function_body(*const_cast<ONNX_NAMESPACE::AttributeProto&>(attr).mutable_g(),
+                                              parent_graph, function_node_in_parent_graph,
+                                              input_name_idx_map, output_name_idx_map);
       }
     }
   }
@@ -285,7 +285,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   // in the parent graph for later inlining purpose
   const auto& attr_map = node_in_parent_graph->GetAttributes();
 
-  ONNX_NAMESPACE::NodeProto function_op_node_proto;  // Nodeproto pertaining to the op with a FunctionBody
+  ONNX_NAMESPACE::NodeProto function_op_node_proto;  // NodeProto pertaining to the op with a FunctionBody
   node_in_parent_graph->ToProto(function_op_node_proto);
 
   for (auto& node : onnx_func_proto_->node()) {
@@ -303,7 +303,8 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
       auto iter = input_name_idx_map.find(tensor_name);
       if (iter != input_name_idx_map.end()) {
         // Preserving NodeArg and input/output names
-        const onnxruntime::NodeArg* node_arg = parent_graph_->GetNodeArg(function_op_node_proto.input().Get(input_name_idx_map[tensor_name]));
+        const onnxruntime::NodeArg* node_arg = parent_graph_->GetNodeArg(function_op_node_proto.input()
+                                                                             .Get(input_name_idx_map[tensor_name]));
         auto& n_input = sub_graph.GetOrCreateNodeArg(
             function_op_node_proto.input().Get(iter->second), node_arg->TypeAsProto());
         inputs.push_back(&n_input);
@@ -318,7 +319,8 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
       auto iter = output_name_idx_map.find(tensor_name);
       if (iter != output_name_idx_map.end()) {
         // Preserving NodeArg and input/output names
-        const onnxruntime::NodeArg* node_arg = parent_graph_->GetNodeArg(function_op_node_proto.output().Get(output_name_idx_map[tensor_name]));
+        const onnxruntime::NodeArg* node_arg = parent_graph_->GetNodeArg(function_op_node_proto.output()
+                                                                             .Get(output_name_idx_map[tensor_name]));
         auto& n_output = sub_graph.GetOrCreateNodeArg(
             function_op_node_proto.output().Get(iter->second), node_arg->TypeAsProto());
         outputs.push_back(&n_output);
@@ -333,9 +335,9 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     for (auto& attr : node.attribute()) {
       // If this node contains subgraphs, the node inputs/outputs within them needs to be fixed as well
       if (attr.has_g()) {
-        update_subgraph_nodes_within_function_nodes(*const_cast<ONNX_NAMESPACE::AttributeProto&>(attr).mutable_g(),
-                                                    *parent_graph_, function_op_node_proto,
-                                                    input_name_idx_map, output_name_idx_map);
+        update_subgraphs_within_function_body(*const_cast<ONNX_NAMESPACE::AttributeProto&>(attr).mutable_g(),
+                                              *parent_graph_, function_op_node_proto,
+                                              input_name_idx_map, output_name_idx_map);
       }
 
       if (!attr.ref_attr_name().empty()) {

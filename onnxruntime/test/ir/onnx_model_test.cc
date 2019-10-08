@@ -167,7 +167,7 @@ TEST(ONNXModelsTest, TestIRv4NonInputInitializers) {
 // The test model has is an opset-11 op with a 'Range' node.
 // 'Range' has a FunctionBody and has a 'Loop' node with a subgraph.
 // Graph::Resolve to succeed when processing the subgraph pertaining to the overall FunctionBody.
-TEST(ONNXModelsTest, TestIRv4NonInputInitializers) {
+TEST(ONNXModelsTest, TestModelsWithFunctionOps) {
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load("testdata/model_containing_op_with_function_body.onnx", model).IsOK());
   EXPECT_TRUE(model->MainGraph().Resolve().IsOK());
