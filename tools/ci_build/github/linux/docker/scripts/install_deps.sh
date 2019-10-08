@@ -51,7 +51,7 @@ if [[ "$PYTHON_VER" = "3.5" && -d "/opt/python/cp35-cp35m"  ]]; then
    PYTHON_EXE="/opt/python/cp35-cp35m/bin/python3.5"
 elif [[ "$PYTHON_VER" = "3.6" && -d "/opt/python/cp36-cp36m"  ]]; then
    PYTHON_EXE="/opt/python/cp36-cp36m/bin/python3.6"
-elif [[ "$PYTHON_VER" = "3.7" && -d "/opt/python/cp36-cp36m"  ]]; then
+elif [[ "$PYTHON_VER" = "3.7" && -d "/opt/python/cp37-cp37m"  ]]; then
    PYTHON_EXE="/opt/python/cp37-cp37m/bin/python3.7"
 else
    PYTHON_EXE="/usr/bin/python${PYTHON_VER}"
