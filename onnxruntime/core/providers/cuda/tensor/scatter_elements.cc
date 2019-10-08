@@ -79,7 +79,7 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
   const auto* data_tensor = context->Input<Tensor>(0);
   const auto& input_data_shape = data_tensor->Shape();
   const int64_t input_data_size = input_data_shape.Size();
-  const auto axis = HandleNegativeAxis(axis_, input_data_shape.NumDimensions());
+  const int axis = static_cast<int>(HandleNegativeAxis(axis_, input_data_shape.NumDimensions()));
 
   const auto* indices_tensor = context->Input<Tensor>(1);
   const auto* updates_tensor = context->Input<Tensor>(2);
