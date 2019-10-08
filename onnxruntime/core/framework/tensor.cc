@@ -5,6 +5,8 @@
 
 #include <utility>
 #include "core/framework/allocatormgr.h"
+#include "core/framework/data_types.h"
+
 using namespace std;
 namespace onnxruntime {
 
@@ -25,6 +27,18 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
   if (shape_size > 0)
     p_data = allocator->AllocArray(static_cast<size_t>(shape_size), p_type->Size());
   Init(p_type, shape, p_data, allocator, offset);
+}
+
+size_t Tensor::SizeInBytes() const {
+  size_t ret;
+  int64_t l = shape_.Size();
+  if (l >= static_cast<int64_t>(std::numeric_limits<ptrdiff_t>::max())) {
+    ORT_THROW("tensor size overflow");
+  }
+  if (!IAllocator::CalcMemSizeForArray(static_cast<size_t>(shape_.Size()), dtype_->Size(), &ret)) {
+    ORT_THROW("tensor size overflow");
+  }
+  return ret;
 }
 
 void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data, AllocatorPtr deleter, int64_t offset) {

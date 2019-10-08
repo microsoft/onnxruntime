@@ -564,18 +564,24 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
       auto& nchwc_node = nchwc_input_n->output_node_;
       auto& nchwc_input_defs = nchwc_node.MutableInputDefs();
       auto& nchwc_input_args_count = nchwc_node.MutableInputArgsCount();
+      size_t nchwc_input_defs_count = nchwc_input_defs.size();
       // Check if this is a single use NCHWc convolution that hasn't already
       // been fused with another Add/Sum node. The Add/Sum can also only be
       // fused if the convolution isn't itself fused with an activation.
       if ((nchwc_node.OpType() == "Conv") && (nchwc_node.Domain() == kMSNchwcDomain) &&
-          (nchwc_input_defs.size() < 4) && (nchwc_input_args_count.size() < 4) &&
+          (nchwc_input_defs_count < 4) && (nchwc_input_args_count.size() < 4) &&
           (nchwc_input_n->starting_original_uses_ == 1) &&
           (graph_utils::GetNodeAttribute(nchwc_node, "activation") == nullptr)) {
         // Feed the output of the other NCHWc node into the selected convolution
         // node.
         nchwc_input_defs.resize(4);
-        nchwc_input_defs[3] = nchwc_inputs[n ^ 1]->output_node_.MutableOutputDefs()[0];
         nchwc_input_args_count.resize(4);
+        if (nchwc_input_defs_count < 3) {
+          // The optional bias parameter is empty so set to an empty string.
+          nchwc_input_defs[2] = &graph_.GetOrCreateNodeArg("", nullptr);
+          nchwc_input_args_count[2] = 1;
+        }
+        nchwc_input_defs[3] = nchwc_inputs[n ^ 1]->output_node_.MutableOutputDefs()[0];
         nchwc_input_args_count[3] = 1;
 
         FuseNchwcArgument(node, *nchwc_input_n);

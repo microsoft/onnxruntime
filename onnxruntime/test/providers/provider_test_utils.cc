@@ -214,8 +214,8 @@ void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, OrtValu
 
 void Check(const OpTester::Data& expected_data, OrtValue& ort_value, const std::string& provider_type) {
 #ifdef MICROSOFT_AUTOML
-  CheckDispatch<dtf::TimePoint,VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
-                                                               provider_type);
+  CheckDispatch<dtf::TimePoint, VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
+                                                                               provider_type);
 #else
   CheckDispatch<VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
                                                                provider_type);
@@ -333,7 +333,7 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph() {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[domain_] = opset_version_;
   auto p_model = onnxruntime::make_unique<onnxruntime::Model>("test", false, ModelMetaData(),
-                                                      custom_schema_registries_, domain_to_version);
+                                                              custom_schema_registries_, domain_to_version);
   onnxruntime::Graph& graph = p_model->MainGraph();
   AddNodes(graph, node_input_defs, output_defs, add_attribute_funcs_);
 
@@ -445,6 +445,19 @@ void OpTester::Run(ExpectResult expect_result,
                    const RunOptions* run_options,
                    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
                    bool sequential_execution) {
+  SessionOptions so;
+  so.session_logid = op_;
+  so.session_log_verbosity_level = 1;
+  so.enable_sequential_execution = sequential_execution;
+  Run(so, expect_result, expected_failure_string, excluded_provider_types, run_options, execution_providers);
+}
+
+void OpTester::Run(const SessionOptions& so,
+                   ExpectResult expect_result,
+                   const std::string& expected_failure_string,
+                   const std::unordered_set<std::string>& excluded_provider_types,
+                   const RunOptions* run_options,
+                   std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
   try {
 #ifndef NDEBUG
     run_called_ = true;
@@ -483,11 +496,6 @@ void OpTester::Run(ExpectResult expect_result,
     std::vector<std::string> output_names;
     FillFeedsAndOutputNames(feeds, output_names);
     // Run the model
-    SessionOptions so;
-    so.session_logid = op_;
-    so.session_log_verbosity_level = 1;
-    so.enable_sequential_execution = sequential_execution;
-
     static const std::string all_provider_types[] = {
         kCpuExecutionProvider,
         kCudaExecutionProvider,

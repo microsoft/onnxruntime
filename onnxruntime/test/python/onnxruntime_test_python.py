@@ -346,6 +346,26 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run([output_name], {x_name: x})
         self.assertEqual(output_expected, res[0])
 
+    def testSequenceLength(self):
+        sess = onnxrt.InferenceSession(
+            self.get_name("sequence_length.onnx"))
+        x = [np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3)),
+        np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3))]
+
+        x_name = sess.get_inputs()[0].name
+        self.assertEqual(x_name, "X")
+        x_type = sess.get_inputs()[0].type
+        self.assertEqual(x_type, 'seq(tensor(float))')
+
+        output_name = sess.get_outputs()[0].name
+        self.assertEqual(output_name, "Y")
+        output_type = sess.get_outputs()[0].type
+        self.assertEqual(output_type, 'tensor(int64)')
+
+        output_expected = np.array(2, dtype=np.int64)
+        res = sess.run([output_name], {x_name: x})
+        self.assertEqual(output_expected, res[0])        
+
     def testZipMapInt64Float(self):
         sess = onnxrt.InferenceSession(self.get_name("zipmap_int64float.onnx"))
         x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0],
