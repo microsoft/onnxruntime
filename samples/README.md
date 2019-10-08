@@ -10,26 +10,29 @@ For a list of available dockerfiles and published images to help with getting st
  
 ## Python
 **Inference only**
-* [Model Inferencing (single node Sigmoid)](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/simple_onnxruntime_inference.ipynb)
-* [Model Inferencing (Resnet50)](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/resnet50_modelzoo_onnxruntime_inference.ipynb)
-* [Model Inferencing](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem/inference_demos) using [ONNX-Ecosystem Docker image](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem)
-* [Model Inferencing using ONNX Runtime Server (SSD Single Shot MultiBox Detector)](https://github.com/onnx/tutorials/blob/master/tutorials/OnnxRuntimeServerSSDModel.ipynb)
+* [Basic Model Inferencing (single node Sigmoid) on CPU](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/simple_onnxruntime_inference.ipynb)
+* [Model Inferencing (Resnet50) on CPU](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/resnet50_modelzoo_onnxruntime_inference.ipynb)
+* [Model Inferencing on CPU](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem/inference_demos) using [ONNX-Ecosystem Docker image](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem)
+* [Model Inferencing on CPU using ONNX Runtime Server (SSD Single Shot MultiBox Detector)](https://github.com/onnx/tutorials/blob/master/tutorials/OnnxRuntimeServerSSDModel.ipynb)
+* [Model Inferencing using NUPHAR Execution Provider](./docs/python/notebooks/onnxruntime-nuphar-tutorial.ipynb)
 
 **Inference with model conversion**
 * [SKL Pipeline: Train, Convert, and Inference](https://microsoft.github.io/onnxruntime/auto_examples/plot_train_convert_predict.html#sphx-glr-auto-examples-plot-train-convert-predict-py)
 * [Keras: Convert and Inference](https://microsoft.github.io/onnxruntime/auto_examples/plot_dl_keras.html#sphx-glr-auto-examples-plot-dl-keras-py)
 
 **Inference and deploy through AzureML**
-* Inferencing using [ONNX Model Zoo](https://github.com/onnx/models) models: 
+* Inferencing on CPU using [ONNX Model Zoo](https://github.com/onnx/models) models: 
   * [Facial Expression Recognition](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-inference-facial-expression-recognition-deploy.ipynb) 
   * [MNIST Handwritten Digits](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-inference-mnist-deploy.ipynb)
   * [Resnet50 Image Classification](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-modelzoo-aml-deploy-resnet50.ipynb)
-* Convert existing model for Inferencing:
+* Inferencing on CPU with model conversion step for existing models:
   * [TinyYolo](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-convert-aml-deploy-tinyyolo.ipynb)
-* Train a model with PyTorch and Inferencing:
+* Inferencing on CPU with PyTorch model training:
   * [MNIST](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-train-pytorch-aml-deploy-mnist.ipynb)
+  
+  *For aditional information on training in AzureML, please see [AzureML Training Notebooks](https://github.com/Azure/MachineLearningNotebooks/tree/master/how-to-use-azureml/training)*
 
-* GPU: Inferencing with TensorRT Execution Provider (AKS)
+* Inferencing on GPU with TensorRT Execution Provider (AKS)
   * [FER+](./docs/python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb)
 
 **Inference and Deploy wtih Azure IoT Edge**
