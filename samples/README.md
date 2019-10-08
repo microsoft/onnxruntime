@@ -33,7 +33,7 @@ For a list of available dockerfiles and published images to help with getting st
   *For aditional information on training in AzureML, please see [AzureML Training Notebooks](https://github.com/Azure/MachineLearningNotebooks/tree/master/how-to-use-azureml/training)*
 
 * Inferencing on GPU with TensorRT Execution Provider (AKS)
-  * [FER+](./docs/python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb)
+  * [FER+](../docs/python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb)
 
 **Inference and Deploy wtih Azure IoT Edge**
   * [Intel OpenVINO](http://aka.ms/onnxruntime-openvino)
@@ -43,9 +43,9 @@ For a list of available dockerfiles and published images to help with getting st
 * [Running ONNX model tests](./docs/Model_Test.md)
 
 ## C#
-* [Inferencing Tutorial](./docs/CSharp_API.md#getting-started)
+* [Inferencing Tutorial](../docs/CSharp_API.md#getting-started)
 
 ## C/C++
-* [C - Inferencing (SqueezeNet)](./csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
-* [C++ - Inferencing (SqueezeNet)](./csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/CXX_Api_Sample.cpp)
-* [C++ - Inferencing (MNIST)](./samples/c_cxx/MNIST)
+* [C - Inferencing (SqueezeNet)](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
+* [C++ - Inferencing (SqueezeNet)](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/CXX_Api_Sample.cpp)
+* [C++ - Inferencing (MNIST)](../samples/c_cxx/MNIST)
