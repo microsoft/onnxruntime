@@ -42,7 +42,7 @@ class CudaKernel : public OpKernel {
 
     if (s.IsOK()) {
       // ensure no kernel launch error occurred
-      CUDA_RETURN_IF_ERROR(cudaPeekAtLastError());
+      CUDA_RETURN_IF_ERROR(cudaGetLastError());
     }
 
     return s;
