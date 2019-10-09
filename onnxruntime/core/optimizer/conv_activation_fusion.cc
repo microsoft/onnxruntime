@@ -4,6 +4,7 @@
 #include <deque>
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/conv_activation_fusion.h"
+#include "core/optimizer/initializer.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -25,6 +26,64 @@ void HandleActivationNodeEdges(Graph& g, const Node& act, Node& fused_conv) {
     g.RemoveEdge(act.Index(), dst_node_index, src_arg_index, dst_arg_index);
     g.AddEdge(fused_conv.Index(), dst_node_index, 0, dst_arg_index);
   }
+}
+
+// get min/max values from Clip if they are constant. Returns false if mutable and cannot be used
+static bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max) {
+  min = std::numeric_limits<float>::lowest();
+  max = std::numeric_limits<float>::max();
+
+  // Clip opset 6 has min and max as attributes. they're inputs from opset 11 on.
+  bool min_max_are_attributes = graph_utils::IsSupportedOptypeVersionAndDomain(node, "Clip", {6});
+  bool can_use = true;
+
+  if (min_max_are_attributes) {
+    min = graph_utils::GetNodeAttribute(node, "min")->f();
+    max = graph_utils::GetNodeAttribute(node, "max")->f();
+  } else {
+    // update min/max if provided via a constant initializer
+    // return true if value is default or coming from a constant initializer
+    // return false if value is mutable
+    auto get_constant_value = [&graph](const Node& node, int input_idx, float& value) {
+      const auto& input_defs = node.InputDefs();
+      const NodeArg* input = (input_defs.size() > input_idx) ? input_defs[input_idx] : nullptr;
+
+      if (input == nullptr || !input->Exists()) {
+        // optional input not specified so using default value
+        return true;
+      }
+
+      bool is_constant = true;
+      const ONNX_NAMESPACE::TensorProto* initializer = graph_utils::GetConstantInitializer(graph, input->Name());
+      if (initializer) {
+        Initializer i(*initializer);
+        switch (initializer->data_type()) {
+          case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+            value = *i.data<float>();
+            break;
+          // double isn't currently supported
+          //case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+          //  value = static_cast<float>(*i.data<double>());
+          //  break;
+          case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+            value = math::halfToFloat(i.data<BFloat16>()->val);
+            break;
+          default:
+            ORT_THROW("Unexpected data type for Clip input of ", initializer->data_type());
+        }
+      } else {
+        is_constant = false;
+      }
+
+      return is_constant;
+    };
+
+    // 'min' is input 1, 'max' is input 2. both are optional
+    can_use = get_constant_value(node, 1, min) &&
+              get_constant_value(node, 2, max);
+  }
+
+  return can_use;
 }
 
 }  // namespace
@@ -57,9 +116,14 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         !graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Tanh", {6})) {
       if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "LeakyRelu", {6})) {
         activation_params.push_back(graph_utils::GetNodeAttribute(next_node, "alpha")->f());
-      } else if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6})) {
-        activation_params.push_back(graph_utils::GetNodeAttribute(next_node, "min")->f());
-        activation_params.push_back(graph_utils::GetNodeAttribute(next_node, "max")->f());
+      } else if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6, 11})) {
+        float min, max;
+        if (GetClipConstantMinMax(graph, next_node, min, max)) {
+          activation_params.push_back(min);
+          activation_params.push_back(max);
+        } else {
+          continue;
+        }
       } else {
         continue;
       }
