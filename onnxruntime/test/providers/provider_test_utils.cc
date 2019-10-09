@@ -592,13 +592,8 @@ void OpTester::Run(const SessionOptions& so,
 
         EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
-        try {
-          ExecuteModel(*p_model, session_object, expect_result, expected_failure_string, run_options,
-                       feeds, output_names, provider_type);
-        } catch (const std::exception& ex) {
-          std::cerr << provider_type;
-          throw ex;
-        }
+        ExecuteModel(*p_model, session_object, expect_result, expected_failure_string, run_options,
+                     feeds, output_names, provider_type);
       }
 
       EXPECT_TRUE(has_run) << "No registered execution providers were able to run the model.";
