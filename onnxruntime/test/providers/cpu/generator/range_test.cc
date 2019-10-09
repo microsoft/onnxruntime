@@ -23,6 +23,7 @@ static void RunTest(
   // NGraph does not yet support opset-11 and builds break on this test, hence exclude the EP
   test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 
+  /*
 #ifndef DISABLE_CONTRIB_OPS
 
   // MSFT domain opset-1 (contrib op)
@@ -37,6 +38,8 @@ static void RunTest(
   test2.Run();
 
 #endif
+  */
+
 }  // namespace test
 
 TEST(RangeTest, Int32_DeltaDefault) {
