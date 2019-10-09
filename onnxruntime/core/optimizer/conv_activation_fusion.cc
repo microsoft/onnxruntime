@@ -44,7 +44,7 @@ static bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& m
     // update min/max if provided via a constant initializer
     // return true if value is default or coming from a constant initializer
     // return false if value is mutable
-    auto get_constant_value = [&graph](const Node& node, int input_idx, float& value) {
+    auto get_constant_value = [&graph](const Node& node, size_t input_idx, float& value) {
       const auto& input_defs = node.InputDefs();
       const NodeArg* input = (input_defs.size() > input_idx) ? input_defs[input_idx] : nullptr;
 
