@@ -212,7 +212,7 @@ Status CudnnConvolutionDescriptor::Set(
   std::vector<int> pad_dims(rank);
   std::vector<int> stride_dims(rank);
   std::vector<int> dilation_dims(rank);
-  for (int i = 0; i < rank; i++) {
+  for (size_t i = 0; i < rank; i++) {
     pad_dims[i] = gsl::narrow_cast<int>(pads[i]);
     stride_dims[i] = gsl::narrow_cast<int>(strides[i]);
     dilation_dims[i] = gsl::narrow_cast<int>(dilations[i]);
