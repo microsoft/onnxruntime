@@ -401,9 +401,9 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
 
       auto subgraph_session_state = onnxruntime::make_unique<SessionState>(execution_providers_,
-                                                                   session_state.GetEnableMemoryPattern(),
-                                                                   session_state.GetThreadPool(),
-                                                                   session_state.GetInterOpThreadPool());
+                                                                           session_state.GetEnableMemoryPattern(),
+                                                                           session_state.GetThreadPool(),
+                                                                           session_state.GetInterOpThreadPool());
       subgraph_session_state->SetProfiler(session_profiler_);
       subgraph_session_state->SetLogger(*session_logger_);
       // Pass data transfer manager to subgraph.
@@ -1037,7 +1037,7 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
                                                  const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
-    auto transformers_to_register = transformer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides, custom_list);
+    auto transformers_to_register = optimizer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides, custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }
