@@ -199,10 +199,10 @@ else()
 asm(\"vpxord %zmm0,%zmm0,%zmm0\");
 return 0;
 }"
-AVX512_COMPILES)
+AVX512F_COMPILES)
 
 
-    if(AVX512_COMPILES)
+    if(AVX512F_COMPILES)
       set(mlas_platform_srcs_avx512f
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/DgemmKernelAvx512F.S
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelAvx512F.S
@@ -212,7 +212,20 @@ AVX512_COMPILES)
       if(HAS_AVX512F)
         set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")
       endif()
+    else()
+      # Do not compile CPP support for 512F
+      set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512F_UNSUPPORTED")
+    endif()
 
+    set(CMAKE_REQUIRED_FLAGS ${AVX512_NEEDED})
+    check_cxx_source_compiles(
+"int main() {
+asm(\"vpmaddwd %zmm0,%zmm0,%zmm0\");
+return 0;
+}"
+AVX512BW_COMPILES)
+
+    if(AVX512BW_COMPILES)
       set(mlas_platform_srcs_avx512bw
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8S8KernelAvx512BW.S
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8S8KernelAvx512Vnni.S
@@ -223,8 +236,8 @@ AVX512_COMPILES)
         set_source_files_properties(${mlas_platform_srcs_avx512bw} PROPERTIES COMPILE_FLAGS "-mavx512bw")
       endif()
     else()
-      # Do not compile CPP support for 512xx
-      set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512_UNSUPPORTED")
+      # Do not compile CPP support for 512BW
+      set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512BW_UNSUPPORTED")
     endif()
 
     set(mlas_platform_srcs

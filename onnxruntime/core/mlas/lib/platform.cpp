@@ -190,7 +190,7 @@ Return Value:
                 this->TanhKernelRoutine = MlasTanhKernelFma3;
                 this->ErfKernelRoutine = MlasErfKernelFma3;
 
-#if !defined(MLAS_AVX512_UNSUPPORTED)
+#if !defined(MLAS_AVX512F_UNSUPPORTED)
 
                 //
                 // Check if the processor supports AVX512F features and the
@@ -210,10 +210,10 @@ Return Value:
                     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx512F;
                     this->NchwcBlockSize = 16;
                     this->PreferredBufferAlignment = 64;
-
                     //
                     // Check if the processor supports AVX512BW.
                     //
+#if !defined(MLAS_AVX512BW_UNSUPPORTED)
 
                     if ((Cpuid7[1] & 0x40000000) != 0) {
 
@@ -231,17 +231,17 @@ Return Value:
                         }
                     }
                 }
-
-#endif
+#endif // MLAS_AVX512BW_UNSUPPORTED
+#endif // MLAS_AVX512F_UNSUPPORTED
 
             }
 
-#endif
+#endif // MLAS_TARGET_AMD64
 
         }
     }
 
-#endif
+#endif // MLAS_TARGET_AMD64_IX86
 
 }
 
