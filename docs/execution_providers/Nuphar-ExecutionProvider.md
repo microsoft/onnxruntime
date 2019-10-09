@@ -63,7 +63,26 @@ create_shared.sh -c /path/to/jit/cache/NUPHAR_CACHE_VERSION [-m optional_model_f
 # run Nuphar inference again with cached JIT dll
 ```
 
+
 ## Debugging
+
+### NGEMM
+NGEMM (Nuphar GEMM) is an optimized low-precision GEMM implementation based on compiler techniques.
+Please refer to our paper for more details of NGEMM: ["NGEMM: Optimizing GEMM for Deep Learning via Compiler-based Techniques"](https://arxiv.org/abs/1910.00178).
+
+#### NGEMM Tiling / Permutation Configuration
+NGEMM has default tiling parameters, but users can overwrite them through environment variables:
+* NUPHAR_IGEMM_TILE_M / NUPHAR_IGEMM_TILE_N / NUPHAR_IGEMM_TILE_K
+
+    These 3 parameters are the tiling sizes for the corresponding dimensions of GEMM ([M x K] x [K x N]).
+    Setting them to different values will generate GEMM with different tiling sizes.
+
+* NUPHAR_IGEMM_PERMUTE
+
+    This enviornment variable is to control the loop permutation in GEMM.
+    The default is to not apply any loop permutation. Other options are "inner/outer/all",referring to apply permutations to only inner tile loops / only outer loops / both inner and outer loops, respectively.
+
+
 There are several [environment variables](../../onnxruntime/core/codegen/common/settings.h) to dump debug information during code generation, plus [some more environment variables](../../onnxruntime/core/providers/nuphar/common/nuphar_settings.h) to dump/control the Nuphar execution provider. You can set environment variables prior to inference to dump debug info to the console. To list some most useful ones:
 * CODEGEN_DUMP_LOWER
 

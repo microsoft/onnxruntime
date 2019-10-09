@@ -13,6 +13,11 @@ namespace onnxruntime {
 
 static bool CheckConstantInput(const Graph& graph, const NodeArg& input_arg, float expected_value) {
   auto shape = input_arg.Shape();
+  if (shape == nullptr) {
+    // shape inferencing wasn't able to populate shape information for this NodeArg
+    return false;
+  }
+
   auto dim_size = shape->dim_size();
   if (dim_size != 0) {
     // only check scalar.
@@ -24,7 +29,7 @@ static bool CheckConstantInput(const Graph& graph, const NodeArg& input_arg, flo
     return false;
   }
 
-  auto init_const = std::make_unique<Initializer>(tensor_proto);
+  auto init_const = onnxruntime::make_unique<Initializer>(tensor_proto);
   const auto data_type = tensor_proto->data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     float* val = init_const->data<float>();

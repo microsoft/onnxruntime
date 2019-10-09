@@ -44,6 +44,15 @@ namespace contrib {
 ADD_TYPED_CROPANDRESIZE_OP(float);
 
 template <typename T>
+static void TryParallelFor(concurrency::ThreadPool* tp, int32_t total, T&& fn) {
+  if (tp != nullptr)
+    return tp->ParallelFor(total, fn);
+  for (int32_t i = 0; i != total; ++i) {
+    fn(i);
+  }
+}
+
+template <typename T>
 void CropAndResizeForward(
     int64_t nthreads,
     const T* bottom_data,
@@ -177,7 +186,7 @@ void CropAndResizeForward(
       }  // for pw
     }    // for ph
   };     // for n
-  const_cast<ThreadPool*>(ttp)->ParallelFor(static_cast<int32_t>(n_rois), work_object);
+  TryParallelFor(const_cast<ThreadPool*>(ttp), static_cast<int32_t>(n_rois), work_object);
 }
 
 template <typename T>

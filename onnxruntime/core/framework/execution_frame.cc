@@ -22,9 +22,9 @@ IExecutionFrame::IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, cons
                                  const std::unordered_map<int, OrtValue>& initializers,
                                  const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                                  const OrtValueNameIdxMap& ort_value_idx_map, const NodeIndexInfo& node_index_info)
-    : node_index_info_{node_index_info},
-      all_values_size_{static_cast<size_t>(ort_value_idx_map.MaxIdx()) + 1},
-      fetch_mlvalue_idxs_{fetch_mlvalue_idxs} {
+    : node_index_info_(node_index_info),
+      all_values_size_(static_cast<size_t>(ort_value_idx_map.MaxIdx()) + 1),
+      fetch_mlvalue_idxs_(fetch_mlvalue_idxs) {
   ORT_ENFORCE(feeds.size() == feed_mlvalue_idxs.size());
   ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs_.size());
   ORT_ENFORCE(node_index_info_.GetMaxMLValueIdx() == ort_value_idx_map.MaxIdx(),
@@ -171,9 +171,9 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
                                const SessionState& session_state)
     : IExecutionFrame(feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(), fetch_mlvalue_idxs, fetches,
                       session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo()),
-      session_state_{session_state},
-      mem_patterns_{nullptr},
-      planner_{nullptr} {
+      session_state_(session_state),
+      mem_patterns_(nullptr),
+      planner_(nullptr) {
   // map the custom allocators to ort_value_idx entries
   if (!fetch_allocators.empty()) {
     for (size_t idx = 0, end = fetch_mlvalue_idxs.size(); idx < end; ++idx) {
