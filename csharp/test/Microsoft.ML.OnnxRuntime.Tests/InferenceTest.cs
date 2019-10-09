@@ -569,6 +569,39 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        [Fact]
+        private void TestSymbolicDimsMetadata()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "capi_symbolic_dims.onnx");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var inputs = session.InputMetadata;
+                var outputs = session.OutputMetadata;
+
+                Assert.Equal(2, inputs.Count);
+                Assert.Equal(1, session.OutputMetadata.Count);
+                Assert.True(inputs.ContainsKey("A"));
+                Assert.True(inputs.ContainsKey("B"));
+                Assert.True(outputs.ContainsKey("C"));
+
+                var inputA = inputs["A"];
+                var inputB = inputs["B"];
+                var outputC = outputs["C"];
+
+                // dimension values and any symbolic dimension info should have the same length
+                Assert.Equal(inputA.Dimensions.Length, inputA.SymbolicDimensions.Length);
+                Assert.Equal(inputB.Dimensions.Length, inputB.SymbolicDimensions.Length);
+                Assert.Equal(outputC.Dimensions.Length, outputC.SymbolicDimensions.Length);
+
+                Assert.Equal(inputA.Dimensions, new int[] { -1, 2 });
+                Assert.Equal(inputA.SymbolicDimensions, new string[] { "n", "" });
+                Assert.Equal(inputB.Dimensions, new int[] { -1 });
+                Assert.Equal(inputB.SymbolicDimensions, new string[] { "m" });
+                Assert.Equal(outputC.Dimensions, new int[] { -1 });
+                Assert.Equal(outputC.SymbolicDimensions, new string[] { "" }); // unnamed symbolic dim
+            }
+        }
+
 
         [Fact]
         private void TestModelInputFloat()
