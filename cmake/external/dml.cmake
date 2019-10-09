@@ -17,14 +17,15 @@ if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
     UPDATE_COMMAND ""
     INSTALL_COMMAND "")
 
+  set(NUGET_CONFIG ${PROJECT_SOURCE_DIR}/../NuGet.config)
   set(PACKAGES_CONFIG ${PROJECT_SOURCE_DIR}/../packages.config)
   set(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/packages)
 
   # Restore nuget packages, which will pull down the DirectML redist package
   add_custom_command(
     OUTPUT restore_packages.stamp
-    DEPENDS ${PROJECT_SOURCE_DIR}/../packages.config
-    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/nuget/src/nuget restore ${PACKAGES_CONFIG} -PackagesDirectory ${PACKAGES_DIR}
+    DEPENDS ${PACKAGES_CONFIG} ${NUGET_CONFIG}
+    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/nuget/src/nuget restore ${PACKAGES_CONFIG} -PackagesDirectory ${PACKAGES_DIR} -ConfigFile ${NUGET_CONFIG}
     COMMAND ${CMAKE_COMMAND} -E touch restore_packages.stamp
     VERBATIM)
 
