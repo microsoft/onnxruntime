@@ -223,7 +223,7 @@ TEST_F(CApiTest, custom_op_handler) {
 }
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS) && !defined(_WIN32)  // on windows, PYTHONHOME must be set explicitly
-TEST_F(CApiTest, test_pyop) {
+TEST_F(CApiTest, DISABLED_test_pyop) {
   std::cout << "Test model with pyop" << std::endl;
   std::ofstream module("mymodule.py");
   module << "class MyKernel:" << std::endl;

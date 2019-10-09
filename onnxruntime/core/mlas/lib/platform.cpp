@@ -161,8 +161,7 @@ Return Value:
             this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx;
 
             //
-            // Check if the processor supports AVX512F (and the operating
-            // system supports saving AVX512F state) or AVX2/FMA3 features.
+            // Check if the processor supports AVX2/FMA3 features.
             //
 
             unsigned Cpuid7[4];
@@ -180,6 +179,23 @@ Return Value:
                 this->GemmU8U8CopyPackARoutine = MlasGemmU8U8CopyPackAAvx2;
                 this->GemmU8U8CopyPackBRoutine = MlasGemmU8U8CopyPackBAvx2;
                 this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx2;
+
+                this->GemmFloatKernel = MlasGemmFloatKernelFma3;
+                this->GemmDoubleKernel = MlasGemmDoubleKernelFma3;
+                this->ConvNchwFloatKernel = MlasConvNchwFloatKernelFma3;
+                this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelFma3;
+                this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelFma3;
+                this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelFma3;
+                this->LogisticKernelRoutine = MlasLogisticKernelFma3;
+                this->TanhKernelRoutine = MlasTanhKernelFma3;
+                this->ErfKernelRoutine = MlasErfKernelFma3;
+
+#if !defined(MLAS_AVX512_UNSUPPORTED)
+
+                //
+                // Check if the processor supports AVX512F features and the
+                // operating system supports saving AVX512F state.
+                //
 
                 if (((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
 
@@ -214,20 +230,10 @@ Return Value:
                             this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Vnni;
                         }
                     }
-
-                } else {
-
-                    this->GemmFloatKernel = MlasGemmFloatKernelFma3;
-                    this->GemmDoubleKernel = MlasGemmDoubleKernelFma3;
-                    this->ConvNchwFloatKernel = MlasConvNchwFloatKernelFma3;
-                    this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelFma3;
-                    this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelFma3;
-                    this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelFma3;
                 }
 
-                this->LogisticKernelRoutine = MlasLogisticKernelFma3;
-                this->TanhKernelRoutine = MlasTanhKernelFma3;
-                this->ErfKernelRoutine = MlasErfKernelFma3;
+#endif
+
             }
 
 #endif
