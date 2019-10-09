@@ -36,7 +36,6 @@ TEST(HttpRouteTests, PostRouteTest) {
       std::make_tuple(http::verb::post, "/v1/models/models/versions/45:predict", "models", "45", "predict", http::status::ok),
       std::make_tuple(http::verb::post, "/v1/models/??$$%%@@$^^/versions/45:predict", "??$$%%@@$^^", "45", "predict", http::status::ok),
       std::make_tuple(http::verb::post, "/v1/models/versions/versions/45:predict", "versions", "45", "predict", http::status::ok),
-      std::make_tuple(http::verb::post, "/score", "", "", "", http::status::ok),
       std::make_tuple(http::verb::post, "/v1/models/versions:predict", "versions", "", "predict", http::status::ok),
       std::make_tuple(http::verb::post, "/v1/models/default:predict", "default", "", "predict", http::status::ok)
       };
