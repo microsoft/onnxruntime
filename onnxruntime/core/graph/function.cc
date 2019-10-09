@@ -105,7 +105,7 @@ static void update_subgraphs_within_function_body(ONNX_NAMESPACE::GraphProto& su
   for (const auto& subgraph_node : subgraph_proto.node()) {
     // Iterate through all the inputs of the current node
     for (int idx = 0; idx < subgraph_node.input_size(); ++idx) {
-      const auto& tensor_name = subgraph_node.input().Get(idx);
+      const std::string tensor_name = subgraph_node.input().Get(idx);
       auto iter = input_name_idx_map.find(tensor_name);
       // If an input pertaining to the name in the op schema is found,
       // replace it with the corresponding input to the node with function body from the actual model graph
@@ -116,7 +116,7 @@ static void update_subgraphs_within_function_body(ONNX_NAMESPACE::GraphProto& su
     }
     // Iterate through all the output of the current node
     for (int idx = 0; idx < subgraph_node.output_size(); ++idx) {
-      const auto& tensor_name = subgraph_node.output().Get(idx);
+      const std::string tensor_name = subgraph_node.output().Get(idx);
       auto iter = output_name_idx_map.find(tensor_name);
       if (iter != output_name_idx_map.end()) {
         // If an input pertaining to the name in the op schema is found,
@@ -353,8 +353,8 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     }
     sub_graph.AddNode(uniq_identifier + "_" + std::to_string(node_index), node.op_type(), node.doc_string(), inputs, outputs, &new_attr_map, node.domain());
   }
-  auto status = sub_graph.Resolve();
-  ORT_ENFORCE(status.IsOK(), "Resolve subgraph failed:", status.ErrorMessage());
+  //auto status = sub_graph.Resolve();
+  //ORT_ENFORCE(status.IsOK(), "Resolve subgraph failed:", status.ErrorMessage());
 }
 
 FunctionImpl::~FunctionImpl() = default;

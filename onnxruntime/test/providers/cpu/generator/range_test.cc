@@ -21,7 +21,7 @@ static void RunTest(
   test1.AddInput<T>("delta", {}, {delta});
   test1.AddOutput<T>("output", output_dims, output);
   // NGraph does not yet support opset-11 and builds break on this test, hence exclude the EP
-  test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kNupharExecutionProvider});
+  test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 
   // MSFT domain opset-1 (contrib op)
   OpTester test2("Range", 1, kMSDomain);

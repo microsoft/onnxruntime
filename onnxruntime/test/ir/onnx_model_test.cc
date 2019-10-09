@@ -169,8 +169,12 @@ TEST(ONNXModelsTest, TestIRv4NonInputInitializers) {
 // Graph::Resolve to succeed when processing the subgraph pertaining to the overall FunctionBody.
 TEST(ONNXModelsTest, TestModelsWithAnOpContainingAFunctionBody) {
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load("testdata/model_containing_op_with_function_body.onnx", model).IsOK());
-  EXPECT_TRUE(model->MainGraph().Resolve().IsOK());
+
+  auto status = Model::Load("testdata/model_containing_op_with_function_body.onnx", model);
+  EXPECT_TRUE(status.IsOK()) << status;
+
+  status = model->MainGraph().Resolve();
+  EXPECT_TRUE(status.IsOK()) << status;
 }
 
 }  // namespace test
