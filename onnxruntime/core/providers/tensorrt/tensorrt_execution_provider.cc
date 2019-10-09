@@ -301,12 +301,22 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // Serialize modelproto to string
   std::string string_buf;
   model_proto.SerializeToString(&string_buf);
-  /*
-        ///slx !!!!!!!!!!!test: save ModelProto to file
-        int fd;
-        Env::Default().FileOpenWr("trt_model_proto_getcap_.onnx", fd);
-        model_proto.SerializeToFileDescriptor(fd);
-*/
+
+  //save ModelProto to file
+  int fd;
+  Env::Default().FileOpenWr("trt_model_proto_getcap.onnx", fd);
+  model_proto.SerializeToFileDescriptor(fd);
+
+  //print out all nodes for debugging
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+  int node_size = graph.NumberOfNodes();
+  std::cout << "node size: " << node_size << std::endl;
+  for (int index = 0; index < node_size; ++index){
+      const auto& node = graph.GetNode(node_index[index]);
+      std::cout << "node number: " << index << ", node_index[index]: " << node_index[index]
+                << ", name: " << node->Name() << ", op type: " << node->OpType() << std::endl;
+  }
+
   // Get supported node list
   SubGraphCollection_t parser_nodes_vector;
   TensorrtLogger& trt_logger = GetTensorrtLogger();
@@ -326,7 +336,11 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   }
 
   //for static shape faster-rcnn: /home/steven/work/model/Faster-RCNN_fromYufeng/static_shapes_from_cpu/
-  ///supported_nodes_vector = {{{1, 2, 3, 4, 5, 6}, true}, {{ 8, 9, 10 }, true}, {{ 12 , 13 , 14 , 15 , 16 , 17 , 18 , 19 , 20 , 21 , 22 , 23 , 24 , 25 , 26 , 27 , 28 , 29 , 30 , 31 , 32 , 33 , 34 , 35 , 36 , 37 , 38 , 39 , 40 , 41 , 42 , 43 , 44 , 45 , 46 , 47 , 48 , 49 , 50 , 51 , 52 , 53 , 54 , 55 , 56 , 57 , 58 , 59 , 60 , 61 , 62 , 63 , 64 , 65 , 66 , 67 , 68 , 69 , 70 , 71 , 72 , 73 , 74 , 75 , 76 , 77 , 78 , 79 , 80 , 81 , 82 , 83 , 84 , 85 , 86 , 87 , 88 , 89 , 90 , 91 , 92 , 93 , 94 , 95 , 96 , 97 , 98 , 99 , 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213}, true}, {{ 216}, true}, {{ 218, 219, 220}, true}, {{ 222, 223, 224, 225}, true}, {{ 227, 228}, true}, {{ 230, 231, 232}, true}, {{ 234, 235, 236, 237, 238, 239, 240}, true}, {{ 242}, true}, {{ 244, 245, 246}, true}, {{ 248, 249, 250, 251}, true}, {{ 253, 254}, true}, {{ 256, 257, 258}, true}, {{ 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 284, 285, 286, 287, 288, 289, 290, 291}, true}, {{ 296}, true}, {{ 305, 306, 307, 308, 309}, true}, {{311, 312}, true}, {{ 314, 315}, true}, {{ 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 337, 338, 339}, true}, {{ 342}, true}, {{ 344, 345, 346}, true}, {{ 348, 349, 350, 351}, true}, {{ 353, 354}, true}, {{ 356, 357, 358}, true}, {{ 360, 361, 362, 363, 364, 365, 366}, true}, {{ 368}, true}, {{ 370, 371, 372}, true}, {{ 374, 375, 376, 377}, true}, {{ 379, 380}, true}, {{ 382, 383, 384}, true}, {{ 386, 387, 388, 389, 390, 391, 392, 393, 394, 395, 396, 397, 398, 399, 400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417}, true}, {{ 422}, true}, {{ 431, 432, 433, 434, 435}, true}, {{437, 438}, true}, {{ 440, 441}, true}, {{ 443, 444, 445, 446, 447, 448, 449, 450, 451, 452, 453, 454, 455, 456, 457, 458, 459, 460, 461, 462, 463, 464, 465}, true}, {{ 468}, true}, {{ 470, 471, 472}, true}, {{ 474, 475, 476, 477}, true}, {{ 479, 480}, true}, {{ 482, 483, 484}, true}, {{ 486, 487, 488, 489, 490, 491, 492}, true}, {{ 494}, true}, {{ 496, 497, 498}, true}, {{ 500, 501, 502, 503}, true}, {{ 505, 506}, true}, {{ 508, 509, 510}, true}, {{ 512, 513, 514, 515, 516, 517, 518, 519, 520, 521, 522, 523, 524, 525, 526, 527, 528, 529, 530, 531, 532, 533, 534, 535, 536, 537, 538, 539, 540, 541, 542, 543}, true}, {{ 548}, true}, {{ 557, 558, 559, 560, 561}, true}, {{563, 564}, true}, {{ 566, 567}, true}, {{ 569, 570, 571, 572, 573, 574, 575, 576, 577, 578, 579, 580, 581, 582, 583, 584, 585, 586, 587, 588, 589, 590, 591}, true}, {{ 594}, true}, {{ 596, 597, 598}, true}, {{ 600, 601, 602, 603}, true}, {{ 605, 606}, true}, {{ 608, 609, 610}, true}, {{ 612, 613, 614, 615, 616, 617, 618}, true}, {{ 620}, true}, {{ 622, 623, 624}, true}, {{ 626, 627, 628, 629}, true}, {{ 631, 632}, true}, {{ 634, 635, 636}, true}, {{ 638, 639, 640, 641, 642, 643, 644, 645, 646, 647, 648, 649, 650, 651, 652, 653, 654, 655, 656, 657, 658, 659, 660, 661, 662, 663, 664, 665, 666, 667, 668, 669}, true}, {{ 674}, true}, {{ 683, 684, 685, 686, 687}, true}, {{689, 690}, true}, {{ 692, 693}, true}, {{ 695, 696, 697, 698, 699, 700, 701, 702, 703, 704, 705, 706, 707, 708, 709, 710, 711, 712, 713, 714, 715, 716, 717}, true}, {{ 720}, true}, {{ 722, 723, 724}, true}, {{ 726, 727, 728, 729}, true}, {{ 731, 732}, true}, {{ 734, 735, 736}, true}, {{ 738, 739, 740, 741, 742, 743, 744}, true}, {{ 746}, true}, {{ 748, 749, 750}, true}, {{ 752, 753, 754, 755}, true}, {{ 757, 758}, true}, {{ 760, 761, 762}, true}, {{ 764, 765, 766, 767, 768, 769, 770, 771, 772, 773, 774, 775, 776, 777, 778, 779, 780, 781, 782, 783, 784, 785, 786, 787, 788, 789, 790, 791, 792, 793, 794, 795}, true}, {{ 800}, true}, {{ 809, 810, 811, 812, 813}, true}, {{ 815, 816}, true}, {{ 818, 819}, true}, {{ 821, 822, 823}, true}, /*{{ 825}, true},*/ /*{{ 827, 828, 829, 830, 831}, true},*/ {{ 833}, true}, {{ 835}, true}, {{ 837}, true}, {{ 839, 840, 841}, true}, {{ 843}, true}, {{ 845, 846, 847, 848, 849, 850, 851, 852, 853, 854, 855, 856}, true}, {{ 858}, true}, /*{{ 863}, true},*/ {{ 876, 877, 878, 879, 880}, true}, {{ 882}, true}, {{ 888, 889, 890, 891, 892}, true}, {{ 894}, true}, {{ 900, 901, 902, 903, 904}, true}, {{ 906}, true}, {{ 908, 909, 910}, true}, {{ 912, 913, 914}, true}, {{ 919, 920}, true}, {{ 924, 925, 926}, true}, {{ 931, 932}, true}, {{ 936, 937, 938}, true}, {{ 943, 944}, true}, {{ 948, 949, 950}, true},{{961, 962, 963, 964, 965, 966}, true},{{968, 969, 970, 971, 972, 973}, true}, {{ 976}, true}, {{ 978, 979, 980}, true}, {{ 982, 983, 984, 985}, true}, {{ 987, 988}, true}, {{ 990, 991, 992}, true}, {{ 994, 995, 996, 997, 998, 999, 1000}, true}, {{ 1002}, true}, {{ 1004, 1005, 1006}, true}, {{ 1008, 1009, 1010, 1011}, true}, {{ 1013, 1014}, true}, {{ 1016, 1017, 1018}, true}, {{ 1020, 1021, 1022, 1023, 1024, 1025, 1026, 1027, 1028, 1029, 1030, 1031, 1032}, true}, {{1034}, true}, {{1036, 1037, 1038, 1039, 1040, 1041, 1042}, true}, {{ 1044, 1045, 1046, 1047}, true}, {{ 1049, 1050, 1051}, true}, {{ 1053, 1054}, true}, {{ 1062, 1063, 1064}, true}, {{ 1067, 1068, 1069, 1070, 1071}, true}, {{ 1073, 1074, 1075, 1076, 1077, 1078}, true}, {{ 1082, 1083, 1084}, true}, {{ 1086}, true}, {{ 1092, 1093, 1094, 1095, 1096}, true}};
+  //supported_nodes_vector = {{{1, 2, 3, 4, 5, 6}, true}, {{ 8, 9, 10 }, true}, {{ 12 , 13 , 14 , 15 , 16 , 17 , 18 , 19 , 20 , 21 , 22 , 23 , 24 , 25 , 26 , 27 , 28 , 29 , 30 , 31 , 32 , 33 , 34 , 35 , 36 , 37 , 38 , 39 , 40 , 41 , 42 , 43 , 44 , 45 , 46 , 47 , 48 , 49 , 50 , 51 , 52 , 53 , 54 , 55 , 56 , 57 , 58 , 59 , 60 , 61 , 62 , 63 , 64 , 65 , 66 , 67 , 68 , 69 , 70 , 71 , 72 , 73 , 74 , 75 , 76 , 77 , 78 , 79 , 80 , 81 , 82 , 83 , 84 , 85 , 86 , 87 , 88 , 89 , 90 , 91 , 92 , 93 , 94 , 95 , 96 , 97 , 98 , 99 , 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213}, true}, {{ 216}, true}, {{ 218, 219, 220}, true}, {{ 222, 223, 224, 225}, true}, {{ 227, 228}, true}, {{ 230, 231, 232}, true}, {{ 234, 235, 236, 237, 238, 239, 240}, true}, {{ 242}, true}, {{ 244, 245, 246}, true}, {{ 248, 249, 250, 251}, true}, {{ 253, 254}, true}, {{ 256, 257, 258}, true}, {{ 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 284, 285, 286, 287, 288, 289, 290, 291}, true}, {{ 296}, true}, {{ 305, 306, 307, 308, 309}, true}, {{311, 312}, true}, {{ 314, 315}, true}, {{ 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 337, 338, 339}, true}, {{ 342}, true}, {{ 344, 345, 346}, true}, {{ 348, 349, 350, 351}, true}, {{ 353, 354}, true}, {{ 356, 357, 358}, true}, {{ 360, 361, 362, 363, 364, 365, 366}, true}, {{ 368}, true}, {{ 370, 371, 372}, true}, {{ 374, 375, 376, 377}, true}, {{ 379, 380}, true}, {{ 382, 383, 384}, true}, {{ 386, 387, 388, 389, 390, 391, 392, 393, 394, 395, 396, 397, 398, 399, 400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417}, true}, {{ 422}, true}, {{ 431, 432, 433, 434, 435}, true}, {{437, 438}, true}, {{ 440, 441}, true}, {{ 443, 444, 445, 446, 447, 448, 449, 450, 451, 452, 453, 454, 455, 456, 457, 458, 459, 460, 461, 462, 463, 464, 465}, true}, {{ 468}, true}, {{ 470, 471, 472}, true}, {{ 474, 475, 476, 477}, true}, {{ 479, 480}, true}, {{ 482, 483, 484}, true}, {{ 486, 487, 488, 489, 490, 491, 492}, true}, {{ 494}, true}, {{ 496, 497, 498}, true}, {{ 500, 501, 502, 503}, true}, {{ 505, 506}, true}, {{ 508, 509, 510}, true}, {{ 512, 513, 514, 515, 516, 517, 518, 519, 520, 521, 522, 523, 524, 525, 526, 527, 528, 529, 530, 531, 532, 533, 534, 535, 536, 537, 538, 539, 540, 541, 542, 543}, true}, {{ 548}, true}, {{ 557, 558, 559, 560, 561}, true}, {{563, 564}, true}, {{ 566, 567}, true}, {{ 569, 570, 571, 572, 573, 574, 575, 576, 577, 578, 579, 580, 581, 582, 583, 584, 585, 586, 587, 588, 589, 590, 591}, true}, {{ 594}, true}, {{ 596, 597, 598}, true}, {{ 600, 601, 602, 603}, true}, {{ 605, 606}, true}, {{ 608, 609, 610}, true}, {{ 612, 613, 614, 615, 616, 617, 618}, true}, {{ 620}, true}, {{ 622, 623, 624}, true}, {{ 626, 627, 628, 629}, true}, {{ 631, 632}, true}, {{ 634, 635, 636}, true}, {{ 638, 639, 640, 641, 642, 643, 644, 645, 646, 647, 648, 649, 650, 651, 652, 653, 654, 655, 656, 657, 658, 659, 660, 661, 662, 663, 664, 665, 666, 667, 668, 669}, true}, {{ 674}, true}, {{ 683, 684, 685, 686, 687}, true}, {{689, 690}, true}, {{ 692, 693}, true}, {{ 695, 696, 697, 698, 699, 700, 701, 702, 703, 704, 705, 706, 707, 708, 709, 710, 711, 712, 713, 714, 715, 716, 717}, true}, {{ 720}, true}, {{ 722, 723, 724}, true}, {{ 726, 727, 728, 729}, true}, {{ 731, 732}, true}, {{ 734, 735, 736}, true}, {{ 738, 739, 740, 741, 742, 743, 744}, true}, {{ 746}, true}, {{ 748, 749, 750}, true}, {{ 752, 753, 754, 755}, true}, {{ 757, 758}, true}, {{ 760, 761, 762}, true}, {{ 764, 765, 766, 767, 768, 769, 770, 771, 772, 773, 774, 775, 776, 777, 778, 779, 780, 781, 782, 783, 784, 785, 786, 787, 788, 789, 790, 791, 792, 793, 794, 795}, true}, {{ 800}, true}, {{ 809, 810, 811, 812, 813}, true}, {{ 815, 816}, true}, {{ 818, 819}, true}, {{ 821, 822, 823}, true}, /*{{ 825}, true},*/ /*{{ 827, 828, 829, 830, 831}, true},*/ {{ 833}, true}, {{ 835}, true}, {{ 837}, true}, {{ 839, 840, 841}, true}, {{ 843}, true}, {{ 845, 846, 847, 848, 849, 850, 851, 852, 853, 854, 855, 856}, true}, {{ 858}, true}, /*{{ 863}, true},*/ {{ 876, 877, 878, 879, 880}, true}, {{ 882}, true}, {{ 888, 889, 890, 891, 892}, true}, {{ 894}, true}, {{ 900, 901, 902, 903, 904}, true}, {{ 906}, true}, {{ 908, 909, 910}, true}, {{ 912, 913, 914}, true}, {{ 919, 920}, true}, {{ 924, 925, 926}, true}, {{ 931, 932}, true}, {{ 936, 937, 938}, true}, {{ 943, 944}, true}, {{ 948, 949, 950}, true},{{961, 962, 963, 964, 965, 966}, true},{{968, 969, 970, 971, 972, 973}, true}, {{ 976}, true}, {{ 978, 979, 980}, true}, {{ 982, 983, 984, 985}, true}, {{ 987, 988}, true}, {{ 990, 991, 992}, true}, {{ 994, 995, 996, 997, 998, 999, 1000}, true}, {{ 1002}, true}, {{ 1004, 1005, 1006}, true}, {{ 1008, 1009, 1010, 1011}, true}, {{ 1013, 1014}, true}, {{ 1016, 1017, 1018}, true}, {{ 1020, 1021, 1022, 1023, 1024, 1025, 1026, 1027, 1028, 1029, 1030, 1031, 1032}, true}, {{1034}, true}, {{1036, 1037, 1038, 1039, 1040, 1041, 1042}, true}, {{ 1044, 1045, 1046, 1047}, true}, {{ 1049, 1050, 1051}, true}, {{ 1053, 1054}, true}, {{ 1062, 1063, 1064}, true}, {{ 1067, 1068, 1069, 1070, 1071}, true}, {{ 1073, 1074, 1075, 1076, 1077, 1078}, true}, {{ 1082, 1083, 1084}, true}, {{ 1086}, true}, {{ 1092, 1093, 1094, 1095, 1096}, true}};
+  //supported_nodes_vector = {{{317}, true}};//317: gather_1001
+
+  //opset10/mask-rcnn
+  //supported_nodes_vector = {{{318}, true}};//reshape_829
 
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
@@ -381,7 +395,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     std::string string_buf;
     model_proto.SerializeToString(&string_buf);
 
-    ///slx !!!!!!!!!!!test: save ModelProto to file
+    //save ModelProto to file
     int fd;
     Env::Default().FileOpenWr("trt_model_proto_Compile_" + fused_node->Name() + ".onnx", fd);
     model_proto.SerializeToFileDescriptor(fd);
@@ -420,7 +434,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       if (input->isShapeTensor()) {  // shape tensor
         std::cout << "Compile: Create optimization profile for shape tensor: " << input->getName() << std::endl;
         int shapes_size = dims.nbDims;  //e.g. int64[3], shapes_size=3
-        vector<int32_t> shapes_min(shapes_size), shapes_opt(shapes_size), shapes_max(shapes_size);
+        std::vector<int32_t> shapes_min(shapes_size), shapes_opt(shapes_size), shapes_max(shapes_size);
         for (int j = 0, end = shapes_size; j < end; ++j) {
           shapes_min[j] = 1;
           shapes_opt[j] = 1000;
@@ -438,8 +452,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         for (int j = 0, end = dims.nbDims; j < end; ++j) {
           if (dims.d[j] == -1) {
             dims_min.d[j] = 1;
-            dims_opt.d[j] = 1000;
-            dims_max.d[j] = 1000;
+            dims_opt.d[j] = 1;//1000 , large batch size will cause out-of-memory on GTX1080
+            dims_max.d[j] = 1;
             dynamic_shape = true;
           }
         }
@@ -565,7 +579,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
     // Create compute function
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
-      std::cout << "TRT compute" << std::endl;
+      ///std::cout << "TRT compute" << std::endl;
       Ort::CustomOpApi ort{*api};
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
       const std::vector<int>& input_indexes = (trt_state->input_info)[0];
@@ -626,7 +640,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
             if (trt_state->context->getEngine().isShapeBinding(i)) {
               std::cout << "Compute: update optimization profile for shape tensor: " << input->getName() << std::endl;
               int shapes_size = dims_min.nbDims;
-              vector<int32_t> shapes_min(shapes_size), shapes_opt(shapes_size), shapes_max(shapes_size);
+              std::vector<int32_t> shapes_min(shapes_size), shapes_opt(shapes_size), shapes_max(shapes_size);
               for (int j = 0, end = shapes_size; j < end; ++j) {
                 shapes_min[j] = dims_min.d[j];
                 shapes_opt[j] = dims_opt.d[j];
@@ -725,7 +739,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
       // Run TRT inference
       std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
-      trt_state->context->enqueueV2(&buffers[0], nullptr, nullptr);
+      //trt_state->context->enqueueV2(&buffers[0], nullptr, nullptr);
+      if (!trt_state->context->enqueueV2(&buffers[0], nullptr, nullptr)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP Execution Context Enqueue Failed.");
+      }
 
       // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
       for (int i = 0, end = num_binding_outputs; i < end; ++i) {
