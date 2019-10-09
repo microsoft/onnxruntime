@@ -436,7 +436,7 @@ class OpTester {
   void AddSeqData(std::vector<Data>& data, const char* name, const SeqTensors<T>& seq_tensors) {
     auto mltype = DataTypeImpl::GetType<TensorSeq>();
     ORT_ENFORCE(mltype != nullptr, "TensorSeq must be a registered cpp type");
-    auto ptr = std::make_unique<TensorSeq>();
+    auto ptr = onnxruntime::make_unique<TensorSeq>();
     ptr->dtype = DataTypeImpl::GetType<T>();
     auto num_tensors = seq_tensors.tensors.size();
     ptr->tensors.resize(num_tensors);
