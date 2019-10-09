@@ -191,9 +191,11 @@ Return Value:
                 this->TanhKernelRoutine = MlasTanhKernelFma3;
                 this->ErfKernelRoutine = MlasErfKernelFma3;
 
+#if !defined(MLAS_AVX512_UNSUPPORTED)
+
                 //
-                // Check if the processor supports AVX512F (and the operating
-                // system supports saving AVX512F state).
+                // Check if the processor supports AVX512F features and the
+                // operating system supports saving AVX512F state.
                 //
 
                 if (((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
@@ -232,6 +234,9 @@ Return Value:
                         }
                     }
                 }
+
+#endif
+
             }
 
 #endif
