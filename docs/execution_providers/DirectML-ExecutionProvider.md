@@ -1,4 +1,4 @@
-# DirectML Execution Provider
+# DirectML Execution Provider (Preview)
 
 DirectML is a high-performance, hardware-accelerated DirectX 12 library for machine learning on Windows.  DirectML provides GPU acceleration for common machine learning tasks across a broad range of supported hardware and drivers.
 
@@ -6,9 +6,11 @@ When used standalone, the DirectML API is a low-level DirectX 12 library and is 
 
 The *DirectML Execution Provider* is an optional component of ONNX Runtime that uses DirectML to accelerate inference of ONNX models. The DirectML execution provider is capable of greatly improving evaluation time of models using commodity GPU hardware, without sacrificing broad hardware support or requiring vendor-specific extensions to be installed.
 
+The DirectML Execution Provider is currently in preview.
+
 ## Table of contents
 
-- [DirectML Execution Provider](#directml-execution-provider)
+- [DirectML Execution Provider (Preview)](#directml-execution-provider-preview)
   - [Table of contents](#table-of-contents)
   - [Minimum requirements](#minimum-requirements)
   - [Building from source](#building-from-source)
@@ -45,6 +47,8 @@ To build onnxruntime with the DML EP included, supply the `--use_dml` parameter 
 
 The DirectML execution provider supports building for both x64 (default) and x86 architectures.
 
+Note that building onnxruntime with the DirectML execution provider enabled causes the the DirectML redistributable package to be automatically downloaded as part of the build. This package contains a pre-release version of DirectML, and its use is governed by a license whose text may be found as part of the NuGet package.
+
 
 
 ## Using the DirectML execution provider
@@ -53,7 +57,7 @@ When using the [C API](../C_API.md) with a DML-enabled build of onnxruntime (see
 
 ### `OrtSessionOptionsAppendExecutionProvider_DML` function
 
- Creates a DirectML Execution Provider which executes on the hardware adapter with the given device_id, also known as the adapter index. The device ID corresponds to the enumeration order of hardware adapters as given by [IDXGIFactory::EnumAdapters](https://docs.microsoft.com/windows/win32/api/dxgi/nf-dxgi-idxgifactory-enumadapters). A device_id of 0 always corresponds to the default adapter, which is typically the primary display GPU installed on the system. A negative `device_id` is invalid.
+ Creates a DirectML Execution Provider which executes on the hardware adapter with the given `device_id`, also known as the adapter index. The device ID corresponds to the enumeration order of hardware adapters as given by [IDXGIFactory::EnumAdapters](https://docs.microsoft.com/windows/win32/api/dxgi/nf-dxgi-idxgifactory-enumadapters). A `device_id` of 0 always corresponds to the default adapter, which is typically the primary display GPU installed on the system. A negative `device_id` is invalid.
 
      OrtStatus* OrtSessionOptionsAppendExecutionProvider_DML(
         _In_ OrtSessionOptions* options,
@@ -62,7 +66,7 @@ When using the [C API](../C_API.md) with a DML-enabled build of onnxruntime (see
 
 ### `OrtSessionOptionsAppendExecutionProviderEx_DML` function
 
-Creates a DirectML Execution Provider using the given DirectML device, and which executes work on the supplied D3D12 command queue. The DirectML device and D3D12 command queue must have the same parent [ID3D12Device](https://docs.microsoft.com/windows/win32/api/d3d12/nn-d3d12-id3d12device), or an error will be returned. The D3D12 command queue must be of type `DIRECT` or `COMPUTE` (see [D3D12_COMMAND_LIST_TYPE](https://docs.microsoft.com/windows/win32/api/d3d12/ne-d3d12-d3d12_command_list_type)). If this function succeeds, the inference session once created will maintain a strong reference on both the `dml_device` and the `command_queue` objects.
+Creates a DirectML Execution Provider using the given DirectML device, and which executes work on the supplied D3D12 command queue. The DirectML device and D3D12 command queue must have the same parent [ID3D12Device](https://docs.microsoft.com/windows/win32/api/d3d12/nn-d3d12-id3d12device), or an error will be returned. The D3D12 command queue must be of type `DIRECT` or `COMPUTE` (see [D3D12_COMMAND_LIST_TYPE](https://docs.microsoft.com/windows/win32/api/d3d12/ne-d3d12-d3d12_command_list_type)). If this function succeeds, the inference session once created will maintain a strong reference on both the `dml_device` and `command_queue` objects.
 
      OrtStatus* OrtSessionOptionsAppendExecutionProviderEx_DML(
         _In_ OrtSessionOptions* options,
@@ -84,7 +88,7 @@ The DirectML execution provider currently supports ONNX opset 9 ([ONNX v1.4](htt
 
 ## Samples
 
-A complete sample of onnxruntime using the DirectML execution provider can be found under [samples/c_cxx/fns_candy_style_transfer](../../samples/c_cxx/README.md).
+A complete sample of onnxruntime using the DirectML execution provider can be found under [samples/c_cxx/fns_candy_style_transfer](../../samples/c_cxx/fns_candy_style_transfer).
 
 
 
