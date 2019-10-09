@@ -275,6 +275,19 @@ size_t
 typedef MLAS_GEMM_U8S8_KERNEL* PMLAS_GEMM_U8S8_KERNEL;
 
 typedef
+size_t
+(MLASCALL MLAS_GEMV_U8S8_KERNEL)(
+    const uint8_t* A,
+    const int8_t* B,
+    int32_t* C,
+    size_t CountK,
+    size_t CountN,
+    size_t ldb
+    );
+
+typedef MLAS_GEMV_U8S8_KERNEL* PMLAS_GEMV_U8S8_KERNEL;
+
+typedef
 void
 (MLASCALL MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE)(
     int16_t* D,
@@ -460,8 +473,11 @@ extern "C" {
     MLAS_GEMM_U8S8_COPY_PACKA_ROUTINE MlasGemmU8S8CopyPackAAvx2;
     MLAS_GEMM_U8S8_COPY_PACKB_ROUTINE MlasGemmU8S8CopyPackBAvx2;
     MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx2;
+    MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx2;
     MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512BW;
+    MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512BW;
     MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512Vnni;
+    MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512Vnni;
     MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE MlasGemmU8U8CopyPackAAvx2;
     MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE MlasGemmU8U8CopyPackBAvx2;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx2;
@@ -599,6 +615,7 @@ struct MLAS_PLATFORM {
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1TransposeBRoutine;
     PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE TransposePackB16x4Routine;
     PMLAS_GEMM_DOUBLE_KERNEL GemmDoubleKernel;
+    PMLAS_GEMV_U8S8_KERNEL GemvU8S8Kernel;
     PMLAS_CONV_FLOAT_KERNEL ConvNchwFloatKernel;
     PMLAS_CONV_FLOAT_KERNEL ConvNchwcFloatKernel;
     PMLAS_CONV_DEPTHWISE_FLOAT_KERNEL ConvDepthwiseFloatKernel;
