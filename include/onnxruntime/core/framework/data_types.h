@@ -17,8 +17,10 @@ struct OrtValue;
 namespace ONNX_NAMESPACE {
 class TypeProto;
 }  // namespace ONNX_NAMESPACE
+
 namespace onnxruntime {
 /// Predefined registered types
+
 //maps
 using MapStringToString = std::map<std::string, std::string>;
 using MapStringToInt64 = std::map<std::string, int64_t>;
@@ -30,10 +32,6 @@ using MapInt64ToFloat = std::map<int64_t, float>;
 using MapInt64ToDouble = std::map<int64_t, double>;
 
 //vectors/sequences
-using VectorString = std::vector<std::string>;
-using VectorInt64 = std::vector<int64_t>;
-using VectorFloat = std::vector<float>;
-using VectorDouble = std::vector<double>;
 using VectorMapStringToFloat = std::vector<MapStringToFloat>;
 using VectorMapInt64ToFloat = std::vector<MapInt64ToFloat>;
 
@@ -197,6 +195,9 @@ class DataTypeImpl {
   template <typename elemT>
   static MLDataType GetTensorType();
 
+  template <typename elemT>
+  static MLDataType GetSequenceTensorType();
+
   // Return the MLDataType for a concrete sparse tensor type.
   template <typename elemT>
   static MLDataType GetSparseTensorType();
@@ -212,6 +213,7 @@ class DataTypeImpl {
 
   static const TensorTypeBase* TensorTypeFromONNXEnum(int type);
   static const SparseTensorTypeBase* SparseTensorTypeFromONNXEnum(int type);
+  static const NonTensorTypeBase* SequenceTensorTypeFromONNXEnum(int type);
 
   static const char* ToString(MLDataType type);
   // Registers ONNX_NAMESPACE::DataType (internalized string) with
@@ -221,6 +223,7 @@ class DataTypeImpl {
   static MLDataType GetDataType(const std::string&);
 
   static const std::vector<MLDataType>& AllTensorTypes();
+  static const std::vector<MLDataType>& AllSequenceTensorTypes();
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes();
   static const std::vector<MLDataType>& AllNumericTensorTypes();
   static const std::vector<MLDataType>& AllIEEEFloatTensorTypes();
@@ -750,6 +753,17 @@ class NonOnnxType : public DataTypeImpl {
   template <>                                \
   MLDataType DataTypeImpl::GetType<TYPE>() { \
     return SequenceType<TYPE>::Type();       \
+  }
+
+#define ORT_REGISTER_SEQ_TENSOR_TYPE(ELEM_TYPE)                 \
+  template <>                                                   \
+  MLDataType SequenceTensorType<ELEM_TYPE>::Type() {            \
+    static SequenceTensorType<ELEM_TYPE> sequence_tensor_type;  \
+    return &sequence_tensor_type;                               \
+  }                                                             \
+  template <>                                                   \
+  MLDataType DataTypeImpl::GetSequenceTensorType<ELEM_TYPE>() { \
+    return SequenceTensorType<ELEM_TYPE>::Type();               \
   }
 
 #define ORT_REGISTER_NON_ONNX_TYPE(TYPE)     \
