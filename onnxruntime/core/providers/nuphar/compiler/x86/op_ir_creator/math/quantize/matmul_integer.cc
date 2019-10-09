@@ -139,7 +139,7 @@ static Status EvaluateMatMulInteger(
         //TODO: change to use MLAS when no layout could apply
         tvm::Tensor B_marshalled = tvm_codegen::Transpose(B, {1, 0});
 
-        tvm::Tensor output_tensor = IMatMulExternMKL(A, B_marshalled, output_shape, input_dim, embed_dim, name + "_IMatMulExternMKL");
+        tvm::Tensor output_tensor = IMatMulExternAVX2(A, B_marshalled, output_shape, input_dim, embed_dim, name + "_IMatMulExternAVX2");
         outputs.push_back(output_tensor);
       } else if (use_tensorization) {
         // vector width determined from target hardware
@@ -254,7 +254,7 @@ static Status EvaluateMatMulInteger16(
         //TODO: change to use MLAS when no layout could apply
         tvm::Tensor B_marshalled = tvm_codegen::Transpose(B, {1, 0});
 
-        tvm::Tensor output_tensor = IMatMul16ExternMKL(A, B_marshalled, output_shape, input_dim, embed_dim, node.Name() + "_IMatMulExternMKL");
+        tvm::Tensor output_tensor = IMatMul16ExternAVX2(A, B_marshalled, output_shape, input_dim, embed_dim, node.Name() + "_IMatMulExternAVX2");
         outputs.push_back(output_tensor);
       } else {
         auto layout_key = tvm_codegen::WeightLayoutTranspose2D::GetKey(TensorProtoDataType(B_NodeArg));
