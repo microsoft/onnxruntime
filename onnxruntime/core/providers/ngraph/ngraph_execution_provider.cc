@@ -114,6 +114,11 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     const bool B_is_float = node->InputDefs()[1]->Type()->find("float") != std::string::npos;
     return (A_is_float && B_is_float) ? false : true;
   } else if (optype == "Pad") {
+    // Pad is only supported only up to opset 10 (in opset 11 more inputs were added)
+    if (node->InputDefs().size() > 1) {
+      return true;
+    }
+
     //3D pad with negative padding have computation missmatch
     const auto& attributes = node->GetAttributes();
     const auto pad_attr = attributes.find("pads");
