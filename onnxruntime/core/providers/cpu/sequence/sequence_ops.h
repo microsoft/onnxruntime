@@ -47,4 +47,11 @@ class SequenceErase final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
+class SequenceConstruct final : public OpKernel {
+ public:
+  SequenceConstruct(const OpKernelInfo& info) : OpKernel(info) {
+  }
+  Status Compute(OpKernelContext* context) const override;
+};
+
 }  //namespace onnxruntime

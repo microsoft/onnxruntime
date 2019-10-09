@@ -281,5 +281,20 @@ TEST(SequenceOpsTest, SequenceEraseInvalidNegativeIdx) {
   test.AddSeqOutput("S2", output);
   test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid sequence index");
 }
+
+// SequenceConstruct
+TEST(SequenceOpsTest, SequenceConstructPositive) {
+  OpTester test("SequenceConstruct", 11);
+  test.AddInput<int64_t>("input_1", {3, 2}, {1, 2, 3, 4, 5, 6});
+  test.AddInput<int64_t>("input_2", {3, 3}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  test.AddInput<int64_t>("input_3", {3, 2}, {10, 20, 30, 40, 50, 60});
+
+  SeqTensors<int64_t> output;
+  output.AddTensor({3, 2}, {1, 2, 3, 4, 5, 6});
+  output.AddTensor({3, 3}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  output.AddTensor({3, 2}, {10, 20, 30, 40, 50, 60});
+  test.AddSeqOutput("S2", output);
+  test.Run();
+}
 }  // namespace test
 }  // namespace onnxruntime
