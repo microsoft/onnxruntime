@@ -381,7 +381,7 @@ class OpTester {
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
            bool sequential_execution = true);
 
-  void Run(const SessionOptions& session_options,
+  void Run(SessionOptions session_options,
            ExpectResult expect_result = ExpectResult::kExpectSuccess,
            const std::string& expected_failure_string = "",
            const std::unordered_set<std::string>& excluded_provider_types = {},
