@@ -3,23 +3,22 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
-# Convert Bert model to use Attention, Gelu, SkipLayerNormalization and EmbedLayerNormalization ops
+# Convert Bert ONNX model to use Attention, Gelu, SkipLayerNormalization and
+# EmbedLayerNormalization ops to optimize performance on NVidia GPU.
+# Tested on some BERT ONNX models exported from PyTorch.
 
 import onnx
 import sys
 import argparse
 import numpy as np
-
-from onnx import ModelProto
-from onnx import TensorProto
-from google.protobuf import text_format
-from onnx import numpy_helper
 from collections import deque
+from onnx import ModelProto, TensorProto, numpy_helper
 
 class OnnxModel:
     def __init__(self, model):
         self.model = model
         self.node_name_counter = {}
+
     def input_name_to_nodes(self):
         input_name_to_nodes = {}
         for node in self.model.graph.node:
@@ -65,8 +64,7 @@ class OnnxModel:
 
     @staticmethod
     def replace_node_input(node, old_input_name, new_input_name):
-        assert(isinstance(old_input_name, str))
-        assert(isinstance(new_input_name, str))
+        assert isinstance(old_input_name, str) and isinstance(new_input_name, str)
         for j in range(len(node.input)):
             if node.input[j] == old_input_name:
                 node.input[j] = new_input_name
@@ -81,7 +79,7 @@ class OnnxModel:
                 return tensor
         return None
 
-    def nodes_by_type(self, op_type):
+    def get_nodes_by_op_type(self, op_type):
         return [n for n in self.model.graph.node if n.op_type == op_type]
 
     def get_children(self, node, input_name_to_nodes=None):
@@ -94,8 +92,18 @@ class OnnxModel:
                 for node in input_name_to_nodes[output]:
                     children.append(node)
         return children
-    
-    def find_first_child_by_type(self, node, child_type, input_name_to_nodes=None, recursive = True):
+
+    def get_parents(self, node, output_name_to_nodes=None):
+        if output_name_to_nodes is None:
+            output_name_to_nodes = self.output_name_to_nodes()
+
+        parents = []
+        for input in node.input:
+            if input in output_name_to_nodes:
+                parents.append(output_name_to_nodes[input])
+        return parents
+
+    def find_first_child_by_type(self, node, child_type, input_name_to_nodes=None, recursive=True):
         children = self.get_children(node, input_name_to_nodes)
         dq = deque(children)
         while len(dq) > 0:
@@ -110,20 +118,23 @@ class OnnxModel:
 
         return None
 
-    def remove_unused_constant(self):
-        input_name_to_nodes = self.input_name_to_nodes()
-        
-        #remove unused constant
-        unused_nodes = []
-        nodes = self.nodes()
-        for node in nodes:
-            if node.op_type == "Constant" and node.output[0] not in input_name_to_nodes:
-                unused_nodes.append(node)
+    def find_first_parent_by_type(self, node, parent_type, output_name_to_nodes=None, recursive=True):
+        if output_name_to_nodes is None:
+            output_name_to_nodes = self.output_name_to_nodes()
+            
+        parents = self.get_parents(node, output_name_to_nodes)
+        dq = deque(parents)
+        while len(dq) > 0:
+            current_node = dq.pop()
+            if current_node.op_type == parent_type:
+                return current_node
 
-        self.remove_nodes(unused_nodes)
+            if recursive:
+                parents = self.get_parents(current_node, output_name_to_nodes)
+                for parent in parents:
+                    dq.appendleft(parent)
 
-        if len(unused_nodes) > 0:
-            print("Removed unused constant nodes:", len(unused_nodes))
+        return None
 
     def get_subgraph_nodes(self, root_node, stop_nodes, input_name_to_nodes=None):
         if input_name_to_nodes is None:
@@ -150,7 +161,7 @@ class OnnxModel:
 
         return unique_nodes
 
-    def convert_model_to_half(self):
+    def convert_model_float32_to_float16(self):
         graph = self.model.graph
         initializers = graph.initializer
 
@@ -189,7 +200,7 @@ class OnnxModel:
             full_name = op_type + "_" + str(self.node_name_counter[op_type])
 
         # Check whether the name is taken:
-        nodes = self.nodes_by_type(op_type)
+        nodes = self.get_nodes_by_op_type(op_type)
         for node in nodes:
             if node.name == full_name:
                 raise Exception("Node name already taken:", full_name)
@@ -231,34 +242,6 @@ class OnnxModel:
                     unique_inputs.append(input)
 
         return unique_nodes, unique_inputs
-        
-    def get_parents(self, node, output_name_to_nodes=None):
-        if output_name_to_nodes is None:
-            output_name_to_nodes = self.output_name_to_nodes()
-
-        parents = []
-        for input in node.input:
-            if input in output_name_to_nodes:
-                parents.append(output_name_to_nodes[input])
-        return parents
-
-    def find_first_parent_by_type(self, node, parent_type, output_name_to_nodes=None, recursive=True):
-        if output_name_to_nodes is None:
-            output_name_to_nodes = self.output_name_to_nodes()
-            
-        parents = self.get_parents(node, output_name_to_nodes)
-        dq = deque(parents)
-        while len(dq) > 0:
-            current_node = dq.pop()
-            if current_node.op_type == parent_type:
-                return current_node
-
-            if recursive:
-                parents = self.get_parents(current_node, output_name_to_nodes)
-                for parent in parents:
-                    dq.appendleft(parent)
-
-        return None
 
     @staticmethod
     def input_index(node_output, child_node):
@@ -269,20 +252,67 @@ class OnnxModel:
             index += 1
         return -1
 
+    def remove_unused_constant(self):
+        input_name_to_nodes = self.input_name_to_nodes()
+
+        #remove unused constant
+        unused_nodes = []
+        nodes = self.nodes()
+        for node in nodes:
+            if node.op_type == "Constant" and node.output[0] not in input_name_to_nodes:
+                unused_nodes.append(node)
+
+        self.remove_nodes(unused_nodes)
+
+        if len(unused_nodes) > 0:
+            print("Removed unused constant nodes:", len(unused_nodes))
+
+    def update_graph(self, verbose=False):
+        graph = self.model.graph
+
+        remaining_input_names = []
+        for node in graph.node:
+            if node.op_type != "Constant":
+                for input_name in node.input:
+                    if input_name not in remaining_input_names:
+                        remaining_input_names.append(input_name)
+        if verbose:
+            print("remaining input names", remaining_input_names)
+
+        # remove graph input that is not used
+        inputs_to_remove = []
+        for input in graph.input:
+            if input.name not in remaining_input_names:
+                inputs_to_remove.append(input)
+        for input in inputs_to_remove:
+            graph.input.remove(input)
+        if verbose:
+            print("remove unused input ", len(inputs_to_remove), [input.name for input in inputs_to_remove])
+        
+        # remove weights that are not used
+        weights_to_remove = []
+        for initializer in graph.initializer:
+            if initializer.name not in remaining_input_names:
+                weights_to_remove.append(initializer)
+        for initializer in weights_to_remove:
+            graph.initializer.remove(initializer)
+        if verbose:
+            print("remove unused initializers:", len(weights_to_remove), [initializer.name for initializer in weights_to_remove])
+
+        self.remove_unused_constant()
+
 class BertOnnxModel(OnnxModel):
-    def __init__(self, model, num_heads, head_size, batch_size, sequence_length):
-        assert(batch_size >= 0)
-        assert(num_heads > 0)
-        assert(head_size > 0)
-        assert(sequence_length > 0)
+    def __init__(self, model, num_heads, hidden_size, batch_size, sequence_length):
+        assert batch_size >= 0
+        assert num_heads > 0
+        assert hidden_size % num_heads == 0
+        assert sequence_length > 0
         
         super(BertOnnxModel, self).__init__(model)
         self.num_heads = num_heads
-        self.head_size = head_size
         self.batch_size = batch_size
         self.sequence_length = sequence_length
-
-        self.hidden_size = num_heads * head_size
+        self.hidden_size = hidden_size
         self.mask_input = None
         self.embed_node = None
 
@@ -292,14 +322,14 @@ class BertOnnxModel(OnnxModel):
         self.attention_name = 'Attention'
 
     def get_normalize_nodes(self):
-        return self.nodes_by_type(self.normalize_name)
+        return self.get_nodes_by_op_type(self.normalize_name)
 
     def normalize_children_types(self):
         return ['MatMul', 'MatMul', 'MatMul', 'SkipLayerNormalization']
 
     def find_transpose_nodes(self, normalize_node):
-        assert(normalize_node.op_type == self.normalize_name)
-        assert(len(normalize_node.output) == 1)
+        assert normalize_node.op_type == self.normalize_name
+        assert len(normalize_node.output) == 1
 
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_nodes = self.output_name_to_nodes()
@@ -341,16 +371,14 @@ class BertOnnxModel(OnnxModel):
                 v_transpose = transpose_node
 
         if qxk is None:
-            print("Failed to find qxk")
-            raise Exception("Failed to find transpose nodes.")
+            raise Exception("Failed to find transpose nodes qxk.")
             
         qkv = self.find_first_child_by_type(qxk, 'MatMul', input_name_to_nodes)
         qkv_transpose = input_name_to_nodes[qkv.output[0]][0]
         if qkv_transpose.op_type == "Transpose":
             return qkv_transpose, q_transpose, k_transpose, v_transpose, add_nodes
 
-        raise Exception("Failed to find qkv node")
-        return None, None, None, None, None
+        raise Exception("failed to find transpose nodes after " + normalize_node.output[0])
 
     def set_mask_input(self, input):
         if self.mask_input is not None and input != self.mask_input:
@@ -366,11 +394,7 @@ class BertOnnxModel(OnnxModel):
             return
 
         print("processing attention for normalize node output:", normalize_node.output[0])
-
         qkv_transpose, q_transpose, k_transpose, v_transpose, add_nodes = self.find_transpose_nodes(normalize_node)
-        if qkv_transpose is None:
-            print("failed to find transpose nodes after " + normalize_node.output[0])
-            return
 
         print("qkv_transpose:", qkv_transpose.output)
         reshape_node_after_att = self.find_first_child_by_type(qkv_transpose, 'Reshape')
@@ -395,24 +419,24 @@ class BertOnnxModel(OnnxModel):
         v_bias = self.get_initializer(v_add[0].input[1])
 
         qw = numpy_helper.to_array(q_weight)
-        assert(qw.shape == (self.hidden_size, self.hidden_size))
+        assert qw.shape == (self.hidden_size, self.hidden_size)
 
         kw = numpy_helper.to_array(k_weight)
-        assert(kw.shape == (self.hidden_size, self.hidden_size))
+        assert kw.shape == (self.hidden_size, self.hidden_size)
 
         vw = numpy_helper.to_array(v_weight)
-        assert(vw.shape == (self.hidden_size, self.hidden_size))
+        assert vw.shape == (self.hidden_size, self.hidden_size)
 
         qkv_weight = np.stack((qw, kw, vw), axis=-2)
         
         qb = numpy_helper.to_array(q_bias)
-        assert(qb.shape == (self.hidden_size,))
+        assert qb.shape == (self.hidden_size,)
 
         kb = numpy_helper.to_array(k_bias)
-        assert(kb.shape == (self.hidden_size,))
+        assert kb.shape == (self.hidden_size,)
 
         vb = numpy_helper.to_array(v_bias)
-        assert(vb.shape == (self.hidden_size,))
+        assert vb.shape == (self.hidden_size,)
 
         qkv_bias = np.stack((qb, kb, vb), axis=-2)
 
@@ -457,41 +481,8 @@ class BertOnnxModel(OnnxModel):
 
         self.add_node(attention_node)
 
-    def update_graph(self, verbose=False):
-        graph = self.model.graph
-
-        remaining_input_names = []
-        for node in graph.node:
-            if node.op_type != "Constant":
-                for input_name in node.input:
-                    if input_name not in remaining_input_names:
-                        remaining_input_names.append(input_name)
-        if verbose:
-            print("remaining input names", remaining_input_names)
-
-        # remove graph input that is not used
-        inputs_to_remove = []
-        for input in graph.input:
-            if input.name not in remaining_input_names:
-                inputs_to_remove.append(input)
-        for input in inputs_to_remove:
-            graph.input.remove(input)
-        if verbose:
-            print("remove unused input ", len(inputs_to_remove), [input.name for input in inputs_to_remove])
-        
-        # remove weights that are not used
-        weights_to_remove = []
-        for initializer in graph.initializer:
-            if initializer.name not in remaining_input_names:
-                weights_to_remove.append(initializer)
-        for initializer in weights_to_remove:
-            graph.initializer.remove(initializer)
-        if verbose:
-            print("remove unused initializers:", len(weights_to_remove), [initializer.name for initializer in weights_to_remove])
-
-
     def fuse_attention(self, verbose=False):
-        normalize_nodes = self.nodes_by_type(self.normalize_name)
+        normalize_nodes = self.get_nodes_by_op_type(self.normalize_name)
         nodes_to_remove = []
         for normalize_node in normalize_nodes:
             self.transform_attention(normalize_node, nodes_to_remove)
@@ -545,7 +536,6 @@ class BertOnnxModel(OnnxModel):
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
-        self.remove_unused_constant()
 
     def fuse_embed_layer(self, verbose=False):
         nodes = self.nodes()
@@ -565,12 +555,12 @@ class BertOnnxModel(OnnxModel):
         if normalize_node is None:
             raise Exception("did not find node with op_type", self.normalize_name)
 
-        #This is the first normalize node
+        # Here we assume the order of embedding is word_embedding + position_embedding + segment_embedding.
         add_node = self.find_first_parent_by_type(normalize_node, 'Add', output_name_to_nodes, recursive = False)
-        assert(add_node is not None)
+        assert add_node is not None
 
         segment_embedding_gather = self.find_first_parent_by_type(normalize_node, 'Gather', output_name_to_nodes, recursive = False)
-        assert(segment_embedding_gather is not None)
+        assert segment_embedding_gather is not None
 
         parents = self.get_parents(add_node, output_name_to_nodes)
         if len(parents) == 2 and parents[0].op_type == 'Gather' and parents[1].op_type == 'Gather':
@@ -606,61 +596,42 @@ class BertOnnxModel(OnnxModel):
 
     def change_input_to_int32(self):
         graph = self.graph()
-        inputs = []
-        input_map = {}
-        for input in self.embed_node.input:
-            input_map[input] = onnx.helper.make_tensor_value_info(input, TensorProto.INT32, [self.batch_size if self.batch_size > 0 else 1, self.sequence_length])
 
         new_graph_inputs = []
         for input in graph.input:
-            if input.name in self.embed_node.input:
-                print("input", input.name)
-                new_graph_inputs.append(input_map[input.name])
+            if input.name in self.embed_node.input[:3]: # Only the first 3 inputs of embed node need int32 conversion.
+                int32_input = onnx.helper.make_tensor_value_info(input.name, TensorProto.INT32, [self.batch_size if self.batch_size > 0 else 1, self.sequence_length])
+                new_graph_inputs.append(int32_input)
+            else:
+                new_graph_inputs.append(input)
 
         graph_def = onnx.helper.make_graph(graph.node,
-                        'int32 inputs',
-                        new_graph_inputs,
-                        graph.output,
-                        initializer=graph.initializer,
-                        value_info=graph.value_info)
+                                           'int32 inputs',
+                                           new_graph_inputs,
+                                           graph.output,
+                                           initializer=graph.initializer,
+                                           value_info=graph.value_info)
 
         self.model = onnx.helper.make_model(graph_def, producer_name='bert model optimizer')
 
     def cast_input_to_int32(self):
-        model = self.model
-
-        nodes_to_add = []
-        for input in self.embed_node.input:
+        for input in self.embed_node.input[:3]:
             graph_input = self.find_graph_input(input)
-            if graph_input is None:
-                continue
-
-            need_cast = graph_input.type.tensor_type.elem_type == TensorProto.INT64
-            if need_cast:
-                cast_output = input + '_cast32'
-                cast_node = onnx.helper.make_node('Cast',
-                    inputs=[input],
-                    outputs=[cast_output])
+            if graph_input is not None and graph_input.type.tensor_type.elem_type == TensorProto.INT64:
+                cast_output = input + '_int32'
+                cast_node = onnx.helper.make_node('Cast', inputs=[input], outputs=[cast_output])
                 cast_node.attribute.extend([onnx.helper.make_attribute("to", int(TensorProto.INT32))])
-                nodes_to_add.extend([cast_node])
-                for n in model.graph.node:
-                    if input in n.input:
-                        OnnxModel.replace_node_input(n, input, input + '_cast32')
-
-        model.graph.node.extend(nodes_to_add)
+                self.replace_input_of_all_nodes(input, cast_output)
+                self.add_node(cast_node)
 
     # Update input and output using dynamic batch
-    def update_dynamic_batch_io(self, dynamic_batch_dim = 'batch'):
-        assert(self.batch_size == 0)
+    def update_dynamic_batch_io(self, dynamic_batch_dim='batch'):
         dynamic_batch_inputs = {}
         for input in self.model.graph.input:
-            index = 0
-            for embed_input in self.embed_node.input:
-                index += 1
+            for embed_input in self.embed_node.input[:3]:
                 if embed_input == input.name:
-                    if index <= 3: # only first 3 inputs has batch dim
-                        dim_proto = input.type.tensor_type.shape.dim[0]
-                        dim_proto.dim_param = dynamic_batch_dim
+                    dim_proto = input.type.tensor_type.shape.dim[0]
+                    dim_proto.dim_param = dynamic_batch_dim
 
         for output in self.model.graph.output:
             dim_proto = output.type.tensor_type.shape.dim[0]
@@ -703,12 +674,10 @@ class BertOnnxModel(OnnxModel):
                     second_add_node = input_name_to_nodes[mul_node.output[0]][0]
                     nodes_to_remove.extend([pow_node, reduceMean_node, first_add_node, sqrt_node, div_node, mul_node, second_add_node])
 
-                    assert(self.normalize_name == "SkipLayerNormalization")
-                    normalize_node_name = self.create_node_name('SkipLayerNorm')
+                    normalize_node_name = self.create_node_name(self.normalize_name, name_prefix="SkipLayerNorm")
                     sln_inputs = [i for i in node.input]
                     sln_inputs.extend([mul_node.input[0], second_add_node.input[1]])
-                    normalize_node = onnx.helper.make_node(
-                        'SkipLayerNormalization',
+                    normalize_node = onnx.helper.make_node(self.normalize_name,
                         inputs=sln_inputs,
                         outputs=[second_add_node.output[0]],
                         name=normalize_node_name)
@@ -725,20 +694,20 @@ def main():
     parser.add_argument('--input', required=True, type=str)
     parser.add_argument('--output', required=True, type=str)
 
-    parser.add_argument('--batch_size', required=False, type=int, default=0)
-    # TODO: deduce num_heads, head_size and sequence_length parameters from graph
-    parser.add_argument('--num_heads', required=False, type=int, default=12)
-    # head_size = hidden_size / num_heads
-    parser.add_argument('--head_size', required=False, type=int, default=64)
+    # model parameters
+    parser.add_argument('--num_heads', required=False, type=int, default=12, help="number of attention heads")
+    parser.add_argument('--hidden_size', required=False, type=int, default=768)
     parser.add_argument('--sequence_length', required=False, type=int, default=128)
+    parser.add_argument('--batch_size', required=False, type=int, default=0)
 
-    # It is recommended to use int32 tensor as input to avoid unnecessary data type cast.
+    # Use int32 (instead of int64) tensor as input to avoid unnecessary data type cast.
     parser.add_argument('--input_int32', required=False, action='store_true')
     parser.set_defaults(input_int32=False)
 
-    # For NVidia GPU with Tensor Core like V100 and T4, float16 brings better performance
-    parser.add_argument('--enable_float16', required=False, action='store_true')
-    parser.set_defaults(enable_float16=False)
+    # For NVidia GPU with Tensor Core like V100 and T4, half-precision float brings better performance.
+    parser.add_argument('--float16', required=False, action='store_true')
+    parser.set_defaults(float16=False)
+
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
@@ -748,7 +717,7 @@ def main():
     with open(args.input, "rb") as f:
         model.ParseFromString(f.read())
 
-    bert_model = BertOnnxModel(model, args.num_heads, args.head_size, args.batch_size, args.sequence_length)
+    bert_model = BertOnnxModel(model, args.num_heads, args.hidden_size, args.batch_size, args.sequence_length)
 
     bert_model.fuse_layer_norm()
 
@@ -767,10 +736,8 @@ def main():
         # use dynamic batch size instead of static
         bert_model.update_dynamic_batch_io()
 
-    bert_model.remove_unused_constant()
-
-    if args.enable_float16:
-        bert_model.convert_model_to_half()
+    if args.float16:
+        bert_model.convert_model_float32_to_float16()
 
     with open(args.output, "wb") as out:
         out.write(bert_model.model.SerializeToString())
