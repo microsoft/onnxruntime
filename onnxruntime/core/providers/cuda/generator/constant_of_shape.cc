@@ -28,24 +28,22 @@ Status ConstantOfShape::ComputeInternal(OpKernelContext* ctx) const {
   const auto size = output_tensor->Shape().Size();
   const void* value_ptr = GetValuePtr();
   const auto element_size = output_tensor->DataType()->Size();
-  if (size > 0) {
-    switch (element_size) {
-      case sizeof(int8_t):
-        cuda::Fill(reinterpret_cast<int8_t*>(output_data), *(reinterpret_cast<const int8_t*>(value_ptr)), size);
-        break;
-      case sizeof(int16_t):
-        cuda::Fill(reinterpret_cast<int16_t*>(output_data), *(reinterpret_cast<const int16_t*>(value_ptr)), size);
-        break;
-      case sizeof(int32_t):
-        cuda::Fill(reinterpret_cast<int32_t*>(output_data), *(reinterpret_cast<const int32_t*>(value_ptr)), size);
-        break;
-      case sizeof(int64_t):
-        cuda::Fill(reinterpret_cast<int64_t*>(output_data), *(reinterpret_cast<const int64_t*>(value_ptr)), size);
-        break;
-      default:
-        ORT_THROW("Unsupported value attribute datatype with sizeof=: ", element_size);
-        break;
-    }
+
+#define CASE(TYPE)                                                                                          \
+  case sizeof(TYPE):                                                                                        \
+    if (size > 0) {                                                                                         \
+      cuda::Fill(reinterpret_cast<TYPE*>(output_data), *(reinterpret_cast<const TYPE*>(value_ptr)), size);  \
+    }                                                                                                       \
+    break;
+
+  switch (element_size) {
+    CASE(int8_t)
+    CASE(int16_t)
+    CASE(int32_t)
+    CASE(int64_t)
+    default:
+      ORT_THROW("Unsupported value attribute datatype with sizeof=: ", element_size);
+      break;
   }
 
   return Status::OK();
