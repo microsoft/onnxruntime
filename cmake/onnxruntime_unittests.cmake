@@ -219,6 +219,10 @@ if(onnxruntime_USE_AUTOML)
    list(APPEND onnxruntime_test_providers_dependencies automl_featurizers)
 endif()
 
+if(onnxruntime_USE_DML)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dml)
+endif()
+
 file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/test/tvm/*.h"
   "${ONNXRUNTIME_ROOT}/test/tvm/*.cc"
