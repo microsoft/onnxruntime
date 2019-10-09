@@ -123,7 +123,6 @@ static Status EvaluateMatMulInteger(
       }
 
       // Target instruction option
-      bool isAVX = CPUIDInfo::GetCPUIDInfo().HasAVX();
       bool isAVX2 = CPUIDInfo::GetCPUIDInfo().HasAVX2();
       bool isAVX512 = CPUIDInfo::GetCPUIDInfo().HasAVX512Skylake();
 
@@ -140,7 +139,7 @@ static Status EvaluateMatMulInteger(
         //TODO: change to use MLAS when no layout could apply
         tvm::Tensor B_marshalled = tvm_codegen::Transpose(B, {1, 0});
 
-        bool use_extern_MKL = (force_mkl || isAVX);
+        bool use_extern_MKL = (force_mkl || !isAVX2);
         tvm::Tensor output_tensor = use_extern_MKL ? IMatMulExternMKL(A, B_marshalled, output_shape, input_dim, embed_dim, name + "_IMatMulExternMKL")
                                                    : IMatMulExternAVX2(A, B_marshalled, output_shape, input_dim, embed_dim, name + "_IMatMulExternAVX2");
         outputs.push_back(output_tensor);
@@ -193,7 +192,7 @@ static Status EvaluateMatMulInteger(
         auto layout_key = tvm_codegen::WeightLayoutTranspose2D::GetKey(TensorProtoDataType(B_NodeArg));
         tvm::Tensor B_marshalled = ctx_nuphar->ApplyWeightLayout(layout_key, B_name, B, true);
 
-        bool use_extern_AVX2 = !force_mkl && isAVX2;
+        bool use_extern_AVX2 = (!force_mkl && isAVX2);
         tvm::Tensor output_tensor = use_extern_AVX2 ? IMatMulExternAVX2(A, B_marshalled, output_shape, input_dim, embed_dim, name + "_IMatMulExternAVX2")
                                                     : IMatMulExternMKL(A, B_marshalled, output_shape, input_dim, embed_dim, name + "_IMatMulExternMKL");
 
@@ -246,7 +245,6 @@ static Status EvaluateMatMulInteger16(
       }
 
       // Target instruction option
-      bool isAVX = CPUIDInfo::GetCPUIDInfo().HasAVX();
       bool isAVX2 = CPUIDInfo::GetCPUIDInfo().HasAVX2();
 
       // Model input option
@@ -258,7 +256,7 @@ static Status EvaluateMatMulInteger16(
         //TODO: change to use MLAS when no layout could apply
         tvm::Tensor B_marshalled = tvm_codegen::Transpose(B, {1, 0});
 
-        bool use_extern_MKL = (force_mkl || isAVX);
+        bool use_extern_MKL = (force_mkl || !isAVX2);
         tvm::Tensor output_tensor = use_extern_MKL ? IMatMul16ExternMKL(A, B_marshalled, output_shape, input_dim, embed_dim, node.Name() + "_IMatMulExternMKL")
                                                    : IMatMul16ExternAVX2(A, B_marshalled, output_shape, input_dim, embed_dim, node.Name() + "_IMatMulExternAVX2");
         outputs.push_back(output_tensor);
