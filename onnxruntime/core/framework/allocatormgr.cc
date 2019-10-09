@@ -23,6 +23,7 @@ AllocatorPtr CreateAllocator(DeviceAllocatorRegistrationInfo info, int device_id
   if (device_allocator->AllowsArena()) {
     return std::shared_ptr<IArenaAllocator>(
           onnxruntime::make_unique<TAllocator>(std::move(device_allocator), info.max_mem));
+  }
 
   return AllocatorPtr(std::move(device_allocator));
 }

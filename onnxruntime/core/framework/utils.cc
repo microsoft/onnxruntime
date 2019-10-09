@@ -71,10 +71,7 @@ void* DefaultAlloc(size_t size) {
   if (size <= 0) return nullptr;
   void* p;
   size_t alignment = MlasGetPreferredBufferAlignment();
-#ifdef USE_MIMALLOC
-  p = mi_malloc_aligned(size, alignment);
-  if (p == nullptr) throw std::bad_alloc();
-#elif _MSC_VER
+#if _MSC_VER
   p = _aligned_malloc(size, alignment);
   if (p == nullptr) throw std::bad_alloc();
 #elif defined(_LIBCPP_SGX_CONFIG)
@@ -88,9 +85,7 @@ void* DefaultAlloc(size_t size) {
 }
 
 void DefaultFree(void* p) {
-#ifdef USE_MIMALLOC
-  mi_free(p);
-#elif _MSC_VER
+#if _MSC_VER
   _aligned_free(p);
 #else
   free(p);

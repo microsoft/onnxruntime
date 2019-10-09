@@ -24,11 +24,12 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
   if (shape_size < 0 || static_cast<uint64_t>(shape_size) >= std::numeric_limits<size_t>::max())
     ORT_THROW("shape.Size() must >=0");
   void* p_data = nullptr;
-  if(shape_size > 0) {
-     size_t len;
-     IAllocator::CalcMemSizeForArray(static_cast<size_t>(shape_size), p_type->Size(), &len);
-     len += offset;
-     p_data = allocator->Alloc(len);
+  if (shape_size > 0) {
+    size_t len;
+    if (!allocator->CalcMemSizeForArray(static_cast<size_t>(shape_size), p_type->Size(), &len))
+      p_data = nullptr;
+    len +=  offset;
+    p_data = allocator->Alloc(len);
   }
 
   Init(p_type, shape, p_data, allocator, offset);
