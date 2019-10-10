@@ -54,8 +54,8 @@ Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleE
     }
   }
 
-  auto BatchNormalization_Scale = std::make_unique<Initializer>(BatchNormalization_Scale_tensor_proto);
-  auto mul_B = std::make_unique<Initializer>(mul_B_tensor_proto);
+  auto BatchNormalization_Scale = std::make_unique<Initializer>(*BatchNormalization_Scale_tensor_proto);
+  auto mul_B = std::make_unique<Initializer>(*mul_B_tensor_proto);
 
   const ONNX_NAMESPACE::TensorProto* BatchNormalization_B_tensor_proto = nullptr;
   std::unique_ptr<Initializer> BatchNormalization_B = nullptr;
@@ -68,7 +68,7 @@ Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleE
       BatchNormalization_B_tensor_proto->dims_size() != 1) {
     return Status::OK();
   }
-  BatchNormalization_B = std::make_unique<Initializer>(BatchNormalization_B_tensor_proto);
+  BatchNormalization_B = std::make_unique<Initializer>(*BatchNormalization_B_tensor_proto);
 
   // Calculate new value of initializers of BatchNormalization node
   BatchNormalization_Scale->scale_by_axis(*mul_B, 1);

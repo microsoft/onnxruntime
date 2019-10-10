@@ -62,8 +62,8 @@ Status BatchNormalizationAddFusion::Apply(Graph& graph, Node& node, RewriteRuleE
     return Status::OK();
   }
 
-  auto BatchNormalization_B = std::make_unique<Initializer>(BatchNormalization_B_tensor_proto);
-  auto add_B = std::make_unique<Initializer>(add_B_tensor_proto);
+  auto BatchNormalization_B = std::make_unique<Initializer>(*BatchNormalization_B_tensor_proto);
+  auto add_B = std::make_unique<Initializer>(*add_B_tensor_proto);
 
   if (BatchNormalization_B->size() != add_B->size()) {
     return Status::OK();
