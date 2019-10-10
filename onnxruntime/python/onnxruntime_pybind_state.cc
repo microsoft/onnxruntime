@@ -714,7 +714,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {
           OrtValue ml_value;
-          CreateGenericMLValue(sess, GetAllocator(), _.first, _.second, &ml_value);
+          auto px = sess->GetModelInputs();
+          if (!px.first.IsOK() || !px.second) {
+            throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+          }
+          CreateGenericMLValue(px.second, GetAllocator(), _.first, _.second, &ml_value);
           if (PyErr_Occurred()) {
             PyObject *ptype, *pvalue, *ptraceback;
             PyErr_Fetch(&ptype, &pvalue, &ptraceback);

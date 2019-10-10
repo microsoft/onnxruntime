@@ -198,13 +198,9 @@ std::unique_ptr<Tensor> CreateTensor(AllocatorPtr alloc, const std::string& name
 }
 
 void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_input,
-                             const InferenceSession* sess, PyObject* pylist_obj, OrtValue* p_mlvalue) {
+                             const InputDefList* input_def_list, PyObject* pylist_obj, OrtValue* p_mlvalue) {
   // get sequence type from the model
-  auto px = sess->GetModelInputs();
-  if (!px.first.IsOK() || !px.second) {
-    throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
-  }
-  const auto& def_list = *(px.second);
+  const auto& def_list = *input_def_list;
   auto ret_it = std::find_if(std::begin(def_list), std::end(def_list),
                              [&name_input](const NodeArg* node_arg) { return name_input == node_arg->Name(); });
   if (ret_it == std::end(def_list)) {
@@ -453,7 +449,7 @@ void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const 
   }
 }
 
-void CreateGenericMLValue(const onnxruntime::InferenceSession* sess, AllocatorPtr alloc, const std::string& name_input,
+void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, AllocatorPtr alloc, const std::string& name_input,
                           py::object& value, OrtValue* p_mlvalue) {
   if (PyObjectCheck_Array(value.ptr())) {
     // The most frequent case: input comes as an array.
@@ -461,7 +457,7 @@ void CreateGenericMLValue(const onnxruntime::InferenceSession* sess, AllocatorPt
     CreateTensorMLValue(alloc, name_input, arr, p_mlvalue);
   } else if (PyList_Check(value.ptr())) {
     auto* seq_tensors = reinterpret_cast<PyObject*>(value.ptr());
-    CreateSequenceOfTensors(alloc, name_input, sess, seq_tensors, p_mlvalue);
+    CreateSequenceOfTensors(alloc, name_input, input_def_list, seq_tensors, p_mlvalue);
   } else if (PyDict_Check(value.ptr())) {
     CreateMapMLValue_AgnosticVectorMap((PyObject*)NULL, value.ptr(), alloc, name_input, p_mlvalue);
   } else {

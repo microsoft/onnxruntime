@@ -179,11 +179,12 @@ ONNX_CPU_OPERATOR_KERNEL(
                                  DataTypeImpl::GetTensorType<int64_t>()}),
     SequenceInsert);
 
-Status CreateAndCopyCpuTensor(const Tensor& in_tensor, OpKernelContext* context, Tensor& out_tensor) {
+Status CreateCopyAndAppendCpuTensor(const Tensor& in_tensor, OpKernelContext* context, TensorSeq& tseq) {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-  out_tensor = Tensor(in_tensor.DataType(), onnxruntime::TensorShape(in_tensor.Shape()), alloc);
-  CopyCpuTensor(&in_tensor, &out_tensor);
+  Tensor tmp(in_tensor.DataType(), onnxruntime::TensorShape(in_tensor.Shape()), alloc);
+  CopyCpuTensor(&in_tensor, &tmp);
+  tseq.tensors.push_back(std::move(tmp));
   return Status::OK();
 }
 
@@ -219,18 +220,17 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
   auto* Y = context->Output<TensorSeq>(0);
   ORT_ENFORCE(Y != nullptr, "SequenceInsert: Got nullptr for output sequence");
   Y->dtype = S->dtype;
-  Y->tensors.resize(num_tensors_input_seq + 1);
-  for (int i = 0, yidx = 0; i < num_tensors_input_seq; ++i, ++yidx) {
+  Y->tensors.reserve(num_tensors_input_seq + 1);
+  for (int i = 0; i < num_tensors_input_seq; ++i) {
     if (i == input_seq_idx) {
-      CreateAndCopyCpuTensor(*X, context, Y->tensors[yidx]);
-      ++yidx;
-      CreateAndCopyCpuTensor(S->tensors[i], context, Y->tensors[yidx]);
+      CreateCopyAndAppendCpuTensor(*X, context, *Y);
+      CreateCopyAndAppendCpuTensor(S->tensors[i], context, *Y);
     } else {
-      CreateAndCopyCpuTensor(S->tensors[i], context, Y->tensors[yidx]);
+      CreateCopyAndAppendCpuTensor(S->tensors[i], context, *Y);
     }
   }
   if (input_seq_idx == num_tensors_input_seq + 1) {
-    CreateAndCopyCpuTensor(*X, context, Y->tensors[Y->tensors.size() - 1]);
+    CreateCopyAndAppendCpuTensor(*X, context, *Y);
   }
 
   return Status::OK();
@@ -269,13 +269,12 @@ Status SequenceErase::Compute(OpKernelContext* context) const {
   auto* Y = context->Output<TensorSeq>(0);
   ORT_ENFORCE(Y != nullptr, "SequenceErase: Got nullptr for output sequence");
   Y->dtype = S->dtype;
-  Y->tensors.resize(num_tensors_input_seq - 1);
-  for (int i = 0, yidx = 0; i < num_tensors_input_seq; ++i, ++yidx) {
+  Y->tensors.reserve(num_tensors_input_seq - 1);
+  for (int i = 0; i < num_tensors_input_seq; ++i) {
     if (i == input_seq_idx) {
-      --yidx;
-    } else {
-      CreateAndCopyCpuTensor(S->tensors[i], context, Y->tensors[yidx]);
+      continue;
     }
+    CreateCopyAndAppendCpuTensor(S->tensors[i], context, *Y);
   }
 
   return Status::OK();
@@ -309,10 +308,10 @@ Status SequenceConstruct::Compute(OpKernelContext* context) const {
 
   // now copy the tensors to the output sequence
   Y->dtype = first_dtype;
-  Y->tensors.resize(num_inputs);
+  Y->tensors.reserve(num_inputs);
   for (int input_idx = 0; input_idx < num_inputs; ++input_idx) {
     const auto* X = context->Input<Tensor>(input_idx);
-    CreateAndCopyCpuTensor(*X, context, Y->tensors[input_idx]);
+    CreateCopyAndAppendCpuTensor(*X, context, *Y);
   }
 
   return Status::OK();
