@@ -33,6 +33,8 @@ struct OrtTypeInfo {
                                      const onnxruntime::DataTypeImpl* tensor_data_type, OrtTypeInfo** out);
   static OrtStatus* FromDataTypeImpl(const ONNX_NAMESPACE::TypeProto*, OrtTypeInfo** out);
 
+  static const onnxruntime::DataTypeImpl* ElementTypeFromProto(int type);
+
  private:
   OrtTypeInfo(ONNXType type, OrtTensorTypeAndShapeInfo* data) noexcept;
 };

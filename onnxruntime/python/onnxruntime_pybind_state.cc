@@ -12,6 +12,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/framework/TensorSeq.h"
 
 #if USE_CUDA
 #define BACKEND_PROC "GPU"
@@ -148,9 +149,53 @@ void AddNonTensor(OrtValue& val, std::vector<py::object>& pyobjs) {
   pyobjs.push_back(py::cast(val.Get<T>()));
 }
 
+void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj) {
+  std::vector<npy_intp> npy_dims;
+  const TensorShape& shape = rtensor.Shape();
+
+  for (size_t n = 0; n < shape.NumDimensions(); ++n) {
+    npy_dims.push_back(shape[n]);
+  }
+
+  MLDataType dtype = rtensor.DataType();
+  const int numpy_type = OnnxRuntimeTensorToNumpyType(dtype);
+  obj = py::reinterpret_steal<py::object>(PyArray_SimpleNew(
+      shape.NumDimensions(), npy_dims.data(), numpy_type));
+
+  void* outPtr = static_cast<void*>(
+      PyArray_DATA(reinterpret_cast<PyArrayObject*>(obj.ptr())));
+
+  if (numpy_type != NPY_OBJECT) {
+    memcpy(outPtr, rtensor.DataRaw(dtype), dtype->Size() * shape.Size());
+  } else {
+    // Handle string type.
+    py::object* outObj = static_cast<py::object*>(outPtr);
+    const std::string* src = rtensor.template Data<std::string>();
+    for (int i = 0; i < rtensor.Shape().Size(); i++, src++) {
+      outObj[i] = py::cast(*src);
+    }
+  }
+}
+
+template <>
+void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
+  const auto& seq_tensors = val.Get<TensorSeq>();
+  size_t num_tensors = seq_tensors.tensors.size();
+  py::list py_list;
+  for (size_t i = 0; i < num_tensors; ++i) {
+    const auto& rtensor = seq_tensors.tensors[i];
+    py::object obj;
+    GetPyObjFromTensor(rtensor, obj);
+    py_list.append(obj);
+  }
+  pyobjs.push_back(py_list);
+}
+
 void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   // Should be in sync with core/framework/datatypes.h
-  if (val.Type() == DataTypeImpl::GetType<MapStringToString>()) {
+  if (val.Type() == DataTypeImpl::GetType<TensorSeq>()) {
+    AddNonTensor<TensorSeq>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<MapStringToString>()) {
     AddNonTensor<MapStringToString>(val, pyobjs);
   } else if (val.Type() == DataTypeImpl::GetType<MapStringToInt64>()) {
     AddNonTensor<MapStringToInt64>(val, pyobjs);
@@ -177,31 +222,8 @@ void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
 
 void AddTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   const Tensor& rtensor = val.Get<Tensor>();
-  std::vector<npy_intp> npy_dims;
-  const TensorShape& shape = rtensor.Shape();
-
-  for (size_t n = 0; n < shape.NumDimensions(); ++n) {
-    npy_dims.push_back(shape[n]);
-  }
-
-  MLDataType dtype = rtensor.DataType();
-  const int numpy_type = OnnxRuntimeTensorToNumpyType(dtype);
-  py::object obj = py::reinterpret_steal<py::object>(PyArray_SimpleNew(
-      shape.NumDimensions(), npy_dims.data(), numpy_type));
-
-  void* outPtr = static_cast<void*>(
-      PyArray_DATA(reinterpret_cast<PyArrayObject*>(obj.ptr())));
-
-  if (numpy_type != NPY_OBJECT) {
-    memcpy(outPtr, rtensor.DataRaw(dtype), dtype->Size() * shape.Size());
-  } else {
-    // Handle string type.
-    py::object* outObj = static_cast<py::object*>(outPtr);
-    const std::string* src = rtensor.template Data<std::string>();
-    for (int i = 0; i < rtensor.Shape().Size(); i++, src++) {
-      outObj[i] = py::cast(*src);
-    }
-  }
+  py::object obj;
+  GetPyObjFromTensor(rtensor, obj);
   pyobjs.push_back(obj);
 }
 
@@ -692,7 +714,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {
           OrtValue ml_value;
-          CreateGenericMLValue(GetAllocator(), _.first, _.second, &ml_value);
+          auto px = sess->GetModelInputs();
+          if (!px.first.IsOK() || !px.second) {
+            throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+          }
+          CreateGenericMLValue(px.second, GetAllocator(), _.first, _.second, &ml_value);
           if (PyErr_Occurred()) {
             PyObject *ptype, *pvalue, *ptraceback;
             PyErr_Fetch(&ptype, &pvalue, &ptraceback);

@@ -13,13 +13,11 @@
 #include "core/providers/nuphar/compiler/x86/x86_target_info.h"
 #include "core/providers/nuphar/kernel.h"
 #include "core/providers/nuphar/partition/graph_partitioner.h"
+#include "core/framework/onnxruntime_typeinfo.h"
 
 #include <tvm/runtime/device_api.h>  // TODO remove this after removing tvm::runtime
 
 using namespace onnxruntime::nuphar;
-
-// from onnxruntime_typeinf.cc, in global namespace
-const onnxruntime::DataTypeImpl* ElementTypeFromProto(int type);
 
 namespace onnxruntime {
 
@@ -296,7 +294,7 @@ Status NupharExecutionProvider::SaveInitializer(
       shape_dims[i] = dims[i];
 
     const TensorShape& shape = TensorShape::ReinterpretBaseType(shape_dims);
-    auto data_type = ElementTypeFromProto(proto->data_type());
+    auto data_type = OrtTypeInfo::ElementTypeFromProto(proto->data_type());
     auto t = onnxruntime::make_unique<Tensor>(
         data_type,
         shape,
