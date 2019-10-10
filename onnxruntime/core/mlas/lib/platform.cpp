@@ -230,8 +230,8 @@ Return Value:
                             this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Vnni;
                         }
                     }
-                }
 #endif // MLAS_AVX512BW_UNSUPPORTED
+                }
 #endif // MLAS_AVX512F_UNSUPPORTED
 
             }
