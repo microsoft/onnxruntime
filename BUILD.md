@@ -17,9 +17,9 @@
 ### Build Instructions
 #### Windows
 ```
-build.bat --config RelWithDebInfo --build_shared_lib --parallel
+.\build.bat --config RelWithDebInfo --build_shared_lib --parallel
 ```
-The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat
+The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`
 
 
 #### Linux
@@ -29,6 +29,7 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 
 #### Notes
 
+* Please note that these instructions build the debug build, which may have performance tradeoffs
 * The build script runs all unit tests by default (for native builds and skips tests by default for cross-compiled builds).
 * If you need to install protobuf 3.6.1 from source code (cmake/external/protobuf), please note:
    * CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
@@ -74,9 +75,20 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 For other system requirements and other dependencies, please see [this section](./README.md#system-requirements-pre-requisite-dependencies).
 
 ---
+# Common Build Instructions
+|Description|Command|Additional description|
+|-----------|-----------|-----------|
+|**Basic build**|build.bat (Windows)<br>./build.sh (Linux)||
+|**Debug build**|--config RelWithDebugInfo|Debug build|
+|**Use OpenMP**|--use_openmp|OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.|
+|**Build using parallel processing**|--parallel|This is strongly recommended to speed up the build.|
+|**Build Shared Library**|--build_shared_lib||
+|**Build Python wheel**|--build_wheel||
+|**Build C# and C packages**|--build_csharp||
+
 
 # Additional Build Instructions
-The complete list of build options can be found by running `./build.sh (or ./build.bat) --help`
+The complete list of build options can be found by running `./build.sh (or .\build.bat) --help`
 
 * [ONNX Runtime Server (Linux)](#Build-ONNX-Runtime-Server-on-Linux)
 
@@ -135,7 +147,7 @@ Build command:
 ##### Windows
 
 ```
-./build.bat --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path>
+.\build.bat --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path>
 ```
 
 ##### Linux
@@ -152,7 +164,7 @@ A Dockerfile is available [here](./tools/ci_build/github/linux/docker/Dockerfile
  * CUDA 9.2 is known to work with the 14.11 MSVC toolset (Visual Studio 15.3 and 15.4)
     * To install the 14.11 MSVC toolset, see [this page](https://blogs.msdn.microsoft.com/vcblog/2017/11/15/side-by-side-minor-version-msvc-toolsets-in-visual-studio-2017).
     * To use the 14.11 toolset with a later version of Visual Studio 2017 you have two options:
-     1. Setup the Visual Studio environment variables to point to the 14.11 toolset by running vcvarsall.bat, prior to running the build script. e.g. if you have VS2017 Enterprise, an x64 build would use the following command `"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64 -vcvars_ver=14.11` For convenience, build.amd64.1411.bat will do this and can be used in the same way as build.bat. e.g. ` .\build.amd64.1411.bat --use_cuda`
+     1. Setup the Visual Studio environment variables to point to the 14.11 toolset by running vcvarsall.bat, prior to running the build script. e.g. if you have VS2017 Enterprise, an x64 build would use the following command `"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64 -vcvars_ver=14.11` For convenience, .\build.amd64.1411.bat will do this and can be used in the same way as .\build.bat. e.g. ` .\build.amd64.1411.bat --use_cuda`
 
      2. Alternatively, if you have CMake 3.12 or later you can specify the toolset version via the `--msvc_toolset` build script parameter. e.g. `.\build.bat --msvc_toolset 14.11`
    
@@ -235,9 +247,9 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 #### Build Instructions
 ##### Windows
 ```
-build.bat --config RelWithDebInfo --use_openvino <hardware_option>
+.\build.bat --config RelWithDebInfo --use_openvino <hardware_option>
 ```
-*Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat.*
+*Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`*
 
 ##### Linux
 ```
@@ -251,9 +263,9 @@ build.bat --config RelWithDebInfo --use_openvino <hardware_option>
 
   For Windows:
   
-  <code> build.bat --config RelWithDebInfo  --use_openvino <hardware_option> </code>
+  <code> .\build.bat --config RelWithDebInfo  --use_openvino <hardware_option> </code>
  
-   *Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat.*
+   *Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`*
  
    <code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
 
@@ -349,7 +361,7 @@ index 7dfa97c..6d99e71 100644
 #### Build Instructions
 ##### Windows
 ```
-build.bat --use_tvm --use_llvm --llvm_path=\llvm\install\path\lib\cmake\llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
+.\build.bat --use_tvm --use_llvm --llvm_path=\llvm\install\path\lib\cmake\llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
 * These instructions build the release flavor. The Debug build of LLVM would be needed to build with the Debug flavor of ONNX Runtime.
@@ -368,7 +380,7 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 #### Build Instructions
 ##### Windows
 ```
-./build.bat --use_openmp
+.\build.bat --use_openmp
 ```
 
 ##### Linux
@@ -388,7 +400,7 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 #### Build Instructions
 ##### Windows
 ```
-./build.bat --use_openblas
+.\build.bat --use_openblas
 ```
 
 ##### Linux
@@ -402,7 +414,7 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 ### x86
 #### Build Intsructions
 ##### Windows
-* add `--x86` argument when launching build.bat
+* add `--x86` argument when launching `.\build.bat`
 
 ##### Linux
 * Must be built on a x86 OS
@@ -500,5 +512,5 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 1. Download and install Visual C++ compilers and libraries for ARM(64).
    If you have Visual Studio installed, please use the Visual Studio Installer (look under the section `Individual components` after choosing to `modify` Visual Studio) to download and install the corresponding ARM(64) compilers and libraries.
 
-2. Use `build.bat` and specify `--arm` or `--arm64` as the build option to start building. Preferably use `Developer Command Prompt for VS` or make sure all the installed cross-compilers are findable from the command prompt being used to build using the PATH environmant variable.
+2. Use `.\build.bat` and specify `--arm` or `--arm64` as the build option to start building. Preferably use `Developer Command Prompt for VS` or make sure all the installed cross-compilers are findable from the command prompt being used to build using the PATH environmant variable.
 
