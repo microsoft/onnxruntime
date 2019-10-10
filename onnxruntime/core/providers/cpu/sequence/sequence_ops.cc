@@ -298,7 +298,6 @@ Status SequenceConstruct::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(Y != nullptr, "SequenceConstruct: Got nullptr for output sequence");
 
   MLDataType first_dtype = context->Input<Tensor>(0)->DataType();
-
   // Before copying check if all tensors are of the same type.
   for (int input_idx = 0; input_idx < num_inputs; ++input_idx) {
     const auto* X = context->Input<Tensor>(input_idx);

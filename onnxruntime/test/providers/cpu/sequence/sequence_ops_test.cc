@@ -84,14 +84,14 @@ TEST(SequenceOpsTest, SequenceAtInvalidNegativeIdx) {
 // SequenceEmpty
 TEST(SequenceOpsTest, SequenceEmptyDefault) {
   OpTester test("SequenceEmpty", 11);
-  test.AddSeqOutput("S", SeqTensors<float>{});
+  test.AddSeqOutput("S", SeqTensors<float>());
   test.Run();
 }
 
 TEST(SequenceOpsTest, SequenceEmptyInt64) {
   OpTester test("SequenceEmpty", 11);
   test.AddAttribute("dtype", static_cast<int64_t>(7));
-  test.AddSeqOutput("S", SeqTensors<int64_t>{});
+  test.AddSeqOutput("S", SeqTensors<int64_t>());
   test.Run();
 }
 

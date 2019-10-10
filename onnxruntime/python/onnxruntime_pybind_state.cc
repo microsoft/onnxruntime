@@ -714,7 +714,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {
           OrtValue ml_value;
-          CreateGenericMLValue(GetAllocator(), _.first, _.second, &ml_value);
+          CreateGenericMLValue(sess, GetAllocator(), _.first, _.second, &ml_value);
           if (PyErr_Occurred()) {
             PyObject *ptype, *pvalue, *ptraceback;
             PyErr_Fetch(&ptype, &pvalue, &ptraceback);
