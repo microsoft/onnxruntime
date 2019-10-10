@@ -451,6 +451,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"depthtospace_crd_mode_example", "NGraph does not support CRD mode"});
   broken_tests.insert({"depthtospace_crd_mode", "NGraph does not support CRD mode"});
   broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});
+  broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
+  broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
 #endif
 
 #ifdef USE_MKLDNN
