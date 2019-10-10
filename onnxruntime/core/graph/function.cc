@@ -220,7 +220,10 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
                            const onnxruntime::NodeIndex& node_index,
                            const ONNX_NAMESPACE::FunctionProto& onnx_func_proto)
     : parent_graph_(&graph) {
-  // make a copy of the FunctionProto
+  // Make a copy of the FunctionProto.
+  // All FunctionBody ops with the same op type seem to share the same FunctionProto struct within a model. 
+  // Hence, we make a copy prior to generating the graph representation of the function,
+  // as we might make some modifications to the FunctionProto along the way    
   onnx_func_proto_ = onnx_func_proto;
 
   auto node_in_parent_graph = parent_graph_->GetNode(node_index);
