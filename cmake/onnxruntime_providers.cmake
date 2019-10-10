@@ -1,6 +1,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+file(GLOB_RECURSE onnxruntime_shared_library_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
+  "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
+)
+
 file(GLOB_RECURSE onnxruntime_providers_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.cc"
@@ -258,7 +263,7 @@ if (onnxruntime_USE_MKLDNN)
   )
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_mkldnn_cc_srcs})
-  add_library(onnxruntime_providers_mkldnn SHARED ${onnxruntime_providers_mkldnn_cc_srcs})
+  add_library(onnxruntime_providers_mkldnn SHARED ${onnxruntime_providers_mkldnn_cc_srcs} ${onnxruntime_shared_library_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_mkldnn gsl onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
   add_dependencies(onnxruntime_providers_mkldnn ${onnxruntime_EXTERNAL_DEPENDENCIES} project_mkldnn)
   set_target_properties(onnxruntime_providers_mkldnn PROPERTIES FOLDER "ONNXRuntime")

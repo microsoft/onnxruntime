@@ -5,6 +5,7 @@
 #include <atomic>
 #include "mkldnn_execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/providers/bridge.h"
 
 using namespace onnxruntime;
 
@@ -35,4 +36,26 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Mkldnn, _In_ OrtSessionOptions* options, int use_arena) {
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Mkldnn(use_arena));
   return nullptr;
+}
+
+extern onnxruntime::ProviderHost* g_host;
+
+namespace onnxruntime {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int device_id);
+
+struct Provider_Mkldnn : Provider {
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) override {
+    return CreateExecutionProviderFactory_Mkldnn(device_id);
+  }
+
+  void SetProviderHost(ProviderHost& host) override {
+    g_host = &host;
+    logging::LoggingManager::s_default_logger_ = g_host->LoggingManager_GetDefaultLogger();
+  }
+} provider_;
+
+}  // namespace onnxruntime
+
+extern "C" {
+__declspec(dllexport) onnxruntime::Provider* GetProvider() { return &onnxruntime::provider_; }
 }

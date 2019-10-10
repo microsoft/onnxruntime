@@ -1,25 +1,183 @@
 #include "core/framework/data_types.h"
 #include "core/framework/allocatormgr.h"
-#include "core/providers/bridge.h"
 #include "core/providers/mkldnn/mkldnn_provider_factory.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/platform/env.h"
+#include "core/framework/execution_provider.h"
+#include "core/framework/compute_capability.h"
+#include "core/providers/shared_library/bridge.h"
+#include "core/common/logging/logging.h"
+#include "core/common/cpuid_info.h"
+
+using namespace google::protobuf::internal;
+
+template <typename PtrType, PtrType Value, typename TagType>
+struct private_access_helper {
+  friend PtrType private_cast(TagType) {
+    return Value;
+  }
+};
+
+// actually defines the class and therefore defines the private_cast() function
+struct private_cast_google_protobuf_internal_RepeatedPtrFieldBase_Reserve {};
+template struct private_access_helper<void (RepeatedPtrFieldBase::*)(int), &RepeatedPtrFieldBase::Reserve, private_cast_google_protobuf_internal_RepeatedPtrFieldBase_Reserve>;
+struct private_cast_google_protobuf_Arena_CreateMaybeMessage_onnx_TensorProto {};
+template struct private_access_helper<onnx::TensorProto* (*)(google::protobuf::Arena*), &google::protobuf::Arena::CreateMaybeMessage<onnx::TensorProto>, private_cast_google_protobuf_Arena_CreateMaybeMessage_onnx_TensorProto>;
 
 namespace onnxruntime {
 
 struct ProviderHostImpl : ProviderHost {
-  MLDataType DataTypeImpl_GetType_Tensor() override { return DataTypeImpl::GetType<Tensor>(); }
-  MLDataType DataTypeImpl_GetType_float() override { return DataTypeImpl::GetType<float>(); }
+  ProviderHostImpl::ProviderHostImpl() {
+    google_protobuf_internal_RepeatedPtrFieldBase_Reserve = private_cast(private_cast_google_protobuf_internal_RepeatedPtrFieldBase_Reserve{});
+    google_protobuf_Arena_CreateMaybeMessage_onnx_TensorProto = private_cast(private_cast_google_protobuf_Arena_CreateMaybeMessage_onnx_TensorProto{});
+
+    DataTypeImpl_GetType_Tensor = &DataTypeImpl::GetType<Tensor>;
+    DataTypeImpl_GetType_float = &DataTypeImpl::GetType<float>;
+    DataTypeImpl_GetTensorType_float = &DataTypeImpl::GetTensorType<float>;
+
+    onnx_AttributeProto_CopyFrom = &onnx::AttributeProto::CopyFrom;
+    onnx_TensorProto_CopyFrom = &onnx::TensorProto::CopyFrom;
+  }
+
+  const ::std::string& google_protobuf_internal_GetEmptyStringAlreadyInited() override {
+    return google::protobuf::internal::GetEmptyStringAlreadyInited();
+  }
+
+  logging::Logger* LoggingManager_GetDefaultLogger() override { return const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger()); }
 
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
   void HeapFree(void* p) override { delete p; }
+
+  void onnx_AttributeProto_constructor(void* _this) override {
+    new (_this) onnx::AttributeProto();
+  }
+
+  void onnx_AttributeProto_copy_constructor(void* _this, void* copy) override {
+    new (_this) onnx::AttributeProto(*reinterpret_cast<const onnx::AttributeProto*>(copy));
+  }
+
+  void onnx_AttributeProto_destructor(void* _this) override {
+    reinterpret_cast<onnx::AttributeProto*>(_this)->AttributeProto::~AttributeProto();
+  }
+
+  bool onnx_AttributeProto_AttributeType_IsValid(int p1) override {
+    return onnx::AttributeProto_AttributeType_IsValid(p1);
+  }
 
   std::shared_ptr<IAllocator> CreateAllocator(DeviceAllocatorRegistrationInfo&& info, int device_id) override {
     return onnxruntime::CreateAllocator(std::move(info), device_id);
   }
 
-  virtual const OrtMemoryInfo& CPUAllocator_Info(const CPUAllocator* _this) override {
-    return _this->Info();
+  const CPUIDInfo& CPUIDInfo_GetCPUIDInfo() override {
+    return CPUIDInfo::GetCPUIDInfo();
+  }
+
+  void* CPUAllocator_Alloc(CPUAllocator* _this, uint64_t p1) override {
+    return _this->CPUAllocator::Alloc(p1);
+  }
+
+  void CPUAllocator_Free(CPUAllocator* _this, void* p1) override {
+    return _this->CPUAllocator::Free(p1);
+  }
+
+  const OrtMemoryInfo& CPUAllocator_Info(const CPUAllocator* _this) override {
+    return _this->CPUAllocator::Info();
+  }
+
+  std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider_GetCapability(const IExecutionProvider* _this, const GraphViewer& p1, const std::vector<const KernelRegistry*>& p2) override {
+    return _this->IExecutionProvider::GetCapability(p1, p2);
+  }
+
+  std::shared_ptr<IAllocator> IExecutionProvider_GetAllocator(const IExecutionProvider* _this, int p1, OrtMemType p2) override {
+    return _this->IExecutionProvider::GetAllocator(p1, p2);
+  }
+
+  void IExecutionProvider_InsertAllocator(IExecutionProvider* _this, std::shared_ptr<IAllocator> p1) override {
+    _this->IExecutionProvider::InsertAllocator(std::move(p1));
+  }
+
+  Status IExecutionProvider_OnRunEnd(IExecutionProvider* _this) override {
+    return _this->IExecutionProvider::OnRunEnd();
+  }
+
+  Status IExecutionProvider_OnRunStart(IExecutionProvider* _this) override {
+    return _this->IExecutionProvider::OnRunStart();
+  }
+
+  const InitializedTensorSet& GraphViewer_GetAllInitializedTensors(const GraphViewer* _this) override {
+    return _this->GraphViewer::GetAllInitializedTensors();
+  }
+
+  const Node* GraphViewer_GetNode(const GraphViewer* _this, NodeIndex p1) override {
+    return _this->GraphViewer::GetNode(p1);
+  }
+
+  int GraphViewer_MaxNodeIndex(const GraphViewer* _this) override {
+    return _this->GraphViewer::MaxNodeIndex();
+  }
+
+  const std::string& GraphViewer_Name(const GraphViewer* _this) override {
+    return _this->GraphViewer::Name();
+  }
+
+  KernelDefBuilder& KernelDefBuilder_Provider(KernelDefBuilder* _this, char const* p1) override {
+    return _this->KernelDefBuilder::Provider(p1);
+  }
+
+  KernelDefBuilder& KernelDefBuilder_SetName(KernelDefBuilder* _this, char const* p1) override {
+    return _this->KernelDefBuilder::SetName(p1);
+  }
+
+  KernelDefBuilder& KernelDefBuilder_SetDomain(KernelDefBuilder* _this, char const* p1) override {
+    return _this->KernelDefBuilder::SetDomain(p1);
+  }
+
+  KernelDefBuilder& KernelDefBuilder_TypeConstraint(KernelDefBuilder* _this, char const* p1, const DataTypeImpl* p2) override {
+    return _this->KernelDefBuilder::TypeConstraint(p1, p2);
+  }
+
+  Status KernelRegistry_Register(KernelRegistry* _this, KernelCreateInfo&& p1) override {
+    return _this->KernelRegistry::Register(std::move(p1));
+  }
+
+  NodeIndex Node_Index(const Node* _this) override {
+    return _this->Node::Index();
+  }
+
+  const NodeAttributes& Node_GetAttributes(const Node* _this) override {
+    return _this->Node::GetAttributes();
+  }
+
+  const ONNX_NAMESPACE::OpSchema* Node_Op(const Node* _this) override {
+    return _this->Node::Op();
+  }
+
+  const std::string& Node_OpType(const Node* _this) override {
+    return _this->Node::OpType();
+  }
+
+  const std::string& NodeArg_Name(const NodeArg* _this) override {
+    return _this->NodeArg::Name();
+  }
+
+  const ONNX_NAMESPACE::TensorShapeProto* NodeArg_Shape(const NodeArg* _this) override {
+    return _this->NodeArg::Shape();
+  }
+
+  ONNX_NAMESPACE::DataType NodeArg_Type(const NodeArg* _this) override {
+    return _this->NodeArg::Type();
+  }
+
+  void onnxruntime_TensorShape_constructor(void* _this, __int64 const* p1, unsigned __int64 p2) override {
+    new (_this) TensorShape(p1, p2);
+  }
+
+  int64_t TensorShape_Size(const TensorShape* _this) override {
+    return _this->TensorShape::Size();
+  }
+
+  TensorShape TensorShape_Slice(const TensorShape* _this, unsigned __int64 p1) override {
+    return _this->TensorShape::Slice(p1);
   }
 
 #if 0
