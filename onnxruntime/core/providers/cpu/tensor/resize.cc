@@ -26,4 +26,11 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
     Resize<uint8_t>);
 
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Resize,
+    11,
+    float,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Resize<float>);
+
 }  // namespace onnxruntime
