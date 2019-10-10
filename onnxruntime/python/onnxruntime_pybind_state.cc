@@ -63,6 +63,7 @@
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
+int cuda_device_id=0;
 #endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
@@ -253,7 +254,8 @@ void InitializeSession(InferenceSession* sess) {
 
 #ifdef USE_CUDA
   {
-    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(0));
+    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id));
+    cuda_device_id=0;
   }
 #endif
 
@@ -352,6 +354,9 @@ void addGlobalMethods(py::module& m) {
       },
       "Return a vector of KernelDef for all registered OpKernels");
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
+#ifdef USE_CUDA
+  m.def("set_cuda_device_id", [](const int id){cuda_device_id = id;});
+#endif
 }
 
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
