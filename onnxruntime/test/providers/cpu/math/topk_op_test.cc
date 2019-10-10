@@ -282,9 +282,9 @@ TEST(TopKOperator, Top1ExplicitAxisMultiDInputOpset1011) {
 }
 
 TEST(TopKOperator, Top2DefaultAxisUnsortedSmallestOpset11) {
-  std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.4f, 0.2f};
+  std::vector<float> input_vals = {0.2f, 0.3f, 0.1f, 0.4f, 0.2f, 0.3f, 0.4f, 0.1f};
   std::vector<int64_t> input_dimensions = {2, 4};
-  std::vector<float> expected_vals = {0.1f, 0.2f, 0.1f, 0.2f};
+  std::vector<float> expected_vals = {0.2f, 0.1f, 0.2f, 0.1f};
   std::vector<int64_t> expected_indices = {0, 2, 0, 3};
   std::vector<int64_t> expected_dimensions = {2, 2};
   RunTest(11, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, -1, -1, -1);
