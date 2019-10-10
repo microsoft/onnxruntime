@@ -25,6 +25,18 @@ namespace onnxruntime {
 namespace test {
 
 // Check functions for tensor types
+template <typename T>
+void sort_expected_and_actual_buffers(const T* expected, const T* actual, int64_t size) {
+  std::sort(const_cast<T*>(expected), const_cast<T*>(expected + size));
+  std::sort(const_cast<T*>(actual), const_cast<T*>(actual + size));
+}
+
+// Check functions for tensor types
+template <typename T>
+void sort_expected_and_actual_buffers(std::vector<T> expected, std::vector<T> actual) {
+  ORT_ENFORCE(expected.size() == actual.size(), "The 2 containers contain different number of elements");
+  sort_expected_and_actual_buffers(expected.data(), actual.data(), expected.size());
+}
 
 // The default implementation compares for equality, specialized versions for other types are below
 template <typename T>
@@ -34,13 +46,21 @@ void Check(const OpTester::Data& expected_data, const Tensor& output_tensor, con
   auto* output = output_tensor.template Data<T>();
   auto size = output_tensor.Shape().Size();
 
+  if (expected_data.sort_output_) {
+    // if order can be jumbled in the output of an operator, sort both the expected and output buffers prior to
+    // comparison this is a "best-effort" algo and should satisfy the requirement for the few ops that do require this
+    // support without investing in a more sophisticated infrastructure for the same
+    sort_expected_and_actual_buffers<T>(expected, output, size);
+  }
+
   for (int i = 0; i < size; ++i) {
     EXPECT_EQ(expected[i], output[i]) << "i:" << i << ", provider_type: " << provider_type;
   }
 }
 
 template <>
-void Check<double>(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
+void Check<double>(const OpTester::Data& expected_data, const Tensor& output_tensor,
+                   const std::string& provider_type) {
   auto& expected_tensor = expected_data.data_.Get<Tensor>();
   auto* expected = expected_tensor.template Data<double>();
   auto* output = output_tensor.template Data<double>();
@@ -48,6 +68,11 @@ void Check<double>(const OpTester::Data& expected_data, const Tensor& output_ten
 
   bool has_abs_err = expected_data.absolute_error_.has_value();
   bool has_rel_err = expected_data.relative_error_.has_value();
+
+  // deal with rare cases in which order of output data from a kernel MAY be undefined
+  if (expected_data.sort_output_) {
+    sort_expected_and_actual_buffers<double>(expected, output, size);
+  }
 
   double threshold = 0.001;
 #ifdef USE_CUDA
@@ -87,6 +112,11 @@ void Check<float>(const OpTester::Data& expected_data, const Tensor& output_tens
   bool has_abs_err = expected_data.absolute_error_.has_value();
   bool has_rel_err = expected_data.relative_error_.has_value();
 
+  // deal with rare cases in which order of output data from a kernel MAY be undefined
+  if (expected_data.sort_output_) {
+    sort_expected_and_actual_buffers<float>(expected, output, size);
+  }
+
   float threshold = 0.001f;
 #ifdef USE_CUDA
   threshold = 0.005f;
@@ -116,7 +146,8 @@ void Check<float>(const OpTester::Data& expected_data, const Tensor& output_tens
 }
 
 template <>
-void Check<MLFloat16>(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
+void Check<MLFloat16>(const OpTester::Data& expected_data, const Tensor& output_tensor,
+                      const std::string& provider_type) {
   auto& expected_tensor = expected_data.data_.Get<Tensor>();
   auto* expected = expected_tensor.template Data<MLFloat16>();
   auto* output = output_tensor.template Data<MLFloat16>();
@@ -126,6 +157,11 @@ void Check<MLFloat16>(const OpTester::Data& expected_data, const Tensor& output_
   std::vector<float> f_output(size);
   ConvertMLFloat16ToFloat(expected, f_expected.data(), static_cast<int>(size));
   ConvertMLFloat16ToFloat(output, f_output.data(), static_cast<int>(size));
+
+  // deal with rare cases in which order of output data from a kernel MAY be undefined
+  if (expected_data.sort_output_) {
+    sort_expected_and_actual_buffers<float>(f_expected, f_output);
+  }
 
   float threshold = 0.001f;
   for (int i = 0; i < size; ++i) {
@@ -139,7 +175,8 @@ void Check<MLFloat16>(const OpTester::Data& expected_data, const Tensor& output_
 }
 
 template <>
-void Check<BFloat16>(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
+void Check<BFloat16>(const OpTester::Data& expected_data, const Tensor& output_tensor,
+                     const std::string& provider_type) {
   auto& expected_tensor = expected_data.data_.Get<Tensor>();
   auto* expected = expected_tensor.template Data<BFloat16>();
   auto* output = output_tensor.template Data<BFloat16>();
@@ -149,6 +186,11 @@ void Check<BFloat16>(const OpTester::Data& expected_data, const Tensor& output_t
   std::vector<float> f_output(size);
   BFloat16ToFloat(expected, f_expected.data(), static_cast<size_t>(size));
   BFloat16ToFloat(output, f_output.data(), static_cast<size_t>(size));
+
+  // deal with rare cases in which order of output data from a kernel MAY be undefined
+  if (expected_data.sort_output_) {
+    sort_expected_and_actual_buffers<float>(f_expected, f_output);
+  }
 
   /// XXX: May need to adjust threshold as BFloat is coarse
   float threshold = 0.001f;
@@ -163,7 +205,8 @@ void Check<BFloat16>(const OpTester::Data& expected_data, const Tensor& output_t
 }
 
 template <typename Type>
-void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
+void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, const Tensor& output_tensor,
+                   const std::string& provider_type) {
   if (type == DataTypeImpl::GetType<Type>())
     Check<Type>(expected_data, output_tensor, provider_type);
   else
@@ -171,7 +214,8 @@ void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, const T
 }
 
 template <typename Type, typename Next, typename... Types>
-void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
+void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, const Tensor& output_tensor,
+                   const std::string& provider_type) {
   if (type == DataTypeImpl::GetType<Type>())
     Check<Type>(expected_data, output_tensor, provider_type);
   else
@@ -181,10 +225,12 @@ void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, const T
 void Check(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
   ORT_ENFORCE(expected_data.data_.Get<Tensor>().Shape() == output_tensor.Shape(),
               "Expected output shape [" + expected_data.data_.Get<Tensor>().Shape().ToString() +
-                  "] did not match run output shape [" +
-                  output_tensor.Shape().ToString() + "] for " + expected_data.def_.Name());
+                  "] did not match run output shape [" + output_tensor.Shape().ToString() + "] for " +
+                  expected_data.def_.Name());
 
-  CheckDispatch<bool, float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, std::string, MLFloat16, BFloat16>(output_tensor.DataType(), expected_data, output_tensor, provider_type);
+  CheckDispatch<bool, float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t,
+                std::string, MLFloat16, BFloat16>(output_tensor.DataType(), expected_data, output_tensor,
+                                                  provider_type);
 }
 
 // Check for non tensor types
@@ -242,41 +288,32 @@ OpTester::~OpTester() {
 void OpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, OrtValue>& feeds,
                                        std::vector<std::string>& output_names) {
   for (auto& output : output_data_) {
-    if (output.def_.Exists())
-      output_names.push_back(output.def_.Name());
+    if (output.def_.Exists()) output_names.push_back(output.def_.Name());
   }
 
   for (size_t i = 0; i < input_data_.size(); ++i) {
-    if (std::find(initializer_index_.begin(), initializer_index_.end(), i) == initializer_index_.end() && input_data_[i].def_.Exists()) {
+    if (std::find(initializer_index_.begin(), initializer_index_.end(), i) == initializer_index_.end() &&
+        input_data_[i].def_.Exists()) {
       feeds[input_data_[i].def_.Name()] = input_data_[i].data_;
     }
   }
 }
 
 void OpTester::SetOutputAbsErr(const char* name, float v) {
-  auto it = std::find_if(
-      output_data_.begin(),
-      output_data_.end(),
-      [name](Data& data) {
-        return (data.def_.Name() == name);
-      });
+  auto it = std::find_if(output_data_.begin(), output_data_.end(),
+                         [name](Data& data) { return (data.def_.Name() == name); });
   ORT_ENFORCE(it != output_data_.end());
   it->absolute_error_ = optional<float>(v);
 }
 
 void OpTester::SetOutputRelErr(const char* name, float v) {
-  auto it = std::find_if(
-      output_data_.begin(),
-      output_data_.end(),
-      [name](Data& data) {
-        return (data.def_.Name() == name);
-      });
+  auto it = std::find_if(output_data_.begin(), output_data_.end(),
+                         [name](Data& data) { return (data.def_.Name() == name); });
   ORT_ENFORCE(it != output_data_.end());
   it->relative_error_ = optional<float>(v);
 }
 
-void OpTester::AddNodes(onnxruntime::Graph& graph,
-                        std::vector<onnxruntime::NodeArg*>& graph_input_defs,
+void OpTester::AddNodes(onnxruntime::Graph& graph, std::vector<onnxruntime::NodeArg*>& graph_input_defs,
                         std::vector<onnxruntime::NodeArg*>& graph_output_defs,
                         std::vector<std::function<void(onnxruntime::Node& node)>>& add_attribute_funcs) {
   // default behavior is to create a single Node for the op being tested, with node inputs/outputs
@@ -284,8 +321,7 @@ void OpTester::AddNodes(onnxruntime::Graph& graph,
   auto& node = graph.AddNode("node1", op_, op_, graph_input_defs, graph_output_defs, nullptr, domain_);
 
   // Add the attributes if any
-  for (auto& add_attribute_fn : add_attribute_funcs)
-    add_attribute_fn(node);
+  for (auto& add_attribute_fn : add_attribute_funcs) add_attribute_fn(node);
 }
 
 void OpTester::AddInitializers(onnxruntime::Graph& graph) {
@@ -293,14 +329,14 @@ void OpTester::AddInitializers(onnxruntime::Graph& graph) {
     auto& data = input_data_[index];
     auto& tensor = data.data_.Get<Tensor>();
     ONNX_NAMESPACE::TensorProto tensor_proto;
-    //1. set dimension
+    // 1. set dimension
     auto& shape = tensor.Shape();
     for (auto& dim : shape.GetDims()) {
       tensor_proto.add_dims(dim);
     }
-    //2. set type
+    // 2. set type
     tensor_proto.set_data_type(data.def_.TypeAsProto()->tensor_type().elem_type());
-    //3. data
+    // 3. data
     if (data.def_.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
       const std::string* string_data = tensor.Data<std::string>();
       for (auto i = 0; i < shape.Size(); i++) {
@@ -310,7 +346,7 @@ void OpTester::AddInitializers(onnxruntime::Graph& graph) {
       auto buffer_size = tensor.DataType()->Size() * shape.Size();
       tensor_proto.set_raw_data(tensor.DataRaw(), buffer_size);
     }
-    //4. name
+    // 4. name
     tensor_proto.set_name(data.def_.Name());
     graph.AddInitializedTensor(tensor_proto);
   }
@@ -337,7 +373,7 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph() {
   onnxruntime::Graph& graph = p_model->MainGraph();
   AddNodes(graph, node_input_defs, output_defs, add_attribute_funcs_);
 
-  //Add Initializer
+  // Add Initializer
   AddInitializers(graph);
   return p_model;
 }
@@ -520,8 +556,8 @@ void OpTester::Run(const SessionOptions& so,
         EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(entry)).IsOK());
       }
 
-      ExecuteModel(*p_model, session_object, expect_result, expected_failure_string, run_options,
-                   feeds, output_names, provider_types);
+      ExecuteModel(*p_model, session_object, expect_result, expected_failure_string, run_options, feeds, output_names,
+                   provider_types);
     } else {
       for (const std::string& provider_type : all_provider_types) {
         if (excluded_provider_types.count(provider_type) > 0)
@@ -562,7 +598,7 @@ void OpTester::Run(const SessionOptions& so,
           if (node.OpType() == kConstant)
             continue;
 
-          //if node is not registered for the provider, skip
+          // if node is not registered for the provider, skip
           node.SetExecutionProviderType(provider_type);
           if (provider_type == onnxruntime::kNGraphExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
@@ -592,8 +628,8 @@ void OpTester::Run(const SessionOptions& so,
 
         EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
-        ExecuteModel(*p_model, session_object, expect_result, expected_failure_string, run_options,
-                     feeds, output_names, provider_type);
+        ExecuteModel(*p_model, session_object, expect_result, expected_failure_string, run_options, feeds,
+                     output_names, provider_type);
       }
 
       EXPECT_TRUE(has_run) << "No registered execution providers were able to run the model.";
