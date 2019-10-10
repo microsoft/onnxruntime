@@ -81,7 +81,8 @@ namespace Dml
             const MLOperatorKernelCreationContext& kernelInfo,
             uint32_t index,
             uint32_t coerceAxis = TensorAxis::DoNotCoerce,
-            uint32_t placement = TensorAxis::W,
+            int32_t placement = TensorAxis::W,
+            int32_t leftAlignedDimensionCount = TensorAxis::RightAligned,
             std::optional<gsl::span<const uint32_t>> tensorShape = std::nullopt,
             uint32_t minDimensionCount = NchwDimensionCount
             ) const;
@@ -90,7 +91,8 @@ namespace Dml
             const MLOperatorKernelCreationContext& kernelInfo,
             uint32_t index,
             uint32_t coerceAxis = TensorAxis::DoNotCoerce,
-            uint32_t placement = TensorAxis::W,
+            int32_t placement = TensorAxis::W,
+            int32_t leftAlignedDimensionCount = TensorAxis::RightAligned,
             std::optional<gsl::span<const uint32_t>> tensorShape = std::nullopt,
             uint32_t minDimensionCount = NchwDimensionCount
             ) const;

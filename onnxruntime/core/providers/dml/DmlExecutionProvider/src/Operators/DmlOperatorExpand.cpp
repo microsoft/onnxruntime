@@ -29,6 +29,7 @@ public:
                 m_inputTensorDescs[0].GetDmlSizes(),
                 TensorAxis::DoNotCoerce,
                 TensorAxis::W,
+                TensorAxis::RightAligned,
                 NchwDimensionCount, // minDimensionCount
                 0);
         
@@ -39,6 +40,7 @@ public:
                 m_outputTensorDescs[0].GetDmlSizes(),
                 TensorAxis::DoNotCoerce,
                 TensorAxis::W,
+                TensorAxis::RightAligned,
                 NchwDimensionCount, // minDimensionCount
                 0
             );

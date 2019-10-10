@@ -55,6 +55,7 @@ public:
                 0, 
                 TensorAxis::DoNotCoerce, 
                 TensorAxis::W, 
+                TensorAxis::RightAligned,
                 reducedDims);
         }
 

@@ -159,6 +159,7 @@ namespace Dml
                     *m_kernelInputIndices[i],
                     TensorAxis::DoNotCoerce,
                     TensorAxis::W,
+                    TensorAxis::RightAligned,
                     inputShape,
                     NchwDimensionCount));
             }
@@ -180,6 +181,7 @@ namespace Dml
                     *m_kernelOutputIndices[i],
                     TensorAxis::DoNotCoerce,
                     TensorAxis::W,
+                    TensorAxis::RightAligned,
                     outputShape));
             }
         }
@@ -357,7 +359,8 @@ namespace Dml
         const MLOperatorKernelCreationContext& kernelInfo,
         uint32_t index,
         uint32_t coerceAxis,
-        uint32_t placement,
+        int32_t placement,
+        int32_t leftAlignedDimensionCount,
         std::optional<gsl::span<const uint32_t>> tensorShape,
         uint32_t minDimensionCount
         ) const
@@ -388,6 +391,7 @@ namespace Dml
             actualTensorShape,
             coerceAxis,
             placement,
+            leftAlignedDimensionCount,
             minDimensionCount,
             0
             );
@@ -397,7 +401,8 @@ namespace Dml
         const MLOperatorKernelCreationContext& kernelInfo,
         uint32_t index,
         uint32_t coerceAxis,
-        uint32_t placement,
+        int32_t placement,
+        int32_t leftAlignedDimensionCount,
         std::optional<gsl::span<const uint32_t>> tensorShape,
         uint32_t minDimensionCount
         ) const
@@ -432,6 +437,7 @@ namespace Dml
             tensorShape ? *tensorShape : outputShape,
             coerceAxis,
             placement,
+            leftAlignedDimensionCount,
             minDimensionCount,
             0
             );

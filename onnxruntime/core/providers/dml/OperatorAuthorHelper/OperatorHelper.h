@@ -102,8 +102,9 @@ private:
 
 struct KernelArgs
 {
-    // Initialize arrays with NcdhwSpatialDimensionCount to avoid vectors, but it's important to use
-    // spatialDimensionCount when iterating through them
+    // Initialize arrays up to NcdhwSpatialDimensionCount to avoid vector allocations,
+    // but it's important to use .spatialDimensionCount when accessing them because
+    // values beyond that may be bogus.
     uint32_t strides[NcdhwSpatialDimensionCount];
     uint32_t dilations[NcdhwSpatialDimensionCount];
     uint32_t windowSize[NcdhwSpatialDimensionCount];
@@ -114,7 +115,36 @@ struct KernelArgs
     KernelArgs(uint32_t spatialDimensionCount) :
         autoPad(false),
         autoPadSameUpper(false),
-        spatialDimensionCount(spatialDimensionCount) {}
+        spatialDimensionCount(spatialDimensionCount)
+    {
+        ML_CHECK_VALID_ARGUMENT(spatialDimensionCount <= NcdhwSpatialDimensionCount);
+    }
+
+    void FillWithLeadingValues(gsl::span<const uint32_t> input, gsl::span<uint32_t> output, uint32_t fillCount, uint32_t value)
+    {
+        fillCount = std::min(fillCount, gsl::narrow_cast<uint32_t>(output.size()));
+        std::fill_n(output.data(), fillCount, value);
+        size_t copyCount = std::min(output.size() - fillCount, input.size());
+        std::copy_n(input.data(), copyCount, output.data() + fillCount);
+    }
+
+    // Create a copy of an existing kernel args with a minimum dimension count,
+    // filling the leading attribute values with 1's or 0's respectively.
+    KernelArgs(KernelArgs const& kernelArgs, uint32_t minimumDimensionCount) :
+        autoPad(kernelArgs.autoPad),
+        autoPadSameUpper(kernelArgs.autoPadSameUpper),
+        spatialDimensionCount(std::max(kernelArgs.spatialDimensionCount, minimumDimensionCount))
+    {
+        ML_CHECK_VALID_ARGUMENT(spatialDimensionCount <= NcdhwSpatialDimensionCount);
+
+        uint32_t fillCount = (minimumDimensionCount > kernelArgs.spatialDimensionCount) ? minimumDimensionCount - kernelArgs.spatialDimensionCount : 0;
+        FillWithLeadingValues(kernelArgs.strides, this->strides, fillCount, 1u);
+        FillWithLeadingValues(kernelArgs.dilations, this->dilations, fillCount, 1u);
+        FillWithLeadingValues(kernelArgs.windowSize, this->windowSize, fillCount, 1u);
+        FillWithLeadingValues(kernelArgs.startPadding, this->startPadding, fillCount, 0u);
+        FillWithLeadingValues(kernelArgs.endPadding, this->endPadding, fillCount, 0u);
+        FillWithLeadingValues(kernelArgs.outputPadding, this->outputPadding, fillCount, 0u);
+    }
 
     // This is true if padding must be automatically computed based on input sizes.
     // ResolveAutoPadding must happen during Compute rather than initialization.
@@ -293,8 +323,8 @@ public:
         const std::vector<DimensionType> filterDims = shapeInfo.GetInputTensorShape(1);
 
         ML_CHECK_VALID_ARGUMENT(
-            inputDimensions.size() == NchwDimensionCount || inputDimensions.size() == NcdhwDimensionCount,
-            "Input dimensions must be 4 or 5."
+            inputDimensions.size() >= 3 && inputDimensions.size() <= 5,
+            "Input dimensions must be: 3, 4, 5."
         );
         
         ResolvingPadding(inputDimensions);
@@ -312,19 +342,20 @@ public:
         if (!outputShape.empty())
         {
             ML_CHECK_VALID_ARGUMENT(
-                outputShape.size() >= 2,
-                "The output shape must have two or more dimensions"
+                outputShape.size() >= m_kernel.spatialDimensionCount,
+                "The output shape must equal the number of spatial dimensions"
             );
         }
 
         const std::vector<DimensionType> inputDimensions = shapeInfo.GetInputTensorShape(0);
         const std::vector<DimensionType> filterDims = shapeInfo.GetInputTensorShape(1);
 
-        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() > NchwSpatialDimensionCount, "Input dimensions must be > 2");
+        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() > NonspatialDimensionCount, "Input dimensions must be >= 3");
 
         ResolvingPadding(inputDimensions);
         m_outputShapes.resize(1);
         m_outputShapes[0] = InitializeKernelOutputDimsTranspose(inputDimensions, m_kernel);
+        static_assert(C < NonspatialDimensionCount);
         assert(m_outputShapes[0].GetShape().size() > C);
         m_outputShapes[0].GetShape()[C] = filterDims[C] * m_groupCount;
 
