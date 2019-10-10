@@ -245,8 +245,8 @@ TEST(TransformerTest, TestCopyNodeInsertionInitializerInSubgraph) {
   // main graph continued
   // create the 'If' node
   auto& if_node = graph.AddNode("node3", "If", "cpu operator2", ArgMap{&i1_def}, ArgMap{&o1_def, &o2_def});
-  if_node.AddAttribute("then_branch", {subgraph.ToGraphProto()});
-  if_node.AddAttribute("else_branch", {subgraph.ToGraphProto()});
+  if_node.AddAttribute("then_branch", subgraph.ToGraphProto());
+  if_node.AddAttribute("else_branch", subgraph.ToGraphProto());
 
   onnxruntime::Graph* subgraph_1 = if_node.GetMutableGraphAttribute("then_branch");
   for (auto& node : subgraph_1->Nodes()) {

@@ -47,9 +47,9 @@ if '--nightly_build' in sys.argv:
     nightly_build = True
     sys.argv.remove('--nightly_build')
 
-is_manylinux2010 = False
-if environ.get('AUDITWHEEL_PLAT', None) == 'manylinux2010_x86_64':
-    is_manylinux2010 = True
+is_manylinux1 = False
+if environ.get('AUDITWHEEL_PLAT', None) == 'manylinux1_x86_64':
+    is_manylinux1 = True
 
 
 class build_ext(_build_ext):
@@ -64,7 +64,7 @@ try:
     class bdist_wheel(_bdist_wheel):
         def finalize_options(self):
             _bdist_wheel.finalize_options(self)
-            if not is_manylinux2010:
+            if not is_manylinux1:
                 self.root_is_pure = False
 
         def _rewrite_ld_preload(self, to_preload):
@@ -82,9 +82,9 @@ try:
                         f.write('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
 
         def run(self):
-            if is_manylinux2010:
+            if is_manylinux1:
                 source = 'onnxruntime/capi/onnxruntime_pybind11_state.so'
-                dest = 'onnxruntime/capi/onnxruntime_pybind11_state_manylinux2010.so'
+                dest = 'onnxruntime/capi/onnxruntime_pybind11_state_manylinux1.so'
                 logger.info('copying %s -> %s', source, dest)
                 copyfile(source, dest)
                 result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
@@ -101,11 +101,11 @@ try:
                     subprocess.run(args, check=True, stdout=subprocess.PIPE)
                 self._rewrite_ld_preload(to_preload)
             _bdist_wheel.run(self)
-            if is_manylinux2010:
+            if is_manylinux1:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
-                logger.info('repairing %s for manylinux2010', file)
+                logger.info('repairing %s for manylinux1', file)
                 try:
-                    subprocess.run(['auditwheel', 'repair', '--plat', 'manylinux2010_x86_64', '-w', self.dist_dir, file], check=True, stdout=subprocess.PIPE)
+                    subprocess.run(['auditwheel', 'repair', '--plat', 'manylinux1_x86_64', '-w', self.dist_dir, file], check=True, stdout=subprocess.PIPE)
                 finally:
                     logger.info('removing %s', file)
                     remove(file)
@@ -134,12 +134,12 @@ else:
   if nightly_build:
     libs.extend(['onnxruntime_pywrapper.dll'])
 
-if is_manylinux2010:
+if is_manylinux1:
     data = ['capi/libonnxruntime_pywrapper.so'] if nightly_build else []
     ext_modules = [
         Extension(
             'onnxruntime.capi.onnxruntime_pybind11_state',
-            ['onnxruntime/capi/onnxruntime_pybind11_state_manylinux2010.so'],
+            ['onnxruntime/capi/onnxruntime_pybind11_state_manylinux1.so'],
         ),
     ]
 else:
