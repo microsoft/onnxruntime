@@ -122,9 +122,18 @@ struct KernelArgs
 
     void FillWithLeadingValues(gsl::span<const uint32_t> input, gsl::span<uint32_t> output, uint32_t fillCount, uint32_t value)
     {
-        fillCount = std::min(fillCount, gsl::narrow_cast<uint32_t>(output.size()));
+        // e.g.
+        // input = [5,6,7,8]
+        // fillcount = 2
+        // value = 1
+        // output = [1,1,5,6,7,8]
+
+        const size_t inputCount = input.size();
+        const size_t outputCount = output.size();
+        const size_t clampedFillCount = std::min(size_t(fillCount), outputCount);
+        const size_t copyCount = std::min(outputCount - fillCount, inputCount);
+
         std::fill_n(output.data(), fillCount, value);
-        size_t copyCount = std::min(output.size() - fillCount, input.size());
         std::copy_n(input.data(), copyCount, output.data() + fillCount);
     }
 
