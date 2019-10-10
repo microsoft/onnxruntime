@@ -76,7 +76,10 @@ void RunTypedTest()
   test5.AddOutput<T>("output", {2, 2},
                      {1, 1,
                       4, 4});
-  test5.Run(OpTester::ExpectResult::kExpectFailure, "GatherElements op: Value in indices must be within bounds [-2 , 1]. Actual value is 2");
+  // skip nuphar, which will not throw error message but will ensure no out-of-bound access
+  test5.Run(OpTester::ExpectResult::kExpectFailure,
+            "GatherElements op: Value in indices must be within bounds [-2 , 1]. Actual value is 2",
+            {kNupharExecutionProvider});
 
   // 3D input - axis 1
   OpTester test6("GatherElements", 11);
@@ -158,7 +161,10 @@ void RunTypedTest<std::string>() {
   test4.AddOutput<std::string>("output", {2, 2},
                                {"a", "a",
                                 "d", "d"});
-  test4.Run(OpTester::ExpectResult::kExpectFailure, "GatherElements op: Value in indices must be within bounds [-2 , 1]. Actual value is -3");
+  // skip nuphar, which will not throw error message but will ensure no out-of-bound access
+  test4.Run(OpTester::ExpectResult::kExpectFailure,
+            "GatherElements op: Value in indices must be within bounds [-2 , 1]. Actual value is -3",
+            {kNupharExecutionProvider});
 
   // 3D input - axis 1
   OpTester test5("GatherElements", 11);

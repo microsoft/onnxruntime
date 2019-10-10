@@ -90,6 +90,16 @@ def other_tests_failing_permanently_filters():
     return filters
 
 
+
+def test_with_types_disabled_due_to_binary_size_concerns_filters():
+    filters = ['^test_bitshift_right_uint16_cpu',
+               '^test_bitshift_right_uint8_cpu',
+               '^test_bitshift_left_uint16_cpu',
+               '^test_bitshift_left_uint8_cpu']
+
+    return filters
+
+
 def create_backend_test(testname=None):
     backend_test = OrtBackendTest(c2, __name__)
 
@@ -103,19 +113,11 @@ def create_backend_test(testname=None):
         current_failing_tests = [#'^test_cast_STRING_to_FLOAT_cpu',  # old test data that is bad on Linux CI builds
                                  '^test_qlinearconv_cpu',
                                  '^test_gru_seq_length_cpu',
-                                 '^test_bitshift_right_uint16_cpu',
-                                 '^test_bitshift_right_uint32_cpu',
-                                 '^test_bitshift_right_uint64_cpu',
-                                 '^test_bitshift_right_uint8_cpu',
-                                 '^test_bitshift_left_uint16_cpu',
-                                 '^test_bitshift_left_uint32_cpu',
-                                 '^test_bitshift_left_uint64_cpu',
-                                 '^test_bitshift_left_uint8_cpu',
                                  '^test_dynamicquantizelinear_expanded.*',
                                  '^test_dynamicquantizelinear_max_adjusted_expanded.*',
                                  '^test_dynamicquantizelinear_min_adjusted_expanded.*',
                                  '^test_top_k.*',
-                                 '^test_unique_.*',
+                                 '^test_unique_not_sorted_without_axis_cpu', # bad expected data. enable after https://github.com/onnx/onnx/pull/2381 is picked up
                                  '^test_mod_float_mixed_sign_example_cpu', #onnxruntime::Mod::Compute fmod_ was false. fmod attribute must be true for float, float16 and double types
                                  '^test_shrink_cpu', #Invalid rank for input: x Got: 1 Expected: 2 Please fix either the inputs or the model.
                                  '^test_range_float_type_positive_delta_cpu',
@@ -167,7 +169,8 @@ def create_backend_test(testname=None):
                                       '^test_flatten_negative_axis.*',
                                       '^test_reduce_[a-z1-9_]*_negative_axes_.*',
                                       'test_squeeze_negative_axes_cpu',
-                                      'test_unsqueeze_negative_axes_cpu']
+                                      'test_unsqueeze_negative_axes_cpu',
+                                      'test_constant_pad_cpu']
 
         if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
             current_failing_tests.append('^test_div_cpu*')
@@ -175,7 +178,8 @@ def create_backend_test(testname=None):
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \
                   unsupported_usages_filters() + \
-                  other_tests_failing_permanently_filters()
+                  other_tests_failing_permanently_filters() + \
+                  test_with_types_disabled_due_to_binary_size_concerns_filters()
 
         backend_test.exclude('(' + '|'.join(filters) + ')')
         print('excluded tests:', filters)

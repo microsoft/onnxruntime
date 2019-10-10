@@ -31,8 +31,8 @@ static void RunTest(
   test2.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
   test2.AddInput<float>("value", {1}, {value});
   test2.AddOutput<float>("output", output_dims, output);
-  // NGraph does not yet support opset-11 and builds break on this test, hence exclude the EP
-  test2.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  // NGraph and TensorRT do not yet support opset-11 and builds break on this test, hence exclude the EP
+  test2.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
 
   #ifndef DISABLE_CONTRIB_OPS
   
@@ -43,7 +43,8 @@ static void RunTest(
   test3.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
   test3.AddInput<float>("value", {1}, {value});
   test3.AddOutput<float>("output", output_dims, output);
-  test3.Run();
+  //TensorRT does not support pads as an input
+  test3.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 
   #endif
 }

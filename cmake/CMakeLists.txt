@@ -445,6 +445,7 @@ else()
   check_cxx_compiler_flag(-Wmissing-braces HAS_MISSING_BRACES)
   check_cxx_compiler_flag(-Wignored-attributes HAS_IGNORED_ATTRIBUTES)
   check_cxx_compiler_flag(-Wdeprecated-copy HAS_DEPRECATED_COPY)
+  check_cxx_compiler_flag(-Wclass-memaccess HAS_CLASS_MEMACCESS)
 
   if(HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -455,6 +456,11 @@ else()
     #we may have extra null pointer checkings in debug build, it's not an issue
     string(APPEND CMAKE_CXX_FLAGS_DEBUG " -Wno-nonnull-compare")
     string(APPEND CMAKE_C_FLAGS_DEBUG " -Wno-nonnull-compare")
+  endif()
+  if(HAS_DEPRECATED_COPY)
+    #too many such errors in eigen and gemmlowp
+    string(APPEND CMAKE_CXX_FLAGS_DEBUG " -Wno-deprecated-copy")
+    string(APPEND CMAKE_C_FLAGS_DEBUG " -Wno-deprecated-copy")
   endif()
   if(HAS_PARENTHESES)
     string(APPEND CMAKE_CXX_FLAGS " -Wno-parentheses")
@@ -615,6 +621,8 @@ endif()
 if (onnxruntime_USE_TENSORRT)
   if (WIN32)
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:nvinfer.dll")
+  else()
+    set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
   endif()
 endif()
 
