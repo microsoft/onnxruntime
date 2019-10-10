@@ -35,16 +35,16 @@ static bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& m
 
   // Clip opset 6 has min and max as attributes. they're inputs from opset 11 on.
   bool min_max_are_attributes = graph_utils::IsSupportedOptypeVersionAndDomain(node, "Clip", {6});
-  bool can_use = true;
+  bool min_max_are_constant_values = true;
 
   if (min_max_are_attributes) {
     min = graph_utils::GetNodeAttribute(node, "min")->f();
     max = graph_utils::GetNodeAttribute(node, "max")->f();
   } else {
     // update min/max if provided via a constant initializer
-    // return true if value is default or coming from a constant initializer
+    // return true if value is default or coming from a constant initializer and update 'value'
     // return false if value is mutable
-    auto get_constant_value = [&graph](const Node& node, size_t input_idx, float& value) {
+    auto update_if_constant_value = [&graph](const Node& node, size_t input_idx, float& value) {
       const auto& input_defs = node.InputDefs();
       const NodeArg* input = (input_defs.size() > input_idx) ? input_defs[input_idx] : nullptr;
 
@@ -78,12 +78,13 @@ static bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& m
       return is_constant;
     };
 
-    // 'min' is input 1, 'max' is input 2. both are optional
-    can_use = get_constant_value(node, 1, min) &&
-              get_constant_value(node, 2, max);
+    // 'min' is input 1, 'max' is input 2. both are optional.
+    // if the input is constant, 'min' or 'max' is updated by the call to get_if_constant_value
+    min_max_are_constant_values = update_if_constant_value(node, 1, min) &&
+                                  update_if_constant_value(node, 2, max);
   }
 
-  return can_use;
+  return min_max_are_constant_values;
 }
 
 }  // namespace

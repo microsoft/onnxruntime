@@ -63,12 +63,6 @@ Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
             replace_min = true;
           }
           break;
-        // we don't support double currently
-        //case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-        //  if (*i.data<double>() < 0.0) {
-        //    replace_min = true;
-        //  }
-        //  break;
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
           if (math::halfToFloat(i.data<MLFloat16>()->val) < 0.f) {
             replace_min = true;
@@ -87,9 +81,9 @@ Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
     }
   }
 
-  // update the following Clip node if the 'min' is < 0.f, to set it to 0.f
-  // this essentially fuses the Relu and Clip
-  // if the Clip 'min' is >= 0.f no change is required as Relu would have set the min to 0.f
+  // Remove the Relu node, and update the following Clip node if the 'min' is < 0.f, to set it to 0.f.
+  // This essentially fuses the Relu and Clip. If the Clip 'min' is >= 0.f no change is required to the Clip node
+  // as Relu would have set a lower min of 0.f.
   if (graph_utils::RemoveNode(graph, node)) {
     if (replace_min) {
       auto* mutable_next_node = graph.GetNode(next_node.Index());
