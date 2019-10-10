@@ -46,8 +46,11 @@ if(MSVC)
 
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8S8KernelAvx2.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemvU8S8KernelAvx2.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8S8KernelAvx512BW.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemvU8S8KernelAvx512BW.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8S8KernelAvx512Vnni.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemvU8S8KernelAvx512Vnni.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8U8KernelAvx2.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8U8KernelAvx512BW.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8U8KernelAvx512Vnni.asm
@@ -170,6 +173,7 @@ else()
 
     set(mlas_platform_srcs_avx2
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8S8KernelAvx2.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemvU8S8KernelAvx2.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8U8KernelAvx2.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/DgemmKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelFma3.S
@@ -180,9 +184,8 @@ else()
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
 
-
-    # Some platforms do not support 512xx flags but still able to compile the source
-    # Others support the flag and refuse to compile w/o the flag.
+    # Some platforms do not support AVX512 flags but still able to compile the source
+    # Others support the flag and refuse to compile without the flag.
     # We have to run all 3 checks
     check_cxx_compiler_flag("-mavx512f" HAS_AVX512F)
     if(HAS_AVX512F)
@@ -194,13 +197,13 @@ else()
     endif()
 
     set(CMAKE_REQUIRED_FLAGS ${AVX512_NEEDED})
-    check_cxx_source_compiles(
-"int main() {
-asm(\"vpxord %zmm0,%zmm0,%zmm0\");
-return 0;
-}"
-AVX512F_COMPILES)
-
+    check_cxx_source_compiles("
+      int main() {
+        asm(\"vpxord %zmm0,%zmm0,%zmm0\");
+        return 0;
+      }"
+      AVX512F_COMPILES
+    )
 
     if(AVX512F_COMPILES)
       set(mlas_platform_srcs_avx512f
@@ -219,16 +222,18 @@ AVX512F_COMPILES)
 
     set(CMAKE_REQUIRED_FLAGS ${AVX512_NEEDED})
     check_cxx_source_compiles(
-"int main() {
-asm(\"vpmaddwd %zmm0,%zmm0,%zmm0\");
-return 0;
-}"
-AVX512BW_COMPILES)
+     "int main() {
+        asm(\"vpmaddwd %zmm0,%zmm0,%zmm0\");
+        return 0;
+     }"
+     AVX512BW_COMPILES)
 
     if(AVX512BW_COMPILES)
       set(mlas_platform_srcs_avx512bw
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8S8KernelAvx512BW.S
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemvU8S8KernelAvx512BW.S
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8S8KernelAvx512Vnni.S
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemvU8S8KernelAvx512Vnni.S
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8U8KernelAvx512BW.S
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8U8KernelAvx512Vnni.S
       )
