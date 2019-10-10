@@ -211,7 +211,7 @@ struct OrtApiBase {
 };
 typedef struct OrtApiBase OrtApiBase;
 
-ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase() NO_EXCEPTION;  // Pass in ORT_API_VERSION
+ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase() NO_EXCEPTION;
 
 struct OrtApi {
   OrtApiBase base_;
@@ -325,7 +325,14 @@ struct OrtApi {
 	*/
   OrtStatus*(ORT_API_CALL* AddCustomOpDomain)(_Inout_ OrtSessionOptions* options, _In_ OrtCustomOpDomain* custom_op_domain)NO_EXCEPTION;
 
-  OrtStatus*(ORT_API_CALL* RegisterCustomOpsLibrary)(_Inout_ OrtSessionOptions* options, _In_ const char* library_path)NO_EXCEPTION;
+  /*
+	 * Loads a DLL named 'library_path' and looks for this entry point:
+	 *		OrtStatus* RegisterCustomOps(OrtSessionOptions * options, const OrtApiBase* api);
+	 * It then passes in the provided session options to this function along with the api base.
+	 * The handle to the loaded library is returned in library_handle. It can be freed by the caller after all sessions using the passed in
+	 * session options are destroyed, or if an error occurs and it is non null.
+  */
+  OrtStatus*(ORT_API_CALL* RegisterCustomOpsLibrary)(_Inout_ OrtSessionOptions* options, _In_ const char* library_path, void** library_handle)NO_EXCEPTION;
 
   /**
 	* To use additional providers, you must build ORT with the extra providers enabled. Then call one of these
