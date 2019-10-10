@@ -307,11 +307,6 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   Env::Default().FileOpenWr("trt_model_proto_getcap.onnx", fd);
   model_proto.SerializeToFileDescriptor(fd);
 
-  //save ModelProto to file
-  int fd;
-  Env::Default().FileOpenWr("trt_model_proto_getcap.onnx", fd);
-  model_proto.SerializeToFileDescriptor(fd);
-
   //print out all nodes for debugging
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   int node_size = graph.NumberOfNodes();
