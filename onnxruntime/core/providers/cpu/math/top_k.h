@@ -14,7 +14,9 @@ class TopK final : public OpKernel {
   Status Compute(OpKernelContext* p_op_kernel_context) const override;
 
  private:
-  int axis_;
-  unsigned k_;
+  int axis_; // used by all opset versions
+  unsigned k_; // opset-9 only
+  bool largest_; // opset-11 only
+  bool sorted_; // opset-11 only
 };
 }  // namespace onnxruntime
