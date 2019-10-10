@@ -301,7 +301,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     std::string uniq_identifier = (*node).name();
     if (!utils::HasName(*node)) {
       std::stringstream ss;
-      ss << static_cast<const void*>(&node);
+      ss << static_cast<const void*>(&(*node));
       uniq_identifier = ss.str();
     }
 
