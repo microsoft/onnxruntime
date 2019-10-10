@@ -106,7 +106,7 @@ static void update_subgraphs_within_function_body(ONNX_NAMESPACE::GraphProto& su
        subgraph_node != subgraph_proto.mutable_node()->end(); ++subgraph_node) {
     // Iterate through all the inputs of the current node
     for (int idx = 0; idx < (*subgraph_node).input_size(); ++idx) {
-      const std::string tensor_name = (*subgraph_node).input().Get(idx);
+      const std::string& tensor_name = (*subgraph_node).input().Get(idx);
       auto iter = input_name_idx_map.find(tensor_name);
       // If an input pertaining to the name in the op schema is found,
       // replace it with the corresponding input to the node with function body from the actual model graph
