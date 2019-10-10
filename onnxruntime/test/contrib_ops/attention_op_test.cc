@@ -102,7 +102,7 @@ TEST(AttentionTest, AttentionBatch1_Float16) {
   std::vector<int32_t> mask_index_data = {2L};
 
   std::vector<float> output_data = {
-      3.154296875, 0.1082763671875, 4.25, 5.6484375,
+      3.150390625, 0.1082763671875, 4.25, 5.6484375,
       3.970703125, 0.072998046875, 4.25, 5.6484375};
 
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
