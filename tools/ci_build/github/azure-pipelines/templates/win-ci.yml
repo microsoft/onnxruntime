@@ -14,7 +14,7 @@ parameters:
   EnvSetupScript: 'setup_env.bat'
   CudaVersion: ''
   AgentPool: 'Win-CPU'
-  AgentDemands: ''
+  AgentDemands: []
 
 jobs:
 - job: ${{ parameters.JobName }}
