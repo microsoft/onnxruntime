@@ -76,7 +76,7 @@ jobs:
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
       inputs:
-        ArtifactName: onnxruntime
+        ArtifactName: onnxruntime_gpu
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
@@ -120,7 +120,7 @@ jobs:
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
       inputs:
-        ArtifactName: onnxruntime_gpu
+        ArtifactName: onnxruntime
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
