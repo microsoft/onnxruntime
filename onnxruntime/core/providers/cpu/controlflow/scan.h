@@ -3,7 +3,7 @@
 
 #pragma once
 #include <functional>
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"

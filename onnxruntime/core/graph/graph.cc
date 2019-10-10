@@ -11,7 +11,7 @@
 #include <numeric>
 #include <stack>
 
-#include "gsl/pointers"
+#include "gsl/gsl"
 #include "core/common/logging/logging.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensorprotoutils.h"
@@ -430,7 +430,7 @@ void Node::CreateSubgraph(const std::string& attr_name) {
   if (attr != attributes_.cend() && utils::HasGraph(attr->second)) {
     GraphProto& mutable_graph = *attr->second.mutable_g();
     std::unique_ptr<Graph> subgraph{new Graph(*graph_, *this, mutable_graph)};
-    attr_to_subgraph_map_.insert({std::string{attr_name}, gsl::not_null<Graph*>{subgraph.get()}});
+    attr_to_subgraph_map_.insert({std::string(attr_name), gsl::not_null<Graph*>{subgraph.get()}});
     subgraphs_.push_back(std::move(subgraph));
   }
 }
@@ -585,8 +585,9 @@ const Graph* Node::GetGraphAttribute(const std::string& attr_name) const {
 std::vector<gsl::not_null<const Graph*>> Node::GetSubgraphs() const {
   std::vector<gsl::not_null<const Graph*>> subgraphs;
   subgraphs.reserve(attr_to_subgraph_map_.size());
+  using value_type = std::unordered_map<std::string, gsl::not_null<Graph*>>::value_type;
   std::transform(attr_to_subgraph_map_.cbegin(), attr_to_subgraph_map_.cend(), std::back_inserter(subgraphs),
-                 [](const auto& entry) { return entry.second; });
+                 [](const value_type& entry) { return entry.second; });
 
   return subgraphs;
 }
@@ -646,14 +647,14 @@ Graph::Graph(GraphProto* graph_proto,
 Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
              const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
-    : graph_proto_{graph_proto},
+    : graph_proto_(graph_proto),
       schema_registry_(schema_registry),
       graph_resolve_needed_(true),
       domain_to_version_(domain_to_version),
       model_functions_(model_functions),
       ir_version_(ir_version),
-      parent_graph_{parent_graph},
-      parent_node_{parent_node} {
+      parent_graph_(parent_graph),
+      parent_node_(parent_node) {
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
   ArgNameToTypeMap name_to_type_map;
 
@@ -1245,7 +1246,7 @@ using SubgraphInferencingFunc =
 class GraphInferencerImpl : public ONNX_NAMESPACE::GraphInferencer {
  public:
   GraphInferencerImpl(const Node& node, Graph& graph, SubgraphInferencingFunc& inferencing_func)
-      : node_{node}, graph_{graph}, inferencing_func_{inferencing_func} {
+      : node_(node), graph_(graph), inferencing_func_(inferencing_func) {
   }
 
   // Perform inferencing on the graph contained in GraphInferencer.
@@ -1342,7 +1343,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     auto* subgraph = node_.GetMutableGraphAttribute(attribute_name);
 
     if (subgraph) {
-      auto inferencer = std::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_);
+      auto inferencer = onnxruntime::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_);
       graph_inferencer = inferencer.get();
       graph_inferencers_.push_back(std::move(inferencer));
     } else {
@@ -1543,7 +1544,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
     return Status(ONNXRUNTIME, FAIL, ex.what());
   }
 
-  const auto& onnx_inferred_types{context.InferredOutputTypes()};
+  const auto& onnx_inferred_types(context.InferredOutputTypes());
 
   // Infer and verify node output arg type information.
   int i = -1;
@@ -1721,7 +1722,7 @@ Status Graph::VerifyNodeAndOpMatch() {
     auto iter = model_functions_.find(node.OpType());
     if (iter != model_functions_.end()) {
       const ONNX_NAMESPACE::FunctionProto* model_function_proto = iter->second;
-      auto model_func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), model_function_proto);
+      auto model_func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), model_function_proto);
       function_container_.emplace_back(std::move(model_func_ptr));
       node.SetFunctionBody(*function_container_.back());
     }
@@ -1742,7 +1743,7 @@ Status Graph::VerifyNodeAndOpMatch() {
 
       if (node.op_ && node.op_->HasFunction()) {
         auto onnx_function_proto = node.op_->GetFunction();
-        auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto);
+        auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto);
         function_container_.emplace_back(std::move(func_ptr));
         node.SetFunctionBody(*function_container_.back());
       }

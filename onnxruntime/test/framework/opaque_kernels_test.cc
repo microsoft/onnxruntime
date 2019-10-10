@@ -53,27 +53,27 @@ class SparseTensorSample final {
   SparseTensorSample(SparseTensorSample&&) = default;
   SparseTensorSample& operator=(SparseTensorSample&&) = default;
 
-  const auto& Values() const {
+  const std::vector<int64_t>& Values() const {
     return values_;
   }
 
-  const auto& Indicies() const {
+  const std::vector<int64_t>& Indicies() const {
     return indicies_;
   }
 
-  const auto& Size() const {
+  int64_t Size() const {
     return size_;
   }
 
-  auto& Values() {
+  std::vector<int64_t>& Values() {
     return values_;
   }
 
-  auto& Indicies() {
+  std::vector<int64_t>& Indicies() {
     return indicies_;
   }
 
-  auto& Size() {
+  int64_t& Size() {
     return size_;
   }
 

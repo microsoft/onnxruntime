@@ -15,7 +15,7 @@ limitations under the License.
 
 #pragma once
 
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
@@ -93,7 +93,7 @@ class Softmax final : public OpKernel {
     if (tensor_pointer == nullptr)
       return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
     const Tensor& X = *tensor_pointer;
-    const TensorShape& input_shape{X.Shape()};
+    const TensorShape& input_shape = X.Shape();
 
     VLOGS(ctx->Logger(), 2) << "Input tensor shape: " << input_shape;
 

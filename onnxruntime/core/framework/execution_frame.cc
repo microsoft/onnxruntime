@@ -22,9 +22,9 @@ IExecutionFrame::IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, cons
                                  const std::unordered_map<int, OrtValue>& initializers,
                                  const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                                  const OrtValueNameIdxMap& ort_value_idx_map, const NodeIndexInfo& node_index_info)
-    : node_index_info_{node_index_info},
-      all_values_size_{static_cast<size_t>(ort_value_idx_map.MaxIdx()) + 1},
-      fetch_mlvalue_idxs_{fetch_mlvalue_idxs} {
+    : node_index_info_(node_index_info),
+      all_values_size_(static_cast<size_t>(ort_value_idx_map.MaxIdx()) + 1),
+      fetch_mlvalue_idxs_(fetch_mlvalue_idxs) {
   ORT_ENFORCE(feeds.size() == feed_mlvalue_idxs.size());
   ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs_.size());
   ORT_ENFORCE(node_index_info_.GetMaxMLValueIdx() == ort_value_idx_map.MaxIdx(),
@@ -171,9 +171,9 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
                                const SessionState& session_state)
     : IExecutionFrame(feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(), fetch_mlvalue_idxs, fetches,
                       session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo()),
-      session_state_{session_state},
-      mem_patterns_{nullptr},
-      planner_{nullptr} {
+      session_state_(session_state),
+      mem_patterns_(nullptr),
+      planner_(nullptr) {
   // map the custom allocators to ort_value_idx entries
   if (!fetch_allocators.empty()) {
     for (size_t idx = 0, end = fetch_mlvalue_idxs.size(); idx < end; ++idx) {
@@ -208,7 +208,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
       mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes);
       // if no existing patterns, generate one in this executionframe
       if (!mem_patterns_) {
-        planner_ = std::make_unique<OrtValuePatternPlanner>(*session_state.GetExecutionPlan());
+        planner_ = onnxruntime::make_unique<OrtValuePatternPlanner>(*session_state.GetExecutionPlan());
       } else {
         // pre-allocate the big chunk requested in memory pattern.
         // all the internal kernel's input/output tensors will be allocated on these buffer.
@@ -297,7 +297,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     }
   }
   //no memory pattern, or the pattern is not correct.
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
+  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
 
   ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
@@ -356,7 +356,7 @@ Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_v
                                                                  MLDataType element_type,
                                                                  const OrtMemoryInfo& location,
                                                                  const TensorShape& shape) {
-  auto p_tensor = std::make_unique<Tensor>(element_type, shape, pBuffer, location);
+  auto p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, pBuffer, location);
   ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
   return Status::OK();
@@ -372,7 +372,7 @@ static Status AllocateSparseTensor(MLValue& mlvalue, const DataTypeImpl& ml_type
                                    const TensorShape& shape, size_t nnz, bool create_fence,
                                    const SessionState& session_state) {
   auto element_type = ml_type.AsSparseTensorType()->GetElementType();
-  auto sparse = std::make_unique<SparseTensor>(element_type, shape, nnz, allocator);
+  auto sparse = onnxruntime::make_unique<SparseTensor>(element_type, shape, nnz, allocator);
   auto deleter = DataTypeImpl::GetType<SparseTensor>()->GetDeleteFunc();
   mlvalue.Init(sparse.release(), DataTypeImpl::GetType<SparseTensor>(), deleter);
 

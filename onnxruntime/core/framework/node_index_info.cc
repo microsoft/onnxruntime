@@ -11,7 +11,7 @@ namespace onnxruntime {
 
 // if we have a full GraphViewer, assume the min node index is 0
 NodeIndexInfo::NodeIndexInfo(const GraphViewer& graph_viewer, const OrtValueNameIdxMap& ort_value_idx_map)
-    : min_node_index_{0}, max_mlvalue_idx_{ort_value_idx_map.MaxIdx()} {
+    : min_node_index_(0), max_mlvalue_idx_(ort_value_idx_map.MaxIdx()) {
   Init(graph_viewer.Nodes(), graph_viewer.MaxNodeIndex(), ort_value_idx_map);
 }
 

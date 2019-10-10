@@ -5,6 +5,7 @@
 #include "tensorprotoutils.h"
 
 #include "TestCase.h"
+#include <cctype>
 #include <fstream>
 #include <memory>
 #include "core/common/logging/logging.h"
@@ -14,6 +15,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/path_lib.h"
 #include "core/framework/allocator.h"
+#include "re2/re2.h"
 #include <sstream>
 #include <map>
 #include <regex>
@@ -210,11 +212,16 @@ class OnnxModelInfo : public TestModelInfo {
       ORT_THROW("Failed to load model because protobuf parsing failed.");
     }
 #ifdef __GNUG__
-    std::smatch match;
-    std::string url_string{model_url};
-    const std::regex onnx_tag_regex("onnx[0-9a-z]{3}");  //e.g. onnx141, onnx150, onnxtip
-    if (std::regex_search(url_string, match, onnx_tag_regex)) {
-      onnx_commit_tag_ = match[0].str();
+    const RE2::Anchor re2_anchor = RE2::UNANCHORED;
+    re2::StringPiece text(model_url);
+    re2::StringPiece submatch;
+    re2::RE2 regex("onnx[0-9a-z]{3}", re2::RE2::Options());  //e.g. onnx141, onnx150, onnxtip
+    if (!regex.ok()) {
+      ORT_THROW("Failed to parse regex: onnx[0-9a-z]{3}");
+    }
+    bool match = regex.Match(text, 0, text.length(), re2_anchor, &submatch, 1);
+    if (match) {
+      onnx_commit_tag_.assign(submatch.data(), submatch.length());
     } else {
       onnx_commit_tag_ = TestModelInfo::unknown_version;
     }
@@ -276,7 +283,7 @@ OrtValue* TensorToOrtValue(const ONNX_NAMESPACE::TensorProto& t, onnxruntime::te
   }
   void* p = len == 0 ? nullptr : b.AllocMemory(len);
   Ort::Value temp_value{nullptr};
-  auto d = std::make_unique<onnxruntime::test::OrtCallback>();
+  auto d = onnxruntime::make_unique<onnxruntime::test::OrtCallback>();
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
   status = onnxruntime::test::TensorProtoToMLValue(t, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
                                                    temp_value, *d);
@@ -459,10 +466,28 @@ Status OnnxTestCase::GetPostProcessing(bool* value) {
   return Status::OK();
 }
 
-static std::string trim_str(const std::string& s) {
-  std::string ltrim = std::regex_replace(s, std::regex("^\\s+"), std::string(""));
-  std::string result = std::regex_replace(ltrim, std::regex("\\s+$"), std::string(""));
-  return result;
+// CentOS lacks find_if
+template<class Iter, class Pred>
+inline Iter find_with_pred (Iter first, Iter last, Pred p) {
+  while (first != last) {
+    if (p(*first)) {
+      break;
+    }
+    ++first;
+  }
+  return first;
+}
+
+static std::string trim_str(const std::string& in) {
+  std::string s = in;
+  s.erase(s.begin(), find_with_pred(s.begin(), s.end(), [](int ch) {
+            return !std::isspace(ch);
+          }));
+  s.erase(find_with_pred(s.rbegin(), s.rend(), [](int ch) {
+            return !std::isspace(ch);
+          }).base(),
+          s.end());
+  return s;
 }
 
 static bool read_config_file(const std::basic_string<PATH_CHAR_TYPE>& path, std::map<std::string, std::string>& fc) {
@@ -596,7 +621,7 @@ void OnnxTestCase::ConvertTestData(const std::vector<ONNX_NAMESPACE::TensorProto
     }
     void* p = len == 0 ? nullptr : b.AllocMemory(len);
     Ort::Value v1{nullptr};
-    auto d = std::make_unique<onnxruntime::test::OrtCallback>();
+    auto d = onnxruntime::make_unique<onnxruntime::test::OrtCallback>();
     OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
     status = onnxruntime::test::TensorProtoToMLValue(input, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
                                                      v1, *d);

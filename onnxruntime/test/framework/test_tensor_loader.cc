@@ -30,7 +30,7 @@ TEST(CApiTest, load_simple_float_tensor_not_enough_space) {
   // deserialize it
   std::vector<float> output(1);
   OrtValue value;
-  auto deleter = std::make_unique<onnxruntime::OrtCallback>();
+  auto deleter = onnxruntime::make_unique<onnxruntime::OrtCallback>();
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
   auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p,
                                         MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value, *deleter);
@@ -55,7 +55,7 @@ TEST(CApiTest, load_simple_float_tensor) {
   // deserialize it
   std::vector<float> output(3);
   OrtValue value;
-  auto deleter = std::make_unique<onnxruntime::OrtCallback>();
+  auto deleter = onnxruntime::make_unique<onnxruntime::OrtCallback>();
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
   auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p,
                                         MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value, *deleter);
@@ -114,7 +114,7 @@ static void run_external_data_test() {
 #endif
   }
   OrtValue value;
-  auto deleter = std::make_unique<onnxruntime::OrtCallback>();
+  auto deleter = onnxruntime::make_unique<onnxruntime::OrtCallback>();
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
   auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p,
                                         MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value, *deleter);
@@ -138,6 +138,7 @@ TEST(CApiTest, load_float_tensor_with_external_data) {
 }
 
 #if defined(__amd64__) || defined(_M_X64)
+#ifndef __ANDROID__
 #ifdef NDEBUG
 TEST(CApiTest, load_huge_tensor_with_external_data) {
   FILE* fp;
@@ -167,7 +168,7 @@ TEST(CApiTest, load_huge_tensor_with_external_data) {
   // deserialize it
   std::vector<int> output(total_ele_count);
   OrtValue value;
-  auto deleter = std::make_unique<onnxruntime::OrtCallback>();
+  auto deleter = onnxruntime::make_unique<onnxruntime::OrtCallback>();
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
   auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p,
                                         MemBuffer(output.data(), output.size() * sizeof(int), cpu_memory_info), value, *deleter);
@@ -185,6 +186,7 @@ TEST(CApiTest, load_huge_tensor_with_external_data) {
     OrtRunCallback(deleter.release());
   }
 }
+#endif
 #endif
 #endif
 }  // namespace test

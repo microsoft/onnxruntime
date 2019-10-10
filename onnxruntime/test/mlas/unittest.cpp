@@ -30,6 +30,8 @@ Abstract:
 #include "core/platform/threadpool.h"
 #endif
 
+#include "core/common/make_unique.h"
+
 #if !defined(_countof)
 #define _countof(_Array) (sizeof(_Array) / sizeof(_Array[0]))
 #endif
@@ -241,7 +243,7 @@ private:
         std::fill_n(CReference, M * N, -0.5f);
 
         MlasGemm(TransA, TransB, M, N, K, T(alpha), A, lda, B, ldb, T(beta), C, ldc, threadpool);
-        ReferenceSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, CReference, ldc);
+        ReferenceGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, CReference, ldc);
 
         for (size_t f = 0; f < M * N; f++) {
             // Sensitive to comparing positive/negative zero.
@@ -252,7 +254,7 @@ private:
     }
 
     void
-    ReferenceSgemm(
+    ReferenceGemm(
         CBLAS_TRANSPOSE TransA,
         CBLAS_TRANSPOSE TransB,
         size_t M,
@@ -563,6 +565,11 @@ public:
         }
         for (size_t b = 256; b < 320; b += 32) {
             Test(b, b, b, 85, 173);
+        }
+        for (size_t b = 1; b < 96; b++) {
+            Test(1, b, 32, 0, 0);
+            Test(1, 32, b, 0, 0);
+            Test(1, b, b, 0, 0);
         }
     }
 
@@ -1975,36 +1982,35 @@ main(
     for (int i = 0; i != 2; ++i) {
 
         printf("SGEMM tests.\n");
-        std::make_unique<MlasFgemmTest<float>>()->ExecuteShort();
-
+        onnxruntime::make_unique<MlasFgemmTest<float>>()->ExecuteShort();
 #ifdef MLAS_HAS_DGEMM
         printf("DGEMM tests.\n");
-        std::make_unique<MlasFgemmTest<double>>()->ExecuteShort();
+        onnxruntime::make_unique<MlasFgemmTest<double>>()->ExecuteShort();
 #endif
 
 #ifdef MLAS_HAS_QGEMM_U8X8
         printf("QGEMM tests.\n");
-        std::make_unique<MlasQgemmU8X8Test<int8_t>>()->ExecuteShort();
-        std::make_unique<MlasQgemmU8X8Test<uint8_t>>()->ExecuteShort();
+        onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t>>()->ExecuteShort();
+        onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t>>()->ExecuteShort();
 #endif
 
         printf("Conv2D tests.\n");
-        std::make_unique<MlasConv2DTest>()->ExecuteShort();
+        onnxruntime::make_unique<MlasConv2DTest>()->ExecuteShort();
         if (MlasNchwcGetBlockSize() > 1) {
-            std::make_unique<MlasNchwcConv2DTest>()->ExecuteShort();
+          onnxruntime::make_unique<MlasNchwcConv2DTest>()->ExecuteShort();
         }
 
         printf("Pool2D tests.\n");
-        std::make_unique<MlasPool2DTest>()->ExecuteShort();
+        onnxruntime::make_unique<MlasPool2DTest>()->ExecuteShort();
         if (MlasNchwcGetBlockSize() > 1) {
-            std::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
+          onnxruntime::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
         }
 
         printf("Pool3D tests.\n");
-        std::make_unique<MlasPool3DTest>()->ExecuteShort();
+        onnxruntime::make_unique<MlasPool3DTest>()->ExecuteShort();
 
         printf("Activation tests.\n");
-        std::make_unique<MlasActivationTest>()->ExecuteShort();
+        onnxruntime::make_unique<MlasActivationTest>()->ExecuteShort();
 
         printf("Done.\n");
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)

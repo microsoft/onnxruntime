@@ -12,7 +12,7 @@ set(extern_avx2_srcs
   ${ONNXRUNTIME_ROOT}/core/providers/nuphar/extern/igemv_avx2.h
 )
 
-if (MSVC) 
+if (MSVC)
   set_source_files_properties(${extern_avx2_srcs} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
 else()
   set_source_files_properties(${extern_avx2_srcs} PROPERTIES COMPILE_FLAGS "-march=broadwell")
