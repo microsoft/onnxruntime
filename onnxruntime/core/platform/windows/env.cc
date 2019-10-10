@@ -213,7 +213,7 @@ class WindowsEnv : public Env {
   }
 
   // \brief returns a provider that will handle telemetry on the current platform
-  Telemetry& GetTelemetryProvider() {
+  const Telemetry& GetTelemetryProvider() const override {
     return telemetryProvider_;
   }
 

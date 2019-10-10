@@ -30,35 +30,51 @@ TRACELOGGING_DEFINE_PROVIDER(telemetry_provider_handle, "Microsoft.ML.ONNXRuntim
 #pragma warning(pop)
 #endif
 
+OrtMutex WindowsTelemetry::mutex_;
+uint32_t WindowsTelemetry::global_register_count_ = 0;
+
 WindowsTelemetry::WindowsTelemetry() {
-  HRESULT hr = TraceLoggingRegister(telemetry_provider_handle);
-  if (SUCCEEDED(hr)) {
-    register_succeeded_ = true;
+  std::lock_guard<OrtMutex> lock(mutex_);
+  if (global_register_count_ == 0) {
+    // TraceLoggingRegister is fancy in that you can only register once GLOBALLY for the whole process
+    HRESULT hr = TraceLoggingRegister(telemetry_provider_handle);
+    if (SUCCEEDED(hr)) {
+      global_register_count_ += 1;
+    }
   }
 }
 
 WindowsTelemetry::~WindowsTelemetry() {
-  if (register_succeeded_) {
-    TraceLoggingUnregister(telemetry_provider_handle);
-    register_succeeded_ = false;
+  std::lock_guard<OrtMutex> lock(mutex_);
+  if (global_register_count_ > 0) {
+    global_register_count_ -= 1;
+    if (global_register_count_ == 0) {
+      TraceLoggingUnregister(telemetry_provider_handle);
+    }
   }
 }
 
-void WindowsTelemetry::LogProcessInfo(const std::string& runtimeVersion, bool isRedist) {
-  if (!register_succeeded_)
+void WindowsTelemetry::LogProcessInfo() const {
+  if (global_register_count_ == 0)
+    return;
+
+  static std::atomic<bool> process_info_logged;
+
+  // did we already log the process info?  we only need to log it once
+  if (process_info_logged.exchange(true))
     return;
 
   TraceLoggingWrite(telemetry_provider_handle,
                     "ProcessInfo",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     // Telemetry info
-                    TraceLoggingKeyword(1),
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingString(ONNXRUNTIME_VERSION_STRING, "runtimeVersion"),
-                    TraceLoggingBool(true, "isRedist"),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+                    TraceLoggingBool(true, "isRedist"));
 
+  process_info_logged = true;
 }
 
 void WindowsTelemetry::LogSessionCreation(uint32_t sessionId, int64_t irVersion, const std::string& modelProducerName,
@@ -66,14 +82,30 @@ void WindowsTelemetry::LogSessionCreation(uint32_t sessionId, int64_t irVersion,
                                           const std::vector<std::string>& modelOpsetImports, uint32_t modelPrecision,
                                           const std::string& modelGraphName, const std::string& modelGraphVersion,
                                           const std::unordered_map<std::string, std::string>& modelMetaData,
-                                          bool modelFromStream, const std::string& executionProviders) {
+                                          bool modelFromStream, const std::string& executionProviders) const {
 }
 
 void WindowsTelemetry::LogRuntimeError(uint32_t sessionId, const common::Status& status, const char* file,
-                                       const char* function, uint32_t line) {
+                                       const char* function, uint32_t line) const {
+  if (global_register_count_ == 0)
+    return;
+
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "RuntimeError",
+                    TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    // Telemetry info
+                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingUInt32(sessionId, "sessionId"),
+                    TraceLoggingUInt32(status.Code(), "errorCode"),
+                    TraceLoggingUInt32(status.Category(), "errorCategory"),
+                    TraceLoggingString(status.ErrorMessage().c_str(), "errorMessage"),
+                    TraceLoggingString(file, "file"),
+                    TraceLoggingString(function, "function"),
+                    TraceLoggingInt32(line, "line"));
 }
 
-void WindowsTelemetry::LogRuntimePerf(uint32_t sessionId, uint32_t runTotalTimeMs) {
+void WindowsTelemetry::LogRuntimePerf(uint32_t sessionId, uint32_t runTotalTimeMs) const {
 }
 
 }  // namespace onnxruntime

@@ -27,19 +27,19 @@ class Telemetry {
  public:
   virtual ~Telemetry() = default;
 
-  virtual void LogProcessInfo(const std::string& runtimeVersion, bool isRedist) = 0;
+  virtual void LogProcessInfo() const = 0;
 
   virtual void LogSessionCreation(uint32_t sessionId, int64_t irVersion, const std::string& modelProducerName,
                                   const std::string& modelProducerVersion,const std::string& modelDomain,
                                   const std::vector<std::string>& modelOpsetImports, uint32_t modelPrecision,
                                   const std::string& modelGraphName, const std::string& modelGraphVersion,
                                   const std::unordered_map<std::string, std::string>& modelMetaData,
-                                  bool modelFromStream, const std::string& executionProviders) = 0;
+                                  bool modelFromStream, const std::string& executionProviders) const = 0;
 
   virtual void LogRuntimeError(uint32_t sessionId, const common::Status& status, const char* file,
-                               const char* function, uint32_t line) = 0;
+                               const char* function, uint32_t line) const = 0;
 
-  virtual void LogRuntimePerf(uint32_t sessionId, uint32_t runTotalTimeMs) = 0;
+  virtual void LogRuntimePerf(uint32_t sessionId, uint32_t runTotalTimeMs) const = 0;
 
  protected:
   // don't create these, use Env::GetTelemetryProvider()

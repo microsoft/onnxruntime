@@ -490,5 +490,9 @@ class InferenceSession {
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
   InterOpDomains interop_domains_;
 #endif
+
+  // a monotonically increasing session id for use in telemetry
+  static std::atomic<uint32_t> global_session_id_;
+  uint32_t session_id_;
 };
 }  // namespace onnxruntime

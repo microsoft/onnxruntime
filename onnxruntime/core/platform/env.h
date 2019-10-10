@@ -135,7 +135,7 @@ class Env {
   virtual std::string FormatLibraryFileName(const std::string& name, const std::string& version) const = 0;
 
   // \brief returns a provider that will handle telemetry on the current platform
-  virtual Telemetry& GetTelemetryProvider() = 0;
+  virtual const Telemetry& GetTelemetryProvider() const = 0;
 
  protected:
   Env();
