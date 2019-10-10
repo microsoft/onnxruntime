@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/op_kernel_context_internal.h"
 #include "core/providers/cpu/math/matmul_integer.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/qmath.h"
@@ -35,6 +36,9 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 
 template <>
 Status MatMulInteger<uint8_t, uint8_t>::Compute(OpKernelContext* ctx) const {
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
+  concurrency::ThreadPool* thread_pool = ctx_internal->GetOperatorThreadPool();
+
   auto a = ctx->Input<Tensor>(0);
   auto b = ctx->Input<Tensor>(1);
   ORT_ENFORCE(a != nullptr && b != nullptr);
@@ -71,13 +75,16 @@ Status MatMulInteger<uint8_t, uint8_t>::Compute(OpKernelContext* ctx) const {
                   b_offset,
                   y->template MutableData<int32_t>() + helper.OutputOffsets()[i],
                   static_cast<int>(helper.N()),
-                  nullptr);
+                  thread_pool);
   }
   return Status::OK();
 }
 
 template <>
 Status MatMulInteger<uint8_t, int8_t>::Compute(OpKernelContext* ctx) const {
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
+  concurrency::ThreadPool* thread_pool = ctx_internal->GetOperatorThreadPool();
+
   auto a = ctx->Input<Tensor>(0);
   auto b = ctx->Input<Tensor>(1);
   ORT_ENFORCE(a != nullptr && b != nullptr);
@@ -107,15 +114,19 @@ Status MatMulInteger<uint8_t, int8_t>::Compute(OpKernelContext* ctx) const {
     }
   }
 
-  // NOTE: Eigen based implementation is a reference implementation for accuracy only
   for (int i = 0; i < static_cast<int>(helper.OutputOffsets().size()); i++) {
-    EigenCastGEMM<uint8_t, int8_t, int32_t>(
-        a->template Data<uint8_t>() + helper.LeftOffsets()[i],
-        b->template Data<int8_t>() + helper.RightOffsets()[i],
-        y->template MutableData<int32_t>() + helper.OutputOffsets()[i],
-        static_cast<int>(helper.M()),
-        static_cast<int>(helper.N()),
-        static_cast<int>(helper.K()));
+    QGemmu8s8_s32(static_cast<int>(helper.M()),
+                  static_cast<int>(helper.N()),
+                  static_cast<int>(helper.K()),
+                  a->template Data<uint8_t>() + helper.LeftOffsets()[i],
+                  static_cast<int>(helper.K()),
+                  0,
+                  b->template Data<int8_t>() + helper.RightOffsets()[i],
+                  static_cast<int>(helper.N()),
+                  0,
+                  y->template MutableData<int32_t>() + helper.OutputOffsets()[i],
+                  static_cast<int>(helper.N()),
+                  thread_pool);
   }
   return Status::OK();
 }

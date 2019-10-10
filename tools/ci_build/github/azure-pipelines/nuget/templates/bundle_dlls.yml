@@ -12,18 +12,14 @@ steps:
        del /Q %%~ni.zip
        unzip win-x86.zip -d win-x86
        unzip linux-x64.zip -d linux-x64
-       unzip linux-x86.zip -d linux-x86
        mkdir %%~ni\runtimes\win-x86
        mkdir %%~ni\runtimes\linux-x64
-       mkdir %%~ni\runtimes\linux-x86
        mkdir %%~ni\runtimes\win-x86\native
        mkdir %%~ni\runtimes\linux-x64\native
-       mkdir %%~ni\runtimes\linux-x86\native
        move win-x86\runtimes\win-x86\native\onnxruntime.dll %%~ni\runtimes\win-x86\native\onnxruntime.dll
        move win-x86\runtimes\win-x86\native\onnxruntime.lib %%~ni\runtimes\win-x86\native\onnxruntime.lib
        move win-x86\runtimes\win-x86\native\onnxruntime.pdb %%~ni\runtimes\win-x86\native\onnxruntime.pdb
        move linux-x64\linux-x64\libonnxruntime.so %%~ni\runtimes\linux-x64\native\libonnxruntime.so
-       move linux-x86\linux-x86\libonnxruntime.so %%~ni\runtimes\linux-x86\native\libonnxruntime.so   
        unzip osx-x64.zip -d osx-x64
        dir osx-x64 /s
        mkdir %%~ni\runtimes\osx-x64

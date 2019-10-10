@@ -50,19 +50,25 @@ GenerateSequence(OutputIter out) {
 }
 
 template <class T>
-inline auto to_testable_type(T v) {
+struct ToTestableType {
+ static T to_type(T v) {
   return v;
-}
+ }
+};
 
 template <>
-inline auto to_testable_type(MLFloat16 v) {
-  return math::halfToFloat(v.val);
-}
+struct ToTestableType<MLFloat16> {
+  static float to_type(MLFloat16 v) {
+    return math::halfToFloat(v.val);
+  }
+};
 
 template <>
-inline auto to_testable_type(BFloat16 v) {
-  return v.ToFloat();
-}
+struct ToTestableType<BFloat16> {
+  inline float to_type(BFloat16 v) {
+    return v.ToFloat();
+  }
+};
 
 template <class T, class ForwardIter, class OutputIter>
 typename std::enable_if<!std::numeric_limits<T>::is_signed &&
@@ -70,7 +76,7 @@ typename std::enable_if<!std::numeric_limits<T>::is_signed &&
                         !std::is_same<T, BFloat16>::value>::type
 TestImpl(ForwardIter first, ForwardIter last, OutputIter out) {
   std::transform(first, last, out, [](T v) {
-    auto t = to_testable_type<T>(v);
+    auto t = ToTestableType<T>::to_type(v);
     if (t == 0) {
       t = 0;
     } else {
@@ -86,7 +92,7 @@ typename std::enable_if<std::numeric_limits<T>::is_signed ||
                         std::is_same<T, BFloat16>::value>::type
 TestImpl(ForwardIter first, ForwardIter last, OutputIter out) {
   std::transform(first, last, out, [](T v) {
-    auto t = to_testable_type<T>(v);
+    auto t = ToTestableType<T>::to_type(v);
     if (t == 0) {
       t = 0;
     } else if (t > 0) {

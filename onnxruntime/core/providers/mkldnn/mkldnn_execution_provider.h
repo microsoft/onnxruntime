@@ -147,6 +147,8 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   }
 
  private:
+  mutable int subgraph_index_ = 0;
+
   // supported MklDnn Operators
   std::set<std::string> mkldnn_ops_ = {"Conv", "BatchNormalization", "Relu", "Sum",
                                        "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN"};

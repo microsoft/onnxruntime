@@ -153,5 +153,23 @@ TEST(CompressTest, Compress_default_axis_string) {
   test.Run();
 }
 
+TEST(CompressTest, Compress_3dims_neg_axis) {
+  OpTester test("Compress", 11);
+
+  test.AddAttribute("axis", int64_t(-2));
+
+  test.AddInput<float>("input", {2, 2, 3}, {
+      1.0f, 2.0f, 3.0f,
+      4.0f, 5.0f, 6.0f,
+
+      7.0f, 8.0f, 9.0f,
+      10.0f, 11.0f, 12.0f});
+  test.AddInput<bool>("condition", {2}, {0, 1});
+  test.AddOutput<float>("output", {2, 1, 3}, {
+      4.0f, 5.0f, 6.0f,
+      10.0f, 11.0f, 12.0f});
+  test.Run();
+}
+
 }  // namespace Test
 }  // namespace onnxruntime

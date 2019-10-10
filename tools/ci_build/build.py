@@ -124,6 +124,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--skip_submodule_sync", action='store_true', help="Don't do a 'git submodule update'. Makes the Update phase faster.")
 
     parser.add_argument("--use_jemalloc", action='store_true', help="Use jemalloc.")
+    parser.add_argument("--use_mimalloc", action='store_true', help="Use mimalloc.")
     parser.add_argument("--use_openblas", action='store_true', help="Build with OpenBLAS.")
     parser.add_argument("--use_mkldnn", action='store_true', help="Build with MKLDNN.")
     parser.add_argument("--use_mklml", action='store_true', help="Build with MKLML.")
@@ -131,7 +132,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_automl", action='store_true', help="Build with AutoML support.")
     parser.add_argument("--use_ngraph", action='store_true', help="Build with nGraph.")
     parser.add_argument("--use_openvino", nargs="?", const="CPU_FP32",
-                        choices=["CPU_FP32","GPU_FP32","GPU_FP16","VAD-M_FP16","MYRIAD_FP16"], help="Build with OpenVINO for specific hardware.")
+                        choices=["CPU_FP32","GPU_FP32","GPU_FP16","VAD-M_FP16","MYRIAD_FP16","VAD-F_FP32"], help="Build with OpenVINO for specific hardware.")
     parser.add_argument("--use_dnnlibrary", action='store_true', help="Build with DNNLibrary.")
     parser.add_argument("--use_nsync", action='store_true', help="Build with NSYNC.")
     parser.add_argument("--use_preinstalled_eigen", action='store_true', help="Use pre-installed eigen.")
@@ -155,7 +156,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--skip_onnx_tests", action='store_true', help="Explicitly disable all onnx related tests")
     parser.add_argument("--enable_msvc_static_runtime", action='store_true', help="Enable static linking of MSVC runtimes.")
     parser.add_argument("--enable_language_interop_ops", action='store_true', help="Enable operator implemented in language other than cpp")
-    parser.add_argument("--cmake_generator", choices=['Visual Studio 15 2017', 'Visual Studio 16 2019'], 
+    parser.add_argument("--cmake_generator", choices=['Visual Studio 15 2017', 'Visual Studio 16 2019'],
                         default='Visual Studio 15 2017', help="Specify the generator that CMake invokes. This is only supported on Windows")
     return parser.parse_args()
 
@@ -176,7 +177,7 @@ def get_config_build_dir(build_dir, config):
     # build directory per configuration
     return os.path.join(build_dir, config)
 
-def run_subprocess(args, cwd=None, capture=False, dll_path=None, shell=False):
+def run_subprocess(args, cwd=None, capture=False, dll_path=None, shell=False, env={}):
     log.debug("Running subprocess in '{0}'\n{1}".format(cwd or os.getcwd(), args))
     my_env = os.environ.copy()
     if dll_path:
@@ -189,6 +190,7 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None, shell=False):
                 my_env["LD_LIBRARY_PATH"] = dll_path
 
     stdout, stderr = (subprocess.PIPE, subprocess.STDOUT) if capture else (None, None)
+    my_env.update(env)
     return subprocess.run(args, cwd=cwd, check=True, stdout=stdout, stderr=stderr, env=my_env, shell=shell)
 
 def update_submodules(source_dir):
@@ -233,8 +235,10 @@ def install_ubuntu_deps(args):
             raise BuildError("Error setting up required APT packages. {}".format(str(e)))
 
 def install_python_deps(numpy_version=""):
-    dep_packages = ['setuptools', 'wheel']
+    dep_packages = ['setuptools', 'wheel', 'pytest']
     dep_packages.append('numpy=={}'.format(numpy_version) if numpy_version else 'numpy>=1.15.0')
+    dep_packages.append('sympy>=1.1')
+    dep_packages.append('packaging')
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
 def check_md5(filename, expected_md5):
@@ -325,9 +329,10 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
                  "-Donnxruntime_USE_NSYNC=" + ("OFF" if is_windows() or not args.use_nsync else "ON"),
                  "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
-                 "-Donnxruntime_USE_AUTOML=" + ("ON" if args.use_automl else "OFF"),				 
+                 "-Donnxruntime_USE_AUTOML=" + ("ON" if args.use_automl else "OFF"),
                  "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
                  "-Donnxruntime_USE_JEMALLOC=" + ("ON" if args.use_jemalloc else "OFF"),
+                 "-Donnxruntime_USE_MIMALLOC=" + ("ON" if args.use_mimalloc else "OFF"),
                  "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
                  "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
                  "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib or args.build_server else "OFF"),
@@ -345,6 +350,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_OPENVINO_GPU_FP16=" + ("ON" if args.use_openvino == "GPU_FP16" else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_CPU_FP32=" + ("ON" if args.use_openvino == "CPU_FP32" else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_VAD_M=" + ("ON" if args.use_openvino == "VAD-M_FP16" else "OFF"),
+                 "-Donnxruntime_USE_OPENVINO_VAD_F=" + ("ON" if args.use_openvino == "VAD-F_FP32" else "OFF"),
                  "-Donnxruntime_USE_NNAPI=" + ("ON" if args.use_dnnlibrary else "OFF"),
                  "-Donnxruntime_USE_OPENMP=" + ("ON" if args.use_openmp and not args.use_dnnlibrary and not args.use_mklml and not args.use_ngraph else "OFF"),
                  "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
@@ -363,7 +369,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or args.build_server or args.gen_doc else "OFF"),
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
                  "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
-                 "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
+                 # enable pyop if it is nightly build
+                 "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops or (args.config != 'Debug' and bool(os.getenv('NIGHTLY_BUILD') == '1')) else "OFF"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
@@ -509,7 +516,7 @@ def setup_cuda_vars(args):
                                  "Current version is {}. CUDA 9.2 requires version 14.11.*".format(vc_ver_str),
                                  "If necessary manually install the 14.11 toolset using the Visual Studio 2017 updater.",
                                  "See 'Windows CUDA Build' in build.md in the root directory of this repository.")
-            
+
             # TODO: check if cuda_version >=10.1, when cuda is enabled and VS version >=2019
 
     return cuda_home, cudnn_home
@@ -545,7 +552,7 @@ def adb_push(source_dir, src, dest, **kwargs):
 def adb_shell(*args, **kwargs):
     return run_subprocess(['adb', 'shell', *args], **kwargs)
 
-def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False, enable_ngraph = False):
+def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False, enable_ngraph = False, enable_nnapi=False):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
@@ -601,7 +608,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 if onnxml_test:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
 
-
 def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_parallel_executor_test, num_parallel_models):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -618,16 +624,22 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
              cmd += ['-c', '1']
           if provider == 'openvino':
              cmd += ['-c', '1']
+          if provider == 'nuphar':
+             cmd += ['-c', '1']
 
         if num_parallel_models > 0:
           cmd += ["-j", str(num_parallel_models)]
 
         if config != 'Debug' and os.path.exists(model_dir):
+          # some models in opset9 and above are not supported by TensorRT yet
           if provider == 'tensorrt':
             model_dir = os.path.join(model_dir, "opset8")
           cmd.append(model_dir)
         if os.path.exists(onnx_test_data_dir):
           cmd.append(onnx_test_data_dir)
+
+        if config == 'Debug' and provider == 'nuphar':
+          return
 
         run_subprocess([exe] + cmd, cwd=cwd)
         if enable_parallel_executor_test:
@@ -665,6 +677,21 @@ def mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
           run_subprocess([exe, '-x'] + opset8_cmd, cwd=cwd)
           run_subprocess([exe] + opset9_cmd, cwd=cwd)
           run_subprocess([exe, '-x'] + opset9_cmd, cwd=cwd)
+
+
+# nuphar temporary function for running python tests separately as it requires ONNX 1.5.0
+def nuphar_run_python_tests(build_dir, configs, azure_sas_key):
+    for config in configs:
+        if config == 'Debug':
+            continue
+        cwd = get_config_build_dir(build_dir, config)
+        if is_windows():
+            cwd = os.path.join(cwd, config)
+        dll_path = os.path.join(build_dir, config, "external", "tvm", config)
+        # install onnx for shape inference in testing Nuphar scripts
+        # this needs to happen after onnx_test_data preparation which uses onnx 1.3.0
+        run_subprocess([sys.executable, '-m', 'pip', 'install', '--user', 'onnx==1.5.0'])
+        run_subprocess([sys.executable, 'onnxruntime_test_python_nuphar.py'], cwd=cwd, dll_path=dll_path)
 
 
 def split_server_binary_and_symbol(build_dir, configs):
@@ -729,7 +756,7 @@ def run_server_model_tests(build_dir, configs):
         run_subprocess([sys.executable, 'model_zoo_tests.py', server_app_path, test_raw_data_folder, server_test_data_folder, python_package_path, server_test_folder], cwd=server_test_folder, dll_path=None)
 
 
-def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, use_openvino, nightly_build = False):
+def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, use_openvino, use_nuphar, nightly_build = False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -745,6 +772,8 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use
             args.append('--use_ngraph')
         elif use_openvino:
             args.append('--use_openvino')
+        elif use_nuphar:
+            args.append('--use_nuphar')
         run_subprocess(args, cwd=cwd)
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
@@ -810,7 +839,7 @@ def generate_documentation(source_dir, build_dir, configs):
     except subprocess.CalledProcessError:
         print('git diff returned non-zero error code')
     if len(docdiff) > 0:
-        # Show warning instead of throwing exception, because it is dependent on build configuration for including execution propviders 
+        # Show warning instead of throwing exception, because it is dependent on build configuration for including execution propviders
         log.warning('The updated opkernel document file '+str(opkernel_doc_path)+' is different from the checked in version. Consider regenrating the file with CPU, MKLDNN and CUDA providers enabled.')
         log.debug('diff:\n'+str(docdiff))
 
@@ -848,6 +877,10 @@ def main():
 
     if args.build_csharp:
         args.build_shared_lib = True
+
+    # Disabling unit tests for VAD-F as FPGA only supports models with NCHW layout
+    if args.use_openvino == "VAD-F_FP32":
+        args.test = False
 
     configs = set(args.config)
 
@@ -929,7 +962,8 @@ def main():
     if args.test :
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                               args.enable_pybind and not args.skip_onnx_tests,
-                              args.use_tvm, args.use_tensorrt, args.use_ngraph)
+                              args.use_tvm, args.use_tensorrt, args.use_ngraph,
+                              args.use_dnnlibrary)
         # run the onnx model tests if requested explicitly.
         if args.enable_onnx_tests and not args.skip_onnx_tests:
             # directory from ONNX submodule with ONNX test data
@@ -938,9 +972,10 @@ def main():
                 onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data")
 
             if args.use_tensorrt:
-              # Disable some onnx unit tests that TensorRT parser doesn't supported yet
-              onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data", "simple")
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'tensorrt', False, 1)
+              # Disable some onnx unit tests that TensorRT doesn't supported yet
+              if not is_windows():
+                onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data", "simple")
+                run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'tensorrt', False, 1)
             elif args.use_cuda:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False, 2)
             elif args.x86 or platform.system() == 'Darwin':
@@ -948,13 +983,19 @@ def main():
             elif args.use_ngraph:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'ngraph', True, 1)
             elif args.use_openvino:
-               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'openvino', False,1)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'openvino', False, 1)
               # TODO: parallel executor test fails on MacOS
+            elif args.use_nuphar:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'nuphar', False, 1)
             else:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 0)
 
               if args.use_mkldnn:
                 mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
+
+        # run nuphar python tests last, as it installs ONNX 1.5.0
+        if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
+            nuphar_run_python_tests(build_dir, configs, args.azure_sas_key)
 
     if args.build_server:
         split_server_binary_and_symbol(build_dir, configs)
@@ -966,7 +1007,7 @@ def main():
     if args.build:
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
-            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_ngraph, args.use_tensorrt, args.use_openvino, nightly_build)
+            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_ngraph, args.use_tensorrt, args.use_openvino, args.use_nuphar, nightly_build)
 
     if args.gen_doc and (args.build or args.test):
         generate_documentation(source_dir, build_dir, configs)

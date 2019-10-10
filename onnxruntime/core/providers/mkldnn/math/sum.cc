@@ -158,7 +158,7 @@ class SumPrimitivePool : public PrimitivePool<T> {
         SumPrimitivePool<T>::GetInstance().GetPrimitive(params.ToString()));
 
     if (primitive == nullptr) {
-      auto sum_primitive = std::make_unique<SumPrimitive<T>>(params);
+      auto sum_primitive = onnxruntime::make_unique<SumPrimitive<T>>(params);
       primitive = sum_primitive.get();
       SumPrimitivePool<T>::GetInstance().SetPrimitive(
         params.ToString(), std::move(sum_primitive));

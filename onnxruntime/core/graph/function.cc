@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/function_impl.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
@@ -56,7 +57,7 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto
     // type attribute, we add its referenced attribute
     // into the op's schema
     for (auto& attr : node.attribute()) {
-      if (attr.has_ref_attr_name() && attr.has_type())
+      if (!attr.ref_attr_name().empty() && utils::HasType(attr))
         attribute_type_map[attr.ref_attr_name()] = attr.type();
     }
   }
@@ -88,13 +89,13 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   customized_func_body_ = std::move(customized_func);
 
   // Construct body.
-  body_ = std::make_unique<onnxruntime::Model>("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
+  body_ = onnxruntime::make_unique<onnxruntime::Model>("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
                                                IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
                                                graph.DomainToVersionMap());
   auto& sub_graph = body_->MainGraph();
 
   auto meta_def = customized_func_body_->GetMetaDef();
-  op_schema_ = std::make_unique<ONNX_NAMESPACE::OpSchema>();
+  op_schema_ = onnxruntime::make_unique<ONNX_NAMESPACE::OpSchema>();
   op_schema_->SetName(meta_def->name);
   op_schema_->SetDomain(meta_def->domain);
   op_schema_->SetDoc(meta_def->doc_string);
@@ -160,7 +161,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     : parent_graph_(&graph) {
   onnx_func_proto_ = onnx_func_proto;
   auto node_in_parent_graph = parent_graph_->GetNode(node_index);
-  op_schema_ = std::make_unique<ONNX_NAMESPACE::OpSchema>();
+  op_schema_ = onnxruntime::make_unique<ONNX_NAMESPACE::OpSchema>();
   op_schema_->SetName(onnx_func_proto_->name());
   op_schema_->SetDomain(onnx_func_proto_->node().Get(0).domain());
   op_schema_->SetDoc(onnx_func_proto_->doc_string());
@@ -219,18 +220,18 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   std::unordered_map<std::string, int> domain_to_version;
   //TODO: set correct domain and version
   domain_to_version[onnxruntime::kOnnxDomain] = static_cast<int>(onnx_func_proto_->since_version());
-  body_ = std::make_unique<onnxruntime::Model>(onnx_func_proto_->name(), false, onnxruntime::ModelMetaData(),
+  body_ = onnxruntime::make_unique<onnxruntime::Model>(onnx_func_proto_->name(), false, onnxruntime::ModelMetaData(),
                                                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
   auto& sub_graph = body_->MainGraph();
   // Add node and node args into subgraph
   // The subgraph preserved the input/output tensor names
   // in the parent graph for later inlining purpose
-  auto attr_map = node_in_parent_graph->GetAttributes();
+  const auto& attr_map = node_in_parent_graph->GetAttributes();
   for (auto& node : onnx_func_proto_->node()) {
     std::vector<onnxruntime::NodeArg*> inputs;
     std::vector<onnxruntime::NodeArg*> outputs;
     std::string uniq_identifier = node.name();
-    if (!node.has_name()) {
+    if (!utils::HasName(node)) {
       std::stringstream ss;
       ss << static_cast<const void*>(&node);
       uniq_identifier = ss.str();
@@ -273,9 +274,10 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
 
     onnxruntime::NodeAttributes new_attr_map;
     for (auto& attr : node.attribute()) {
-      if (attr.has_ref_attr_name()) {
-        if (attr_map.count(attr.ref_attr_name())) {
-          new_attr_map[attr.name()] = attr_map[attr.ref_attr_name()];
+      if (!attr.ref_attr_name().empty()) {
+        auto entry = attr_map.find(attr.ref_attr_name());
+        if (entry != attr_map.cend()) {
+          new_attr_map[attr.name()] = entry->second;
         }
       } else {
         new_attr_map[attr.name()] = attr;
@@ -307,6 +309,6 @@ const ONNX_NAMESPACE::FunctionProto* FunctionImpl::GetFuncProto() const {
 
 std::unique_ptr<Function> MakeFunction(const onnxruntime::Graph& graph,
                                        std::unique_ptr<IndexedSubGraph> customized_func) {
-  return std::make_unique<FunctionImpl>(graph, std::move(customized_func));
+  return onnxruntime::make_unique<FunctionImpl>(graph, std::move(customized_func));
 }
 }  // namespace onnxruntime

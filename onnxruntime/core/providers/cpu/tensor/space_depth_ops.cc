@@ -15,8 +15,13 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     DepthToSpace,
-    1,
-    4,
+    1, 10,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    DepthToSpace<float>);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    DepthToSpace,
+    11,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     DepthToSpace<float>);
 
@@ -75,14 +80,28 @@ Status DepthToSpace<float>::Compute(OpKernelContext* context) const {
   const int64_t output_width = input_width * blocksize_;
 
   Tensor& output = *context->Output(0, {batch, output_depth, output_height, output_width});
+  
+  // Process "DCR" mode
+  if (is_dcr_) {
+    std::array<int64_t, IntermediateTensorRank> permutation{{0, 3, 4, 1, 5, 2}};
+    EigenTensorMap(output.template MutableData<float>(), batch, input_depth / blocksize_ / blocksize_,
+                   input_height, blocksize_, input_width, blocksize_) =
+        EigenTensorMap(const_cast<float*>(input.template Data<float>()), batch,
+                       blocksize_, blocksize_, input_depth / blocksize_ / blocksize_,
+                       input_height, input_width)
+            .shuffle(permutation);   
+  }
 
-  std::array<int64_t, IntermediateTensorRank> permutation{{0, 3, 4, 1, 5, 2}};
-  EigenTensorMap(output.template MutableData<float>(), batch, input_depth / blocksize_ / blocksize_,
-                 input_height, blocksize_, input_width, blocksize_) =
-      EigenTensorMap(const_cast<float*>(input.template Data<float>()), batch,
-                     blocksize_, blocksize_, input_depth / blocksize_ / blocksize_,
-                     input_height, input_width)
-          .shuffle(permutation);
+  // Process "CRD" mode
+  else {
+    std::array<int64_t, IntermediateTensorRank> permutation{{0, 1, 4, 2, 5, 3}};
+    EigenTensorMap(output.template MutableData<float>(), batch, input_depth / blocksize_ / blocksize_,
+                   input_height, blocksize_, input_width, blocksize_) =
+        EigenTensorMap(const_cast<float*>(input.template Data<float>()), batch,
+                       input_depth / blocksize_ / blocksize_, blocksize_, blocksize_,
+                       input_height, input_width)
+            .shuffle(permutation);  
+  }
 
   return Status::OK();
 }

@@ -105,7 +105,7 @@ const onnxruntime::Node* GetInputNode(const Node& node, const NodeArg* def) {
 // create capacity from subgraph
 std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& graph,
                                               std::unique_ptr<IndexedSubGraph>& subgraph) {
-  auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+  auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
   static int fuse_count = 0;
   meta_def->name = "Fuse" + std::to_string(fuse_count++);
   meta_def->domain = "Fuse";
@@ -119,6 +119,11 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
   meta_def->name += start_node.OpType() + std::to_string(start_node_index);
   meta_def->name += "_With" + std::to_string(subgraph->nodes.size()) + "Nodes_";
   meta_def->name += end_node.OpType() + std::to_string(end_node_index);
+
+  std::unordered_set<std::string> real_output_names;
+  for (const auto* def : graph.GetOutputs()) {
+    real_output_names.insert(def->Name());
+  }
 
   for (const auto& node_index : subgraph->nodes) {
     const auto& node = *graph.GetNode(node_index);
@@ -140,6 +145,7 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
     // 1. Output NodeArg is not used by any Node
     // 2. Output NodeArg is used by at least one Node out of this subgraph.
     //    Note a NodeArg can be used by Nodes in and out of the subgraph at the same time.
+    // 3. Output NodeArg is one of real outputs of an Ort graph.
 
     auto InsertOutputToSubgraph = [&meta_def](const NodeArg* def) {
       if (std::find(meta_def->outputs.begin(), meta_def->outputs.end(), def->Name()) ==
@@ -169,11 +175,12 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
       }
     }
 
-    // handle case 1
+    // handle case 1 and 3
     node.ForEachWithIndex(
         node.OutputDefs(),
         [&](const onnxruntime::NodeArg& def, size_t) {
-          if (input_names_from_the_output_node.count(def.Name()) == 0) {
+          if (input_names_from_the_output_node.count(def.Name()) == 0 ||
+              real_output_names.count(def.Name()) > 0) {
             InsertOutputToSubgraph(&def);
           }
           return Status::OK();
@@ -208,7 +215,7 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
   std::unique_ptr<IndexedSubGraph> finished_subgraph(subgraph.release());
   finished_subgraph->SetMetaDef(meta_def);
-  return std::make_unique<ComputeCapability>(std::move(finished_subgraph));
+  return onnxruntime::make_unique<ComputeCapability>(std::move(finished_subgraph));
 }
 
 int64_t ShapeRank(const NodeArg* def) {
@@ -220,14 +227,14 @@ bool ShapeHasValue(const NodeArg* def, int i) {
   ORT_ENFORCE_DEBUG(nullptr != def);
   ORT_ENFORCE_DEBUG(i >= 0);
   ORT_ENFORCE_DEBUG(i < def->Shape()->dim_size());
-  return def->Shape()->dim(i).has_dim_value();
+  return utils::HasDimValue(def->Shape()->dim(i));
 }
 
 bool ShapeHasSymbol(const NodeArg* def, int i) {
   ORT_ENFORCE_DEBUG(nullptr != def);
   ORT_ENFORCE_DEBUG(i >= 0);
   ORT_ENFORCE_DEBUG(i < def->Shape()->dim_size());
-  return def->Shape()->dim(i).has_dim_param();
+  return utils::HasDimParam(def->Shape()->dim(i));
 }
 
 int64_t ShapeValue(const NodeArg* def, int i) {

@@ -10,6 +10,9 @@
 namespace onnxruntime {
 namespace cuda {
 
+std::once_flag GridDim::s_cachedDevicePropsInitFlag;
+std::vector<cudaDeviceProp> GridDim::s_cachedDeviceProps;
+
 template <typename T>
 __global__ void _Fill(
     T* output_data,
@@ -58,7 +61,7 @@ class ConstantBufferImpl : public IConstantBuffer<T> {
 
 template <typename T>
 std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes() {
-  return std::make_unique<ConstantBufferImpl<T>>(Consts<T>::One);
+  return onnxruntime::make_unique<ConstantBufferImpl<T>>(Consts<T>::One);
 }
 
 template std::unique_ptr<IConstantBuffer<float>> CreateConstantOnes<float>();
