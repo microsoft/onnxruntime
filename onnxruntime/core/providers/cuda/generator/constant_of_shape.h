@@ -13,13 +13,13 @@
 namespace onnxruntime {
 namespace cuda {
 
-class ConstantOfShape final : public ConstantOfShapeBase, public OpKernel {
+class ConstantOfShape final : public ConstantOfShapeBase, public CudaKernel {
  public:
-  explicit ConstantOfShape(const OpKernelInfo& info) : ConstantOfShapeBase(info), OpKernel(info) {};
+  explicit ConstantOfShape(const OpKernelInfo& info) : ConstantOfShapeBase(info), CudaKernel(info) {};
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ConstantOfShape);
 
-  Status Compute(OpKernelContext* ctx) const override;
+  Status ComputeInternal(OpKernelContext* ctx) const override;
 };
 
 }  // namespace cuda

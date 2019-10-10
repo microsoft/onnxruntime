@@ -1,5 +1,4 @@
-ARG OS_VERSION=7
-FROM centos:${OS_VERSION}
+FROM mcr.microsoft.com/dotnet-buildtools/prereqs:centos-7-50f0d02-20190918214028
 
 ARG PYTHON_VERSION
 ADD scripts /tmp/scripts

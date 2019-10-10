@@ -55,6 +55,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   explicit TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info);
   virtual ~TensorrtExecutionProvider();
 
+  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
   std::vector<std::unique_ptr<ComputeCapability>>
