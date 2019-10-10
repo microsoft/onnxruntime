@@ -73,6 +73,15 @@ namespace Dml::GraphDescBuilder
             const onnxruntime::NodeArg* graphInput = graph.GetNodeArg(
                 GetFusedNodeArgNameMatchingGraph(fusedNodeInputDefs[inputIndex]->Name()));
 
+            if (!graphInput)
+            {
+                // This is a workaround for when node inputs get manipulated by transformers outside of our control,
+                // which then causes them to have a different name. If that happens we can't figure out how to
+                // correlate inputs to the fused graph index. This likely requires a higher-level fix, but for now
+                // just bail early.
+                THROW_HR(E_UNEXPECTED);
+            }
+
             nameToFusedNodeInputIndex.emplace(graphInput->Name(), gsl::narrow_cast<uint32_t>(inputIndex));
         }
 
