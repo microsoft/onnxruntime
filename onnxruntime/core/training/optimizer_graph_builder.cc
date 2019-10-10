@@ -306,69 +306,25 @@ Status AddFiniteGradientChecks(
     const std::vector<ArgDef>& gradient_argdefs,
     GraphAugmenter::GraphDefs& graph_defs,
     ArgDef& all_gradients_finite_argdef) {
-  /**
-   * gradient 1 ---> IsFinite ---> All ---|
-   * gradient 2 ---> IsFinite ---> All ---|---> Concat ---> All ---> (all gradients finite)
-   * ...                                  |
-   * gradient N ---> IsFinite ---> All ---|
-   */
-  const TypeProto* const reduce_all_output_type =
+  //Currently "all_gradients_finite" kernel only accepts input tensors with the same data type.
+  //Thus, enforce all the gradient_argdefs have the same data type.
+  auto gradient_argdefs_itr = gradient_argdefs.begin();
+  auto gradient_argdef_type = (gradient_argdefs_itr++)->type_proto->tensor_type().elem_type();
+  for (; gradient_argdefs_itr != gradient_argdefs.end(); ++gradient_argdefs_itr) {
+    ORT_ENFORCE(gradient_argdefs_itr->type_proto->tensor_type().elem_type() == gradient_argdef_type);
+  }
+  const TypeProto* const is_all_finite_output_type =
       graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_BOOL);
 
-  std::vector<NodeDef> nodedefs{};
-  nodedefs.reserve(2 * gradient_argdefs.size() + 2);
-
-  // for each gradient:
-  // - get elementwise finite check results with IsFinite
-  // - reduce with All
-  std::vector<ArgDef> is_finite_argdefs{};
-  for (const auto& gradient_argdef : gradient_argdefs) {
-    // output has the same shape and boolean element type
-    TypeProto* const elementwise_is_finite_type = graph_defs.CopyTypeProto(gradient_argdef);
-    elementwise_is_finite_type->mutable_tensor_type()->set_elem_type(
-        ONNX_NAMESPACE::TensorProto_DataType_BOOL);
-    ArgDef elementwise_is_finite_argdef{
-        nodearg_name_generator(MakeString(gradient_argdef.name, "_elementwise_is_finite")),
-        elementwise_is_finite_type};
-
-    nodedefs.emplace_back(
-        NodeDef{"IsFinite", {gradient_argdef}, {elementwise_is_finite_argdef}});
-
-    ArgDef is_finite_argdef{
-        nodearg_name_generator(MakeString(gradient_argdef.name, "_is_finite")),
-        reduce_all_output_type};
-
-    nodedefs.emplace_back(
-        NodeDef{"All", {elementwise_is_finite_argdef}, {is_finite_argdef}});
-
-    is_finite_argdefs.emplace_back(is_finite_argdef);
-  }
-
-  // Concat finite check results from individual gradients
-  ArgDef concatenated_all_gradients_finite_argdef{
-      nodearg_name_generator("concatenated_all_gradients_finite"),
-      graph_defs.CreateTypeProto(
-          {static_cast<int64_t>(is_finite_argdefs.size())},
-          ONNX_NAMESPACE::TensorProto_DataType_BOOL)};
-  nodedefs.emplace_back(
-      NodeDef{
-          "Concat",
-          is_finite_argdefs,
-          {concatenated_all_gradients_finite_argdef},
-          {MakeAttribute("axis", static_cast<int64_t>(0))},
-          concatenated_all_gradients_finite_argdef.name});
-
-  // reduce with All
   all_gradients_finite_argdef = ArgDef{
       nodearg_name_generator("all_gradients_finite"),
-      reduce_all_output_type};
-  nodedefs.emplace_back(
-      NodeDef{
-          "All",
-          {concatenated_all_gradients_finite_argdef},
-          {all_gradients_finite_argdef}});
+      is_all_finite_output_type};
+  graph_defs.AddNodeDefs({NodeDef{
+      "IsAllFinite",
+      gradient_argdefs,
+      {all_gradients_finite_argdef}}});
 
-  graph_defs.AddNodeDefs(nodedefs);
+  graph_defs.AddGraphOutputs({all_gradients_finite_argdef.name});
 
   return Status::OK();
 }
@@ -594,11 +550,10 @@ Status OptimizerGraphBuilder::Build(Graph& graph,
   }
 
   // check if all gradients are finite
-  // TODO: enable gradient finite check when AllIsFininte kernel ready
   ArgDef all_grads_finite_argdef{};
-  if (false) {
-    ORT_RETURN_IF_ERROR(AddFiniteGradientChecks(
-        nodearg_name_generator, gradient_argdefs, graph_defs, all_grads_finite_argdef));
+  if(opt_graph_config_.use_mixed_precision){
+  ORT_RETURN_IF_ERROR(AddFiniteGradientChecks(
+      nodearg_name_generator, gradient_argdefs, graph_defs, all_grads_finite_argdef));
   }
 
   // add weight update
@@ -615,8 +570,9 @@ Status OptimizerGraphBuilder::Build(Graph& graph,
     //      maybe update AddZeroGradientNodes() to accept 1 or N of them
     zero_gradients_control_signals.assign(weight_argdefs.size(), conditional_weight_update_output);
   } else {
+    ArgDef* is_all_finite_argdef = (opt_graph_config_.use_mixed_precision) ? &all_grads_finite_argdef : nullptr;
     ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(
-        opt_builder_registry_, weight_argdefs, gradient_argdefs, nullptr,
+        opt_builder_registry_, weight_argdefs, gradient_argdefs, is_all_finite_argdef,
         opt_configs_, zero_gradients_control_signals, graph_defs));
   }
 
