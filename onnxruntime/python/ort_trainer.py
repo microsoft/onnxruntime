@@ -222,6 +222,7 @@ def create_ort_training_session_bind_parameters(model, device, enable_grad_accum
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
     ort_parameters.enable_mix_precision = False
+    ort_parameters.enable_grad_accumulation = enable_grad_accumulation
 
     torch_params = {}
     for initializer in model.graph.initializer:
@@ -254,26 +255,30 @@ def create_ort_training_session_bind_parameters(model, device, enable_grad_accum
         eval_io_binding.bind_input(param, torch_tensor.device.type, device_index,
                                    dtype_torch_to_numpy(torch_params[param].dtype), list(torch_tensor.size()),
                                    torch_tensor.data_ptr())
-        # this is a temp hack to implement the grad accumulate behavior, we keep another accumulation buffer in pytorch
-        # it will hurt performance, need to be removed once the feature is ready in training session.
-        grad_buffer = torch.zeros(torch_tensor.size(), dtype=torch.float32, device=device)
-        if grad_buffers is not None:
-            grad_buffers[param] = grad_buffer
-        else:
-            torch_tensor.grad = grad_buffer
         # hardcode grad name
-        train_io_binding.bind_output(param + "_grad",
-                                     grad_buffer.device.type,
-                                     device_index,
-                                     dtype_torch_to_numpy(grad_buffer.dtype),
-                                     list(grad_buffer.size()),
-                                     grad_buffer.data_ptr())
-    return session, train_io_binding, eval_io_binding, output_name, ort_parameters, torch_params, grad_buffers, output_types
+        grad_buffer_name = (param + "_grad") if enable_grad_accumulation is False else (param + "_grad_accumulate_buffer")
+        if torch_tensor.grad is None:
+            torch_tensor.grad = torch.zeros(torch_tensor.size(), dtype=torch.float32, device=device)
+        if enable_grad_accumulation:
+            train_io_binding.bind_input(grad_buffer_name,
+                                         torch_tensor.grad.device.type,
+                                         device_index,
+                                         dtype_torch_to_numpy(torch_tensor.grad.dtype),
+                                         list(torch_tensor.grad.size()),
+                                         torch_tensor.grad.data_ptr())
+        else:
+            train_io_binding.bind_output(grad_buffer_name,
+                                         torch_tensor.grad.device.type,
+                                         device_index,
+                                         dtype_torch_to_numpy(torch_tensor.grad.dtype),
+                                         list(torch_tensor.grad.size()),
+                                         torch_tensor.grad.data_ptr())
+    return session, train_io_binding, eval_io_binding, output_name, ort_parameters, torch_params, output_types
 
 
 class ORTTrainer():
     def __init__(self, model, loss_fn, model_desc, optimizer_constructor_lambda, \
-                 device, use_ort_backend=True):
+                 device, use_ort_backend=True, accumulate_steps = 1):
         super(ORTTrainer, self).__init__()
         self.model_ = model
         self.loss_fn_ = loss_fn
@@ -283,35 +288,38 @@ class ORTTrainer():
         self.optimizer_ = None
         self.session = None
         self.device_ = device
+        self.accumulate_steps = accumulate_steps
+        self.current_step = 0
 
         if use_ort_backend:
             model = convert_model_loss_fn_to_onnx(self.model_, self.loss_fn_, self.model_desc_, device)
-            self.session, self.train_io_binding, self.eval_io_binding, self.output_name, self.ort_parameters, self.torch_params, _, self.output_types = \
-                create_ort_training_session_bind_parameters(model, device)
+            self.session, self.train_io_binding, self.eval_io_binding, self.output_name, self.ort_parameters, self.torch_params, self.output_types = \
+                create_ort_training_session_bind_parameters(model, device, True if self.accumulate_steps > 1 else False)
             self.optimizer_ = self.optimizer_constructor_lambda_(list(self.torch_params.values()))
             self.device_ = device
         else:
             self.optimizer_ = self.optimizer_constructor_lambda_(self.model_.parameters())
 
     def train_step(self, input, label, fetches=None):
-        self.optimizer_.zero_grad()
-
+        self.current_step += 1
         device_index = input.device.index if input.device.index else 0
         if self.session is None:
             self.model_.train()
             output = self.model_(input)
             loss = self.loss_fn_(output, label)
             loss.backward()
-            self.optimizer_.step()
+            if self.current_step % self.accumulate_steps == 0:
+                self.optimizer_.step()
+                self.optimizer_.zero_grad()
             return loss
         else:
 
             session_run_results = ort_training_session_run_helper(self.session, self.train_io_binding, (input, label), \
                                                                   self.model_desc_.inputs_, self.model_desc_.outputs_,
                                                                   self.device_)
-
-            self.optimizer_.step()
-
+            if self.current_step % self.accumulate_steps == 0:
+                self.optimizer_.step()
+                self.optimizer_.zero_grad()
             if not fetches or len(fetches) == 1:
                 # TODO: most time it returns loss tensor for caller to report training progress.
                 return list(session_run_results.values())[0]
@@ -360,8 +368,7 @@ class ORTModel():
         if postprocess_model:
             postprocess_model(model)
         # onnx.save_model(model, 'bert_model_base_after_postproc.onnx')
-
-        self.session_, self.train_io_binding, self.eval_io_binding, self.output_name, self.ort_parameters, self.torch_params, self.grad_buffers, self.output_types = \
+        self.session_, self.train_io_binding, self.eval_io_binding, self.output_name, self.ort_parameters, self.torch_params, self.output_types = \
             create_ort_training_session_bind_parameters(model, device, True)
 
     def parameters(self):
@@ -385,16 +392,23 @@ class ORTModel():
             param.data.copy_(input_param.data)
 
     def _train(self, *inputs):
-        outputs = ort_training_session_run_helper(self.session_, self.train_io_binding, inputs,
+        #confirm does the grad buffer binded or not
+        for param in self.torch_params.keys():
+            torch_tensor = self.torch_params[param]
+            if torch_tensor.grad is None:
+                torch_tensor.grad = torch.zeros(torch_tensor.size(), dtype=torch.float32, device=device)
+                grad_buffer_name = param + "_grad_accumulate_buffer"
+                device_index = torch_tensor.device.index if torch_tensor.device.index else 0
+                train_io_binding.bind_input(grad_buffer_name,
+                                             torch_tensor.grad.device.type,
+                                             device_index,
+                                             dtype_torch_to_numpy(torch_tensor.grad.dtype),
+                                             list(torch_tensor.grad.size()),
+                                             torch_tensor.grad.data_ptr())
+
+        return ort_training_session_run_helper(self.session_, self.train_io_binding, inputs,
                                                   self.model_desc_.inputs_, self.model_desc_.outputs_,
                                                   self.device_).values()
-        #this is a temp hack for gradient accumulation. need to remove it once the c++ side is ready.
-        for name, param in self.torch_params.items():
-            grad_buffer = self.grad_buffers[name]
-            if param.grad is None:
-                param.grad = torch.zeros(grad_buffer.size(), device='cuda', dtype=torch.float32)
-            param.grad += grad_buffer
-        return outputs
 
     def __call__(self, *inputs):
         return self._train(*inputs)

@@ -74,6 +74,8 @@ class TrainingSession : public InferenceSession {
                                     const std::string& loss_function_output_name,
                                     const bool set_gradient_as_graph_output = false);
 
+  common::Status BuildAccumulationNode(const std::unordered_set<std::string>& weights_to_train);
+
   /** Add optimizer into the model. Each trainable weight will have an optimizer
   @param opt_graph_config The configuration that applies to all optimizers.
   @param opt_configs specify the optimizers used by each weight in weights_to_train, 1-1 mapping to weights_to_train.

@@ -76,6 +76,27 @@ static Status BuildOptimizerInternal(Graph& graph,
   return Status::OK();
 }
 
+static Status AddGradientAccumulationNodes(Graph& graph,
+                                           const NodeArgNameGeneratorFn& nodearg_name_generator,
+                                           const std::vector<std::string> gradient_names,
+                                           bool add_accumulate_as_graph_output) {
+  GraphAugmenter::GraphDefs graph_defs{};
+
+  std::vector<ArgDef> gradient_argdefs{};
+  ORT_RETURN_IF_ERROR(GetArgDefsFromGraph(graph, gradient_names, gradient_argdefs));
+  std::vector<ArgDef> gradient_accumulation_buffers;
+  gradient_accumulation_buffers.resize(gradient_argdefs.size());
+  std::vector<std::string> grad_acc_outputs;
+  for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
+    grad_acc_outputs.push_back(BuildGradientAccumulationNode(
+                                   nodearg_name_generator, gradient_argdefs[i], gradient_accumulation_buffers[i], graph_defs, false)
+                                   .name);
+  }
+  if (add_accumulate_as_graph_output)
+    graph_defs.AddGraphOutputs(grad_acc_outputs);
+  return GraphAugmenter::AugmentGraph(graph, graph_defs);
+}
+
 common::Status TrainingSession::ApplyTransformationsToMainGraph() {
   try {
     Graph& graph = model_->MainGraph();
@@ -167,6 +188,19 @@ Status TrainingSession::BuildGradientGraph(const unordered_set<string>& weights_
                                                  weights_to_train_,
                                                  set_gradient_as_graph_output));
 
+  return DoPostLoadProcessing(*model_);
+}
+
+common::Status TrainingSession::BuildAccumulationNode(const std::unordered_set<std::string>& weights_to_train) {
+  std::vector<std::string> gradient_names{};
+  gradient_names.reserve(weights_to_train.size());
+  std::transform(
+      weights_to_train.begin(), weights_to_train.end(), std::back_inserter(gradient_names),
+      GradientBuilderBase::GradientName);
+  auto nodearg_name_generator = [](const std::string& base_name) {
+    return base_name;
+  };
+  ORT_RETURN_IF_ERROR(AddGradientAccumulationNodes(model_->MainGraph(), nodearg_name_generator, gradient_names, false));
   return DoPostLoadProcessing(*model_);
 }
 

@@ -18,7 +18,6 @@
 namespace onnxruntime {
 namespace training {
 
-namespace {
 Status GetArgDefsFromGraph(
     const Graph& graph, const std::vector<std::string>& node_arg_names,
     std::vector<ArgDef>& argdefs) {
@@ -32,6 +31,40 @@ Status GetArgDefsFromGraph(
   argdefs = std::move(result);
   return Status::OK();
 }
+
+ArgDef BuildGradientAccumulationNode(const NodeArgNameGeneratorFn& nodearg_name_generator,
+                                     const ArgDef& gradient,
+                                     ArgDef& gradient_accumulation_buffer,
+                                     GraphAugmenter::GraphDefs& graph_defs,
+                                     bool add_accumulate_buffer_as_initializers) {
+  TypeProto* gradient_fp32_type_proto = graph_defs.CopyTypeProto(gradient);
+  gradient_fp32_type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  ArgDef gradient_accumulate_buffer(nodearg_name_generator(gradient.name + "_accumulate_buffer"),
+                                    gradient_fp32_type_proto);
+  ArgDef gradient_accumulator_output(nodearg_name_generator(gradient.name + "_accumulator_output"),
+                                     gradient_fp32_type_proto);
+
+  std::vector<int64_t> dims;
+  ORT_ENFORCE(gradient.type_proto &&
+              gradient.type_proto->has_tensor_type() &&
+              gradient.type_proto->tensor_type().has_shape());
+  for (const auto& dim : gradient.type_proto->tensor_type().shape().dim()) {
+    dims.push_back(dim.dim_value());
+  }
+  if (add_accumulate_buffer_as_initializers)
+    graph_defs.AddInitializers({CreateTensorProto<float>(gradient_accumulate_buffer.name, 0.f, dims)});
+  graph_defs.AddNodeDefs({NodeDef("GradientAccumulator",
+                                  {gradient_accumulate_buffer, gradient},
+                                  {gradient_accumulator_output},
+                                  NodeAttributes(),
+                                  gradient_accumulator_output.name)});
+
+  gradient_accumulation_buffer = gradient_accumulate_buffer;
+  return gradient_accumulator_output;
+}
+
+namespace {
 
 #ifdef USE_HOROVOD
 const std::string global_barrier_name = "horovod/barrier";
@@ -93,9 +126,6 @@ ArgDef BuildAllReduceNode(const ArgDef& /*gradient*/, GraphAugmenter::GraphDefs&
 }
 #endif
 
-// given a base name, return a name suitable for a graph NodeArg
-using NodeArgNameGeneratorFn = std::function<std::string(const std::string&)>;
-
 ArgDef BuildGroupNode(const std::string& group_output_name,
                       const std::vector<ArgDef>& input_argdefs,
                       GraphAugmenter::GraphDefs& graph_defs) {
@@ -107,37 +137,6 @@ ArgDef BuildGroupNode(const std::string& group_output_name,
                                   NodeAttributes(),
                                   group_output.name)});
   return group_output;
-}
-
-ArgDef BuildGradientAccumulationNode(const NodeArgNameGeneratorFn& nodearg_name_generator,
-                                     const ArgDef& gradient,
-                                     ArgDef& gradient_accumulation_buffer,
-                                     GraphAugmenter::GraphDefs& graph_defs) {
-  TypeProto* gradient_fp32_type_proto = graph_defs.CopyTypeProto(gradient);
-  gradient_fp32_type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-
-  ArgDef gradient_accumulate_buffer(nodearg_name_generator(gradient.name + "_accumulate_buffer"),
-                                    gradient_fp32_type_proto);
-  ArgDef gradient_accumulator_output(nodearg_name_generator(gradient.name + "_accumulator_output"),
-                                     gradient_fp32_type_proto);
-
-  std::vector<int64_t> dims;
-  ORT_ENFORCE(gradient.type_proto &&
-              gradient.type_proto->has_tensor_type() &&
-              gradient.type_proto->tensor_type().has_shape());
-  for (const auto& dim : gradient.type_proto->tensor_type().shape().dim()) {
-    dims.push_back(dim.dim_value());
-  }
-
-  graph_defs.AddInitializers({CreateTensorProto<float>(gradient_accumulate_buffer.name, 0.f, dims)});
-  graph_defs.AddNodeDefs({NodeDef("GradientAccumulator",
-                                  {gradient_accumulate_buffer, gradient},
-                                  {gradient_accumulator_output},
-                                  NodeAttributes(),
-                                  gradient_accumulator_output.name)});
-
-  gradient_accumulation_buffer = gradient_accumulate_buffer;
-  return gradient_accumulator_output;
 }
 
 ArgDef BuildGradientScalingNode(const NodeArgNameGeneratorFn& nodearg_name_generator,

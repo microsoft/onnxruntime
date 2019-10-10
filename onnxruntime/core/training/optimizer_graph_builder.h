@@ -16,6 +16,19 @@ namespace training {
 
 constexpr const char* kGradientAccumulationOutputKey = "GRADIENT_ACCUMULATION_OUTPUT";
 
+// given a base name, return a name suitable for a graph NodeArg
+using NodeArgNameGeneratorFn = std::function<std::string(const std::string&)>;
+
+Status GetArgDefsFromGraph(
+    const Graph& graph, const std::vector<std::string>& node_arg_names,
+    std::vector<ArgDef>& argdefs);
+
+ArgDef BuildGradientAccumulationNode(const NodeArgNameGeneratorFn& nodearg_name_generator,
+                                     const ArgDef& gradient,
+                                     ArgDef& gradient_accumulation_buffer,
+                                     GraphAugmenter::GraphDefs& graph_defs,
+                                     bool add_accumulate_buffer_as_initializers = true);
+
 /**
  * Builds the optimizer components on top of an existing training graph.
  * The optimizers used are determined by the weight_names_to_opt_configs parameter

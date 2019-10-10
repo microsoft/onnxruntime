@@ -210,6 +210,7 @@ struct TrainingParameters {
   std::unordered_set<std::string> weights_to_train;
   onnxruntime::training::TrainingSession::ImmutableWeights immutable_weights;
   std::vector<std::string> weights_not_to_train;
+  bool enable_grad_accumulation;
 };
 
 class SessionObjectInitializer {
@@ -530,7 +531,8 @@ void addObjectMethods(py::module& m) {
       .def_readwrite("enable_mix_precision", &TrainingParameters::enable_mix_precision)
       .def_readwrite("immutable_weights", &TrainingParameters::immutable_weights)
       .def_readwrite("weights_not_to_train", &TrainingParameters::weights_not_to_train)
-      .def_readwrite("weights_to_train", &TrainingParameters::weights_to_train);
+      .def_readwrite("weights_to_train", &TrainingParameters::weights_to_train)
+      .def_readwrite("enable_grad_accumulation", &TrainingParameters::enable_grad_accumulation);
 
   py::class_<SessionOptions> sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
   sess
@@ -825,6 +827,13 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           }
         }
 
+        if (parameters.enable_grad_accumulation) {
+          status = sess->BuildAccumulationNode(weights_to_train);
+          if (!status.IsOK()) {
+            throw std::runtime_error(status.ToString().c_str());
+          }
+        }
+
         InitializeSession(sess);
       })
       .def("read_bytes", [](onnxruntime::training::TrainingSession* sess, const py::bytes& serialziedModel, TrainingParameters& parameters) {
@@ -851,6 +860,13 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         std::unordered_map<std::string, NodeArg*> fp16_weights_map;
         if (parameters.enable_mix_precision) {
           status = sess->EnableMixedPrecision(weights_to_train, false, fp16_weights_map);
+          if (!status.IsOK()) {
+            throw std::runtime_error(status.ToString().c_str());
+          }
+        }
+
+        if (parameters.enable_grad_accumulation) {
+          status = sess->BuildAccumulationNode(weights_to_train);
           if (!status.IsOK()) {
             throw std::runtime_error(status.ToString().c_str());
           }

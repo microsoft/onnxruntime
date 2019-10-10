@@ -42,10 +42,10 @@ def train_with_model(args, model, device, train_loader, optimizer, epoch):
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         data = data.reshape(data.shape[0], -1)
-        optimizer.zero_grad()
         loss, pred = model.run(data, target)
-        optimizer.step()
         if batch_idx % args.log_interval == 0:
+            optimizer.step()
+            optimizer.zero_grad()
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.item()))
@@ -167,13 +167,14 @@ def main():
     model = NeuralNet(input_size, hidden_size, num_classes).to(device)
 
     model_desc = mnist_model_description()
-
     if args.use_ort_trainer:
         optimizer_constructor_lambda = lambda model_parameters: optim.SGD(model_parameters, args.lr, args.momentum)
-        trainer = ORTTrainer(model, my_loss, model_desc, optimizer_constructor_lambda, device, args.use_ort)
+        #use log_interval as gradient accumulate steps
+        trainer = ORTTrainer(model, my_loss, model_desc, optimizer_constructor_lambda, device, args.use_ort, args.log_interval)
 
         for epoch in range(1, args.epochs + 1):
             train_with_trainer(args, trainer, device, train_loader, epoch)
+            import pdb
             test_with_trainer(args, trainer, device, test_loader)
     else:
         model = ORTModel(model, my_loss, model_desc, device)
