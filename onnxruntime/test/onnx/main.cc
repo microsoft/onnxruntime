@@ -38,11 +38,13 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph', 'openvino' or 'nuphar'. "
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph', "
+      "'openvino' or 'nuphar'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
-      "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. \n"
+      "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. "
+      "\n"
       "\t-h: help\n"
       "\n"
       "onnxruntime version: %s\n",
@@ -291,7 +293,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (enable_ngraph) {  //TODO: Re-order the priority?
+    if (enable_ngraph) {  // TODO: Re-order the priority?
 #ifdef USE_NGRAPH
       ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_NGraph(sf, "CPU"));
 #else
@@ -312,25 +314,26 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.SetGraphOptimizationLevel(graph_optimization_level);
     }
 
-    std::unordered_set<std::string> cuda_flaky_tests = {
-        "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
+    std::unordered_set<std::string> cuda_flaky_tests = {"fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
 
 #if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
-    //Minimize mem consumption
-    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&stat, &sf, enable_cuda, &cuda_flaky_tests, &env](ITestCase* l) {
-      std::unique_ptr<ITestCase> test_case_ptr(l);
-      if (enable_cuda && cuda_flaky_tests.find(l->GetTestCaseName()) != cuda_flaky_tests.end()) {
-        return;
-      }
-      TestResultStat per_case_stat;
-      std::vector<ITestCase*> per_case_tests = {l};
-      TestEnv per_case_args(per_case_tests, per_case_stat, env, sf);
-      RunTests(per_case_args, 1, 1, 1, GetDefaultThreadPool(Env::Default()));
-      stat += per_case_stat;
-    });
+    // Minimize mem consumption
+    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
+              [&stat, &sf, enable_cuda, &cuda_flaky_tests, &env](ITestCase* l) {
+                std::unique_ptr<ITestCase> test_case_ptr(l);
+                if (enable_cuda && cuda_flaky_tests.find(l->GetTestCaseName()) != cuda_flaky_tests.end()) {
+                  return;
+                }
+                TestResultStat per_case_stat;
+                std::vector<ITestCase*> per_case_tests = {l};
+                TestEnv per_case_args(per_case_tests, per_case_stat, env, sf);
+                RunTests(per_case_args, 1, 1, 1, GetDefaultThreadPool(Env::Default()));
+                stat += per_case_stat;
+              });
 #else
     std::vector<ITestCase*> tests;
-    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&tests](ITestCase* l) { tests.push_back(l); });
+    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
+              [&tests](ITestCase* l) { tests.push_back(l); });
     if (enable_cuda) {
       for (auto it = tests.begin(); it != tests.end();) {
         auto iter = cuda_flaky_tests.find((*it)->GetTestCaseName());
@@ -389,9 +392,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
       {"tf_inception_v2", "result mismatch"},
       {"mxnet_arcface", "result mismatch"},
-      {"top_k", "not implemented yet for opset 11"},
-      {"top_k_smallest", "not implemented yet for opset 11"},
-      {"top_k_negative_axis", "TopK(11) not implemented yet"},
       {"unique_not_sorted_without_axis", "Expected data for 'Y' is incorrect and in sorted order."},
       {"cumsum_1d_reverse_exclusive", "only failing linux GPU CI. Likely build error."},
       {"det_2d", "not implemented yet"},
@@ -545,7 +545,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
 #if defined(__GNUG__) && !defined(__LP64__)
-  broken_tests.insert({"nonzero_example", "failed: type mismatch", {"onnx123", "onnx130", "onnx141", "onnx150", "onnxtip"}});
+  broken_tests.insert(
+      {"nonzero_example", "failed: type mismatch", {"onnx123", "onnx130", "onnx141", "onnx150", "onnxtip"}});
   broken_tests.insert({"slice_neg_steps", "failed: type mismatch"});
   broken_tests.insert({"mod_float_mixed_sign_example", "failed: type mismatch"});
 #endif
@@ -594,8 +595,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   for (const auto& p : stat.GetFailedTest()) {
     BrokenTest t = {p.first, ""};
     auto iter = broken_tests.find(t);
-    if (iter == broken_tests.end() ||
-        (p.second != TestModelInfo::unknown_version && !iter->broken_versions_.empty() && iter->broken_versions_.find(p.second) == iter->broken_versions_.end())) {
+    if (iter == broken_tests.end() || (p.second != TestModelInfo::unknown_version && !iter->broken_versions_.empty() &&
+                                       iter->broken_versions_.find(p.second) == iter->broken_versions_.end())) {
       fprintf(stderr, "test %s failed, please fix it\n", p.first.c_str());
       result = -1;
     }
