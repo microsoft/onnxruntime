@@ -301,6 +301,11 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // Serialize modelproto to string
   std::string string_buf;
   model_proto.SerializeToString(&string_buf);
+    
+  //save ModelProto to file
+  int fd;
+  Env::Default().FileOpenWr("trt_model_proto_getcap.onnx", fd);
+  model_proto.SerializeToFileDescriptor(fd);
 
   //save ModelProto to file
   int fd;
