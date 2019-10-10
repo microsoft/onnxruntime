@@ -12,7 +12,7 @@ set(prebuilt_ONNX_SOURCE_DIR "${PROJECT_SOURCE_DIR}/external/onnx")
 set(prebuilt_ONNX_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 set(ngraph_URL "https://github.com/NervanaSystems/ngraph.git")
 # TODO: change to v0.26.0 tag when it's ready
-set(ngraph_TAG "v0.26.0-rc.6")
+set(ngraph_TAG "r0.26")
 
 # Libraries for python package.
 if (WIN32)
@@ -46,15 +46,12 @@ endif()
 set(NGRAPH_PATCH_DISCARD_COMMAND cd ${ngraph_SRC} && git reset HEAD --hard && git clean -fx)
 
 if (MSVC)
-    set(prebuilt_ONNX_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/onnx/${CMAKE_BUILD_TYPE}")
-    set(prebuilt_ONNX_SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}")
-
-
     # For the moment, Windows does not support codegen, it works on DEX-only mode
     ExternalProject_Add(project_ngraph
             PREFIX ngraph
             GIT_REPOSITORY ${ngraph_URL}
             GIT_TAG ${ngraph_TAG}
+            GIT_SHALLOW TRUE
             GIT_CONFIG core.autocrlf=input
             PATCH_COMMAND ${NGRAPH_PATCH_DISCARD_COMMAND}
             COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/patches/ngraph/ngraph_onnx.cmake ${ngraph_SRC}/cmake/external_onnx.cmake
