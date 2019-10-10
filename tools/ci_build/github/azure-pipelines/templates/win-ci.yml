@@ -14,14 +14,11 @@ parameters:
   EnvSetupScript: 'setup_env.bat'
   CudaVersion: ''
   AgentPool: 'Win-CPU'
-  AgentDemands: ''
 
 jobs:
 - job: ${{ parameters.JobName }}
   timeoutInMinutes: 120
-  pool:
-    name: ${{ parameters.AgentPool }}
-    demands: ${{ parameters.AgentDemands }}
+  pool: ${{ parameters.AgentPool }}
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     BuildCommand: ${{ parameters.BuildCommand }}

@@ -5,11 +5,12 @@
 
 #undef OPTIONAL
 #include "core/graph/graph_utils.h"
-#include "core/optimizer/initializer.h"
+#include "core/optimizer/initializer.h" 
+#include "core/optimizer/utils.h"
 #include "bn_add_fusion.h"
 
 using namespace ONNX_NAMESPACE;
-using namespace ::onnxruntime::common;
+using namespace onnxruntime::common;
 namespace onnxruntime {
 
 Status BatchNormalizationAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modified) const {
@@ -29,7 +30,7 @@ Status BatchNormalizationAddFusion::Apply(Graph& graph, Node& node, RewriteRuleE
   }
 
   // Currently, fusion is only supported for float or double data type.
-  if (!Initializer::IsSupportedDataType(add_B_tensor_proto) ||
+  if (!optimizer_utils::IsFloatingPointDataType(*add_B_tensor_proto) ||
       BatchNormalization_Scale_tensor_proto->dims_size() != 1) {
     return Status::OK();
   }
@@ -55,7 +56,7 @@ Status BatchNormalizationAddFusion::Apply(Graph& graph, Node& node, RewriteRuleE
     return Status::OK();
   }
 
-  if (!Initializer::IsSupportedDataType(BatchNormalization_B_tensor_proto) ||
+  if (!optimizer_utils::IsFloatingPointDataType(*BatchNormalization_B_tensor_proto) ||
       BatchNormalization_B_tensor_proto->data_type() != add_B_tensor_proto->data_type() ||
       BatchNormalization_B_tensor_proto->dims_size() != 1) {
     return Status::OK();
@@ -72,7 +73,7 @@ Status BatchNormalizationAddFusion::Apply(Graph& graph, Node& node, RewriteRuleE
 
   // Create new initializers of BatchNormalization
   ONNX_NAMESPACE::TensorProto new_BatchNormalization_B_tensor_proto;
-  BatchNormalization_B->ToProto(&new_BatchNormalization_B_tensor_proto);
+  BatchNormalization_B->ToProto(new_BatchNormalization_B_tensor_proto);
 
   // Replace initializers of BatchNormalization node
   graph.RemoveInitializedTensor(BatchNormalization_inputs[2]->Name());

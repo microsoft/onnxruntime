@@ -5,11 +5,12 @@
 
 #undef OPTIONAL
 #include "core/graph/graph_utils.h"
-#include "core/optimizer/initializer.h"
+#include "core/optimizer/initializer.h" 
+#include "core/optimizer/utils.h"
 #include "bn_mul_fusion.h"
 
 using namespace ONNX_NAMESPACE;
-using namespace ::onnxruntime::common;
+using namespace onnxruntime::common;
 namespace onnxruntime {
 
 Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
@@ -28,8 +29,8 @@ Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleE
     return Status::OK();
   }
 
-  if (!Initializer::IsSupportedDataType(BatchNormalization_Scale_tensor_proto) ||
-      !Initializer::IsSupportedDataType(mul_B_tensor_proto) ||
+  if (!optimizer_utils::IsFloatingPointDataType(*BatchNormalization_Scale_tensor_proto) ||
+      !optimizer_utils::IsFloatingPointDataType(*mul_B_tensor_proto) ||
       BatchNormalization_Scale_tensor_proto->data_type() != mul_B_tensor_proto->data_type() ||
       BatchNormalization_Scale_tensor_proto->dims_size() != 1) {
     return Status::OK();
@@ -62,7 +63,7 @@ Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleE
     return Status::OK();
   if (BatchNormalization_B_tensor_proto == nullptr)
     return Status(ONNXRUNTIME, FAIL, "Internal error in BatchNormalizationMulFusion. BatchNormalization_B_tensor_proto is NULL");
-  if (!Initializer::IsSupportedDataType(BatchNormalization_B_tensor_proto) ||
+  if (!optimizer_utils::IsFloatingPointDataType(*BatchNormalization_B_tensor_proto) ||
       BatchNormalization_B_tensor_proto->data_type() != mul_B_tensor_proto->data_type() ||
       BatchNormalization_B_tensor_proto->dims_size() != 1) {
     return Status::OK();
@@ -80,14 +81,14 @@ Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleE
 
   // Create new initializers of BatchNormalization
   ONNX_NAMESPACE::TensorProto new_BatchNormalization_Scale_tensor_proto(*BatchNormalization_Scale_tensor_proto);
-  BatchNormalization_Scale->ToProto(&new_BatchNormalization_Scale_tensor_proto);
+  BatchNormalization_Scale->ToProto(new_BatchNormalization_Scale_tensor_proto);
 
   // Replace initializers of BatchNormalization node
   graph.RemoveInitializedTensor(BatchNormalization_inputs[1]->Name());
   graph.AddInitializedTensor(new_BatchNormalization_Scale_tensor_proto);
 
   ONNX_NAMESPACE::TensorProto new_BatchNormalization_B_tensor_proto(*BatchNormalization_B_tensor_proto);
-  BatchNormalization_B->ToProto(&new_BatchNormalization_B_tensor_proto);
+  BatchNormalization_B->ToProto(new_BatchNormalization_B_tensor_proto);
   graph.RemoveInitializedTensor(BatchNormalization_inputs[2]->Name());
   graph.AddInitializedTensor(new_BatchNormalization_B_tensor_proto);
 
