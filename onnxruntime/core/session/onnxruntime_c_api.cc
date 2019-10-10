@@ -345,17 +345,16 @@ ORT_API_STATUS_IMPL(OrtApis::AddCustomOpDomain, _In_ OrtSessionOptions* options,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path) {
+ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path, void** library_handle) {
   API_IMPL_BEGIN
 
-  void* handle;
-  Env::Default().LoadDynamicLibrary(library_path, &handle);
-  if (!handle)
+  Env::Default().LoadDynamicLibrary(library_path, library_handle);
+  if (!*library_handle)
     return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Failed to load library");
 
   OrtStatus* (*RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
 
-  Env::Default().GetSymbolFromLibrary(handle, "RegisterCustomOps", (void**)&RegisterCustomOps);
+  Env::Default().GetSymbolFromLibrary(*library_handle, "RegisterCustomOps", (void**)&RegisterCustomOps);
   if (!RegisterCustomOps)
     return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Entry point RegisterCustomOps not found in library");
 
