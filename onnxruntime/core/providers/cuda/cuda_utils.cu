@@ -10,9 +10,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-std::once_flag GridDim::s_cachedDevicePropsInitFlag;
-std::vector<cudaDeviceProp> GridDim::s_cachedDeviceProps;
-
 template <typename T>
 __global__ void _Fill(
     T* output_data,
@@ -68,8 +65,8 @@ template std::unique_ptr<IConstantBuffer<float>> CreateConstantOnes<float>();
 template std::unique_ptr<IConstantBuffer<double>> CreateConstantOnes<double>();
 template std::unique_ptr<IConstantBuffer<half>> CreateConstantOnes<half>();
 
-#define SPECIALIZED_FILL(T)                                 \
-template void Fill<T>(T* output, T value, int64_t count);
+#define SPECIALIZED_FILL(T) \
+  template void Fill<T>(T * output, T value, int64_t count);
 
 SPECIALIZED_FILL(int8_t)
 SPECIALIZED_FILL(int16_t)

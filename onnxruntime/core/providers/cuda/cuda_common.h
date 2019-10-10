@@ -84,7 +84,7 @@ class CudaKernel : public OpKernel {
       memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T));
     }
 
-    void AllocCpuPtr( size_t count) {
+    void AllocCpuPtr(size_t count) {
       cpu_pinned_copy_ = op_kernel_->AllocateBufferOnCPUPinned<T>(count);
       if (cpu_pinned_copy_ == nullptr)
         throw std::runtime_error("alloc failed");
@@ -180,6 +180,38 @@ inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int6
   }
   return true;
 }
+
+struct DeviceProp {
+  static const std::vector<cudaDeviceProp>& GetCachedDeviceProps() {
+    std::call_once(s_cachedDevicePropsInitFlag, [=] {
+      int numDevices;
+      // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
+      CUDA_CALL_THROW(cudaDeviceSynchronize());
+      CUDA_CALL_THROW(cudaGetDeviceCount(&numDevices));
+      s_cachedDeviceProps.resize(numDevices);
+      for (int i = 0; i < numDevices; i++)
+        CUDA_CALL_THROW(cudaGetDeviceProperties(&s_cachedDeviceProps[i], i));
+    });
+
+    return s_cachedDeviceProps;
+  }
+
+  static size_t GetCurrentDeviceId() {
+    int deviceId;
+    cudaGetDevice(&deviceId);
+    return (size_t)deviceId;
+  }
+
+  // get device properties of current device
+  static const cudaDeviceProp& GetDeviceProps() {
+    const auto& cachedDevicesProps = GetCachedDeviceProps();
+    return cachedDevicesProps[GetCurrentDeviceId()];
+  }
+
+ private:
+  static std::vector<cudaDeviceProp> s_cachedDeviceProps;
+  static std::once_flag s_cachedDevicePropsInitFlag;
+};
 
 }  // namespace cuda
 }  // namespace onnxruntime
