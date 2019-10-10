@@ -586,7 +586,7 @@ static OrtStatus* GetNodeDefTypeInfoHelper(const OrtSession* sess, GetDefListFn 
   if (p.second->size() <= index)
     return OrtApis::CreateStatus(ORT_FAIL, "out of index");
   const ONNX_NAMESPACE::TypeProto* type_proto = (*p.second)[index]->TypeAsProto();
-  return OrtTypeInfo::FromDataTypeImpl(type_proto, out);
+  return OrtTypeInfo::FromTypeProto(type_proto, out);
   API_IMPL_END
 }
 
