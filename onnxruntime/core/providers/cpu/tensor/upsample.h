@@ -49,7 +49,7 @@ class UpsampleBase {
     std::string coordinate_transform_mode = start > 10
                                                 ? info.GetAttrOrDefault<std::string>("coordinate_transformation_mode", "half_pixel")
                                                 : "asymmetric";
-    get_original_coordinate_ = GetOriginalCoordinateFromResizedCoordinate(coordinate_transform_mode, extrapolation_value_);
+    get_original_coordinate_ = GetOriginalCoordinateFromResizedCoordinate(coordinate_transform_mode);
     need_roi_input_ = coordinate_transform_mode == "tf_crop_and_resize" ? true : false;
 
     std::string nearest_mode = info.GetAttrOrDefault<std::string>("nearest_mode", "round_prefer_floor");
@@ -128,14 +128,14 @@ class UpsampleBase {
   }
 
   GetOriginalCoordinateFunc GetOriginalCoordinateFromResizedCoordinate(
-      const std::string& coordinate_transform_mode, float extrapolation_value) {
+      const std::string& coordinate_transform_mode) {
     if (coordinate_transform_mode == "asymmetric") {
       return [](float x_resized, float x_scale, float, float, float , float ) {
         return x_resized / x_scale;
       };
     } else if (coordinate_transform_mode == "pytorch_half_pixel") {
       return [](float x_resized, float x_scale, float length_resized, float, float , float ) {
-        return length_resized > 1 ? (x_resized + 0.5f) / x_scale - 0.5f : -0.5f;
+        return length_resized > 1 ? (x_resized + 0.5f) / x_scale - 0.5f : 0.0f;
       };
     } else if (coordinate_transform_mode == "tf_half_pixel_for_nn") {
       return [](float x_resized, float x_scale, float, float, float, float ) {
@@ -146,11 +146,11 @@ class UpsampleBase {
         return length_resized == 1 ? 0 : (x_resized * (length_original - 1)) / (length_resized - 1);
       };
     } else if (coordinate_transform_mode == "tf_crop_and_resize") {
-      return [&extrapolation_value](float x_resized, float x_scale, float length_resized, float length_original, float roi_start, float roi_end) {
+      return [](float x_resized, float x_scale, float length_resized, float length_original, float roi_start, float roi_end) {
         auto orig = length_resized > 1 
             ? roi_start * (length_original - 1) + (x_resized * (roi_end - roi_start) * (length_original - 1)) / (length_resized - 1) 
             : 0.5 * (roi_start + roi_end) * (length_original - 1);
-        return orig < 0 || orig > length_original - 1 ? extrapolation_value : static_cast<float>(orig);
+        return static_cast<float>(orig);
       };
     } else {  // "half_pixel"
       return [](float x_resized, float x_scale, float, float, float, float ) {
@@ -229,6 +229,10 @@ class UpsampleBase {
 
   void ParseScalesDataFromSizes(const Tensor* sizes, const std::vector<int64_t>& dims, std::vector<float>& scales) const {
     const auto* sizes_data = sizes->template Data<int64_t>();
+    int64_t scales_size = sizes->Shape().Size();
+    if (scales.empty()) {
+      scales.resize(scales_size);
+    }
     for (size_t i = 0; i < dims.size(); i++) {
       scales[i] = (float)(sizes_data[i]) / (float)(dims[i]);
     }

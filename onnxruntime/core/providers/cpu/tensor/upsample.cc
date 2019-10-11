@@ -75,7 +75,7 @@ Status UpsampleNearest(const T* input,
                                                  "Upsample: input/output value's dimension mismatch");
   if (input_shape.NumDimensions() == 0) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  is_resize ? "Resize: input shape needs to be at least a single dimension" :
+                  is_resize ? "Resize: input shape needs to be at least a single dimension" : 
                               "Upsample: input shape needs to be at least a single dimension.");
   }
 
@@ -576,16 +576,23 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
 
 template <typename T>
 Status Upsample<T>::Compute(OpKernelContext* context) const {
-  if (OpKernel::Node().InputDefs().size() == 1 || (scales_cached_ && roi_cached_)) {
-    return BaseCompute(context, scales_, roi_);
-  }
-
   const auto* X = context->Input<Tensor>(0);
   ORT_ENFORCE(X != nullptr);
 
+  if (OpKernel::Node().InputDefs().size() == 1) {
+    std::vector<float> roi_array(X->Shape().GetDims().size() * 2, 0.0f);
+    return BaseCompute(context, scales_, roi_array);
+  }
+
+  // Both Roi and Scales are constant inputs
+  if (roi_cached_ && scales_cached_) {
+    return BaseCompute(context, scales_, roi_);
+  }
+
   // Get scales data
-  const std::vector<float>* scales_ptr = &scales_;
-  std::vector<float> scales_array(X->Shape().GetDims().size());
+  std::vector<float> scales_array;
+  const std::vector<float>* scales_ptr = scales_cached_ ? &scales_ : &scales_array;
+  
   if (!scales_cached_) {
     const auto* scales = context->Input<Tensor>(scales_input_idx_);
     const auto* sizes = context->Input<Tensor>(sizes_input_idx_);
@@ -593,34 +600,32 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
 
     // User must provide either the scales or sizes
     if (scales->Shape().Size() == 0) {
-      ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0,  //&& sizes->Shape().Size() == X->Shape().GetDims().size(),
+      ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0,
                   "Either scales input or sizes input must be provided and the number of elements of scales or sizes should be the same as the rank of the input.");
 
-      scales = nullptr;
       ParseScalesDataFromSizes(sizes, X->Shape().GetDims(), scales_array);
     } else {
       ORT_ENFORCE(sizes == nullptr);
       ParseScalesData(scales, scales_array);
     }
-
-    scales_ptr = &scales_array;
   }
 
   // Get roi data
   // Initialize the roi array to all zeros as this will be the most common case
   // Roi data is needed only when coordinate transformation mode is set to tf_crop_and_resize
   // for all other cases we need a 0 initialized roi array
-  std::vector<float> roi_array(X->Shape().GetDims().size() * 2, 0.0f);
-  const std::vector<float>* roi_ptr = &roi_array;
+  std::vector<float> roi_array;
+  const std::vector<float>* roi_ptr = roi_cached_ ? &roi_ : &roi_array;
 
-  if (need_roi_input_) {
-    if (roi_cached_) {
-      roi_ptr = &roi_;
-    } else {
+  if (!roi_cached_) {
+    if (need_roi_input_) {
       ORT_ENFORCE(roi_input_idx_ > 0, "Invalid roi input index.");
 
       const auto* roi = context->Input<Tensor>(roi_input_idx_);
       ParseRoiData(roi, roi_array);
+    } else {
+      roi_array.resize(X->Shape().GetDims().size() * 2);
+      std::fill(roi_array.begin(), roi_array.end(), 0.0f);
     }
   }
 
