@@ -51,13 +51,20 @@ if args.remote_dir and args.local_dir:
   local_root = os.path.join(os.path.normpath(args.local_dir), run.id)
   remote_root = args.remote_dir
 
-  executor = ThreadPoolExecutor()
-  event = Event()
-  session = Session()
+  if run.get_status() in ['Completed', 'Failed', 'Canceled']:
+    print("Downloading Experiment files from remote directory: '{}' to local directory: '{}'".format(remote_root, local_root))
+    files = [f for f in run.get_file_names() if f.startswith(remote_root)]
+    for remote_path in files:
+      local_path = os.path.join(local_root, os.path.basename(remote_path))
+      run.download_file(remote_path, local_path)
+  else:
+    executor = ThreadPoolExecutor()
+    event = Event()
+    session = Session()
 
-  print("Streaming Experiment files from remote directory: '{}' to local directory: '{}'".format(remote_root, local_root))
-  watcher = RunWatcher(run, local_root=local_root, remote_root=remote_root, executor=executor, event=event, session=session)
-  executor.submit(watcher.refresh_requeue)
+    print("Streaming Experiment files from remote directory: '{}' to local directory: '{}'".format(remote_root, local_root))
+    watcher = RunWatcher(run, local_root=local_root, remote_root=remote_root, executor=executor, event=event, session=session)
+    executor.submit(watcher.refresh_requeue)
 
-# Block until run completes, to keep updating the files
+# Block until run completes, to keep updating the files (if streaming)
 run.wait_for_completion(show_output=True)
