@@ -142,11 +142,11 @@ class UpsampleBase {
         return (x_resized + 0.5f) / x_scale;
       };
     } else if (coordinate_transform_mode == "align_corners") {
-      return [](float x_resized, float x_scale, float length_resized, float length_original, float, float ) {
-        return length_resized == 1 ? 0 : (x_resized * (length_original - 1)) / (length_resized - 1);
+      return [](float x_resized, float , float length_resized, float length_original, float, float ) {
+        return length_resized == 1 ? 0 : x_resized * (length_original - 1) / (length_resized - 1);
       };
     } else if (coordinate_transform_mode == "tf_crop_and_resize") {
-      return [](float x_resized, float x_scale, float length_resized, float length_original, float roi_start, float roi_end) {
+      return [](float x_resized, float , float length_resized, float length_original, float roi_start, float roi_end) {
         auto orig = length_resized > 1 
             ? roi_start * (length_original - 1) + (x_resized * (roi_end - roi_start) * (length_original - 1)) / (length_resized - 1) 
             : 0.5 * (roi_start + roi_end) * (length_original - 1);

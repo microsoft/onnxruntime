@@ -68,15 +68,17 @@ Status UpsampleNearest(const T* input,
                        GetOriginalCoordinateFunc get_original_coordinate,
                        GetNearestPixelFunc get_nearest_pixel) {
   if (!input || !output)
-    return Status(ONNXRUNTIME, FAIL, is_resize ? "Resize: input/output value is nullptr" : 
-                                                 "Upsample: input/output value is nullptr");
+    return Status(ONNXRUNTIME, FAIL,
+                  is_resize ? "Resize: input/output value is nullptr"
+                            : "Upsample: input/output value is nullptr");
   if (input_shape.NumDimensions() != output_shape.NumDimensions())
-    return Status(ONNXRUNTIME, FAIL, is_resize ? "Resize: input/output value's dimension mismatch" : 
-                                                 "Upsample: input/output value's dimension mismatch");
+    return Status(ONNXRUNTIME, FAIL,
+                  is_resize ? "Resize: input/output value's dimension mismatch"
+                            : "Upsample: input/output value's dimension mismatch");
   if (input_shape.NumDimensions() == 0) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  is_resize ? "Resize: input shape needs to be at least a single dimension" : 
-                              "Upsample: input shape needs to be at least a single dimension.");
+                  is_resize ? "Resize: input shape needs to be at least a single dimension"
+                            : "Upsample: input shape needs to be at least a single dimension.");
   }
 
   int64_t n_dim = static_cast<int64_t>(input_shape.NumDimensions());
@@ -205,11 +207,13 @@ Status upsampleLinear(const T* input,
                       bool is_resize,
                       GetOriginalCoordinateFunc get_original_coordinate) {
   if (!input || !output)
-    return Status(ONNXRUNTIME, FAIL, is_resize ? "Resize: input / output value is nullptr" : 
-                                                 "Upsample: input / output value is nullptr");
+    return Status(ONNXRUNTIME, FAIL,
+                  is_resize ? "Resize: input / output value is nullptr"
+                            : "Upsample: input / output value is nullptr");
   if (input_shape.NumDimensions() != output_shape.NumDimensions())
-    return Status(ONNXRUNTIME, FAIL, is_resize ? "Resize: input/output value's dimension mismatch" : 
-                                                 "Upsample: input/output value's dimension mismatch");
+    return Status(ONNXRUNTIME, FAIL,
+                  is_resize ? "Resize: input/output value's dimension mismatch"
+                            : "Upsample: input/output value's dimension mismatch");
   auto n_dim = input_shape.NumDimensions();
   for (size_t i = 0, size = output_shape.Size(); i < size; i++) {
     std::vector<int64_t> val1;
@@ -442,8 +446,8 @@ void ResizeBiCubic(
     float in_y = get_original_coordinate(static_cast<float>(y), height_scale,
                                          static_cast<float>(output_height), static_cast<float>(input_height),
                                          roi[roi_y_start], roi[roi_y_end]);
-    y_original.emplace_back(std::max(0.0f, in_y));
-    auto s = y_original[y] - static_cast<int64_t>(y_original[y]);
+    y_original.emplace_back(in_y);
+    auto s = y_original[y] - std::floor(y_original[y]);
     if (cubic_coeffs.find(s) == cubic_coeffs.end()) {
       cubic_coeffs[s] = GetCubicCoeffs(s, cubic_coeff_a);
       coeff_to_1Dinterpolation_map[s] = {};
@@ -455,8 +459,8 @@ void ResizeBiCubic(
     float in_x = get_original_coordinate(static_cast<float>(x), width_scale,
                                          static_cast<float>(output_width), static_cast<float>(input_width),
                                          roi[roi_x_start], roi[roi_x_end]);
-    x_original.emplace_back(std::max(0.0f, in_x));
-    auto s = x_original[x] - static_cast<int64_t>(x_original[x]);
+    x_original.emplace_back(in_x);
+    auto s = x_original[x] - std::floor(x_original[x]);
     if (cubic_coeffs.find(s) == cubic_coeffs.end()) {
       cubic_coeffs[s] = GetCubicCoeffs(s, cubic_coeff_a);
       coeff_to_1Dinterpolation_map[s] = {};
@@ -466,11 +470,11 @@ void ResizeBiCubic(
   for (int64_t n = 0; n < batch_size; n++) {
     for (int64_t c = 0; c < num_channels; c++) {
       for (int64_t y = 0; y < output_height; ++y) {
-        auto y_int = static_cast<int64_t>(y_original[y]);
-        auto& coeff_y = cubic_coeffs[static_cast<float>(y_original[y] - y_int)];
+        auto y_int = static_cast<int64_t>(std::floor(y_original[y]));
+        auto& coeff_y = cubic_coeffs[y_original[y] - y_int];
 
         for (int64_t x = 0; x < output_width; ++x) {
-          auto x_int = static_cast<int64_t>(x_original[x]);
+          auto x_int = static_cast<int64_t>(std::floor(x_original[x]));
           auto s_x = static_cast<float>(x_original[x] - x_int);
           auto& coeff_x = cubic_coeffs[s_x];
 
@@ -507,8 +511,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
   const std::vector<int64_t>& dims = X->Shape().GetDims();
   if (dims.size() != scales.size())
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                  is_resize ? "Resize: input tensor's dimension does not match the scales." : 
-                              "Upsample: input tensor's dimension does not match the scales.");
+                  is_resize ? "Resize: input tensor's dimension does not match the scales."
+                            : "Upsample: input tensor's dimension does not match the scales.");
 
   if (roi.size() != 2 * X->Shape().GetDims().size())
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -592,7 +596,7 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
   // Get scales data
   std::vector<float> scales_array;
   const std::vector<float>* scales_ptr = scales_cached_ ? &scales_ : &scales_array;
-  
+
   if (!scales_cached_) {
     const auto* scales = context->Input<Tensor>(scales_input_idx_);
     const auto* sizes = context->Input<Tensor>(sizes_input_idx_);
