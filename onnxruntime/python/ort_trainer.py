@@ -32,7 +32,7 @@ def resolve_symbolic_dimensions(inputs, input_descs, output_descs):
         for i, axis in enumerate(input_desc.shape_):
             if isinstance(axis, str):
                 resolved_dims[axis] = input.size()[i]
-
+    
     for output_desc in output_descs_copy:
         for i, axis in enumerate(output_desc.shape_):
             if isinstance(axis, str):
@@ -49,7 +49,7 @@ def generate_sample(desc, device=None):
     size = [s if isinstance(s, (int)) else 1 for s in desc.shape_]
     if desc.num_classes_:
         return torch.randint(0, desc.num_classes_, size, dtype=desc.dtype_, device=device)
-    else:
+    else: 
         return torch.randn(size, dtype=desc.dtype_, device=device)
 
 
@@ -57,15 +57,15 @@ def ort_training_session_run_helper(session, iobinding, inputs, input_descs, out
     for input, input_desc in zip(inputs, input_descs):
         device_index = input.device.index if input.device.index else 0
         iobinding.bind_input(input_desc.name_, input.device.type, device_index, dtype_torch_to_numpy(input.dtype),
-                             list(input.size()), input.data_ptr())
+                                list(input.size()), input.data_ptr())
 
     output_descs_resolved = resolve_symbolic_dimensions(inputs, input_descs, output_descs)
     torch_outputs = {}
     for output_desc in output_descs_resolved:
         torch_tensor = torch.zeros(output_desc.shape_, device=device, dtype=output_desc.dtype_)
         device_index = device.index if device.index else 0
-        iobinding.bind_output(output_desc.name_, torch_tensor.device.type, device_index,
-                              dtype_torch_to_numpy(torch_tensor.dtype),
+        iobinding.bind_output(output_desc.name_, torch_tensor.device.type, device_index, 
+                              dtype_torch_to_numpy(torch_tensor.dtype),  
                               list(torch_tensor.size()), torch_tensor.data_ptr())
         torch_outputs[output_desc.name_] = torch_tensor
 
@@ -99,13 +99,16 @@ def FuseSofmaxNLLToSoftmaxCE(onnx_model):
 
         if nll_loss_node is None:
             break
-
+        
         softmax_node = None
         softmax_node_index = 0
         label_input_name = None
+        weight_input_name = None
         for softmax_node_index, node in enumerate(onnx_model.graph.node):
             if node.op_type == "LogSoftmax":
                 # has to be connected to nll_loss
+                if len(nll_loss_node.input) > 2:
+                    weight_input_name = nll_loss_node.input[2]
                 if node.output[0] == nll_loss_node.input[0]:
                     softmax_node = node
                     label_input_name = nll_loss_node.input[1]
@@ -117,7 +120,7 @@ def FuseSofmaxNLLToSoftmaxCE(onnx_model):
             else:
                 if softmax_node is not None:
                     break
-
+                    
         if softmax_node is None:
             break
 
@@ -131,12 +134,12 @@ def FuseSofmaxNLLToSoftmaxCE(onnx_model):
 
         probability_output_name = softmax_node.output[0]
         node = onnx_model.graph.node.add()
-        node.CopyFrom(onnx.helper.make_node("SparseSoftmaxCrossEntropy", [softmax_node.input[0], label_input_name],
-                                            [nll_loss_node.output[0], probability_output_name],
-                                            "nll_loss_node_" + str(nll_count)))
+        inputs = [softmax_node.input[0], label_input_name, weight_input_name] if weight_input_name else [softmax_node.input[0], label_input_name]
+        node.CopyFrom(onnx.helper.make_node("SparseSoftmaxCrossEntropy", inputs, 
+            [nll_loss_node.output[0], probability_output_name], "nll_loss_node_" + str(nll_count)))
 
     return onnx_model
-
+    
 
 def delete_input_with_name(input, name):
     index = 0
@@ -150,7 +153,7 @@ def delete_input_with_name(input, name):
 # reference:
 # https://docs.scipy.org/doc/numpy-1.13.0/user/basics.types.html
 # https://pytorch.org/docs/stable/tensors.html
-# also must map to types accepted by:
+# also must map to types accepted by: 
 # MLDataType NumpyTypeToOnnxRuntimeType(int numpy_type)
 def dtype_torch_to_numpy(torch_dtype):
     if torch_dtype == torch.float64 or torch_dtype == torch.double:
@@ -159,11 +162,11 @@ def dtype_torch_to_numpy(torch_dtype):
         return np.float32
     elif torch_dtype == torch.float16 or torch_dtype == torch.half:
         return np.float16
-    elif torch_dtype == torch.int64 or torch_dtype == torch.long:
+    elif torch_dtype == torch.int64 or torch_dtype == torch.long: 
         return np.longlong
-    elif torch_dtype == torch.int32 or torch_dtype == torch.int:
+    elif torch_dtype == torch.int32 or torch_dtype == torch.int: 
         return np.int32
-    elif torch_dtype == torch.int16 or torch_dtype == torch.short:
+    elif torch_dtype == torch.int16 or torch_dtype == torch.short: 
         return np.int16
 
 
@@ -187,30 +190,32 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device):
             dynamic_axes[output.name_] = symbolic_axis
 
     input_names = [input.name_ for input in model_desc.inputs_]
-    output_names = [output.name_ for output in model_desc.outputs_]
-
+    output_names = [output.name_ for output in model_desc.outputs_] 
+    
     sample_inputs = []
     for input_desc in model_desc.inputs_:
         input_sample = generate_sample(input_desc, device)
         sample_inputs.append(input_sample)
-
+    
     sample_outputs = []
     for output_desc in model_desc.outputs_:
         output_sample = generate_sample(output_desc, device)
         sample_outputs.append(output_sample)
-
+            
     f = io.BytesIO()
 
     if loss_fn:
         model = model_loss_cls(model, loss_fn)
-
+        
     torch.onnx._export(model, tuple(sample_inputs), f,
-                       input_names=input_names,
+                       input_names=input_names, 
                        output_names=output_names,
-                       opset_version=12,
+                       opset_version=10,
                        dynamic_axes=dynamic_axes,
+                       training=True,
+                       _retain_param_name=True,
                        example_outputs=tuple(sample_outputs))
-
+    
     model = onnx.load_model_from_string(f.getvalue())
 
     model = FuseSofmaxNLLToSoftmaxCE(model)
@@ -239,7 +244,7 @@ def create_ort_training_session_bind_parameters(model, device, enable_grad_accum
         output_types[output.name] = output.type.tensor_type
 
     ort_parameters.weights_to_train = set(torch_params.keys())
-
+    
     session = ort.TrainingSession(model.SerializeToString(), ort_parameters)
 
     train_io_binding = session.io_binding()
@@ -315,7 +320,7 @@ class ORTTrainer():
         else:
 
             session_run_results = ort_training_session_run_helper(self.session, self.train_io_binding, (input, label), \
-                                                                  self.model_desc_.inputs_, self.model_desc_.outputs_,
+                                                                  self.model_desc_.inputs_, self.model_desc_.outputs_, 
                                                                   self.device_)
             if self.current_step % self.accumulate_steps == 0:
                 self.optimizer_.step()
@@ -343,8 +348,8 @@ class ORTTrainer():
             run_options.only_execute_path_to_fetches = True
 
             session_run_results = ort_training_session_run_helper(self.session, self.eval_io_binding, (input), \
-                                                                  self.model_desc_.inputs_[:-1],
-                                                                  self.model_desc_.outputs_[1:], self.device_,
+                                                                  self.model_desc_.inputs_[:-1], 
+                                                                  self.model_desc_.outputs_[1:], self.device_, 
                                                                   run_options)
 
             if len(fetches) == 1:
@@ -363,8 +368,6 @@ class ORTModel():
         self.device_ = device
 
         model = convert_model_loss_fn_to_onnx(self.model_, self.loss_fn_, self.model_desc_, self.device_)
-
-        # onnx.save_model(model, 'bert_model_base_before_postproc.onnx')
         if postprocess_model:
             postprocess_model(model)
         # onnx.save_model(model, 'bert_model_base_after_postproc.onnx')
