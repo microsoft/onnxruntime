@@ -36,7 +36,7 @@ class BatchNormHelper {
 
     // validate 'scales' shape
     const auto& scale_dims = scale->Shape().GetDims();
-    if (scale_dims.size() != kNumInputScaleDimensions) {
+    if (static_cast<int>(scale_dims.size()) != kNumInputScaleDimensions) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input scale: NumDimensions() != ", kNumInputScaleDimensions);
     }
     if (scale_dims[0] != num_channels) {
@@ -53,7 +53,7 @@ class BatchNormHelper {
 
     // validate 'B' shape
     const auto& B_dims = B->Shape().GetDims();
-    if (B_dims.size() != kNumInputBiasDimensions) {
+    if (static_cast<int>(B_dims.size()) != kNumInputBiasDimensions) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input B: NumDimensions() != ", kNumInputBiasDimensions);
     }
     if (B_dims[0] != num_channels) {
@@ -70,7 +70,7 @@ class BatchNormHelper {
 
     // validate 'mean' shape
     const auto& mean_dims = mean->Shape().GetDims();
-    if (mean_dims.size() != kNumInputMeanDimensions) {
+    if (static_cast<int>(mean_dims.size()) != kNumInputMeanDimensions) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input mean: NumDimensions() != ", kNumInputMeanDimensions);
     }
     if (mean_dims[0] != num_channels) {
@@ -87,7 +87,7 @@ class BatchNormHelper {
 
     // validate 'var' shape
     const auto& var_dims = var->Shape().GetDims();
-    if (var_dims.size() != kNumInputVarianceDimensions) {
+    if (static_cast<int>(var_dims.size()) != kNumInputVarianceDimensions) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input var: NumDimensions() != ", kNumInputVarianceDimensions);
     }
     if (var_dims[0] != num_channels) {
