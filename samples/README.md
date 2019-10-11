@@ -17,7 +17,7 @@ For a list of available dockerfiles and published images to help with getting st
 * [Model Inferencing using NUPHAR Execution Provider](../docs/python/notebooks/onnxruntime-nuphar-tutorial.ipynb)
 
 **Inference with model conversion**
-* [SKL Pipeline: Train, Convert, and Inference](https://microsoft.github.io/onnxruntime/auto_examples/plot_train_convert_predict.html#sphx-glr-auto-examples-plot-train-convert-predict-py)
+* [SKL Pipeline: Train, Convert, and Inference](https://microsoft.github.io/onnxruntime/tutorial.html)
 * [Keras: Convert and Inference](https://microsoft.github.io/onnxruntime/auto_examples/plot_dl_keras.html#sphx-glr-auto-examples-plot-dl-keras-py)
 
 **Inference and deploy through AzureML**
@@ -41,6 +41,7 @@ For a list of available dockerfiles and published images to help with getting st
 
 **Other**
 * [Running ONNX model tests](./docs/Model_Test.md)
+* [Common Errors with explanations](https://microsoft.github.io/onnxruntime/auto_examples/plot_common_errors.html#sphx-glr-auto-examples-plot-common-errors-py)
 
 ## C#
 * [Inferencing Tutorial](../docs/CSharp_API.md#getting-started)
