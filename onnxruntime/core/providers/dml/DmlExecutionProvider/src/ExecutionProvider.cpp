@@ -51,7 +51,7 @@ namespace Dml
 
         assert(abiRegistry->GetRegistries().size() == 1);
         
-        const auto& customRegistry = *abiRegistry->GetRegistries().begin();
+        auto customRegistry = *abiRegistry->GetRegistries().begin();
         *registry = customRegistry->GetKernelRegistry();
         *graphNodeFactoryMap = abiRegistry->GetGraphNodeFactoryMap();
     }
