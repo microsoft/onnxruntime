@@ -4,7 +4,7 @@ ONNX Runtime provides various graph optimizations to improve model performance. 
 
 Graph optimizations are divided in several categories (or *levels*) based on their complexity and functionality. They can be performed either *online* or *offline*. In online mode, the optimizations are done before performing the inference, while in offline mode, the runtime saves the optimized graph to disk. ONNX Runtime provides Python, C#, C++, and C APIs to enable different optimization levels and to choose between offline vs. online mode.
 
-Below we provide details on the optimization levels, on the online/offline mode, and on the various APIs to control them.
+Below we provide details on the optimization levels, the online/offline mode, and the various APIs to control them.
 
 ## Graph Optimization Levels
 
@@ -50,7 +50,11 @@ These optimizations change the data layout for applicable nodes to achieve highe
 
 ## Online/Offline Mode
 
-All optimizations can be performed either online or offline. In online mode, when initializing an inference session, we also apply all enabled graph optimizations before performing model inference. Applying all optimizations each time we initiate a session can add overhead to the model startup time (especially for complex models), which can be critical in production scenarios. This is where the offline mode can bring a lot of benefit. In this mode, after performing graph optimizations, ONNX Runtime serializes the resulting model to disk. In subsequent inference sessions for this model, we can instead use the already optimized model to reduce startup time. **Note**: When running in offline mode, make sure to use the exact same options (e.g., execution providers, optimization level) and hardware as the target machine that the model inference will run on (you cannot run a model pre-optimized for a GPU execution provider on a machine that is equipped only with CPU).
+All optimizations can be performed either online or offline. In online mode, when initializing an inference session, we also apply all enabled graph optimizations before performing model inference. Applying all optimizations each time we initiate a session can add overhead to the model startup time (especially for complex models), which can be critical in production scenarios. This is where the offline mode can bring a lot of benefit. In this mode, after performing graph optimizations, ONNX Runtime serializes the resulting model to disk. In subsequent inference sessions for this model, we can instead use the already optimized model to reduce startup time. 
+**Notes**: 
+
+* When running in offline mode, make sure to use the exact same options (e.g., execution providers, optimization level) and hardware as the target machine that the model inference will run on (e.g., you cannot run a model pre-optimized for a GPU execution provider on a machine that is equipped only with CPU).
+* When layout optimizations are enabled, the offline mode cannot be used.
 
 ## Usage
 
