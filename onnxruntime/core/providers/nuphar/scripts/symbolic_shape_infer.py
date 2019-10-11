@@ -614,21 +614,17 @@ class SymbolicShapeInference:
         if get_opset(self.out_mp_) <= 10:
             pads = get_attribute(node, 'pads')
         else:
-            pads = self._try_get_value(node, 1)
+            pads = self._get_value(node, 1)
 
         vi = self.known_vi_[node.output[0]]
         output_shape = get_shape_from_type_proto(vi.type)
         if len(output_shape) == 0 or None in output_shape:
             sympy_shape = self._get_sympy_shape(node, 0)
             rank = len(sympy_shape)
-            pads = get_attribute(node, 'pads')
             assert len(pads) == 2*rank
             new_shape = [d + pad_up + pad_down for d, pad_up, pad_down in zip(sympy_shape, pads[:rank], pads[rank:])]
             self._update_computed_dims(new_shape)
-            if vi.type.tensor_type.elem_type !=  onnx.TensorProto.UNDEFINED:
-                output_tp = vi.type.tensor_type.elem_type
-            else:
-                output_tp = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            output_tp = self.known_vi_[node.input[0]].type.tensor_type.elem_type
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_tp, get_shape_from_sympy_shape(new_shape)))
 
     def _infer_Pool(self, node):
