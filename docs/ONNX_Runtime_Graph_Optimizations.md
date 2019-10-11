@@ -1,29 +1,33 @@
 # Graph Optimizations in ONNX Runtime
 
-ONNX Runtime provides various graph level optimizations to improve model performance. Graph optimizations are essentially graph level rewrites ranging from small graph simplifications and node eliminations to more complex node fusions and layout optimizations. 
+ONNX Runtime provides various graph optimizations to improve model performance. Graph optimizations are essentially graph-level transformations, ranging from small graph simplifications and node eliminations to more complex node fusions and layout optimizations.
 
-Graph optimizations are divided in several levels\categories based on their complexity and function. They can be performed both online and offline. ONNX Runtime provides Python, C#, C++ and C APIs to enable different optimization levels and to choose the offline vs online mode. In offline mode the runtime saves the optimized graph to the disk. **Note**: When running in offline mode make sure to use the exact same options and hardware as the target machine.
+Graph optimizations are divided in several categories (or *levels*) based on their complexity and functionality. They can be performed either *online* or *offline*. In online mode, the optimizations are done before performing the inference, while in offline mode, the runtime saves the optimized graph to disk. ONNX Runtime provides Python, C#, C++, and C APIs to enable different optimization levels and to choose between offline vs. online mode.
+
+Below we provide details on the optimization levels, on the online/offline mode, and on the various APIs to control them.
 
 ## Graph Optimization Levels
 
-Graph optimizations are divided in 3 levels
+Graph optimizations are divided in three levels:
 * Basic
 * Extended
 * Layout Optimizations
 
+The optimizations belonging to one level are performed after the optimizations of the previous level have been applied (e.g., extended optimizations are applied after basic optimizations have been applied).
+
 ### Basic Graph Optimizations
 
-These are semantics preserving graph rewrites which remove redundant nodes and redundant computations. These optimizations are enabled by default. They run before graph partitioning and thus apply to all the execution providers. Available basic graph optimizations are as follows:
+These are semantics-preserving graph rewrites which remove redundant nodes and redundant computation. These optimizations are enabled by default. They run before graph partitioning and thus apply to all the execution providers. Available basic graph optimizations are as follows:
 
-* Constant Folding : Statically computes parts of the graph that rely only on constant initializers. This eliminates the need to compute them during runtime.
+* Constant Folding: Statically computes parts of the graph that rely only on constant initializers. This eliminates the need to compute them during runtime.
 
-* Redundant node eliminations : Removes all redundant nodes without changing the graph structure
+* Redundant node eliminations: Remove all redundant nodes without changing the graph structure. The following such optimizations are currently supported:
   * Identity Elimination
   * Slice Elimination
   * Unsqueeze Elimination
   * Dropout Elimination
 
-* Semantics preserving node fusions : Fuses\folds multiple nodes into 1 node. For example Conv Add fusion folds the Add operator as the bias of the Conv operator.
+* Semantics-preserving node fusions : Fuse/fold multiple nodes into a single node. For example, Conv Add fusion folds the Add operator as the bias of the Conv operator. The following such optimizations are currently supported:
   * Conv Add Fusion
   * Conv Mul Fusion
   * Conv BatchNorm Fusion
@@ -31,7 +35,7 @@ These are semantics preserving graph rewrites which remove redundant nodes and r
 
 ### Extended Graph Optimizations
 
-These optimizations include complex node fusions. They are run after graph partitioning and are only applied to the nodes assigned to CPU execution provider. Available extended graph optimizations are as follows:
+These optimizations include complex node fusions. They are run after graph partitioning and are only applied to the nodes assigned to the CPU execution provider. Available extended graph optimizations are as follows:
 
 * GEMM Activation Fusion
 * Matmul Add Fusion
@@ -42,23 +46,25 @@ These optimizations include complex node fusions. They are run after graph parti
 
 These optimizations change the data layout for applicable nodes to achieve higher performance improvements. They are run after graph partitioning and are only applied to nodes assigned to CPU execution provider. Available layout optimizations are as follows:
 
-* NCHWc Optimizer : Optimizes the graph by using NCHWc layout instead of NCHW layout.
+* NCHWc Optimizer: Optimizes the graph by using NCHWc layout instead of NCHW layout.
+
+## Online/Offline Mode
+
+All optimizations can be performed either online or offline. In online mode, when initializing an inference session, we also apply all enabled graph optimizations before performing model inference. Applying all optimizations each time we initiate a session can add overhead to the model startup time (especially for complex models), which can be critical in production scenarios. This is where the offline mode can bring a lot of benefit. In this mode, after performing graph optimizations, ONNX Runtime serializes the resulting model to disk. In subsequent inference sessions for this model, we can instead use the already optimized model to reduce startup time. **Note**: When running in offline mode, make sure to use the exact same options (e.g., execution providers, optimization level) and hardware as the target machine that the model inference will run on (you cannot run a model pre-optimized for a GPU execution provider on a machine that is equipped only with CPU).
 
 ## Usage
 
 ### General Note
 Levels: 
-ONNX Runtime defines GraphOptimizationLevel enum for these levels. Enabling each level also enables all preceding levels. For example enabling Extended optimizations, also enables Basic optimizations. Mapping of these levels to enum is as follows:
+ONNX Runtime defines the `GraphOptimizationLevel` enum to determine which of the aforementioned optimization levels will be enabled. Choosing a level enabled the optimizations of that level, as well as the optimizations of all preceding levels. For example, enabling Extended optimizations, also enables Basic optimizations. The mapping of these levels to the enum is as follows:
 
 * GraphOptimizationLevel::ORT_DISABLE_ALL -> Disables all optimizations
 * GraphOptimizationLevel::ORT_ENABLE_BASIC -> Enables basic optimizations
 * GraphOptimizationLevel::ORT_ENABLE_EXTENDED -> Enables basic and extended optimizations
 * GraphOptimizationLevel::ORT_ENABLE_ALL -> Enables all available optimizations including layout optimizations
 
-Modes:
-All these optimizations can be run offline too. For production scenarios where model startup time is critical this can bring a lot of benefit. In offline mode, after running graph optimizations ONNX Runtime serializes the resulting model to the disk. **Note**: When running in offline mode make sure to use the exact same options(execution providers, optimization level etc...) and hardware as the target machine.
-
-To enable model serialization set the SessionOptions option `optimized_model_path`.
+Online/Offline Mode:
+To enable serialization of the optimized model to disk, set the SessionOptions option `optimized_model_path` to the desired path where the optimized model will be stored.
 
 ### Python API Usage
 ```python
