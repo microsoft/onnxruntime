@@ -669,8 +669,8 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     const AttributeProto& constant_attribute = node.attribute(0);
     // TODO: Add support for parsing 'sparse_value' attribute from a 'Constant' node
-    // Discussion surrounding handling the SparseTensorProto must be had. 
-    // An easy way is to implement a method that converts a SparseTensorproto into a TensorProto 
+    // Discussion surrounding handling the SparseTensorProto must be had.
+    // An easy way is to implement a method that converts a SparseTensorproto into a TensorProto
     // to use the same downstream flow, but that is going to impact peak memory usage and probably a smarter way is required.
     ORT_ENFORCE(constant_attribute.has_t(), "Only 'value' attribute is supported within a 'Constant' node in ORT");
     *tensor = constant_attribute.t();
@@ -1722,7 +1722,7 @@ Status Graph::VerifyNodeAndOpMatch() {
     auto iter = model_functions_.find(node.OpType());
     if (iter != model_functions_.end()) {
       const ONNX_NAMESPACE::FunctionProto* model_function_proto = iter->second;
-      auto model_func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), model_function_proto);
+      auto model_func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), *model_function_proto);
       function_container_.emplace_back(std::move(model_func_ptr));
       node.SetFunctionBody(*function_container_.back());
     }
@@ -1743,7 +1743,7 @@ Status Graph::VerifyNodeAndOpMatch() {
 
       if (node.op_ && node.op_->HasFunction()) {
         auto onnx_function_proto = node.op_->GetFunction();
-        auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto);
+        auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), *onnx_function_proto);
         function_container_.emplace_back(std::move(func_ptr));
         node.SetFunctionBody(*function_container_.back());
       }

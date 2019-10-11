@@ -39,6 +39,12 @@ class CudaKernel : public OpKernel {
     // use this to precisely locate the node where CUDA failure comes from
     //  if (cudaSuccess != cudaDeviceSynchronize())
     //    __debugbreak();
+
+    if (s.IsOK()) {
+      // ensure no kernel launch error occurred
+      CUDA_RETURN_IF_ERROR(cudaGetLastError());
+    }
+
     return s;
   }
 
