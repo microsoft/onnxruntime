@@ -162,7 +162,7 @@ TEST_F(CApiTest, dim_param) {
   in0_ttsi.GetDimensions(&dim_value, 1);
   in0_ttsi.GetSymbolicDimensions(&dim_param, 1);
   ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
-  ASSERT_EQ(strcmp(dim_param, "n"), 0);
+  ASSERT_EQ(strcmp(dim_param, "n"), 0) << "Expected 'n'. Got: " << dim_param;
 
   auto out0 = session.GetOutputTypeInfo(0);
   auto out0_ttsi = out0.GetTensorTypeAndShapeInfo();

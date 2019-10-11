@@ -112,7 +112,7 @@ OrtStatus* OrtTypeInfo::FromOrtValue(const OrtValue& value, OrtTypeInfo** out) {
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "not implemented");
 }
 
-const DataTypeImpl* ElementTypeFromProto(int type) {
+const DataTypeImpl* OrtTypeInfo::ElementTypeFromProto(int type) {
   switch (type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       return DataTypeImpl::GetType<float>();

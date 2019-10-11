@@ -20,7 +20,7 @@ class FunctionImpl final : public Function {
 
   FunctionImpl(const onnxruntime::Graph& graph,
                const onnxruntime::NodeIndex& node_index,
-               const ONNX_NAMESPACE::FunctionProto* onnx_func);
+               const ONNX_NAMESPACE::FunctionProto& onnx_func);
 
   ~FunctionImpl() override;
 
@@ -37,7 +37,7 @@ class FunctionImpl final : public Function {
   std::unique_ptr<IndexedSubGraph> customized_func_body_;
   std::unique_ptr<ONNX_NAMESPACE::OpSchema> op_schema_;
   std::unique_ptr<onnxruntime::Model> body_;
-  const ONNX_NAMESPACE::FunctionProto* onnx_func_proto_;
+  ONNX_NAMESPACE::FunctionProto onnx_func_proto_;
 };
 
 }  // namespace onnxruntime

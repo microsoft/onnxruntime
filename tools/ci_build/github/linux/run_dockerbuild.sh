@@ -92,7 +92,7 @@ fi
 if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ] || [ $BUILD_DEVICE = "openvino" ] || [ $BUILD_DEVICE = "nnapi" ]; then
     RUNTIME=
 else
-    RUNTIME="--runtime=nvidia"
+    RUNTIME="--gpus all"
 fi
 
 DOCKER_RUN_PARAMETER="--name onnxruntime-$BUILD_DEVICE \

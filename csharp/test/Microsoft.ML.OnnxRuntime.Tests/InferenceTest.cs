@@ -1091,6 +1091,86 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return tensorData.ToArray();
         }
 
+
+        private enum TensorElementType
+        {
+            Float = 1,
+            UInt8 = 2,
+            Int8 = 3,
+            UInt16 = 4,
+            Int16 = 5,
+            Int32 = 6,
+            Int64 = 7,
+            String = 8,
+            Bool = 9,
+            Float16 = 10,
+            Double = 11,
+            UInt32 = 12,
+            UInt64 = 13,
+            Complex64 = 14,
+            Complex128 = 15,
+            BFloat16 = 16,
+            DataTypeMax = 17
+        }
+
+        private static void GetTypeAndWidth(TensorElementType elemType, out Type type, out int width)
+        {
+            switch (elemType)
+            {
+                case TensorElementType.Float:
+                    type = typeof(float);
+                    width = sizeof(float);
+                    break;
+                case TensorElementType.Double:
+                    type = typeof(double);
+                    width = sizeof(double);
+                    break;
+                case TensorElementType.Int16:
+                    type = typeof(short);
+                    width = sizeof(short);
+                    break;
+                case TensorElementType.UInt16:
+                    type = typeof(ushort);
+                    width = sizeof(ushort);
+                    break;
+                case TensorElementType.Int32:
+                    type = typeof(int);
+                    width = sizeof(int);
+                    break;
+                case TensorElementType.UInt32:
+                    type = typeof(uint);
+                    width = sizeof(uint);
+                    break;
+                case TensorElementType.Int64:
+                    type = typeof(long);
+                    width = sizeof(long);
+                    break;
+                case TensorElementType.UInt64:
+                    type = typeof(ulong);
+                    width = sizeof(ulong);
+                    break;
+                case TensorElementType.UInt8:
+                    type = typeof(byte);
+                    width = sizeof(byte);
+                    break;
+                case TensorElementType.Int8:
+                    type = typeof(sbyte);
+                    width = sizeof(sbyte);
+                    break;
+                case TensorElementType.String:
+                    type = typeof(byte);
+                    width = sizeof(byte);
+                    break;
+                case TensorElementType.Bool:
+                    type = typeof(bool);
+                    width = sizeof(bool);
+                    break;
+                default:
+                    type = null;
+                    width = 0;
+                    break;
+            }
+        }
         static NamedOnnxValue LoadTensorFromFilePb(string filename, IReadOnlyDictionary<string, NodeMetadata> nodeMetaDict)
         {
             var file = File.OpenRead(filename);
@@ -1099,7 +1179,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             Type tensorElemType = null;
             int width = 0;
-            TensorElementTypeConverter.GetTypeAndWidth((TensorElementType)tensor.DataType, out tensorElemType, out width);
+            GetTypeAndWidth((TensorElementType)tensor.DataType, out tensorElemType, out width);
             var intDims = new int[tensor.Dims.Count];
             for (int i = 0; i < tensor.Dims.Count; i++)
             {
