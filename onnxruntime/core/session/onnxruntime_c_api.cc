@@ -1304,7 +1304,7 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::AllocatorFree,
     &OrtApis::AllocatorGetInfo,
     &OrtApis::GetAllocatorWithDefaultOptions,
-    &OrtApis::OrtAddFreeDimensionOverride,
+    &OrtApis::AddFreeDimensionOverride,
     &OrtApis::GetValue,
     &OrtApis::GetValueCount,
     &OrtApis::CreateValue,
