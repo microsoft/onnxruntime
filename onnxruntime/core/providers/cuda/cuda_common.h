@@ -213,5 +213,20 @@ struct DeviceProp {
   static std::once_flag s_cachedDevicePropsInitFlag;
 };
 
+class CublasMathModeSetter {
+ public:
+  CublasMathModeSetter(cublasHandle_t handle, cublasMath_t mode) : handle_(handle) {
+    cublasGetMathMode(handle, &mode_);
+    cublasSetMathMode(handle, mode);
+  }
+  ~CublasMathModeSetter() {
+    cublasSetMathMode(handle_, mode_);
+  }
+
+ private:
+  cublasHandle_t handle_;
+  cublasMath_t mode_;
+};
+
 }  // namespace cuda
 }  // namespace onnxruntime
