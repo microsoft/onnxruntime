@@ -33,7 +33,7 @@ NONZERO_TYPED_KERNEL(uint8_t)
 //NONZERO_TYPED_KERNEL(int16_t)
 NONZERO_TYPED_KERNEL(int32_t)
 NONZERO_TYPED_KERNEL(int64_t)
-//NONZERO_TYPED_KERNEL(MLFloat16)
+NONZERO_TYPED_KERNEL(MLFloat16)
 //NONZERO_TYPED_KERNEL(BFloat16)
 NONZERO_TYPED_KERNEL(float)
 //NONZERO_TYPED_KERNEL(double)
@@ -67,7 +67,7 @@ Status NonZero<T>::ComputeInternal(OpKernelContext* context) const {
     NonZeroInclusivePrefixSum(d_temp_storage, temp_storage_bytes, prefix_counts, number_of_blocks);
 
     CUDA_RETURN_IF_ERROR(cudaMemcpy(
-            &nonzero_elements, prefix_counts + number_of_blocks - 1, 
+            &nonzero_elements, prefix_counts + number_of_blocks - 1,
             sizeof(int), cudaMemcpyDeviceToHost));
 
     CudaAsyncBuffer<fast_divmod> fdm_x_strides(this, x_rank);
