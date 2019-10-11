@@ -276,7 +276,8 @@ class MLOperatorAttributes
         {
             auto vector64Bit = GetAttributeVector<int64_t>(attributeName);
             vector32Bit.resize(vector64Bit.size());
-            std::transform(vector64Bit.begin(), vector64Bit.end(), /*out*/vector32Bit.begin(), [](auto i) {return gsl::narrow_cast<int32_t>(i); });
+            std::transform(vector64Bit.begin(), vector64Bit.end(), /*out*/vector32Bit.begin(), [](auto i) 
+                                    {return gsl::narrow_cast<int32_t>(std::clamp<int64_t>(i, INT32_MIN, INT32_MAX)); });
         }
         return vector32Bit;
     }
