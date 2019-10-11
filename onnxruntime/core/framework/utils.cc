@@ -16,7 +16,54 @@
 #include "core/framework/parallel_executor.h"
 #include "core/framework/session_state.h"
 #include "core/framework/sequential_executor.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"
+
+#include "core/graph/onnx_protobuf.h"
+
+namespace ONNX_NAMESPACE {
+std::ostream& operator<<(std::ostream& out, const TensorShapeProto& shape_proto) {
+  std::string result;
+  result.reserve(128);
+
+  result.append("{");
+  bool first = true;
+  for (auto& dim : shape_proto.dim()) {
+    if (!first) {
+      result.append(",");
+    }
+
+    if (onnxruntime::utils::HasDimValue(dim))
+      result.append(std::to_string(dim.dim_value()));
+    else if (onnxruntime::utils::HasDimParam(dim))
+      result.append(dim.dim_param());
+
+    first = false;
+  }
+  result.append("}");
+
+  return (out << result);
+}
+
+std::ostream& operator<<(std::ostream& out, const TensorProto& tensor_proto) {
+  std::string result;
+  result.reserve(128);
+
+  result.append("{");
+  bool first = true;
+  for (auto& dim : tensor_proto.dims()) {
+    if (!first) {
+      result.append(",");
+    }
+
+    result.append(std::to_string(dim));
+    first = false;
+  }
+  result.append("}");
+
+  return (out << result);
+}
+}  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
 namespace utils {
@@ -65,9 +112,9 @@ common::Status AllocateHelper(const IExecutionProvider& execution_provider, cons
     return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator");
   }
 
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(fetched_tensor.DataType(),
-                                                              fetched_tensor.Shape(),
-                                                              allocator);
+  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(fetched_tensor.DataType(),
+                                                                      fetched_tensor.Shape(),
+                                                                      allocator);
   output_mlvalue.Init(p_tensor.release(),
                       DataTypeImpl::GetType<Tensor>(),
                       DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
@@ -392,7 +439,13 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
   if (sequential_execution) {
     p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag));
   } else {
-    p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
+    auto* p_inter_op_thread_pool = session_state.GetInterOpThreadPool();
+    if (!p_inter_op_thread_pool) {
+      LOGS(logger, WARNING) << "Only one thread was configured for parallel execution. Hence will use sequential execution.";
+      p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag));
+    } else {
+      p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
+    }
   }
 
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();

@@ -933,7 +933,7 @@ Return Value:
                     // Invoke the threaded GEMM directly with the input tensor.
                     //
 
-                    MlasSgemm(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount,
+                    MlasGemm(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount,
                         OutputSize, K, 1.0f, filter, K, Input, Parameters->u.GemmDirect.ldb, 0.0f,
                         Output, OutputSize, ThreadPool);
 
@@ -960,7 +960,7 @@ Return Value:
                         MlasConvVol2Col(Parameters, Input, WorkingBuffer, 0, K, 0, OutputSize);
                     }
 
-                    MlasSgemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f, filter,
+                    MlasGemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f, filter,
                         K, WorkingBuffer, OutputSize, 0.0f, Output, OutputSize, ThreadPool);
 
                     //

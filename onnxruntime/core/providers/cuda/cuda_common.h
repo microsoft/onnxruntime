@@ -39,6 +39,12 @@ class CudaKernel : public OpKernel {
     // use this to precisely locate the node where CUDA failure comes from
     //  if (cudaSuccess != cudaDeviceSynchronize())
     //    __debugbreak();
+
+    if (s.IsOK()) {
+      // ensure no kernel launch error occurred
+      CUDA_RETURN_IF_ERROR(cudaGetLastError());
+    }
+
     return s;
   }
 
@@ -169,12 +175,12 @@ class ToCudaType<MLFloat16> {
 
 inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int64_t>& dims) {
   int stride = 1;
-  if (dims.empty() || p.size() < gsl::narrow_cast<ptrdiff_t>(dims.size()))
+  if (dims.empty() || p.size() < dims.size())
     return false;
-  std::ptrdiff_t rank = p.size();
-  for (std::ptrdiff_t i = 0; i < rank; i++) {
+  auto rank = p.size();
+  for (size_t i = 0; i < rank; i++) {
     p[rank - 1 - i] = fast_divmod(stride);
-    if (static_cast<size_t>(i) < dims.size() - 1) {
+    if (i < dims.size() - 1) {
       stride *= static_cast<int>(dims[dims.size() - 1 - i]);
     }
   }

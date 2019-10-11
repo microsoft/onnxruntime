@@ -485,8 +485,8 @@ C_UNDERSCORE(MlasGemmU8S8CopyPackBAvx2):
         vpunpckhwd xmm6,xmm6,xmm2
         vpunpcklwd xmm2,xmm3,xmm5
         vpunpckhwd xmm3,xmm3,xmm5
-        vinsertf128 ymm4,ymm4,xmm6,1
-        vinsertf128 ymm2,ymm2,xmm3,1
+        vinserti128 ymm4,ymm4,xmm6,1
+        vinserti128 ymm2,ymm2,xmm3,1
         vmovdqu YMMWORD PTR [rdi],ymm4      # store interleaved rows
         vmovdqu YMMWORD PTR [rdi+32],ymm2
         vpmaddubsw ymm4,ymm8,ymm4           # horizontal byte+byte=word per row
@@ -626,8 +626,8 @@ C_UNDERSCORE(MlasGemmU8S8CopyPackBAvx2):
         vpunpckhwd xmm6,xmm6,xmm2
         vpunpcklwd xmm2,xmm3,xmm5
         vpunpckhwd xmm3,xmm3,xmm5
-        vinsertf128 ymm4,ymm4,xmm6,1
-        vinsertf128 ymm2,ymm2,xmm3,1
+        vinserti128 ymm4,ymm4,xmm6,1
+        vinserti128 ymm2,ymm2,xmm3,1
         vmovdqu YMMWORD PTR [rdi],ymm4      # store interleaved rows
         vmovdqu YMMWORD PTR [rdi+32],ymm2
         vpmaddubsw ymm4,ymm8,ymm4           # horizontal byte+byte=word per row

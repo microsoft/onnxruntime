@@ -144,7 +144,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetInterOpNumThreads, _In_ OrtSessionOptions* optio
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::OrtAddFreeDimensionOverride, _Inout_ OrtSessionOptions* options,
+ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverride, _Inout_ OrtSessionOptions* options,
                     _In_ const char* symbolic_dim, _In_ int64_t dim_override) {
   options->value.free_dimension_overrides.push_back(onnxruntime::FreeDimensionOverride{symbolic_dim, dim_override});
   return nullptr;

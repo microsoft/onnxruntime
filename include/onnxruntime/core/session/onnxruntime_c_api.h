@@ -202,7 +202,20 @@ typedef enum OrtMemType {
   OrtMemTypeDefault = 0,                // the default allocator for execution provider
 } OrtMemType;
 
+struct OrtApi;
+typedef struct OrtApi OrtApi;
+
+struct OrtApiBase {
+  const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;  // Pass in ORT_API_VERSION
+  const char*(ORT_API_CALL* GetVersionString)() NO_EXCEPTION;
+};
+typedef struct OrtApiBase OrtApiBase;
+
+ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase() NO_EXCEPTION;
+
 struct OrtApi {
+  OrtApiBase base_;
+
   /**
 * \param msg A null-terminated string. Its content will be copied into the newly created OrtStatus
 */
@@ -311,6 +324,15 @@ struct OrtApi {
 	 *  Note: The OrtCustomOpDomain* must not be deleted until the sessions using it are released
 	*/
   OrtStatus*(ORT_API_CALL* AddCustomOpDomain)(_Inout_ OrtSessionOptions* options, _In_ OrtCustomOpDomain* custom_op_domain)NO_EXCEPTION;
+
+  /*
+	 * Loads a DLL named 'library_path' and looks for this entry point:
+	 *		OrtStatus* RegisterCustomOps(OrtSessionOptions * options, const OrtApiBase* api);
+	 * It then passes in the provided session options to this function along with the api base.
+	 * The handle to the loaded library is returned in library_handle. It can be freed by the caller after all sessions using the passed in
+	 * session options are destroyed, or if an error occurs and it is non null.
+  */
+  OrtStatus*(ORT_API_CALL* RegisterCustomOpsLibrary)(_Inout_ OrtSessionOptions* options, _In_ const char* library_path, void** library_handle)NO_EXCEPTION;
 
   /**
 	* To use additional providers, you must build ORT with the extra providers enabled. Then call one of these
@@ -505,8 +527,8 @@ struct OrtApi {
 
   // Override symbolic dimensions with actual values if known at session initialization time to enable
   // optimizations that can take advantage of fixed values (such as memory planning, etc)
-  OrtStatus*(ORT_API_CALL* OrtAddFreeDimensionOverride)(_Inout_ OrtSessionOptions* options,
-                                                        _In_ const char* symbolic_dim, _In_ int64_t dim_override)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* AddFreeDimensionOverride)(_Inout_ OrtSessionOptions* options,
+                                                     _In_ const char* symbolic_dim, _In_ int64_t dim_override)NO_EXCEPTION;
 
   /**
    * APIs to support non-tensor types - map and sequence.
@@ -612,10 +634,6 @@ struct OrtApi {
   ORT_CLASS_RELEASE(SessionOptions);
   ORT_CLASS_RELEASE(CustomOpDomain);
 };
-
-typedef struct OrtApi OrtApi;
-ORT_EXPORT const OrtApi* ORT_API_CALL OrtGetApi(uint32_t version) NO_EXCEPTION;  // Pass in ORT_API_VERSION
-ORT_API(const char*, OrtGetVersionString);
 
 /*
  * Steps to use a custom op:

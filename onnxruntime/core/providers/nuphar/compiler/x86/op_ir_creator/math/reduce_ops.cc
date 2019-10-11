@@ -109,7 +109,13 @@ class FuncReduceV {
     ProtoHelperNodeContext ctx(node);
     OpNodeProtoHelper<ProtoHelperNodeContext> info(&ctx);
     axes_ = info.GetAttrsOrDefault<int64_t>("axes");
-    std::sort(axes_.begin(), axes_.end());  //ReduceV requires sorted axes
+    if (axes_.size() == 0) {
+      int64_t sz = static_cast<int64_t>(def->Shape()->dim().size());
+      ORT_ENFORCE(sz > 0);
+      for (int64_t i = 0; i < sz; i++) {
+        axes_.push_back(i);
+      }
+    }
     int64_t keepdims_i = 1;
     ORT_ENFORCE(info.GetAttr("keepdims", &keepdims_i).IsOK());
     keep_dims_ = (keepdims_i == 1);
@@ -123,6 +129,8 @@ class FuncReduceV {
     for (auto i : axes_) {
       axes.push_back(HandleNegativeAxis(i, gsl::narrow_cast<int64_t>(X->shape.size())));
     }
+
+    std::sort(axes.begin(), axes.end());  //ReduceV requires sorted axes
 
     auto p = VectorWidthAndFuseDimForReduce(natural_vector_(X->dtype.bits()), axes, def_);
     int vector_width = std::get<0>(p);

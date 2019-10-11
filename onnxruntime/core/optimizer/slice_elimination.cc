@@ -19,10 +19,10 @@ Status EliminateSlice::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_e
 bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) const {
   // We currently support elimination for Slice operator v1.
   // TODO Extend to support Slice operator v10, which includes "steps" and all attributes are now given as inputs.
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Slice", {1})) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Slice", {1, 11})) {
     return false;
   }
-  
+
   if (!graph_utils::IsSingleInSingleOutNode(node) ||
       graph.IsNodeOutputsInGraphOutputs(node)) {
     return false;

@@ -19,7 +19,7 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 
-const OrtApi* Ort::g_api = OrtGetApi(ORT_API_VERSION);
+const OrtApi* Ort::g_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
 // Data container used to ferry data through C API
 extern "C" struct ExperimentalDataContainer {

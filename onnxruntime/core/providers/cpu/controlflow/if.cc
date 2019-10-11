@@ -46,15 +46,24 @@ ONNX_OPERATOR_SET_SCHEMA(
         .TypeConstraint("B", {"tensor(bool)"}, "Only bool"));
 */
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
+                                   1, 10,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                                   If);
+
+// output shape rules requiring the output shapes of the 'THEN' and 'ELSE'
+// branches to be the same were relaxed in opset-11
 ONNX_CPU_OPERATOR_KERNEL(If,
-                         1,
+                         11,
                          KernelDefBuilder()
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
                              .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                          If);
 
 struct If::Info {
-  Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in) : subgraph{subgraph_in} {
+  Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in) : subgraph(subgraph_in) {
     num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
     used_implicit_inputs = std::vector<bool>(num_implicit_inputs, true);
     num_outputs = static_cast<int>(node.OutputDefs().size());
@@ -137,7 +146,7 @@ common::Status If::SetupSubgraphExecutionInfo(const SessionState& session_state,
   ORT_ENFORCE(info == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
 
   const auto& node = Node();
-  info = std::make_unique<If::Info>(node, *subgraph_session_state.GetGraphViewer());
+  info = onnxruntime::make_unique<If::Info>(node, *subgraph_session_state.GetGraphViewer());
 
   // all inputs for the If subgraph are implicit
   std::vector<std::string> feed_names;
@@ -219,10 +228,10 @@ Status If::Compute(OpKernelContext* ctx) const {
 IfImpl::IfImpl(OpKernelContextInternal& context,
                const SessionState& session_state,
                const If::Info& info)
-    : context_{context},
-      session_state_{session_state},
-      info_{info},
-      implicit_inputs_{context_.GetImplicitInputs()} {
+    : context_(context),
+      session_state_(session_state),
+      info_(info),
+      implicit_inputs_(context_.GetImplicitInputs()) {
 }
 
 Status IfImpl::Initialize() {
@@ -292,14 +301,27 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
     if (outputs_[i].first == AllocationType::Delayed) {
       // functor to forward the allocation request from the subgraph to the If node's context so that the
       // allocation plan for the If node's output is used.
-      fetch_allocators[i] = [this, i](const TensorShape& shape, OrtValue& ort_value) {
-        // allocate
+      fetch_allocators[i] = [this, i, &fetches](const TensorShape& shape, const OrtMemoryInfo& location,
+                                                OrtValue& ort_value, bool& allocated) {
+        // for now we only allocate on CPU as currently all 'If' outputs are on CPU.
+        // if that does not match the required device we don't update the provided OrtValue and return false for
+        // 'allocated'. the execution frame will allocate a buffer on the required device, and the fetches copy
+        // logic in utils::ExecuteSubgraph will handle moving it to CPU (and into the tensor we allocated here)
         auto* tensor = context_.Output(i, shape);
+        if (!tensor)
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for If output ", i);
 
-        if (!tensor) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for If output ", i);
+        const OrtValue& value = *context_.GetOutputMLValue(i);
 
-        // return OrtValue for allocated tensor
-        ort_value = *context_.GetOutputMLValue(i);
+        if (tensor->Location().device == location.device) {
+          // return OrtValue for allocated tensor
+          ort_value = value;
+          allocated = true;
+        } else {
+          // put the allocated value into fetches so the copy logic in utils::ExecuteGraphImpl can use it
+          fetches[i] = value;
+        }
+
         return Status::OK();
       };
     }
