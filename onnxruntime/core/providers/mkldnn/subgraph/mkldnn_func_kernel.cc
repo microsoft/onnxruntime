@@ -27,7 +27,7 @@ class SubgraphPrimitive : public PrimitiveBase {
                     OrtKernelContext* context,
                     const SubgraphParams& params)
       : cpu_engine_(GetEngine()) {
-    context_.stream.reset(new mkldnn::stream(mkldnn::stream::kind::eager));
+    context_.stream.reset(new mkldnn::stream(cpu_engine_));
 
     if (context_.net.size() == 0) {
       CreateKernels(params);
@@ -50,8 +50,10 @@ class SubgraphPrimitive : public PrimitiveBase {
       if (!status.IsOK())
         break;
     }
-    if (status.IsOK())
-      context_.stream->submit(context_.net);
+    if (status.IsOK()) {
+      for (size_t i = 0; i < context_.net.size(); ++i)
+        context_.net.at(i).execute(*context_.stream, context_.net_args.at(i));
+    }
     return status;
   }
 
@@ -143,15 +145,6 @@ class SubgraphPrimitive : public PrimitiveBase {
           kernel->parents_.push_back(context_.kernels[index]);
         }
         context_.kernels.push_back(kernel);
-      } else if (mkldnn_node.name == "Sum") {
-        std::ostringstream os;
-        os << "Sum-" << mkldnn_node.node_index << "-";
-        std::shared_ptr<MklDnnSum<T>> kernel;
-        kernel.reset(new MklDnnSum<T>(mkldnn_node, params.provider, params.attributes, os.str()));
-        for (auto index : mkldnn_node.parent_nodes) {
-          kernel->parents_.push_back(context_.kernels[index]);
-        }
-        context_.kernels.push_back(kernel);
       } else if (mkldnn_node.name == "LRN") {
         std::ostringstream os;
         os << "LRN-" << mkldnn_node.node_index << "-";
@@ -161,14 +154,24 @@ class SubgraphPrimitive : public PrimitiveBase {
           kernel->parents_.push_back(context_.kernels[index]);
         }
         context_.kernels.push_back(kernel);
+      } else if (mkldnn_node.name == "Sum") {
+        std::ostringstream os;
+        os << "Sum-" << mkldnn_node.node_index << "-";
+        std::shared_ptr<MklDnnSum<T>> kernel;
+        kernel.reset(new MklDnnSum<T>(mkldnn_node, params.provider, params.attributes, os.str()));
+        for (auto index : mkldnn_node.parent_nodes) {
+          kernel->parents_.push_back(context_.kernels[index]);
+        }
+        context_.kernels.push_back(kernel);
       }
     }
   }
-  
+
  private:
   struct SubgraphContext {
     std::unique_ptr<mkldnn::stream> stream;
     std::vector<mkldnn::primitive> net;
+    std::vector<std::unordered_map<int, mkldnn::memory>> net_args;
     std::vector<std::shared_ptr<MklDnnKernel>> kernels;
 
     SubgraphContext() : stream(nullptr) {}
@@ -177,9 +180,8 @@ class SubgraphPrimitive : public PrimitiveBase {
   Status Initialize(const OrtCustomOpApi* api, OrtKernelContext* context) {
     // Propagate mkldnn block format
     // dst format of current node to src format of next node
-    mkldnn::memory::format source_format = mkldnn::memory::format::any;  // ONNXRuntime format
     for (auto& kernel : context_.kernels) {
-      Status status = kernel->CreatePrimitives(api, context, cpu_engine_, context_.net, source_format);
+      Status status = kernel->CreatePrimitives(api, context, cpu_engine_, context_.net, context_.net_args);
       if (status.IsOK())
         kernel->ReorderWeights(api, context, cpu_engine_);
       else
@@ -246,7 +248,7 @@ Status MkldnnFuncKernel<T>::Compute(const OrtCustomOpApi* api, OrtKernelContext*
     status = primitive->Compute(api, context);
   } catch (const mkldnn::error& e) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status,
-                           ", message: ", e.message.c_str());
+                           ", message: ", e.what());
   }
   return status;
 }
