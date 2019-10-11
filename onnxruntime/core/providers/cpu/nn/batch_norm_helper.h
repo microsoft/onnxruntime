@@ -17,10 +17,9 @@ class BatchNormHelper {
                                        const Tensor* var,
                                        bool is_spatial = true) {
     const auto& x_dims = X->Shape().GetDims();
-    if (X->Shape().NumDimensions() < 3) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                            "Invalid input X: The rank of input X must be atleast 3 - it should contain batch size (N), "
-                            "number of channels (C), and atleast one data dimension (D1)");
+    if (x_dims.size() < 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid input X: The rank of input X must be atleast 2. Got rank: ", x_dims.size());
     }
 
     int64_t num_channels = x_dims[1];
