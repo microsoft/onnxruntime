@@ -571,6 +571,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"dynamicquantizelinear_max_adjusted_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"dynamicquantizelinear_min_adjusted_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"maxpool_with_argmax_2d_precomputed_pads", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"tf_resnet_v2_50", "Temporarily disabled pending investigation"});
   }
 #endif
   // clang-format on
