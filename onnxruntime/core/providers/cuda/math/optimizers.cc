@@ -269,13 +269,13 @@ Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) cons
       weight_tensor_size <
       static_cast<int64_t>(std::numeric_limits<int>::max()));
 
-  reduce_square_sum(
+  reduce_l2_norm(
       reinterpret_cast<const CudaT2*>(weights_tensor.template Data<T2>()),
       weights_norm_buffer.get(),
       static_cast<int>(weight_tensor_size),
       reinterpret_cast<CudaT2*>(reduction_buffer.get()));
 
-  reduce_square_sum(
+  reduce_l2_norm(
       reinterpret_cast<CudaT3*>(update_direction_buffer.get()),
       direction_norm_buffer.get(),
       static_cast<int>(weight_tensor_size),

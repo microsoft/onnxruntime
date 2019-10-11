@@ -26,7 +26,7 @@ int compute_reduction_buffer_size(int element_size, int size) {
 }
 
 template<typename TAccumulated, typename TValue>
-struct Identity {
+struct Cast {
   __forceinline__ __device__ TAccumulated operator()(const TValue& value) {
     return TAccumulated(value);
   }
@@ -47,6 +47,20 @@ struct Abs {
   }
 };
 
+template<typename T> 
+struct Sqrt {
+  __forceinline__ __device__ T operator()(const T& value) {
+    return _Sqrt(value);
+  }
+};
+
+template<typename T>
+struct Identity {
+  __forceinline__ __device__ T operator()(const T& value) {
+    return value;
+  }
+};
+
 __forceinline__ __device__ int least_pow2_bound(int value) {
   unsigned int value_ = static_cast<unsigned int>(value);
   --value_;
@@ -58,7 +72,7 @@ __forceinline__ __device__ int least_pow2_bound(int value) {
   return static_cast<unsigned int>(++value_);
 }
 
-template<typename TIn, typename TOut, typename TOp, bool DivideResultBySize>
+template<typename TIn, typename TOut, typename TOp, typename TFinalOp, bool DivideResultBySize>
 __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output, TOut* buffer) {
   extern __shared__ unsigned char shared_memory_[];
   TOut* shared_memory = reinterpret_cast<TOut*>(shared_memory_);
@@ -116,9 +130,9 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
       // Compilation time if-else branch controlled by template argument can be
       // optimized out, so there will be no branch in real computation phase.
       if (DivideResultBySize) {
-        output[0] = value / TOut(size);
+        output[0] = TFinalOp()(value / TOut(size));
       } else {
-        output[0] = value;
+        output[0] = TFinalOp()(value);
       }
     }
     return;
@@ -144,9 +158,9 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
       // Compilation time if-else branch controlled by template argument can be
       // optimized out, so there will be no branch in real computation phase.
       if (DivideResultBySize) {
-        output[0] = value_ / TOut(size);
+        output[0] = TFinalOp()(value_ / TOut(size));
       } else {
-        output[0] = value_;
+        output[0] = TFinalOp()(value_);
       }
     }
     return;
@@ -181,9 +195,9 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
       // Compilation time if-else branch controlled by template argument can be
       // optimized out, so there will be no branch in real computation phase.
       if (DivideResultBySize) {
-        output[0] = shared_memory[0] / TOut(size);
+        output[0] = TFinalOp()(shared_memory[0] / TOut(size));
       } else {
-        output[0] = shared_memory[0];
+        output[0] = TFinalOp()(shared_memory[0]);
       }
     }
     return;
@@ -231,39 +245,45 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
       // Compilation time if-else branch controlled by template argument can be
       // optimized out, so there will be no branch in real computation phase.
       if (DivideResultBySize) {
-        output[0] = buffer[0] / TOut(size);
+        output[0] = TFinalOp()(buffer[0] / TOut(size));
       } else {
-        output[0] = buffer[0];
+        output[0] = TFinalOp()(buffer[0]);
       }
     }
   }
 }
 
-template<typename TIn, typename TOut, typename TOp, bool DivideResultBySize>
+template<typename TIn, typename TOut, typename TOp, typename TFinalOp, bool DivideResultBySize>
 void call_reduce_all_kernel(const TIn *data, TOut *output, int size, TOut *buffer)
 {
   const int block_count = compute_block_number(size);
   cudaMemset(buffer + block_count, 0, sizeof(int));
   const dim3 grid(block_count, 1, 1);
   const dim3 block(WARP_THREAD_COUNT, MAX_BLOCK_WARP_COUNT, 1);
-  reduce_all_kernel<TIn, TOut, TOp, DivideResultBySize><<<grid, block, MAX_BLOCK_WARP_COUNT * sizeof(TOut)>>>(size, data, output, buffer);
+  reduce_all_kernel<TIn, TOut, TOp, TFinalOp, DivideResultBySize><<<grid, block, MAX_BLOCK_WARP_COUNT * sizeof(TOut)>>>(size, data, output, buffer);
 }
 
 template<typename TIn, typename TOut>
 void reduce_sum(const TIn* data, TOut* output, int size, TOut* buffer) {
-  call_reduce_all_kernel<TIn, TOut, Identity<TOut, TIn>, false>(
+  call_reduce_all_kernel<TIn, TOut, Cast<TOut, TIn>, Identity<TOut>, false>(
     data, output, size, buffer);
 }
 
 template<typename TIn, typename TOut>
 void reduce_square_sum(const TIn* data, TOut* output, int size, TOut* buffer) {
-  call_reduce_all_kernel<TIn, TOut, Square<TOut, TIn>, false>(
+  call_reduce_all_kernel<TIn, TOut, Square<TOut, TIn>, Identity<TOut>, false>(
+    data, output, size, buffer);
+}
+
+template<typename TIn, typename TOut>
+void reduce_l2_norm(const TIn* data, TOut* output, int size, TOut* buffer) {
+  call_reduce_all_kernel<TIn, TOut, Square<TOut, TIn>, Sqrt<TOut>, false>(
     data, output, size, buffer);
 }
 
 template<typename TIn, typename TOut>
 void reduce_mean(const TIn* data, TOut* output, int size, TOut* buffer) {
-  call_reduce_all_kernel<TIn, TOut, Identity<TOut, TIn>, true>(
+  call_reduce_all_kernel<TIn, TOut, Cast<TOut, TIn>, Identity<TOut>, true>(
     data, output, size, buffer);
 }
 
@@ -279,6 +299,13 @@ template void reduce_square_sum<half, float>(
 template void reduce_square_sum<float, float>(
   const float* data, float* output, int size, float* buffer);
 template void reduce_square_sum<double, double>(
+  const double* data, double* output, int size, double* buffer);
+
+template void reduce_l2_norm<half, float>(
+  const half* data, float* output, int size, float* buffer);
+template void reduce_l2_norm<float, float>(
+  const float* data, float* output, int size, float* buffer);
+template void reduce_l2_norm<double, double>(
   const double* data, double* output, int size, double* buffer);
 
 template void reduce_mean<half, float>(

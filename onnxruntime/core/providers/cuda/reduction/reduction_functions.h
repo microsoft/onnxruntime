@@ -16,6 +16,9 @@ template <typename TIn, typename TOut>
 void reduce_square_sum(const TIn* input, TOut* output, int size, TOut* buffer);
 
 template <typename TIn, typename TOut>
+void reduce_l2_norm(const TIn* input, TOut* output, int size, TOut* buffer);
+
+template <typename TIn, typename TOut>
 void reduce_mean(const TIn* data, TOut* output, int size, TOut* buffer);
 
 }  // namespace cuda
