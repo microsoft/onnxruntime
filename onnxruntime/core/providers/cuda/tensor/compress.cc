@@ -13,7 +13,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     9,
     kCudaExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Compress);
 
 Status Compress::ComputeInternal(OpKernelContext* ctx) const {

@@ -269,6 +269,16 @@ class Mean_8 final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
+template <typename T>
+class BitShift final : public OpKernel {
+ public:
+  explicit BitShift(const OpKernelInfo& info);
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  bool shift_left_;
+};
+
 // PRelu is activation function, but it's closer to binary elementwise ops in implementation
 template <typename T>
 class PRelu final : public OpKernel {
@@ -298,9 +308,9 @@ class Erf final : public OpKernel {
 };
 
 template <typename T>
-auto MakeEigenArrayMap(Tensor& t) { return EigenVectorArrayMap<T>(t.template MutableData<T>(), t.Shape().Size()); }
+auto MakeEigenArrayMap(Tensor& t) -> EigenVectorArrayMap<T> { return EigenVectorArrayMap<T>(t.template MutableData<T>(), t.Shape().Size()); }
 template <typename T>
-auto MakeEigenArrayMap(const Tensor& t) { return ConstEigenVectorArrayMap<T>(t.template Data<T>(), t.Shape().Size()); }
+auto MakeEigenArrayMap(const Tensor& t) -> ConstEigenVectorArrayMap<T> { return ConstEigenVectorArrayMap<T>(t.template Data<T>(), t.Shape().Size()); }
 
 struct BroadcastIterator {
   size_t AdvanceBy(size_t delta) {
@@ -318,6 +328,11 @@ struct BroadcastIterator {
       }
     }
     return index;
+  }
+
+  void Reserve(int64_t max_dims) {
+    deltas_.reserve(static_cast<size_t>(max_dims));
+    counts_.reserve(static_cast<size_t>(max_dims));
   }
 
   void Init(int64_t axis, int64_t largest) {
@@ -368,6 +383,8 @@ struct Broadcaster {
     size_t dimension_count_max = std::max(shape1.size(), shape2.size());
     size_t dimension_count_min = std::min(shape1.size(), shape2.size());
     output_shape_.resize(dimension_count_max);
+    iterator1_.Reserve(dimension_count_max);
+    iterator2_.Reserve(dimension_count_max);
 
     auto iter1 = shape1.end();
     auto iter2 = shape2.end();
@@ -395,22 +412,22 @@ struct Broadcaster {
         *--output_shape = axis;
       }
       index++;  // Manually increment since we processed one axis
-    }
+    } else {
+      for (; index < dimension_count_min; index++) {
+        auto axis1 = *--iter1;
+        auto axis2 = *--iter2;
 
-    for (; index < dimension_count_min; index++) {
-      auto axis1 = *--iter1;
-      auto axis2 = *--iter2;
+        auto largest = std::max(axis1, axis2);
+        *--output_shape = largest;
 
-      auto largest = std::max(axis1, axis2);
-      *--output_shape = largest;
+        if (largest == 1 && index + 1 < dimension_count_min)  // Nothing to do in this case
+          continue;
 
-      if (largest == 1 && index + 1 < dimension_count_min)  // Nothing to do in this case
-        continue;
-
-      iterator1_.Init(axis1, largest);
-      iterator2_.Init(axis2, largest);
-      index++;  // Manually increment since we processed one axis
-      break;
+        iterator1_.Init(axis1, largest);
+        iterator2_.Init(axis2, largest);
+        index++;  // Manually increment since we processed one axis
+        break;
+      }
     }
 
     for (; index < dimension_count_min; index++) {
@@ -528,9 +545,9 @@ struct TensorAllocator {
   }
 
   std::unique_ptr<Tensor> Allocate(const TensorShape& shape) {
-    return std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
-                                    shape,
-                                    allocator_);
+    return onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
+                                            shape,
+                                            allocator_);
   }
 
  private:

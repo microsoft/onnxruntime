@@ -20,9 +20,9 @@ common::Status SimpleTensorAllocator::GetPreallocatedBuffer(int ort_value_index,
   size_t len = 0;
   static constexpr int alignment = 256;
   ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<alignment>(*iter->second, &len));
-  const struct OrtAllocatorInfo& location = seq_plan_.GetLocation(ort_value_index);
+  const struct OrtMemoryInfo& location = seq_plan_.GetLocation(ort_value_index);
   if (len == 0) {
-    out = std::make_unique<MemBuffer>(nullptr, 0, location);
+    out = onnxruntime::make_unique<MemBuffer>(nullptr, 0, location);
     return Status::OK();
   }
   auto alloc = GetAllocator(location);
@@ -31,7 +31,7 @@ common::Status SimpleTensorAllocator::GetPreallocatedBuffer(int ort_value_index,
                            "', location: ", location.ToString());
   void* buffer = alloc->Alloc(len);
   weights_buffers_.push_back(BufferUniquePtr(buffer, alloc));
-  out = std::make_unique<MemBuffer>(buffer, len, location);
+  out = onnxruntime::make_unique<MemBuffer>(buffer, len, location);
   return Status::OK();
 }
 }  // namespace onnxruntime

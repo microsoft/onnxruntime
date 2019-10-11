@@ -12,6 +12,8 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
+static const std::vector<string> default_activations = {"sigmoid", "tanh"};
+
 static void RunGruTest(const std::vector<float>& X_data,
                        const std::vector<float>& W_data,
                        const std::vector<float>& R_data,
@@ -29,7 +31,7 @@ static void RunGruTest(const std::vector<float>& X_data,
                        bool output_sequence = true,
                        bool linear_before_reset = false,
                        // copy the following vectors as we may modify them
-                       std::vector<string> activations = {"sigmoid", "tanh"},
+                       std::vector<string> activations = default_activations,
                        std::vector<float> activation_alphas = {},
                        std::vector<float> activation_betas = {}) {
   OpTester test("GRU");
@@ -819,6 +821,39 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpShorterSeqInMiddle) {
                                      -0.1084529086f, 0.15118938684f,
                                      -0.2759185731f, -0.00228558504f,
                                      -0.1950065642f, 0.0961040258f};
+
+  ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h, true);
+}
+
+TEST(GRUTest, ONNXRuntime_TestGRUOpZeroSeqInMiddle) {
+  const std::string direction = "bidirectional";
+  const std::vector<std::string> activations = {"sigmoid", "tanh", "sigmoid", "tanh"};
+
+  DeepCpuGruOpTestContext ctx(direction, activations);
+
+  const int batch_size = 4;
+  const int seq_length = 2;
+  std::vector<float> X = {-0.455351f, -0.276391f,
+                          0.855351f, 0.676391f,
+                          -0.185934f, -0.269585f,
+                          -0.585934f, 0.669585f,
+                          -0.351455f, -0.391276f,
+                          0.670351f, 0.894676f,
+                          0.987653f, 1.876567f,
+                          -1.234357f, -0.775668f};
+  std::vector<int> sequence_length = {2, 0, 2, 2};
+  std::vector<float> initial_h = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                  0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+
+  std::vector<float> expected_Y = {-0.0325528607f, 0.0774837881f, 0.0f, 0.0f, -0.0456649921f, 0.0462125241f, -0.1494070887f, 0.1356348693f,
+                                   -0.0398676469f, 0.1030099019f, 0.0f, 0.0f, -0.2552363872f, 0.1258624643f, -0.1111927852f, 0.1987708956f,
+
+                                   -0.0317345410f, 0.0898682102f, 0.0f, 0.0f, -0.4344840049f, 0.1124109625f, -0.0373909101f, 0.1958667039f,
+                                   -0.0190722197f, 0.0559314489f, 0.0f, 0.0f, -0.4121740460f, 0.0858790874f, 0.0524947792f, 0.1172080263f};
+
+  std::vector<float> expected_Y_h = {-0.0317345410f, 0.0898682102f, 0.0f, 0.0f, -0.4344840049f, 0.1124109625f, -0.0373909101f, 0.1958667039f,
+
+                                     -0.0398676469f, 0.1030099019f, 0.0f, 0.0f, -0.2552363872f, 0.1258624643f, -0.1111927852f, 0.1987708956f};
 
   ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h, true);
 }

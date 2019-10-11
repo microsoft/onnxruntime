@@ -149,7 +149,7 @@ class LRNPrimitivePool : public PrimitivePool<T> {
     LRNPrimitive<T>* primitive = dynamic_cast<LRNPrimitive<T>*>(
         LRNPrimitivePool<T>::GetInstance().GetPrimitive(params.ToString()));
     if (primitive == nullptr) {
-      auto pool_primitive = std::make_unique<LRNPrimitive<T>>(params);
+      auto pool_primitive = onnxruntime::make_unique<LRNPrimitive<T>>(params);
       primitive = pool_primitive.get();
       LRNPrimitivePool<T>::GetInstance().SetPrimitive(params.ToString(), std::move(pool_primitive));
     }

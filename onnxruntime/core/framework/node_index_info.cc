@@ -11,7 +11,7 @@ namespace onnxruntime {
 
 // if we have a full GraphViewer, assume the min node index is 0
 NodeIndexInfo::NodeIndexInfo(const GraphViewer& graph_viewer, const OrtValueNameIdxMap& ort_value_idx_map)
-    : min_node_index_{0}, max_mlvalue_idx_{ort_value_idx_map.MaxIdx()} {
+    : min_node_index_(0), max_mlvalue_idx_(ort_value_idx_map.MaxIdx()) {
   Init(graph_viewer.Nodes(), graph_viewer.MaxNodeIndex(), ort_value_idx_map);
 }
 
@@ -69,6 +69,10 @@ void NodeIndexInfo::Init(const TValidNodes& nodes, NodeIndex max_node_index,
   // init all to kInvalidEntry
   node_offsets_.resize(GetNodeOffsetsIndex(max_node_index), kInvalidEntry);
   node_values_.resize(total_def_count, kInvalidEntry);
+
+  node_offsets_size_ = node_offsets_.size();
+  node_values_size_ = node_values_.size();
+
   int cur_idx = 0;
 
   for (auto& node : nodes) {

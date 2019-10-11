@@ -1167,6 +1167,46 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMShorterSeqInMiddle) {
   context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data,
                   &sequence_length, use_bias, use_peepholes, 0.0f, false, false);
 }
+
+TEST(LSTMTest, ONNXRuntime_TestLSTMZeroSeqInMiddle) {
+  const int seq_len = 2;
+  int batch_size = 4;
+  std::vector<std::string> activations = {"sigmoid", "tanh", "tanh", "sigmoid", "tanh", "tanh"};
+
+  bool use_bias = true;
+  bool use_peepholes = false;
+
+  std::vector<float> X_data = {-0.455351f, -0.776391f,
+                               0.0f, 0.0f,
+                               0.348763f, 0.678345f,
+                               0.877836f, 0.543859f,
+
+                               -0.185934f, -0.169585f,
+                               0.0f, 0.0f,
+                               0.078053f, 0.163457f,
+                               0.846098f, 0.987531f};
+
+  std::vector<int> sequence_length = {2, 0, 1, 2};
+
+  std::vector<float> Y_data = {0.02907280f, 0.01765226f, 0.0f, 0.0f, -0.15355367f, 0.04701351f, -0.12951779f, -0.00989562f,
+                               0.01841230f, 0.04093486f, 0.0f, 0.0f, -0.15355367f, 0.04701351f, -0.17956293f, 0.01607513f,
+
+                               -0.02912546f, 0.04120104f, 0.0f, 0.0f, 0.0f, 0.0f, -0.22162350f, 0.03132058f,
+                               -0.04350187f, 0.03531464f, 0.0f, 0.0f, 0.0f, 0.0f, -0.17885581f, 0.01959856f};
+
+  std::vector<float> Y_h_data = {-0.02912546f, 0.04120104f, 0.0f, 0.0f, -0.15355367f, 0.04701351f, -0.22162350f, 0.03132058f,
+
+                                 0.01841230f, 0.04093486f, 0.0f, 0.0f, -0.15355367f, 0.04701351f, -0.17956293f, 0.01607513f};
+
+  std::vector<float> Y_c_data = {-0.06609819f, 0.06838701f, 0.0f, 0.0f, -0.2894889f, 0.07438067f, -0.39655977f, 0.05050645f,
+
+                                 0.04934450f, 0.07126625f, 0.0f, 0.0f, -0.28948891f, 0.07438067f, -0.34931409f, 0.02799958f};
+
+  std::string direction = "bidirectional";
+  LstmOpContext2x1x2x2 context(direction, activations);
+  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data,
+                  &sequence_length, use_bias, use_peepholes, 0.0f, false, false);
+}
 #endif // USE_NGRAPH
 
 }  // namespace test

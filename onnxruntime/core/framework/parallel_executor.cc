@@ -19,14 +19,12 @@
 namespace onnxruntime {
 
 ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool& terminate_flag)
-    : out_standings_(0), terminate_flag_{terminate_flag} {
+    : out_standings_(0), terminate_flag_(terminate_flag), executor_pool_(session_state.GetInterOpThreadPool()) {
   auto graph_viewer = session_state.GetGraphViewer();
   node_refs_.resize(graph_viewer->MaxNodeIndex());
   for (auto& node : graph_viewer->Nodes()) {
     node_refs_[node.Index()] = node.GetInputEdgesCount();
   }
-
-  executor_pool_ = std::make_unique<onnxruntime::concurrency::ThreadPool>("EXECUTOR", 32);
 }
 
 Status ParallelExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
@@ -40,7 +38,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
     tp = session_state.Profiler().StartTime();
   }
 
-  root_frame_ = std::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
+  root_frame_ = onnxruntime::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
                                                  fetch_allocators, session_state);
   //std::cout << "start nodes:" << std::endl;
   for (auto node_index : session_state.GetGraphViewer()->GetRootNodes()) {
@@ -96,7 +94,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
     }
 
     if (all_tensors) {
-      auto mem_patterns = std::make_unique<MemoryPatternGroup>();
+      auto mem_patterns = onnxruntime::make_unique<MemoryPatternGroup>();
       ORT_RETURN_IF_ERROR(root_frame_->GeneratePatterns(mem_patterns.get()));
       ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(input_shapes, std::move(mem_patterns)));
     }
@@ -122,6 +120,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
   TimePoint sync_time_begin;
   TimePoint kernel_begin_time;
   const bool f_profiler_enabled = session_state.Profiler().IsEnabled();
+  const SequentialExecutionPlan& exec_plan = *session_state.GetExecutionPlan();
 
   // Avoid context switching if possible.
   while (keep_running) {
@@ -132,56 +131,55 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
       ORT_THROW("Exiting due to terminate flag being set to true.");
     }
 
-    auto p_op_kernel = session_state.GetKernel(node_index);
+    const auto* p_op_kernel = session_state.GetKernel(node_index);
+    const auto& node = *graph_viewer->GetNode(node_index);
 
     // if a kernel has been added in the session state, it better be NON-null.
     if (p_op_kernel == nullptr) {
-      ORT_THROW("Got nullptr from GetKernel for node: ",
-                graph_viewer->GetNode(node_index)->Name());
+      ORT_THROW("Got nullptr from GetKernel for node: ", node.Name());
     }
 
-    OpKernelContextInternal op_kernel_context(session_state, *root_frame_, *p_op_kernel, logger,
-                                              p_op_kernel->Node().ImplicitInputDefs(),
-                                              terminate_flag_);
+    OpKernelContextInternal op_kernel_context(session_state, *root_frame_, *p_op_kernel, logger, terminate_flag_);
 
     if (f_profiler_enabled) {
       sync_time_begin = session_state.Profiler().StartTime();
     }
     // sync before compute
     int queue_id = p_op_kernel->KernelDef().ExecQueueId();
-
-    for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
-      Fence_t fence = op_kernel_context.InputFence(input_index);
-      if (fence) {
-        auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
-        if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
-          execution_provider_type = kCpuExecutionProvider;
+    if (exec_plan.NodeHasFence(node_index)) {
+      for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
+        Fence_t fence = op_kernel_context.InputFence(input_index);
+        if (fence) {
+          auto execution_provider_type = node.GetExecutionProviderType();
+          if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+            execution_provider_type = kCpuExecutionProvider;
+          }
+          fence->BeforeUsingAsInput(execution_provider_type, queue_id);
         }
-        fence->BeforeUsingAsInput(execution_provider_type, queue_id);
       }
-    }
 
-    for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
-      Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
-      if (fence) {
-        auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
-        if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
-          execution_provider_type = kCpuExecutionProvider;
+      for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
+        Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
+        if (fence) {
+          auto execution_provider_type = node.GetExecutionProviderType();
+          if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+            execution_provider_type = kCpuExecutionProvider;
+          }
+          fence->BeforeUsingAsInput(execution_provider_type, queue_id);
         }
-        fence->BeforeUsingAsInput(execution_provider_type, queue_id);
       }
-    }
 
-    for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
-      Fence_t fence = op_kernel_context.OutputFence(output_index);
-      if (fence) {
-        fence->BeforeUsingAsOutput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
+      for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
+        Fence_t fence = op_kernel_context.OutputFence(output_index);
+        if (fence) {
+          fence->BeforeUsingAsOutput(node.GetExecutionProviderType(), queue_id);
+        }
       }
     }
 
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     p_op_kernel->Node().Name() + "_fence_before",
+                                                     node.Name() + "_fence_before",
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
 
@@ -189,60 +187,72 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
     }
 
     // call compute on the kernel
-    VLOGS(logger, 1) << "Computing kernel: " << p_op_kernel->Node().Name();
+    VLOGS(logger, 1) << "Computing kernel: " << node.Name();
 
     // Execute the kernel.
-    status = p_op_kernel->Compute(&op_kernel_context);
+    try {
+      status = p_op_kernel->Compute(&op_kernel_context);
+    } catch (const std::exception& ex) {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
+    }
+
     if (!status.IsOK()) {
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Compute failed for node: ", graph_viewer->GetNode(node_index)->Name(),
-                               "\nError:", status);
+      std::ostringstream ss;
+      ss << "Non-zero status code returned while running " << node.OpType() << " node. Name:'" << node.Name()
+         << "' Status Message: " << status.ErrorMessage();
+      const auto msg_string = ss.str();
+      LOGS(logger, ERROR) << msg_string;
+      status = Status(status.Category(), status.Code(), msg_string);
       break;
     }
 
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     p_op_kernel->Node().Name() + "_kernel_time",
+                                                     node.Name() + "_kernel_time",
                                                      kernel_begin_time,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}, {"provider", p_op_kernel->KernelDef().Provider()}});
 
       sync_time_begin = session_state.Profiler().StartTime();
     }
     // sync after compute for outputs
-    for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
-      Fence_t fence = op_kernel_context.InputFence(input_index);
-      if (fence) {
-        fence->AfterUsedAsInput(queue_id);
+    if (exec_plan.NodeHasFence(node_index)) {
+      for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
+        Fence_t fence = op_kernel_context.InputFence(input_index);
+        if (fence) {
+          fence->AfterUsedAsInput(queue_id);
+        }
+      }
+
+      for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
+        Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
+        if (fence) {
+          fence->AfterUsedAsInput(queue_id);
+        }
+      }
+
+      for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
+        Fence_t fence = op_kernel_context.OutputFence(output_index);
+        if (fence) {
+          fence->AfterUsedAsOutput(queue_id);
+        }
       }
     }
 
-    for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
-      Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
-      if (fence) {
-        fence->AfterUsedAsInput(queue_id);
-      }
-    }
-
-    for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
-      Fence_t fence = op_kernel_context.OutputFence(output_index);
-      if (fence) {
-        fence->AfterUsedAsOutput(queue_id);
-      }
-    }
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     p_op_kernel->Node().Name() + "_fence_after",
+                                                     node.Name() + "_fence_after",
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
     }
+
     //std::cout << "Run async node finish: " << p_node_index << std::endl;
 
     keep_running = false;
 
     // Checking which output nodes ready for running.
     {
-      auto begin = p_op_kernel->Node().OutputEdgesBegin();
-      auto end = p_op_kernel->Node().OutputEdgesEnd();
+      auto begin = node.OutputEdgesBegin();
+      auto end = node.OutputEdgesEnd();
 
       std::lock_guard<OrtMutex> lock(ref_mutex_);
       for (auto it = begin; it != end; it++) {
@@ -256,7 +266,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
           }
         }
 
-        // std::cout << "handle output, current name: " << p_op_kernel->Node().Name() << ", current index: "
+        // std::cout << "handle output, current name: " << node.Name() << ", current index: "
         // << p_node_index << ", output name: " << (*it)->GetNode().Name() << ", output index: "
         // << (*it)->GetNode().Index() << ", after -- output ref: " << node_refs_[idx] << std::endl;
       }

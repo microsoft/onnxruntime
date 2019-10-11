@@ -4,12 +4,13 @@
 #pragma once
 
 #include "core/framework/execution_provider.h"
+#include <map>
 
 namespace ngraph {
-namespace runtime {
-class Backend;
+  namespace runtime {
+    class Backend;
+  }
 }
-}  // namespace ngraph
 
 namespace onnxruntime {
 
@@ -35,4 +36,4 @@ class NGRAPHExecutionProvider : public IExecutionProvider {
   std::shared_ptr<ngraph::runtime::Backend> ng_backend_;
 };
 
-}  // namespace onnxruntime
+}

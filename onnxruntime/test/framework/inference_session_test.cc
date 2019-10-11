@@ -85,10 +85,10 @@ class FuseExecutionProvider : public IExecutionProvider {
  public:
   explicit FuseExecutionProvider() : IExecutionProvider{kFuseExecutionProvider} {
     DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault,
-                                                 [](int) { return std::make_unique<CPUAllocator>(); },
+                                                 [](int) { return onnxruntime::make_unique<CPUAllocator>(); },
                                                  std::numeric_limits<size_t>::max()});
     InsertAllocator(std::shared_ptr<IArenaAllocator>(
-        std::make_unique<DummyArena>(device_info.factory(0))));
+        onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
   }
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -96,11 +96,11 @@ class FuseExecutionProvider : public IExecutionProvider {
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override {
     // Fuse two add into one.
     std::vector<std::unique_ptr<ComputeCapability>> result;
-    std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+    std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
     for (auto& node : graph.Nodes()) {
       sub_graph->nodes.push_back(node.Index());
     }
-    auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
+    auto meta_def = onnxruntime::make_unique<IndexedSubGraph::MetaDef>();
     meta_def->name = "FuseAdd";
     meta_def->domain = "FuseTest";
     meta_def->inputs = {"X", "Y", "Z"};
@@ -108,13 +108,25 @@ class FuseExecutionProvider : public IExecutionProvider {
     meta_def->since_version = 1;
     meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
     sub_graph->SetMetaDef(meta_def);
-    result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+    result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
     return result;
   }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
     static std::shared_ptr<KernelRegistry> kernel_registry = GetFusedKernelRegistry();
     return kernel_registry;
+  }
+};
+
+// InferenceSession wrapper to expose loaded graph.
+class InferenceSessionGetGraphWrapper : public InferenceSession {
+ public:
+  explicit InferenceSessionGetGraphWrapper(const SessionOptions& session_options,
+                                           logging::LoggingManager* logging_manager) : InferenceSession(session_options, logging_manager) {
+  }
+
+  const Graph& GetGraph() {
+    return model_->MainGraph();
   }
 };
 
@@ -129,7 +141,7 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
   // Generate the input & output def lists
-  p_model = std::make_unique<onnxruntime::Model>("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
+  p_model = onnxruntime::make_unique<onnxruntime::Model>("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
                                                  domain_to_version);
   onnxruntime::Graph& graph = p_model->MainGraph();
 
@@ -212,15 +224,24 @@ void RunModel(InferenceSession& session_object,
 void RunModelWithBindingMatMul(InferenceSession& session_object,
                                const RunOptions& run_options,
                                ProviderType bind_provider_type,
-                               bool is_preallocate_output_vec = false,
-                               ProviderType allocation_provider = kCpuExecutionProvider) {
+                               bool is_preallocate_output_vec,
+                               ProviderType allocation_provider) {
   unique_ptr<IOBinding> io_binding;
   Status st = session_object.NewIOBinding(&io_binding);
   ASSERT_TRUE(st.IsOK());
   auto input_allocator = io_binding->GetCPUAllocator(0, bind_provider_type);
 
+  // bind a value to A with input that will produce invalid output in order to test replacement of a feed
+  std::vector<float> values_mul_x_tmp = {12.f, 11.f, 10.f, 9.f, 8.f, 7.f, 6.f, 5.f, 4.f, 3.f, 2.f, 1.f};
+  std::vector<int64_t> dims_mul_x_A_tmp = {3, 4};
+  OrtValue input_tmp;
+  CreateMLValue<float>(input_allocator, dims_mul_x_A_tmp, values_mul_x_tmp, &input_tmp);
+  io_binding->BindInput("A", input_tmp);
+  const void* tmp_A = io_binding->GetInputs()[0].Get<Tensor>().DataRaw();  // location of data post binding
+
   // prepare inputs
   std::vector<float> values_mul_x = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f};
+
   /*
       0 1 2 3     0 1 2
       4 5 6 7     3 4 5
@@ -241,6 +262,9 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   io_binding->BindInput("A", input_ml_value_A);
   io_binding->BindInput("B", input_ml_value_B);
 
+  // check location of 'A' post-binding has changed to validate that the previous value was replaced
+  ASSERT_TRUE(io_binding->GetInputs()[0].Get<Tensor>().DataRaw() != tmp_A);
+
   // prepare outputs
   std::vector<int64_t> expected_output_dims = {3, 3};
   OrtValue output_ml_value;
@@ -257,6 +281,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
       ORT_THROW("Unsupported provider");
     }
   }
+
   io_binding->BindOutput("Y", output_ml_value);
   ASSERT_TRUE(io_binding->SynchronizeInputs().IsOK());
 
@@ -279,7 +304,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     auto element_type = rtensor.DataType();
     auto& shape = rtensor.Shape();
     auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
-    std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
+    std::unique_ptr<Tensor> cpu_tensor = onnxruntime::make_unique<Tensor>(element_type,
                                                                   shape,
                                                                   cpu_allocator);
     st = GPUDataTransfer().CopyTensor(rtensor, *cpu_tensor.get(), 0);
@@ -328,6 +353,77 @@ TEST(InferenceSessionTests, DisableCPUArena) {
   RunOptions run_options;
   run_options.run_tag = "one session/one tag";
   RunModel(session_object, run_options);
+}
+
+TEST(InferenceSessionTests, TestModelSerialization) {
+  // Load model with level 0 transform level
+  // and assert that the model has Identity nodes.
+  SessionOptions so;
+  const string test_model = "testdata/transform/abs-id-max.onnx";
+  so.session_logid = "InferenceSessionTests.TestModelSerialization";
+  so.graph_optimization_level = TransformerLevel::Default;
+  InferenceSessionGetGraphWrapper session_object_noopt{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object_noopt.Load(test_model).IsOK());
+  ASSERT_TRUE(session_object_noopt.Initialize().IsOK());
+
+  // Assert that model has Identity Nodes.
+  const auto& graph_noopt = session_object_noopt.GetGraph();
+  std::map<std::string, int> op_to_count_noopt = CountOpsInGraph(graph_noopt);
+  ASSERT_TRUE(op_to_count_noopt["Identity"] > 0);
+
+  // Load model with level 1 transform level.
+  so.graph_optimization_level = TransformerLevel::Level1;
+  so.optimized_model_filepath = ToWideString(test_model + "-TransformLevel-" + std::to_string(static_cast<uint32_t>(so.graph_optimization_level)));
+  InferenceSessionGetGraphWrapper session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(test_model).IsOK());
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+
+  // Assert that model has been transformed and identity Node is removed.
+  const auto& graph = session_object.GetGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 0);
+
+  // Serialize model to the same file path again to make sure that rewrite doesn't fail.
+  InferenceSession overwrite_session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(overwrite_session_object.Load(test_model).IsOK());
+  ASSERT_TRUE(overwrite_session_object.Initialize().IsOK());
+
+  // Load serialized model with no transform level and serialize model.
+  SessionOptions so_opt;
+  so_opt.session_logid = "InferenceSessionTests.TestModelSerialization";
+  so_opt.graph_optimization_level = TransformerLevel::Default;
+  so_opt.optimized_model_filepath = ToWideString(so.optimized_model_filepath) + ToWideString("-TransformLevel-" + std::to_string(static_cast<uint32_t>(so_opt.graph_optimization_level)));
+  InferenceSession session_object_opt{so_opt, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object_opt.Load(so.optimized_model_filepath).IsOK());
+  ASSERT_TRUE(session_object_opt.Initialize().IsOK());
+
+  // Assert that re-feed of optimized model with default transform level results
+  // in same runtime model as abs-id-max.onnx with TransformLevel-1.
+  std::ifstream model_fs_session1(so.optimized_model_filepath, ios::in | ios::binary);
+  ASSERT_TRUE(model_fs_session1.good());
+  std::ifstream model_fs_session2(so_opt.optimized_model_filepath, ios::in | ios::binary);
+  ASSERT_TRUE(model_fs_session2.good());
+  ASSERT_TRUE(model_fs_session1.tellg() == model_fs_session2.tellg());
+  model_fs_session1.seekg(0, std::ifstream::beg);
+  model_fs_session2.seekg(0, std::ifstream::beg);
+  ASSERT_TRUE(std::equal(std::istreambuf_iterator<char>(model_fs_session1.rdbuf()),
+                         std::istreambuf_iterator<char>(),
+                         std::istreambuf_iterator<char>(model_fs_session2.rdbuf())));
+
+  // Assert that empty optimized model file-path doesn't fail loading.
+  so_opt.optimized_model_filepath = ToWideString("");
+  InferenceSession session_object_emptyValidation{so_opt, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object_emptyValidation.Load(test_model).IsOK());
+  ASSERT_TRUE(session_object_emptyValidation.Initialize().IsOK());
+
+  // Assert that level 3 optimization doesn't result in serialized model.
+  so_opt.optimized_model_filepath = ToWideString("ShouldNotSerialize");
+  so_opt.graph_optimization_level = TransformerLevel::Level3;
+  InferenceSession session_object_Level3Test{so_opt, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object_Level3Test.Load(test_model).IsOK());
+  ASSERT_TRUE(session_object_Level3Test.Initialize().IsOK());
+  std::ifstream model_fs_Level3(so_opt.optimized_model_filepath, ios::in | ios::binary);
+  ASSERT_TRUE(model_fs_Level3.fail());
 }
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
@@ -427,7 +523,7 @@ TEST(InferenceSessionTests, CheckRunLogger) {
   // is around our pointer stays valid.
   auto capturing_sink = new CapturingSink();
 
-  auto logging_manager = std::make_unique<logging::LoggingManager>(
+  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(capturing_sink), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -584,7 +680,7 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
   // is around our pointer stays valid.
   auto capturing_sink = new CapturingSink();
 
-  auto logging_manager = std::make_unique<logging::LoggingManager>(
+  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(capturing_sink),
       logging::Severity::kVERBOSE,
       false,
@@ -644,7 +740,7 @@ TEST(InferenceSessionTests, TestRegisterExecutionProvider) {
 
   InferenceSession session_object{so};
   CPUExecutionProviderInfo epi;
-  ASSERT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CPUExecutionProvider>(epi)).IsOK());
+  ASSERT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CPUExecutionProvider>(epi)).IsOK());
 
   std::ifstream model_file_stream(MODEL_URI, ios::in | ios::binary);
   ASSERT_TRUE(model_file_stream.good());
@@ -672,7 +768,7 @@ static void TestBindHelper(const std::string& log_str,
 #ifdef USE_CUDA
     CUDAExecutionProviderInfo epi;
     epi.device_id = 0;
-    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
 #endif
   }
 
@@ -981,7 +1077,7 @@ TEST(ExecutionProviderTest, FunctionTest) {
   run_options.run_tag = so.session_logid;
 
   CPUExecutionProviderInfo epi;
-  auto testCPUExecutionProvider = std::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
+  auto testCPUExecutionProvider = onnxruntime::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -1012,7 +1108,7 @@ TEST(ExecutionProviderTest, FunctionTest) {
 
   InferenceSession session_object_2{so};
   session_object_2.RegisterExecutionProvider(std::move(testCPUExecutionProvider));
-  session_object_2.RegisterExecutionProvider(std::make_unique<::onnxruntime::FuseExecutionProvider>());
+  session_object_2.RegisterExecutionProvider(onnxruntime::make_unique<::onnxruntime::FuseExecutionProvider>());
   status = session_object_2.Load(model_file_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object_2.Initialize();
@@ -1282,7 +1378,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
   ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
-  auto dummy_provider = std::make_unique<DummyExecutionProvider>();
+  auto dummy_provider = onnxruntime::make_unique<DummyExecutionProvider>();
   auto* p_dummy_provider = dummy_provider.get();
   session_object.RegisterExecutionProvider(std::move(dummy_provider));
 
@@ -1342,7 +1438,7 @@ TEST(InferenceSessionTests, TestRegisterTransformers) {
     InferenceSession session_object{so, &DefaultLoggingManager()};
 
     // Create and register dummy graph transformer
-    auto dummy_transformer_unique_ptr = std::make_unique<DummyGraphTransformer>("DummyTransformer");
+    auto dummy_transformer_unique_ptr = onnxruntime::make_unique<DummyGraphTransformer>("DummyTransformer");
     const auto* dummy_transformer = dummy_transformer_unique_ptr.get();
     session_object.RegisterGraphTransformer(std::move(dummy_transformer_unique_ptr));
 
@@ -1387,7 +1483,7 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
 
   CUDAExecutionProviderInfo epi;
   epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
 
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 

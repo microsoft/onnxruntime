@@ -66,13 +66,15 @@ import onnxruntime as rt
 
 sess_options = rt.SessionOptions()
 
-sess_options.session_thread_pool_size=2
+sess_options.intra_op_num_threads=2
 sess_options.enable_sequential_execution=True
 sess_options.set_graph_optimization_level(2)
 ```
-* sess_options.session_thread_pool_size=2 controls how many thread do you want to use to run your model
+* sess_options.intra_op_num_threads=2 controls how many thread do you want to use to run your model
 * sess_options.enable_sequential_execution=True controls whether you want to run operators in your graph sequentially or in parallel. Usually when your model has many branches, set this option to false will give you better performance.
-* sess_options.set_graph_optimization_level(2). There are three levels, 0 means disable optimization, 1 means enable optimizations before graph partition, 2 means enable all optimization. 
+* When sess_options.enable_sequential_execution=False, you can set sess_options.inter_op_num_threads to control the
+number of threads used to parallelize the execution of the graph (across nodes).
+* sess_options.set_graph_optimization_level(2). Default is 1. Please see [onnxruntime_c_api.h](../include/onnxruntime/core/session/onnxruntime_c_api.h#L241)  (enum GraphOptimizationLevel) for the full list of all optimization levels.
 
 ### MKL_DNN/nGraph/MKL_ML Execution Provider
 MKL_DNN, MKL_ML and nGraph all depends on openmp for parallization. For those execution providers, we need to use openmp enviroment variable to tune the performance.
@@ -88,6 +90,8 @@ whether next task is ready or not. Use PASSIVE if your CPU usage already high, u
 ## Is there a tool to help tune the performance easily?
 Yes, we have created a tool named onnxruntime_perf_test.exe, and you find it at the build drop.
 You can use this tool to test all those knobs easily. Please find the usage of this tool by onnxruntime_perf_test.exe -h
+
+The [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) provides an easy-to-use pipeline for converting models to ONNX and optimizing performance with ONNX Runtime. The tool can help identify the optimal runtime configuration to get the best performance on the target hardware for the model.
 
 ## How to enable profiling and view the generated JSON file?
 

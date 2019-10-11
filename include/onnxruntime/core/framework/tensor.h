@@ -3,19 +3,19 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <iostream>
 #include <string>
 #include <vector>
 
-#include "gsl/span"
+#include "gsl/gsl"
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
-#include "core/framework/data_types.h"
 #include "core/framework/tensor_shape.h"
 #include "onnxruntime_config.h"
+#include "core/framework/data_types.h"
 
 namespace onnxruntime {
-
 // TODO: Do we need this class or is IAllocator::MakeUniquePtr sufficient/better
 class BufferDeleter {
  public:
@@ -57,6 +57,8 @@ using BufferNakedPtr = void*;
 */
 class Tensor final {
  public:
+  Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
+
   /**
    * Create tensor with given type, shape, pre-allocate memory and allocator info.
    * This function won't check if the preallocated buffer(p_data) has enough room for the shape.
@@ -64,7 +66,7 @@ class Tensor final {
    *              Tensor does not own the data and will not delete it
    * \param alloc Where the buffer('data') was allocated from
    */
-  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtAllocatorInfo& alloc,
+  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
          int64_t offset = 0);
 
   /**
@@ -78,9 +80,9 @@ class Tensor final {
   //Move is allowed
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(Tensor);
 
-  Tensor(Tensor&& other);
+  Tensor(Tensor&& other) noexcept;
 
-  Tensor& operator=(Tensor&& other);
+  Tensor& operator=(Tensor&& other) noexcept;
 
   /**
      Returns the data type.
@@ -95,7 +97,7 @@ class Tensor final {
   /**
      Returns the location of the tensor's memory
   */
-  const OrtAllocatorInfo& Location() const { return alloc_info_; }
+  const OrtMemoryInfo& Location() const { return alloc_info_; }
 
   /**
      May return nullptr if tensor size is zero
@@ -170,17 +172,7 @@ class Tensor final {
   /**
   The number of bytes of data.
   */
-  size_t SizeInBytes() const {
-    size_t ret;
-    int64_t l = shape_.Size();
-    if (l >= static_cast<int64_t>(std::numeric_limits<ptrdiff_t>::max())) {
-      ORT_THROW("tensor size overflow");
-    }
-    if (!IAllocator::CalcMemSizeForArray(static_cast<size_t>(shape_.Size()), dtype_->Size(), &ret)) {
-      ORT_THROW("tensor size overflow");
-    }
-    return ret;
-  }
+  size_t SizeInBytes() const;
 
   // More API methods.
  private:
@@ -202,7 +194,7 @@ class Tensor final {
 
   TensorShape shape_;
   MLDataType dtype_;
-  OrtAllocatorInfo alloc_info_;
+  OrtMemoryInfo alloc_info_;
   int64_t byte_offset_;
 };
 #ifdef __GNUC__

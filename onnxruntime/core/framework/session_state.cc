@@ -11,23 +11,96 @@
 #include "core/framework/utils.h"
 
 using namespace ::onnxruntime::common;
+
 namespace onnxruntime {
 
-void SessionState::SetGraphViewer(std::unique_ptr<onnxruntime::GraphViewer> graph_viewer) {
-  ORT_ENFORCE(nullptr != graph_viewer);
-  graph_viewer_ = std::move(graph_viewer);
-}
-
 const GraphViewer* SessionState::GetGraphViewer() const { return graph_viewer_.get(); }
+Status SessionState::SetGraph(const Graph& graph) {
+  graph_viewer_ = onnxruntime::make_unique<onnxruntime::GraphViewer>(graph);
+  auto& logger = Logger();
+  // use graph_viewer_ to initialize ort_value_name_idx_map_
+  LOGS(logger, INFO) << "SaveMLValueNameIndexMapping";
+  int idx = 0;
 
-const OpKernel* SessionState::GetKernel(NodeIndex node_id) const {
-  auto kernel = session_kernels_.find(node_id);
-  return (kernel != session_kernels_.cend()) ? kernel->second.get() : nullptr;
+  // we keep all graph inputs (including initializers), even if they are unused, so make sure they all have an entry
+  for (const auto* input_def : graph_viewer_->GetInputsIncludingInitializers()) {
+    idx = ort_value_name_idx_map_.Add(input_def->Name());
+    VLOGS(logger, 1) << "Added graph_viewer_ input with name: " << input_def->Name()
+                     << " to OrtValueIndex with index: " << idx;
+  }
+
+  for (auto& node : graph_viewer_->Nodes()) {
+    // build the OrtValue->index map
+    for (const auto* input_def : node.InputDefs()) {
+      if (input_def->Exists()) {
+        idx = ort_value_name_idx_map_.Add(input_def->Name());
+        VLOGS(logger, 1) << "Added input argument with name: " << input_def->Name()
+                         << " to OrtValueIndex with index: " << idx;
+      }
+    }
+
+    for (const auto* input_def : node.ImplicitInputDefs()) {
+      if (input_def->Exists()) {
+        idx = ort_value_name_idx_map_.Add(input_def->Name());
+        VLOGS(logger, 1) << "Added implicit input argument with name: " << input_def->Name()
+                         << " to OrtValueIndex with index: " << idx;
+      }
+    }
+
+    for (const auto* output_def : node.OutputDefs()) {
+      if (output_def->Exists()) {
+        ort_value_name_idx_map_.Add(output_def->Name());
+        VLOGS(logger, 1) << "Added output argument with name: " << output_def->Name()
+                         << " to OrtValueIndex with index: " << idx;
+      }
+    }
+  }
+
+  // allocate OrtValue for graph outputs when coming from initializers
+  for (const auto& output : graph_viewer_->GetOutputs()) {
+    if (output->Exists()) {
+      idx = ort_value_name_idx_map_.Add(output->Name());
+      VLOGS(logger, 1) << "Added graph output with name: " << output->Name() << " to OrtValueIndex with index: " << idx;
+    }
+  }
+
+  LOGS(logger, INFO) << "Done saving OrtValue mappings.";
+  return Status::OK();
 }
 
-void SessionState::AddKernel(onnxruntime::NodeIndex node_id, std::unique_ptr<OpKernel> p_kernel) {
-  // assumes vector is already resize()'ed to the number of nodes in the graph
-  session_kernels_[node_id] = std::move(p_kernel);
+Status SessionState::CreateKernels(const KernelRegistryManager& custom_registry_manager) {
+  const GraphNodes& nodes = graph_viewer_->Nodes();
+  if (!nodes.empty()) {
+    size_t max_nodeid = 0;
+    for (auto& node : graph_viewer_->Nodes()) {
+      max_nodeid = std::max(max_nodeid, node.Index());
+    }
+    session_kernels_.clear();
+    session_kernels_.resize(max_nodeid + 1, nullptr);
+    for (auto& node : graph_viewer_->Nodes()) {
+      // construct and save the kernels
+      std::unique_ptr<OpKernel> op_kernel;
+      onnxruntime::ProviderType exec_provider_name = node.GetExecutionProviderType();
+
+      const IExecutionProvider* exec_provider = nullptr;
+      if (exec_provider_name.empty() || (exec_provider = execution_providers_.get().Get(exec_provider_name)) == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not create kernel for node: ", node.Name(),
+                               " as there's no execution provider allocated.");
+      }
+
+      common::Status status = custom_registry_manager.CreateKernel(node, *exec_provider, *this, op_kernel);
+      if (!status.IsOK()) {
+        return common::Status(
+            status.Category(), status.Code(),
+            MakeString("Kernel creation failed for node: ", node.Name(), " with error: ", status.ErrorMessage()));
+      }
+      assert(session_kernels_[node.Index()] == nullptr);
+      // assumes vector is already resize()'ed to the number of nodes in the graph
+      session_kernels_[node.Index()] = op_kernel.release();
+    }
+  }
+  node_index_info_ = onnxruntime::make_unique<NodeIndexInfo>(*graph_viewer_, ort_value_name_idx_map_);
+  return Status::OK();
 }
 
 void SessionState::SetExecutionPlan(std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan) {
@@ -38,7 +111,6 @@ const SequentialExecutionPlan* SessionState::GetExecutionPlan() const { return p
 
 Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d,
                                           bool constant) {
-  ORT_ENFORCE(ort_value_index >= 0 && ort_value_index <= ort_value_name_idx_map_.MaxIdx());
   auto p = initialized_tensors_.insert({ort_value_index, ort_value});
   if (!p.second)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "duplicated ort_value index:", ort_value_index,
@@ -55,9 +127,7 @@ Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& o
   return Status::OK();
 }
 
-const std::unordered_map<int, OrtValue>& SessionState::GetInitializedTensors() const {
-  return initialized_tensors_;
-}
+const std::unordered_map<int, OrtValue>& SessionState::GetInitializedTensors() const { return initialized_tensors_; }
 
 const std::unordered_map<int, OrtValue>& SessionState::GetConstantInitializedTensors() const {
   return constant_initialized_tensors_;
@@ -86,7 +156,8 @@ static int64_t CalculateMemoryPatternsKey(const std::vector<std::reference_wrapp
   return key;
 }
 
-const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes) const {
+const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(
+    const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes) const {
   int64_t key = CalculateMemoryPatternsKey(input_shapes);
 
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
@@ -96,8 +167,9 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<
   return it->second.get();
 }
 
-Status SessionState::UpdateMemoryPatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
-                                                   std::unique_ptr<MemoryPatternGroup> mem_patterns) const {
+Status SessionState::UpdateMemoryPatternGroupCache(
+    const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
+    std::unique_ptr<MemoryPatternGroup> mem_patterns) const {
   int64_t key = CalculateMemoryPatternsKey(input_shapes);
 
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
@@ -109,16 +181,11 @@ Status SessionState::UpdateMemoryPatternGroupCache(const std::vector<std::refere
   return Status::OK();
 }
 
-bool SessionState::GetEnableMemoryPattern() const {
-  return enable_mem_pattern_;
-}
+bool SessionState::GetEnableMemoryPattern() const { return enable_mem_pattern_; }
 
 common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info) {
-  // in the future we could support multiple nodes on difference devices using an input, however right now
-  // the logic in utils::CopyOneInputAcrossDevices only checks the first entry.
-  // Instead of failing silently and adding extra entries that will be ignored, check if the required provider
-  // is the same for any duplicate entries. If it differs we can't run the model.
-
+  // Graph partitioning should ensure an input is only consumed from one device. Copy nodes should have been inserted
+  // to handle a scenario where an input is required on different devices by different nodes. Validate that.
   auto& entries = input_names_to_nodeinfo_mapping_[input_name];
 
   if (entries.empty()) {
@@ -135,19 +202,20 @@ common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& in
       // replace existing entry that is for an implicit input with new entry for explicit usage in this graph
       entries[0] = node_info;
     } else {
-      // if the providers match we can add the new entry for completeness (it will be ignored in
+      // if the devices match we can add the new entry for completeness (it will be ignored in
       // utils::CopyOneInputAcrossDevices though).
       // if they don't, we are broken.
-      const auto& current_provider = utils::GetNodeInputProviderType(entries[0]);
-      const auto& new_provider = utils::GetNodeInputProviderType(node_info);
+      const auto& current_device = entries[0].device;
+      const auto& new_device = node_info.device;
 
-      if (current_provider == new_provider) {
+      if (current_device == new_device) {
         entries.push_back(node_info);
       } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                               "Using an input in multiple nodes on different devices is not supported currently. Input:",
-                               input_name, " is used by node ", existing_entry.p_node->Name(), " (", current_provider,
-                               ") and node ", node_info.p_node->Name(), " (", new_provider, ").");
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, NOT_IMPLEMENTED,
+            "Using an input in multiple nodes on different devices is not supported currently. Input:", input_name,
+            " is used by node ", existing_entry.p_node->Name(), " (", current_device->ToString(), ") and node ",
+            node_info.p_node->Name(), " (", new_device->ToString(), ").");
       }
     }
   }
@@ -171,23 +239,37 @@ const SessionState::NameNodeInfoMapType& SessionState::GetInputNodeInfoMap() con
 }
 
 void SessionState::AddOutputNameToNodeInfoMapping(const std::string& output_name, const NodeInfo& node_info) {
-  output_names_to_nodeinfo_mapping_[output_name].push_back(node_info);
+  auto& output_names_to_nodeinfo = output_names_to_nodeinfo_mapping_[output_name];
+  ORT_ENFORCE(output_names_to_nodeinfo.empty(), "Only one node should produce an output. Existing entry for ",
+              output_name);
+
+  output_names_to_nodeinfo.push_back(node_info);
+}
+
+common::Status SessionState::GetOutputNodeInfo(const std::string& output_name,
+                                               std::vector<NodeInfo>& node_info_vec) const {
+  auto entry = output_names_to_nodeinfo_mapping_.find(output_name);
+  if (entry == output_names_to_nodeinfo_mapping_.cend()) {
+    return Status(ONNXRUNTIME, FAIL, "Failed to find output name in the mapping: " + output_name);
+  }
+
+  node_info_vec = entry->second;
+  return Status::OK();
 }
 
 const SessionState::NameNodeInfoMapType& SessionState::GetOutputNodeInfoMap() const {
   return output_names_to_nodeinfo_mapping_;
 }
 
-void SessionState::AddSubgraphSessionState(onnxruntime::NodeIndex index,
-                                           const std::string& attribute_name,
+void SessionState::AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name,
                                            std::unique_ptr<SessionState> session_state) {
   auto entry = subgraph_session_states_.find(index);
 
   // make sure this is new. internal logic error if it is not so using ORT_ENFORCE.
   if (entry != subgraph_session_states_.cend()) {
     const auto& existing_entries = entry->second;
-    ORT_ENFORCE(existing_entries.find(attribute_name) == existing_entries.cend(),
-                "Entry exists in node ", index, " for attribute ", attribute_name);
+    ORT_ENFORCE(existing_entries.find(attribute_name) == existing_entries.cend(), "Entry exists in node ", index,
+                " for attribute ", attribute_name);
   }
 
   subgraph_session_states_[index].insert(std::make_pair(attribute_name, std::move(session_state)));
@@ -199,7 +281,7 @@ SessionState* SessionState::GetMutableSubgraphSessionState(onnxruntime::NodeInde
 
   auto node_entry = subgraph_session_states_.find(index);
   if (node_entry != subgraph_session_states_.cend()) {
-    const auto& attribute_state_map{node_entry->second};
+    const auto& attribute_state_map = node_entry->second;
 
     const auto& subgraph_entry = attribute_state_map.find(attribute_name);
     if (subgraph_entry != attribute_state_map.cend()) {
@@ -215,19 +297,12 @@ const SessionState* SessionState::GetSubgraphSessionState(onnxruntime::NodeIndex
   return const_cast<SessionState*>(this)->GetMutableSubgraphSessionState(index, attribute_name);
 }
 
-void SessionState::CalculateNodeIndexInfo() {
-  ORT_ENFORCE(graph_viewer_);
-  node_index_info_ = std::make_unique<NodeIndexInfo>(*graph_viewer_, ort_value_name_idx_map_);
-
-  for (auto& node_to_map_pair : subgraph_session_states_) {
-    for (auto& attr_name_to_subgraph : node_to_map_pair.second) {
-      attr_name_to_subgraph.second->CalculateNodeIndexInfo();
-    }
-  }
+void SessionState::RemoveSubgraphSessionState(onnxruntime::NodeIndex index) {
+  subgraph_session_states_.erase(index);
 }
 
 const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
-  ORT_ENFORCE(node_index_info_, "CalculateNodeIndexInfo must be called prior to GetExecutionInfo.");
+  ORT_ENFORCE(node_index_info_, "SetGraphAndCreateKernels must be called prior to GetExecutionInfo.");
   return *node_index_info_;
 }
 }  // namespace onnxruntime

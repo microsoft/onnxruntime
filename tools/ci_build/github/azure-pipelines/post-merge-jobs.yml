@@ -2,6 +2,7 @@
 jobs:
 - job: Windows_Debug_CPU_x64
   pool: 'Win-CPU'
+  timeoutInMinutes: 120
   variables:
     - group: dashboard_mysql_secret
     - name: buildDirectory

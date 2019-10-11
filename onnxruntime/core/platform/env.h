@@ -21,10 +21,10 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <gsl/pointers>
+#include <gsl/gsl>
 
 #include "core/common/common.h"
-#include "core/common/callback.h"
+#include "core/framework/callback.h"
 #include "core/platform/env_time.h"
 
 #ifndef _WIN32

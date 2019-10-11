@@ -10,9 +10,14 @@
 #ifdef HAS_IGNORED_ATTRIBUTES
 #pragma GCC diagnostic ignored "-Wignored-attributes"
 #endif
+#ifdef HAS_DEPRECATED_COPY
+#pragma GCC diagnostic ignored "-Wdeprecated-copy"
+#endif
 #else
 #pragma warning(push)
 #pragma warning(disable : 4100)  //'identifier' : unreferenced formal parameter
+#pragma warning(disable : 4244)
+#pragma warning(disable : 4267)
 #endif
 
 #include "public/gemmlowp.h"

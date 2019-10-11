@@ -28,7 +28,7 @@ class ProfilerEvent {
 
 }  // namespace onnxruntime
 
-#define CODEGEN_PROFILER_EVENT(name) onnxruntime::ProfilerEvent name##_profiler_event(#name)
+#define CODEGEN_PROFILER_EVENT(name) onnxruntime::ProfilerEvent profiler_event(name)
 
 #else
 

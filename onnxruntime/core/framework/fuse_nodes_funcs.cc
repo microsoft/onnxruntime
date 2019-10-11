@@ -40,7 +40,7 @@ Status FuncManager::GetFuncs(const std::string& name, ComputeFunc* compute, Crea
     ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle,
                                                             kReleaseStateFuncSymbol + name,
                                                             &release_func_symbol_handle));
-    it->second.compute_func = [=](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
+    it->second.compute_func = [=](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       return reinterpret_cast<ComputeFuncC>(compute_func_symbol_handle)(state, api, context);
     };
 
