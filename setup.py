@@ -48,7 +48,7 @@ if '--nightly_build' in sys.argv:
     sys.argv.remove('--nightly_build')
 
 is_manylinux1 = False
-if environ.get('AUDITWHEEL_PLAT', None) == 'manylinux1_x86_64':
+if environ.get('AUDITWHEEL_PLAT', None) == 'manylinux1_x86_64' or environ.get('AUDITWHEEL_PLAT', None) == 'manylinux2010_x86_64' :
     is_manylinux1 = True
 
 
@@ -105,7 +105,7 @@ try:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
                 logger.info('repairing %s for manylinux1', file)
                 try:
-                    subprocess.run(['auditwheel', 'repair', '--plat', 'manylinux1_x86_64', '-w', self.dist_dir, file], check=True, stdout=subprocess.PIPE)
+                    subprocess.run(['auditwheel', 'repair', '-w', self.dist_dir, file], check=True, stdout=subprocess.PIPE)
                 finally:
                     logger.info('removing %s', file)
                     remove(file)
