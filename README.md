@@ -14,7 +14,7 @@
 
 **[Key Features](#key-features)**
 
-**[Samples and Tutorials](./#samples)**
+**[Samples and Tutorials](./samples)**
 
 **Setup**
 * [Installation](#installation)
