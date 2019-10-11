@@ -75,6 +75,7 @@ SVMClassifier<T>::SVMClassifier(const OpKernelInfo& info)
   }
 }
 
+// The returned values should be -1, 0, or 2
 template <typename LabelType>
 int _set_score_svm(Tensor* Y, float max_weight, const int64_t maxclass, const int64_t n,
                    POST_EVAL_TRANSFORM post_transform_, const std::vector<float>& proba_, bool weights_are_all_positive_,

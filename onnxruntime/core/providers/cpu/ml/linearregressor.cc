@@ -1,61 +1,48 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
 #include "core/providers/cpu/ml/linearregressor.h"
+#include "core/util/eigen_common_wrapper.h"
 
 namespace onnxruntime {
 namespace ml {
 
-ONNX_CPU_OPERATOR_ML_KERNEL(
-    LinearRegressor,
-    1,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    LinearRegressor<float>);
+ONNX_OPERATOR_TYPED_KERNEL_EX(LinearRegressor, kMLDomain, 1, float, kCpuExecutionProvider,
+                              KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                              LinearRegressor<float>);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(LinearRegressor, kMLDomain, 1, double, kCpuExecutionProvider,
+                              KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+                              LinearRegressor<double>);
 
 template <typename T>
-LinearRegressor<T>::LinearRegressor(const OpKernelInfo& info) : OpKernel(info),
-                                                                intercepts_(info.GetAttrsOrDefault<float>("intercepts")),
-                                                                post_transform_(MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))) {
+LinearRegressor<T>::LinearRegressor(const OpKernelInfo& info)
+    : OpKernel(info), post_transform_(MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))) {
+  std::vector<float> c;
+  c = info.GetAttrsOrDefault<float>("intercepts");
+  intercepts_.resize(c.size());
+  std::copy_n(c.data(), c.size(), intercepts_.data());
   ORT_ENFORCE(info.GetAttr<int64_t>("targets", &targets_).IsOK());
-  ORT_ENFORCE(info.GetAttrs<float>("coefficients", coefficients_).IsOK());
-}
-
-template <>
-Status LinearRegressor<float>::Compute(OpKernelContext* ctx) const {
-  const auto* X = ctx->Input<Tensor>(0);
-  if (X->Shape().NumDimensions() == 0) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Input shape needs to be at least a single dimension.");
-  }
-
-  int64_t stride = X->Shape().NumDimensions() == 1 ? X->Shape()[0] : X->Shape()[1];
-  int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
-  Tensor* Y = ctx->Output(0, TensorShape({N, targets_}));
-  const auto* Xdata = X->template Data<float>();
-  int64_t yindex = 0;
-
-  bool useIntercepts = intercepts_.size() == static_cast<size_t>(targets_);
-  for (int64_t i = 0; i < N; i++)  //for each point
-  {
-    std::vector<float> scores;
-    int64_t current_weight_0 = i * stride;
-    for (int j = 0; j < targets_; j++)  //for each target
-    {
-      int64_t current_coeff_0 = j * stride;
-      float weight = 0.f;
-      for (int64_t k = 0; k < stride; k++)  //for each weight
-      {
-        weight = weight + Xdata[current_weight_0 + k] * coefficients_[current_coeff_0 + k];
-      }
-      if (useIntercepts) {
-        weight = weight + intercepts_[j];
-      }
-      scores.push_back(weight);
+  c.clear();
+  ORT_ENFORCE(info.GetAttrs<float>("coefficients", c).IsOK());
+  coefficients_.resize(c.size());
+  ORT_ENFORCE(c.size() % targets_ == 0);
+  int64_t feature_size = static_cast<int64_t>(c.size()) / targets_;
+  for (int64_t i = 0; i != targets_; ++i) {
+    int64_t offset = i * feature_size;
+    for (int64_t j = 0; j != feature_size; ++j) {
+      coefficients_[j * targets_ + i] = c[offset + j];
     }
-    ::onnxruntime::ml::write_scores(scores, post_transform_, yindex, Y, -1);
-    yindex += scores.size();
   }
-  return Status::OK();
+
+  // A dirty hack to keep the code working as before
+  if (targets_ == 1) {
+    // In RS4, we implemented the PROBIT transform for single class cases,
+    // but the outputted value is most likely NaN
+    post_transform_ = POST_EVAL_TRANSFORM::NONE;
+  } else if (post_transform_ == POST_EVAL_TRANSFORM::PROBIT) {
+    // In RS4, we didn't implement the PROBIT transform for multiclass cases
+    post_transform_ = POST_EVAL_TRANSFORM::NONE;
+  }
 }
 
 }  // namespace ml

@@ -5,25 +5,22 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
+#include "core/util/softmax.h"
 
 namespace onnxruntime {
 namespace ml {  // name space for onnx.ml operators
 
-enum class OUTPUT_MODE {
-  TOPCLASS,
-  TOPCLASS_ANDSCORE,
-  ALL_SCORES
-};
+enum class OUTPUT_MODE { TOPCLASS,
+                         TOPCLASS_ANDSCORE,
+                         ALL_SCORES };
 
-enum class NODE_MODE {
-  BRANCH_LEQ,
-  BRANCH_LT,
-  BRANCH_GTE,
-  BRANCH_GT,
-  BRANCH_EQ,
-  BRANCH_NEQ,
-  LEAF
-};
+enum class NODE_MODE { BRANCH_LEQ,
+                       BRANCH_LT,
+                       BRANCH_GTE,
+                       BRANCH_GT,
+                       BRANCH_EQ,
+                       BRANCH_NEQ,
+                       LEAF };
 
 static inline NODE_MODE MakeTreeNodeMode(const std::string& input) {
   if (input == "BRANCH_LEQ") {
@@ -47,13 +44,11 @@ static inline NODE_MODE MakeTreeNodeMode(const std::string& input) {
   return NODE_MODE::BRANCH_NEQ;
 }
 
-enum class POST_EVAL_TRANSFORM {
-  NONE,
-  LOGISTIC,
-  SOFTMAX,
-  SOFTMAX_ZERO,
-  PROBIT
-};
+enum class POST_EVAL_TRANSFORM { NONE,
+                                 LOGISTIC,
+                                 SOFTMAX,
+                                 SOFTMAX_ZERO,
+                                 PROBIT };
 
 static inline POST_EVAL_TRANSFORM MakeTransform(const std::string& input) {
   if (input == "NONE") {
@@ -71,12 +66,10 @@ static inline POST_EVAL_TRANSFORM MakeTransform(const std::string& input) {
   return POST_EVAL_TRANSFORM::PROBIT;
 }
 
-enum class AGGREGATE_FUNCTION {
-  AVERAGE,
-  SUM,
-  MIN,
-  MAX
-};
+enum class AGGREGATE_FUNCTION { AVERAGE,
+                                SUM,
+                                MIN,
+                                MAX };
 
 static inline AGGREGATE_FUNCTION MakeAggregateFunction(const std::string& input) {
   if (input == "AVERAGE") {
@@ -91,11 +84,9 @@ static inline AGGREGATE_FUNCTION MakeAggregateFunction(const std::string& input)
   return AGGREGATE_FUNCTION::MAX;
 }
 
-enum class CAST_TO {
-  TO_FLOAT,
-  TO_STRING,
-  TO_INT64
-};
+enum class CAST_TO { TO_FLOAT,
+                     TO_STRING,
+                     TO_INT64 };
 
 static inline CAST_TO MakeCast(const std::string& input) {
   if (input == "TO_FLOAT") {
@@ -110,10 +101,8 @@ static inline CAST_TO MakeCast(const std::string& input) {
   ORT_THROW("Invalid CAST_TO value of ", input, " Expected TO_FLOAT, TO_STRING or TO_INT64");
 }
 
-enum PACK_MAP {
-  DENSE,
-  SPARSE
-};
+enum PACK_MAP { DENSE,
+                SPARSE };
 
 static inline PACK_MAP MakePack(const std::string& input) {
   if (input == "DENSE") {
@@ -125,12 +114,10 @@ static inline PACK_MAP MakePack(const std::string& input) {
   ORT_THROW("Invalid PACK_MAP value of ", input, " Expected DENSE or SPARSE");
 }
 
-enum KERNEL {
-  LINEAR,
-  POLY,
-  RBF,
-  SIGMOID
-};
+enum KERNEL { LINEAR,
+              POLY,
+              RBF,
+              SIGMOID };
 
 static inline KERNEL MakeKernel(const std::string& input) {
   if (input == "LINEAR") {
@@ -145,11 +132,9 @@ static inline KERNEL MakeKernel(const std::string& input) {
   return KERNEL::SIGMOID;
 }
 
-enum NORMALIZE {
-  NMAX,
-  L1,
-  L2
-};
+enum NORMALIZE { NMAX,
+                 L1,
+                 L2 };
 
 static inline NORMALIZE MakeNormalize(const std::string& input) {
   if (input == "MAX") {
@@ -164,23 +149,22 @@ static inline NORMALIZE MakeNormalize(const std::string& input) {
   ORT_THROW("Invalid normalize value of ", input);
 }
 
-enum class SVM_TYPE {
-  SVM_LINEAR,
-  SVM_SVC
-};
+enum class SVM_TYPE { SVM_LINEAR,
+                      SVM_SVC };
 
-static inline float ErfInv(float x) {
-  float sgn = x < 0 ? -1.0f : 1.0f;
+template <typename T>
+T ErfInv(T x) {
+  T sgn = x < 0 ? -1.0f : 1.0f;
   x = (1 - x) * (1 + x);
-  float log = std::log(x);
-  float v = 2 / (3.14159f * 0.147f) + 0.5f * log;
-  float v2 = 1 / (0.147f) * log;
-  float v3 = -v + std::sqrt(v * v - v2);
+  T log = std::log(x);
+  T v = 2 / (static_cast<T>(M_PI) * 0.147f) + 0.5f * log;
+  T v2 = 1 / (0.147f) * log;
+  T v3 = -v + std::sqrt(v * v - v2);
   x = sgn * std::sqrt(v3);
   return x;
 }
 
-//https://www.csie.ntu.edu.tw/~cjlin/papers/svmprob/svmprob.pdf
+// https://www.csie.ntu.edu.tw/~cjlin/papers/svmprob/svmprob.pdf
 static inline void multiclass_probability(int64_t classcount, const std::vector<float>& r, std::vector<float>& p) {
   int64_t sized2 = classcount * classcount;
   std::vector<float> Q;
@@ -220,7 +204,8 @@ static inline void multiclass_probability(int64_t classcount, const std::vector<
         max_error = error;
       }
     }
-    if (max_error < eps) break;
+    if (max_error < eps)
+      break;
 
     for (int64_t i = 0; i < classcount; i++) {
       float diff = (-Qp[i] + pQp) / Q[i * classcount + i];
@@ -234,125 +219,109 @@ static inline void multiclass_probability(int64_t classcount, const std::vector<
   }
 }
 
-static const float ml_sqrt2 = 1.41421356f;
-
-static inline float ComputeLogistic(float val) {
-  float v = 1 / (1 + std::exp(-std::abs(val)));
+// y = \frac{1}{1+e^{-x}} , x \in R
+template <typename T>
+inline T ComputeLogistic(T val) {
+  T v = 1 / (1 + std::exp(-std::abs(val)));
   return (val < 0) ? (1 - v) : v;
 }
 
-static inline float ComputeProbit(float val) {
-  return ml_sqrt2 * ErfInv(2 * val - 1);
+// It assumes val is in [0,1]
+template <typename T>
+inline T ComputeProbit(T val) {
+  return static_cast<T>(M_SQRT2) * ErfInv(2 * val - 1);
 }
 
 static inline float sigmoid_probability(float score, float proba, float probb) {
   float val = score * proba + probb;
-  return 1 - ComputeLogistic(val);  // ref: https://github.com/arnaudsj/libsvm/blob/eaaefac5ebd32d0e07902e1ae740e038eaaf0826/svm.cpp#L1818
+  //ref: https://github.com/arnaudsj/libsvm/blob/eaaefac5ebd32d0e07902e1ae740e038eaaf0826/svm.cpp#L1818
+  return 1 - ComputeLogistic(val);
 }
 
-static inline void ComputeSoftmax(std::vector<float>& values) {
-  std::vector<float> newscores;
-  // compute exp with negative number to be numerically stable
-  float v_max = -std::numeric_limits<float>::max();
-  for (float value : values) {
-    if (value > v_max)
-      v_max = value;
-  }
-  float this_sum = 0.f;
-  for (float value : values) {
-    float val2 = std::exp(value - v_max);
-    this_sum += val2;
-    newscores.push_back(val2);
-  }
-  for (int64_t k = 0; k < static_cast<int64_t>(values.size()); k++) {
-    values[k] = newscores[k] / this_sum;
-  }
-}
-
-//this function skips zero values (since exp(0) is non zero)
-static inline void ComputeSoftmaxZero(std::vector<float>& values) {
-  std::vector<float> newscores;
-  // compute exp with negative number to be numerically stable
-  float v_max = -std::numeric_limits<float>::max();
-  for (float value : values) {
-    if (value > v_max)
-      v_max = value;
-  }
-  float exp_neg_v_max = std::exp(-v_max);
-  float this_sum = 0.f;
-  for (float value : values) {
-    if (value > 0.0000001f || value < -0.0000001f) {
-      float val2 = std::exp(value - v_max);
-      this_sum += val2;
-      newscores.push_back(val2);
-    } else {
-      newscores.push_back(value * exp_neg_v_max);
+/**
+ * if scores.size() == 1 and post_transform != POST_EVAL_TRANSFORM::PROBIT and
+ * add_second_class is in [0, 3], output 2 value else output scores.size()
+ * values
+ */
+template <typename T>
+void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
+                  int add_second_class) {
+  if (scores.empty())
+    return;
+  T* out_p = Z->template MutableData<T>() + write_index;
+  if (scores.size() == 1) {
+    write_binary_scores(scores[0], post_transform, add_second_class, out_p);
+    if (post_transform != POST_EVAL_TRANSFORM::PROBIT && add_second_class >= 0 && add_second_class <= 3) {
+      scores.push_back(0);
     }
+  } else
+    write_scores(scores.data(), scores.size(), post_transform, out_p);
+}
+
+/**
+ * if post_transform != POST_EVAL_TRANSFORM::PROBIT and add_second_class is in
+ * [0, 3], output 2 value else output 1 value
+ * if post_transform == POST_EVAL_TRANSFORM::PROBIT, it assumes sc is in [0,1]
+ */
+template <typename T>
+void write_binary_scores(T sc, POST_EVAL_TRANSFORM post_transform, int add_second_class, T* out_p) {
+  if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
+    *out_p = ComputeProbit(sc);
+    return;
   }
-  for (int64_t k = 0; k < static_cast<int64_t>(values.size()); k++) {
-    values[k] = newscores[k] / this_sum;
+  switch (add_second_class) {
+    case 0:  // 0=all positive weights, winning class is positive
+    case 1:
+      *out_p++ = 1.f - sc;  // put opposite score in positive slot
+      *out_p = (sc);
+      break;
+    case 2:  // 2 = mixed weights, winning class is positive
+      if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
+        *out_p++ = ComputeLogistic(-sc);
+        *out_p = (ComputeLogistic(sc));  // ml_logit(scores[k]);
+      } else {
+        *out_p++ = -sc;
+        *out_p = (sc);
+      }
+      break;
+    case 3:  // 3 = mixed weights, winning class is negative
+      if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
+        *out_p++ = ComputeLogistic(-sc);
+        *out_p = (ComputeLogistic(sc));  // ml_logit(scores[k]);
+      } else {
+        *out_p++ = sc;
+        *out_p = (-sc);
+      }
+      break;
+    default:
+      *out_p = sc;
   }
 }
 
 template <typename T>
-void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
-                  int add_second_class) {
-  if (scores.size() >= 2) {
-    switch (post_transform) {
-      case POST_EVAL_TRANSFORM::PROBIT:
-        for (float& score : scores)
-          score = ComputeProbit(score);
-        break;
-      case POST_EVAL_TRANSFORM::LOGISTIC:
-        for (float& score : scores)
-          score = ComputeLogistic(score);
-        break;
-      case POST_EVAL_TRANSFORM::SOFTMAX:
-        ComputeSoftmax(scores);
-        break;
-      case POST_EVAL_TRANSFORM::SOFTMAX_ZERO:
-        ComputeSoftmaxZero(scores);
-        break;
-      default:
-      case POST_EVAL_TRANSFORM::NONE:
-        break;
-    }
-  } else if (scores.size() == 1) {  //binary case
-    if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
-      scores[0] = ComputeProbit(scores[0]);
-    } else {
-      switch (add_second_class) {
-        case 0:
-        case 1:
-          scores.push_back(scores[0]);
-          scores[0] = 1.f - scores[0];
-          break;
-        case 2:  //2 = mixed weights, winning class is positive
-          if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
-            scores.push_back(ComputeLogistic(scores[0]));  //ml_logit(scores[k]);
-            scores[0] = ComputeLogistic(-scores[0]);
-          } else {
-            scores.push_back(scores[0]);
-            scores[0] = -scores[0];
-          }
-          break;
-        case 3:  //3 = mixed weights, winning class is negative
-          if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
-            scores.push_back(ComputeLogistic(scores[0]));  //ml_logit(scores[k]);
-            scores[0] = ComputeLogistic(-scores[0]);
-          } else {
-            scores.push_back(-scores[0]);
-          }
-          break;
+void write_scores(T* scores, size_t scores_len, POST_EVAL_TRANSFORM post_transform, T* out_p) {
+  switch (post_transform) {
+    case POST_EVAL_TRANSFORM::PROBIT:
+      for (size_t i = 0; i != scores_len; ++i) out_p[i] = ComputeProbit(scores[i]);
+      break;
+    case POST_EVAL_TRANSFORM::LOGISTIC:
+      for (size_t i = 0; i != scores_len; ++i) out_p[i] = ComputeLogistic(scores[i]);
+      break;
+    case POST_EVAL_TRANSFORM::SOFTMAX: {
+      ComputeSoftmax(scores, scores_len, out_p);
+    } break;
+    case POST_EVAL_TRANSFORM::SOFTMAX_ZERO:
+      ComputeSoftmaxZero(scores, scores_len, out_p);
+      break;
+    default:
+    case POST_EVAL_TRANSFORM::NONE: {
+      size_t len;
+      if (!IAllocator::CalcMemSizeForArray(scores_len, sizeof(T), &len)) {
+        ORT_THROW("length overflow");
       }
-    }
+      memcpy(out_p, scores, len);
+    } break;
   }
-  T* out_p = Z->template MutableData<T>() + write_index;
-  size_t len;
-  if (!IAllocator::CalcMemSizeForArray(scores.size(), sizeof(T), &len)) {
-    ORT_THROW("length overflow");
-  }
-  memcpy(out_p, scores.data(), len);
 }
 
 }  // namespace ml
