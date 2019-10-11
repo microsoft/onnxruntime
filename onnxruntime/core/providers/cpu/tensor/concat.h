@@ -12,10 +12,11 @@ namespace onnxruntime {
 
 class ConcatBase {
  protected:
-  ConcatBase(const OpKernelInfo& info) {
+  ConcatBase(const OpKernelInfo& info, bool is_sequence_op = false) {
     if (!info.GetAttr("axis", &axis_).IsOK()) {
       ORT_ENFORCE(false, "Must have valid 'axis' attribute");
     }
+    is_sequence_op_ = is_sequence_op;
   }
 
   struct Prepare {
@@ -29,12 +30,23 @@ class ConcatBase {
     int64_t output_axis_pitch;
     Tensor* output_tensor;
     uint64_t axis;
+    bool is_string_type;
   };
 
-  Status PrepareForCompute(OpKernelContext* ctx, int input_count, Prepare& p) const;
+  Status ValidateAndConcatenateInputs(OpKernelContext* ctx, int input_count) const;
+
+  // protected members
+  int64_t axis_;
 
  private:
-  int64_t axis_;
+  // private methods
+  Status PrepareForCompute(OpKernelContext* ctx, int input_count,
+                           const std::vector<Tensor>& input_tensors, Prepare& p) const;
+
+  Status ComputeImpl(Prepare& p) const;
+
+  // private members
+  bool is_sequence_op_;
 };
 
 class Concat final : public OpKernel, public ConcatBase {
