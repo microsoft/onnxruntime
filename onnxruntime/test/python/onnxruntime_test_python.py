@@ -547,6 +547,16 @@ class TestInferenceSession(unittest.TestCase):
 
         res = sess.run([], {'input1:0': a, 'input:0':b})
 
+    def testExecutionMode(self):
+        opt = onnxrt.SessionOptions()
+        self.assertEqual(opt.execution_mode, onnxrt.ExecutionMode.SEQUENTIAL)
+        opt.execution_mode = onnxrt.ExecutionMode.PARALLEL
+        self.assertEqual(opt.execution_mode, onnxrt.ExecutionMode.PARALLEL)
+        sess = onnxrt.InferenceSession(self.get_name("logicaland.onnx"), sess_options=opt)
+        a = np.array([[True, True], [False, False]], dtype=np.bool)
+        b = np.array([[True, False], [True, False]], dtype=np.bool)
+
+        res = sess.run([], {'input1:0': a, 'input:0':b})
 
 if __name__ == '__main__':
     unittest.main()

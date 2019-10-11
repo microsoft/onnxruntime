@@ -207,8 +207,8 @@ inline SessionOptions& SessionOptions::EnableSequentialExecution() {
   return *this;
 }
 
-inline SessionOptions& SessionOptions::DisableSequentialExecution() {
-  ThrowOnError(g_api->DisableSequentialExecution(p_));
+inline SessionOptions& SessionOptions::EnableParallelExecution() {
+  ThrowOnError(g_api->EnableParallelExecution(p_));
   return *this;
 }
 

@@ -114,7 +114,7 @@ Sets the graph optimization level for the session. Default is set to 1. Availabl
     EnableSequentialExecution();
 Enable Sequential Execution. By default, it is enabled.
 
-    DisableSequentialExecution();
+    EnableParallelExecution();
 Disable Sequential Execution and enable Parallel Execution.
 
 ### NodeMetadata

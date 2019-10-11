@@ -257,7 +257,7 @@ struct OrtApi {
   // create a copy of an existing OrtSessionOptions
   OrtStatus*(ORT_API_CALL* CloneSessionOptions)(_In_ const OrtSessionOptions* in_options, _Outptr_ OrtSessionOptions** out_options)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* EnableSequentialExecution)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* DisableSequentialExecution)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* EnableParallelExecution)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
 
   // Enable profiling for this session.
   OrtStatus*(ORT_API_CALL* EnableProfiling)(_Inout_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix)NO_EXCEPTION;

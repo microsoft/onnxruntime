@@ -163,14 +163,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, false)]
         [InlineData(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, true)]
         [InlineData(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, false)]
-        private void CanRunInferenceOnAModel(GraphOptimizationLevel graphOptimizationLevel, bool disableSequentialExecution)
+        private void CanRunInferenceOnAModel(GraphOptimizationLevel graphOptimizationLevel, bool enableParallelExecution)
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 
             // Set the graph optimization level for this session.
             SessionOptions options = new SessionOptions();
             options.GraphOptimizationLevel = graphOptimizationLevel;
-            if (disableSequentialExecution) options.EnableSequentialExecution = false;
+            if (enableParallelExecution) options.EnableSequentialExecution = false;
 
             using (var session = new InferenceSession(modelPath, options))
             {

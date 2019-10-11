@@ -160,7 +160,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 else if (_enableSequentialExecution && !value)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableSequentialExecution(_nativePtr));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableParallelExecution(_nativePtr));
                     _enableSequentialExecution = false;
                 }
             }

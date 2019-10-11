@@ -20,6 +20,7 @@
 #include "core/framework/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/optimizer/graph_transformer_level.h"
+#include "core/framework/session_options.h"
 
 const OrtApi* g_ort = OrtGetApi(ORT_API_VERSION);
 const OrtApi* Ort::g_api = OrtGetApi(ORT_API_VERSION);
@@ -89,7 +90,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   std::vector<std::basic_string<PATH_CHAR_TYPE> > whitelisted_test_cases;
   int concurrent_session_runs = GetNumCpuCores();
   bool enable_cpu_mem_arena = true;
-  bool enable_sequential_execution = true;
+  ExecutionMode execution_mode = ExecutionMode::kSequential;
   int repeat_count = 1;
   int p_models = GetNumCpuCores();
   bool enable_cuda = false;
@@ -166,7 +167,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           }
           break;
         case 'x':
-          enable_sequential_execution = false;
+          execution_mode = ExecutionMode::kParallel;
           break;
         case 'o': {
           int tmp = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
@@ -246,10 +247,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.EnableMemPattern();
     else
       sf.DisableMemPattern();
-    if (enable_sequential_execution)
+    if (execution_mode == ExecutionMode::kSequential)
       sf.EnableSequentialExecution();
-    else
-      sf.DisableSequentialExecution();
+    else if (execution_mode == ExecutionMode::kParallel)
+      sf.EnableParallelExecution();
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT

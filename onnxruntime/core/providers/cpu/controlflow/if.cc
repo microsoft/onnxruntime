@@ -9,6 +9,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
+#include "core/framework/session_options.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -49,18 +50,18 @@ ONNX_OPERATOR_SET_SCHEMA(
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
                                    1, 10,
                                    KernelDefBuilder()
-                                     .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                                     .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                                    If);
 
 // output shape rules requiring the output shapes of the 'THEN' and 'ELSE'
 // branches to be the same were relaxed in opset-11
 ONNX_CPU_OPERATOR_KERNEL(If,
-                        11,
-                        KernelDefBuilder()
-                            .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                            .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
-                        If);
+                         11,
+                         KernelDefBuilder()
+                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                             .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                         If);
 
 struct If::Info {
   Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in) : subgraph(subgraph_in) {
@@ -315,7 +316,7 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
   }
 
   status = utils::ExecuteSubgraph(session_state_, ffm, feeds, fetches, fetch_allocators,
-                                  /*sequential_execution*/ true, context_.GetTerminateFlag(),
+                                  ExecutionMode::kSequential, context_.GetTerminateFlag(),
                                   context_.Logger());
 
   ORT_RETURN_IF_ERROR(status);
