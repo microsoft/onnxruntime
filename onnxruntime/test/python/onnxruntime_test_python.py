@@ -573,7 +573,9 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_array_equal(output_expected, res[0])
 
     def testSequenceInsert(self):
-        sess = onnxrt.InferenceSession(self.get_name("sequence_insert.onnx"))
+        opt = onnxrt.SessionOptions()
+        opt.execution_mode = onnxrt.ExecutionMode.SEQUENTIAL
+        sess = onnxrt.InferenceSession(self.get_name("sequence_insert.onnx"), sess_options=opt)
 
         self.assertEqual(sess.get_inputs()[0].type, 'seq(tensor(int64))')
         self.assertEqual(sess.get_inputs()[1].type, 'tensor(int64)')
@@ -597,12 +599,6 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(opt.execution_mode, onnxrt.ExecutionMode.SEQUENTIAL)
         opt.execution_mode = onnxrt.ExecutionMode.PARALLEL
         self.assertEqual(opt.execution_mode, onnxrt.ExecutionMode.PARALLEL)
-        sess = onnxrt.InferenceSession(self.get_name("logicaland.onnx"), sess_options=opt)
-        sess.set_providers(['CPUExecutionProvider'])
-        a = np.array([[True, True], [False, False]], dtype=np.bool)
-        b = np.array([[True, False], [True, False]], dtype=np.bool)
-
-        res = sess.run([], {'input1:0': a, 'input:0':b})
 
 if __name__ == '__main__':
     unittest.main()
