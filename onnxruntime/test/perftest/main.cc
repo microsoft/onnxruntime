@@ -9,8 +9,8 @@
 
 using namespace onnxruntime;
 
-const OrtApi* g_ort = OrtGetApi(ORT_API_VERSION);
-const OrtApi* Ort::g_api = OrtGetApi(ORT_API_VERSION);
+const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+const OrtApi* Ort::g_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
 #ifdef _WIN32
 int real_main(int argc, wchar_t* argv[]) {
