@@ -238,7 +238,7 @@ class ConvPrimitivePool : public PrimitivePool<T> {
         ConvPrimitivePool<T>::GetInstance().GetPrimitive(params.ToString()));
 
     if (primitive == nullptr) {
-      auto conv_primitive = std::make_unique<ConvPrimitive<T>>(params);
+      auto conv_primitive = onnxruntime::make_unique<ConvPrimitive<T>>(params);
       primitive = conv_primitive.get();
       ConvPrimitivePool<T>::GetInstance().SetPrimitive(params.ToString(), std::move(conv_primitive));
     }
@@ -265,12 +265,12 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   const Tensor* B = num_inputs == 3 ? context->Input<Tensor>(2) : nullptr;
   const int64_t N = X->Shape()[0];
   const int64_t M = W->Shape()[0];
-  const int group_mkl = static_cast<int>(onnxruntime::ConvBase::group_);
+  const int group_mkl = static_cast<int>(this->conv_attrs_.group);
 
-  ORT_RETURN_IF_ERROR(onnxruntime::ConvBase::ValidateInputShape(X, W));
+  ORT_RETURN_IF_ERROR(this->conv_attrs_.ValidateInputShape(X, W));
 
   std::vector<int64_t> kernel_shape;
-  ORT_RETURN_IF_ERROR(onnxruntime::ConvBase::ComputeKernelShape(W->Shape(), kernel_shape));
+  ORT_RETURN_IF_ERROR(this->conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
   const size_t kernel_rank = kernel_shape.size();
 
   if (kernel_rank > 3) {
@@ -292,15 +292,15 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     }
   }
 
-  std::vector<int64_t> pads(onnxruntime::ConvBase::pads_);
+  std::vector<int64_t> pads(this->conv_attrs_.pads);
   if (pads.empty()) {
     pads.resize(kernel_rank * 2, 0);
   }
-  std::vector<int64_t> dilations(onnxruntime::ConvBase::dilations_);
+  std::vector<int64_t> dilations(this->conv_attrs_.dilations);
   if (dilations.empty()) {
     dilations.resize(kernel_rank, 1);
   }
-  std::vector<int64_t> strides(onnxruntime::ConvBase::strides_);
+  std::vector<int64_t> strides(this->conv_attrs_.strides);
   if (strides.empty()) {
     strides.resize(kernel_rank, 1);
   }
@@ -308,7 +308,8 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   std::vector<int64_t> Y_dims;
   Y_dims.insert(Y_dims.begin(), {N, M});
   TensorShape input_shape = X->Shape().Slice(2);
-  ORT_RETURN_IF_ERROR(onnxruntime::ConvBase::InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
+  ORT_RETURN_IF_ERROR(this->conv_attrs_.InferOutputShape(input_shape, kernel_shape,
+                                                         strides, dilations, &pads, &Y_dims));
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   TensorShape output_shape = Y->Shape().Slice(2);
 

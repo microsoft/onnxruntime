@@ -229,6 +229,26 @@ TEST(PoolTest, MaxPool_10_Dilation_1d) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(PoolTest, MaxPool_DefaultDilations) {
+  OpTester test("MaxPool");
+
+  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+
+  std::vector<int64_t> x_dims = {1, 3, 3};
+  std::vector<float> x_vals = {0.f, 1.f, 2.f,
+                               3.f, 4.f, 5.f,
+                               6.f, 7.f, 8.f};
+
+  std::vector<int64_t> expected_dims = {1, 3, 2};
+  std::vector<float> expected_vals = {1.f, 2.f,
+                                      4.f, 5.f,
+                                      7.f, 8.f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(PoolTest, MaxPool_10_DilationPadding_1d) {
   OpTester test("MaxPool", 10);
 
@@ -632,6 +652,25 @@ TEST(PoolTest, AveragePool_IncludePadPixel) {
                                       0.2501f, 0.5806f, 0.5767f, 0.2462f,
                                       0.3585f, 0.6897f, 0.7144f, 0.3832f,
                                       0.1919f, 0.4124f, 0.4419f, 0.2213f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// test 'strides' attribute not specified
+TEST(PoolTest, AveragePool_DefaultStrides) {
+  OpTester test("AveragePool");
+  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+  std::vector<float> x_vals = {0.f, 1.f, 2.f,
+                               3.f, 4.f, 5.f,
+                               6.f, 7.f, 8.f};
+
+  std::vector<int64_t> x_dims = {1, 3, 3};
+  std::vector<int64_t> expected_dims = {1, 3, 2};
+  std::vector<float> expected_vals = {0.5f, 1.5f,
+                                      3.5f, 4.5f,
+                                      6.5f, 7.5f};
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);

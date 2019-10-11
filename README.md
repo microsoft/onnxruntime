@@ -94,7 +94,7 @@ Additional dockerfiles for some features can be found [here](./dockerfiles).
 * ONNX Runtime binaries in the CPU packages use OpenMP and depend on the library being available at runtime in the
 system.
   * For Windows, **OpenMP** support comes as part of VC runtime. It is also available as redist packages:
-    [vc_redist.x64.exe](https://aka.ms/vs/15/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/15/release/vc_redist.x86.exe)
+    [vc_redist.x64.exe](https://aka.ms/vs/16/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/16/release/vc_redist.x86.exe)
   * For Linux, the system must have **libgomp.so.1** which can be installed using `apt-get install libgomp1`.
 * GPU builds require CUDA runtime libraries being installed on the system:
 	 * Version: **CUDA 10.0** and **cuDNN 7.3**
@@ -118,7 +118,7 @@ Dockerfiles are available [here](./tools/ci_build/github/linux/docker) to help y
 
 ## Getting ONNX Models
 * The [ONNX Model Zoo](https://github.com/onnx/models) has popular ready-to-use pre-trained models.
-* To export or convert a trained ONNX model trained from various frameworks, see [ONNX Tutorials](https://github.com/onnx/tutorials). Versioning comptability information can be found under [Versioning](docs/Versioning.md#tool-compatibility)
+* To export or convert a trained ONNX model trained from various frameworks, see [ONNX Tutorials](https://github.com/onnx/tutorials). Versioning compatibility information can be found under [Versioning](docs/Versioning.md#tool-compatibility)
 * Other services that can be used to create ONNX models include:
   * [AutoML from AzureML SDK](https://aka.ms/automatedmldocs)
   * [Custom Vision](https://www.customvision.ai/)
@@ -131,6 +131,8 @@ ONNX Runtime can be deployed to the cloud for model inferencing using [Azure Mac
 
 ## Performance Tuning
 ONNX Runtime is open and extensible, supporting a broad set of configurations and execution providers for model acceleration. For performance tuning guidance, please see [this page](./docs/ONNX_Runtime_Perf_Tuning.md).
+
+To tune performance for ONNX models, the [ONNX Go Live tool "OLive"](https://github.com/microsoft/OLive) provides an easy-to-use pipeline for converting models to ONNX and optimizing performance for inferencing with ONNX Runtime. 
 
 ***
 # Examples and Tutorials

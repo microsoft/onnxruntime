@@ -31,8 +31,8 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "cee3125af7208258d024a75e24f73977eddaec5b",
-               "repositoryUrl": "https://github.com/Microsoft/GSL.git"
+               "commitHash": "58123b93bd7f12d17ac0c46379a0f2c0255d9213",
+               "repositoryUrl": "https://github.com/martinmoene/gsl-lite.git"
             }
          }
       },
@@ -49,7 +49,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "a20ba2f1dc3fbd1109fcc67bf42247531832bb60",
+               "commitHash": "553df22c67bee5f0fe6599cff60f1afc6748c635",
                "repositoryUrl": "https://github.com/onnx/onnx.git"
             }
          }
@@ -139,7 +139,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "1456fe2fac0cd074bbbb8630ba003a7c325d015b",
+               "commitHash": "899973df982f2d389659d9e4266efabb3da1ecc8",
                "repositoryUrl": "https://github.com/eigenteam/eigen-git-mirror.git"
             }
          }
@@ -266,8 +266,8 @@
             "Type": "other",
             "Other": {
                "Name": "LLVM",
-               "Version": "6.0.1",
-               "DownloadUrl": "https://releases.llvm.org/6.0.1/llvm-6.0.1.src.tar.xz"
+               "Version": "9.0.0",
+               "DownloadUrl": "https://releases.llvm.org/9.0.0/llvm-9.0.0.src.tar.xz"
             }
          }
       },
@@ -303,7 +303,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "90cb0f8d60b07e96ca7f0ba92fa50884010599ad",
+               "commitHash":"647d4c3f4d47d9cf63fb90ec175c414a005adea7",
                "repositoryUrl": "https://github.com/JDAI-CV/DNNLibrary.git"
             }
          }
@@ -418,6 +418,15 @@
                "repositoryUrl": "https://github.com/abseil/abseil-cpp"
             },
             "comments": "used by onnxruntime"
+         }
+      },
+      {
+         "component": {
+            "git": {
+               "commitHash": "c3cceac115c072fb63df1836ff46d8c60d9eb304",
+               "repositoryUrl": "https://github.com/NVlabs/cub.git"
+            },
+            "type": "git"
          }
       }
    ],

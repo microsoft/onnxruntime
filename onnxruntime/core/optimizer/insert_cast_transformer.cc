@@ -121,7 +121,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         size_t num_children = node.GetOutputEdgesCount();
 
         for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
-          const Node& output_node{*it};
+          const Node& output_node(*it);
           if (output_node.OpType() == "Cast") {
             // Skip this child node if this child node's output is also an output of the graph
             if (graph_outputs.find(output_node.OutputDefs()[0]) != graph_outputs.end()) {

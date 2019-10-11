@@ -14,8 +14,8 @@
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::MLFloat16;
-using onnxruntime::Tensor;
 using onnxruntime::SparseTensor;
+using onnxruntime::Tensor;
 using onnxruntime::TensorShape;
 
 namespace on = ONNX_NAMESPACE;
@@ -76,7 +76,7 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const onnxruntime::DataTypeImpl* input,
     // Place Opaque first as tensors will be
     // mostly handled above and maps and sequences
     // are not common
-    switch (type_proto->value_case ()) {
+    switch (type_proto->value_case()) {
       case on::TypeProto::kOpaqueType: {
         *out = new OrtTypeInfo(ONNX_TYPE_OPAQUE, nullptr);
         return nullptr;
@@ -110,7 +110,7 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const onnxruntime::DataTypeImpl* input,
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "not implemented");
 }
 
-const DataTypeImpl* ElementTypeFromProto(int type) {
+const DataTypeImpl* OrtTypeInfo::ElementTypeFromProto(int type) {
   switch (type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       return DataTypeImpl::GetType<float>();
@@ -176,7 +176,7 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const ONNX_NAMESPACE::TypeProto* input,
         TensorShape shape_data(std::move(dims));
         for (int i = 0; i < s.dim_size(); ++i) {
           auto& t = s.dim(i);
-          switch (t.value_case ()) {
+          switch (t.value_case()) {
             case on::TensorShapeProto::Dimension::kDimValue:
               shape_data[i] = t.dim_value();
               break;
@@ -211,7 +211,7 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const ONNX_NAMESPACE::TypeProto* input,
     case on::TypeProto::VALUE_NOT_SET:
       break;
     default:
-     // Not implemented
+      // Not implemented
       break;
   }
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "not implemented");

@@ -47,7 +47,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
 
     auto* kernel = info.GetKernel(node->Index());
-    OpKernelContext op_kernel_context(&frame, kernel, ::onnxruntime::logging::LoggingManager::DefaultLogger());
+    OpKernelContext op_kernel_context(&frame, kernel, nullptr, onnxruntime::logging::LoggingManager::DefaultLogger());
 
     ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
 
@@ -57,8 +57,16 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     // Go over all output node args and substitute them with the newly computed tensors, which will be
     // added to the graph as initializers.
     ORT_ENFORCE(fetches.size() == node->OutputDefs().size());
+    bool unsupported_output_type = false;
     for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
       OrtValue& ort_value = fetches[fetch_idx];
+
+      if (!ort_value.IsTensor()) {
+        LOGS_DEFAULT(WARNING) << "Unsupported output type of " << ort_value.Type()
+                              << ". Can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
+        unsupported_output_type = true;
+        break;
+      }
 
       // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
       const auto* constant_arg_out = node->OutputDefs()[fetch_idx];
@@ -69,6 +77,9 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
 
       graph.AddInitializedTensor(out_tensorproto);
     }
+
+    if (unsupported_output_type)
+      continue;
 
     // Remove the output edges of the constant node and then remove the node itself.
     graph_utils::RemoveNodeOutputEdges(graph, *node);

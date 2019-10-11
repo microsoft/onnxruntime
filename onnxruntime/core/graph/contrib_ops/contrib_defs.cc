@@ -9,6 +9,7 @@
 #include "core/graph/op.h"
 #include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
+#include "onnx/defs/function.h"
 #include "core/mlas/inc/mlas.h"
 
 #ifdef MICROSOFT_INTERNAL
@@ -189,6 +190,143 @@ void RegisterNchwcSchemas() {
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GlobalAveragePool)
       .FillUsing(NchwcGlobalPoolOpSchemaGenerator);
+}
+
+void RegisterBertSchemas() {
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Multi-Head Self Attention")
+      .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "T")
+      .Input(1, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T")
+      .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
+      .Input(3, "mask_index", "Attention mask index with shape (batch_size)", "M")
+      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+      .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(EmbedLayerNormalization)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Embedding Layer Normalization")
+      .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
+      .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1")
+      .Input(2, "mask", "2D attention mask with shape (batch_size, sequence_length)", "T1")
+      .Input(3, "word_embedding", "2D with shape (,hidden_size)", "T")
+      .Input(4, "position_embedding", "2D with shape (, hidden_size)", "T")
+      .Input(5, "segment_embedding", "2D with shape (, hidden_size)", "T")
+      .Input(6, "gamma", "1D gamma tensor for layer normalization with shape (hidden_size)", "T")
+      .Input(7, "beta", "1D beta tensor for layer normalization  with shape (hidden_size)", "T")
+      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+      .Output(1, "mask_index", "1D mask_index tensor with shape (batch_size)", "T1")
+      .TypeConstraint("T1", {"tensor(int32)"}, "Constrain input and output integer tensors types")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output float tensors types.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 3, 0);
+        propagateElemTypeFromInputToOutput(ctx, 0, 1);
+        if (!hasInputShape(ctx, 0))
+          return;
+
+        auto& input_ids_shape = getInputShape(ctx, 0);
+        auto& input_ids_dims = input_ids_shape.dim();
+
+        auto& segment_ids_shape = getInputShape(ctx, 1);
+        auto& segment_ids_dims = segment_ids_shape.dim();
+
+        auto& mask_shape = getInputShape(ctx, 2);
+        auto& mask_dims = mask_shape.dim();
+
+        if (input_ids_dims.size() != 2 || segment_ids_dims.size() != 2 || mask_dims.size() != 2) {
+          fail_shape_inference("Inputs 0, 1 and 2 shall be 2 dimensions");
+        }
+
+        if (input_ids_shape.dim(1).has_dim_value() && segment_ids_shape.dim(1).has_dim_value() && mask_shape.dim(1).has_dim_value()) {
+          if (input_ids_shape.dim(1).dim_value() != segment_ids_shape.dim(1).dim_value() || input_ids_shape.dim(1).dim_value() != mask_shape.dim(1).dim_value()) {
+            fail_shape_inference("Inputs 0, 1 and 2 shall have same value in dimension 1");
+          }
+        } else {
+          fail_shape_inference("Inputs 0, 1 and 2 shall have value in dimension 1");
+        }
+
+        // get hidden_size from the last dimension of embedding
+        auto& word_embedding_shape = getInputShape(ctx, 3);
+        auto& word_embedding_dims = word_embedding_shape.dim();
+        if (word_embedding_dims.size() != 2 || !word_embedding_dims[1].has_dim_value()) {
+          fail_shape_inference("word_embedding should have 2 dimensions and dimension size is known.");
+        }
+        int64_t hidden_size = word_embedding_shape.dim(1).dim_value();
+
+        auto& position_embedding_shape = getInputShape(ctx, 4);
+        auto& position_embedding_dims = position_embedding_shape.dim();
+        if (position_embedding_dims.size() != 2) {
+          fail_shape_inference("position_embedding should have 2 dimensions");
+        }
+        if (position_embedding_shape.dim(1).dim_value() != hidden_size) {
+          fail_shape_inference("The last dimension of word_embedding and position_embedding does not match.");
+        }
+
+        auto& segment_embedding_shape = getInputShape(ctx, 5);
+        auto& segment_embedding_dims = segment_embedding_shape.dim();
+        if (segment_embedding_dims.size() != 2) {
+          fail_shape_inference("segment_embedding should have 2 dimensions");
+        }
+        if (segment_embedding_shape.dim(1).dim_value() != hidden_size) {
+          fail_shape_inference("The last dimension of word_embedding and segment_embedding does not match.");
+        }
+
+        auto& gamma_shape = getInputShape(ctx, 6);
+        auto& gamma_dims = gamma_shape.dim();
+        if (gamma_dims.size() != 1) {
+          fail_shape_inference("gamma should have 1 dimension");
+        }
+        if (gamma_shape.dim(0).dim_value() != hidden_size) {
+          fail_shape_inference("The last dimension of word_embedding and gamma does not match.");
+        }
+
+        auto& beta_shape = getInputShape(ctx, 7);
+        auto& beta_dims = beta_shape.dim();
+        if (beta_dims.size() != 1) {
+          fail_shape_inference("beta should have 1 dimension");
+        }
+        if (beta_shape.dim(0).dim_value() != hidden_size) {
+          fail_shape_inference("The last dimension of word_embedding and beta does not match.");
+        }
+
+        // mask shape is (batch_size, sequence_length), output shape is (batch_size, sequence_length, hidden_size)
+        ONNX_NAMESPACE::TensorShapeProto output_shape;
+        for (auto& dim : mask_dims) {
+          *output_shape.add_dim() = dim;
+        }
+        if (hidden_size > 0) {
+          output_shape.add_dim();
+          output_shape.mutable_dim(2)->set_dim_value(hidden_size);
+        }
+        updateOutputShape(ctx, 0, output_shape);
+
+        // mask_index shape is (batch_size)
+        ONNX_NAMESPACE::TensorShapeProto mask_index_shape;
+        *mask_index_shape.add_dim() = mask_shape.dim(0);
+        updateOutputShape(ctx, 1, mask_index_shape);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SkipLayerNormalization)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Skip and Layer Normalization Fusion")
+      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+      .Input(1, "skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+      .Input(2, "gamma", "1D input tensor with shape (hidden_size)", "T")
+      .Input(3, "beta", "1D skip tensor with shape (hidden_size", "T")
+      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
 }
 
 void RegisterContribSchemas() {
@@ -412,27 +550,6 @@ value at X[t][n] >= seqLengths[n].
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.");
 
-  static const char* ATen_ver1_doc = R"DOC(
-Experimental allowing ATen operations to be accessed directly from Caffe2
-to allow for quick prototyping when ONNX is missing standard versions of
-and op)DOC";
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)
-      .SinceVersion(1)
-      .AllowUncheckedAttributes()
-      .SetDoc(ATen_ver1_doc)
-      .Input(0, "input", "Arbitrary input", "T", OpSchema::Variadic)
-      .Output(0, "output", "Arbitrary output", "T", OpSchema::Variadic)
-      .TypeConstraint(
-          "T",
-          {"tensor(bool)",
-           "tensor(int32)",
-           "tensor(int64)",
-           "tensor(float16)",
-           "tensor(float)",
-           "tensor(double)"},
-          "Constrain output types to bool, int32, int64, float16, float, double tensors.");
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(GivenTensorFill)
       .SinceVersion(10)
       .Deprecate()
@@ -514,23 +631,6 @@ and op)DOC";
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.");
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)
-      .SinceVersion(10)
-      .Deprecate()
-      .AllowUncheckedAttributes()
-      .SetDoc(ATen_ver1_doc)
-      .Input(0, "input", "Arbitrary input", "T", OpSchema::Variadic)
-      .Output(0, "output", "Arbitrary output", "T", OpSchema::Variadic)
-      .TypeConstraint(
-          "T",
-          {"tensor(bool)",
-           "tensor(int32)",
-           "tensor(int64)",
-           "tensor(float16)",
-           "tensor(float)",
-           "tensor(double)"},
-          "Constrain output types to bool, int32, int64, float16, float, double tensors.");
 
   ONNX_OPERATOR_SCHEMA(MeanVarianceNormalization)
       .SinceVersion(1)
@@ -1063,34 +1163,34 @@ The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale),
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Attr(
-          "axis", 
-          "The axis along which same quantization parameters are applied. It's optional." 
-          "If it's not specified, it means per-tensor quantization and input 'x_scale' and 'x_zero_point' must be scalars." 
+          "axis",
+          "The axis along which same quantization parameters are applied. It's optional."
+          "If it's not specified, it means per-tensor quantization and input 'x_scale' and 'x_zero_point' must be scalars."
           "If it's specified, it means per 'axis' quantization and input 'x_scale' and 'x_zero_point' must be 1-D tensors.",
           AttributeProto::INT,
           false)
       .Input(
-          0, 
-          "x", 
-          "N-D full precision Input tensor to be quantized.", 
+          0,
+          "x",
+          "N-D full precision Input tensor to be quantized.",
           "T1")
       .Input(
-          1, 
-          "y_scale", 
-          "Scale for doing quantization to get 'y'. It could be a scalar or a 1-D tensor," 
+          1,
+          "y_scale",
+          "Scale for doing quantization to get 'y'. It could be a scalar or a 1-D tensor,"
           "which means a per-tensor or per-axis quantization. If it's a 1-D tensor, "
           "its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
           "T1")
       .Input(
-          2, 
-          "y_zero_point", 
-          "Zero point for doing quantization to get 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor" 
+          2,
+          "y_zero_point",
+          "Zero point for doing quantization to get 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor"
           "or per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
           "T2")
       .Output(
-          0, 
-          "y", 
-          "N-D quantized output tensor. It has same shape as input 'x'.", 
+          0,
+          "y",
+          "N-D quantized output tensor. It has same shape as input 'x'.",
           "T2")
       .TypeConstraint(
           "T1",
@@ -1119,32 +1219,32 @@ Scale and zero point must have same shape. They must be either scalar (per tenso
   ONNX_CONTRIB_OPERATOR_SCHEMA(DequantizeLinear)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Attr("axis", 
-          "The axis along which same quantization parameters are applied. It's optional." 
-          "If it's not specified, it means per-tensor quantization and input 'x_scale' and 'x_zero_point' must be scalars." 
-          "If it's specified, it means per 'axis' quantization and input 'x_scale' and 'x_zero_point' must be 1-D tensors.", 
-          AttributeProto::INT, 
-          false)
+      .Attr("axis",
+            "The axis along which same quantization parameters are applied. It's optional."
+            "If it's not specified, it means per-tensor quantization and input 'x_scale' and 'x_zero_point' must be scalars."
+            "If it's specified, it means per 'axis' quantization and input 'x_scale' and 'x_zero_point' must be 1-D tensors.",
+            AttributeProto::INT,
+            false)
       .Input(0,
-          "x", 
-          "N-D quantized Input tensor to be de-quantized.", 
-          "T2")
+             "x",
+             "N-D quantized Input tensor to be de-quantized.",
+             "T2")
       .Input(
-          1, 
-          "x_scale", 
-          "Scale for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization." 
+          1,
+          "x_scale",
+          "Scale for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization."
           "If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
           "T1")
       .Input(
           2,
-          "x_zero_point", 
-          "Zero point for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization." 
+          "x_zero_point",
+          "Zero point for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization."
           "If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
           "T2")
       .Output(
-          0, 
+          0,
           "y",
-          "N-D full precision output tensor. It has same shape as input 'x'.", 
+          "N-D full precision output tensor. It has same shape as input 'x'.",
           "T1")
       .TypeConstraint(
           "T1",
@@ -1657,9 +1757,9 @@ Example 4:
             "\"chebyshev\", \"cityblock\", \"correlation\", \"cosine\", \"dice\", \"euclidean\", \"hamming\", \"jaccard\", "
             "\"jensenshannon\", \"kulsinski\", \"mahalanobis\", \"matching\", \"minkowski\", \"rogerstanimoto\", \"russellrao\", "
             "\"seuclidean\", \"sokalmichener\", \"sokalsneath\", \"sqeuclidean\", \"wminkowski\", \"yule\".",
-            AttributeProto::STRING, std::string("sqeuclidean"))     
+            AttributeProto::STRING, std::string("sqeuclidean"))
       .Input(0, "A", "2D matrix with shape (M,N)", "T")
-	  .Input(1, "B", "2D matrix with shape (K,N)", "T")
+      .Input(1, "B", "2D matrix with shape (K,N)", "T")
       .Output(0, "C",
               "A 2D Matrix that represents the distance between each pair of the two collections of inputs.",
               "T")
@@ -1756,10 +1856,79 @@ Example 4:
         a fixed size = [crop_height, crop_width]. The result is a 4-D tensor [num_boxes, crop_height, crop_width, depth].
         The resizing is corner aligned.)DOC");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalization)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("LayerNormalization")
+      .Attr("axis",
+            "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
+            AttributeProto::INT, static_cast<int64_t>(-1))
+      .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
+      .AllowUncheckedAttributes()
+      .Input(0, "X", "Input data tensor from the previous layer.", "T")
+      .Input(1, "scale", "Scale tensor.", "T")
+      .Input(2, "B", "Bias tensor.", "T")
+      .Output(0, "Y", "Output data tensor.", "T")
+      .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
+      .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+      .TypeConstraint(
+          "U",
+          {"tensor(float)"},
+          "Constrain mean and inv_std_var to be float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+        auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+        int64_t input_ndim = input_shape.dim_size();
+        int64_t axis = -1;
+        auto axis_proto = ctx.getAttribute("axis");
+        if (axis_proto) {
+          axis = axis_proto->i();
+        }
+        if (axis < 0) {
+          axis += input_ndim;
+        }
+
+        if (ctx.getNumOutputs() > 1) {
+          auto saved_mean_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
+          saved_mean_shape->CopyFrom(input_shape);
+          saved_mean_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
+        }
+
+        if (ctx.getNumOutputs() > 2) {
+          auto saved_inv_std_var_shape = ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
+          saved_inv_std_var_shape->CopyFrom(input_shape);
+          saved_inv_std_var_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
+        }
+      });
+
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();
   }
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Gelu)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Gelu")
+      .Input(0, "X", "The input data as Tensor.", "T")
+      .Output(0, "Y", "The output.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  RegisterBertSchemas();
 
 #ifdef MICROSOFT_INTERNAL
   // register internal ops

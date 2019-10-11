@@ -6,11 +6,9 @@
 #include "core/codegen/common/common.h"
 #include "core/codegen/common/profile.h"
 #include "core/codegen/passes/utils/ort_tvm_utils.h"
-#include "gsl/gsl_util"
+#include "core/framework/onnxruntime_typeinfo.h"
+#include "gsl/gsl"
 #include <tvm/tvm.h>
-
-// from onnxruntime_typeinf.cc, in global namespace
-const onnxruntime::DataTypeImpl* ElementTypeFromProto(int type);
 
 namespace onnxruntime {
 namespace nuphar {
