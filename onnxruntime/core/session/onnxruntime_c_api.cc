@@ -91,10 +91,6 @@ class LoggingWrapper : public ISink {
   void* logger_param_;
 };
 
-ORT_API(const char*, OrtGetVersionString) {
-  return ORT_VERSION;
-}
-
 ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction logging_function,
                     _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid,
                     _Outptr_ OrtEnv** out) {
@@ -346,6 +342,23 @@ ORT_API_STATUS_IMPL(OrtApis::AddCustomOpDomain, _In_ OrtSessionOptions* options,
   API_IMPL_BEGIN
   options->custom_op_domains_.emplace_back(custom_op_domain);
   return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path, void** library_handle) {
+  API_IMPL_BEGIN
+
+  Env::Default().LoadDynamicLibrary(library_path, library_handle);
+  if (!*library_handle)
+    return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Failed to load library");
+
+  OrtStatus* (*RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
+
+  Env::Default().GetSymbolFromLibrary(*library_handle, "RegisterCustomOps", (void**)&RegisterCustomOps);
+  if (!RegisterCustomOps)
+    return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Entry point RegisterCustomOps not found in library");
+
+  return RegisterCustomOps(options, OrtGetApiBase());
   API_IMPL_END
 }
 
@@ -1218,7 +1231,14 @@ ORT_API_STATUS_IMPL(OrtApis::GetOpaqueValue, const char* domain_name, const char
 
 // End support for non-tensor types
 
+static constexpr OrtApiBase ort_api_base = {
+    &OrtApis::GetApi,
+    &OrtApis::GetVersionString,
+};
+
 static constexpr OrtApi ort_api_1 = {
+    ort_api_base,
+
     &OrtApis::CreateStatus,
     &OrtApis::GetErrorCode,
     &OrtApis::GetErrorMessage,
@@ -1250,6 +1270,7 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::CreateCustomOpDomain,
     &OrtApis::CustomOpDomain_Add,
     &OrtApis::AddCustomOpDomain,
+    &OrtApis::RegisterCustomOpsLibrary,
 
     &OrtApis::SessionGetInputCount,
     &OrtApis::SessionGetOutputCount,
@@ -1331,11 +1352,19 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::ReleaseCustomOpDomain,
 };
 
-const OrtApi* ORT_API_CALL OrtGetApi(uint32_t version) NO_EXCEPTION {
+ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version > 1)
     return nullptr;
 
   return &ort_api_1;
+}
+
+ORT_API(const char*, OrtApis::GetVersionString) {
+  return ORT_VERSION;
+}
+
+const OrtApiBase* ORT_API_CALL OrtGetApiBase() NO_EXCEPTION {
+  return &ort_api_base;
 }
 
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Env, OrtEnv)
