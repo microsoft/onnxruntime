@@ -598,6 +598,7 @@ class TestInferenceSession(unittest.TestCase):
         opt.execution_mode = onnxrt.ExecutionMode.PARALLEL
         self.assertEqual(opt.execution_mode, onnxrt.ExecutionMode.PARALLEL)
         sess = onnxrt.InferenceSession(self.get_name("logicaland.onnx"), sess_options=opt)
+        sess.set_providers(['CPUExecutionProvider'])
         a = np.array([[True, True], [False, False]], dtype=np.bool)
         b = np.array([[True, False], [True, False]], dtype=np.bool)
 
