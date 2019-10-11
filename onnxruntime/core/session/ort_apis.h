@@ -36,7 +36,7 @@ ORT_API_STATUS_IMPL(Run, _Inout_ OrtSession* sess,
 ORT_API_STATUS_IMPL(CreateSessionOptions, OrtSessionOptions** out);
 ORT_API_STATUS_IMPL(CloneSessionOptions, const OrtSessionOptions* input, OrtSessionOptions** out);
 ORT_API_STATUS_IMPL(EnableSequentialExecution, _In_ OrtSessionOptions* options);
-ORT_API_STATUS_IMPL(DisableSequentialExecution, _In_ OrtSessionOptions* options);
+ORT_API_STATUS_IMPL(EnableParallelExecution, _In_ OrtSessionOptions* options);
 ORT_API_STATUS_IMPL(SetOptimizedModelFilePath, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* optimized_model_filepath);
 ORT_API_STATUS_IMPL(EnableProfiling, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix);
 ORT_API_STATUS_IMPL(DisableProfiling, _In_ OrtSessionOptions* options);

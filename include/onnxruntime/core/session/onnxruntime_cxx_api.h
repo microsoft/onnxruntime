@@ -159,7 +159,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& DisableMemPattern();
 
   SessionOptions& EnableSequentialExecution();
-  SessionOptions& DisableSequentialExecution();
+  SessionOptions& EnableParallelExecution();
 
   SessionOptions& SetLogId(const char* logid);
 

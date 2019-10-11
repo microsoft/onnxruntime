@@ -19,6 +19,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
+#include "core/framework/session_options.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -245,7 +246,7 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 
     // Create Executor and run graph.
     status = utils::ExecuteSubgraph(session_state, ffm, feeds, fetches, fetch_allocators,
-                                    /*sequential_execution*/ true, context.GetTerminateFlag(), context.Logger());
+                                    ExecutionMode::kSequential, context.GetTerminateFlag(), context.Logger());
 
     ORT_RETURN_IF_ERROR(status);
 
@@ -268,8 +269,8 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 
 OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator) {
   auto new_tensor = onnxruntime::make_unique<Tensor>(data_type,
-                                             shape,
-                                             allocator);
+                                                     shape,
+                                                     allocator);
 
   return OrtValue{new_tensor.release(), DataTypeImpl::GetType<Tensor>(),
                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};

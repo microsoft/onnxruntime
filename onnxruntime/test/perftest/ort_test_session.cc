@@ -82,18 +82,18 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   else
     session_options.DisableCpuMemArena();
   if (performance_test_config.run_config.enable_memory_pattern &&
-      performance_test_config.run_config.enable_sequential_execution)
+      performance_test_config.run_config.execution_mode == ExecutionMode::kSequential)
     session_options.EnableMemPattern();
   else
     session_options.DisableMemPattern();
-  if (performance_test_config.run_config.enable_sequential_execution)
+  if (performance_test_config.run_config.execution_mode == ExecutionMode::kSequential)
     session_options.EnableSequentialExecution();
   else
-    session_options.DisableSequentialExecution();
+    session_options.EnableParallelExecution();
   fprintf(stdout, "Setting intra_op_num_threads to %d\n", performance_test_config.run_config.intra_op_num_threads);
   session_options.SetIntraOpNumThreads(performance_test_config.run_config.intra_op_num_threads);
 
-  if (!performance_test_config.run_config.enable_sequential_execution) {
+  if (performance_test_config.run_config.execution_mode == ExecutionMode::kParallel) {
     fprintf(stdout, "Setting inter_op_num_threads to %d\n", performance_test_config.run_config.inter_op_num_threads);
   }
 

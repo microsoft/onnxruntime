@@ -1233,7 +1233,7 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::SetOptimizedModelFilePath,
     &OrtApis::CloneSessionOptions,
     &OrtApis::EnableSequentialExecution,
-    &OrtApis::DisableSequentialExecution,
+    &OrtApis::EnableParallelExecution,
     &OrtApis::EnableProfiling,
     &OrtApis::DisableProfiling,
     &OrtApis::EnableMemPattern,

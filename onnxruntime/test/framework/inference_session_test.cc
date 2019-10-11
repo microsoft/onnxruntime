@@ -1477,7 +1477,7 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
   string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
   SessionOptions so;
-  so.enable_sequential_execution = false;
+  so.execution_mode = ExecutionMode::kParallel;
   so.session_logid = "InferenceSessionTests.TestParallelExecutionWithCudaProvider";
   InferenceSession session_object{so};
 
