@@ -155,7 +155,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
 
                 // replace the input of the downstream nodes with the initializer
                 Node& mutable_target = *graph.GetNode(edge->GetNode().Index());
-                graph_utils::ReplaceNodeInputWithNodeArg(mutable_target, dst_idx, input);
+                graph_utils::ReplaceNodeInput(mutable_target, dst_idx, input);
               }
 
               graph.RemoveNode(node_idx);
@@ -168,7 +168,8 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
 
             for (auto& n : nodes_to_remove) {
               Node& node_to_remove = n;
-              graph_utils::SubstituteNodeOutput(graph, node_to_remove, mutable_src_node, replacement_idx);
+              // replace output index 0 (Cast only produces one output)
+              graph_utils::ReplaceNodeOutput(graph, node_to_remove, 0, mutable_src_node, replacement_idx);
 
               graph.RemoveNode(node_to_remove.Index());
             }

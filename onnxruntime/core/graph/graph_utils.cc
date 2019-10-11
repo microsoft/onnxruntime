@@ -148,6 +148,18 @@ static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node) {
   return output_edges;
 }
 
+/** Returns a vector of output GraphEdges of a node for the provided output index. */
+static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node, size_t index) {
+  std::vector<GraphEdge> output_edges;
+  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+    if (it->GetSrcArgIndex() == index) {
+      output_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, false));
+    }
+  }
+
+  return output_edges;
+}
+
 /** Removes a set of GraphEdges from the graph. */
 static void RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edges) {
   for (const auto& edge_to_remove : edges) {
@@ -178,18 +190,26 @@ bool CanUpdateImplicitInputNameInSubgraphs(const Graph& graph,
   return true;
 }
 
-/** Removes a node with a single incoming node and connects the incoming node with the output node/s.
-*/
-static bool RemoveNodeWithSingleNodeIn(Graph& graph, Node& node) {
+/** Removes a node with a single incoming node and connects the incoming node with the output node/s.*/
+static bool RemoveNodeWithSingleNodeInSingleUsedOutput(Graph& graph, Node& node) {
   // Store info for input and output edges.
   std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
-  const Node::EdgeEnd& input_edge_end = *node.InputEdgesBegin();
 
-  // get non-const Node
-  Node& replacement = *graph.GetNode(input_edge_end.GetNode().Index());
+  if (!output_edges.empty()) {
+    // get non-const incoming Node
+    const Node::EdgeEnd& input_edge = *node.InputEdgesBegin();
+    Node& incoming_node = *graph.GetNode(input_edge.GetNode().Index());
 
-  // replace the output edges from 'node' with an edge to node's incoming node
-  SubstituteNodeOutput(graph, node, replacement, input_edge_end.GetSrcArgIndex());
+    auto src_idx = output_edges.front().src_arg_index;
+    ORT_ENFORCE(std::all_of(output_edges.cbegin(), output_edges.cend(),
+                            [&src_idx](const GraphEdge& edge) {
+                              return edge.src_arg_index == src_idx;
+                            }),
+                "Node must only have one used output");
+
+    // replace the output edges from 'node' with an edge to node's incoming node
+    ReplaceNodeOutput(graph, node, src_idx, incoming_node, input_edge.GetSrcArgIndex());
+  }
 
   graph.RemoveNode(node.Index());
 
@@ -199,7 +219,7 @@ static bool RemoveNodeWithSingleNodeIn(Graph& graph, Node& node) {
 /** Move the output defs and edges from src_node to target_node.
 After the move is complete src_node will have no output edges and can be safely removed by Graph::RemoveNode.
 */
-static void MoveOutput(Graph& graph, Node& src_node, Node& target_node) {
+static void MoveAllNodeOutputs(Graph& graph, Node& src_node, Node& target_node) {
   // copy the NodeArg*'s for all output defs.
   target_node.MutableOutputDefs() = src_node.MutableOutputDefs();
 
@@ -309,7 +329,7 @@ bool IsOutputUsed(const Node& node, int index) {
   return false;
 }
 
-bool CanRemoveNodeAndMergeEdges(const Graph& graph, const Node& node) {
+bool CanRemoveNode(const Graph& graph, const Node& node) {
   const std::string* output_name = nullptr;
   if (!IsOnlyOneOutputUsed(graph, node, output_name)) {
     return false;
@@ -329,6 +349,7 @@ bool CanRemoveNodeAndMergeEdges(const Graph& graph, const Node& node) {
 
   if (node.GetInputEdgesCount() == 1) {
     // we will merge the single input edge with the edges for the output that is used
+    // Note that the node may have other inputs coming from initializers or graph inputs that do not have edges.
     new_name = &GetNodeInputName(node, node.InputEdgesBegin()->GetDstArgIndex());
   } else if (node.InputDefs().size() == 1) {
     // we can also handle a node with a single input from an initializer or graph input (no edges)
@@ -346,11 +367,15 @@ bool CanRemoveNodeAndMergeEdges(const Graph& graph, const Node& node) {
   return can_remove;
 }
 
-bool RemoveNodeAndMergeEdges(Graph& graph, Node& node) {
-  // If there is a single input edge from another node (initializers are not connected with edges to nodes).
+bool RemoveNode(Graph& graph, Node& node) {
+  assert(CanRemoveNode(graph, node));
+
+  // Note: Node does not produce any graph outputs, and only a single output is used.
+
+  // If there is a single input edge from another node (initializers are not connected with edges to nodes)
   if (node.GetInputEdgesCount() == 1) {
     // remove the node and wire its incoming node to its outgoing node/s
-    return RemoveNodeWithSingleNodeIn(graph, node);
+    return RemoveNodeWithSingleNodeInSingleUsedOutput(graph, node);
   }
 
   // single input def so replace node with that
@@ -410,7 +435,7 @@ bool ReplaceNodeWithInitializer(Graph& graph, Node& node, NodeArg& replacement) 
 
     // Replace outgoing node's input.
     auto& output_node = *graph.GetNode(output_edge.dst_node);
-    ReplaceNodeInputWithNodeArg(output_node, output_edge.dst_arg_index, replacement);
+    ReplaceNodeInput(output_node, output_edge.dst_arg_index, replacement);
   }
 
   return true;
@@ -505,13 +530,11 @@ size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
   return output_edges.size();
 }
 
-void SubstituteNodeOutput(Graph& graph, Node& node, Node& replacement, int replacement_output_idx) {
-  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
+void ReplaceNodeOutput(Graph& graph, Node& node, int output_idx, Node& replacement, int replacement_output_idx) {
+  // get the output edges from node for output_idx
+  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node, output_idx);
 
   if (!output_edges.empty()) {
-    // all edges should have the same source index so double-check we don't do an invalid replacement
-    const auto output_idx = output_edges[0].src_arg_index;
-
     const auto& replacement_name = replacement.MutableOutputDefs()[replacement_output_idx]->Name();
 
     // Remove the output edges of the node first
@@ -519,9 +542,6 @@ void SubstituteNodeOutput(Graph& graph, Node& node, Node& replacement, int repla
 
     // Create connections between the replacement node and the outgoing nodes
     for (const auto& output_edge : output_edges) {
-      ORT_ENFORCE(output_edge.src_arg_index == output_idx, "Invalid usage. Node produces multiple different outputs. ",
-                  node.Name());
-
       // Take care of subgraph inputs.
       if (OutputEdgeProvidesImplicitInput(graph, output_edge)) {
         Node& mutable_output_edge_node = *graph.GetNode(output_edge.dst_node);
@@ -535,7 +555,7 @@ void SubstituteNodeOutput(Graph& graph, Node& node, Node& replacement, int repla
   }
 }
 
-void ReplaceNodeInputWithNodeArg(Node& target, int target_input_idx, NodeArg& replacement) {
+void ReplaceNodeInput(Node& target, int target_input_idx, NodeArg& replacement) {
   size_t dst_arg_idx = static_cast<size_t>(target_input_idx);
   auto num_explicit_inputs = target.InputDefs().size();
 
@@ -552,9 +572,18 @@ void ReplaceNodeInputWithNodeArg(Node& target, int target_input_idx, NodeArg& re
   }
 }
 
+void AddNodeInput(Node& target, int target_input_idx, NodeArg& new_input) {
+  auto num_explicit_inputs = target.InputDefs().size();
+  ORT_ENFORCE(target_input_idx == num_explicit_inputs, "Can only add a new input at the end of the current ones.");
+
+  target.MutableInputDefs().push_back(&new_input);
+  assert(target.MutableInputArgsCount().size() > static_cast<size_t>(target_input_idx));  // expect existing entry for all possible inputs
+  target.MutableInputArgsCount()[target_input_idx] = 1;
+}
+
 void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node, Node* replacement_node) {
   graph_utils::RemoveNodeOutputEdges(graph, first_node);
-  graph_utils::MoveOutput(graph, second_node, replacement_node ? *replacement_node : first_node);
+  graph_utils::MoveAllNodeOutputs(graph, second_node, replacement_node ? *replacement_node : first_node);
 
   // second node now has no output edges and can be removed
   graph.RemoveNode(second_node.Index());

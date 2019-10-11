@@ -90,7 +90,8 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
   new_conv_W_tensor_proto.set_name(new_W_name);
 
   // Replace initializers of conv node
-  conv_node.MutableInputDefs()[1] = &graph_utils::AddInitializer(graph, new_conv_W_tensor_proto);
+  NodeArg& new_conv_W_node_arg = graph_utils::AddInitializer(graph, new_conv_W_tensor_proto);
+  graph_utils::ReplaceNodeInput(conv_node, 1, new_conv_W_node_arg);
 
   if (is_3d) {
     ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto(*conv_B_tensor_proto);
@@ -99,7 +100,8 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
     auto new_B_name = graph.GenerateNodeArgName("ConvMulFusion_Mul_B_" + mul_B_tensor_proto->name());
     new_conv_B_tensor_proto.set_name(new_B_name);
 
-    conv_node.MutableInputDefs()[2] = &graph_utils::AddInitializer(graph, new_conv_B_tensor_proto);
+    NodeArg& new_conv_B_node_arg = graph_utils::AddInitializer(graph, new_conv_B_tensor_proto);
+    graph_utils::ReplaceNodeInput(conv_node, 2, new_conv_B_node_arg);
   }
 
   // Move output name and edges from Mul node to Conv node and remove Mul node.

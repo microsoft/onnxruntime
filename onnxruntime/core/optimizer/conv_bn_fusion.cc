@@ -119,14 +119,15 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   new_conv_W_tensor_proto.set_name(new_W_name);
   new_conv_B_tensor_proto.set_name(new_B_name);
 
-  conv_node.MutableInputDefs()[1] = &graph_utils::AddInitializer(graph, new_conv_W_tensor_proto);
+  NodeArg& new_conv_W_node_arg = graph_utils::AddInitializer(graph, new_conv_W_tensor_proto);
+  graph_utils::ReplaceNodeInput(node, 1, new_conv_W_node_arg);
+
   auto& new_conv_B_node_arg = graph_utils::AddInitializer(graph, new_conv_B_tensor_proto);
 
   if (conv_inputs.size() == 3) {
-    conv_node.MutableInputDefs()[2] = &new_conv_B_node_arg;
+    graph_utils::ReplaceNodeInput(node, 2, new_conv_B_node_arg);
   } else {
-    conv_node.MutableInputDefs().push_back(&new_conv_B_node_arg);
-    conv_node.MutableInputArgsCount()[2] = 1;
+    graph_utils::AddNodeInput(node, 2, new_conv_B_node_arg);
   }
 
   // Move the output definition and edges from the BN node to the Conv node and delete the BN node.

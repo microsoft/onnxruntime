@@ -9,7 +9,7 @@
 namespace onnxruntime {
 
 Status EliminateSlice::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
-  if (graph_utils::RemoveNodeAndMergeEdges(graph, node)) {
+  if (graph_utils::RemoveNode(graph, node)) {
     rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   }
 
@@ -23,7 +23,7 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) cons
     return false;
   }
 
-  if (!graph_utils::CanRemoveNodeAndMergeEdges(graph, node)) {
+  if (!graph_utils::CanRemoveNode(graph, node)) {
     return false;
   }
 

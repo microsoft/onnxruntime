@@ -525,7 +525,7 @@ class Graph {
   These are overridable initializers. This is a difference between 
   graph_inputs_including_initializers_ and graph_inputs_excluding_initializers_
   @remarks Contains no nullptr values. */
-  const std::vector<const NodeArg*>& GetOverridableInitializers () const {
+  const std::vector<const NodeArg*>& GetOverridableInitializers() const {
     return graph_overridable_initializers_;
   }
 
@@ -533,7 +533,7 @@ class Graph {
   @remarks Contains no nullptr values.*/
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return graph_outputs_; }
 
-  /** Returns a vector with the indexes of any Node outputs that are a Graph output. */
+  /** Returns a vector with the indexes of the outputs of the given Node that are also Graph outputs. */
   std::vector<int> GetNodeOutputsInGraphOutputs(const Node& node) const {
     int output_idx = 0;
     std::vector<int> indexes;
