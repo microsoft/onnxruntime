@@ -50,7 +50,8 @@ These optimizations change the data layout for applicable nodes to achieve highe
 
 ## Online/Offline Mode
 
-All optimizations can be performed either online or offline. In online mode, when initializing an inference session, we also apply all enabled graph optimizations before performing model inference. Applying all optimizations each time we initiate a session can add overhead to the model startup time (especially for complex models), which can be critical in production scenarios. This is where the offline mode can bring a lot of benefit. In this mode, after performing graph optimizations, ONNX Runtime serializes the resulting model to disk. In subsequent inference sessions for this model, we can instead use the already optimized model to reduce startup time. 
+All optimizations can be performed either online or offline. In online mode, when initializing an inference session, we also apply all enabled graph optimizations before performing model inference. Applying all optimizations each time we initiate a session can add overhead to the model startup time (especially for complex models), which can be critical in production scenarios. This is where the offline mode can bring a lot of benefit. In offline mode, after performing graph optimizations, ONNX Runtime serializes the resulting model to disk. Subsequently, when new inference sessions are created for this model, we can instead use the already optimized model to reduce startup time.
+
 **Notes**: 
 
 * When running in offline mode, make sure to use the exact same options (e.g., execution providers, optimization level) and hardware as the target machine that the model inference will run on (e.g., you cannot run a model pre-optimized for a GPU execution provider on a machine that is equipped only with CPU).
@@ -59,15 +60,15 @@ All optimizations can be performed either online or offline. In online mode, whe
 ## Usage
 
 ### General Note
-Levels: 
-ONNX Runtime defines the `GraphOptimizationLevel` enum to determine which of the aforementioned optimization levels will be enabled. Choosing a level enabled the optimizations of that level, as well as the optimizations of all preceding levels. For example, enabling Extended optimizations, also enables Basic optimizations. The mapping of these levels to the enum is as follows:
+**Levels**: 
+ONNX Runtime defines the `GraphOptimizationLevel` enum to determine which of the aforementioned optimization levels will be enabled. Choosing a level enables the optimizations of that level, as well as the optimizations of all preceding levels. For example, enabling Extended optimizations, also enables Basic optimizations. The mapping of these levels to the enum is as follows:
 
 * GraphOptimizationLevel::ORT_DISABLE_ALL -> Disables all optimizations
 * GraphOptimizationLevel::ORT_ENABLE_BASIC -> Enables basic optimizations
 * GraphOptimizationLevel::ORT_ENABLE_EXTENDED -> Enables basic and extended optimizations
 * GraphOptimizationLevel::ORT_ENABLE_ALL -> Enables all available optimizations including layout optimizations
 
-Online/Offline Mode:
+**Online/Offline Mode**:
 To enable serialization of the optimized model to disk, set the SessionOptions option `optimized_model_path` to the desired path where the optimized model will be stored.
 
 ### Python API Usage
