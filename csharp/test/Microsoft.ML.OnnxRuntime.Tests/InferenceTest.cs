@@ -319,7 +319,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private static Dictionary<string, string> GetSkippedModels()
         {
             var skipModels = new Dictionary<string, string>() {
-                { "mxnet_arcface", "Model not supported by CPU execution provider" } ,
+                { "mxnet_arcface", "Model is an invalid ONNX model",
                 { "tf_inception_v2", "TODO: Debug failing model, skipping for now" },
                 { "fp16_inception_v1", "16-bit float not supported type in C#." },
                 { "fp16_shufflenet", "16-bit float not supported type in C#." },

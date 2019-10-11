@@ -391,7 +391,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"shrink", "test case is wrong", {"onnx141"}},
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
       {"tf_inception_v2", "result mismatch"},
-      {"mxnet_arcface", "result mismatch"},
+      {"mxnet_arcface", "Model is an invalid ONNX model"},
       {"unique_not_sorted_without_axis", "Expected data for 'Y' is incorrect and in sorted order."},
       {"cumsum_1d_reverse_exclusive", "only failing linux GPU CI. Likely build error."},
       {"det_2d", "not implemented yet"},
@@ -532,7 +532,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
 #ifdef USE_CUDA
-  broken_tests.insert({"mxnet_arcface", "result mismatch"});
   broken_tests.insert({"mask_rcnn_keras", "result mismatch"});
   broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
   broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
