@@ -208,7 +208,7 @@ static bool RemoveNodeWithSingleNodeInSingleUsedOutput(Graph& graph, Node& node)
                 "Node must only have one used output");
 
     // replace the output edges from 'node' with an edge to node's incoming node
-    ReplaceNodeOutput(graph, node, src_idx, incoming_node, input_edge.GetSrcArgIndex());
+    ReplaceDownstreamNodeInput(graph, node, src_idx, incoming_node, input_edge.GetSrcArgIndex());
   }
 
   graph.RemoveNode(node.Index());
@@ -283,7 +283,8 @@ const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const s
   return iter == attrs.end() ? nullptr : &iter->second;
 }
 
-/** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators. */
+/** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators. 
+Returns the name of the single used output in output_name. */
 static bool IsOnlyOneOutputUsed(const Graph& graph, const Node& node, const std::string*& output_name) {
   const int unassigned = -1;
   int first_output = unassigned;
@@ -545,7 +546,7 @@ size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
   return output_edges.size();
 }
 
-void ReplaceNodeOutput(Graph& graph, Node& node, int output_idx, Node& replacement, int replacement_output_idx) {
+void ReplaceDownstreamNodeInput(Graph& graph, Node& node, int output_idx, Node& replacement, int replacement_output_idx) {
   // get the output edges from node for output_idx
   std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node, output_idx);
 
@@ -570,15 +571,15 @@ void ReplaceNodeOutput(Graph& graph, Node& node, int output_idx, Node& replaceme
   }
 }
 
-void ReplaceNodeInput(Node& target, int target_input_idx, NodeArg& replacement) {
+void ReplaceNodeInput(Node& target, int target_input_idx, NodeArg& new_input) {
   size_t dst_arg_idx = static_cast<size_t>(target_input_idx);
   auto num_explicit_inputs = target.InputDefs().size();
 
   if (dst_arg_idx < num_explicit_inputs) {
-    target.MutableInputDefs()[target_input_idx] = &replacement;
+    target.MutableInputDefs()[target_input_idx] = &new_input;
   } else if (dst_arg_idx < num_explicit_inputs + target.ImplicitInputDefs().size()) {
     // If we need to update an implicit input.
-    target.MutableImplicitInputDefs()[dst_arg_idx - num_explicit_inputs] = &replacement;
+    target.MutableImplicitInputDefs()[dst_arg_idx - num_explicit_inputs] = &new_input;
   } else {
     // logic error in our code
     ORT_THROW("Invalid input index for node ", target.Name(), ". Index:", target_input_idx,

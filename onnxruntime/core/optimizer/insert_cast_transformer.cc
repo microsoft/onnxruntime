@@ -169,7 +169,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
             for (auto& n : nodes_to_remove) {
               Node& node_to_remove = n;
               // replace output index 0 (Cast only produces one output)
-              graph_utils::ReplaceNodeOutput(graph, node_to_remove, 0, mutable_src_node, replacement_idx);
+              graph_utils::ReplaceDownstreamNodeInput(graph, node_to_remove, 0, mutable_src_node, replacement_idx);
 
               graph.RemoveNode(node_to_remove.Index());
             }

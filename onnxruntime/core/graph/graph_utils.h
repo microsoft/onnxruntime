@@ -133,26 +133,27 @@ bool ReplaceNodeWithInitializer(Graph& graph, Node& node, NodeArg& replacement);
     This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
 
-/** Replaces a single output of a node, with an output from a different node.
-Moves the output edges from 'node' for 'output_idx' to the replacement node.
+/** Replaces the input to nodes that are downstream from 'node', which was being provided by an output of 'node', 
+    with an output from a different node. Moves the output edges from 'node' for 'output_idx' to the replacement node.
 @param replacement The node providing the replacement output.
 @param replacement_output_idx The index of the output from 'replacement' to use. 
 
 e.g. Node A produces outputs A1 and A2. 
      Node B consumes A2 (edge between A and B for A2) and produces B1. 
      Node C consumes B1 (edge between B and C for B1).
-
-     If Node B was determined to not be needed, you would call ReplaceNodeOutput(graph, B, 0, A, 1) 
-     to replace B1 (output index 0 for node B) with A2 (output index 1 for node A).
-     The edge that existed between B and C for B1 with be removed, and replaced with an edge between A and C for A2.
+     
+     If Node B was determined to not be needed, you would call ReplaceDownstreamNodeInput(graph, B, 0, A, 1) 
+     to replace B1 (output index 0 for node B) with A2 (output index 1 for node A) as input to the downstream node C.
+     The edge that existed between B and C for B1 will be removed, and replaced with an edge between A and C for A2.
 */
-void ReplaceNodeOutput(Graph& graph, Node& node, int output_idx, Node& replacement, int replacement_output_idx);
+void ReplaceDownstreamNodeInput(Graph& graph, Node& node, int output_idx, Node& replacement, int replacement_output_idx);
 
-/** Replace the input to a node with a NodeArg for an initializer or graph input.
-@remarks There is no edge between an initializer or graph input and a Node, so the replacement only updates the 
-         node's input definition.
+/** Replace the input to a node with a NodeArg.
+@remarks The replacement only updates the node's input definition and does not create any edges,
+         as typically this function is used to replace an input with an initializer or graph input 
+         (there is no edge between an initializer or graph input and a Node).
 */
-void ReplaceNodeInput(Node& target, int target_input_idx, NodeArg& replacement);
+void ReplaceNodeInput(Node& target, int target_input_idx, NodeArg& new_input);
 
 /** Add an input to a node with a NodeArg for an initializer or graph input.
 @remarks target_input_idx must be the next input slot. 
@@ -160,7 +161,7 @@ void ReplaceNodeInput(Node& target, int target_input_idx, NodeArg& replacement);
          There is no edge between an initializer or graph input and a Node, so the replacement only updates the 
          node's input definition and does not create any new edges.
 */
-void AddNodeInput(Node& target, int target_input_idx, NodeArg& replacement);
+void AddNodeInput(Node& target, int target_input_idx, NodeArg& new_input);
 
 /** Finalize the fusion of two nodes. 
     Conceptually two nodes are being combined into one, and post-fusion will produce output/s with the same names 
