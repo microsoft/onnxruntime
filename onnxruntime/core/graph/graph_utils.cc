@@ -152,7 +152,7 @@ static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node) {
 static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node, size_t index) {
   std::vector<GraphEdge> output_edges;
   for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
-    if (it->GetSrcArgIndex() == index) {
+    if (static_cast<size_t>(it->GetSrcArgIndex()) == index) {
       output_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, false));
     }
   }
@@ -590,7 +590,8 @@ void ReplaceNodeInput(Node& target, int target_input_idx, NodeArg& new_input) {
 
 void AddNodeInput(Node& target, int target_input_idx, NodeArg& new_input) {
   auto num_explicit_inputs = target.InputDefs().size();
-  ORT_ENFORCE(target_input_idx == num_explicit_inputs, "Can only add a new input at the end of the current ones.");
+  ORT_ENFORCE(num_explicit_inputs == static_cast<size_t>(target_input_idx),
+              "Can only add a new input at the end of the current ones.");
 
   target.MutableInputDefs().push_back(&new_input);
   assert(target.MutableInputArgsCount().size() > static_cast<size_t>(target_input_idx));  // expect existing entry for all possible inputs
