@@ -14,10 +14,8 @@ struct BertLoss : public ILossFunction {
  private:
   static TypeProto* GetMaskedLMTypeProto(const NodeArg* prediction_arg,
                                          ONNX_NAMESPACE::TensorProto_DataType data_type,
-                                         int64_t max_predictions_per_sequence,
                                          GraphAugmenter::GraphDefs& graph_defs);
   static TypeProto* GetGatheredPredictionTypeProto(const NodeArg* prediction_arg,
-                                                   int64_t max_predictions_per_sequence,
                                                    GraphAugmenter::GraphDefs& graph_defs);
   static TypeProto* GetLossTypeProto(GraphAugmenter::GraphDefs& graph_defs);
 };

@@ -625,7 +625,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
     auto iter = input_def_map_.find(feed_name);
     if (input_def_map_.end() == iter) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Invalid Feed Input Name:", feed_name);
+                             "Invalid Feed Input Name: ", feed_name);
     }
 
     auto expected_type = iter->second.ml_data_type;

@@ -115,29 +115,28 @@ class TrainingRunner {
     }
   };
 
-  TrainingRunner(std::shared_ptr<IDataLoader> training_data_loader,
-                 std::shared_ptr<IDataLoader> test_data_loader,
-                 const Parameters& params);
+  TrainingRunner(Parameters params);
 
   common::Status Initialize();
 
-  common::Status Run();
+  common::Status Run(std::shared_ptr<IDataLoader> training_data_loader, std::shared_ptr<IDataLoader> test_data_loader);
 
+  common::Status EndTraining(std::shared_ptr<IDataLoader> data_loader);
+
+  common::Status UpdateParams(Parameters params); 
  private:
-  Status TrainingLoop();
-  Status EndTraining();
-  Status Evaluate(InferenceSession& session);
-  Status LoadAndEvaluate(const std::string& model_path);
+  Status TrainingLoop(std::shared_ptr<IDataLoader> training_data_loader, std::shared_ptr<IDataLoader> test_data_loader);
+  Status Evaluate(InferenceSession& session, std::shared_ptr<IDataLoader> data_loader);
+  Status LoadAndEvaluate(const std::string& model_path, std::shared_ptr<IDataLoader> data_loader);
   Status SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
                               const std::unordered_map<std::string, NodeArg*>& fp16_weights_map,
                               const std::string& loss_scale_input_name,
                               OptimizerGraphConfig& opt_graph_config,
                               std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs);
 
-  std::shared_ptr<IDataLoader> training_data_loader_ = nullptr;
-  std::shared_ptr<IDataLoader> test_data_loader_ = nullptr;
-
   size_t step_;
+  size_t round_;
+  size_t weight_update_step_count_;
   std::unordered_map<std::string, std::string> opt_graph_outputs_;
 
   std::string loss_scale_input_name_;

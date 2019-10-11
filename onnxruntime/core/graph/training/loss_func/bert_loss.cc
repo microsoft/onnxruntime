@@ -10,7 +10,6 @@ namespace training {
 
 TypeProto* BertLoss::GetMaskedLMTypeProto(const NodeArg* prediction_arg,
                                           ONNX_NAMESPACE::TensorProto_DataType data_type,
-                                          int64_t max_predictions_per_sequence,
                                           GraphAugmenter::GraphDefs& graph_defs) {
   ORT_ENFORCE(prediction_arg != nullptr, "GetMaskedPredictionTypeProto's prediction_arg is nullptr");
   const auto* logits_type_proto = prediction_arg->TypeAsProto();
@@ -20,14 +19,15 @@ TypeProto* BertLoss::GetMaskedLMTypeProto(const NodeArg* prediction_arg,
   type_proto->mutable_tensor_type()->set_elem_type(data_type);
 
   auto* target_shape = type_proto->mutable_tensor_type()->mutable_shape();
+  // Batch size.
   target_shape->add_dim()->CopyFrom(dims[0]);
-  target_shape->add_dim()->set_dim_value(max_predictions_per_sequence);
+  // Prediction count.
+  target_shape->add_dim()->set_dim_param("dynamic_prediction_count");
 
   return type_proto;
 }
 
 TypeProto* BertLoss::GetGatheredPredictionTypeProto(const NodeArg* prediction_arg,
-                                                    int64_t max_predictions_per_sequence,
                                                     GraphAugmenter::GraphDefs& graph_defs) {
   ORT_ENFORCE(prediction_arg != nullptr, "GetMaskedPredictionTypeProto's prediction_arg is nullptr");
   const auto* logits_type_proto = prediction_arg->TypeAsProto();
@@ -37,8 +37,11 @@ TypeProto* BertLoss::GetGatheredPredictionTypeProto(const NodeArg* prediction_ar
   type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
   auto* target_shape = type_proto->mutable_tensor_type()->mutable_shape();
+  // Batch size.
   target_shape->add_dim()->CopyFrom(dims[0]);
-  target_shape->add_dim()->set_dim_value(max_predictions_per_sequence);
+  // Prediction count.
+  target_shape->add_dim()->set_dim_param("dynamic_prediction_count");
+  // Vocab size.
   target_shape->add_dim()->CopyFrom(dims[2]);
 
   return type_proto;
@@ -60,9 +63,6 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
   const std::string& next_sentence_labels = args[5];
   const std::string& mlm_loss = args[6];
   const std::string& nsp_loss = args[7];
-  const int64_t batch_size = static_cast<int64_t>(stoi(args[8]));
-  const int64_t max_sequence_len = static_cast<int64_t>(stoi(args[9]));
-  const int64_t max_predictions_per_sequence = static_cast<int64_t>(stoi(args[10]));
 
   std::vector<NodeDef> new_nodes;
   GraphAugmenter::GraphDefs graph_defs;
@@ -74,14 +74,7 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
                 "Masked_ML prediction arg ", prediction_masked_lm, " is not found in the graph.");
     TypeProto* masked_lm_int64_type_proto = GetMaskedLMTypeProto(prediction_arg,
                                                                  ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                                                                 max_predictions_per_sequence,
                                                                  graph_defs);
-
-    ONNX_NAMESPACE::TensorProto shape_tensor_proto;
-    shape_tensor_proto.add_dims(2);
-    shape_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-    shape_tensor_proto.add_int64_data(batch_size);
-    shape_tensor_proto.add_int64_data(max_sequence_len);
 
     new_nodes.emplace_back(NodeDef("Unsqueeze",
                                    {ArgDef(masked_lm_positions, masked_lm_int64_type_proto)},
@@ -89,7 +82,6 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
                                    {MakeAttribute("axes", std::vector<int64_t>{static_cast<int64_t>(2)})},
                                    "Mask_LM_Positions_Unsqueezed"));
     TypeProto* gathered_prediction_type_proto = GetGatheredPredictionTypeProto(prediction_arg,
-                                                                               max_predictions_per_sequence,
                                                                                graph_defs);
     new_nodes.emplace_back(NodeDef("GatherND",
                                    {ArgDef(prediction_masked_lm), ArgDef("masked_lm_positions_unsqueezed")},
@@ -99,7 +91,6 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
 
     TypeProto* masked_lm_float_type_proto = GetMaskedLMTypeProto(prediction_arg,
                                                                  ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-                                                                 max_predictions_per_sequence,
                                                                  graph_defs);
     new_nodes.emplace_back(NodeDef("SparseSoftmaxCrossEntropy",
                                    {ArgDef("gathered_prediction", gathered_prediction_type_proto),

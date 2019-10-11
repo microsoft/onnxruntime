@@ -207,9 +207,10 @@ int main(int argc, char* args[]) {
   // start training session
   auto training_data_loader = std::make_shared<SingleDataLoader>(trainingData, feeds);
   auto test_data_loader = std::make_shared<SingleDataLoader>(testData, feeds);
-  auto runner = std::make_unique<TrainingRunner>(training_data_loader, test_data_loader, params);
+  auto runner = std::make_unique<TrainingRunner>(params);
   RETURN_IF_FAIL(runner->Initialize());
-  RETURN_IF_FAIL(runner->Run());
+  RETURN_IF_FAIL(runner->Run(training_data_loader, test_data_loader));
+  RETURN_IF_FAIL(runner->EndTraining(test_data_loader));
 
 #ifdef USE_HOROVOD
   shutdown_horovod();

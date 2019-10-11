@@ -36,12 +36,10 @@ static SessionOptions SESSION_OPTION = {
     0,                                 //session_thread_pool_size
 };
 
-TrainingRunner::TrainingRunner(std::shared_ptr<IDataLoader> training_data_loader,
-                               std::shared_ptr<IDataLoader> test_data_loader,
-                               const Parameters& params)
-    : training_data_loader_(training_data_loader),
-      test_data_loader_(test_data_loader),
-      step_(0),
+TrainingRunner::TrainingRunner(Parameters params)
+    : step_(0),
+      round_(0),
+      weight_update_step_count_(0),
       params_(params),
       session_(SESSION_OPTION) {
   ORT_ENFORCE(!params_.model_path.empty());
@@ -145,23 +143,22 @@ Status TrainingRunner::Initialize() {
   return session_.Initialize();
 }
 
-Status TrainingRunner::Run() {
+Status TrainingRunner::Run(std::shared_ptr<IDataLoader> training_data_loader, std::shared_ptr<IDataLoader> test_data_loader) {
   if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path.empty()) {
     session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
   }
 
-  ORT_RETURN_IF_ERROR(TrainingLoop());
+  // Add one for each call of Run(..).
+  ORT_RETURN_IF_ERROR(TrainingLoop(training_data_loader, test_data_loader));
+  round_++;
 
-  // TODO: Remove this check when model saving is fixed
-  if (!params_.is_perf_test) {
-    ORT_RETURN_IF_ERROR(EndTraining());
-  }
   return Status::OK();
 }
 
-Status TrainingRunner::TrainingLoop() {
+Status TrainingRunner::TrainingLoop(std::shared_ptr<IDataLoader> training_data_loader, std::shared_ptr<IDataLoader> test_data_loader) {
+  step_ = 0;
   const VectorString fetch_names = params_.fetch_names;
-  VectorString feed_names = training_data_loader_->DataSetTensorNames();
+  VectorString feed_names = training_data_loader->DataSetTensorNames();
   if (!loss_scale_input_name_.empty()) {
     feed_names.push_back(loss_scale_input_name_);
   }
@@ -179,7 +176,7 @@ Status TrainingRunner::TrainingLoop() {
   }
 
   if (params_.is_perf_test && params_.perf_warm_up_iters > 0) {
-    auto training_data = training_data_loader_->CurrentDataSet();
+    auto training_data = training_data_loader->CurrentDataSet();
     auto num_batches = training_data->TotalBatch(params_.batch_size);
     ORT_RETURN_IF(params_.perf_warm_up_iters > num_batches,
                   "perf_warm_up_iters is bigger than number of available batches.");
@@ -203,15 +200,15 @@ Status TrainingRunner::TrainingLoop() {
     }
   }
 
-  const size_t num_shards_to_visit = training_data_loader_->NumShards();
+  const size_t num_shards_to_visit = training_data_loader->NumShards();
   const auto lr_scheduler = LearningRateScheduler::Create(params_.lr_params, params_.num_train_steps);
   double total_time{0};
   size_t epoch = 0;
-  size_t gradient_accumulation_step_count = 0, weight_update_step_count = 0;
+  size_t gradient_accumulation_step_count = 0;
 
   while (step_ < params_.num_train_steps) {
     for (size_t shard_it = 0; shard_it < num_shards_to_visit; ++shard_it) {
-      auto training_data = training_data_loader_->CurrentDataSet();
+      auto training_data = training_data_loader->CurrentDataSet();
 
       // Shuffle the data for each epoch
       if (params_.shuffle_data) {
@@ -242,16 +239,16 @@ Status TrainingRunner::TrainingLoop() {
                                            fetch_names,
                                            &fetches));
 
-          if (!params_.is_perf_test && weight_update_step_count % params_.display_loss_steps == 0) {
+          if (!params_.is_perf_test && weight_update_step_count_ % params_.display_loss_steps == 0) {
             if (params_.error_function) {
-              params_.error_function(feed_names, feeds, fetch_names, fetches, weight_update_step_count);
+              params_.error_function(feed_names, feeds, fetch_names, fetches, weight_update_step_count_);
             }
             if (params_.post_evaluation_callback) {
-              params_.post_evaluation_callback(params_.batch_size, weight_update_step_count, "train");
+              params_.post_evaluation_callback(params_.batch_size, weight_update_step_count_, "train");
             }
           }
 
-          weight_update_step_count++;
+          weight_update_step_count_++;
         } else {
           RunOptions run_options;
           run_options.only_execute_path_to_fetches = true;
@@ -269,7 +266,8 @@ Status TrainingRunner::TrainingLoop() {
         total_time += duration_seconds.count();
 
         // Print some info when reaching the end of the batch.
-        printf("Step: %d, epoch: %d, batch: %d/%d, shard_iteration: %d/%d, time: %.2f ms, throughput: %.2f ex/sec \n",
+        printf("Round %d, Step: %d, epoch: %d, batch: %d/%d, shard_iteration: %d/%d, time: %.2f ms, throughput: %.2f ex/sec \n",
+               static_cast<int>(round_),
                static_cast<int>(step_),
                static_cast<int>(epoch),
                static_cast<int>(batch),
@@ -283,28 +281,30 @@ Status TrainingRunner::TrainingLoop() {
                static_cast<int>((batch + 1) * params_.batch_size - 1));
 
         if (params_.do_eval && step_ % params_.evaluation_period == 0) {
-          ORT_RETURN_IF_ERROR(Evaluate(session_));
+          ORT_RETURN_IF_ERROR(Evaluate(session_, test_data_loader));
         }
       }  // end of one file/shard
 
       if (step_ < params_.num_train_steps) {
-        training_data_loader_->MoveToNextDataSet();
+        training_data_loader->MoveToNextDataSet();
       }
     }  // end of one epoch
 
     epoch++;
   }
 
-  std::cout << "Number of Batches: " << step_ << "\n"
+  std::cout << "Round: " << round_ << "\n"
+            << "Batch size: " << params_.batch_size << "\n"
+            << "Number of Batches: " << step_ << "\n"
             << "Gradient Accumulation Steps: " << gradient_accumulation_step_count << "\n"
-            << "Weight Update Steps: " << weight_update_step_count << "\n"
+            << "Weight Update Steps: " << weight_update_step_count_ << "\n"
             << "Total Running Time: " << total_time << " Seconds \n"
             << "Average Running Time Per Batch: " << total_time / step_ * 1000 << " ms\n"
             << "Throughput: " << params_.batch_size * step_ / total_time << " Examples / Second\n";
   return Status::OK();
 }
 
-Status TrainingRunner::EndTraining() {
+Status TrainingRunner::EndTraining(std::shared_ptr<IDataLoader> data_loader) {
   if (params_.use_profiler) {
     // Write profiler data to disk.
     // We do this first in case there are any problems saving the trained model.
@@ -319,7 +319,7 @@ Status TrainingRunner::EndTraining() {
 
   // Test the in-memory model before saving.
   printf("\nEvaluating the final model on the test set.\n");
-  ORT_RETURN_IF_ERROR(Evaluate(session_));
+  ORT_RETURN_IF_ERROR(Evaluate(session_, data_loader));
 
   printf("\nSaving the trained model.\n");
   if (!params_.model_trained_path.empty()) {
@@ -332,10 +332,10 @@ Status TrainingRunner::EndTraining() {
 
   // Load and test the trained model.
   printf("\nTesting the saved model: %s\n", params_.model_trained_with_loss_func_path.c_str());
-  return LoadAndEvaluate(params_.model_trained_with_loss_func_path);
+  return LoadAndEvaluate(params_.model_trained_with_loss_func_path, data_loader);
 }
 
-Status TrainingRunner::Evaluate(InferenceSession& session) {
+Status TrainingRunner::Evaluate(InferenceSession& session, std::shared_ptr<IDataLoader> data_loader) {
   if (params_.skip_evaluation) {
     printf("Skipping evaluation...\n");
     return Status::OK();
@@ -348,9 +348,13 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
 
   // A static batch index representing current test batch
   static size_t current_batch = 0;
-  const vector<string> feed_names = test_data_loader_->DataSetTensorNames();
+  vector<string> feed_names = data_loader->DataSetTensorNames();
+  if (!loss_scale_input_name_.empty()) {
+    feed_names.push_back(loss_scale_input_name_);
+  }
+  feed_names.push_back(params_.lr_params.feed_name);
   // TODO add loss scaling factor and learning rate to feeds
-  auto test_data = test_data_loader_->CurrentDataSet();
+  auto test_data = data_loader->CurrentDataSet();
   if (params_.shuffle_data && current_batch == 0) {
     printf("Randomly shuffle test data.\n");
     test_data->RandomShuffle();
@@ -372,10 +376,19 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
         num_batches * params_.batch_size);
   }
 
+  OrtValue loss_scale_val;
+  TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{params_.loss_scale}, &loss_scale_val);
+
   RunOptions run_options;
   run_options.only_execute_path_to_fetches = true;
   for (size_t batch_idx = 0; batch_idx < num_batches; ++batch_idx) {
     std::vector<MLValue> feeds = test_data->GetKthBatch(params_.batch_size, current_batch);
+    if (!loss_scale_input_name_.empty()) {
+      feeds.push_back(loss_scale_val);
+    }
+    OrtValue lr_ort_val;
+    TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{params_.lr_params.initial_lr}, &lr_ort_val);
+    feeds.push_back(lr_ort_val);
     vector<MLValue> fetches;
     ORT_RETURN_IF_ERROR(session.Run(run_options,
                                     feed_names,
@@ -391,7 +404,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
     // Set to next batch
     if (++current_batch >= test_data->TotalBatch(params_.batch_size)) {
       // Move to next shard
-      test_data = test_data_loader_->MoveToNextDataSet();
+      test_data = data_loader->MoveToNextDataSet();
       current_batch = 0;
     }
   }
@@ -404,7 +417,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
   return Status::OK();
 }
 
-Status TrainingRunner::LoadAndEvaluate(const std::string& model_path) {
+Status TrainingRunner::LoadAndEvaluate(const std::string& model_path, std::shared_ptr<IDataLoader> data_loader) {
   InferenceSession s{SessionOptions()};
 #ifdef USE_CUDA
   CUDAExecutionProviderInfo xp_info{params_.mpi_context.world_rank};
@@ -412,7 +425,7 @@ Status TrainingRunner::LoadAndEvaluate(const std::string& model_path) {
 #endif
   ORT_RETURN_IF_ERROR(s.Load(model_path));
   ORT_RETURN_IF_ERROR(s.Initialize());
-  return Evaluate(s);
+  return Evaluate(s, data_loader);
 }
 
 Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
@@ -448,6 +461,14 @@ Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string
 
   opt_graph_config_result = std::move(opt_graph_config);
 
+  return Status::OK();
+}
+
+Status TrainingRunner::UpdateParams(Parameters params) {
+  params_.lr_params.initial_lr = params.lr_params.initial_lr;
+  params_.lr_params.warmup_ratio = params.lr_params.warmup_ratio;
+  params_.num_train_steps = params.num_train_steps;
+  params_.batch_size = params.batch_size;
   return Status::OK();
 }
 }  // namespace training

@@ -23,6 +23,12 @@ using namespace std;
 struct BertParameters : public TrainingRunner::Parameters {
   int max_sequence_length = 512;
   int max_predictions_per_sequence = 80;
+  size_t batch_size_phase2;
+  float initial_lr_phase2;
+  size_t num_train_steps_phase2;
+  float warmup_ratio_phase2;
+  PATH_STRING_TYPE train_data_dir_phase2;
+  PATH_STRING_TYPE test_data_dir_phase2;
 };
 
 Status ParseArguments(int argc, char* argv[], BertParameters& params) {
@@ -32,18 +38,26 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
     .add_options()
       ("model_name", "model to be trained", cxxopts::value<std::string>())
       ("train_data_dir", "Input ONNX example files (can be a glob or comma separated).",
-        cxxopts::value<std::string>()->default_value("bert_data/train"))
+        cxxopts::value<std::string>()->default_value("bert_data/128/books_wiki_en_corpus/train"))
       ("test_data_dir", "Input ONNX example files (can be a glob or comma separated).",
-        cxxopts::value<std::string>()->default_value("bert_data/test"))
+        cxxopts::value<std::string>()->default_value("bert_data/128/books_wiki_en_corpus/test"))
+      ("train_data_dir_phase2", "Input ONNX example files (can be a glob or comma separated).",
+        cxxopts::value<std::string>()->default_value(""))
+      ("test_data_dir_phase2", "Input ONNX example files (can be a glob or comma separated).",
+        cxxopts::value<std::string>()->default_value(""))
       ("output_dir", "The output directory where the model checkpoints will be written.",
         cxxopts::value<std::string>())
       ("log_dir", "The directory to write tensorboard events.",
         cxxopts::value<std::string>()->default_value(""))
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>())
+      ("train_batch_size_phase2", "Total batch size for training.", cxxopts::value<int>()->default_value("1"))
       ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>())
       ("learning_rate", "The initial learning rate for the optimizer.", cxxopts::value<float>()->default_value("5e-5"))
+      ("learning_rate_phase2", "The initial learning rate for the optimizer.", cxxopts::value<float>()->default_value("4e-3"))
       ("num_train_steps", "Total number of training steps to perform.", cxxopts::value<int>()->default_value("100000"))
+      ("num_train_steps_phase2", "Total number of training steps to perform.", cxxopts::value<int>()->default_value("1563"))
       ("warmup_ratio", "Fraction of training steps for learning rate warmup.", cxxopts::value<float>()->default_value("0"))
+      ("warmup_ratio_phase2", "Fraction of training steps for learning rate warmup.", cxxopts::value<float>()->default_value("0.128"))
       ("warmup_mode", "Warmup mode, one of [None|Cosine|Constant|Linear|Poly], defaults None.", 
        cxxopts::value<std::string>()->default_value("None"))
       ("do_eval", "Whether to run eval on the dev set.", cxxopts::value<bool>()->default_value("false"))
@@ -92,13 +106,26 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
     }
     params.lr_params.initial_lr = lr;
 
+    float lr_phase2 = flags["learning_rate_phase2"].as<float>();
+    if (lr_phase2 > 1.f || lr_phase2 < 0.f) {
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "learning_rate_phase2 is not in valid range [0.0, 1.0]");
+    }
+    params.initial_lr_phase2 = lr_phase2;
+
     float ratio = flags["warmup_ratio"].as<float>();
     if (ratio > 1.f || ratio < 0.f) {
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "warmup_ratio is not in valid range [0.0, 1.0]");
     }
     params.lr_params.warmup_ratio = ratio;
 
+    float ratio_phase2 = flags["warmup_ratio_phase2"].as<float>();
+    if (ratio_phase2 > 1.f || ratio_phase2 < 0.f) {
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "warmup_ratio_phase2 is not in valid range [0.0, 1.0]");
+    }
+    params.warmup_ratio_phase2 = ratio_phase2;
+
     params.num_train_steps = flags["num_train_steps"].as<int>();
+    params.num_train_steps_phase2 = flags["num_train_steps_phase2"].as<int>();
 
     params.perf_warm_up_iters = flags["perf_warm_up_iters"].as<int>();
     params.batch_size = flags["train_batch_size"].as<int>();
@@ -107,6 +134,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
     } else {
       params.eval_batch_size = params.batch_size;
     }
+
+    params.batch_size_phase2 = flags["train_batch_size_phase2"].as<int>();
 
     params.max_sequence_length = flags["max_seq_length"].as<int>();
     params.max_predictions_per_sequence = flags["max_predictions_per_seq"].as<int>();
@@ -125,9 +154,13 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
 
     auto train_data_dir = flags["train_data_dir"].as<std::string>();
     auto test_data_dir = flags["test_data_dir"].as<std::string>();
+    auto train_data_dir_phase2 = flags["train_data_dir_phase2"].as<std::string>();
+    auto test_data_dir_phase2 = flags["test_data_dir_phase2"].as<std::string>();
     auto log_dir = flags["log_dir"].as<std::string>();
     params.train_data_dir.assign(train_data_dir.begin(), train_data_dir.end());
     params.test_data_dir.assign(test_data_dir.begin(), test_data_dir.end());
+    params.train_data_dir_phase2.assign(train_data_dir_phase2.begin(), train_data_dir_phase2.end());
+    params.test_data_dir_phase2.assign(test_data_dir_phase2.begin(), test_data_dir_phase2.end());
     params.log_dir.assign(log_dir.begin(), log_dir.end());
     params.histogram_names = flags["histogram"].as<std::vector<std::string>>();
 
@@ -359,6 +392,8 @@ int main(int argc, char* argv[]) {
 
   // start training session
   std::unique_ptr<TrainingRunner> runner;
+  std::shared_ptr<IDataLoader> training_data_loader;
+  std::shared_ptr<IDataLoader> test_data_loader;
   if (params.is_perf_test) {
     // setup fake data
     int batch_size = static_cast<int>(params.batch_size);
@@ -386,32 +421,64 @@ int main(int argc, char* argv[]) {
     const size_t num_of_perf_samples = params.num_train_steps * params.batch_size;
     auto random_perf_data = std::make_shared<RandomDataSet>(num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
     auto random_perf_data_loader = std::make_shared<SingleDataLoader>(random_perf_data, tensor_names);
-    runner = std::make_unique<TrainingRunner>(random_perf_data_loader, random_perf_data_loader, params);
-
+    training_data_loader = random_perf_data_loader;
+    test_data_loader = random_perf_data_loader;
   } else {
     const size_t max_num_files_preload = 2;
 
-    auto training_data_loader = std::make_shared<DataLoader>(params.input_name_map,
+    auto training_data_loader_ = std::make_shared<DataLoader>(params.input_name_map,
                                                              params.train_data_dir,
                                                              max_num_files_preload,
                                                              params.mpi_context.world_rank,
                                                              params.mpi_context.world_size);
-    RETURN_IF_FAIL(training_data_loader->InitialPreLoadAsync());
+    RETURN_IF_FAIL(training_data_loader_->InitialPreLoadAsync());
+    training_data_loader = training_data_loader_;
 
     // Evaluation is only done in device #0
-    std::shared_ptr<DataLoader> test_data_loader;
     if (params.mpi_context.world_rank == 0) {
-      test_data_loader = std::make_shared<DataLoader>(params.input_name_map,
+      auto test_data_loader_ = std::make_shared<DataLoader>(params.input_name_map,
                                                       params.test_data_dir,
                                                       max_num_files_preload);
-      RETURN_IF_FAIL(test_data_loader->InitialPreLoadAsync());
+      RETURN_IF_FAIL(test_data_loader_->InitialPreLoadAsync());
+      test_data_loader = test_data_loader_;
     }
-
-    runner = std::make_unique<TrainingRunner>(training_data_loader, test_data_loader, params);
   }
 
+  runner = std::make_unique<TrainingRunner>(params);
   RETURN_IF_FAIL(runner->Initialize());
-  RETURN_IF_FAIL(runner->Run());
+  RETURN_IF_FAIL(runner->Run(training_data_loader, test_data_loader));
+
+  if (!params.train_data_dir_phase2.empty()) {
+    const size_t max_num_files_preload = 2;
+
+    params.lr_params.initial_lr = params.initial_lr_phase2;
+    params.lr_params.warmup_ratio = params.warmup_ratio_phase2;
+    params.num_train_steps = params.num_train_steps_phase2;
+    params.batch_size = params.batch_size_phase2;
+
+    runner->UpdateParams(params);
+
+    // Create phase-2 training set loader.
+    auto training_data_loader_phase2 = std::make_shared<DataLoader>(
+        params.input_name_map,
+        params.train_data_dir_phase2,
+        max_num_files_preload,
+        params.mpi_context.world_rank,
+        params.mpi_context.world_size);
+    RETURN_IF_FAIL(training_data_loader_phase2->InitialPreLoadAsync());
+
+    // Create phase-2 test set loader if presents.
+    std::shared_ptr<DataLoader> test_data_loader_phase2;
+    if (params.mpi_context.world_rank == 0 && !params.test_data_dir_phase2.empty()) {
+      test_data_loader_phase2 = std::make_shared<DataLoader>(params.input_name_map,
+                                                             params.test_data_dir_phase2,
+                                                             max_num_files_preload);
+      RETURN_IF_FAIL(test_data_loader_phase2->InitialPreLoadAsync());
+    }
+
+    // Do phase-2 training
+    RETURN_IF_FAIL(runner->Run(training_data_loader_phase2, test_data_loader_phase2));
+  }
 
 #ifdef USE_HOROVOD
   shutdown_horovod();
