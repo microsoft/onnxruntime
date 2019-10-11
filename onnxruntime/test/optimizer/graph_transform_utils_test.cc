@@ -52,7 +52,7 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
   }
   ASSERT_TRUE(rule_transformer && rule_transformer->RulesCount() == 1);
   
-  transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, custom_list);
+  transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, custom_list);
 #ifndef DISABLE_CONTRIB_OPS
   ASSERT_TRUE(transformers.size() == 1);
 #else
