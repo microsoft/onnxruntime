@@ -74,7 +74,7 @@ sess_options.set_graph_optimization_level(2)
 * sess_options.enable_sequential_execution=True controls whether you want to run operators in your graph sequentially or in parallel. Usually when your model has many branches, set this option to false will give you better performance.
 * When sess_options.enable_sequential_execution=False, you can set sess_options.inter_op_num_threads to control the
 number of threads used to parallelize the execution of the graph (across nodes).
-* sess_options.set_graph_optimization_level(2). Default is 1. Please see [onnxruntime_c_api.h](../include/onnxruntime/core/session/onnxruntime_c_api.h#L241)  (enum GraphOptimizationLevel) for the full list of all optimization levels.
+* sess_options.set_graph_optimization_level(2). Default is 1. Please see [onnxruntime_c_api.h](../include/onnxruntime/core/session/onnxruntime_c_api.h#L241)  (enum GraphOptimizationLevel) for the full list of all optimization levels. Please refer to the [Graph Optimizations Doc] (ONNX_Runtime_Graph_Optimizations.md#graph-optimizations-in-onnx-runtime) for details regarding available optimizations and usage.
 
 ### MKL_DNN/nGraph/MKL_ML Execution Provider
 MKL_DNN, MKL_ML and nGraph all depends on openmp for parallization. For those execution providers, we need to use openmp enviroment variable to tune the performance.
