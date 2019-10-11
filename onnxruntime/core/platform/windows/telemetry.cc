@@ -79,10 +79,10 @@ void WindowsTelemetry::LogProcessInfo() const {
 
 void WindowsTelemetry::LogSessionCreation(uint32_t sessionId, int64_t irVersion, const std::string& modelProducerName,
                                           const std::string& modelProducerVersion, const std::string& modelDomain,
-                                          const std::vector<std::string>& modelOpsetImports, uint32_t modelPrecision,
-                                          const std::string& modelGraphName, const std::string& modelGraphVersion,
+                                          const std::unordered_map<std::string, int>& domainToVersionMap, 
+                                          const std::string& modelGraphName, 
                                           const std::unordered_map<std::string, std::string>& modelMetaData,
-                                          bool modelFromStream, const std::string& executionProviders) const {
+                                          const std::string& loadedFrom, const std::vector<std::string>& executionProviderIds) const {
 }
 
 void WindowsTelemetry::LogRuntimeError(uint32_t sessionId, const common::Status& status, const char* file,

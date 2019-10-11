@@ -31,10 +31,10 @@ class Telemetry {
 
   virtual void LogSessionCreation(uint32_t sessionId, int64_t irVersion, const std::string& modelProducerName,
                                   const std::string& modelProducerVersion,const std::string& modelDomain,
-                                  const std::vector<std::string>& modelOpsetImports, uint32_t modelPrecision,
-                                  const std::string& modelGraphName, const std::string& modelGraphVersion,
+                                  const std::unordered_map<std::string, int>& domainToVersionMap,
+                                  const std::string& modelGraphName, 
                                   const std::unordered_map<std::string, std::string>& modelMetaData,
-                                  bool modelFromStream, const std::string& executionProviders) const = 0;
+                                  const std::string& loadedFrom, const std::vector<std::string>& executionProviderIds) const = 0;
 
   virtual void LogRuntimeError(uint32_t sessionId, const common::Status& status, const char* file,
                                const char* function, uint32_t line) const = 0;

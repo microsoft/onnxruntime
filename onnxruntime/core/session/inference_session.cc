@@ -121,7 +121,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
   if (session_options.enable_profiling) {
     StartProfiling(session_options.profile_file_prefix);
   }
-  
+
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
 }
@@ -221,6 +221,13 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
 
     // all steps complete, mark the model as loaded.
     is_model_loaded_ = true;
+
+    // and log telemetry
+    const Env& env = Env::Default();
+    env.GetTelemetryProvider().LogSessionCreation(session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(),
+                                                  model_->Domain(), model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(),
+                                                  model_->MetaData(), event_name, execution_providers_.GetIds());
+
   } catch (const std::exception& ex) {
     status = Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
   } catch (...) {
@@ -406,9 +413,9 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
 
       auto subgraph_session_state = onnxruntime::make_unique<SessionState>(execution_providers_,
-                                                                   session_state.GetEnableMemoryPattern(),
-                                                                   session_state.GetThreadPool(),
-                                                                   session_state.GetInterOpThreadPool());
+                                                                           session_state.GetEnableMemoryPattern(),
+                                                                           session_state.GetThreadPool(),
+                                                                           session_state.GetInterOpThreadPool());
       subgraph_session_state->SetProfiler(session_profiler_);
       subgraph_session_state->SetLogger(*session_logger_);
       // Pass data transfer manager to subgraph.
@@ -454,7 +461,7 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
 
       const auto implicit_inputs = node.ImplicitInputDefs();
       ORT_RETURN_IF_ERROR_SESSIONID_(initializer.CreatePlan(&node, &implicit_inputs,
-                                                 session_options_.enable_sequential_execution));
+                                                            session_options_.enable_sequential_execution));
 
       // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
       //                                                   &*subgraph_info.session_state);
@@ -530,9 +537,9 @@ common::Status InferenceSession::Initialize() {
 
     // apply any transformations to the main graph and any subgraphs
     ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
-                                       execution_providers_, kernel_registry_manager_,
-                                       insert_cast_transformer_,
-                                       session_state_));
+                                                  execution_providers_, kernel_registry_manager_,
+                                                  insert_cast_transformer_,
+                                                  session_state_));
 
     // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
     ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
