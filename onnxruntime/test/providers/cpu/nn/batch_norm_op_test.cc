@@ -29,7 +29,9 @@ void TestBatchNorm(const InputDataMap& input_data_map,
   if (epsilon.has_value()) {
     test.AddAttribute("epsilon", epsilon.value());
   }
-  test.AddAttribute("spatial", spatial_mode);
+  if (opset_version < 9) {  // spatial is only defined for opset-8 and below in the spec
+    test.AddAttribute("spatial", spatial_mode);
+  }
   test.AddInput<float>("X", input_shapes_map.at("X"), input_data_map.at("X"));
   test.AddInput<float>("scale", input_shapes_map.at("scale"), input_data_map.at("scale"));
   test.AddInput<float>("B", input_shapes_map.at("B"), input_data_map.at("B"));
