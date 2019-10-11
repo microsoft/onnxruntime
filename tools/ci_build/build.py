@@ -158,6 +158,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--enable_language_interop_ops", action='store_true', help="Enable operator implemented in language other than cpp")
     parser.add_argument("--cmake_generator", choices=['Visual Studio 15 2017', 'Visual Studio 16 2019'],
                         default='Visual Studio 15 2017', help="Specify the generator that CMake invokes. This is only supported on Windows")
+    parser.add_argument("--enable_multi_device_test", action='store_true', help="Test with multi-device. Mostly used for multi-device GPU")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -608,7 +609,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 if onnxml_test:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
 
-def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_parallel_executor_test, num_parallel_models):
+def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_multi_device_test, enable_parallel_executor_test, num_parallel_models):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -629,6 +630,9 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
 
         if num_parallel_models > 0:
           cmd += ["-j", str(num_parallel_models)]
+
+        if enable_multi_device_test:
+          cmd += ['-d', '2']
 
         if config != 'Debug' and os.path.exists(model_dir):
           # some models in opset9 and above are not supported by TensorRT yet
@@ -975,20 +979,20 @@ def main():
               # Disable some onnx unit tests that TensorRT doesn't supported yet
               if not is_windows():
                 onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data", "simple")
-                run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'tensorrt', False, 1)
+                run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'tensorrt', args.enable_multi_device_test, False, 1)
             elif args.use_cuda:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False, 2)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', args.enable_multi_device_test, False, 2)
             elif args.x86 or platform.system() == 'Darwin':
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, False, 1)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, False, 1)
             elif args.use_ngraph:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'ngraph', True, 1)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'ngraph', args.enable_multi_device_test, True, 1)
             elif args.use_openvino:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'openvino', False, 1)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'openvino', args.enable_multi_device_test, False, 1)
               # TODO: parallel executor test fails on MacOS
             elif args.use_nuphar:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'nuphar', False, 1)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'nuphar', args.enable_multi_device_test, False, 1)
             else:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 0)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, True, 0)
 
               if args.use_mkldnn:
                 mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
