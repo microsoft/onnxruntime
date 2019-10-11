@@ -11,6 +11,22 @@ namespace cuda {
 ONNX_OPERATOR_KERNEL_EX(
   TopK,
   kOnnxDomain,
+  9,
+  kCudaExecutionProvider,
+  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+  TopK);
+
+ONNX_OPERATOR_KERNEL_EX(
+  TopK,
+  kOnnxDomain,
+  10,
+  kCudaExecutionProvider,
+  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+  TopK);
+
+ONNX_OPERATOR_KERNEL_EX(
+  TopK,
+  kOnnxDomain,
   11,
   kCudaExecutionProvider,
   KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
