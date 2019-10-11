@@ -11,9 +11,9 @@ namespace cuda {
 
 static const int THREADS_PER_BLOCK = GridDim::maxThreadsPerBlock;
 
-int NonZeroCalcBlockCount(int x_size) 
+int NonZeroCalcBlockCount(int64_t x_size) 
 {
-  return (x_size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  return CeilDiv(x_size, THREADS_PER_BLOCK);
 }
 
 size_t NonZeroCalcPrefixSumTempStorageBytes(int* prefix_counts, int number_of_blocks)
@@ -39,7 +39,7 @@ void NonZeroCountEachBlockKernel(const InputT* x, int x_size, int *count_in_bloc
 
   const cub::CastOp<bool> cast_to_bool;
   int nz = 0;
-  int index = (int)blockIdx.x * blockDim.x + (int)threadIdx.x;
+  int index = blockIdx.x * blockDim.x + threadIdx.x;
   if (index < x_size && cast_to_bool(x[index])) ++nz;
   int count = BlockReduceT(temp_storage).Sum(nz);
 
@@ -58,7 +58,7 @@ void NonZeroOutputPositionsKernel(
   __shared__ typename BlockScanT::TempStorage temp_storage;
 
   const cub::CastOp<bool> cast_to_bool;
-  int index = (int)blockIdx.x * blockDim.x + (int)threadIdx.x;
+  int index = blockIdx.x * blockDim.x + threadIdx.x;
   int nz = 0;
   if (index < x_size && cast_to_bool(x[index])) ++nz;
   int pos_in_block = 0;

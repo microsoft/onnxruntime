@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-int NonZeroCalcBlockCount(int x_size);
+int NonZeroCalcBlockCount(int64_t x_size);
 
 size_t NonZeroCalcPrefixSumTempStorageBytes(int* prefix_counts, int number_of_blocks);
 
