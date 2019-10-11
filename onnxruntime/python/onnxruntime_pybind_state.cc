@@ -12,6 +12,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/framework/TensorSeq.h"
 
 #if USE_CUDA
 #define BACKEND_PROC "GPU"
@@ -147,43 +148,8 @@ template <typename T>
 void AddNonTensor(OrtValue& val, std::vector<py::object>& pyobjs) {
   pyobjs.push_back(py::cast(val.Get<T>()));
 }
-void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
-  // Should be in sync with core/framework/datatypes.h
-  if (val.Type() == DataTypeImpl::GetType<MapStringToString>()) {
-    AddNonTensor<MapStringToString>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<MapStringToInt64>()) {
-    AddNonTensor<MapStringToInt64>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<MapStringToFloat>()) {
-    AddNonTensor<MapStringToFloat>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<MapStringToDouble>()) {
-    AddNonTensor<MapStringToDouble>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<MapInt64ToString>()) {
-    AddNonTensor<MapInt64ToString>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<MapInt64ToInt64>()) {
-    AddNonTensor<MapInt64ToInt64>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<MapInt64ToFloat>()) {
-    AddNonTensor<MapInt64ToFloat>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<MapInt64ToDouble>()) {
-    AddNonTensor<MapInt64ToDouble>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<VectorString>()) {
-    AddNonTensor<VectorString>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<VectorInt64>()) {
-    AddNonTensor<VectorInt64>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<VectorFloat>()) {
-    AddNonTensor<VectorFloat>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<VectorDouble>()) {
-    AddNonTensor<VectorDouble>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<VectorMapStringToFloat>()) {
-    AddNonTensor<VectorMapStringToFloat>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<VectorMapInt64ToFloat>()) {
-    AddNonTensor<VectorMapInt64ToFloat>(val, pyobjs);
-  } else {
-    throw std::runtime_error("Output is a non-tensor type which is not supported.");
-  }
-}
 
-void AddTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
-  const Tensor& rtensor = val.Get<Tensor>();
+void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj) {
   std::vector<npy_intp> npy_dims;
   const TensorShape& shape = rtensor.Shape();
 
@@ -193,7 +159,7 @@ void AddTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
 
   MLDataType dtype = rtensor.DataType();
   const int numpy_type = OnnxRuntimeTensorToNumpyType(dtype);
-  py::object obj = py::reinterpret_steal<py::object>(PyArray_SimpleNew(
+  obj = py::reinterpret_steal<py::object>(PyArray_SimpleNew(
       shape.NumDimensions(), npy_dims.data(), numpy_type));
 
   void* outPtr = static_cast<void*>(
@@ -209,6 +175,55 @@ void AddTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
       outObj[i] = py::cast(*src);
     }
   }
+}
+
+template <>
+void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
+  const auto& seq_tensors = val.Get<TensorSeq>();
+  size_t num_tensors = seq_tensors.tensors.size();
+  py::list py_list;
+  for (size_t i = 0; i < num_tensors; ++i) {
+    const auto& rtensor = seq_tensors.tensors[i];
+    py::object obj;
+    GetPyObjFromTensor(rtensor, obj);
+    py_list.append(obj);
+  }
+  pyobjs.push_back(py_list);
+}
+
+void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
+  // Should be in sync with core/framework/datatypes.h
+  if (val.Type() == DataTypeImpl::GetType<TensorSeq>()) {
+    AddNonTensor<TensorSeq>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<MapStringToString>()) {
+    AddNonTensor<MapStringToString>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<MapStringToInt64>()) {
+    AddNonTensor<MapStringToInt64>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<MapStringToFloat>()) {
+    AddNonTensor<MapStringToFloat>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<MapStringToDouble>()) {
+    AddNonTensor<MapStringToDouble>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<MapInt64ToString>()) {
+    AddNonTensor<MapInt64ToString>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<MapInt64ToInt64>()) {
+    AddNonTensor<MapInt64ToInt64>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<MapInt64ToFloat>()) {
+    AddNonTensor<MapInt64ToFloat>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<MapInt64ToDouble>()) {
+    AddNonTensor<MapInt64ToDouble>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<VectorMapStringToFloat>()) {
+    AddNonTensor<VectorMapStringToFloat>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<VectorMapInt64ToFloat>()) {
+    AddNonTensor<VectorMapInt64ToFloat>(val, pyobjs);
+  } else {
+    throw std::runtime_error("Output is a non-tensor type which is not supported.");
+  }
+}
+
+void AddTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
+  const Tensor& rtensor = val.Get<Tensor>();
+  py::object obj;
+  GetPyObjFromTensor(rtensor, obj);
   pyobjs.push_back(obj);
 }
 
@@ -629,57 +644,55 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             return *(na.Type());
           },
           "node type")
-      .def(
-          "__str__", [](const onnxruntime::NodeArg& na) -> std::string {
-            std::ostringstream res;
-            res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
-            auto shape = na.Shape();
-            std::vector<py::object> arr;
-            if (shape == nullptr || shape->dim_size() == 0) {
-              res << "[]";
+      .def("__str__", [](const onnxruntime::NodeArg& na) -> std::string {
+        std::ostringstream res;
+        res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
+        auto shape = na.Shape();
+        std::vector<py::object> arr;
+        if (shape == nullptr || shape->dim_size() == 0) {
+          res << "[]";
+        } else {
+          res << "[";
+          for (int i = 0; i < shape->dim_size(); ++i) {
+            if (utils::HasDimValue(shape->dim(i))) {
+              res << shape->dim(i).dim_value();
+            } else if (utils::HasDimParam(shape->dim(i))) {
+              res << "'" << shape->dim(i).dim_param() << "'";
             } else {
-              res << "[";
-              for (int i = 0; i < shape->dim_size(); ++i) {
-                if (utils::HasDimValue(shape->dim(i))) {
-                  res << shape->dim(i).dim_value();
-                } else if (utils::HasDimParam(shape->dim(i))) {
-                  res << "'" << shape->dim(i).dim_param() << "'";
-                } else {
-                  res << "None";
-                }
-
-                if (i < shape->dim_size() - 1) {
-                  res << ", ";
-                }
-              }
-              res << "]";
-            }
-            res << ")";
-
-            return std::string(res.str());
-          },
-          "converts the node into a readable string")
-      .def_property_readonly(
-          "shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
-            auto shape = na.Shape();
-            std::vector<py::object> arr;
-            if (shape == nullptr || shape->dim_size() == 0) {
-              return arr;
+              res << "None";
             }
 
-            arr.resize(shape->dim_size());
-            for (int i = 0; i < shape->dim_size(); ++i) {
-              if (utils::HasDimValue(shape->dim(i))) {
-                arr[i] = py::cast(shape->dim(i).dim_value());
-              } else if (utils::HasDimParam(shape->dim(i))) {
-                arr[i] = py::cast(shape->dim(i).dim_param());
-              } else {
-                arr[i] = py::none();
-              }
+            if (i < shape->dim_size() - 1) {
+              res << ", ";
             }
-            return arr;
-          },
-          "node shape (assuming the node holds a tensor)");
+          }
+          res << "]";
+        }
+        res << ")";
+
+        return std::string(res.str());
+      },
+           "converts the node into a readable string")
+      .def_property_readonly("shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
+        auto shape = na.Shape();
+        std::vector<py::object> arr;
+        if (shape == nullptr || shape->dim_size() == 0) {
+          return arr;
+        }
+
+        arr.resize(shape->dim_size());
+        for (int i = 0; i < shape->dim_size(); ++i) {
+          if (utils::HasDimValue(shape->dim(i))) {
+            arr[i] = py::cast(shape->dim(i).dim_value());
+          } else if (utils::HasDimParam(shape->dim(i))) {
+            arr[i] = py::cast(shape->dim(i).dim_param());
+          } else {
+            arr[i] = py::none();
+          }
+        }
+        return arr;
+      },
+                             "node shape (assuming the node holds a tensor)");
 
   py::class_<SessionObjectInitializer>(m, "SessionObjectInitializer");
   py::class_<InferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
@@ -691,18 +704,21 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             InitializeSession(sess, provider_types);
           },
           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
-      .def(
-          "read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel, std::vector<std::string>& provider_types) {
-            std::istringstream buffer(serializedModel);
-            OrtPybindThrowIfError(sess->Load(buffer));
-            InitializeSession(sess, provider_types);
-          },
-          R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
+      .def("read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel, std::vector<std::string>& provider_types) {
+        std::istringstream buffer(serializedModel);
+        OrtPybindThrowIfError(sess->Load(buffer));
+        InitializeSession(sess, provider_types);
+      },
+           R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
       .def("run", [](InferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr) -> std::vector<py::object> {
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {
           OrtValue ml_value;
-          CreateGenericMLValue(GetAllocator(), _.first, _.second, &ml_value);
+          auto px = sess->GetModelInputs();
+          if (!px.first.IsOK() || !px.second) {
+            throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+          }
+          CreateGenericMLValue(px.second, GetAllocator(), _.first, _.second, &ml_value);
           if (PyErr_Occurred()) {
             PyObject *ptype, *pvalue, *ptraceback;
             PyErr_Fetch(&ptype, &pvalue, &ptraceback);
