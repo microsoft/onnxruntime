@@ -74,7 +74,7 @@ struct CustomOpKernel : OpKernel {
   CustomOpKernel(const OpKernelInfo& info, OrtCustomOp& op) : OpKernel(info), op_(op) {
     if (op_.version != 1)
       throw std::invalid_argument("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
-    op_kernel_ = op_.CreateKernel(&op_, OrtGetApi(op_.version), reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)));
+    op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version), reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)));
   }
 
   ~CustomOpKernel() override { op_.KernelDestroy(op_kernel_); }
