@@ -44,7 +44,7 @@ class BatchNorm : public OpKernel {
 
  protected:
   float epsilon_;
-  int64_t is_spatial_;
+  bool is_spatial_;
   //int64_t is_test_;   ignored in this implementation since we're doing inferencing only.
 };
 }  // namespace onnxruntime
