@@ -31,8 +31,8 @@ namespace onnxruntime {
         stats_.bytes_in_use = current_stats.malloc.current;
         stats_.total_allocated_bytes = current_stats.reserved.current;
         stats_.max_bytes_in_use = current_stats.reserved.peak;
-        *stats = stats_;
 #endif
+        *stats = stats_;
     }
 
     size_t MiMallocArena::Used() const {

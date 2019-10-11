@@ -39,7 +39,7 @@ class CPUExecutionProvider : public IExecutionProvider {
 
 #ifdef USE_JEMALLOC
     #if defined(USE_MIMALLOC)
-    #error jemalloc and mimalloc shouldn't both be enabled
+    #error jemalloc and mimalloc should not both be enabled
     #endif
 
     ORT_UNUSED_PARAMETER(info);

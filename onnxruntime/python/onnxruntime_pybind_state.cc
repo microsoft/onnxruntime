@@ -782,10 +782,12 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 #ifdef USE_MIMALLOC
   PyMemAllocatorEx alloc;
   alloc.malloc = [] (void *ctx, size_t size) { 
+    ORT_UNUSED_PARAMETER(ctx);
     return mi_malloc(size); 
   };
 
   alloc.calloc = [] (void *ctx, size_t nelem, size_t elsize) { 
+    ORT_UNUSED_PARAMETER(ctx);
     return mi_calloc(nelem, elsize); 
   };
 
