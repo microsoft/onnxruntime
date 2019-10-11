@@ -9,11 +9,11 @@
 
 namespace onnxruntime {
 
-template <bool is_arg_reduce>
+template <bool allow_multi_axes>
 class ReduceKernelBase {
  protected:
   ReduceKernelBase(const OpKernelInfo& info) {
-    if (!is_arg_reduce) {
+    if (allow_multi_axes) {
       axes_ = info.GetAttrsOrDefault<int64_t>("axes");
     } else {
       auto v = info.GetAttrOrDefault<int64_t>("axis", 0);
@@ -28,115 +28,115 @@ class ReduceKernelBase {
   bool keepdims_;
 };
 
-template <bool is_arg_reduce>
-class ReduceKernel : public OpKernel, public ReduceKernelBase<is_arg_reduce> {
+template <bool allow_multi_axes>
+class ReduceKernel : public OpKernel, public ReduceKernelBase<allow_multi_axes> {
  protected:
-  ReduceKernel(const OpKernelInfo& info) : OpKernel(info), ReduceKernelBase<is_arg_reduce>(info) {}
+  ReduceKernel(const OpKernelInfo& info) : OpKernel(info), ReduceKernelBase<allow_multi_axes>(info) {}
 };
 
 template <typename T>
-class ReduceL1 final : public ReduceKernel<false> {
+class ReduceL1 final : public ReduceKernel<true> {
  public:
-  ReduceL1(const OpKernelInfo& info) : ReduceKernel<false>(info) {
+  ReduceL1(const OpKernelInfo& info) : ReduceKernel<true>(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
 };
 
 template <typename T>
-class ReduceL2 final : public ReduceKernel<false> {
+class ReduceL2 final : public ReduceKernel<true> {
  public:
-  ReduceL2(const OpKernelInfo& info) : ReduceKernel<false>(info) {
+  ReduceL2(const OpKernelInfo& info) : ReduceKernel<true>(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
 };
 
 template <typename T>
-class ReduceLogSum final : public ReduceKernel<false> {
+class ReduceLogSum final : public ReduceKernel<true> {
  public:
-  ReduceLogSum(const OpKernelInfo& info) : ReduceKernel<false>(info) {
+  ReduceLogSum(const OpKernelInfo& info) : ReduceKernel<true>(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
 };
 
 template <typename T>
-class ReduceLogSumExp final : public ReduceKernel<false> {
+class ReduceLogSumExp final : public ReduceKernel<true> {
  public:
-  ReduceLogSumExp(const OpKernelInfo& info) : ReduceKernel<false>(info) {
+  ReduceLogSumExp(const OpKernelInfo& info) : ReduceKernel<true>(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
 };
 
 template <typename T>
-class ReduceMax final : public ReduceKernel<false> {
+class ReduceMax final : public ReduceKernel<true> {
  public:
-  ReduceMax(const OpKernelInfo& info) : ReduceKernel<false>(info) {
+  ReduceMax(const OpKernelInfo& info) : ReduceKernel<true>(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
 };
 
 template <typename T>
-class ReduceMean final : public ReduceKernel<false> {
+class ReduceMean final : public ReduceKernel<true> {
  public:
-  ReduceMean(const OpKernelInfo& info) : ReduceKernel<false>(info) {
+  ReduceMean(const OpKernelInfo& info) : ReduceKernel<true>(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
 };
 
 template <typename T>
-class ReduceMin final : public ReduceKernel<false> {
+class ReduceMin final : public ReduceKernel<true> {
  public:
-  ReduceMin(const OpKernelInfo& info) : ReduceKernel<false>(info) {
+  ReduceMin(const OpKernelInfo& info) : ReduceKernel<true>(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
 };
 
 template <typename T>
-class ReduceProd final : public ReduceKernel<false> {
+class ReduceProd final : public ReduceKernel<true> {
  public:
-  ReduceProd(const OpKernelInfo& info) : ReduceKernel<false>(info) {
+  ReduceProd(const OpKernelInfo& info) : ReduceKernel<true>(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
 };
 
 template <typename T>
-class ReduceSum final : public ReduceKernel<false> {
+class ReduceSum final : public ReduceKernel<true> {
  public:
-  ReduceSum(const OpKernelInfo& info) : ReduceKernel<false>(info) {
+  ReduceSum(const OpKernelInfo& info) : ReduceKernel<true>(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
 };
 
 template <typename T>
-class ReduceSumSquare final : public ReduceKernel<false> {
+class ReduceSumSquare final : public ReduceKernel<true> {
  public:
-  ReduceSumSquare(const OpKernelInfo& info) : ReduceKernel<false>(info) {
+  ReduceSumSquare(const OpKernelInfo& info) : ReduceKernel<true>(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
 };
 
 template <typename T>
-class ArgMax final : public ReduceKernel<true> {
+class ArgMax final : public ReduceKernel<false> {
  public:
-  ArgMax(const OpKernelInfo& info) : ReduceKernel<true>(info) {
+  ArgMax(const OpKernelInfo& info) : ReduceKernel<false>(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
 };
 
 template <typename T>
-class ArgMin final : public ReduceKernel<true> {
+class ArgMin final : public ReduceKernel<false> {
  public:
-  ArgMin(const OpKernelInfo& info) : ReduceKernel<true>(info) {
+  ArgMin(const OpKernelInfo& info) : ReduceKernel<false>(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;

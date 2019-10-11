@@ -55,8 +55,6 @@ cudnnDataType_t CudnnTensor::GetDataType() {
     return CUDNN_DATA_DOUBLE;
   else if (typeid(ElemType) == typeid(half))
     return CUDNN_DATA_HALF;
-  else if( typeid( ElemType ) == typeid( int32_t ) )
-     return CUDNN_DATA_INT32;
   else
     ORT_THROW("cuDNN engine currently supports only single/double/half precision data types.");
 }
@@ -129,19 +127,12 @@ Status CudnnFilterDescriptor::Set(const std::vector<int64_t>& filter_dims, cudnn
 template cudnnDataType_t CudnnTensor::GetDataType<float>();
 template cudnnDataType_t CudnnTensor::GetDataType<double>();
 template cudnnDataType_t CudnnTensor::GetDataType<half>();
-template cudnnDataType_t CudnnTensor::GetDataType<int32_t>();
-
-template<>
-const int32_t Consts<int32_t>::One = 1;
 
 template <>
 const float Consts<float>::One = 1;
 
 template <>
 const double Consts<double>::One = 1;
-
-template<>
-const int32_t Consts<int32_t>::Zero = 0;
 
 template <>
 const float Consts<float>::Zero = 0;
