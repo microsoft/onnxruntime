@@ -86,7 +86,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 
   DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault, [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, TRT); }, std::numeric_limits<size_t>::max()});
-  InsertAllocator(CreateAllocator(default_memory_info, device_id_));
+  allocator_ = CreateAllocator(default_memory_info, device_id_);
+  InsertAllocator(allocator_);
 
   DeviceAllocatorRegistrationInfo pinned_memory_info(
       {OrtMemTypeCPUOutput, [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(0, TRT_PINNED); }, std::numeric_limits<size_t>::max()});
@@ -94,6 +95,14 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {}
+
+AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+  if (mem_type == OrtMemTypeDefault) {
+    return allocator_;
+  } else {
+    return IExecutionProvider::GetAllocator(id, mem_type);
+  }
+}
 
 std::unique_ptr<onnxruntime::IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
   return onnxruntime::make_unique<onnxruntime::GPUDataTransfer>();
