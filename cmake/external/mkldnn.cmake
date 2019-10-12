@@ -34,7 +34,7 @@ else()
 endif()
 
 if (onnxruntime_USE_MKLML)
-  set(MKLDNN_VERSION_SHORT v1.0)
+  set(MKLDNN_VERSION_SHORT v0.20)
   set(MKLML_URL https://github.com/intel/mkl-dnn/releases/download/${MKLDNN_VERSION_SHORT}/mklml_${MKLML_OS_VERSION_STR}_${MKLML_VERSION}.${MKLML_FILE_EXTENSION})
 
   ExternalProject_Add(project_mklml
