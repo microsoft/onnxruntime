@@ -632,7 +632,7 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_mult
           cmd += ["-j", str(num_parallel_models)]
 
         if enable_multi_device_test:
-          cmd += ['-d', '2']
+          cmd += ['-d', '1']
 
         if config != 'Debug' and os.path.exists(model_dir):
           # some models in opset9 and above are not supported by TensorRT yet
