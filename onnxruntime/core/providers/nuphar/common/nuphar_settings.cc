@@ -98,11 +98,7 @@ void CreateNupharCodeGenSettings(const NupharExecutionProviderInfo& info) {
         ORT_NOT_IMPLEMENTED("NupharCodeGenSettings: unknown option (", key, ")");
       }
       required_options.insert(key);
-      if (options.count(key) == 0) {
-        options.insert(std::make_pair(key, value));
-      } else {
-        options[key] = value;
-      }
+      options[key] = value;
     }
   }
 
