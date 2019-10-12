@@ -1000,13 +1000,14 @@ def main():
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'ngraph', True, 1)
             elif args.use_openvino:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'openvino', False, 1)
-            elif args.use_dml:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'dml', False, 1)              
               # TODO: parallel executor test fails on MacOS
             elif args.use_nuphar:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'nuphar', False, 1)
             else:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 0)
+
+            if args.use_dml:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'dml', False, 1)
 
               if args.use_mkldnn:
                 mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)

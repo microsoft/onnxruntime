@@ -344,9 +344,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
     // Minimize mem consumption
     LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
-              [&stat, &sf, enable_cuda, &cuda_flaky_tests, &env](ITestCase* l) {
+              [&stat, &sf, &all_disabled_tests, &env](ITestCase* l) {
                 std::unique_ptr<ITestCase> test_case_ptr(l);
-                if (enable_cuda && cuda_flaky_tests.find(l->GetTestCaseName()) != cuda_flaky_tests.end()) {
+                if (all_disabled_tests.find(l->GetTestCaseName()) != all_disabled_tests.end()) {
                   return;
                 }
                 TestResultStat per_case_stat;
