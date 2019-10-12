@@ -38,7 +38,9 @@ void TestBatchNorm(const InputDataMap& input_data_map,
   test.AddInput<float>("mean", input_shapes_map.at("mean"), input_data_map.at("mean"));
   test.AddInput<float>("var", input_shapes_map.at("var"), input_data_map.at("var"));
   test.AddOutput<float>("output", expected_output_shape, expected_output);
-  test.Run(expect_result, err_str, {kTensorrtExecutionProvider});  // Weight as input is not supported by TensorRT
+  // Weight as input is not supported by TensorRT and spatial == 0 is not supported by Nuphar
+  test.Run(expect_result, err_str, spatial_mode != 0 ? {kTensorrtExecutionProvider} 
+                                                      :{kTensorrtExecutionProvider, kNupharExecutionProvider});  
 }
 
 TEST(BatchNormTest, PositiveTestCase) {
