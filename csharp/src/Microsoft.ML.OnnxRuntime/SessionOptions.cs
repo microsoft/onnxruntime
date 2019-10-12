@@ -129,6 +129,14 @@ namespace Microsoft.ML.OnnxRuntime
         }
 #endif
         #endregion //ExecutionProviderAppends
+
+        #region Public Methods
+        public void RegisterCustomOpLibrary(string libraryPath)
+        {
+
+        }
+
+        #endregion
         #region Public Properties
 
         internal IntPtr Handle

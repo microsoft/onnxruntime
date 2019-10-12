@@ -569,6 +569,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        [Fact]
+        private void TestRegisterCustopOpLibrary()
+        {
+
+        }
+
 
         [Fact]
         private void TestModelInputFloat()
