@@ -50,7 +50,7 @@ Status NonZero<T>::ComputeInternal(OpKernelContext* context) const {
 
   int nonzero_elements = 0;
   const auto& x_shape = x->Shape();
-  const int x_rank = x_shape.IsScalar() ? 1 : x_shape.NumDimensions();
+  const int x_rank = x_shape.IsScalar() ? 1 : static_cast<int>(x_shape.NumDimensions());
   const std::vector<int64_t>& x_dims = (x_shape.IsScalar()) ? kScalarDims : x_shape.GetDims();
   const int x_size = gsl::narrow<int>(x_shape.Size());
   if (x_size > 0) {

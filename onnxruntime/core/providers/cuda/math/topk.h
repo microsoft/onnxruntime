@@ -2,12 +2,12 @@
 // Licensed under the MIT License.
 
 #pragma once
-
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace cuda {
 
+template<bool inputk>
 class TopK final : public CudaKernel {
  public:
   TopK(const OpKernelInfo&);
@@ -17,6 +17,7 @@ class TopK final : public CudaKernel {
   int64_t axis_;
   int64_t largest_;
   int64_t sorted_;
+  mutable int64_t K_;
 };
 }  // namespace cuda
 }  // namespace onnxruntime
