@@ -330,7 +330,16 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.SetGraphOptimizationLevel(graph_optimization_level);
     }
 
-    std::unordered_set<std::string> cuda_flaky_tests = {"fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
+    static const char* cuda_flaky_tests[] = { "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2" };
+    static const char* dml_disabled_tests[] = { "mlperf_ssd_resnet34_1200", "mlperf_ssd_mobilenet_300", "mask_rcnn_keras", "mask_rcnn", "faster_rcnn" };
+
+    std::unordered_set<std::string> all_disabled_tests;
+    if (enable_cuda) {
+      all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
+    }
+    if (enable_dml) {
+      all_disabled_tests.insert(std::begin(dml_disabled_tests), std::end(dml_disabled_tests));
+    }
 
 #if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
     // Minimize mem consumption
@@ -350,15 +359,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     std::vector<ITestCase*> tests;
     LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
               [&tests](ITestCase* l) { tests.push_back(l); });
-    if (enable_cuda) {
-      for (auto it = tests.begin(); it != tests.end();) {
-        auto iter = cuda_flaky_tests.find((*it)->GetTestCaseName());
-        if (iter != cuda_flaky_tests.end()) {
-          delete *it;
-          it = tests.erase(it);
-        } else {
-          ++it;
-        }
+    for (auto it = tests.begin(); it != tests.end();) {
+      auto iter = all_disabled_tests.find((*it)->GetTestCaseName());
+      if (iter != all_disabled_tests.end()) {
+        delete *it;
+        it = tests.erase(it);
+      } else {
+        ++it;
       }
     }
 
@@ -574,6 +581,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"dynamicquantizelinear_max_adjusted_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"dynamicquantizelinear_min_adjusted_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"maxpool_with_argmax_2d_precomputed_pads", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"mxnet_arcface", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"yolov3", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"tf_inception_v2", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"candy", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"BERT_Squad", "Temporarily disabled pending investigation"});
   }
 #endif
   // clang-format on
