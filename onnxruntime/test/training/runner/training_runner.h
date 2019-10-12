@@ -105,7 +105,7 @@ class TrainingRunner {
     bool use_fp16_initializer = true;
 
     // Tensorboard configuration.
-    PATH_STRING_TYPE log_dir; // Path to write Tensorboard events to.
+    PATH_STRING_TYPE log_dir;  // Path to write Tensorboard events to.
     std::string summary_name = "summary";
     VectorString scalar_names;
     VectorString histogram_names;
@@ -139,7 +139,7 @@ class TrainingRunner {
   size_t weight_update_step_count_;
   std::unordered_map<std::string, std::string> opt_graph_outputs_;
 
-  std::string loss_scale_input_name_;
+  std::unique_ptr<LossScaler> loss_scaler_ = nullptr;
 
   Parameters params_;
   TrainingSession session_;

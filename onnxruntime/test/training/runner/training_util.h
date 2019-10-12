@@ -130,6 +130,54 @@ struct LearningRateParameters {
   std::string feed_name = "Learning_Rate";
 };
 
+class LossScaler {
+ public:
+  LossScaler(const std::string loss_scale_input_name,
+             bool is_dynamic_scale,
+             float loss_scale = static_cast<float>(1 << 16),
+             size_t up_scale_window = 2000,
+             float min_loss_scale = 1.0f,
+             float max_loss_scale = static_cast<float>(1 << 24))
+      : loss_scale_input_name_(loss_scale_input_name),
+        is_dynamic_scale_(is_dynamic_scale),
+        loss_scale_(loss_scale),
+        up_scale_window_(up_scale_window),
+        min_loss_scale_(min_loss_scale),
+        max_loss_scale_(max_loss_scale),
+        stable_steps_(0){};
+
+  std::string GetLossScaleInputName() const { return loss_scale_input_name_; }
+
+  float GetLossScale() const { return loss_scale_; }
+
+  void UpdateLossScale(bool is_all_finite) {
+    if (!is_dynamic_scale_) {
+      return;
+    }
+
+    if (is_all_finite) {
+      stable_steps_++;
+
+      if (stable_steps_ >= up_scale_window_) {
+        loss_scale_ = std::fmin(max_loss_scale_, loss_scale_ * 2);
+        stable_steps_ = 0;
+      }
+    } else {
+      loss_scale_ = std::fmax(min_loss_scale_, loss_scale_ / 2);
+      stable_steps_ = 0;
+    }
+  }
+
+ private:
+  const std::string loss_scale_input_name_;
+  const bool is_dynamic_scale_;
+  float loss_scale_;
+  const size_t up_scale_window_;
+  const float min_loss_scale_;
+  const float max_loss_scale_;
+  size_t stable_steps_;
+};
+
 class LearningRateScheduler {
  public:
   LearningRateScheduler(LearningRateParameters& lr_params, size_t training_step_count)

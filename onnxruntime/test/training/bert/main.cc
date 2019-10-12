@@ -58,7 +58,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
       ("num_train_steps_phase2", "Total number of training steps to perform.", cxxopts::value<int>()->default_value("1563"))
       ("warmup_ratio", "Fraction of training steps for learning rate warmup.", cxxopts::value<float>()->default_value("0"))
       ("warmup_ratio_phase2", "Fraction of training steps for learning rate warmup.", cxxopts::value<float>()->default_value("0.128"))
-      ("warmup_mode", "Warmup mode, one of [None|Cosine|Constant|Linear|Poly], defaults None.", 
+      ("warmup_mode", "Warmup mode, one of [None|Cosine|Constant|Linear|Poly], defaults None.",
        cxxopts::value<std::string>()->default_value("None"))
       ("do_eval", "Whether to run eval on the dev set.", cxxopts::value<bool>()->default_value("false"))
       ("evaluation_period",
@@ -71,7 +71,9 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
       ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
-      ("loss_scaling_factor", "Mixed precision loss scaling factor.", cxxopts::value<float>()->default_value("1.0"))
+      ("loss_scale", "Loss scaling, positive power of 2 values can improve fp16 convergence. "
+        "Set it 0 to uses dynamic scaling; Other none-zero value will used as static scale",
+        cxxopts::value<float>()->default_value("0.0"))
       ("use_fp16_moments", "Whether to use fp16 version of moments.", cxxopts::value<bool>()->default_value("false"))
       ("use_fp16_initializer", "FP16 weights will be created. Otherwise, cast nodes will be inserted for converting weights from FP32 to FP16",
         cxxopts::value<bool>()->default_value("true"))
@@ -177,13 +179,17 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
     }
 
     {
-      const float loss_scaling_factor = flags["loss_scaling_factor"].as<float>();
-      if (loss_scaling_factor < 1.0f) {
-        return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Loss scaling factor should be at least 1.0.");
+      const float loss_scale = flags["loss_scale"].as<float>();
+      if (loss_scale < 0.0f) {
+        return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Loss scale should be >= 0.");
       }
-      params.loss_scale = loss_scaling_factor;
+      params.loss_scale = loss_scale;
       if (params.use_mixed_precision) {
-        printf("Mixed precision loss scaling factor is: %f\n", params.loss_scale);
+        if (params.loss_scale == 0.0) {
+          printf("Using Dynamic loss scale.\n");
+        } else {
+          printf("Mixed precision loss scale is: %f\n", params.loss_scale);
+        }
       }
     }
 
@@ -195,17 +201,17 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
     if (params.use_mixed_precision && params.use_fp16_initializer) {
       printf("FP16 initializer is enabled.\n");
     }
-   
+
     std::string warmup_mode = flags["warmup_mode"].as<std::string>();
-    if (warmup_mode == LRSchedule_NoWarmup || 
+    if (warmup_mode == LRSchedule_NoWarmup ||
         warmup_mode == LRSchedule_Cosine ||
         warmup_mode == LRSchedule_Constant ||
         warmup_mode == LRSchedule_Linear ||
         warmup_mode == LRSchedule_Poly) {
-      params.lr_params.warmup_mode = warmup_mode;  
+      params.lr_params.warmup_mode = warmup_mode;
       printf("Using learning rate warmup mode: %s \n", warmup_mode.c_str());
     } else {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, 
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                     "Incorrect warup_mode: it must be one of [None|Cosine|Constant|Linear|Poly]");
     }
 
@@ -280,8 +286,7 @@ void setup_training_params(BertParameters& params) {
                                             /*nsp_loss*/ "nsp_loss",
                                             /*batch_size*/ std::to_string(params.batch_size),
                                             /*max_sequence_len*/ std::to_string(params.max_sequence_length),
-                                            /*max_predictions_per_sequence*/ std::to_string(params.max_predictions_per_sequence)
-                                           });
+                                            /*max_predictions_per_sequence*/ std::to_string(params.max_predictions_per_sequence)});
 
   params.weights_not_to_train = {
       "position_01",            // Slice's dat input
@@ -427,18 +432,18 @@ int main(int argc, char* argv[]) {
     const size_t max_num_files_preload = 2;
 
     auto training_data_loader_ = std::make_shared<DataLoader>(params.input_name_map,
-                                                             params.train_data_dir,
-                                                             max_num_files_preload,
-                                                             params.mpi_context.world_rank,
-                                                             params.mpi_context.world_size);
+                                                              params.train_data_dir,
+                                                              max_num_files_preload,
+                                                              params.mpi_context.world_rank,
+                                                              params.mpi_context.world_size);
     RETURN_IF_FAIL(training_data_loader_->InitialPreLoadAsync());
     training_data_loader = training_data_loader_;
 
     // Evaluation is only done in device #0
     if (params.mpi_context.world_rank == 0) {
       auto test_data_loader_ = std::make_shared<DataLoader>(params.input_name_map,
-                                                      params.test_data_dir,
-                                                      max_num_files_preload);
+                                                            params.test_data_dir,
+                                                            max_num_files_preload);
       RETURN_IF_FAIL(test_data_loader_->InitialPreLoadAsync());
       test_data_loader = test_data_loader_;
     }

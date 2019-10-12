@@ -551,9 +551,10 @@ Status OptimizerGraphBuilder::Build(Graph& graph,
 
   // check if all gradients are finite
   ArgDef all_grads_finite_argdef{};
-  if(opt_graph_config_.use_mixed_precision){
-  ORT_RETURN_IF_ERROR(AddFiniteGradientChecks(
-      nodearg_name_generator, gradient_argdefs, graph_defs, all_grads_finite_argdef));
+  if (opt_graph_config_.use_mixed_precision) {
+    ORT_RETURN_IF_ERROR(AddFiniteGradientChecks(
+        nodearg_name_generator, gradient_argdefs, graph_defs, all_grads_finite_argdef));
+    optimizer_graph_outputs[kGradientAllIsFiniteOutputKey] = all_grads_finite_argdef.name;
   }
 
   // add weight update

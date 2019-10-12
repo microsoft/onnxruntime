@@ -56,7 +56,15 @@ Status TrainingRunner::Initialize() {
   std::string loss_scale_input_name{};
   if (params_.use_mixed_precision) {
     ORT_RETURN_IF_ERROR(session_.BuildLossScalingFactorInput(params_.loss_scale, loss_scale_input_name));
-    loss_scale_input_name_ = loss_scale_input_name;
+    params_.scalar_names.push_back(loss_scale_input_name);
+
+    if (params_.loss_scale == 0.0f) {
+      // use dynamic loss_scale
+      loss_scaler_ = std::make_unique<LossScaler>(loss_scale_input_name, true, static_cast<float>(1 << 20));
+    } else {
+      // use static loss_scale
+      loss_scaler_ = std::make_unique<LossScaler>(loss_scale_input_name, false, params_.loss_scale);
+    }
   }
 
   // Add loss func
@@ -157,18 +165,23 @@ Status TrainingRunner::Run(std::shared_ptr<IDataLoader> training_data_loader, st
 
 Status TrainingRunner::TrainingLoop(std::shared_ptr<IDataLoader> training_data_loader, std::shared_ptr<IDataLoader> test_data_loader) {
   step_ = 0;
-  const VectorString fetch_names = params_.fetch_names;
   VectorString feed_names = training_data_loader->DataSetTensorNames();
-  if (!loss_scale_input_name_.empty()) {
-    feed_names.push_back(loss_scale_input_name_);
+  if (loss_scaler_) {
+    feed_names.push_back(loss_scaler_->GetLossScaleInputName());
   }
   feed_names.push_back(params_.lr_params.feed_name);
 
   OrtValue loss_scale_val;
-  TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{params_.loss_scale}, &loss_scale_val);
+  OrtValue lr_ort_val;
+
+  VectorString fetch_names = params_.fetch_names;
+  if (params_.use_mixed_precision) {
+    auto it = opt_graph_outputs_.find(kGradientAllIsFiniteOutputKey);
+    ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient AllIsFinite output is missing in the optimizer output");
+    fetch_names.push_back(it->second);
+  }
 
   VectorString fetch_grad_accumulator_output;
-
   if (params_.gradient_accumulation_steps > 1) {
     auto it = opt_graph_outputs_.find(kGradientAccumulationOutputKey);
     ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient accumulation output is missing in the optimizer output");
@@ -184,10 +197,11 @@ Status TrainingRunner::TrainingLoop(std::shared_ptr<IDataLoader> training_data_l
     printf("Warming up for perf test.\n");
     for (size_t batch = 0; batch < params_.perf_warm_up_iters; ++batch) {
       std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch);
-      if (!loss_scale_input_name_.empty()) {
+      if (loss_scaler_) {
+        float loss_scale = loss_scaler_->GetLossScale();
+        TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scale_val);
         feeds.push_back(loss_scale_val);
       }
-      OrtValue lr_ort_val;
       TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{params_.lr_params.initial_lr}, &lr_ort_val);
       feeds.push_back(lr_ort_val);
 
@@ -202,6 +216,7 @@ Status TrainingRunner::TrainingLoop(std::shared_ptr<IDataLoader> training_data_l
 
   const size_t num_shards_to_visit = training_data_loader->NumShards();
   const auto lr_scheduler = LearningRateScheduler::Create(params_.lr_params, params_.num_train_steps);
+
   double total_time{0};
   size_t epoch = 0;
   size_t gradient_accumulation_step_count = 0;
@@ -220,13 +235,17 @@ Status TrainingRunner::TrainingLoop(std::shared_ptr<IDataLoader> training_data_l
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
         std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch);
-        if (!loss_scale_input_name_.empty()) {
+        if (loss_scaler_) {
+          float loss_scale = loss_scaler_->GetLossScale();
+          TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scale_val);
           feeds.push_back(loss_scale_val);
         }
-        float learning_rate = lr_scheduler->GetLearningRate(step_ + 1);
-        OrtValue lr_ort_val;
-        TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{learning_rate}, &lr_ort_val);
-        feeds.push_back(lr_ort_val);
+
+        {
+          float learning_rate = lr_scheduler->GetLearningRate(step_ + 1);
+          TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{learning_rate}, &lr_ort_val);
+          feeds.push_back(lr_ort_val);
+        }
 
         vector<MLValue> fetches;
 
@@ -238,6 +257,16 @@ Status TrainingRunner::TrainingLoop(std::shared_ptr<IDataLoader> training_data_l
                                            feeds,
                                            fetch_names,
                                            &fetches));
+
+          if (loss_scaler_) {
+            auto it = std::find(fetch_names.begin(), fetch_names.end(), kGradientAllIsFiniteOutputKey);
+            if (it != fetch_names.end()) {
+              const size_t index = static_cast<size_t>(std::distance(fetch_names.begin(), it));
+              const Tensor& all_is_finite_t = fetches[index].Get<Tensor>();
+              const bool is_all_finite = *(all_is_finite_t.template Data<bool>());
+              loss_scaler_->UpdateLossScale(is_all_finite);
+            }
+          }
 
           if (!params_.is_perf_test && weight_update_step_count_ % params_.display_loss_steps == 0) {
             if (params_.error_function) {
@@ -349,8 +378,8 @@ Status TrainingRunner::Evaluate(InferenceSession& session, std::shared_ptr<IData
   // A static batch index representing current test batch
   static size_t current_batch = 0;
   vector<string> feed_names = data_loader->DataSetTensorNames();
-  if (!loss_scale_input_name_.empty()) {
-    feed_names.push_back(loss_scale_input_name_);
+  if (loss_scaler_) {
+    feed_names.push_back(loss_scaler_->GetLossScaleInputName());
   }
   feed_names.push_back(params_.lr_params.feed_name);
   // TODO add loss scaling factor and learning rate to feeds
@@ -383,7 +412,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session, std::shared_ptr<IData
   run_options.only_execute_path_to_fetches = true;
   for (size_t batch_idx = 0; batch_idx < num_batches; ++batch_idx) {
     std::vector<MLValue> feeds = test_data->GetKthBatch(params_.batch_size, current_batch);
-    if (!loss_scale_input_name_.empty()) {
+    if (loss_scaler_) {
       feeds.push_back(loss_scale_val);
     }
     OrtValue lr_ort_val;
