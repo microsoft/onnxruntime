@@ -46,7 +46,7 @@ def compile_all_cc(path):
         if is_windows():
             subprocess.run(['cl', '/Fo' + os.path.join(path, name + '.o'), '/c', os.path.join(path, f)], check=True)
         else:
-            subprocess.run(['g++', '-std=c++14', '-fPIC', '-o', o_file + '.o', '-c', os.path.join(path, f)], check=True)
+            subprocess.run(['g++', '-std=c++14', '-fPIC', '-o', os.path.join(path, name + '.o'), '-c', os.path.join(path, f)], check=True)
         os.remove(os.path.join(path, f))
 
 def parse_arguments():
