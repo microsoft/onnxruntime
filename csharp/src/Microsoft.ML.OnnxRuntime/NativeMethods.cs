@@ -86,6 +86,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetTensorElementType;
         public IntPtr GetDimensionsCount;
         public IntPtr GetDimensions;
+        public IntPtr GetSymbolicDimensions;
         public IntPtr GetTensorShapeElementCount;
         public IntPtr GetTensorTypeAndShape;
         public IntPtr GetTypeInfo;
@@ -220,6 +221,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtGetTensorElementType = (DOrtGetTensorElementType)Marshal.GetDelegateForFunctionPointer(api_.GetTensorElementType, typeof(DOrtGetTensorElementType));
             OrtGetDimensionsCount = (DOrtGetDimensionsCount)Marshal.GetDelegateForFunctionPointer(api_.GetDimensionsCount, typeof(DOrtGetDimensionsCount));
             OrtGetDimensions = (DOrtGetDimensions)Marshal.GetDelegateForFunctionPointer(api_.GetDimensions, typeof(DOrtGetDimensions));
+            OrtGetSymbolicDimensions = (DOrtGetSymbolicDimensions)Marshal.GetDelegateForFunctionPointer(api_.GetSymbolicDimensions, typeof(DOrtGetSymbolicDimensions));
             OrtGetTensorShapeElementCount = (DOrtGetTensorShapeElementCount)Marshal.GetDelegateForFunctionPointer(api_.GetTensorShapeElementCount, typeof(DOrtGetTensorShapeElementCount));
             OrtReleaseValue = (DOrtReleaseValue)Marshal.GetDelegateForFunctionPointer(api_.ReleaseValue, typeof(DOrtReleaseValue));
         }
@@ -626,6 +628,23 @@ namespace Microsoft.ML.OnnxRuntime
                             long[] dim_values,
                             UIntPtr dim_values_length);
         public static DOrtGetDimensions OrtGetDimensions;
+
+        /**
+        * Get the symbolic dimension names for dimensions with a value of -1. 
+        * Order and number of entries is the same as values returned by GetDimensions. 
+        * The name may be empty for an unnamed symbolic dimension.
+        * e.g. 
+        * If OrtGetDimensions returns [-1, -1, 2], OrtGetSymbolicDimensions would return an array with 3 entries.
+        * If the values returned were ['batch', '', ''] it would indicate that
+        *  - the first dimension was a named symbolic dimension (-1 dim value and name in symbolic dimensions), 
+        *  - the second dimension was an unnamed symbolic dimension (-1 dim value and empty string), 
+        *  - the entry for the third dimension should be ignored as it is not a symbolic dimension (dim value >= 0).
+        */
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetSymbolicDimensions(
+                    IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo,
+                    IntPtr[] dim_params, /* const char* values, converted to string by caller */
+                    UIntPtr dim_params_length);
+        public static DOrtGetSymbolicDimensions OrtGetSymbolicDimensions;
 
         /**
          * How many elements does this tensor have.
