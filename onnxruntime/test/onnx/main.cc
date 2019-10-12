@@ -584,6 +584,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"mxnet_arcface", "Temporarily disabled pending investigation"});
     broken_tests.insert({"yolov3", "Temporarily disabled pending investigation"});
     broken_tests.insert({"tf_inception_v2", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"fp16_inception_v1", "Temporarily disabled pending investigation"});
     broken_tests.insert({"candy", "Temporarily disabled pending investigation"});
     broken_tests.insert({"BERT_Squad", "Temporarily disabled pending investigation"});
   }
