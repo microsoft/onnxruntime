@@ -934,7 +934,8 @@ class Graph {
     // likely) either a logic issue or a graph consistency/correctness issue.
     // use ORT_ENFORCE to prove that or uncover scenarios where we actually
     // expect attempts to retrieve a non-existent node.
-    ORT_ENFORCE(node_index < nodes_.size(), "Validating no unexpected access using an invalid node_index.");
+    ORT_ENFORCE(node_index < nodes_.size(), "Validating no unexpected access using an invalid node_index. Got:",
+                node_index, " Max:", nodes_.size());
     return nodes_[node_index].get();
   }
 
