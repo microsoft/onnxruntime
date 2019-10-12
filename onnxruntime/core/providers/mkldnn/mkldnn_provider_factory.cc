@@ -5,7 +5,7 @@
 #include <atomic>
 #include "mkldnn_execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
-#include "core/providers/bridge.h"
+#include "core/providers/shared_library/bridge.h"
 
 using namespace onnxruntime;
 

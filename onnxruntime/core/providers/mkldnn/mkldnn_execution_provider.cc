@@ -5,7 +5,7 @@
 #pragma warning(disable : 4996)
 #endif
 
-#include "core/providers/bridge_protobuf.h"
+#include "core/providers/shared_library/bridge_protobuf.h"
 #include "core/framework/allocator.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry.h"

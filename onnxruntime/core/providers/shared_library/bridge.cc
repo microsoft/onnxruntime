@@ -1,15 +1,25 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// This is the provider DLL side of the bridge to let providers be built as a DLL
+// It implements all of the unresolved externals and routes them across to the real functions in onnxruntime
+
 #include "bridge_protobuf.h"
 #include "core/framework/data_types.h"
 #include "core/framework/tensor.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
+
 #include "core/framework/kernel_def_builder.h"
 #include "core/graph/node_arg.h"
 #include "bridge.h"
 
 onnxruntime::ProviderHost* g_host;
 
-// Constructors & Destructors must be handled
+// Constructors/Destructors can't be routed across directly, so instead we create a special 'empty' version of the class in bridge_special.h
+// that generates methods with the same signature as the real ones to keep the linker happy, and lets us then pass the 'this' pointer across
+// to the real functions where we do a placement new or destructor call. The fake class must be empty and do nothing in order to not interfere
+// with the real construction/destruction
 void onnx_AttributeProto_constructor(void* _this) {
   g_host->onnx_AttributeProto_constructor(_this);
 }
@@ -24,6 +34,14 @@ void onnx_AttributeProto_destructor(void* _this) {
 
 void onnxruntime_TensorShape_constructor(void* _this, __int64 const* p1, unsigned __int64 p2) {
   g_host->onnxruntime_TensorShape_constructor(_this, p1, p2);
+}
+
+void onnxruntime_OpKernelInfo_constructor(void* _this, void* p1, void* p2, void* p3, void* p4, void* p5, void* p6, void* p7) {
+  g_host->onnxruntime_OpKernelInfo_constructor(_this, p1, p2, p3, p4, p5, p6, p7);
+}
+
+void onnxruntime_OpKernelInfo_copy_constructor(void* _this, void* copy) {
+  g_host->onnxruntime_OpKernelInfo_copy_constructor(_this, copy);
 }
 
 // Override default new/delete so that we match the host's allocator
@@ -200,60 +218,60 @@ MLDataType DataTypeImpl::GetTensorType<float>() {
 
 namespace onnx {
 
-void AttributeProto::CheckTypeAndMergeFrom(google::protobuf::MessageLite const&) { __debugbreak(); }
+void AttributeProto::CheckTypeAndMergeFrom(google::protobuf::MessageLite const&) { assert(false); }
 void AttributeProto::CopyFrom(AttributeProto const& p1) { (this->*g_host->onnx_AttributeProto_CopyFrom)(p1); }
-void AttributeProto::Clear() { __debugbreak(); }
+void AttributeProto::Clear() { assert(false); }
 bool AttributeProto::IsInitialized() const {
-  __debugbreak();
+  assert(false);
   return false;
 }
 unsigned __int64 AttributeProto::ByteSizeLong() const {
-  __debugbreak();
+  assert(false);
   return 0;
 }
 bool AttributeProto::MergePartialFromCodedStream(google::protobuf::io::CodedInputStream*) {
-  __debugbreak();
+  assert(false);
   return false;
 }
-void AttributeProto::SerializeWithCachedSizes(google::protobuf::io::CodedOutputStream*) const { __debugbreak(); }
+void AttributeProto::SerializeWithCachedSizes(google::protobuf::io::CodedOutputStream*) const { assert(false); }
 bool AttributeProto_AttributeType_IsValid(int p1) {
   return g_host->onnx_AttributeProto_AttributeType_IsValid(p1);
 }
 std::string AttributeProto::GetTypeName() const {
-  __debugbreak();
+  assert(false);
   return "";
 }
 
 void TensorProto::CopyFrom(TensorProto const& p1) { (this->*g_host->onnx_TensorProto_CopyFrom)(p1); }
 }  // namespace onnx
 
-google::protobuf::internal::LogMessage::LogMessage(google::protobuf::LogLevel, char const*, int) { __debugbreak(); }
-google::protobuf::internal::LogMessage::~LogMessage() { __debugbreak(); }
+google::protobuf::internal::LogMessage::LogMessage(google::protobuf::LogLevel, char const*, int) { assert(false); }
+google::protobuf::internal::LogMessage::~LogMessage() { assert(false); }
 google::protobuf::internal::LogMessage& google::protobuf::internal::LogMessage::operator<<(char const*) {
-  __debugbreak();
+  assert(false);
   return *this;
 }
 
-void google::protobuf::internal::LogFinisher::operator=(google::protobuf::internal::LogMessage&) { __debugbreak(); }
+void google::protobuf::internal::LogFinisher::operator=(google::protobuf::internal::LogMessage&) { assert(false); }
 
 google::protobuf::MessageLite* google::protobuf::MessageLite::New(google::protobuf::Arena*) const {
-  __debugbreak();
+  assert(false);
   return nullptr;
 }
 
 std::string google::protobuf::MessageLite::InitializationErrorString() const {
-  __debugbreak();
+  assert(false);
   return "";
 }
 
-void google::protobuf::MessageLite::SerializeWithCachedSizes(google::protobuf::io::CodedOutputStream*) const { __debugbreak(); }
+void google::protobuf::MessageLite::SerializeWithCachedSizes(google::protobuf::io::CodedOutputStream*) const { assert(false); }
 unsigned char* google::protobuf::MessageLite::SerializeWithCachedSizesToArray(unsigned char*) const {
-  __debugbreak();
+  assert(false);
   return nullptr;
 }
 
 unsigned char* google::protobuf::MessageLite::InternalSerializeWithCachedSizesToArray(bool, unsigned char*) const {
-  __debugbreak();
+  assert(false);
   return nullptr;
 }
 
@@ -263,7 +281,7 @@ void google::protobuf::internal::RepeatedPtrFieldBase::Reserve(int p1) {
 
 template <>
 onnx::AttributeProto* google::protobuf::Arena::CreateMaybeMessage<onnx::AttributeProto>(google::protobuf::Arena*) {
-  __debugbreak();
+  assert(false);
   return nullptr;
 }
 template <>
@@ -271,63 +289,44 @@ onnx::TensorProto* google::protobuf::Arena::CreateMaybeMessage<onnx::TensorProto
   return g_host->google_protobuf_Arena_CreateMaybeMessage_onnx_TensorProto(p1);
 }
 
-#if 0
-google::protobuf::internal::ExplicitlyConstructed<std::string> google::protobuf::internal::fixed_address_empty_string() {
-	return g_host->google::protobuf::internal::fixed_address_empty_string();
-}
-#endif
-
 const ::std::string& google::protobuf::internal::GetEmptyStringAlreadyInited() {
   return g_host->google_protobuf_internal_GetEmptyStringAlreadyInited();
 }
 
 namespace onnxruntime {
 
-CPUIDInfo::CPUIDInfo() noexcept { __debugbreak(); }
-
-#if 0
-	std::ostream& operator<<(std::ostream& stream, TensorShape const&) { return stream; }
-#endif
+CPUIDInfo::CPUIDInfo() noexcept { assert(false); }
 
 namespace logging {
 Logger* LoggingManager::s_default_logger_{};
 const char* Category::onnxruntime{};
-Capture::~Capture() { __debugbreak(); }
+Capture::~Capture() { assert(false); }
 
 }  // namespace logging
 
 namespace common {
 
-Status::Status(StatusCategory, int, char const*) { __debugbreak(); }
+Status::Status(StatusCategory, int, char const*) { assert(false); }
 
 Status::Status(StatusCategory category, int code, const std::string& msg) {
-  __debugbreak();
+  assert(false);
 }
 
 std::string Status::ToString() const {
-  __debugbreak();
+  assert(false);
   return "";
 }
 
 const std::string& Status::ErrorMessage() const noexcept {
-  __debugbreak();
+  assert(false);
   static std::string dummy;
   return dummy;
 }
 
-#if 0
-		Status
-			MapNamesToMLValueIdxs(const std::vector<std::string>& names,
-				const OrtValueNameIdxMap& ort_value_name_idx_map,
-				std::vector<int>& ort_value_idxs) {
-			return Status::OK();
-		}
-#endif
-
 }  // namespace common
 
 std::vector<std::string> GetStackTrace() {
-  __debugbreak();
+  assert(false);
   return {};
 }
 
@@ -351,12 +350,12 @@ std::shared_ptr<IAllocator> CreateAllocator(DeviceAllocatorRegistrationInfo info
 }
 
 Status IExecutionProvider::Compile(const std::vector<Node*>&, std::string&) {
-  __debugbreak();
+  assert(false);
   return Status::OK();
 }
 
 Status IExecutionProvider::Compile(const std::vector<Node*>&, std::vector<NodeComputeInfo>&) {
-  __debugbreak();
+  assert(false);
   return Status::OK();
 }
 
@@ -365,7 +364,7 @@ void IExecutionProvider::InsertAllocator(std::shared_ptr<IAllocator> p1) {
 }
 
 Status IExecutionProvider::Sync() const {
-  __debugbreak();
+  assert(false);
   return Status::OK();
 }
 Status IExecutionProvider::OnRunStart() {
@@ -381,7 +380,7 @@ std::shared_ptr<IAllocator> IExecutionProvider::GetAllocator(int p1, OrtMemType 
 }
 
 std::shared_ptr<KernelRegistry> IExecutionProvider::GetKernelRegistry() const {
-  __debugbreak();
+  assert(false);
   return nullptr;
 }
 
@@ -393,16 +392,8 @@ Status KernelRegistry::Register(KernelCreateInfo&& p1) {
   return g_host->KernelRegistry_Register(this, std::move(p1));
 }
 
-#if 0
-	const std::vector<MLDataType>& DataTypeImpl::AllTensorTypes() {
-		__debugbreak();
-		static std::vector<MLDataType> temp;
-		return temp;
-	}
-#endif
-
 std::ostream& operator<<(std::ostream& out, const DataTypeImpl* data_type) {
-  __debugbreak();
+  assert(false);
   return out;
 }
 
@@ -410,57 +401,30 @@ int64_t TensorShape::Size() const {
   return g_host->TensorShape_Size(this);
 }
 
-#if 0
-	int64_t TensorShape::SizeFromDimension(uint64_t) const { return 0; }
-	int64_t TensorShape::SizeToDimension(uint64_t) const { return 0; }
-
-#endif
-
 TensorShape TensorShape::Slice(unsigned __int64 p1) const {
   return g_host->TensorShape_Slice(this, p1);
 }
 
-#if 0
-	TensorShape TensorShape::Slice(uint64_t, uint64_t) const { return *(TensorShape*)nullptr; }
-#endif
-
 std::string TensorShape::ToString() const {
-  __debugbreak();
+  assert(false);
   return "";
 }
 
-#if 0
-	Status FeedsFetchesInfo::MapNamesToMLValueIdxs(const std::vector<std::string>&, const OrtValueNameIdxMap&, std::vector<int>&) { return Status::OK(); }
-
-	Status FeedsFetchesManager::Create(const std::vector<std::string>&, std::vector<std::string> const&, OrtValueNameIdxMap const&, std::unique_ptr<FeedsFetchesManager>&) { return Status::OK(); }
-
-#endif
-
 KernelDefBuilder& KernelDefBuilder::Provider(char const* p1) {
-  return g_host->KernelDefBuilder_Provider(this, p1);
+  return (this->*g_host->KernelDefBuilder_Provider)(p1);
 }
 
 KernelDefBuilder& KernelDefBuilder::SetName(char const* p1) {
-  return g_host->KernelDefBuilder_SetName(this, p1);
+  return (this->*g_host->KernelDefBuilder_SetName)(p1);
 }
 
 KernelDefBuilder& KernelDefBuilder::SetDomain(char const* p1) {
-  return g_host->KernelDefBuilder_SetDomain(this, p1);
+  return (this->*g_host->KernelDefBuilder_SetDomain)(p1);
 }
 
 KernelDefBuilder& KernelDefBuilder::TypeConstraint(char const* p1, const DataTypeImpl* p2) {
-  return g_host->KernelDefBuilder_TypeConstraint(this, p1, p2);
+  return (this->*g_host->KernelDefBuilder_TypeConstraint)(p1, p2);
 }
-
-#if 0
-	KernelDefBuilder& KernelDefBuilder::TypeConstraint(char const*, const std::vector<const DataTypeImpl*>&) { return *this; }
-
-	KernelDefBuilder& KernelDefBuilder::Alias(int, int) {
-		return *this;
-	}
-
-	KernelDefBuilder& KernelDefBuilder::MayInplace(int, int) { return *this; }
-#endif
 
 const NodeAttributes& Node::GetAttributes() const noexcept {
   return g_host->Node_GetAttributes(this);
@@ -490,20 +454,6 @@ ONNX_NAMESPACE::DataType NodeArg::Type() const noexcept {
   return g_host->NodeArg_Type(this);
 }
 
-#if 0
-
-	const std::vector<const NodeArg*>& GraphViewer::GetInputs() const noexcept { return *(std::vector<const NodeArg*>*)nullptr; }
-
-	const std::vector<const NodeArg*>& GraphViewer::GetOutputs() const noexcept {
-		static std::vector<const NodeArg*> dummy;
-		return dummy;
-	}
-
-	const std::vector<const NodeArg*>& GraphViewer::GetInputsIncludingInitializers() const noexcept {
-		return *(std::vector<const NodeArg*>*)nullptr;
-	}
-#endif
-
 int GraphViewer::MaxNodeIndex() const noexcept {
   return g_host->GraphViewer_MaxNodeIndex(this);
 }
@@ -520,292 +470,70 @@ const InitializedTensorSet& GraphViewer::GetAllInitializedTensors() const noexce
   return g_host->GraphViewer_GetAllInitializedTensors(this);
 }
 
-#if 0
-
-	const GraphViewer* SessionState::GetGraphViewer() const {
-		return nullptr;
-	}
-
-	SessionState const* SessionState::GetSubgraphSessionState(uint64_t, std::string const&) const { return nullptr; }
-#endif
-OpKernelInfo::OpKernelInfo(const OpKernelInfo& other) : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.constant_initialized_tensors_,
-                                                                     other.ort_value_name_idx_map_, other.funcs_mgr_, other.data_transfer_mgr_) {
-  __debugbreak();
-}
-OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
-                           const KernelDef& kernel_def,
-                           const IExecutionProvider& execution_provider,
-                           const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
-                           const OrtValueNameIdxMap& ort_value_name_idx_map,
-                           const FuncManager& funcs_mgr,
-                           const DataTransferManager& data_transfer_mgr)
-    : OpNodeProtoHelper(&proto_helper_context_),
-      node_(node),
-      kernel_def_(kernel_def),
-      execution_provider_(&execution_provider),
-      constant_initialized_tensors_(constant_initialized_tensors),
-      ort_value_name_idx_map_(ort_value_name_idx_map),
-      funcs_mgr_(funcs_mgr),
-      data_transfer_mgr_(data_transfer_mgr),
-      proto_helper_context_(node) {
-  __debugbreak();
-}
-
 const Node& OpKernelInfo::node() const noexcept {
-  __debugbreak();
+  assert(false);
   return *(Node*)nullptr;
 }
 
 Tensor* OpKernelContext::Output(int, const TensorShape&) {
-  __debugbreak();
+  assert(false);
   return nullptr;
 }
-
-#if 0
-
-	const DataTypeImpl* OpKernelContext::InputType(int) const { return nullptr; }
-
-	unsigned __int64 OpKernelContext::GetNodeIndex() const { return 0; }
-#endif
 
 const OrtValue* OpKernelContext::GetInputMLValue(int) const {
-  __debugbreak();
+  assert(false);
   return nullptr;
 }
-
-#if 0
-
-	OrtValue* OpKernelContext::GetOrCreateOutputMLValue(int) { return nullptr; }
-#endif
 
 const IExecutionProvider* OpKernelInfo::GetExecutionProvider() const noexcept {
-  __debugbreak();
+  assert(false);
   return nullptr;
 }
 
-#if 0
-	const OrtValue* OpKernelContext::GetImplicitInputMLValue(int) const {
-		return nullptr;
-	}
-
-	OrtValue* OpKernelContext::GetOutputMLValue(int) {
-		return nullptr;
-	}
-
-	int OpKernelContext::NumVariadicInputs(uint64_t) const { return 0; }
-#endif
 Status OpKernelContext::GetTempSpaceAllocator(std::shared_ptr<IAllocator>*) const {
-  __debugbreak();
+  assert(false);
   return Status::OK();
 }
-
-#if 0
-	uint64_t ProtoHelperNodeContext::getNumInputs() const { return 0; }
-	uint64_t ProtoHelperNodeContext::getNumOutputs() const { return 0; }
-
-	template <>
-	template <>
-	Status OpNodeProtoHelper<ProtoHelperNodeContext>::GetAttr<onnx::GraphProto>(const std::string&, onnx::GraphProto*) const {
-		return Status::OK();
-	}
-#endif
 
 template <>
 template <>
 Status OpNodeProtoHelper<ProtoHelperNodeContext>::GetAttr<float>(const std::string&, float*) const {
-  __debugbreak();
+  assert(false);
   return Status::OK();
 }
 
 template <>
 template <>
 Status OpNodeProtoHelper<ProtoHelperNodeContext>::GetAttr<int64_t>(const std::string&, int64_t*) const {
-  __debugbreak();
+  assert(false);
   return Status::OK();
 }
 
 template <>
 template <>
 Status OpNodeProtoHelper<ProtoHelperNodeContext>::GetAttr<std::string>(const std::string&, std::string*) const {
-  __debugbreak();
+  assert(false);
   return Status::OK();
 }
-
-#if 0
-
-	template <>
-	template <>
-	Status OpNodeProtoHelper<ProtoHelperNodeContext>::GetAttr<ONNX_NAMESPACE::TensorProto>(const std::string&, ONNX_NAMESPACE::TensorProto*) const { return Status::OK(); }
-
-	template <>
-	template <>
-	Status OpNodeProtoHelper<ProtoHelperNodeContext>::GetAttrs<float>(const std::string&, std::vector<float>&) const {
-		return Status::OK();
-	}
-#endif
 
 template <>
 template <>
 Status OpNodeProtoHelper<ProtoHelperNodeContext>::GetAttrs<std::string>(const std::string&, std::vector<std::string>&) const {
-  __debugbreak();
+  assert(false);
   return Status::OK();
 }
 template <>
 template <>
 Status OpNodeProtoHelper<ProtoHelperNodeContext>::GetAttrs<int64_t>(const std::string&, std::vector<int64_t>&) const {
-  __debugbreak();
+  assert(false);
   return Status::OK();
 }
 
-#if 0
-	template <>
-	void OrtValueTensorSlicer<OrtValue>::Iterator::MaterializeMLValue() const {}
-
-	template <>
-	void OrtValueTensorSlicer<const OrtValue>::Iterator::MaterializeMLValue() const {}
-
-	template <>
-	OrtValueTensorSlicer<OrtValue> OrtValueTensorSlicer<OrtValue>::Create(OrtValue&, int64_t, int64_t) { return *(OrtValueTensorSlicer<OrtValue>*)nullptr; }
-
-	template <>
-	OrtValueTensorSlicer<const OrtValue> OrtValueTensorSlicer<const OrtValue>::Create(const OrtValue&, int64_t, int64_t) { return *(OrtValueTensorSlicer<const OrtValue>*)nullptr; }
-
-	template <>
-	OrtValueTensorSlicer<OrtValue>::Iterator::Iterator(OrtValue& ort_value, size_t, size_t, int64_t position, OrtValueTensorSlicer<OrtValue>::Iterator::Direction direction)
-		: ort_value_{ &ort_value },
-		position_{ position },
-		increment_by_{ direction == Direction::kForward ? 1 : -1 },
-		position_materialized_{ -1 } {
-	}
-
-	template <>
-	OrtValueTensorSlicer<const OrtValue>::Iterator::Iterator(const OrtValue& ort_value, size_t, size_t, int64_t position, OrtValueTensorSlicer<const OrtValue>::Iterator::Direction direction)
-		: ort_value_{ &ort_value },
-		position_{ position },
-		increment_by_{ direction == Direction::kForward ? 1 : -1 },
-		position_materialized_{ -1 } {
-	}
-
-	namespace utils {
-
-		Status ExecuteGraphWithCachedInfo(SessionState const&, FeedsFetchesManager const&, std::vector<OrtValue> const&, std::vector<OrtValue>&, std::unordered_map<unsigned __int64, std::function<Status(TensorShape const&, OrtValue&)>> const&, bool, bool const&, class onnxruntime::logging::Logger const&) { return Status::OK(); }
-
-		Status ExecuteGraph(SessionState const&, FeedsFetchesManager&, std::vector<OrtValue> const&, std::vector<OrtValue>&, std::unordered_map<uint64_t, std::function<Status(TensorShape const&, OrtValue&)>> const&, bool, bool const&, logging::Logger const&, bool) { return Status::OK(); }
-
-		TensorShape GetTensorShapeFromTensorShapeProto(ONNX_NAMESPACE::TensorShapeProto const&) {
-			return *(TensorShape*)nullptr;
-		}
-
-		MLDataType
-			GetMLDataType(NodeArg const&) {
-			return nullptr;
-		}
-
-		enum ONNX_NAMESPACE::TensorProto_DataType GetTensorProtoType(const Tensor&) {
-			return ONNX_NAMESPACE::TensorProto_DataType(0);
-		}
-
-		template <>
-		Status UnpackTensor<bool>(const ONNX_NAMESPACE::TensorProto&, void const*, size_t, bool*, int64_t) { return Status::OK(); }
-		template <>
-		Status UnpackTensor<float>(const ONNX_NAMESPACE::TensorProto&, void const*, size_t, float*, int64_t) { return Status::OK(); }
-		template <>
-		Status UnpackTensor<double>(const ONNX_NAMESPACE::TensorProto&, void const*, size_t, double*, int64_t) { return Status::OK(); }
-		template <>
-		Status UnpackTensor<int8_t>(const ONNX_NAMESPACE::TensorProto&, void const*, size_t, int8_t*, int64_t) { return Status::OK(); }
-		template <>
-		Status UnpackTensor<uint8_t>(const ONNX_NAMESPACE::TensorProto&, void const*, size_t, uint8_t*, int64_t) { return Status::OK(); }
-		template <>
-		Status UnpackTensor<int16_t>(const ONNX_NAMESPACE::TensorProto&, void const*, size_t, int16_t*, int64_t) { return Status::OK(); }
-		template <>
-		Status UnpackTensor<uint16_t>(const ONNX_NAMESPACE::TensorProto&, void const*, size_t, uint16_t*, int64_t) { return Status::OK(); }
-		template <>
-		Status UnpackTensor<int32_t>(const ONNX_NAMESPACE::TensorProto&, void const*, size_t, int32_t*, int64_t) { return Status::OK(); }
-		template <>
-		Status UnpackTensor<uint32_t>(const ONNX_NAMESPACE::TensorProto&, void const*, size_t, uint32_t*, int64_t) { return Status::OK(); }
-		template <>
-		Status UnpackTensor<int64_t>(const ONNX_NAMESPACE::TensorProto&, void const*, size_t, int64_t*, int64_t) { return Status::OK(); }
-		template <>
-		Status UnpackTensor<uint64_t>(const ONNX_NAMESPACE::TensorProto&, void const*, size_t, uint64_t*, int64_t) { return Status::OK(); }
-		template <>
-		Status UnpackTensor<MLFloat16>(const ONNX_NAMESPACE::TensorProto&, void const*, size_t, MLFloat16*, int64_t) { return Status::OK(); }
-
-	}  // namespace utils
-
-	bool OpKernelInfo::TryGetConstantInput(int, const Tensor**) const {
-		return false;
-	}
-#endif
 const KernelDef& OpKernelInfo::GetKernelDef() const {
-  __debugbreak();
+  assert(false);
   return *(KernelDef*)nullptr;
 }
 
-#if 0
-	const std::vector<const DataTypeImpl*>& DataTypeImpl::AllFixedSizeTensorTypes() {
-		static std::vector<const DataTypeImpl*> dummy;
-		return dummy;
-	}
-
-	const std::vector<const DataTypeImpl*>& DataTypeImpl::AllNumericTensorTypes() {
-		static std::vector<const DataTypeImpl*> dummy;
-		return dummy;
-	}
-
-	Tensor::Tensor(DataTypeImpl const*, TensorShape const&, std::shared_ptr<IAllocator>, __int64) : alloc_info_(*(OrtMemoryInfo*)nullptr) {}
-	Tensor::Tensor(DataTypeImpl const*, TensorShape const&, void*, OrtMemoryInfo const& info, __int64) : alloc_info_(info) {}
-	Tensor::~Tensor() {}
-
-	namespace math {
-
-		float halfToFloat(uint16_t) { return 0.0f; }
-		uint16_t floatToHalf(float) { return 0; }
-
-		template <>
-		void CopyVector<float, CPUMathUtil>(int, float const*, float*, CPUMathUtil*) {}
-
-		template <>
-		void RowwiseMax<float, CPUMathUtil>(int, int, float const*, float*, CPUMathUtil*) {}
-
-		template <>
-		void Gemm<float, CPUMathUtil>(CBLAS_TRANSPOSE, CBLAS_TRANSPOSE, __int64, __int64, __int64, float, float const*, float const*, float, float*, CPUMathUtil*) {}
-		template <>
-		void GemmEx<float, CPUMathUtil>(CBLAS_TRANSPOSE, CBLAS_TRANSPOSE, int, int, int, float, float const*, int, float const*, int, float, float*, int, CPUMathUtil*) {}
-
-		template <>
-		void Sqr<float, class CPUMathUtil>(int, float const*, float*, CPUMathUtil*) {}
-		template <>
-		void Axpy<float, CPUMathUtil>(int, float, float const*, float*, CPUMathUtil*) {}
-		template <>
-		void Powx<float, CPUMathUtil>(int, float const*, float, float*, CPUMathUtil*) {}
-		template <>
-		void Mul<float, CPUMathUtil>(int, float const*, float const*, float*, CPUMathUtil*) {}
-		template <>
-		void Col2im<float, CPUMathUtil, 2>(float const*, __int64, __int64, __int64, __int64, __int64, __int64, __int64, __int64, __int64, __int64, __int64, __int64, __int64, float*, CPUMathUtil*) {}
-
-		template <>
-		void Gemv<float, CPUMathUtil>(enum CBLAS_TRANSPOSE, int, int, float, float const*, float const*, float, float*, CPUMathUtil*) {}
-
-		template <>
-		void Exp<float, CPUMathUtil>(int, float const*, float*, CPUMathUtil*) {}
-
-		template <>
-		void Set<float, CPUMathUtil>(__int64, float, float*, CPUMathUtil*) {}
-	}  // namespace math
-
-	namespace concurrency {
-
-		//ThreadPool::ThreadPool(const std::string&, int) {}
-
-		int ThreadPool::NumThreads() const {
-			return 0;
-		}
-
-		void ThreadPool::Schedule(std::function<void()>) {}
-		void ThreadPool::ParallelFor(int, std::function<void(int)>) {}
-
-	}  // namespace concurrency
-#endif
 }  // namespace onnxruntime
 
 #include "core/providers/cpu/math/element_wise_ops.h"
@@ -817,42 +545,42 @@ const KernelDef& OpKernelInfo::GetKernelDef() const {
 namespace onnxruntime {
 template <>
 Status Sum_6<float>::Compute(OpKernelContext*) const {
-  __debugbreak();
+  assert(false);
   return Status::OK();
 }
 
 template <>
 Status Pool<float, AveragePool>::Compute(OpKernelContext*) const {
-  __debugbreak();
+  assert(false);
   return Status::OK();
 }
 
 template <>
 Status Pool<float, MaxPool<1>>::Compute(OpKernelContext*) const {
-  __debugbreak();
+  assert(false);
   return Status::OK();
 }
 
 template <>
 Status Pool<float, MaxPool<8>>::Compute(OpKernelContext*) const {
-  __debugbreak();
+  assert(false);
   return Status::OK();
 }
 
 template <>
 Status LRN<float>::Compute(OpKernelContext*) const {
-  __debugbreak();
+  assert(false);
   return Status::OK();
 }
 
 template <>
 Status BatchNorm<float>::Compute(OpKernelContext*) const {
-  __debugbreak();
+  assert(false);
   return Status::OK();
 }
 
 Status Conv<float>::Compute(OpKernelContext*) const {
-  __debugbreak();
+  assert(false);
   return Status::OK();
 }
 }  // namespace onnxruntime
