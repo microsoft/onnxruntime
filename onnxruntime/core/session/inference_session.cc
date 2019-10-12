@@ -770,6 +770,23 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
   }
 
   --current_num_runs_;
+
+  // keep track of telemetry
+  ++total_runs_since_last_;
+  total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
+
+  // time to send telemetry?
+  if (TimeDiffMicroSeconds(time_sent_last_) > kDurationBetweenSending) {
+    // send the telemetry
+    const Env& env = Env::Default();
+    env.GetTelemetryProvider().LogRuntimePerf(session_id_, total_runs_since_last_, total_run_duration_since_last_);
+    // reset counters
+    time_sent_last_ = std::chrono::high_resolution_clock::now();
+    total_runs_since_last_ = 0;
+    total_run_duration_since_last_ = 0;
+  }
+
+  // send out profiling events (optional)
   if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
   }

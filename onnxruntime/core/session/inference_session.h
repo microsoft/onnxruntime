@@ -491,8 +491,12 @@ class InferenceSession {
   InterOpDomains interop_domains_;
 #endif
 
-  // a monotonically increasing session id for use in telemetry
-  static std::atomic<uint32_t> global_session_id_;
-  uint32_t session_id_;
+  // used to support platform telemetry 
+  static std::atomic<uint32_t> global_session_id_;  // a monotonically increasing session id
+  uint32_t session_id_;                             // the current session's id
+  uint32_t total_runs_since_last_;                  // the total number of Run() calls since the last report
+  long long total_run_duration_since_last_;         // the total duration (us) of Run() calls since the last report
+  TimePoint time_sent_last_;                        // the TimePoint of the last report
+  const long long kDurationBetweenSending = 1000* 1000 * 60 * 10;  // duration in (us).  send a report every 10 mins
 };
 }  // namespace onnxruntime

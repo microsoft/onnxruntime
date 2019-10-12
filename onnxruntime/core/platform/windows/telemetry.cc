@@ -77,15 +77,74 @@ void WindowsTelemetry::LogProcessInfo() const {
   process_info_logged = true;
 }
 
-void WindowsTelemetry::LogSessionCreation(uint32_t sessionId, int64_t irVersion, const std::string& modelProducerName,
-                                          const std::string& modelProducerVersion, const std::string& modelDomain,
-                                          const std::unordered_map<std::string, int>& domainToVersionMap, 
-                                          const std::string& modelGraphName, 
-                                          const std::unordered_map<std::string, std::string>& modelMetaData,
-                                          const std::string& loadedFrom, const std::vector<std::string>& executionProviderIds) const {
+void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
+                                          const std::string& model_producer_version, const std::string& model_domain,
+                                          const std::unordered_map<std::string, int>& domain_to_version_map,
+                                          const std::string& model_graph_name,
+                                          const std::unordered_map<std::string, std::string>& model_metadata,
+                                          const std::string& loadedFrom, const std::vector<std::string>& execution_provider_ids) const {
+  if (global_register_count_ == 0)
+    return;
+
+  // build the strings we need
+
+  std::string domain_to_verison_string;
+  bool first = true;
+  for (auto& i : domain_to_version_map) {
+    if (first) {
+      first = false;
+    } else {
+      domain_to_verison_string += ',';
+    }
+    domain_to_verison_string += i.first;
+    domain_to_verison_string += '=';
+    domain_to_verison_string += std::to_string(i.second);
+  }
+
+  std::string model_metadata_string;
+  first = true;
+  for (auto& i : model_metadata) {
+    if (first) {
+      first = false;
+    } else {
+      model_metadata_string += ',';
+    }
+    model_metadata_string += i.first;
+    model_metadata_string += '=';
+    model_metadata_string += i.second;
+  }
+
+  std::string execution_provider_string;
+  first = true;
+  for (auto& i : execution_provider_ids) {
+    if (first) {
+      first = false;
+    } else {
+      execution_provider_string += ',';
+    }
+    execution_provider_string += i;
+  }
+
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "SessionCreation",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    // Telemetry info
+                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingUInt32(session_id, "sessionId"),
+                    TraceLoggingInt64(ir_version, "irVersion"),
+                    TraceLoggingString(model_producer_name.c_str(), "modelProducerName"),
+                    TraceLoggingString(model_producer_version.c_str(), "modelProducerVersion"),
+                    TraceLoggingString(model_domain.c_str(), "modelDomain"),
+                    TraceLoggingString(domain_to_verison_string.c_str(), "domainToVersionMap"),
+                    TraceLoggingString(model_graph_name.c_str(), "modelGraphName"),
+                    TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
+                    TraceLoggingString(loadedFrom.c_str(), "loadedFrom"),
+                    TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"));
 }
 
-void WindowsTelemetry::LogRuntimeError(uint32_t sessionId, const common::Status& status, const char* file,
+void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
                                        const char* function, uint32_t line) const {
   if (global_register_count_ == 0)
     return;
@@ -96,7 +155,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t sessionId, const common::Status&
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
-                    TraceLoggingUInt32(sessionId, "sessionId"),
+                    TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingUInt32(status.Code(), "errorCode"),
                     TraceLoggingUInt32(status.Category(), "errorCategory"),
                     TraceLoggingString(status.ErrorMessage().c_str(), "errorMessage"),
@@ -105,7 +164,19 @@ void WindowsTelemetry::LogRuntimeError(uint32_t sessionId, const common::Status&
                     TraceLoggingInt32(line, "line"));
 }
 
-void WindowsTelemetry::LogRuntimePerf(uint32_t sessionId, uint32_t runTotalTimeMs) const {
+void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last) const {
+  if (global_register_count_ == 0)
+    return;
+
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "RuntimePerf",
+                    TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    // Telemetry info
+                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingUInt32(session_id, "sessionId"),
+                    TraceLoggingUInt32(total_runs_since_last, "totalRuns"),
+                    TraceLoggingInt64(total_run_duration_since_last, "totalRunDuration"));
 }
 
 }  // namespace onnxruntime
