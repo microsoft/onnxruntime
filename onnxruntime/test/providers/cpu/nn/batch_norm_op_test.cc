@@ -39,8 +39,11 @@ void TestBatchNorm(const InputDataMap& input_data_map,
   test.AddInput<float>("var", input_shapes_map.at("var"), input_data_map.at("var"));
   test.AddOutput<float>("output", expected_output_shape, expected_output);
   // Weight as input is not supported by TensorRT and spatial == 0 is not supported by Nuphar
-  test.Run(expect_result, err_str, spatial_mode != 0 ? {kTensorrtExecutionProvider} 
-                                                      :{kTensorrtExecutionProvider, kNupharExecutionProvider});  
+  std::unordered_set<std::string> excluded_eps = {kCudaExecutionProvider, kTensorrtExecutionProvider};
+  if (spatial_mode == 0) {
+    excluded_eps.insert(kNGraphExecutionProvider);
+  }
+  test.Run(expect_result, err_str, excluded_eps);
 }
 
 TEST(BatchNormTest, PositiveTestCase) {
