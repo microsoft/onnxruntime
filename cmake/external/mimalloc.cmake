@@ -4,7 +4,6 @@ set(mimalloc_root_dir ${PROJECT_SOURCE_DIR}/external/mimalloc)
 add_definitions(-DUSE_MIMALLOC) # used in ONNXRuntime
 include_directories(${mimalloc_root_dir}/include)
 
-option(MI_USE_CXX "" ON)
 option(MI_OVERRIDE "" OFF)
 option(MI_BUILD_TESTS "" OFF)
 
