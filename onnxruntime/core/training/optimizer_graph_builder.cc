@@ -516,6 +516,15 @@ Status OptimizerGraphBuilder::Build(Graph& graph,
     ORT_RETURN_IF_ERROR(GetArgDefsFromGraph(graph, gradient_names, gradient_argdefs));
   }
 
+  // unscale gradients by loss scaling factor
+  if (opt_graph_config_.use_mixed_precision) {
+    if (!opt_graph_config_.loss_scale_input_name.empty()) {
+      ArgDef loss_scaling_factor_argdef{opt_graph_config_.loss_scale_input_name};
+      ORT_RETURN_IF_ERROR(AddGradientUnscaling(nodearg_name_generator, loss_scaling_factor_argdef,
+                                               gradient_argdefs, graph_defs));
+    }
+  }
+
   const bool is_gradient_accumulation_enabled = opt_graph_config_.gradient_accumulation_steps > 1;
   const bool is_all_reduce_enabled = opt_graph_config_.world_size > 1;
 
@@ -538,15 +547,6 @@ Status OptimizerGraphBuilder::Build(Graph& graph,
   // add all-reduce
   if (is_all_reduce_enabled) {
     ORT_RETURN_IF_ERROR(AddAllReduceForGradients(gradient_argdefs, graph_defs));
-  }
-
-  // unscale gradients by loss scaling factor
-  if (opt_graph_config_.use_mixed_precision) {
-    if (!opt_graph_config_.loss_scale_input_name.empty()) {
-      ArgDef loss_scaling_factor_argdef{opt_graph_config_.loss_scale_input_name};
-      ORT_RETURN_IF_ERROR(AddGradientUnscaling(nodearg_name_generator, loss_scaling_factor_argdef,
-                                               gradient_argdefs, graph_defs));
-    }
   }
 
   // check if all gradients are finite

@@ -259,7 +259,7 @@ Status TrainingRunner::TrainingLoop(std::shared_ptr<IDataLoader> training_data_l
                                            &fetches));
 
           if (loss_scaler_) {
-            auto it = std::find(fetch_names.begin(), fetch_names.end(), kGradientAllIsFiniteOutputKey);
+            auto it = std::find(fetch_names.begin(), fetch_names.end(), opt_graph_outputs_[kGradientAllIsFiniteOutputKey]);
             if (it != fetch_names.end()) {
               const size_t index = static_cast<size_t>(std::distance(fetch_names.begin(), it));
               const Tensor& all_is_finite_t = fetches[index].Get<Tensor>();
