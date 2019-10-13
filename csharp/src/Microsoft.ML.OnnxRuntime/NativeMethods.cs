@@ -7,8 +7,16 @@ using System.Runtime.InteropServices;
 namespace Microsoft.ML.OnnxRuntime
 {
     [StructLayout(LayoutKind.Sequential)]
+    public struct OrtApiBase
+    {
+        public IntPtr GetApi;
+        public IntPtr GetVersionString;
+    };
+
+    [StructLayout(LayoutKind.Sequential)]
     public struct OrtApi
     {
+        public OrtApiBase base_;
         public IntPtr CreateStatus;
         public IntPtr GetErrorCode;
         public IntPtr GetErrorMessage;
@@ -38,6 +46,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CreateCustomOpDomain;
         public IntPtr CustomOpDomain_Add;
         public IntPtr AddCustomOpDomain;
+        public IntPtr RegisterCustomOpsLibrary;
 
         public IntPtr SessionGetInputCount;
         public IntPtr SessionGetOutputCount;
@@ -76,6 +85,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetTensorElementType;
         public IntPtr GetDimensionsCount;
         public IntPtr GetDimensions;
+        public IntPtr GetSymbolicDimensions;
         public IntPtr GetTensorShapeElementCount;
         public IntPtr GetTensorTypeAndShape;
         public IntPtr GetTypeInfo;
@@ -125,10 +135,15 @@ namespace Microsoft.ML.OnnxRuntime
 
         static OrtApi api_;
 
+        public delegate ref OrtApi DOrtGetApi(UInt32 version);
+
         static NativeMethods()
         {
+            DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetApi, typeof(DOrtGetApi));
+
             // TODO: Make this save the pointer, and not copy the whole structure across
-            api_ = OrtGetApi(1 /*ORT_API_VERSION*/);
+            api_ = (OrtApi)OrtGetApi(1 /*ORT_API_VERSION*/);
+
             OrtCreateEnv = (DOrtCreateEnv)Marshal.GetDelegateForFunctionPointer(api_.CreateEnv, typeof(DOrtCreateEnv));
             OrtReleaseEnv = (DOrtReleaseEnv)Marshal.GetDelegateForFunctionPointer(api_.ReleaseEnv, typeof(DOrtReleaseEnv));
             OrtGetErrorCode = (DOrtGetErrorCode)Marshal.GetDelegateForFunctionPointer(api_.GetErrorCode, typeof(DOrtGetErrorCode));
@@ -204,12 +219,13 @@ namespace Microsoft.ML.OnnxRuntime
             OrtGetTensorElementType = (DOrtGetTensorElementType)Marshal.GetDelegateForFunctionPointer(api_.GetTensorElementType, typeof(DOrtGetTensorElementType));
             OrtGetDimensionsCount = (DOrtGetDimensionsCount)Marshal.GetDelegateForFunctionPointer(api_.GetDimensionsCount, typeof(DOrtGetDimensionsCount));
             OrtGetDimensions = (DOrtGetDimensions)Marshal.GetDelegateForFunctionPointer(api_.GetDimensions, typeof(DOrtGetDimensions));
+            OrtGetSymbolicDimensions = (DOrtGetSymbolicDimensions)Marshal.GetDelegateForFunctionPointer(api_.GetSymbolicDimensions, typeof(DOrtGetSymbolicDimensions));
             OrtGetTensorShapeElementCount = (DOrtGetTensorShapeElementCount)Marshal.GetDelegateForFunctionPointer(api_.GetTensorShapeElementCount, typeof(DOrtGetTensorShapeElementCount));
             OrtReleaseValue = (DOrtReleaseValue)Marshal.GetDelegateForFunctionPointer(api_.ReleaseValue, typeof(DOrtReleaseValue));
         }
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern ref OrtApi OrtGetApi(UInt32 version);
+        public static extern ref OrtApiBase OrtGetApiBase();
 
         #region Runtime/Environment API
 
@@ -608,6 +624,23 @@ namespace Microsoft.ML.OnnxRuntime
                             long[] dim_values,
                             UIntPtr dim_values_length);
         public static DOrtGetDimensions OrtGetDimensions;
+
+        /**
+        * Get the symbolic dimension names for dimensions with a value of -1. 
+        * Order and number of entries is the same as values returned by GetDimensions. 
+        * The name may be empty for an unnamed symbolic dimension.
+        * e.g. 
+        * If OrtGetDimensions returns [-1, -1, 2], OrtGetSymbolicDimensions would return an array with 3 entries.
+        * If the values returned were ['batch', '', ''] it would indicate that
+        *  - the first dimension was a named symbolic dimension (-1 dim value and name in symbolic dimensions), 
+        *  - the second dimension was an unnamed symbolic dimension (-1 dim value and empty string), 
+        *  - the entry for the third dimension should be ignored as it is not a symbolic dimension (dim value >= 0).
+        */
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetSymbolicDimensions(
+                    IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo,
+                    IntPtr[] dim_params, /* const char* values, converted to string by caller */
+                    UIntPtr dim_params_length);
+        public static DOrtGetSymbolicDimensions OrtGetSymbolicDimensions;
 
         /**
          * How many elements does this tensor have.

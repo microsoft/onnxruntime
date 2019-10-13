@@ -199,6 +199,8 @@ struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
 
   size_t GetDimensionsCount() const;
   void GetDimensions(int64_t* values, size_t values_count) const;
+  void GetSymbolicDimensions(const char** values, size_t values_count) const;
+
   std::vector<int64_t> GetShape() const;
 };
 

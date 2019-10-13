@@ -72,9 +72,6 @@ static gsl::span<const T> SecondHalfSpan(const gsl::span<const T>& dspan) {
 
 template <typename T>
 Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(&context);
-  concurrency::ThreadPool* thread_pool = ctx_internal->GetOperatorThreadPool();
-
   auto& logger = context.Logger();
 
   // original lstm processing
@@ -204,6 +201,8 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
       std::fill(output.begin() + start, output.end(), T{});
     }
   }
+
+  concurrency::ThreadPool* thread_pool = context.GetOperatorThreadPool();
 
   if (direction_ == Direction::kBidirectional) {
     // spans for second direction

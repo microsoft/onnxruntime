@@ -302,14 +302,27 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
     if (outputs_[i].first == AllocationType::Delayed) {
       // functor to forward the allocation request from the subgraph to the If node's context so that the
       // allocation plan for the If node's output is used.
-      fetch_allocators[i] = [this, i](const TensorShape& shape, OrtValue& ort_value) {
-        // allocate
+      fetch_allocators[i] = [this, i, &fetches](const TensorShape& shape, const OrtMemoryInfo& location,
+                                                OrtValue& ort_value, bool& allocated) {
+        // for now we only allocate on CPU as currently all 'If' outputs are on CPU.
+        // if that does not match the required device we don't update the provided OrtValue and return false for
+        // 'allocated'. the execution frame will allocate a buffer on the required device, and the fetches copy
+        // logic in utils::ExecuteSubgraph will handle moving it to CPU (and into the tensor we allocated here)
         auto* tensor = context_.Output(i, shape);
+        if (!tensor)
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for If output ", i);
 
-        if (!tensor) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for If output ", i);
+        const OrtValue& value = *context_.GetOutputMLValue(i);
 
-        // return OrtValue for allocated tensor
-        ort_value = *context_.GetOutputMLValue(i);
+        if (tensor->Location().device == location.device) {
+          // return OrtValue for allocated tensor
+          ort_value = value;
+          allocated = true;
+        } else {
+          // put the allocated value into fetches so the copy logic in utils::ExecuteGraphImpl can use it
+          fetches[i] = value;
+        }
+
         return Status::OK();
       };
     }

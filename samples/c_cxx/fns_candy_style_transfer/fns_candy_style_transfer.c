@@ -9,7 +9,7 @@
 #include <objbase.h>
 #endif
 
-const OrtApi* g_ort = OrtGetApi(ORT_API_VERSION);
+const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
 #define ORT_ABORT_ON_ERROR(expr)                             \
   do {                                                       \

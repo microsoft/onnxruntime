@@ -39,14 +39,8 @@ ORT_API_STATUS_IMPL(OrtApis::CloneSessionOptions, const OrtSessionOptions* input
 // Set execution_mode.
 ORT_API_STATUS_IMPL(OrtApis::SetSessionExecutionMode, _In_ OrtSessionOptions* options,
                     ExecutionMode execution_mode) {
-  if (execution_mode < 0) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "execution_mode is not valid");
-  }
-
   switch (execution_mode) {
     case ORT_SEQUENTIAL:
-      options->value.execution_mode = execution_mode;
-      break;
     case ORT_PARALLEL:
       options->value.execution_mode = execution_mode;
       break;
@@ -155,7 +149,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetInterOpNumThreads, _In_ OrtSessionOptions* optio
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::OrtAddFreeDimensionOverride, _Inout_ OrtSessionOptions* options,
+ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverride, _Inout_ OrtSessionOptions* options,
                     _In_ const char* symbolic_dim, _In_ int64_t dim_override) {
   options->value.free_dimension_overrides.push_back(onnxruntime::FreeDimensionOverride{symbolic_dim, dim_override});
   return nullptr;
