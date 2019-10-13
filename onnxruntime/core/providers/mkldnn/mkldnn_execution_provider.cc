@@ -95,8 +95,8 @@ bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_
   bool mkldnn_nodes_in_the_graph = false;
   int max_node_index = graph_viewer.MaxNodeIndex();
 
-  for (auto index = 0; index < max_node_index; index++) {
-    auto node = graph_viewer.GetNode(index);
+  for (auto node_index = 0; node_index < max_node_index; node_index++) {
+    auto node = graph_viewer.GetNode(node_index);
     if (node == NULL)
       continue;
 
