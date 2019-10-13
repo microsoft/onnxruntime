@@ -513,6 +513,7 @@ void OpTester::Run(ExpectResult expect_result,
   SessionOptions so;
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
+  so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
   so.enable_sequential_execution = sequential_execution;
   Run(so, expect_result, expected_failure_string, excluded_provider_types, run_options, execution_providers);
 }
