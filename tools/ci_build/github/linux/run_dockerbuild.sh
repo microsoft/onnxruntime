@@ -8,7 +8,7 @@ CUDA_VER=cuda10.0-cudnn7.3
 while getopts c:o:d:r:p:x:a:v: parameter_Option
 do case "${parameter_Option}"
 in
-#android, ubuntu16.04, manylinux2010, ubuntu18.04
+#android, ubuntu16.04, manylinux2010, ubuntu18.04, CentOS7
 o) BUILD_OS=${OPTARG};;
 #cpu, gpu, tensorrt
 d) BUILD_DEVICE=${OPTARG};;
@@ -92,7 +92,7 @@ fi
 if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ] || [ $BUILD_DEVICE = "openvino" ] || [ $BUILD_DEVICE = "nnapi" ]; then
     RUNTIME=
 else
-    RUNTIME="--runtime=nvidia"
+    RUNTIME="--gpus all"
 fi
 
 DOCKER_RUN_PARAMETER="--name onnxruntime-$BUILD_DEVICE \

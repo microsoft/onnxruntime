@@ -72,7 +72,7 @@ TEST(OptimizerTest, Basic) {
   for (auto& node : graph.Nodes()) {
     auto* kernel = info.GetKernel(node.Index());
 
-    OpKernelContext op_kernel_context(&frame, kernel, logger);
+    OpKernelContext op_kernel_context(&frame, kernel, nullptr, logger);
 
     auto st = kernel->Compute(&op_kernel_context);
     ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();

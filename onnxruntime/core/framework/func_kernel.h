@@ -38,7 +38,7 @@ class FunctionKernel : public OpKernel {
 
   virtual Status Compute(OpKernelContext* context) const override {
     auto* context_internal = static_cast<OpKernelContextInternal*>(context);
-    return func_(func_state_, OrtGetApi(ORT_API_VERSION), reinterpret_cast<OrtKernelContext*>(context_internal));
+    return func_(func_state_, OrtGetApiBase()->GetApi(ORT_API_VERSION), reinterpret_cast<OrtKernelContext*>(context_internal));
   }
 
  private:

@@ -995,6 +995,15 @@ TEST(MathOpTest, Equal_bool) {
   test.Run();
 }
 
+TEST(MathOpTest, Equal_11_bool) {
+  OpTester test("Equal", 11);
+  std::vector<int64_t> dims{4};
+  test.AddInput<bool>("A", dims, {false, true, false, true});
+  test.AddInput<bool>("B", dims, {true, true, true, true});
+  test.AddOutput<bool>("C", dims, {false, true, false, true});
+  test.Run();
+}
+
 TEST(MathOpTest, Equal_bool_scalar0) {
   OpTester test("Equal");
   test.AddInput<bool>("A", {1}, {false});
