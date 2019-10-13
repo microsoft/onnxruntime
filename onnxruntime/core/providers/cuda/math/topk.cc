@@ -18,7 +18,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     TopK,
     kOnnxDomain,
-    10, 11,
+    10,11,
     kCudaExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     TopK<true>);
