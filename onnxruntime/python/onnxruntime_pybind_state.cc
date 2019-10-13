@@ -546,8 +546,8 @@ void addObjectMethods(py::module& m) {
       .value("ORT_ENABLE_ALL", GraphOptimizationLevel::ORT_ENABLE_ALL);
 
   py::enum_<ExecutionMode>(m, "ExecutionMode")
-      .value("SEQUENTIAL", ExecutionMode::kSequential)
-      .value("PARALLEL", ExecutionMode::kParallel);
+      .value("ORT_SEQUENTIAL", ExecutionMode::ORT_SEQUENTIAL)
+      .value("ORT_PARALLEL", ExecutionMode::ORT_PARALLEL);
 
   py::class_<SessionOptions>
       sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");

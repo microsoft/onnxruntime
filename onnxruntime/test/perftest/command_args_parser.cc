@@ -130,7 +130,7 @@ namespace perftest {
         }
         break;
       case 'P':
-        test_config.run_config.execution_mode = ExecutionMode::kParallel;
+        test_config.run_config.execution_mode = ExecutionMode::ORT_PARALLEL;
         break;
       case 'c':
         test_config.run_config.concurrent_session_runs =

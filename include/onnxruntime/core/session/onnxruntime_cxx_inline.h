@@ -202,13 +202,8 @@ inline SessionOptions& SessionOptions::DisableCpuMemArena() {
   return *this;
 }
 
-inline SessionOptions& SessionOptions::EnableSequentialExecution() {
-  ThrowOnError(g_api->EnableSequentialExecution(p_));
-  return *this;
-}
-
-inline SessionOptions& SessionOptions::EnableParallelExecution() {
-  ThrowOnError(g_api->EnableParallelExecution(p_));
+inline SessionOptions& SessionOptions::SetExecutionMode(ExecutionMode execution_mode) {
+  ThrowOnError(g_api->SetSessionExecutionMode(p_, execution_mode));
   return *this;
 }
 

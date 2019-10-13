@@ -90,7 +90,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   std::vector<std::basic_string<PATH_CHAR_TYPE> > whitelisted_test_cases;
   int concurrent_session_runs = GetNumCpuCores();
   bool enable_cpu_mem_arena = true;
-  ExecutionMode execution_mode = ExecutionMode::kSequential;
+  ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL;
   int repeat_count = 1;
   int p_models = GetNumCpuCores();
   bool enable_cuda = false;
@@ -167,7 +167,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           }
           break;
         case 'x':
-          execution_mode = ExecutionMode::kParallel;
+          execution_mode = ExecutionMode::ORT_PARALLEL;
           break;
         case 'o': {
           int tmp = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
@@ -247,10 +247,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.EnableMemPattern();
     else
       sf.DisableMemPattern();
-    if (execution_mode == ExecutionMode::kSequential)
-      sf.EnableSequentialExecution();
-    else if (execution_mode == ExecutionMode::kParallel)
-      sf.EnableParallelExecution();
+    sf.SetExecutionMode(execution_mode);
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT

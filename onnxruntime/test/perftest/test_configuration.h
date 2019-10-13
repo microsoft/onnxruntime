@@ -44,7 +44,7 @@ struct RunConfig {
   bool f_verbose{false};
   bool enable_memory_pattern{true};
   bool enable_cpu_mem_arena{true};
-  ExecutionMode execution_mode{ExecutionMode::kSequential};
+  ExecutionMode execution_mode{ExecutionMode::ORT_SEQUENTIAL};
   int intra_op_num_threads{0};
   int inter_op_num_threads{0};
   GraphOptimizationLevel optimization_level{ORT_ENABLE_EXTENDED};

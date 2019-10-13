@@ -67,12 +67,12 @@ import onnxruntime as rt
 sess_options = rt.SessionOptions()
 
 sess_options.intra_op_num_threads=2
-sess_options.execution_mode=rt.ExecutionMode.SEQUENTIAL
+sess_options.execution_mode=rt.ExecutionMode.ORT_SEQUENTIAL
 sess_options.set_graph_optimization_level(2)
 ```
 * sess_options.intra_op_num_threads=2 controls how many thread do you want to use to run your model
-* sess_options.execution_mode=rt.ExecutionMode.SEQUENTIAL controls whether you want to run operators in your graph sequentially or in parallel. Usually when your model has many branches, set this option to false will give you better performance.
-* When sess_options.execution_mode=rt.ExecutionMode.PARALLEL, you can set sess_options.inter_op_num_threads to control the
+* sess_options.execution_mode=rt.ExecutionMode.ORT_SEQUENTIAL controls whether you want to execute operators in your graph sequentially or in parallel. Usually when the model has many branches, setting this option to ExecutionMode.ORT_PARALLEL will give you better performance.
+* When sess_options.execution_mode=rt.ExecutionMode.ORT_PARALLEL, you can set sess_options.inter_op_num_threads to control the
 number of threads used to parallelize the execution of the graph (across nodes).
 * sess_options.set_graph_optimization_level(2). Default is 1. Please see [onnxruntime_c_api.h](../include/onnxruntime/core/session/onnxruntime_c_api.h#L241)  (enum GraphOptimizationLevel) for the full list of all optimization levels.
 

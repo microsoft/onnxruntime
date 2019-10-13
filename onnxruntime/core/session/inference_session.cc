@@ -99,12 +99,12 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
       logging_manager_(logging_manager),
       thread_pool_(concurrency::CreateThreadPool("intra_op_thread_pool",
                                                  session_options.intra_op_num_threads)),
-      inter_op_thread_pool_(session_options.execution_mode == ExecutionMode::kParallel
+      inter_op_thread_pool_(session_options.execution_mode == ExecutionMode::ORT_PARALLEL
                                 ? concurrency::CreateThreadPool("inter_op_thread_pool",
                                                                 session_options.inter_op_num_threads)
                                 : nullptr),
       session_state_(execution_providers_,
-                     session_options.enable_mem_pattern && session_options.execution_mode == ExecutionMode::kSequential,
+                     session_options.enable_mem_pattern && session_options.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
                      thread_pool_.get(),
                      inter_op_thread_pool_.get()),
       insert_cast_transformer_("CastFloat16Transformer") {
@@ -493,7 +493,7 @@ common::Status InferenceSession::Initialize() {
       ORT_RETURN_IF_ERROR(RegisterExecutionProvider(std::move(p_cpu_exec_provider)));
     }
 
-    if (session_options_.execution_mode == ExecutionMode::kParallel &&
+    if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL &&
         execution_providers_.Get(onnxruntime::kCudaExecutionProvider)) {
       LOGS(*session_logger_, ERROR) << "Parallel execution is currently not supported "
                                        "for the registered CUDA Execution Provider.";

@@ -394,7 +394,7 @@ class OpTester {
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
-           ExecutionMode execution_mode = ExecutionMode::kSequential);
+           ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL);
 
   void Run(const SessionOptions& session_options,
            ExpectResult expect_result = ExpectResult::kExpectSuccess,

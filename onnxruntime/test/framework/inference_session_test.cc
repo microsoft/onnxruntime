@@ -142,7 +142,7 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
   // Generate the input & output def lists
   p_model = onnxruntime::make_unique<onnxruntime::Model>("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
-                                                 domain_to_version);
+                                                         domain_to_version);
   onnxruntime::Graph& graph = p_model->MainGraph();
 
   TypeProto tensor_float;
@@ -305,8 +305,8 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     auto& shape = rtensor.Shape();
     auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
     std::unique_ptr<Tensor> cpu_tensor = onnxruntime::make_unique<Tensor>(element_type,
-                                                                  shape,
-                                                                  cpu_allocator);
+                                                                          shape,
+                                                                          cpu_allocator);
     st = GPUDataTransfer().CopyTensor(rtensor, *cpu_tensor.get(), 0);
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
@@ -1477,7 +1477,7 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
   string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
   SessionOptions so;
-  so.execution_mode = ExecutionMode::kParallel;
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
   so.session_logid = "InferenceSessionTests.TestParallelExecutionWithCudaProvider";
   InferenceSession session_object{so};
 

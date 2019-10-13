@@ -574,7 +574,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testSequenceInsert(self):
         opt = onnxrt.SessionOptions()
-        opt.execution_mode = onnxrt.ExecutionMode.SEQUENTIAL
+        opt.execution_mode = onnxrt.ExecutionMode.ORT_SEQUENTIAL
         sess = onnxrt.InferenceSession(self.get_name("sequence_insert.onnx"), sess_options=opt)
 
         self.assertEqual(sess.get_inputs()[0].type, 'seq(tensor(int64))')
@@ -594,11 +594,11 @@ class TestInferenceSession(unittest.TestCase):
             [1, 0, 3, 44, 23, 11], dtype=np.int64).reshape((2, 3)), "input_seq": []})
         np.testing.assert_array_equal(output_expected, res[0])
 
-    def testExecutionMode(self):
+    def testOrtExecutionMode(self):
         opt = onnxrt.SessionOptions()
-        self.assertEqual(opt.execution_mode, onnxrt.ExecutionMode.SEQUENTIAL)
-        opt.execution_mode = onnxrt.ExecutionMode.PARALLEL
-        self.assertEqual(opt.execution_mode, onnxrt.ExecutionMode.PARALLEL)
+        self.assertEqual(opt.execution_mode, onnxrt.ExecutionMode.ORT_SEQUENTIAL)
+        opt.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
+        self.assertEqual(opt.execution_mode, onnxrt.ExecutionMode.ORT_PARALLEL)
 
 if __name__ == '__main__':
     unittest.main()

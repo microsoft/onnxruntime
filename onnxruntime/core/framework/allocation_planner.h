@@ -31,7 +31,7 @@ class ISequentialPlannerContext {
 
 class SequentialPlannerContext : public ISequentialPlannerContext {
  public:
-  SequentialPlannerContext(onnxruntime::ExecutionMode execution_mode)
+  SequentialPlannerContext(ExecutionMode execution_mode)
       : m_execution_mode(execution_mode) {
   }
 
@@ -39,10 +39,10 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
     return arg.Shape();
   }
 
-  bool IsParallelExecutionEnabled() const override { return m_execution_mode == onnxruntime::ExecutionMode::kParallel; }
+  bool IsParallelExecutionEnabled() const override { return m_execution_mode == ExecutionMode::ORT_PARALLEL; }
 
  private:
-  onnxruntime::ExecutionMode m_execution_mode = onnxruntime::ExecutionMode::kSequential;
+  ExecutionMode m_execution_mode = ExecutionMode::ORT_SEQUENTIAL;
 };
 
 class SequentialPlanner {

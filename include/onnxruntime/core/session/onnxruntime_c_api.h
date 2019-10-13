@@ -179,6 +179,11 @@ typedef enum GraphOptimizationLevel {
   ORT_ENABLE_ALL = 99
 } GraphOptimizationLevel;
 
+typedef enum ExecutionMode {
+  ORT_SEQUENTIAL = 0,
+  ORT_PARALLEL = 1,
+} ExecutionMode;
+
 struct OrtKernelInfo;
 typedef struct OrtKernelInfo OrtKernelInfo;
 struct OrtKernelContext;
@@ -256,8 +261,11 @@ struct OrtApi {
 
   // create a copy of an existing OrtSessionOptions
   OrtStatus*(ORT_API_CALL* CloneSessionOptions)(_In_ const OrtSessionOptions* in_options, _Outptr_ OrtSessionOptions** out_options)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* EnableSequentialExecution)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* EnableParallelExecution)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
+
+  // Controls whether you want to execute operators in your graph sequentially or in parallel. Usually when the model
+  // has many branches, setting this option to ExecutionMode.ORT_PARALLEL will give you better performance.
+  // See [docs/ONNX_Runtime_Perf_Tuning.md] for more details.
+  OrtStatus*(ORT_API_CALL* SetSessionExecutionMode)(_Inout_ OrtSessionOptions* options, ExecutionMode execution_mode)NO_EXCEPTION;
 
   // Enable profiling for this session.
   OrtStatus*(ORT_API_CALL* EnableProfiling)(_Inout_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix)NO_EXCEPTION;

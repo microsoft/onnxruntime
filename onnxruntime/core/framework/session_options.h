@@ -14,16 +14,11 @@ struct FreeDimensionOverride {
   int64_t dimension_override;
 };
 
-enum class ExecutionMode {
-  kSequential,
-  kParallel,
-};
-
 /**
   * Configuration information for a session.
   */
 struct SessionOptions {
-  ExecutionMode execution_mode = ExecutionMode::kSequential;
+  ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL;
 
   // enable profiling for this session.
   bool enable_profiling = false;
