@@ -15,19 +15,11 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     TopK<false>);
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     TopK,
     kOnnxDomain,
-    10,
-    kCudaExecutionProvider, 
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-    TopK<true>);
-
-ONNX_OPERATOR_KERNEL_EX(
-    TopK,
-    kOnnxDomain,
-    11,
-    kCudaExecutionProvider, 
+    10, 11,
+    kCudaExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     TopK<true>);
 
