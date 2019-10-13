@@ -348,7 +348,6 @@ Status ZeroGradient<T>::ComputeInternal(OpKernelContext* ctx) const {
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
           .Alias(0, 0) /* Zero out gradients in-place */          \
-          .InputMemoryType<OrtMemTypeCPUInput>(1)                 \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
           .TypeConstraint("T2", DataTypeImpl::AllTensorTypes()),  \
       ZeroGradient<T>);
