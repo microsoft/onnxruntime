@@ -809,6 +809,10 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         if (!status.IsOK()) {
           throw std::runtime_error(status.ToString().c_str());
         }
+        status = sess->ApplyTransformationsToMainGraph();
+        if (!status.IsOK()){
+          throw std::runtime_error(status.ToString().c_str());
+        }
         auto weights_to_train = parameters.weights_to_train;
         if (weights_to_train.empty()) {
           weights_to_train = sess->GetTrainableModelInitializers(parameters.immutable_weights);
@@ -845,6 +849,10 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         std::istringstream buffer(serialziedModel);
         auto status = sess->Load(buffer);
         if (!status.IsOK()) {
+          throw std::runtime_error(status.ToString().c_str());
+        }
+        status = sess->ApplyTransformationsToMainGraph();
+        if (!status.IsOK()){
           throw std::runtime_error(status.ToString().c_str());
         }
 

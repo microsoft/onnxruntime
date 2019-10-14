@@ -9,7 +9,6 @@ import torch.onnx
 import onnxruntime as ort
 import pdb
 
-
 class IODescription():
     def __init__(self, name, shape, dtype, num_classes=None):
         self.name_ = name
@@ -244,7 +243,10 @@ def create_ort_training_session_bind_parameters(model, device, enable_grad_accum
         output_types[output.name] = output.type.tensor_type
 
     ort_parameters.weights_to_train = set(torch_params.keys())
-    
+
+    if device.type == 'cuda' and hasattr(device, "index") and device.index is not None:
+        from onnxruntime.capi._pybind_state import set_cuda_device_id 
+        set_cuda_device_id(device.index) 
     session = ort.TrainingSession(model.SerializeToString(), ort_parameters)
 
     train_io_binding = session.io_binding()
@@ -367,7 +369,7 @@ class ORTModel():
         self.model_desc_ = model_desc
         self.device_ = device
 
-        model = convert_model_loss_fn_to_onnx(self.model_, self.loss_fn_, self.model_desc_, self.device_)
+        model = convert_model_loss_fn_to_onnx(self.model_, self.loss_fn_, self.model_desc_, torch.device('cpu'))
         if postprocess_model:
             postprocess_model(model)
         # onnx.save_model(model, 'bert_model_base_after_postproc.onnx')
@@ -399,10 +401,10 @@ class ORTModel():
         for param in self.torch_params.keys():
             torch_tensor = self.torch_params[param]
             if torch_tensor.grad is None:
-                torch_tensor.grad = torch.zeros(torch_tensor.size(), dtype=torch.float32, device=device)
+                torch_tensor.grad = torch.zeros(torch_tensor.size(), dtype=torch.float32, device=self.device_)
                 grad_buffer_name = param + "_grad_accumulate_buffer"
                 device_index = torch_tensor.device.index if torch_tensor.device.index else 0
-                train_io_binding.bind_input(grad_buffer_name,
+                self.train_io_binding.bind_input(grad_buffer_name,
                                              torch_tensor.grad.device.type,
                                              device_index,
                                              dtype_torch_to_numpy(torch_tensor.grad.dtype),
