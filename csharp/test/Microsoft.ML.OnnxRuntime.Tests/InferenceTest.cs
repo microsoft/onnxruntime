@@ -572,7 +572,39 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact]
         private void TestRegisterCustopOpLibrary()
         {
+        }
 
+        [Fact]
+        private void TestSymbolicDimsMetadata()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "capi_symbolic_dims.onnx");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var inputs = session.InputMetadata;
+                var outputs = session.OutputMetadata;
+
+                Assert.Equal(2, inputs.Count);
+                Assert.Equal(1, session.OutputMetadata.Count);
+                Assert.True(inputs.ContainsKey("A"));
+                Assert.True(inputs.ContainsKey("B"));
+                Assert.True(outputs.ContainsKey("C"));
+
+                var inputA = inputs["A"];
+                var inputB = inputs["B"];
+                var outputC = outputs["C"];
+
+                // dimension values and any symbolic dimension info should have the same length
+                Assert.Equal(inputA.Dimensions.Length, inputA.SymbolicDimensions.Length);
+                Assert.Equal(inputB.Dimensions.Length, inputB.SymbolicDimensions.Length);
+                Assert.Equal(outputC.Dimensions.Length, outputC.SymbolicDimensions.Length);
+
+                Assert.Equal(inputA.Dimensions, new int[] { -1, 2 });
+                Assert.Equal(inputA.SymbolicDimensions, new string[] { "n", "" });
+                Assert.Equal(inputB.Dimensions, new int[] { -1 });
+                Assert.Equal(inputB.SymbolicDimensions, new string[] { "m" });
+                Assert.Equal(outputC.Dimensions, new int[] { -1 });
+                Assert.Equal(outputC.SymbolicDimensions, new string[] { "" }); // unnamed symbolic dim
+            }
         }
 
 
@@ -1005,7 +1037,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 return;
             var entryPointNames = new[]{
-            "OrtGetApi",
+            "OrtGetApiBase",
             "OrtSessionOptionsAppendExecutionProvider_CPU"
 #if USE_MKLDNN
             ,"OrtSessionOptionsAppendExecutionProvider_Mkldnn"
@@ -1064,6 +1096,86 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return tensorData.ToArray();
         }
 
+
+        private enum TensorElementType
+        {
+            Float = 1,
+            UInt8 = 2,
+            Int8 = 3,
+            UInt16 = 4,
+            Int16 = 5,
+            Int32 = 6,
+            Int64 = 7,
+            String = 8,
+            Bool = 9,
+            Float16 = 10,
+            Double = 11,
+            UInt32 = 12,
+            UInt64 = 13,
+            Complex64 = 14,
+            Complex128 = 15,
+            BFloat16 = 16,
+            DataTypeMax = 17
+        }
+
+        private static void GetTypeAndWidth(TensorElementType elemType, out Type type, out int width)
+        {
+            switch (elemType)
+            {
+                case TensorElementType.Float:
+                    type = typeof(float);
+                    width = sizeof(float);
+                    break;
+                case TensorElementType.Double:
+                    type = typeof(double);
+                    width = sizeof(double);
+                    break;
+                case TensorElementType.Int16:
+                    type = typeof(short);
+                    width = sizeof(short);
+                    break;
+                case TensorElementType.UInt16:
+                    type = typeof(ushort);
+                    width = sizeof(ushort);
+                    break;
+                case TensorElementType.Int32:
+                    type = typeof(int);
+                    width = sizeof(int);
+                    break;
+                case TensorElementType.UInt32:
+                    type = typeof(uint);
+                    width = sizeof(uint);
+                    break;
+                case TensorElementType.Int64:
+                    type = typeof(long);
+                    width = sizeof(long);
+                    break;
+                case TensorElementType.UInt64:
+                    type = typeof(ulong);
+                    width = sizeof(ulong);
+                    break;
+                case TensorElementType.UInt8:
+                    type = typeof(byte);
+                    width = sizeof(byte);
+                    break;
+                case TensorElementType.Int8:
+                    type = typeof(sbyte);
+                    width = sizeof(sbyte);
+                    break;
+                case TensorElementType.String:
+                    type = typeof(byte);
+                    width = sizeof(byte);
+                    break;
+                case TensorElementType.Bool:
+                    type = typeof(bool);
+                    width = sizeof(bool);
+                    break;
+                default:
+                    type = null;
+                    width = 0;
+                    break;
+            }
+        }
         static NamedOnnxValue LoadTensorFromFilePb(string filename, IReadOnlyDictionary<string, NodeMetadata> nodeMetaDict)
         {
             var file = File.OpenRead(filename);
@@ -1072,7 +1184,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             Type tensorElemType = null;
             int width = 0;
-            TensorElementTypeConverter.GetTypeAndWidth((TensorElementType)tensor.DataType, out tensorElemType, out width);
+            GetTypeAndWidth((TensorElementType)tensor.DataType, out tensorElemType, out width);
             var intDims = new int[tensor.Dims.Count];
             for (int i = 0; i < tensor.Dims.Count; i++)
             {

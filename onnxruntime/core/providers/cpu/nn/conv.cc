@@ -24,13 +24,9 @@ namespace onnxruntime {
 
 template <typename T>
 Status Conv<T>::Compute(OpKernelContext* context) const {
-  size_t num_inputs = OpKernel::Node().InputDefs().size();
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
-  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
-
   const auto* X = context->Input<Tensor>(0);
   const auto* W = context->Input<Tensor>(1);
-  const Tensor* B = num_inputs == 3 ? context->Input<Tensor>(2) : nullptr;
+  const Tensor* B = context->Input<Tensor>(2);  // optional. nullptr if not provided
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
@@ -84,6 +80,8 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   col_buffer_shape.insert(col_buffer_shape.end(), output_shape.GetDims().begin(),
                           output_shape.GetDims().end());
 
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+
   for (int image_id = 0; image_id < N; ++image_id) {
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
       if (Is2DKernel) {
@@ -119,6 +117,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
             col_buffer_data,
             &CPUMathUtil::Instance());
       }
+
       math::Gemm<T>(
           CblasNoTrans,
           CblasNoTrans,
@@ -147,9 +146,6 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 }
 
 Status Conv<float>::Compute(OpKernelContext* context) const {
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
-  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
-
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const auto* X = context->Input<Tensor>(0);
   const auto* W = context->Input<Tensor>(1);
@@ -190,6 +186,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   auto* Ydata = Y->template MutableData<float>();
 
   const size_t kernel_rank = kernel_shape.size();
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
 
   if (kernel_rank == 2 || kernel_rank == 3) {
     MLAS_CONV_PARAMETERS Parameters;
@@ -254,6 +251,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             static_cast<int>(kernel_shape.size()),
             col_buffer_data,
             &CPUMathUtil::Instance());
+
         math::Gemm<float>(
             CblasNoTrans,
             CblasNoTrans,

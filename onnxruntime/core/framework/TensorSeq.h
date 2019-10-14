@@ -17,7 +17,7 @@ struct TensorSeq {
   // The current design follows the Tensor methodology.
   // We also require this because the SequenceEmpty op expects the creation of a seq of a specific type
   // and the SequenceInsert op expects validation of tensors to be added to the seq against this type.
-  MLDataType dtype;
+  MLDataType dtype{};
 
   // TODO: optimization opportunity - if all tensors in the seq are scalars, we can potentially represent them
   // as vector<primitive type>

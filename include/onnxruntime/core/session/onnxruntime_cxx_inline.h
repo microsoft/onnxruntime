@@ -322,6 +322,10 @@ inline void TensorTypeAndShapeInfo::GetDimensions(int64_t* values, size_t values
   ThrowOnError(g_api->GetDimensions(p_, values, values_count));
 }
 
+inline void TensorTypeAndShapeInfo::GetSymbolicDimensions(const char** values, size_t values_count) const {
+  ThrowOnError(g_api->GetSymbolicDimensions(p_, values, values_count));
+}
+
 inline std::vector<int64_t> TensorTypeAndShapeInfo::GetShape() const {
   std::vector<int64_t> out(GetDimensionsCount(), 0);
   GetDimensions(out.data(), out.size());

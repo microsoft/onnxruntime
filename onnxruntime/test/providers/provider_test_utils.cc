@@ -240,6 +240,35 @@ void Check(const OpTester::Data& expected_data, const T& run_output, const std::
   EXPECT_EQ(expected_data.data_.Get<T>(), run_output) << "provider_type: " << provider_type;
 }
 
+template <>
+void Check<TensorSeq>(const OpTester::Data& expected_data, const TensorSeq& output_seq,
+                      const std::string& provider_type) {
+  const auto& exp_seq = expected_data.data_.Get<TensorSeq>();
+
+  // first ensure data types match
+  EXPECT_EQ(exp_seq.dtype, output_seq.dtype) << "Data types don't match: Expected: " << DataTypeImpl::ToString(exp_seq.dtype)
+                                             << " Output: " << output_seq.dtype << " provider_type: " << provider_type;
+
+  // check num of contained tensors
+  size_t expected_num_tensors = exp_seq.tensors.size();
+  size_t output_num_tensors = output_seq.tensors.size();
+  EXPECT_EQ(expected_num_tensors, output_num_tensors) << "Mismatch in number of tensors in the sequence"
+                                                      << " Expected: " << expected_num_tensors << " Output: "
+                                                      << output_num_tensors << " provider_type: " << provider_type;
+
+  // now check the contents of the tensors
+  auto null_deleter = [](void*) {};
+
+  for (int i = 0; i < output_num_tensors; ++i) {
+    OrtValue temp_value;
+    // Reason for null_deleter: we don't want the tensor destructor to be called as part of this OrtValue destructor
+    // as we're creating this OrtValue only to reuse the Check functionality
+    temp_value.Init(const_cast<Tensor*>(&exp_seq.tensors[i]), DataTypeImpl::GetType<Tensor>(), null_deleter);
+    OpTester::Data temp_data(NodeArg("dummy", nullptr), std::move(temp_value), optional<float>(), optional<float>());
+    Check(temp_data, output_seq.tensors[i], provider_type);
+  }
+}
+
 template <typename Type>
 void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, OrtValue& ort_value,
                    const std::string& provider_type) {
@@ -260,11 +289,11 @@ void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, OrtValu
 
 void Check(const OpTester::Data& expected_data, OrtValue& ort_value, const std::string& provider_type) {
 #ifdef MICROSOFT_AUTOML
-  CheckDispatch<dtf::TimePoint, VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
-                                                                               provider_type);
+  CheckDispatch<dtf::TimePoint, VectorMapStringToFloat, VectorMapInt64ToFloat, TensorSeq>(expected_data.data_.Type(), expected_data, ort_value,
+                                                                                          provider_type);
 #else
-  CheckDispatch<VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
-                                                               provider_type);
+  CheckDispatch<VectorMapStringToFloat, VectorMapInt64ToFloat, TensorSeq>(expected_data.data_.Type(), expected_data, ort_value,
+                                                                          provider_type);
 #endif
 }
 
