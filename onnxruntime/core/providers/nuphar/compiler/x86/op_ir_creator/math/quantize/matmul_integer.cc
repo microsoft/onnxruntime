@@ -145,13 +145,12 @@ static Status EvaluateMatMulInteger(
         outputs.push_back(output_tensor);
       } else if (use_tensorization) {
         // vector width determined from target hardware
-        // AVX2:   vector width 32 = 256bits / 8bit; 16 = 256 bits / 16bits;
-        // AVX512: vector width 64 = 512bits / 8bit; 32 = 512 bits / 16bits;
-        int vector_width = 32;
+        // AVX:    vector width 16 = 128 bits / 8 bits;
+        // AVX2:   vector width 32 = 256 bits / 8 bits;
+        // AVX512: vector width 64 = 512 bits / 8 bits;
         CodeGenTargetX86* target = dynamic_cast<CodeGenTargetX86*>(ctx_codegen.GetCodeGenHandle()->codegen_target);
-        if (target != nullptr) {
-          vector_width = target->NaturalVectorWidth(B->dtype.bits()) / 2;
-        }
+        ORT_ENFORCE(target != nullptr, "CodeGen target unknown: not AVX/AVX2/AVX512 !");
+        int vector_width = target->NaturalVectorWidth(B->dtype.bits()) / 2;
 
         // TVM has known issue when handling tensorization of matmul: [1x1] = [1xK]x[Kx1]
         // and this case is not likely happen in real model
@@ -246,6 +245,12 @@ static Status EvaluateMatMulInteger16(
 
       // Target instruction option
       bool isAVX2 = CPUIDInfo::GetCPUIDInfo().HasAVX2();
+
+      // TODO: enable tensorization for 16bit
+      // vector width determined from target hardware
+      // AVX:    vector width 8  = 128 bits / 16bits;
+      // AVX2:   vector width 16 = 256 bits / 16bits;
+      // AVX512: vector width 32 = 512 bits / 16bits;
 
       // Model input option
       auto B_NodeArg = node.InputDefs()[1];
