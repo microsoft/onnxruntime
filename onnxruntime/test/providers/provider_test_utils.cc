@@ -579,7 +579,7 @@ void OpTester::Run(SessionOptions so, // Take the SessionOptions by value (i.e. 
       for (auto& entry : *execution_providers) {
         if (entry->Type() == kDmlExecutionProvider) {
           so.enable_mem_pattern = false;
-          so.enable_sequential_execution = true;
+          so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
           break;
         }
       }
@@ -603,7 +603,7 @@ void OpTester::Run(SessionOptions so, // Take the SessionOptions by value (i.e. 
 
         if (provider_type == kDmlExecutionProvider) {
           so.enable_mem_pattern = false;
-          so.enable_sequential_execution = true;
+          so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
         }
         InferenceSession session_object{so};
 

@@ -153,7 +153,7 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
     if (session_options_.enable_mem_pattern) {
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Memory pattern must be disabled before registering DMLExecutionProvider");
     }
-    if (!session_options_.enable_sequential_execution) {
+    if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Sequential execution must be enabled before registering DMLExecutionProvider");
     }
   }

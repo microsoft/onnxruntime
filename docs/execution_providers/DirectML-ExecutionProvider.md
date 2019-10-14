@@ -89,15 +89,15 @@ The DirectML execution provider currently supports ONNX opset 9 ([ONNX v1.4](htt
 
 The DirectML execution provider does not support the use of memory pattern optimizations or parallel execution in onnxruntime. When supplying session options during InferenceSession creation, these options must be disabled or an error will be returned.
 
-If using the onnxruntime C API, you must call `DisableMemPattern` and `EnableSequentialExecution` functions to set the options required by the DirectML execution provider.
+If using the onnxruntime C API, you must call `DisableMemPattern` and `SetSessionExecutionMode` functions to set the options required by the DirectML execution provider.
 
 See [onnxruntime\include\onnxruntime\core\session\onnxruntime_c_api.h](..\..\include\onnxruntime\core\session\onnxruntime_c_api.h).
 
     OrtStatus*(ORT_API_CALL* DisableMemPattern)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
 
-    OrtStatus*(ORT_API_CALL* EnableSequentialExecution)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
+    OrtStatus*(ORT_API_CALL* SetSessionExecutionMode)(_Inout_ OrtSessionOptions* options, ExecutionMode execution_mode)NO_EXCEPTION;
 
-If creating the onnxruntime InferenceSession object directly, you must set the appropriate fields on the `onnxruntime::SessionOptions` struct. Specifically, `enable_sequential_execution` must be set to `true`, and `enable_mem_pattern` must be `false`.
+If creating the onnxruntime InferenceSession object directly, you must set the appropriate fields on the `onnxruntime::SessionOptions` struct. Specifically, `execution_mode` must be set to `ExecutionMode::ORT_SEQUENTIAL`, and `enable_mem_pattern` must be `false`.
 
 Additionally, as the DirectML execution provider does not support parallel execution, it does not support multi-threaded calls to `Run` on the same inference session. That is, if an inference session using the DirectML execution provider, only one thread may call `Run` at a time. Multiple threads are permitted to call `Run` simultaneously if they operate on different inference session objects.
 

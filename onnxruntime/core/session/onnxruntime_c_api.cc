@@ -379,7 +379,7 @@ OrtStatus* CreateSessionImpl(_In_ const OrtEnv* env, _In_ const OrtSessionOption
           // Doing so would be inconsistent with the Python API that doesn't go through this code path.
           return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Mem pattern should be disabled when using DML execution provider.");
         }
-        if (!options->value.enable_sequential_execution) {
+        if (options->value.enable_sequential_execution != ExecutionMode::ORT_SEQUENTIAL) {
           return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Sequential execution should be enabled when using DML execution provider.");
         }
       }

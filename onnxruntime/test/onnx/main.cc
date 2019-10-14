@@ -323,7 +323,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #ifdef USE_DML
       fprintf(stderr, "Disabling mem pattern and forcing single-threaded execution since DML is used");
       sf.DisableMemPattern();
-      sf.EnableSequentialExecution();
+      sf.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
       p_models = 1;
       concurrent_session_runs = 1;
       ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_DML(sf, device_id));
