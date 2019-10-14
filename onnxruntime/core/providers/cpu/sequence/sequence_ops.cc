@@ -5,6 +5,9 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/framework/TensorSeq.h"
+#include "core/providers/common.h"
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
 
 using namespace onnxruntime::common;
 
@@ -316,4 +319,159 @@ Status SequenceConstruct::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
+
+// SplitToSequence
+ONNX_CPU_OPERATOR_KERNEL(
+    SplitToSequence,
+    11,
+    KernelDefBuilder().TypeConstraint("T",
+                                      std::vector<MLDataType>{
+                                          DataTypeImpl::GetTensorType<float>(),
+                                          DataTypeImpl::GetTensorType<int32_t>(),
+                                          DataTypeImpl::GetTensorType<std::string>()})
+        .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes())
+        .TypeConstraint("I", std::vector<MLDataType>{
+                                 DataTypeImpl::GetTensorType<int32_t>(),
+                                 DataTypeImpl::GetTensorType<int64_t>()}),
+    SplitToSequence);
+
+SplitToSequence::SplitToSequence(const OpKernelInfo& info) : OpKernel(info) {
+  axis_ = info.GetAttrOrDefault<int64_t>("axis", 0);
+  keepdims_ = info.GetAttrOrDefault<int64_t>("keepdims", 1);
+}
+
+// https://github.com/onnx/onnx/issues/2396
+SplitToSequence::Compute(OpKernelContext* context) const {
+  const Tensor& input = *context->Input<Tensor>(0);
+  const Tensor* p_split_input = context->Input<Tensor>(1);
+
+  Status status;
+  auto data_type = input.DataType();
+
+  if (data_type == DataTypeImpl::GetType<float>())
+    status = ComputeImpl<float>(*context, input, p_split_input);
+  else if (data_type == DataTypeImpl::GetType<int32_t>())
+    status = ComputeImpl<int32_t>(*context, input, p_split_input);
+  else if (data_type == DataTypeImpl::GetType<std::string>())
+    status = ComputeImpl<std::string>(*context, input, p_split_input);
+  else
+    ORT_THROW("SplitToSequence operator does not support ", data_type, " yet");
+
+  return status;
+  return Status::OK();
+}
+
+Status SplitToSequence::PrepareForCompute(const TensorShape& input_shape, int& num_outputs, int64_t& axis, int& before_dims,
+                                          int& after_dims_including_split_axis, int& after_dims_excluding_split,
+                                          int64_t split_scalar;
+                                          std::vector<int64_t> & split_sizes) const {
+  auto& input_dims = input_shape.GetDims();
+  const auto num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
+  axis = HandleNegativeAxis(axis_, num_dimensions);  // handle negative and enforce axis is valid
+  const int64_t split_dim_size = input_dims[axis];
+
+  before_dims = gsl::narrow<int>(input_shape.SizeToDimension(axis));
+  after_dims_including_split_axis = gsl::narrow<int>(input_shape.SizeFromDimension(axis));
+  after_dims_excluding_split = (axis + 1 == num_dimensions)
+                                   ? 1  // we multiply by this value so must be 1 not 0
+                                   : gsl::narrow<int>(input_shape.SizeFromDimension(axis + 1));
+
+  if (split_sizes_.empty()) {
+    // populate split_sizes with the same size for each output
+    num_outputs = split_dim_size;
+    split_sizes = std::vector<int64_t>(static_cast<size_t>(split_dim_size), 1);
+  } else {
+    num_outputs = split_sizes.size();
+  }
+
+  return Status::OK();
+}
+
+static int64_t GetScalarSplitInput(const Tensor& tensor) {
+  int64_t retval = 1;
+  auto data_type = tensor.DataType();
+  if (data_type == DataTypeImpl::GetType<int32_t>()) {
+    retval = *(tensor.GetData<int32_t>());
+  } else if (data_type == DataTypeImpl::GetType<int64_t>()) {
+    retval = *(tensor.GetData<int64_t>());
+  } else {
+    ORT_THROW("Invalid data type for split tensor " + DataTypeImpl::ToString(data_type));
+  }
+  return retval;
+}
+
+static int64_t GetScalarSplitInput(const Tensor& tensor, std::vector<int64_t>& split_sizes) {
+  split_size.reserve(tensor.Shape().Size());
+  auto data_type = tensor.DataType();
+  if (data_type == DataTypeImpl::GetType<int32_t>()) {
+    retval = *(tensor.GetData<int32_t>());
+  } else if (data_type == DataTypeImpl::GetType<int64_t>()) {
+    retval = *(tensor.GetData<int64_t>());
+  } else {
+    ORT_THROW("Invalid data type for split tensor " + DataTypeImpl::ToString(data_type));
+  }
+}
+
+template <typename T>
+Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& input,
+                                    const Tensor* p_split_input) const {
+  auto& input_shape = input.Shape();
+  int64_t num_outputs = 0;
+  int64_t axis = axis_;
+  int before_dims = 0;
+  int after_dims_including_split_axis = 0;
+  int after_dims_excluding_split = 0;
+  int64_t split_scalar = 1;
+  std::vector<int64_t> split_sizes;
+
+  // figure out split_scalar or split_sizes
+  if (p_split_input) {
+    if (p_split_input->Shape().NumDimensions() == 0) {
+      split_scalar = GetScalarSplitInput(*p_split_input);
+    } else {
+      GetSplitSizesInput(*p_split_input, split_sizes);
+    }
+  }
+
+  ORT_RETURN_IF_ERROR(PrepareForCompute(input_shape,
+                                        num_outputs,
+                                        axis,
+                                        before_dims,
+                                        after_dims_including_split_axis,
+                                        after_dims_excluding_split,
+                                        split_sizes));
+
+  // copy dimensions so we can update the selected axis in place
+  auto& input_dims = input_shape.GetDims();
+  std::vector<int64_t> output_dimensions{input_dims};
+
+  int64_t input_offset = 0;
+  const T* input_data = input.template Data<T>();
+  auto split_size_sum = std::accumulate(split_sizes_.cbegin(), split_sizes_.cend(), 0LL);
+
+  for (int i = 0; i < num_outputs; ++i) {
+    // update size of dimension for axis we're splitting on
+    auto split_size = gsl::narrow<int>(split_sizes[i]);
+    output_dimensions[axis] = split_size;
+
+    Tensor* output = context.Output(i, TensorShape{output_dimensions});
+    T* output_data = output->template MutableData<T>();
+
+    ::onnxruntime::math::CopyMatrix<T>(
+        before_dims,                                       // M
+        split_size * after_dims_excluding_split,           // N
+        static_cast<const T*>(input_data + input_offset),  // A
+        after_dims_including_split_axis,                   // lda
+        static_cast<T*>(output_data),                      // B
+        split_size * after_dims_excluding_split,           // ldb
+        [](const T* src, T* dst, size_t count) {
+          copy_data<T>(src, dst, count);
+        });
+
+    input_offset += split_size * after_dims_excluding_split;  // offset by the N data we used in this iteration
+  }
+
+  return Status::OK();
+}
+
 }  // namespace onnxruntime
