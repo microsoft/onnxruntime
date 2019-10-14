@@ -34,8 +34,6 @@ struct OrtTypeInfo {
 
   static const onnxruntime::DataTypeImpl* ElementTypeFromProto(int type);
 
-  static const onnxruntime::DataTypeImpl* ElementTypeFromProto(int type);
-
  private:
   OrtTypeInfo(ONNXType type, OrtTensorTypeAndShapeInfo* data) noexcept;
 };
