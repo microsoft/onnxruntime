@@ -3,9 +3,8 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
-# Convert Bert ONNX model to use Attention, Gelu, SkipLayerNormalization and
+# Convert Bert ONNX model exported from PyTorch to use Attention, Gelu, SkipLayerNormalization and
 # EmbedLayerNormalization ops to optimize performance on NVidia GPU.
-# Tested on some BERT ONNX models exported from PyTorch.
 
 import onnx
 import sys
@@ -29,12 +28,12 @@ class OnnxModel:
                     input_name_to_nodes[input_name].append(node)
         return input_name_to_nodes
 
-    def output_name_to_nodes(self):
-        output_name_to_nodes = {}
+    def output_name_to_node(self):
+        output_name_to_node = {}
         for node in self.model.graph.node:
             for output_name in node.output:
-                    output_name_to_nodes[output_name] = node
-        return output_name_to_nodes
+                    output_name_to_node[output_name] = node
+        return output_name_to_node
 
     def nodes(self):
         return self.model.graph.node
@@ -93,15 +92,50 @@ class OnnxModel:
                     children.append(node)
         return children
 
-    def get_parents(self, node, output_name_to_nodes=None):
-        if output_name_to_nodes is None:
-            output_name_to_nodes = self.output_name_to_nodes()
+    def get_parents(self, node, output_name_to_node=None):
+        if output_name_to_node is None:
+            output_name_to_node = self.output_name_to_node()
 
         parents = []
         for input in node.input:
-            if input in output_name_to_nodes:
-                parents.append(output_name_to_nodes[input])
+            if input in output_name_to_node:
+                parents.append(output_name_to_node[input])
         return parents
+
+    def get_parent(self, node, i, output_name_to_node=None):
+        if output_name_to_node is None:
+            output_name_to_node = self.output_name_to_node()
+
+        if len(node.input) <= i:
+            return None
+
+        input = node.input[i]
+        if input not in output_name_to_node:
+            return None
+
+        return output_name_to_node[input]
+
+    def match_parent_path(self, node, parent_op_types, parent_input_index=None, output_name_to_node=None):
+        if output_name_to_node is None:
+            output_name_to_node = self.output_name_to_node()
+
+        if parent_input_index is None:
+            parent_input_index = [0] * len(parent_op_types)
+
+        assert(len(parent_input_index) == len(parent_op_types))
+        current_node = node
+        matched_parents = []
+        for i, op_type in enumerate(parent_op_types):
+            input_index = parent_input_index[i]
+            if input_index >= len(current_node.input):
+                return None
+            parent = self.get_parent(current_node, input_index, output_name_to_node)
+            if parent is None:
+                return None
+            if parent.op_type == parent_op_types[i]:
+                matched_parents.append(parent)
+            current_node = parent
+        return matched_parents
 
     def find_first_child_by_type(self, node, child_type, input_name_to_nodes=None, recursive=True):
         children = self.get_children(node, input_name_to_nodes)
@@ -118,11 +152,11 @@ class OnnxModel:
 
         return None
 
-    def find_first_parent_by_type(self, node, parent_type, output_name_to_nodes=None, recursive=True):
-        if output_name_to_nodes is None:
-            output_name_to_nodes = self.output_name_to_nodes()
+    def find_first_parent_by_type(self, node, parent_type, output_name_to_node=None, recursive=True):
+        if output_name_to_node is None:
+            output_name_to_node = self.output_name_to_node()
             
-        parents = self.get_parents(node, output_name_to_nodes)
+        parents = self.get_parents(node, output_name_to_node)
         dq = deque(parents)
         while len(dq) > 0:
             current_node = dq.pop()
@@ -130,13 +164,20 @@ class OnnxModel:
                 return current_node
 
             if recursive:
-                parents = self.get_parents(current_node, output_name_to_nodes)
+                parents = self.get_parents(current_node, output_name_to_node)
                 for parent in parents:
                     dq.appendleft(parent)
 
         return None
 
-    def get_subgraph_nodes(self, root_node, stop_nodes, input_name_to_nodes=None):
+    def get_constant_value(self, output_name):
+        for node in self.get_nodes_by_op_type('Constant'):
+            if node.output[0] == output_name:
+                for att in node.attribute:
+                    if att.name == 'value':
+                        return numpy_helper.to_array(att.t)
+
+    def get_children_subgraph_nodes(self, root_node, stop_nodes, input_name_to_nodes=None):
         if input_name_to_nodes is None:
             input_name_to_nodes = self.input_name_to_nodes()
 
@@ -214,18 +255,13 @@ class OnnxModel:
                 return input
         return None
 
-    def get_parent_nodes_and_inputs(self, node, stop_nodes, output_name_to_nodes=None):
-        if output_name_to_nodes is None:
-            output_name_to_nodes = self.output_name_to_nodes()
+    def get_parent_subgraph_nodes(self, node, stop_nodes, output_name_to_node=None):
+        if output_name_to_node is None:
+            output_name_to_node = self.output_name_to_node()
 
         unique_nodes = []
-        unique_inputs = []
-        
-        parents = []
-        for input in node.input:
-            if input in output_name_to_nodes:
-                parents.append(output_name_to_nodes[input])
 
+        parents = self.get_parents(node, output_name_to_node)
         dq = deque(parents)
         while len(dq) > 0:
             current_node = dq.pop()
@@ -234,14 +270,12 @@ class OnnxModel:
 
             if current_node not in unique_nodes:
                 unique_nodes.append(current_node)
-                
-            for input in current_node.input:
-                if input in output_name_to_nodes:
-                    dq.appendleft(output_name_to_nodes[input])
-                elif input not in unique_inputs:
-                    unique_inputs.append(input)
 
-        return unique_nodes, unique_inputs
+            for input in current_node.input:
+                if input in output_name_to_node:
+                    dq.appendleft(output_name_to_node[input])
+
+        return unique_nodes
 
     @staticmethod
     def input_index(node_output, child_node):
@@ -327,96 +361,19 @@ class BertOnnxModel(OnnxModel):
     def normalize_children_types(self):
         return ['MatMul', 'MatMul', 'MatMul', 'SkipLayerNormalization']
 
-    def find_transpose_nodes(self, normalize_node):
-        assert normalize_node.op_type == self.normalize_name
-        assert len(normalize_node.output) == 1
-
-        input_name_to_nodes = self.input_name_to_nodes()
-        output_name_to_nodes = self.output_name_to_nodes()
-
-        children = input_name_to_nodes[normalize_node.output[0]]
-
-        transpose_nodes = []
-        add_nodes = []
-
-        for child in children:
-            if child.op_type == 'MatMul':
-                transpose_node = self.find_first_child_by_type(child, 'Transpose', input_name_to_nodes)
-                if transpose_node is None:
-                    break
-                transpose_nodes.append(transpose_node)
-
-                add_node = self.find_first_child_by_type(child, 'Add', input_name_to_nodes)
-                if add_node is None:
-                    break
-                add_nodes.append(add_node)
-
-        if len(transpose_nodes) != 3:
-            print("Failed to find 3 transpose nodes. Got ", len(transpose_nodes))
-            raise Exception("Failed to find transpose nodes.")
-
-        qxk = None
-        q_transpose = None
-        k_transpose = None
-        v_transpose = None
-        for transpose_node in transpose_nodes:
-            transpose_children = input_name_to_nodes[transpose_node.output[0]]
-            if len(transpose_children) == 1 and transpose_children[0].op_type == 'MatMul' and OnnxModel.input_index(transpose_node.output[0], transpose_children[0]) == 0:
-                qxk = transpose_children[0]
-                q_transpose = output_name_to_nodes[qxk.input[0]]
-                k_transpose = output_name_to_nodes[qxk.input[1]]
-
-        for transpose_node in transpose_nodes:
-            if transpose_node != q_transpose and q_transpose != k_transpose:
-                v_transpose = transpose_node
-
-        if qxk is None:
-            raise Exception("Failed to find transpose nodes qxk.")
-            
-        qkv = self.find_first_child_by_type(qxk, 'MatMul', input_name_to_nodes)
-        qkv_transpose = input_name_to_nodes[qkv.output[0]][0]
-        if qkv_transpose.op_type == "Transpose":
-            return qkv_transpose, q_transpose, k_transpose, v_transpose, add_nodes
-
-        raise Exception("failed to find transpose nodes after " + normalize_node.output[0])
-
     def set_mask_input(self, input):
         if self.mask_input is not None and input != self.mask_input:
             raise Exception("Different mask inputs", self.mask_input, input)
 
         self.mask_input = input
 
-    def transform_attention(self, normalize_node, nodes_to_remove):
-        input_name_to_nodes = self.input_name_to_nodes()
-        children = input_name_to_nodes[normalize_node.output[0]]
-        children_types = sorted([child.op_type for child in children])
-        if children_types != self.normalize_children_types():
-            return
-
-        print("processing attention for normalize node output:", normalize_node.output[0])
-        qkv_transpose, q_transpose, k_transpose, v_transpose, add_nodes = self.find_transpose_nodes(normalize_node)
-
-        print("qkv_transpose:", qkv_transpose.output)
-        reshape_node_after_att = self.find_first_child_by_type(qkv_transpose, 'Reshape')
-        if reshape_node_after_att is None:
-            print("failed to find reshape node after the qkv_transpose")
-            return
-
-        output_name_to_nodes = self.output_name_to_nodes()
-
-        q_matmul = self.find_first_parent_by_type(q_transpose, "MatMul", output_name_to_nodes)
-        k_matmul = self.find_first_parent_by_type(k_transpose, "MatMul", output_name_to_nodes)
-        v_matmul = self.find_first_parent_by_type(v_transpose, "MatMul", output_name_to_nodes)
+    def create_attention_node(self, q_matmul, k_matmul, v_matmul, q_add, k_add, v_add, input, output):
         q_weight = self.get_initializer(q_matmul.input[1])
         k_weight = self.get_initializer(k_matmul.input[1])
         v_weight = self.get_initializer(v_matmul.input[1])
-
-        q_add = input_name_to_nodes[q_matmul.output[0]]
-        k_add = input_name_to_nodes[k_matmul.output[0]]
-        v_add = input_name_to_nodes[v_matmul.output[0]]
-        q_bias = self.get_initializer(q_add[0].input[1])
-        k_bias = self.get_initializer(k_add[0].input[1])
-        v_bias = self.get_initializer(v_add[0].input[1])
+        q_bias = self.get_initializer(q_add.input[1])
+        k_bias = self.get_initializer(k_add.input[1])
+        v_bias = self.get_initializer(v_add.input[1])
 
         qw = numpy_helper.to_array(q_weight)
         assert qw.shape == (self.hidden_size, self.hidden_size)
@@ -440,18 +397,6 @@ class BertOnnxModel(OnnxModel):
 
         qkv_bias = np.stack((qb, kb, vb), axis=-2)
 
-        subgraph_nodes, input_nodes = self.get_parent_nodes_and_inputs(reshape_node_after_att, [normalize_node], output_name_to_nodes)
-
-        nodes_to_remove.extend(subgraph_nodes)
-        nodes_to_remove.extend([reshape_node_after_att])
-
-        input_nodes = [n for n in input_nodes if self.get_initializer(n) is None]
-        if len(input_nodes) != 1:
-            print("Failed. Current normalize node output", normalize_node.output[0])
-            raise Exception("There should be one graph input (without initializer) linked to attention. Got:", input_nodes)
-        # Here we assume that attention will get only one graph input: the mask
-        self.set_mask_input(input_nodes[0])
-
         attention_node_name = self.create_node_name(self.attention_name)
 
         weight = onnx.helper.make_tensor(name=attention_node_name + '_qkv_weight',
@@ -473,8 +418,8 @@ class BertOnnxModel(OnnxModel):
         self.add_input(bias_input)
 
         attention_node = onnx.helper.make_node(self.attention_name,
-            inputs=[normalize_node.output[0], attention_node_name + '_qkv_weight', attention_node_name + '_qkv_bias', self.mask_input],
-            outputs=[reshape_node_after_att.output[0]],
+            inputs=[input, attention_node_name + '_qkv_weight', attention_node_name + '_qkv_bias', self.mask_input],
+            outputs=[output],
             name=attention_node_name)
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([onnx.helper.make_attribute("num_heads", self.num_heads)])
@@ -482,17 +427,72 @@ class BertOnnxModel(OnnxModel):
         self.add_node(attention_node)
 
     def fuse_attention(self, verbose=False):
-        normalize_nodes = self.get_nodes_by_op_type(self.normalize_name)
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+
         nodes_to_remove = []
-        for normalize_node in normalize_nodes:
-            self.transform_attention(normalize_node, nodes_to_remove)
+
+        for normalize_node in self.get_normalize_nodes():
+            # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
+            qkv_nodes = None
+            root_input = None
+            for i, input in enumerate(normalize_node.input):
+                if input not in output_name_to_node:
+                    continue
+                children = input_name_to_nodes[input]
+                children_types = sorted([child.op_type for child in children])
+                if children_types != self.normalize_children_types():
+                    qkv_nodes = self.match_parent_path(normalize_node, ['Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'], [i, 0, 0, 0, 0])
+                else:
+                    root_input = input
+
+            if root_input is None or qkv_nodes is None:
+                continue
+
+            (add_qkv, matmul_qkv, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
+
+            v_nodes = self.match_parent_path(matmul_qkv, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
+            if v_nodes is None:
+                continue
+            (transpose_v, reshape_v, add_v, matmul_v) = v_nodes
+
+            qk_nodes = self.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Div', 'MatMul'], [0, 0, 0, 0])
+            if qk_nodes is None:
+                continue
+            (softmax_qk, add_qk, div_qk, matmul_qk) = qk_nodes
+
+            q_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [0, 0, 0, 0])
+            if q_nodes is None:
+                continue
+            (transpose_q, reshape_q, add_q, matmul_q) = q_nodes
+
+            k_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
+            if k_nodes is None:
+                continue
+            (transpose_k, reshape_k, add_k, matmul_k) = k_nodes
+
+            mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'], [1, 0, 1, 0, 0])
+            if mask_nodes is None:
+                continue
+            (mul_mask, sub_mask, cast_mask, unsqueeze_mask, unsqueeze_mask_0) = mask_nodes
+
+            if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_v.input[0] == root_input:
+                self.set_mask_input(unsqueeze_mask_0.input[0])
+                self.create_attention_node(matmul_q, matmul_k, matmul_v, add_q, add_k, add_v, root_input, reshape_qkv.output[0])
+                nodes_to_remove.extend([reshape_qkv, transpose_qkv, matmul_qkv])
+                nodes_to_remove.extend(qk_nodes)
+                nodes_to_remove.extend(q_nodes)
+                nodes_to_remove.extend(k_nodes)
+                nodes_to_remove.extend(v_nodes)
+                nodes_to_remove.extend(mask_nodes)
+
         self.remove_nodes(nodes_to_remove)
         self.update_graph(verbose)
 
     def fuse_gelu(self):
         nodes = self.nodes()
         input_name_to_nodes = self.input_name_to_nodes()
-        output_name_to_nodes = self.output_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
 
         nodes_to_remove = []
         nodes_to_add = []
@@ -523,7 +523,7 @@ class BertOnnxModel(OnnxModel):
             if matmul_2 is None:
                 continue
 
-            subgraph_nodes = self.get_subgraph_nodes(add_node, [matmul_2], input_name_to_nodes)
+            subgraph_nodes = self.get_children_subgraph_nodes(add_node, [matmul_2], input_name_to_nodes)
             if len(subgraph_nodes) != 5:
                 continue
 
@@ -537,42 +537,142 @@ class BertOnnxModel(OnnxModel):
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
 
-    def fuse_embed_layer(self, verbose=False):
+    def fuse_reshape(self):
         nodes = self.nodes()
         input_name_to_nodes = self.input_name_to_nodes()
-        output_name_to_nodes = self.output_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+
+        nodes_to_remove = []
+        nodes_to_add = []
+
+        for reshape_node in self.get_nodes_by_op_type('Reshape'):
+            concat_node = output_name_to_node[reshape_node.input[1]]
+            if concat_node.op_type != 'Concat' or len(concat_node.input) < 3:
+                continue
+
+            path = self.match_parent_path(concat_node, ['Unsqueeze', 'Gather', 'Shape'], [0, 0, 0], output_name_to_node)
+            if path is None:
+                continue
+            (unsqueeze_0, gather_0, shape_0) = path
+
+            path = self.match_parent_path(concat_node, ['Unsqueeze', 'Gather', 'Shape'], [1, 0, 0], output_name_to_node)
+            if path is None:
+                continue
+            (unsqueeze_1, gather_1, shape_1) = path
+
+            shape = []
+            gather_value = self.get_constant_value(gather_0.input[1])
+            if gather_value == 0:
+                shape.append(0)
+
+            gather_value = self.get_constant_value(gather_1.input[1])
+            if gather_value == 1:
+                shape.append(0)
+
+            if len(shape) != 2:
+                continue
+
+            if (len(concat_node.input) > 2):
+                concat_2 = self.get_initializer(concat_node.input[2])
+                if concat_2 is None:
+                    continue
+                shape.extend(numpy_helper.to_array(concat_2))
+
+            if (len(concat_node.input) > 3):
+                concat_3 = self.get_initializer(concat_node.input[3])
+                if concat_3 is None:
+                    continue
+                shape.extend(numpy_helper.to_array(concat_3))
+            shape_value = np.asarray(shape, dtype=np.int64)
+
+            constant_shape_name = self.create_node_name('Constant', 'constant_shape')
+            new_node = onnx.helper.make_node(
+                'Constant',
+                inputs=[],
+                outputs=[constant_shape_name],
+                value=onnx.helper.make_tensor(
+                    name='const_tensor',
+                    data_type=TensorProto.INT64,
+                    dims=shape_value.shape,
+                    vals=shape_value))
+            reshape_node.input[1] = constant_shape_name
+            nodes_to_remove.extend([concat_node, unsqueeze_0, unsqueeze_1, gather_0, gather_1, shape_0, shape_1])
+            nodes_to_add.append(new_node)
+
+        print("Fused reshape count:", len(nodes_to_add))
+
+        self.remove_nodes(nodes_to_remove)
+        self.add_nodes(nodes_to_add)
+
+    """
+     Embed Layer Normalization will fuse embeddings and mask processing into one node.
+     The embeddings before conversion:
+
+     (input_ids) -------->  Gather ----------+       (segment_ids)
+        |                                    |            |
+        |                                    v            v
+        +--> Shape --> Expand -> Gather---->Add         Gather
+        |                ^                   |            |
+        |                |                   v            v
+        +---(optional graph)               SkipLayerNormalization
+
+      Optional graph is used to generate position list (0, 1, ...). It can be a constant in some model.
+    """
+    def fuse_embed_layer(self, verbose=False):
+        if self.mask_input is None:
+            print("skip embed layer fusion since mask input is not found")
+            return
+
+        nodes = self.nodes()
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
         mask_input_name = self.mask_input
 
         nodes_to_remove = []
         nodes_to_add = []
 
+        # Find the first normalize node could be embedding layer.
         normalize_node = None
         for node in self.get_normalize_nodes():
-            if self.find_first_parent_by_type(node, self.normalize_name, output_name_to_nodes, recursive=False) is None:
-                normalize_node = node
-                break
+            if self.match_parent_path(node, ['Add', 'Gather'], [0, 0]) is not None:
+                if self.find_first_child_by_type(node, 'Attention', input_name_to_nodes, recursive=False) is not None:
+                    normalize_node = node
+                    break
 
         if normalize_node is None:
-            raise Exception("did not find node with op_type", self.normalize_name)
+            print("did not find embedding layer")
 
         # Here we assume the order of embedding is word_embedding + position_embedding + segment_embedding.
-        add_node = self.find_first_parent_by_type(normalize_node, 'Add', output_name_to_nodes, recursive = False)
-        assert add_node is not None
+        word_embedding_path = self.match_parent_path(normalize_node, ['Add', 'Gather'], [0, 0])
+        if word_embedding_path is None:
+            print("Failed to find word embedding")
+            return
+        add_node, word_embedding_gather = word_embedding_path
 
-        segment_embedding_gather = self.find_first_parent_by_type(normalize_node, 'Gather', output_name_to_nodes, recursive = False)
-        assert segment_embedding_gather is not None
+        position_embedding_path = self.match_parent_path(add_node, ['Gather', 'Expand', 'Shape'], [1, 1, 1])
+        if position_embedding_path is None:
+            print("Failed to find position embedding")
+            return
+        position_embedding_gather, position_embedding_expand, position_embedding_shape = position_embedding_path
 
-        parents = self.get_parents(add_node, output_name_to_nodes)
-        if len(parents) == 2 and parents[0].op_type == 'Gather' and parents[1].op_type == 'Gather':
-            word_embedding_gather = parents[0]
-            position_embedding_gather = parents[1]
-        else:
-            raise Exception("Expect to have two Gather node as parent of Add node")
+        segment_embedding_path = self.match_parent_path(normalize_node, ['Gather'], [1])
+        if segment_embedding_path is None:
+            print("failed to find segment embedding")
+            return
+        segment_embedding_gather = segment_embedding_path[0]
 
         input_ids = word_embedding_gather.input[1]
         segment_ids = segment_embedding_gather.input[1]
 
-        nodes_to_remove, inputs = self.get_parent_nodes_and_inputs(normalize_node, [], output_name_to_nodes)
+        if position_embedding_shape.input[0] != input_ids:
+            print("position and word embedding is expected to be applied on same input")
+            return
+
+        subgraph_nodes = self.get_parent_subgraph_nodes(position_embedding_expand, [input_ids], output_name_to_node)
+
+        nodes_to_remove.extend(subgraph_nodes)
+        nodes_to_remove.extend([position_embedding_gather, position_embedding_expand])
+        nodes_to_remove.extend([normalize_node, add_node, segment_embedding_gather, word_embedding_gather, position_embedding_gather])
 
         embed_node = onnx.helper.make_node('EmbedLayerNormalization',
                         inputs=[input_ids, segment_ids, mask_input_name, 
@@ -585,7 +685,6 @@ class BertOnnxModel(OnnxModel):
         self.embed_node = embed_node
 
         nodes_to_add.extend([embed_node])
-        nodes_to_remove.append(normalize_node)
 
         self.replace_input_of_all_nodes(normalize_node.output[0], 'embed_output')
         self.replace_input_of_all_nodes(mask_input_name, 'mask_idx')
@@ -637,57 +736,83 @@ class BertOnnxModel(OnnxModel):
             dim_proto = output.type.tensor_type.shape.dim[0]
             dim_proto.dim_param = dynamic_batch_dim
 
-    def fuse_layer_norm(self):
-        graph = self.graph()
-        nodes = self.nodes()
+    """
+     Layer Normalization will fuse Add + LayerNormalization into one node:
+          +----------------------+
+          |                      |
+          |                      v
+        Add --> ReduceMean -->  Sub  --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add
+                                 |                                               ^
+                                 |                                               |
+                                 +-----------------------------------------------+
 
+     It also handles cases of duplicated sub nodes exported from older version of PyTorch:
+          +----------------------+
+          |                      v
+          |           +-------> Sub-----------------------------------------------+
+          |           |                                                           |
+          |           |                                                           v
+        Add --> ReduceMean -->  Sub  --> Pow --> ReduceMean --> Add --> Sqrt --> Div  --> Mul --> Add
+          |                      ^
+          |                      |
+          +----------------------+
+    """
+    def fuse_layer_norm(self):
         input_name_to_nodes = self.input_name_to_nodes()
-        output_name_to_nodes = self.output_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
 
         nodes_to_remove = []
         nodes_to_add = []
 
-        for node in nodes:
-            # do gather on word directly
+        for node in self.nodes():
             if node.op_type == 'Add':
-                output_name = node.output[0]
-                children = input_name_to_nodes[output_name]
-                sub_count = 0
-                reduceMean = 0
+                children = self.get_children(node, input_name_to_nodes)
+                children_types = sorted([child.op_type for child in children])
+                if children_types != ["ReduceMean", "Sub"] and children_types != ["ReduceMean", "Sub", "Sub"]:
+                    continue
+
+                div_node = None
                 for child in children:
-                    if child.op_type == 'Sub':
-                        sub_count = sub_count + 1
-                    if child.op_type == 'ReduceMean':
-                        reduceMean = reduceMean + 1
-                if sub_count == 2 and reduceMean == 1: #find a normalize pattern
-                    nodes_to_remove.extend(children)
-                    for child in children:
                         if child.op_type == 'Sub':
-                            if input_name_to_nodes[child.output[0]][0].op_type == 'Div':
-                                div_node = input_name_to_nodes[child.output[0]][0]
-                            else:
-                                pow_node = input_name_to_nodes[child.output[0]][0]
-                    reduceMean_node = input_name_to_nodes[pow_node.output[0]][0]
-                    first_add_node = input_name_to_nodes[reduceMean_node.output[0]][0]
-                    sqrt_node = input_name_to_nodes[first_add_node.output[0]][0]
-                    mul_node = input_name_to_nodes[div_node.output[0]][0]
-                    second_add_node = input_name_to_nodes[mul_node.output[0]][0]
-                    nodes_to_remove.extend([pow_node, reduceMean_node, first_add_node, sqrt_node, div_node, mul_node, second_add_node])
+                            div_node = self.find_first_child_by_type(child, 'Div', input_name_to_nodes, recursive=False)
+                            if div_node is not None:
+                                break
+                if div_node is None:
+                    continue
 
-                    normalize_node_name = self.create_node_name(self.normalize_name, name_prefix="SkipLayerNorm")
-                    sln_inputs = [i for i in node.input]
-                    sln_inputs.extend([mul_node.input[0], second_add_node.input[1]])
-                    normalize_node = onnx.helper.make_node(self.normalize_name,
-                        inputs=sln_inputs,
-                        outputs=[second_add_node.output[0]],
-                        name=normalize_node_name)
-                    normalize_node.domain = "com.microsoft"
-                    nodes_to_add.extend([normalize_node])
-                    nodes_to_remove.append(node)
+                parent_nodes = self.match_parent_path(div_node, ['Sqrt', 'Add', 'ReduceMean', 'Pow', 'Sub', 'Add'], [1, 0, 0, 0, 0, 0], output_name_to_node)
+                if parent_nodes is None:
+                    continue
 
-        for to_remove in nodes_to_remove:
-            nodes.remove(to_remove)
-        nodes.extend(nodes_to_add)
+                sqrt_node, second_add_node, reduce_mean_node, pow_node, sub_node, first_add_node = parent_nodes
+                if first_add_node != node:
+                    continue
+
+                mul_node = input_name_to_nodes[div_node.output[0]][0]
+                if mul_node.op_type != 'Mul':
+                    continue
+
+                last_add_node = input_name_to_nodes[mul_node.output[0]][0]
+                if last_add_node.op_type != 'Add':
+                    continue
+
+                nodes_to_remove.append(node)
+                nodes_to_remove.extend(children)
+                nodes_to_remove.extend([last_add_node, mul_node, div_node, sqrt_node, second_add_node, reduce_mean_node, pow_node])
+
+                normalize_node_name = self.create_node_name(self.normalize_name, name_prefix="SkipLayerNorm")
+                inputs = [i for i in node.input]
+                inputs.extend([mul_node.input[0], last_add_node.input[1]])
+                normalize_node = onnx.helper.make_node(self.normalize_name,
+                    inputs=inputs,
+                    outputs=[last_add_node.output[0]],
+                    name=normalize_node_name)
+                normalize_node.domain = "com.microsoft"
+                nodes_to_add.extend([normalize_node])
+
+        self.remove_nodes(nodes_to_remove)
+        self.add_nodes(nodes_to_add)
+        print("Fused layer normalization count:", len(nodes_to_add))
 
 def main():
     parser = argparse.ArgumentParser()
@@ -716,6 +841,7 @@ def main():
     model = ModelProto()
     with open(args.input, "rb") as f:
         model.ParseFromString(f.read())
+    original_opset_version = model.opset_import[0].version
 
     bert_model = BertOnnxModel(model, args.num_heads, args.hidden_size, args.batch_size, args.sequence_length)
 
@@ -723,9 +849,15 @@ def main():
 
     bert_model.fuse_gelu()
 
+    bert_model.fuse_reshape()
+
     bert_model.fuse_attention(args.verbose)
 
     bert_model.fuse_embed_layer(args.verbose)
+    
+    if bert_model.embed_node is None:
+        print("Failed to fuse embedding layer.")
+        return
 
     if args.input_int32:
         bert_model.change_input_to_int32()
@@ -738,6 +870,9 @@ def main():
 
     if args.float16:
         bert_model.convert_model_float32_to_float16()
+
+    # restore opset version
+    bert_model.model.opset_import[0].version = original_opset_version
 
     with open(args.output, "wb") as out:
         out.write(bert_model.model.SerializeToString())
