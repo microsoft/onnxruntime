@@ -336,15 +336,13 @@ class OnnxModel:
         self.remove_unused_constant()
 
 class BertOnnxModel(OnnxModel):
-    def __init__(self, model, num_heads, hidden_size, batch_size, sequence_length):
-        assert batch_size >= 0
+    def __init__(self, model, num_heads, hidden_size, sequence_length):
         assert num_heads > 0
         assert hidden_size % num_heads == 0
         assert sequence_length > 0
         
         super(BertOnnxModel, self).__init__(model)
         self.num_heads = num_heads
-        self.batch_size = batch_size
         self.sequence_length = sequence_length
         self.hidden_size = hidden_size
         self.mask_input = None
@@ -671,8 +669,7 @@ class BertOnnxModel(OnnxModel):
         subgraph_nodes = self.get_parent_subgraph_nodes(position_embedding_expand, [input_ids], output_name_to_node)
 
         nodes_to_remove.extend(subgraph_nodes)
-        nodes_to_remove.extend([position_embedding_gather, position_embedding_expand])
-        nodes_to_remove.extend([normalize_node, add_node, segment_embedding_gather, word_embedding_gather, position_embedding_gather])
+        nodes_to_remove.extend([normalize_node, add_node, segment_embedding_gather, word_embedding_gather, position_embedding_gather, position_embedding_expand])
 
         embed_node = onnx.helper.make_node('EmbedLayerNormalization',
                         inputs=[input_ids, segment_ids, mask_input_name, 
@@ -693,13 +690,30 @@ class BertOnnxModel(OnnxModel):
         self.add_nodes(nodes_to_add)
         self.update_graph(verbose)
 
+    def get_batch_size_from_graph_input(self):
+        graph = self.graph()
+        for input in graph.input:
+            if input.name in self.embed_node.input[:3]:
+                tensor_type = input.type.tensor_type
+                if (tensor_type.HasField("shape")):
+                    for d in tensor_type.shape.dim:
+                        if (d.HasField("dim_value")):
+                            return d.dim_value
+                        elif (d.HasField("dim_param")):
+                            return str(d.dim_param)       # unknown dimension with symbolic name
+                        return None
+        return None
+
     def change_input_to_int32(self):
+        original_opset_version = self.model.opset_import[0].version
         graph = self.graph()
 
+        batch_size = self.get_batch_size_from_graph_input()
+        input_batch_size = batch_size if isinstance(batch_size, int) else 1
         new_graph_inputs = []
         for input in graph.input:
             if input.name in self.embed_node.input[:3]: # Only the first 3 inputs of embed node need int32 conversion.
-                int32_input = onnx.helper.make_tensor_value_info(input.name, TensorProto.INT32, [self.batch_size if self.batch_size > 0 else 1, self.sequence_length])
+                int32_input = onnx.helper.make_tensor_value_info(input.name, TensorProto.INT32, [input_batch_size, self.sequence_length])
                 new_graph_inputs.append(int32_input)
             else:
                 new_graph_inputs.append(input)
@@ -712,6 +726,12 @@ class BertOnnxModel(OnnxModel):
                                            value_info=graph.value_info)
 
         self.model = onnx.helper.make_model(graph_def, producer_name='bert model optimizer')
+
+        if isinstance(batch_size, str):
+            self.update_dynamic_batch_io(batch_size)
+
+        # restore opset version
+        self.model.opset_import[0].version = original_opset_version
 
     def cast_input_to_int32(self):
         for input in self.embed_node.input[:3]:
@@ -823,7 +843,6 @@ def main():
     parser.add_argument('--num_heads', required=False, type=int, default=12, help="number of attention heads")
     parser.add_argument('--hidden_size', required=False, type=int, default=768)
     parser.add_argument('--sequence_length', required=False, type=int, default=128)
-    parser.add_argument('--batch_size', required=False, type=int, default=0)
 
     # Use int32 (instead of int64) tensor as input to avoid unnecessary data type cast.
     parser.add_argument('--input_int32', required=False, action='store_true')
@@ -841,9 +860,8 @@ def main():
     model = ModelProto()
     with open(args.input, "rb") as f:
         model.ParseFromString(f.read())
-    original_opset_version = model.opset_import[0].version
 
-    bert_model = BertOnnxModel(model, args.num_heads, args.hidden_size, args.batch_size, args.sequence_length)
+    bert_model = BertOnnxModel(model, args.num_heads, args.hidden_size, args.sequence_length)
 
     bert_model.fuse_layer_norm()
 
@@ -864,15 +882,9 @@ def main():
     else:
         bert_model.cast_input_to_int32()
 
-    if args.batch_size == 0:
-        # use dynamic batch size instead of static
-        bert_model.update_dynamic_batch_io()
 
     if args.float16:
         bert_model.convert_model_float32_to_float16()
-
-    # restore opset version
-    bert_model.model.opset_import[0].version = original_opset_version
 
     with open(args.output, "wb") as out:
         out.write(bert_model.model.SerializeToString())
