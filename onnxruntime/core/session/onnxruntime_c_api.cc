@@ -620,7 +620,7 @@ static OrtStatus* GetNodeDefTypeInfoHelper(const OrtSession* sess, GetDefListFn 
   if (p.second->size() <= index)
     return OrtApis::CreateStatus(ORT_FAIL, "out of index");
   const ONNX_NAMESPACE::TypeProto* type_proto = (*p.second)[index]->TypeAsProto();
-  return OrtTypeInfo::FromDataTypeImpl(type_proto, out);
+  return OrtTypeInfo::FromTypeProto(type_proto, out);
   API_IMPL_END
 }
 
@@ -1273,8 +1273,7 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::CreateSessionOptions,
     &OrtApis::SetOptimizedModelFilePath,
     &OrtApis::CloneSessionOptions,
-    &OrtApis::EnableSequentialExecution,
-    &OrtApis::DisableSequentialExecution,
+    &OrtApis::SetSessionExecutionMode,
     &OrtApis::EnableProfiling,
     &OrtApis::DisableProfiling,
     &OrtApis::EnableMemPattern,
@@ -1331,6 +1330,7 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::GetTensorElementType,
     &OrtApis::GetDimensionsCount,
     &OrtApis::GetDimensions,
+    &OrtApis::GetSymbolicDimensions,
     &OrtApis::GetTensorShapeElementCount,
     &OrtApis::GetTensorTypeAndShape,
     &OrtApis::GetTypeInfo,

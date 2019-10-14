@@ -45,7 +45,7 @@ TEST(MemcpyTest, copy1) {
   PutAllNodesOnOneProvider(model.MainGraph(), onnxruntime::kCpuExecutionProvider);
   SessionStateInitializer session_initializer{true, ORT_TSTR(""), model.MainGraph(),
                                               s, execution_providers, kernel_registry_manager};
-  st = session_initializer.CreatePlan(nullptr, {}, true);
+  st = session_initializer.CreatePlan(nullptr, {}, ExecutionMode::ORT_SEQUENTIAL);
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 
   AllocatorPtr allocator =

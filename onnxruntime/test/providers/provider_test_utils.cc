@@ -509,11 +509,11 @@ void OpTester::Run(ExpectResult expect_result,
                    const std::unordered_set<std::string>& excluded_provider_types,
                    const RunOptions* run_options,
                    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
-                   bool sequential_execution) {
+                   ExecutionMode execution_mode) {
   SessionOptions so;
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
-  so.enable_sequential_execution = sequential_execution;
+  so.execution_mode = execution_mode;
   Run(so, expect_result, expected_failure_string, excluded_provider_types, run_options, execution_providers);
 }
 
