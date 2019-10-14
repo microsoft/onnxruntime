@@ -43,22 +43,24 @@ Status RoiAlign<T>::ComputeInternal(OpKernelContext* context) const {
   auto& Y = *context->Output(0, {num_rois, x_dims[1], this->output_height_, this->output_width_});
   int64_t output_size = Y.Shape().Size();
 
-  RoiAlignImpl(
-      output_size,  // num threads
-      reinterpret_cast<const typename ToCudaType<T>::MappedType*>(X_ptr->template Data<T>()),
-      ToCudaType<T>::FromFloat(this->spatial_scale_),
-      x_dims[1],  // num channels
-      x_dims[2],  // height
-      x_dims[3],  // width
-      this->output_height_,
-      this->output_width_,
-      this->sampling_ratio_,
-      reinterpret_cast<const typename ToCudaType<T>::MappedType*>(rois_ptr->template Data<T>()),
-      num_roi_cols,
-      reinterpret_cast<typename ToCudaType<T>::MappedType*>(Y.template MutableData<T>()),
-      this->mode_ == RoiAlignMode::avg,
-      batch_indices_ptr->template Data<int64_t>()
-  );
+  if (output_size > 0) {
+    RoiAlignImpl(
+        output_size,  // num threads
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(X_ptr->template Data<T>()),
+        ToCudaType<T>::FromFloat(this->spatial_scale_),
+        x_dims[1],  // num channels
+        x_dims[2],  // height
+        x_dims[3],  // width
+        this->output_height_,
+        this->output_width_,
+        this->sampling_ratio_,
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(rois_ptr->template Data<T>()),
+        num_roi_cols,
+        reinterpret_cast<typename ToCudaType<T>::MappedType*>(Y.template MutableData<T>()),
+        this->mode_ == RoiAlignMode::avg,
+        batch_indices_ptr->template Data<int64_t>()
+    );
+  }
 
   return Status::OK();
 }

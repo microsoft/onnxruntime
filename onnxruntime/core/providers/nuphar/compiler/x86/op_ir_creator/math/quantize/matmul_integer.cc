@@ -77,7 +77,7 @@ tvm::Tensor GenericMatMulInteger(const tvm::Array<tvm::Tensor>& inputs, const No
   return tvm_codegen::MatMul(A_Int32, B_Int32, node.Name() + "_Generic");
 }
 
-// Evaluate of MatMulInteger or MatMulInteger16
+// Evaluate of MatMulInteger
 static Status EvaluateMatMulInteger(
     const tvm::Array<tvm::Tensor>& inputs,
     const Node& node,
@@ -139,7 +139,9 @@ static Status EvaluateMatMulInteger(
         //TODO: change to use MLAS when no layout could apply
         tvm::Tensor B_marshalled = tvm_codegen::Transpose(B, {1, 0});
 
-        tvm::Tensor output_tensor = IMatMulExternMKL(A, B_marshalled, output_shape, input_dim, embed_dim, name + "_IMatMulExternMKL");
+        bool use_extern_MKL = (force_mkl || !isAVX2);
+        tvm::Tensor output_tensor = use_extern_MKL ? IMatMulExternMKL(A, B_marshalled, output_shape, input_dim, embed_dim, name + "_IMatMulExternMKL")
+                                                   : IMatMulExternAVX2(A, B_marshalled, output_shape, input_dim, embed_dim, name + "_IMatMulExternAVX2");
         outputs.push_back(output_tensor);
       } else if (use_tensorization) {
         // vector width determined from target hardware
@@ -190,7 +192,7 @@ static Status EvaluateMatMulInteger(
         auto layout_key = tvm_codegen::WeightLayoutTranspose2D::GetKey(TensorProtoDataType(B_NodeArg));
         tvm::Tensor B_marshalled = ctx_nuphar->ApplyWeightLayout(layout_key, B_name, B, true);
 
-        bool use_extern_AVX2 = !force_mkl && isAVX2;
+        bool use_extern_AVX2 = (!force_mkl && isAVX2);
         tvm::Tensor output_tensor = use_extern_AVX2 ? IMatMulExternAVX2(A, B_marshalled, output_shape, input_dim, embed_dim, name + "_IMatMulExternAVX2")
                                                     : IMatMulExternMKL(A, B_marshalled, output_shape, input_dim, embed_dim, name + "_IMatMulExternMKL");
 
@@ -254,7 +256,9 @@ static Status EvaluateMatMulInteger16(
         //TODO: change to use MLAS when no layout could apply
         tvm::Tensor B_marshalled = tvm_codegen::Transpose(B, {1, 0});
 
-        tvm::Tensor output_tensor = IMatMul16ExternMKL(A, B_marshalled, output_shape, input_dim, embed_dim, node.Name() + "_IMatMulExternMKL");
+        bool use_extern_MKL = (force_mkl || !isAVX2);
+        tvm::Tensor output_tensor = use_extern_MKL ? IMatMul16ExternMKL(A, B_marshalled, output_shape, input_dim, embed_dim, node.Name() + "_IMatMulExternMKL")
+                                                   : IMatMul16ExternAVX2(A, B_marshalled, output_shape, input_dim, embed_dim, node.Name() + "_IMatMulExternAVX2");
         outputs.push_back(output_tensor);
       } else {
         auto layout_key = tvm_codegen::WeightLayoutTranspose2D::GetKey(TensorProtoDataType(B_NodeArg));

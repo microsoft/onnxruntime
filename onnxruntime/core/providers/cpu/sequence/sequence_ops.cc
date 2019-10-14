@@ -473,5 +473,4 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
 
   return Status::OK();
 }
-
 }  // namespace onnxruntime
