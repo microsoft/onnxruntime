@@ -87,6 +87,7 @@ static Status PrepareForReduce(OpKernelContext* ctx,
       reduced[axis] = true;
     }
   } else {
+    reduced.assign(rank, true);
     output_dims_keepdims = std::vector<int64_t>(rank, 1);
   }
 
