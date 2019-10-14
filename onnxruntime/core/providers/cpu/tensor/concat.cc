@@ -21,28 +21,35 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Concat);
 
-// This method validates inputs to the Concat/ConcatFromSequence ops and computes some metadata used output computation
-// we will use the 'input_tensors' container in case of the 'ConcatFromSequence' op
-Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, const std::vector<Tensor>& input_tensors, Prepare& p) const {
+// this method will be shared between 'Concat' and 'ConcatFromSequence' ('concat' and 'stack' modes) to validate inputs
+static Status PrepareForCompute(OpKernelContext* ctx, const std::vector<const Tensor*>& input_tensors,
+                                int64_t axis, bool is_stack, Prepare& p) {
+  int input_count = static_cast<int>(input_tensors.size());
+  // Must have atleast one input to concat
   ORT_RETURN_IF_NOT(input_count >= 1, "Must have 1 or more inputs");
-  const Tensor* tensor_pointer = !is_sequence_op_ ? ctx->Input<Tensor>(0) : &input_tensors[0];
+
+  const Tensor* tensor_pointer = input_tensors[0];
   if (tensor_pointer == nullptr)
     return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
 
   const Tensor& inputs_0 = *tensor_pointer;
   const auto& inputs_0_dims = inputs_0.Shape().GetDims();
   const size_t inputs_0_rank = inputs_0_dims.size();
-  ORT_RETURN_IF_NOT(inputs_0_rank > 0, "Cannot concatenate scalars");
 
-  p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis_, inputs_0.Shape().NumDimensions()));
+  // Cannot concatenate scalars (but they can be stacked)
+  if (!is_stack)
+    ORT_RETURN_IF_NOT(inputs_0_rank > 0, "Cannot concatenate scalars");
 
-  // cache num of elements in tensor for later use
-  // as it's expensive to call Size() on TensorShape over and over
-  std::vector<size_t> tensor_num_elements(static_cast<size_t>(input_count));
+  // Handle and fix negative axis
+  // In 'stack' mode, the accepted range depends on the output rank (which is one more than the input rank)
+  p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis, !is_stack ? inputs_0_rank : inputs_0_rank + 1));
+
+  // not if input tensor is empty for later use (it's expensive to call Size() on TensorShape)
+  std::vector<int64_t> input_tensor_sizes(input_count);
+
   // Ensure all of the non concatenated axes match each other
   for (int index = 1; index < input_count; index++) {
-    size_t num_elements = 1;
-    tensor_pointer = !is_sequence_op_ ? ctx->Input<Tensor>(index) : &input_tensors[index];
+    tensor_pointer = input_tensors[index];
     if (tensor_pointer == nullptr)
       return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
     auto& inputs_n = *tensor_pointer;
@@ -52,54 +59,68 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, cons
                 "Ranks of input data are different, cannot concatenate them. expected rank: ",
                 inputs_0_rank, " got: ", inputs_n_rank);
     // Ensure all the other (non-concat) axes match
+    int64_t tensor_size = 1;
     for (size_t axis_index = 0; axis_index < inputs_0_rank; ++axis_index) {
-      num_elements *= inputs_n_dims[axis_index];
-      if (axis_index == p.axis)
+      auto dim_value = inputs_n_dims[axis_index];
+      tensor_size *= dim_value;
+
+      // In 'concat' mode, the axis to be concatenated may be different
+      // But in 'stack' mode, all input shapes must be the same
+      if (!is_stack && axis_index == p.axis)
         continue;
-      ORT_RETURN_IF_NOT(inputs_n_dims[axis_index] == inputs_0_dims[axis_index],
+
+      ORT_RETURN_IF_NOT(dim_value == inputs_0_dims[axis_index],
                         "Non concat axis dimensions must match: Axis ",
-                        axis_index, " has mismatched dimensions of ", inputs_n_dims[axis_index],
+                        axis_index, " has mismatched dimensions of ", dim_value,
                         " and ", inputs_0_dims[axis_index]);
     }
-    tensor_num_elements[index] = num_elements;
+
+    input_tensor_sizes[index] = tensor_size;  //assign the computed size of the input tensor
   }
 
-  // Calculate the size of the concatenated axis, and verify all other dimensions match
+  // Calculate the size of the concatenated axis
   size_t concat_axis_size = 0;
-  for (int index = 0; index < input_count; index++) {
-    tensor_pointer = !is_sequence_op_ ? ctx->Input<Tensor>(index) : &input_tensors[index];
-    concat_axis_size += tensor_pointer->Shape()[int(p.axis)];
+  for (int64_t index = 0; index < input_count; index++) {
+    concat_axis_size += input_tensors[index]->Shape()[int(p.axis)];
   }
 
   // Calculate the shape of the output tensor
-  std::vector<int64_t> dims(inputs_0_rank);
-  size_t num_elements = 1;  // cache size of the first input along the way
+  std::vector<int64_t> output_dims(inputs_0_rank);
+  int64_t tensor_size = 1;
   for (size_t dimension_index = 0; dimension_index < inputs_0_rank; dimension_index++) {
-    dims[dimension_index] = inputs_0_dims[dimension_index];
-    num_elements *= inputs_0_dims[dimension_index];
+    auto dim_value = inputs_0_dims[dimension_index];
+    output_dims[dimension_index] = dim_value;
+    tensor_size *= dim_value;
   }
-  tensor_num_elements[0] = num_elements;
-  dims[p.axis] = concat_axis_size;
-  TensorShape output_shape(dims);
+  input_tensor_sizes[0] = tensor_size;  //assign the computed size of the first input tensor
 
+  output_dims[p.axis] = concat_axis_size;
+  TensorShape output_shape(output_dims);
+
+  // Create output tensor
   auto& concat_result = *ctx->Output(0, output_shape);
   p.output_tensor = &concat_result;
+
+  // Make note if output tensor is going to be empty
   p.output_num_elements = output_shape.Size();
 
-  // if the output tensor is not going to hold any elements,
-  // there is no need to proceed further
+  // No need to proceed further if output is going to be empty
   if (p.output_num_elements == 0)
     return Status::OK();
 
   // The output_axis_pitch is the number of elements to add to move to the next split axis in the output
   p.output_axis_pitch = 1;
-  for (size_t i = inputs_0_rank; i-- > p.axis;) p.output_axis_pitch *= dims[i];
+  for (size_t i = inputs_0_rank; i-- > p.axis;) {
+    p.output_axis_pitch *= output_dims[i];
+  }
 
+  // Fill the 'Prepare' struct with available information
   p.inputs.reserve(input_count);
   for (int input_index = 0; input_index < input_count; input_index++) {
-    const Tensor* data_n_ptr = !is_sequence_op_ ? ctx->Input<Tensor>(input_index) : &input_tensors[input_index];
+    const Tensor* data_n_ptr = input_tensors[input_index];
     auto& data_n = *data_n_ptr;
 
+    // Type sanity check (Make sure we are working on homogeneous types)
     ORT_RETURN_IF_NOT(data_n.DataType() == concat_result.DataType());
 
     // The input_axis_pitch is the number of elements to add to move to the next split axis in the input
@@ -107,25 +128,27 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, cons
     const auto& data_dims = data_n.Shape().GetDims();
     for (size_t i = inputs_0_rank; i-- > p.axis;) input_axis_pitch *= data_dims[i];
 
-    p.inputs.push_back({&data_n, tensor_num_elements[input_index], input_axis_pitch});
+    p.inputs.push_back({&data_n, input_axis_pitch, input_tensor_sizes[input_index]});
   }
 
-  // decide if the input Tenors of type 'string'
+  // decide if the input Tensors of type 'string'
   p.is_string_type = p.inputs[0].tensor->DataType() == DataTypeImpl::GetType<std::string>();
 
   return Status::OK();
 }
 
 // This method computes the output tensor for Concat/ConcatFromSequence ops
-Status ConcatBase::ComputeImpl(Prepare& p) const {
+static Status ComputeImpl(Prepare& p) {
   int input_count = static_cast<int>(p.inputs.size());
   int64_t initial_output_offset = 0;  // initial offset for each input
   auto element_bytes = p.output_tensor->DataType()->Size();
   for (int input_index = 0; input_index < input_count; input_index++) {
     const auto& prep = p.inputs[input_index];
+
     // no data in this tensor - so skip it
     if (prep.num_elements == 0)
       continue;
+
     auto input_axis_pitch = prep.axis_pitch;
     const uint8_t* input = static_cast<const uint8_t*>(prep.tensor->DataRaw());
 
@@ -155,29 +178,38 @@ Status ConcatBase::ComputeImpl(Prepare& p) const {
 
     initial_output_offset += input_axis_pitch;
   }
+
+  return Status::OK();
 }
 
-Status ConcatBase::ValidateAndConcatenateInputs(OpKernelContext* ctx, int input_count) const {
-  // validate inputs and prepare some metadata used during actual compute
+Status ConcatBase::ValidateInputsAndComputeOutput(OpKernelContext* ctx, const std::vector<const Tensor*>& input_tensors) const {
+  // Validate inputs and prepare some metadata used during actual compute
   Prepare p;
-  ORT_RETURN_IF_ERROR(PrepareForCompute(ctx, input_count,
-                                        is_sequence_op_ ? ctx->Input<TensorSeq>(0)->tensors : std::vector<Tensor>(), p));
+  auto status = PrepareForCompute(ctx, input_tensors, axis_, false, p);
+  if (!status.IsOK())
+    return status;
 
-  // return at this point if output tensor is going to be empty
+  // Return at this point if output tensor is going to be empty
   if (p.output_num_elements == 0)
     return Status::OK();
 
-  // compute values to be placed in the output tensor
+  // Compute values to be placed in the output tensor
   return ComputeImpl(p);
 }
 
 // core Compute() method for the 'Concat' kernel
 Status Concat::Compute(OpKernelContext* ctx) const {
-  // number of input tensors to concatenate
+  // Number of input tensors to concatenate
   auto input_count = Node().InputArgCount().front();
 
-  // validate inputs and compute output
-  return ValidateAndConcatenateInputs(ctx, input_count);
+  // Hold pointers to the input tensors to be used in the PrepareForCompute() step
+  std::vector<const Tensor*> input_tensors;
+  input_tensors.reserve(input_count);
+  for (int i = 0; i < input_count; ++i) {
+    input_tensors.push_back(ctx->Input<Tensor>(i));
+  }
+
+  return ValidateInputsAndComputeOutput(ctx, input_tensors);
 }
 
 }  // namespace onnxruntime
