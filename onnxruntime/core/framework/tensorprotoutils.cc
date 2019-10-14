@@ -429,10 +429,12 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
     } else if (utils::HasRawData(tensor_proto)) {
       if (ele_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not have raw data");
-      auto buffer = onnxruntime::make_unique<char[]>(tensor_proto.raw_data().size());
-      std::memcpy(buffer.get(), tensor_proto.raw_data().data(), tensor_proto.raw_data().size());
-      deleter_for_file_data.d = OrtCallback{DeleteCharArray, buffer.get()};
-      raw_data = buffer.release();
+      raw_data = const_cast<char*>(tensor_proto.raw_data().data());
+      // TODO below is a possible fix for the const_cast above. however, it requires extra memory
+      //auto buffer = onnxruntime::make_unique<char[]>(tensor_proto.raw_data().size());
+      //std::memcpy(buffer.get(), tensor_proto.raw_data().data(), tensor_proto.raw_data().size());
+      //deleter_for_file_data.d = OrtCallback{DeleteCharArray, buffer.get()};
+      //raw_data = buffer.release();
       raw_data_len = tensor_proto.raw_data().size();
     }
     if (IsLittleEndianOrder() && raw_data != nullptr && deleter_for_file_data.d.f != nullptr) {
