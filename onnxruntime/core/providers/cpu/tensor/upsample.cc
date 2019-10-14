@@ -205,6 +205,7 @@ Status upsampleLinear(const T* input,
                       const TensorShape& output_shape,
                       const vector<float>& scales,
                       bool is_resize,
+                      const std::vector<float>& roi,
                       GetOriginalCoordinateFunc get_original_coordinate) {
   if (!input || !output)
     return Status(ONNXRUNTIME, FAIL,
@@ -276,12 +277,16 @@ void upsampleBilinear(int64_t batch_size,
                       float height_scale,
                       float width_scale,
                       const std::vector<float>& roi,
+                      bool use_extrapolation,
+                      float extrapolation_value,
                       const T* Xdata,
                       T* Ydata,
                       AllocatorPtr& alloc,
                       GetOriginalCoordinateFunc get_original_coordinate) {
   auto output_width = static_cast<int64_t>(input_width * width_scale);
   auto output_height = static_cast<int64_t>(input_height * height_scale);
+  std::vector<float> y_original;
+  std::vector<float> x_original;
 
   size_t idx_buffer_size = 2 * sizeof(int64_t) * (output_height + output_width);
   size_t scale_buffer_size = 2 * sizeof(float_t) * (output_height + output_width);
@@ -305,6 +310,7 @@ void upsampleBilinear(int64_t batch_size,
     float in_y = get_original_coordinate(static_cast<float>(y), height_scale,
                                          static_cast<float>(output_height), static_cast<float>(input_height),
                                          roi[roi_y_start], roi[roi_y_end]);
+    y_original.emplace_back(in_y);
     in_y = std::max(0.0f, std::min(in_y, static_cast<float>(input_height - 1)));
 
     const int64_t in_y1 = std::min(static_cast<int64_t>(in_y), input_height - 1);
@@ -327,6 +333,7 @@ void upsampleBilinear(int64_t batch_size,
     float in_x = get_original_coordinate(static_cast<float>(x), width_scale,
                                          static_cast<float>(output_width), static_cast<float>(input_width),
                                          roi[roi_x_start], roi[roi_x_end]);
+    x_original.emplace_back(in_x);
     in_x = std::max(0.0f, std::min(in_x, static_cast<float>(input_width - 1)));
 
     in_x1[x] = std::min(static_cast<int64_t>(in_x), input_width - 1);
@@ -344,6 +351,15 @@ void upsampleBilinear(int64_t batch_size,
     for (int64_t c = 0; c < num_channels; ++c) {
       for (int64_t y = 0; y < output_height; ++y) {
         for (int64_t x = 0; x < output_width; ++x) {
+          // when use_extrapolation is set and original index of x or y is out of the dim range
+          // then use extrapolation_value as the output value.
+          if (use_extrapolation &&
+              ((y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
+               (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
+            Ydata[output_width * y + x] = static_cast<T>(extrapolation_value);
+            continue;
+          }
+
           T X11 = Xdata[input_width_mul_y1[y] + in_x1[x]];
           T X21 = Xdata[input_width_mul_y1[y] + in_x2[x]];
           T X12 = Xdata[input_width_mul_y2[y] + in_x1[x]];
@@ -404,11 +420,11 @@ float CubicInterpolation1D(const T* Xdata,
   // for 1D cubic interpolation 4 samples are used. 2 on the left and 2 on the right of x
   std::array<T, CubicModeGridLength> data_array;
   float result = 0;
-  for (int i = 0, j = -1; i < CubicModeGridLength; i++, j++) {
+  for (int i = 0, j = -1; i < (int)CubicModeGridLength; i++, j++) {
     data_array[i] = GetDataForCoordinate(Xdata, x + j, y, input_height, input_width);
   }
 
-  for (int i = 0; i < data_array.size(); i++) {
+  for (size_t i = 0; i < data_array.size(); i++) {
     result += static_cast<float>(coeff_array[i] * data_array[i]);
   }
   cache[grid_start_pos] = result;
@@ -426,6 +442,8 @@ void ResizeBiCubic(
     float width_scale,
     const std::vector<float>& roi,
     const float cubic_coeff_a,
+    bool use_extrapolation,
+    const float extrapolation_value,
     const T* Xdata,
     T* Ydata,
     GetOriginalCoordinateFunc get_original_coordinate) {
@@ -470,12 +488,32 @@ void ResizeBiCubic(
   for (int64_t n = 0; n < batch_size; n++) {
     for (int64_t c = 0; c < num_channels; c++) {
       for (int64_t y = 0; y < output_height; ++y) {
-        auto y_int = static_cast<int64_t>(std::floor(y_original[y]));
-        auto& coeff_y = cubic_coeffs[y_original[y] - y_int];
+        auto in_y = y_original[y];
+
+        // when use_extrapolation is set and original index is out of the dim range
+        // then use extrapolation_value as the output value.
+        if (use_extrapolation && (in_y < 0 || in_y > static_cast<float>(input_height - 1))) {
+          for (int64_t x = 0; x < output_width; ++x) {
+            Ydata[y * output_width + x] = extrapolation_value;
+          }
+          continue;
+        }
+
+        auto y_int = static_cast<int64_t>(std::floor(in_y));
+        auto& coeff_y = cubic_coeffs[in_y - y_int];
 
         for (int64_t x = 0; x < output_width; ++x) {
-          auto x_int = static_cast<int64_t>(std::floor(x_original[x]));
-          auto s_x = static_cast<float>(x_original[x] - x_int);
+          auto in_x = x_original[x];
+
+          // when use_extrapolation is set and original index is out of the dim range
+          // then use extrapolation_value as the output value.
+          if (use_extrapolation && (in_x < 0 || in_x > static_cast<float>(input_width - 1))) {
+            Ydata[y * output_width + x] = extrapolation_value;
+            continue;
+          }
+
+          auto x_int = static_cast<int64_t>(std::floor(in_x));
+          auto s_x = static_cast<float>(in_x - x_int);
           auto& coeff_x = cubic_coeffs[s_x];
 
           // Compute cubic interpolation in x dimension using the x coefficients.
@@ -489,7 +527,7 @@ void ResizeBiCubic(
 
           // From the result of cubic interpolation in x dim, compute cubic interpolation in y dimension
           float result = 0;
-          for (int i = 0; i < x_interpolation_result.size(); i++) {
+          for (size_t i = 0; i < x_interpolation_result.size(); i++) {
             result += x_interpolation_result[i] * coeff_y[i];
           }
 
@@ -557,8 +595,9 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
       AllocatorPtr alloc;
       ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
       upsampleBilinear(batch_size, num_channels, input_height, input_width,
-                       is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], roi,
-                       X->template Data<T>(), Y->template MutableData<T>(), alloc, get_original_coordinate_);
+                       is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], roi, 
+                       use_extrapolation_, extrapolation_value_, X->template Data<T>(), 
+                       Y->template MutableData<T>(), alloc, get_original_coordinate_);
       return Status::OK();
     }
     case UpsampleMode::CUBIC: {
@@ -569,8 +608,9 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
       const int64_t input_width = is_2D ? dims[1] : dims[3];
 
       ResizeBiCubic(batch_size, num_channels, input_height, input_width,
-                    is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], roi, cubic_coeff_a_,
-                    X->template Data<float>(), Y->template MutableData<float>(), get_original_coordinate_);
+                    is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], roi, cubic_coeff_a_, 
+                    use_extrapolation_, extrapolation_value_, X->template Data<float>(), Y->template MutableData<float>(), 
+                    get_original_coordinate_);
       return Status::OK();
     }
     default:

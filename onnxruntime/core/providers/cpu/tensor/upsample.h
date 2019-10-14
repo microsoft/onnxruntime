@@ -26,7 +26,7 @@ enum UpsampleMode {
 
 class UpsampleBase {
  protected:
-  UpsampleBase(OpKernelInfo info) : scales_cached_(false), roi_cached_(false) {
+  UpsampleBase(OpKernelInfo info) : scales_cached_(false), roi_cached_(false), use_extrapolation_(false) {
     int start;
     int end;
     info.GetKernelDef().SinceVersion(&start, &end);
@@ -50,7 +50,7 @@ class UpsampleBase {
                                                 ? info.GetAttrOrDefault<std::string>("coordinate_transformation_mode", "half_pixel")
                                                 : "asymmetric";
     get_original_coordinate_ = GetOriginalCoordinateFromResizedCoordinate(coordinate_transform_mode);
-    need_roi_input_ = coordinate_transform_mode == "tf_crop_and_resize" ? true : false;
+    use_extrapolation_ = need_roi_input_ = coordinate_transform_mode == "tf_crop_and_resize" ? true : false;
 
     std::string nearest_mode = info.GetAttrOrDefault<std::string>("nearest_mode", "round_prefer_floor");
     get_nearest_pixel_ = GetNearestPixelFromOriginal(nearest_mode, start);
@@ -98,6 +98,7 @@ class UpsampleBase {
   float cubic_coeff_a_;
   bool exclude_outside_;
   float extrapolation_value_;
+  bool use_extrapolation_;
   UpsampleMode mode_;
   bool use_nearest2x_optimization = false;
 
