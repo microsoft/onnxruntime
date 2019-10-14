@@ -94,20 +94,20 @@ inline std::basic_string<T> GetCurrentTimeString() {
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    logging::LoggingManager* logging_manager)
-    : session_options_{session_options},
-      graph_transformation_mgr_{session_options.max_num_graph_transformation_steps},
-      logging_manager_{logging_manager},
+    : session_options_(session_options),
+      graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+      logging_manager_(logging_manager),
       thread_pool_(concurrency::CreateThreadPool("intra_op_thread_pool",
                                                  session_options.intra_op_num_threads)),
-      inter_op_thread_pool_(!session_options.enable_sequential_execution
+      inter_op_thread_pool_(session_options.execution_mode == ExecutionMode::ORT_PARALLEL
                                 ? concurrency::CreateThreadPool("inter_op_thread_pool",
                                                                 session_options.inter_op_num_threads)
                                 : nullptr),
       session_state_(execution_providers_,
-                     session_options.enable_mem_pattern && session_options.enable_sequential_execution,
+                     session_options.enable_mem_pattern && session_options.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
                      thread_pool_.get(),
                      inter_op_thread_pool_.get()),
-      insert_cast_transformer_{"CastFloat16Transformer"} {
+      insert_cast_transformer_("CastFloat16Transformer") {
   ORT_ENFORCE(Environment::IsInitialized(),
               "Environment must be initialized before creating an InferenceSession.");
 
@@ -401,9 +401,9 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
 
       auto subgraph_session_state = onnxruntime::make_unique<SessionState>(execution_providers_,
-                                                                   session_state.GetEnableMemoryPattern(),
-                                                                   session_state.GetThreadPool(),
-                                                                   session_state.GetInterOpThreadPool());
+                                                                           session_state.GetEnableMemoryPattern(),
+                                                                           session_state.GetThreadPool(),
+                                                                           session_state.GetInterOpThreadPool());
       subgraph_session_state->SetProfiler(session_profiler_);
       subgraph_session_state->SetLogger(*session_logger_);
       // Pass data transfer manager to subgraph.
@@ -449,7 +449,7 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
 
       const auto implicit_inputs = node.ImplicitInputDefs();
       ORT_RETURN_IF_ERROR(initializer.CreatePlan(&node, &implicit_inputs,
-                                                 session_options_.enable_sequential_execution));
+                                                 session_options_.execution_mode));
 
       // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
       //                                                   &*subgraph_info.session_state);
@@ -493,7 +493,7 @@ common::Status InferenceSession::Initialize() {
       ORT_RETURN_IF_ERROR(RegisterExecutionProvider(std::move(p_cpu_exec_provider)));
     }
 
-    if (!session_options_.enable_sequential_execution &&
+    if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL &&
         execution_providers_.Get(onnxruntime::kCudaExecutionProvider)) {
       LOGS(*session_logger_, ERROR) << "Parallel execution is currently not supported "
                                        "for the registered CUDA Execution Provider.";
@@ -542,7 +542,7 @@ common::Status InferenceSession::Initialize() {
       }
     }
 
-    ORT_RETURN_IF_ERROR(session_initializer.CreatePlan(nullptr, nullptr, session_options_.enable_sequential_execution));
+    ORT_RETURN_IF_ERROR(session_initializer.CreatePlan(nullptr, nullptr, session_options_.execution_mode));
 
     // handle any subgraphs
     ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(graph, session_state_));
@@ -743,7 +743,7 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(
         utils::ExecuteGraph(session_state_, feeds_fetches_manager, feeds, *p_fetches,
-                            session_options_.enable_sequential_execution,
+                            session_options_.execution_mode,
                             run_options.terminate, run_logger));
 
   } catch (const std::exception& e) {
@@ -1037,7 +1037,7 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
                                                  const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
-    auto transformers_to_register = transformer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides, custom_list);
+    auto transformers_to_register = optimizer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides, custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }

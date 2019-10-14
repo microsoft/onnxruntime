@@ -86,14 +86,13 @@ class Softmax final : public OpKernel {
 
   Status Compute(OpKernelContext* ctx) const override {
 #ifndef USE_OPENMP
-    auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-    concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
+    concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
 #endif
     const auto* tensor_pointer = ctx->Input<Tensor>(0);
     if (tensor_pointer == nullptr)
       return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
     const Tensor& X = *tensor_pointer;
-    const TensorShape& input_shape{X.Shape()};
+    const TensorShape& input_shape = X.Shape();
 
     VLOGS(ctx->Logger(), 2) << "Input tensor shape: " << input_shape;
 

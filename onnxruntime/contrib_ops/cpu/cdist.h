@@ -94,7 +94,8 @@ class CDist final : public OpKernel {
  private:
   typedef void (*DistFunc)(const T* a, const T* b, T* dest, size_t ma, size_t mb, size_t n,
                            concurrency::ThreadPool* tp);
-  enum { EUCLIDEAN, SQEUCLIDEAN } mode_;
+  enum { EUCLIDEAN,
+         SQEUCLIDEAN } mode_;
 
  public:
   CDist(const OpKernelInfo& info) : OpKernel(info) {
@@ -109,8 +110,7 @@ class CDist final : public OpKernel {
   }
 
   common::Status Compute(OpKernelContext* context) const override {
-    auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
-    concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
+    concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
 
     assert(context->InputCount() == 2);
     const Tensor* A = context->Input<Tensor>(0);

@@ -4,9 +4,10 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/conv_add_fusion.h"
+#include "core/optimizer/utils.h"
 
 using namespace ONNX_NAMESPACE;
-using namespace ::onnxruntime::common;
+using namespace onnxruntime::common;
 namespace onnxruntime {
 
 Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modified) const {
@@ -21,8 +22,8 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
   const auto* add_B_tensor_proto = graph_utils::GetConstantInitializer(graph, add_inputs[1]->Name());
   ORT_ENFORCE(add_B_tensor_proto);
 
-  // Currently, fusion is only supported for float or double data type.
-  if (!Initializer::IsSupportedDataType(add_B_tensor_proto) || conv_W_tensor_proto->dims_size() < 4) {
+  // Conv only supports floating point data types, so can only fuse with an initializer containing those types
+  if (!optimizer_utils::IsFloatingPointDataType(*add_B_tensor_proto) || conv_W_tensor_proto->dims_size() < 4) {
     return Status::OK();
   }
 
@@ -50,15 +51,15 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     const auto* conv_B_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[2]->Name());
     ORT_ENFORCE(conv_B_tensor_proto);
 
-    if (!Initializer::IsSupportedDataType(conv_B_tensor_proto) ||
+    if (!optimizer_utils::IsFloatingPointDataType(*conv_B_tensor_proto) ||
         conv_B_tensor_proto->data_type() != add_B_tensor_proto->data_type() ||
         conv_B_tensor_proto->dims_size() != 1 ||
         conv_B_tensor_proto->dims(0) != conv_W_tensor_proto->dims(0)) {
       return Status::OK();
     }
 
-    auto conv_B = onnxruntime::make_unique<Initializer>(conv_B_tensor_proto);
-    auto add_B = onnxruntime::make_unique<Initializer>(add_B_tensor_proto);
+    auto conv_B = onnxruntime::make_unique<Initializer>(*conv_B_tensor_proto);
+    auto add_B = onnxruntime::make_unique<Initializer>(*add_B_tensor_proto);
 
     if (conv_B->size() != add_B->size()) {
       return Status::OK();
@@ -68,7 +69,7 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
 
     // Create new initializers of conv
     ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto;
-    conv_B->ToProto(&new_conv_B_tensor_proto);
+    conv_B->ToProto(new_conv_B_tensor_proto);
 
     // Replace initializers of conv node
     graph_utils::ReplaceInitializer(graph, conv_inputs[2]->Name(), new_conv_B_tensor_proto);

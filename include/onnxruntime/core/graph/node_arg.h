@@ -38,7 +38,7 @@ class NodeArg {
   NodeArg(const std::string& name,
           const ONNX_NAMESPACE::TypeProto* p_arg_type);
 
-  NodeArg(NodeArg&& other) = default;
+  NodeArg(NodeArg&&) = default;
 
   /** Gets the name. */
   const std::string& Name() const noexcept;

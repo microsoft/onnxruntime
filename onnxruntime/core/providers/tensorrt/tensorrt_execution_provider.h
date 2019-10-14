@@ -55,6 +55,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   explicit TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info);
   virtual ~TensorrtExecutionProvider();
 
+  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -65,6 +66,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
+
+  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
   void SetMaxBatchSize(const int batch_size) {
     max_batch_size_ = batch_size;
@@ -113,6 +116,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   */
   SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
                                         const onnxruntime::GraphViewer& graph, bool* early_termination) const;
+
+  AllocatorPtr allocator_;
 };
 
 }  // namespace onnxruntime

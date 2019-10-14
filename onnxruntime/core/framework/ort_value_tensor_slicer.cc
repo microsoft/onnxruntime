@@ -8,13 +8,13 @@ namespace onnxruntime {
 
 template <typename T>
 OrtValueTensorSlicer<T> OrtValueTensorSlicer<T>::Create(T& ort_value, int64_t slice_dimension, int64_t dim0_offset) {
-  static_assert(std::is_same<std::remove_const_t<T>, OrtValue>::value,
+  static_assert(std::is_same<typename std::remove_const<T>::type, OrtValue>::value,
                 "OrtValueTensorSlicer can only be used with 'OrtValue' or 'const OrtValue'");
 
   ORT_ENFORCE(ort_value.IsTensor(), "Can't slice a non-tensor OrtValue. Type was ", ort_value.Type());
   ORT_ENFORCE(ort_value.IsAllocated(), "OrtValue has not been allocated so can't be sliced.");
 
-  auto& tensor_shape{ort_value.template Get<Tensor>().Shape()};
+  auto& tensor_shape = ort_value.template Get<Tensor>().Shape();
   ORT_ENFORCE(gsl::narrow_cast<int64_t>(tensor_shape.NumDimensions()) >= slice_dimension,
               "Insufficient dimensions to slice on ", slice_dimension, ". Shape:", tensor_shape);
 
@@ -27,10 +27,10 @@ OrtValueTensorSlicer<T> OrtValueTensorSlicer<T>::Create(T& ort_value, int64_t sl
 template <typename T>
 OrtValueTensorSlicer<T>::Iterator::Iterator(T& ort_value, size_t slice_dimension, size_t dim0_offset, int64_t position,
                                             Direction direction)
-    : ort_value_{&ort_value},
-      position_{position},
-      increment_by_{direction == Direction::kForward ? 1 : -1},
-      position_materialized_{-1} {
+    : ort_value_(&ort_value),
+      position_(position),
+      increment_by_(direction == Direction::kForward ? 1 : -1),
+      position_materialized_(-1) {
   const auto& tensor = ort_value.template Get<Tensor>();
   tensor_data_type_ = tensor.DataType();
   tensor_location_ = &tensor.Location();

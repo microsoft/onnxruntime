@@ -36,8 +36,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 
 template <>
 Status MatMulInteger<uint8_t, uint8_t>::Compute(OpKernelContext* ctx) const {
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-  concurrency::ThreadPool* thread_pool = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
   auto a = ctx->Input<Tensor>(0);
   auto b = ctx->Input<Tensor>(1);
@@ -82,8 +81,7 @@ Status MatMulInteger<uint8_t, uint8_t>::Compute(OpKernelContext* ctx) const {
 
 template <>
 Status MatMulInteger<uint8_t, int8_t>::Compute(OpKernelContext* ctx) const {
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-  concurrency::ThreadPool* thread_pool = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
   auto a = ctx->Input<Tensor>(0);
   auto b = ctx->Input<Tensor>(1);

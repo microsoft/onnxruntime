@@ -53,27 +53,27 @@ class SparseTensorSample final {
   SparseTensorSample(SparseTensorSample&&) = default;
   SparseTensorSample& operator=(SparseTensorSample&&) = default;
 
-  const auto& Values() const {
+  const std::vector<int64_t>& Values() const {
     return values_;
   }
 
-  const auto& Indicies() const {
+  const std::vector<int64_t>& Indicies() const {
     return indicies_;
   }
 
-  const auto& Size() const {
+  int64_t Size() const {
     return size_;
   }
 
-  auto& Values() {
+  std::vector<int64_t>& Values() {
     return values_;
   }
 
-  auto& Indicies() {
+  std::vector<int64_t>& Indicies() {
     return indicies_;
   }
 
-  auto& Size() {
+  int64_t& Size() {
     return size_;
   }
 
@@ -276,7 +276,6 @@ ONNX_NAMESPACE::OpSchema GetFetchSparseShapeSchema() {
 
 TEST_F(OpaqueTypeTests, RunModel) {
   SessionOptions so;
-  so.enable_sequential_execution = true;
   so.session_logid = "SparseTensorTest";
   so.session_log_verbosity_level = 1;
 

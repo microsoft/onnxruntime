@@ -19,7 +19,7 @@
 namespace onnxruntime {
 
 ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool& terminate_flag)
-    : out_standings_(0), terminate_flag_{terminate_flag}, executor_pool_(session_state.GetInterOpThreadPool()) {
+    : out_standings_(0), terminate_flag_(terminate_flag), executor_pool_(session_state.GetInterOpThreadPool()) {
   auto graph_viewer = session_state.GetGraphViewer();
   node_refs_.resize(graph_viewer->MaxNodeIndex());
   for (auto& node : graph_viewer->Nodes()) {

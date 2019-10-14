@@ -23,6 +23,12 @@ static const std::unordered_set<std::string> valid_keys = {
     codegen::CodeGenSettings::kCodeGenDumpSchedule,
     kNupharFastMath,
     kNupharFastActivation,
+    kNupharForceNoTensorize,
+    kNupharTensorize_IGEMM_Tile_M,
+    kNupharTensorize_IGEMM_Tile_N,
+    kNupharTensorize_IGEMM_Tile_K,
+    kNupharTensorize_IGEMM_Permute,
+    kNupharTensorize_IGEMM_Split_Last_Tile,
     kNupharDumpFusedNodes,
     kNupharDumpPartition,
     kNupharIMatMulForceMkl,
@@ -92,7 +98,7 @@ void CreateNupharCodeGenSettings(const NupharExecutionProviderInfo& info) {
         ORT_NOT_IMPLEMENTED("NupharCodeGenSettings: unknown option (", key, ")");
       }
       required_options.insert(key);
-      options.insert(std::make_pair(key, value));
+      options[key] = value;
     }
   }
 

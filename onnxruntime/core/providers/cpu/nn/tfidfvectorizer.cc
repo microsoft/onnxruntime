@@ -61,7 +61,7 @@ class NgramEntry<int64_t> : public NgramEntryBase {
   size_t hash_ = 0;
 
   void RunningHash(int64_t v) {
-    std::hash<int64_t> hf{};
+    std::hash<int64_t> hf;
     hash_ ^= hf(v) + 0x9e3779b9 + (hash_ << 6) + (hash_ >> 2);
   }
 
@@ -112,7 +112,7 @@ class NgramEntry<std::string> : public NgramEntryBase {
   size_t hash_ = 0;
 
   void RunningHash(const std::string& s) {
-    std::hash<std::string> hf{};
+    std::hash<std::string> hf;
     hash_ ^= hf(s) + 0x9e3779b9 + (hash_ << 6) + (hash_ >> 2);
   }
 
@@ -142,9 +142,13 @@ class NgramEntry<std::string> : public NgramEntryBase {
 
   bool operator==(const NgramEntry& o) const {
     if (items_.size() == o.items_.size()) {
-      return std::equal(items_.cbegin(), items_.cend(),
-                        o.items_.cbegin(), o.items_.cend(),
-                        std::equal_to<std::string>());
+      std::equal_to<std::string> pred;
+      for (size_t i = 0; i < items_.size(); ++i) {
+        if (!pred(items_[i], o.items_[i])) {
+          return false;
+        }
+      }
+      return true;
     }
     return false;
   }
@@ -152,11 +156,6 @@ class NgramEntry<std::string> : public NgramEntryBase {
     return hash_;
   }
 };
-
-using IntegerPoolSet = std::unordered_set<NgramEntry<int64_t>>;
-// Does not own strings, contains references to them. This helps
-// to search by string references that point to the current input.
-using StringPoolSet = std::unordered_set<NgramEntry<std::string>>;
 
 template <typename ForwardIter, typename Cont>
 inline void Emplace(ForwardIter first, size_t ngrams, size_t ngram_size, size_t& ngram_id, Cont& c) {
@@ -184,6 +183,27 @@ struct hash<NgramEntry<T>> {
 }  // namespace std
 
 namespace onnxruntime {
+
+using IntegerPoolSet = std::unordered_set<NgramEntry<int64_t>>;
+// Does not own strings, contains references to them. This helps
+// to search by string references that point to the current input.
+using StringPoolSet = std::unordered_set<NgramEntry<std::string>>;
+
+template <typename T>
+struct Return;
+
+template <>
+struct Return<int64_t> {
+  using type = IntegerPoolSet::const_iterator;
+};
+
+template <>
+struct Return<int32_t> : Return<int64_t> {};
+
+template <>
+struct Return<std::string> {
+  using type = StringPoolSet::const_iterator;
+};
 
 // The weighting criteria.
 // "TF"(term frequency),
@@ -233,10 +253,10 @@ struct TfIdfVectorizer::Impl {
   Impl& operator=(const Impl&) = delete;
 
   template <typename T>
-  auto PoolEnd() const;
+  typename Return<T>::type PoolEnd() const;
 
   template <typename T>
-  auto PoolFind(const ngram_details::NgramEntry<T>&) const;
+  typename Return<T>::type PoolFind(const ngram_details::NgramEntry<T>&) const;
 
   void IncrementCount(size_t ngram_id, size_t row_num,
                       std::vector<uint32_t>& frequencies) const {
@@ -248,32 +268,32 @@ struct TfIdfVectorizer::Impl {
 };
 
 template <>
-inline auto TfIdfVectorizer::Impl::PoolEnd<int64_t>() const {
+inline Return<int64_t>::type TfIdfVectorizer::Impl::PoolEnd<int64_t>() const {
   return int64_set_.cend();
 }
 
 template <>
-inline auto TfIdfVectorizer::Impl::PoolEnd<int32_t>() const {
+inline Return<int32_t>::type TfIdfVectorizer::Impl::PoolEnd<int32_t>() const {
   return PoolEnd<int64_t>();
 }
 
 template <>
-inline auto TfIdfVectorizer::Impl::PoolEnd<std::string>() const {
+inline Return<std::string>::type TfIdfVectorizer::Impl::PoolEnd<std::string>() const {
   return str_set_.cend();
 }
 
 template <>
-inline auto TfIdfVectorizer::Impl::PoolFind<int64_t>(const NgramEntry<int64_t>& i) const {
+inline Return<int64_t>::type TfIdfVectorizer::Impl::PoolFind<int64_t>(const NgramEntry<int64_t>& i) const {
   return int64_set_.find(i);
 }
 
 template <>
-inline auto TfIdfVectorizer::Impl::PoolFind<int32_t>(const NgramEntry<int32_t>& i) const {
+inline Return<int32_t>::type TfIdfVectorizer::Impl::PoolFind<int32_t>(const NgramEntry<int32_t>& i) const {
   return int64_set_.find(i);
 }
 
 template <>
-inline auto TfIdfVectorizer::Impl::PoolFind<std::string>(const NgramEntry<std::string>& i) const {
+inline Return<std::string>::type TfIdfVectorizer::Impl::PoolFind<std::string>(const NgramEntry<std::string>& i) const {
   return str_set_.find(i);
 }
 

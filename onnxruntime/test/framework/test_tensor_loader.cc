@@ -11,8 +11,8 @@
 #include <Windows.h>
 #endif
 
-const OrtApi* g_ort = OrtGetApi(ORT_API_VERSION);
-const OrtApi* Ort::g_api = OrtGetApi(ORT_API_VERSION);
+const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+const OrtApi* Ort::g_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
 namespace onnxruntime {
 namespace test {
@@ -138,6 +138,7 @@ TEST(CApiTest, load_float_tensor_with_external_data) {
 }
 
 #if defined(__amd64__) || defined(_M_X64)
+#ifndef __ANDROID__
 #ifdef NDEBUG
 TEST(CApiTest, load_huge_tensor_with_external_data) {
   FILE* fp;
@@ -185,6 +186,7 @@ TEST(CApiTest, load_huge_tensor_with_external_data) {
     OrtRunCallback(deleter.release());
   }
 }
+#endif
 #endif
 #endif
 }  // namespace test
