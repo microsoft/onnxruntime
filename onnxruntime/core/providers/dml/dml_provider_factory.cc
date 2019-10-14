@@ -66,9 +66,22 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(in
   ComPtr<ID3D12CommandQueue> cmd_queue;
   THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_PPV_ARGS(&cmd_queue)));
 
+  DML_CREATE_DEVICE_FLAGS flags = DML_CREATE_DEVICE_FLAG_NONE;
+
+  // In debug builds, enable the DML debug layer if the D3D12 debug layer is also enabled
+#if _DEBUG
+  ComPtr<ID3D12DebugDevice> debug_device;
+  (void)d3d12_device->QueryInterface(IID_PPV_ARGS(&debug_device)); // ignore failure
+  const bool is_d3d12_debug_layer_enabled = (debug_device != nullptr);
+
+  if (is_d3d12_debug_layer_enabled) {
+    flags |= DML_CREATE_DEVICE_FLAG_DEBUG;
+  }
+#endif
+
   ComPtr<IDMLDevice> dml_device;
   THROW_IF_FAILED(DMLCreateDevice1(d3d12_device.Get(),
-                                   DML_CREATE_DEVICE_FLAG_NONE,
+                                   flags,
                                    DML_FEATURE_LEVEL_2_0,
                                    IID_PPV_ARGS(&dml_device)));
 
