@@ -15,20 +15,20 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     TopK<false>);
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     TopK,
     kOnnxDomain,
-    10,
-    kCudaExecutionProvider, 
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    10,10,
+    kCudaExecutionProvider,
+    KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     TopK<true>);
 
 ONNX_OPERATOR_KERNEL_EX(
     TopK,
     kOnnxDomain,
     11,
-    kCudaExecutionProvider, 
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    kCudaExecutionProvider,
+    KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     TopK<true>);
 
 template <bool inputk>
@@ -60,7 +60,7 @@ Status TopK<inputk>::ComputeInternal(OpKernelContext* ctx) const {
   if (inputk) {
     auto tensor_K = ctx->Input<Tensor>(1);
     ORT_ENFORCE(nullptr != tensor_K);
-    cudaMemcpyAsync(&K_, tensor_K->Data<int64_t>(), sizeof(int64_t), cudaMemcpyDeviceToHost);
+    K_ = *tensor_K->Data<int64_t>();
     ORT_ENFORCE(K_ >= 0 && K_ <= tensor_X->Shape().GetDims()[axis]);
   }
 
