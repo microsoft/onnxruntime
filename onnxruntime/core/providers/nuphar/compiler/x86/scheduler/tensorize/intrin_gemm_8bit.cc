@@ -26,6 +26,8 @@ tvm::Expr TensorizeIntGemm8bit::CreatePredicateMask(int tail_size) {
     mask_lanes = 16;
   } else if (tensorize_target_ == "avx2") {
     mask_lanes = 8;
+  } else if (tensorize_target_ == "avx") {
+    mask_lanes = 4;
   } else {
     ORT_NOT_IMPLEMENTED("Tensorization only support avx2/avx512-skylake currently!");
   }
