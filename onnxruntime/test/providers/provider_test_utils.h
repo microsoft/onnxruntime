@@ -17,6 +17,7 @@
 #include "test/test_environment.h"
 #include "test/framework/TestAllocatorManager.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/session_options.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -393,7 +394,7 @@ class OpTester {
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
-           bool sequential_execution = true);
+           ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL);
 
   void Run(const SessionOptions& session_options,
            ExpectResult expect_result = ExpectResult::kExpectSuccess,
