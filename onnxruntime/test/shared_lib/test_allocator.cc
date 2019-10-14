@@ -6,8 +6,8 @@
 #include "core/providers/cpu/cpu_provider_factory.h"
 #include "test_fixture.h"
 
-const OrtApi* g_ort = OrtGetApi(ORT_API_VERSION);
-const OrtApi* Ort::g_api = OrtGetApi(ORT_API_VERSION);
+const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+const OrtApi* Ort::g_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
 using namespace onnxruntime;
 

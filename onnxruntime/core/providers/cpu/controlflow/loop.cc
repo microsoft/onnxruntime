@@ -19,6 +19,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/framework/session_options.h"
 
 #include "gsl/gsl"
 
@@ -79,20 +80,20 @@ ONNX_OPERATOR_SET_SCHEMA(
 */
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
-                         1, 10,
-                         KernelDefBuilder()
-                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
-                         Loop);
-
-ONNX_CPU_OPERATOR_KERNEL(Loop,
-                                   11,
+                                   1, 10,
                                    KernelDefBuilder()
                                        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                                        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
                                        .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                                    Loop);
+
+ONNX_CPU_OPERATOR_KERNEL(Loop,
+                         11,
+                         KernelDefBuilder()
+                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                             .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                         Loop);
 
 struct Loop::Info {
   Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in)
@@ -287,8 +288,8 @@ template <typename T>
 static OrtValue MakeScalarMLValue(AllocatorPtr& allocator, T value, bool is_1d) {
   auto* data_type = DataTypeImpl::GetType<T>();
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(data_type,
-                                                              is_1d ? TensorShape({1}) : TensorShape({}),
-                                                              allocator);
+                                                                      is_1d ? TensorShape({1}) : TensorShape({}),
+                                                                      allocator);
 
   *p_tensor->MutableData<T>() = value;
 
@@ -422,7 +423,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
     }
 
     status = utils::ExecuteSubgraph(session_state_, ffm, feeds, fetches, {},
-                                    /*sequential_execution*/ true, context_.GetTerminateFlag(), context_.Logger());
+                                    ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger());
 
     ORT_RETURN_IF_ERROR(status);
 
