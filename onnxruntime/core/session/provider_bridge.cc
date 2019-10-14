@@ -173,7 +173,7 @@ struct ProviderHostImpl : ProviderHost {
     return _this->NodeArg::Type();
   }
 
-  void onnxruntime_TensorShape_constructor(void* _this, __int64 const* p1, unsigned __int64 p2) override {
+  void onnxruntime_TensorShape_constructor(void* _this, int64_t const* p1, uint64_t p2) override {
     new (_this) TensorShape(p1, p2);
   }
 
@@ -181,7 +181,7 @@ struct ProviderHostImpl : ProviderHost {
     return _this->TensorShape::Size();
   }
 
-  TensorShape TensorShape_Slice(const TensorShape* _this, unsigned __int64 p1) override {
+  TensorShape TensorShape_Slice(const TensorShape* _this, uint64_t p1) override {
     return _this->TensorShape::Slice(p1);
   }
 }  // namespace onnxruntime

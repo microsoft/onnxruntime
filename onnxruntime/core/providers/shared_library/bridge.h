@@ -38,7 +38,7 @@ struct ProviderHost {
   virtual void onnx_AttributeProto_copy_constructor(void* _this, void* copy) = 0;
   virtual void onnx_AttributeProto_destructor(void* _this) = 0;
 
-  virtual void onnxruntime_TensorShape_constructor(void* _this, __int64 const* p1, unsigned __int64 p2) = 0;
+  virtual void onnxruntime_TensorShape_constructor(void* _this, int64_t const* p1, uint64_t p2) = 0;
 
   virtual void onnxruntime_OpKernelInfo_constructor(void* _this, void* p1, void* p2, void* p3, void* p4, void* p5, void* p6, void* p7) = 0;
   virtual void onnxruntime_OpKernelInfo_copy_constructor(void* _this, void* copy) = 0;
@@ -86,7 +86,7 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::DataType NodeArg_Type(const NodeArg* _this) = 0;
 
   virtual int64_t TensorShape_Size(const TensorShape* _this) = 0;
-  virtual TensorShape TensorShape_Slice(const TensorShape* _this, unsigned __int64) = 0;
+  virtual TensorShape TensorShape_Slice(const TensorShape* _this, uint64_t) = 0;
 };
 
 }  // namespace onnxruntime

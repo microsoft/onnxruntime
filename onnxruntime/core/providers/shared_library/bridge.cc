@@ -32,7 +32,7 @@ void onnx_AttributeProto_destructor(void* _this) {
   g_host->onnx_AttributeProto_destructor(_this);
 }
 
-void onnxruntime_TensorShape_constructor(void* _this, __int64 const* p1, unsigned __int64 p2) {
+void onnxruntime_TensorShape_constructor(void* _this, int64_t const* p1, uint64_t p2) {
   g_host->onnxruntime_TensorShape_constructor(_this, p1, p2);
 }
 
@@ -127,13 +127,13 @@ MLDataType DataTypeImpl::GetType<float>() {
 	MLDataType DataTypeImpl::GetType<std::string>() { return nullptr; }
 
 	template <>
-	MLDataType DataTypeImpl::GetType<std::vector<std::map<__int64, float>>>() { return nullptr; }
+	MLDataType DataTypeImpl::GetType<std::vector<std::map<int64_t, float>>>() { return nullptr; }
 
 	template <>
 	MLDataType DataTypeImpl::GetType<std::vector<std::map<std::string, float>>>() { return nullptr; }
 
 	template <>
-	MLDataType DataTypeImpl::GetType<std::map<__int64, double>>() { return nullptr; }
+	MLDataType DataTypeImpl::GetType<std::map<int64_t, double>>() { return nullptr; }
 
 	template <>
 	MLDataType DataTypeImpl::GetType<std::map<std::string, double>>() { return nullptr; }
@@ -144,13 +144,13 @@ MLDataType DataTypeImpl::GetType<float>() {
 	}
 
 	template <>
-	MLDataType DataTypeImpl::GetType<std::map<std::string, __int64>>() { return nullptr; }
+	MLDataType DataTypeImpl::GetType<std::map<std::string, int64_t>>() { return nullptr; }
 
 	template <>
-	MLDataType DataTypeImpl::GetType<std::map<__int64, float>>() { return nullptr; }
+	MLDataType DataTypeImpl::GetType<std::map<int64_t, float>>() { return nullptr; }
 
 	template <>
-	MLDataType DataTypeImpl::GetType<std::map<__int64, std::string>>() { return nullptr; }
+	MLDataType DataTypeImpl::GetType<std::map<int64_t, std::string>>() { return nullptr; }
 
 	template <>
 	MLDataType DataTypeImpl::GetTensorType<bool>() { return nullptr; }
@@ -221,22 +221,28 @@ namespace onnx {
 void AttributeProto::CheckTypeAndMergeFrom(google::protobuf::MessageLite const&) { assert(false); }
 void AttributeProto::CopyFrom(AttributeProto const& p1) { (this->*g_host->onnx_AttributeProto_CopyFrom)(p1); }
 void AttributeProto::Clear() { assert(false); }
+
 bool AttributeProto::IsInitialized() const {
   assert(false);
   return false;
 }
-unsigned __int64 AttributeProto::ByteSizeLong() const {
+
+uint64_t AttributeProto::ByteSizeLong() const {
   assert(false);
   return 0;
 }
+
 bool AttributeProto::MergePartialFromCodedStream(google::protobuf::io::CodedInputStream*) {
   assert(false);
   return false;
 }
+
 void AttributeProto::SerializeWithCachedSizes(google::protobuf::io::CodedOutputStream*) const { assert(false); }
+
 bool AttributeProto_AttributeType_IsValid(int p1) {
   return g_host->onnx_AttributeProto_AttributeType_IsValid(p1);
 }
+
 std::string AttributeProto::GetTypeName() const {
   assert(false);
   return "";
@@ -401,7 +407,7 @@ int64_t TensorShape::Size() const {
   return g_host->TensorShape_Size(this);
 }
 
-TensorShape TensorShape::Slice(unsigned __int64 p1) const {
+TensorShape TensorShape::Slice(uint64_t p1) const {
   return g_host->TensorShape_Slice(this, p1);
 }
 
