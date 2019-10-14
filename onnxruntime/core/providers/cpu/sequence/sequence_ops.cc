@@ -393,6 +393,8 @@ Status SplitToSequence::PrepareForCompute(const TensorShape& input_shape, int64_
     }
   } else {
     if (split_sizes.empty()) {
+      // TODO implement keepdims support
+
       // populate split_sizes with the same size for each output
       num_outputs = split_dim_size;
       split_sizes = std::vector<int64_t>(static_cast<size_t>(num_outputs), DEFAULT_LENGTH_EACH_OUTPUT_);
@@ -448,6 +450,20 @@ static void GetSplitSizesInput(const Tensor& tensor, std::vector<int64_t>& split
   }
 }
 
+static void GetOutputDims(const std::vector<int64_t>& input_dims, int64_t axis,
+                          bool use_keep_dims, int64_t keepdims, std::vector<int64_t>& output_dims) {
+  if (use_keep_dims && keepdims == 0) {
+    output_dims.reserve(input_dims.size() - 1);
+    for (int64_t i = 0, end = static_cast<int64_t>(input_dims.size()); i < end; ++i) {
+      if (i != axis) {
+        output_dims.push_back(input_dims[i]);
+      }
+    }
+  } else {
+    output_dims = input_dims;
+  }
+}
+
 template <typename T>
 Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& input,
                                     const Tensor* p_split_input) const {
@@ -473,6 +489,11 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
     }
   }
 
+  bool use_keep_dims = false;
+  if (split_sizes.empty()) {
+    use_keep_dims = true;
+  }
+
   ORT_RETURN_IF_ERROR(PrepareForCompute(input_shape,
                                         split_scalar,
                                         is_split_input_scalar,
@@ -487,7 +508,9 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
 
   // copy dimensions so we can update the selected axis in place
   auto& input_dims = input_shape.GetDims();
-  std::vector<int64_t> output_dimensions{input_dims};  // keepdims?
+  std::vector<int64_t> output_dimensions;
+  cout << "use_keep_dims: " << use_keep_dims << " keepdims: " << keepdims_ << endl;
+  GetOutputDims(input_dims, axis, use_keep_dims, keepdims_, output_dimensions);
 
   int64_t input_offset = 0;
   const T* input_data = input.template Data<T>();
@@ -497,7 +520,7 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
   for (int i = 0; i < num_outputs; ++i) {
     // update size of dimension for axis we're splitting on
     int split_size;
-    if (is_uneven_split && i == num_outputs - 1) {
+    if (is_uneven_split && i == num_outputs - 1) {  // only for the last output that has a size different from the rest
       split_size = num_remaining_splits;
     } else {
       split_size = gsl::narrow<int>(split_sizes[i]);

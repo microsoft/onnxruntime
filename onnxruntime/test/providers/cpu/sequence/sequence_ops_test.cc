@@ -344,7 +344,21 @@ TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0UnevenSplitFloat) {
   output.AddTensor({1, 2}, {9.f, 10.f});
   test.AddSeqOutput("S2", output);
   test.Run();
-  //test.Run(OpTester::ExpectResult::kExpectFailure, "Uneven split not implemented yet."););
+}
+
+TEST(SequenceOpsTest, SplitToSequence_Axis0DefaultSplitFloatSetAxisExplicitlyDontKeepDims) {
+  OpTester test("SplitToSequence", 11);
+  test.AddInput<float>("input", {4, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f});
+  test.AddAttribute<int64_t>("keepdims", 0);
+  int64_t axis = 0;
+  test.AddAttribute("axis", axis);
+  SeqTensors<float> output;
+  output.AddTensor({2}, {1.f, 2.f});
+  output.AddTensor({2}, {3.f, 4.f});
+  output.AddTensor({2}, {5.f, 6.f});
+  output.AddTensor({2}, {7.f, 8.f});
+  test.AddSeqOutput("S2", output);
+  test.Run();
 }
 
 }  // namespace test
