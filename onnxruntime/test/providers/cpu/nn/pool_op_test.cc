@@ -4,6 +4,7 @@
 #include "core/providers/cpu/nn/pool.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 using namespace std;
 namespace onnxruntime {
 namespace test {
@@ -58,6 +59,11 @@ TEST(PoolTest, MaxPool) {
 // Disable for now, still investigating the issue with cudnn lib
 #ifdef USE_CUDA
 TEST(PoolTest, MaxPool_F16) {
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
   OpTester test("MaxPool");
 
   test.AddAttribute("auto_pad", "");
