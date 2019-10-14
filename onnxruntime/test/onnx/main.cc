@@ -43,6 +43,7 @@ void usage() {
       "'openvino' or 'nuphar'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
+      "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
       "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. "
       "\n"
@@ -101,13 +102,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_mem_pattern = true;
   bool enable_openvino = false;
   bool enable_nnapi = false;
+  int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_DISABLE_ALL;
   bool user_graph_optimization_level_set = false;
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -197,6 +199,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           user_graph_optimization_level_set = true;
           break;
         }
+        case 'd':
+          device_id = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
+          if (device_id < 0) {
+            usage();
+            return -1;
+          }
+          break;
         case '?':
         case 'h':
         default:
@@ -251,8 +260,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, 0));
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0));
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
       return -1;
@@ -269,7 +278,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_cuda) {
 #ifdef USE_CUDA
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0));
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
 #else
       fprintf(stderr, "CUDA is not supported in this build");
       return -1;
