@@ -209,7 +209,7 @@ class HttpJsonPayloadTests(unittest.TestCase):
             'x-ms-client-request-id': 'This~is~my~id'
         }
 
-        url = "http://{0}:{1}/v1/models/{2}:predict".format(self.server_ip, self.server_port, 'default_model')
+        url = "http://{0}:{1}/v1/models/{2}:predict".format(self.server_ip, self.server_port, 'default')
         test_util.test_log(url)
         r = requests.post(url, headers=request_headers, data=request_payload)
         self.assertEqual(r.status_code, 200)

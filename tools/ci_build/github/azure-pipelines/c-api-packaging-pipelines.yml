@@ -17,7 +17,7 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Linux_C_API_Packaging_GPU_x64
-  pool: Linux-GPU
+  pool: Linux-GPU-CUDA10
   steps:
     - template: templates/linux-set-variables-and-download.yml
     - template: templates/set-version-number-variables-step.yml

@@ -10,6 +10,9 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
+// TODO: The current implementation of sequence ops relies on tensor copies. Ideally we should try to avoid
+// these copies. This has been postponed due to lack of time.
+
 // SequenceLength
 ONNX_CPU_OPERATOR_KERNEL(
     SequenceLength,
@@ -24,6 +27,7 @@ Status SequenceLength::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(X != nullptr, "Got nullptr for sequence input.");
 
   auto* Y = context->Output(0, {});
+  ORT_ENFORCE(Y != nullptr, "SequenceLength: Got nullptr for output tensor");
   auto* Y_data = Y->template MutableData<int64_t>();
   *Y_data = static_cast<int64_t>(X->tensors.size());
 
@@ -72,13 +76,6 @@ bool ValidateSeqIdx(int64_t input_seq_idx, int64_t seq_size) {
   return retval;
 }
 
-template <typename T>
-static void CopyTensor(const Tensor& indexed_tensor, Tensor& output_tensor) {
-  const auto* input_data = indexed_tensor.template Data<T>();
-  auto* output_data = output_tensor.template MutableData<T>();
-  memcpy(output_data, input_data, indexed_tensor.SizeInBytes());
-}
-
 Status SequenceAt::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<TensorSeq>(0);
   ORT_ENFORCE(X != nullptr, "Got nullptr for sequence input.");
@@ -96,9 +93,227 @@ Status SequenceAt::Compute(OpKernelContext* context) const {
   }
   const Tensor& indexed_tensor = X->tensors[input_seq_idx];
   auto* Y = context->Output(0, indexed_tensor.Shape().GetDims());
+  ORT_ENFORCE(Y != nullptr, "SequenceAt: Got nullptr for output tensor");
   CopyCpuTensor(&indexed_tensor, Y);
 
   return Status::OK();
 }
 
+// SequenceEmpty
+ONNX_CPU_OPERATOR_KERNEL(
+    SequenceEmpty,
+    11,
+    KernelDefBuilder()
+        .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes()),
+    SequenceEmpty);
+
+SequenceEmpty::SequenceEmpty(const OpKernelInfo& info) : OpKernel(info) {
+  if (!info.GetAttr("dtype", &dtype_).IsOK()) {
+    dtype_ = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+  }
+}
+
+Status SequenceEmpty::Compute(OpKernelContext* context) const {
+  auto* Y = context->Output<TensorSeq>(0);
+  ORT_ENFORCE(Y != nullptr, "SequenceEmpty: Got nullptr for output sequence");
+  MLDataType seq_dtype{};
+  switch (dtype_) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      seq_dtype = DataTypeImpl::GetType<float>();
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      seq_dtype = DataTypeImpl::GetType<bool>();
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      seq_dtype = DataTypeImpl::GetType<int>();
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+      seq_dtype = DataTypeImpl::GetType<double>();
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_STRING:
+      seq_dtype = DataTypeImpl::GetType<std::string>();
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+      seq_dtype = DataTypeImpl::GetType<int8_t>();
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+      seq_dtype = DataTypeImpl::GetType<uint8_t>();
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
+      seq_dtype = DataTypeImpl::GetType<uint16_t>();
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16:
+      seq_dtype = DataTypeImpl::GetType<int16_t>();
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      seq_dtype = DataTypeImpl::GetType<int64_t>();
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+      seq_dtype = DataTypeImpl::GetType<uint32_t>();
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
+      seq_dtype = DataTypeImpl::GetType<uint64_t>();
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      seq_dtype = DataTypeImpl::GetType<MLFloat16>();
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+      seq_dtype = DataTypeImpl::GetType<BFloat16>();
+      break;
+    default:
+      ORT_THROW("Unsupported 'dtype' value: ", dtype_);
+  }
+
+  Y->dtype = seq_dtype;
+  return Status::OK();
+}
+
+// SequenceInsert
+ONNX_CPU_OPERATOR_KERNEL(
+    SequenceInsert,
+    11,
+    KernelDefBuilder()
+        .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes())
+        .TypeConstraint("I", std::vector<MLDataType>{
+                                 DataTypeImpl::GetTensorType<int32_t>(),
+                                 DataTypeImpl::GetTensorType<int64_t>()}),
+    SequenceInsert);
+
+Status CreateCopyAndAppendCpuTensor(const Tensor& in_tensor, OpKernelContext* context, TensorSeq& tseq) {
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+  Tensor tmp(in_tensor.DataType(), onnxruntime::TensorShape(in_tensor.Shape()), alloc);
+  CopyCpuTensor(&in_tensor, &tmp);
+  tseq.tensors.push_back(std::move(tmp));
+  return Status::OK();
+}
+
+Status SequenceInsert::Compute(OpKernelContext* context) const {
+  const auto* S = context->Input<TensorSeq>(0);
+  ORT_ENFORCE(S != nullptr, "Got nullptr for sequence input.");
+
+  const auto* X = context->Input<Tensor>(1);
+  ORT_ENFORCE(X != nullptr, "Got nullptr for input tensor.");
+
+  // Data type of the input tensor MUST be same as that of the input sequence
+  if (S->dtype != X->DataType()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Data type of the input tensor MUST be same as that of the input sequence. Sequence data type (",
+                           DataTypeImpl::ToString(S->dtype), "), input tensor data type (", DataTypeImpl::ToString(X->DataType()), ")");
+  }
+
+  const auto* I = context->Input<Tensor>(2);
+  int64_t num_tensors_input_seq = static_cast<int64_t>(S->tensors.size());
+  int64_t input_seq_idx = num_tensors_input_seq + 1;  // default is append
+  if (I) {                                            // position is optional
+    input_seq_idx = GetSeqIdx(*I);
+    if (!ValidateSeqIdx(input_seq_idx, static_cast<int64_t>(num_tensors_input_seq))) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid sequence index (", input_seq_idx, ") specified for sequence of size (", num_tensors_input_seq, ")");
+    }
+
+    if (input_seq_idx < 0) {
+      input_seq_idx = static_cast<int64_t>(num_tensors_input_seq) + input_seq_idx;
+    }
+  }
+
+  auto* Y = context->Output<TensorSeq>(0);
+  ORT_ENFORCE(Y != nullptr, "SequenceInsert: Got nullptr for output sequence");
+  Y->dtype = S->dtype;
+  Y->tensors.reserve(num_tensors_input_seq + 1);
+  for (int i = 0; i < num_tensors_input_seq; ++i) {
+    if (i == input_seq_idx) {
+      CreateCopyAndAppendCpuTensor(*X, context, *Y);
+      CreateCopyAndAppendCpuTensor(S->tensors[i], context, *Y);
+    } else {
+      CreateCopyAndAppendCpuTensor(S->tensors[i], context, *Y);
+    }
+  }
+  if (input_seq_idx == num_tensors_input_seq + 1) {
+    CreateCopyAndAppendCpuTensor(*X, context, *Y);
+  }
+
+  return Status::OK();
+}
+
+// SequenceErase
+ONNX_CPU_OPERATOR_KERNEL(
+    SequenceErase,
+    11,
+    KernelDefBuilder()
+        .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes())
+        .TypeConstraint("I", std::vector<MLDataType>{
+                                 DataTypeImpl::GetTensorType<int32_t>(),
+                                 DataTypeImpl::GetTensorType<int64_t>()}),
+    SequenceErase);
+
+Status SequenceErase::Compute(OpKernelContext* context) const {
+  const auto* S = context->Input<TensorSeq>(0);
+  ORT_ENFORCE(S != nullptr, "Got nullptr for sequence input.");
+
+  const auto* I = context->Input<Tensor>(1);
+  int64_t num_tensors_input_seq = static_cast<int64_t>(S->tensors.size());
+  int64_t input_seq_idx = num_tensors_input_seq - 1;  // default is erase last one
+  if (I) {                                            // position is optional
+    input_seq_idx = GetSeqIdx(*I);
+    if (!ValidateSeqIdx(input_seq_idx, static_cast<int64_t>(num_tensors_input_seq))) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid sequence index (", input_seq_idx, ") specified for sequence of size (", num_tensors_input_seq, ")");
+    }
+
+    if (input_seq_idx < 0) {
+      input_seq_idx = static_cast<int64_t>(num_tensors_input_seq) + input_seq_idx;
+    }
+  }
+
+  auto* Y = context->Output<TensorSeq>(0);
+  ORT_ENFORCE(Y != nullptr, "SequenceErase: Got nullptr for output sequence");
+  Y->dtype = S->dtype;
+  Y->tensors.reserve(num_tensors_input_seq - 1);
+  for (int i = 0; i < num_tensors_input_seq; ++i) {
+    if (i == input_seq_idx) {
+      continue;
+    }
+    CreateCopyAndAppendCpuTensor(S->tensors[i], context, *Y);
+  }
+
+  return Status::OK();
+}
+
+// SequenceConstruct
+ONNX_CPU_OPERATOR_KERNEL(
+    SequenceConstruct,
+    11,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes()),
+    SequenceConstruct);
+
+Status SequenceConstruct::Compute(OpKernelContext* context) const {
+  auto num_inputs = Node().InputArgCount().front();
+  ORT_ENFORCE(num_inputs >= 1, "Must have 1 or more inputs");
+
+  auto* Y = context->Output<TensorSeq>(0);
+  ORT_ENFORCE(Y != nullptr, "SequenceConstruct: Got nullptr for output sequence");
+
+  MLDataType first_dtype = context->Input<Tensor>(0)->DataType();
+  // Before copying check if all tensors are of the same type.
+  for (int input_idx = 0; input_idx < num_inputs; ++input_idx) {
+    const auto* X = context->Input<Tensor>(input_idx);
+    if (input_idx > 0 && X->DataType() != first_dtype) {
+      ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                      "Violation of the requirment that all input tensors must have the same data type.");
+    }
+  }
+
+  // now copy the tensors to the output sequence
+  Y->dtype = first_dtype;
+  Y->tensors.reserve(num_inputs);
+  for (int input_idx = 0; input_idx < num_inputs; ++input_idx) {
+    const auto* X = context->Input<Tensor>(input_idx);
+    CreateCopyAndAppendCpuTensor(*X, context, *Y);
+  }
+
+  return Status::OK();
+}
 }  // namespace onnxruntime
