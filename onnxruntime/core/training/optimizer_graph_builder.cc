@@ -571,7 +571,9 @@ Status OptimizerGraphBuilder::Build(Graph& graph,
     //      maybe update AddZeroGradientNodes() to accept 1 or N of them
     zero_gradients_control_signals.assign(weight_argdefs.size(), conditional_weight_update_output);
   } else {
-    ArgDef* is_all_finite_argdef = (opt_graph_config_.use_mixed_precision) ? &all_grads_finite_argdef : nullptr;
+    ArgDef* is_all_finite_argdef = (opt_graph_config_.use_mixed_precision && !opt_graph_config_.always_do_update)
+                                       ? &all_grads_finite_argdef
+                                       : nullptr;
     ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(
         opt_builder_registry_, weight_argdefs, gradient_argdefs, is_all_finite_argdef,
         opt_configs_, zero_gradients_control_signals, graph_defs));

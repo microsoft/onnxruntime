@@ -483,6 +483,7 @@ Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string
   // set up optimizer graph config
   OptimizerGraphConfig opt_graph_config{};
   opt_graph_config.use_mixed_precision = params_.use_mixed_precision;
+  opt_graph_config.always_do_update = params_.is_perf_test;
   opt_graph_config.loss_scale_input_name = loss_scale_input_name;
   opt_graph_config.world_rank = params_.mpi_context.world_rank;
   opt_graph_config.world_size = params_.mpi_context.world_size;
