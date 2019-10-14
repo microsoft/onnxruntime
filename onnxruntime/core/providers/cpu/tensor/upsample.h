@@ -98,7 +98,6 @@ class UpsampleBase {
   float cubic_coeff_a_;
   bool exclude_outside_;
   float extrapolation_value_;
-  bool use_extrapolation_;
   UpsampleMode mode_;
   bool use_nearest2x_optimization = false;
 
@@ -107,6 +106,7 @@ class UpsampleBase {
   bool scales_cached_;
   bool roi_cached_;
   bool need_roi_input_;
+  bool use_extrapolation_;
   bool is_resize = false;
 
   int roi_input_idx_ = -1;
