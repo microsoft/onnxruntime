@@ -69,7 +69,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
 
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan;
   // TODO below line is for testing only. In production use SequentialPlanner::CreatePlan()
-  SequentialPlannerContext context(false);
+  SequentialPlannerContext context(ExecutionMode::ORT_SEQUENTIAL);
   status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers, kernel_registry_manager,
                                          state.GetOrtValueNameIdxMap(), context, p_seq_exec_plan);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -221,7 +221,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
                        std::vector<float>(6, 1.0f), &v3);
 
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan = onnxruntime::make_unique<SequentialExecutionPlan>();
-  SequentialPlannerContext context(false);
+  SequentialPlannerContext context(ExecutionMode::ORT_SEQUENTIAL);
   status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers, kernel_registry_manager,
                                          mlvalue_name_idx_map, context, p_seq_exec_plan);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();

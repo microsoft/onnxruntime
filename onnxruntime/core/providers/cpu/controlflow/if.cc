@@ -9,6 +9,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
+#include "core/framework/session_options.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -328,7 +329,7 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
   }
 
   status = utils::ExecuteSubgraph(session_state_, ffm, feeds, fetches, fetch_allocators,
-                                  /*sequential_execution*/ true, context_.GetTerminateFlag(),
+                                  ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(),
                                   context_.Logger());
 
   ORT_RETURN_IF_ERROR(status);

@@ -29,8 +29,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CreateSessionOptions;
         public IntPtr SetOptimizedModelFilePath;
         public IntPtr CloneSessionOptions;
-        public IntPtr EnableSequentialExecution;
-        public IntPtr DisableSequentialExecution;
+        public IntPtr SetSessionExecutionMode;
         public IntPtr EnableProfiling;
         public IntPtr DisableProfiling;
         public IntPtr EnableMemPattern;
@@ -171,8 +170,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtCreateSessionOptions = (DOrtCreateSessionOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateSessionOptions, typeof(DOrtCreateSessionOptions));
             OrtReleaseSessionOptions = (DOrtReleaseSessionOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseSessionOptions, typeof(DOrtReleaseSessionOptions));
             OrtCloneSessionOptions = (DOrtCloneSessionOptions)Marshal.GetDelegateForFunctionPointer(api_.CloneSessionOptions, typeof(DOrtCloneSessionOptions));
-            OrtEnableSequentialExecution = (DOrtEnableSequentialExecution)Marshal.GetDelegateForFunctionPointer(api_.EnableSequentialExecution, typeof(DOrtEnableSequentialExecution));
-            OrtDisableSequentialExecution = (DOrtDisableSequentialExecution)Marshal.GetDelegateForFunctionPointer(api_.DisableSequentialExecution, typeof(DOrtDisableSequentialExecution));
+            OrtSetSessionExecutionMode = (DOrtSetSessionExecutionMode)Marshal.GetDelegateForFunctionPointer(api_.SetSessionExecutionMode, typeof(DOrtSetSessionExecutionMode));
             OrtSetOptimizedModelFilePath = (DOrtSetOptimizedModelFilePath)Marshal.GetDelegateForFunctionPointer(api_.SetOptimizedModelFilePath, typeof(DOrtSetOptimizedModelFilePath));
             OrtEnableProfiling = (DOrtEnableProfiling)Marshal.GetDelegateForFunctionPointer(api_.EnableProfiling, typeof(DOrtEnableProfiling));
             OrtDisableProfiling = (DOrtDisableProfiling)Marshal.GetDelegateForFunctionPointer(api_.DisableProfiling, typeof(DOrtDisableProfiling));
@@ -340,7 +338,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                 UIntPtr index,
                                                 out IntPtr /* (struct OrtTypeInfo**)*/ typeInfo);
         public static DOrtSessionGetOverridableInitializerTypeInfo OrtSessionGetOverridableInitializerTypeInfo;
-        
+
 
         public delegate void DOrtReleaseTypeInfo(IntPtr /*(OrtTypeInfo*)*/session);
         public static DOrtReleaseTypeInfo OrtReleaseTypeInfo;
@@ -361,11 +359,9 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/ DOrtCloneSessionOptions(IntPtr /*(OrtSessionOptions*)*/ sessionOptions, out IntPtr /*(OrtSessionOptions**)*/ output);
         public static DOrtCloneSessionOptions OrtCloneSessionOptions;
 
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtEnableSequentialExecution(IntPtr /*(OrtSessionOptions*)*/ options);
-        public static DOrtEnableSequentialExecution OrtEnableSequentialExecution;
-
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtDisableSequentialExecution(IntPtr /*(OrtSessionOptions*)*/ options);
-        public static DOrtDisableSequentialExecution OrtDisableSequentialExecution;
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionExecutionMode(IntPtr /*(OrtSessionOptions*)*/ options,
+        ExecutionMode execution_mode);
+        public static DOrtSetSessionExecutionMode OrtSetSessionExecutionMode;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetOptimizedModelFilePath(IntPtr /* OrtSessionOptions* */ options, [MarshalAs(UnmanagedType.LPWStr)]string optimizedModelFilepath);
         public static DOrtSetOptimizedModelFilePath OrtSetOptimizedModelFilePath;
