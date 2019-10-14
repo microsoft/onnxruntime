@@ -123,12 +123,14 @@ static Status EvaluateMatMulInteger(
       }
 
       // Target instruction option
+      bool isAVX = CPUIDInfo::GetCPUIDInfo().HasAVX();
       bool isAVX2 = CPUIDInfo::GetCPUIDInfo().HasAVX2();
       bool isAVX512 = CPUIDInfo::GetCPUIDInfo().HasAVX512Skylake();
 
       // Tensorization: AVX2: 8bit GEMM AVX512: 8bit GEMV and GEMM
       bool isGEMV = (p_batch_seq_dim != nullptr && *p_batch_seq_dim == 1);
-      bool use_tensorization = !force_mkl && !force_no_tensorize && (isAVX512 || (isAVX2 && !isGEMV));
+      // TODO: simplify the conditions
+      bool use_tensorization = !force_mkl && !force_no_tensorize && (isAVX512 || (isAVX2 && !isGEMV) || (!isAVX2 && isAVX));
 
       // Model input option
       auto B_NodeArg = node.InputDefs()[1];
