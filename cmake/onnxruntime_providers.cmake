@@ -72,6 +72,10 @@ if(onnxruntime_USE_DML)
   set(PROVIDERS_DML onnxruntime_providers_dml)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES dml)
 endif()
+if(onnxruntime_USE_ACL)
+  set(PROVIDERS_ACL onnxruntime_providers_acl)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES acl)
+endif()
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
 set(onnxruntime_providers_src ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
@@ -445,6 +449,23 @@ if (onnxruntime_USE_DML)
 
   set_target_properties(onnxruntime_providers_dml PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_dml PROPERTIES FOLDER "ONNXRuntime")
+endif()
+
+if (onnxruntime_USE_ACL)
+  add_definitions(-DUSE_ACL=1)
+  file(GLOB_RECURSE onnxruntime_providers_acl_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/acl/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/acl/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_acl_cc_srcs})
+  add_library(onnxruntime_providers_acl ${onnxruntime_providers_acl_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_acl onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+  add_dependencies(onnxruntime_providers_acl ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_acl PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_acl PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${ACL_INCLUDE_DIR})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/acl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_acl PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)

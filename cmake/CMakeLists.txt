@@ -84,6 +84,7 @@ option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir"
 option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in language other than cpp" OFF)
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output data to standard output when executing the model." OFF)
 option(onnxruntime_USE_DML "Build with DirectML support" OFF)
+option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
@@ -330,6 +331,11 @@ function(onnxruntime_add_include_to_target dst_target)
 endfunction()
 
 set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto re2)
+
+# ACL
+if (onnxruntime_USE_ACL)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute acl arm_compute_graph arm_compute_core)
+endif()
 
 # TVM
 if (onnxruntime_USE_TVM)

@@ -14,7 +14,7 @@ Options:
 	
 	-c: [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.
 	
-	-e: [cpu|cuda|mkldnn|tensorrt|ngraph|openvino|nuphar]: Specifies the execution provider 'cpu','cuda','mkldnn','tensorrt', 'ngraph', 'openvino' or 'nuphar'. Default is 'cpu'.
+	-e: [cpu|cuda|mkldnn|tensorrt|ngraph|openvino|nuphar|acl]: Specifies the execution provider 'cpu','cuda','mkldnn','tensorrt', 'ngraph', 'openvino', 'nuphar' or 'acl'. Default is 'cpu'.
         
 	-m: [test_mode]: Specifies the test mode. Value coulde be 'duration' or 'times'. Provide 'duration' to run the test for a fix duration, and 'times' to repeated for a certain times. Default:'duration'.
         

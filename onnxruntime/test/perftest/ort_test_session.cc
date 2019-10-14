@@ -79,6 +79,13 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("DirectML is not supported in this build\n");
 #endif
+  } else if (provider_name == onnxruntime::kAclExecutionProvider) {
+#ifdef USE_ACL
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ACL(session_options,
+	performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
+#else
+    ORT_THROW("Acl is not supported in this build\n");
+#endif
   } else if (!provider_name.empty() && provider_name != onnxruntime::kCpuExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");
   }
