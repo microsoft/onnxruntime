@@ -11,6 +11,7 @@
 
 set -e
 PYTHON_VER=$1
+os_major_version=$(cat /etc/redhat-release | tr -dc '0-9.'|cut -d \. -f1)
 
 if [[ "$PYTHON_VER" = "3.5" && -d "/opt/python/cp35-cp35m"  ]]; then
    PYTHON_EXE="/opt/python/cp35-cp35m/bin/python3.5"
@@ -21,6 +22,8 @@ elif [[ "$PYTHON_VER" = "3.6" && -d "/opt/python/cp36-cp36m"  ]]; then
 elif [[ "$PYTHON_VER" = "3.7" && -d "/opt/python/cp37-cp37m"  ]]; then
    PYTHON_EXE="/opt/python/cp37-cp37m/bin/python3.7"
    export PATH=/opt/python/cp37-cp37m/bin:$PATH
+elif [ "$os_major_version" == "6" ]; then
+   PYTHON_EXE=/opt/rh/rh-python36/root/usr/bin/python3
 else
    PYTHON_EXE="/usr/bin/python${PYTHON_VER}"
 fi

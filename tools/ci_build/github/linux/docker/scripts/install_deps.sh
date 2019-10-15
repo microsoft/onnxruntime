@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+
+# For CentOS 6 utilities
+export PATH=/bin:/usr/bin:${PATH}
+os_major_version=$(cat /etc/redhat-release | tr -dc '0-9.'|cut -d \. -f1)
+
 while getopts p:d: parameter_Option
 do case "${parameter_Option}"
 in
@@ -53,6 +58,8 @@ elif [[ "$PYTHON_VER" = "3.6" && -d "/opt/python/cp36-cp36m"  ]]; then
    PYTHON_EXE="/opt/python/cp36-cp36m/bin/python3.6"
 elif [[ "$PYTHON_VER" = "3.7" && -d "/opt/python/cp37-cp37m"  ]]; then
    PYTHON_EXE="/opt/python/cp37-cp37m/bin/python3.7"
+elif [ "$os_major_version" == "6" ]; then
+  PYTHON_EXE=/opt/rh/rh-python36/root/usr/bin/python3
 else
    PYTHON_EXE="/usr/bin/python${PYTHON_VER}"
 fi
