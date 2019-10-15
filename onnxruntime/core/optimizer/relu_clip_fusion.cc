@@ -114,8 +114,7 @@ bool FuseReluClip::SatisfyCondition(const Graph& graph, const Node& node) const 
     return false;
   }
 
-  if (!graph_utils::IsSingleInSingleOutNode(node) ||
-      graph.IsNodeOutputsInGraphOutputs(node)) {
+  if (node.GetOutputEdgesCount() != 1) {
     return false;
   }
 
@@ -125,6 +124,10 @@ bool FuseReluClip::SatisfyCondition(const Graph& graph, const Node& node) const 
   const auto& next_node = *node.OutputNodesBegin();
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6, 11}) ||
       next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
+    return false;
+  }
+
+  if (!graph_utils::CanRemoveNode(graph, node)) {
     return false;
   }
 
