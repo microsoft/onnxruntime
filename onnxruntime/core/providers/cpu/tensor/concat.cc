@@ -94,7 +94,7 @@ static Status PrepareForCompute(OpKernelContext* ctx, const std::vector<const Te
 
     output_dims[p.axis] = concat_axis_size;
   } else {  // 'Stack' mode
-    // While stacking, the rank of the output is one more than the input rank(s)
+    // While stacking, the rank of the output is one more than the input rank(s).
     // Stacking may be thought of as adding an unit dimension (of value 1) in the input tensors,
     // and concatenating them on thie new axis.
     // The value in the corresponding axis of the output will be the number of inputs that are being stacked.
@@ -116,7 +116,8 @@ static Status PrepareForCompute(OpKernelContext* ctx, const std::vector<const Te
   // The output_axis_pitch is the number of elements to add to move to the next split axis in the output.
   // Can handle stacking as well.
   p.output_axis_pitch = 1;
-  for (size_t i = inputs_0_rank; i-- > p.axis;) {
+  auto output_rank = !is_stack ? inputs_0_rank : inputs_0_rank + 1;
+  for (size_t i = output_rank; i-- > p.axis;) {
     p.output_axis_pitch *= output_dims[i];
   }
 
@@ -131,6 +132,8 @@ static Status PrepareForCompute(OpKernelContext* ctx, const std::vector<const Te
 
     // The input_axis_pitch is the number of elements to add to move to the next split axis in the input
     // Can handle stacking as well (as the "new dummy dimension" in the input is of unit value).
+    // TODO: Minor Optimization possibility. This input_axis_patch will be common across all inputs
+    // in 'ConcatFromSequence' (stack mode). They have to be computed for each input while concating
     int64_t input_axis_pitch = 1;
     const auto& data_dims = data_n.Shape().GetDims();
     for (size_t i = inputs_0_rank; i-- > p.axis;) {
