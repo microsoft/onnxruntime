@@ -78,7 +78,7 @@ void WeightLayout::CreateLayoutMarshallingTVMOp(tvm::Array<tvm::Tensor>& inputs,
           for (size_t dim = 1; dim < input_coord.size(); ++dim)
             in_range = in_range && (input_coord[dim] >= 0) && (input_coord[dim] < placeholder->shape[dim]);
 
-          return tvm::ir::Select::make(in_range, placeholder(input_coord), pad_zero_expr);
+          return tvm::if_then_else(in_range, placeholder(input_coord), pad_zero_expr);
         } else {
           // scalar
           return placeholder(input_coord);
