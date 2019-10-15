@@ -15,7 +15,7 @@ if [ "$os_major_version" == "5" ]; then
 elif [ "$os_major_version" == "6" ]; then
   yum install -y centos-release-scl
   yum repolist
-  yum install -y redhat-lsb-core expat-devel libcurl-devel tar unzip curl zlib-devel make  python2-devel  libunwind icu aria2 rsync bzip2 git bzip2-devel
+  yum install -y redhat-lsb-core expat-devel libcurl-devel tar unzip curl zlib-devel make libunwind icu aria2 rsync bzip2 git bzip2-devel
   yum upgrade -y
   yum install -y \
     ccache \
@@ -25,8 +25,8 @@ elif [ "$os_major_version" == "6" ]; then
     devtoolset-7-gcc-gfortran 
   # The way to get python 3.6.8
   yum install -y https://centos6.iuscommunity.org/ius-release.rpm 
-  yum --enablerepo=ius install -y python36u python36u-devel python36u-pip python36u-numpy python36u-setuptools python36u-wheel
-  /usr/bin/pip3.6 install --upgrade pip
+  yum --enablerepo=ius install -y python36u python36u-devel python36u-pip python36u-numpy python36u-setuptools python36u-wheel protobuf
+  /usr/bin/python3.6 -m pip install --upgrade pip
 else
   yum install -y redhat-lsb-core expat-devel libcurl-devel tar unzip curl zlib-devel make  python2-devel  libunwind icu aria2 rsync bzip2 git bzip2-devel
 fi
