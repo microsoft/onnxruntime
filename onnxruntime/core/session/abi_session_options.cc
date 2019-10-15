@@ -36,13 +36,18 @@ ORT_API_STATUS_IMPL(OrtApis::CloneSessionOptions, const OrtSessionOptions* input
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::EnableSequentialExecution, _In_ OrtSessionOptions* options) {
-  options->value.enable_sequential_execution = true;
-  return nullptr;
-}
+// Set execution_mode.
+ORT_API_STATUS_IMPL(OrtApis::SetSessionExecutionMode, _In_ OrtSessionOptions* options,
+                    ExecutionMode execution_mode) {
+  switch (execution_mode) {
+    case ORT_SEQUENTIAL:
+    case ORT_PARALLEL:
+      options->value.execution_mode = execution_mode;
+      break;
+    default:
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "execution_mode is not valid");
+  }
 
-ORT_API_STATUS_IMPL(OrtApis::DisableSequentialExecution, _In_ OrtSessionOptions* options) {
-  options->value.enable_sequential_execution = false;
   return nullptr;
 }
 

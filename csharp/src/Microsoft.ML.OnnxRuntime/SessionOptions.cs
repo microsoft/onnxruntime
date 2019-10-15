@@ -20,6 +20,18 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
+    /// Controls whether you want to execute operators in the graph sequentially or in parallel.
+    /// Usually when the model has many branches, setting this option to ExecutionMode.ORT_PARALLEL
+    /// will give you better performance.
+    /// See [ONNX_Runtime_Perf_Tuning.md] for more details.
+    /// </summary>
+    public enum ExecutionMode
+    {
+        ORT_SEQUENTIAL = 0,
+        ORT_PARALLEL = 1,
+    }
+
+    /// <summary>
     /// Holds the options for creating an InferenceSession
     /// </summary>
     public class SessionOptions : IDisposable
@@ -146,35 +158,6 @@ namespace Microsoft.ML.OnnxRuntime
                 return _nativePtr;
             }
         }
-
-
-        /// <summary>
-        /// Enable Sequential Execution. Default = true.
-        /// </summary>
-        /// </param>
-        /// 
-        public bool EnableSequentialExecution
-        {
-            get
-            {
-                return _enableSequentialExecution;
-            }
-            set
-            {
-                if (!_enableSequentialExecution && value)
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableSequentialExecution(_nativePtr));
-                    _enableSequentialExecution = true;
-                }
-                else if (_enableSequentialExecution && !value)
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableSequentialExecution(_nativePtr));
-                    _enableSequentialExecution = false;
-                }
-            }
-        }
-        private bool _enableSequentialExecution = true;
-
 
         /// <summary>
         /// Enables the use of the memory allocation patterns in the first Run() call for subsequent runs. Default = true.
@@ -377,6 +360,23 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private GraphOptimizationLevel _graphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_BASIC;
 
+        /// <summary>
+        /// Sets the execution mode for the session. Default is set to ORT_SEQUENTIAL.
+        /// See [ONNX_Runtime_Perf_Tuning.md] for more details.
+        /// </summary>
+        public ExecutionMode ExecutionMode
+        {
+            get
+            {
+                return _executionMode;
+            }
+            set
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionExecutionMode(_nativePtr, value));
+                _executionMode = value;
+            }
+        }
+        private ExecutionMode _executionMode = ExecutionMode.ORT_SEQUENTIAL;
         #endregion
 
         #region Private Methods

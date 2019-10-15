@@ -32,7 +32,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.NotNull(opt);
 
                 // check default values of the properties
-                Assert.True(opt.EnableSequentialExecution);
+                Assert.Equal(ExecutionMode.ORT_SEQUENTIAL, opt.ExecutionMode);
                 Assert.True(opt.EnableMemoryPattern);
                 Assert.False(opt.EnableProfiling);
                 Assert.Equal("onnxruntime_profile_", opt.ProfileOutputPathPrefix);
@@ -44,8 +44,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_BASIC, opt.GraphOptimizationLevel);
 
                 // try setting options 
-                opt.EnableSequentialExecution = false;
-                Assert.False(opt.EnableSequentialExecution);
+                opt.ExecutionMode = ExecutionMode.ORT_PARALLEL;
+                Assert.Equal(ExecutionMode.ORT_PARALLEL, opt.ExecutionMode);
 
                 opt.EnableMemoryPattern = false;
                 Assert.False(opt.EnableMemoryPattern);
@@ -163,14 +163,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, false)]
         [InlineData(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, true)]
         [InlineData(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, false)]
-        private void CanRunInferenceOnAModel(GraphOptimizationLevel graphOptimizationLevel, bool disableSequentialExecution)
+        private void CanRunInferenceOnAModel(GraphOptimizationLevel graphOptimizationLevel, bool enableParallelExecution)
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 
             // Set the graph optimization level for this session.
             SessionOptions options = new SessionOptions();
             options.GraphOptimizationLevel = graphOptimizationLevel;
-            if (disableSequentialExecution) options.EnableSequentialExecution = false;
+            if (enableParallelExecution) options.ExecutionMode = ExecutionMode.ORT_PARALLEL;
 
             using (var session = new InferenceSession(modelPath, options))
             {
@@ -319,7 +319,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private static Dictionary<string, string> GetSkippedModels()
         {
             var skipModels = new Dictionary<string, string>() {
-                { "mxnet_arcface", "Model not supported by CPU execution provider" } ,
+                { "mxnet_arcface", "Model is an invalid ONNX model"},
                 { "tf_inception_v2", "TODO: Debug failing model, skipping for now" },
                 { "fp16_inception_v1", "16-bit float not supported type in C#." },
                 { "fp16_shufflenet", "16-bit float not supported type in C#." },
@@ -333,7 +333,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var isContribOpsDisabled = (disableContribOpsEnvVar != null) ? disableContribOpsEnvVar.Equals("ON") : false;
             if (isContribOpsDisabled)
             {
-                skipModels["test_tiny_yolov2"] =  "Fails when ContribOps is disabled";
+                skipModels["test_tiny_yolov2"] = "Fails when ContribOps is disabled";
                 skipModels["mask_rcnn_keras"] = "Pad is not a registered function/op";
             }
 
@@ -381,7 +381,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         //Console.WriteLine("Model {0} is skipped due to the error: {1}", modelDir.FullName, skipModels[modelDir.Name]);
                         yield return new object[] { modelDir.Parent.Name, modelDir.Name };
                     }
-                        
+
                 }
             }
         }
@@ -389,7 +389,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
         [Theory]
         [MemberData(nameof(GetModelsForTest))]
-        [MemberData(nameof(GetSkippedModelForTest), Skip ="Skipped due to Error, please fix the error and enable the test")]
+        [MemberData(nameof(GetSkippedModelForTest), Skip = "Skipped due to Error, please fix the error and enable the test")]
         private void TestPreTrainedModels(string opset, string modelName)
         {
             var modelsDir = GetTestModelsDir();
@@ -423,7 +423,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var modelNamesList = string.Join(",", onnxModelNames.Select(x => x.ToString()));
                     throw new Exception($"Opset {opset} Model {modelName}. Can't determine model file name. Found these :{modelNamesList}");
                 }
-                
+
                 using (var session = new InferenceSession(onnxModelFileName))
                 {
                     var inMeta = session.InputMetadata;
@@ -465,7 +465,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             }
                             if (outputMeta.IsTensor)
                             {
-                                if (outputMeta.ElementType == typeof (float))
+                                if (outputMeta.ElementType == typeof(float))
                                 {
                                     Assert.Equal(result.AsTensor<float>(), outputValue.AsTensor<float>(), new floatComparer());
                                 }
@@ -517,7 +517,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             catch (Exception ex)
             {
                 var msg = $"Opset {opset}, Model {modelName}: ModelFile = {onnxModelFileName} error = {ex.Message}";
-                throw new Exception(msg+"\n"+ex.StackTrace);
+                throw new Exception(msg + "\n" + ex.StackTrace);
             }
         }
 
@@ -542,7 +542,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var container = new List<NamedOnnxValue>();
                 var Label_input = new DenseTensor<bool>(new bool[] { true }, new int[] { 1, 1 });
                 container.Add(NamedOnnxValue.CreateFromTensor("Label", Label_input));
-                
+
                 var F2_input = new DenseTensor<string>(new string[] { "f2_string" }, new int[] { 1, 1 });
                 container.Add(NamedOnnxValue.CreateFromTensor("F2", F2_input));
 
@@ -1191,14 +1191,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 intDims[i] = (int)tensor.Dims[i];
             }
 
-            NodeMetadata nodeMeta = null; 
+            NodeMetadata nodeMeta = null;
             string nodeName = "";
             if (nodeMetaDict.Count == 1)
             {
                 nodeMeta = nodeMetaDict.Values.First();
                 nodeName = nodeMetaDict.Keys.First(); // valid for single node input
             }
-            else if (nodeMetaDict.Count > 1) 
+            else if (nodeMetaDict.Count > 1)
             {
                 if (tensor.Name != "")
                 {
@@ -1234,7 +1234,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     if (!matchfound)
                     {
                         // throw error
-                        throw new Exception("No Matching Tensor found in InputOutputMetadata corresponding to the serliazed tensor loaded from "+ filename);
+                        throw new Exception("No Matching Tensor found in InputOutputMetadata corresponding to the serliazed tensor loaded from " + filename);
                     }
                 }
             }
@@ -1297,7 +1297,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             else
             {
                 //TODO: Add support for remaining types
-                Assert.True(false, "Tensors of type "+nameof(nodeMeta.ElementType)+" not currently supported in the LoadTensorFromFile");
+                Assert.True(false, "Tensors of type " + nameof(nodeMeta.ElementType) + " not currently supported in the LoadTensorFromFile");
                 return null;
             }
         }
@@ -1306,7 +1306,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             T[] floatArr = new T[rawData.Length / elemWidth];
             Buffer.BlockCopy(rawData, 0, floatArr, 0, rawData.Length);
-            var dt = new DenseTensor<T>(floatArr,dimensions);
+            var dt = new DenseTensor<T>(floatArr, dimensions);
             return NamedOnnxValue.CreateFromTensor<T>(name, dt);
         }
 
