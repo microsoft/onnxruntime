@@ -107,6 +107,9 @@ struct Env : Base<OrtEnv> {
   Env(OrtLoggingLevel default_logging_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
 
+  Env& EnableTelemetryEvents();
+  Env& DisableTelemetryEvents();
+
   static const OrtApi* s_api;
 };
 

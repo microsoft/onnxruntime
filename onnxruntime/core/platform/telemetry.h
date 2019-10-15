@@ -25,25 +25,28 @@ namespace onnxruntime {
   */
 class Telemetry {
  public:
+  // don't create these, use Env::GetTelemetryProvider() instead
+  // this constructor is made public so that other platform Env providers can
+  // use this base class as a "stub" implementation
+  Telemetry() = default;
   virtual ~Telemetry() = default;
 
-  virtual void LogProcessInfo() const = 0;
+  virtual void EnableTelemetryEvents() const;
+  virtual void DisableTelemetryEvents() const;
 
-  virtual void LogSessionCreation(uint32_t sessionId, int64_t irVersion, const std::string& modelProducerName,
-                                  const std::string& modelProducerVersion,const std::string& modelDomain,
-                                  const std::unordered_map<std::string, int>& domainToVersionMap,
-                                  const std::string& modelGraphName, 
-                                  const std::unordered_map<std::string, std::string>& modelMetaData,
-                                  const std::string& loadedFrom, const std::vector<std::string>& executionProviderIds) const = 0;
+  virtual void LogProcessInfo() const;
+
+  virtual void LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
+                                  const std::string& model_producer_version, const std::string& model_domain,
+                                  const std::unordered_map<std::string, int>& domain_to_version_map,
+                                  const std::string& model_graph_name,
+                                  const std::unordered_map<std::string, std::string>& model_metadata,
+                                  const std::string& loadedFrom, const std::vector<std::string>& execution_provider_ids) const;
 
   virtual void LogRuntimeError(uint32_t sessionId, const common::Status& status, const char* file,
-                               const char* function, uint32_t line) const = 0;
+                               const char* function, uint32_t line) const;
 
-  virtual void LogRuntimePerf(uint32_t sessionId, uint32_t runTotalTimeMs) const = 0;
-
- protected:
-  // don't create these, use Env::GetTelemetryProvider()
-  Telemetry();
+  virtual void LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Telemetry);

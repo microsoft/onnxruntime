@@ -32,6 +32,8 @@
 **[Contributions and Feedback](#contribute)**
 
 **[License](#license)**
+
+**[Data/Telemetry](#Data/Telemetry)**
 ***
 # Key Features
 ## Run any ONNX model
@@ -203,3 +205,8 @@ or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any addi
 ***
 # License
 [MIT License](LICENSE)
+
+# Data/Telemetry
+This project collects usage data and sends it to Microsoft to help improve our products and services. See the [privacy statement](docs/Privacy.md) for more details.
+
+For more information on telemetry implementation see the [developer guide](docs/C_API.md#Telemetry).

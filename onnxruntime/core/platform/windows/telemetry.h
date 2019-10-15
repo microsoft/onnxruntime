@@ -6,12 +6,14 @@
 #include "core/platform/ort_mutex.h"
 #include <atomic>
 
-// Note: this needs to get moved to a release pipeline still (paulm)
 // ***
+// platform specific control bits
+#ifndef TraceLoggingOptionMicrosoftTelemetry
 #define TraceLoggingOptionMicrosoftTelemetry() \
-  TraceLoggingOptionGroup(0x4f50731a, 0x89cf, 0x4782, 0xb3, 0xe0, 0xdc, 0xe8, 0xc9, 0x4, 0x76, 0xba)
+  TraceLoggingOptionGroup(0000000000, 00000, 00000, 0000, 0000, 0000, 0000, 0000, 000, 0000, 0000)
+#endif
 #define MICROSOFT_KEYWORD_MEASURES       0x0000400000000000  // Bit 46
-#define TelemetryPrivacyDataTag(tag) TraceLoggingUInt64((tag), "PartA_PrivTags")
+#define TelemetryPrivacyDataTag(tag)     TraceLoggingUInt64((tag), "PartA_PrivTags")
 #define PDT_ProductAndServicePerformance 0x0000000001000000u
 #define PDT_ProductAndServiceUsage       0x0000000002000000u
 // ***
@@ -28,6 +30,9 @@ class WindowsTelemetry : public Telemetry {
   // these are allowed to be created, WindowsEnv will create one
   WindowsTelemetry();
   ~WindowsTelemetry();
+
+  void EnableTelemetryEvents() const override;
+  void DisableTelemetryEvents() const override;
 
   void LogProcessInfo() const override;
 
@@ -46,6 +51,7 @@ class WindowsTelemetry : public Telemetry {
  private:
   static OrtMutex mutex_;
   static uint32_t global_register_count_;
+  static bool enabled_;
 };
 
 }  // namespace onnxruntime

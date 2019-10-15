@@ -266,8 +266,14 @@ class PosixEnv : public Env {
     return filename;
   }
 
+  // \brief returns a provider that will handle telemetry on the current platform
+  const Telemetry& GetTelemetryProvider() const override {
+    return telemetryProvider_;
+  }
+
  private:
   PosixEnv() = default;
+  Telemetry telemetryProvider_;
 };
 
 }  // namespace

@@ -32,6 +32,8 @@ TRACELOGGING_DEFINE_PROVIDER(telemetry_provider_handle, "Microsoft.ML.ONNXRuntim
 
 OrtMutex WindowsTelemetry::mutex_;
 uint32_t WindowsTelemetry::global_register_count_ = 0;
+bool WindowsTelemetry::enabled_ = false;
+
 
 WindowsTelemetry::WindowsTelemetry() {
   std::lock_guard<OrtMutex> lock(mutex_);
@@ -54,8 +56,16 @@ WindowsTelemetry::~WindowsTelemetry() {
   }
 }
 
+void WindowsTelemetry::EnableTelemetryEvents() const {
+  enabled_ = true;
+}
+
+void WindowsTelemetry::DisableTelemetryEvents() const {
+  enabled_ = false;
+}
+
 void WindowsTelemetry::LogProcessInfo() const {
-  if (global_register_count_ == 0)
+  if (global_register_count_ == 0 || enabled_ == false)
     return;
 
   static std::atomic<bool> process_info_logged;
@@ -83,7 +93,7 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                                           const std::string& model_graph_name,
                                           const std::unordered_map<std::string, std::string>& model_metadata,
                                           const std::string& loadedFrom, const std::vector<std::string>& execution_provider_ids) const {
-  if (global_register_count_ == 0)
+  if (global_register_count_ == 0 || enabled_ == false)
     return;
 
   // build the strings we need
@@ -146,7 +156,7 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
 
 void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
                                        const char* function, uint32_t line) const {
-  if (global_register_count_ == 0)
+  if (global_register_count_ == 0 || enabled_ == false)
     return;
 
   TraceLoggingWrite(telemetry_provider_handle,
@@ -165,7 +175,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
 }
 
 void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last) const {
-  if (global_register_count_ == 0)
+  if (global_register_count_ == 0 || enabled_ == false)
     return;
 
   TraceLoggingWrite(telemetry_provider_handle,
