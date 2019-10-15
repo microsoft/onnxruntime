@@ -117,7 +117,7 @@ void RunTypedTest() {
   test8.AddOutput<T>("output", {3, 2}, {2, 1, 4, 5, 7, 8});
   test8.Run();
 
-  // 2D input - axis 2
+  // 2D input - axis 1
   OpTester test9("GatherElements", 11);
   test9.AddAttribute<int64_t>("axis", 0LL);
   test9.AddInput<T>("data", {3, 3},
@@ -128,6 +128,16 @@ void RunTypedTest() {
                           {1, 0, 0, 1, 0, 1});
   test9.AddOutput<T>("output", {3, 2}, {4, 2, 1, 5, 1, 5});
   test9.Run();
+
+  // 1D input - axis 0
+  OpTester test10("GatherElements", 11);
+  test10.AddAttribute<int64_t>("axis", 0LL);
+  test10.AddInput<T>("data", {3},
+                     {1, 2, 3});
+  test10.AddInput<int64_t>("indices", {2},
+                           {1, 0});
+  test10.AddOutput<T>("output", {2}, {2, 1});
+  test10.Run();
 }
 
 template <>
