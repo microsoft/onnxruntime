@@ -8,7 +8,7 @@ ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
 ARG PYTHON_VERSION
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh 
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/opt/rh/devtoolset-7/root/usr/bin:{PATH}
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/bin:/usr/bin:/usr/local/bin:/opt/rh/devtoolset-7/root/usr/bin:{PATH}
 RUN /tmp/scripts/install_deps.sh -p $PYTHON_VERSION && rm -rf /tmp/scripts
 
 #Below are copied from https://gitlab.com/nvidia/container-images/cuda/tree/master/dist/centos6
