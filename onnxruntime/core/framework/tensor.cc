@@ -25,7 +25,7 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
     ORT_THROW("shape.Size() must >=0");
   void* p_data = nullptr;
   if (shape_size > 0) {
-    size_t len;
+    size_t len = 0;
     if (!allocator->CalcMemSizeForArray(static_cast<size_t>(shape_size), p_type->Size(), &len))
       p_data = nullptr;
     len +=  offset;
