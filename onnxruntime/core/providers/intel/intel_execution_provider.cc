@@ -45,18 +45,46 @@ IntelExecutionProvider::IntelExecutionProvider(const IntelExecutionProviderInfo&
   InsertAllocator(CreateAllocator(device_info));
 }
 
+//Gets the input count of given node
+int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set) {
+  int count = 0;
+  for (const auto& input : node->InputDefs()) {
+    auto name = input->Name();
+    auto it = initializer_set.find(name);
+    if (it == initializer_set.end()) {
+      count++;
+    }
+  }
+  return count;
+}
+
+bool IsDimensionSupported(const Node* node) {
+  auto node_inputs = node->InputDefs();
+  size_t input_dims = 0;
+  if (node_inputs[0]->Shape() != nullptr) {
+    input_dims = node_inputs[0]->Shape()->dim_size();
+  }
+
+  if (node->OpType().find("Pool") != std::string::npos) {
+    if (input_dims != 4 && input_dims != 5)
+       return false;
+  }
+  return true;
+}
+
 // Returns true only if op is in a mode that is not currently supported
 static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer) {
   const auto& optype = node->OpType();
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
   std::cout << "Op Type: " << optype << std::endl;
+
   if (optype == "Reshape") {
     //nGraph Reshape op currently requires shape info available in advance.
     const auto& shape_arg = node->InputDefs()[1];
     return initializers.find(shape_arg->Name()) == initializers.end();
   } else if (optype == "MaxPool") {
     //MaxPool "indices" output is not currently supported.
-    if (node->OutputDefs().size() > 1) {
+    if (node->OutputDefs().size() > 1 || IsDimensionSupported(node) == false) {
       return true;
     }
 
@@ -75,6 +103,24 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     //nGraph OneHot op currently requires depth info available in advance.
     const auto& depth_arg = node->InputDefs()[1];
     return initializers.find(depth_arg->Name()) == initializers.end();
+  } else if (optype == "Conv") {
+    if (GetInputCount(node, initializers) > 1) 
+      return true;			        
+  } else if (optype == "BatchNormalization") {
+    if (GetInputCount(node, initializers) > 1)
+      return true;
+  } else if (optype == "PRelu") {
+      return true;
+  } else if (optype == "Selu") {
+      return true;
+  } else if (optype == "Softplus") {
+      return true;
+  } else if (optype == "HardSigmoid") {
+      return true;
+  } else if (optype == "GlobalLpPool") {
+      return true;
+  } else if (optype == "ThresholdedRelu") {
+      return true;
   } else if (optype == "TopK") {
     //TopK opset 10 is currently not supported.
     //K as input is currently not suppported.
