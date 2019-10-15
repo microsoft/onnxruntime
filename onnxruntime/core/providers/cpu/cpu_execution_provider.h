@@ -9,12 +9,6 @@
 
 namespace onnxruntime {
 
-#ifdef USE_MIMALLOC
-  using TAllocator = MiMallocAllocator;
-#else
-  using TAllocator = CPUAllocator;
-#endif
-
 // Information needed to construct CPU execution providers.
 struct CPUExecutionProviderInfo {
   bool create_arena{true};

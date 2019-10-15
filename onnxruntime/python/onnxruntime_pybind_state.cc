@@ -133,12 +133,6 @@ namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
-#ifdef USE_MIMALLOC
-  using TAllocator = MiMallocAllocator;
-#else
-  using TAllocator = CPUAllocator;
-#endif
-
 static AllocatorPtr& GetAllocator() {
   static AllocatorPtr alloc = std::make_shared<TAllocator>();
   return alloc;

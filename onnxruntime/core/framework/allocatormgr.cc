@@ -10,10 +10,11 @@
 #include <limits>
 
 namespace onnxruntime {
+
 #ifdef USE_MIMALLOC
-  using TAllocator = MiMallocArena;
+  using TArenaAllocator = MiMallocArena;
 #else
-  using TAllocator = BFCArena;
+  using TArenaAllocator = BFCArena;
 #endif
 
 using namespace ::onnxruntime::common;
@@ -22,7 +23,7 @@ AllocatorPtr CreateAllocator(DeviceAllocatorRegistrationInfo info, int device_id
   auto device_allocator = std::unique_ptr<IDeviceAllocator>(info.factory(device_id));
   if (device_allocator->AllowsArena()) {
     return std::shared_ptr<IArenaAllocator>(
-          onnxruntime::make_unique<TAllocator>(std::move(device_allocator), info.max_mem));
+          onnxruntime::make_unique<TArenaAllocator>(std::move(device_allocator), info.max_mem));
   }
 
   return AllocatorPtr(std::move(device_allocator));
