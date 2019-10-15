@@ -182,7 +182,8 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
         if (is_string) {
           output_data[++output_counter] = input_data[base_offset + (indices_data[++indices_counter] * input_shape_pitches[axis]) + i];
         } else {
-          memcpy(output_data, input_data + (base_offset + (indices_data[++indices_counter] * input_shape_pitches[axis]) + i) * element_size, element_size);
+          memcpy(output_data,
+                 input_data + (base_offset + (indices_data[++indices_counter] * input_shape_pitches[axis]) + i) * element_size, element_size);
           output_data += element_size;
         }
       }
