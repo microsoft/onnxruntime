@@ -15,8 +15,8 @@ static Status RegKernels(KernelRegistry& r, std::vector<std::unique_ptr<KernelDe
 
 class FakeKernel final : public OpKernel {
  public:
-  FakeKernel(const OpKernelInfo&) : OpKernel(info) {}
-  Status Compute(OpKernelContext* context) const override {
+  FakeKernel(const OpKernelInfo& info) : OpKernel(info) {}
+  Status Compute(OpKernelContext*) const override {
     return Status::OK();
   }
 };
