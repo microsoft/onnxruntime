@@ -1,10 +1,13 @@
-# Hardware Enabled with OpenVINO Execution Provider
+# OpenVINO Execution Provider
 
 OpenVINO Execution Provider enables deep learning inference on Intel CPUs, Intel integrated GPUs and Intel<sup>®</sup> Movidius<sup>TM</sup> Vision Processing Units (VPUs). Please refer to [this](https://software.intel.com/en-us/openvino-toolkit/hardware) page for details on the Intel hardware supported.
 
-# ONNX Layers supported using OpenVINO
+## Build
+For build instructions, please see the [BUILD page](../../BUILD.md#openvino).
 
-Below table shows the ONNX layers supported using OpenVINO Execution Provider and the mapping between ONNX layers and OpenVINO layers. The below table also lists the Intel hardware support for each of the layers. CPU refers to Intel<sup>®</sup>
+## ONNX Layers supported using OpenVINO
+
+The table below shows the ONNX layers supported using OpenVINO Execution Provider and the mapping between ONNX layers and OpenVINO layers. The below table also lists the Intel hardware support for each of the layers. CPU refers to Intel<sup>®</sup>
 Atom, Core, and Xeon processors. GPU refers to the Intel Integrated Graphics. VPU refers to USB based Intel<sup>®</sup> Movidius<sup>TM</sup>
 VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidius <sup>TM</sup> MyriadX VPU.
 
@@ -35,11 +38,11 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 
 *MatMul is supported in GPU only when the following layer is an Add layer in the topology.
 
-# Topology Support
+## Topology Support
 
 Below topologies are supported from ONNX open model zoo using OpenVINO Execution Provider
 
-## Image Classification Networks
+### Image Classification Networks
 
 | **Topology** | **CPU** | **GPU** | **VPU** |
 | --- | --- | --- | --- |
@@ -68,7 +71,7 @@ Below topologies are supported from ONNX open model zoo using OpenVINO Execution
 | vgg19       | Yes | Yes | Yes
 
 
-## Image Recognition Networks
+### Image Recognition Networks
 
 | **Topology** | **CPU** | **GPU** | **VPU** |
 | --- | --- | --- | --- |
@@ -76,14 +79,14 @@ Below topologies are supported from ONNX open model zoo using OpenVINO Execution
 
 **Inception_v1 and MNIST are supported in OpenVINO R1.1 and are not supported in OpenVINO R5.0.1.
 
-## Object Detection Networks
+### Object Detection Networks
 
 | **Topology** | **CPU** | **GPU** | **VPU** |
 | --- | --- | --- | --- |
 |TinyYOLOv2 | Yes | Yes | Yes
 | ResNet101\_DUC\_HDC | Yes | No | No
 
-# Application code changes for VAD-M performance scaling
+## Application code changes for VAD-M performance scaling
 
 VAD-M has 8 VPUs and is suitable for applications that require multiple inferences to run in parallel. We use batching approach for performance scaling on VAD-M.
 
@@ -100,14 +103,14 @@ import numpy
 import time
 import glob
 ~~~
-### Load the input onnx model
+#### Load the input onnx model
 
 ~~~
 sess = rt.InferenceSession(str(sys.argv[1]))
 print("\n")
 ~~~
 
-### Preprocessing input images
+#### Preprocessing input images
 ~~~
 for i in range(iters):
    y = None
@@ -126,11 +129,11 @@ for i in range(iters):
         y = numpy.concatenate((y,x), axis=0)
 ~~~
 
-### Start Inference
+#### Start Inference
 ~~~
    res = sess.run([sess.get_outputs()[0].name], {sess.get_inputs()[0].name: y})
 ~~~
-### Post-processing output results
+#### Post-processing output results
 ~~~
    print("Output probabilities:")
    i = 0
