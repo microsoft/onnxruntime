@@ -100,6 +100,7 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 * [Intel OpenVINO](#openvino)
 * [Android NNAPI](#Android)
 * [Nuphar Model Compiler](#Nuphar)
+* [DirectML](#DirectML)
 
 **Options**
 * [OpenMP](#OpenMP)
@@ -373,6 +374,16 @@ index 7dfa97c..6d99e71 100644
 
 Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#nuphar-public-preview)
 
+### DirectML
+See more information on the DirectML execution provider [here](./docs/execution_providers/DirectML-ExecutionProvider.md).
+#### Windows
+```
+.\build.bat --use_dml
+```
+#### Notes
+The DirectML execution provider supports building for both x64 and x86 architectures. DirectML is only supported on Windows.
+
+ 
 ---
 
 ## Options

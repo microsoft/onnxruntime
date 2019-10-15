@@ -517,7 +517,7 @@ void OpTester::Run(ExpectResult expect_result,
   Run(so, expect_result, expected_failure_string, excluded_provider_types, run_options, execution_providers);
 }
 
-void OpTester::Run(const SessionOptions& so,
+void OpTester::Run(SessionOptions so, // Take the SessionOptions by value (i.e. make a copy) because we may need to modify it
                    ExpectResult expect_result,
                    const std::string& expected_failure_string,
                    const std::unordered_set<std::string>& excluded_provider_types,
@@ -570,11 +570,20 @@ void OpTester::Run(const SessionOptions& so,
         kBrainSliceExecutionProvider,
         kTensorrtExecutionProvider,
         kOpenVINOExecutionProvider,
+        kDmlExecutionProvider
     };
 
     bool has_run = false;
 
     if (execution_providers) {
+      for (auto& entry : *execution_providers) {
+        if (entry->Type() == kDmlExecutionProvider) {
+          so.enable_mem_pattern = false;
+          so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+          break;
+        }
+      }
+
       InferenceSession session_object{so};
 
       ASSERT_TRUE(!execution_providers->empty()) << "Empty execution providers vector.";
@@ -592,6 +601,10 @@ void OpTester::Run(const SessionOptions& so,
         if (excluded_provider_types.count(provider_type) > 0)
           continue;
 
+        if (provider_type == kDmlExecutionProvider) {
+          so.enable_mem_pattern = false;
+          so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+        }
         InferenceSession session_object{so};
 
         for (auto& custom_session_registry : custom_session_registries_)
