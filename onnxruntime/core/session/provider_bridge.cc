@@ -27,17 +27,19 @@ struct private_access_helper {
 
 // Then we instantiate the templates for the types we're interested in getting members for.
 // Then by calling private_cast(the name of one of the structs{}) it will return a pointer to the private member function
-struct private_cast_google_protobuf_internal_RepeatedPtrFieldBase_Reserve {};
-template struct private_access_helper<void (RepeatedPtrFieldBase::*)(int), &RepeatedPtrFieldBase::Reserve, private_cast_google_protobuf_internal_RepeatedPtrFieldBase_Reserve>;
-struct private_cast_google_protobuf_Arena_CreateMaybeMessage_onnx_TensorProto {};
-template struct private_access_helper<onnx::TensorProto* (*)(google::protobuf::Arena*), &google::protobuf::Arena::CreateMaybeMessage<onnx::TensorProto>, private_cast_google_protobuf_Arena_CreateMaybeMessage_onnx_TensorProto>;
+struct private_cast_1 {};
+template struct private_access_helper<void (RepeatedPtrFieldBase::*)(int), &RepeatedPtrFieldBase::Reserve, private_cast_1>;
+auto private_cast_RepeatedPtrFieldBase_Reserve() { return private_cast(private_cast_1{}); }
+struct private_cast_2 {};
+template struct private_access_helper<onnx::TensorProto* (*)(google::protobuf::Arena*), &google::protobuf::Arena::CreateMaybeMessage<onnx::TensorProto>, private_cast_2>;
+auto private_cast_Arena_CreateMaybeMessage_onnx_TensorProto() { return private_cast(private_cast_2{}); }
 
 namespace onnxruntime {
 
 struct ProviderHostImpl : ProviderHost {
-  ProviderHostImpl::ProviderHostImpl() {
-    google_protobuf_internal_RepeatedPtrFieldBase_Reserve = private_cast(private_cast_google_protobuf_internal_RepeatedPtrFieldBase_Reserve{});
-    google_protobuf_Arena_CreateMaybeMessage_onnx_TensorProto = private_cast(private_cast_google_protobuf_Arena_CreateMaybeMessage_onnx_TensorProto{});
+  ProviderHostImpl() {
+    google_protobuf_internal_RepeatedPtrFieldBase_Reserve = private_cast_RepeatedPtrFieldBase_Reserve();
+    google_protobuf_Arena_CreateMaybeMessage_onnx_TensorProto = private_cast_Arena_CreateMaybeMessage_onnx_TensorProto();
 
     google_protobuf_internal_GetEmptyStringAlreadyInited = &google::protobuf::internal::GetEmptyStringAlreadyInited;
 
