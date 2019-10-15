@@ -49,9 +49,9 @@ add_library(onnxruntime_common ${onnxruntime_common_src})
 
 if (onnxruntime_USE_MIMALLOC)
     if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO) 
-        message(WARNING "Ignoring directive to use mimalloc on a non-CPU target (unimplemented)")
+        message(WARNING "Ignoring directive to use mimalloc on unimplemented targets")
     elseif (${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
-        # GCC fails trying to build mimalloc due to some conflict with atomic types
+        # Some of the non-windows targets see strange runtime failures
         message(WARNING "Ignoring request to link to mimalloc - only windows supported")
     else()
         include(external/mimalloc.cmake)
