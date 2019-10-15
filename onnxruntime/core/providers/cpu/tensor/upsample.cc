@@ -95,7 +95,7 @@ Status UpsampleNearest(const T* input,
 
 #define OneDimensionProcessor(dim_inx)                                                                                                                                                                                                               \
   float original_##dim_inx##_idx = get_original_coordinate(static_cast<float>(output_dim##dim_inx##_inx), scales[dim_inx], static_cast<float>(output_shape[dim_inx]), static_cast<float>(input_shape[dim_inx]), roi[dim_inx], roi[n_dim + dim_inx]); \
-  int64_t input_dim##dim_inx##_inx = get_nearest_pixel(original_##dim_inx##_idx, scales[dim_inx] < 0);                                                                                                                                               \
+  int64_t input_dim##dim_inx##_inx = get_nearest_pixel(original_##dim_inx##_idx, scales[dim_inx] < 1);                                                                                                                                               \
   if (input_dim##dim_inx##_inx > input_shape[dim_inx] - 1) input_dim##dim_inx##_inx = input_shape[dim_inx] - 1;                                                                                                                                      \
   if (input_dim##dim_inx##_inx < 0) input_dim##dim_inx##_inx = 0;                                                                                                                                                                                    \
   if (input_dim##dim_inx##_inx != input_dim_counters[dim_inx]) {                                                                                                                                                                                     \
@@ -169,7 +169,7 @@ Status UpsampleNearest(const T* input,
         auto original_idx = get_original_coordinate(static_cast<float>(output_dim_counter[dim_idx]), scales[dim_idx],
                                                     static_cast<float>(output_shape[dim_idx]), static_cast<float>(input_shape[dim_idx]),
                                                     roi[dim_idx], roi[n_dim + dim_idx]);
-        current_input_dim_counter = get_nearest_pixel(original_idx, scales[dim_idx] < 0);
+        current_input_dim_counter = get_nearest_pixel(original_idx, scales[dim_idx] < 1);
         current_input_dim_counter = std::max((int64_t)0,
                                              std::min(current_input_dim_counter, (input_shape[dim_idx] - 1)));
 
