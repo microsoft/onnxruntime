@@ -9,7 +9,9 @@ namespace onnxruntime {
 ONNX_CPU_OPERATOR_KERNEL(
     GatherElements,
     11,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()).TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     GatherElements);
 
 // Some helpers needed for GatherElements op -
