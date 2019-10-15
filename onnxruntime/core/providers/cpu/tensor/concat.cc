@@ -44,8 +44,10 @@ static Status PrepareForCompute(OpKernelContext* ctx, const std::vector<const Te
   // In 'stack' mode, the accepted range depends on the output rank (which is one more than the input rank)
   p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis, !is_stack ? inputs_0_rank : inputs_0_rank + 1));
 
-  // not if input tensor is empty for later use (it's expensive to call Size() on TensorShape)
+  // Note if input tensor is empty for later use (it's expensive to call Size() on TensorShape)
   std::vector<int64_t> input_tensor_sizes(input_count);
+  // Assign the number of values in the first input tensor
+  input_tensor_sizes[0] = inputs_0.Shape().Size();
 
   // Ensure all of the non concatenated axes match each other
   for (int index = 1; index < input_count; index++) {
@@ -65,7 +67,7 @@ static Status PrepareForCompute(OpKernelContext* ctx, const std::vector<const Te
       tensor_size *= dim_value;
 
       // In 'concat' mode, the axis to be concatenated may be different
-      // But in 'stack' mode, all input shapes must be the same
+      // But in 'stack' mode, all input shapes must be the same and must be validated
       if (!is_stack && axis_index == p.axis)
         continue;
 
@@ -78,28 +80,31 @@ static Status PrepareForCompute(OpKernelContext* ctx, const std::vector<const Te
     input_tensor_sizes[index] = tensor_size;  //assign the computed size of the input tensor
   }
 
-  // Calculate the size of the concatenated axis
-  size_t concat_axis_size = 0;
-  for (int64_t index = 0; index < input_count; index++) {
-    concat_axis_size += input_tensors[index]->Shape()[int(p.axis)];
-  }
-
   // Calculate the shape of the output tensor
-  std::vector<int64_t> output_dims(inputs_0_rank);
-  int64_t tensor_size = 1;
-  for (size_t dimension_index = 0; dimension_index < inputs_0_rank; dimension_index++) {
-    auto dim_value = inputs_0_dims[dimension_index];
-    output_dims[dimension_index] = dim_value;
-    tensor_size *= dim_value;
-  }
-  input_tensor_sizes[0] = tensor_size;  //assign the computed size of the first input tensor
+  std::vector<int64_t> output_dims = inputs_0_dims;
+  // 'Concat' mode
+  if (!is_stack) {
+    // While concating, the rank of the output is the same as the input rank(s)
 
-  output_dims[p.axis] = concat_axis_size;
+    // Calculate the size of the concatenated axis
+    size_t concat_axis_size = 0;
+    for (int64_t index = 0; index < input_count; index++) {
+      concat_axis_size += input_tensors[index]->Shape()[int(p.axis)];
+    }
+
+    output_dims[p.axis] = concat_axis_size;
+  } else {  // 'Stack' mode
+    // While stacking, the rank of the output is one more than the input rank(s)
+    // Stacking may be thought of as adding an unit dimension (of value 1) in the input tensors,
+    // and concatenating them on thie new axis.
+    // The value in the corresponding axis of the output will be the number of inputs that are being stacked.
+    output_dims.insert(output_dims.begin() + p.axis, static_cast<int64_t>(input_count));
+  }
+
   TensorShape output_shape(output_dims);
 
   // Create output tensor
-  auto& concat_result = *ctx->Output(0, output_shape);
-  p.output_tensor = &concat_result;
+  p.output_tensor = &(*ctx->Output(0, output_shape));
 
   // Make note if output tensor is going to be empty
   p.output_num_elements = output_shape.Size();
@@ -108,7 +113,8 @@ static Status PrepareForCompute(OpKernelContext* ctx, const std::vector<const Te
   if (p.output_num_elements == 0)
     return Status::OK();
 
-  // The output_axis_pitch is the number of elements to add to move to the next split axis in the output
+  // The output_axis_pitch is the number of elements to add to move to the next split axis in the output.
+  // Can handle stacking as well.
   p.output_axis_pitch = 1;
   for (size_t i = inputs_0_rank; i-- > p.axis;) {
     p.output_axis_pitch *= output_dims[i];
@@ -121,17 +127,20 @@ static Status PrepareForCompute(OpKernelContext* ctx, const std::vector<const Te
     auto& data_n = *data_n_ptr;
 
     // Type sanity check (Make sure we are working on homogeneous types)
-    ORT_RETURN_IF_NOT(data_n.DataType() == concat_result.DataType());
+    ORT_RETURN_IF_NOT(data_n.DataType() == p.output_tensor->DataType());
 
     // The input_axis_pitch is the number of elements to add to move to the next split axis in the input
+    // Can handle stacking as well (as the "new dummy dimension" in the input is of unit value).
     int64_t input_axis_pitch = 1;
     const auto& data_dims = data_n.Shape().GetDims();
-    for (size_t i = inputs_0_rank; i-- > p.axis;) input_axis_pitch *= data_dims[i];
+    for (size_t i = inputs_0_rank; i-- > p.axis;) {
+      input_axis_pitch *= data_dims[i];
+    }
 
     p.inputs.push_back({&data_n, input_axis_pitch, input_tensor_sizes[input_index]});
   }
 
-  // decide if the input Tensors of type 'string'
+  // Make note if the input Tensors of type 'string'
   p.is_string_type = p.inputs[0].tensor->DataType() == DataTypeImpl::GetType<std::string>();
 
   return Status::OK();
@@ -185,7 +194,7 @@ static Status ComputeImpl(Prepare& p) {
 Status ConcatBase::ValidateInputsAndComputeOutput(OpKernelContext* ctx, const std::vector<const Tensor*>& input_tensors) const {
   // Validate inputs and prepare some metadata used during actual compute
   Prepare p;
-  auto status = PrepareForCompute(ctx, input_tensors, axis_, false, p);
+  auto status = PrepareForCompute(ctx, input_tensors, axis_, is_stack_, p);
   if (!status.IsOK())
     return status;
 
@@ -206,7 +215,7 @@ Status Concat::Compute(OpKernelContext* ctx) const {
   std::vector<const Tensor*> input_tensors;
   input_tensors.reserve(input_count);
   for (int i = 0; i < input_count; ++i) {
-    input_tensors.push_back(ctx->Input<Tensor>(i));
+    input_tensors.push_back(std::move(ctx->Input<Tensor>(i)));
   }
 
   return ValidateInputsAndComputeOutput(ctx, input_tensors);

@@ -28,14 +28,14 @@ struct Prepare {
 class ConcatBase {
  protected:
   ConcatBase(const OpKernelInfo& info, bool is_sequence_op = false) {
-    if (!info.GetAttr("axis", &axis_).IsOK()) {
+    if (!info.GetAttr<int64_t>("axis", &axis_).IsOK()) {
       ORT_ENFORCE(false, "Must have valid 'axis' attribute");
     }
 
     is_sequence_op_ = is_sequence_op;
 
     if (is_sequence_op) {  // Only ConcatFromSequence supports stacking
-      is_stack_ = info.GetAttrOrDefault("new_axis", 0) == 0 ? false : true;
+      is_stack_ = info.GetAttrOrDefault<int64_t>("new_axis", 0) == 0 ? false : true;
     }
   }
 
