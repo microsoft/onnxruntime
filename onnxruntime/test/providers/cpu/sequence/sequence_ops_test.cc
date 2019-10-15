@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include <numeric>
 
 namespace onnxruntime {
 namespace test {
@@ -296,5 +297,93 @@ TEST(SequenceOpsTest, SequenceConstructPositive) {
   test.AddSeqOutput("S2", output);
   test.Run();
 }
+
+// SplitToSequence
+TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitFloat) {
+  OpTester test("SplitToSequence", 11);
+  test.AddInput<float>("input", {4, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f});
+  test.AddInput<int64_t>("split", {1, 2}, {2, 2});
+  SeqTensors<float> output;
+  output.AddTensor({2, 2}, {1.f, 2.f, 3.f, 4.f});
+  output.AddTensor({2, 2}, {5.f, 6.f, 7.f, 8.f});
+  test.AddSeqOutput("S2", output);
+  test.Run();
+}
+
+TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitFloatScalarSplit) {
+  OpTester test("SplitToSequence", 11);
+  test.AddInput<float>("input", {4, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f});
+  test.AddInput<int64_t>("split", {}, {2});
+  SeqTensors<float> output;
+  output.AddTensor({2, 2}, {1.f, 2.f, 3.f, 4.f});
+  output.AddTensor({2, 2}, {5.f, 6.f, 7.f, 8.f});
+  test.AddSeqOutput("S2", output);
+  test.Run();
+}
+
+TEST(SequenceOpsTest, SplitToSequence_Axis0DefaultSplitFloatSetAxisExplicitly) {
+  OpTester test("SplitToSequence", 11);
+  test.AddInput<float>("input", {4, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f});
+  int64_t axis = 0;
+  test.AddAttribute("axis", axis);
+  SeqTensors<float> output;
+  output.AddTensor({1, 2}, {1.f, 2.f});
+  output.AddTensor({1, 2}, {3.f, 4.f});
+  output.AddTensor({1, 2}, {5.f, 6.f});
+  output.AddTensor({1, 2}, {7.f, 8.f});
+  test.AddSeqOutput("S2", output);
+  test.Run();
+}
+
+TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0UnevenSplitFloat) {
+  OpTester test("SplitToSequence", 11);
+  test.AddInput<float>("input", {5, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f});
+  test.AddInput<int64_t>("split", {}, {2});
+  SeqTensors<float> output;
+  output.AddTensor({2, 2}, {1.f, 2.f, 3.f, 4.f});
+  output.AddTensor({2, 2}, {5.f, 6.f, 7.f, 8.f});
+  output.AddTensor({1, 2}, {9.f, 10.f});
+  test.AddSeqOutput("S2", output);
+  test.Run();
+}
+
+TEST(SequenceOpsTest, SplitToSequence_Axis0DefaultSplitFloatSetAxisExplicitlyDontKeepDims3Dim) {
+  OpTester test("SplitToSequence", 11);
+  std::vector<float> inputv(2 * 3 * 4);
+  std::iota(inputv.begin(), inputv.end(), 1.f);
+  test.AddInput<float>("input", {2, 3, 4}, inputv);
+  test.AddAttribute<int64_t>("keepdims", 0);
+  int64_t axis = 0;
+  test.AddAttribute("axis", axis);
+  SeqTensors<float> output;
+  std::vector<float> o1(12);
+  std::iota(o1.begin(), o1.end(), 1.f);
+  std::vector<float> o2(12);
+  std::iota(o2.begin(), o2.end(), 13.f);
+  output.AddTensor({3, 4}, o1);
+  output.AddTensor({3, 4}, o2);
+  test.AddSeqOutput("S2", output);
+  test.Run();
+}
+
+TEST(SequenceOpsTest, SplitToSequence_Axis0DefaultSplitFloatSetAxisExplicitlyDontKeepDims2Dim) {
+  OpTester test("SplitToSequence", 11);
+  std::vector<float> inputv(2 * 3);
+  std::iota(inputv.begin(), inputv.end(), 1.f);
+  test.AddInput<float>("input", {2, 3}, inputv);
+  test.AddAttribute<int64_t>("keepdims", 0);
+  int64_t axis = 0;
+  test.AddAttribute("axis", axis);
+  SeqTensors<float> output;
+  std::vector<float> o1(3);
+  std::iota(o1.begin(), o1.end(), 1.f);
+  std::vector<float> o2(3);
+  std::iota(o2.begin(), o2.end(), 4.f);
+  output.AddTensor({3}, o1);
+  output.AddTensor({3}, o2);
+  test.AddSeqOutput("S2", output);
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
