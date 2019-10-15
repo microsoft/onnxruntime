@@ -170,11 +170,8 @@ Status UpsampleNearest(const T* input,
                                                     static_cast<float>(output_shape[dim_idx]), static_cast<float>(input_shape[dim_idx]),
                                                     roi[dim_idx], roi[n_dim + dim_idx]);
         current_input_dim_counter = get_nearest_pixel(original_idx, scales[dim_idx] < 0);
-
-        if (current_input_dim_counter >= input_shape[dim_idx] - 1)
-          current_input_dim_counter = input_shape[dim_idx] - 1;
-        if (current_input_dim_counter < 0)
-          current_input_dim_counter = 0;
+        current_input_dim_counter = std::max((int64_t)0,
+                                             std::min(current_input_dim_counter, (input_shape[dim_idx] - 1)));
 
         if (current_input_dim_counter != input_dim_counters[dim_idx]) {
           input_idx += (current_input_dim_counter - input_dim_counters[dim_idx]) * input_dim_factor[dim_idx];
@@ -227,8 +224,8 @@ Status upsampleLinear(const T* input,
       float resized_index = cur_idx % output_shape[j];
       float original_index = get_original_coordinate(static_cast<float>(resized_index), scales[j],
                                                      static_cast<float>(output_shape[j]), static_cast<float>(input_shape[j]),
-                                                     roi[j], roi[ndim + j]);
-      T v = std::max(0, std::min(original_index, static_cast<float>(input_shape[j] - 1)));
+                                                     roi[j], roi[n_dim + j]);
+      float v = std::max(0.0f, std::min(original_index, static_cast<float>(input_shape[j] - 1)));
       auto v1 = std::min(static_cast<int64_t>(v), input_shape[j] - 1);
       auto v2 = std::min(v1 + 1, input_shape[j] - 1);
       if (v1 == v2) {
@@ -440,10 +437,10 @@ void ResizeBiCubic(
     int64_t input_width,
     float height_scale,
     float width_scale,
-    const std::vector<float>& roi,
-    const float cubic_coeff_a,
+    float cubic_coeff_a,
     bool use_extrapolation,
-    const float extrapolation_value,
+    float extrapolation_value,
+    const std::vector<float>& roi,
     const T* Xdata,
     T* Ydata,
     GetOriginalCoordinateFunc get_original_coordinate) {
@@ -595,8 +592,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
       AllocatorPtr alloc;
       ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
       upsampleBilinear(batch_size, num_channels, input_height, input_width,
-                       is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], roi, 
-                       use_extrapolation_, extrapolation_value_, X->template Data<T>(), 
+                       is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], roi,
+                       use_extrapolation_, extrapolation_value_, X->template Data<T>(),
                        Y->template MutableData<T>(), alloc, get_original_coordinate_);
       return Status::OK();
     }
@@ -608,8 +605,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
       const int64_t input_width = is_2D ? dims[1] : dims[3];
 
       ResizeBiCubic(batch_size, num_channels, input_height, input_width,
-                    is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], roi, cubic_coeff_a_, 
-                    use_extrapolation_, extrapolation_value_, X->template Data<float>(), Y->template MutableData<float>(), 
+                    is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], cubic_coeff_a_, use_extrapolation_,
+                    extrapolation_value_, roi, X->template Data<float>(), Y->template MutableData<float>(),
                     get_original_coordinate_);
       return Status::OK();
     }
