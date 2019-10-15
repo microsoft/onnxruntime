@@ -57,5 +57,5 @@ struct Provider_Mkldnn : Provider {
 }  // namespace onnxruntime
 
 extern "C" {
-__declspec(dllexport) onnxruntime::Provider* GetProvider() { return &onnxruntime::provider_; }
+ORT_EXPORT onnxruntime::Provider* GetProvider() { return &onnxruntime::provider_; }
 }
