@@ -52,7 +52,7 @@ Additionally, we understand that lightweight devices and local applications may 
 |Supported|Future|
 |---|---|
 |X64|Additional as-needed|
-X86| |
+|X86| |
 |ARM64 (Limited)| |
 |ARM32 (Limited)| |
 
@@ -94,9 +94,6 @@ To maximize performance potential, we will be continually adding additional CUDA
 #### Simplify EP contributions
 In addition to new execution providers, we aim to make it easy for community partners to contribute in a non-disruptive way. To support this, we are investing in improvements to the execution provider interface for easily registering new execution providers and separating out EPs from the core runtime engine.
 
-### Confidential AI
-[TODO]
-
 ### Continued Performance Optimizations
 Performance is a key focus for ONNX Runtime. From latency to memory utilization to CPU usage, we are constantly seeking strategies to deliver the best performance. Although DNNs are rapidly driving research areas for innovation, we acknowledge that in practice, many companies and developers are still using traditional ML frameworks for reasons ranging from expertise to privacy to legality. As such, ONNX Runtime is focused on improvements and support for both DNNs and traditional ML. 
 
@@ -106,7 +103,7 @@ Performance is a key focus for ONNX Runtime. From latency to memory utilization 
 * Multithreading
 * Graph optimizations
 * Intelligent graph partitioning to maximize the value of different accelerators
-* Optimizations for IoT Edge devices
+* Optimizations for mobile and IoT Edge devices
 
 
 ### Expanded model compatibility
