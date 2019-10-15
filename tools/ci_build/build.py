@@ -159,6 +159,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--cmake_generator", choices=['Visual Studio 15 2017', 'Visual Studio 16 2019'],
                         default='Visual Studio 15 2017', help="Specify the generator that CMake invokes. This is only supported on Windows")
     parser.add_argument("--enable_multi_device_test", action='store_true', help="Test with multi-device. Mostly used for multi-device GPU")
+    parser.add_argument("--use_dml", action='store_true', help="Build with DirectML.")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -372,6 +373,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
                  # enable pyop if it is nightly build
                  "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops or (args.config != 'Debug' and bool(os.getenv('NIGHTLY_BUILD') == '1')) else "OFF"),
+                 "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
@@ -546,6 +548,17 @@ def setup_tensorrt_vars(args):
         os.environ["ORT_TENSORRT_MAX_PARSER_ITERATIONS"] = "6"
 
     return tensorrt_home
+
+def setup_dml_build(args, cmake_path, build_dir, configs):
+    if (args.use_dml):
+        for config in configs:
+            # Run the RESTORE_PACKAGES target to perform the initial NuGet setup
+            cmd_args = [cmake_path,
+                        "--build", get_config_build_dir(build_dir, config),
+                        "--config", config,
+                        "--target", "RESTORE_PACKAGES"]
+            run_subprocess(cmd_args)
+
 
 def adb_push(source_dir, src, dest, **kwargs):
     return run_subprocess([os.path.join(source_dir, 'tools', 'ci_build', 'github', 'android', 'adb-push.sh'), src, dest], **kwargs)
@@ -960,6 +973,9 @@ def main():
     if (args.clean):
         clean_targets(cmake_path, build_dir, configs)
 
+    # if using DML, perform initial nuget package restore
+    setup_dml_build(args, cmake_path, build_dir, configs)
+
     if (args.build):
         build_targets(cmake_path, build_dir, configs, args.parallel)
 
@@ -993,6 +1009,9 @@ def main():
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'nuphar', args.enable_multi_device_test, False, 1)
             else:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, True, 0)
+
+            if args.use_dml:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'dml', args.enable_multi_device_test, False, 1)
 
               if args.use_mkldnn:
                 mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
