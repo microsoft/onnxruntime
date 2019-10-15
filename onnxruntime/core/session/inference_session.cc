@@ -95,7 +95,7 @@ inline std::basic_string<T> GetCurrentTimeString() {
 
 }  // namespace
 
-std::atomic<uint32_t> InferenceSession::global_session_id_ = 1;
+std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    logging::LoggingManager* logging_manager)
