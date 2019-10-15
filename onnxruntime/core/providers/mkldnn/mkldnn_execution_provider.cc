@@ -340,7 +340,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
   }  // graph_viewer node iterator ends
   if (!sub_var.subgraph_node_indexes.empty()) {
     CreateMetaDef(graph_viewer, subgraph_attributes, subgraph_ptr, sub_var, result);
-    subgraph_ptr.reset(new mkl_dnn::Subgraph(graph_name));
+    subgraph_ptr = std::make_shared<mkl_dnn::Subgraph>(mkl_dnn::Subgraph(graph_name));
     subgraph_attributes.clear();
     output_to_source_node_map.clear();
   }
