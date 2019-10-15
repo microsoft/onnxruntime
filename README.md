@@ -53,6 +53,7 @@ ONNX Runtime supports both CPU and GPU. Using various graph optimizations and ac
 
 Currently ONNX Runtime supports the following accelerators:
 * MLAS (Microsoft Linear Algebra Subprograms)
+* [DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)
 * [MKL-DNN](./docs/execution_providers/MKL-DNN-ExecutionProvider.md) - [subgraph optimization](./docs/execution_providers/MKL-DNN-Subgraphs.md)
 * MKL-ML
 * [Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)
@@ -96,7 +97,7 @@ Additional dockerfiles for some features can be found [here](./dockerfiles).
 * ONNX Runtime binaries in the CPU packages use OpenMP and depend on the library being available at runtime in the
 system.
   * For Windows, **OpenMP** support comes as part of VC runtime. It is also available as redist packages:
-    [vc_redist.x64.exe](https://aka.ms/vs/15/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/15/release/vc_redist.x86.exe)
+    [vc_redist.x64.exe](https://aka.ms/vs/16/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/16/release/vc_redist.x86.exe)
   * For Linux, the system must have **libgomp.so.1** which can be installed using `apt-get install libgomp1`.
 * GPU builds require CUDA runtime libraries being installed on the system:
 	 * Version: **CUDA 10.0** and **cuDNN 7.3**

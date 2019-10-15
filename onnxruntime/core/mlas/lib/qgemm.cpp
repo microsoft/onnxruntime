@@ -32,6 +32,13 @@ Abstract:
 #ifdef MLAS_TARGET_AMD64_IX86
 
 //
+// Stores a vector to transpose a 4x4 byte vector using vpshufb.
+//
+
+MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint8_t MlasTranspose4x4BytesAvx[16], 16) =
+    { 0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15 };
+
+//
 // U8S8 implementation using SSE2 intrinsics.
 //
 
@@ -1121,6 +1128,18 @@ MlasGemm(
     size_t StrideK = MLAS_GEMM_U8S8_STRIDEK;
 
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+
+#if defined(MLAS_TARGET_AMD64)
+
+    if (M == 1 && offa == 0 && offb == 0) {
+
+        if (MlasPlatform.GemvU8S8Kernel != nullptr) {
+            MlasPlatform.GemvU8S8Kernel(A, B, C, K, N, ldb);
+            return;
+        }
+    }
+
+#endif
 
     size_t CountK;
 

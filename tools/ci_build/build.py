@@ -158,6 +158,8 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--enable_language_interop_ops", action='store_true', help="Enable operator implemented in language other than cpp")
     parser.add_argument("--cmake_generator", choices=['Visual Studio 15 2017', 'Visual Studio 16 2019'],
                         default='Visual Studio 15 2017', help="Specify the generator that CMake invokes. This is only supported on Windows")
+    parser.add_argument("--enable_multi_device_test", action='store_true', help="Test with multi-device. Mostly used for multi-device GPU")
+    parser.add_argument("--use_dml", action='store_true', help="Build with DirectML.")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -369,7 +371,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or args.build_server or args.gen_doc else "OFF"),
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
                  "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
-                 "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
+                 # enable pyop if it is nightly build
+                 "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops or (args.config != 'Debug' and bool(os.getenv('NIGHTLY_BUILD') == '1')) else "OFF"),
+                 "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
@@ -545,6 +549,17 @@ def setup_tensorrt_vars(args):
 
     return tensorrt_home
 
+def setup_dml_build(args, cmake_path, build_dir, configs):
+    if (args.use_dml):
+        for config in configs:
+            # Run the RESTORE_PACKAGES target to perform the initial NuGet setup
+            cmd_args = [cmake_path,
+                        "--build", get_config_build_dir(build_dir, config),
+                        "--config", config,
+                        "--target", "RESTORE_PACKAGES"]
+            run_subprocess(cmd_args)
+
+
 def adb_push(source_dir, src, dest, **kwargs):
     return run_subprocess([os.path.join(source_dir, 'tools', 'ci_build', 'github', 'android', 'adb-push.sh'), src, dest], **kwargs)
 
@@ -607,7 +622,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 if onnxml_test:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
 
-def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_parallel_executor_test, num_parallel_models):
+def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_multi_device_test, enable_parallel_executor_test, num_parallel_models):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -628,6 +643,9 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
 
         if num_parallel_models > 0:
           cmd += ["-j", str(num_parallel_models)]
+
+        if enable_multi_device_test:
+          cmd += ['-d', '1']
 
         if config != 'Debug' and os.path.exists(model_dir):
           # some models in opset9 and above are not supported by TensorRT yet
@@ -955,6 +973,9 @@ def main():
     if (args.clean):
         clean_targets(cmake_path, build_dir, configs)
 
+    # if using DML, perform initial nuget package restore
+    setup_dml_build(args, cmake_path, build_dir, configs)
+
     if (args.build):
         build_targets(cmake_path, build_dir, configs, args.parallel)
 
@@ -974,20 +995,23 @@ def main():
               # Disable some onnx unit tests that TensorRT doesn't supported yet
               if not is_windows():
                 onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data", "simple")
-                run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'tensorrt', False, 1)
+                run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'tensorrt', args.enable_multi_device_test, False, 1)
             elif args.use_cuda:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False, 2)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', args.enable_multi_device_test, False, 2)
             elif args.x86 or platform.system() == 'Darwin':
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, False, 1)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, False, 1)
             elif args.use_ngraph:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'ngraph', True, 1)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'ngraph', args.enable_multi_device_test, True, 1)
             elif args.use_openvino:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'openvino', False, 1)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'openvino', args.enable_multi_device_test, False, 1)
               # TODO: parallel executor test fails on MacOS
             elif args.use_nuphar:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'nuphar', False, 1)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'nuphar', args.enable_multi_device_test, False, 1)
             else:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 0)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, True, 0)
+
+            if args.use_dml:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'dml', args.enable_multi_device_test, False, 1)
 
               if args.use_mkldnn:
                 mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)

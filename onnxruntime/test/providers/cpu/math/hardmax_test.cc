@@ -22,13 +22,7 @@ static void RunTest(const std::vector<float>& x_vals,
 
   test.AddInput<float>("X", dimensions, x_vals);
   test.AddOutput<float>("Y", dimensions, expected_vals);
-
-  std::unordered_set<std::string> excluded_eps; 
-  if (axis < 0) {
-    excluded_eps.insert(kNGraphExecutionProvider); // NGraph EP cannot handle negative axis values
-  }
-
-  test.Run(expect_result, expected_err_str, excluded_eps);
+  test.Run(expect_result, expected_err_str);
 }
 
 TEST(HardmaxOperator, Simple) {

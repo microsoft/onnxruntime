@@ -212,13 +212,8 @@ inline SessionOptions& SessionOptions::DisableCpuMemArena() {
   return *this;
 }
 
-inline SessionOptions& SessionOptions::EnableSequentialExecution() {
-  ThrowOnError(g_api->EnableSequentialExecution(p_));
-  return *this;
-}
-
-inline SessionOptions& SessionOptions::DisableSequentialExecution() {
-  ThrowOnError(g_api->DisableSequentialExecution(p_));
+inline SessionOptions& SessionOptions::SetExecutionMode(ExecutionMode execution_mode) {
+  ThrowOnError(g_api->SetSessionExecutionMode(p_, execution_mode));
   return *this;
 }
 
@@ -330,6 +325,10 @@ inline size_t TensorTypeAndShapeInfo::GetDimensionsCount() const {
 
 inline void TensorTypeAndShapeInfo::GetDimensions(int64_t* values, size_t values_count) const {
   ThrowOnError(g_api->GetDimensions(p_, values, values_count));
+}
+
+inline void TensorTypeAndShapeInfo::GetSymbolicDimensions(const char** values, size_t values_count) const {
+  ThrowOnError(g_api->GetSymbolicDimensions(p_, values, values_count));
 }
 
 inline std::vector<int64_t> TensorTypeAndShapeInfo::GetShape() const {
