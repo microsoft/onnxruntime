@@ -158,8 +158,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& EnableMemPattern();
   SessionOptions& DisableMemPattern();
 
-  SessionOptions& EnableSequentialExecution();
-  SessionOptions& DisableSequentialExecution();
+  SessionOptions& SetExecutionMode(ExecutionMode execution_mode);
 
   SessionOptions& SetLogId(const char* logid);
 
