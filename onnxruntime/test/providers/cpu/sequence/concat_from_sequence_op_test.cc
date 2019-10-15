@@ -46,6 +46,7 @@ TEST(SequenceOpsTest, ConcatFromSequence_Axis2) {
 // TODO:
 // 1. tests for scalar stacking
 // 2. tests with empty input stacking
+// 3. test for sequence concats (use existing tests for concat)
 
 }  // namespace test
 }  // namespace onnxruntime
