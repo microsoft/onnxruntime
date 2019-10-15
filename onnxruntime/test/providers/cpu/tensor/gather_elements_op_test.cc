@@ -9,7 +9,6 @@ namespace test {
 
 template <typename T>
 void RunTypedTest() {
-  /*
   // int32_t indices - axis 0
   OpTester test1("GatherElements", 11);
 
@@ -105,7 +104,6 @@ void RunTypedTest() {
                           {0, 1});
   test7.AddOutput<T>("output", {1, 2, 1}, {1, 4});
   test7.Run();
-  */
 
   // 2D input - axis 1
   OpTester test8("GatherElements", 11);
