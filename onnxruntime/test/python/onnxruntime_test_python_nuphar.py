@@ -69,14 +69,13 @@ class TestNuphar(unittest.TestCase):
         cache_dir_content = os.listdir(cache_dir)
         assert len(cache_dir_content) == 1
         cache_versioned_dir = os.path.join(cache_dir, cache_dir_content[0])
-        if os.name == 'nt': # Windows
-            subprocess.run(['cmd', '/c', os.path.join(cwd, 'onnxruntime', 'nuphar', 'create_shared.cmd'), cache_versioned_dir], check=True, cwd=cwd)
-        elif os.name == 'posix': #Linux
-            subprocess.run(['bash', os.path.join(cwd, 'onnxruntime', 'nuphar', 'create_shared.sh'), '-c', cache_versioned_dir], check=True, cwd=cwd)
+        so_name = 'bidaf.so'
+        if os.name in ['nt', 'posix'] : # Windows or Linux
+            subprocess.run([sys.executable, '-m', 'onnxruntime.nuphar.create_shared', '--input_dir', cache_versioned_dir, '--output_name', so_name], check=True)
         else:
             return # don't run the rest of test if AOT is not supported
 
-        nuphar_settings = 'nuphar_cache_path:{}'.format(cache_dir) + ', nuphar_cache_force_no_jit:{}'.format('on')
+        nuphar_settings = 'nuphar_cache_path:{}, nuphar_cache_so_name:{}, nuphar_cache_force_no_jit:{}'.format(cache_dir, so_name, 'on')
         onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings)
         sess = onnxrt.InferenceSession(bidaf_int8_scan_only_model) # JIT cache happens when initializing session
         assert 'NupharExecutionProvider' in sess.get_providers()

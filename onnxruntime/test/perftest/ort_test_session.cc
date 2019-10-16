@@ -73,6 +73,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("NNAPI is not supported in this build\n");
 #endif
+  } else if (provider_name == onnxruntime::kDmlExecutionProvider) {
+#ifdef USE_DML
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_DML(session_options, 0));
+#else
+    ORT_THROW("DirectML is not supported in this build\n");
+#endif
   } else if (!provider_name.empty() && provider_name != onnxruntime::kCpuExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");
   }
@@ -82,18 +88,15 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   else
     session_options.DisableCpuMemArena();
   if (performance_test_config.run_config.enable_memory_pattern &&
-      performance_test_config.run_config.enable_sequential_execution)
+      performance_test_config.run_config.execution_mode == ExecutionMode::ORT_SEQUENTIAL)
     session_options.EnableMemPattern();
   else
     session_options.DisableMemPattern();
-  if (performance_test_config.run_config.enable_sequential_execution)
-    session_options.EnableSequentialExecution();
-  else
-    session_options.DisableSequentialExecution();
+  session_options.SetExecutionMode(performance_test_config.run_config.execution_mode);
   fprintf(stdout, "Setting intra_op_num_threads to %d\n", performance_test_config.run_config.intra_op_num_threads);
   session_options.SetIntraOpNumThreads(performance_test_config.run_config.intra_op_num_threads);
 
-  if (!performance_test_config.run_config.enable_sequential_execution) {
+  if (performance_test_config.run_config.execution_mode == ExecutionMode::ORT_PARALLEL) {
     fprintf(stdout, "Setting inter_op_num_threads to %d\n", performance_test_config.run_config.inter_op_num_threads);
   }
 
