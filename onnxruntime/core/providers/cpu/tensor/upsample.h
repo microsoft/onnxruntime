@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/framework/op_kernel.h"
+#include <cmath>
 
 namespace onnxruntime {
 
@@ -56,7 +57,7 @@ class UpsampleBase {
     get_nearest_pixel_ = GetNearestPixelFromOriginal(nearest_mode, start);
 
     cubic_coeff_a_ = info.GetAttrOrDefault<float>("cubic_coeff_a", -0.75f);
-    exclude_outside_ = info.GetAttrOrDefault<int64_t>("exclude_outside", 0) == 0 ? false : true;    
+    exclude_outside_ = info.GetAttrOrDefault<int64_t>("exclude_outside", 0) == 0 ? false : true;
 
     // after version 11 update, this optimization is no longer applicable for all the available modes...
     // TODO : needs more testing to enable this for version 11
@@ -66,7 +67,7 @@ class UpsampleBase {
       roi_input_idx_ = 1;
       scales_input_idx_ = 2;
       sizes_input_idx_ = 3;
-    } else if(start <= 10 && input_count > 1) {
+    } else if (start <= 10 && input_count > 1) {
       scales_input_idx_ = 1;
     }
 
@@ -131,30 +132,30 @@ class UpsampleBase {
   GetOriginalCoordinateFunc GetOriginalCoordinateFromResizedCoordinate(
       const std::string& coordinate_transform_mode) {
     if (coordinate_transform_mode == "asymmetric") {
-      return [](float x_resized, float x_scale, float, float, float , float ) {
+      return [](float x_resized, float x_scale, float, float, float, float) {
         return x_resized / x_scale;
       };
     } else if (coordinate_transform_mode == "pytorch_half_pixel") {
-      return [](float x_resized, float x_scale, float length_resized, float, float , float ) {
+      return [](float x_resized, float x_scale, float length_resized, float, float, float) {
         return length_resized > 1 ? (x_resized + 0.5f) / x_scale - 0.5f : 0.0f;
       };
     } else if (coordinate_transform_mode == "tf_half_pixel_for_nn") {
-      return [](float x_resized, float x_scale, float, float, float, float ) {
+      return [](float x_resized, float x_scale, float, float, float, float) {
         return (x_resized + 0.5f) / x_scale;
       };
     } else if (coordinate_transform_mode == "align_corners") {
-      return [](float x_resized, float , float length_resized, float length_original, float, float ) {
+      return [](float x_resized, float, float length_resized, float length_original, float, float) {
         return length_resized == 1 ? 0 : x_resized * (length_original - 1) / (length_resized - 1);
       };
     } else if (coordinate_transform_mode == "tf_crop_and_resize") {
-      return [](float x_resized, float , float length_resized, float length_original, float roi_start, float roi_end) {
-        auto orig = length_resized > 1 
-            ? roi_start * (length_original - 1) + (x_resized * (roi_end - roi_start) * (length_original - 1)) / (length_resized - 1) 
-            : 0.5 * (roi_start + roi_end) * (length_original - 1);
+      return [](float x_resized, float, float length_resized, float length_original, float roi_start, float roi_end) {
+        auto orig = length_resized > 1
+                        ? roi_start * (length_original - 1) + (x_resized * (roi_end - roi_start) * (length_original - 1)) / (length_resized - 1)
+                        : 0.5 * (roi_start + roi_end) * (length_original - 1);
         return static_cast<float>(orig);
       };
     } else {  // "half_pixel"
-      return [](float x_resized, float x_scale, float, float, float, float ) {
+      return [](float x_resized, float x_scale, float, float, float, float) {
         return ((x_resized + 0.5f) / x_scale) - 0.5f;
       };
     }
@@ -215,7 +216,7 @@ class UpsampleBase {
                   "with the corresponding outermost 2 scale values being 1 in the ",
                   is_resize ? "Resize operator" : "Upsample operator");
     }
-  }  
+  }
 
   void ParseScalesData(const Tensor* scale, std::vector<float>& scales) const {
     const auto* scale_data = scale->template Data<float>();

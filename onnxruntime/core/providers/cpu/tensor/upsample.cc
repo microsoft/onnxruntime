@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/upsample.h"
-#include <cmath>
 #include <sstream>
 
 using namespace onnxruntime::common;
