@@ -37,7 +37,7 @@ bool IsRecurrentNode(const onnxruntime::Node& node) {
 bool IsAliasNode(const onnxruntime::Node& node) {
   auto op_type = node.OpType();
   return (op_type == "Flatten" || op_type == "Identity" || op_type == "Reshape" ||
-          op_type == "Squeeze" || op_type == "Unsqueeze");
+          op_type == "Squeeze" || op_type == "Transpose" || op_type == "Unsqueeze");
 }
 
 std::string NormalizeCppName(const std::string& name) {

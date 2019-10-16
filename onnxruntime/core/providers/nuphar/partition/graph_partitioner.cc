@@ -141,11 +141,17 @@ Status GraphPartitioner::Partition(const onnxruntime::GraphViewer& graph,
 
   std::vector<NodeIndex> erase_partitions;
 
-  // remove single alias node (aka isolated alias op)
-  // TODO: change this logic to removing a partition with only all alias ops
+  // remove partitions that only contain alias nodes (aka isolated alias ops) and cast
   for (const auto& iter : partitions_) {
-    if (iter.second.nodes.size() == 1 &&
-        IsAliasNode(*graph.GetNode(iter.second.nodes.front()))) {
+    bool erase_partition = true;
+    for (const NodeIndex node_idx : iter.second.nodes) {
+      const Node& node = *graph.GetNode(node_idx);
+      if (!IsAliasNode(node) && node.OpType() != "Cast") {
+        erase_partition = false;
+        break;
+      }
+    }
+    if (erase_partition) {
       erase_partitions.push_back(iter.first);
     }
   }
