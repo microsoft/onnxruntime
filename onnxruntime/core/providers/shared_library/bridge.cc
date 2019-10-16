@@ -219,7 +219,9 @@ MLDataType DataTypeImpl::GetTensorType<float>() {
 namespace onnx {
 
 void AttributeProto::CheckTypeAndMergeFrom(google::protobuf::MessageLite const&) { assert(false); }
+
 void AttributeProto::CopyFrom(AttributeProto const& p1) { (this->*g_host->onnx_AttributeProto_CopyFrom)(p1); }
+
 void AttributeProto::Clear() { assert(false); }
 
 bool AttributeProto::IsInitialized() const {
