@@ -81,6 +81,14 @@ struct ProviderHostImpl : ProviderHost {
     reinterpret_cast<onnx::AttributeProto*>(_this)->AttributeProto::~AttributeProto();
   }
 
+  void onnxruntime_Status_constructor_1(void* _this, const void* category, int code, char const* msg) override {
+    new (_this) Status(*reinterpret_cast<const StatusCategory*>(category), code, msg);
+  }
+
+  void onnxruntime_Status_constructor_2(void* _this, const void* category, int code, const void* std_string_msg) override {
+    new (_this) Status(*reinterpret_cast<const StatusCategory*>(category), code, *reinterpret_cast<const std::string*>(std_string_msg));
+  }
+
   void onnxruntime_OpKernelInfo_copy_constructor(void* _this, void* p1) {
     new (_this) OpKernelInfo(*reinterpret_cast<const OpKernelInfo*>(p1));
   }

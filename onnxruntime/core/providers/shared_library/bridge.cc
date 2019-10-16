@@ -32,6 +32,14 @@ void onnx_AttributeProto_destructor(void* _this) {
   g_host->onnx_AttributeProto_destructor(_this);
 }
 
+void onnxruntime_Status_constructor_1(void* _this, const void* category, int code, char const* msg) {
+  g_host->onnxruntime_Status_constructor_1(_this, category, code, msg);
+}
+
+void onnxruntime_Status_constructor_2(void* _this, const void* category, int code, const void* std_string_msg) {
+  g_host->onnxruntime_Status_constructor_2(_this, category, code, std_string_msg);
+}
+
 void onnxruntime_TensorShape_constructor(void* _this, int64_t const* p1, uint64_t p2) {
   g_host->onnxruntime_TensorShape_constructor(_this, p1, p2);
 }
@@ -314,12 +322,6 @@ Capture::~Capture() { assert(false); }
 
 namespace common {
 
-Status::Status(StatusCategory, int, char const*) { assert(false); }
-
-Status::Status(StatusCategory category, int code, const std::string& msg) {
-  assert(false);
-}
-
 std::string Status::ToString() const {
   assert(false);
   return "";
@@ -400,7 +402,7 @@ Status KernelRegistry::Register(KernelCreateInfo&& p1) {
   return g_host->KernelRegistry_Register(this, std::move(p1));
 }
 
-std::ostream& operator<<(std::ostream& out, const DataTypeImpl* data_type) {
+std::ostream& operator<<(std::ostream& out, const DataTypeImpl* /*data_type*/) {
   assert(false);
   return out;
 }

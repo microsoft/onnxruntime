@@ -1,9 +1,10 @@
+#include <string>
 #include "bridge_special.h"
 
 namespace std {
 template <typename T1, typename T2>
 struct unordered_map;
-}
+}  // namespace std
 
 namespace onnx {
 class AttributeProto {
@@ -19,6 +20,26 @@ AttributeProto::~AttributeProto() { onnx_AttributeProto_destructor(this); }
 }  // namespace onnx
 
 namespace onnxruntime {
+
+namespace common {
+enum StatusCategory {};
+
+class Status {
+ public:
+  Status(StatusCategory category, int code, char const* msg);
+  Status(StatusCategory category, int code, const std::string& msg);
+};
+
+Status::Status(StatusCategory category, int code, char const* msg) {
+  onnxruntime_Status_constructor_1(this, &category, code, msg);
+}
+
+Status::Status(StatusCategory category, int code, const std::string& msg) {
+  onnxruntime_Status_constructor_2(this, &category, code, (void*)&msg);
+}
+
+}  // namespace common
+
 class TensorShape {
  public:
   TensorShape(__int64 const* p1, unsigned __int64 p2);
