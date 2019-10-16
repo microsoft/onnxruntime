@@ -131,6 +131,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel default_warning_level,
 // enable platform telemetry
 ORT_API_STATUS_IMPL(OrtApis::EnableTelemetryEvents, _In_ const OrtEnv* ort_env) {
   API_IMPL_BEGIN
+  ORT_UNUSED_PARAMETER(ort_env);
   // note telemetry is controlled via the platform Env object, not the OrtEnv object instance
   const Env& env = Env::Default();
   env.GetTelemetryProvider().EnableTelemetryEvents();
@@ -140,6 +141,7 @@ ORT_API_STATUS_IMPL(OrtApis::EnableTelemetryEvents, _In_ const OrtEnv* ort_env) 
 
 ORT_API_STATUS_IMPL(OrtApis::DisableTelemetryEvents, _In_ const OrtEnv* ort_env) {
   API_IMPL_BEGIN
+  ORT_UNUSED_PARAMETER(ort_env);
   // note telemetry is controlled via the platform Env object, not the OrtEnv object instance
   const Env& env = Env::Default();
   env.GetTelemetryProvider().DisableTelemetryEvents();
