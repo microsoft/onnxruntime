@@ -129,7 +129,6 @@ static Status EvaluateMatMulInteger(
 
       // Tensorization: AVX2: 8bit GEMM AVX512: 8bit GEMV and GEMM
       bool isGEMV = (p_batch_seq_dim != nullptr && *p_batch_seq_dim == 1);
-      // TODO: simplify the conditions
       bool use_tensorization = !force_mkl && !force_no_tensorize && (isAVX512 || (isAVX2 && !isGEMV) || (!isAVX2 && isAVX));
 
       // Model input option
@@ -144,6 +143,7 @@ static Status EvaluateMatMulInteger(
         bool use_extern_MKL = (force_mkl || !isAVX2);
         tvm::Tensor output_tensor = use_extern_MKL ? IMatMulExternMKL(A, B_marshalled, output_shape, input_dim, embed_dim, name + "_IMatMulExternMKL")
                                                    : IMatMulExternAVX2(A, B_marshalled, output_shape, input_dim, embed_dim, name + "_IMatMulExternAVX2");
+
         outputs.push_back(output_tensor);
       } else if (use_tensorization) {
         // vector width determined from target hardware
@@ -246,13 +246,8 @@ static Status EvaluateMatMulInteger16(
       }
 
       // Target instruction option
-      bool isAVX2 = CPUIDInfo::GetCPUIDInfo().HasAVX2();
-
       // TODO: enable tensorization for 16bit
-      // vector width determined from target hardware
-      // AVX:    vector width 8  = 128 bits / 16bits;
-      // AVX2:   vector width 16 = 256 bits / 16bits;
-      // AVX512: vector width 32 = 512 bits / 16bits;
+      bool isAVX2 = CPUIDInfo::GetCPUIDInfo().HasAVX2();
 
       // Model input option
       auto B_NodeArg = node.InputDefs()[1];

@@ -227,6 +227,7 @@ tvm::TensorIntrin TensorizeIntGemm8bit::CreateTensorIntrin() {
     TensorizeTargetInfo avx_info(HalideIR::UInt(1, 4), HalideIR::UInt(8, 16),
                                  HalideIR::Int(8, 16), HalideIR::Int(16, 8), HalideIR::Int(32, 4),
                                  "llvm.x86.ssse3.pmadd.ub.sw.128", "llvm.x86.sse2.pmadd.wd");
+
     tensorize_targets_meta_.emplace(tensorize_target_, avx_info);
   } else {
     ORT_NOT_IMPLEMENTED("Tensorization only support avx2/avx512-skylake currently!");

@@ -103,7 +103,7 @@ static void RegisterAllNupharWeightLayouts(tvm_codegen::WeightLayoutRegistry* la
       std::move(onnxruntime::make_unique<tvm_codegen::WeightLayoutTiling2D>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8, 64)));
   layout_registry->Register(
       std::move(onnxruntime::make_unique<tvm_codegen::WeightLayoutTiling2D>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16, 64)));
-  // AVx2
+  // AVX2
   layout_registry->Register(
       std::move(onnxruntime::make_unique<tvm_codegen::WeightLayoutTiling2D>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8, 32)));
   layout_registry->Register(
@@ -113,6 +113,7 @@ static void RegisterAllNupharWeightLayouts(tvm_codegen::WeightLayoutRegistry* la
       std::move(onnxruntime::make_unique<tvm_codegen::WeightLayoutTiling2D>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8, 16)));
   layout_registry->Register(
       std::move(onnxruntime::make_unique<tvm_codegen::WeightLayoutTiling2D>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16, 16)));
+
   layout_registry->Register(
       std::move(onnxruntime::make_unique<tvm_codegen::WeightLayoutVerticalStripe2D>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, 8)));
   layout_registry->Register(

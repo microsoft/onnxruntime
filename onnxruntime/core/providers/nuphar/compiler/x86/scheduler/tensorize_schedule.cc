@@ -373,7 +373,7 @@ bool TVM_SCHEDULER_CLASS(MatMulInteger, NupharX86Tensorize)::Evaluate(
   return status_reshape || status_tensorize;
 }
 
-// TODO: 16 bit tensorization is not enabled yet
+// TODO: enable 16 bit tensorization
 bool TVM_SCHEDULER_CLASS(MatMulInteger16, NupharX86Tensorize)::Evaluate(
     const tvm::Tensor& tensor,
     const Node* node,
