@@ -157,9 +157,9 @@ static Status TensorizeIGEMM(const tvm::Tensor& tensor,
     tensorize_embed = 16;
     tensorize_input = 32;
   } else if (target_str == "avx") {
-    tensorize_batch = 4;
+    tensorize_batch = 2;
     tensorize_embed = 4;
-    tensorize_input = 16;
+    tensorize_input = 8;
   }
 
   codegen::CodeGenSettings& settings = codegen::CodeGenSettings::Instance();
@@ -224,7 +224,10 @@ static Status TensorizeIGEMM(const tvm::Tensor& tensor,
     ctx.schedule[tensor->op].reorder({yo, xo, zo, xi, yi, zi});
   } else {
     // Loop nest default order
-    ctx.schedule[tensor->op].reorder({xo, yo, zo, xi, yi, zi});
+    if (target_str == "avx")
+      ctx.schedule[tensor->op].reorder({yo, xo, zo, xi, yi, zi});
+    else
+      ctx.schedule[tensor->op].reorder({xo, yo, zo, xi, yi, zi});
   }
 
   // Natural vector width
