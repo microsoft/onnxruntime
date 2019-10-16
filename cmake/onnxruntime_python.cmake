@@ -74,6 +74,7 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_DML}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -95,6 +96,7 @@ set(onnxruntime_pybind11_state_dependencies
 )
 
 add_dependencies(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_dependencies})
+
 if (MSVC)
   # if MSVC, pybind11 looks for release version of python lib (pybind11/detail/common.h undefs _DEBUG)
   target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs}
@@ -245,5 +247,14 @@ if (onnxruntime_USE_NUPHAR)
     COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_nuphar_python_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/nuphar/
+  )
+endif()
+
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+      $<TARGET_FILE:onnxruntime_pywrapper>
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()

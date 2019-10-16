@@ -243,7 +243,7 @@ private:
         std::fill_n(CReference, M * N, -0.5f);
 
         MlasGemm(TransA, TransB, M, N, K, T(alpha), A, lda, B, ldb, T(beta), C, ldc, threadpool);
-        ReferenceSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, CReference, ldc);
+        ReferenceGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, CReference, ldc);
 
         for (size_t f = 0; f < M * N; f++) {
             // Sensitive to comparing positive/negative zero.
@@ -254,7 +254,7 @@ private:
     }
 
     void
-    ReferenceSgemm(
+    ReferenceGemm(
         CBLAS_TRANSPOSE TransA,
         CBLAS_TRANSPOSE TransB,
         size_t M,
@@ -565,6 +565,11 @@ public:
         }
         for (size_t b = 256; b < 320; b += 32) {
             Test(b, b, b, 85, 173);
+        }
+        for (size_t b = 1; b < 96; b++) {
+            Test(1, b, 32, 0, 0);
+            Test(1, 32, b, 0, 0);
+            Test(1, b, b, 0, 0);
         }
     }
 

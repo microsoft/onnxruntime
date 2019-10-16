@@ -42,31 +42,11 @@ MKLDNNExecutionProvider::~MKLDNNExecutionProvider() {
 }
 
 namespace mkl_dnn {
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, Conv);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 7, Gemm);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 6, Relu);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 6, Sum);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 7, BatchNormalization);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 7, 8, float, AveragePool);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, 8, float, GlobalAveragePool);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, 7, float, MaxPool);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 8, 8, float, MaxPool);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, 8, float, GlobalMaxPool);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, float, LRN);
 
 void RegisterMKLDNNKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, Conv)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 7, Gemm)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 6, Relu)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 6, Sum)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 7, BatchNormalization)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 7, 8, float, AveragePool)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, 8, float, GlobalAveragePool)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, 7, float, MaxPool)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 8, 8, float, MaxPool)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, 8, float, GlobalMaxPool)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, float, LRN)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -93,24 +73,25 @@ bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_
 
   bool FP16_graph = false;
   bool mkldnn_nodes_in_the_graph = false;
+  int max_node_index = graph_viewer.MaxNodeIndex();
 
-  if (graph_viewer.MaxNodeIndex() > 0) {
-    int index = 0;
-    auto node = graph_viewer.GetNode(index);
-    while (node == NULL) {
-      index++;
-      node = graph_viewer.GetNode(index);
-    }
-    if (!node->InputDefs().empty() && node->InputDefs()[0]->Type() != nullptr)
+  for (auto node_index = 0; node_index < max_node_index; node_index++) {
+    auto node = graph_viewer.GetNode(node_index);
+    if (node == NULL)
+      continue;
+
+    if (!node->InputDefs().empty() && node->InputDefs()[0]->Type() != nullptr) {
       FP16_graph = node->InputDefs()[0]->Type()->find("16") != std::string::npos;
+      break;
+    }
   }
 
-  for (auto node_index = 0; node_index < graph_viewer.MaxNodeIndex(); node_index++) {
+  for (auto node_index = 0; node_index < max_node_index; node_index++) {
     auto node = graph_viewer.GetNode(node_index);
     if (node == nullptr) {
-      node_index++;
       continue;
     }
+
     auto op_it = mkldnn_ops_.find(node->OpType());
     if (op_it != mkldnn_ops_.end()) {
       mkldnn_nodes_in_the_graph = true;
@@ -160,6 +141,7 @@ void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
     subgraph_ptr->mkldnn_nodes.push_back(mkldnn_node);
     output_to_source_node_map.insert(std::make_pair(node_outputs[0]->Name(), subgraph_ptr->mkldnn_nodes.size() - 1));
   } else {
+    subgraph_ptr->mkldnn_nodes.back().num_inputs += static_cast<int>(node->InputDefs().size() - 1);
     const auto& node_outputs = node->OutputDefs();
     output_to_source_node_map.erase(subgraph_ptr->mkldnn_nodes.back().output_name);
     subgraph_ptr->mkldnn_nodes.back().output_name = node_outputs[0]->Name();
@@ -182,9 +164,17 @@ void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
   NodeAttributes attributes = node->GetAttributes();
   if (attributes.size() > 0) {
     size_t index = subgraph_ptr->mkldnn_nodes.size();
+    std::string op_name;
+    if (fused) {
+      for (auto iter = node->InputNodesBegin(); iter != node->InputNodesEnd(); ++iter) {
+        op_name = (*iter).OpType();
+      }
+    } else {
+      op_name = node->OpType();
+    }
 
     for (auto att_it = attributes.begin(); att_it != attributes.end(); ++att_it) {
-      std::string key = node->OpType() + "-" + std::to_string(index) + "-" + att_it->first;
+      std::string key = op_name + "-" + std::to_string(index) + "-" + att_it->first;
       std::pair<std::string, ONNX_NAMESPACE::AttributeProto> att(key, att_it->second);
       subgraph_attributes[key] = att_it->second;
     }
@@ -244,8 +234,14 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
 
       // can we fuse (at mkldnn level) nodes?
       bool fused = false;
+      if (sub_var.subgraph_node_indexes.size() > 1 && node->OpType() == "BatchNormalization") {
+        if (subgraph_ptr->mkldnn_nodes.back().name == "Conv") {
+          subgraph_ptr->mkldnn_nodes.back().name += "-BatchNormalization";
+          fused = true;
+        }
+      }
       if (sub_var.subgraph_node_indexes.size() > 1 && node->OpType() == "Relu") {
-        if (subgraph_ptr->mkldnn_nodes.back().name == "BatchNormalization" || subgraph_ptr->mkldnn_nodes.back().name == "Conv") {
+        if (subgraph_ptr->mkldnn_nodes.back().name == "Conv-BatchNormalization" || subgraph_ptr->mkldnn_nodes.back().name == "BatchNormalization" || subgraph_ptr->mkldnn_nodes.back().name == "Conv") {
           subgraph_ptr->mkldnn_nodes.back().name += "-Relu";
           fused = true;
         }

@@ -182,10 +182,22 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T2", DataTypeImpl::AllFixedSizeTensorExceptHalfTypes()),
     nuphar::NupharKernel);
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Gather,
     kOnnxDomain,
     1,
+    10,
+    kNupharExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
+                                                        DataTypeImpl::GetTensorType<int64_t>()}),
+    nuphar::NupharKernel);
+
+ONNX_OPERATOR_KERNEL_EX(
+    Gather,
+    kOnnxDomain,
+    11,
     kNupharExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
@@ -228,10 +240,21 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
     nuphar::NupharKernel);
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Scan,
     kOnnxDomain,
     9,
+    10,
+    kNupharExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+    nuphar::NupharKernel);
+
+ONNX_OPERATOR_KERNEL_EX(
+    Scan,
+    kOnnxDomain,
+    11,
     kNupharExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
@@ -243,6 +266,17 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     9,
     10,
+    kNupharExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
+                                                        DataTypeImpl::GetTensorType<int64_t>()}),
+    nuphar::NupharKernel);
+
+ONNX_OPERATOR_KERNEL_EX(
+    Scatter,
+    kOnnxDomain,
+    11,
     kNupharExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())

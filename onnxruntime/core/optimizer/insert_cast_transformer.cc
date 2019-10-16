@@ -3,6 +3,7 @@
 
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/framework/data_types.h"
+#include "core/graph/graph_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -100,25 +101,25 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override {
     std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacement_defs;
-    std::vector<onnxruntime::NodeIndex> removed_nodes;
-    for (auto& node : graph.Nodes()) {
-      if (std::find(removed_nodes.cbegin(), removed_nodes.cend(), node.Index()) != removed_nodes.cend()) {
-        // node has already been marked for removal, and any following node updated so we need to ignore it here
-        continue;
-      }
 
+    auto output_args = graph.GetOutputs();
+    const std::unordered_set<const onnxruntime::NodeArg*> graph_outputs(output_args.begin(), output_args.end());
+
+    for (auto& node : graph.Nodes()) {
+      bool removed = false;
       if (node.OpType() == "Cast") {
+        std::vector<std::reference_wrapper<Node>> nodes_to_remove;
+
         // if cast's next node is also cast and next cast's output type equal to cast's input type
         // remove those two cast.
         // boolean is an exception case for this optimization
         auto src_type = node.InputDefs()[0]->Type();
         auto dst_type = node.OutputDefs()[0]->Type();
-        if (*src_type == "tensor(bool)" || *dst_type == "tensor(bool)") return Status::OK();
-        auto input = node.MutableInputDefs()[0];
-        int child_removed = 0;
-        int num_child = 0;
-        auto output_args = graph.GetOutputs();
-        std::unordered_set<const onnxruntime::NodeArg*> graph_outputs(output_args.begin(), output_args.end());
+        if (*src_type == "tensor(bool)" || *dst_type == "tensor(bool)")
+          continue;
+
+        size_t num_children = node.GetOutputEdgesCount();
+
         for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
           const Node& output_node(*it);
           if (output_node.OpType() == "Cast") {
@@ -126,37 +127,70 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
             if (graph_outputs.find(output_node.OutputDefs()[0]) != graph_outputs.end()) {
               continue;
             }
+
             auto src_type1 = output_node.InputDefs()[0]->Type();
             auto dst_type1 = output_node.OutputDefs()[0]->Type();
             if (src_type == dst_type1 && src_type1 == dst_type) {
-              //node *it's output's follower could be linked with node's input.
-              replacement_defs.clear();
-              replacement_defs[const_cast<onnxruntime::NodeArg*>(output_node.OutputDefs()[0])] = input;
-              for (auto next_it = output_node.OutputNodesBegin(); next_it != output_node.OutputNodesEnd(); ++next_it) {
-                const_cast<onnxruntime::Node*>(&(*next_it))->ReplaceDefs(replacement_defs);
-              }
-              removed_nodes.push_back(output_node.Index());
-              child_removed++;
+              // get a mutable reference to the output node and save it
+              nodes_to_remove.push_back(*graph.GetNode(output_node.Index()));
             }
           }
-          num_child++;
         }
 
-        if (child_removed == num_child &&
-            child_removed > 0 &&
-            graph_outputs.find(node.OutputDefs()[0]) == graph_outputs.end()) {
-          removed_nodes.push_back(node.Index());
+        if (!nodes_to_remove.empty()) {
+          if (node.GetInputEdgesCount() == 0) {
+            // replacing with initializer or graph input so we just need the NodeArg for the input
+            auto& input = *node.MutableInputDefs()[0];
+
+            for (auto& n : nodes_to_remove) {
+              Node& node_to_remove = n;
+              NodeIndex node_idx = node_to_remove.Index();
+
+              // copy the edges so we can remove as we iterate them
+              std::vector<Node::EdgeEnd> edges(node_to_remove.OutputEdgesBegin(), node_to_remove.OutputEdgesEnd());
+
+              for (auto edge = edges.cbegin(), end = edges.cend(); edge != end; ++edge) {
+                int dst_idx = edge->GetDstArgIndex();
+                graph.RemoveEdge(node_idx, edge->GetNode().Index(), edge->GetSrcArgIndex(), dst_idx);
+
+                // replace the input of the downstream nodes with the initializer
+                Node& mutable_target = *graph.GetNode(edge->GetNode().Index());
+                graph_utils::ReplaceNodeInput(mutable_target, dst_idx, input);
+              }
+
+              graph.RemoveNode(node_idx);
+            }
+          } else {
+            // replace the output from the second Cast node with the input to 'node'
+            const Node::EdgeEnd& input_edge = *node.InputEdgesBegin();
+            Node& mutable_src_node = *graph.GetNode(input_edge.GetNode().Index());
+            int replacement_idx = input_edge.GetSrcArgIndex();
+
+            for (auto& n : nodes_to_remove) {
+              Node& node_to_remove = n;
+              // replace output index 0 (Cast only produces one output)
+              graph_utils::ReplaceDownstreamNodeInput(graph, node_to_remove, 0, mutable_src_node, replacement_idx);
+
+              graph.RemoveNode(node_to_remove.Index());
+            }
+          }
+
+          modified = true;
+
+          // if we removed all the child nodes and we're not providing graph output we can remove this node
+          if (num_children > 0 && nodes_to_remove.size() == num_children &&
+              graph_outputs.find(node.OutputDefs()[0]) == graph_outputs.end()) {
+            graph.RemoveNode(node.Index());
+            removed = true;
+          }
         }
       }
 
-      ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+      if (!removed) {
+        ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+      }
     }
 
-    for (auto i : removed_nodes) {
-      graph.RemoveNode(i);
-    }
-
-    modified = modified || !removed_nodes.empty();
     return Status::OK();
   }
 };

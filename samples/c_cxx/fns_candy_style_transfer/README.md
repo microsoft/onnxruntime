@@ -14,5 +14,7 @@ Then, prepare an image:
 # Run
 Command to run the application:
 ```
-fns_candy_style_transfer.exe <model_path> <input_image_path> <output_image_path>
+fns_candy_style_transfer.exe <model_path> <input_image_path> <output_image_path> [cpu|cuda|dml]
 ```
+
+To use the CUDA or DirectML execution providers, specify `cuda` or `dml` on the command line. `cpu` is the default.

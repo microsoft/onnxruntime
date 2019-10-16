@@ -16,12 +16,12 @@ namespace test {
 
 TEST(GraphTransformerUtilsTests, TestGenerateRewriterules) {
   // Generate all test
-  auto rewrite_rules = transformer_utils::GenerateRewriteRules(TransformerLevel::Level1);
+  auto rewrite_rules = optimizer_utils::GenerateRewriteRules(TransformerLevel::Level1);
   ASSERT_TRUE(rewrite_rules.size() != 0);
 
   // Rule name match test
   std::vector<std::string> custom_list = {"EliminateIdentity", "ConvAddFusion", "ConvMulFusion", "abc", "def"};
-  rewrite_rules = transformer_utils::GenerateRewriteRules(TransformerLevel::Level1, custom_list);
+  rewrite_rules = optimizer_utils::GenerateRewriteRules(TransformerLevel::Level1, custom_list);
   // validate each rule returned is present in the custom list
   for (const auto& rule : rewrite_rules) {
     ASSERT_TRUE(std::find(custom_list.begin(), custom_list.end(), rule->Name()) != custom_list.end());
@@ -30,7 +30,7 @@ TEST(GraphTransformerUtilsTests, TestGenerateRewriterules) {
   // Rule name no match test. Test to validate empty rules list is returned when
   // there is no match in custom list
   custom_list = {"abc"};
-  rewrite_rules = transformer_utils::GenerateRewriteRules(TransformerLevel::Level1, custom_list);
+  rewrite_rules = optimizer_utils::GenerateRewriteRules(TransformerLevel::Level1, custom_list);
   ASSERT_TRUE(rewrite_rules.size() == 0);
 }
 
@@ -41,9 +41,9 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
   std::string l2_rule1 = "ConvBNFusion";
   std::vector<std::string> custom_list = {l1_rule1, l1_transformer, l2_rule1};
 
-  auto transformers = transformer_utils::GenerateTransformers(TransformerLevel::Level1, {}, custom_list);
+  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {}, custom_list);
   ASSERT_TRUE(transformers.size() == 2);
-  auto l1_rule_transformer_name = transformer_utils::GenerateRuleBasedTransformerName(TransformerLevel::Level1);
+  auto l1_rule_transformer_name = optimizer_utils::GenerateRuleBasedTransformerName(TransformerLevel::Level1);
   RuleBasedGraphTransformer* rule_transformer = nullptr;
   for (const auto& transformer : transformers) {
     if (transformer->Name() == l1_rule_transformer_name) {
@@ -51,8 +51,8 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
     }
   }
   ASSERT_TRUE(rule_transformer && rule_transformer->RulesCount() == 1);
-  
-  transformers = transformer_utils::GenerateTransformers(TransformerLevel::Level2, {}, custom_list);
+
+  transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, custom_list);
   ASSERT_TRUE(transformers.size() == 1);
   rule_transformer = dynamic_cast<RuleBasedGraphTransformer*>(transformers[0].get());
   ASSERT_TRUE(rule_transformer->RulesCount() == 1);

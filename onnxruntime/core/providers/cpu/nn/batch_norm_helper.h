@@ -14,47 +14,91 @@ class BatchNormHelper {
                                        const Tensor* scale,
                                        const Tensor* B,
                                        const Tensor* mean,
-                                       const Tensor* var) {
+                                       const Tensor* var,
+                                       bool is_spatial = true) {
+    const auto& x_dims = X->Shape().GetDims();
+    if (x_dims.size() < 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid input X: The rank of input X must be atleast 2. Got rank: ", x_dims.size());
+    }
+
+    int64_t num_channels = x_dims[1];
+    int num_feature_dims = static_cast<int>(X->Shape().NumDimensions() - 2);  // the first 2 are respectively - N and C
+
     // defined as per spec and used for validation
-    constexpr int kNumInputScaleDimensions = 1;
-    constexpr int kNumInputBiasDimensions = 1;
-    constexpr int kNumInputMeanDimensions = 1;
-    constexpr int kNumInputVarianceDimensions = 1;
+    int kNumInputScaleDimensions = (is_spatial ? 1 : num_feature_dims + 1);
+    int kNumInputBiasDimensions = (is_spatial ? 1 : num_feature_dims + 1);
+    int kNumInputMeanDimensions = (is_spatial ? 1 : num_feature_dims + 1);
+    int kNumInputVarianceDimensions = (is_spatial ? 1 : num_feature_dims + 1);
     //constexpr int kMinCudaNumDims = 4;
     //constexpr int kMaxCudaNumDims = 5;
 
-    if (X->Shape().GetDims().empty()) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid input X: Empty dimensions");
-    }
-
-    int64_t num_channels = X->Shape().GetDims()[1];
-
-    if (scale->Shape().NumDimensions() != kNumInputScaleDimensions) {
+    // validate 'scales' shape
+    const auto& scale_dims = scale->Shape().GetDims();
+    if (static_cast<int>(scale_dims.size()) != kNumInputScaleDimensions) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input scale: NumDimensions() != ", kNumInputScaleDimensions);
     }
-    if (scale->Shape().GetDims()[0] != num_channels) {
+    if (scale_dims[0] != num_channels) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input scale: 0th dimension != ", num_channels);
     }
+    // in non-spatial cases - the other dims of 'scale' must be validated
+    if (!is_spatial) {
+      for (int feature = 0; feature < num_feature_dims; ++feature) {
+        if (scale_dims[1 + feature] != x_dims[2 + feature]) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input scale: ", (1 + feature), " dimension != ", x_dims[2 + feature]);
+        }
+      }
+    }
 
-    if (B->Shape().NumDimensions() != kNumInputBiasDimensions) {
+    // validate 'B' shape
+    const auto& B_dims = B->Shape().GetDims();
+    if (static_cast<int>(B_dims.size()) != kNumInputBiasDimensions) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input B: NumDimensions() != ", kNumInputBiasDimensions);
     }
-    if (B->Shape().GetDims()[0] != num_channels) {
+    if (B_dims[0] != num_channels) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input B: 0th dimension != ", num_channels);
     }
+    // in non-spatial cases - the other dims of 'B' must be validated
+    if (!is_spatial) {
+      for (int feature = 0; feature < num_feature_dims; ++feature) {
+        if (B_dims[1 + feature] != x_dims[2 + feature]) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input B: ", (1 + feature), " dimension != ", x_dims[2 + feature]);
+        }
+      }
+    }
 
-    if (mean->Shape().NumDimensions() != kNumInputMeanDimensions) {
+    // validate 'mean' shape
+    const auto& mean_dims = mean->Shape().GetDims();
+    if (static_cast<int>(mean_dims.size()) != kNumInputMeanDimensions) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input mean: NumDimensions() != ", kNumInputMeanDimensions);
     }
-    if (mean->Shape().GetDims()[0] != num_channels) {
+    if (mean_dims[0] != num_channels) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input mean: 0th dimension != ", num_channels);
     }
+    // in non-spatial cases - the other dims of 'mean' must be validated
+    if (!is_spatial) {
+      for (int feature = 0; feature < num_feature_dims; ++feature) {
+        if (mean_dims[1 + feature] != x_dims[2 + feature]) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input mean: ", (1 + feature), " dimension != ", x_dims[2 + feature]);
+        }
+      }
+    }
 
-    if (var->Shape().NumDimensions() != kNumInputVarianceDimensions) {
+    // validate 'var' shape
+    const auto& var_dims = var->Shape().GetDims();
+    if (static_cast<int>(var_dims.size()) != kNumInputVarianceDimensions) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input var: NumDimensions() != ", kNumInputVarianceDimensions);
     }
-    if (var->Shape().GetDims()[0] != num_channels) {
+    if (var_dims[0] != num_channels) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input var: 0th dimension != ", num_channels);
+    }
+    // in non-spatial cases - the other dims of 'var' must be validated
+    if (!is_spatial) {
+      for (int feature = 0; feature < num_feature_dims; ++feature) {
+        if (var_dims[1 + feature] != x_dims[2 + feature]) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input var: ", (1 + feature), " dimension != ", x_dims[2 + feature]);
+        }
+      }
     }
 
     return common::Status::OK();
