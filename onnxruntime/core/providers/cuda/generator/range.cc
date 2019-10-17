@@ -60,18 +60,18 @@ static Status ComputeRange(OpKernelContext* ctx) {
     CUDA_RETURN_IF_ERROR(cudaMemcpy(&delta, delta_tensor_ptr->template Data<T>(), sizeof(T), cudaMemcpyDeviceToHost));
   }
 
-  if (delta == T{0}) {
+  if (delta == T(0)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "delta in Range operator can not be zero!");
   }
 
-  int64_t n = static_cast<int64_t>(ceil(1.0 * (limit - start) / delta));
-  if (n <= 0)
-    n = 0;
-  TensorShape shape = {n};
+  int count = static_cast<int>(ceil(1.0 * (limit - start) / delta));
+  if (count <= 0)
+    count = 0;
+  TensorShape shape = {static_cast<int64_t>(count)};
   T* y = ctx->Output(0, shape)->template MutableData<T>();
 
-  if (n > 0) {
-    if (!RangeImpl(start, delta, n, y)) {
+  if (count > 0) {
+    if (!RangeImpl(start, delta, count, y)) {
       CUDA_CALL(cudaGetLastError());
       return Status(common::ONNXRUNTIME, common::FAIL);
     }
@@ -82,7 +82,10 @@ static Status ComputeRange(OpKernelContext* ctx) {
 
 Status Range::ComputeInternal(OpKernelContext* ctx) const {
   const auto* input_tensor = ctx->Input<Tensor>(0);
-  if (input_tensor == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (input_tensor == nullptr) {
+      return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  }
+
   auto data_type = input_tensor->DataType();
   if (data_type == DataTypeImpl::GetType<int32_t>()) {
     return ComputeRange<int32_t>(ctx);
