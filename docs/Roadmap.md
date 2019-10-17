@@ -1,12 +1,10 @@
 # ONNX Runtime Roadmap
-ONNX Runtime is an active, fast-paced project backed by a strong team of deeply technical Microsoft engineers along with a worldwide 
-community of partners and contributors. This roadmap summarizes the pending investments identified by the team to continually grow 
-ONNX Runtime as a robust, versatile, and high performance engine for DNN and traditional ML models.
+ONNX Runtime is an active, fast-paced project backed by a strong team of Microsoft engineers and data scientists along with a worldwide community of partners and contributors. This roadmap summarizes the pending investments identified by the team to continually grow 
+ONNX Runtime as a robust, versatile, and high performance inference engine for DNN and traditional ML models.
 
 ## High Level Goals
 ONNX Runtime fully aligns with the goals of the [ONNX](https://onnx.ai/) community to bring openness and interoperability to the AI industry. 
-ONNX is a standardization specification, and ONNX Runtime is an inference engine for models in the ONNX format to efficiently productionize models 
-with high performance.
+ONNX is a standardization specification, and ONNX Runtime is an inference engine for models in the ONNX format to efficiently productionize models with high performance. For key technical design objectives and considerations, please see [ONNX Runtime High Level Design](./HighLevelDesign.md).
 
 We recognize the challenges involved in operationalizing ML models performantly in an agile way, and we understand that high volume production services can be highly performance-sensitive and often need to support a variety of compute targets (we experience these first-hand at Microsoft across our vast array of products and services). 
 
@@ -15,7 +13,7 @@ As such, our investments are directly in support of solving those challenges, fo
 * Extensibility and customization
 * Performance (latency, memory, throughput, scale, etc)
 * Model coverage
-* Quality and ease of use
+* Quality and ease of use - including backwards compatibility of models (older opsets) and APIs
 
 In addition to our OSS participation, we also internally use this technology in core products at Microsoft, with over 60 models in production providing an average of 2x+ performance improvement. 
 
@@ -80,8 +78,8 @@ To achieve the best performance on a growing set of compute targets across cloud
 |Supported|Future|
 |---|---|
 |MLAS (Microsoft Linear Algebra Subprograms)|Android NN API (in progress)|
-|Intel MKL-DNN / MKL-ML|Qualcomm (TBD)|
-|Intel nGraph|AMD (TBD)|
+|Intel MKL-DNN / MKL-ML|ARM Compute Library (community contribution by NXP, in progress)|
+|Intel nGraph| |
 |NVIDIA CUDA| |
 |NVIDIA TensorRT| |
 |Intel OpenVINO| |
@@ -100,7 +98,7 @@ Performance is a key focus for ONNX Runtime. From latency to memory utilization 
 #### Examples of projects the team is working on:
 * Improvements to batch processing for scikit-learn models
 * More quantization support
-* Multithreading
+* Improved multithreading (e.g. smarter work sharding, consolidation of different types of thread pools, user supplied thread pools, etc)
 * Graph optimizations
 * Intelligent graph partitioning to maximize the value of different accelerators
 * Optimizations for mobile and IoT Edge devices
@@ -128,7 +126,7 @@ We work with the OSS and ONNX community to ensure popular frameworks can export 
 * [ML.NET](https://github.com/dotnet/machinelearning)
 
 #### Improved error handling
-To decrease the risk model inferencing failures, we will improve the error handling and fallback strategies for missing types or unsupported operators.
+To decrease the risk of model inferencing failures, we will improve the error handling and fallback strategies for missing types or unsupported operators. For EPs that have missing or incorrect implementations for ONNX operators, we aim to fallback or fail as gracefully as possible.
 
 #### Community-driven feature additions
 Focusing on practicality, we take a scenario driven approach to adding additional capabilities to ONNX Runtime.
@@ -141,7 +139,6 @@ as a discussion forum.
 
 Some of these products include:
 * [AzureML](https://docs.microsoft.com/en-us/azure/machine-learning/service/concept-onnx): simplify the process to train, convert, and deploy ONNX models to Azure
- * [AutoML](https://docs.microsoft.com/en-us/azure/machine-learning/service/concept-automated-ml#use-with-onnx-in-c-apps): export to ONNX
  * [Model Interpretability](https://docs.microsoft.com/en-us/azure/machine-learning/service/machine-learning-interpretability-explainability): explainability for ONNX models
 * [ML.NET](https://docs.microsoft.com/en-us/dotnet/machine-learning/tutorials/object-detection-onnx): inference ONNX models in .NET
 * [PyTorch](https://pytorch.org/docs/stable/onnx.html): improve coverage for exporting trained models to ONNX
