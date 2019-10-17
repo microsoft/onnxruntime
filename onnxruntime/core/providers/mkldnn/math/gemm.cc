@@ -5,6 +5,7 @@
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/util/math_cpuonly.h"
 #include "mkldnn.h"
+#include "mkldnn.hpp"
 #include "core/providers/mkldnn/mkldnn_fwd.h"
 
 namespace onnxruntime {
@@ -28,10 +29,13 @@ Status Gemm<float>::Compute(OpKernelContext* ctx) const {
   if (!helper.State().IsOK())
     return helper.State();
 
-  int M = gsl::narrow_cast<int>(helper.M());
-  int N = gsl::narrow_cast<int>(helper.N());
-  int K = gsl::narrow_cast<int>(helper.K());
+  mkldnn::memory::dim M = gsl::narrow_cast<int>(helper.M());
+  mkldnn::memory::dim N = gsl::narrow_cast<int>(helper.N());
+  mkldnn::memory::dim K = gsl::narrow_cast<int>(helper.K());
   auto Y = ctx->Output(0, TensorShape({M, N}));
+
+  if (M <= 0)
+	return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Empty Tensor not supported");
 
   if (beta_ != 0) {
     auto output_mat = EigenMatrixMapRowMajor<float>(
@@ -77,15 +81,13 @@ Status Gemm<float>::Compute(OpKernelContext* ctx) const {
     }
   }
 
-  // mkldnn_sgemm expects col major matrices, so we need to swap the operands A and B
-  auto status = mkldnn_sgemm(trans_B_ ? "T" : "N",
-                             trans_A_ ? "T" : "N",
-                             &N, &M, &K,
-                             &alpha_, W->template Data<float>(),
-                             trans_B_ ? &K : &N,
-                             X->template Data<float>(),
-                             trans_A_ ? &M : &K,
-                             &beta_, Y->template MutableData<float>(), &N);
+  // mkldnn_sgemm expects row major matrices, so no need to swap the operands A and B
+  auto status = mkldnn_sgemm(trans_A_ ? 'T' : 'N',
+                             trans_B_ ? 'T' : 'N',
+                             M, N, K,
+                             alpha_, X->template Data<float>() , trans_A_ ? M : K,
+                             W->template Data<float>(), trans_B_ ? K : N,
+                             beta_, Y->template MutableData<float>(), N);
   if (status == mkldnn_success) {
     return Status::OK();
   } else {

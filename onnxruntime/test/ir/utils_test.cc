@@ -238,8 +238,7 @@ static void DontRemoveNodeIfItWillBreakSubgraph(bool test_nested = false) {
   auto& graph = model.MainGraph();
   auto& node_to_remove = *graph.GetNode(1);
 
-  bool removed = graph_utils::RemoveNode(graph, node_to_remove);
-  ASSERT_FALSE(removed);
+  ASSERT_FALSE(graph_utils::CanRemoveNode(graph, node_to_remove));
 }
 
 TEST(GraphUtils, DontRemoveNodeIfItWillBreakSubgraph) {
@@ -304,7 +303,6 @@ TEST(GraphUtils, TestMultiEdgeRemovalNodes) {
 }
 
 TEST(GraphUtils, TestMultiOutputRemoveNode) {
-
   Model model("MultiOutputRemovalGraph");
   auto& graph = model.MainGraph();
 
@@ -341,14 +339,16 @@ TEST(GraphUtils, TestMultiOutputRemoveNode) {
   ASSERT_EQ(nodes[1]->GetInputEdgesCount(), 1);
   ASSERT_EQ(nodes[2]->GetInputEdgesCount(), 1);
 
-  // Try to remove do_0, which should return false 
+  // Try to remove do_0, which should return false
   // because both outputs are consumed by downstream Operators.
-  ASSERT_FALSE(graph_utils::RemoveNode(graph, *nodes[0]));
+  ASSERT_FALSE(graph_utils::CanRemoveNode(graph, *nodes[0]));
 
   // Try removing do_0 after removing id_2, which should return true
   // because it now has exactly one output consumed by downstream Operators.
+  ASSERT_TRUE(graph_utils::CanRemoveNode(graph, *nodes[1]));
   ASSERT_TRUE(graph_utils::RemoveNode(graph, *nodes[1]));
   ASSERT_FALSE(graph_utils::IsOutputUsed(*nodes[0], 0));
+  ASSERT_TRUE(graph_utils::CanRemoveNode(graph, *nodes[0]));
   ASSERT_TRUE(graph_utils::RemoveNode(graph, *nodes[0]));
 }
 

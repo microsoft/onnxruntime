@@ -58,6 +58,24 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
     reordered_buffers_.push_back(std::move(buffer));
   }
 
+  std::shared_ptr<mkldnn::memory> GetBiasMemoryBuffer(const std::string& key) {
+    auto iter = bias_mem_map_.find(key);
+    if (iter != bias_mem_map_.end())
+      return iter->second;
+    return nullptr;
+  }
+
+  // Conv+BathNorm fusion. save scaled bias memory.
+  void SetBiasMemoryBuffer(const std::string& key,
+                           const std::shared_ptr<mkldnn::memory>& bias_mem) {
+    bias_mem_map_.insert(std::make_pair(key, bias_mem));
+  }
+
+  void SaveAllocatedBiasMemory(IAllocatorUniquePtr<void> buffer) {
+    // keep reordered memory buffers in scope.
+    biass_buffers_.push_back(std::move(buffer));
+  }
+
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
@@ -71,6 +89,11 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::shared_ptr<mkldnn::memory>> weights_mem_map_;
   // Save reordered memory buffers in list so that memory is not freed.
   std::vector<IAllocatorUniquePtr<void>> reordered_buffers_;
+
+  // conv+batchnorm fusion. normalized bias memory blocks from first iteration
+  std::unordered_map<std::string, std::shared_ptr<mkldnn::memory>> bias_mem_map_;
+  // Conv+BathNorm fusion bias memory buffer.
+  std::vector<IAllocatorUniquePtr<void>> biass_buffers_;
   OrtMutex mutex_;
 
   // SUBGRAPH
@@ -79,13 +102,13 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
     const auto& dm_to_ver = graph_viewer.DomainToVersionMap();
     return dm_to_ver.at(kOnnxDomain);
   }
-  
+
   std::string GetGraphName(const onnxruntime::GraphViewer& graph_viewer) const {
     std::string graph_name;
 
     int opset = GetOnnxOpSet(graph_viewer);
-    
-	int index = 0;
+
+    int index = 0;
     if (graph_viewer.MaxNodeIndex() > 0) {
       auto first_node = graph_viewer.GetNode(index);
       while (first_node == nullptr) {
