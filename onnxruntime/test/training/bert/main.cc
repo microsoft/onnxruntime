@@ -24,6 +24,7 @@ struct BertParameters : public TrainingRunner::Parameters {
   int max_sequence_length = 512;
   int max_predictions_per_sequence = 80;
   size_t batch_size_phase2;
+  int gradient_accumulation_steps_phase2 = 1;
   float initial_lr_phase2;
   size_t num_train_steps_phase2;
   float warmup_ratio_phase2;
@@ -66,6 +67,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
         cxxopts::value<size_t>()->default_value("100"))
       ("display_loss_steps", "How often to dump loss into tensorboard", cxxopts::value<size_t>()->default_value("10"))
       ("gradient_accumulation_steps", "The number of gradient accumulation steps before performing a backward/update pass.",
+        cxxopts::value<int>()->default_value("1"))
+      ("gradient_accumulation_steps_phase2", "The number of gradient accumulation steps before performing a backward/update pass in phase 2.",
         cxxopts::value<int>()->default_value("1"))
       ("save_checkpoint_steps", "How often to save the model checkpoint.", cxxopts::value<int>()->default_value("1000"))
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
@@ -145,6 +148,11 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
     params.gradient_accumulation_steps = flags["gradient_accumulation_steps"].as<int>();
     if (params.gradient_accumulation_steps < 1) {
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid gradient_accumulation_steps parameter: should be >= 1");
+    }
+
+    params.gradient_accumulation_steps_phase2 = flags["gradient_accumulation_steps_phase2"].as<int>();
+    if (params.gradient_accumulation_steps_phase2 < 1) {
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid gradient_accumulation_steps_phase2 parameter: should be >= 1");
     }
 
     params.do_eval = flags["do_eval"].as<bool>();
@@ -460,6 +468,7 @@ int main(int argc, char* argv[]) {
     params.lr_params.warmup_ratio = params.warmup_ratio_phase2;
     params.num_train_steps = params.num_train_steps_phase2;
     params.batch_size = params.batch_size_phase2;
+    params.gradient_accumulation_steps = params.gradient_accumulation_steps_phase2;
 
     runner->UpdateParams(params);
 
