@@ -55,7 +55,7 @@ void onnxruntime_OpKernelInfo_copy_constructor(void* _this, void* copy) {
 // Override default new/delete so that we match the host's allocator
 void* operator new(size_t n) { return g_host->HeapAllocate(n); }
 void operator delete(void* p) { return g_host->HeapFree(p); }
-void operator delete(void* p, size_t size) { return g_host->HeapFree(p); }
+void operator delete(void* p, size_t /*size*/) { return g_host->HeapFree(p); }
 
 namespace onnxruntime {
 #if 0
