@@ -84,7 +84,7 @@ TEST(GraphTransformationTests, DropoutElimination) {
 }
 
 TEST(GraphTransformationTests, SliceElimination) {
-  string model_uri = MODEL_FOLDER + "slice-elim.onnx";
+  string model_uri = MODEL_FOLDER + "slice-10-elim.onnx";
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
   Graph& graph = model->MainGraph();
