@@ -72,30 +72,35 @@ DataLoader::DataLoader(const MapStringToString& input_name_map,
 
 Status DataLoader::InitialPreLoadAsync() {
   for (size_t i = 0; i < max_num_files_preload_; ++i) {
-    PreloadAsync(i);
+    LoadAndRemoveInternalAsync(i, false, 0);
   }
   return Status::OK();
 }
 
 std::shared_ptr<DataSet> DataLoader::MoveToNextDataSet() {
-  size_t last_active_index = active_file_index_;
+  const size_t index_to_remove = active_file_index_;
   active_file_index_ = (active_file_index_ + 1) % NumShards();
-
-  buffer_.Remove(last_active_index);
   size_t index_to_load = (active_file_index_ + max_num_files_preload_ - 1) % NumShards();
-  PreloadAsync(index_to_load);
+
+  LoadAndRemoveInternalAsync(index_to_load, true, index_to_remove);
 
   return CurrentDataSet();
 }
 
-common::Status DataLoader::PreloadAsync(size_t index_to_load) {
-  data_loader_thread_pool_->Schedule([this, index_to_load]() {
+common::Status DataLoader::LoadAndRemoveInternalAsync(size_t index_to_load, bool need_remove, size_t index_to_remove) {
+  data_loader_thread_pool_->Schedule([this, index_to_load, need_remove, index_to_remove]() {
     std::shared_ptr<DataSet> data_set = std::make_shared<DataSet>(input_tensor_names_);
     Status s = LoadFile(data_files_[index_to_load], data_set);
     if (!s.IsOK()) {
       ORT_THROW("Error Loading file ", data_files_[index_to_load].c_str());
     } else {
       buffer_.Set(index_to_load, data_set);
+    }
+
+    // Put data removal in forked thread since it is observed calling Remove in main thread will
+    // block the main thread execution (possibly because the removal triggering some heap re-org).
+    if (need_remove) {
+      buffer_.Remove(index_to_remove);
     }
   });
 

@@ -109,13 +109,13 @@ class DataLoader : public IDataLoader {
  private:
   size_t NumInputs() const { return input_tensor_names_.size(); }
 
-  common::Status PreloadAsync(size_t index_to_load);
-
   common::Status LoadFile(const PATH_STRING_TYPE& file_path, std::shared_ptr<DataSet>& data_set);
 
   common::Status LoadOneSample(google::protobuf::io::CodedInputStream& coded_in,
                                uint32_t sample_size,
                                std::shared_ptr<DataSet>& data_set);
+
+  common::Status LoadAndRemoveInternalAsync(size_t index_to_load, bool need_remove, size_t index_to_remove);
 
   // TensorName in File -> Input Name for Graph
   MapStringToString input_name_map_;
