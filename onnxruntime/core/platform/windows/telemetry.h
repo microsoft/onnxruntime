@@ -43,7 +43,7 @@ class WindowsTelemetry : public Telemetry {
                           const std::unordered_map<std::string, std::string>& model_metadata,
                           const std::string& loadedFrom, const std::vector<std::string>& execution_provider_ids) const override;
     
-  void LogRuntimeError(uint32_t sessionId, const common::Status& status, const char* file,
+  void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
                        const char* function, uint32_t line) const override;
 
   void LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last) const override;

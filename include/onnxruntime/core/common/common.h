@@ -75,7 +75,7 @@ using common::Status;
 
 std::vector<std::string> GetStackTrace();
 // these is a helper function that gets defined by platform/Telemetry
-void LogRuntimeError(uint32_t sessionId, const common::Status& status, const char* file,
+void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
                      const char* function, uint32_t line);
 
 // __PRETTY_FUNCTION__ isn't a macro on gcc, so use a check for _MSC_VER

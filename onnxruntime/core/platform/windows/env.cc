@@ -214,7 +214,7 @@ class WindowsEnv : public Env {
 
   // \brief returns a provider that will handle telemetry on the current platform
   const Telemetry& GetTelemetryProvider() const override {
-    return telemetryProvider_;
+    return telemetry_provider_;
   }
 
  private:
@@ -234,7 +234,7 @@ class WindowsEnv : public Env {
 
   typedef VOID(WINAPI* FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
   FnGetSystemTimePreciseAsFileTime GetSystemTimePreciseAsFileTime_;
-  WindowsTelemetry telemetryProvider_;
+  WindowsTelemetry telemetry_provider_;
 };
 }  // namespace
 
