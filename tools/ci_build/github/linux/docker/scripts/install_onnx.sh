@@ -48,11 +48,11 @@ for v2t in ${version2tag[*]}; do
   if [ ! -d "third_party/pybind11/pybind11" ]; then
     git clone https://github.com/pybind/pybind11.git third_party/pybind11
   fi 
-  ${PYTHON_EXE} -m pip install .
   # Make sure we do not hit pyhon2 as on CentOS 6 it does not work
-  sed '1,1 s/\/usr\/bin\/env python/\/usr\/bin\/python36/' ./onnx/tools/protoc-gen-mypy.py > ./repl_protoc-gen-mypy.py
-  chmod a+w ./onnx/tools/protoc-gen-mypy.py
-  mv ./repl_protoc-gen-mypy.py ./onnx/tools/protoc-gen-mypy.py
+  sed '1,1 s/\/usr\/bin\/env python/\/usr\/bin\/python36/' /tmp/src/onnx-$onnx_version/tools/protoc-gen-mypy.py > ./repl_protoc-gen-mypy.py
+  chmod a+w /tmp/src/onnx-$onnx_version/tools/protoc-gen-mypy.py
+  mv ./repl_protoc-gen-mypy.py /tmp/src/onnx-$onnx_version/tools/protoc-gen-mypy.py
   mkdir -p /data/onnx/${onnx_tag}
+  ${PYTHON_EXE} -m pip install .
   backend-test-tools generate-data -o /data/onnx/$onnx_tag
 done
