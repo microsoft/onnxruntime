@@ -83,6 +83,7 @@ option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in l
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output data to standard output when executing the model." OFF)
 option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
+option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
