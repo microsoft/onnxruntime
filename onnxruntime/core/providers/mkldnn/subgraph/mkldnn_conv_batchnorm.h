@@ -13,60 +13,13 @@
 namespace onnxruntime {
 namespace mkl_dnn {
 
-// helper function
-template <bool ForceSymmetricAutoPadding>
-Status ComputePadAndOutputShape(
-    const int64_t in_dim,
-    const int64_t stride,
-    const int64_t kernel,
-    const int64_t dilation,
-    AutoPadType pad_type,
-    int64_t* pad_head,
-    int64_t* pad_tail,
-    int64_t* out_dim) {
-  const int64_t dkernel = dilation * (kernel - 1) + 1;
-
-  if (pad_type == AutoPadType::NOTSET) {
-    *out_dim = static_cast<int64_t>(static_cast<float>(in_dim + *pad_head + *pad_tail - dkernel) / stride + 1);
-  } else {
-    switch (pad_type) {
-      case AutoPadType::VALID:
-        *pad_head = 0;
-        *pad_tail = 0;
-        *out_dim = (in_dim - dkernel) / stride + 1;
-        break;
-      case AutoPadType::SAME_UPPER:
-      case AutoPadType::SAME_LOWER: {
-        ORT_ENFORCE(dilation == 1, "Dilation not supported for AutoPadType::SAME_UPPER or AutoPadType::SAME_LOWER.");
-        int64_t legacy_target_size = (in_dim + stride - 1) / stride;
-        int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_dim;
-        *out_dim = (in_dim + pad_needed - dkernel) / stride + 1;
-
-        // make sure padding is symmetric
-        if (ForceSymmetricAutoPadding)
-          pad_needed = math::roundUpPow2<int64_t, 2>(pad_needed);
-
-        if (pad_type == AutoPadType::SAME_LOWER) {
-          *pad_head = (pad_needed + 1) / 2;
-        } else {
-          *pad_head = pad_needed / 2;
-        }
-        *pad_tail = pad_needed - *pad_head;
-      } break;
-      default:
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "pad type not supported.");
-    }
-  }
-  return Status::OK();
-}
-
 template <typename T>
-class MklDnnConv : public MklDnnKernel {
+class MklDnnConvBatchNorm : public MklDnnKernel {
  public:
-  MklDnnConv(const MklDnnNode& node,
-             MKLDNNExecutionProvider* provider,
-             const NodeAttributes& attributes,
-             const std::string attributes_prefix = "") : MklDnnKernel(node, provider) {
+  MklDnnConvBatchNorm(const MklDnnNode& node,
+                      MKLDNNExecutionProvider* provider,
+                      const NodeAttributes& attributes,
+                      const std::string attributes_prefix = "") : MklDnnKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
   }
 
@@ -77,7 +30,6 @@ class MklDnnConv : public MklDnnKernel {
                           std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) override {
     Ort::CustomOpApi ort{*api};
     stream_.reset(new mkldnn::stream(cpu_engine));
-
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
     const OrtValue* winput_tensor = ort.KernelContext_GetInput(context, input_index + 1);
     auto wtensor_info = ort.GetTensorTypeAndShape(winput_tensor);
@@ -107,9 +59,6 @@ class MklDnnConv : public MklDnnKernel {
       ort_source_format_ = parents_[0].get()->ort_source_format_;
       ort_source_desc_ = parents_[0].get()->ort_source_desc_;
       source_desc_ = parents_[0].get()->primitive_dst_desc_;
-
-	  mkldnn::memory::dims src_dims_mkl(x_shape.GetDims().begin(), x_shape.GetDims().end());
-      src_md_.reset(new mkldnn::memory::desc(source_desc_));
     }
 
     primitive_created_ = ValidateInputShape(x_shape, w_shape);
@@ -186,13 +135,24 @@ class MklDnnConv : public MklDnnKernel {
     mkldnn::memory::dims padding_left_mkl(pads.begin(), pads.begin() + kernel_rank);
     mkldnn::memory::dims padding_right_mkl(pads.begin() + kernel_rank, pads.end());
     mkldnn::memory::dims bias_dims_mkl;
-    if (mklnode_ptr_->num_inputs == 3) {
+
+    int batchNormIndix = (mklnode_ptr_->num_inputs == 7) ? input_index + 3 : input_index + 2;
+    if (mklnode_ptr_->num_inputs == 7) {
       const OrtValue* binput_tensor = ort.KernelContext_GetInput(context, input_index + 2);
       auto btensor_info = ort.GetTensorTypeAndShape(binput_tensor);
       auto btensor_shape = ort.GetTensorShape(btensor_info);
       ort.ReleaseTensorTypeAndShapeInfo(btensor_info);
       auto bshape = btensor_shape.data();
       auto bdim = btensor_shape.size();
+      TensorShape b_shape(bshape, bdim);
+      bias_dims_mkl.assign(b_shape.GetDims().begin(), b_shape.GetDims().end());
+    } else {
+      const OrtValue* b_input_tensor = ort.KernelContext_GetInput(context, batchNormIndix + 1);
+      auto b_tensor_info = ort.GetTensorTypeAndShape(b_input_tensor);
+      auto b_tensor_shape = ort.GetTensorShape(b_tensor_info);
+      ort.ReleaseTensorTypeAndShapeInfo(b_tensor_info);
+      auto bshape = b_tensor_shape.data();
+      auto bdim = b_tensor_shape.size();
       TensorShape b_shape(bshape, bdim);
       bias_dims_mkl.assign(b_shape.GetDims().begin(), b_shape.GetDims().end());
     }
@@ -221,37 +181,30 @@ class MklDnnConv : public MklDnnKernel {
       }
     }
 
+    mkldnn::memory::dims src_dims_mkl(x_shape.GetDims().begin(), x_shape.GetDims().end());
     if (mklnode_ptr_->parent_nodes.empty()) {
-      mkldnn::memory::dims src_dims_mkl(x_shape.GetDims().begin(), x_shape.GetDims().end());
-
-	  ort_source_format_ = src_format;
-      src_md_.reset(new mkldnn::memory::desc({src_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format_tag::any));
+      ort_source_format_ = src_format;
       ort_source_desc_ = mkldnn::memory::desc({src_dims_mkl}, MklDnnType<T>(), src_format);
       source_desc_ = mkldnn::memory::desc({src_dims_mkl}, MklDnnType<T>(), src_format);
     }
+
+    src_md_.reset(new mkldnn::memory::desc({src_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format_tag::any));
 
     // Set the memory descriptors to format::any to allow MKLDNN to decide what the optimal memory layout should be
     // for the computation given the input
     filter_md_.reset(new mkldnn::memory::desc(
         {filter_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format_tag::any));
-    if (!bias_dims_mkl.empty())
-      bias_md_.reset(new mkldnn::memory::desc(
-          {bias_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format_tag::any));
+    bias_md_.reset(new mkldnn::memory::desc(
+        {bias_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format_tag::any));
 
-	mkldnn::memory::dims conv_zero_padding = {0, 0};
+    mkldnn::memory::dims conv_zero_padding = {0, 0};
 
-    if (!bias_dims_mkl.empty()) {
-      fwd_desc_.reset(new mkldnn::convolution_forward::desc(
-          mkldnn::prop_kind::forward_inference, mkldnn::algorithm::convolution_direct, *src_md_,
-          *filter_md_, *bias_md_, *primitive_dst_md_,
-          strides_mkl, dilations_mkl, padding_left_mkl,
-          padding_right_mkl));
-    } else {
-      fwd_desc_.reset(new mkldnn::convolution_forward::desc(
-          mkldnn::prop_kind::forward_inference, mkldnn::algorithm::convolution_direct, *src_md_,
-          *filter_md_, *primitive_dst_md_, strides_mkl,
-          dilations_mkl, padding_left_mkl, padding_right_mkl));
-    }
+    fwd_desc_.reset(new mkldnn::convolution_forward::desc(
+        mkldnn::prop_kind::forward_inference, mkldnn::algorithm::convolution_direct, *src_md_,
+        *filter_md_, *bias_md_, *primitive_dst_md_,
+        strides_mkl, dilations_mkl, padding_left_mkl,
+        padding_right_mkl));
+    
 
     if (fuse_relu_) {
       mkldnn::primitive_attr attr;
@@ -274,7 +227,7 @@ class MklDnnConv : public MklDnnKernel {
     primitive_src_desc_ = static_cast<mkldnn::memory::desc>(
         conv_fwd_pd_.get()->src_desc());
 
-    filter_desc_= static_cast<mkldnn::memory::desc>(
+    filter_desc_ = static_cast<mkldnn::memory::desc>(
         conv_fwd_pd_.get()->weights_desc());
 
     primitive_dst_desc_ = static_cast<mkldnn::memory::desc>(
@@ -320,21 +273,14 @@ class MklDnnConv : public MklDnnKernel {
       primitive_dst_mem_.reset(new mkldnn::memory(conv_fwd_pd_.get()->dst_desc(), cpu_engine));
     }
 
-    if (!bias_dims_mkl.empty()) {
-      bias_mem_.reset(new mkldnn::memory(conv_fwd_pd_.get()->bias_desc(), cpu_engine, nullptr));
-      conv_fwd_.reset(new mkldnn::convolution_forward(*conv_fwd_pd_));
-      net.push_back(*conv_fwd_);
-      net_args.push_back({{MKLDNN_ARG_SRC, *src_mem_},
-                          {MKLDNN_ARG_WEIGHTS, *filter_mem_},
-                          {MKLDNN_ARG_BIAS, *bias_mem_},
-                          {MKLDNN_ARG_DST, *primitive_dst_mem_}});
-    } else {
-      conv_fwd_.reset(new mkldnn::convolution_forward(*conv_fwd_pd_));
-      net.push_back(*conv_fwd_);
-      net_args.push_back({{MKLDNN_ARG_SRC, *src_mem_},
-                          {MKLDNN_ARG_WEIGHTS, *filter_mem_},
-                          {MKLDNN_ARG_DST, *primitive_dst_mem_}});
-    }
+    bias_mem_.reset(new mkldnn::memory(conv_fwd_pd_.get()->bias_desc(), cpu_engine, nullptr));
+    conv_fwd_.reset(new mkldnn::convolution_forward(*conv_fwd_pd_));
+    net.push_back(*conv_fwd_);
+    net_args.push_back({{MKLDNN_ARG_SRC, *src_mem_},
+                        {MKLDNN_ARG_WEIGHTS, *filter_mem_},
+                        {MKLDNN_ARG_BIAS, *bias_mem_},
+                        {MKLDNN_ARG_DST, *primitive_dst_mem_}});
+
     if (mklnode_ptr_->output_index >= 0) {
       // one of the end nodes. Allocate output buffer memory and
       // reorder is necessary
@@ -345,22 +291,74 @@ class MklDnnConv : public MklDnnKernel {
     return primitive_created_;
   }
 
+  void GamaInverseVariance(const OrtCustomOpApi* api, OrtKernelContext* context, std::vector<float>& inv_scale_factor, size_t O) {
+    Ort::CustomOpApi ort{*api};
+    int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
+    int batchNormIndix = (mklnode_ptr_->num_inputs == 7) ? input_index + 3 : input_index + 2;
+    const OrtValue* scale_input_tensor = ort.KernelContext_GetInput(context, batchNormIndix);
+    const T* bn_scale_data = reinterpret_cast<const T*>(ort.GetTensorData<T>(scale_input_tensor));
+    const OrtValue* var_input_tensor = ort.KernelContext_GetInput(context, batchNormIndix + 3);
+    const T* bn_var_data = reinterpret_cast<const T*>(ort.GetTensorData<T>(var_input_tensor));
+
+    std::vector<float> inv_scale;
+    inv_scale.assign(static_cast<size_t>(O), 0.0f);
+
+    float* data = inv_scale_factor.data();
+    for (size_t i = 0; i < O; i++) {
+      data[i] = bn_scale_data[i] / std::sqrt(bn_var_data[i] + epsilon_);
+    }
+  }
+
+  void WeightsScaleByAxix(const OrtCustomOpApi* api, OrtKernelContext* context,
+                          std::vector<float>& weights_scaled, std::vector<float> inv_scale,
+                          TensorShape& W) {
+    Ort::CustomOpApi ort{*api};
+    int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
+    const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index + 1);
+    const auto& w_dims = W.GetDims();
+    const T* filter_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));
+
+    int batchNormIndix = (mklnode_ptr_->num_inputs == 7) ? input_index + 3 : input_index + 2;
+    const OrtValue* scale_input_tensor = ort.KernelContext_GetInput(context, batchNormIndix);
+    auto bn_tensor_info = ort.GetTensorTypeAndShape(scale_input_tensor);
+    auto bn_tensor_shape = ort.GetTensorShape(bn_tensor_info);
+    ort.ReleaseTensorTypeAndShapeInfo(bn_tensor_info);
+    auto bn_shape = bn_tensor_shape.data();
+    auto bn_dim = bn_tensor_shape.size();
+    TensorShape bn_scale_shape(bn_shape, bn_dim);
+    const auto& bn_dims = bn_scale_shape.GetDims();
+
+    int64_t num = 1;
+    int axis = 1;
+    for (size_t k = axis; k < w_dims.size(); k++) {
+      num *= w_dims[k];
+    }
+
+    int64_t w_size = std::accumulate(w_dims.begin(), w_dims.end(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+    int64_t bn_scale_size = std::accumulate(bn_dims.begin(), bn_dims.end(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+    int64_t n = w_size / num;
+
+    float* w_scale_data = weights_scaled.data();
+    for (auto i = 0; i < n; i++) {
+      int index = bn_scale_size == 1 ? 0 : i;
+      for (int64_t j = 0; j < num; j++) {
+        w_scale_data[i * num + j] = filter_data[i * num + j] * inv_scale[index];
+      }
+    }
+  }
+
   virtual void ReorderWeights(const OrtCustomOpApi* api, OrtKernelContext* context, mkldnn::engine& cpu_engine) override {
     Ort::CustomOpApi ort{*api};
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
-
     const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index + 1);
     auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
     auto tensor_shape = ort.GetTensorShape(tensor_info);
     ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
     auto xshape = tensor_shape.data();
     auto xdim = tensor_shape.size();
-
     TensorShape W(xshape, xdim);
-    const T* filter_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));
 
     const int group_mkl = static_cast<int>(group_);
-
     mkldnn::memory::dims filter_dims_mkl;
     if (group_mkl == 1) {
       filter_dims_mkl.assign(W.GetDims().begin(), W.GetDims().end());
@@ -370,24 +368,75 @@ class MklDnnConv : public MklDnnKernel {
       filter_dims_mkl.insert(filter_dims_mkl.end(), W.GetDims().begin() + 1, W.GetDims().end());
     }
 
+    std::vector<float> inv_scale_factor;
+    const auto& w_dims = W.GetDims();
+    const size_t O = w_dims[0];
+    inv_scale_factor.assign(static_cast<size_t>(O), 0.0f);
+    GamaInverseVariance(api, context, inv_scale_factor, O);
+
+    std::vector<float> weights_scaled_by_axis;
+    weights_scaled_by_axis.assign(static_cast<size_t>(O), 0.0f);
+    auto w_size = std::accumulate(w_dims.begin(), w_dims.end(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+    weights_scaled_by_axis.assign(static_cast<size_t>(w_size), 0.0f);
+    WeightsScaleByAxix(api, context, weights_scaled_by_axis, inv_scale_factor, W);
+
     {
       // lock to make sure reordering is done only once
       std::lock_guard<OrtMutex> lock(provider_->GetMutex());
       std::shared_ptr<mkldnn::memory> filter_dst_mem = provider_->GetWeightsMemoryBuffer(mklnode_ptr_->weight_name);
 
       if (filter_dst_mem == nullptr) {
-        mkldnn::memory src = mkldnn::memory({{filter_dims_mkl}, MklDnnType<T>(), filter_format_}, cpu_engine, (void*)filter_data);
+        mkldnn::memory src = mkldnn::memory({{filter_dims_mkl}, MklDnnType<T>(), filter_format_}, cpu_engine, (void*)weights_scaled_by_axis.data());
         IAllocatorUniquePtr<void> filter_reorder_buffer =
             IAllocator::MakeUniquePtr<void>(alloc_, filter_size_);
         filter_dst_mem.reset(
             new mkldnn::memory(conv_fwd_pd_->weights_desc(), cpu_engine, filter_reorder_buffer.get()));
-        
-		mkldnn::reorder(src, *filter_dst_mem)
+
+        mkldnn::reorder(src, *filter_dst_mem)
             .execute(cpu_engine, src, *filter_dst_mem);
 
-		provider_->SaveAllocatedMemory(std::move(filter_reorder_buffer));
-        filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
+        provider_->SaveAllocatedMemory(std::move(filter_reorder_buffer));
         provider_->SetWeightsMemoryBuffer(mklnode_ptr_->weight_name, filter_dst_mem);
+      }
+
+      std::shared_ptr<mkldnn::memory> bias_mem = provider_->GetBiasMemoryBuffer(mklnode_ptr_->weight_name);
+      if (bias_mem == nullptr) {
+        auto bias_size = conv_fwd_pd_.get()->bias_desc().get_size();
+        IAllocatorUniquePtr<void> bias_buffer =
+            IAllocator::MakeUniquePtr<void>(alloc_, bias_size);
+        bias_mem.reset(
+            new mkldnn::memory(conv_fwd_pd_->bias_desc(), cpu_engine, bias_buffer.get()));
+        float* bias_buffer_data = static_cast<float*>(bias_buffer.get());
+        if (mklnode_ptr_->num_inputs == 7) {
+          const OrtValue* conv_bias_tensor = ort.KernelContext_GetInput(context, input_index + 2);
+          const T* conv_bias_data = reinterpret_cast<const T*>(ort.GetTensorData<T>(conv_bias_tensor));
+
+          int batchNormIndix = input_index + 3;
+          const OrtValue* b_input_tensor = ort.KernelContext_GetInput(context, batchNormIndix + 1);
+          const T* bn_b_data = reinterpret_cast<const T*>(ort.GetTensorData<T>(b_input_tensor));
+
+          const OrtValue* mean_input_tensor = ort.KernelContext_GetInput(context, batchNormIndix + 2);
+          const T* bn_mean_data = reinterpret_cast<const T*>(ort.GetTensorData<T>(mean_input_tensor));
+
+          //norm_bias = (conv_bias_arr - mean_arr) * inv_std + bn_b_arr;
+          for (size_t j = 0; j < O; j++) {
+            bias_buffer_data[j] = (conv_bias_data[j] - bn_mean_data[j]) * inv_scale_factor[j] + bn_b_data[j];
+          }
+        } else {
+          // norm_bias = inv_std * (mean_arr - bn_b_arr);
+          int batchNormIndix = (mklnode_ptr_->num_inputs == 7) ? input_index + 3 : input_index + 2;
+          const OrtValue* b_input_tensor = ort.KernelContext_GetInput(context, batchNormIndix + 1);
+          const T* bn_b_data = reinterpret_cast<const T*>(ort.GetTensorData<T>(b_input_tensor));
+          const OrtValue* mean_input_tensor = ort.KernelContext_GetInput(context, batchNormIndix + 2);
+          const T* bn_mean_data = reinterpret_cast<const T*>(ort.GetTensorData<T>(mean_input_tensor));
+
+          for (size_t j = 0; j < O; j++) {
+            bias_buffer_data[j] = bn_b_data[j] - (bn_mean_data[j] * inv_scale_factor[j]);
+          }
+        }
+
+        provider_->SaveAllocatedBiasMemory(std::move(bias_buffer));
+        provider_->SetBiasMemoryBuffer(mklnode_ptr_->weight_name, bias_mem);
       }
     }
   }
@@ -408,22 +457,17 @@ class MklDnnConv : public MklDnnKernel {
     const OrtValue* winput_tensor = ort.KernelContext_GetInput(context, input_index + 1);
     const T* filter_data = const_cast<T*>(ort.GetTensorData<T>(winput_tensor));
 
-    const T* bias_data = nullptr;
-    if (mklnode_ptr_->num_inputs == 3) {
-      const OrtValue* binput_tensor = ort.KernelContext_GetInput(context, input_index + 2);
-      bias_data = const_cast<T*>(ort.GetTensorData<T>(binput_tensor));
-    }
     std::shared_ptr<mkldnn::memory> filter_dst_mem = provider_->GetWeightsMemoryBuffer(mklnode_ptr_->weight_name);
     if (filter_dst_mem == nullptr) {
       ReorderWeights(api, context, GetEngine());
       filter_dst_mem = provider_->GetWeightsMemoryBuffer(mklnode_ptr_->weight_name);
     }
     filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
-
     filter_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(filter_data)));
-    if (bias_data != nullptr) {
-      bias_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(bias_data)));
-    }
+
+    std::shared_ptr<mkldnn::memory> bias_mem = provider_->GetBiasMemoryBuffer(mklnode_ptr_->weight_name);
+    const T* bias_data = static_cast<T*>(bias_mem->get_data_handle());
+    bias_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(bias_data)));
 
     if (primitive_src_desc_ != source_desc_) {
       if (mklnode_ptr_->parent_nodes.empty()) {
@@ -519,10 +563,15 @@ class MklDnnConv : public MklDnnKernel {
     if (!attr_read) {
       group_ = 1;
     }
+
+    attr = attributes.find(attributes_prefix + "epsilon");
+    if (attr != attributes.end()) {
+      epsilon_ = attr->second.f();
+    }
   }
 
  private:
-  mkldnn::memory::desc  filter_desc_;
+  mkldnn::memory::desc filter_desc_;
   mkldnn::memory::format_tag filter_format_;
 
   std::shared_ptr<mkldnn::memory> src_mem_from_;
@@ -631,7 +680,6 @@ class MklDnnConv : public MklDnnKernel {
   }
 
  private:
-
   std::unique_ptr<mkldnn::stream> stream_;
   std::vector<int64_t> kernel_shape_;  // must use ComputeKernelShape(...), instead of kernel_shape_
   AutoPadType auto_pad_;
@@ -642,6 +690,7 @@ class MklDnnConv : public MklDnnKernel {
   std::vector<int64_t> dilations_;
   std::string activation_;
   float alpha_;
+  float epsilon_ = 1e-5f;  // attribute of fused batchnorm.
 };
 }  // namespace mkl_dnn
 }  // namespace onnxruntime

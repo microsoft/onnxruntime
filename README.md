@@ -6,24 +6,25 @@
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Linux%20GPU%20CI%20Pipeline?label=Linux+GPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=12)
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/MacOS%20CI%20Pipeline?label=MacOS+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=13)
 
-**ONNX Runtime** is a performance-focused complete scoring engine for Open Neural Network Exchange (ONNX) models, with an open extensible architecture to continually address the latest developments in AI and Deep Learning. ONNX Runtime stays up to date with the ONNX standard with complete implementation of **all** ONNX operators, and supports all ONNX releases (1.2+) with both future and backwards compatibility. Please refer to [this page](docs/Versioning.md) for ONNX opset compatibility details.
+**ONNX Runtime** is a performance-focused complete scoring engine for Open Neural Network Exchange (ONNX) models, with an open extensible architecture to continually address the latest developments in AI and Deep Learning. ONNX Runtime stays up to date with the ONNX standard and supports all operators from the ONNX v1.2+ spec with both forwards and backwards compatibility. Please refer to [this page](docs/Versioning.md) for ONNX opset compatibility details.
 
 [ONNX](https://onnx.ai) is an interoperable format for machine learning models supported by various ML and DNN frameworks and tools. The universal format makes it easier to interoperate between frameworks and maximize the reach of hardware optimization investments.
 
 ***
+
 **[Key Features](#key-features)**
+
+**[Samples and Tutorials](./samples)**
 
 **Setup**
 * [Installation](#installation)
-* [APIs and Official Binaries](#apis-and-official-builds)
-* [Building from Source](#building-from-source)
+  * [APIs and Official Binaries](#apis-and-official-builds)
+  * [Building from Source](#building-from-source)
 
 **Usage**
 * [Getting ONNX Models](#getting-onnx-models)
 * [Deploying ONNX Runtime](#deploying-onnx-runtime)
 * [Performance Tuning](#performance-tuning)
-
-**[Examples and Tutorials](#examples-and-tutorials)**
 
 **More Info**
 * [Technical Design Details](#technical-design-details)
@@ -53,30 +54,30 @@ ONNX Runtime supports both CPU and GPU. Using various graph optimizations and ac
 
 Currently ONNX Runtime supports the following accelerators:
 * MLAS (Microsoft Linear Algebra Subprograms)
-* [DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)
-* [MKL-DNN](./docs/execution_providers/MKL-DNN-ExecutionProvider.md) - [subgraph optimization](./docs/execution_providers/MKL-DNN-Subgraphs.md)
-* MKL-ML
-* [Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)
-* CUDA
-* [TensorRT](./docs/execution_providers/TensorRT-ExecutionProvider.md)
-* [OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)
-* [Nuphar](./docs/execution_providers/Nuphar-ExecutionProvider.md)
 
-Not all variations are supported in the [official release builds](#apis-and-official-builds), but can be built from source following [these instructions](./BUILD.md). Find Dockerfiles [here](./dockerfiles).
+* NVIDIA CUDA
+* Intel MKL-ML
+* [Intel MKL-DNN](./docs/execution_providers/MKL-DNN-ExecutionProvider.md) - [subgraph optimization](./docs/execution_providers/MKL-DNN-Subgraphs.md)
+* [Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)
+* [NVIDIA TensorRT](./docs/execution_providers/TensorRT-ExecutionProvider.md)
+* [Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)
+* [Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md)
+* [DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)
+
+Not all variations are supported in the [official release builds](#apis-and-official-builds), but can be built from source following [these instructions](./BUILD.md).
 
 We are continuously working to integrate new execution providers for further improvements in latency and efficiency. If you are interested in contributing a new execution provider, please see [this page](docs/AddingExecutionProvider.md).
 
 
 ## Cross Platform
-[API documentation and package installation](#installation)
+ONNX Runtime is currently available for Linux, Windows, and Mac with Python, C#, C++, and C APIs. Please see [API documentation and package installation](#installation). 
 
-ONNX Runtime is currently available for Linux, Windows, and Mac with Python, C#, C++, and C APIs.
 If you have specific scenarios that are not supported, please share your suggestions and scenario details via [Github Issues](https://github.com/microsoft/onnxruntime/issues).
 ***
 # Installation
 **Quick Start:** The [ONNX-Ecosystem Docker container image](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem) is available on Dockerhub and includes ONNX Runtime (CPU, Python), dependencies, tools to convert from various frameworks, and Jupyter notebooks to help get started.
 
-Additional dockerfiles for some features can be found [here](./dockerfiles).
+Additional dockerfiles can be found [here](./dockerfiles).
 
 ## APIs and Official Builds
 
@@ -85,6 +86,7 @@ Additional dockerfiles for some features can be found [here](./dockerfiles).
 * [C](docs/C_API.md)
 * [C#](docs/CSharp_API.md)
 * [C++](./include/onnxruntime/core/session/onnxruntime_cxx_api.h)
+* [Ruby](https://github.com/ankane/onnxruntime) (external project)
 
 ### Official Builds
 | | CPU (MLAS+Eigen) | CPU (MKL-ML) | GPU (CUDA)
@@ -112,9 +114,7 @@ system.
   * Follow similar procedure to configure other locales on other platforms.
 
 ## Building from Source
-If additional build flavors are needed, please find instructions on building from source at [Build ONNX Runtime](BUILD.md). For production scenarios, it's strongly recommended to build from an [official release branch](https://github.com/microsoft/onnxruntime/releases).
-
-Dockerfiles are available [here](./tools/ci_build/github/linux/docker) to help you get started.
+If additional build flavors and/or dockerfiles are needed, please find instructions at [Build ONNX Runtime](BUILD.md). For production scenarios, it's strongly recommended to build only from an [official release branch](https://github.com/microsoft/onnxruntime/releases).
 
 ***
 # Usage
@@ -128,57 +128,27 @@ Dockerfiles are available [here](./tools/ci_build/github/linux/docker) to help y
   * [E2E training on Azure Machine Learning Services](https://docs.microsoft.com/en-us/azure/machine-learning/service/concept-onnx)
 
 ## Deploying ONNX Runtime
+### Cloud
 ONNX Runtime can be deployed to the cloud for model inferencing using [Azure Machine Learning Services](https://azure.microsoft.com/en-us/services/machine-learning-service). See [detailed instructions](https://docs.microsoft.com/en-us/azure/machine-learning/service/how-to-build-deploy-onnx) and [sample notebooks](https://github.com/Azure/MachineLearningNotebooks/tree/master/how-to-use-azureml/deployment/onnx).
 
 **ONNX Runtime Server (beta)** is a hosted application for serving ONNX models using ONNX Runtime, providing a REST API for prediction. Usage details can be found [here](./docs/ONNX_Runtime_Server_Usage.md), and image installation instructions are [here](./dockerfiles#onnx-runtime-server-preview).
+
+### IoT and edge devices
+The expanding focus and selection of IoT devices with sensors and consistent signal streams introduces new opportunities to move AI workloads to the edge.
+ 
+This is particularly important when there are massive volumes of incoming data/signals that may not be efficient or useful to push to the cloud due to storage or latency considerations. Consider: surveillance tapes where 99% of footage is uneventful, or real-time person detection scenarios where immediate action is required. In these scenarios, directly executing model inferencing on the target device is crucial for optimal assistance.
+ 
+To deploy AI workloads to these edge devices and take advantage of hardware acceleration capabilities on the target device, see [these reference implementations](https://github.com/Azure-Samples/onnxruntime-iot-edge).
+
+### Local applications
+ONNX Runtime packages are published to PyPi and Nuget (see [Official Builds](#official-builds) and/or can be [built from source](./BUILD.md) for local application development. Find samples [here](https://github.com/microsoft/onnxruntime/tree/master/samples/c_cxx) using the C++ API. 
+
+On newer Windows 10 devices (1809+), ONNX Runtime is available by default as part of the OS and is accessible via the [Windows Machine Learning APIs](https://docs.microsoft.com/en-us/windows/ai/windows-ml/). Find tutorials [here](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-desktop) for building a Windows Desktop or UWP application using WinML.
 
 ## Performance Tuning
 ONNX Runtime is open and extensible, supporting a broad set of configurations and execution providers for model acceleration. For performance tuning guidance, please see [this page](./docs/ONNX_Runtime_Perf_Tuning.md).
 
 To tune performance for ONNX models, the [ONNX Go Live tool "OLive"](https://github.com/microsoft/OLive) provides an easy-to-use pipeline for converting models to ONNX and optimizing performance for inferencing with ONNX Runtime. 
-
-***
-# Examples and Tutorials
-## Python
-**Inference only**
-* [Model Inferencing (single node Sigmoid)](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/simple_onnxruntime_inference.ipynb)
-* [Model Inferencing (Resnet50)](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/resnet50_modelzoo_onnxruntime_inference.ipynb)
-* [Model Inferencing](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem/inference_demos) using [ONNX-Ecosystem Docker image](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem)
-* [Model Inferencing using ONNX Runtime Server (SSD Single Shot MultiBox Detector)](https://github.com/onnx/tutorials/blob/master/tutorials/OnnxRuntimeServerSSDModel.ipynb)
-
-**Inference with model conversion**
-* [SKL Pipeline: Train, Convert, and Inference](https://microsoft.github.io/onnxruntime/auto_examples/plot_train_convert_predict.html#sphx-glr-auto-examples-plot-train-convert-predict-py)
-* [Keras: Convert and Inference](https://microsoft.github.io/onnxruntime/auto_examples/plot_dl_keras.html#sphx-glr-auto-examples-plot-dl-keras-py)
-
-**Inference and deploy through AzureML**
-* Inferencing using [ONNX Model Zoo](https://github.com/onnx/models) models: 
-  * [Facial Expression Recognition](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-inference-facial-expression-recognition-deploy.ipynb) 
-  * [MNIST Handwritten Digits](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-inference-mnist-deploy.ipynb)
-  * [Resnet50 Image Classification](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-modelzoo-aml-deploy-resnet50.ipynb)
-* Convert existing model for Inferencing:
-  * [TinyYolo](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-convert-aml-deploy-tinyyolo.ipynb)
-* Train a model with PyTorch and Inferencing:
-  * [MNIST](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-train-pytorch-aml-deploy-mnist.ipynb)
-
-* GPU: Inferencing with TensorRT Execution Provider (AKS)
-  * [FER+](./docs/python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb)
-
-**Inference and Deploy wtih Azure IoT Edge**
-  * [Intel OpenVINO](http://aka.ms/onnxruntime-openvino)
-  * [NVIDIA TensorRT on Jetson Nano (ARM64)](http://aka.ms/onnxruntime-arm64)
-
-**Other**
-* [Running ONNX model tests](./docs/Model_Test.md)
-
-
-## C#
-* [Inferencing Tutorial](./docs/CSharp_API.md#getting-started)
-
-
-## C/C++
-* [C - Inferencing (SqueezeNet)](./csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
-* [C++ - Inferencing (SqueezeNet)](./csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/CXX_Api_Sample.cpp)
-* [C++ - Inferencing (MNIST)](./samples/c_cxx/MNIST)
 
 ***
 # Technical Design Details
