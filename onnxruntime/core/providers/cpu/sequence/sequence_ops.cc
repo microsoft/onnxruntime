@@ -378,10 +378,11 @@ Status SplitToSequence::PrepareForCompute(const TensorShape& input_shape, int64_
   if (is_split_input_scalar) {
     auto num_even_splits = split_dim_size / split_scalar;
     num_remaining_splits = gsl::narrow_cast<int>(split_dim_size % split_scalar);
+    num_outputs = num_even_splits;
     if (num_remaining_splits != 0) {
       is_uneven_split = true;
+      num_outputs += 1;
     }
-    num_outputs = num_even_splits + num_remaining_splits;
     split_sizes.resize(num_outputs);
     std::fill(split_sizes.begin(), split_sizes.begin() + num_even_splits, split_scalar);
     std::fill(split_sizes.begin() + num_even_splits, split_sizes.end(), num_remaining_splits);

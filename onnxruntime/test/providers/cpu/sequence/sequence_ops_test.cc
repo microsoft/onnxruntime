@@ -299,9 +299,16 @@ TEST(SequenceOpsTest, SequenceConstructPositive) {
 }
 
 // SplitToSequence
+template <typename T>
+static std::vector<T> GetConsequtiveVector(T start, int num) {
+  std::vector<T> inputv(num);
+  std::iota(inputv.begin(), inputv.end(), start);
+  return inputv;
+}
+
 TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitFloat) {
   OpTester test("SplitToSequence", 11);
-  test.AddInput<float>("input", {4, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f});
+  test.AddInput<float>("input", {4, 2}, GetConsequtiveVector<float>(1.f, 8));
   test.AddInput<int64_t>("split", {1, 2}, {2, 2});
   SeqTensors<float> output;
   output.AddTensor({2, 2}, {1.f, 2.f, 3.f, 4.f});
@@ -312,7 +319,7 @@ TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitFloat) {
 
 TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitFloatScalarSplit) {
   OpTester test("SplitToSequence", 11);
-  test.AddInput<float>("input", {4, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f});
+  test.AddInput<float>("input", {4, 2}, GetConsequtiveVector<float>(1.f, 8));
   test.AddInput<int64_t>("split", {}, {2});
   SeqTensors<float> output;
   output.AddTensor({2, 2}, {1.f, 2.f, 3.f, 4.f});
@@ -323,7 +330,7 @@ TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitFloatScalarSplit) {
 
 TEST(SequenceOpsTest, SplitToSequence_Axis0DefaultSplitFloatSetAxisExplicitly) {
   OpTester test("SplitToSequence", 11);
-  test.AddInput<float>("input", {4, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f});
+  test.AddInput<float>("input", {4, 2}, GetConsequtiveVector<float>(1.f, 8));
   int64_t axis = 0;
   test.AddAttribute("axis", axis);
   SeqTensors<float> output;
@@ -335,55 +342,112 @@ TEST(SequenceOpsTest, SplitToSequence_Axis0DefaultSplitFloatSetAxisExplicitly) {
   test.Run();
 }
 
-TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0UnevenSplitFloat) {
+TEST(SequenceOpsTest, SplitToSequence_PositiveAxisScalarSplit) {
   OpTester test("SplitToSequence", 11);
-  test.AddInput<float>("input", {5, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f});
+  test.AddInput<float>("input", {2, 2, 6}, GetConsequtiveVector<float>(1.f, 2 * 2 * 6));
+  int64_t axis = 2;
+  test.AddAttribute("axis", axis);
   test.AddInput<int64_t>("split", {}, {2});
   SeqTensors<float> output;
-  output.AddTensor({2, 2}, {1.f, 2.f, 3.f, 4.f});
-  output.AddTensor({2, 2}, {5.f, 6.f, 7.f, 8.f});
+  output.AddTensor({2, 2, 2}, {1.f, 2.f,
+                               7.f, 8.f,
+
+                               13.f, 14.f,
+                               19.f, 20.f});
+  output.AddTensor({2, 2, 2}, {3.f, 4.f,
+                               9.f, 10.f,
+
+                               15.f, 16.f,
+                               21.f, 22.f});
+  output.AddTensor({2, 2, 2}, {5.f, 6.f,
+                               11.f, 12.f,
+
+                               17.f, 18.f,
+                               23.f, 24.f});
+  test.AddSeqOutput("S2", output);
+  test.Run();
+}
+
+TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0UnevenSplitFloat) {
+  OpTester test("SplitToSequence", 11);
+  test.AddInput<float>("input", {5, 2}, GetConsequtiveVector<float>(1.f, 10));
+  test.AddInput<int64_t>("split", {}, {2});
+  SeqTensors<float> output;
+  output.AddTensor({2, 2}, GetConsequtiveVector<float>(1.f, 4));
+  output.AddTensor({2, 2}, GetConsequtiveVector<float>(5.f, 4));
   output.AddTensor({1, 2}, {9.f, 10.f});
+  test.AddSeqOutput("S2", output);
+  test.Run();
+}
+
+TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0UnevenSplitFloat2) {
+  OpTester test("SplitToSequence", 11);
+  test.AddInput<float>("input", {17, 2}, GetConsequtiveVector<float>(1.f, 34));
+  test.AddInput<int64_t>("split", {}, {3});
+  SeqTensors<float> output;
+  output.AddTensor({3, 2}, GetConsequtiveVector<float>(1.f, 6));
+  output.AddTensor({3, 2}, GetConsequtiveVector<float>(7.f, 6));
+  output.AddTensor({3, 2}, GetConsequtiveVector<float>(13.f, 6));
+  output.AddTensor({3, 2}, GetConsequtiveVector<float>(19.f, 6));
+  output.AddTensor({3, 2}, GetConsequtiveVector<float>(25.f, 6));
+  output.AddTensor({2, 2}, GetConsequtiveVector<float>(31.f, 4));
+  test.AddSeqOutput("S2", output);
+  test.Run();
+}
+
+TEST(SequenceOpsTest, SplitToSequence_PositiveAxisUnevenSplit) {
+  OpTester test("SplitToSequence", 11);
+  test.AddInput<float>("input", {2, 5}, GetConsequtiveVector<float>(1.f, 10));
+  test.AddInput<int64_t>("split", {}, {2});
+  int64_t axis = 1;
+  test.AddAttribute("axis", axis);
+  SeqTensors<float> output;
+  output.AddTensor({2, 2}, {1.f, 2.f, 6.f, 7.f});
+  output.AddTensor({2, 2}, {3.f, 4.f, 8.f, 9.f});
+  output.AddTensor({2, 1}, {5.f, 10.f});
   test.AddSeqOutput("S2", output);
   test.Run();
 }
 
 TEST(SequenceOpsTest, SplitToSequence_Axis0DefaultSplitFloatSetAxisExplicitlyDontKeepDims3Dim) {
   OpTester test("SplitToSequence", 11);
-  std::vector<float> inputv(2 * 3 * 4);
-  std::iota(inputv.begin(), inputv.end(), 1.f);
-  test.AddInput<float>("input", {2, 3, 4}, inputv);
+  test.AddInput<float>("input", {2, 3, 4}, GetConsequtiveVector<float>(1.f, 2 * 3 * 4));
   test.AddAttribute<int64_t>("keepdims", 0);
   int64_t axis = 0;
   test.AddAttribute("axis", axis);
   SeqTensors<float> output;
-  std::vector<float> o1(12);
-  std::iota(o1.begin(), o1.end(), 1.f);
-  std::vector<float> o2(12);
-  std::iota(o2.begin(), o2.end(), 13.f);
-  output.AddTensor({3, 4}, o1);
-  output.AddTensor({3, 4}, o2);
+  output.AddTensor({3, 4}, GetConsequtiveVector<float>(1.f, 12));
+  output.AddTensor({3, 4}, GetConsequtiveVector<float>(13.f, 12));
   test.AddSeqOutput("S2", output);
   test.Run();
 }
 
 TEST(SequenceOpsTest, SplitToSequence_Axis0DefaultSplitFloatSetAxisExplicitlyDontKeepDims2Dim) {
   OpTester test("SplitToSequence", 11);
-  std::vector<float> inputv(2 * 3);
-  std::iota(inputv.begin(), inputv.end(), 1.f);
-  test.AddInput<float>("input", {2, 3}, inputv);
+  test.AddInput<float>("input", {2, 3}, GetConsequtiveVector<float>(1.f, 2 * 3));
   test.AddAttribute<int64_t>("keepdims", 0);
   int64_t axis = 0;
   test.AddAttribute("axis", axis);
   SeqTensors<float> output;
-  std::vector<float> o1(3);
-  std::iota(o1.begin(), o1.end(), 1.f);
-  std::vector<float> o2(3);
-  std::iota(o2.begin(), o2.end(), 4.f);
-  output.AddTensor({3}, o1);
-  output.AddTensor({3}, o2);
+  output.AddTensor({3}, GetConsequtiveVector<float>(1.f, 3));
+  output.AddTensor({3}, GetConsequtiveVector<float>(4.f, 3));
   test.AddSeqOutput("S2", output);
   test.Run();
 }
 
+TEST(SequenceOpsTest, SplitToSequence_PositiveAxisDontKeepDims) {
+  OpTester test("SplitToSequence", 11);
+  test.AddInput<float>("input", {2, 3, 4}, GetConsequtiveVector<float>(1.f, 2 * 3 * 4));
+  test.AddAttribute<int64_t>("keepdims", 0);
+  int64_t axis = 2;
+  test.AddAttribute("axis", axis);
+  SeqTensors<float> output;
+  output.AddTensor({2, 3}, {1.f, 5.f, 9.f, 13.f, 17.f, 21.f});
+  output.AddTensor({2, 3}, {2.f, 6.f, 10.f, 14.f, 18.f, 22.f});
+  output.AddTensor({2, 3}, {3.f, 7.f, 11.f, 15.f, 19.f, 23.f});
+  output.AddTensor({2, 3}, {4.f, 8.f, 12.f, 16.f, 20.f, 24.f});
+  test.AddSeqOutput("S2", output);
+  test.Run();
+}
 }  // namespace test
 }  // namespace onnxruntime
