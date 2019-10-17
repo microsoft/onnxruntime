@@ -909,13 +909,34 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_ERROR_SESSIONID_(InitializeSubgraphSessions(graph, *session_state_));
     session_state_->ResolveMemoryPatternFlag();
     is_inited_ = true;
-
     // and log telemetry
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
     env.GetTelemetryProvider().LogSessionCreation(
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
         model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(), model_->MetaData(),
         telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs);
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+    std::map<std::string, size_t> node_name_to_index;
+    bool AreNamesUnique = true;
+    for (auto& n : session_state_.GetGraphViewer()->Nodes()) {
+      if (n.Name().empty() || node_name_to_index.find(n.Name()) != node_name_to_index.end()) {
+        AreNamesUnique = false;
+        break;
+      }
+    }
+    std::ostringstream oss;
+    if (AreNamesUnique) {
+      for (auto& kvp : node_name_to_index) {
+        oss << kvp.first << " " << kvp.second << "\n";
+      }
+      std::string content = oss.str();
+      // TODO: write the information out
+      TraceLoggingWrite(telemetry_provider_handle,  // handle to my provider
+                        "NodeNameMapping",  // Event Name that should uniquely identify your event.
+                        TraceLoggingValue(content.c_str(), "op_name"));
+    }
+
+#endif
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   } catch (const NotImplementedException& ex) {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
