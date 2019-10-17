@@ -31,109 +31,152 @@
 // */
 
 #include "custom_op_library.h"
-static const char* c_OpDomain = "test.customop"
+#include <vector>
+
+static const char* c_OpDomain = "test.customop";
 static const char* c_OpOneName = "CustomOpOne";
 static const char* c_OpTwoName = "CustomOpTwo";
 static const char* c_EPType = nullptr; // CPU
 ONNXTensorElementDataType c_dataElemTypeOne = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
 ONNXTensorElementDataType c_dataElemTypeTwo = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
 
+#define ORT_API_RETURN_IF_ERROR(expr) \
+  do {                                \
+    auto _status = (expr);            \
+    if (_status) return _status;      \
+  } while (0)
+
 
 // This callback creates the kernel, which is a user defined parameter that is passed to the Kernel* callbacks below.
 void* ORT_API_CALL CreateKernel_One(_In_ struct OrtCustomOp* op, _In_ const OrtApi* api, _In_ const OrtKernelInfo* info)
 {
-
+    return nullptr;
 }
 
 // Returns the name of the op
 const char* ORT_API_CALL GetName_One(_In_ struct OrtCustomOp* op)
 {
-    
+    return c_OpOneName;   
 }
 
 // Returns the type of the execution provider, return nullptr to use CPU execution provider
 const char* ORT_API_CALL GetExecutionProviderType_One(_In_ struct OrtCustomOp* op)
 {
-
+    return c_EPType;
 }
 
 // Returns the count and types of the input & output tensors
 ONNXTensorElementDataType ORT_API_CALL GetInputType_One(_In_ struct OrtCustomOp* op, _In_ size_t index)
 {
-
+    return c_dataElemTypeOne;
 }
   
 size_t ORT_API_CALL GetInputTypeCount_One(_In_ struct OrtCustomOp* op)
 {
-
+    return 2;
 }
 
 
 ONNXTensorElementDataType ORT_API_CALL GetOutputType_One(_In_ struct OrtCustomOp* op, _In_ size_t index)
 {
-
+    return c_dataElemTypeOne;
 }
 
 size_t ORT_API_CALL GetOutputTypeCount_One(_In_ struct OrtCustomOp* op)
 {
-
+    return 1;
 }
 
 // Op kernel callbacks
 void ORT_API_CALL KernelCompute_One(_In_ void* op_kernel, _In_ OrtKernelContext* context)
 {
+    
+
 
 }
 
 void ORT_API_CALL KernelDestroy_One(_In_ void* op_kernel)
 {
-
+    // nothing to do
 }
 
 
 // This callback creates the kernel, which is a user defined parameter that is passed to the Kernel* callbacks below.
 void* ORT_API_CALL CreateKernel_Two(_In_ struct OrtCustomOp* op, _In_ const OrtApi* api, _In_ const OrtKernelInfo* info)
 {
-
+    return nullptr;
 }
 
 // Returns the name of the op
 const char* ORT_API_CALL GetName_Two(_In_ struct OrtCustomOp* op)
 {
-    
+    return c_OpTwoName;
 }
 
 // Returns the type of the execution provider, return nullptr to use CPU execution provider
 const char* ORT_API_CALL GetExecutionProviderType_Two(_In_ struct OrtCustomOp* op)
 {
-
+    return c_EPType;
 }
 
 // Returns the count and types of the input & output tensors
 ONNXTensorElementDataType ORT_API_CALL GetInputType_Two(_In_ struct OrtCustomOp* op, _In_ size_t index)
 {
-
+    return c_dataElemTypeTwo;
 }
   
 size_t ORT_API_CALL GetInputTypeCount_Two(_In_ struct OrtCustomOp* op)
 {
-
+    return 2;
 }
 
 
 ONNXTensorElementDataType ORT_API_CALL GetOutputType_Two(_In_ struct OrtCustomOp* op, _In_ size_t index)
 {
-
+    return c_dataElemTypeTwo;
 }
 
 size_t ORT_API_CALL GetOutputTypeCount_Two(_In_ struct OrtCustomOp* op)
 {
-
+    return 1;
 }
 
 // Op kernel callbacks
 void ORT_API_CALL KernelCompute_Two(_In_ void* op_kernel, _In_ OrtKernelContext* context)
 {
+    auto api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+    size_t inputCount, outputCount;
+
+    if (auto status = api->KernelContext_GetInputCount(context, &inputCount))
+    {
+        return; // throw exception? where to log the error?
+    }
+
+    if (auto status = api->KernelContext_GetOutputCount(context, &outputCount))
+    {
+        return;
+    }
+
+    std::vector<OrtValue*> inputs(inputCount);
+    std::vector<OrtValue*> outputs(outputCount);
+
+    for (int i = 0; i < inputCount; i++)
+    {
+        if (auto status = api->KernelContext_GetInput(context, i, (const OrtValue**)inputs.data()+i))
+        {
+            return;
+        }
+    }
+
+    // for (int i = 0; i < outputCount; i++)
+    // {
+    //     if (auto status = api->KernelContext_GetOutput(context, i, (const OrtValue**)outputs.data()+i))
+    //     {
+    //         return;
+    //     }
+    // }
+
+
 
 }
 
@@ -167,7 +210,7 @@ GetOutputType_Two,
 GetOutputTypeCount_Two,
 KernelCompute_Two,
 KernelDestroy_Two
-}
+};
 
 
 
@@ -201,21 +244,21 @@ KernelDestroy_Two
 OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions * options, const OrtApiBase* api)
 {
     OrtCustomOpDomain* domain = nullptr;
-    if (auto status = api->CreateCustomOpDomain(c_OpDomain, &domain))
+    if (auto status = api->GetApi(ORT_API_VERSION)->CreateCustomOpDomain(c_OpDomain, &domain))
     {
         return status;
     }
 
-    if (auto status = api->CustomOpDomain_Add(domain, &c_CustomOpOne))
+    if (auto status = api->GetApi(ORT_API_VERSION)->CustomOpDomain_Add(domain, &c_CustomOpOne))
     {
         return status;
     }
 
-    if (auto status = api->CustomOpDomain_Add(domain, &c_CustomOpTwo))
+    if (auto status = api->GetApi(ORT_API_VERSION)->CustomOpDomain_Add(domain, &c_CustomOpTwo))
     {
         return status;
     }
 
-    return api->AddCustomOpDomain(options, domain);
+    return api->GetApi(ORT_API_VERSION)->AddCustomOpDomain(options, domain);
 }
 
