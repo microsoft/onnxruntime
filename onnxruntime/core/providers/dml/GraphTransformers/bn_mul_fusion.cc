@@ -109,7 +109,7 @@ bool BatchNormalizationMulFusion::SatisfyCondition(const Graph& graph, const Nod
 
   const auto& next_node = *node.OutputNodesBegin();
   return !(!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Mul", {7}) ||
-           next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node) ||
+           next_node.GetInputEdgesCount() != 1 || graph.GetNodeOutputsInGraphOutputs(next_node).empty() == false ||
            next_node.GetExecutionProviderType() != node.GetExecutionProviderType());
 }
 

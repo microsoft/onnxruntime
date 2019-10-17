@@ -144,7 +144,7 @@ void LogRuntimeError(uint32_t sessionId, const common::Status& status, const cha
   do {                                       \
     auto _status = (expr);                   \
     if ((!_status.IsOK())) {                 \
-      LogRuntimeError(session_id, _status, __FILE__, __FUNCTION__, __LINE__); \
+      ::onnxruntime::LogRuntimeError(session_id, _status, __FILE__, __FUNCTION__, __LINE__); \
       return _status;                        \
     }                                        \
   } while (0)
@@ -156,7 +156,7 @@ void LogRuntimeError(uint32_t sessionId, const common::Status& status, const cha
   do {                                         \
     auto _status = (expr);                     \
     if ((!_status.IsOK())) {                   \
-      LogRuntimeError(0, _status, __FILE__, __FUNCTION__, __LINE__); \
+      ::onnxruntime::LogRuntimeError(0, _status, __FILE__, __FUNCTION__, __LINE__); \
       ORT_THROW(_status);                      \
     }                                          \
   } while (0)
