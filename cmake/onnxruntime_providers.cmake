@@ -474,7 +474,6 @@ if (onnxruntime_USE_NUPHAR)
 endif()
 
 if (onnxruntime_USE_INTEL)
-  include_directories("${CMAKE_CURRENT_BINARY_DIR}/onnx")
 
   file(GLOB_RECURSE onnxruntime_providers_intel_cc_srcs
     "${ONNXRUNTIME_ROOT}/core/providers/intel/*.h"
@@ -498,6 +497,7 @@ if (onnxruntime_USE_INTEL)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_intel_cc_srcs})
   add_library(onnxruntime_providers_intel ${onnxruntime_providers_intel_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_intel onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+  add_dependencies(onnxruntime_providers_intel ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_intel PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_intel SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${OPENVINO_IR_READER_INCLUDE} ${OPENVINO_NGRAPH_INCLUDE_DIR} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${OPENVINO_TBB_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/intel  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
