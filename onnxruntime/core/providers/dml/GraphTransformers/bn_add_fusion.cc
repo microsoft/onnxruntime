@@ -5,7 +5,7 @@
 
 #undef OPTIONAL
 #include "core/graph/graph_utils.h"
-#include "core/optimizer/initializer.h" 
+#include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 #include "bn_add_fusion.h"
 
@@ -97,7 +97,7 @@ bool BatchNormalizationAddFusion::SatisfyCondition(const Graph& graph, const Nod
   const auto& next_node = *node.OutputNodesBegin();
   return !(!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {7}) ||
            next_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
-           next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node));
+           next_node.GetInputEdgesCount() != 1 || !graph.GetNodeOutputsInGraphOutputs(next_node).empty());
 }
 
 }  // namespace onnxruntime
