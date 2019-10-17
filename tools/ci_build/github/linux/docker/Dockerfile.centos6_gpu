@@ -59,12 +59,12 @@ RUN CUDNN_DOWNLOAD_SUM=417bb5daf51377037eb2f5c87649000ca1b9cec0acb16cfe07cb1d3e9
     echo "$CUDNN_DOWNLOAD_SUM  cudnn-10.0-linux-x64-v7.6.4.38.tgz" | sha256sum -c - && \
     tar --no-same-owner -xzf cudnn-10.0-linux-x64-v7.6.4.38.tgz -C /usr/local && \
     rm cudnn-10.0-linux-x64-v7.6.4.38.tgz && \
-    ldconfig
+    /sbin/ldconfig
 
 
 ARG BUILD_UID=1000
 ARG BUILD_USER=onnxruntimedev
-RUN adduser --uid $BUILD_UID $BUILD_USER
+RUN /usr/sbin/adduser --uid $BUILD_UID $BUILD_USER
 WORKDIR /home/$BUILD_USER
 USER $BUILD_USER
 

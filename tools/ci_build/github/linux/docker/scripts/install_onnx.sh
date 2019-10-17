@@ -48,6 +48,8 @@ for v2t in ${version2tag[*]}; do
   if [ ! -d "third_party/pybind11/pybind11" ]; then
     git clone https://github.com/pybind/pybind11.git third_party/pybind11
   fi 
+  # We need to make the adjustment only for CentOS6 OR we substitue this only for
+  # ${PYTHON_EXE} where we'd need to escape slashes
   # Make sure we do not hit pyhon2 as on CentOS 6 it does not work
   sed '1,1 s/\/usr\/bin\/env python/\/usr\/bin\/python36/' /tmp/src/onnx-$onnx_version/tools/protoc-gen-mypy.py > ./repl_protoc-gen-mypy.py
   chmod a+w /tmp/src/onnx-$onnx_version/tools/protoc-gen-mypy.py
