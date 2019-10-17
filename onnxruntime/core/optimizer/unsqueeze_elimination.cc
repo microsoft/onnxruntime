@@ -15,13 +15,6 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
   // Get "axes" attribute. It's a required attribute so can't be null (model loading would fail if it was).
   const ONNX_NAMESPACE::AttributeProto& attr = *graph_utils::GetNodeAttribute(node, "axes");
 
-  std::vector<int64_t> axes;
-  axes.reserve(attr.ints_size());
-  for (int i = 0; i < attr.ints_size(); i++) {
-    axes.push_back(static_cast<int64_t>(attr.ints(i)));
-  }
-
-  // Generate new dims.
   NodeArg& input_def = *node.MutableInputDefs()[0];
   const auto& tensor_proto = *graph_utils::GetConstantInitializer(graph, input_def.Name());
 
@@ -31,8 +24,20 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
     return Status::OK();
   }
 
-  std::vector<int64_t> new_dims(axes.size() + tensor_proto.dims().size(), 0);
+  auto num_axes = attr.ints_size();
+  auto output_rank = num_axes + tensor_proto.dims().size();
 
+  std::vector<int64_t> axes;
+  axes.reserve(num_axes);
+  for (int i = 0; i < attr.ints_size(); i++) {
+    auto axis = attr.ints(i);
+    if (axis < 0)
+      axis += output_rank;
+    axes.push_back(static_cast<int64_t>(axis));
+  }
+
+  // Generate new dims.
+  std::vector<int64_t> new_dims(output_rank, 0);
   for (int64_t axis : axes) {
     new_dims[axis] = 1;
   }
