@@ -42,10 +42,10 @@ Status::Status(StatusCategory category, int code, const std::string& msg) {
 
 class TensorShape {
  public:
-  TensorShape(__int64 const* p1, unsigned __int64 p2);
+  TensorShape(const int64_t* p1, uint64_t p2);
 };
 
-TensorShape::TensorShape(__int64 const* p1, unsigned __int64 p2) { onnxruntime_TensorShape_constructor(this, p1, p2); }
+TensorShape::TensorShape(const int64_t* p1, uint64_t p2) { onnxruntime_TensorShape_constructor(this, p1, p2); }
 
 struct Node;
 struct KernelDef;
