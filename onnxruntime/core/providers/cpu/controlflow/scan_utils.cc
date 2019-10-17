@@ -189,13 +189,13 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
           fetches.push_back(ort_value);
         } else {
           // need a dummy empty entry in fetches so the order matches the output names
-          size_t i = fetches.size();
+          size_t idx = fetches.size();
           fetches.emplace_back();
 
           // use a custom allocator that will forward the allocation request to the Scan context
           // and add the sequence length dimension. this avoids using a temporary value for the first output
-          fetch_allocators[output] = [i, &iterator, &fetches](const TensorShape& shape, const OrtAllocatorInfo& location,
-                                                              OrtValue& ort_value, bool& allocated) {
+          fetch_allocators[output] = [idx, &iterator, &fetches](const TensorShape& shape, const OrtAllocatorInfo& location,
+                                                                OrtValue& ort_value, bool& allocated) {
             auto status = iterator.AllocateFinalOutput(shape);
             ORT_RETURN_IF_ERROR(status);
 
@@ -205,13 +205,13 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
             // if that does not match the required device we don't update the provided OrtValue and return false for
             // 'allocated'. the execution frame will allocate a buffer on the required device, and the fetches copy
             // logic in utils::ExecuteSubgraph will handle moving it to CPU (and into the tensor we allocated here)
-            if (value.Get<Tensor>().Location().device == location.device) {
+            if (value.Get<Tensor>().Location() == location) {
               // update OrtValue with a current slice from the iterator.
               ort_value = value;
               allocated = true;
             } else {
               // put the allocated value into fetches so the copy logic in utils::ExecuteGraphImpl can use it
-              fetches[i] = value;
+              fetches[idx] = value;
             }
 
             return Status::OK();
@@ -253,9 +253,9 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 }
 
 OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator) {
-  auto new_tensor = onnxruntime::make_unique<Tensor>(data_type,
-                                                     shape,
-                                                     allocator);
+  auto new_tensor = std::make_unique<Tensor>(data_type,
+                                             shape,
+                                             allocator);
 
   return OrtValue{new_tensor.release(), DataTypeImpl::GetType<Tensor>(),
                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
