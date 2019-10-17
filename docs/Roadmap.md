@@ -101,8 +101,9 @@ Performance is a key focus for ONNX Runtime. From latency to memory utilization 
 * Improved multithreading (e.g. smarter work sharding, consolidation of different types of thread pools, user supplied thread pools, etc)
 * Graph optimizations
 * Intelligent graph partitioning to maximize the value of different accelerators
-* Optimizations for mobile and IoT Edge devices
 
+#### Optimizations for mobile and IoT Edge devices
+IoT provides growing opportunity to execute ML workloads on the edge of the network, where the data is collected. However, the devices used for ML execution have different hardware specifications. To support compatibility with this group of devices, we will invest in strategies to optimize ONNX model execution across the breadth of IoT endpoints using different hardware configurations with CPUs, GPUs and custom NN ASICs.
 
 ### Expanded model compatibility
 The ONNX spec focuses on ML model interoperability rather than coverage of all operators from all frameworks. 
@@ -134,8 +135,7 @@ Focusing on practicality, we take a scenario driven approach to adding additiona
 ### Increased integration with popular products
 We understand that data scientists and ML engineers work with many different products and toolsets to bring complex machine learning 
 algorithms to life through innovative user-facing applications. We want to ensure ONNX Runtime works as seamlessly as possible with 
-these. If you've identified any integration ideas or opportunities and have questions or need assistance, we encourage use of Github Issues 
-as a discussion forum.
+these. If you've identified any integration ideas or opportunities and have questions or need assistance, we encourage use of Github Issues as a discussion forum.
 
 Some of these products include:
 * [AzureML](https://docs.microsoft.com/en-us/azure/machine-learning/service/concept-onnx): simplify the process to train, convert, and deploy ONNX models to Azure
