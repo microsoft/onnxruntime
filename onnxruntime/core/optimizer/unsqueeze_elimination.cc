@@ -12,9 +12,6 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
-  // Get "axes" attribute. It's a required attribute so can't be null (model loading would fail if it was).
-  const ONNX_NAMESPACE::AttributeProto& attr = *graph_utils::GetNodeAttribute(node, "axes");
-
   NodeArg& input_def = *node.MutableInputDefs()[0];
   const auto& tensor_proto = *graph_utils::GetConstantInitializer(graph, input_def.Name());
 
@@ -24,16 +21,20 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
     return Status::OK();
   }
 
-  auto num_axes = attr.ints_size();
+  std::vector<int64_t> axes;
+  if (!graph_utils::GetRepeatedNodeAttributeValues(node, "axes", axes)) {
+    // missing 'axes'. should have failed at model load but just in case...
+    return Status::OK();
+  }
+
+  auto num_axes = axes.size();
   auto output_rank = num_axes + tensor_proto.dims().size();
 
-  std::vector<int64_t> axes;
-  axes.reserve(num_axes);
-  for (int i = 0; i < attr.ints_size(); i++) {
-    auto axis = attr.ints(i);
-    if (axis < 0)
+  // handle any negative axis values
+  for (auto& axis : axes) {
+    if (axis < 0) {
       axis += output_rank;
-    axes.push_back(static_cast<int64_t>(axis));
+    }
   }
 
   // Generate new dims.
