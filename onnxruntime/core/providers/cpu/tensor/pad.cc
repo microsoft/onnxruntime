@@ -37,6 +37,10 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Pad<float>);
 
+// The interface for the 'Pad' op was changed in opset-11	ONNX_CPU_OPERATOR_TYPED_KERNEL(Pad, 11, float, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), Pad<float>);
+// 'pads' and 'value' (attributes previously) became inputs in this version	ONNX_CPU_OPERATOR_TYPED_KERNEL(Pad, 11, double, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()), Pad<double>);
+// The core logic remains the same
+
 ONNX_CPU_OPERATOR_TYPED_KERNEL(Pad, 11, float, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), Pad<float>);
 ONNX_CPU_OPERATOR_TYPED_KERNEL(Pad, 11, double, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()), Pad<double>);
 ONNX_CPU_OPERATOR_TYPED_KERNEL(Pad, 11, int32_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()), Pad<int32_t>);
