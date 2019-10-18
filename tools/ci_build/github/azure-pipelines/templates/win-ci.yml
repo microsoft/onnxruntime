@@ -15,6 +15,16 @@ parameters:
   CudaVersion: ''
   AgentPool: 'Win-CPU'
   AgentDemands: []
+  trigger:
+    branches:
+      include:
+      - master
+    paths:
+      include:
+      - /*
+      exclude:
+      - docs/*
+      - tools/ci_build/github/*
 
 jobs:
 - job: ${{ parameters.JobName }}
