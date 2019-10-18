@@ -152,8 +152,6 @@ def create_backend_test(testname=None):
                                  '^test_sequence_*',
                                  '^test_scatter_.*',
                                  '^test_onehot_.*',
-                                 '^test_edge_pad_cpu.*',  # test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests
-                                 '^test_reflect_pad_cpu.*'  # test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests
         ]
 
         # Example of how to disable tests for a specific provider.
