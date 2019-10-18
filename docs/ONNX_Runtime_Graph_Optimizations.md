@@ -1,6 +1,7 @@
 # Graph Optimizations in ONNX Runtime
 
-ONNX Runtime provides various graph optimizations to improve model performance. Graph optimizations are essentially graph-level transformations, ranging from small graph simplifications and node eliminations to more complex node fusions and layout optimizations.
+ONNX Runtime provides various graph optimizations to improve model performance. Graph optimizations are essentially graph-level transformations, 
+ranging from small graph simplifications and node eliminations to more complex node fusions and layout optimizations.
 
 Graph optimizations are divided in several categories (or *levels*) based on their complexity and functionality. They can be performed either *online* or *offline*. In online mode, the optimizations are done before performing the inference, while in offline mode, the runtime saves the optimized graph to disk. ONNX Runtime provides Python, C#, C++, and C APIs to enable different optimization levels and to choose between offline vs. online mode.
 
