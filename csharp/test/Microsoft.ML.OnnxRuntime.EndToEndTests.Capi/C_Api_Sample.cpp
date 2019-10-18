@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <vector>
 
-const OrtApi* g_ort = OrtGetApi(ORT_API_VERSION);
+const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
 //*****************************************************************************
 // helper function to check for status

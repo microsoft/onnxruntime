@@ -8,46 +8,44 @@ namespace onnxruntime {
 namespace test {
 
 template <typename T>
-void RunTypedTest()
-{
+void RunTypedTest() {
   // int32_t indices - axis 0
   OpTester test1("GatherElements", 11);
 
   test1.AddAttribute<int64_t>("axis", 0LL);
   test1.AddInput<T>("data", {2, 3},
-                       {0, 1, 2, 3, 4, 5});
+                    {0, 1, 2, 3, 4, 5});
   test1.AddInput<int32_t>("indices", {1, 2}, {0, 1});
   test1.AddOutput<T>("output", {1, 2},
-                        {0, 4});
+                     {0, 4});
   test1.Run();
 
   // int32_t indices - axis 1
   OpTester test2("GatherElements", 11);
   test2.AddAttribute<int64_t>("axis", 1LL);
   test2.AddInput<T>("data", {2, 2},
-                       {1, 2,
-                        3, 4});
+                    {1, 2,
+                     3, 4});
   test2.AddInput<int32_t>("indices", {2, 2},
-                         {0, 0,
-                          1, 0});
+                          {0, 0,
+                           1, 0});
   test2.AddOutput<T>("output", {2, 2},
-                        {1, 1,
-                         4, 3});
+                     {1, 1,
+                      4, 3});
   test2.Run();
 
-  
   // int64_t indices - axis 1
   OpTester test3("GatherElements", 11);
   test3.AddAttribute<int64_t>("axis", 1LL);
   test3.AddInput<T>("data", {2, 2},
-                       {1, 2,
-                        3, 4});
+                    {1, 2,
+                     3, 4});
   test3.AddInput<int64_t>("indices", {2, 2},
-                         {0, 0,
-                          1, 0});
+                          {0, 0,
+                           1, 0});
   test3.AddOutput<T>("output", {2, 2},
-                        {1, 1,
-                         4, 3});
+                     {1, 1,
+                      4, 3});
   test3.Run();
 
   // negative indices - axis 1
@@ -106,36 +104,69 @@ void RunTypedTest()
                           {0, 1});
   test7.AddOutput<T>("output", {1, 2, 1}, {1, 4});
   test7.Run();
+
+  // 2D input - axis 1
+  OpTester test8("GatherElements", 11);
+  test8.AddAttribute<int64_t>("axis", 1LL);
+  test8.AddInput<T>("data", {3, 3},
+                    {1, 2, 3,
+                     4, 5, 6,
+                     7, 8, 9});
+  test8.AddInput<int64_t>("indices", {3, 2},
+                          {1, 0, 0, 1, 0, 1});
+  test8.AddOutput<T>("output", {3, 2}, {2, 1, 4, 5, 7, 8});
+  test8.Run();
+
+  // 2D input - axis 1
+  OpTester test9("GatherElements", 11);
+  test9.AddAttribute<int64_t>("axis", 0LL);
+  test9.AddInput<T>("data", {3, 3},
+                    {1, 2, 3,
+                     4, 5, 6,
+                     7, 8, 9});
+  test9.AddInput<int64_t>("indices", {3, 2},
+                          {1, 0, 0, 1, 0, 1});
+  test9.AddOutput<T>("output", {3, 2}, {4, 2, 1, 5, 1, 5});
+  test9.Run();
+
+  // 1D input - axis 0
+  OpTester test10("GatherElements", 11);
+  test10.AddAttribute<int64_t>("axis", 0LL);
+  test10.AddInput<T>("data", {3},
+                     {1, 2, 3});
+  test10.AddInput<int64_t>("indices", {2},
+                           {1, 0});
+  test10.AddOutput<T>("output", {2}, {2, 1});
+  test10.Run();
 }
 
 template <>
 void RunTypedTest<std::string>() {
-
   // int32_t indices - axis 0
   OpTester test1("GatherElements", 11);
   test1.AddAttribute<int64_t>("axis", 0LL);
   test1.AddInput<std::string>("data", {2, 3},
-                             {"a", "b", "c", "d", "e", "f"});
+                              {"a", "b", "c", "d", "e", "f"});
   test1.AddInput<int32_t>("indices", {1, 2}, {0, 1});
   test1.AddOutput<std::string>("output", {1, 2},
-                              {"a", "e"});
+                               {"a", "e"});
   test1.Run();
 
   // int32_t indices - axis 1
   OpTester test2("GatherElements", 11);
   test2.AddAttribute<int64_t>("axis", 1LL);
   test2.AddInput<std::string>("data", {2, 2},
-                             {"a", "b",
-                              "c", "d"});
+                              {"a", "b",
+                               "c", "d"});
   test2.AddInput<int32_t>("indices", {2, 2},
-                         {0, 0,
-                          1, 0});
+                          {0, 0,
+                           1, 0});
   test2.AddOutput<std::string>("output", {2, 2},
-                              {"a", "a",
-                               "d", "c"});
+                               {"a", "a",
+                                "d", "c"});
   test2.Run();
 
-    // negative indices - axis 1
+  // negative indices - axis 1
   OpTester test3("GatherElements", 11);
   test3.AddAttribute<int64_t>("axis", 1LL);
   test3.AddInput<std::string>("data", {2, 2},
@@ -193,6 +224,30 @@ void RunTypedTest<std::string>() {
   test6.AddOutput<std::string>("output", {1, 2, 1},
                                {"a", "d"});
   test6.Run();
+
+  // 2D input - axis 1
+  OpTester test7("GatherElements", 11);
+  test7.AddAttribute<int64_t>("axis", 1LL);
+  test7.AddInput<std::string>("data", {3, 3},
+                              {"a", "b", "c",
+                               "d", "e", "f",
+                               "g", "h", "i"});
+  test7.AddInput<int64_t>("indices", {3, 2},
+                          {1, 0, 0, 1, 0, 1});
+  test7.AddOutput<std::string>("output", {3, 2}, {"b", "a", "d", "e", "g", "h"});
+  test7.Run();
+
+  // 2D input - axis 2
+  OpTester test8("GatherElements", 11);
+  test8.AddAttribute<int64_t>("axis", 0LL);
+  test8.AddInput<std::string>("data", {3, 3},
+                              {"a", "b", "c",
+                               "d", "e", "f",
+                               "g", "h", "i"});
+  test8.AddInput<int64_t>("indices", {3, 2},
+                          {1, 0, 0, 1, 0, 1});
+  test8.AddOutput<std::string>("output", {3, 2}, {"d", "b", "a", "e", "a", "e"});
+  test8.Run();
 }
 
 TEST(GatherElementsOpTest, int8_t) {

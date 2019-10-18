@@ -1,3 +1,2 @@
-OrtGetApi
-OrtGetVersionString
+OrtGetApiBase
 OrtSessionOptionsAppendExecutionProvider_CPU
