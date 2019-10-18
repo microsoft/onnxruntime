@@ -6,7 +6,7 @@ The software may collect information about you and your use of the software and 
 ***
 
 ### Private Builds
-Note that no data collection is performed by default when using your private builds.
+No data collection is performed when using your private builds.
 
 ### Official Builds
 Currently telemetry is only implemented for Windows builds, but may be expanded in the future to cover other platforms. Telemetry is turned OFF by default while this feature is in BETA. When the feature moves from BETA to RELEASE, developers should expect telemetry to be ON by default when using the Official Builds. This is implemented via 'Platform Telemetry' per vendor platform providers (see telemetry.h).
@@ -14,4 +14,5 @@ Currently telemetry is only implemented for Windows builds, but may be expanded 
 #### Technical Details
 The Windows provider uses the [TraceLogging](https://docs.microsoft.com/en-us/windows/win32/tracelogging/trace-logging-about) API for its implementation.
 
-You can turn this on or off using the Enable/DisableTelemetryEvents() C API.
+For API usage details to turn this on/off, please check the API pages:
+* [C API](./C_API.md#telemetry)
