@@ -102,7 +102,7 @@ TEST(SequenceOpsTest, ConcatFromSequence_Concat_Axis2) {
   input.AddTensor({1, 2}, {2, 3});
   test.AddSeqInput("S", input);
   test.AddOutput<int64_t>("I", {1, 2, 2}, {0, 2, 1, 3});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectFailure, "axis 2 is not in valid range [-2,1]");
 }
 
 TEST(SequenceOpsTest, ConcatFromSequence_Concat_Axis1_WithEmptyInput) {
