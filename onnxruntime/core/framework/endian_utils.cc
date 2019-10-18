@@ -12,6 +12,7 @@ namespace utils {
 void SwapByteOrderCopy(
     size_t element_size_in_bytes,
     gsl::span<const char> source_bytes, gsl::span<char> destination_bytes) {
+  assert(element_size_in_bytes > 0);
   assert(source_bytes.size_bytes() % element_size_in_bytes == 0);
   assert(source_bytes.size_bytes() == destination_bytes.size_bytes());
 
