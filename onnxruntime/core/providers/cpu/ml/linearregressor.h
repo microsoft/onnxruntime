@@ -18,8 +18,7 @@ class LinearRegressor final : public OpKernel {
   LinearRegressor(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* ctx) const override {
-    auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-    concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
+    concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
 
     const auto* X = ctx->Input<Tensor>(0);
     if (X->Shape().NumDimensions() == 0) {
@@ -32,6 +31,7 @@ class LinearRegressor final : public OpKernel {
     int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
     Tensor* Y = ctx->Output(0, TensorShape({N, targets_}));
     T* Ydata = Y->MutableData<T>();
+    //math::Gemm doesn't support double in all the platforms, so we use MatMul here.
     math::MatMul<T>(static_cast<int>(N), static_cast<int>(targets_), static_cast<int>(stride), X->Data<T>(),
                     coefficients_.data(), Y->MutableData<T>(), tp);
     bool useIntercepts = intercepts_.size() == static_cast<size_t>(targets_);
@@ -57,7 +57,7 @@ class LinearRegressor final : public OpKernel {
 
  private:
   int64_t targets_;
-  std::vector<T> coefficients_;
+  Eigen::Tensor<T, 2, Eigen::RowMajor, Eigen::DenseIndex> coefficients_;
   std::vector<T> intercepts_;
   // Indeed, it can't be PROBIT
   POST_EVAL_TRANSFORM post_transform_;

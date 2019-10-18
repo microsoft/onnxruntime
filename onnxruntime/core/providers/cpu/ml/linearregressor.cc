@@ -15,23 +15,34 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(LinearRegressor, kMLDomain, 1, double, kCpuExecuti
                               LinearRegressor<double>);
 
 template <typename T>
-LinearRegressor<T>::LinearRegressor(const OpKernelInfo& info)
-    : OpKernel(info), post_transform_(MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))) {
+static T GetAttr(const OpKernelInfo& info, const std::string& name) {
+  T value;
+  ORT_ENFORCE(info.GetAttr<T>(name, &value).IsOK());
+  return value;
+}
+
+template <typename T>
+static Eigen::Tensor<T, 2, Eigen::RowMajor, Eigen::DenseIndex> GetCoefficients(const OpKernelInfo& info, int64_t targets_) {
   std::vector<float> c;
-  c = info.GetAttrsOrDefault<float>("intercepts");
-  intercepts_.resize(c.size());
-  std::copy_n(c.data(), c.size(), intercepts_.data());
-  ORT_ENFORCE(info.GetAttr<int64_t>("targets", &targets_).IsOK());
-  c.clear();
   ORT_ENFORCE(info.GetAttrs<float>("coefficients", c).IsOK());
-  coefficients_.resize(c.size());
   ORT_ENFORCE(c.size() % targets_ == 0);
   int64_t feature_size = static_cast<int64_t>(c.size()) / targets_;
-  for (int64_t i = 0; i != targets_; ++i) {
-    int64_t offset = i * feature_size;
-    for (int64_t j = 0; j != feature_size; ++j) {
-      coefficients_[j * targets_ + i] = c[offset + j];
-    }
+  typename Eigen::TensorMap<Eigen::Tensor<float, 2, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Unaligned> c_tensor(c.data(), targets_, feature_size);
+  //Tranpose the data so that we can use math::MatMul instead of math::Gemm in the compute function
+  Eigen::array<int, 2> shuffle{1, 0};
+  return c_tensor.cast<T>().shuffle(shuffle);
+}
+
+template <typename T>
+LinearRegressor<T>::LinearRegressor(const OpKernelInfo& info)
+    : OpKernel(info),
+      targets_(GetAttr<int64_t>(info, "targets")),
+      coefficients_(GetCoefficients<T>(info, targets_)),
+      post_transform_(MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))) {
+  {
+    std::vector<float> c = info.GetAttrsOrDefault<float>("intercepts");
+    intercepts_.resize(c.size());
+    std::copy_n(c.data(), c.size(), intercepts_.data());
   }
 
   // A dirty hack to keep the code working as before

@@ -48,7 +48,7 @@ array([ 2.22044605e-16, 4.10000000e+01])
 r4
 array([[ 1., 32.],[ 3., 14.],[ 23., -166.]])
 */
-TEST_P(LinearRegressorTest, LinearRegressorUniTarget) {
+TEST_P(LinearRegressorTest, predict) {
   const LinearRegressorParam& param = GetParam();
   OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
   std::vector<float> coefficients, intercepts;
