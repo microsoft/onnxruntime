@@ -42,7 +42,7 @@ class ConcatBase {
   // the core method that will be invoked by the 'Concat' (CPU and GPU) 
   // and 'ConcatFromSequence' kernels
   Status PrepareForCompute(OpKernelContext* ctx, const std::vector<const Tensor*>& input_tensors,
-                           int64_t axis, bool is_stack, Prepare& p) const;
+                           Prepare& p) const;
 
   Status ComputeImpl(Prepare& p) const;
 

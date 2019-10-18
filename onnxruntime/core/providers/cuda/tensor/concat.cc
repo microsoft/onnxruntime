@@ -26,7 +26,7 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   Prepare p;
-  ORT_RETURN_IF_ERROR(PrepareForCompute(ctx, input_tensors, axis_, is_stack_, p));
+  ORT_RETURN_IF_ERROR(PrepareForCompute(ctx, input_tensors, p));
 
   // Return at this point if output tensor is going to be empty
   if (p.output_num_elements == 0)

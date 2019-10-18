@@ -25,7 +25,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 // 'ConcatFromSequence' ('concat' and 'stack' modes) to validate inputs
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
                                      const std::vector<const Tensor*>& input_tensors,
-                                     int64_t axis, bool is_stack, Prepare& p) const {
+                                     Prepare& p) const {
   int input_count = static_cast<int>(input_tensors.size());
   // Must have atleast one input to concat
   ORT_RETURN_IF_NOT(input_count >= 1, "Must have 1 or more inputs");
@@ -39,12 +39,12 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
   const size_t inputs_0_rank = inputs_0_dims.size();
 
   // Cannot concatenate scalars (but they can be stacked)
-  if (!is_stack)
+  if (!is_stack_)
     ORT_RETURN_IF_NOT(inputs_0_rank > 0, "Cannot concatenate scalars");
 
   // Handle and fix negative axis
   // In 'stack' mode, the accepted range depends on the output rank (which is one more than the input rank)
-  p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis, !is_stack ? inputs_0_rank : inputs_0_rank + 1));
+  p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis_, !is_stack_ ? inputs_0_rank : inputs_0_rank + 1));
 
   // Note if input tensor is empty for later use (it's expensive to call Size() on TensorShape)
   std::vector<int64_t> input_tensor_sizes(input_count);
@@ -70,7 +70,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 
       // In 'concat' mode, the axis to be concatenated may be different
       // But in 'stack' mode, all input shapes must be the same and must be validated
-      if (!is_stack && axis_index == p.axis)
+      if (!is_stack_ && axis_index == p.axis)
         continue;
 
       ORT_RETURN_IF_NOT(dim_value == inputs_0_dims[axis_index],
@@ -85,7 +85,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
   // Calculate the shape of the output tensor
   std::vector<int64_t> output_dims = inputs_0_dims;
   // 'Concat' mode
-  if (!is_stack) {
+  if (!is_stack_) {
     // While concating, the rank of the output is the same as the input rank(s)
 
     // Calculate the size of the concatenated axis
@@ -118,7 +118,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
   // The output_axis_pitch is the number of elements to add to move to the next split axis in the output.
   // Can handle stacking as well.
   p.output_axis_pitch = 1;
-  auto output_rank = !is_stack ? inputs_0_rank : inputs_0_rank + 1;
+  auto output_rank = !is_stack_ ? inputs_0_rank : inputs_0_rank + 1;
   for (size_t i = output_rank; i-- > p.axis;) {
     p.output_axis_pitch *= output_dims[i];
   }
@@ -210,7 +210,7 @@ Status Concat::Compute(OpKernelContext* ctx) const {
 
   // Validate inputs and prepare some metadata used during actual compute
   Prepare p;
-  auto status = PrepareForCompute(ctx, input_tensors, axis_, is_stack_, p);
+  auto status = PrepareForCompute(ctx, input_tensors, p);
   if (!status.IsOK())
     return status;
 
