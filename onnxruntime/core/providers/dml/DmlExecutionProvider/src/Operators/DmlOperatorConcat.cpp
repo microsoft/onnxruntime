@@ -15,22 +15,66 @@ public:
     :   DmlOperator(kernelInfo),
         ConcatHelper(kernelInfo, kernelInfo.GetTensorShapeDescription())
     {
-        DmlOperator::Initialize(kernelInfo);
+        auto tensorShapeDescription = kernelInfo.GetTensorShapeDescription();
+        std::vector<std::optional<uint32_t>> kernelInputIndices;
 
-        uint32_t dmlAxis = GetDmlAdjustedAxis(m_axis, kernelInfo, m_inputTensorDescs.front().GetDimensionCount());
+        std::vector<DimensionType> tensorShape;
 
-        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
-        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+        for (uint32_t i = 0; i < kernelInfo.GetInputCount(); i++)
+        {
+            // Only keep the non-empty tensors
+            if (!OperatorHelper::ContainsEmptyDimensions(tensorShapeDescription.GetInputTensorShape(i)))
+            {
+                kernelInputIndices.push_back(i);
+            }
+        }
 
-        DML_JOIN_OPERATOR_DESC joinDesc = {};
-        joinDesc.InputCount = gsl::narrow_cast<uint32_t>(inputDescs.size());
-        joinDesc.InputTensors = inputDescs.data();
-        joinDesc.OutputTensor = outputDescs.data();
-        joinDesc.Axis = dmlAxis;
+        DmlOperator::Initialize(kernelInfo, kernelInputIndices);
 
-        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_JOIN, &joinDesc };
+        // Only execute Concat if it has at least one non-empty input
+        if (!m_inputTensorDescs.empty())
+        {
+            uint32_t dmlAxis = GetDmlAdjustedAxis(m_axis, kernelInfo, m_inputTensorDescs.front().GetDimensionCount());
 
-        SetDmlOperatorDesc(opDesc, kernelInfo);
+            std::vector<DML_TENSOR_DESC> inputDescs;
+            inputDescs.reserve(m_inputTensorDescs.size());
+
+            for (size_t i = 0; i < m_inputTensorDescs.size(); i++)
+            {
+                // DML doesn't support empty tensors for concat, so we ignore them
+                if (!OperatorHelper::ContainsEmptyDimensions(m_inputTensorDescs[i].GetDmlSizes()))
+                {
+                    inputDescs.push_back(m_inputTensorDescs[i].GetDmlDesc());
+                }
+            }
+
+            std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+
+            DML_JOIN_OPERATOR_DESC joinDesc = {};
+            joinDesc.InputCount = gsl::narrow_cast<uint32_t>(inputDescs.size());
+            joinDesc.InputTensors = inputDescs.data();
+            joinDesc.OutputTensor = outputDescs.data();
+            joinDesc.Axis = dmlAxis;
+
+            DML_OPERATOR_DESC opDesc = { DML_OPERATOR_JOIN, &joinDesc };
+
+            SetDmlOperatorDesc(opDesc, kernelInfo);
+        }
+    }
+
+    void Compute(const MLOperatorKernelContext& kernelContext)
+    {
+        std::vector<IMLOperatorTensor*> inputTensors = GetInputTensorsForExecute(kernelContext);
+        std::vector<IMLOperatorTensor*> outputTensors = GetOutputTensorsForExecute(kernelContext);
+
+        if (!inputTensors.empty())
+        {
+            THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+                m_compiledOperator.Get(),
+                m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
+                gsl::make_span(inputTensors),
+                gsl::make_span(outputTensors)));
+        }
     }
 };
 

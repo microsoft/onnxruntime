@@ -1,18 +1,27 @@
 diff --git a/cmake/external_mkldnn_v1.cmake b/cmake/external_mkldnn_v1.cmake
-index fb77250c..d72d1b6c 100644
+index fb77250c8..94185ff34 100644
 --- a/cmake/external_mkldnn_v1.cmake
 +++ b/cmake/external_mkldnn_v1.cmake
-@@ -200,6 +200,7 @@ if (WIN32)
+@@ -200,6 +200,8 @@ if (WIN32)
          CONFIGURE_COMMAND
          PATCH_COMMAND ${MKLDNN_PATCH_REVERT_COMMAND}
          COMMAND git apply --ignore-space-change --ignore-whitespace ${CMAKE_SOURCE_DIR}/cmake/${MKLDNN_PATCH_FILE}
 +        COMMAND git apply --ignore-space-change --ignore-whitespace ${CMAKE_SOURCE_DIR}/cmake/mkldnn_constexpr.patch
++        COMMAND git apply --ignore-space-change --ignore-whitespace ${CMAKE_SOURCE_DIR}/cmake/mkldnn_memory_zero_pad.patch
+         CMAKE_GENERATOR ${CMAKE_GENERATOR}
+         CMAKE_GENERATOR_PLATFORM ${CMAKE_GENERATOR_PLATFORM}
+         CMAKE_GENERATOR_TOOLSET ${CMAKE_GENERATOR_TOOLSET}
+@@ -233,6 +235,7 @@ else()
+         CONFIGURE_COMMAND
+         PATCH_COMMAND ${MKLDNN_PATCH_REVERT_COMMAND}
+         COMMAND git apply ${CMAKE_SOURCE_DIR}/cmake/${MKLDNN_PATCH_FILE}
++        COMMAND git apply --ignore-space-change --ignore-whitespace ${CMAKE_SOURCE_DIR}/cmake/mkldnn_memory_zero_pad.patch
          CMAKE_GENERATOR ${CMAKE_GENERATOR}
          CMAKE_GENERATOR_PLATFORM ${CMAKE_GENERATOR_PLATFORM}
          CMAKE_GENERATOR_TOOLSET ${CMAKE_GENERATOR_TOOLSET}
 diff --git a/cmake/mkldnn_constexpr.patch b/cmake/mkldnn_constexpr.patch
 new file mode 100644
-index 00000000..86e99cc8
+index 000000000..27a869cd7
 --- /dev/null
 +++ b/cmake/mkldnn_constexpr.patch
 @@ -0,0 +1,43 @@
@@ -59,3 +68,22 @@ index 00000000..86e99cc8
 + 
 +     private:
 +         const dim_t cacheline_size_ = 64; // bytes
+diff --git a/cmake/mkldnn_memory_zero_pad.patch b/cmake/mkldnn_memory_zero_pad.patch
+new file mode 100644
+index 000000000..c0044a46c
+--- /dev/null
++++ b/cmake/mkldnn_memory_zero_pad.patch
+@@ -0,0 +1,13 @@
++diff --git a/src/common/memory_zero_pad.cpp b/src/common/memory_zero_pad.cpp
++index d10be49d..fbe11b08 100644
++--- a/src/common/memory_zero_pad.cpp
+++++ b/src/common/memory_zero_pad.cpp
++@@ -63,7 +63,7 @@ void typed_zero_pad_blk(
++ 
++     const int A = A_blocked ? pdims[0] / blksize : dims[0];
++     const int B = B_blocked ? pdims[1] / blksize : dims[1];
++-    const int C = C_blocked ? pdims[2] / blksize : dims[2];
+++    const int C = m_d.ndims() > 2 ? (C_blocked ? pdims[2] / blksize : dims[2]) : 1;
++     const int D = m_d.ndims() > 3 ? dims[3] : 1;
++     const int E = m_d.ndims() > 4 ? dims[4] : 1;
++     const int F = m_d.ndims() > 5 ? dims[5] : 1;
