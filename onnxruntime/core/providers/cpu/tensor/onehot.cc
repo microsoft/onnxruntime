@@ -28,10 +28,22 @@ namespace onnxruntime {
 // spec: https://github.com/onnx/onnx/blob/master/docs/Operators.md#OneHot
 
 // T1: indices, T2: depth, T3: values
-#define REG_TYPED_ONE_HOT_OP(types_str, in_type, out_type, depth_type)     \
+#define REG_TYPED_ONE_HOT_OP_V9_10(types_str, in_type, out_type, depth_type) \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                  \
+      OneHot,                                                                \
+      9, 10,                                                                 \
+      types_str,                                                             \
+      KernelDefBuilder()                                                     \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<in_type>())      \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<depth_type>())   \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<out_type>()),    \
+      OneHotOp<in_type, out_type, depth_type>);
+
+// T1: indices, T2: depth, T3: values
+#define REG_TYPED_ONE_HOT_OP_V11(types_str, in_type, out_type, depth_type) \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                          \
       OneHot,                                                              \
-      9,                                                                   \
+      11,                                                                  \
       types_str,                                                           \
       KernelDefBuilder()                                                   \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<in_type>())    \
@@ -39,18 +51,31 @@ namespace onnxruntime {
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<out_type>()),  \
       OneHotOp<in_type, out_type, depth_type>);
 
-#define REG_ONE_HOT_OP(in_type, out_type, depth_type) \
-  REG_TYPED_ONE_HOT_OP(in_type##_##out_type##_##depth_type, in_type, out_type, depth_type)
+#define REG_ONE_HOT_OP_V9_10(in_type, out_type, depth_type) \
+  REG_TYPED_ONE_HOT_OP_V9_10(in_type##_##out_type##_##depth_type, in_type, out_type, depth_type)
 
-REG_ONE_HOT_OP(int64_t, int64_t, int64_t);
-REG_ONE_HOT_OP(float, int64_t, int64_t);
-REG_ONE_HOT_OP(int64_t, string, int64_t);
-REG_ONE_HOT_OP(float, string, int64_t);
-REG_ONE_HOT_OP(int64_t, float, int64_t);
-REG_ONE_HOT_OP(int32_t, float, int32_t);
-REG_ONE_HOT_OP(int32_t, float, float);
-REG_ONE_HOT_OP(float, float, float);      // added this to satisfy onnx model tests
-REG_ONE_HOT_OP(int64_t, int32_t, float);  // added this to satisfy onnx model tests
+#define REG_ONE_HOT_OP_V11(in_type, out_type, depth_type) \
+  REG_TYPED_ONE_HOT_OP_V11(in_type##_##out_type##_##depth_type, in_type, out_type, depth_type)
+
+REG_ONE_HOT_OP_V9_10(int64_t, int64_t, int64_t);
+REG_ONE_HOT_OP_V9_10(float, int64_t, int64_t);
+REG_ONE_HOT_OP_V9_10(int64_t, string, int64_t);
+REG_ONE_HOT_OP_V9_10(float, string, int64_t);
+REG_ONE_HOT_OP_V9_10(int64_t, float, int64_t);
+REG_ONE_HOT_OP_V9_10(int32_t, float, int32_t);
+REG_ONE_HOT_OP_V9_10(int32_t, float, float);
+REG_ONE_HOT_OP_V9_10(float, float, float);      // added this to satisfy onnx model tests
+REG_ONE_HOT_OP_V9_10(int64_t, int32_t, float);  // added this to satisfy onnx model tests
+
+REG_ONE_HOT_OP_V11(int64_t, int64_t, int64_t);
+REG_ONE_HOT_OP_V11(float, int64_t, int64_t);
+REG_ONE_HOT_OP_V11(int64_t, string, int64_t);
+REG_ONE_HOT_OP_V11(float, string, int64_t);
+REG_ONE_HOT_OP_V11(int64_t, float, int64_t);
+REG_ONE_HOT_OP_V11(int32_t, float, int32_t);
+REG_ONE_HOT_OP_V11(int32_t, float, float);
+REG_ONE_HOT_OP_V11(float, float, float);      // added this to satisfy onnx model tests
+REG_ONE_HOT_OP_V11(int64_t, int32_t, float);  // added this to satisfy onnx model tests
 
 Status ValidateInputs(const Tensor* depth,
                       const Tensor* values) {
