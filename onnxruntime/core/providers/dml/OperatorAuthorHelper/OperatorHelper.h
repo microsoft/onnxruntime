@@ -9,6 +9,8 @@
 
 namespace OperatorHelper
 {
+bool ContainsEmptyDimensions(gsl::span<const DimensionType> dimensions);
+
 std::vector<DimensionType> BroadcastTensorShape(
     gsl::span<const DimensionType> inputShape0,
     gsl::span<const DimensionType> inputShape1
