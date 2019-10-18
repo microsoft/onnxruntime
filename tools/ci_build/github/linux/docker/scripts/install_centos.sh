@@ -12,7 +12,7 @@ echo "installing for os major version : $os_major_version"
 if [ "$os_major_version" == "5" ]; then
   #Be careful, don't pull gcc into the base system, because we already have one in /opt/rh/devtoolset-2/root/usr/bin
   yum install -y redhat-lsb expat-devel libcurl-devel tar unzip curl zlib-devel make  python2-devel icu  rsync bzip2 git bzip2-devel
-elif [ "$os_major_version" == "6" ]; then
+elif [ "$os_major_version" == "6" ] && [ ! -d "/opt/python/cp35-cp35m" ]; then
   yum install -y centos-release-scl
   yum repolist
   yum install -y redhat-lsb-core expat-devel libcurl-devel tar unzip curl zlib-devel make libunwind icu aria2 rsync bzip2 git bzip2-devel
