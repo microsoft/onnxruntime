@@ -21,9 +21,11 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Concat);
 
-// this method will be shared between 'Concat' and 'ConcatFromSequence' ('concat' and 'stack' modes) to validate inputs
-static Status PrepareForCompute(OpKernelContext* ctx, const std::vector<const Tensor*>& input_tensors,
-                                int64_t axis, bool is_stack, Prepare& p) {
+// this method will be shared between 'Concat' (CPU and GPU) and 
+// 'ConcatFromSequence' ('concat' and 'stack' modes) to validate inputs
+Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
+                                     const std::vector<const Tensor*>& input_tensors,
+                                     int64_t axis, bool is_stack, Prepare& p) const {
   int input_count = static_cast<int>(input_tensors.size());
   // Must have atleast one input to concat
   ORT_RETURN_IF_NOT(input_count >= 1, "Must have 1 or more inputs");
@@ -89,7 +91,7 @@ static Status PrepareForCompute(OpKernelContext* ctx, const std::vector<const Te
     // Calculate the size of the concatenated axis
     size_t concat_axis_size = 0;
     for (int64_t index = 0; index < input_count; index++) {
-      concat_axis_size += input_tensors[index]->Shape()[int(p.axis)];
+      concat_axis_size += input_tensors[index]->Shape()[static_cast<int>(p.axis)];
     }
 
     output_dims[p.axis] = concat_axis_size;
@@ -150,7 +152,7 @@ static Status PrepareForCompute(OpKernelContext* ctx, const std::vector<const Te
 }
 
 // This method computes the output tensor for Concat/ConcatFromSequence ops
-static Status ComputeImpl(Prepare& p) {
+Status ConcatBase::ComputeImpl(Prepare& p) const {
   int input_count = static_cast<int>(p.inputs.size());
   int64_t initial_output_offset = 0;  // initial offset for each input
   auto element_bytes = p.output_tensor->DataType()->Size();
@@ -194,7 +196,18 @@ static Status ComputeImpl(Prepare& p) {
   return Status::OK();
 }
 
-Status ConcatBase::ValidateInputsAndComputeOutput(OpKernelContext* ctx, const std::vector<const Tensor*>& input_tensors) const {
+// core Compute() method for the 'Concat' kernel
+Status Concat::Compute(OpKernelContext* ctx) const {
+  // Number of input tensors to concatenate
+  auto input_count = Node().InputArgCount().front();
+
+  // Hold pointers to the input tensors to be used in the PrepareForCompute() step
+  std::vector<const Tensor*> input_tensors;
+  input_tensors.reserve(input_count);
+  for (int i = 0; i < input_count; ++i) {
+    input_tensors.push_back(ctx->Input<Tensor>(i));
+  }
+
   // Validate inputs and prepare some metadata used during actual compute
   Prepare p;
   auto status = PrepareForCompute(ctx, input_tensors, axis_, is_stack_, p);
@@ -207,21 +220,6 @@ Status ConcatBase::ValidateInputsAndComputeOutput(OpKernelContext* ctx, const st
 
   // Compute values to be placed in the output tensor
   return ComputeImpl(p);
-}
-
-// core Compute() method for the 'Concat' kernel
-Status Concat::Compute(OpKernelContext* ctx) const {
-  // Number of input tensors to concatenate
-  auto input_count = Node().InputArgCount().front();
-
-  // Hold pointers to the input tensors to be used in the PrepareForCompute() step
-  std::vector<const Tensor*> input_tensors;
-  input_tensors.reserve(input_count);
-  for (int i = 0; i < input_count; ++i) {
-    input_tensors.push_back(std::move(ctx->Input<Tensor>(i)));
-  }
-
-  return ValidateInputsAndComputeOutput(ctx, input_tensors);
 }
 
 }  // namespace onnxruntime

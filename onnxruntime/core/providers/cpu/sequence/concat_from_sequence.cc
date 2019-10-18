@@ -31,10 +31,21 @@ Status ConcatFromSequence::Compute(OpKernelContext* ctx) const {
   std::vector<const Tensor*> input_tensor_pointers;
   input_tensor_pointers.reserve(input_count);
   for (int i = 0; i < input_count; ++i) {
-    input_tensor_pointers.push_back(std::move(&input_tensors[i]));
+    input_tensor_pointers.push_back(&input_tensors[i]);
   }
 
-  return ValidateInputsAndComputeOutput(ctx, input_tensor_pointers);
+  // Validate inputs and prepare some metadata used during actual compute
+  Prepare p;
+  auto status = PrepareForCompute(ctx, input_tensor_pointers, axis_, is_stack_, p);
+  if (!status.IsOK())
+    return status;
+
+  // Return at this point if output tensor is going to be empty
+  if (p.output_num_elements == 0)
+    return Status::OK();
+
+  // Compute values to be placed in the output tensor
+  return ComputeImpl(p);
 }
 
 }  // namespace onnxruntime
