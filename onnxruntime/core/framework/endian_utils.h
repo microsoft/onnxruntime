@@ -58,7 +58,7 @@ common::Status ReadLittleEndian(gsl::span<const char> source_bytes, gsl::span<T>
 template <typename T>
 common::Status WriteLittleEndian(gsl::span<const T> source, gsl::span<char> destination_bytes) {
   static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable");
-  ORT_RETURN_IF_NOT(source_bytes.size_bytes() == destination.size_bytes(),
+  ORT_RETURN_IF_NOT(source.size_bytes() == destination_bytes.size_bytes(),
                     "source and destination buffer size mismatch");
   const auto source_bytes = gsl::make_span(
       reinterpret_cast<const char*>(source.data()), source.size_bytes());
