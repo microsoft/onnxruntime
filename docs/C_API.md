@@ -30,10 +30,5 @@ The example below shows a sample run using the SqueezeNet model from ONNX model 
 
 * [../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
 
-# Telemetry
-This project collects usage data and sends it to Microsoft to help improve our products and services. Note however that no data collection is performed by default when using your private builds
-
-Telemetry is turned OFF by default while this feature is in BETA.   When the feature moves from BETA to RELEASE, developers should expect telemetry to be ON by default when using the Official Builds.  This is implemented via 'Platform Telemetry' per vendor platform providers (see telemetry.h).
-
-The Windows provider uses the [TraceLogging](https://docs.microsoft.com/en-us/windows/win32/tracelogging/trace-logging-about) API for its implementation.
-
+## Telemetry
+To turn on/off telemetry collection on official Windows builds, please use Enable/DisableTelemetryEvents() in the C API. See the [Privacy](./Privacy.md) page for more information on telemetry collection and Microsoft's privacy policy.
