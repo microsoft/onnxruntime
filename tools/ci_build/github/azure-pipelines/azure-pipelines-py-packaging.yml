@@ -226,15 +226,14 @@ jobs:
       Python37:
         python.version: '3.7'
   steps:
-    - task: CondaEnvironment@1
+    - task: UsePythonVersion@0
+      displayName: 'Use Python'
       inputs:
-        createCustomEnvironment: true
-        environmentName: 'py$(python.version)'
-        packageSpecs: 'python=$(python.version)'
-        cleanEnvironment: true
+        versionSpec: $(python.version)
 
     - script: |
-        sudo python -m pip install numpy==1.15.0
+        sudo python -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+        sudo python3 -m pip install wheel
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
         ./build.sh --config Release --skip_submodule_sync --parallel --use_openmp --build_wheel      
       displayName: 'Command Line Script' 
@@ -253,5 +252,3 @@ jobs:
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
-
-    - template: templates/clean-agent-build-directory-step.yml
