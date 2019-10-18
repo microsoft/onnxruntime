@@ -49,7 +49,7 @@ elif [ $BUILD_OS = "centos7" ]; then
     DOCKER_FILE=Dockerfile.centos
     docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
 elif [ $BUILD_OS = "centos6" ]; then
-    IMAGE="centos7"
+    IMAGE="centos6gpu"
     DOCKER_FILE=Dockerfile.centos6_gpu
     docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
 else
