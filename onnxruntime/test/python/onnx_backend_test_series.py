@@ -95,7 +95,9 @@ def test_with_types_disabled_due_to_binary_size_concerns_filters():
     filters = ['^test_bitshift_right_uint16_cpu',
                '^test_bitshift_right_uint8_cpu',
                '^test_bitshift_left_uint16_cpu',
-               '^test_bitshift_left_uint8_cpu']
+               '^test_bitshift_left_uint8_cpu',
+			   '^test_edge_pad_cpu.*',
+			   '^test_reflect_pad_cpu.*']
 
     return filters
 
@@ -111,21 +113,9 @@ def create_backend_test(testname=None):
     else:
         # Tests that are failing temporarily and should be fixed
         current_failing_tests = [#'^test_cast_STRING_to_FLOAT_cpu',  # old test data that is bad on Linux CI builds
-                                 '^test_qlinearconv_cpu',
-                                 '^test_gru_seq_length_cpu',
-                                 '^test_dynamicquantizelinear_expanded.*',
-                                 '^test_dynamicquantizelinear_max_adjusted_expanded.*',
-                                 '^test_dynamicquantizelinear_min_adjusted_expanded.*',
-                                 '^test_top_k.*',
                                  '^test_unique_not_sorted_without_axis_cpu', # bad expected data. enable after https://github.com/onnx/onnx/pull/2381 is picked up
                                  '^test_mod_float_mixed_sign_example_cpu', #onnxruntime::Mod::Compute fmod_ was false. fmod attribute must be true for float, float16 and double types
                                  '^test_shrink_cpu', #Invalid rank for input: x Got: 1 Expected: 2 Please fix either the inputs or the model.
-                                 '^test_range_float_type_positive_delta_cpu',
-                                 '^test_range_float_type_positive_delta_expanded_cpu',
-                                 '^test_range_int32_type_negative_delta_cpu',
-                                 '^test_range_int32_type_negative_delta_expanded_cpu',
-                                 '^test_det_2d_cpu',
-                                 '^test_det_nd_cpu',
                                  '^test_resize_downsample_scales_cubic_A_n0p5_exclude_outside_cpu',
                                  '^test_resize_downsample_scales_cubic_align_corners_cpu',
                                  '^test_resize_downsample_scales_cubic_cpu',
@@ -148,12 +138,7 @@ def create_backend_test(testname=None):
                                  '^test_resize_upsample_sizes_nearest_ceil_half_pixel_cpu',
                                  '^test_resize_upsample_sizes_nearest_cpu',
                                  '^test_resize_upsample_sizes_nearest_floor_align_corners_cpu',
-                                 '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu',
-                                 '^test_sequence_*',
-                                 '^test_scatter_.*',
-                                 '^test_onehot_.*',
-                                 '^test_edge_pad_cpu.*',  # test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests
-                                 '^test_reflect_pad_cpu.*'  # test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests
+                                 '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu'
         ]
 
         # Example of how to disable tests for a specific provider.
@@ -161,6 +146,7 @@ def create_backend_test(testname=None):
         #    current_failing_tests.append('^test_operator_repeat_dim_overflow_cpu')
         if c2.supports_device('NGRAPH'):
             current_failing_tests += ['^test_clip.*',
+                                      '^test_qlinearconv_cpu.*',			
                                       '^test_depthtospace_crd.*',
                                       '^test_argmax_negative_axis.*',
                                       '^test_argmin_negative_axis.*',
@@ -172,6 +158,10 @@ def create_backend_test(testname=None):
                                       'test_unsqueeze_negative_axes_cpu',
                                       'test_constant_pad_cpu']
 
+       if c2.supports_device('MKLDNN'):
+            current_failing_tests += ['^test_range_float_type_positive_delta_expanded_cpu',
+                                 '^test_range_int32_type_negative_delta_expanded_cpu']		
+ 									  
         if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
             current_failing_tests.append('^test_div_cpu*')
 
