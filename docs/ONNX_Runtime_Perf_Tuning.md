@@ -62,8 +62,6 @@ import onnxruntime as rt
 
 so = rt.SessionOptions()
 so.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
-so.AppendExecutionProvider_CUDA(0);
-
 session = rt.InferenceSession(model, sess_options=so)
 session.set_providers(['CUDAExecutionProvider'])
 ```
