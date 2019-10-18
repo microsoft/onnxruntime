@@ -30,5 +30,5 @@ The example below shows a sample run using the SqueezeNet model from ONNX model 
 
 * [../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
 
-# Telemetry
+## Telemetry
 To turn on/off telemetry collection on official Windows builds, please use Enable/DisableTelemetryEvents() in the C API. See the [Privacy](./Privacy.md) page for more information on telemetry collection and Microsoft's privacy policy.
