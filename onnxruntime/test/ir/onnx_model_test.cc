@@ -130,7 +130,7 @@ TEST_P(ONNXModelsTest, LoadFromProtobuf) {
   std::unique_ptr<ZeroCopyInputStream> raw_input(new FileInputStream(fd));
   std::unique_ptr<CodedInputStream> coded_input(new CodedInputStream(raw_input.get()));
   coded_input->SetTotalBytesLimit(INT_MAX, INT_MAX);
-  std::unique_ptr<ModelProto> model_proto = std::make_unique<ModelProto>();
+  std::unique_ptr<ModelProto> model_proto = onnxruntime::make_unique<ModelProto>();
   bool result = model_proto->ParseFromCodedStream(coded_input.get());
   coded_input.reset();
   raw_input.reset();
@@ -162,5 +162,20 @@ TEST(ONNXModelsTest, TestIRv4NonInputInitializers) {
   ASSERT_TRUE(Model::Load("testdata/subgraph_implicit_input_from_initializer.onnx", model).IsOK());
   EXPECT_TRUE(model->MainGraph().Resolve().IsOK());
 }
+
+// test a model that has an op with a FunctionBody and one of the nodes within the FunctionBody has a subgraph in it.
+// The test model has is an opset-11 op with a 'Range' node.
+// 'Range' has a FunctionBody and has a 'Loop' node with a subgraph.
+// Graph::Resolve to succeed when processing the subgraph pertaining to the overall FunctionBody.
+TEST(ONNXModelsTest, TestModelsWithAnOpContainingAFunctionBody) {
+  std::shared_ptr<Model> model;
+
+  auto status = Model::Load("testdata/model_containing_op_with_function_body.onnx", model);
+  EXPECT_TRUE(status.IsOK()) << status;
+
+  status = model->MainGraph().Resolve();
+  EXPECT_TRUE(status.IsOK()) << status;
+}
+
 }  // namespace test
 }  // namespace onnxruntime

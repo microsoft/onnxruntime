@@ -1,7 +1,7 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 """
 ONNX Runtime
 enables high-performance evaluation of trained machine learning (ML)
@@ -15,7 +15,7 @@ as Deep Learning algorithms in the
 __version__ = "0.5.0"
 __author__ = "Microsoft"
 
+from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, RunOptions, SessionOptions, set_default_logger_severity, NodeArg, ModelMetadata, GraphOptimizationLevel, ExecutionMode
+from onnxruntime.capi.session import InferenceSession
 from onnxruntime.capi import onnxruntime_validation
 onnxruntime_validation.check_distro_info()
-from onnxruntime.capi.session import InferenceSession
-from onnxruntime.capi._pybind_state import get_device, RunOptions, SessionOptions, NodeArg, ModelMetadata, GraphOptimizationLevel

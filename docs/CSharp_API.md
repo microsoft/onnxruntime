@@ -34,7 +34,7 @@ You can load your input data into Tensor<T> objects in several ways. A simple ex
     int[] dimensions;    // and the dimensions of the input is stored here
     Tensor<float> t1 = new DenseTensor<float>(sourceData, dimensions);    
 
-Here is a [complete sample code](https://github.com/Microsoft/onnxruntime/tree/master/csharp/sample/Microsoft.ML.OnnxRuntime.InferenceSample) that runs inference on a pretrained model.
+Here is a [complete sample code](../csharp/sample/Microsoft.ML.OnnxRuntime.InferenceSample) that runs inference on a pretrained model.
 
 ## Running on GPU (Optional)
 If using the GPU package, simply use the appropriate SessionOptions when creating an InferenceSession.
@@ -105,17 +105,13 @@ Constructs a SessionOptions will all options at default/unset values.
 Accessor to the default static option object
 
 #### Methods
-    SetSessionGraphOptimizationLevel(uint optimization_level);
-Sets the graph optimization level for the session. Default is set to 1. Available options are : {0, 1, 2}. 
- * 0 -> Disable all optimizations
- * 1 -> Enable basic optimizations such as redundant node removals and constant folding
- * 2 -> Enable all optimizations (includes Level1 and more complex optimizations such as node fusions)
+    SetSessionGraphOptimizationLevel(GraphOptimizationLevel graph_transformer_level);
+See [ONNX_Runtime_Graph_Optimizations.md] for more details.
 
-    EnableSequentialExecution();
-Enable Sequential Execution. By default, it is enabled.
-
-    DisableSequentialExecution();
-Disable Sequential Execution and enable Parallel Execution.
+    SetSessionExecutionMode(ExecutionMode execution_mode);
+ * ORT_SEQUENTIAL - execute operators in the graph sequentially.
+ * ORT_PARALLEL - execute operators in the graph in parallel.   
+See [ONNX_Runtime_Perf_Tuning.md] for more details.
 
 ### NodeMetadata
 Container of metadata for a model graph node, used for communicating the shape and type of the input and output nodes.

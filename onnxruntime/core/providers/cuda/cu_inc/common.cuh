@@ -7,6 +7,7 @@
 #include <mutex>
 #include <assert.h>
 #include <cuda_runtime.h>
+#include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 
 namespace onnxruntime {
@@ -174,6 +175,18 @@ __device__ __inline__ T _Max(T a, T b) { return a > b ? a : b; }
 template <typename T>
 __device__ __inline__ T _Abs(T a) { return a > (T)0 ? a : -a; }
 
+template <typename T>
+__device__ __inline__ T _Normcdf(T a);
+
+template <>
+__device__ __inline__ float _Normcdf(float a) { return normcdff(a); }
+
+template <>
+__device__ __inline__ double _Normcdf(double a) { return normcdf(a); }
+
+template <>
+__device__ __inline__ half _Normcdf(half a) { return half(normcdff((float)a)); }
+
 // We would like to use 64-bit integer to support large matrices. However, CUDA seems to support only 32-bit integer
 // For now, use int32_t to ensure that both Linux and Windows see this as 32 bit integer type.
 
@@ -212,7 +225,7 @@ struct GridDim {
       N = 1;
 
     // get device information
-    const auto& props = GetDeviceProps();
+    const auto& props = DeviceProp::GetDeviceProps();
     CUDA_LONG numProcs = props.multiProcessorCount;
     CUDA_LONG warpSize = props.warpSize;
 
@@ -234,40 +247,10 @@ struct GridDim {
     assert(blocks_per_grid_ * threads_per_block_ >= N);
   }
 
-  static const std::vector<cudaDeviceProp>& GetCachedDeviceProps() {
-    std::call_once(s_cachedDevicePropsInitFlag, [=] {
-      int numDevices;
-      // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
-      CUDA_CALL_THROW(cudaDeviceSynchronize());
-      CUDA_CALL_THROW(cudaGetDeviceCount(&numDevices));
-      s_cachedDeviceProps.resize(numDevices);
-      for (int i = 0; i < numDevices; i++)
-        CUDA_CALL_THROW(cudaGetDeviceProperties(&s_cachedDeviceProps[i], i));
-    });
-
-    return s_cachedDeviceProps;
-  }
-
-  static size_t GetCurrentDeviceId() {
-    int deviceId;
-    cudaGetDevice(&deviceId);
-    return (size_t)deviceId;
-  }
-
-  // get device properties of current device
-  static const cudaDeviceProp& GetDeviceProps() {
-    const auto& cachedDevicesProps = GetCachedDeviceProps();
-    return cachedDevicesProps[GetCurrentDeviceId()];
-  }
-
   // compute our location on the grid
   static __device__ CUDA_LONG GetLinearThreadId() {
     return blockDim.x * blockIdx.x + threadIdx.x;
   }
-
- private:
-  static std::vector<cudaDeviceProp> s_cachedDeviceProps;
-  static std::once_flag s_cachedDevicePropsInitFlag;
 };
 
 #define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N) \

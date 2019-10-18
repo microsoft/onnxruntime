@@ -58,15 +58,15 @@ class ConstantBufferImpl : public IConstantBuffer<T> {
 
 template <typename T>
 std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes() {
-  return std::make_unique<ConstantBufferImpl<T>>(Consts<T>::One);
+  return onnxruntime::make_unique<ConstantBufferImpl<T>>(Consts<T>::One);
 }
 
 template std::unique_ptr<IConstantBuffer<float>> CreateConstantOnes<float>();
 template std::unique_ptr<IConstantBuffer<double>> CreateConstantOnes<double>();
 template std::unique_ptr<IConstantBuffer<half>> CreateConstantOnes<half>();
 
-#define SPECIALIZED_FILL(T)                                 \
-template void Fill<T>(T* output, T value, int64_t count);
+#define SPECIALIZED_FILL(T) \
+  template void Fill<T>(T * output, T value, int64_t count);
 
 SPECIALIZED_FILL(int8_t)
 SPECIALIZED_FILL(int16_t)

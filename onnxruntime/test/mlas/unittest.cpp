@@ -30,12 +30,18 @@ Abstract:
 #include "core/platform/threadpool.h"
 #endif
 
+#include "core/common/make_unique.h"
+
 #if !defined(_countof)
 #define _countof(_Array) (sizeof(_Array) / sizeof(_Array[0]))
 #endif
 
+#if defined(_M_AMD64) || defined(__x86_64__)
+#define MLAS_HAS_DGEMM
+#endif
+
 #if defined(_M_IX86) || defined(__i386__) || defined(_M_AMD64) || defined(__x86_64__)
-#define MLAS_HAS_QGEMM_U8U8
+#define MLAS_HAS_QGEMM_U8X8
 #endif
 
 MLAS_THREADPOOL* threadpool = nullptr;
@@ -191,7 +197,8 @@ public:
         ) = 0;
 };
 
-class MlasSgemmTest : public MlasTestBase
+template <typename T>
+class MlasFgemmTest : public MlasTestBase
 {
 private:
     void
@@ -203,10 +210,10 @@ private:
         float beta
         )
     {
-        const float* A = BufferA.GetBuffer(K * M);
-        const float* B = BufferB.GetBuffer(N * K);
-        float* C = BufferC.GetBuffer(N * M);
-        float* CReference = BufferCReference.GetBuffer(N * M);
+        const T* A = BufferA.GetBuffer(K * M);
+        const T* B = BufferB.GetBuffer(N * K);
+        T* C = BufferC.GetBuffer(N * M);
+        T* CReference = BufferCReference.GetBuffer(N * M);
 
         Test(CblasNoTrans, CblasNoTrans, M, N, K, alpha, A, K, B, N, beta, C, CReference, N);
         Test(CblasNoTrans, CblasTrans, M, N, K, alpha, A, K, B, K, beta, C, CReference, N);
@@ -222,44 +229,44 @@ private:
         size_t N,
         size_t K,
         float alpha,
-        const float* A,
+        const T* A,
         size_t lda,
-        const float* B,
+        const T* B,
         size_t ldb,
         float beta,
-        float* C,
-        float* CReference,
+        T* C,
+        T* CReference,
         size_t ldc
         )
     {
         std::fill_n(C, M * N, -0.5f);
         std::fill_n(CReference, M * N, -0.5f);
 
-        MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool);
-        ReferenceSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, CReference, ldc);
+        MlasGemm(TransA, TransB, M, N, K, T(alpha), A, lda, B, ldb, T(beta), C, ldc, threadpool);
+        ReferenceGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, CReference, ldc);
 
         for (size_t f = 0; f < M * N; f++) {
             // Sensitive to comparing positive/negative zero.
             if (C[f] != CReference[f]) {
-                printf("mismatch TransA=%d, TransB=%d, M=%zd, N=%zd, K=%zd, alpha=%f, beta=%f!\n", TransA, TransB, M, N, K, alpha, beta);
+                printf("mismatch TransA=%d, TransB=%d, M=%zd, N=%zd, K=%zd, alpha=%f, beta=%f  %f %f!\n", TransA, TransB, M, N, K, alpha, beta, float(C[f]), float(CReference[f]));
             }
         }
     }
 
     void
-    ReferenceSgemm(
+    ReferenceGemm(
         CBLAS_TRANSPOSE TransA,
         CBLAS_TRANSPOSE TransB,
         size_t M,
         size_t N,
         size_t K,
         float alpha,
-        const float* A,
+        const T* A,
         size_t lda,
-        const float* B,
+        const T* B,
         size_t ldb,
         float beta,
-        float* C,
+        T* C,
         size_t ldc
         )
     {
@@ -271,10 +278,10 @@ private:
 
                     for (size_t n = 0; n < N; n++) {
 
-                        const float* a = A + (m * lda);
-                        const float* b = B + n;
-                        float* c = C + (m * ldc) + n;
-                        float sum = 0.0f;
+                        const T* a = A + (m * lda);
+                        const T* b = B + n;
+                        T* c = C + (m * ldc) + n;
+                        T sum = 0.0f;
 
                         for (size_t k = 0; k < K; k++) {
                             sum += (*b * *a);
@@ -292,10 +299,10 @@ private:
 
                     for (size_t n = 0; n < N; n++) {
 
-                        const float* a = A + (m * lda);
-                        const float* b = B + (n * ldb);
-                        float* c = C + (m * ldc) + n;
-                        float sum = 0.0f;
+                        const T* a = A + (m * lda);
+                        const T* b = B + (n * ldb);
+                        T* c = C + (m * ldc) + n;
+                        T sum = 0.0f;
 
                         for (size_t k = 0; k < K; k++) {
                             sum += (*b * *a);
@@ -316,10 +323,10 @@ private:
 
                     for (size_t n = 0; n < N; n++) {
 
-                        const float* a = A + m;
-                        const float* b = B + n;
-                        float* c = C + (m * ldc) + n;
-                        float sum = 0.0f;
+                        const T* a = A + m;
+                        const T* b = B + n;
+                        T* c = C + (m * ldc) + n;
+                        T sum = 0.0f;
 
                         for (size_t k = 0; k < K; k++) {
                             sum += (*b * *a);
@@ -337,10 +344,10 @@ private:
 
                     for (size_t n = 0; n < N; n++) {
 
-                        const float* a = A + m;
-                        const float* b = B + (n * ldb);
-                        float* c = C + (m * ldc) + n;
-                        float sum = 0.0f;
+                        const T* a = A + m;
+                        const T* b = B + (n * ldb);
+                        T* c = C + (m * ldc) + n;
+                        T sum = 0.0f;
 
                         for (size_t k = 0; k < K; k++) {
                             sum += (*b * *a);
@@ -355,10 +362,10 @@ private:
         }
     }
 
-    MatrixGuardBuffer<float> BufferA;
-    MatrixGuardBuffer<float> BufferB;
-    MatrixGuardBuffer<float> BufferC;
-    MatrixGuardBuffer<float> BufferCReference;
+    MatrixGuardBuffer<T> BufferA;
+    MatrixGuardBuffer<T> BufferB;
+    MatrixGuardBuffer<T> BufferC;
+    MatrixGuardBuffer<T> BufferCReference;
 
 public:
     void
@@ -452,9 +459,10 @@ public:
     }
 };
 
-#ifdef MLAS_HAS_QGEMM_U8U8
+#ifdef MLAS_HAS_QGEMM_U8X8
 
-class MlasQgemmU8U8Test : public MlasTestBase
+template <typename xint8_t>
+class MlasQgemmU8X8Test : public MlasTestBase
 {
 private:
     void
@@ -467,11 +475,11 @@ private:
         )
     {
         const uint8_t* A = BufferA.GetBuffer(K * M);
-        const uint8_t* B = BufferB.GetBuffer(N * K);
+        const xint8_t* B = BufferB.GetBuffer(N * K);
         int32_t* C = BufferC.GetBuffer(N * M);
         int32_t* CReference = BufferCReference.GetBuffer(N * M);
 
-        Test(M, N, K, A, K, offa, B, N, offb, C, CReference, N);
+        Test(M, N, K, A, K, offa, B, N, xint8_t(offb), C, CReference, N);
     }
 
     void
@@ -482,9 +490,9 @@ private:
         const uint8_t* A,
         size_t lda,
         uint8_t offa,
-        const uint8_t* B,
+        const xint8_t* B,
         size_t ldb,
-        uint8_t offb,
+        xint8_t offb,
         int32_t* C,
         int32_t* CReference,
         size_t ldc
@@ -493,7 +501,7 @@ private:
         std::fill_n(C, M * N, -1);
         std::fill_n(CReference, M * N, -1);
 
-        MlasQgemm(M, N, K, A, lda, offa, B, ldb, offb, C, ldc, threadpool);
+        MlasGemm(M, N, K, A, lda, offa, B, ldb, offb, C, ldc, threadpool);
         ReferenceQgemm(M, N, K, A, lda, offa, B, ldb, offb, CReference, ldc);
 
         for (size_t f = 0; f < M * N; f++) {
@@ -511,9 +519,9 @@ private:
         const uint8_t* A,
         size_t lda,
         uint8_t offa,
-        const uint8_t* B,
+        const xint8_t* B,
         size_t ldb,
-        uint8_t offb,
+        xint8_t offb,
         int32_t* C,
         size_t ldc
         )
@@ -523,7 +531,7 @@ private:
             for (size_t n = 0; n < N; n++) {
 
                 const uint8_t* a = A + (m * lda);
-                const uint8_t* b = B + n;
+                const xint8_t* b = B + n;
                 int32_t* c = C + (m * ldc) + n;
                 int32_t sum = 0;
 
@@ -539,7 +547,7 @@ private:
     }
 
     MatrixGuardBuffer<uint8_t> BufferA;
-    MatrixGuardBuffer<uint8_t> BufferB;
+    MatrixGuardBuffer<xint8_t> BufferB;
     MatrixGuardBuffer<int32_t> BufferC;
     MatrixGuardBuffer<int32_t> BufferCReference;
 
@@ -558,6 +566,11 @@ public:
         for (size_t b = 256; b < 320; b += 32) {
             Test(b, b, b, 85, 173);
         }
+        for (size_t b = 1; b < 96; b++) {
+            Test(1, b, 32, 0, 0);
+            Test(1, 32, b, 0, 0);
+            Test(1, b, b, 0, 0);
+        }
     }
 
     void
@@ -565,7 +578,7 @@ public:
         void
         ) override
     {
-        static const uint8_t zero_points[] = { 0, 18, 128, 157, 231, 255 };
+        static const uint8_t zero_points[] = { 0, 18, 75, 128, 157, 231, 255 };
 
         for (size_t a = 0; a < _countof(zero_points); a++) {
             uint8_t offa = zero_points[a];
@@ -851,7 +864,7 @@ protected:
                     Input += InputSize;
                 }
 
-                MlasSgemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f,
+                MlasGemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f,
                     filter, K, Im2Col, OutputSize, 0.0f, Output, OutputSize, threadpool);
 
                 //
@@ -1967,31 +1980,37 @@ main(
     )
 {
     for (int i = 0; i != 2; ++i) {
-        printf("SGEMM tests.\n");
-        std::make_unique<MlasSgemmTest>()->ExecuteShort();
 
-#ifdef MLAS_HAS_QGEMM_U8U8
+        printf("SGEMM tests.\n");
+        onnxruntime::make_unique<MlasFgemmTest<float>>()->ExecuteShort();
+#ifdef MLAS_HAS_DGEMM
+        printf("DGEMM tests.\n");
+        onnxruntime::make_unique<MlasFgemmTest<double>>()->ExecuteShort();
+#endif
+
+#ifdef MLAS_HAS_QGEMM_U8X8
         printf("QGEMM tests.\n");
-        std::make_unique<MlasQgemmU8U8Test>()->ExecuteShort();
+        onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t>>()->ExecuteShort();
+        onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t>>()->ExecuteShort();
 #endif
 
         printf("Conv2D tests.\n");
-        std::make_unique<MlasConv2DTest>()->ExecuteShort();
+        onnxruntime::make_unique<MlasConv2DTest>()->ExecuteShort();
         if (MlasNchwcGetBlockSize() > 1) {
-            std::make_unique<MlasNchwcConv2DTest>()->ExecuteShort();
+          onnxruntime::make_unique<MlasNchwcConv2DTest>()->ExecuteShort();
         }
 
         printf("Pool2D tests.\n");
-        std::make_unique<MlasPool2DTest>()->ExecuteShort();
+        onnxruntime::make_unique<MlasPool2DTest>()->ExecuteShort();
         if (MlasNchwcGetBlockSize() > 1) {
-            std::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
+          onnxruntime::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
         }
 
         printf("Pool3D tests.\n");
-        std::make_unique<MlasPool3DTest>()->ExecuteShort();
+        onnxruntime::make_unique<MlasPool3DTest>()->ExecuteShort();
 
         printf("Activation tests.\n");
-        std::make_unique<MlasActivationTest>()->ExecuteShort();
+        onnxruntime::make_unique<MlasActivationTest>()->ExecuteShort();
 
         printf("Done.\n");
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)

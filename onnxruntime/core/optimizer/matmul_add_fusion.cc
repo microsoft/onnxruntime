@@ -13,10 +13,14 @@ namespace onnxruntime {
 Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  std::deque<onnxruntime::NodeIndex> removed_nodes;
 
   for (auto node_index : node_topology_list) {
-    auto& node = *graph.GetNode(node_index);
+    auto* node_ptr = graph.GetNode(node_index);
+    if (!node_ptr)
+      continue;  // node was removed
+
+    auto& node = *node_ptr;
+
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {1, 9}) ||
@@ -59,6 +63,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     if (nullptr == matmul_a_shape || nullptr == matmul_b_shape) {
       continue;
     }
+
     if (1 == matmul_a_shape->dim_size() && 2 == matmul_b_shape->dim_size()) {
       // MatMul has shape [K] * [K, N], reset it to [1, K] * [K, N], so that it can work for Gemm
       auto mutable_matmul_a_shape = const_cast<ONNX_NAMESPACE::TensorShapeProto*>(matmul_a_shape);
@@ -67,6 +72,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       (*dim_1) = (*dim_0);
       dim_0->set_dim_value(1);
     }
+
     if (2 != matmul_a_shape->dim_size() || 2 != matmul_b_shape->dim_size()) {
       // Gemm only support Matrix
       continue;
@@ -90,25 +96,22 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       gemm_input_defs.push_back(add_input_defs[0]);
     }
 
+    if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
+      continue;
+    }
+
     Node& gemm_node = graph.AddNode(graph.GenerateNodeName("gemm"),
                                     "Gemm",
                                     "fused Matmul and Add " + add_node.OpType(),
                                     gemm_input_defs,
-                                    add_node.MutableOutputDefs());
+                                    {});
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     gemm_node.SetExecutionProviderType(matmul_node.GetExecutionProviderType());
 
-    removed_nodes.push_front(matmul_node.Index());
-    removed_nodes.push_front(add_node.Index());
-  }
+    // move output definitions and edges from act_node to gemm_node. delete gemm_node and act_node.
+    graph_utils::FinalizeNodeFusion(graph, matmul_node, add_node, &gemm_node);
 
-  // Have to remove node in reversed order for now to walk around the issue in RemoveNode
-  for (onnxruntime::NodeIndex removed_node : removed_nodes) {
-    graph.RemoveNode(removed_node);
-  }
-
-  if (!removed_nodes.empty()) {
     modified = true;
   }
 

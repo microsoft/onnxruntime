@@ -81,6 +81,8 @@ inline bool operator!=(const OrtDevice& left, const OrtDevice& other) {
 }
 
 struct OrtMemoryInfo {
+  OrtMemoryInfo() = default;  // to allow default construction of Tensor
+
   // use string for name, so we could have customized allocator in execution provider.
   const char* name;
   int id;
@@ -256,13 +258,13 @@ class IDeviceAllocator : public IAllocator {
 
 class CPUAllocator : public IDeviceAllocator {
  public:
-  explicit CPUAllocator(std::unique_ptr<OrtMemoryInfo> allocator_info) {
-    ORT_ENFORCE(nullptr != allocator_info);
-    allocator_info_ = std::move(allocator_info);
+  explicit CPUAllocator(std::unique_ptr<OrtMemoryInfo> memory_info) {
+    ORT_ENFORCE(nullptr != memory_info);
+    memory_info_ = std::move(memory_info);
   }
 
   CPUAllocator() {
-    allocator_info_ = std::make_unique<OrtMemoryInfo>(CPU, OrtAllocatorType::OrtDeviceAllocator);
+    memory_info_ = onnxruntime::make_unique<OrtMemoryInfo>(CPU, OrtAllocatorType::OrtDeviceAllocator);
   }
 
   void* Alloc(size_t size) override;
@@ -270,7 +272,7 @@ class CPUAllocator : public IDeviceAllocator {
   const OrtMemoryInfo& Info() const override;
 
  private:
-  std::unique_ptr<OrtMemoryInfo> allocator_info_;
+  std::unique_ptr<OrtMemoryInfo> memory_info_;
 };
 
 using AllocatorPtr = std::shared_ptr<IAllocator>;

@@ -20,7 +20,7 @@
 3. Create Session: OrtCreateSession(env, model_uri, nullptr,...)
    - Optionally add more execution providers (e.g. for CUDA use OrtSessionOptionsAppendExecutionProvider_CUDA)
 4. Create Tensor
-   1) OrtCreateAllocatorInfo
+   1) OrtCreateMemoryInfo
    2) OrtCreateTensorWithDataAsOrtValue
 5. OrtRun
 

@@ -8,6 +8,7 @@ import numpy as np
 import onnxruntime as onnxrt
 import threading
 
+
 class TestInferenceSession(unittest.TestCase):
 
     def get_name(self, name):
@@ -40,6 +41,30 @@ class TestInferenceSession(unittest.TestCase):
         so.optimized_model_filepath = "./PythonApiTestOptimizedModel.onnx"
         onnxrt.InferenceSession(self.get_name("mul_1.onnx"), sess_options=so)
         self.assertTrue(os.path.isfile(so.optimized_model_filepath))
+
+    def testGetProviders(self):
+        self.assertTrue(
+            'CPUExecutionProvider' in onnxrt.get_available_providers())
+        self.assertTrue('CPUExecutionProvider' in onnxrt.get_all_providers())
+        sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"))
+        self.assertTrue('CPUExecutionProvider' in sess.get_providers())
+
+    def testSetProviders(self):
+        if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
+            sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"))
+            # confirm that CUDA Provider is in list of registered providers.
+            self.assertTrue('CUDAExecutionProvider' in sess.get_providers())
+            # reset the session and register only CPU Provider.
+            sess.set_providers(['CPUExecutionProvider'])
+            # confirm only CPU Provider is registered now.
+            self.assertEqual(['CPUExecutionProvider'], sess.get_providers())
+
+    def testInvalidSetProviders(self):
+        with self.assertRaises(ValueError) as context:
+            sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"))
+            sess.set_providers(['InvalidProvider'])
+        self.assertTrue('[\'InvalidProvider\'] does not contain a subset of available providers' in str(
+            context.exception))
 
     def testRunModel(self):
         sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"))
@@ -505,6 +530,75 @@ class TestInferenceSession(unittest.TestCase):
 
         res = sess.run([], {'input1:0': a, 'input:0':b})
 
+    def testSequenceLength(self):
+        sess = onnxrt.InferenceSession(self.get_name("sequence_length.onnx"))
+        x = [np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3)),
+        np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3))]
+
+        x_name = sess.get_inputs()[0].name
+        self.assertEqual(x_name, "X")
+        x_type = sess.get_inputs()[0].type
+        self.assertEqual(x_type, 'seq(tensor(float))')
+
+        output_name = sess.get_outputs()[0].name
+        self.assertEqual(output_name, "Y")
+        output_type = sess.get_outputs()[0].type
+        self.assertEqual(output_type, 'tensor(int64)')
+
+        output_expected = np.array(2, dtype=np.int64)
+        res = sess.run([output_name], {x_name: x})
+        self.assertEqual(output_expected, res[0])
+
+    def testSequenceConstruct(self):
+        sess = onnxrt.InferenceSession(
+            self.get_name("sequence_construct.onnx"))
+
+        self.assertEqual(sess.get_inputs()[0].type, 'tensor(int64)')
+        self.assertEqual(sess.get_inputs()[1].type, 'tensor(int64)')
+
+        self.assertEqual(sess.get_inputs()[0].name, "tensor1")
+        self.assertEqual(sess.get_inputs()[1].name, "tensor2")
+
+        output_name = sess.get_outputs()[0].name
+        self.assertEqual(output_name, "output_sequence")
+        output_type = sess.get_outputs()[0].type
+        self.assertEqual(output_type, 'seq(tensor(int64))')
+
+        output_expected = [np.array([1, 0, 3, 44, 23, 11], dtype=np.int64).reshape((2, 3)),
+                           np.array([1, 2, 3, 4, 5, 6], dtype=np.int64).reshape((2, 3))]
+
+        res = sess.run([output_name], {"tensor1": np.array([1, 0, 3, 44, 23, 11], dtype=np.int64).reshape((2, 3)),
+                                       "tensor2": np.array([1, 2, 3, 4, 5, 6], dtype=np.int64).reshape((2, 3))})
+
+        np.testing.assert_array_equal(output_expected, res[0])
+
+    def testSequenceInsert(self):
+        opt = onnxrt.SessionOptions()
+        opt.execution_mode = onnxrt.ExecutionMode.ORT_SEQUENTIAL
+        sess = onnxrt.InferenceSession(self.get_name("sequence_insert.onnx"), sess_options=opt)
+
+        self.assertEqual(sess.get_inputs()[0].type, 'seq(tensor(int64))')
+        self.assertEqual(sess.get_inputs()[1].type, 'tensor(int64)')
+
+        self.assertEqual(sess.get_inputs()[0].name, "input_seq")
+        self.assertEqual(sess.get_inputs()[1].name, "tensor")
+
+        output_name = sess.get_outputs()[0].name
+        self.assertEqual(output_name, "output_sequence")
+        output_type = sess.get_outputs()[0].type
+        self.assertEqual(output_type, 'seq(tensor(int64))')
+
+        output_expected = [
+            np.array([1, 0, 3, 44, 23, 11], dtype=np.int64).reshape((2, 3))]
+        res = sess.run([output_name], {"tensor": np.array(
+            [1, 0, 3, 44, 23, 11], dtype=np.int64).reshape((2, 3)), "input_seq": []})
+        np.testing.assert_array_equal(output_expected, res[0])
+
+    def testOrtExecutionMode(self):
+        opt = onnxrt.SessionOptions()
+        self.assertEqual(opt.execution_mode, onnxrt.ExecutionMode.ORT_SEQUENTIAL)
+        opt.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
+        self.assertEqual(opt.execution_mode, onnxrt.ExecutionMode.ORT_PARALLEL)
 
 if __name__ == '__main__':
     unittest.main()

@@ -119,9 +119,8 @@ class OutputIterator {
 
   // custom fetch allocator that can be used when the final shape is not concrete.
   // when the subgraph requests the allocation of the subgraph output, we forward the request to this instance,
-  // allocate the overall output (taking into account the sequence length dimension),
-  // and use a slicer to return the chunk for the subgraph output for this iteration.
-  Status AllocateSubgraphOutput(const TensorShape& shape, OrtValue& ort_value);
+  // and allocate the overall output (taking into account the sequence length dimension)
+  Status AllocateFinalOutput(const TensorShape& shape);
 
   // set the output for the current iteration to zeros. used for short sequence lengths
   void ZeroOutCurrent() {

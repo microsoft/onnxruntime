@@ -154,7 +154,7 @@ Status Scan<8>::SetupSubgraphExecutionInfo(const SessionState& session_state,
   ORT_UNUSED_PARAMETER(attribute_name);
 
   const auto& node = Node();
-  info_ = std::make_unique<Scan<8>::Info>(node, *subgraph_session_state.GetGraphViewer(),
+  info_ = onnxruntime::make_unique<Scan<8>::Info>(node, *subgraph_session_state.GetGraphViewer(),
                                           static_cast<int>(num_scan_inputs_));
 
   auto status = scan::detail::CreateFeedsFetchesManager(node, *info_, session_state, subgraph_session_state,
@@ -190,11 +190,11 @@ Scan8Impl::Scan8Impl(OpKernelContextInternal& context,
                      const SessionState& session_state,
                      const Scan<8>::Info& info,
                      const std::vector<int64_t>& directions)
-    : context_{context},
-      session_state_{session_state},
-      info_{info},
-      directions_{directions},
-      implicit_inputs_{context_.GetImplicitInputs()} {
+    : context_(context),
+      session_state_(session_state),
+      info_(info),
+      directions_(directions),
+      implicit_inputs_(context_.GetImplicitInputs()) {
   // optional first input so may be nullptr
   sequence_lens_tensor_ = context.Input<Tensor>(0);
 }

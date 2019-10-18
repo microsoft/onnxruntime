@@ -54,6 +54,6 @@ target_link_libraries(onnxruntime_pywrapper PUBLIC ${PYTHON_LIBRARIES})
 file(GLOB onnxruntime_pyop_srcs "${ONNXRUNTIME_ROOT}/core/language_interop_ops/pyop/pyop.cc")
 add_library(onnxruntime_pyop ${onnxruntime_pyop_srcs})
 add_dependencies(onnxruntime_pyop onnxruntime_graph)
-onnxruntime_add_include_to_target(onnxruntime_pyop onnxruntime_common onnxruntime_graph onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+onnxruntime_add_include_to_target(onnxruntime_pyop onnxruntime_common onnxruntime_graph onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
 target_include_directories(onnxruntime_pyop PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
 

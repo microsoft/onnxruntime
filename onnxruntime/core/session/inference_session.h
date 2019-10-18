@@ -19,6 +19,8 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
+#include "core/framework/session_options.h"
+
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
@@ -45,51 +47,6 @@ class Notification;
 namespace logging {
 class LoggingManager;
 }
-
-/**
-  * Configuration information for a session.
-  */
-struct SessionOptions {
-  //int num_threads; // not used now until we re-introduce threadpools for async execution
-  bool enable_sequential_execution = true;  // TODO: should we default to sequential execution?
-
-  // enable profiling for this session.
-  bool enable_profiling = false;
-
-  // non empty filepath enables serialization of the transformed optimized model to the specified filepath.
-  std::basic_string<ORTCHAR_T> optimized_model_filepath;
-
-  // enable the memory pattern optimization.
-  // The idea is if the input shapes are the same, we could trace the internal memory allocation
-  // and generate a memory pattern for future request. So next time we could just do one allocation
-  // with a big chunk for all the internal memory allocation.
-  // See class 'OrtValuePatternPlanner'.
-  bool enable_mem_pattern = true;
-
-  // enable the memory arena on CPU
-  // Arena may pre-allocate memory for future usage.
-  // set this option to false if you don't want it.
-  bool enable_cpu_mem_arena = true;
-
-  // the prefix of the profile file. The current time will be appended to the file name.
-  std::basic_string<ORTCHAR_T> profile_file_prefix = ORT_TSTR("onnxruntime_profile_");
-
-  std::string session_logid;  ///< logger id to use for session output
-
-  /// Log severity for the inference session. Applies to session load, initialization, etc.
-  /// See https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
-  /// Default = -1 (use default logger severity)
-  int session_log_severity_level = -1;
-  int session_log_verbosity_level = 0;  ///< VLOG level if debug build and session_log_severity_level is 0 (VERBOSE).
-
-  unsigned max_num_graph_transformation_steps = 5;  // TODO choose a good default here?
-
-  // set graph optimization level
-  TransformerLevel graph_optimization_level = TransformerLevel::Level1;
-
-  // How many threads in the session thread pool.
-  int session_thread_pool_size = -1;
-};
 
 /**
   * Pre-defined and custom metadata about the model.
@@ -268,6 +225,15 @@ class InferenceSession {
   std::pair<common::Status, const InputDefList*> GetModelInputs() const;
 
   /**
+    * Get all definitions of the model for overridable initializers.
+    * This does not include weights. Use this to get the name/type/shapes of the overridable initializers.
+    * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
+    * @note lifetime of the returned pointer is valid as long as the Session object is live.
+    * @note for IR < 4 returned list will always be empty.
+    */
+  std::pair<common::Status, const InputDefList*> GetOverridableInitializers() const;
+
+  /**
     * Get all output definitions of the model. Use this to get the name/type/shapes of the outputs.
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
     * @note lifetime of the returned pointer is valid as long as the Session object is live.
@@ -278,6 +244,17 @@ class InferenceSession {
     * Get the current number of in-progress concurrent Run calls.
     */
   int GetCurrentNumRuns() const;
+
+  /**
+    * Get the names of registered Execution Providers. The returned vector is ordered by Execution Provider
+    * priority. The first provider in the vector has the highest priority.
+    */
+  const std::vector<std::string>& GetRegisteredProviderTypes() const;
+
+  /*
+   * Get the options this session was initialized with.
+   */
+  const SessionOptions& GetSessionOptions() const;
 
   /**
     * Start profiling on this inference session. This simply turns on profiling events to be
@@ -410,6 +387,7 @@ class InferenceSession {
  private:
   // Threadpool for this session
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
 
  protected:
   // Immutable state for each op in the model. Shared by all executors.

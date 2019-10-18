@@ -40,7 +40,7 @@ TEST(SessionStateTest, AddGetKernelTest) {
       .SetDoc("Input variable.")
       .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
   ExecutionProviders execution_providers;
-  SessionState s{execution_providers, true, &tp};
+  SessionState s{execution_providers, true, &tp, nullptr};
 
   onnxruntime::Model model("graph_1");
   auto& graph = model.MainGraph();
@@ -55,7 +55,7 @@ TEST(SessionStateTest, AddGetKernelTest) {
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
   auto kernel_def = KernelDefBuilder().SetName("Variable").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
-  auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
+  auto cpu_execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
 
   OpKernelInfo p_info(node, *kernel_def, *cpu_execution_provider.get(), s.GetConstantInitializedTensors(),
                       s.GetOrtValueNameIdxMap(), s.GetFuncMgr(), s.GetDataTransferMgr());
@@ -104,14 +104,14 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
 
   ExecutionProviders execution_providers;
   CPUExecutionProviderInfo epi{false};
-  status = execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
+  status = execution_providers.Add(onnxruntime::kCpuExecutionProvider, onnxruntime::make_unique<CPUExecutionProvider>(epi));
   ASSERT_TRUE(status.IsOK()) << status;
 
   KernelRegistryManager krm;
   status = krm.RegisterKernels(execution_providers);
   ASSERT_TRUE(status.IsOK()) << status;
 
-  SessionState session_state(execution_providers, param.enable_mem_pattern, &tp);
+  SessionState session_state(execution_providers, param.enable_mem_pattern, &tp, nullptr);
   SessionStateInitializer session_initializer(param.enable_mem_pattern, ToWideString(model_path), graph, session_state,
                                               execution_providers, krm);
 
@@ -119,7 +119,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr());
   ASSERT_TRUE(status.IsOK()) << status;
 
-  status = session_initializer.CreatePlan(nullptr, nullptr, true);
+  status = session_initializer.CreatePlan(nullptr, nullptr, ExecutionMode::ORT_SEQUENTIAL);
   ASSERT_TRUE(status.IsOK()) << status;
 
   const auto& initialized_tensors = session_state.GetInitializedTensors();

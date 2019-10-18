@@ -4,8 +4,6 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/graph/function.h"
 
-const OrtCustomOpApi& GetCustomOpApi();
-
 namespace onnxruntime {
 
 void* allocate_helper_func(void* allocator, size_t alignment, size_t size);
@@ -40,7 +38,7 @@ class FunctionKernel : public OpKernel {
 
   virtual Status Compute(OpKernelContext* context) const override {
     auto* context_internal = static_cast<OpKernelContextInternal*>(context);
-    return func_(func_state_, &GetCustomOpApi(), reinterpret_cast<OrtKernelContext*>(context_internal));
+    return func_(func_state_, OrtGetApiBase()->GetApi(ORT_API_VERSION), reinterpret_cast<OrtKernelContext*>(context_internal));
   }
 
  private:

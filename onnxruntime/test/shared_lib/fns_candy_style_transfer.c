@@ -6,15 +6,17 @@
 #include <assert.h>
 #include <png.h>
 
-#define ORT_ABORT_ON_ERROR(expr)                         \
-  do {                                                   \
-    OrtStatus* onnx_status = (expr);                     \
-    if (onnx_status != NULL) {                           \
-      const char* msg = OrtGetErrorMessage(onnx_status); \
-      fprintf(stderr, "%s\n", msg);                      \
-      OrtReleaseStatus(onnx_status);                     \
-      abort();                                           \
-    }                                                    \
+const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+
+#define ORT_ABORT_ON_ERROR(expr)                             \
+  do {                                                       \
+    OrtStatus* onnx_status = (expr);                         \
+    if (onnx_status != NULL) {                               \
+      const char* msg = g_ort->GetErrorMessage(onnx_status); \
+      fprintf(stderr, "%s\n", msg);                          \
+      g_ort->ReleaseStatus(onnx_status);                     \
+      abort();                                               \
+    }                                                        \
   } while (0);
 
 /**
@@ -96,21 +98,21 @@ static int read_png_file(const char* input_file, size_t* height, size_t* width, 
  */
 static int write_tensor_to_png_file(OrtValue* tensor, const char* output_file) {
   struct OrtTensorTypeAndShapeInfo* shape_info;
-  ORT_ABORT_ON_ERROR(OrtGetTensorTypeAndShape(tensor, &shape_info));
+  ORT_ABORT_ON_ERROR(g_ort->GetTensorTypeAndShape(tensor, &shape_info));
   size_t dim_count;
-  ORT_ABORT_ON_ERROR(OrtGetDimensionsCount(shape_info, &dim_count));
+  ORT_ABORT_ON_ERROR(g_ort->GetDimensionsCount(shape_info, &dim_count));
   if (dim_count != 4) {
     printf("output tensor must have 4 dimensions");
     return -1;
   }
   int64_t dims[4];
-  ORT_ABORT_ON_ERROR(OrtGetDimensions(shape_info, dims, sizeof(dims) / sizeof(dims[0])));
+  ORT_ABORT_ON_ERROR(g_ort->GetDimensions(shape_info, dims, sizeof(dims) / sizeof(dims[0])));
   if (dims[0] != 1 || dims[1] != 3) {
     printf("output tensor shape error");
     return -1;
   }
   float* f;
-  ORT_ABORT_ON_ERROR(OrtGetTensorMutableData(tensor, (void**)&f));
+  ORT_ABORT_ON_ERROR(g_ort->GetTensorMutableData(tensor, (void**)&f));
   png_bytep model_output_bytes;
   png_image image;
   memset(&image, 0, (sizeof image));
@@ -146,41 +148,41 @@ int run_inference(OrtSession* session, const char* input_file, const char* outpu
     free(model_input);
     return -1;
   }
-  OrtMemoryInfo* allocator_info;
-  ORT_ABORT_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
+  OrtMemoryInfo* memory_info;
+  ORT_ABORT_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
   const int64_t input_shape[] = {1, 3, 720, 720};
   const size_t input_shape_len = sizeof(input_shape) / sizeof(input_shape[0]);
   const size_t model_input_len = model_input_ele_count * sizeof(float);
 
   OrtValue* input_tensor = NULL;
-  ORT_ABORT_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(allocator_info, model_input, model_input_len, input_shape, input_shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
+  ORT_ABORT_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, model_input, model_input_len, input_shape, input_shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
   assert(input_tensor != NULL);
   int is_tensor;
-  ORT_ABORT_ON_ERROR(OrtIsTensor(input_tensor, &is_tensor));
+  ORT_ABORT_ON_ERROR(g_ort->IsTensor(input_tensor, &is_tensor));
   assert(is_tensor);
-  OrtReleaseMemoryInfo(allocator_info);
+  g_ort->ReleaseMemoryInfo(memory_info);
   const char* input_names[] = {"inputImage"};
   const char* output_names[] = {"outputImage"};
   OrtValue* output_tensor = NULL;
-  ORT_ABORT_ON_ERROR(OrtRun(session, NULL, input_names, (const OrtValue* const*)&input_tensor, 1, output_names, 1, &output_tensor));
+  ORT_ABORT_ON_ERROR(g_ort->Run(session, NULL, input_names, (const OrtValue* const*)&input_tensor, 1, output_names, 1, &output_tensor));
   assert(output_tensor != NULL);
-  ORT_ABORT_ON_ERROR(OrtIsTensor(output_tensor, &is_tensor));
+  ORT_ABORT_ON_ERROR(g_ort->IsTensor(output_tensor, &is_tensor));
   assert(is_tensor);
   int ret = 0;
   if (write_tensor_to_png_file(output_tensor, output_file) != 0) {
     ret = -1;
   }
-  OrtReleaseValue(output_tensor);
-  OrtReleaseValue(input_tensor);
+  g_ort->ReleaseValue(output_tensor);
+  g_ort->ReleaseValue(input_tensor);
   free(model_input);
   return ret;
 }
 
 void verify_input_output_count(OrtSession* session) {
   size_t count;
-  ORT_ABORT_ON_ERROR(OrtSessionGetInputCount(session, &count));
+  ORT_ABORT_ON_ERROR(g_ort->SessionGetInputCount(session, &count));
   assert(count == 1);
-  ORT_ABORT_ON_ERROR(OrtSessionGetOutputCount(session, &count));
+  ORT_ABORT_ON_ERROR(g_ort->SessionGetOutputCount(session, &count));
   assert(count == 1);
 }
 
@@ -199,19 +201,19 @@ int main(int argc, char* argv[]) {
   char* input_file = argv[2];
   char* output_file = argv[3];
   OrtEnv* env;
-  ORT_ABORT_ON_ERROR(OrtCreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
+  ORT_ABORT_ON_ERROR(g_ort->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
   OrtSessionOptions* session_options;
-  ORT_ABORT_ON_ERROR(OrtCreateSessionOptions(&session_options));
+  ORT_ABORT_ON_ERROR(g_ort->CreateSessionOptions(&session_options));
 #ifdef USE_CUDA
   enable_cuda(session_options);
 #endif
   OrtSession* session;
-  ORT_ABORT_ON_ERROR(OrtCreateSession(env, model_path, session_options, &session));
+  ORT_ABORT_ON_ERROR(g_ort->CreateSession(env, model_path, session_options, &session));
   verify_input_output_count(session);
   int ret = run_inference(session, input_file, output_file);
-  OrtReleaseSessionOptions(session_options);
-  OrtReleaseSession(session);
-  OrtReleaseEnv(env);
+  g_ort->ReleaseSessionOptions(session_options);
+  g_ort->ReleaseSession(session);
+  g_ort->ReleaseEnv(env);
   if (ret != 0) {
     fprintf(stderr, "fail\n");
   }
