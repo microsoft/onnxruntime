@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/endian.h"
 #include "core/framework/endian_utils.h"
 
 #include <vector>
@@ -12,7 +13,7 @@ namespace utils {
 namespace test {
 
 // check that the ORT_IS_(LITTLE|BIG)_ENDIAN symbols are set correctly
-TEST(EndiannessUtilsTest, EndiannessDetection) {
+TEST(EndianTest, EndiannessDetection) {
   const uint16_t test_value = 0x1234;
   const char* test_value_first_byte = reinterpret_cast<const char*>(&test_value);
   if (endian::native == endian::little) {
@@ -22,7 +23,7 @@ TEST(EndiannessUtilsTest, EndiannessDetection) {
   }
 }
 
-TEST(EndiannessUtilsTest, SwapByteOrderCopy) {
+TEST(EndianTest, SwapByteOrderCopy) {
   const auto src = std::vector<char>{
       'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l'};
 
