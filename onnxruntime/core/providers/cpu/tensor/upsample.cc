@@ -63,6 +63,8 @@ Status UpsampleNearest(const T* input,
                        const vector<float>& scales,
                        const vector<float>& roi,
                        bool is_resize,
+                       bool extrapolation_enabled,
+                       float extrapolation_value,
                        bool use_nearest2x_optimization,
                        GetOriginalCoordinateFunc get_original_coordinate,
                        GetNearestPixelFunc get_nearest_pixel) {
@@ -84,6 +86,7 @@ Status UpsampleNearest(const T* input,
 
   std::vector<int64_t> input_dim_counters(n_dim);
   std::vector<int64_t> input_dim_factor(n_dim);
+  std::vector<bool> use_extrapolation_value(n_dim);
   input_dim_factor[n_dim - 1] = 1;  // initialize dimension factor
   for (int64_t dim_idx = n_dim - 2; dim_idx >= 0; dim_idx--) {
     input_dim_factor[dim_idx] = input_dim_factor[dim_idx + 1] * input_shape[dim_idx + 1];
@@ -93,7 +96,9 @@ Status UpsampleNearest(const T* input,
   int64_t input_idx = 0;
 
 #define OneDimensionProcessor(dim_inx)                                                                                                                                                                                                               \
+  use_extrapolation_value[dim_inx] = false;                                                                                                                                                                                                          \
   float original_##dim_inx##_idx = get_original_coordinate(static_cast<float>(output_dim##dim_inx##_inx), scales[dim_inx], static_cast<float>(output_shape[dim_inx]), static_cast<float>(input_shape[dim_inx]), roi[dim_inx], roi[n_dim + dim_inx]); \
+  if (extrapolation_enabled && (original_##dim_inx##_idx < 0 || original_##dim_inx##_idx > input_shape[dim_inx] - 1)) use_extrapolation_value[dim_inx] = true;                                                                                       \
   int64_t input_dim##dim_inx##_inx = get_nearest_pixel(original_##dim_inx##_idx, scales[dim_inx] < 1);                                                                                                                                               \
   if (input_dim##dim_inx##_inx > input_shape[dim_inx] - 1) input_dim##dim_inx##_inx = input_shape[dim_inx] - 1;                                                                                                                                      \
   if (input_dim##dim_inx##_inx < 0) input_dim##dim_inx##_inx = 0;                                                                                                                                                                                    \
@@ -105,7 +110,7 @@ Status UpsampleNearest(const T* input,
   if (n_dim == 1) {
     for (int64_t output_dim0_inx = 0; output_dim0_inx < output_shape[0]; output_dim0_inx++) {
       OneDimensionProcessor(0);
-      output[output_idx++] = input[input_idx];
+      output[output_idx++] = use_extrapolation_value[0] ? static_cast<T>(extrapolation_value) : input[input_idx];
     }
     return Status::OK();
   }
@@ -115,7 +120,9 @@ Status UpsampleNearest(const T* input,
       OneDimensionProcessor(0);
       for (int64_t output_dim1_inx = 0; output_dim1_inx < output_shape[1]; output_dim1_inx++) {
         OneDimensionProcessor(1);
-        output[output_idx++] = input[input_idx];
+        output[output_idx++] = (use_extrapolation_value[0] || use_extrapolation_value[1])
+                                   ? static_cast<T>(extrapolation_value)
+                                   : input[input_idx];
       }
     }
     return Status::OK();
@@ -128,7 +135,12 @@ Status UpsampleNearest(const T* input,
         OneDimensionProcessor(1);
         for (int64_t output_dim2_inx = 0; output_dim2_inx < output_shape[2]; output_dim2_inx++) {
           OneDimensionProcessor(2);
-          output[output_idx++] = input[input_idx];
+          bool use_extrapolation = std::any_of(use_extrapolation_value.begin(), use_extrapolation_value.end(),
+                                               [](bool use_extrapolation) {
+                                                 return use_extrapolation == true;
+                                               });
+
+          output[output_idx++] = use_extrapolation ? static_cast<T>(extrapolation_value) : input[input_idx];
         }
       }
     }
@@ -148,7 +160,12 @@ Status UpsampleNearest(const T* input,
           OneDimensionProcessor(2);
           for (int64_t output_dim3_inx = 0; output_dim3_inx < output_shape[3]; output_dim3_inx++) {
             OneDimensionProcessor(3);
-            output[output_idx++] = input[input_idx];
+            bool use_extrapolation = std::any_of(use_extrapolation_value.begin(), use_extrapolation_value.end(),
+                                                 [](bool use_extrapolation) {
+                                                   return use_extrapolation == true;
+                                                 });
+
+            output[output_idx++] = use_extrapolation ? static_cast<T>(extrapolation_value) : input[input_idx];
           }
         }
       }
@@ -195,7 +212,7 @@ Status UpsampleNearest(const T* input,
 //this function is not enabled yet.
 //this function is not tested for opset 11 changes yet
 template <typename T>
-Status upsampleLinear(const T* input,
+Status UpsampleLinear(const T* input,
                       T* output,
                       const TensorShape& input_shape,
                       const TensorShape& output_shape,
@@ -514,8 +531,8 @@ void ResizeBiCubic(
           float result = 0;
           for (int64_t y_val = y_int - 1, i = 0; y_val <= y_int + 2; y_val++, i++) {
             auto x_interpolation_result = CubicInterpolation1D(Xdata, x_int, y_val,
-                                                             input_height, input_width, coeff_x,
-                                                             interpolation_result_cache);
+                                                               input_height, input_width, coeff_x,
+                                                               interpolation_result_cache);
             result += x_interpolation_result * coeff_y[i];
           }
 
@@ -562,7 +579,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
   switch (mode_) {
     case UpsampleMode::NN:
       return UpsampleNearest<T>(X->template Data<T>(), Y->template MutableData<T>(), X->Shape(), Y->Shape(), scales, roi,
-                                is_resize, use_nearest2x_optimization, get_original_coordinate_, get_nearest_pixel_);
+                                is_resize, use_extrapolation_, extrapolation_value_, use_nearest2x_optimization,
+                                get_original_coordinate_, get_nearest_pixel_);
     case UpsampleMode::LINEAR: {
       //The correct behavior of 'linear' mode for an N-D input is not clear right now,
       //so only support 'bilinear' with 2-D or 4-D input tensor with outermost 2 scales as 1 in the 4-D case
