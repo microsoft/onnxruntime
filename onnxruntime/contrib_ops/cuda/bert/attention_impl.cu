@@ -135,8 +135,8 @@ __global__ void MaskedSoftmaxKernel(const int sequence_length, const int* mask_i
 }
 
 template <typename T>
-bool ComputeMaskedSoftmax(cudaStream_t stream, const int sequence_length, const int batch_size, const int num_heads, 
-                         const int* mask_index, const T* input, T* output) {
+bool ComputeMaskedSoftmax(cudaStream_t stream, const int sequence_length, const int batch_size, const int num_heads,
+                          const int* mask_index, const T* input, T* output) {
   // Mask is of length batch_size and assumes the valid region is contiguous starting
   // from the beginning of the sequence
 
@@ -310,23 +310,6 @@ cublasStatus_t inline CublasGemmStridedBatched(
       handle, transa, transb, m, n, k, &alpha, A, lda, strideA, B, ldb, strideB, &beta, C, ldc, strideC, batchCount);
 }
 
-struct CublasConfigHelper {
-  cublasPointerMode_t pointer_mode_;
-  cublasMath_t math_mode_;
-  cublasHandle_t cublas_;
-  CublasConfigHelper(cublasHandle_t cublas)
-      : cublas_(cublas) {
-    cublasGetPointerMode(cublas_, &pointer_mode_);
-    cublasGetMathMode(cublas_, &math_mode_);
-    cublasSetPointerMode(cublas_, CUBLAS_POINTER_MODE_HOST);
-    cublasSetMathMode(cublas_, CUBLAS_TENSOR_OP_MATH);
-  }
-  ~CublasConfigHelper() {
-    cublasSetMathMode(cublas_, math_mode_);
-    cublasSetPointerMode(cublas_, pointer_mode_);
-  }
-};
-
 template <typename T>
 bool QkvToContext(
     cublasHandle_t& cublas, cudaStream_t stream,
@@ -337,7 +320,7 @@ bool QkvToContext(
   T* scratch1 = workspace;
   T* scratch2 = scratch1 + (bytes / element_size);
   T* scratch3 = scratch2 + (bytes / element_size);
- 
+
   // input should be BxSx3xNxH => scratch3: 3xBxNxSxH
   if (!LaunchTransQkv(stream, sequence_length, batch_size, head_size, num_heads, input, scratch3)) {
     return false;
@@ -354,16 +337,15 @@ bool QkvToContext(
   const T* v = k + total_size;
 
   cublasSetStream(cublas, stream);
-  CublasConfigHelper helper(cublas);
+  CublasMathModeSetter helper(cublas, CUBLAS_TENSOR_OP_MATH);
 
   // compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scratch1: BxNxSxS
   const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(head_size));
   if (!CUBLAS_CALL(CublasGemmStridedBatched(
-        cublas, CUBLAS_OP_T, CUBLAS_OP_N, sequence_length, sequence_length, head_size, rsqrt_head_size, k, head_size, size_per_batch,
-        q, head_size, size_per_batch, 0.f, scratch1, sequence_length, temp_matrix_size, batches))) {
+          cublas, CUBLAS_OP_T, CUBLAS_OP_N, sequence_length, sequence_length, head_size, rsqrt_head_size, k, head_size, size_per_batch,
+          q, head_size, size_per_batch, 0.f, scratch1, sequence_length, temp_matrix_size, batches))) {
     return false;
   }
-
 
   // apply softmax and store result P to scratch2: BxNxSxS
   if (!ComputeMaskedSoftmax<T>(stream, sequence_length, batch_size, num_heads, mask_index, scratch1, scratch2)) {
@@ -372,8 +354,8 @@ bool QkvToContext(
 
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
   if (!CUBLAS_CALL(CublasGemmStridedBatched(
-        cublas, CUBLAS_OP_N, CUBLAS_OP_N, head_size, sequence_length, sequence_length, 1.f, v, head_size, size_per_batch,
-        scratch2, sequence_length, temp_matrix_size, 0.f, scratch3, head_size, size_per_batch, batches))) {
+          cublas, CUBLAS_OP_N, CUBLAS_OP_N, head_size, sequence_length, sequence_length, 1.f, v, head_size, size_per_batch,
+          scratch2, sequence_length, temp_matrix_size, 0.f, scratch3, head_size, size_per_batch, batches))) {
     return false;
   }
 

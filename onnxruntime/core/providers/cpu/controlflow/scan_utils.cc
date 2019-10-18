@@ -19,6 +19,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
+#include "core/framework/session_options.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -265,7 +266,7 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 
     // Create Executor and run graph.
     status = utils::ExecuteSubgraph(session_state, ffm, feeds, fetches, fetch_allocators,
-                                    /*sequential_execution*/ true, context.GetTerminateFlag(), context.Logger());
+                                    ExecutionMode::ORT_SEQUENTIAL, context.GetTerminateFlag(), context.Logger());
 
     ORT_RETURN_IF_ERROR(status);
 

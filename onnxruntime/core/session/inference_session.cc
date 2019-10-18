@@ -46,6 +46,9 @@
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#ifdef USE_DML // TODO: This is necessary for the workaround in TransformGraph
+#include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
+#endif
 #include "core/session/IOBinding.h"
 #include "core/session/custom_ops.h"
 #include "core/util/protobuf_parsing_utils.h"
@@ -99,12 +102,12 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
       logging_manager_(logging_manager),
       thread_pool_(concurrency::CreateThreadPool("intra_op_thread_pool",
                                                  session_options.intra_op_num_threads)),
-      inter_op_thread_pool_(!session_options.enable_sequential_execution
+      inter_op_thread_pool_(session_options.execution_mode == ExecutionMode::ORT_PARALLEL
                                 ? concurrency::CreateThreadPool("inter_op_thread_pool",
                                                                 session_options.inter_op_num_threads)
                                 : nullptr),
       session_state_(execution_providers_,
-                     session_options.enable_mem_pattern && session_options.enable_sequential_execution,
+                     session_options.enable_mem_pattern && session_options.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
                      thread_pool_.get(),
                      inter_op_thread_pool_.get()),
       insert_cast_transformer_("CastFloat16Transformer") {
@@ -143,7 +146,18 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for exec provider");
   }
 
-  std::string provider_type = p_exec_provider->Type();
+  const std::string& provider_type = p_exec_provider->Type();
+
+  // DML's memory is not byte addressable and hence mem pattern doesn't work.
+  if (provider_type == onnxruntime::kDmlExecutionProvider) {
+    if (session_options_.enable_mem_pattern) {
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Memory pattern must be disabled before registering DMLExecutionProvider");
+    }
+    if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Sequential execution must be enabled before registering DMLExecutionProvider");
+    }
+  }
+
   VLOGS(*session_logger_, 1) << "Adding execution provider of type: " << provider_type;
   auto p_data_xfr = p_exec_provider->GetDataTransfer();
   if (p_data_xfr) {
@@ -351,6 +365,23 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   // first apply global(execution provider independent),  level 1(default/system/basic) graph to graph optimizations
   ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1));
 
+#ifdef USE_DML
+  // TODO: this is a temporary workaround to apply the DML EP's custom graph transformer prior to partitioning. This
+  // transformer applies DML-specific fusions that go beyond what ORT offers by default. Ideally the DML EP should
+  // apply these transforms during partitioning, but the full mutable Graph object isn't exposed to
+  // IExecutionProvider::GetCapability, which is necessary for the DML EP's transforms.
+  // 
+  // To prevent this from interfering with other EPs, we only apply this transform if the DML EP is the only one that's
+  // registered (aside from the CPU EP, which is always registered by default.)
+  if (execution_providers_.Get(kDmlExecutionProvider) && execution_providers_.NumProviders() <= 2) {
+    auto dml_registry = execution_providers_.Get(kDmlExecutionProvider)->GetKernelRegistry();
+    Dml::GraphTransformer dml_transformer(onnxruntime::kDmlExecutionProvider, std::move(dml_registry));
+
+    bool modified = false;
+    dml_transformer.Apply(graph, modified);
+  }
+#endif
+
   // Do partitioning based on execution providers' capability.
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr()));
@@ -449,7 +480,7 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
 
       const auto implicit_inputs = node.ImplicitInputDefs();
       ORT_RETURN_IF_ERROR(initializer.CreatePlan(&node, &implicit_inputs,
-                                                 session_options_.enable_sequential_execution));
+                                                 session_options_.execution_mode));
 
       // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
       //                                                   &*subgraph_info.session_state);
@@ -493,7 +524,7 @@ common::Status InferenceSession::Initialize() {
       ORT_RETURN_IF_ERROR(RegisterExecutionProvider(std::move(p_cpu_exec_provider)));
     }
 
-    if (!session_options_.enable_sequential_execution &&
+    if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL &&
         execution_providers_.Get(onnxruntime::kCudaExecutionProvider)) {
       LOGS(*session_logger_, ERROR) << "Parallel execution is currently not supported "
                                        "for the registered CUDA Execution Provider.";
@@ -542,7 +573,7 @@ common::Status InferenceSession::Initialize() {
       }
     }
 
-    ORT_RETURN_IF_ERROR(session_initializer.CreatePlan(nullptr, nullptr, session_options_.enable_sequential_execution));
+    ORT_RETURN_IF_ERROR(session_initializer.CreatePlan(nullptr, nullptr, session_options_.execution_mode));
 
     // handle any subgraphs
     ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(graph, session_state_));
@@ -743,7 +774,7 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(
         utils::ExecuteGraph(session_state_, feeds_fetches_manager, feeds, *p_fetches,
-                            session_options_.enable_sequential_execution,
+                            session_options_.execution_mode,
                             run_options.terminate, run_logger));
 
   } catch (const std::exception& e) {

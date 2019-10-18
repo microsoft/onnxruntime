@@ -60,45 +60,47 @@ def sympy_reduce_product(x):
 class SymbolicShapeInference:
     def __init__(self, auto_merge, verbose):
         self.dispatcher_ = {
-            'Add'               : self._infer_binary_ops,
-            'AveragePool'       : self._infer_Pool,
-            'Cast'              : self._infer_Cast,
-            'CategoryMapper'    : self._infer_CategoryMapper,
-            'Compress'          : self._infer_Compress,
-            'Concat'            : self._infer_Concat,
-            'ConstantOfShape'   : self._infer_ConstantOfShape,
-            'Conv'              : self._infer_Conv,
-            'CumSum'            : self._pass_on_shape_and_type,
-            'Div'               : self._infer_binary_ops,
-            'Expand'            : self._infer_Expand,
-            'Gather'            : self._infer_Gather,
-            'GatherElements'    : self._infer_GatherElements,
-            'Loop'              : self._infer_Loop,
-            'MatMulInteger16'   : self._infer_MatMulInteger,
-            'MaxPool'           : self._infer_Pool,
-            'Max'               : self._infer_binary_ops,
-            'Min'               : self._infer_binary_ops,
-            'Mul'               : self._infer_binary_ops,
-            'NonMaxSuppression' : self._infer_NonMaxSuppression,
-            'NonZero'           : self._infer_NonZero,
-            'OneHot'            : self._infer_OneHot,
-            'Pad'               : self._infer_Pad,
-            'Range'             : self._infer_Range,
-            'ReduceProd'        : self._infer_ReduceProd,
-            'Reshape'           : self._infer_Reshape,
-            'Resize'            : self._infer_Resize,
-            'Round'             : self._pass_on_shape_and_type,
-            'Scan'              : self._infer_Scan,
-            'ScatterElements'   : self._infer_ScatterElements,
-            'Shape'             : self._infer_Shape,
-            'Size'              : self._infer_Size,
-            'Slice'             : self._infer_Slice,
-            'Split'             : self._infer_Split,
-            'Squeeze'           : self._infer_Squeeze,
-            'Sub'               : self._infer_binary_ops,
-            'Tile'              : self._infer_Tile,
-            'TopK'              : self._infer_TopK,
-            'Unsqueeze'         : self._infer_Unsqueeze}
+            'Add'                   : self._infer_binary_ops,
+            'ArrayFeatureExtractor' : self._infer_ArrayFeatureExtractor,
+            'AveragePool'           : self._infer_Pool,
+            'Cast'                  : self._infer_Cast,
+            'CategoryMapper'        : self._infer_CategoryMapper,
+            'Compress'              : self._infer_Compress,
+            'Concat'                : self._infer_Concat,
+            'ConstantOfShape'       : self._infer_ConstantOfShape,
+            'Conv'                  : self._infer_Conv,
+            'CumSum'                : self._pass_on_shape_and_type,
+            'Div'                   : self._infer_binary_ops,
+            'Expand'                : self._infer_Expand,
+            'Gather'                : self._infer_Gather,
+            'GatherElements'        : self._infer_GatherElements,
+            'Loop'                  : self._infer_Loop,
+            'MatMulInteger16'       : self._infer_MatMulInteger,
+            'MaxPool'               : self._infer_Pool,
+            'Max'                   : self._infer_binary_ops,
+            'Min'                   : self._infer_binary_ops,
+            'Mul'                   : self._infer_binary_ops,
+            'NonMaxSuppression'     : self._infer_NonMaxSuppression,
+            'NonZero'               : self._infer_NonZero,
+            'OneHot'                : self._infer_OneHot,
+            'Pad'                   : self._infer_Pad,
+            'Range'                 : self._infer_Range,
+            'ReduceProd'            : self._infer_ReduceProd,
+            'Reshape'               : self._infer_Reshape,
+            'Resize'                : self._infer_Resize,
+            'Round'                 : self._pass_on_shape_and_type,
+            'Scan'                  : self._infer_Scan,
+            'ScatterElements'       : self._infer_ScatterElements,
+            'Shape'                 : self._infer_Shape,
+            'Size'                  : self._infer_Size,
+            'Slice'                 : self._infer_Slice,
+            'Split'                 : self._infer_Split,
+            'Squeeze'               : self._infer_Squeeze,
+            'Sub'                   : self._infer_binary_ops,
+            'Tile'                  : self._infer_Tile,
+            'TopK'                  : self._infer_TopK,
+            'Unsqueeze'             : self._infer_Unsqueeze,
+            'ZipMap'                : self._infer_ZipMap}
         self.run_ = True
         self.suggested_merge_ = {}
         self.symbolic_dims_ = {}
@@ -394,13 +396,17 @@ class SymbolicShapeInference:
 
         # only need to symbolic shape inference if input has symbolic dims in spatial axes
         is_symbolic_dims = [not is_literal(i) for i in sympy_shape[-rank:]]
+
         if not any(is_symbolic_dims):
-            sympy_shape[-rank:] = [sympy.Integer(d) for d in get_shape_from_type_proto(self.known_vi_[node.output[0]].type)[-rank:]]
-            return sympy_shape
+            shape = get_shape_from_type_proto(self.known_vi_[node.output[0]].type)
+            if len(shape) > 0:
+                assert len(sympy_shape) == len(shape)
+                sympy_shape[-rank:] = [sympy.Integer(d) for d in shape[-rank:]]
+                return sympy_shape
 
         dilations = get_attribute(node, 'dilations', [1]*rank)
         strides = get_attribute(node, 'strides', [1]*rank)
-        effective_kernel_shape = [(k - 1) * d + 1 for k, d in zip(kernel_shape, strides)]
+        effective_kernel_shape = [(k - 1) * d + 1 for k, d in zip(kernel_shape, dilations)]
         pads = get_attribute(node, 'pads')
         if pads is None:
             pads = [0]*(2*rank)
@@ -411,6 +417,8 @@ class SymbolicShapeInference:
                     total_pads = [max(0, (k - s) if r == 0 else (k - r)) for k, s, r in zip(effective_kernel_shape, strides, residual)]
                 except TypeError: # sympy may throw TypeError: cannot determine truth value of Relational
                     total_pads = [max(0, (k - s)) for k, s in zip(effective_kernel_shape, strides)] # assuming no residual if sympy throws error
+            elif auto_pad == 'VALID':
+                total_pads = []
             else:
                 total_pads = [0]*rank
         else:
@@ -419,13 +427,23 @@ class SymbolicShapeInference:
 
         ceil_mode = get_attribute(node, 'ceil_mode', 0)
         for i in range(rank):
-            effective_input_size = sympy_shape[-rank + i] + total_pads[i]
+            effective_input_size = sympy_shape[-rank + i]
+            if len(total_pads) > 0:
+                effective_input_size = effective_input_size + total_pads[i]
             if ceil_mode:
                 strided_kernel_positions = sympy.ceiling((effective_input_size - effective_kernel_shape[i]) / strides[i])
             else:
                 strided_kernel_positions = (effective_input_size - effective_kernel_shape[i]) // strides[i]
             sympy_shape[-rank + i] = strided_kernel_positions + 1
         return sympy_shape
+
+    def _infer_ArrayFeatureExtractor(self, node):
+        data_shape = self._get_shape(node, 0)
+        indices_shape = self._get_shape(node, 1)
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0],
+                                                  self.known_vi_[node.input[0]].type.tensor_type.elem_type,
+                                                  data_shape[:-1] + indices_shape))
 
     def _infer_binary_ops(self, node):
         funcs = {'Add' : lambda l: l[0] + l[1],
@@ -874,6 +892,21 @@ class SymbolicShapeInference:
     def _infer_Unsqueeze(self, node):
         self._pass_on_sympy_data(node)
 
+    def _infer_ZipMap(self, node):
+        map_key_type = None
+        if get_attribute(node, 'classlabels_int64s') is not None:
+            map_key_type = onnx.TensorProto.INT64
+        elif get_attribute(node, 'classlabels_strings') is not None:
+            map_key_type = onnx.TensorProto.STRING
+
+        assert map_key_type is not None
+        new_vi = onnx.ValueInfoProto()
+        new_vi.name = node.output[0]
+        new_vi.type.sequence_type.elem_type.map_type.value_type.tensor_type.elem_type = onnx.TensorProto.FLOAT
+        new_vi.type.sequence_type.elem_type.map_type.key_type = map_key_type
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(new_vi)
+
     def _infer_impl(self, in_mp):
         self.sympy_data_ = {}
         self.out_mp_.graph.ClearField('value_info')
@@ -906,6 +939,10 @@ class SymbolicShapeInference:
                 print(node.op_type + ': ' + node.name)
             for i_o in range(len(node.output)):
                 out_type = self.known_vi_[node.output[i_o]].type
+                out_type_kind = out_type.WhichOneof('value')
+                # only TensorProto and SparseTensorProto have shape
+                if out_type_kind != 'tensor_type' and out_type_kind != 'sparse_tensor_type':
+                    continue
                 out_shape = get_shape_from_type_proto(self.known_vi_[node.output[i_o]].type)
                 out_type_undefined = out_type.tensor_type.elem_type == onnx.TensorProto.UNDEFINED
                 if self.verbose_ > 2:
