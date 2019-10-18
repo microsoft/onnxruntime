@@ -30,11 +30,12 @@
 * [Technical Design Details](#technical-design-details)
 * [Extensibility Options](#extensibility-options)
 
+**[Data/Telemetry](#Data/Telemetry)**
+
 **[Contributions and Feedback](#contribute)**
 
 **[License](#license)**
 
-**[Data/Telemetry](#Data/Telemetry)**
 ***
 # Key Features
 ## Run any ONNX model
@@ -163,6 +164,10 @@ transform](include/onnxruntime/core/optimizer/graph_transformer.h)
 * [Add a new rewrite rule](include/onnxruntime/core/optimizer/rewrite_rule.h)
 
 ***
+# Data/Telemetry
+This project may collect usage data and send it to Microsoft to help improve our products and services. See the [privacy statement](docs/Privacy.md) for more details.
+
+***
 # Contribute
 We welcome contributions! Please see the [contribution guidelines](CONTRIBUTING.md).
 
@@ -173,9 +178,6 @@ For any feedback or to report a bug, please file a [GitHub Issue](https://github
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/)
 or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
-***
-# Data/Telemetry
-This project collects usage data and sends it to Microsoft to help improve our products and services. See the [privacy statement](docs/Privacy.md) for more details.
 
 ***
 # License
