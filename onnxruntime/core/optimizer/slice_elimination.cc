@@ -46,7 +46,7 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) cons
     // If it is a Slice operator of opset version 10 or 11, starts/ends/axes/steps are provided as node inputs.
 
     // Returns a pointer to the corresponding NodeArg if input of the node at this index exists; otherwise, a nullptr.
-    auto get_input_if_exists = [&graph, &node](size_t input_idx) -> const NodeArg* {
+    auto get_input_if_exists = [&node](size_t input_idx) -> const NodeArg* {
       const auto& input_defs = node.InputDefs();
       const NodeArg* input = (input_defs.size() > input_idx) ? input_defs[input_idx] : nullptr;
       return (input == nullptr || !input->Exists()) ? nullptr : input;
