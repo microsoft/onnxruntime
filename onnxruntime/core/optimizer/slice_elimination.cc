@@ -61,32 +61,33 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) cons
 
     auto get_initializer_data =
         [](const ONNX_NAMESPACE::TensorProto* initializer) -> std::vector<int64_t> {
-      std::vector<int64_t> vec;
-      if (initializer->data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
-        // TODO
-      } else if (initializer->data_type() == ONNX_NAMESPACE::TensorProto::INT32) {
-        // TODO
-        
+      Initializer init(*initializer);
+      if (initializer->data_type() == ONNX_NAMESPACE::TensorProto::INT32) {
+        int32_t* init_data = init.data<int32_t>();
+        return std::vector<int64_t>(init_data, init_data + init.size());
+      } else if (initializer->data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
+        int64_t* init_data = init.data<int64_t>();
+        return std::vector<int64_t>(init_data, init_data + init.size());
       }
-      return vec;
+      return {};
     };
 
     // Starts and ends inputs have to exist, be constant, and be of the same size.
     const ONNX_NAMESPACE::TensorProto* starts_init = get_initializer_if_constant(1);
     const ONNX_NAMESPACE::TensorProto* ends_init = get_initializer_if_constant(2);
     if (starts_init && ends_init) {
-      // TODO Check that they have the same size. Populate them.
       starts = get_initializer_data(starts_init);
       ends = get_initializer_data(ends_init);
 
-      if (starts.size() != ends.size()) {
+      if (starts.size() == 0 || ends.size() == 0 || starts.size() != ends.size()) {
         return false;
       }
 
       // If axes input exists, it should be constant and of the same size as starts/ends.
       if (get_input_if_exists(3)) {
         const ONNX_NAMESPACE::TensorProto* axes_init = get_initializer_if_constant(3);
-        if (!axes_init || axes_init->dims_size() != starts.size()) {
+        if (!axes_init || axes_init->dims_size() != 1 ||
+            static_cast<size_t>(axes_init->dims().Get(0)) != starts.size()) {
           return false;
         }
 
@@ -97,14 +98,15 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) cons
             return false;
           }
           std::vector<int64_t> steps = get_initializer_data(steps_init);
+          if (steps.size() != starts.size()) {
+            return false;
+          }
           for (int64_t step : steps) {
             if (step != 1) {
               return false;
             }
           }
         }
-      } else {
-        return false;
       }
     } else {
       // Should be unreachable, but just to be safe in case a new op version is added.
