@@ -233,6 +233,15 @@ if(onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
   endif()
 endif()
 
+# check endian-ness and add appropriate compile definition
+include(TestBigEndian)
+test_big_endian(onnxruntime_IS_BIG_ENDIAN)
+if(onnxruntime_IS_BIG_ENDIAN EQUAL 1)
+  add_compile_definitions(ORT_IS_BIG_ENDIAN)
+elseif(onnxruntime_IS_BIG_ENDIAN EQUAL 0)
+  add_compile_definitions(ORT_IS_LITTLE_ENDIAN)
+endif()
+
 #target begins from here
 
 if(onnxruntime_BUILD_BENCHMARKS)

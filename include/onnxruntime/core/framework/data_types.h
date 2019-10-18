@@ -11,6 +11,7 @@
 
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
+#include "core/framework/endian.h"
 
 struct OrtValue;
 
@@ -60,20 +61,6 @@ inline bool operator<(const MLFloat16& left, const MLFloat16& right) {
   return left.val < right.val;
 }
 
-struct ort_endian {
-  union q {
-    uint16_t v_;
-    uint8_t b_[2];
-    constexpr explicit q(uint16_t v) noexcept : v_(v) {}
-  };
-  static constexpr bool is_little() {
-    return q(0x200).b_[0] == 0x0;
-  }
-  static constexpr bool is_big() {
-    return q(0x200).b_[0] == 0x2;
-  }
-};
-
 //BFloat16
 struct BFloat16 {
   uint16_t val{0};
@@ -81,7 +68,7 @@ struct BFloat16 {
   explicit BFloat16(uint16_t v) : val(v) {}
   explicit BFloat16(float v) {
     uint16_t* dst = reinterpret_cast<uint16_t*>(&v);
-    if (ort_endian::is_little()) {
+    if (endian::native == endian::little) {
       val = dst[1];
     } else {
       val = dst[0];
@@ -91,7 +78,7 @@ struct BFloat16 {
   float ToFloat() const {
     float result;
     uint16_t* dst = reinterpret_cast<uint16_t*>(&result);
-    if (ort_endian::is_little()) {
+    if (endian::native == endian::little) {
       dst[1] = val;
       dst[0] = 0;
     } else {
