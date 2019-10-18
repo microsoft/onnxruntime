@@ -6,6 +6,11 @@
 
 namespace OperatorHelper
 {
+bool ContainsEmptyDimensions(gsl::span<const DimensionType> dimensions)
+{
+    return std::find(dimensions.begin(), dimensions.end(), 0) != dimensions.end();
+}
+
 // Convert any negative axis into an absolute axis relative to the back end.
 // So given 3 dimensions, a -1 refers to axis 2, and -3 to axis 0.
 uint32_t HandleNegativeAxis(int32_t signedOnnxAxis, uint32_t dimCount)
@@ -973,17 +978,30 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         auto outputDimensions = shapeInfo.GetInputTensorShape(0);
         auto inputDimCount = gsl::narrow_cast<int>(outputDimensions.size());
 
-        // Zero out any axes to prune; then remove them.
+        // Flags that indicates if a dimension should be removed. Smallest dimension is the least significant bit.
+        uint32_t shouldSqueezeDim = 0;
+
         for (size_t i = 0; i < m_axes.size(); ++i)
         {
             int dimIndex = m_axes[i];
             ML_CHECK_VALID_ARGUMENT(dimIndex >= 0 && dimIndex < inputDimCount, "'axes' must be valid with within actual input dimensions.");
             if (outputDimensions[dimIndex] == 1)
             {
-                outputDimensions[dimIndex] = 0;
+                shouldSqueezeDim |= 1 << dimIndex;
             }
         }
-        outputDimensions.erase(std::remove(outputDimensions.begin(), outputDimensions.end(), DimensionType(0)), outputDimensions.end());
+
+        uint32_t newOutputDimCount = 0;
+
+        for (uint32_t i = 0; i < outputDimensions.size(); i++)
+        {
+            if (!(shouldSqueezeDim & (1 << i)))
+            {
+                outputDimensions[newOutputDimCount++] = outputDimensions[i];
+            }
+        }
+
+        outputDimensions.resize(newOutputDimCount);
 
         return { std::move(outputDimensions) };
     }
