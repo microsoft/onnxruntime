@@ -36,7 +36,7 @@ Status ConcatFromSequence::Compute(OpKernelContext* ctx) const {
 
   // Validate inputs and prepare some metadata used during actual compute
   Prepare p;
-  auto status = PrepareForCompute(ctx, input_tensor_pointers, axis_, is_stack_, p);
+  auto status = PrepareForCompute(ctx, input_tensor_pointers, p);
   if (!status.IsOK())
     return status;
 
