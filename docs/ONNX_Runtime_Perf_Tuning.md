@@ -38,24 +38,36 @@ In order to use MKLDNN, nGraph, CUDA, or TensorRT execution provider, you need t
 
 C API Example:
 ```c
+  const OrtApi* g_ort = OrtGetApi(ORT_API_VERSION);
   OrtEnv* env;
-  OrtInitialize(ORT_LOGGING_LEVEL_WARNING, "test", &env)
-  OrtSessionOptions* session_option = OrtCreateSessionOptions();
-  OrtProviderFactoryInterface** factory;
-  OrtCreateCUDAExecutionProviderFactory(0, &factory);
-  OrtSessionOptionsAppendExecutionProvider(session_option, factory);
-  OrtReleaseObject(factory);
-  OrtCreateSession(env, model_path, session_option, &session);
+  g_ort->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env)
+  OrtSessionOptions* session_option;
+  g_ort->OrtCreateSessionOptions(&session_options);
+  g_ort->OrtSessionOptionsAppendExecutionProvider_CUDA(sessionOptions, 0);
+  OrtSession* session;
+  g_ort->CreateSession(env, model_path, session_option, &session);
 ```
 
 C# API Example:
 ```c#
 SessionOptions so = new SessionOptions();
-so.AppendExecutionProvider(ExecutionProvider.MklDnn);
+so.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_EXTENDED;
+so.AppendExecutionProvider_CUDA(0);
 var session = new InferenceSession(modelPath, so);
 ```
 
-## Tuning performance for a specific execution provider
+Python API Example:
+```python
+import onnxruntime as rt
+
+so = rt.SessionOptions()
+so.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
+so.AppendExecutionProvider_CUDA(0);
+
+session = rt.InferenceSession(model, sess_options=so)
+session.set_providers(['CUDAExecutionProvider'])
+```
+## How to tune performance for a specific execution provider?
 
 ### Default CPU Execution Provider (MLAS)
 The default execution provider uses different knobs to control the thread number.
@@ -66,19 +78,19 @@ import onnxruntime as rt
 
 sess_options = rt.SessionOptions()
 
-sess_options.intra_op_num_threads=2
-sess_options.execution_mode=rt.ExecutionMode.ORT_SEQUENTIAL
-sess_options.set_graph_optimization_level(2)
+sess_options.intra_op_num_threads = 2
+sess_options.execution_mode = rt.ExecutionMode.ORT_SEQUENTIAL
+sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
 ```
 
 * Thread Count
-  * `sess_options.intra_op_num_threads=2` controls the number of threads to use to run the model
+  * `sess_options.intra_op_num_threads = 2` controls the number of threads to use to run the model
 * Sequential vs Parallel Execution
-  * `sess_options.execution_mode=rt.ExecutionMode.ORT_SEQUENTIAL` controls whether then operators in the graph should run sequentially or in parallel. Usually when a model has many branches, setting this option to false will provide better performance.
-  * When `sess_options.execution_mode=rt.ExecutionMode.ORT_PARALLEL`, you can set `sess_options.inter_op_num_threads` to control the
+  * `sess_options.execution_mode = rt.ExecutionMode.ORT_SEQUENTIAL` controls whether then operators in the graph should run sequentially or in parallel. Usually when a model has many branches, setting this option to false will provide better performance.
+  * When `sess_options.execution_mode = rt.ExecutionMode.ORT_PARALLEL`, you can set `sess_options.inter_op_num_threads` to control the
 
 number of threads used to parallelize the execution of the graph (across nodes).
-* sess_options.set_graph_optimization_level(2). Default is 1. Please see [onnxruntime_c_api.h](../include/onnxruntime/core/session/onnxruntime_c_api.h#L241)  (enum GraphOptimizationLevel) for the full list of all optimization levels. For details regarding available optimizations and usage please refer to the [Graph Optimizations Doc](../docs/ONNX_Runtime_Graph_Optimizations.md).
+* sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL. Default is ORT_ENABLE_BASIC(1). Please see [onnxruntime_c_api.h](../include/onnxruntime/core/session/onnxruntime_c_api.h#L241)  (enum GraphOptimizationLevel) for the full list of all optimization levels. For details regarding available optimizations and usage please refer to the [Graph Optimizations Doc](../docs/ONNX_Runtime_Graph_Optimizations.md).
 
 ### MKL_DNN/nGraph/MKL_ML Execution Provider
 MKL_DNN, MKL_ML and nGraph all depends on openmp for parallization. For those execution providers, we need to use the openmp enviroment variable to tune the performance.
