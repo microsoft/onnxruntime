@@ -73,6 +73,10 @@ if(onnxruntime_USE_NNAPI)
   set(PROVIDERS_NNAPI onnxruntime_providers_nnapi)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
 endif()
+if(onnxruntime_USE_DML)
+  set(PROVIDERS_DML onnxruntime_providers_dml)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES dml)
+endif()
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
 set(onnxruntime_providers_src ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
@@ -500,6 +504,39 @@ if (onnxruntime_USE_NNAPI)
   set_target_properties(onnxruntime_providers_nnapi PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_nnapi PRIVATE ${ONNXRUNTIME_ROOT} ${nnapi_INCLUDE_DIRS})
   set_target_properties(onnxruntime_providers_nnapi PROPERTIES LINKER_LANGUAGE CXX)
+endif()
+
+if (onnxruntime_USE_DML)
+  file(GLOB_RECURSE onnxruntime_providers_dml_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/dml/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/dml/*.cpp"
+    "${ONNXRUNTIME_ROOT}/core/providers/dml/*.cc"
+  )
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dml_cc_srcs})
+  add_library(onnxruntime_providers_dml ${onnxruntime_providers_dml_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_dml onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+  add_dependencies(onnxruntime_providers_dml ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_include_directories(onnxruntime_providers_dml PRIVATE ${ONNXRUNTIME_ROOT} ${ONNXRUNTIME_ROOT}/../cmake/external/wil/include)
+  
+  target_link_libraries(onnxruntime_providers_dml ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/build/DirectML.targets)
+  target_link_libraries(onnxruntime_providers_dml d3d12.lib dxgi.lib)
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll")
+
+  # The DML EP requires C++17
+  set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD 17)
+  set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD_REQUIRED ON)
+  
+  target_compile_definitions(onnxruntime_providers_dml PRIVATE ONNX_NAMESPACE=onnx ONNX_ML LOTUS_LOG_THRESHOLD=2 LOTUS_ENABLE_STDERR_LOGGING PLATFORM_WINDOWS)
+  target_compile_definitions(onnxruntime_providers_dml PRIVATE UNICODE _UNICODE NOMINMAX)
+  if (MSVC)
+    target_compile_definitions(onnxruntime_providers_dml PRIVATE _SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING)
+    target_compile_options(onnxruntime_providers_dml PRIVATE "/W3")
+  endif()
+  
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dml  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+
+  set_target_properties(onnxruntime_providers_dml PROPERTIES LINKER_LANGUAGE CXX)
+  set_target_properties(onnxruntime_providers_dml PROPERTIES FOLDER "ONNXRuntime")
 endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)

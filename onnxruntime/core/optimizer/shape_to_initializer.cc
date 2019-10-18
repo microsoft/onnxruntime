@@ -34,28 +34,23 @@ Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& ru
   }
 
   auto tensor_proto_data_type = shape_out_def->TypeAsProto()->tensor_type().elem_type();
-
   shape_initializer_proto.set_data_type(tensor_proto_data_type);
 
-  // Here we expect little-indian format to set raw data of the TensorProto.
+  // Here we expect little-endian format to set raw data of the TensorProto.
   shape_initializer_proto.set_raw_data(input_dims.data(),
                                        input_dims.size() * sizeof(decltype(input_dims)::value_type));
 
-  // Remove the output edges of the Shape node, then remove the node itself, and replace it with the initializer.
-  graph_utils::RemoveNodeOutputEdges(graph, node);
+  auto& new_node_arg = graph_utils::AddInitializer(graph, shape_initializer_proto);
 
-  if (graph.RemoveNode(node.Index())) {
+  if (graph_utils::ReplaceNodeWithInitializer(graph, node, new_node_arg)) {
     rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
-    graph.AddInitializedTensor(shape_initializer_proto);
   }
 
   return Status::OK();
 }
 
 bool ShapeToInitializer::SatisfyCondition(const Graph& graph, const Node& node) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Shape", {1}) ||
-      // Making sure we are not left with a graph with no nodes.
-      graph.IsNodeOutputsInGraphOutputs(node)) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Shape", {1})) {
     return false;
   }
 
@@ -71,6 +66,12 @@ bool ShapeToInitializer::SatisfyCondition(const Graph& graph, const Node& node) 
     if (!utils::HasDimValue(input_dim) || input_dim.dim_value() < 0) {
       return false;
     }
+  }
+
+  // we're going to create an initializer with the same name as the node output
+  const auto& new_initializer_name = node.OutputDefs()[0]->Name();
+  if (!graph_utils::CanReplaceNodeWithInitializer(graph, node, new_initializer_name)) {
+    return false;
   }
 
   return true;
