@@ -176,8 +176,8 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 #define GSL_SUPPRESS(tag)
 #endif
 
-  inline void MakeStringInternal(std::ostringstream& /*ss*/) noexcept {
-  }
+inline void MakeStringInternal(std::ostringstream& /*ss*/) noexcept {
+}
 
 template <typename T>
 inline void MakeStringInternal(std::ostringstream& ss, const T& t) noexcept {
