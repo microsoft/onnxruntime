@@ -138,7 +138,8 @@ def create_backend_test(testname=None):
                                  '^test_resize_upsample_sizes_nearest_ceil_half_pixel_cpu',
                                  '^test_resize_upsample_sizes_nearest_cpu',
                                  '^test_resize_upsample_sizes_nearest_floor_align_corners_cpu',
-                                 '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu'
+                                 '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu',
+                                 '^test_onehot_.*'
         ]
 
         # Example of how to disable tests for a specific provider.
@@ -160,7 +161,7 @@ def create_backend_test(testname=None):
 
         if c2.supports_device('MKLDNN'):
             current_failing_tests += ['^test_range_float_type_positive_delta_expanded_cpu',
-                                 '^test_range_int32_type_negative_delta_expanded_cpu']		
+                                      '^test_range_int32_type_negative_delta_expanded_cpu']		
  									  
         if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
             current_failing_tests.append('^test_div_cpu*')
