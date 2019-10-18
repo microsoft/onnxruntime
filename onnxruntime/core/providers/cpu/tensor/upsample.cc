@@ -266,7 +266,7 @@ Status upsampleLinear(const T* input,
 // This is the common use-case where the 4-D input (batched multi-channel images)
 // is usually of shape [N, C, H, W] and the scales are [1.0, 1.0, height_scale, width_scale]
 template <typename T>
-void upsampleBilinear(int64_t batch_size,
+void UpsampleBilinear(int64_t batch_size,
                       int64_t num_channels,
                       int64_t input_height,
                       int64_t input_width,
@@ -390,8 +390,8 @@ template <typename T>
 T GetDataForCoordinate(const T* Xdata,
                        int64_t x, int64_t y,
                        int64_t input_height, int64_t input_width) {
-  x = std::max((int64_t)0, std::min(x, input_width - 1));
-  y = std::max((int64_t)0, std::min(y, input_height - 1));
+  x = std::max(static_cast<int64_t>(0), std::min(x, input_width - 1));
+  y = std::max(static_cast<int64_t>(0), std::min(y, input_height - 1));
   return Xdata[y * input_width + x];
 }
 
@@ -414,14 +414,10 @@ float CubicInterpolation1D(const T* Xdata,
 
   // get the neighbors in 1D and find interpolation for this dimension
   // for 1D cubic interpolation 4 samples are used. 2 on the left and 2 on the right of x
-  std::array<T, CubicModeGridLength> data_array;
   float result = 0;
-  for (int i = 0, j = -1; i < (int)CubicModeGridLength; i++, j++) {
-    data_array[i] = GetDataForCoordinate(Xdata, x + j, y, input_height, input_width);
-  }
-
-  for (size_t i = 0; i < data_array.size(); i++) {
-    result += static_cast<float>(coeff_array[i] * data_array[i]);
+  for (int i = 0, j = -1; i < static_cast<int>(CubicModeGridLength); i++, j++) {
+    auto orig_data = GetDataForCoordinate(Xdata, x + j, y, input_height, input_width);
+    result += static_cast<float>(coeff_array[i] * orig_data);
   }
   cache[grid_start_pos] = result;
 
@@ -513,18 +509,14 @@ void ResizeBiCubic(
           auto& coeff_x = cubic_coeffs[s_x];
 
           // Compute cubic interpolation in x dimension using the x coefficients.
+          // From the result of cubic interpolation in x dim, compute cubic interpolation in y dimension
           auto& interpolation_result_cache = coeff_to_1Dinterpolation_map[s_x];
-          std::array<float, CubicModeGridLength> x_interpolation_result;
+          float result = 0;
           for (int64_t y_val = y_int - 1, i = 0; y_val <= y_int + 2; y_val++, i++) {
-            x_interpolation_result[i] = CubicInterpolation1D(Xdata, x_int, y_val,
+            auto x_interpolation_result = CubicInterpolation1D(Xdata, x_int, y_val,
                                                              input_height, input_width, coeff_x,
                                                              interpolation_result_cache);
-          }
-
-          // From the result of cubic interpolation in x dim, compute cubic interpolation in y dimension
-          float result = 0;
-          for (size_t i = 0; i < x_interpolation_result.size(); i++) {
-            result += x_interpolation_result[i] * coeff_y[i];
+            result += x_interpolation_result * coeff_y[i];
           }
 
           Ydata[y * output_width + x] = static_cast<T>(result);
@@ -590,7 +582,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
 
       AllocatorPtr alloc;
       ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-      upsampleBilinear(batch_size, num_channels, input_height, input_width,
+      UpsampleBilinear(batch_size, num_channels, input_height, input_width,
                        is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], roi,
                        use_extrapolation_, extrapolation_value_, X->template Data<T>(),
                        Y->template MutableData<T>(), alloc, get_original_coordinate_);

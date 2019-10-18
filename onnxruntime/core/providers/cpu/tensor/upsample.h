@@ -115,14 +115,14 @@ class UpsampleBase {
   int sizes_input_idx_ = -1;
 
   UpsampleMode StringToUpsampleMode(const std::string& mode) {
-    if (strcmp(mode.c_str(), UpsampleModeNN) == 0) {
+    if (mode == UpsampleModeNN) {
       return UpsampleMode::NN;
     }
-    if (strcmp(mode.c_str(), UpsampleModeLinear) == 0) {
+    if (mode == UpsampleModeLinear) {
       return UpsampleMode::LINEAR;
     }
 
-    if (strcmp(mode.c_str(), UpsampleModeCubic) == 0) {
+    if (mode == UpsampleModeCubic) {
       return UpsampleMode::CUBIC;
     }
     ORT_THROW("mode attribute is " + mode + ". It can only be " +
@@ -235,8 +235,8 @@ class UpsampleBase {
     if (scales.empty()) {
       scales.resize(scales_size);
     }
-    for (size_t i = 0; i < dims.size(); i++) {
-      scales[i] = (float)(sizes_data[i]) / (float)(dims[i]);
+    for (size_t i = 0, end = dims.size(); i < end; ++i) {
+      scales[i] = static_cast<float>(sizes_data[i]) / static_cast<float>(dims[i]);
     }
     ScalesValidation(scales, mode_);
   }
