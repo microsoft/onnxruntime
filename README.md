@@ -174,10 +174,9 @@ This project has adopted the [Microsoft Open Source Code of Conduct](https://ope
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/)
 or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 ***
-# License
-[MIT License](LICENSE)
-
 # Data/Telemetry
 This project collects usage data and sends it to Microsoft to help improve our products and services. See the [privacy statement](docs/Privacy.md) for more details.
 
-For more information on telemetry implementation see the [developer guide](docs/C_API.md#Telemetry).
+***
+# License
+[MIT License](LICENSE)

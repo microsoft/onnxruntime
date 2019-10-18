@@ -33,8 +33,7 @@ The example below shows a sample run using the SqueezeNet model from ONNX model 
 # Telemetry
 This project collects usage data and sends it to Microsoft to help improve our products and services. Note however that no data collection is performed by default when using your private builds
 
-Telemetry is turned on by default when using the Official Builds.  This is implemented via 'Platform Telemetry' per vendor platform providers (see telemetry.h).
+Telemetry is turned OFF by default while this feature is in BETA.   When the feature moves from BETA to RELEASE, developers should expect telemetry to be ON by default when using the Official Builds.  This is implemented via 'Platform Telemetry' per vendor platform providers (see telemetry.h).
 
 The Windows provider uses the [TraceLogging](https://docs.microsoft.com/en-us/windows/win32/tracelogging/trace-logging-about) API for its implementation.
 
-You can turn this off using the DisableTelemetryEvents() API.

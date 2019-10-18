@@ -1,4 +1,10 @@
 # Data Collection
 The software may collect information about you and your use of the software and send it to Microsoft. Microsoft may use this information to provide services and improve our products and services. You may turn off the telemetry as described in the repository. There are also some features in the software that may enable you and Microsoft to collect data from users of your applications. If you use these features, you must comply with applicable law, including providing appropriate notices to users of your applications together with a copy of Microsoft's privacy statement. Our privacy statement is located at https://go.microsoft.com/fwlink/?LinkID=824704. You can learn more about data collection and use in the help documentation and our privacy statement. Your use of the software operates as your consent to these practices.
 
-For more information on telemetry implementation see the [developer guide](C_API.md#Telemetry).
+Note that no data collection is performed by default when using your private builds.
+
+Telemetry is turned OFF by default while this feature is in BETA.   When the feature moves from BETA to RELEASE, developers should expect telemetry to be ON by default when using the Official Builds.  This is implemented via 'Platform Telemetry' per vendor platform providers (see telemetry.h).
+
+The Windows provider uses the [TraceLogging](https://docs.microsoft.com/en-us/windows/win32/tracelogging/trace-logging-about) API for its implementation.
+
+You can turn this on or off using the Enable/DisableTelemetryEvents() C API.
