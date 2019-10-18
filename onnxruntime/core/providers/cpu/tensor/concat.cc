@@ -134,8 +134,8 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 
     // The input_axis_pitch is the number of elements to add to move to the next split axis in the input
     // Can handle stacking as well (as the "new dummy dimension" in the input is of unit value).
-    // TODO: Minor Optimization possibility. This input_axis_patch will be common across all inputs
-    // in 'ConcatFromSequence' (stack mode). They have to be computed for each input while concating
+    // TODO: Minor Optimization possibility: This input_axis_patch will be common across all inputs
+    // in 'ConcatFromSequence' (stack mode). They have to be computed for each input only while concatenating.
     int64_t input_axis_pitch = 1;
     const auto& data_dims = data_n.Shape().GetDims();
     for (size_t i = inputs_0_rank; i-- > p.axis;) {
@@ -169,6 +169,11 @@ Status ConcatBase::ComputeImpl(Prepare& p) const {
     auto input_size = prep.num_elements;
 
     // Copy the data across. For every 'input_axis_pitch' values copied, we move over by the 'output_axis_pitch'
+    // TODO: Optimization possibility: There are cases where we simply need to "merge" raw buffers and this 
+    // could be done without the pointer house-keeping as below. Some scenarios whether this is possible are:
+    // 1) Concatenating on input axis = 0
+    // 2) Stacking on output axis = 0
+    // 3) Stacking scalars
     uint8_t* output = static_cast<uint8_t*>(p.output_tensor->MutableDataRaw());
     int64_t cur_out_offset = 0;
     int64_t cur_in_offset = 0;
