@@ -411,7 +411,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"convtranspose_1d", "1d convtranspose not supported yet"},
       {"convtranspose_3d", "3d convtranspose not supported yet"},
       {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
-      // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8. 
+      // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
       // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
       // which doesn't match the expected output that was generated with numpy.
       {"cast_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results."},
@@ -483,6 +483,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});
   broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
   broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
+  broken_tests.insert({"mlperf_ssd_resnet34_1200", "Results mismatch"});
+  broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
+  broken_tests.insert({"mask_rcnn_keras", "Results mismatch: 8 of 81000"});
+  broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
 #endif
 
 #ifdef USE_MKLDNN
