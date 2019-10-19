@@ -9,7 +9,7 @@
 #ifdef _MSC_VER
 #include <codecvt>
 #include <locale.h>
-#elif (defined __APPLE__)
+#elif defined (__APPLE__) or defined (__ANDROID__)
 #include <codecvt>
 #else
 #include <limits>
@@ -105,7 +105,7 @@ class Locale {
   std::locale loc_;
 };
 
-#ifdef __APPLE__
+#if defined(__APPLE__) or defined(__ANDROID__)
 using Utf8Converter = std::wstring_convert<std::codecvt_utf8<wchar_t>>;
 #else
 
