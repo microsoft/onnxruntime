@@ -89,11 +89,11 @@ struct ProviderHostImpl : ProviderHost {
     new (_this) Status(*reinterpret_cast<const StatusCategory*>(category), code, *reinterpret_cast<const std::string*>(std_string_msg));
   }
 
-  void onnxruntime_OpKernelInfo_copy_constructor(void* _this, void* p1) {
+  void onnxruntime_OpKernelInfo_copy_constructor(void* _this, void* p1) override {
     new (_this) OpKernelInfo(*reinterpret_cast<const OpKernelInfo*>(p1));
   }
 
-  void onnxruntime_OpKernelInfo_constructor(void* _this, void* p1, void* p2, void* p3, void* p4, void* p5, void* p6, void* p7) {
+  void onnxruntime_OpKernelInfo_constructor(void* _this, void* p1, void* p2, void* p3, void* p4, void* p5, void* p6, void* p7) override {
     new (_this) OpKernelInfo(*reinterpret_cast<const onnxruntime::Node*>(p1),
                              *reinterpret_cast<const KernelDef*>(p2),
                              *reinterpret_cast<const IExecutionProvider*>(p3),

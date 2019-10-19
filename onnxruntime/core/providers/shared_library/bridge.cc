@@ -547,6 +547,7 @@ const KernelDef& OpKernelInfo::GetKernelDef() const {
 
 }  // namespace onnxruntime
 
+#if 0
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include "core/providers/cpu/nn/pool.h"
 #include "core/providers/cpu/nn/lrn.h"
@@ -595,3 +596,4 @@ Status Conv<float>::Compute(OpKernelContext*) const {
   return Status::OK();
 }
 }  // namespace onnxruntime
+#endif
