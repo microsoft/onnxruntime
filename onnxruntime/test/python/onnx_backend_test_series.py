@@ -116,30 +116,14 @@ def create_backend_test(testname=None):
                                  '^test_unique_not_sorted_without_axis_cpu', # bad expected data. enable after https://github.com/onnx/onnx/pull/2381 is picked up
                                  '^test_mod_float_mixed_sign_example_cpu', #onnxruntime::Mod::Compute fmod_ was false. fmod attribute must be true for float, float16 and double types
                                  '^test_shrink_cpu', #Invalid rank for input: x Got: 1 Expected: 2 Please fix either the inputs or the model.
-                                 '^test_resize_downsample_scales_cubic_A_n0p5_exclude_outside_cpu',
-                                 '^test_resize_downsample_scales_cubic_align_corners_cpu',
-                                 '^test_resize_downsample_scales_cubic_cpu',
-                                 '^test_resize_downsample_scales_linear_align_corners_cpu',
-                                 '^test_resize_downsample_scales_linear_cpu',
-                                 '^test_resize_downsample_scales_nearest_cpu',
-                                 '^test_resize_downsample_sizes_cubic_cpu',
-                                 '^test_resize_downsample_sizes_linear_pytorch_half_pixel_cpu',
-                                 '^test_resize_downsample_sizes_nearest_cpu',
-                                 '^test_resize_downsample_sizes_nearest_tf_half_pixel_for_nn_cpu',
-                                 '^test_resize_tf_crop_and_resize_cpu',
-                                 '^test_resize_upsample_scales_cubic_A_n0p5_exclude_outside_cpu',
-                                 '^test_resize_upsample_scales_cubic_align_corners_cpu',
-                                 '^test_resize_upsample_scales_cubic_asymmetric_cpu',
-                                 '^test_resize_upsample_scales_cubic_cpu',
-                                 '^test_resize_upsample_scales_linear_align_corners_cpu',
-                                 '^test_resize_upsample_scales_linear_cpu',
-                                 '^test_resize_upsample_scales_nearest_cpu',
-                                 '^test_resize_upsample_sizes_cubic_cpu',
-                                 '^test_resize_upsample_sizes_nearest_ceil_half_pixel_cpu',
-                                 '^test_resize_upsample_sizes_nearest_cpu',
-                                 '^test_resize_upsample_sizes_nearest_floor_align_corners_cpu',
-                                 '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu',
-                                 '^test_onehot_.*'
+                                 '^test_resize_downsample_scales_cubic_A_n0p5_exclude_outside_cpu',  # not implemented yet
+                                 '^test_resize_downsample_scales_cubic_align_corners_cpu',  # not implemented yet
+                                 '^test_resize_downsample_scales_linear_align_corners_cpu',  # not implemented yet
+                                 '^test_resize_upsample_scales_cubic_A_n0p5_exclude_outside_cpu',  # not implemented yet
+                                 '^test_resize_tf_crop_and_resize_cpu',  # bad expected data
+                                 '^test_resize_upsample_sizes_nearest_ceil_half_pixel_cpu',  # bad expected data
+\                                '^test_resize_upsample_sizes_nearest_floor_align_corners_cpu',  # bad expected data
+                                 '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu',  # bad expected data
         ]
 
         # Example of how to disable tests for a specific provider.
