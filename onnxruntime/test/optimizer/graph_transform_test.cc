@@ -247,11 +247,11 @@ TEST(GraphTransformationTests, FuseConvBNNoBias) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto rule_transformer_L2 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2");
-  rule_transformer_L2->Register(onnxruntime::make_unique<ConvBNFusion>());
-  graph_transformation_mgr.Register(std::move(rule_transformer_L2), TransformerLevel::Level2);
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<ConvBNFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["BatchNormalization"] == 0);
@@ -271,16 +271,12 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
     auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
     rule_transformer_L1->Register(onnxruntime::make_unique<UnsqueezeElimination>());
+    rule_transformer_L1->Register(onnxruntime::make_unique<ConvAddFusion>());
+    rule_transformer_L1->Register(onnxruntime::make_unique<ConvBNFusion>());
+    rule_transformer_L1->Register(onnxruntime::make_unique<ConvMulFusion>());
     graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
-    auto rule_transformer_L2 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2");
-    rule_transformer_L2->Register(onnxruntime::make_unique<ConvAddFusion>());
-    rule_transformer_L2->Register(onnxruntime::make_unique<ConvBNFusion>());
-    rule_transformer_L2->Register(onnxruntime::make_unique<ConvMulFusion>());
-    graph_transformation_mgr.Register(std::move(rule_transformer_L2), TransformerLevel::Level2);
-
     ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
-    ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
 
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
     ASSERT_TRUE(op_to_count["BatchNormalization"] == 0);
@@ -366,14 +362,10 @@ TEST(GraphTransformationTests, FuseConvMulNoBias) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
   rule_transformer_L1->Register(onnxruntime::make_unique<UnsqueezeElimination>());
+  rule_transformer_L1->Register(onnxruntime::make_unique<ConvMulFusion>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
-  auto rule_transformer_L2 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2");
-  rule_transformer_L2->Register(onnxruntime::make_unique<ConvMulFusion>());
-  graph_transformation_mgr.Register(std::move(rule_transformer_L2), TransformerLevel::Level2);
-
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
@@ -390,14 +382,10 @@ TEST(GraphTransformationTests, FuseConvAddNoBias) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
   rule_transformer_L1->Register(onnxruntime::make_unique<UnsqueezeElimination>());
+  rule_transformer_L1->Register(onnxruntime::make_unique<ConvAddFusion>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
-  auto rule_transformer_L2 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2");
-  rule_transformer_L2->Register(onnxruntime::make_unique<ConvAddFusion>());
-  graph_transformation_mgr.Register(std::move(rule_transformer_L2), TransformerLevel::Level2);
-
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 0);
@@ -416,14 +404,10 @@ TEST(GraphTransformationTests, NegativeFuseConvAddNoBias) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
   rule_transformer_L1->Register(onnxruntime::make_unique<UnsqueezeElimination>());
+  rule_transformer_L1->Register(onnxruntime::make_unique<ConvAddFusion>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
-  auto rule_transformer_L2 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2");
-  rule_transformer_L2->Register(onnxruntime::make_unique<ConvAddFusion>());
-  graph_transformation_mgr.Register(std::move(rule_transformer_L2), TransformerLevel::Level2);
-
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
 
   // Nodes are not fused because the weights to conv/add are not constants (they appear in the graph inputs).
   // Unsqueeze is also not eliminated as the initializer that is its input is also not constant
@@ -440,12 +424,12 @@ TEST(GraphTransformationTests, FuseConvAddMul3D) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto rule_transformer_L2 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2");
-  rule_transformer_L2->Register(onnxruntime::make_unique<ConvAddFusion>());
-  rule_transformer_L2->Register(onnxruntime::make_unique<ConvMulFusion>());
-  graph_transformation_mgr.Register(std::move(rule_transformer_L2), TransformerLevel::Level2);
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<ConvAddFusion>());
+  rule_transformer_L1->Register(onnxruntime::make_unique<ConvMulFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 0);
@@ -460,12 +444,12 @@ TEST(GraphTransformationTests, FuseConvAddMul3D_2) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto rule_transformer_L2 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2");
-  rule_transformer_L2->Register(onnxruntime::make_unique<ConvAddFusion>());
-  rule_transformer_L2->Register(onnxruntime::make_unique<ConvMulFusion>());
-  graph_transformation_mgr.Register(std::move(rule_transformer_L2), TransformerLevel::Level2);
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<ConvAddFusion>());
+  rule_transformer_L1->Register(onnxruntime::make_unique<ConvMulFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 0);
@@ -480,8 +464,8 @@ TEST(GraphTransformationTests, MatMulAddFusion_two_input) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<MatMulAddFusion>(), TransformerLevel::Level2);
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MatMulAddFusion>(), TransformerLevel::Level1);
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["MatMul"] == 0);
@@ -497,8 +481,8 @@ TEST(GraphTransformationTests, MatMulAddFusion_three_input) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<MatMulAddFusion>(), TransformerLevel::Level2);
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MatMulAddFusion>(), TransformerLevel::Level1);
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["MatMul"] == 0);
@@ -534,11 +518,11 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
 
-  auto rule_transformer_L2 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2");
-  rule_transformer_L2->Register(onnxruntime::make_unique<ConvAddFusion>());
-  rule_transformer_L2->Register(onnxruntime::make_unique<ConvBNFusion>());
-  rule_transformer_L2->Register(onnxruntime::make_unique<ConvMulFusion>());
-  session_object.RegisterGraphTransformer(std::move(rule_transformer_L2), TransformerLevel::Level2);
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<ConvAddFusion>());
+  rule_transformer_L1->Register(onnxruntime::make_unique<ConvBNFusion>());
+  rule_transformer_L1->Register(onnxruntime::make_unique<ConvMulFusion>());
+  session_object.RegisterGraphTransformer(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
   ASSERT_TRUE(session_object.Initialize().IsOK());
 

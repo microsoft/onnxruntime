@@ -27,10 +27,13 @@ public:
         assert(inputTensors.size() == 1);
         assert(outputTensors.size() == 1);
 
-        THROW_IF_FAILED(m_executionProvider->CopyTensor(
-            outputTensors.front(),
-            inputTensors.front()
-            ));
+        if (!OperatorHelper::ContainsEmptyDimensions(MLOperatorTensor(inputTensors.front()).GetShape()))
+        {
+            THROW_IF_FAILED(m_executionProvider->CopyTensor(
+                outputTensors.front(),
+                inputTensors.front()
+                ));
+        }
     }
 
 private:
