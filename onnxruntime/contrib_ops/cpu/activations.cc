@@ -19,9 +19,10 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     ScaledTanh<float>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     ThresholdedRelu,
     1,
+	9,
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     ThresholdedRelu<float>);
 

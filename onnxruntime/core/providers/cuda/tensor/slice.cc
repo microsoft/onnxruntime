@@ -70,14 +70,14 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   }
   CudaAsyncBuffer<int64_t> starts_buffer(this, dimension_count);
   gsl::span<int64_t> starts_buffer_span = starts_buffer.CpuSpan();
-  for (int i = 0; i < dimension_count; ++i) {
+  for (size_t i = 0; i < dimension_count; ++i) {
     starts_buffer_span[i] = starts[i];
   }
   starts_buffer.CopyToGpu();
 
   CudaAsyncBuffer<int64_t> steps_buffer(this, dimension_count);
   gsl::span<int64_t> steps_buffer_span = steps_buffer.CpuSpan();
-  for (int i = 0; i < dimension_count; ++i) {
+  for (size_t i = 0; i < dimension_count; ++i) {
     steps_buffer_span[i] = steps[i];
   }
   steps_buffer.CopyToGpu();
@@ -90,7 +90,7 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
 
   CudaAsyncBuffer<fast_divmod> div_strides(this, dimension_count);
   gsl::span<fast_divmod> div_strides_span = div_strides.CpuSpan();
-  for (int i = 0; i < dimension_count; ++i) {
+  for (size_t i = 0; i < dimension_count; ++i) {
     div_strides_span[i] = fast_divmod(gsl::narrow_cast<int>(output_pitches[i]));
   }
   div_strides.CopyToGpu();

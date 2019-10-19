@@ -1,22 +1,23 @@
-FROM quay.io/pypa/manylinux2010_x86_64@sha256:43fc72ccbec227f361f7666efc035254e457deb8d1361b803496637dacb03eca
-
-ARG PYTHON_VERSION=3.5
+# FROM mcr.microsoft.com/dotnet-buildtools/prereqs:centos-7-50f0d02-20190918214028
+FROM centos:6
 
 ENV NVIDIA_VISIBLE_DEVICES all
 ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
 
+
+ARG PYTHON_VERSION
 ADD scripts /tmp/scripts
-RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh && /tmp/scripts/install_deps.sh -p $PYTHON_VERSION && \
-yum remove -y devtoolset-\*  && yum install -y devtoolset-7-binutils devtoolset-7-gcc devtoolset-7-gcc-c++ devtoolset-7-gcc-gfortran devtoolset-7-libquadmath-devel devtoolset-7-libstdc++-devel devtoolset-7-runtime && \
-rm -rf /tmp/scripts
+RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh 
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/bin:/usr/bin:/usr/local/bin:/opt/rh/devtoolset-7/root/usr/bin:{PATH}
+RUN /tmp/scripts/install_deps.sh -p $PYTHON_VERSION && rm -rf /tmp/scripts
 
 #Below are copied from https://gitlab.com/nvidia/container-images/cuda/tree/master/dist/centos6
 
 RUN NVIDIA_GPGKEY_SUM=d1be581509378368edeec8c1eb2958702feedf3bc3d17011adbf24efacce4ab5 && \
-    curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/rhel6/x86_64/7fa2af80.pub | sed '/^Version/d' > /etc/pki/rpm-gpg/RPM-GPG-KEY-NVIDIA && \
+curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/rhel6/x86_64/7fa2af80.pub | sed '/^Version/d' > /etc/pki/rpm-gpg/RPM-GPG-KEY-NVIDIA && \
     echo "$NVIDIA_GPGKEY_SUM  /etc/pki/rpm-gpg/RPM-GPG-KEY-NVIDIA" | sha256sum -c -
 
-COPY cuda_manylinux2010.repo /etc/yum.repos.d/cuda.repo
+COPY cuda_manylinux2010.repo  /etc/yum.repos.d/cuda.repo
 
 ENV CUDA_VERSION 10.0.130
 
@@ -38,7 +39,7 @@ cuda-minimal-build-$CUDA_PKG_VERSION \
 RUN echo "/usr/local/nvidia/lib" >> /etc/ld.so.conf.d/nvidia.conf && \
     echo "/usr/local/nvidia/lib64" >> /etc/ld.so.conf.d/nvidia.conf
 
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/opt/rh/devtoolset-7/root/usr/bin:${PATH}
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH}
 ENV LD_LIBRARY_PATH /usr/local/nvidia/lib:/usr/local/nvidia/lib64:${LD_LIBRARY_PATH}
 
 # nvidia-container-runtime
@@ -58,11 +59,12 @@ RUN CUDNN_DOWNLOAD_SUM=417bb5daf51377037eb2f5c87649000ca1b9cec0acb16cfe07cb1d3e9
     echo "$CUDNN_DOWNLOAD_SUM  cudnn-10.0-linux-x64-v7.6.4.38.tgz" | sha256sum -c - && \
     tar --no-same-owner -xzf cudnn-10.0-linux-x64-v7.6.4.38.tgz -C /usr/local && \
     rm cudnn-10.0-linux-x64-v7.6.4.38.tgz && \
-    ldconfig
+    /sbin/ldconfig
 
 
 ARG BUILD_UID=1000
 ARG BUILD_USER=onnxruntimedev
-RUN adduser --comment 'onnxruntime Build User' --uid $BUILD_UID $BUILD_USER
+RUN /usr/sbin/adduser --uid $BUILD_UID $BUILD_USER
 WORKDIR /home/$BUILD_USER
 USER $BUILD_USER
+

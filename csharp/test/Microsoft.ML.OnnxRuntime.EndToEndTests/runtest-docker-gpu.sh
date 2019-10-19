@@ -14,7 +14,7 @@ PackageName=${PACKAGENAME:-Microsoft.ML.OnnxRuntime.Gpu}
 RunTestCsharp=${RunTestCsharp:-true}
 RunTestNative=${RunTestNative:-true}
 #CUDA_VER=cuda10.0-cudnn7.3, cuda9.1-cudnn7.1, cuda10.0-cudnn7.3
-CUDA_VER=${4:-cuda10.0-cudnn7.3}
+CUDA_VER=${5:-cuda10.0-cudnn7.3}
 
 PYTHON_VER=3.5
 IMAGE="ubuntu16.04-$CUDA_VER"

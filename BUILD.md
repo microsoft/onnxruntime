@@ -374,6 +374,8 @@ index 7dfa97c..6d99e71 100644
 
 Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#nuphar-public-preview)
 
+---
+
 ### DirectML
 See more information on the DirectML execution provider [here](./docs/execution_providers/DirectML-ExecutionProvider.md).
 #### Windows
@@ -382,7 +384,6 @@ See more information on the DirectML execution provider [here](./docs/execution_
 ```
 #### Notes
 The DirectML execution provider supports building for both x64 and x86 architectures. DirectML is only supported on Windows.
-
  
 ---
 

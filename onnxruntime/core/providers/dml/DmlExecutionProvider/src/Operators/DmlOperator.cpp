@@ -19,6 +19,24 @@ namespace Dml
         // Initialize should only be called once.
         assert(m_compiledOperator == nullptr);
 
+        // DML doesn't support empty tensors. If an operator is still executable with empty tensors, the empty tensors
+        // should be removed or massaged depending on the definition.
+        for (const TensorDesc& desc : m_inputTensorDescs)
+        {
+            if (OperatorHelper::ContainsEmptyDimensions(desc.GetSizes()))
+            {
+                return;
+            }
+        }
+
+        for (const TensorDesc& desc : m_outputTensorDescs)
+        {
+            if (OperatorHelper::ContainsEmptyDimensions(desc.GetSizes()))
+            {
+                return;
+            }
+        }
+
         // Create and compile the operator.
         ComPtr<IDMLOperator> dmlOperator;
         THROW_IF_FAILED(m_dmlDevice->CreateOperator(&operatorDesc, IID_PPV_ARGS(&dmlOperator)));
@@ -278,7 +296,7 @@ namespace Dml
 
     std::vector<IMLOperatorTensor*> DmlOperator::GetInputTensorsForExecute(const MLOperatorKernelContext& kernelContext)
     {
-        return  GetInputTensors(kernelContext);
+        return GetInputTensors(kernelContext);
     }
 
     std::vector<IMLOperatorTensor*> DmlOperator::GetOutputTensorsForExecute(const MLOperatorKernelContext& kernelContext)

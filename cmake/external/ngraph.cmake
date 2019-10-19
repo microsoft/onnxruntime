@@ -55,7 +55,7 @@ if (MSVC)
             PATCH_COMMAND ${NGRAPH_PATCH_DISCARD_COMMAND}
             COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/patches/ngraph/ngraph_onnx.cmake ${ngraph_SRC}/cmake/external_onnx.cmake
             COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/ngraph/ngraph_protobuf.patch
-            COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/ngraph/mkldnn_constexpr.patch
+            COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/ngraph/dnnl_v1.patch
             CMAKE_ARGS
                 -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                 -DNGRAPH_DEX_ONLY=ON
@@ -84,6 +84,7 @@ else()
             COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/patches/ngraph/ngraph_onnx.cmake ${ngraph_SRC}/cmake/external_onnx.cmake
             # TODO: Use cmake.file+copy as above.
             COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/ngraph/ngraph_protobuf.patch
+            COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/ngraph/dnnl_v1.patch
             CMAKE_ARGS
                 -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                 -DNGRAPH_USE_PREBUILT_LLVM=TRUE
