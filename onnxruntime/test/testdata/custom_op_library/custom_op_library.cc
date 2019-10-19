@@ -31,7 +31,9 @@
 // */
 
 #include "custom_op_library.h"
+#include "onnxruntime_css_api.h"
 #include <vector>
+#include <cmath>
 
 static const char* c_OpDomain = "test.customop";
 static const char* c_OpOneName = "CustomOpOne";
@@ -50,9 +52,17 @@ ONNXTensorElementDataType c_dataElemTypeTwo = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT3
 
 //===================
 
+struct OrtTensorDimensions : std::vector<int64_t> {
+  OrtTensorDimensions(Ort::CustomOpApi ort, const OrtValue* value) {
+    OrtTensorTypeAndShapeInfo* info = ort.GetTensorTypeAndShape(value);
+    std::vector<int64_t>::operator=(ort.GetTensorShape(info));
+    ort.ReleaseTensorTypeAndShapeInfo(info);
+  }
+};
 
-struct MyCustomKernel {
-  MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
+
+struct CustomKernelOne {
+  CustomKernelOne(Ort::OrtApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
   }
 
   void Compute(OrtKernelContext* context) {
@@ -64,6 +74,7 @@ struct MyCustomKernel {
 
     // Setup output
     OrtTensorDimensions dimensions(ort_, input_X);
+
     OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
     float* out = ort_.GetTensorMutableData<float>(output);
 
@@ -78,11 +89,45 @@ struct MyCustomKernel {
   }
 
  private:
-  Ort::CustomOpApi ort_;
+  Ort::OrtApi ort_;
 };
 
-struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
-  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) { return new MyCustomKernel(api, info); };
+
+struct CustomKernelTwo {
+  CustomKernelTwo(Ort::OrtApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
+  }
+
+  void Compute(OrtKernelContext* context) {
+    // Setup inputs
+    const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
+    const float* X = ort_.GetTensorData<float>(input_X);
+
+    // Setup output
+    OrtTensorDimensions dimensions(ort_, input_X);
+
+    OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
+    int32_t* out = ort_.GetTensorMutableData<int32_t>(output);
+
+    OrtTensorTypeAndShapeInfo* output_info = ort_.GetTensorTypeAndShape(output);
+    int64_t size = ort_.GetTensorShapeElementCount(output_info);
+    ort_.ReleaseTensorTypeAndShapeInfo(output_info);
+
+    // Do computation
+    for (int64_t i = 0; i < size; i++) {
+      out[i] = (int32_t)(round(X[i]));
+    }
+  }
+  
+
+ private:
+  Ort::OrtApi ort_;
+};
+
+
+
+
+struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, MyCustomKernel> {
+  void* CreateKernel(Ort::OrtApi api, const OrtKernelInfo* info) { return new MyCustomKernel(api, info); };
   const char* GetName() const { return "Foo"; };
 
   size_t GetInputTypeCount() const { return 2; };
@@ -91,6 +136,7 @@ struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
   size_t GetOutputTypeCount() const { return 1; };
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 };
+
 
 
 //===================
