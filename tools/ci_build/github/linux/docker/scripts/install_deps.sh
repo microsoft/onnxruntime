@@ -96,9 +96,10 @@ if ! [ -x "$(command -v protoc)" ]; then
   source ${0/%install_deps\.sh/install_protobuf\.sh}
 fi
 
-${PYTHON_EXE} -m pip install --upgrade --force-reinstall -r ${0/%install_deps\.sh/requirements\.txt}
+#Don't update 'wheel' to the latest version. see: https://github.com/pypa/auditwheel/issues/102
+${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
 if [ $DEVICE_TYPE = "Normal" ]; then
-    ${PYTHON_EXE} -m pip install --upgrade --force-reinstall sympy==1.1.1
+    ${PYTHON_EXE} -m pip install sympy==1.1.1
 fi
 
 
