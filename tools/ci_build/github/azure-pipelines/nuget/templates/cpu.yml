@@ -152,7 +152,6 @@ jobs:
     parameters:
       downloadPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
       gitCommitHash: $(OnnxRuntimeGitCommitHashShort)  
-    continueOnError: true
 
   - template: get-nuget-package-version-as-variable.yml
     parameters:
