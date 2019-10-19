@@ -133,9 +133,11 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   auto output_count = Y->Shape().Size();
 
   if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_NO_INDICES) {
+    IAllocatorUniquePtr<T> input_data_buffer(nullptr, [](T*){});
     CudaT* input_data = nullptr;
     if (calculate_sqt_) {
-      input_data = reinterpret_cast<CudaT*>(GetScratchBuffer<T>(input_count).get());
+      input_data_buffer = GetScratchBuffer<T>(input_count);
+      input_data = reinterpret_cast<CudaT*>(input_data_buffer.get());
       fast_divmod tmp_div;
       Impl_Mul<CudaT>(static_cast<size_t>(SimpleBroadcast::NoBroadcast), nullptr,
                       reinterpret_cast<const CudaT*>(X->template Data<T>()), nullptr,
@@ -156,8 +158,10 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
 
       // Exp(X-ReduceMax)
       const TensorShape output_shape(output_dims);
-      auto exp_result = GetScratchBuffer<T>(input_count).get();
-      auto log_sum_result = GetScratchBuffer<T>(output_count).get();
+      auto exp_result_buffer = GetScratchBuffer<T>(input_count);
+      auto exp_result = exp_result_buffer.get();
+      auto log_sum_result_buffer = GetScratchBuffer<T>(output_count);
+      auto log_sum_result = log_sum_result_buffer.get();
       BinaryElementwisePreparation prepare(this);
       prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, output_shape, input_shape);
       prepare.CopyToGpu();

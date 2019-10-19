@@ -15,16 +15,7 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() == 3, "Scatter expects 3 inputs.");
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1, "Scatter expects 1 output.");
 
-        DmlOperator::Initialize(kernelCreationContext);
-
-        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
-        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
-        assert(inputDescs.size() == 3);
-        assert(outputDescs.size() == 1);
-
-        m_inputTensorDescs[1].ForceUnsignedDataType();
-
-        auto tensorShapeDescription = kernelCreationContext.GetTensorShapeDescription();;
+        auto tensorShapeDescription = kernelCreationContext.GetTensorShapeDescription();
         std::vector<DimensionType> dataDimensions = tensorShapeDescription.GetInputTensorShape(0);
         std::vector<DimensionType> indicesDimensions = tensorShapeDescription.GetInputTensorShape(1);
         std::vector<DimensionType> updatesDimensions = tensorShapeDescription.GetInputTensorShape(2);
@@ -34,19 +25,55 @@ public:
         ML_CHECK_VALID_ARGUMENT(dataDimensions.size() == indicesDimensions.size());
         ML_CHECK_VALID_ARGUMENT(dataDimensions.size() <= OperatorHelper::NchwDimensionCount);
 
-        // Read the axis.
-        int onnxAxis = kernelCreationContext.GetOptionalAttribute<int>(AttrName::Axis, 0);
-        uint32_t dmlAxis = GetDmlAdjustedAxis(onnxAxis, kernelCreationContext, m_inputTensorDescs.front().GetDimensionCount());
+        // When the indices tensor is empty, Scatter is basically Identity. But since DML doesn't support empty or null
+        // tensors, we have to special-case it outside of DML.
+        if (OperatorHelper::ContainsEmptyDimensions(indicesDimensions))
+        {
+            std::vector<std::optional<uint32_t>> kernelInputIndices(1, 0);
+            DmlOperator::Initialize(kernelCreationContext, kernelInputIndices);
 
-        DML_SCATTER_OPERATOR_DESC operatorDesc = {};
-        operatorDesc.InputTensor = &inputDescs[0];
-        operatorDesc.IndicesTensor = &inputDescs[1];
-        operatorDesc.UpdatesTensor = &inputDescs[2];
-        operatorDesc.OutputTensor = outputDescs.data();
-        operatorDesc.Axis = dmlAxis;
+            std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+            std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_SCATTER, &operatorDesc };
-        SetDmlOperatorDesc(opDesc, kernelCreationContext);
+            assert(inputDescs.size() == 1);
+            assert(outputDescs.size() == 1);
+
+            DML_SCALE_BIAS scaleBias = {};
+            scaleBias.Scale = 1.0f;
+
+            DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC operatorDesc = {};
+            operatorDesc.InputTensor = &inputDescs[0];
+            operatorDesc.OutputTensor = outputDescs.data();
+            operatorDesc.ScaleBias = &scaleBias;
+
+            DML_OPERATOR_DESC opDesc = { DML_OPERATOR_ELEMENT_WISE_IDENTITY, &operatorDesc };
+            SetDmlOperatorDesc(opDesc, kernelCreationContext);
+        }
+        else
+        {
+            DmlOperator::Initialize(kernelCreationContext);
+
+            std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+            std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+            assert(inputDescs.size() == 3);
+            assert(outputDescs.size() == 1);
+
+            m_inputTensorDescs[1].ForceUnsignedDataType();
+
+            // Read the axis.
+            int onnxAxis = kernelCreationContext.GetOptionalAttribute<int>(AttrName::Axis, 0);
+            uint32_t dmlAxis = GetDmlAdjustedAxis(onnxAxis, kernelCreationContext, m_inputTensorDescs.front().GetDimensionCount());
+
+            DML_SCATTER_OPERATOR_DESC operatorDesc = {};
+            operatorDesc.InputTensor = &inputDescs[0];
+            operatorDesc.IndicesTensor = &inputDescs[1];
+            operatorDesc.UpdatesTensor = &inputDescs[2];
+            operatorDesc.OutputTensor = outputDescs.data();
+            operatorDesc.Axis = dmlAxis;
+
+            DML_OPERATOR_DESC opDesc = { DML_OPERATOR_SCATTER, &operatorDesc };
+            SetDmlOperatorDesc(opDesc, kernelCreationContext);
+        }
     }
 };
 
