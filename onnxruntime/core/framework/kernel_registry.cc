@@ -115,32 +115,7 @@ class TypeBindingResolver {
 
 bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
                                      const KernelDef& kernel_def,
-                                     std::string& error_str,
-                                     onnxruntime::ProviderType exec_provider) {
-  // check if domain matches
-  if (node.Domain() != kernel_def.Domain()) {
-    std::ostringstream ostr;
-    ostr << "Op: " << node.OpType()
-         << " Domain mismatch: "
-         << " Expected: " << kernel_def.Domain()
-         << " Actual: " << node.Domain();
-    error_str = ostr.str();
-    return false;
-  }
-
-  // check if execution provider matches
-  const auto& node_provider = node.GetExecutionProviderType();
-  const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
-  if (expected_provider != kernel_def.Provider()) {
-    std::ostringstream ostr;
-    ostr << "Op: " << node.OpType()
-         << " Execution provider mismatch."
-         << " Expected: " << expected_provider
-         << " Actual: " << kernel_def.Provider();
-    error_str = ostr.str();
-    return false;
-  }
-
+                                     std::string& error_str) {
   // check if version matches
   int kernel_start_version;
   int kernel_end_version;
@@ -215,28 +190,26 @@ Status KernelRegistry::Register(KernelDefBuilder& kernel_builder,
 }
 
 Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
-  auto& op_name = create_info.kernel_def->OpName();
-
+  if (!create_info.kernel_def) {
+    return Status(ONNXRUNTIME, FAIL, "kernel def can't be NULL");
+  }
+  std::string key = GetMapKey(*create_info.kernel_def);
   // Check op version conflicts.
-  auto range = kernel_creator_fn_map_.equal_range(op_name);
+  auto range = kernel_creator_fn_map_.equal_range(key);
   for (auto i = range.first; i != range.second; ++i) {
     if (i->second.kernel_def &&
         i->second.status.IsOK() &&
         i->second.kernel_def->IsConflict(*create_info.kernel_def)) {
-      auto st = create_info.status =
-          Status(ONNXRUNTIME, FAIL,
-                 "Failed to add kernel for " + op_name +
-                     ": Conflicting with a registered kernel with op versions.");
-      // For invalid entries, we keep them in the map now. Must check for status
-      // when using the entries from the map.
-      kernel_creator_fn_map_.emplace(op_name, std::move(create_info));
-      return st;
+      return create_info.status =
+                 Status(ONNXRUNTIME, FAIL,
+                        "Failed to add kernel for " + key +
+                            ": Conflicting with a registered kernel with op versions.");
     }
   }
 
   // Register the kernel.
   // Ownership of the KernelDef is transferred to the map.
-  kernel_creator_fn_map_.emplace(op_name, std::move(create_info));
+  kernel_creator_fn_map_.emplace(key, std::move(create_info));
   return Status::OK();
 }
 
@@ -278,7 +251,10 @@ static std::string ToString(const std::vector<std::string>& error_strs) {
 // otherwise, kernel_def.provider must equal to node.provider. exec_provider is ignored.
 const KernelCreateInfo* KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
                                                       onnxruntime::ProviderType exec_provider) const {
-  auto range = kernel_creator_fn_map_.equal_range(node.OpType());
+  const auto& node_provider = node.GetExecutionProviderType();
+  const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
+
+  auto range = kernel_creator_fn_map_.equal_range(GetMapKey(node.OpType(), node.Domain(), expected_provider));
   std::vector<std::string> error_strs;
   for (auto i = range.first; i != range.second; ++i) {
     if (!i->second.status.IsOK()) {
@@ -287,13 +263,11 @@ const KernelCreateInfo* KernelRegistry::TryFindKernel(const onnxruntime::Node& n
       continue;
     }
     std::string error_str;
-    if (VerifyKernelDef(node, *i->second.kernel_def, error_str, exec_provider)) {
+    if (VerifyKernelDef(node, *i->second.kernel_def, error_str)) {
       return &i->second;
     }
     error_strs.push_back(error_str);
   }
-  std::string expected_provider =
-      (node.GetExecutionProviderType().empty() ? exec_provider : node.GetExecutionProviderType());
   LOGS_DEFAULT(INFO) << node.OpType() << " kernel is not supported in " << expected_provider
                      << " Encountered following errors: " << ToString(error_strs);
   return nullptr;
