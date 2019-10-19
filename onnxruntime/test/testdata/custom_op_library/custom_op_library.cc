@@ -47,6 +47,54 @@ ONNXTensorElementDataType c_dataElemTypeTwo = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT3
   } while (0)
 
 
+
+//===================
+
+
+struct MyCustomKernel {
+  MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
+  }
+
+  void Compute(OrtKernelContext* context) {
+    // Setup inputs
+    const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
+    const OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
+    const float* X = ort_.GetTensorData<float>(input_X);
+    const float* Y = ort_.GetTensorData<float>(input_Y);
+
+    // Setup output
+    OrtTensorDimensions dimensions(ort_, input_X);
+    OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
+    float* out = ort_.GetTensorMutableData<float>(output);
+
+    OrtTensorTypeAndShapeInfo* output_info = ort_.GetTensorTypeAndShape(output);
+    int64_t size = ort_.GetTensorShapeElementCount(output_info);
+    ort_.ReleaseTensorTypeAndShapeInfo(output_info);
+
+    // Do computation
+    for (int64_t i = 0; i < size; i++) {
+      out[i] = X[i] + Y[i];
+    }
+  }
+
+ private:
+  Ort::CustomOpApi ort_;
+};
+
+struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
+  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) { return new MyCustomKernel(api, info); };
+  const char* GetName() const { return "Foo"; };
+
+  size_t GetInputTypeCount() const { return 2; };
+  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+
+  size_t GetOutputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+};
+
+
+//===================
+
 // This callback creates the kernel, which is a user defined parameter that is passed to the Kernel* callbacks below.
 void* ORT_API_CALL CreateKernel_One(_In_ struct OrtCustomOp* op, _In_ const OrtApi* api, _In_ const OrtKernelInfo* info)
 {
