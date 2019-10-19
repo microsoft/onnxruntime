@@ -481,7 +481,7 @@ class OpTester {
     ptr->dtype = DataTypeImpl::GetType<T>();
     auto num_tensors = seq_tensors.tensors.size();
     ptr->tensors.resize(num_tensors);
-    for (int i = 0; i < num_tensors; ++i) {
+    for (size_t i = 0; i < num_tensors; ++i) {
       TensorShape shape{seq_tensors.tensors[i].shape};
       auto values_count = static_cast<int64_t>(seq_tensors.tensors[i].data.size());
       ORT_ENFORCE(shape.Size() == values_count, values_count,
