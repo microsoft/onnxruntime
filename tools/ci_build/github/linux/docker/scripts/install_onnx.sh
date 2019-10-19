@@ -25,6 +25,8 @@ else
    PYTHON_EXE="/usr/bin/python${PYTHON_VER}"
 fi
 
+${PYTHON_EXE} -m pip install protobuf
+
 version2tag=(5af210ca8a1c73aa6bae8754c9346ec54d0a756e-onnx123
              bae6333e149a59a3faa9c4d9c44974373dcf5256-onnx130
              9e55ace55aad1ada27516038dfbdc66a8a0763db-onnx141
@@ -46,7 +48,14 @@ for v2t in ${version2tag[*]}; do
   if [ ! -d "third_party/pybind11/pybind11" ]; then
     git clone https://github.com/pybind/pybind11.git third_party/pybind11
   fi 
-  ${PYTHON_EXE} -m pip install .
+  # We need to make the adjustment only for CentOS6 OR we substitue this only for
+  # ${PYTHON_EXE} where we'd need to escape slashes
+  # Make sure we do not hit pyhon2 as on CentOS 6 it does not work
+  ESCAPED_PY=$(echo "${PYTHON_EXE}" | sed 's/\//\\\//g')
+  sed "1,1 s/\/usr\/bin\/env python/$ESCAPED_PY/" /tmp/src/onnx-$onnx_version/tools/protoc-gen-mypy.py > /tmp/src/onnx-$onnx_version/tools/repl_protoc-gen-mypy.py
+  chmod a+w /tmp/src/onnx-$onnx_version/tools/protoc-gen-mypy.py
+  mv /tmp/src/onnx-$onnx_version/tools/repl_protoc-gen-mypy.py /tmp/src/onnx-$onnx_version/tools/protoc-gen-mypy.py
   mkdir -p /data/onnx/${onnx_tag}
+  ${PYTHON_EXE} -m pip install .
   backend-test-tools generate-data -o /data/onnx/$onnx_tag
 done

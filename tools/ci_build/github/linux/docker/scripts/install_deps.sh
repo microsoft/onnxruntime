@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+
 while getopts p:d: parameter_Option
 do case "${parameter_Option}"
 in
