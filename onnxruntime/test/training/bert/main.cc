@@ -74,6 +74,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
       ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
+      ("allreduce_in_fp16", "whether to use fp16 in AllReduce, if false (default), doing allreduce in fp32", cxxopts::value<bool>()->default_value("false"))
       ("loss_scale", "Loss scaling, positive power of 2 values can improve fp16 convergence. "
         "Set it 0 to uses dynamic scaling; Other none-zero value will used as static scale",
         cxxopts::value<float>()->default_value("0.0"))
@@ -182,10 +183,15 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
     }
 
     params.use_mixed_precision = flags["use_mixed_precision"].as<bool>();
+    params.allreduce_in_fp16 = flags["allreduce_in_fp16"].as<bool>();
     if (params.use_mixed_precision) {
       printf("Mixed precision training is enabled.\n");
     }
-
+    if (params.allreduce_in_fp16) {
+      printf("Performing AllReduce in fp16 \n");
+    } else {
+      printf("Performing AllReduce in fp32 \n");
+    }
     {
       const float loss_scale = flags["loss_scale"].as<float>();
       if (loss_scale < 0.0f) {

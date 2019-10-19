@@ -103,6 +103,7 @@ class TrainingRunner {
     float loss_scale = 1.0f;
     bool use_fp16_moments = false;
     bool use_fp16_initializer = true;
+    bool allreduce_in_fp16 = false;
 
     // Tensorboard configuration.
     PATH_STRING_TYPE log_dir;  // Path to write Tensorboard events to.
@@ -123,7 +124,8 @@ class TrainingRunner {
 
   common::Status EndTraining(std::shared_ptr<IDataLoader> data_loader);
 
-  common::Status UpdateParams(Parameters params); 
+  common::Status UpdateParams(Parameters params);
+
  private:
   Status TrainingLoop(std::shared_ptr<IDataLoader> training_data_loader, std::shared_ptr<IDataLoader> test_data_loader);
   Status Evaluate(InferenceSession& session, std::shared_ptr<IDataLoader> data_loader);

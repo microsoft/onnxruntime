@@ -141,28 +141,70 @@ ArgDef BuildGroupNode(const std::string& group_output_name,
 
 ArgDef BuildGradientScalingNode(const NodeArgNameGeneratorFn& nodearg_name_generator,
                                 const ArgDef& scale_argdef,
-                                const ArgDef& gradient_argdefs,
-                                GraphAugmenter::GraphDefs& graph_defs) {
-  ArgDef scaled_gradient_argdef = ArgDef(nodearg_name_generator(gradient_argdefs.name + "_scaled"),
-                                         gradient_argdefs.type_proto);
+                                const ArgDef& gradient_argdef,
+                                GraphAugmenter::GraphDefs& graph_defs,
+                                const bool allreduce_in_fp16) {
+  ArgDef scaled_gradient_argdef = ArgDef(nodearg_name_generator(gradient_argdef.name + "_scaled"),
+                                         gradient_argdef.type_proto);
+
+  ArgDef gradient_cast_argdef = gradient_argdef;
+  auto scale_type = scale_argdef.type_proto->tensor_type().elem_type();
+  auto gradient_type = gradient_argdef.type_proto->tensor_type().elem_type();
+  if (scale_type != gradient_type) {
+    TypeProto* gradient_cast_type_proto = graph_defs.CopyTypeProto(gradient_argdef);
+    gradient_cast_type_proto->mutable_tensor_type()->set_elem_type(scale_type);
+    gradient_cast_argdef = ArgDef{
+        nodearg_name_generator(gradient_argdef.name),
+        gradient_cast_type_proto};
+    graph_defs.AddNodeDefs({NodeDef{
+        "Cast",
+        {gradient_argdef},
+        {gradient_cast_argdef},
+        {MakeAttribute(
+            "to",
+            static_cast<int64_t>(scale_type))},
+        gradient_cast_argdef.name}});
+  }
   graph_defs.AddNodeDefs({NodeDef("Mul",
-                                  {gradient_argdefs, scale_argdef},
+                                  {gradient_cast_argdef, scale_argdef},
                                   {scaled_gradient_argdef},
                                   NodeAttributes(),
                                   scaled_gradient_argdef.name)});
-  return scaled_gradient_argdef;
+
+  //Cast back to fp16 if necessary
+  ArgDef scaled_gradient_cast_argdef = scaled_gradient_argdef;
+  auto scaled_gradient_target_type = allreduce_in_fp16 ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 : ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+  auto scaled_gradient_type = scaled_gradient_argdef.type_proto->tensor_type().elem_type();
+  if (scaled_gradient_target_type != scaled_gradient_type) {
+    TypeProto* scaled_gradient_cast_type_proto = graph_defs.CopyTypeProto(scaled_gradient_argdef);
+    scaled_gradient_cast_type_proto->mutable_tensor_type()->set_elem_type(scaled_gradient_target_type);
+    scaled_gradient_cast_argdef = ArgDef{
+        nodearg_name_generator(scaled_gradient_argdef.name),
+        scaled_gradient_cast_type_proto};
+    graph_defs.AddNodeDefs({NodeDef{
+        "Cast",
+        {scaled_gradient_argdef},
+        {scaled_gradient_cast_argdef},
+        {MakeAttribute(
+            "to",
+            static_cast<int64_t>(scaled_gradient_target_type))},
+        scaled_gradient_cast_argdef.name}});
+  }
+
+  return scaled_gradient_cast_argdef;
 }
 
 Status AddGradientScalingNodes(const NodeArgNameGeneratorFn& nodearg_name_generator,
                                const float scale,
                                std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
-                               GraphAugmenter::GraphDefs& graph_defs) {
+                               GraphAugmenter::GraphDefs& graph_defs,
+                               const bool allreduce_in_fp16) {
   ArgDef pre_allreduce_scale(nodearg_name_generator("pre_allreduce_scale"),
                              graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
   graph_defs.AddInitializers({CreateTensorProto<float>(pre_allreduce_scale.name, scale, {})});
 
   for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
-    gradient_argdefs[i] = BuildGradientScalingNode(nodearg_name_generator, pre_allreduce_scale, gradient_argdefs[i], graph_defs);
+    gradient_argdefs[i] = BuildGradientScalingNode(nodearg_name_generator, pre_allreduce_scale, gradient_argdefs[i], graph_defs, allreduce_in_fp16);
   }
   return Status::OK();
 }
@@ -541,7 +583,7 @@ Status OptimizerGraphBuilder::Build(Graph& graph,
     const auto total_num_accumulations = opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.world_size;
     ORT_RETURN_IF_NOT(total_num_accumulations > 0);
     const float scale = 1.0f / total_num_accumulations;
-    ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, graph_defs));
+    ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, graph_defs, opt_graph_config_.allreduce_in_fp16));
   }
 
   // add all-reduce
