@@ -171,7 +171,8 @@ typedef void(ORT_API_CALL* OrtLoggingFunction)(
     const char* message);
 
 // Set Graph optimization level.
-// TODO (askhade) Add documentation about which optimizations are enabled for each value.
+// Refer https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Graph_Optimizations.md
+// for in-depth undersrtanding of Graph Optimizations in ORT
 typedef enum GraphOptimizationLevel {
   ORT_DISABLE_ALL = 0,
   ORT_ENABLE_BASIC = 1,

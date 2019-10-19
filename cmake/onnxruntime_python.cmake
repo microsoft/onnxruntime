@@ -251,6 +251,7 @@ if (onnxruntime_USE_NUPHAR)
 endif()
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  include(onnxruntime_language_interop_ops.cmake)  
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
