@@ -337,8 +337,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.SetGraphOptimizationLevel(graph_optimization_level);
     }
 
-    static const char* cuda_flaky_tests[] = { "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2" };
-    static const char* dml_disabled_tests[] = { "mlperf_ssd_resnet34_1200", "mlperf_ssd_mobilenet_300", "mask_rcnn_keras", "mask_rcnn", "faster_rcnn" };
+    static const char* cuda_flaky_tests[] = {"fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
+    static const char* dml_disabled_tests[] = {"mlperf_ssd_resnet34_1200", "mlperf_ssd_mobilenet_300", "mask_rcnn_keras", "mask_rcnn", "faster_rcnn"};
 
     std::unordered_set<std::string> all_disabled_tests;
     if (enable_cuda) {
@@ -471,6 +471,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"reflect_pad", "test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests"},
       {"edge_pad", "test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests"},
+      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398" },
 };
 
 #ifdef USE_NGRAPH
