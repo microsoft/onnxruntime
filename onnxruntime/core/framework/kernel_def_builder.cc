@@ -24,6 +24,7 @@ inline bool AreVectorsOverlap(const std::vector<T>& v1, const std::vector<T>& v2
 }
 }  // namespace
 
+//TODO: Tell user why it has conflicts
 bool KernelDef::IsConflict(const KernelDef& other) const {
   if (op_name_ != other.OpName() || provider_type_ != other.Provider())
     return false;

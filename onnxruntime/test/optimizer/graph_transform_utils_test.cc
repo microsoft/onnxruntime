@@ -38,8 +38,8 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
   // custom list of rules and transformers
   std::string l1_rule1 = "EliminateIdentity";
   std::string l1_transformer = "ConstantFolding";
-  std::string l2_rule1 = "ConvBNFusion";
-  std::vector<std::string> custom_list = {l1_rule1, l1_transformer, l2_rule1};
+  std::string l2_transformer = "ConvActivationFusion";
+  std::vector<std::string> custom_list = {l1_rule1, l1_transformer, l2_transformer};
 
   auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {}, custom_list);
   ASSERT_TRUE(transformers.size() == 2);
@@ -51,11 +51,13 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
     }
   }
   ASSERT_TRUE(rule_transformer && rule_transformer->RulesCount() == 1);
-
+  
   transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, custom_list);
+#ifndef DISABLE_CONTRIB_OPS
   ASSERT_TRUE(transformers.size() == 1);
-  rule_transformer = dynamic_cast<RuleBasedGraphTransformer*>(transformers[0].get());
-  ASSERT_TRUE(rule_transformer->RulesCount() == 1);
+#else
+  ASSERT_TRUE(transformers.size() == 0);
+#endif
 }
 
 }  // namespace test
