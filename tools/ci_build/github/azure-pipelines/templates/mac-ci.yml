@@ -13,7 +13,7 @@ jobs:
   steps:
     - template: mac-set-variables-and-download.yml
     - script: |
-        sudo python3 -m pip install numpy==1.15.0
+        sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
         ${{ parameters.BuildCommand }}
       displayName: 'Build and Test OnnxRuntime lib for MacOS'
