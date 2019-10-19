@@ -64,6 +64,7 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 int cuda_device_id=0;
+size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
 #endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
@@ -86,7 +87,7 @@ int cuda_device_id=0;
 
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id, size_t cuda_mem_limit);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
@@ -254,8 +255,9 @@ void InitializeSession(InferenceSession* sess) {
 
 #ifdef USE_CUDA
   {
-    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id));
+    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit));
     cuda_device_id=0;
+	cuda_mem_limit = INT_MAX;
   }
 #endif
 
@@ -356,6 +358,9 @@ void addGlobalMethods(py::module& m) {
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 #ifdef USE_CUDA
   m.def("set_cuda_device_id", [](const int id){cuda_device_id = id;});
+  m.def("set_cuda_mem_limit", [](const int64_t limit){
+        cuda_mem_limit = static_cast<size_t>(limit); 
+       });
 #endif
 }
 

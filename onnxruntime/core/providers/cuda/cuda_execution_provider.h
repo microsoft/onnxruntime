@@ -11,7 +11,6 @@
 #include "shared_inc/cuda_utils.h"
 #include <deque>
 
-
 #ifdef USE_TENSORRT
 #include "core/providers/trt_in_cuda/tensor_rt_compiler.h"
 #endif
@@ -25,7 +24,7 @@ struct CUDAExecutionProviderInfo {
 // Logical device representation.
 class CUDAExecutionProvider : public IExecutionProvider {
  public:
-  explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info, bool enable_compiler = false);
+  explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info, bool enable_compiler = false, size_t cuda_mem_limit = std::numeric_limits<size_t>::max());
   virtual ~CUDAExecutionProvider();
 
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type = OrtMemTypeDefault) const override;
@@ -80,6 +79,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
  private:
   int device_id_;
+  size_t cuda_mem_limit_;
 
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
@@ -90,7 +90,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   class PerThreadContext final {
    public:
-    PerThreadContext(int device_id);
+    PerThreadContext(int device_id, size_t cuda_mem_limit);
     ~PerThreadContext();
 
     cublasHandle_t CublasHandle() const {

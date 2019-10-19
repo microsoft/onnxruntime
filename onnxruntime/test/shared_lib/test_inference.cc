@@ -63,7 +63,7 @@ void TestInference(Ort::Env& env, T model_uri,
 
   if (provider_type == 1) {
 #ifdef USE_CUDA
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0, std::numeric_limits<size_t>::max()));
     std::cout << "Running simple inference with cuda provider" << std::endl;
 #else
     return;

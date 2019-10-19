@@ -49,7 +49,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 thread_local std::unique_ptr<CUDAExecutionProvider::PerThreadContextMap> CUDAExecutionProvider::per_thread_context_map_;
 
-CUDAExecutionProvider::PerThreadContext::PerThreadContext(int device_id) {
+CUDAExecutionProvider::PerThreadContext::PerThreadContext(int device_id, size_t cuda_mem_limit) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
@@ -57,7 +57,7 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(int device_id) {
 
   DeviceAllocatorRegistrationInfo default_allocator_info(
       {OrtMemTypeDefault,
-       [](int id) { return std::make_unique<CUDAAllocator>(id, CUDA); }, std::numeric_limits<size_t>::max()});
+       [](int id) { return std::make_unique<CUDAAllocator>(id, CUDA); }, cuda_mem_limit });
   allocator_ = CreateAllocator(default_allocator_info, device_id);
 }
 
@@ -67,12 +67,12 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   CURAND_CALL_THROW(curandDestroyGenerator(curand_generator_));
 }
 
-CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info, bool enable_compiler)
-    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id), enable_compiler_(enable_compiler) {
+CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info, bool enable_compiler, size_t cuda_mem_limit)
+    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id), enable_compiler_(enable_compiler), cuda_mem_limit_(cuda_mem_limit){
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
   DeviceAllocatorRegistrationInfo default_allocator_info(
-      {OrtMemTypeDefault, [](int id) { return std::make_unique<CUDAAllocator>(id, CUDA); }, std::numeric_limits<size_t>::max()});
+      {OrtMemTypeDefault, [](int id) { return std::make_unique<CUDAAllocator>(id, CUDA); }, cuda_mem_limit_ });
   InsertAllocator(CreateAllocator(default_allocator_info, device_id_));
 
   DeviceAllocatorRegistrationInfo pinned_allocator_info(
@@ -112,7 +112,7 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
   if (p->count(this) == 0) {
     std::lock_guard<OrtMutex> lock(context_pool_mutex_);
     if (context_pool_.empty()) {
-      p->insert(std::make_pair(this, std::make_shared<PerThreadContext>(device_id_)));
+      p->insert(std::make_pair(this, std::make_shared<PerThreadContext>(device_id_, cuda_mem_limit_)));
     } else {
       p->insert(std::make_pair(this, context_pool_.back()));
       context_pool_.pop_back();

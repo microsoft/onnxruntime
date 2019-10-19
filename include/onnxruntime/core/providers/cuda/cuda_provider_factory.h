@@ -10,7 +10,7 @@ extern "C" {
 /**
  * \param device_id cuda device id, starts from zero.
  */
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id);
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id, size_t cuda_mem_limit);
 
 #ifdef __cplusplus
 }
