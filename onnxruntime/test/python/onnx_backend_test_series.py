@@ -122,7 +122,7 @@ def create_backend_test(testname=None):
                                  '^test_resize_upsample_scales_cubic_A_n0p5_exclude_outside_cpu',  # not implemented yet
                                  '^test_resize_tf_crop_and_resize_cpu',  # bad expected data
                                  '^test_resize_upsample_sizes_nearest_ceil_half_pixel_cpu',  # bad expected data
-\                                '^test_resize_upsample_sizes_nearest_floor_align_corners_cpu',  # bad expected data
+                                 '^test_resize_upsample_sizes_nearest_floor_align_corners_cpu',  # bad expected data
                                  '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu',  # bad expected data
         ]
 
