@@ -40,7 +40,7 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
   std::vector<int64_t> concat_sizes_range(concat_sizes);
-  for (int i = 1; i < concat_sizes_range.size(); ++i) {
+  for (size_t i = 1; i < concat_sizes_range.size(); ++i) {
     concat_sizes_range[i] += concat_sizes_range[i - 1];
   }
 
