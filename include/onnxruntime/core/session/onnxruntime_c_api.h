@@ -249,6 +249,10 @@ struct OrtApi {
                                                       _In_ const char* logid,
                                                       _Outptr_ OrtEnv** out)NO_EXCEPTION;
 
+  // Platform telemetry events are on by default since they are lightweight.  You can manually turn them off.
+  OrtStatus*(ORT_API_CALL* EnableTelemetryEvents)(_In_ const OrtEnv* env)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* DisableTelemetryEvents)(_In_ const OrtEnv* env)NO_EXCEPTION;
+
   // TODO: document the path separator convention? '/' vs '\'
   // TODO: should specify the access characteristics of model_path. Is this read only during the
   // execution of OrtCreateSession, or does the OrtSession retain a handle to the file/directory

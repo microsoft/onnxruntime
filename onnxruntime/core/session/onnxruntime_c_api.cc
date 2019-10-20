@@ -128,6 +128,27 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel default_warning_level,
   API_IMPL_END
 }
 
+// enable platform telemetry
+ORT_API_STATUS_IMPL(OrtApis::EnableTelemetryEvents, _In_ const OrtEnv* ort_env) {
+  API_IMPL_BEGIN
+  ORT_UNUSED_PARAMETER(ort_env);
+  // note telemetry is controlled via the platform Env object, not the OrtEnv object instance
+  const Env& env = Env::Default();
+  env.GetTelemetryProvider().EnableTelemetryEvents();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::DisableTelemetryEvents, _In_ const OrtEnv* ort_env) {
+  API_IMPL_BEGIN
+  ORT_UNUSED_PARAMETER(ort_env);
+  // note telemetry is controlled via the platform Env object, not the OrtEnv object instance
+  const Env& env = Env::Default();
+  env.GetTelemetryProvider().DisableTelemetryEvents();
+  return nullptr;
+  API_IMPL_END
+}
+
 template <typename T>
 OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, OrtAllocator* allocator,
                             std::unique_ptr<Tensor>* out) {
@@ -1266,6 +1287,9 @@ static constexpr OrtApi ort_api_1 = {
 
     &OrtApis::CreateEnv,
     &OrtApis::CreateEnvWithCustomLogger,
+    &OrtApis::EnableTelemetryEvents,
+    &OrtApis::DisableTelemetryEvents,
+
     &OrtApis::CreateSession,
     &OrtApis::CreateSessionFromArray,
     &OrtApis::Run,

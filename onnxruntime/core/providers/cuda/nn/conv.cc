@@ -114,7 +114,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
         std::vector<int64_t> b_dims(2 + kernel_shape.size());
         b_dims[0] = 1;           // N
         b_dims[1] = b_shape[0];  // C
-        for (int i = 0; i < kernel_shape.size(); i++)
+        for (size_t i = 0; i < kernel_shape.size(); i++)
           b_dims[2 + i] = 1;
 
         ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
@@ -212,7 +212,7 @@ Status CudnnConvolutionDescriptor::Set(
   std::vector<int> pad_dims(rank);
   std::vector<int> stride_dims(rank);
   std::vector<int> dilation_dims(rank);
-  for (int i = 0; i < rank; i++) {
+  for (size_t i = 0; i < rank; i++) {
     pad_dims[i] = gsl::narrow_cast<int>(pads[i]);
     stride_dims[i] = gsl::narrow_cast<int>(strides[i]);
     dilation_dims[i] = gsl::narrow_cast<int>(dilations[i]);
