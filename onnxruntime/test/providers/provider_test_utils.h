@@ -228,8 +228,14 @@ const SequenceTensorTypeProto<ElemType> SequenceTensorType<ElemType>::s_sequence
 // explanatory
 class OpTester {
  public:
-  explicit OpTester(const char* op, int opset_version = 7, const char* domain = onnxruntime::kOnnxDomain)
-      : op_(op), domain_(domain), opset_version_(opset_version) {}
+  explicit OpTester(const char* op, int opset_version = -1, const char* domain = onnxruntime::kOnnxDomain)
+      : op_(op), domain_(domain), opset_version_(opset_version) {
+    if (opset_version_ < 0) {
+      static int latest_onnx_version =
+          ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
+      opset_version_ = latest_onnx_version;
+    }
+  }
 
   ~OpTester();
 

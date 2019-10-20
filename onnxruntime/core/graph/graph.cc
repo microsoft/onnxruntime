@@ -40,12 +40,39 @@ namespace onnxruntime {
     GraphProtoSyncNeeded(sync_needed);               \
   } while (0)
 
+static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
+  bool is_latest_opset = false;
+  auto onnx_opset = opset_versions.find(kOnnxDomain);
+
+  if (onnx_opset != opset_versions.cend()) {
+    static int latest_onnx_version =
+        ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
+
+    if (onnx_opset->second == latest_onnx_version) {
+      is_latest_opset = true;
+    }
+  }
+
+  return is_latest_opset;
+}
+
 static Status MergeShapeInfo(const std::string& output_name,
-                             const TypeProto_Tensor& source, TypeProto_Tensor& target) {
+                             const TypeProto_Tensor& source, TypeProto_Tensor& target,
+                             bool strict) {
   try {
     ONNX_NAMESPACE::mergeInShapeInfo(source, target);
   } catch (const ONNX_NAMESPACE::InferenceError& ex) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
+    // if this model was not created with the latest onnx version, allow the shape inferencing failure (strict == false).
+    // we do this to have strict testing of the latest inferencing to detect bugs, but lenient shape inferencing for
+    // older models in case later changes to the ONNX shape inferencing or ORT break them.
+    if (!strict) {
+      // mergeInShapeInfo does nothing unless source.shape() is not null, so if we're here we know
+      // source.shape() is not null
+      assert(source.has_shape());
+      ONNX_NAMESPACE::UnionShapeInfo(source.shape(), target);
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
+    }
   }
 
   return Status::OK();
@@ -158,7 +185,7 @@ void NodeArg::SetShape(const TensorShapeProto& shape) {
   }
 }
 
-common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type) {
+common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict) {
   if (!utils::HasType(node_arg_info_)) {
     *node_arg_info_.mutable_type() = input_type;
     type_ = DataTypeUtils::ToType(node_arg_info_.type());
@@ -187,7 +214,7 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       if (utils::HasShape(input_tensor_type)) {
         auto& current_tensor_type = *current_type.mutable_tensor_type();
         if (utils::HasShape(current_tensor_type)) {
-          ORT_RETURN_IF_ERROR(MergeShapeInfo(Name(), input_tensor_type, current_tensor_type));
+          ORT_RETURN_IF_ERROR(MergeShapeInfo(Name(), input_tensor_type, current_tensor_type, strict));
         } else {
           current_tensor_type = input_tensor_type;
         }
@@ -225,11 +252,11 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
   return Status::OK();
 }
 
-common::Status NodeArg::UpdateTypeAndShape(const NodeArg& node_arg) {
+common::Status NodeArg::UpdateTypeAndShape(const NodeArg& node_arg, bool strict) {
   auto status = Status::OK();
 
   if (utils::HasType(node_arg.node_arg_info_))
-    status = UpdateTypeAndShape(node_arg.node_arg_info_.type());
+    status = UpdateTypeAndShape(node_arg.node_arg_info_.type(), strict);
 
   return status;
 }
@@ -657,6 +684,7 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
       domain_to_version_(domain_to_version),
       model_functions_(model_functions),
       ir_version_(ir_version),
+      using_latest_onnx_opset_(UsingLatestOnnxOpset(domain_to_version)),
       parent_graph_(parent_graph),
       parent_node_(parent_node) {
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
@@ -1612,7 +1640,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
           // that have no values.
           TypeProto_Tensor merge_target;
           (*merge_target.mutable_shape()) = *output_def->Shape();
-          auto status = MergeShapeInfo(output_def->Name(), tensor_type, merge_target);
+          auto status = MergeShapeInfo(output_def->Name(), tensor_type, merge_target, using_latest_onnx_opset_);
           if (!status.IsOK()) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node_name, " ", status.ErrorMessage());
           }
