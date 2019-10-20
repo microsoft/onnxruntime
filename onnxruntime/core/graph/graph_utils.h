@@ -43,8 +43,8 @@ bool IsInitializer(const Graph& graph, const std::string& name, bool check_outer
 */
 bool IsConstantInitializer(const Graph& graph, const std::string& name, bool check_outer_scope = true);
 
-/** returns the initializer's TensorProto if 'name' is an initializer, and is constant and 
-cannot be overridden at runtime. If the initializer is not found or is not constant a nullptr is returned.
+/** returns the initializer's TensorProto if 'name' is an initializer, is constant and 
+cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.
 @param check_outer_scope If true and the graph is a subgraph, check ancestor graph/s for 'name' if not found in 'graph'.
 */
 const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& name,
