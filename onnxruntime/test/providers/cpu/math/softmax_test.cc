@@ -190,7 +190,7 @@ TEST(SoftmaxOperator, InvalidAxis) {
           OpTester::ExpectResult::kExpectFailure,
           // bug in ONNX error message currently. Message should be
           // "[ShapeInferenceError] 'axis' must be in [-2 , 1]. Its actual value is: -10"
-          "[ShapeInferenceError]  , 1]. Its actual value is: -10");
+          ", 1]. Its actual value is: -10");
 }
 
 }  // namespace test
