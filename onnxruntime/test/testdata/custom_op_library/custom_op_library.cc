@@ -53,7 +53,7 @@ static const char* c_EPType = nullptr; // CPU
 //===================
 
 struct OrtTensorDimensions : std::vector<int64_t> {
-  OrtTensorDimensions(OrtApi ort, const OrtValue* value) {
+  OrtTensorDimensions(Ort::CustomOpApi ort, const OrtValue* value) {
     OrtTensorTypeAndShapeInfo* info = ort.GetTensorTypeAndShape(value);
     std::vector<int64_t>::operator=(ort.GetTensorShape(info));
     ort.ReleaseTensorTypeAndShapeInfo(info);
@@ -149,7 +149,10 @@ struct OrtTensorDimensions : std::vector<int64_t> {
 
 
 struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, CustomOpOne> {
-  void* CreateKernel(OrtApi api, const OrtKernelInfo* info) { return this; };
+  void* CreateKernel(OrtApi api, const OrtKernelInfo* info) { 
+      ortapiptr.reset(new Ort::CustomOpApi(api));
+      return this; 
+  };
   const char* GetName() const { return "CustomOpOne"; };
 
   size_t GetInputTypeCount() const { return 2; };
@@ -159,8 +162,8 @@ struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, CustomOpOne> {
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 
   void Compute(OrtKernelContext* context) {
-    Ort::CustomOpApi ort_(OrtGetApiBase()->GetApi(version));
-
+    //Ort::CustomOpApi ort_(*(::OrtGetApiBase()->GetApi(version)));
+    auto& ort_ = *ortapiptr; 
     // Setup inputs
     const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
     const OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
@@ -183,10 +186,14 @@ struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, CustomOpOne> {
     }
   }
 
+  std::unique_ptr<Ort::CustomOpApi> ortapiptr;  
 } c_CustomOpOne;
 
 struct CustomOpTwo : Ort::CustomOpBase<CustomOpTwo, CustomOpTwo> {
-  void* CreateKernel(OrtApi api, const OrtKernelInfo* info) { return this; };
+  void* CreateKernel(OrtApi api, const OrtKernelInfo* info) { 
+    ortapiptr.reset(new Ort::CustomOpApi(api));
+    return this; 
+  };
   const char* GetName() const { return "CustomOpTwo"; };
 
   size_t GetInputTypeCount() const { return 1; };
@@ -196,8 +203,9 @@ struct CustomOpTwo : Ort::CustomOpBase<CustomOpTwo, CustomOpTwo> {
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32; };
 
   void Compute(OrtKernelContext* context) {
-    Ort::CustomOpApi ort_(OrtGetApiBase()->GetApi(version));
-
+    //Ort::CustomOpApi ort_(*(::OrtGetApiBase()->GetApi(version)));
+    auto& ort_ = *ortapiptr;
+    
     // Setup inputs
     const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
     const float* X = ort_.GetTensorData<float>(input_X);
@@ -217,6 +225,8 @@ struct CustomOpTwo : Ort::CustomOpBase<CustomOpTwo, CustomOpTwo> {
       out[i] = (int32_t)(round(X[i]));
     }
   }
+  std::unique_ptr<Ort::CustomOpApi> ortapiptr;  
+
 } c_CustomOpTwo;
 
 

@@ -23,11 +23,12 @@ struct Input {
   std::vector<float> values;
 };
 
+template <typename OutT>
 void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
                 const std::vector<Input>& inputs,
                 const char* output_name,
                 const std::vector<int64_t>& dims_y,
-                const std::vector<float>& values_y,
+                const std::vector<OutT>& values_y,
                 Ort::Value* output_tensor) {
   std::vector<Ort::Value> ort_inputs;
   std::vector<const char*> input_names;
@@ -57,12 +58,12 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
 }
 
 
-template <typename T>
+template <typename T, typename OutT>
 void TestInference(Ort::Env& env, T model_uri,
                    const std::vector<Input>& inputs,
                    const char* output_name,
                    const std::vector<int64_t>& expected_dims_y,
-                   const std::vector<float>& expected_values_y,
+                   const std::vector<OutT>& expected_values_y,
                    int provider_type, 
                    OrtCustomOpDomain* custom_op_domain_ptr,
                    const char* custom_op_library_filename) {
@@ -98,14 +99,14 @@ void TestInference(Ort::Env& env, T model_uri,
 
   if (custom_op_library_filename){
     void* library_handle = nullptr; // leak this, there is no way to free this in C-API for now. ideally this should be tied to SessionOptions lifecycle
-    g_ort->RegisterCustomOpLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &library_handle)
+    g_ort->RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &library_handle);
   }
 
   Ort::Session session(env, model_uri, session_options);
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   // Now run
   //without preallocated output tensor
-  RunSession(default_allocator.get(),
+  RunSession<OutT>(default_allocator.get(),
              session,
              inputs,
              output_name,
@@ -117,7 +118,7 @@ void TestInference(Ort::Env& env, T model_uri,
 
   //test it twice
   for (int i = 0; i != 2; ++i)
-    RunSession(default_allocator.get(),
+    RunSession<OutT>(default_allocator.get(),
                session,
                inputs,
                output_name,
@@ -154,7 +155,7 @@ TEST_P(CApiTestWithProvider, simple) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 
-  TestInference<PATH_TYPE>(env_, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(), nullptr, nullptr);
+  TestInference<PATH_TYPE, float>(env_, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(), nullptr, nullptr);
 }
 
 TEST_F(CApiTest, dim_param) {
@@ -259,7 +260,7 @@ TEST_F(CApiTest, custom_op_handler) {
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&custom_op);
 
-  TestInference<PATH_TYPE>(env_, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
+  TestInference<PATH_TYPE, float>(env_, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
 }
 
 TEST_F(CApiTest, test_custom_op_library) {
@@ -286,14 +287,14 @@ TEST_F(CApiTest, test_custom_op_library) {
 
   std::string lib_name;
   #if defined(_WIN32)
-    lib_name = "custom_op_library.dll"
+    lib_name = "custom_op_library.dll";
   #elif defined(__APPLE__)
-    lib_name = "libcustom_op_library.dylib"
+    lib_name = "libcustom_op_library.dylib";
   #else
-    lib_name = "libcustom_op_library.so"
+    lib_name = "libcustom_op_library.so";
   #endif
 
-  TestInference<PATH_TYPE>(env_, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
+  TestInference<PATH_TYPE, int32_t>(env_, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
 }
 
 
@@ -319,7 +320,7 @@ TEST_F(CApiTest, DISABLED_test_pyop) {
   input.values = {1.0f, 2.0f, 3.0f, 4.0f};
   std::vector<int64_t> expected_dims_y = {2, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f};
-  TestInference<PATH_TYPE>(env_, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+  TestInference<PATH_TYPE, float>(env_, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
 }
 #endif
 
