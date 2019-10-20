@@ -29,6 +29,7 @@
 #include "core/util/math.h"
 #include "test/capturing_sink.h"
 #include "test/framework/test_utils.h"
+#include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
 
 #include "gtest/gtest.h"
@@ -262,12 +263,13 @@ TEST(GraphTransformationTests, FuseConvBNNoBias) {
 
 TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
   std::vector<std::string> test_models = {"fusion/fuse-conv-bn-mul-add-unsqueeze.onnx",
+                                          "fusion/fuse-conv-bn-mul-add-unsqueeze.negative_axes.onnx",
                                           "fusion/fuse-conv-bn-mul-add-unsqueeze-no-bias.onnx"};
   for (const auto& model : test_models) {
     string model_uri = MODEL_FOLDER + model;
 
     std::shared_ptr<Model> p_model;
-    ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+    ASSERT_STATUS_OK(Model::Load(model_uri, p_model));
     Graph& graph = p_model->MainGraph();
 
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
