@@ -167,6 +167,9 @@ add_custom_command(
       ${REPO_ROOT}/ThirdPartyNotices.txt
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${REPO_ROOT}/docs/Privacy.md
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/LICENSE
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
   COMMAND ${CMAKE_COMMAND} -E copy

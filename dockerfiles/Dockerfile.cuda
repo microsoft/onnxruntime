@@ -20,6 +20,7 @@ ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.14.3-Linux-x86_
 # Prepare onnxruntime repository & build onnxruntime with CUDA
 RUN git clone --single-branch --branch ${ONNXRUNTIME_SERVER_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
     /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh &&\
+    cp onnxruntime/docs/Privacy.md /code/Privacy.md &&\
     cp onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt &&\
     cp onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt &&\
     cd onnxruntime &&\
