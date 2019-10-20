@@ -139,7 +139,7 @@ jobs:
     # So, all the copy/publish jobs are being run on hosted agent
     # TODO: install the desired azureps on our VMs or use later bugfixed version of AzureFileCopy   
     demands: azureps
-  condition: and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+  condition: and (succeeded(), and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
   dependsOn:
   - NuGet_Test_Win
   - NuGet_Test_Linux
@@ -175,6 +175,7 @@ jobs:
       storage: ortpackages
       containerName: ortpackages
       blobPrefix: '$(CurrentDate)/'
+    continueOnError: true
 
   - task: DotNetCoreCLI@2
     displayName: 'Copy Signed NuGet Package to Internal NuGet Feed'
