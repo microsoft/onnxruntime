@@ -55,9 +55,6 @@ namespace onnxruntime {
   REG_TYPED_ONE_HOT_OP_V9_10(in_type##_##out_type##_##depth_type, in_type, out_type, depth_type); \
   REG_TYPED_ONE_HOT_OP_V11(in_type##_##out_type##_##depth_type, in_type, out_type, depth_type)
 
-#define REG_ONE_HOT_OP_V11(in_type, out_type, depth_type) \
-  REG_TYPED_ONE_HOT_OP_V11(in_type##_##out_type##_##depth_type, in_type, out_type, depth_type)
-
 REG_ONE_HOT_OP(int64_t, int64_t, int64_t);
 REG_ONE_HOT_OP(float, int64_t, int64_t);
 REG_ONE_HOT_OP(int64_t, string, int64_t);
