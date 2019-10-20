@@ -114,16 +114,17 @@ TEST(GraphTraversalTest, ReverseDFS) {
   Model model("graph_1");
   auto& graph = model.MainGraph();
 
-  // Case 1: A normal graph.
-  //                 SouceNode
-  //                 /       \
-            //  node_1 (Variable)      node_2 (Variable)
-  //                 \       /
-  //                 node_3 (Add)
-  //                     |
-  //                 node_4 (NoOp)
-  //                     |
-  //                  SinkNode
+  /* Case 1: A normal graph.
+   *                 SouceNode
+   *                 /       \
+   *  node_1 (Variable)      node_2 (Variable)
+   *                 \       /
+   *                 node_3 (Add)
+   *                     |
+   *                 node_4 (NoOp)
+   *                     |
+   *                  SinkNode
+  */
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
 
@@ -267,16 +268,17 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
   Model model("graph_1");
   auto& graph = model.MainGraph();
 
-  // A normal graph.
-  //                 SouceNode
-  //                 /       \
-            //    node_1 (Variable)  node_2 (Variable)
-  //                 \       /
-  //                 node_3 (Add)
-  //                     |
-  //                 node_4 (NoOp)
-  //                     |
-  //                  SinkNode
+  /* A normal graph.
+   *                 SouceNode
+   *                 /       \
+   *    node_1 (Variable)  node_2 (Variable)
+   *                 \       /
+   *                 node_3 (Add)
+   *                     |
+   *                 node_4 (NoOp)
+   *                     |
+   *                  SinkNode
+   */ 
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
 
@@ -445,14 +447,15 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
     map.insert({std::to_string(i), i});
   }
 
-  //               |         |
-  //       b (Identity)  a (Identity)   values
-  //                \   /
-  //                  c (Merge)
-  //                  |
-  //                  d (Split)
-  //                /   \
-  //              1  ..  10
+  /*               |         |
+   *       b (Identity)  a (Identity)   values
+   *                \   /
+   *                  c (Merge)
+   *                  |
+   *                  d (Split)
+   *                /   \
+   *              1  ..  10
+   */ 
   TypeProto tensor_int32;
   tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
   tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
@@ -653,14 +656,15 @@ TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {
   Model model("graph_1");
   auto& graph = model.MainGraph();
 
-  // Case 1: A normal graph.
-  //                         SourceNode
-  //                   /         |         \
-            //  node_1 (Variable)  node_2 (Variable)  node_3 (Variable)
-  //                   \         |         / (it's all 3 nodes above outputs to the one input of node_4)
-  //                        node_4 (Max)
-  //                             |
-  //                          SinkNode
+  /* Case 1: A normal graph.
+   *                         SourceNode
+   *                   /         |         \
+   *  node_1 (Variable)  node_2 (Variable)  node_3 (Variable)
+   *                   \         |         / (it's all 3 nodes above outputs to the one input of node_4)
+   *                        node_4 (Max)
+   *                             |
+   *                          SinkNode
+  */
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
 

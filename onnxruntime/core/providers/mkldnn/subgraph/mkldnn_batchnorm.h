@@ -97,11 +97,11 @@ class MklDnnBatchNorm : public MklDnnKernel {
     }
   }
 
-  Status CreatePrimitives(const OrtCustomOpApi* api,
-                          OrtKernelContext* context,
-                          mkldnn::engine& cpu_engine,
-                          std::vector<mkldnn::primitive>& net,
-                          std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) override {
+  void CreatePrimitives(const OrtCustomOpApi* api,
+                        OrtKernelContext* context,
+                        mkldnn::engine& cpu_engine,
+                        std::vector<mkldnn::primitive>& net,
+                        std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) override {
     Ort::CustomOpApi ort{*api};
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
@@ -137,9 +137,9 @@ class MklDnnBatchNorm : public MklDnnKernel {
 
     int num_dimensions = static_cast<int>(x_shape.NumDimensions());
     if (num_dimensions == 3) {
-      primitive_created_ = Status(common::ONNXRUNTIME,
-                                  common::NOT_IMPLEMENTED, "BatchNorm: Please call default CPU kernel.");
-      return primitive_created_;
+      primitive_created_status_ = ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                                  "1D BatchNormalization is not supported in MKLDNN.");
+      return;
     }
 
     const OrtValue* scale_input_tensor = ort.KernelContext_GetInput(context, input_index + 1);
@@ -177,9 +177,10 @@ class MklDnnBatchNorm : public MklDnnKernel {
 
     primitive_dst_shape_ = TensorShape(x_shape);
 
-    primitive_created_ = BatchNormHelper::ValidateInputs(x_shape, scale_shape, b_shape, mean_shape, var_shape);
-    if (!primitive_created_.IsOK())
-      return primitive_created_;
+    primitive_created_status_ = BatchNormHelper::ValidateInputs(x_shape, scale_shape, b_shape, mean_shape, var_shape);
+    if (!primitive_created_status_.IsOK()) {
+      return;
+    }
 
     mkldnn::memory::dims src_dims_mkl(
         x_shape.GetDims().begin(), x_shape.GetDims().end());
@@ -282,19 +283,16 @@ class MklDnnBatchNorm : public MklDnnKernel {
       mkldnn::memory::data_type t = MklDnnType<T>();
       InitDstReorderOutput(cpu_engine, t, net, net_args);
     }
-    return Status::OK();
   }
 
   Status Bind(const OrtCustomOpApi* api, OrtKernelContext* context) override {
     Ort::CustomOpApi ort{*api};
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
-    if (!primitive_created_.IsOK()) {
-      // abort as MKLDNN cannot execute this. but
-      // ORT try to delete output_tensor buffer data. allocate memory so that it can delete
-      // fix for test_averagepool_1d_default node test
-      return primitive_created_;
-    }
+    // abort as MKLDNN cannot execute this. but
+    // ORT try to delete output_tensor buffer data. allocate memory so that it can delete
+    // fix for test_averagepool_1d_default node test
+    ORT_RETURN_IF_ERROR(primitive_created_status_);
 
     if (mklnode_ptr_->parent_nodes.empty()) {
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);

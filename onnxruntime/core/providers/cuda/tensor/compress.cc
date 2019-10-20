@@ -61,7 +61,7 @@ Status Compress::ComputeInternal(OpKernelContext* ctx) const {
 
   int64_t axis_right_stride = 1;
   if (has_axis_) {
-    for (int i = static_cast<int>(axis_ + 1); i < rank; ++i) {
+    for (auto i = static_cast<size_t>(axis_ + 1); i < rank; ++i) {
       axis_right_stride *= input_dimensions[i];
     }
   }

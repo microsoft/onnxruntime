@@ -158,7 +158,7 @@ examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join('datasets', x) for x in examples_names]
 
 # Extra files such as EULA and ThirdPartyNotices
-extra = ["LICENSE", "ThirdPartyNotices.txt"]
+extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md"]
 
 # Description
 README = path.join(getcwd(), "docs/python/README.rst")

@@ -70,11 +70,11 @@ class MklDnnConv : public MklDnnKernel {
     ReadAttributes(attributes, attributes_prefix);
   }
 
-  Status CreatePrimitives(const OrtCustomOpApi* api,
-                          OrtKernelContext* context,
-                          mkldnn::engine& cpu_engine,
-                          std::vector<mkldnn::primitive>& net,
-                          std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) override {
+  void CreatePrimitives(const OrtCustomOpApi* api,
+                        OrtKernelContext* context,
+                        mkldnn::engine& cpu_engine,
+                        std::vector<mkldnn::primitive>& net,
+                        std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) override {
     Ort::CustomOpApi ort{*api};
     stream_ = onnxruntime::make_unique<mkldnn::stream>(mkldnn::stream(cpu_engine));
 
@@ -111,30 +111,32 @@ class MklDnnConv : public MklDnnKernel {
       mkldnn::memory::dims src_dims_mkl(x_shape.GetDims().begin(), x_shape.GetDims().end());
     }
 
-    primitive_created_ = ValidateInputShape(x_shape, w_shape);
-    if (!primitive_created_.IsOK())
-      return primitive_created_;
+    primitive_created_status_ = ValidateInputShape(x_shape, w_shape);
+    if (!primitive_created_status_.IsOK()) {
+      return;
+    }
 
     std::vector<int64_t> kernel_shape;
-    primitive_created_ = ComputeKernelShape(w_shape, kernel_shape);
-    if (!primitive_created_.IsOK())
-      return primitive_created_;
+    primitive_created_status_ = ComputeKernelShape(w_shape, kernel_shape);
+    if (!primitive_created_status_.IsOK()) {
+      return;
+    }
 
     const size_t kernel_rank = kernel_shape.size();
 
     if (kernel_rank + 2 != wdim) {
-      primitive_created_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
-                                           " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                                           " W: ", w_shape.ToString().c_str());
-      return primitive_created_;
+      primitive_created_status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
+                                                  " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                                                  " W: ", w_shape.ToString().c_str());
+      return;
     }
 
     for (size_t i = 0; i < kernel_rank; ++i) {
       if (kernel_shape[i] != w_shape[i + 2]) {
-        primitive_created_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
-                                             " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                                             " W: ", w_shape.ToString().c_str());
-        return primitive_created_;
+        primitive_created_status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
+                                                    " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                                                    " W: ", w_shape.ToString().c_str());
+        return;
       }
     }
 
@@ -156,9 +158,10 @@ class MklDnnConv : public MklDnnKernel {
     std::vector<int64_t> y_dims;
     y_dims.insert(y_dims.begin(), {N, M});
     TensorShape input_shape = x_shape.Slice(2);
-    primitive_created_ = InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &y_dims);
-    if (!primitive_created_.IsOK())
-      return primitive_created_;
+    primitive_created_status_ = InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &y_dims);
+    if (!primitive_created_status_.IsOK()) {
+      return;
+    }
 
     TensorShape y_shape(y_dims);
     primitive_dst_shape_ = TensorShape(y_dims);
@@ -352,8 +355,6 @@ class MklDnnConv : public MklDnnKernel {
       mkldnn::memory::data_type t = MklDnnType<T>();
       InitDstReorderOutput(cpu_engine, t, net, net_args);
     }
-    primitive_created_ = Status::OK();
-    return primitive_created_;
   }
 
   virtual void ReorderWeights(const OrtCustomOpApi* api, OrtKernelContext* context, mkldnn::engine& cpu_engine) override {
@@ -406,16 +407,9 @@ class MklDnnConv : public MklDnnKernel {
   Status Bind(const OrtCustomOpApi* api, OrtKernelContext* context) override {
     Ort::CustomOpApi ort{*api};
 
+    ORT_RETURN_IF_ERROR(primitive_created_status_);
+
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
-    if (!primitive_created_.IsOK()) {
-      // abort as MKLDNN cannot execute this. but
-      // ORT try to delete output_tensor buffer data. allocate memory so that it can delete
-      // fix for test_averagepool_1d_default node test
-      //auto xshape = input_tensors[input_index].shape;
-      //auto xdim = input_tensors[input_index].ndim;
-      //AllocateOutputTensor(output_tensors, mklnode_ptr_->output_index, xshape, xdim, input_tensors[0].dtype);
-      return primitive_created_;
-    }
     const OrtValue* winput_tensor = ort.KernelContext_GetInput(context, input_index + 1);
     const T* filter_data = const_cast<T*>(ort.GetTensorData<T>(winput_tensor));
 
