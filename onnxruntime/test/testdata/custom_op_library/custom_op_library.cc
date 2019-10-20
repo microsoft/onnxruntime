@@ -31,7 +31,7 @@
 // */
 
 #include "custom_op_library.h"
-#include "onnxruntime_css_api.h"
+#include "onnxruntime_cxx_api.h"
 #include <vector>
 #include <cmath>
 
@@ -53,7 +53,7 @@ static const char* c_EPType = nullptr; // CPU
 //===================
 
 struct OrtTensorDimensions : std::vector<int64_t> {
-  OrtTensorDimensions(Ort::CustomOpApi ort, const OrtValue* value) {
+  OrtTensorDimensions(OrtApi ort, const OrtValue* value) {
     OrtTensorTypeAndShapeInfo* info = ort.GetTensorTypeAndShape(value);
     std::vector<int64_t>::operator=(ort.GetTensorShape(info));
     ort.ReleaseTensorTypeAndShapeInfo(info);
@@ -149,7 +149,7 @@ struct OrtTensorDimensions : std::vector<int64_t> {
 
 
 struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, CustomOpOne> {
-  void* CreateKernel(Ort::OrtApi api, const OrtKernelInfo* info) { return this; };
+  void* CreateKernel(OrtApi api, const OrtKernelInfo* info) { return this; };
   const char* GetName() const { return "CustomOpOne"; };
 
   size_t GetInputTypeCount() const { return 2; };
@@ -159,7 +159,7 @@ struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, CustomOpOne> {
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 
   void Compute(OrtKernelContext* context) {
-    auto ort_ = OrtGetApiBase()->GetApi(version);
+    Ort::CustomOpApi ort_(OrtGetApiBase()->GetApi(version));
 
     // Setup inputs
     const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
@@ -186,7 +186,7 @@ struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, CustomOpOne> {
 } c_CustomOpOne;
 
 struct CustomOpTwo : Ort::CustomOpBase<CustomOpTwo, CustomOpTwo> {
-  void* CreateKernel(Ort::OrtApi api, const OrtKernelInfo* info) { return this; };
+  void* CreateKernel(OrtApi api, const OrtKernelInfo* info) { return this; };
   const char* GetName() const { return "CustomOpTwo"; };
 
   size_t GetInputTypeCount() const { return 1; };
@@ -196,7 +196,7 @@ struct CustomOpTwo : Ort::CustomOpBase<CustomOpTwo, CustomOpTwo> {
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32; };
 
   void Compute(OrtKernelContext* context) {
-    auto ort_ = OrtGetApiBase()->GetApi(version);
+    Ort::CustomOpApi ort_(OrtGetApiBase()->GetApi(version));
 
     // Setup inputs
     const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
