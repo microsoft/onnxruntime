@@ -23,11 +23,11 @@ class MklDnnRelu : public MklDnnKernel {
     ORT_UNUSED_PARAMETER(attributes_prefix);
   }
 
-  Status CreatePrimitives(const OrtCustomOpApi* api,
-                          OrtKernelContext* context,
-                          mkldnn::engine& cpu_engine,
-                          std::vector<mkldnn::primitive>& net,
-                          std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) {
+  void CreatePrimitives(const OrtCustomOpApi* api,
+                        OrtKernelContext* context,
+                        mkldnn::engine& cpu_engine,
+                        std::vector<mkldnn::primitive>& net,
+                        std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) {
     Ort::CustomOpApi ort{*api};
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
@@ -48,8 +48,8 @@ class MklDnnRelu : public MklDnnKernel {
       x_shape = TensorShape(xshape, xdim);
 
       if (x_shape.NumDimensions() == 0) {
-        primitive_created_ = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Shape of size zero " + x_shape.ToString());
-        return primitive_created_;
+        primitive_created_status_ = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Shape of size zero " + x_shape.ToString());
+        return;
       }
 
       mkldnn::memory::dims src_dims(
@@ -114,15 +114,12 @@ class MklDnnRelu : public MklDnnKernel {
       mkldnn::memory::data_type t = MklDnnType<T>();
       InitDstReorderOutput(cpu_engine, t, net, net_args);
     }
-
-    return Status::OK();
   }
 
   Status Bind(const OrtCustomOpApi* api, OrtKernelContext* context) override {
     Ort::CustomOpApi ort{*api};
 
-    if (primitive_created_ != Status::OK())
-      return primitive_created_;
+    ORT_RETURN_IF_ERROR(primitive_created_status_);
 
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
