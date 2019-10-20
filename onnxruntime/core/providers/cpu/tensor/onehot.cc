@@ -174,12 +174,13 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
   // Handle negative indices. It's faster to create a new indices instead of comparing in generator
   // since generator has much larger loops.
   const auto* indices_data = indices->Data<in_type>();
+  const auto indices_size = indices_shape.Size();  
   std::vector<in_type> adjusted_indices;
-  adjusted_indices.reserve(indices_shape.Size());
-  for (int i = 0; i < indices_shape.Size(); i++)
+  adjusted_indices.reserve(indices_size);
+  for (int64_t i = 0; i < indices_size; ++i)
   {
     if (indices_data[i] < 0)
-      adjusted_indices.push_back(indices_data[i] + (in_type)depth_val);
+      adjusted_indices.push_back(indices_data[i] + static_cast<in_type>(depth_val));
     else
       adjusted_indices.push_back(indices_data[i]);
   }
