@@ -59,6 +59,10 @@ class NodeArg {
   as the shape information is stored as part of TypeProto. */
   void SetShape(const ONNX_NAMESPACE::TensorShapeProto& shape);
 
+  /** Clears shape info. 
+  @remarks If there is a mismatch during shape inferencing that can't be resolved the shape info may be removed. */
+  void ClearShape();
+
   /** Validate and merge type [and shape] info from input_type.
   @param strict If true, the shape update will fail if there are incompatible values. 
                 If false, will be lenient and merge only shape info that can be validly processed.

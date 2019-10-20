@@ -66,9 +66,12 @@ static Status MergeShapeInfo(const std::string& output_name,
     // we do this to have strict testing of the latest inferencing to detect bugs, but lenient shape inferencing for
     // older models in case later changes to the ONNX shape inferencing or ORT break them.
     if (!strict) {
-      // mergeInShapeInfo does nothing unless source.shape() is not null, so if we're here we know
-      // source.shape() is not null
-      assert(source.has_shape());
+      // mergeInShapeInfo does nothing unless source.shape() is not null, and there would be no conflict if
+      // target.shape() was empty. 'assert' just in case that ever changes.
+      assert(utils::HasShape(source) && utils::HasShape(target));
+      LOGS_DEFAULT(WARNING) << "Error merging shape info for output. '" << output_name
+                            << "' source:" << source.shape() << " target:" << target.shape()
+                            << ". Falling back to lenient merge.";
       ONNX_NAMESPACE::UnionShapeInfo(source.shape(), target);
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
@@ -182,6 +185,18 @@ void NodeArg::SetShape(const TensorShapeProto& shape) {
     case TypeProto::VALUE_NOT_SET:
     default:
       return;
+  }
+}
+
+void NodeArg::ClearShape() {
+  const auto type_case = node_arg_info_.type().value_case();
+  switch (type_case) {
+    case TypeProto::kTensorType:
+      node_arg_info_.mutable_type()->mutable_tensor_type()->clear_shape();
+      break;
+    case TypeProto::kSparseTensorType:
+      node_arg_info_.mutable_type()->mutable_sparse_tensor_type()->clear_shape();
+      break;
   }
 }
 
@@ -1645,7 +1660,11 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node_name, " ", status.ErrorMessage());
           }
 
-          output_def->SetShape(merge_target.shape());
+          // we may have cleared the shape if there was a mismatch so handle that
+          if (utils::HasShape(merge_target))
+            output_def->SetShape(merge_target.shape());
+          else
+            output_def->ClearShape();
         }
       }
     }
