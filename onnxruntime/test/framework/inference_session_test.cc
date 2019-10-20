@@ -1456,7 +1456,7 @@ TEST(InferenceSessionTests, TestL1AndL2Transformers) {
   // Models which cover all transformers.
   std::vector<std::string> test_model_uris = {"testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx",
                                               "testdata/transform/abs-id-max.onnx",
-                                              "testdata/transform/slice-elim.onnx",
+                                              "testdata/transform/slice-v11-elim.onnx",
                                               "testdata/transform/matmul_add_fusion/2Input/model.onnx",
                                               "testdata/transform/matmul_add_fusion/3Input/gemm_relu.onnx",
                                               "testdata/transform/fusion/fuse-conv-bn-add-mul-float16.onnx"};

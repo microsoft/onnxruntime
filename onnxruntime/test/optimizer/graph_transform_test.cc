@@ -84,21 +84,25 @@ TEST(GraphTransformationTests, DropoutElimination) {
 }
 
 TEST(GraphTransformationTests, SliceElimination) {
-  string model_uri = MODEL_FOLDER + "slice-elim.onnx";
-  std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
-  Graph& graph = model->MainGraph();
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Slice"] == 5);
+  std::vector<std::string> model_names = {"slice-v1-elim.onnx", "slice-v11-elim.onnx"};
+  for (const auto& model_name : model_names) {
+    string model_uri = MODEL_FOLDER + model_name;
+    std::shared_ptr<Model> model;
+    ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
+    Graph& graph = model->MainGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    int initial_slice_num = op_to_count["Slice"];
 
-  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
-  rule_transformer_L1->Register(onnxruntime::make_unique<EliminateSlice>());
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+    auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+    rule_transformer_L1->Register(onnxruntime::make_unique<EliminateSlice>());
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+    ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
-  op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Slice"] == 4);
+    op_to_count = CountOpsInGraph(graph);
+    // Only one Slice operator is redundant and is removed.
+    ASSERT_TRUE(op_to_count["Slice"] == --initial_slice_num);
+  }
 }
 
 TEST(GraphTransformationTests, ConstantFolding) {
