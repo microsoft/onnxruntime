@@ -1,23 +1,20 @@
-# FROM mcr.microsoft.com/dotnet-buildtools/prereqs:centos-7-50f0d02-20190918214028
-FROM centos:6
+FROM mcr.microsoft.com/dotnet-buildtools/prereqs:centos-6-50f0d02-20190918213956
 
 ENV NVIDIA_VISIBLE_DEVICES all
 ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
 
-
-ARG PYTHON_VERSION
 ADD scripts /tmp/scripts
-RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh 
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/bin:/usr/bin:/usr/local/bin:/opt/rh/devtoolset-7/root/usr/bin:{PATH}
-RUN /tmp/scripts/install_deps.sh -p $PYTHON_VERSION && rm -rf /tmp/scripts
+RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh
+ENV PATH /opt/rh/devtoolset-2/root/usr/bin:${PATH}
+RUN /tmp/scripts/install_deps.sh -p 3.6 && rm -rf /tmp/scripts
 
 #Below are copied from https://gitlab.com/nvidia/container-images/cuda/tree/master/dist/centos6
 
 RUN NVIDIA_GPGKEY_SUM=d1be581509378368edeec8c1eb2958702feedf3bc3d17011adbf24efacce4ab5 && \
-curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/rhel6/x86_64/7fa2af80.pub | sed '/^Version/d' > /etc/pki/rpm-gpg/RPM-GPG-KEY-NVIDIA && \
+    curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/rhel6/x86_64/7fa2af80.pub | sed '/^Version/d' > /etc/pki/rpm-gpg/RPM-GPG-KEY-NVIDIA && \
     echo "$NVIDIA_GPGKEY_SUM  /etc/pki/rpm-gpg/RPM-GPG-KEY-NVIDIA" | sha256sum -c -
 
-COPY cuda_manylinux2010.repo  /etc/yum.repos.d/cuda.repo
+COPY cuda_manylinux2010.repo /etc/yum.repos.d/cuda.repo
 
 ENV CUDA_VERSION 10.0.130
 
@@ -67,4 +64,3 @@ ARG BUILD_USER=onnxruntimedev
 RUN /usr/sbin/adduser --uid $BUILD_UID $BUILD_USER
 WORKDIR /home/$BUILD_USER
 USER $BUILD_USER
-
