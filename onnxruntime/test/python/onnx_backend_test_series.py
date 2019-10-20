@@ -115,7 +115,6 @@ def create_backend_test(testname=None):
         current_failing_tests = [#'^test_cast_STRING_to_FLOAT_cpu',  # old test data that is bad on Linux CI builds
                                  '^test_unique_not_sorted_without_axis_cpu', # bad expected data. enable after https://github.com/onnx/onnx/pull/2381 is picked up
                                  '^test_mod_float_mixed_sign_example_cpu', #onnxruntime::Mod::Compute fmod_ was false. fmod attribute must be true for float, float16 and double types
-                                 '^test_shrink_cpu', #Invalid rank for input: x Got: 1 Expected: 2 Please fix either the inputs or the model.
                                  '^test_resize_downsample_scales_cubic_A_n0p5_exclude_outside_cpu',  # not implemented yet
                                  '^test_resize_downsample_scales_cubic_align_corners_cpu',  # not implemented yet
                                  '^test_resize_downsample_scales_linear_align_corners_cpu',  # not implemented yet
@@ -124,7 +123,7 @@ def create_backend_test(testname=None):
                                  '^test_resize_upsample_sizes_nearest_ceil_half_pixel_cpu',  # bad expected data
                                  '^test_resize_upsample_sizes_nearest_floor_align_corners_cpu',  # bad expected data
                                  '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu',  # bad expected data
-        ]
+                                 ]
 
         # Example of how to disable tests for a specific provider.
         # if c2.supports_device('NGRAPH'):

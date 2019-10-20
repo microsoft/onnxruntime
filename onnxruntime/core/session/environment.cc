@@ -17,6 +17,8 @@
 #include "core/graph/dml_ops/dml_defs.h"
 #endif
 
+#include "core/platform/env.h"
+
 namespace onnxruntime {
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
@@ -84,6 +86,10 @@ Internal copy node
         .SetDoc(R"DOC(
 Internal copy node
 )DOC");
+
+    // fire off startup telemetry (this call is idempotent)
+    const Env& env = Env::Default();
+    env.GetTelemetryProvider().LogProcessInfo();
 
     is_initialized_ = true;
   } catch (std::exception& ex) {

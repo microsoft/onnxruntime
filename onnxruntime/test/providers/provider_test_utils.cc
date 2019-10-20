@@ -259,7 +259,7 @@ void Check<TensorSeq>(const OpTester::Data& expected_data, const TensorSeq& outp
   // now check the contents of the tensors
   auto null_deleter = [](void*) {};
 
-  for (int i = 0; i < output_num_tensors; ++i) {
+  for (size_t i = 0; i < output_num_tensors; ++i) {
     OrtValue temp_value;
     // Reason for null_deleter: we don't want the tensor destructor to be called as part of this OrtValue destructor
     // as we're creating this OrtValue only to reuse the Check functionality

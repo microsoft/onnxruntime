@@ -24,6 +24,8 @@ const char* ORT_API_CALL GetErrorMessage(_In_ const OrtStatus* status) NO_EXCEPT
 ORT_API_STATUS_IMPL(CreateEnv, OrtLoggingLevel default_logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out)
 ORT_ALL_ARGS_NONNULL;
 ORT_API_STATUS_IMPL(CreateEnvWithCustomLogger, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
+ORT_API_STATUS_IMPL(EnableTelemetryEvents, _In_ const OrtEnv* env);
+ORT_API_STATUS_IMPL(DisableTelemetryEvents, _In_ const OrtEnv* env);
 
 ORT_API_STATUS_IMPL(CreateSession, _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path,
                     _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);

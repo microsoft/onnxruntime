@@ -267,10 +267,11 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         SubGraphCollection_t next_nodes_list;
         const onnxruntime::GraphViewer graph_viewer(graph_build);
+        const std::vector<NodeIndex>& subgraph_node_index = graph_viewer.GetNodesInTopologicalOrder();
         next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, graph_viewer, early_termination);
         for (int i = 0, end = next_nodes_list.size(); i < end; ++i) {
           for (int j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
-            next_nodes_list[i].first[j] = group.first[next_nodes_list[i].first[j]];
+            next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
           }
           nodes_list_output.push_back(next_nodes_list[i]);
         }

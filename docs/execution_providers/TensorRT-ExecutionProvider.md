@@ -7,6 +7,8 @@ With the TensorRT execution provider, the ONNX Runtime delivers better inferenci
 ## Build
 For build instructions, please see the [BUILD page](../../BUILD.md#tensorrt). 
 
+The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 6.0.1.5 but validated with the feature set equivalent to TensorRT 5. Some TensorRT 6 new features such as dynamic shape is not available as this time.
+
 ## Using the TensorRT execution provider
 ### C/C++
 The TensortRT execution provider needs to be registered with ONNX Runtime to enable in the inference session. 

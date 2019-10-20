@@ -70,7 +70,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
   CudaAsyncBuffer<fast_divmod> output_div_pitches(this, rank);
   gsl::span<fast_divmod> div_strides_span = output_div_pitches.CpuSpan();
 
-  for (int i = 0; i < rank; ++i) {
+  for (size_t i = 0; i < rank; ++i) {
     input_stride_span[i] = input_pitches[i];
     div_strides_span[i] = fast_divmod(gsl::narrow_cast<int>(output_pitches[i]));
   }
@@ -95,7 +95,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
     CudaAsyncBuffer<fast_divmod> scales_div(this, rank);
     gsl::span<fast_divmod> scales_div_span = scales_div.CpuSpan();
 
-    for (int i = 0; i < rank; ++i) {
+    for (size_t i = 0; i < rank; ++i) {
       scales_div_span[i] = fast_divmod(gsl::narrow_cast<int>(ceil(scales[i])));
     }
     scales_div.CopyToGpu();
