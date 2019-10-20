@@ -89,7 +89,9 @@ set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
-
+if(NOT onnxruntime_ENABLE_PYTHON)
+  set(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OFF)
+endif()
 if(onnxruntime_USE_OPENMP)
   find_package(OpenMP)
   if (OPENMP_FOUND)
@@ -713,7 +715,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     if(UNIX)
       set(CMAKE_SKIP_BUILD_RPATH ON)
     endif()
-    include(onnxruntime_python.cmake)
+    include(onnxruntime_python.cmake)  
   endif()
   # we need to make sure this is turned off since it
   # turned ON by the previous step when building a shared lib
