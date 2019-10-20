@@ -206,5 +206,25 @@ TEST(OneHotOpTest, FloatString) {
                                                 "off", "off", "off", "off", "off", "off", "on", "off", "off", "off",});
   test.Run();
 }
+
+TEST(OneHotOpTest, Axis_Negative_NegIndex_NonDefault) {
+  OpTester test("OneHot", 11);
+  int64_t axis = -3;
+  test.AddAttribute("axis", axis);
+  test.AddInput<int64_t>("indices", {2, 3}, {1, -1, 8, 2, 4, 6});
+  test.AddInput<int64_t>("depth", {1}, {10});
+  test.AddInput<int64_t>("values", {2}, {0, 1});
+  test.AddOutput<int64_t>("output", {10, 2, 3}, { 0, 0, 0, 0, 0, 0,
+                                                  1, 0, 0, 0, 0, 0,
+                                                  0, 0, 0, 1, 0, 0,
+                                                  0, 0, 0, 0, 0, 0,
+                                                  0, 0, 0, 0, 1, 0,
+                                                  0, 0, 0, 0, 0, 0,
+                                                  0, 0, 0, 0, 0, 1,
+                                                  0, 0, 0, 0, 0, 0,
+                                                  0, 0, 1, 0, 0, 0,
+                                                  0, 1, 0, 0, 0, 0,});
+  test.Run();
+}
 }
 }  // namespace onnxruntime
