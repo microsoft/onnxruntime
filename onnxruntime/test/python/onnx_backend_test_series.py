@@ -95,9 +95,7 @@ def test_with_types_disabled_due_to_binary_size_concerns_filters():
     filters = ['^test_bitshift_right_uint16_cpu',
                '^test_bitshift_right_uint8_cpu',
                '^test_bitshift_left_uint16_cpu',
-               '^test_bitshift_left_uint8_cpu',
-               '^test_edge_pad_cpu',
-               '^test_reflect_pad_cpu']
+               '^test_bitshift_left_uint8_cpu']
 
     return filters
 
@@ -139,7 +137,9 @@ def create_backend_test(testname=None):
                                       '^test_reduce_[a-z1-9_]*_negative_axes_.*',
                                       'test_squeeze_negative_axes_cpu',
                                       'test_unsqueeze_negative_axes_cpu',
-                                      'test_constant_pad_cpu']
+                                      'test_constant_pad_cpu',
+                                      '^test_edge_pad_cpu',
+                                      '^test_reflect_pad_cpu']
 
         if c2.supports_device('MKL-DNN'):
             current_failing_tests += ['^test_range_float_type_positive_delta_expanded_cpu',
