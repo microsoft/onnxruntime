@@ -33,10 +33,11 @@ void EyeLikeImpl(
     const fast_divmod& fdm_x,
     T* output_data,
     size_t count) {
-  int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
+  constexpr int block_size = 256;
+  int blocksPerGrid = (int)(ceil(static_cast<float>(count) / block_size));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
 
-  _EyeLikeKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(k, fdm_x, output_data, N);
+  _EyeLikeKernel<<<blocksPerGrid, block_size, 0>>>(k, fdm_x, output_data, N);
 }
 
 #define SPECIALIZED_IMPL(T)                                          \
