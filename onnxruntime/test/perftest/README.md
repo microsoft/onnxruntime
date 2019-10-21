@@ -43,7 +43,7 @@ Model path and input data dependency:
         --test_data_set_0
             --input0.pb
         --test_data_set_2
-	        --input0.pb
+            --input0.pb
         --model.onnx
     
 The path of model.onnx needs to be provided as `<model_path>` argument.
