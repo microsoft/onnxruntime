@@ -115,12 +115,12 @@ static void ReshapePads(const std::vector<int64_t>& src_pad, size_t src_dim_coun
   reshaped_pad[inner_axis + new_dim_count] = src_pad[inner_axis + src_dim_count] * inner_no_pad_size;
 }
 
-template <typename T>
+template <typename T1, typename T2>
 Status PadCpuImpl(OpKernelContext* ctx,
                          const std::vector<int64_t>& pads,
                          const std::vector<int64_t>& slices,
                          const Mode& mode,
-                         T value) {
+                         T2 value) {
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   std::vector<int64_t> output_dims(input_tensor.Shape().GetDims());
   size_t data_rank = output_dims.size();
@@ -160,11 +160,11 @@ Status PadCpuImpl(OpKernelContext* ctx,
   TensorShape output_shape(output_dims);
 
   TensorShape input_shape(reshaped_input_dims);
-  SliceIterator<T> input(input_tensor, input_shape, input_starts, input_extents, {});
+  SliceIterator<T1> input(input_tensor, input_shape, input_starts, input_extents, {});
 
   // output_shape need to keep original.
   auto& output_tensor = *ctx->Output(0, output_shape);
-  auto* output = output_tensor.template MutableData<T>();
+  auto* output = output_tensor.template MutableData<T1>();
 
   TensorPitches output_pitches(reshaped_output_dims);
   size_t alignSkip = 0;  // Amount to skip to align to where the next input tensor data needs to be written
@@ -183,24 +183,24 @@ Status PadCpuImpl(OpKernelContext* ctx,
       while (input_counters) {
         output += alignSkip;
         {
-          T* axisStart = output;
+          T1* axisStart = output;
           output = input.CopyInnermostAxisSolitaryInnerStep(output);
 
           int64_t prePad = reshaped_pad[inner_axis];
           int64_t postPad = reshaped_pad[inner_axis + new_dims_count];
-          PadAxisConstant(axisStart - prePad, value, prePad);
-          PadAxisConstant(output, value, postPad);
+          PadAxisConstant(axisStart - prePad, (T1)value, prePad);
+          PadAxisConstant(output, (T1)value, postPad);
           output += postPad;
           alignSkip = prePad;
         }
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
         while (input_counters.Increment()) {
           ptrdiff_t inner_pitch = output_pitches[input_counters.Axis()];
-          T* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
+          T1* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
           int64_t prePad = reshaped_pad[input_counters.Axis()];
           int64_t postPad = reshaped_pad[input_counters.Axis() + new_dims_count];
-          PadAxisConstant(axisStart - prePad * inner_pitch, value, prePad * inner_pitch);
-          PadAxisConstant(output, value, postPad * inner_pitch);
+          PadAxisConstant(axisStart - prePad * inner_pitch, (T1)value, prePad * inner_pitch);
+          PadAxisConstant(output, (T1)value, postPad * inner_pitch);
           output += inner_pitch * postPad;
           alignSkip += inner_pitch * prePad;
         }
@@ -214,7 +214,7 @@ Status PadCpuImpl(OpKernelContext* ctx,
       while (input_counters) {
         output += alignSkip;
         {
-          T* axisStart = output;
+          T1* axisStart = output;
           output = input.CopyInnermostAxisSolitaryInnerStep(output);
 
           int64_t prePad = reshaped_pad[inner_axis];
@@ -227,7 +227,7 @@ Status PadCpuImpl(OpKernelContext* ctx,
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
         while (input_counters.Increment()) {
           ptrdiff_t inner_pitch = output_pitches[input_counters.Axis()];
-          T* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
+          T1* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
           int64_t prePad = reshaped_pad[input_counters.Axis()];
           int64_t postPad = reshaped_pad[input_counters.Axis() + new_dims_count];
           PadAxis(axisStart - prePad * inner_pitch, axisStart, 1, -inner_pitch, inner_pitch, prePad);
@@ -245,7 +245,7 @@ Status PadCpuImpl(OpKernelContext* ctx,
       while (input_counters) {
         output += alignSkip;
         {
-          T* axisStart = output;
+          T1* axisStart = output;
           output = input.CopyInnermostAxisSolitaryInnerStep(output);
 
           int64_t prePad = reshaped_pad[inner_axis];
@@ -258,7 +258,7 @@ Status PadCpuImpl(OpKernelContext* ctx,
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
         while (input_counters.Increment()) {
           ptrdiff_t inner_pitch = output_pitches[input_counters.Axis()];
-          T* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
+          T1* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
           int64_t prePad = reshaped_pad[input_counters.Axis()];
           int64_t postPad = reshaped_pad[input_counters.Axis() + new_dims_count];
           PadAxis(axisStart - prePad * inner_pitch, axisStart + prePad * inner_pitch, 1, -inner_pitch * 2, inner_pitch, prePad);
@@ -316,10 +316,10 @@ Status Pad<T>::Compute(OpKernelContext* ctx) const {
       value = value_tensor->template Data<T>()[0];
     }
 
-    return PadCpuImpl<T>(ctx, pads, slices, mode_, value);
+    return PadCpuImpl<T, T>(ctx, pads, slices, mode_, value);
   } else {
     // kOnnxDomain Pad opset < 11
-    return PadCpuImpl<T>(ctx, pads_, slices_, mode_, value_);
+    return PadCpuImpl<T, float>(ctx, pads_, slices_, mode_, value_);
   }
 }
 };  // namespace onnxruntime

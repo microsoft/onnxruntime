@@ -36,7 +36,6 @@ static void RunTest(
     const std::vector<int64_t>& output_dims,
     const std::vector<float>& output,
     std::string mode = "constant") {
-
   // ONNX domain opset-10
   OpTester test1("Pad", 10);
   test1.AddInput<float>("data", input_dims, input);
@@ -46,14 +45,14 @@ static void RunTest(
   test1.AddOutput<float>("output", output_dims, output);
   test1.Run();
 
-  OpTester test2("Pad", 11);
-  if (mode != "constant") test2.AddAttribute("mode", mode);
-  test2.AddInput<float>("data", input_dims, input);
-  test2.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
-  test2.AddInput<float>("value", {1}, {value});
-  test2.AddOutput<float>("output", output_dims, output);
-  // NGraph and TensorRT do not yet support opset-11 and builds break on this test, hence exclude the EP
-  test2.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+  // ONNX domain opset-11
+		RunTypedTest(input_dims,
+				input,
+				pads,
+				(float) value,
+				output_dims,
+				output,
+				mode);
 
   #ifndef DISABLE_CONTRIB_OPS
 
