@@ -41,7 +41,7 @@ jobs:
 - job: 'Linux_CI_Dev'
   pool: $(AgentPoolLinux)
   steps:
-    - template: linux-set-variables-and-download.yml
+    - template: ../../templates/linux-set-variables-and-download.yml
     - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory)'
       displayName: 'Command Line Script'
     - script: |
