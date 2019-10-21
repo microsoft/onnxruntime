@@ -140,40 +140,6 @@ TEST(TensorOpTest, Pad_Constant_2D) {
            1234.0f, 1234.0f, 1234.0f, 1234.0f, 1234.0f, 1234.0f});
 }
 
-//TEST(TensorOpTest, Pad_Constant_2D_double) {
-//	std::vector<double> X = {11., 21.,
-//                            12., 22.};
-//	double value = 0.;
-//	std::vector<double> Y = {0., 0., 0., 0.,
-//									           0., 11., 21., 0.,
-//									           0., 12., 22., 0.,
-//									           0., 0., 0., 0.};
-//
-//  RunTest({2, 2},
-//          X,
-//          {1, 1, 1, 1},
-//          value,
-//          {4, 4},
-//          Y);
-//}
-//
-//TEST(TensorOpTest, Pad_Constant_2D_long) {
-//	std::vector<int64_t> X = {11, 21,
-//                            12, 22};
-//	int64_t value = 0;
-//	std::vector<int64_t> Y = {0, 0, 0, 0,
-//									           0, 11, 21, 0,
-//									           0, 12, 22, 0,
-//									           0, 0, 0, 0};
-//
-//  RunTest({2, 2},
-//          X,
-//          {1, 1, 1, 1},
-//          value,
-//          {4, 4},
-//          Y);
-//}
-
 TEST(TensorOpTest, Pad_Constant_2D_negative) {
   RunTest({2, 3},
           {11.0f, 21.0f, 31.0f,
