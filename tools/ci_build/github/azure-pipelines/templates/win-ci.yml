@@ -30,6 +30,12 @@ jobs:
     CUDA_VERSION: ${{ parameters.CudaVersion }}
 
   steps:
+    - task: UseDotNet@2
+      displayName: 'Use .NET Core sdk'
+      inputs:
+        packageType: sdk
+        version: 2.2.402
+        installationPath: $(Agent.ToolsDirectory)/dotnet
     - template: set-test-data-variables-step.yml
     - template: windows-build-tools-setup-steps.yml
       parameters:
