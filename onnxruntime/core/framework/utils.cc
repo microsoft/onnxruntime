@@ -557,15 +557,15 @@ static void DumpTensor(const Tensor& tensor, const TensorShape& shape) {
   auto data = tensor.DataAsSpan<T>();
 
   auto print_val = [](const T& value) {
-    if (std::is_floating_point_v<T>)
+    if (std::is_floating_point<T>::value)
       std::cout << std::setprecision(8) << value;
     else
       std::cout << value;
   };
 
-  for (int row = 0; row < num_rows; ++row) {
+  for (size_t row = 0; row < num_rows; ++row) {
     print_val(data[row * row_size]);
-    for (int i = 1; i < row_size; ++i) {
+    for (size_t i = 1; i < row_size; ++i) {
       std::cout << ", ";
       print_val(data[row * row_size + i]);
     }
@@ -622,22 +622,24 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
       if (type) {
         if (type->IsTensorType()) {
           const auto& tensor = *context.Output<Tensor>(i);
-          const auto data_type = tensor.DataType();
           const auto& shape = tensor.Shape();
 
           std::cout << " Shape: " << shape << "\n";
 
-          // check tensor is on CPU before dumping it
-          auto& tensor_location = tensor.Location();
-          auto* provider = execution_providers.Get(tensor_location);
-          if (!provider) {
-            provider = cpu_execution_provider;
-          }
+          if (DEBUG_NODE_INPUTS_OUTPUTS > 1) {
+            // check tensor is on CPU before dumping it
+            auto& tensor_location = tensor.Location();
+            auto* provider = execution_providers.Get(tensor_location);
+            if (!provider) {
+              provider = cpu_execution_provider;
+            }
 
-          if (provider == cpu_execution_provider || tensor_location.mem_type == OrtMemTypeCPUOutput) {
-            DispatchOnTensorType(data_type, DumpTensor, tensor, shape);
-          } else {
-            std::cout << " is not on CPU. Provider=" << provider->Type() << "\n";
+            if (provider == cpu_execution_provider || tensor_location.mem_type == OrtMemTypeCPUOutput) {
+              const auto data_type = tensor.DataType();
+              DispatchOnTensorType(data_type, DumpTensor, tensor, shape);
+            } else {
+              std::cout << " is not on CPU. Provider=" << provider->Type() << "\n";
+            }
           }
         } else {
           std::cout << " is non-tensor type.\n";

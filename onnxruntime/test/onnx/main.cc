@@ -429,10 +429,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"cumsum_1d_reverse_exclusive", "only failing linux GPU CI. Likely build error."},
       {"det_2d", "not implemented yet"},
       {"det_nd", "not implemented yet"},
-      {"resize_downsample_scales_cubic_A_n0p5_exclude_outside", "not implemented yet"},
-      {"resize_downsample_scales_cubic_align_corners", "not implemented yet"},
-      {"resize_downsample_scales_linear_align_corners", "not implemented yet"},
-      {"resize_upsample_scales_cubic_A_n0p5_exclude_outside", "not implemented yet"},
+      {"resize_downsample_scales_cubic_align_corners", "results mismatch with onnx tests"},
+      {"resize_downsample_scales_linear_align_corners", "results mismatch with onnx tests"},
       {"resize_tf_crop_and_resize", "Bad onnx test output. Needs test fix."},
       {"resize_upsample_sizes_nearest_ceil_half_pixel", "Bad onnx test output. Needs test fix."},
       {"resize_upsample_sizes_nearest_floor_align_corners", "Bad onnx test output. Needs test fix."},
@@ -446,16 +444,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"sequence_model2", "SequenceConstruct not implemented yet"},
       {"sequence_model1", "Sequence* not implemented yet"},
       {"scatter_elements_with_negative_indices", "ScatterElements(11) not implemented yet"},
-      {"onehot_without_axis", "OneHot(11) not implemented yet"},
-      {"onehot_with_negative_axis", "OneHot(11) not implemented yet"},
-      {"onehot_with_axis", "OneHot(11) not implemented yet"},
-      {"onehot_negative_indices", "OneHot(11) not implemented yet"},
       {"bitshift_right_uint8", "BitShift(11) uint8 support not enabled currently"},
       {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"bitshift_left_uint8", "BitShift(11) uint8 support not enabled currently"},
       {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"reflect_pad", "test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests"},
       {"edge_pad", "test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests"},
+      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398" },
 };
 
 #ifdef USE_NGRAPH
@@ -525,6 +520,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
 #ifdef USE_CUDA
+  broken_tests.insert({"mask_rcnn_keras", "result mismatch"});
   broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
   broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
   broken_tests.insert({"tf_inception_v1", "flaky test"}); //TODO: Investigate cause for flakiness

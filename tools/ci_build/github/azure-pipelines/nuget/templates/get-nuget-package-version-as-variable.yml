@@ -14,7 +14,11 @@ steps:
         set ortversion=!filename:~25!
         IF "!filename:~25,3!"=="Gpu" (
           set ortversion=!filename:~29!
-        )  
+        ) ELSE (
+          IF "!filename:~25,5!"=="MKLML" (
+            set ortversion=!filename:~31!
+          )
+        ) 
 
         @echo ortversion is !ortversion!
         @echo ##vso[task.setvariable variable=NuGetPackageVersionNumber;]!ortversion!
@@ -32,5 +36,8 @@ steps:
       if [ "${filename:25:3}" = "Gpu" ]
       then
          ortversion=${filename:29}
+      elif [ "${filename:25:5}" = "MKLML" ]
+      then
+         ortversion=${filename:31}
       fi
       echo "##vso[task.setvariable variable=NuGetPackageVersionNumber;]$ortversion"

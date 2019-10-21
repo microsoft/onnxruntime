@@ -27,6 +27,8 @@ if(WIN32)
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.h"
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.cc"
     )
+    # wndows platform adapter code uses advapi32
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES advapi32)
 else()
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/posix/*.h"
