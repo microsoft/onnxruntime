@@ -1,12 +1,9 @@
 ONNX Runtime
 ============
 
-ONNX Runtime
-enables high-performance evaluation of trained machine learning (ML)
-models while keeping resource usage low once converted into ONNX format.
-See `project information <https://github.com/microsoft/onnxruntime>`_
-and `Python API documentation and examples <https://aka.ms/onnxruntime-python>`_
-for further details.
+ONNX Runtime is a performance-focused scoring engine for Open Neural Network Exchange (ONNX) models.
+For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://aka.ms/onnxruntime/>`_ or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
+
 
 Changes
 -------
