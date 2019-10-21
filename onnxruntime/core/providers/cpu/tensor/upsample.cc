@@ -420,6 +420,7 @@ float CubicInterpolation1D(const T* Xdata,
                            int64_t input_height,
                            int64_t input_width,
                            std::array<float, CubicModeGridLength>& coeff_array,
+                           float coeff_sum,
                            std::unordered_map<int64_t, float>& cache) {
   // When calculating cubic interpolation we move the 4*4 grid across the original data and therefore there is
   // opportunity to cache the results for previously seen combinations.
@@ -434,7 +435,7 @@ float CubicInterpolation1D(const T* Xdata,
   float result = 0;
   for (int i = 0, j = -1; i < static_cast<int>(CubicModeGridLength); i++, j++) {
     auto orig_data = GetDataForCoordinate(Xdata, x + j, y, input_height, input_width);
-    result += static_cast<float>(coeff_array[i] * orig_data);
+    result += static_cast<float>(coeff_array[i]/coeff_sum * orig_data);
   }
   cache[grid_start_pos] = result;
 
@@ -452,6 +453,7 @@ void ResizeBiCubic(
     float cubic_coeff_a,
     bool use_extrapolation,
     float extrapolation_value,
+    bool exclude_outside,
     const std::vector<float>& roi,
     const T* Xdata,
     T* Ydata,
@@ -494,6 +496,12 @@ void ResizeBiCubic(
     }
   }
 
+  // setup up temp arrays to hold coefficients when exclude_outside is set to true
+  std::array<float, CubicModeGridLength> y_coeff_holder{};
+  std::array<float, CubicModeGridLength> x_coeff_holder{};
+  float y_coeff_sum = 1;
+  float x_coeff_sum = 1;
+
   for (int64_t n = 0; n < batch_size; n++) {
     for (int64_t c = 0; c < num_channels; c++) {
       for (int64_t y = 0; y < output_height; ++y) {
@@ -509,7 +517,19 @@ void ResizeBiCubic(
         }
 
         auto y_int = static_cast<int64_t>(std::floor(in_y));
-        auto& coeff_y = cubic_coeffs[in_y - y_int];
+        auto& coeff_y = exclude_outside ? y_coeff_holder : cubic_coeffs[in_y - y_int];
+        y_coeff_sum = 1;
+
+        if (exclude_outside) {
+          // When true, the weight of sampling locations outside the grid will be set to 0
+          // and the weight will be renormalized so that their sum is 1.0
+          y_coeff_sum = 0;
+          auto& orig_y_coeffs = cubic_coeffs[in_y - y_int];
+          for (int64_t i = 0, y_val = y_int - 1; y_val <= y_int + 2; y_val++, i++) {
+            y_coeff_holder[i] = (y_val < 0 || y_val >= static_cast<float>(input_height)) ? 0.0f : orig_y_coeffs[i];
+            y_coeff_sum += y_coeff_holder[i];
+          }
+        }
 
         for (int64_t x = 0; x < output_width; ++x) {
           auto in_x = x_original[x];
@@ -523,7 +543,19 @@ void ResizeBiCubic(
 
           auto x_int = static_cast<int64_t>(std::floor(in_x));
           auto s_x = static_cast<float>(in_x - x_int);
-          auto& coeff_x = cubic_coeffs[s_x];
+          auto& coeff_x = exclude_outside ? x_coeff_holder : cubic_coeffs[s_x];
+          x_coeff_sum = 1;
+
+          if (exclude_outside) {
+            // When true, the weight of sampling locations outside the grid will be set to 0
+            // and the weight will be renormalized so that their sum is 1.0
+            x_coeff_sum = 0;
+            auto& orig_x_coeff = cubic_coeffs[s_x];
+            for (int64_t i = 0, x_val = x_int - 1; x_val <= x_int + 2; x_val++, i++) {
+              x_coeff_holder[i] = (x_val < 0 || x_val >= static_cast<float>(input_width)) ? 0.0f : orig_x_coeff[i];
+              x_coeff_sum += x_coeff_holder[i];
+            }
+          }
 
           // Compute cubic interpolation in x dimension using the x coefficients.
           // From the result of cubic interpolation in x dim, compute cubic interpolation in y dimension
@@ -531,9 +563,9 @@ void ResizeBiCubic(
           float result = 0;
           for (int64_t y_val = y_int - 1, i = 0; y_val <= y_int + 2; y_val++, i++) {
             auto x_interpolation_result = CubicInterpolation1D(Xdata, x_int, y_val,
-                                                               input_height, input_width, coeff_x,
+                                                               input_height, input_width, coeff_x, x_coeff_sum,
                                                                interpolation_result_cache);
-            result += x_interpolation_result * coeff_y[i];
+            result += x_interpolation_result * coeff_y[i]/y_coeff_sum;
           }
 
           Ydata[y * output_width + x] = static_cast<T>(result);
@@ -615,7 +647,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
 
       ResizeBiCubic(batch_size, num_channels, input_height, input_width,
                     is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], cubic_coeff_a_, use_extrapolation_,
-                    extrapolation_value_, roi, X->template Data<float>(), Y->template MutableData<float>(),
+                    extrapolation_value_, exclude_outside_, roi, X->template Data<float>(), Y->template MutableData<float>(),
                     get_original_coordinate_);
       return Status::OK();
     }
