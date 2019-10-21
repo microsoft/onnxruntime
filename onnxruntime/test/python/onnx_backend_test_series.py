@@ -138,8 +138,8 @@ def create_backend_test(testname=None):
                                       'test_squeeze_negative_axes_cpu',
                                       'test_unsqueeze_negative_axes_cpu',
                                       'test_constant_pad_cpu',
-                                      '^test_edge_pad_cpu',
-                                      '^test_reflect_pad_cpu']
+                                      'test_edge_pad_cpu',
+                                      'test_reflect_pad_cpu']
 
         if c2.supports_device('MKL-DNN'):
             current_failing_tests += ['^test_range_float_type_positive_delta_expanded_cpu',
