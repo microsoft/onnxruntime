@@ -12,7 +12,6 @@ namespace onnxruntime {
 namespace utils {
 namespace test {
 
-// check that the ORT_IS_(LITTLE|BIG)_ENDIAN symbols are set correctly
 TEST(EndianTest, EndiannessDetection) {
   const uint16_t test_value = 0x1234;
   const char* test_value_first_byte = reinterpret_cast<const char*>(&test_value);
