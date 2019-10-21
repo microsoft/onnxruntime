@@ -38,21 +38,30 @@ jobs:
      ren *.nupkg win-x86.zip
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
 
-- template: ../../templates/linux-ci.yml
-  parameters:
-    AgentPool : $(AgentPoolLinux)
-    JobName: 'Linux_CI_Dev'
-    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory)'
-    DoNugetPack : 'true'
-    ArtifactName: 'drop-linux'
-    NuPackScript: |
-     set -e -x
-     mkdir $(Build.BinariesDirectory)/linux-x64
-     cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x64
-     cd $(Build.BinariesDirectory)
-     zip -r linux-x64.zip linux-x64
-     cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
-     ls -al $(Build.ArtifactStagingDirectory)
+- job: 'Linux_CI_Dev'
+  pool: $(AgentPoolLinux)
+  steps:
+    - template: linux-set-variables-and-download.yml
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory)'
+      displayName: 'Command Line Script'
+    - script: |
+       set -e -x
+       mkdir $(Build.BinariesDirectory)/linux-x64
+       cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x64
+       cd $(Build.BinariesDirectory)
+       zip -r linux-x64.zip linux-x64
+       cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
+       ls -al $(Build.ArtifactStagingDirectory)
+      displayName: 'Create Artifacts'
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifactName: 'drop-linux'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: succeeded()
+    - template: clean-agent-build-directory-step.yml
 
 - template: ../../templates/mac-ci.yml
   parameters:
