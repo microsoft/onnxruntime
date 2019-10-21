@@ -28,10 +28,22 @@ namespace onnxruntime {
 // spec: https://github.com/onnx/onnx/blob/master/docs/Operators.md#OneHot
 
 // T1: indices, T2: depth, T3: values
-#define REG_TYPED_ONE_HOT_OP(types_str, in_type, out_type, depth_type)     \
+#define REG_TYPED_ONE_HOT_OP_V9_10(types_str, in_type, out_type, depth_type) \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                  \
+      OneHot,                                                                \
+      9, 10,                                                                 \
+      types_str,                                                             \
+      KernelDefBuilder()                                                     \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<in_type>())      \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<depth_type>())   \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<out_type>()),    \
+      OneHotOp<in_type, out_type, depth_type>);
+
+// T1: indices, T2: depth, T3: values
+#define REG_TYPED_ONE_HOT_OP_V11(types_str, in_type, out_type, depth_type) \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                          \
       OneHot,                                                              \
-      9,                                                                   \
+      11,                                                                  \
       types_str,                                                           \
       KernelDefBuilder()                                                   \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<in_type>())    \
@@ -39,8 +51,9 @@ namespace onnxruntime {
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<out_type>()),  \
       OneHotOp<in_type, out_type, depth_type>);
 
-#define REG_ONE_HOT_OP(in_type, out_type, depth_type) \
-  REG_TYPED_ONE_HOT_OP(in_type##_##out_type##_##depth_type, in_type, out_type, depth_type)
+#define REG_ONE_HOT_OP(in_type, out_type, depth_type)                                             \
+  REG_TYPED_ONE_HOT_OP_V9_10(in_type##_##out_type##_##depth_type, in_type, out_type, depth_type); \
+  REG_TYPED_ONE_HOT_OP_V11(in_type##_##out_type##_##depth_type, in_type, out_type, depth_type)
 
 REG_ONE_HOT_OP(int64_t, int64_t, int64_t);
 REG_ONE_HOT_OP(float, int64_t, int64_t);
@@ -51,6 +64,7 @@ REG_ONE_HOT_OP(int32_t, float, int32_t);
 REG_ONE_HOT_OP(int32_t, float, float);
 REG_ONE_HOT_OP(float, float, float);      // added this to satisfy onnx model tests
 REG_ONE_HOT_OP(int64_t, int32_t, float);  // added this to satisfy onnx model tests
+REG_ONE_HOT_OP(int64_t, float, float);    // added this to satisfy onnx model tests
 
 Status ValidateInputs(const Tensor* depth,
                       const Tensor* values) {
@@ -129,7 +143,7 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
   const auto output_rank = static_cast<int64_t>(indices_num_dims + 1);
   if (axis_ >= output_rank || axis_ < -output_rank) {
     std::ostringstream oss;
-    oss << "'axis' attribute must have a value in the range [" << -output_rank 
+    oss << "'axis' attribute must have a value in the range [" << -output_rank
         << "," << indices_num_dims << "]";
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, oss.str());
   }
@@ -152,8 +166,23 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
 
   // Split indices into matrix of size prefix_dim_size x suffix_dim_size
   Eigen::array<Eigen::DenseIndex, 2> indices_dims_e = {
-    {static_cast<Eigen::DenseIndex>(prefix_dim_size), static_cast<Eigen::DenseIndex>(suffix_dim_size)}};
+      {static_cast<Eigen::DenseIndex>(prefix_dim_size), static_cast<Eigen::DenseIndex>(suffix_dim_size)}};
+
+  // Handle negative indices. It's faster to create a new indices instead of comparing in generator
+  // since generator has much larger loops.
   const auto* indices_data = indices->Data<in_type>();
+  const auto indices_size = indices_shape.Size();  
+  std::vector<in_type> adjusted_indices;
+  adjusted_indices.reserve(indices_size);
+  for (int64_t i = 0; i < indices_size; ++i)
+  {
+    if (indices_data[i] < 0)
+      adjusted_indices.push_back(indices_data[i] + static_cast<in_type>(depth_val));
+    else
+      adjusted_indices.push_back(indices_data[i]);
+  }
+  indices_data = adjusted_indices.data();
+
   typename EigenTensorTypes<in_type, 2>::ConstEigenTensorMap indices_tensor_e(indices_data, indices_dims_e);
 
   // Split output into 3-Tensor of size:

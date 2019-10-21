@@ -37,6 +37,14 @@ class Initializer final {
         double_data_.assign(static_cast<size_t>(size_), 0.0);
         break;
       }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+        int32_data_.assign(static_cast<size_t>(size_), 0);
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+        int64_data_.assign(static_cast<size_t>(size_), 0);
+        break;
+      }
       default:
         ORT_THROW("data type ", data_type_, "is not supported.");
         break;
@@ -80,6 +88,22 @@ class Initializer final {
           ORT_ENFORCE(size_ == size, "size is different");
           for (int i = 0; i < size_; i++) {
             double_data_.push_back(tensor_proto.double_data(i));
+          }
+          break;
+        }
+        case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+          int64_t size = tensor_proto.int32_data_size();
+          ORT_ENFORCE(size_ == size, "size is different");
+          for (int i = 0; i < size_; i++) {
+            int32_data_.push_back(tensor_proto.int32_data(i));
+          }
+          break;
+        }
+        case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+          int64_t size = tensor_proto.int64_data_size();
+          ORT_ENFORCE(size_ == size, "size is different");
+          for (int i = 0; i < size_; i++) {
+            int64_data_.push_back(tensor_proto.int64_data(i));
           }
           break;
         }
@@ -132,6 +156,20 @@ class Initializer final {
           }
           break;
         }
+        case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+          tensor_proto.clear_int32_data();
+          for (int i = 0; i < size_; i++) {
+            tensor_proto.add_int32_data(int32_data_[i]);
+          }
+          break;
+        }
+        case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+          tensor_proto.clear_int64_data();
+          for (int i = 0; i < size_; i++) {
+            tensor_proto.add_int64_data(int64_data_[i]);
+          }
+          break;
+        }
         default:
           ORT_NOT_IMPLEMENTED(__FUNCTION__, "data type is not supported");
           break;
@@ -169,6 +207,14 @@ class Initializer final {
         return (T*)double_data_.data();
         break;
       }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+        return (T*)int32_data_.data();
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+        return (T*)int64_data_.data();
+        break;
+      }
       default:
         break;
     }
@@ -192,6 +238,14 @@ class Initializer final {
       }
       case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
         return (T*)double_data_.data();
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+        return (T*)int32_data_.data();
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+        return (T*)int64_data_.data();
         break;
       }
       default:
@@ -268,6 +322,22 @@ class Initializer final {
         }
         break;
       }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+        int32_t* dst = data<int32_t>();
+        const int32_t* src = other.data<int32_t>();
+        for (int i = 0; i < n; i++) {
+          dst[i] += src[i];
+        }
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+        int64_t* dst = data<int64_t>();
+        const int64_t* src = other.data<int64_t>();
+        for (int i = 0; i < n; i++) {
+          dst[i] += src[i];
+        }
+        break;
+      }
       default:
         break;
     }
@@ -295,6 +365,22 @@ class Initializer final {
       case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
         double* dst = data<double>();
         const double* src = other.data<double>();
+        for (int i = 0; i < n; i++) {
+          dst[i] -= src[i];
+        }
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+        int32_t* dst = data<int32_t>();
+        const int32_t* src = other.data<int32_t>();
+        for (int i = 0; i < n; i++) {
+          dst[i] -= src[i];
+        }
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+        int64_t* dst = data<int64_t>();
+        const int64_t* src = other.data<int64_t>();
         for (int i = 0; i < n; i++) {
           dst[i] -= src[i];
         }
@@ -333,6 +419,22 @@ class Initializer final {
         }
         break;
       }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+        int32_t* dst = data<int32_t>();
+        const int32_t* src = other.data<int32_t>();
+        for (int i = 0; i < n; i++) {
+          dst[i] *= src[i];
+        }
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+        int64_t* dst = data<int64_t>();
+        const int64_t* src = other.data<int64_t>();
+        for (int i = 0; i < n; i++) {
+          dst[i] *= src[i];
+        }
+        break;
+      }
       default:
         break;
     }
@@ -360,6 +462,22 @@ class Initializer final {
       case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
         double* dst = data<double>();
         const double* src = other.data<double>();
+        for (int i = 0; i < n; i++) {
+          dst[i] /= src[i];
+        }
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+        int32_t* dst = data<int32_t>();
+        const int32_t* src = other.data<int32_t>();
+        for (int i = 0; i < n; i++) {
+          dst[i] /= src[i];
+        }
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+        int64_t* dst = data<int64_t>();
+        const int64_t* src = other.data<int64_t>();
         for (int i = 0; i < n; i++) {
           dst[i] /= src[i];
         }
@@ -443,6 +561,28 @@ class Initializer final {
         }
         break;
       }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+        int32_t* dst = data<int32_t>();
+        const int32_t* src = other.data<int32_t>();
+        for (int i = 0; i < n; i++) {
+          int index = other.size() == 1 ? 0 : i;
+          for (int64_t j = 0; j < num; j++) {
+            dst[i * num + j] *= src[index];
+          }
+        }
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+        int64_t* dst = data<int64_t>();
+        const int64_t* src = other.data<int64_t>();
+        for (int i = 0; i < n; i++) {
+          int index = other.size() == 1 ? 0 : i;
+          for (int64_t j = 0; j < num; j++) {
+            dst[i * num + j] *= src[index];
+          }
+        }
+        break;
+      }
       default:
         break;
     }
@@ -458,6 +598,8 @@ class Initializer final {
   std::vector<float> float_data_;
   std::vector<uint16_t> float16_data_;
   std::vector<double> double_data_;
+  std::vector<int32_t> int32_data_;
+  std::vector<int64_t> int64_data_;
 };
 
 }  // namespace onnxruntime

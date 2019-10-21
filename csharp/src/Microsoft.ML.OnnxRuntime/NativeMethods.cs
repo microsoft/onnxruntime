@@ -22,6 +22,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetErrorMessage;
         public IntPtr CreateEnv;
         public IntPtr CreateEnvWithCustomLogger;
+        public IntPtr EnableTelemetryEvents;
+        public IntPtr DisableTelemetryEvents;
         public IntPtr CreateSession;
         public IntPtr CreateSessionFromArray;
         public IntPtr Run;
