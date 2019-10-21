@@ -38,8 +38,12 @@ struct OP_ScaledTanh : public CtxScaledTanh {
 
 template <typename T>
 struct OP_Gelu : public CtxGelu {
-  __device__ __inline__ T operator()(const T& a) const {
-    return a * _Normcdf(a);
+  __device__ __inline__ T operator()(const T& x) const {
+    const T sqrt_param = 0.79788456080286535587989211986876;
+    const T mul_param = 0.044715;
+    const T half = 0.5;
+    const T one = 1.0;
+    return x * half * (one + _Tanh(sqrt_param * (x + mul_param * x * x * x)));
   }
 };
 

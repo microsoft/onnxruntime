@@ -208,8 +208,9 @@ static INT CeilDiv(INT a, INT2 b)  // ceil(a/b)
 
 struct GridDim {
   enum : CUDA_LONG {
-    maxThreadsPerBlock = 1024,  // use this many threads per block
+    maxThreadsPerBlock = 256,  // use this many threads per block
     maxWarpsPerBlock = 32,      // use this many warps per block. This means 1024 threads for warpSize=32
+    maxElementsPerThread = 4
   };
 
   // use these for launching
@@ -256,6 +257,11 @@ struct GridDim {
 #define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N) \
   CUDA_LONG id = GridDim::GetLinearThreadId();     \
   if (id >= N)                                     \
+    return;
+
+#define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT_T(id, N, NumElementsPerThread)        \
+  CUDA_LONG id = NumElementsPerThread * blockDim.x * blockIdx.x + threadIdx.x;  \
+  if (id >= N)                                                                  \
     return;
 
 }  // namespace cuda
