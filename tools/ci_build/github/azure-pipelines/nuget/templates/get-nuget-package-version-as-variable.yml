@@ -37,6 +37,7 @@ steps:
       then
          ortversion=${filename:29}
       elif [ "${filename:25:5}" = "MKLML" ]
+      then
          ortversion=${filename:31}
       fi
       echo "##vso[task.setvariable variable=NuGetPackageVersionNumber;]$ortversion"
