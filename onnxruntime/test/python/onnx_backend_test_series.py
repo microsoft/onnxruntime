@@ -152,7 +152,8 @@ def create_backend_test(testname=None):
                                  '^test_sequence_*',
                                  '^test_scatter_.*',
                                  '^test_edge_pad_cpu.*',  # test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests
-                                 '^test_reflect_pad_cpu.*'  # test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests
+                                 '^test_reflect_pad_cpu.*',  # test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests
+                                 '^test_maxunpool_export_with_output_shape_cpu', # Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398'
         ]
 
         # Example of how to disable tests for a specific provider.
