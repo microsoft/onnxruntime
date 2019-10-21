@@ -435,7 +435,7 @@ float CubicInterpolation1D(const T* Xdata,
   float result = 0;
   for (int i = 0, j = -1; i < static_cast<int>(CubicModeGridLength); i++, j++) {
     auto orig_data = GetDataForCoordinate(Xdata, x + j, y, input_height, input_width);
-    result += static_cast<float>(coeff_array[i]/coeff_sum * orig_data);
+    result += coeff_array[i]/coeff_sum * orig_data;
   }
   cache[grid_start_pos] = result;
 
