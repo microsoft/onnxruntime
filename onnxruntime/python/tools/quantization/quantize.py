@@ -1185,7 +1185,7 @@ class ONNXQuantizer:
 
         return [node]
 
-def check_opset_version(org_model, fuse_dynamic_quant):
+def check_opset_version(org_model, force_fusions):
     '''
         Check opset version of original model and set opset version and fuse_dynamic_quant accordingly.
         If opset version < 10, set quantized model opset version to 10.
@@ -1196,21 +1196,26 @@ def check_opset_version(org_model, fuse_dynamic_quant):
     '''
     global onnx_op_set_version
     opset_version = org_model.opset_import[0].version
+    fuse_dynamic_quant = False
+
+    if opset_version < 11 and force_fusions == True:
+        print("Warning: The original model opset version is {}, which does not support node fusions.\n\
+            Forcing fusions can break other nodes in the model. Use onnx model checker to verify model after quantization.".format(opset_version))
+        fuse_dynamic_quant = True
+
     if opset_version < 10:
         print("Warning: The original model opset version is {}, which does not support quantized operators.\n\
-            The opset version of quantized model will be set to 10.".format(opset_version))
+            The opset version of quantized model will be set to 10. Use onnx model checker to verify model after quantization.".format(opset_version))
         onnx_op_set_version = 10
-        fuse_dynamic_quant = False
     elif opset_version == 10:
         onnx_op_set_version = 10
-        fuse_dynamic_quant = False
     else:
-        onnx_op_set_version = 11
+        onnx_op_set_version > 10
         fuse_dynamic_quant = True
     return fuse_dynamic_quant
 
 def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMode.IntegerOps,
-    static=False, fuse_dynamic_quant=True, asymmetric_input_types=False, 
+    static=False, force_fusions=False, asymmetric_input_types=False, 
     quantization_params=None, nodes_to_quantize=None):
     '''
         Given an onnx model, create a quantized onnx model and save it into a file
@@ -1228,10 +1233,10 @@ def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMo
               specified through quantization_params.
         False: The inputs/activations are quantized using dynamic scale and zero point values
                computed while running the model.
-    :param fuse_dynamic_quant:
+    :param force_fusions:
         True: Fuses nodes added for dynamic quantization
         False: No fusion is applied for nodes which are added for dynamic quantization.
-        Should be only used in cases where backends want to apply special fusion routines        
+        Should be only used in cases where backends want to apply special fusion routines
     :param asymmetric_input_types:
         True: Weights are quantized into signed integers and inputs/activations into unsigned integers.
         False: Weights and inputs/activations are quantized into unsigned integers.
@@ -1264,7 +1269,7 @@ def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMo
         mode = quantization_mode
         copy_model = onnx_proto.ModelProto()
         copy_model.CopyFrom(model)
-        fuse_dynamic_quant = check_opset_version(copy_model, fuse_dynamic_quant)
+        fuse_dynamic_quant = check_opset_version(copy_model, force_fusions)
         quantizer = ONNXQuantizer(copy_model, per_channel, mode, static, fuse_dynamic_quant, weight_qType, input_qType,
                         quantization_params, nodes_to_quantize)
         quantizer.quantize_model()
