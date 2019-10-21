@@ -439,6 +439,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"reflect_pad", "Pad(11) int32 support not enabled currently"},
       {"edge_pad", "Pad(11) int32 support not enabled currently"},
+      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398" },
 };
 
 #ifdef USE_NGRAPH
