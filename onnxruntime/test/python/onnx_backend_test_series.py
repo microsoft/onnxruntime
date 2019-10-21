@@ -96,8 +96,8 @@ def test_with_types_disabled_due_to_binary_size_concerns_filters():
                '^test_bitshift_right_uint8_cpu',
                '^test_bitshift_left_uint16_cpu',
                '^test_bitshift_left_uint8_cpu',
-               '^test_edge_pad_cpu.*',
-               '^test_reflect_pad_cpu.*']
+               '^test_edge_pad_cpu',
+               '^test_reflect_pad_cpu']
 
     return filters
 
@@ -115,14 +115,12 @@ def create_backend_test(testname=None):
         current_failing_tests = [#'^test_cast_STRING_to_FLOAT_cpu',  # old test data that is bad on Linux CI builds
                                  '^test_unique_not_sorted_without_axis_cpu', # bad expected data. enable after https://github.com/onnx/onnx/pull/2381 is picked up
                                  '^test_mod_float_mixed_sign_example_cpu', #onnxruntime::Mod::Compute fmod_ was false. fmod attribute must be true for float, float16 and double types
-                                 '^test_resize_downsample_scales_cubic_A_n0p5_exclude_outside_cpu',  # not implemented yet
-                                 '^test_resize_downsample_scales_cubic_align_corners_cpu',  # not implemented yet
-                                 '^test_resize_downsample_scales_linear_align_corners_cpu',  # not implemented yet
-                                 '^test_resize_upsample_scales_cubic_A_n0p5_exclude_outside_cpu',  # not implemented yet
-                                 '^test_resize_tf_crop_and_resize_cpu',  # bad expected data
-                                 '^test_resize_upsample_sizes_nearest_ceil_half_pixel_cpu',  # bad expected data
-                                 '^test_resize_upsample_sizes_nearest_floor_align_corners_cpu',  # bad expected data
-                                 '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu',  # bad expected data
+                                 '^test_resize_downsample_scales_cubic_align_corners_cpu',  # results mismatch with onnx tests
+                                 '^test_resize_downsample_scales_linear_align_corners_cpu',  # results mismatch with onnx tests
+                                 '^test_resize_tf_crop_and_resize_cpu',  # bad expected data, needs test fix
+                                 '^test_resize_upsample_sizes_nearest_ceil_half_pixel_cpu',  # bad expected data, needs test fix
+                                 '^test_resize_upsample_sizes_nearest_floor_align_corners_cpu',  # bad expected data, needs test fix
+                                 '^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cpu',  # bad expected data, needs test fix
                                  ]
 
         # Example of how to disable tests for a specific provider.
@@ -130,7 +128,7 @@ def create_backend_test(testname=None):
         #    current_failing_tests.append('^test_operator_repeat_dim_overflow_cpu')
         if c2.supports_device('NGRAPH'):
             current_failing_tests += ['^test_clip.*',
-                                      '^test_qlinearconv_cpu.*',			
+                                      '^test_qlinearconv_cpu',
                                       '^test_depthtospace_crd.*',
                                       '^test_argmax_negative_axis.*',
                                       '^test_argmin_negative_axis.*',
@@ -142,10 +140,10 @@ def create_backend_test(testname=None):
                                       'test_unsqueeze_negative_axes_cpu',
                                       'test_constant_pad_cpu']
 
-        if c2.supports_device('MKLDNN'):
+        if c2.supports_device('MKL-DNN'):
             current_failing_tests += ['^test_range_float_type_positive_delta_expanded_cpu',
-                                      '^test_range_int32_type_negative_delta_expanded_cpu']		
- 									  
+                                      '^test_range_int32_type_negative_delta_expanded_cpu']
+
         if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
             current_failing_tests.append('^test_div_cpu*')
 
