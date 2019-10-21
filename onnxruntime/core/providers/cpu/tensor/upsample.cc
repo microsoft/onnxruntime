@@ -497,8 +497,8 @@ void ResizeBiCubic(
   }
 
   // setup up temp arrays to hold coefficients when exclude_outside is set to true
-  std::array<float, CubicModeGridLength> y_coeff_holder{};
-  std::array<float, CubicModeGridLength> x_coeff_holder{};
+  std::array<float, CubicModeGridLength> y_coeff_holder;
+  std::array<float, CubicModeGridLength> x_coeff_holder;
   float y_coeff_sum = 1;
   float x_coeff_sum = 1;
 
