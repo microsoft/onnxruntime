@@ -115,26 +115,42 @@ class OnnxModel:
 
         return output_name_to_node[input]
 
-    def match_parent_path(self, node, parent_op_types, parent_input_index=None, output_name_to_node=None):
+    def match_parent(self, node, parent_op_type, input_index=None, output_name_to_node=None, exclude = []):
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
 
-        if parent_input_index is None:
-            parent_input_index = [0] * len(parent_op_types)
+        if input_index is None:
+            parents = self.get_parents(node, output_name_to_node)
+            for parent in parents:
+                if parent.op_type == parent_op_type and parent not in exclude:
+                    return parent
+            return None
 
+        if input_index < 0 or input_index >= len(node.input):
+            return None
+
+        parent = self.get_parent(node, input_index, output_name_to_node)
+        if parent is not None and parent.op_type == parent_op_type and parent not in exclude:
+            return parent
+
+        return None
+
+    def match_parent_path(self, node, parent_op_types, parent_input_index, output_name_to_node=None):
         assert(len(parent_input_index) == len(parent_op_types))
+
+        if output_name_to_node is None:
+            output_name_to_node = self.output_name_to_node()
+
         current_node = node
         matched_parents = []
         for i, op_type in enumerate(parent_op_types):
-            input_index = parent_input_index[i]
-            if input_index >= len(current_node.input):
+            matched_parent = self.match_parent(current_node, op_type, parent_input_index[i], output_name_to_node, exclude=[])
+            if matched_parent is None:
                 return None
-            parent = self.get_parent(current_node, input_index, output_name_to_node)
-            if parent is None:
-                return None
-            if parent.op_type == parent_op_types[i]:
-                matched_parents.append(parent)
-            current_node = parent
+
+            matched_parents.append(matched_parent)
+            current_node = matched_parent
+
         return matched_parents
 
     def find_first_child_by_type(self, node, child_type, input_name_to_nodes=None, recursive=True):
@@ -176,6 +192,14 @@ class OnnxModel:
                 for att in node.attribute:
                     if att.name == 'value':
                         return numpy_helper.to_array(att.t)
+        return None
+
+    def get_constant_input(self, node):
+        for i, input in enumerate(node.input):
+            value = self.get_constant_value(input)
+            if value is not None:
+                return i, value
+        return None, None
 
     def get_children_subgraph_nodes(self, root_node, stop_nodes, input_name_to_nodes=None):
         if input_name_to_nodes is None:
@@ -335,6 +359,19 @@ class OnnxModel:
 
         self.remove_unused_constant()
 
+    def is_safe_to_fuse_nodes(self, nodes_to_remove, keep_outputs, input_name_to_nodes, output_name_to_node):
+        for node in nodes_to_remove:
+            for output in node.output:
+                if output in keep_outputs:
+                    continue
+
+                if output in input_name_to_nodes:
+                    for node in input_name_to_nodes[output]:
+                        if node not in nodes_to_remove:
+                            print("warning: it is not safe to remove nodes since output", output, "used by", node)
+                            return False
+        return True
+
 class BertOnnxModel(OnnxModel):
     def __init__(self, model, num_heads, hidden_size, sequence_length):
         assert num_heads > 0
@@ -488,49 +525,176 @@ class BertOnnxModel(OnnxModel):
         self.update_graph(verbose)
 
     def fuse_gelu(self):
-        nodes = self.nodes()
+        self.fuse_gelu_with_elf()
+        self.fuse_gelu_with_tanh()
+
+    """
+     Fuse Gelu with tanh into one node:
+                   +-------Mul(B=0.5)-------------------+
+                   |                                    |
+                   |                                    v
+                [root] --> Div -----> Erf  --> Add --> Mul -->
+                          (B=1.4142...)       (B=1)
+
+     Note that constant input for Add and Mul could be first or second input: like either A=0.5 or B=0.5 is fine.
+    """
+    def fuse_gelu_with_elf(self):
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
         nodes_to_remove = []
         nodes_to_add = []
 
-        for node in self.get_normalize_nodes():
+        for node in self.get_nodes_by_op_type('Erf'):
+            erf_node = node
 
-            children = input_name_to_nodes[node.output[0]]
-            if len(children) != 2:
+            if erf_node.output[0] not in input_name_to_nodes:
+                continue
+            children = input_name_to_nodes[erf_node.output[0]]
+            if len(children) != 1 or children[0].op_type != 'Add':
+                continue
+            add_after_erf = children[0]
+
+            i, add_weight = self.get_constant_input(add_after_erf)
+            if add_weight is None or add_weight != 1:
                 continue
 
-            children_types = sorted([child.op_type for child in children])
-            if children_types != ['MatMul', 'SkipLayerNormalization']:
+            if add_after_erf.output[0] not in input_name_to_nodes:
+                continue
+            children = input_name_to_nodes[add_after_erf.output[0]]
+            if len(children) != 1 or children[0].op_type != 'Mul':
+                continue
+            mul_after_erf = children[0]
+
+            div = self.match_parent(erf_node, 'Div', 0, output_name_to_node)
+            if div is None:
                 continue
 
-            matmul_node = self.find_first_child_by_type(node, 'MatMul', input_name_to_nodes)
-            matmul_child = input_name_to_nodes[matmul_node.output[0]]
-            if len(matmul_child) != 1 or matmul_child[0].op_type != 'Add':
+            i, div_weight = self.get_constant_input(div)
+            if i != 1 or not isinstance(div_weight, float) or abs(div_weight-1.4142) > 0.0001:
                 continue
-            add_node = matmul_child[0]
+
+            root_node = self.get_parent(div, 0, output_name_to_node)
+            if root_node is None:
+                continue
+
+            mul_half = self.match_parent(mul_after_erf, 'Mul', None, output_name_to_node)
+            if mul_half is None:
+                continue
             
-            children = input_name_to_nodes[add_node.output[0]]
-
-            children_types = sorted([child.op_type for child in children])
-            if children_types != ['Div', 'Mul']:
+            i, mul_half_weight = self.get_constant_input(mul_half)
+            if (not isinstance(mul_half_weight, float)) or div_weight != 0.5:
                 continue
 
-            matmul_2 = self.find_first_child_by_type(add_node, 'MatMul', input_name_to_nodes)
-            if matmul_2 is None:
-                continue
-
-            subgraph_nodes = self.get_children_subgraph_nodes(add_node, [matmul_2], input_name_to_nodes)
-            if len(subgraph_nodes) != 5:
+            subgraph_nodes = [div, erf_node, add_after_erf, mul_after_erf, mul_half]
+            if not self.is_safe_to_fuse_nodes(subgraph_nodes, [mul_after_erf.output[0]], input_name_to_nodes, output_name_to_node):
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
             gelu_node = onnx.helper.make_node(self.gelu_name,
-                inputs=[add_node.output[0]],
-                outputs=[matmul_2.input[0]])
+                inputs=[root_node.output[0]],
+                outputs=[mul_after_erf.input[0]])
             gelu_node.domain = "com.microsoft"
             nodes_to_add.append(gelu_node)
+
+        self.remove_nodes(nodes_to_remove)
+        self.add_nodes(nodes_to_add)
+
+    """
+     Fuse Gelu with tanh into one node:
+          +---------------------------+
+          |                           |
+          |                           v
+        [root] --> Pow --> Mul -----> Add  --> Mul --> Tanh --> Add --> Mul
+          |       (Y=3)   (B=0.0447...)       (B=0.7978...)    (B=1)     ^
+          |                                                              |
+          +------> Mul(B=0.5)--------------------------------------------+
+     Note that constant input for Add and Mul could be first or second input: like either A=0.5 or B=0.5 is fine.
+    """
+    def fuse_gelu_with_tanh(self):
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+
+        nodes_to_remove = []
+        nodes_to_add = []
+
+        for node in self.get_nodes_by_op_type('Tanh'):
+            tanh_node = node
+
+            if node.output[0] not in input_name_to_nodes:
+                continue
+            children = input_name_to_nodes[node.output[0]]
+            if len(children) != 1 or children[0].op_type != 'Add':
+                continue
+            add_after_tanh = children[0]
+
+            i, add_weight = self.get_constant_input(add_after_tanh)
+            if add_weight is None or add_weight != 1:
+                continue
+
+            if add_after_tanh.output[0] not in input_name_to_nodes:
+                continue
+            children = input_name_to_nodes[add_after_tanh.output[0]]
+            if len(children) != 1 or children[0].op_type != 'Mul':
+                continue
+            mul_after_tanh = children[0]
+
+            mul_half = self.match_parent(mul_after_tanh, 'Mul', None, output_name_to_node)
+            if mul_half is None:
+                continue
+
+            i, mul_half_weight = self.get_constant_input(mul_half)
+            if mul_half_weight is None or mul_half_weight != 0.5:
+                continue
+
+            root_node = self.get_parent(mul_half, 0 if i==1 else 1, output_name_to_node)
+            if root_node is None:
+                continue
+
+            mul_before_tanh = self.match_parent(tanh_node, 'Mul', 0, output_name_to_node)
+            if mul_before_tanh is None:
+                continue
+
+            i, mul_weight= self.get_constant_input(mul_before_tanh)
+            if mul_weight is None or abs(mul_weight - 0.7978) > 0.0001:
+                continue
+
+            add_before_tanh = self.match_parent(mul_before_tanh, 'Add', 0 if i==1 else 1, output_name_to_node)
+            if add_before_tanh is None:
+                continue
+
+            mul_after_pow = self.match_parent(add_before_tanh, 'Mul', None, output_name_to_node, exclude=[root_node])
+            if mul_after_pow is None:
+                continue
+
+            i, mul_weight2 = self.get_constant_input(mul_after_pow)
+            if mul_weight2 is None or abs(mul_weight2 - 0.0447) > 0.0001:
+                continue
+
+            pow = self.match_parent(mul_after_pow, 'Pow', 0 if i==1 else 1, output_name_to_node)
+            if pow is None:
+                continue
+
+            i, pow_weight = self.get_constant_input(pow)
+            if pow_weight is None or pow_weight != 3:
+                continue
+
+            if pow.input[0] != root_node.output[0]:
+                continue
+
+            subgraph_nodes = [mul_after_tanh, mul_half, add_after_tanh, tanh_node, mul_before_tanh, add_before_tanh, mul_after_pow, pow]
+            if not self.is_safe_to_fuse_nodes(subgraph_nodes, [mul_after_tanh.output[0]], input_name_to_nodes, output_name_to_node):
+                continue
+
+            nodes_to_remove.extend(subgraph_nodes)
+            gelu_node = onnx.helper.make_node(self.gelu_name,
+                inputs=[root_node.output[0]],
+                outputs=[mul_after_tanh.input[0]])
+            gelu_node.domain = "com.microsoft"
+            nodes_to_add.append(gelu_node)
+
+        if len(nodes_to_add) > 0:
+            print("fused gelu with tanh:", len(nodes_to_add))
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
