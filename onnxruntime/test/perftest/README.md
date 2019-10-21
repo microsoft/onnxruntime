@@ -1,14 +1,14 @@
 # ONNXRuntime Performance Test
 
-This tool provides the performance results using the ONNX Runtime with the specific execution provider to run the inference for a given model using the sample input test data. This tool can provide a reliable measurement for the inference latency usign ONNX Runtime on the HW platform. The options to use with the tool are listed below:
+This tool provides the performance results using the ONNX Runtime with the specific execution provider to run the inference for a given model using the sample input test data. This tool can provide a reliable measurement for the inference latency usign ONNX Runtime on the device. The options to use with the tool are listed below:
 
 `onnxruntime_perf_test [options...] model_path result_file`
 
 Options:
 
-	-A: Disable memory arena
+	-A: Disable memory arena.
 	
-	-M: Disable memory pattern
+	-M: Disable memory pattern.
 	
 	-P: Use parallel executor instead of sequential executor.
 	
@@ -34,7 +34,7 @@ Options:
 	
 	-y: [inter_op_num_threads]: Sets the number of threads used to parallelize the execution of the graph (across nodes), A value of 0 means the test will auto-select a default. Must >=0.
 	
-	-h: help
+	-h: help.
 
 Model path and input data dependency:
     Performance test uses the same input structure as *onnx_test_runner* tool. It requrires the directory trees as below:
