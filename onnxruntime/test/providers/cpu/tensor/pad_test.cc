@@ -46,13 +46,13 @@ static void RunTest(
   test1.Run();
 
   // ONNX domain opset-11
-		RunTypedTest(input_dims,
-				input,
-				pads,
-				(float) value,
-				output_dims,
-				output,
-				mode);
+  RunTypedTest(input_dims,
+                           input,
+                           pads,
+                           (float) value,
+                           output_dims,
+                           output,
+                           mode);
 
   #ifndef DISABLE_CONTRIB_OPS
 
@@ -82,10 +82,10 @@ TEST(TensorOpTest, Pad_Spec_Example) {
 }
 
 TEST(TensorOpTest, Pad_Constant_1D_int) {
-	std::vector<int32_t> X = {1, 2, 3, 4, 5, 6};
-	int32_t value = 1234;
-	std::vector<int32_t> Y = {1234, 1234, 1, 2, 1234, 1234, 3, 4, 1234, 1234, 5, 6};
-	RunTypedTest({3, 2},
+  std::vector<int32_t> X = {1, 2, 3, 4, 5, 6};
+  int32_t value = 1234;
+  std::vector<int32_t> Y = {1234, 1234, 1, 2, 1234, 1234, 3, 4, 1234, 1234, 5, 6};
+  RunTypedTest({3, 2},
           X,
           {0, 2, 0, 0},
           value,
@@ -94,9 +94,9 @@ TEST(TensorOpTest, Pad_Constant_1D_int) {
 }
 
 TEST(TensorOpTest, Pad_Constant_1D_long) {
-	std::vector<int64_t> X = {1, 2, 3, 4, 5, 6};
-	int64_t value = 1234;
-	std::vector<int64_t> Y = {1234, 1234, 1, 2, 1234, 1234, 3, 4, 1234, 1234, 5, 6};
+  std::vector<int64_t> X = {1, 2, 3, 4, 5, 6};
+  int64_t value = 1234;
+  std::vector<int64_t> Y = {1234, 1234, 1, 2, 1234, 1234, 3, 4, 1234, 1234, 5, 6};
   RunTypedTest({3, 2},
           X,
           {0, 2, 0, 0},
@@ -106,10 +106,10 @@ TEST(TensorOpTest, Pad_Constant_1D_long) {
 }
 
 TEST(TensorOpTest, Pad_Constant_1D_double) {
-	std::vector<double> X = {1., 2., 3., 4., 5., 6.};
-	double value = 0.;
-	std::vector<double> Y = {0., 0., 1., 2., 0., 0., 3., 4., 0., 0., 5., 6.};
-	RunTypedTest({3, 2},
+  std::vector<double> X = {1., 2., 3., 4., 5., 6.};
+  double value = 0.;
+  std::vector<double> Y = {0., 0., 1., 2., 0., 0., 3., 4., 0., 0., 5., 6.};
+  RunTypedTest({3, 2},
           X,
           {0, 2, 0, 0},
           value,
@@ -243,16 +243,16 @@ TEST(TensorOpTest, Pad_Reflect_2D) {
 }
 
 TEST(TensorOpTest, Pad_Constant_2D_int) {
-	std::vector<int32_t> X = {11, 21, 31,
+  std::vector<int32_t> X = {11, 21, 31,
                             12, 22, 32};
-	int32_t value = 0;
-	std::vector<int32_t> Y = {11, 11, 11, 21, 31, 31, 31,
-				11, 11, 11, 21, 31, 31, 31,
-				11, 11, 11, 21, 31, 31, 31,
-				12, 12, 12, 22, 32, 32, 32,
-				12, 12, 12, 22, 32, 32, 32,
-				12, 12, 12, 22, 32, 32, 32};
-	RunTypedTest({2, 3},
+  int32_t value = 0;
+  std::vector<int32_t> Y = {11, 11, 11, 21, 31, 31, 31,
+                                  11, 11, 11, 21, 31, 31, 31,
+                                  11, 11, 11, 21, 31, 31, 31,
+                                  12, 12, 12, 22, 32, 32, 32,
+                                  12, 12, 12, 22, 32, 32, 32,
+                                  12, 12, 12, 22, 32, 32, 32};
+  RunTypedTest({2, 3},
           X,
           {2, 2, 2, 2},
           value,
@@ -262,15 +262,15 @@ TEST(TensorOpTest, Pad_Constant_2D_int) {
 }
 
 TEST(TensorOpTest, Pad_Constant_2D_long) {
-	std::vector<int64_t> X = {11, 21, 31,
+  std::vector<int64_t> X = {11, 21, 31,
                             12, 22, 32};
-	int64_t value = 0;
-	std::vector<int64_t> Y = {11, 11, 11, 21, 31, 31, 31,
-				11, 11, 11, 21, 31, 31, 31,
-				11, 11, 11, 21, 31, 31, 31,
-				12, 12, 12, 22, 32, 32, 32,
-				12, 12, 12, 22, 32, 32, 32,
-				12, 12, 12, 22, 32, 32, 32};
+  int64_t value = 0;
+  std::vector<int64_t> Y = {11, 11, 11, 21, 31, 31, 31,
+                                 11, 11, 11, 21, 31, 31, 31,
+                                 11, 11, 11, 21, 31, 31, 31,
+                                 12, 12, 12, 22, 32, 32, 32,
+                                 12, 12, 12, 22, 32, 32, 32,
+                                 12, 12, 12, 22, 32, 32, 32};
   RunTypedTest({2, 3},
           X,
           {2, 2, 2, 2},
@@ -281,16 +281,16 @@ TEST(TensorOpTest, Pad_Constant_2D_long) {
 }
 
 TEST(TensorOpTest, Pad_Constant_2D_double) {
-	std::vector<double> X = {11., 21., 31.,
+  std::vector<double> X = {11., 21., 31.,
                            12., 22., 32.};
-	double value = 0.;
-	std::vector<double> Y = {11., 11., 11., 21., 31., 31., 31.,
-				11., 11., 11., 21., 31., 31., 31.,
-				11., 11., 11., 21., 31., 31., 31.,
-				12., 12., 12., 22., 32., 32., 32.,
-				12., 12., 12., 22., 32., 32., 32.,
-				12., 12., 12., 22., 32., 32., 32.};
-	RunTypedTest({2, 3},
+  double value = 0.;
+  std::vector<double> Y = {11., 11., 11., 21., 31., 31., 31.,
+                                 11., 11., 11., 21., 31., 31., 31.,
+                                 11., 11., 11., 21., 31., 31., 31.,
+                                 12., 12., 12., 22., 32., 32., 32.,
+                                 12., 12., 12., 22., 32., 32., 32.,
+                                 12., 12., 12., 22., 32., 32., 32.};
+  RunTypedTest({2, 3},
           X,
           {2, 2, 2, 2},
           value,
