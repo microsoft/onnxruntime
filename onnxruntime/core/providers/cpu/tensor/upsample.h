@@ -59,6 +59,10 @@ class UpsampleBase {
     cubic_coeff_a_ = info.GetAttrOrDefault<float>("cubic_coeff_a", -0.75f);
     exclude_outside_ = info.GetAttrOrDefault<int64_t>("exclude_outside", 0) == 0 ? false : true;
 
+    if (exclude_outside_ == 1 && mode_ != CUBIC) {
+      ORT_THROW("exclude_outside can be set to 1 only when mode is CUBIC. Current mode is set to " + mode );
+    }
+
     // after version 11 update, this optimization is no longer applicable for all the available modes...
     // TODO : needs more testing to enable this for version 11
     use_nearest2x_optimization = start > 10 ? false : true;

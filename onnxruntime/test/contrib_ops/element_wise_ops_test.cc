@@ -13,7 +13,7 @@ namespace onnxruntime {
 namespace test {
 
 TEST(MathOpTest, AffineDefaultAttributes) {
-  OpTester test("Affine");
+  OpTester test("Affine", 7);
   std::vector<int64_t> dims{2, 2};
   test.AddInput<float>("A", dims, {0.0f, 1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("B", dims, {0.0f, 1.0f, 2.0f, 3.0f});
@@ -21,7 +21,7 @@ TEST(MathOpTest, AffineDefaultAttributes) {
 }
 
 TEST(MathOpTest, Affine) {
-  OpTester test("Affine");
+  OpTester test("Affine", 7);
   std::vector<int64_t> dims{2, 2};
   test.AddAttribute("alpha", 2.0f);
   test.AddAttribute("beta", 1.0f);
@@ -31,7 +31,7 @@ TEST(MathOpTest, Affine) {
 }
 
 TEST(MathOpTest, Scale) {
-  OpTester test("Scale");
+  OpTester test("Scale", 7);
   std::vector<int64_t> dims{2, 2};
   test.AddAttribute("scale", 2.0f);
   test.AddInput<float>("A", dims, {0.0f, 1.0f, 2.0f, 3.0f});
@@ -40,7 +40,7 @@ TEST(MathOpTest, Scale) {
 }
 
 TEST(MathOpTest, Scale_Default) {
-  OpTester test("Scale");
+  OpTester test("Scale", 7);
   std::vector<int64_t> dims{2, 2};
   test.AddInput<float>("A", dims, {0.0f, 1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("B", dims, {0.0f, 1.0f, 2.0f, 3.0f});
