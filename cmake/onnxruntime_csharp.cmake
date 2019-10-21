@@ -41,6 +41,8 @@ include_external_msproject(${CSHARP_MASTER_TARGET}
                            ${CSHARP_DEPENDS}
                            )
 
+add_dependencies(${CSHARP_MASTER_TARGET} ${CSHARP_DEPENDS})
+
 # generate Directory.Build.props
 set(DIRECTORY_BUILD_PROPS_COMMENT "WARNING: This is a generated file, please do not check it in!")
 configure_file(${CSHARP_ROOT}/Directory.Build.props.in
