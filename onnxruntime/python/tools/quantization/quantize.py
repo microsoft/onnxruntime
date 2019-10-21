@@ -14,7 +14,7 @@ from onnx import onnx_pb as onnx_proto
 __producer__ = "onnx.quantize"
 __version__ = "0.1.0"
 onnx_domain = "ai.onnx"
-onnx_op_set_version = 10
+onnx_op_set_version = 11
 
 type_to_name = {
     1: "FLOAT",
@@ -645,6 +645,36 @@ class ONNXQuantizer:
             
                     return nodes + [qlinear_node]           
 
+    def _get_bias_add_nodes(self, nodes, node, last_output, quantized_bias_name):
+        '''
+        Given a node, this function handles bias add by adding a "reshape" node on bias and an "add" node
+
+            parameter nodes: new nodes would be appended into nodes
+            parameter node: current node (Conv)
+            parameter last_output: output of previous node (input to bias add)
+            return: the name of output
+        '''
+        # Add an Add operation for bias
+        # Add reshape for correct broadcase
+        reshape_input = [quantized_bias_name]
+
+        # Add tensors for the shape to be reshaped to
+        _add_initializer_if_not_present(self.model.graph, "reshape_shape",
+                                        [1,-1,1,1], [4], onnx_proto.TensorProto.INT64)
+        reshape_input.append('reshape_shape')
+        reshape_op_output = node.output[0] + "_reshape"
+        reshape_node = onnx.helper.make_node("Reshape", reshape_input, [reshape_op_output],
+                                            quantized_bias_name+"reshape")
+        nodes.append(reshape_node)
+
+        bias_add_input = [last_output]
+        bias_add_input.append(reshape_op_output)
+        add_node_output = node.output[0] + "_bias_add"
+        add_node = onnx.helper.make_node("Add", bias_add_input, [add_node_output],
+                                        quantized_bias_name + "bias_add")
+        nodes.append(add_node)
+        return add_node_output
+
     def _update_unsupported_nodes_using_weight(self, weight, new_nodes_list):        
         '''Find all nodes using a weight that do not support quantization and
         add a DequantizeLinear node before those nodes. This includes all nodes except Conv, MatMul.
@@ -723,7 +753,7 @@ class ONNXQuantizer:
 
         # input scale is not provided and this input is dynamically quantized so it is not pre-computed at this point
         # so resort to dynamic quantization for bias
-        if node.input[0] not in self.quantization_params and node.input[0] not in self.quantized_value_map:
+        if self.quantization_params is None or node.input[0] not in self.quantization_params and node.input[0] not in self.quantized_value_map:
             self._dynamic_quantize_bias(node.input[0], weight_scale_name, bias_name, quantized_bias_name, new_node_list)
         else:
             # get scale for input
@@ -920,6 +950,13 @@ class ONNXQuantizer:
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
             self._quantize_inputs(node, [0, 1], new_nodes_list)
 
+        # quantize bias if exist
+        quantized_bias_name = ""
+        bias_present = False
+        if len(node.input) == 3:
+            quantized_bias_name = self._quantize_bias(node, nodes)
+            bias_present = True
+
         conv_integer_output = node.output[0] + "_quantized"
         conv_integer_name = ""
         if node.name != "":
@@ -930,6 +967,10 @@ class ONNXQuantizer:
         conv_integer_node = onnx.helper.make_node("ConvInteger", quantized_input_names + zero_point_names,
             [conv_integer_output], conv_integer_name, **kwargs)
         nodes.append(conv_integer_node)
+
+        # Add bias add nodes
+        if bias_present:
+            conv_integer_output = self._get_bias_add_nodes(nodes, node, conv_integer_output, quantized_bias_name)
 
         # Add cast operation to cast convInteger output to float.
         cast_op_output = conv_integer_output + "_cast_output"
@@ -1026,7 +1067,6 @@ class ONNXQuantizer:
         if len(node.input) == 3:
             quantized_bias_name = self._quantize_bias(node, nodes)
             bias_present = True        
-
         data_found, output_scale_name, output_zp_name, output_scale_shape, output_zp_shape = \
             self._get_quantization_params(node.output[0])
 
@@ -1120,7 +1160,7 @@ class ONNXQuantizer:
         '''
         assert (node.op_type == "Conv")
 
-        if self.mode == QuantizationMode.IntegerOps and len(node.input) == 2:
+        if self.mode == QuantizationMode.IntegerOps:
             return self._quantize_convolution_integer_ops(node, new_nodes_list)
 
         if self.mode == QuantizationMode.QLinearOps:
@@ -1145,6 +1185,29 @@ class ONNXQuantizer:
 
         return [node]
 
+def check_opset_version(org_model, fuse_dynamic_quant):
+    '''
+        Check opset version of original model and set opset version and fuse_dynamic_quant accordingly.
+        If opset version < 10, set quantized model opset version to 10.
+        If opset version == 10, do quantization without using dynamicQuantizeLinear operator.
+        If opset version == 11, do quantization using dynamicQuantizeLinear operator.
+
+        :return: fuse_dynamic_quant boolean value.
+    '''
+    global onnx_op_set_version
+    opset_version = org_model.opset_import[0].version
+    if opset_version < 10:
+        print("Warning: The original model opset version is {}, which does not support quantized operators.\n\
+            The opset version of quantized model will be set to 10.".format(opset_version))
+        onnx_op_set_version = 10
+        fuse_dynamic_quant = False
+    elif opset_version == 10:
+        onnx_op_set_version = 10
+        fuse_dynamic_quant = False
+    else:
+        onnx_op_set_version = 11
+        fuse_dynamic_quant = True
+    return fuse_dynamic_quant
 
 def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMode.IntegerOps,
     static=False, fuse_dynamic_quant=True, asymmetric_input_types=False, 
@@ -1201,6 +1264,7 @@ def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMo
         mode = quantization_mode
         copy_model = onnx_proto.ModelProto()
         copy_model.CopyFrom(model)
+        fuse_dynamic_quant = check_opset_version(copy_model, fuse_dynamic_quant)
         quantizer = ONNXQuantizer(copy_model, per_channel, mode, static, fuse_dynamic_quant, weight_qType, input_qType,
                         quantization_params, nodes_to_quantize)
         quantizer.quantize_model()
