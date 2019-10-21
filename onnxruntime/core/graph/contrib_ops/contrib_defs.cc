@@ -1980,8 +1980,8 @@ Example 4:
       .Output(0, "summary", "The serialized Tensorboard Summary.", "S")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input type to float tensors.")
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bool)"},
+          "Constrain input type to float and bool tensors.")
       .TypeConstraint(
           "S",
           {"tensor(string)"},

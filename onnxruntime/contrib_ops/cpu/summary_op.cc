@@ -15,7 +15,8 @@ ONNX_CPU_OPERATOR_KERNEL(
     9,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<bool>()})
         .TypeConstraint("S", DataTypeImpl::GetTensorType<std::string>()),
     SummaryScalarOp);
 
@@ -54,6 +55,8 @@ Status SummaryScalarOp::Compute(OpKernelContext* context) const {
     return ComputeImpl<float>(*context, input);
   else if (input_type == DataTypeImpl::GetType<double>())
     return ComputeImpl<double>(*context, input);
+  else if (input_type == DataTypeImpl::GetType<bool>())
+    return ComputeImpl<bool>(*context, input);
 
   ORT_THROW("SummaryScalar operator does not support ", input_type, " yet");
 }

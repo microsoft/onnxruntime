@@ -109,6 +109,9 @@ Status TrainingRunner::Initialize() {
 
   // Add tensorboard
   if (params_.EnableTensorboard()) {
+    if (opt_graph_outputs_.count(kGradientAllIsFiniteOutputKey) > 0){
+      params_.scalar_names.push_back(opt_graph_outputs_[kGradientAllIsFiniteOutputKey]);
+    }
     ORT_RETURN_IF_ERROR(session_.AddTensorboard(params_.summary_name, params_.scalar_names, params_.histogram_names));
   }
 
