@@ -1,6 +1,6 @@
 # ONNXRuntime Performance Test
 
-This tool provides the time for the ONNX Runtime with the specific execution provider to run a inference for a given model using the given test date. This tool can provide a reliable measurement for the inference latency usign ONNX Runtime on the HW platform. The options to use with the tool are listed below:
+This tool provides the time for the ONNX Runtime with the specific execution provider to run a inference for a given model using the given test data. This tool can provide a reliable measurement for the inference latency usign ONNX Runtime on the HW platform. The options to use with the tool are listed below:
 
 `onnxruntime_perf_test [options...] model_path result_file`
 
@@ -48,7 +48,7 @@ Model path and input data dependency:
     
 The path of model.onnx needs to be provided as `<model_path>` argument.
 
-__Sample output__ from the tool will look like something this:
+__Sample output__ from the tool will look something like this:
 
 	Total time cost:58.8053
 	Total iterations:1000
