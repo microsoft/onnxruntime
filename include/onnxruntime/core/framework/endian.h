@@ -7,19 +7,16 @@ namespace onnxruntime {
 
 // the semantics of this enum should match std::endian from C++20
 enum class endian {
-  // little-endian byte order
+#if defined(_WIN32)
   little = 0,
-  // big-endian byte order
   big = 1,
-#if defined(ORT_IS_LITTLE_ENDIAN)
-  // native byte order
   native = little,
-#elif defined(ORT_IS_BIG_ENDIAN)
-  // native byte order
-  native = big,
+#elif defined(__GNUC__) || defined(__clang__)
+  little = __ORDER_LITTLE_ENDIAN__,
+  big = __ORDER_BIG_ENDIAN__,
+  native = __BYTE_ORDER__,
 #else
-  // native byte order
-  native = 2,
+#error onnxruntime::endian is not implemented in this environment.
 #endif
 };
 

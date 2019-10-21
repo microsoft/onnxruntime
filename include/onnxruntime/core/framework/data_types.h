@@ -3,8 +3,9 @@
 
 #pragma once
 
+#include <cstdint>
+#include <cstring>
 #include <string>
-#include <stdint.h>
 #include <type_traits>
 #include <map>
 #include <unordered_map>
@@ -67,23 +68,23 @@ struct BFloat16 {
   explicit BFloat16() = default;
   explicit BFloat16(uint16_t v) : val(v) {}
   explicit BFloat16(float v) {
-    uint16_t* dst = reinterpret_cast<uint16_t*>(&v);
     if (endian::native == endian::little) {
-      val = dst[1];
+      std::memcpy(&val, reinterpret_cast<char*>(&v) + sizeof(uint16_t), sizeof(uint16_t));
     } else {
-      val = dst[0];
+      std::memcpy(&val, &v, sizeof(uint16_t));
     }
   }
 
   float ToFloat() const {
     float result;
-    uint16_t* dst = reinterpret_cast<uint16_t*>(&result);
+    char* const first = reinterpret_cast<char*>(&result);
+    char* const second = first + sizeof(uint16_t);
     if (endian::native == endian::little) {
-      dst[1] = val;
-      dst[0] = 0;
+      std::memset(first, 0, sizeof(uint16_t));
+      std::memcpy(second, &val, sizeof(uint16_t));
     } else {
-      dst[0] = val;
-      dst[1] = 0;
+      std::memcpy(first, &val, sizeof(uint16_t));
+      std::memset(second, 0, sizeof(uint16_t));
     }
     return result;
   }
