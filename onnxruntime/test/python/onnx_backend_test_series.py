@@ -167,8 +167,7 @@ def create_backend_test(testname=None):
                                       '^test_flatten_negative_axis.*',
                                       '^test_reduce_[a-z1-9_]*_negative_axes_.*',
                                       'test_squeeze_negative_axes_cpu',
-                                      'test_unsqueeze_negative_axes_cpu',
-                                      'test_constant_pad_cpu']
+                                      'test_unsqueeze_negative_axes_cpu']
 
         if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
             current_failing_tests.append('^test_div_cpu*')
