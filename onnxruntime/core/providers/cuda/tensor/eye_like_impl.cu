@@ -21,7 +21,7 @@ __global__ void _EyeLikeKernel(
   fdm_x.divmod(id, x, y);
   T value = static_cast<T>(0);
 
-  if ((k >=0 && (x + k) == y) || (k < 0 && (y - k) == x))
+  if (x + k == y)
     value = static_cast<T>(1);
 
   output_data[id] = value;
