@@ -2,34 +2,36 @@
 // Licensed under the MIT License.
 
 #include "core/session/inference_session.h"
+#include "core/framework/data_types.h"
+#include "core/framework/ml_value.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
-#include "core/optimizer/graph_transformer.h"
-#include "core/optimizer/graph_transformer_mgr.h"
-#include "core/optimizer/identity_elimination.h"
-#include "core/optimizer/dropout_elimination.h"
-#include "core/optimizer/slice_elimination.h"
-#include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/constant_folding.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_activation_fusion.h"
-#include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/gemm_activation_fusion.h"
-#include "core/optimizer/relu_clip_fusion.h"
-#include "core/framework/data_types.h"
-#include "core/framework/ml_value.h"
-#include "core/util/math.h"
-#include "core/platform/env.h"
-#include "test/framework/test_utils.h"
-#include "test/capturing_sink.h"
-#include "test/test_environment.h"
-#include "gtest/gtest.h"
-#include "core/optimizer/rule_based_graph_transformer.h"
-#include "core/optimizer/constant_folding.h"
-#include "core/optimizer/shape_to_initializer.h"
 #include "core/optimizer/gelu_fusion.h"
+#include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/graph_transformer_mgr.h"
+#include "core/optimizer/identity_elimination.h"
+#include "core/optimizer/initializer.h"
+#include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/relu_clip_fusion.h"
+#include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/shape_to_initializer.h"
+#include "core/optimizer/slice_elimination.h"
+#include "core/optimizer/unsqueeze_elimination.h"
+#include "core/platform/env.h"
+#include "core/util/math.h"
+#include "test/capturing_sink.h"
+#include "test/framework/test_utils.h"
+#include "test/test_environment.h"
+
+#include "gtest/gtest.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -312,6 +314,44 @@ TEST(GraphTransformationTests, FuseConvActivation) {
     ASSERT_TRUE(op_to_count[model.second] == 0);
   }
 }
+
+TEST(GraphTransformationTests, FuseConvClip11Activation) {
+  std::string model_uri = MODEL_FOLDER + "fusion/conv_clip11.onnx";
+  std::shared_ptr<Model> p_model;
+  auto status = Model::Load(model_uri, p_model);
+  ASSERT_TRUE(status.IsOK()) << status;
+  Graph& graph = p_model->MainGraph();
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Clip"], 3);
+
+  // Apply transformer
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ConvActivationFusion>(), TransformerLevel::Level2);
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Clip"], 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "Conv") {
+      EXPECT_TRUE(node.Name() == "Conv1") << "Conv1 should not have been fused as 'min' input to Clip was mutable.";
+    }
+
+    if (node.OpType() == "FusedConv") {
+      const ONNX_NAMESPACE::AttributeProto& attr_proto = node.GetAttributes().at("activation_params");
+      const auto& params = attr_proto.floats();
+      // check expected values for each. Conv0 is explicitly specified. Conv2 are defaults
+      if (node.Name() == "Conv0") {
+        EXPECT_TRUE(params.Get(0) == -1.f);
+        EXPECT_TRUE(params.Get(1) == 1.f);
+      } else if (node.Name() == "Conv2") {
+        EXPECT_TRUE(params.Get(0) == std::numeric_limits<float>::lowest());
+        EXPECT_TRUE(params.Get(1) == std::numeric_limits<float>::max());
+      }
+    }
+  }
+}
 #endif
 
 TEST(GraphTransformationTests, FuseConvMulNoBias) {
@@ -537,10 +577,10 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   ASSERT_EQ(expected_values_prod, found);
 }
 
-TEST(GraphTransformationTests, ReluClipFusion) {
+TEST(GraphTransformationTests, ReluClip6Fusion) {
   // Clip op schema changed for opset version 11. Until Clip op is updated in ORT hard coding this model to use
   // older opset.
-  Model model("ReluClipFusion", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 10}}, {});
+  Model model("ReluClip6Fusion", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 10}}, {});
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;
@@ -602,6 +642,126 @@ TEST(GraphTransformationTests, ReluClipFusion) {
     if (node.OpType() == "Clip") {
       auto* min = graph_utils::GetNodeAttribute(node, "min");
       ASSERT_TRUE(min->f() >= 0.f);
+    }
+  }
+}
+
+// test handling of Clip 11
+TEST(GraphTransformationTests, ReluClip11Fusion) {
+  Model model("ReluClip6Fusion");  //, true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 11}}, {});
+  auto& graph = model.MainGraph();
+
+  std::vector<NodeArg*> inputs;
+  std::vector<NodeArg*> outputs;
+
+  TypeProto input_tensor_type;
+  input_tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  input_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  TypeProto float16_tensor_type;
+  float16_tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+  float16_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  // 4 paths in the model, each with Relu followed by Clip to test different aspects of Clip 11 handling
+  // One has a Clip with mutable 'min' (don't fuse)
+  // One has a Clip with constant 'min' < 0 (fuse and update 'min')
+  // One has a Clip with constant 'min' > 0 (fuse and leave 'min')
+  // One has a Clip with no 'min' (fuse and update to set min to 0 using type info from 'input')
+  auto& input0 = graph.GetOrCreateNodeArg("input_0", &input_tensor_type);
+  auto& input1 = graph.GetOrCreateNodeArg("input_1", &float16_tensor_type);
+  auto& input2 = graph.GetOrCreateNodeArg("input_2", &input_tensor_type);
+  auto& input3 = graph.GetOrCreateNodeArg("input_3", &input_tensor_type);
+
+  auto& min_input_0 = graph.GetOrCreateNodeArg("min_input_0", &input_tensor_type);
+  auto& min_input_1 = graph.GetOrCreateNodeArg("min_input_1", &float16_tensor_type);
+  auto& min_input_2 = graph.GetOrCreateNodeArg("min_input_2", &input_tensor_type);
+
+  // add initializer for min_input_1 so it's constant
+  TensorProto const_min_1;
+  Initializer i1(TensorProto_DataType_FLOAT16, "min_input_1", {1});
+  i1.data<MLFloat16>()->val = math::floatToHalf(-1.f);
+  i1.ToProto(const_min_1);
+  graph.AddInitializedTensor(const_min_1);
+
+  TensorProto const_min_2;
+  Initializer i2(TensorProto_DataType_FLOAT, "min_input_2", {1});
+  *i2.data<float>() = 1.f;
+  i2.ToProto(const_min_2);
+  graph.AddInitializedTensor(const_min_2);
+
+  auto& relu0_output = graph.GetOrCreateNodeArg("relu0_output", &input_tensor_type);
+  auto& relu1_output = graph.GetOrCreateNodeArg("relu1_output", &float16_tensor_type);
+  auto& relu2_output = graph.GetOrCreateNodeArg("relu2_output", &input_tensor_type);
+  auto& relu3_output = graph.GetOrCreateNodeArg("relu3_output", &input_tensor_type);
+
+  auto& clip0_output = graph.GetOrCreateNodeArg("clip0_output", &input_tensor_type);
+  auto& clip1_output = graph.GetOrCreateNodeArg("clip1_output", &float16_tensor_type);
+  auto& clip2_output = graph.GetOrCreateNodeArg("clip2_output", &input_tensor_type);
+  auto& clip3_output = graph.GetOrCreateNodeArg("clip3_output", &input_tensor_type);
+
+  graph.AddNode("relu0", "Relu", "Relu0", {&input0}, {&relu0_output});
+  graph.AddNode("relu1", "Relu", "Relu1", {&input1}, {&relu1_output});
+  graph.AddNode("relu2", "Relu", "Relu2", {&input2}, {&relu2_output});
+  graph.AddNode("relu3", "Relu", "Relu3", {&input3}, {&relu3_output});
+
+  auto& clip0 = graph.AddNode("clip0", "Clip", "Clip with mutable min", {&relu0_output, &min_input_0}, {&clip0_output});
+  auto& clip1 = graph.AddNode("clip1", "Clip", "Clip with constant min < 0", {&relu1_output, &min_input_1}, {&clip1_output});
+  auto& clip2 = graph.AddNode("clip2", "Clip", "Clip with constant min > 0", {&relu2_output, &min_input_2}, {&clip2_output});
+  auto& clip3 = graph.AddNode("clip3", "Clip", "Clip with no min", {&relu3_output}, {&clip3_output});
+
+  graph.SetInputs({&input0, &input1, &input2, &input3, &min_input_0});
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK()) << status;
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Relu"] == 4);
+
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<FuseReluClip>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  status = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1);
+  ASSERT_TRUE(status.IsOK()) << status;
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Relu"] == 1) << "All except the first Relu should have been fused";
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "Relu") {
+      EXPECT_TRUE(node.Name() == "relu0") << "relu0 should be the only Relu node left";
+    }
+
+    if (node.OpType() == "Clip") {
+      auto* min_input = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
+
+      if (&node == &clip0) {
+        EXPECT_TRUE(min_input == nullptr) << "clip0 should not have been fused as min_input_0 is not constant";
+      } else {
+        EXPECT_TRUE(min_input != nullptr)
+            << node.Name() << " should have been fused and have a constant initializer for 'min'";
+
+        auto type = min_input->data_type();
+
+        if (&node == &clip1) {
+          // fusion with float16 data and min set to 0
+          EXPECT_EQ(type, ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_FLOAT16);
+          MLFloat16 value = *Initializer(*min_input).data<MLFloat16>();
+          EXPECT_EQ(math::halfToFloat(value.val), 0.f) << "Min was not 0.f. Got:" << math::halfToFloat(value.val);
+        } else if (&node == &clip2) {
+          // fusion with float data and min untouched
+          EXPECT_EQ(type, ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_FLOAT);
+          float value = *Initializer(*min_input).data<float>();
+          EXPECT_EQ(value, 1.0) << "Min should have remained unchanged but is now " << value;
+        } else if (&node == &clip3) {
+          // fusion with no min so type comes from input
+          EXPECT_EQ(type, ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_FLOAT);
+          float value = *Initializer(*min_input).data<float>();
+          EXPECT_EQ(value, 0.f) << "Min was not 0.f. Got:" << value;
+
+        } else {
+          EXPECT_TRUE(false) << "Unexpected node " << node.Name();
+        }
+      }
     }
   }
 }

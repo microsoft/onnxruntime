@@ -276,7 +276,6 @@ ONNX_NAMESPACE::OpSchema GetFetchSparseShapeSchema() {
 
 TEST_F(OpaqueTypeTests, RunModel) {
   SessionOptions so;
-  so.enable_sequential_execution = true;
   so.session_logid = "SparseTensorTest";
   so.session_log_verbosity_level = 1;
 

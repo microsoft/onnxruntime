@@ -56,11 +56,13 @@ void ScatterElementsImpl(
     cudaMemcpyAsync(output_data, input_data, input_size * sizeof(T), cudaMemcpyDeviceToDevice, 0);
   }
 
-  int blocksPerGrid = (int)((indices_size + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
-  _ScatterElementsKernel<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-      rank, input_data, input_dims, input_strides,
-      indices_data, indices_size, indices_dims, indices_strides,
-      updates, axis, output_data);
+  if (indices_size > 0) {
+    int blocksPerGrid = (int)((indices_size + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
+    _ScatterElementsKernel<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        rank, input_data, input_dims, input_strides,
+        indices_data, indices_size, indices_dims, indices_strides,
+        updates, axis, output_data);
+  }
 }
 
 #define SPECIALIZED_IMPL(T)                           \
