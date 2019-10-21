@@ -38,19 +38,6 @@ class MaxUnpool : public OpKernel {
     }
 
     ORT_ENFORCE(strides_.size() == kernel_shape_.size());
-
-    // Add 4 pad values (0) for batch and channel dimensions
-    pads_.insert(pads_.begin(), {0, 0});
-    pads_.insert(pads_.begin() + 2 + kernel_shape_.size(), {0, 0});
-
-    // Separate out any negative pads_ into the slices_ array
-    slices_.resize(pads_.size(), 0);
-    for (size_t index = 0; index < pads_.size(); index++) {
-      if (pads_[index] < 0) {
-        slices_[index] = pads_[index];
-        pads_[index] = 0;
-      }
-    }
   }
 
   ~MaxUnpool() override = default;
@@ -61,7 +48,6 @@ class MaxUnpool : public OpKernel {
   std::vector<int64_t> kernel_shape_;
   std::vector<int64_t> pads_;
   std::vector<int64_t> strides_;
-  std::vector<int64_t> slices_;  // All of the negative padding values are separated out into slices_
   int64_t num_inputs_;
 };
 

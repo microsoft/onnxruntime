@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -29,6 +30,11 @@ TEST(GemmOpTest, GemmNoTrans) {
 // Only CUDA kernel has float 16 support
 #ifdef USE_CUDA
 TEST(GemmOpTest, GemmNoTrans_f16) {
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
