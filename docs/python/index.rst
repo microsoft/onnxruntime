@@ -2,13 +2,8 @@
 Python Bindings for ONNX Runtime
 ================================
 
-ONNX Runtime enables high-performance evaluation of trained machine learning (ML)
-models while keeping resource usage low.
-Building on Microsoft's dedication to the
-`Open Neural Network Exchange (ONNX) <https://onnx.ai/>`_
-community, it supports traditional ML models as well
-as Deep Learning algorithms in the
-`ONNX-ML format <https://github.com/onnx/onnx/blob/master/docs/IR.md>`_.
+ONNX Runtime is a performance-focused scoring engine for Open Neural Network Exchange (ONNX) models.
+For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://aka.ms/onnxruntime/>`_ or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 
 .. toctree::
     :maxdepth: 1
@@ -20,7 +15,7 @@ as Deep Learning algorithms in the
 :ref:`genindex`
 
 The core library is implemented in C++.
-*ONNX Runtime* is available on
+ONNX Runtime is available on
 PyPi for Linux Ubuntu 16.04, Python 3.5+ for both
 `CPU <https://pypi.org/project/onnxruntime/>`_ and
 `GPU <https://pypi.org/project/onnxruntime-gpu/>`_.
