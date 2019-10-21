@@ -61,6 +61,54 @@ TEST(TensorOpTest, Pad_Spec_Example) {
           {0.0f, 0.0f, 1.0f, 1.2f, 0.0f, 0.0f, 2.3f, 3.4f, 0.0f, 0.0f, 4.5f, 5.7f});
 }
 
+TEST(TensorOpTest, Pad_Constant_1D_int) {
+	std::vector<int32_t> X = {1, 2, 3, 4, 5, 6};
+	int32_t value = 1234;
+	std::vector<int64_t> pads = {0, 2, 0, 0};
+	std::vector<int32_t> Y = {1234, 1234, 1, 2, 1234, 1234, 3, 4, 1234, 1234, 5, 6};
+
+ OpTester test("Pad", 11);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<int32_t>("data", {3, 2}, X);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
+  test.AddInput<int32_t>("value", {1}, {value});
+  test.AddOutput<int32_t>("output", {3, 4}, Y);
+  // NGraph and TensorRT do not yet support opset-11 and builds break on this test, hence exclude the EP
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+}
+
+TEST(TensorOpTest, Pad_Constant_1D_long) {
+	std::vector<int64_t> X = {1, 2, 3, 4, 5, 6};
+	int64_t value = 1234;
+	std::vector<int64_t> pads = {0, 2, 0, 0};
+	std::vector<int64_t> Y = {1234, 1234, 1, 2, 1234, 1234, 3, 4, 1234, 1234, 5, 6};
+
+ OpTester test("Pad", 11);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<int64_t>("data", {3, 2}, X);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
+  test.AddInput<int64_t>("value", {1}, {value});
+  test.AddOutput<int64_t>("output", {3, 4}, Y);
+  // NGraph and TensorRT do not yet support opset-11 and builds break on this test, hence exclude the EP
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+}
+
+TEST(TensorOpTest, Pad_Constant_1D_double) {
+	std::vector<double> X = {1., 2., 3., 4., 5., 6.};
+	double value = 0.;
+	std::vector<int64_t> pads = {0, 2, 0, 0};
+	std::vector<double> Y = {0., 0., 1., 2., 0., 0., 3., 4., 0., 0., 5., 6.};
+
+ OpTester test("Pad", 11);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<double>("data", {3, 2}, X);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
+  test.AddInput<double>("value", {1}, {value});
+  test.AddOutput<double>("output", {3, 4}, Y);
+  // NGraph and TensorRT do not yet support opset-11 and builds break on this test, hence exclude the EP
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+}
+
 TEST(TensorOpTest, Pad_Constant_1D) {
   RunTest({2},
           {1.0f, 2.0f},
@@ -91,6 +139,40 @@ TEST(TensorOpTest, Pad_Constant_2D) {
            1234.0f, 1234.0f, 12.0f, 22.0f, 1234.0f, 1234.0f,
            1234.0f, 1234.0f, 1234.0f, 1234.0f, 1234.0f, 1234.0f});
 }
+
+//TEST(TensorOpTest, Pad_Constant_2D_double) {
+//	std::vector<double> X = {11., 21.,
+//                            12., 22.};
+//	double value = 0.;
+//	std::vector<double> Y = {0., 0., 0., 0.,
+//									           0., 11., 21., 0.,
+//									           0., 12., 22., 0.,
+//									           0., 0., 0., 0.};
+//
+//  RunTest({2, 2},
+//          X,
+//          {1, 1, 1, 1},
+//          value,
+//          {4, 4},
+//          Y);
+//}
+//
+//TEST(TensorOpTest, Pad_Constant_2D_long) {
+//	std::vector<int64_t> X = {11, 21,
+//                            12, 22};
+//	int64_t value = 0;
+//	std::vector<int64_t> Y = {0, 0, 0, 0,
+//									           0, 11, 21, 0,
+//									           0, 12, 22, 0,
+//									           0, 0, 0, 0};
+//
+//  RunTest({2, 2},
+//          X,
+//          {1, 1, 1, 1},
+//          value,
+//          {4, 4},
+//          Y);
+//}
 
 TEST(TensorOpTest, Pad_Constant_2D_negative) {
   RunTest({2, 3},
