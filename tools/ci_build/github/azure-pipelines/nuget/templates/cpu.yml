@@ -40,10 +40,19 @@ jobs:
 
 - job: 'Linux_CI_Dev'
   pool: $(AgentPoolLinux)
-  steps:
+  steps:    
+    - template: ../../templates/set-version-number-variables-step.yml
     - template: ../../templates/linux-set-variables-and-download.yml
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory)'
-      displayName: 'Command Line Script'
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker build -t onnxruntime-centos6 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos6 .
+        workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl
+        workingDirectory: $(Build.SourcesDirectory)
     - script: |
        set -e -x
        mkdir $(Build.BinariesDirectory)/linux-x64
