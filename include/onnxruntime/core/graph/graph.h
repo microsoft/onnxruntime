@@ -1009,6 +1009,9 @@ class Graph {
   // Model IR version.
   Version ir_version_{ONNX_NAMESPACE::Version::IR_VERSION};
 
+  // Is model using latest ONNX opset
+  bool using_latest_onnx_opset_{false};
+
   int name_generator_ = 0;
 
   ResolveContext resolve_context_;
