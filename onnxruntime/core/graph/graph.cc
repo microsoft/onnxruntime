@@ -197,6 +197,12 @@ void NodeArg::ClearShape() {
     case TypeProto::kSparseTensorType:
       node_arg_info_.mutable_type()->mutable_sparse_tensor_type()->clear_shape();
       break;
+    case TypeProto::kSequenceType:
+    case TypeProto::kMapType:
+    case TypeProto::kOpaqueType:
+    case TypeProto::VALUE_NOT_SET:
+    default:
+      return;
   }
 }
 
