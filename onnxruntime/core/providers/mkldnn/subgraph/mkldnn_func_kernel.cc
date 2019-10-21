@@ -47,15 +47,12 @@ class SubgraphPrimitive : public PrimitiveBase {
     Status status;
 
     for (auto& kernel : context_.kernels) {
-      status = kernel->Bind(api, context);
-      if (!status.IsOK())
-        break;
+      ORT_RETURN_IF_ERROR(kernel->Bind(api, context));
     }
-    if (status.IsOK()) {
-      for (size_t i = 0; i < context_.net.size(); ++i)
-        context_.net.at(i).execute(*context_.stream, context_.net_args.at(i));
+    for (size_t i = 0; i < context_.net.size(); ++i) {
+      context_.net.at(i).execute(*context_.stream, context_.net_args.at(i));
     }
-    return status;
+    return Status::OK();
   }
 
   ~SubgraphPrimitive() = default;
@@ -187,7 +184,6 @@ class SubgraphPrimitive : public PrimitiveBase {
     }
   }
 
- private:
   struct SubgraphContext {
     std::unique_ptr<mkldnn::stream> stream;
     std::vector<mkldnn::primitive> net;
@@ -197,17 +193,15 @@ class SubgraphPrimitive : public PrimitiveBase {
     SubgraphContext() : stream(nullptr) {}
   };
 
-  Status Initialize(const OrtCustomOpApi* api, OrtKernelContext* context) {
+  void Initialize(const OrtCustomOpApi* api, OrtKernelContext* context) {
     // Propagate mkldnn block format
     // dst format of current node to src format of next node
     for (auto& kernel : context_.kernels) {
-      Status status = kernel->CreatePrimitives(api, context, cpu_engine_, context_.net, context_.net_args);
-      if (status.IsOK())
+      kernel->CreatePrimitives(api, context, cpu_engine_, context_.net, context_.net_args);
+      if (kernel->primitive_created_status_.IsOK()) {
         kernel->ReorderWeights(api, context, cpu_engine_);
-      else
-        return status;
+      }
     }
-    return Status::OK();
   }
 
   SubgraphContext context_;

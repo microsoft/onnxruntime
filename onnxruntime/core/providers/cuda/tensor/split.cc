@@ -63,7 +63,7 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
   split_sizes_gpu.CopyToGpu();
   
   std::vector<int64_t> split_sizes_range(split_sizes);
-  for (int i = 1; i < split_sizes_range.size(); ++i) {
+  for (size_t i = 1; i < split_sizes_range.size(); ++i) {
     split_sizes_range[i] += split_sizes_range[i - 1];
   }
   CudaAsyncBuffer<int64_t> split_sizes_range_gpu(this, split_sizes_range);

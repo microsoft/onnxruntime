@@ -93,6 +93,16 @@ inline Env::Env(OrtLoggingLevel default_warning_level, const char* logid, OrtLog
   ThrowOnError(g_api->CreateEnvWithCustomLogger(logging_function, logger_param, default_warning_level, logid, &p_));
 }
 
+inline Env& Env::EnableTelemetryEvents() {
+  ThrowOnError(g_api->EnableTelemetryEvents(p_));
+  return *this;
+}
+
+inline Env& Env::DisableTelemetryEvents() {
+  ThrowOnError(g_api->DisableTelemetryEvents(p_));
+  return *this;
+}
+
 inline CustomOpDomain::CustomOpDomain(const char* domain) {
   ThrowOnError(g_api->CreateCustomOpDomain(domain, &p_));
 }

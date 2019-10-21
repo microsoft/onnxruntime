@@ -21,10 +21,10 @@ class MklDnnPool : public MklDnnKernel {
     ReadAttributes(attributes, attributes_prefix);
   }
 
-  Status CreatePrimitives(const OrtCustomOpApi* api,
-                          OrtKernelContext* context,
-                          mkldnn::engine& cpu_engine, std::vector<mkldnn::primitive>& net,
-                          std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) override {
+  void CreatePrimitives(const OrtCustomOpApi* api,
+                        OrtKernelContext* context,
+                        mkldnn::engine& cpu_engine, std::vector<mkldnn::primitive>& net,
+                        std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) override {
     Ort::CustomOpApi ort{*api};
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
@@ -77,18 +77,14 @@ class MklDnnPool : public MklDnnKernel {
     primitive_dst_shape_ = TensorShape(y_dims);
 
     if (x_shape_.NumDimensions() <= 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Please call default CPU kernel.");
+      primitive_created_status_ = ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                                  "1D Pooling is not supported by MKLDNN.");
     }
 
     if (global_pooling_) {
       kernel_shape_.assign(x_dims.begin() + 2, x_dims.end());
       pads_.assign(kernel_shape_.size() * 2, 0);
       strides_.assign(kernel_shape_.size(), 1);
-    }
-
-    size_t num_outputs = 1;  //OpKernel::Node().OutputDefs().size(); TODO
-    if (num_outputs == 2) {
-      ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "can not call cpu default op");
     }
 
     mkldnn::memory::dims dst_dims_mkl(y_dims.begin(), y_dims.end());
@@ -186,26 +182,14 @@ class MklDnnPool : public MklDnnKernel {
       mkldnn::memory::data_type t = MklDnnType<T>();
       InitDstReorderOutput(cpu_engine, t, net, net_args);
     }
-    return Status::OK();
   }
 
   Status Bind(const OrtCustomOpApi* api, OrtKernelContext* context) override {
     Ort::CustomOpApi ort{*api};
+
+    ORT_RETURN_IF_ERROR(primitive_created_status_);
+
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
-
-    if (x_shape_.NumDimensions() <= 3) {
-      if (mklnode_ptr_->parent_nodes.empty()) {
-        // abort as MKLDNN cannot execute this. but
-        // ORT try to delete output_tensor buffer data. allocate memory so that it can delete
-        // fix for test_averagepool_1d_default node test
-        //auto xshape = input_tensors[input_index].shape;
-        //auto xdim = input_tensors[input_index].ndim;
-        //AllocateOutputTensor(output_tensors, mklnode_ptr_->output_index, xshape, xdim, input_tensors[0].dtype);
-      }
-      std::cout << "MKLDNN cannot compute shape with dim less than three." << std::endl;
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Please call default CPU kernel.");
-    }
-
     if (fwd_primitive_desc_.get()->src_desc() != source_desc_) {
       if (mklnode_ptr_->parent_nodes.empty()) {
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
