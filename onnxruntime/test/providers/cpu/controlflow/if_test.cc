@@ -266,6 +266,15 @@ TEST(If, MixedExecutionProviders) {
   options.mixed_execution_providers = true;
   RunTest(true, options);
 }
+
+TEST(If, MixedExecutionProvidersNoShapeInSubgraph) {
+  RunOptions options{};
+  options.mixed_execution_providers = true;
+  options.include_dim_values_in_main_graph = true;
+  options.symbolic_dim_value_in_main_graph = 0;
+  options.include_dim_values_in_subgraph = false;
+  RunTest(true, options);
+}
 #endif  // USE_CUDA
 
 TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_True) {
