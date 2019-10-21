@@ -60,7 +60,7 @@ class UpsampleBase {
     exclude_outside_ = info.GetAttrOrDefault<int64_t>("exclude_outside", 0) == 0 ? false : true;
 
     if (exclude_outside_ == 1 && mode_ != CUBIC) {
-      ORT_THROW("exclude value can be set to 1 only when mode is CUBIC. Current mode is set to " + mode );
+      ORT_THROW("exclude_outside value can be set to 1 only when mode is CUBIC. Current mode is set to " + mode_ );
     }
 
     // after version 11 update, this optimization is no longer applicable for all the available modes...
