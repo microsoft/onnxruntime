@@ -169,11 +169,13 @@ void AddNodeInput(Node& target, int target_input_idx, NodeArg& new_input);
 */
 void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node);
 
-/** Finalize the fusion of two or more nodes which are being replaced with a single node.
+/** Finalize the fusion of two or more nodes which are being replaced with a single node. 
+    The first and last entries in 'nodes' are assumed to be the first and last nodes in a chain of nodes being fused.
+
     Conceptually multiple nodes are being combined into one, and post-fusion will produce output/s with the same names 
     as the last node in 'nodes', and be connected to the same downstream nodes.
 
-    The input edges to the first node in 'nodes' will be moved to replacement_node.
+    The input edges to the first node in 'nodes' will be moved to replacement_node. No other input edges are moved.
     The output definitions and edges from the last node in 'nodes' will be moved to replacement_node.
     All nodes in 'nodes' will be removed.
 */

@@ -230,14 +230,14 @@ static bool RemoveNodeWithSingleNodeInSingleUsedOutput(Graph& graph, Node& node)
 After the move is complete src_node will have no input edges.
 */
 static void MoveAllNodeInputEdges(Graph& graph, Node& src_node, Node& target_node) {
-  auto src_idx = src_node.Index();
   auto target_idx = target_node.Index();
   auto input_edges = GetNodeInputEdges(src_node);
 
   for (auto cur = input_edges.cbegin(), end = input_edges.cend(); cur != end; ++cur) {
     graph.AddEdge(cur->src_node, target_idx, cur->src_arg_index, cur->dst_arg_index);
-    graph.RemoveEdge(cur->src_node, src_idx, cur->src_arg_index, cur->dst_arg_index);
   }
+
+  RemoveGraphEdges(graph, input_edges);
 }
 
 /** Move the output defs and edges from src_node to target_node.
@@ -247,14 +247,14 @@ static void MoveAllNodeOutputs(Graph& graph, Node& src_node, Node& target_node) 
   // copy the NodeArg*'s for all output defs.
   target_node.MutableOutputDefs() = src_node.MutableOutputDefs();
 
-  auto src_idx = src_node.Index();
   auto target_idx = target_node.Index();
   auto output_edges = GetNodeOutputEdges(src_node);
 
   for (auto cur = output_edges.cbegin(), end = output_edges.cend(); cur != end; ++cur) {
     graph.AddEdge(target_idx, cur->dst_node, cur->src_arg_index, cur->dst_arg_index);
-    graph.RemoveEdge(src_idx, cur->dst_node, cur->src_arg_index, cur->dst_arg_index);
   }
+
+  RemoveGraphEdges(graph, output_edges);
 }
 
 //----------------------------
