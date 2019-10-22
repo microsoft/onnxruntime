@@ -138,6 +138,16 @@ static void UpdateImplicitInputNameInSubgraph(Node& node,
   }
 }
 
+/** Returns a vector of the input GraphEdges of a node. */
+static std::vector<GraphEdge> GetNodeInputEdges(const Node& node) {
+  std::vector<GraphEdge> input_edges;
+  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
+    input_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, true));
+  }
+
+  return input_edges;
+}
+
 /** Returns a vector of the output GraphEdges of a node. */
 static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node) {
   std::vector<GraphEdge> output_edges;
@@ -216,6 +226,20 @@ static bool RemoveNodeWithSingleNodeInSingleUsedOutput(Graph& graph, Node& node)
   return true;
 }
 
+/** Move the input edges that src_node has to target_node.
+After the move is complete src_node will have no input edges.
+*/
+static void MoveAllNodeInputEdges(Graph& graph, Node& src_node, Node& target_node) {
+  auto target_idx = target_node.Index();
+  auto input_edges = GetNodeInputEdges(src_node);
+
+  for (auto cur = input_edges.cbegin(), end = input_edges.cend(); cur != end; ++cur) {
+    graph.AddEdge(cur->src_node, target_idx, cur->src_arg_index, cur->dst_arg_index);
+  }
+
+  RemoveGraphEdges(graph, input_edges);
+}
+
 /** Move the output defs and edges from src_node to target_node.
 After the move is complete src_node will have no output edges and can be safely removed by Graph::RemoveNode.
 */
@@ -223,14 +247,14 @@ static void MoveAllNodeOutputs(Graph& graph, Node& src_node, Node& target_node) 
   // copy the NodeArg*'s for all output defs.
   target_node.MutableOutputDefs() = src_node.MutableOutputDefs();
 
-  auto src_idx = src_node.Index();
   auto target_idx = target_node.Index();
   auto output_edges = GetNodeOutputEdges(src_node);
 
   for (auto cur = output_edges.cbegin(), end = output_edges.cend(); cur != end; ++cur) {
-    graph.AddEdge(target_idx, cur->dst_node, 0, cur->dst_arg_index);
-    graph.RemoveEdge(src_idx, cur->dst_node, 0, cur->dst_arg_index);
+    graph.AddEdge(target_idx, cur->dst_node, cur->src_arg_index, cur->dst_arg_index);
   }
+
+  RemoveGraphEdges(graph, output_edges);
 }
 
 //----------------------------
@@ -598,16 +622,22 @@ void AddNodeInput(Node& target, int target_input_idx, NodeArg& new_input) {
   target.MutableInputArgsCount()[target_input_idx] = 1;
 }
 
-void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node, Node* replacement_node) {
-  graph_utils::RemoveNodeOutputEdges(graph, first_node);
-  graph_utils::MoveAllNodeOutputs(graph, second_node, replacement_node ? *replacement_node : first_node);
+void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node) {
+  // move the outputs from second_node to first_node
+  RemoveNodeOutputEdges(graph, first_node);
+  MoveAllNodeOutputs(graph, second_node, first_node);
 
   // second node now has no output edges and can be removed
   graph.RemoveNode(second_node.Index());
+}
 
-  if (replacement_node) {
-    // first_node has no output edges and can be removed
-    graph.RemoveNode(first_node.Index());
+void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, Node& replacement_node) {
+  MoveAllNodeInputEdges(graph, nodes.front(), replacement_node);
+  MoveAllNodeOutputs(graph, nodes.back(), replacement_node);
+
+  for (Node& node : nodes) {
+    RemoveNodeOutputEdges(graph, node);
+    graph.RemoveNode(node.Index());
   }
 }
 
