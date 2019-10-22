@@ -46,7 +46,7 @@
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#ifdef USE_DML // TODO: This is necessary for the workaround in TransformGraph
+#ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #endif
 #include "core/session/IOBinding.h"
@@ -382,7 +382,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   // transformer applies DML-specific fusions that go beyond what ORT offers by default. Ideally the DML EP should
   // apply these transforms during partitioning, but the full mutable Graph object isn't exposed to
   // IExecutionProvider::GetCapability, which is necessary for the DML EP's transforms.
-  // 
+  //
   // To prevent this from interfering with other EPs, we only apply this transform if the DML EP is the only one that's
   // registered (aside from the CPU EP, which is always registered by default.)
   if (execution_providers_.Get(kDmlExecutionProvider) && execution_providers_.NumProviders() <= 2) {
@@ -409,8 +409,11 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   ORT_RETURN_IF_ERROR_SESSIONID_(insert_cast_transformer.Apply(graph, modified));
 
   // Now every node should be already assigned to an execution provider
+  std::unordered_map<std::string, std::vector<std::string>> node_placements;
+  bool is_verbose_mode = session_logger_->GetSeverity() == logging::Severity::kVERBOSE;
   for (auto& node : graph.Nodes()) {
-    if (node.GetExecutionProviderType().empty()) {
+    const auto& node_provider = node.GetExecutionProviderType();
+    if (node_provider.empty()) {
       std::ostringstream oss;
       oss << "Could not find an implementation for the node ";
       if (!node.Name().empty()) oss << node.Name() << ":";
@@ -419,6 +422,25 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
         oss << "(" << node.Op()->since_version() << ")";
       }
       return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, oss.str());
+    } else {
+      if (is_verbose_mode) {  // TODO: should we disable this if the number of nodes are above a certain threshold?
+        std::string node_str = node.OpType();
+        node_str += " (";
+        node_str += node.Name();
+        node_str += ")";
+        node_placements[node_provider].push_back(node_str);
+      }
+    }
+  }
+
+  // print placement info
+  if (is_verbose_mode) {
+    LOGS(*session_logger_, VERBOSE) << "Node placements";
+    for (const auto& pr : node_placements) {
+      std::ostringstream all_nodes_str;
+      std::copy(pr.second.begin(), pr.second.end(), std::ostream_iterator<std::string>(all_nodes_str, ", "));
+      LOGS(*session_logger_, VERBOSE) << " Provider: [" << pr.first << "]"
+                                      << ": [" << all_nodes_str.str() << "]";
     }
   }
 
