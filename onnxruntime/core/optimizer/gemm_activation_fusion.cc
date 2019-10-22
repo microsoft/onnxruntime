@@ -73,7 +73,7 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     // move output definitions and edges from act_node to fused_gemm. delete gemm_node and act_node.
-    graph_utils::FinalizeNodeFusion(graph, gemm_node, act_node, &fused_gemm);
+    graph_utils::FinalizeNodeFusion(graph, {gemm_node, act_node}, fused_gemm);
 
     modified = true;
   }

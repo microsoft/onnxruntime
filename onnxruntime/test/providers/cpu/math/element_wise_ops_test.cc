@@ -1658,5 +1658,23 @@ TEST(BitShiftOpTest, BroadcastXRight) {
   test.Run();
 }
 
+TEST(BitShiftOpTest, BroadcastYLeft_Uint8) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "LEFT");
+  test.AddInput<uint8_t>("X", {3, 2}, {1, 2, 3, 4, 5, 6});
+  test.AddInput<uint8_t>("Y", {2}, {1, 2});
+  test.AddOutput<uint8_t>("Z", {3, 2}, {2, 8, 6, 16, 10, 24});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, BroadcastXRight_Uint8) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint8_t>("X", {2}, {64, 32});
+  test.AddInput<uint8_t>("Y", {3, 2}, {1, 2, 3, 4, 5, 6});
+  test.AddOutput<uint8_t>("Z", {3, 2}, {32, 8, 8, 2, 2, 0});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

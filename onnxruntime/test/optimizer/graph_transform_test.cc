@@ -250,6 +250,16 @@ TEST(GraphTransformationTests, FuseConvBNNoBias) {
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
   Graph& graph = p_model->MainGraph();
 
+  std::string bn_output_name;
+
+  // add a missing optional output to BN. this should be fusable
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "BatchNormalization") {
+      node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg("", nullptr));
+      bn_output_name = node.OutputDefs()[0]->Name();
+    }
+  }
+
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvBNFusion>());
@@ -259,6 +269,40 @@ TEST(GraphTransformationTests, FuseConvBNNoBias) {
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["BatchNormalization"] == 0);
+
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Conv") {
+      ASSERT_EQ(node.OutputDefs()[0]->Name(), bn_output_name)
+          << "fusion should produce the same output name as the last node";
+    }
+  }
+}
+
+TEST(GraphTransformationTests, DontFuseConvWithBNWithOptionalOutputs) {
+  string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-no-bias.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  // add an optional output to the BN node. should not fuse if this is present
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "BatchNormalization") {
+      auto mean_input = node.InputDefs()[3];
+      auto& mean_output = graph.GetOrCreateNodeArg(mean_input->Name() + ".output", mean_input->TypeAsProto());
+      node.MutableOutputDefs().push_back(&mean_output);
+    }
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<ConvBNFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["BatchNormalization"] == 1);
 }
 
 TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
