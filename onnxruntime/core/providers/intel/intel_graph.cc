@@ -1,3 +1,4 @@
+// u
 // Copyright(C) 2019 Intel Corporation
 // Licensed under the MIT License
 
@@ -16,16 +17,39 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/logging/logging.h"
+#include "ngraph/ngraph.hpp" 
+#include "ngraph/pass/manager.hpp" 
+#include "ngraph/pass/opset1_upgrade.hpp" 
 
 #include "intel_graph.h"
-#include "intel_custom_op.h"
+//#include "intel_custom_op.h"
+
+#if defined(_MSC_VER)
+#pragma warning(disable : 4244 4245)
+#elif __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
+#include <ngraph/frontend/onnx_import/onnx.hpp>
+#if defined(_MSC_VER)
+#pragma warning(default : 4244 4245)
+#elif __GNUC__
+#pragma GCC diagnostic pop
+#endif
+
+#include <cpp/ie_cnn_network.h>
+#include <ngraph/function.hpp>
+#include <ie_ir_reader.hpp>
 
 namespace onnxruntime {
 namespace intel_ep {
 
+//std::shared_ptr<InferenceEngine::CNNNetwork> cnetwork;
+
+#define NGRAPH_EP_LRU_CACHE_DEFAULT_SIZE 500
 const std::string IntelGraph::log_tag = "[Intel-EP] ";
 
-InferenceEngine::CNNNetwork IntelCustomOp::cnetwork;
+InferenceEngine::CNNNetwork IntelGraph::cnetwork;
 
 IntelGraph::IntelGraph(const onnxruntime::Node* fused_node) {
   device_id_ = "CPU";
@@ -94,39 +118,6 @@ IntelGraph::IntelGraph(const onnxruntime::Node* fused_node) {
     int index = it->second;
     input_indexes_.push_back(index);
   }
-
-  //std::cout << IntelCustomOp::hello << std::endl;
-  LOGS_DEFAULT(INFO) << log_tag << "Hello String " << IntelCustomOp::hello;
-  // Create hardware agnostic OpenVINO network representation
- //InferenceEngine::ICNNNetwork::Ptr network = InferenceEngine::convertFunctionToICNNNetwork(ng_function);
-    //InferenceEngine::CNNNetwork cnetwork_temp(network);
-    //cnetwork(network);
-    //std::shared_ptr<InferenceEngine::CNNNetwork> 
-    //cnetwork = std::make_shared<InferenceEngine::CNNNetwork>(cnetwork_temp);
-    intel_network_ = std::make_shared<InferenceEngine::CNNNetwork>(IntelCustomOp::cnetwork);
-  //intel_network_ =  IntelCustomOp::cnetwork;//BuildIntelNetworkWithMO();
-
-  // Create hardware specific OpenVINO network representation
-  GetExecutableHandle(intel_network_);
-
-  std::vector<std::string> plugin_path = GetEnvLdLibraryPath();
-  plugin_path.push_back("");
-  plugin_ = InferenceEngine::PluginDispatcher(
-                plugin_path)
-                .getPluginByName(device_id_);
-
-  //Loading model to the plugin
-  InferenceEngine::ExecutableNetwork exeNetwork = plugin_.LoadNetwork(*intel_network_, {});
-
-  LOGS_DEFAULT(INFO) << log_tag << "Network loaded into accelerator plug-in succesfully";
-
-  //Create infer request
-  for (size_t i = 0; i < num_inf_reqs_; i++) {
-    auto infRequest = exeNetwork.CreateInferRequestPtr();
-
-    infer_requests_.push_back(infRequest);
-  }
-  LOGS_DEFAULT(INFO) << log_tag << "Infer requests created: " << num_inf_reqs_;
 }
 
 std::vector<std::string> IntelGraph::GetEnvLdLibraryPath() const {
@@ -140,87 +131,6 @@ std::vector<std::string> IntelGraph::GetEnvLdLibraryPath() const {
     paths.push_back(token);
   }
   return paths;
-}
-
-// void IntelGraph::ConvertONNXModelToIntelIR(const std::string& onnx_model,
-//                                                  std::string& intel_xml, std::string& intel_bin, bool precision_fp32) {
-//   Py_Initialize();
-//   if (!Py_IsInitialized()) {
-//     throw "Python environment initialization failure";
-//   }
-
-//   PyObject* pModule = NULL;
-//   pModule = PyImport_ImportModule("openvino_mo");
-//   if (pModule == NULL) {
-//     throw "Python module import failure";
-//   }
-
-//   PyObject* pFunc = NULL;
-//   if (precision_fp32) {
-//     pFunc = PyObject_GetAttrString(pModule, "convert_fp32");
-//   } else {
-//     pFunc = PyObject_GetAttrString(pModule, "convert_fp16");
-//   }
-//   if (pFunc == NULL || !PyCallable_Check(pFunc)) {
-//     throw "Python module function check failure";
-//   }
-
-//   // Prepare ModelProto Input to Python
-//   PyObject* pFileName = PyByteArray_FromStringAndSize(
-//       onnx_model.c_str(), onnx_model.size());
-//   PyObject* pArgs = PyTuple_New(1);
-//   PyTuple_SetItem(pArgs, 0, pFileName);
-
-//   PyObject* pOutputTuple = NULL;
-
-//   // Call the Python function
-//   pOutputTuple = PyObject_CallObject(pFunc, pArgs);
-
-//   if (pOutputTuple == NULL || !PyTuple_CheckExact(pOutputTuple)) {
-//     throw "Python function call failure";
-//   }
-
-//   // Retrieve the weights byte array
-//   PyObject* pArg1 = PyTuple_GetItem(pOutputTuple, 0);
-//   PyObject* pWeights = PyByteArray_FromObject(pArg1);
-//   const char* weights_bytes = PyByteArray_AsString(pWeights);
-//   unsigned long weights_size = PyByteArray_Size(pWeights);
-//   std::string weights_string(weights_bytes, weights_size);
-//   intel_bin = weights_string;
-
-//   // Retrieve the xml string
-//   PyObject* pArg2 = PyTuple_GetItem(pOutputTuple, 1);
-//   PyObject* pXML = PyObject_Repr(pArg2);
-//   intel_xml = PyUnicode_AsUTF8(pXML);
-
-//   Py_XDECREF(pXML);
-//   Py_XDECREF(pOutputTuple);
-//   Py_XDECREF(pWeights);
-//   Py_XDECREF(pArgs);
-//   Py_XDECREF(pFunc);
-//   Py_XDECREF(pModule);
-
-//   // Calling Py_Finalize here prevents multiple invocations
-//   // of the interpreter from the same process. Relying on
-//   // OS process clean up routines for python shutdown.
-// }
-
-std::shared_ptr<InferenceEngine::CNNNetwork> IntelGraph::BuildIntelNetworkWithMO() {
-  const auto& attributes = fused_node_->GetAttributes();
-  std::string xml_string = attributes.at("xml_str").s();
-  std::string weights_string = attributes.at("weights_str").s();
-  InferenceEngine::TensorDesc tensorDesc(InferenceEngine::Precision::U8,
-                                          {weights_string.size()},InferenceEngine::Layout::C);
-  InferenceEngine::TBlob<uint8_t>::Ptr weightsPtr(new InferenceEngine::TBlob<uint8_t>(tensorDesc));
-  weightsPtr->allocate();
-
-  std::memcpy(weightsPtr->buffer(), static_cast<const void*>(weights_string.c_str()), weights_string.size());
-
-  InferenceEngine::CNNNetReader networkReader;
-  networkReader.ReadNetwork(static_cast<const char*>(xml_string.c_str()), xml_string.size());
-  networkReader.SetWeights(weightsPtr);
-
-  return std::make_shared<InferenceEngine::CNNNetwork>(networkReader.getNetwork());
 }
 
 InferenceEngine::Precision IntelGraph::ConvertPrecisionONNXToIntel(
@@ -249,7 +159,8 @@ void IntelGraph::GetExecutableHandle(
   LOGS_DEFAULT(INFO) << log_tag << "Loaded plugins";
   // Configure input & output
   // Prepare input blobs
-
+  if (network)
+	  std::cout << "Network is not NULL" << std::endl;
   auto inputInfo = network->getInputsInfo();
   LOGS_DEFAULT(INFO) << log_tag << "Loaded plugins";
   auto onnx_input_defs = fused_node_->InputDefs();
@@ -427,19 +338,64 @@ void IntelGraph::GetOutputTensors(Ort::CustomOpApi ort, OrtKernelContext* contex
   }
 }
 
-void IntelGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
+
+void IntelGraph::CreateNGraphFunc(const ONNX_NAMESPACE::ModelProto& model_proto) 
+{  
+  model_proto_= model_proto;
+  std::cout << "In CreateNgraphFunc" << std::endl;
+  std::istringstream model_stream{model_proto_.SerializeAsString()};
+  std::shared_ptr<ngraph::Function> ng_function;
+  try {
+    ng_function = ngraph::onnx_import::import_onnx_model(model_stream);
+    LOGS_DEFAULT(INFO) << "ONNX Import Done";
+  } catch (const std::exception& exp) {
+    LOGS_DEFAULT(FATAL) << "[NGRAPHCustomOp] " << " - " << name_ << " - "
+                        << "Exception while importing model to nGraph: " << std::string(exp.what());
+    throw;
+  } catch (...) {
+    LOGS_DEFAULT(FATAL) << "[NGRAPHCustomOp] " << " - " << name_ << " - "
+                        << "Unknown exception while importing model to nGraph";
+    throw;
+  }
+
+  //IE wrapper for nGraph function
+  //InferenceEngine::CNNNetwork network(ng_function);
+  ngraph::pass::Manager pass_manager; 
+  pass_manager.register_pass<ngraph::pass::Opset1Upgrade>(); 
+  pass_manager.run_passes(ng_function);
+  InferenceEngine::CNNNetwork network(ng_function); 
+
+  intel_network_ = std::make_shared<InferenceEngine::CNNNetwork>(network);
+  
+}  
+
+
+void IntelGraph::Infer(const ONNX_NAMESPACE::ModelProto& model_proto, Ort::CustomOpApi ort, OrtKernelContext* context) {
   // Preliminary Thread safety mechanism
   // Currently allows only one Infer execution at a time
   LOGS_DEFAULT(INFO) << log_tag << "In Infer";
-  //std::lock_guard<std::mutex> lock(compute_lock_);
+  std::lock_guard<std::mutex> lock(compute_lock_);
 
-  LOGS_DEFAULT(INFO) << log_tag << "Starting inference";
+  CreateNGraphFunc(model_proto);
+  GetExecutableHandle(intel_network_);
+
+  InferenceEngine::Core ie;
+  //Loading model to the plugin
+  InferenceEngine::ExecutableNetwork exeNetwork = ie.LoadNetwork(*intel_network_, device_id_);
+
+  LOGS_DEFAULT(INFO) << log_tag << "Network loaded into accelerator plug-in succesfully";
+
+  //Create infer request
+  for (size_t i = 0; i < num_inf_reqs_; i++) {
+    auto infRequest = exeNetwork.CreateInferRequestPtr();
+
+    infer_requests_.push_back(infRequest);
+  }
+  LOGS_DEFAULT(INFO) << log_tag << "Infer requests created: " << num_inf_reqs_;
 
   // Get Input and Output tensors
   size_t input_count = intel_network_->getInputsInfo().size();
-  LOGS_DEFAULT(INFO) << log_tag << "Starting inference";
   size_t output_count = intel_network_->getOutputsInfo().size();
-  LOGS_DEFAULT(INFO) << log_tag << "Starting inference";
   const OrtValue* input_tensors[input_count];
   OrtValue* output_tensors[output_count];
 
@@ -479,6 +435,7 @@ void IntelGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
     CompleteAsyncInference(ort, output_tensors, batch_slice_idx, inf_req_idx);
   }
 
+  std::cout << "Inference successful" << std::endl;
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
 }
 

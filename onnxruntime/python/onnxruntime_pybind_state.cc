@@ -66,6 +66,26 @@
 #define BACKEND_OPENVINO ""
 #endif
 
+#if INTEL_CONFIG_CPU_FP32
+#define BACKEND_INTEL "-INTEL_CPU_FP32"
+
+#elif INTEL_CONFIG_GPU_FP32
+#define BACKEND_INTEL "-INTEL_GPU_FP32"
+
+#elif INTEL_CONFIG_GPU_FP16
+#define BACKEND_INTEL "-INTEL_GPU_FP16"
+
+#elif INTEL_CONFIG_MYRIAD
+#define BACKEND_INTEL "-INTEL_MYRIAD"
+
+#elif INTEL_CONFIG_VAD_M
+#define BACKEND_INTEL "-INTEL_VAD_M"
+
+#else
+#define BACKEND_INTEL ""
+#endif
+
+
 #ifdef USE_NUPHAR
 #define BACKEND_NUPHAR "-NUPHAR"
 #else
@@ -99,6 +119,9 @@
 #ifdef USE_OPENVINO
 #include "core/providers/openvino/openvino_provider_factory.h"
 #endif
+#ifdef USE_INTEL
+#include "core/providers/intel/intel_provider_factory.h"
+#endif
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
 std::string nuphar_settings;
@@ -114,6 +137,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Intel(const char* device);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(uint32_t ip, int, int, bool, const char*, const char*, const char*);
 }  // namespace onnxruntime
@@ -257,7 +281,7 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
 // ordered by default priority. highest to lowest.
 const std::vector<std::string>& GetAllProviders() {
   static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kMklDnnExecutionProvider,
-                                                   kNGraphExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider,
+                                                   kNGraphExecutionProvider, kOpenVINOExecutionProvider, kIntelExecutionProvider, kNupharExecutionProvider,
                                                    kBrainSliceExecutionProvider, kCpuExecutionProvider};
   return all_providers;
 }
@@ -279,6 +303,9 @@ const std::vector<std::string>& GetAvailableProviders() {
 #endif
 #ifdef USE_OPENVINO
     available_providers.push_back(kOpenVINOExecutionProvider);
+#endif
+#ifdef USE_INTEL
+    available_providers.push_back(kIntelExecutionProvider);
 #endif
 #ifdef USE_NUPHAR
     available_providers.push_back(kNupharExecutionProvider);
@@ -317,6 +344,11 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #ifdef USE_OPENVINO
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO("CPU"));
 #endif
+    } else if (type == kIntelExecutionProvider) {
+#ifdef USE_INTEL
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Intel("CPU"));
+#endif
+
     } else if (type == kNupharExecutionProvider) {
 #if USE_NUPHAR
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(true, nuphar_settings.c_str()));
@@ -406,6 +438,9 @@ void addGlobalMethods(py::module& m) {
 #endif
 #ifdef USE_OPENVINO
             onnxruntime::CreateExecutionProviderFactory_OpenVINO("CPU"),
+#endif
+#ifdef USE_INTEL
+	    onnxruntime::CreateExecutionProviderFactory_Intel("CPU"),
 #endif
 #ifdef USE_TENSORRT
             onnxruntime::CreateExecutionProviderFactory_Tensorrt()

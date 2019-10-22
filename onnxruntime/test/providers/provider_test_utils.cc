@@ -574,7 +574,8 @@ void OpTester::Run(SessionOptions so, // Take the SessionOptions by value (i.e. 
         kBrainSliceExecutionProvider,
         kTensorrtExecutionProvider,
         kOpenVINOExecutionProvider,
-        kDmlExecutionProvider
+        kDmlExecutionProvider,
+	    kIntelExecutionProvider
     };
 
     bool has_run = false;
@@ -631,6 +632,9 @@ void OpTester::Run(SessionOptions so, // Take the SessionOptions by value (i.e. 
           execution_provider = DefaultTensorrtExecutionProvider();
         else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
           execution_provider = DefaultOpenVINOExecutionProvider();
+	else if (provider_type == onnxruntime::kIntelExecutionProvider)
+	  execution_provider = DefaultIntelExecutionProvider();
+
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
           execution_provider = DefaultNnapiExecutionProvider();
         // skip if execution provider is disabled
@@ -649,6 +653,7 @@ void OpTester::Run(SessionOptions so, // Take the SessionOptions by value (i.e. 
           if (provider_type == onnxruntime::kNGraphExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
               provider_type == onnxruntime::kOpenVINOExecutionProvider ||
+	      provider_type == onnxruntime::kIntelExecutionProvider ||
               provider_type == onnxruntime::kNupharExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();
