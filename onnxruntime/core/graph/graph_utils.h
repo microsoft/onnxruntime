@@ -163,23 +163,23 @@ void ReplaceNodeInput(Node& target, int target_input_idx, NodeArg& new_input);
 */
 void AddNodeInput(Node& target, int target_input_idx, NodeArg& new_input);
 
-/** Finalize the fusion of two nodes. 
-    Conceptually two nodes are being combined into one, and post-fusion will produce output/s with the same names 
-    and be connected to the same downstream nodes.
-
-Two styles of fusion are supported.
-
-1. Both first_node and second_node are being removed and replaced by replacement_node
-        e.g. fusion of Conv and an activation into a new FusedConv node
-    The output definitions and edges from second_node are moved to replacement_node, and both first_node and
-    second_node are removed.
-
-2. The functionality of the second_node is being fused into first_node
-        e.g. fusion of Conv and Add into a single Conv node that does the Add via a bias input
+/** Finalize the fusion of second_node into first_node. 
     The output definitions and edges from the second_node are moved to first_node. second_node is deleted.
+    e.g. Conv + Add fusion fuses the 'Add' into the Conv.
 */
-void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node, Node* replacement_node = nullptr);
+void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node);
+
+/** Finalize the fusion of two or more nodes which are being replaced with a single node. 
+    The first and last entries in 'nodes' are assumed to be the first and last nodes in a chain of nodes being fused.
+
+    Conceptually multiple nodes are being combined into one, and post-fusion will produce output/s with the same names 
+    as the last node in 'nodes', and be connected to the same downstream nodes.
+
+    The input edges to the first node in 'nodes' will be moved to replacement_node. No other input edges are moved.
+    The output definitions and edges from the last node in 'nodes' will be moved to replacement_node.
+    All nodes in 'nodes' will be removed.
+*/
+void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, Node& replacement_node);
 
 }  // namespace graph_utils
-
 }  // namespace onnxruntime

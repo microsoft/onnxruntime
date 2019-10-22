@@ -401,7 +401,7 @@ TEST(MathOpTest, Abs_int8) {
   std::vector<int64_t> dims{4};
   test.AddInput<int8_t>("X", dims, {1, 2, -1, -5});
   test.AddOutput<int8_t>("Y", dims, {1, 2, 1, 5});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: INT8, Assertion `regionRanges != nullptr' failed
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: INT8, Assertion `regionRanges != nullptr' failed
 }
 
 TEST(MathOpTest, Abs_int32) {
@@ -429,7 +429,7 @@ TEST(MathOpTest, Neg_int8) {
   std::vector<int64_t> dims{4};
   test.AddInput<int8_t>("X", dims, {1, -2, 0, -10});
   test.AddOutput<int8_t>("Y", dims, {-1, 2, 0, 10});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: INT8 is not supported
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: INT8 is not supported
 }
 
 TEST(MathOpTest, Neg_int32) {
@@ -1625,6 +1625,24 @@ TEST(BitShiftOpTest, BroadcastXRight) {
   test.AddInput<uint64_t>("X", {2}, {64, 32});
   test.AddInput<uint64_t>("Y", {3, 2}, {1, 2, 3, 4, 5, 6});
   test.AddOutput<uint64_t>("Z", {3, 2}, {32, 8, 8, 2, 2, 0});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, BroadcastYLeft_Uint8) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "LEFT");
+  test.AddInput<uint8_t>("X", {3, 2}, {1, 2, 3, 4, 5, 6});
+  test.AddInput<uint8_t>("Y", {2}, {1, 2});
+  test.AddOutput<uint8_t>("Z", {3, 2}, {2, 8, 6, 16, 10, 24});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, BroadcastXRight_Uint8) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint8_t>("X", {2}, {64, 32});
+  test.AddInput<uint8_t>("Y", {3, 2}, {1, 2, 3, 4, 5, 6});
+  test.AddOutput<uint8_t>("Z", {3, 2}, {32, 8, 8, 2, 2, 0});
   test.Run();
 }
 
