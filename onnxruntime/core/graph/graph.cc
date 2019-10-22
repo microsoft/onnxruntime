@@ -413,17 +413,13 @@ void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
   proto.clear_attribute();
   for (const auto& attribute : attributes_) {
     const gsl::not_null<AttributeProto*> attr{proto.add_attribute()};
-    *attr = attribute.second;
-
-    if (update_subgraphs && attribute.second.has_g()) {
-      // partitioning or optimization may have changed the subgraph, so the original GraphProto may not be valid.
-      // call ToGraphProto to get the current info and use this for the attribute
-      const auto& latest = attr_to_subgraph_map_.find(attribute.first)->second->ToGraphProto();
+    *attr = attribute.second;  // copy
+    if (update_subgraphs && attr->has_g()) {
       attr->clear_g();
-      *attr->mutable_g() = latest;
+      *attr->mutable_g() = attr_to_subgraph_map_.find(attribute.first)->second->ToGraphProto();
     }
   }
-  
+
   // Set inputs' definitions.
   proto.clear_input();
   for (auto& input_def : definitions_.input_defs) {
@@ -2335,7 +2331,9 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
   for (auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     const gsl::not_null<NodeProto*> node_proto{graph_proto.add_node()};
     const gsl::not_null<const Node*> p_node{GetNode(node_idx)};
-    p_node->ToProto(*node_proto, true);
+    // we need to update any GraphProto attributes for subgraphs so that any changes made by things
+    // such as the optimizers are captured. otherwise we can end up saving an invalid graph.
+    p_node->ToProto(*node_proto, /* update_subgraphs */ true);
   }
 }
 
