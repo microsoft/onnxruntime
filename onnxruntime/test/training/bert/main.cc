@@ -98,7 +98,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
       ("optimizer", "Adam or Lamb", cxxopts::value<std::string>()->default_value("Adam"))
       ("alpha", "Adam/Lamb alpha parameter", cxxopts::value<float>()->default_value("0.9"))
       ("beta", "Adam/Lamb beta parameter", cxxopts::value<float>()->default_value("0.999"))
-      ("lambda", "Adam/Lamb lambda parameter", cxxopts::value<float>()->default_value("0"))
+      ("lambda", "Adam/Lamb lambda parameter", cxxopts::value<float>()->default_value("0.01"))
       ("epsilon", "Adam/Lamb epsilon parameter", cxxopts::value<float>()->default_value("1e-6"));
   // clang-format on
 
@@ -244,12 +244,20 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
     float epsilon = flags["epsilon"].as<float>();
     ORT_RETURN_IF_NOT(alpha >= 0.f && alpha <= 1.f, "alpha is not in valid range [0.0, 1.0]");
     ORT_RETURN_IF_NOT(beta >= 0.f && beta <= 1.f, "alpha is not in valid range [0.0, 1.0]");
+    std::vector<std::string> no_decay{"bias", "gamma", "beta", "LayerNorm"};
 
-    params.optimizer_attributes = {
+    params.optimizer_attributes = [=](const std::string& weight) {
+      // Set lambda attribute to zero if we don't want decay on this weight.
+      bool zero_lambda = std::any_of(no_decay.begin(), no_decay.end(), [&](const std::string& name) {
+        return weight.find(name) != std::string::npos;
+      });
+
+      return std::unordered_map<std::string, float>{
         {"alpha", alpha},
         {"beta", beta},
-        {"lambda", lambda},
+        {"lambda", zero_lambda ? 0.f : lambda},
         {"epsilon", epsilon},
+      };
     };
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";

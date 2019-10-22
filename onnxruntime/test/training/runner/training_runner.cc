@@ -470,21 +470,22 @@ Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string
                                             const std::string& loss_scale_input_name,
                                             OptimizerGraphConfig& opt_graph_config_result,
                                             std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs) {
-  // Prepare the weight<->optimizer mapping.
-  // All weights use the same type of optimizer
-  OptimizerNodeConfig opt_config{
-      params_.training_optimizer_name,
-      nullptr,
-      params_.lr_params.feed_name,
-      params_.optimizer_attributes,
-      params_.use_fp16_moments};
-
   opt_configs.reserve(weights_to_train.size());
   for (const auto& weight_name : weights_to_train) {
+    // Prepare the weight<->optimizer mapping.
+    // All weights use the same type of optimizer
+    OptimizerNodeConfig opt_config{
+        params_.training_optimizer_name,
+        nullptr,
+        params_.lr_params.feed_name,
+        params_.optimizer_attributes(weight_name),
+        params_.use_fp16_moments};
+
     const auto it = fp16_weights_map.find(weight_name);
     if (it != fp16_weights_map.cend()) {
       opt_config.fp16_weight_arg = it->second;
     }
+
     opt_configs[weight_name] = opt_config;
   }
 

@@ -524,11 +524,13 @@ TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
       {"Sub", {{0, 1.0f}}}};
 
   params.training_optimizer_name = "AdamOptimizer";
-  params.optimizer_attributes = {
+  params.optimizer_attributes = [](const std::string&) {
+    return std::unordered_map<std::string, float>{
       {"alpha", 0.9f},
       {"beta", 0.999f},
       {"lambda", 0.0f},
       {"epsilon", 0.1f},
+    };
   };
 
   BuildBackPropGraph(params);

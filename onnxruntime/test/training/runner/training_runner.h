@@ -47,7 +47,8 @@ class TrainingRunner {
     // Every weight's gradient will be connected to an optimizer node
     // For now all to-be-trained weights use the same optimizer type.
     std::string training_optimizer_name = "SGDOptimizer";
-    std::unordered_map<std::string, float> optimizer_attributes;
+    std::function<std::unordered_map<std::string, float>(const std::string& weight)> optimizer_attributes =
+      [](const std::string&) { return std::unordered_map<std::string, float>(); };
     LearningRateParameters lr_params;
     int gradient_accumulation_steps = 1;
 
