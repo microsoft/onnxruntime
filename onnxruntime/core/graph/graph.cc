@@ -2058,7 +2058,7 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
 
 Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer) {
   const auto& initializer_name = new_initializer.name();
-  auto name_to_initializer_it = name_to_initial_tensor_.find(initializer_name);
+  const auto name_to_initializer_it = name_to_initial_tensor_.find(initializer_name);
   ORT_RETURN_IF_NOT(name_to_initializer_it != name_to_initial_tensor_.end(),
                     "Failed to find existing initializer with name ", initializer_name, ".");
 
@@ -2077,11 +2077,10 @@ Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_in
   ORT_RETURN_IF_NOT(old_initializer.data_type() == new_initializer.data_type(),
                     "Replacement tensor's data type does not match.");
 
-  auto& mutable_initializers = *graph_proto_->mutable_initializer();
+  auto& mutable_initializers = *(graph_proto_->mutable_initializer());
   auto old_mutable_initializer_ptr_it = std::find(
       mutable_initializers.pointer_begin(), mutable_initializers.pointer_end(), &old_initializer);
   assert(old_mutable_initializer_ptr_it != mutable_initializers.pointer_end());
-  assert(*old_mutable_initializer_ptr_it);
   auto& old_mutable_initializer = **old_mutable_initializer_ptr_it;
 
   old_mutable_initializer = new_initializer;
