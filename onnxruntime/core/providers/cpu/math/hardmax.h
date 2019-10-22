@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
@@ -19,9 +19,6 @@ class Hardmax final : public OpKernel {
     if (status.IsOK()) {
       axis_ = gsl::narrow_cast<int>(axis);
     }
-
-    // if value was provided, make sure it was valid
-    ORT_ENFORCE(axis_ >= 0, "Invalid axis provided.");
   }
 
   Status Compute(OpKernelContext* context) const override;

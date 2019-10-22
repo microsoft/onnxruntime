@@ -20,8 +20,6 @@
 using namespace std;
 using namespace ONNX_NAMESPACE;
 
-using namespace onnx;
-
 namespace onnxruntime {
 namespace test {
 
@@ -44,17 +42,17 @@ TEST(OptimizerTest, Basic) {
 
   for (int i = 0; i < input_num; i++) {
     string name("input_" + std::to_string(i));
-    inputs[i] = std::make_unique<NodeArg>(name, &tensor_int32);
+    inputs[i] = onnxruntime::make_unique<NodeArg>(name, &tensor_int32);
 
     initializer_tensor[i].set_name(inputs[i]->Name());
     initializer_tensor[i].add_dims(tensor_dim);
-    initializer_tensor[i].set_data_type(onnx::TensorProto_DataType_INT32);
+    initializer_tensor[i].set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
     for (int j = 0; j < tensor_dim; j++) {
       initializer_tensor[i].add_int32_data((i + 1) * j);
     }
     initialized_tensor_set[name] = &initializer_tensor[i];
   }
-  outputs[0] = std::make_unique<NodeArg>("out", &tensor_int32);
+  outputs[0] = onnxruntime::make_unique<NodeArg>("out", &tensor_int32);
 
   std::vector<NodeArg*> tmp_inputs{inputs[0].get(), inputs[1].get()};
   std::vector<NodeArg*> tmp_outputs{outputs[0].get()};
@@ -74,9 +72,10 @@ TEST(OptimizerTest, Basic) {
   for (auto& node : graph.Nodes()) {
     auto* kernel = info.GetKernel(node.Index());
 
-    OpKernelContext op_kernel_context(&frame, kernel, logger);
+    OpKernelContext op_kernel_context(&frame, kernel, nullptr, logger);
 
-    kernel->Compute(&op_kernel_context);
+    auto st = kernel->Compute(&op_kernel_context);
+    ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 
     std::vector<OrtValue> fetches;
     frame.GetOutputs(fetches);

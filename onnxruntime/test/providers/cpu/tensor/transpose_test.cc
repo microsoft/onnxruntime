@@ -43,7 +43,7 @@ TEST(TransposeOpTest, TwoDimNoAttr) {
       2.0f, 5.0f,
       3.0f, 6.0f};
 
-  TransposeTest(input_shape, input_vals, nullptr, expected_shape, expected_vals, false);//TensorRT: SegFault error
+  TransposeTest(input_shape, input_vals, nullptr, expected_shape, expected_vals, false);  //TensorRT: SegFault error
 }
 
 TEST(TransposeOpTest, TwoDimNoAttrStr) {
@@ -113,37 +113,23 @@ TEST(TransposeOpTest, ThreeDim) {
   std::vector<int64_t> perm = {0, 2, 1};
   std::vector<int64_t> expected_shape({4, 3, 2});
   auto expected_vals = {
-      1.0f,
-      4.0f,
-      2.0f,
-      5.0f,
-      3.0f,
-      6.0f,
+      1.0f, 4.0f,
+      2.0f, 5.0f,
+      3.0f, 6.0f,
 
-      1.1f,
-      4.1f,
-      2.1f,
-      5.1f,
-      3.1f,
-      6.1f,
+      1.1f, 4.1f,
+      2.1f, 5.1f,
+      3.1f, 6.1f,
 
-      1.2f,
-      4.2f,
-      2.2f,
-      5.2f,
-      3.2f,
-      6.2f,
+      1.2f, 4.2f,
+      2.2f, 5.2f,
+      3.2f, 6.2f,
 
-      1.3f,
-      4.3f,
-      2.3f,
-      5.3f,
-      3.3f,
-      6.3f,
+      1.3f, 4.3f,
+      2.3f, 5.3f,
+      3.3f, 6.3f};
 
-  };
-
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false); //TensorRT: illegal error
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  //TensorRT: illegal error
 }
 
 TEST(TransposeOpTest, ThreeDimStr) {
@@ -164,37 +150,59 @@ TEST(TransposeOpTest, ThreeDimStr) {
   std::vector<int64_t> perm = {0, 2, 1};
   std::vector<int64_t> expected_shape({4, 3, 2});
   std::initializer_list<std::string> expected_vals = {
-      "1",
-      "4",
-      "2",
-      "5",
-      "3",
-      "6",
+      "1", "4",
+      "2", "5",
+      "3", "6",
 
-      "1",
-      "4",
-      "2",
-      "5",
-      "3",
-      "6",
+      "1", "4",
+      "2", "5",
+      "3", "6",
 
-      "1",
-      "4",
-      "2",
-      "5",
-      "3",
-      "6",
+      "1", "4",
+      "2", "5",
+      "3", "6",
 
-      "1",
-      "4",
-      "2",
-      "5",
-      "3",
-      "6"
-
-  };
+      "1", "4",
+      "2", "5",
+      "3", "6"};
 
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
+}
+
+TEST(TransposeOpTest, NCHW2NHWC) {
+  std::vector<int64_t> input_shape({1, 3, 2, 2});
+  std::vector<std::string> input_vals = {
+      "1", "2", "3", "4",
+      "5", "6", "7", "8",
+      "9", "10", "11", "12"};
+
+  std::vector<int64_t> perm = {0, 2, 3, 1};
+  std::vector<int64_t> expected_shape({1, 2, 2, 3});
+  std::initializer_list<std::string> expected_vals = {
+      "1", "5", "9",
+      "2", "6", "10",
+      "3", "7", "11",
+      "4", "8", "12"};
+
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+}
+
+TEST(TransposeOpTest, NHWC2NCHW) {
+  std::vector<int64_t> input_shape({1, 2, 2, 3});
+  std::vector<std::string> input_vals = {
+      "1", "2", "3",
+      "4", "5", "6",
+      "7", "8", "9",
+      "10", "11", "12"};
+
+  std::vector<int64_t> perm = {0, 3, 1, 2};
+  std::vector<int64_t> expected_shape({1, 3, 2, 2});
+  std::initializer_list<std::string> expected_vals = {
+      "1", "4", "7", "10",
+      "2", "5", "8", "11",
+      "3", "6", "9", "12"};
+
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
 }
 
 }  // namespace test

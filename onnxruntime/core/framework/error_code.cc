@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/ort_apis.h"
 #include "core/common/status.h"
 #include "core/framework/error_code_helper.h"
 #include <cassert>
@@ -12,11 +13,12 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-ORT_API(OrtStatus*, OrtCreateStatus, OrtErrorCode code, _In_ const char* msg) {
+//Even we say it may not return NULL, indeed it may.
+ORT_EXPORT _Check_return_ _Ret_notnull_ OrtStatus* ORT_API_CALL OrtApis::CreateStatus(OrtErrorCode code, _In_ const char* msg) NO_EXCEPTION {
   assert(!(code == 0 && msg != nullptr));
   size_t clen = strlen(msg);
   OrtStatus* p = reinterpret_cast<OrtStatus*>(::malloc(sizeof(OrtStatus) + clen));
-  if (p == nullptr) return nullptr;  // OOM
+  if (p == nullptr) return nullptr;  // OOM. What we can do here? abort()?
   p->code = code;
   memcpy(p->msg, msg, clen);
   p->msg[clen] = '\0';
@@ -35,12 +37,12 @@ OrtStatus* ToOrtStatus(const Status& st) {
   return p;
 }
 }  // namespace onnxruntime
-ORT_API(OrtErrorCode, OrtGetErrorCode, _In_ const OrtStatus* status) {
+ORT_API(OrtErrorCode, OrtApis::GetErrorCode, _In_ const OrtStatus* status) {
   return status->code;
 }
 
-ORT_API(const char*, OrtGetErrorMessage, _In_ const OrtStatus* status) {
+ORT_API(const char*, OrtApis::GetErrorMessage, _In_ const OrtStatus* status) {
   return status->msg;
 }
 
-ORT_API(void, OrtReleaseStatus, _Frees_ptr_opt_ OrtStatus* value) { ::free(value); }
+ORT_API(void, OrtApis::ReleaseStatus, _Frees_ptr_opt_ OrtStatus* value) { ::free(value); }

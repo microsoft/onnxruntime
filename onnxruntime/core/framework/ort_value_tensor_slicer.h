@@ -22,7 +22,7 @@ The sub-Tensor applies the relevant offset to the data address from the original
 to avoid any memory allocations/copies for the tensor data.
 */
 template <typename T>
-class MLValueTensorSlicer {
+class OrtValueTensorSlicer {
  public:
   /**
   Create a new instance to slice the Tensor contained in an MLValue
@@ -33,7 +33,7 @@ class MLValueTensorSlicer {
            e.g. if input is [batch, seq_len, data] and you want to slice the seq_len dimension, you need to
                 create an Iterator instance for each batch item, incrementing dim0_offset for each one.
   */
-  static MLValueTensorSlicer Create(T& ort_value, int64_t slice_dimension = 0, int64_t dim0_offset = 0);
+  static OrtValueTensorSlicer Create(T& ort_value, int64_t slice_dimension = 0, int64_t dim0_offset = 0);
 
   class Iterator {
    public:
@@ -42,9 +42,10 @@ class MLValueTensorSlicer {
     using difference_type = ptrdiff_t;
     using pointer = T*;
     using reference = T&;
-    using const_reference = std::add_const_t<reference>;
+    using const_reference = const T&;
 
-    enum class Direction { kForward, kReverse };
+    enum class Direction { kForward,
+                           kReverse };
 
     explicit Iterator(T& ort_value, size_t slice_dimension, size_t dim0_offset, int64_t position,
                       Direction direction = Direction::kForward);
@@ -83,7 +84,7 @@ class MLValueTensorSlicer {
     }
 
     // non-const is only enabled if T is not const (i.e. is 'OrtValue' not 'const OrtValue')
-    std::enable_if_t<!std::is_const<reference>::value, reference> operator*() {
+    typename std::enable_if<!std::is_const<reference>::value, reference>::type operator*() {
       ORT_ENFORCE(position_ >= 0 && position_ < sequence_length_);
       if (position_ != position_materialized_) {
         MaterializeMLValue();
@@ -106,7 +107,7 @@ class MLValueTensorSlicer {
 
     const void* tensor_data_raw_;
     MLDataType tensor_data_type_;
-    const OrtAllocatorInfo* tensor_location_;
+    const OrtMemoryInfo* tensor_location_;
 
     int64_t sequence_length_;
     TensorShape per_iteration_shape_;
@@ -131,8 +132,8 @@ class MLValueTensorSlicer {
   }
 
  private:
-  MLValueTensorSlicer(T& ort_value, int64_t slice_dimension, int64_t dim0_offset) noexcept
-      : ort_value_{&ort_value}, slice_dimension_{slice_dimension}, dim0_offset_{dim0_offset} {}
+  OrtValueTensorSlicer(T& ort_value, int64_t slice_dimension, int64_t dim0_offset) noexcept
+      : ort_value_(&ort_value), slice_dimension_(slice_dimension), dim0_offset_(dim0_offset) {}
 
   T* ort_value_;
   int64_t slice_dimension_;

@@ -32,23 +32,15 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   for (auto& node : graph.Nodes()) {
     for (auto registry : kernel_registries) {
       if (registry->TryFindKernel(node, Type()) != nullptr) {
-        std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+        std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
         sub_graph->nodes.push_back(node.Index());
-        result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+        result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
         break;
       }
     }
   }
 
   return result;
-}
-
-common::Status IExecutionProvider::CopyTensor(const Tensor& src,
-                                              Tensor& dst,
-                                              int exec_queue_id) const {
-  // execution provider may override this to support different exec queues
-  ORT_ENFORCE(exec_queue_id == 0);
-  return CopyTensor(src, dst);
 }
 
 common::Status IExecutionProvider::Sync() const { return Status::OK(); };
@@ -58,7 +50,7 @@ common::Status IExecutionProvider::OnRunStart() { return Status::OK(); }
 common::Status IExecutionProvider::OnRunEnd() { return Status::OK(); }
 
 void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
-  const OrtAllocatorInfo& info = allocator->Info();
+  const OrtMemoryInfo& info = allocator->Info();
   const int key = MakeKey(info.id, info.mem_type);
   auto iter = allocators_.find(key);
   if (iter != allocators_.end()) {
@@ -76,6 +68,10 @@ common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
                                            std::string& /*dll_path*/) {
   return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
+}
+
+std::shared_ptr<KernelRegistry> IExecutionProvider::GetKernelRegistry() const {
+  return nullptr;
 }
 
 }  // namespace onnxruntime

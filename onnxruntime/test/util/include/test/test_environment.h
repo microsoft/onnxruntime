@@ -6,7 +6,7 @@
 #include "core/common/logging/logging.h"
 
 #ifdef HAVE_FRAMEWORK_LIB
-#include "core/framework/environment.h"
+#include "core/session/environment.h"
 #endif
 
 namespace onnxruntime {

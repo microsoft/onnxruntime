@@ -5,7 +5,7 @@
 
 #include "core/common/status.h"
 #include "core/graph/graph_viewer.h"
-#include "gsl/span"
+#include "gsl/gsl"
 
 #ifdef __has_attribute
 #define ORT_HAVE_ATTRIBUTE(x) __has_attribute(x)

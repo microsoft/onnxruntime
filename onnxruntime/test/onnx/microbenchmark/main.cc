@@ -6,7 +6,7 @@
 #include <core/common/logging/logging.h>
 #include <core/platform/env.h>
 #include <core/providers/cpu/cpu_execution_provider.h>
-#include <core/framework/environment.h>
+#include "core/session/environment.h"
 #include <core/common/logging/sinks/clog_sink.h>
 #include <core/graph/model.h>
 #include <core/graph/graph.h>

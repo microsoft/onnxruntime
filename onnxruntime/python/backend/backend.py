@@ -7,7 +7,7 @@ Implements ONNX's backend API.
 """
 from onnx.checker import check_model
 from onnx.backend.base import Backend
-from onnxruntime import InferenceSession, RunOptions, SessionOptions, get_device
+from onnxruntime import InferenceSession, SessionOptions, get_device
 from onnxruntime.backend.backend_rep import OnnxRuntimeBackendRep
 
 
@@ -67,6 +67,9 @@ class OnnxRuntimeBackend(Backend):
                 if hasattr(options, k):
                     setattr(options, k, v)
             inf = InferenceSession(model, options)
+            # backend API is primarily used for ONNX test/validation. As such, we should disable session.run() fallback
+            # which may hide test failures.
+            inf.disable_fallback()
             if device is not None and not cls.supports_device(device):
                 raise RuntimeError("Incompatible device expected '{0}', got '{1}'".format(device, get_device()))
             return cls.prepare(inf, device, **kwargs)
@@ -91,11 +94,7 @@ class OnnxRuntimeBackend(Backend):
         :return: predictions
         """
         rep = cls.prepare(model, device, **kwargs)
-        options = RunOptions()
-        for k, v in kwargs.items():
-            if hasattr(options, k):
-                setattr(options, k, v)
-        return rep.run(inputs, options)
+        return rep.run(inputs, **kwargs)
 
     @classmethod
     def run_node(cls, node, inputs, device=None, outputs_info=None, **kwargs):

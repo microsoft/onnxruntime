@@ -15,14 +15,37 @@
 
 namespace onnxruntime {
 class GraphViewer;
-class MLValueNameIdxMap;
+class OrtValueNameIdxMap;
 class OpKernelContextInternal;
+class Node;
 
 namespace scan {
 namespace detail {
 
 enum class ScanDirection { kForward = 0,
                            kReverse = 1 };
+
+/**
+Helper struct for keeping static information about the Scan node and its subgraph.
+Used to create the FeedsFetchesManager needed for efficient subgraph execution.
+*/
+struct Info {
+  Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs_in, bool is_v8);
+
+  const GraphViewer& subgraph;
+
+  int num_inputs;
+  int num_variadic_inputs;
+  int num_outputs;
+  int num_loop_state_variables;
+  int num_scan_inputs;
+  int num_scan_outputs;
+
+  int num_implicit_inputs;
+
+  std::vector<std::string> subgraph_input_names;
+  std::vector<std::string> subgraph_output_names;
+};
 
 /**
 Class to provide input/output OrtValue instances for a loop state variable.
@@ -96,14 +119,13 @@ class OutputIterator {
 
   // custom fetch allocator that can be used when the final shape is not concrete.
   // when the subgraph requests the allocation of the subgraph output, we forward the request to this instance,
-  // allocate the overall output (taking into account the sequence length dimension),
-  // and use a slicer to return the chunk for the subgraph output for this iteration.
-  Status AllocateSubgraphOutput(const TensorShape& shape, OrtValue& ort_value);
+  // and allocate the overall output (taking into account the sequence length dimension)
+  Status AllocateFinalOutput(const TensorShape& shape);
 
   // set the output for the current iteration to zeros. used for short sequence lengths
   void ZeroOutCurrent() {
     auto* tensor = (**this).GetMutable<Tensor>();
-    memset(tensor->MutableDataRaw(), 0, tensor->Size());
+    memset(tensor->MutableDataRaw(), 0, tensor->SizeInBytes());
   }
 
   const OrtValue& GetOutput() const {
@@ -138,8 +160,8 @@ class OutputIterator {
   bool is_concrete_shape_;
 
   // one or more slicers for writing to the output
-  std::vector<MLValueTensorSlicer<OrtValue>::Iterator> slicer_iterators_;
-  std::vector<MLValueTensorSlicer<OrtValue>::Iterator>::iterator cur_slicer_iterator_;
+  std::vector<OrtValueTensorSlicer<OrtValue>::Iterator> slicer_iterators_;
+  std::vector<OrtValueTensorSlicer<OrtValue>::Iterator>::iterator cur_slicer_iterator_;
 
   // if true allocate temporary_final_output_mlvalue_ with data_type_ using the temporary allocator
   // and point final_output_value_ at that.
@@ -160,19 +182,19 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
                       ScanDirection direction = ScanDirection::kForward,
                       bool temporary = false);
 
-Status CreateFeedsFetchesManager(const GraphViewer& subgraph, int num_variadic_inputs,
-                                 std::unordered_map<std::string, const OrtValue*>& implicit_inputs,
-                                 std::vector<std::string>& subgraph_output_names,
-                                 const MLValueNameIdxMap& ort_value_name_idx_map,
-                                 std::unique_ptr<FeedsFetchesManager>& ffm);
+Status CreateFeedsFetchesManager(const Node& node, const Info& info,
+                                 const SessionState& session_state,
+                                 const SessionState& subgraph_session_state,
+                                 bool is_v8,
+                                 std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager);
 
 Status IterateSequence(OpKernelContextInternal& context, const SessionState& session_state,
                        std::vector<LoopStateVariable>& loop_state_variables,
-                       std::vector<MLValueTensorSlicer<const OrtValue>::Iterator>& scan_input_stream_iterators,
+                       std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator>& scan_input_stream_iterators,
                        int64_t seq_length, int num_loop_state_variables, int num_variadic_inputs,
-                       int num_variadic_outputs, std::unordered_map<std::string, const OrtValue*>& implicit_inputs,
-                       std::vector<std::unique_ptr<OutputIterator>>& output_iterators, FeedsFetchesManager* ffm,
-                       const FeedsFetchesManager* cached_ffm);
+                       int num_variadic_outputs, const std::vector<const OrtValue*>& implicit_inputs,
+                       std::vector<std::unique_ptr<OutputIterator>>& output_iterators,
+                       const FeedsFetchesManager& ffm);
 
 OrtValue AllocateTensorInMLValue(MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator);
 

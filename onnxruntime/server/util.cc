@@ -12,18 +12,17 @@ namespace server {
 
 namespace protobufutil = google::protobuf::util;
 
-protobufutil::Status GenerateProtobufStatus(const onnxruntime::common::Status& onnx_status, const std::string& message) {
+protobufutil::Status GenerateProtobufStatus(const int& onnx_status, const std::string& message) {
   protobufutil::error::Code code = protobufutil::error::Code::UNKNOWN;
-  switch (onnx_status.Code()) {
+  switch (onnx_status) {
     case onnxruntime::common::StatusCode::OK:
     case onnxruntime::common::StatusCode::MODEL_LOADED:
       code = protobufutil::error::Code::OK;
       break;
+    case onnxruntime::common::StatusCode::FAIL:
     case onnxruntime::common::StatusCode::INVALID_ARGUMENT:
     case onnxruntime::common::StatusCode::INVALID_PROTOBUF:
     case onnxruntime::common::StatusCode::INVALID_GRAPH:
-    case onnxruntime::common::StatusCode::SHAPE_INFERENCE_NOT_REGISTERED:
-    case onnxruntime::common::StatusCode::REQUIREMENT_NOT_REGISTERED:
     case onnxruntime::common::StatusCode::NO_SUCHFILE:
     case onnxruntime::common::StatusCode::NO_MODEL:
       code = protobufutil::error::Code::INVALID_ARGUMENT;
@@ -31,8 +30,8 @@ protobufutil::Status GenerateProtobufStatus(const onnxruntime::common::Status& o
     case onnxruntime::common::StatusCode::NOT_IMPLEMENTED:
       code = protobufutil::error::Code::UNIMPLEMENTED;
       break;
-    case onnxruntime::common::StatusCode::FAIL:
     case onnxruntime::common::StatusCode::RUNTIME_EXCEPTION:
+    case onnxruntime::common::StatusCode::EP_FAIL:
       code = protobufutil::error::Code::INTERNAL;
       break;
     default:
@@ -40,7 +39,7 @@ protobufutil::Status GenerateProtobufStatus(const onnxruntime::common::Status& o
   }
 
   std::ostringstream oss;
-  oss << "ONNX Runtime Status Code: " << onnx_status.Code() << ". " << message;
+  oss << "ONNX Runtime Status Code: " << onnx_status << ". " << message;
   return protobufutil::Status(code, oss.str());
 }
 

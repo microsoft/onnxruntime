@@ -81,7 +81,7 @@ TEST(GatherOpTest, Gather_invalid_index_cpu) {
 
 #ifdef USE_CUDA
 TEST(GatherOpTest, Gather_invalid_index_gpu) {
-  OpTester test("Gather");
+  OpTester test("Gather", 7);  // no GPU Gather for opset 11 yet (change was to add negative axis support)
   // Invalid index 3. data[3] does not exist.
   test.AddAttribute<int64_t>("axis", 0LL);
   test.AddInput<float>("data", {3, 4},
@@ -186,7 +186,7 @@ TEST(GatherOpTest, Gather_axis1_indices2d_int32) {
                           {1, 0, 2, 1,
                            11, 10, 12, 11,
                            21, 20, 22, 21});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: Input batch size is inconsistent
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_uint32) {
@@ -254,7 +254,7 @@ TEST(GatherOpTest, Gather_axis1_indices2d_int8) {
                          {1, 0, 2, 1,
                           11, 10, 12, 11,
                           21, 20, 22, 21});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Assertion `regionRanges != nullptr' failed
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_string) {
@@ -305,5 +305,23 @@ TEST(GatherOpTest, Gather_perf) {
   test.AddOutput<int32_t>("output", {800, 1, 100}, output);
   test.Run();
 }
+
+TEST(GatherOpTest, Gather_axis1_neg_indices2d_int8) {
+  OpTester test("Gather", 11);
+  test.AddAttribute<int64_t>("axis", 1LL);
+  test.AddInput<int8_t>("data", {3, 3},
+                        {0, 1, 2,
+                         10, 11, 12,
+                         20, 21, 22});
+  test.AddInput<int32_t>("indices", {2, 2},
+                         {-2, -3,
+                          -1, -2});
+  test.AddOutput<int8_t>("output", {3, 2, 2},
+                         {1, 0, 2, 1,
+                          11, 10, 12, 11,
+                          21, 20, 22, 21});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Assertion `regionRanges != nullptr' failed
+}
+
 }  // namespace test
 }  // namespace onnxruntime

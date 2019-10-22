@@ -56,11 +56,10 @@ endif()
 
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${PYTHON_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR})
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${pybind11_INCLUDE_DIRS})
-onnxruntime_add_include_to_target(onnxruntime_pybind11_state gsl)
 if(APPLE)
   set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
 elseif(UNIX)
-  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script.lds -Xlinker --no-undefined -Xlinker --gc-sections")
+  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script.lds -Xlinker --gc-sections")
 else()
   set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${ONNXRUNTIME_ROOT}/python/pybind.def")
 endif()
@@ -72,6 +71,10 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_MKLDNN}
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NGRAPH}
+    ${PROVIDERS_OPENVINO}
+    ${PROVIDERS_NUPHAR}
+    ${PROVIDERS_NNAPI}
+    ${PROVIDERS_DML}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -83,12 +86,17 @@ set(onnxruntime_pybind11_state_libs
     onnxruntime_mlas
 )
 
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  list(APPEND onnxruntime_pybind11_state_libs onnxruntime_language_interop onnxruntime_pyop)
+endif()
+
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
     pybind11
 )
 
 add_dependencies(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_dependencies})
+
 if (MSVC)
   # if MSVC, pybind11 looks for release version of python lib (pybind11/detail/common.h undefs _DEBUG)
   target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs}
@@ -159,6 +167,9 @@ add_custom_command(
       ${REPO_ROOT}/ThirdPartyNotices.txt
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${REPO_ROOT}/docs/Privacy.md
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/LICENSE
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
   COMMAND ${CMAKE_COMMAND} -E copy
@@ -226,5 +237,28 @@ if (onnxruntime_USE_MKLML)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${MKLML_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB}
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+  )
+endif()
+
+if (onnxruntime_USE_NUPHAR)
+  file(GLOB onnxruntime_python_nuphar_python_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/scripts/*.*"
+  )
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/nuphar
+    COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_nuphar_python_srcs}
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/nuphar/
+  )
+endif()
+
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  include(onnxruntime_language_interop_ops.cmake)  
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+      $<TARGET_FILE:onnxruntime_pywrapper>
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()

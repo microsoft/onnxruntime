@@ -50,16 +50,34 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kNupharExecutionProvider) {
 #ifdef USE_NUPHAR
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, 0, ""));
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, /*allow_unaligned_buffers*/ 1, ""));
 #else
     ORT_THROW("Nuphar is not supported in this build\n");
 #endif
   } else if (provider_name == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options));
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0));
     ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
+#endif
+  } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
+#ifdef USE_OPENVINO
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_OpenVINO(session_options, "CPU"));
+#else
+    ORT_THROW("OpenVINO is not supported in this build\n");
+#endif
+  } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
+#ifdef USE_NNAPI
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options));
+#else
+    ORT_THROW("NNAPI is not supported in this build\n");
+#endif
+  } else if (provider_name == onnxruntime::kDmlExecutionProvider) {
+#ifdef USE_DML
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_DML(session_options, 0));
+#else
+    ORT_THROW("DirectML is not supported in this build\n");
 #endif
   } else if (!provider_name.empty() && provider_name != onnxruntime::kCpuExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");
@@ -70,16 +88,19 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   else
     session_options.DisableCpuMemArena();
   if (performance_test_config.run_config.enable_memory_pattern &&
-      performance_test_config.run_config.enable_sequential_execution)
+      performance_test_config.run_config.execution_mode == ExecutionMode::ORT_SEQUENTIAL)
     session_options.EnableMemPattern();
   else
     session_options.DisableMemPattern();
-  if (performance_test_config.run_config.enable_sequential_execution)
-    session_options.EnableSequentialExecution();
-  else
-    session_options.DisableSequentialExecution();
-  fprintf(stdout, "Setting thread pool size to %d\n", performance_test_config.run_config.session_thread_pool_size);
-  session_options.SetThreadPoolSize(performance_test_config.run_config.session_thread_pool_size);
+  session_options.SetExecutionMode(performance_test_config.run_config.execution_mode);
+  fprintf(stdout, "Setting intra_op_num_threads to %d\n", performance_test_config.run_config.intra_op_num_threads);
+  session_options.SetIntraOpNumThreads(performance_test_config.run_config.intra_op_num_threads);
+
+  if (performance_test_config.run_config.execution_mode == ExecutionMode::ORT_PARALLEL) {
+    fprintf(stdout, "Setting inter_op_num_threads to %d\n", performance_test_config.run_config.inter_op_num_threads);
+  }
+
+  session_options.SetInterOpNumThreads(performance_test_config.run_config.inter_op_num_threads);
   // Set optimization level.
   session_options.SetGraphOptimizationLevel(performance_test_config.run_config.optimization_level);
   if (!performance_test_config.run_config.profile_file.empty())
@@ -88,7 +109,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
   size_t output_count = session_.GetOutputCount();
   output_names_.resize(output_count);
-  Ort::Allocator a = Ort::Allocator::CreateDefault();
+  Ort::AllocatorWithDefaultOptions a;
   for (size_t i = 0; i != output_count; ++i) {
     char* output_name = session_.GetOutputName(i, a);
     assert(output_name != nullptr);

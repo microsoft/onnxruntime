@@ -10,7 +10,7 @@ namespace test {
 // Some of the tests can't run on TensorrtExecutionProvider because of unsupported data types or limits
 // in its parser: axis >=0 && axis < nbDims. Those Tests will fallback to other EPs
 
-TEST(MathOpTest, Concat1D_string) {
+TEST(ConcatOpTest, Concat1D_string) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{0});
 
@@ -21,7 +21,7 @@ TEST(MathOpTest, Concat1D_string) {
   test.Run();
 }
 
-TEST(MathOpTest, Concat1D_int32) {
+TEST(ConcatOpTest, Concat1D_int32) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{0});
 
@@ -32,7 +32,7 @@ TEST(MathOpTest, Concat1D_int32) {
   test.Run();
 }
 
-TEST(MathOpTest, Concat1D_int32_negative_axis) {
+TEST(ConcatOpTest, Concat1D_int32_negative_axis) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{-1});
 
@@ -43,7 +43,7 @@ TEST(MathOpTest, Concat1D_int32_negative_axis) {
   test.Run();
 }
 
-TEST(MathOpTest, Concat1D_1) {
+TEST(ConcatOpTest, Concat1D_1) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{0});
 
@@ -54,7 +54,7 @@ TEST(MathOpTest, Concat1D_1) {
   test.Run();
 }
 
-TEST(MathOpTest, Concat1D_2) {
+TEST(ConcatOpTest, Concat1D_2) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{0});
 
@@ -62,10 +62,10 @@ TEST(MathOpTest, Concat1D_2) {
   test.AddInput<float>("input2", {2}, {2.0f, 3.0f});
   test.AddInput<float>("input3", {0}, {});
   test.AddOutput<float>("concat_result", {3}, {1.0f, 2.0f, 3.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: no support for dynamic shape tensor
 }
 
-TEST(MathOpTest, Concat2D_1) {
+TEST(ConcatOpTest, Concat2D_1) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{0});
 
@@ -80,7 +80,7 @@ TEST(MathOpTest, Concat2D_1) {
   test.Run();
 }
 
-TEST(MathOpTest, Concat2D_2) {
+TEST(ConcatOpTest, Concat2D_2) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{1});
 
@@ -96,7 +96,7 @@ TEST(MathOpTest, Concat2D_2) {
   test.Run();
 }
 
-TEST(MathOpTest, Concat2D_3) {
+TEST(ConcatOpTest, Concat2D_3) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{1});
 
@@ -104,10 +104,10 @@ TEST(MathOpTest, Concat2D_3) {
   test.AddInput<float>("input2", {1, 0}, {});
   test.AddInput<float>("input3", {1, 0}, {});
   test.AddOutput<float>("concat_result", {1, 0}, {});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: no support for dynamic shape tensor
 }
 
-TEST(MathOpTest, Concat3D_1) {
+TEST(ConcatOpTest, Concat3D_1) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{0});
 
@@ -139,7 +139,7 @@ TEST(MathOpTest, Concat3D_1) {
   test.Run();
 }
 
-TEST(MathOpTest, Concat3D_1_negative_axis) {
+TEST(ConcatOpTest, Concat3D_1_negative_axis) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{-3});
 
@@ -171,7 +171,7 @@ TEST(MathOpTest, Concat3D_1_negative_axis) {
   test.Run();
 }
 
-TEST(MathOpTest, Concat3D_2) {
+TEST(ConcatOpTest, Concat3D_2) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{1});
 
@@ -203,7 +203,7 @@ TEST(MathOpTest, Concat3D_2) {
   test.Run();
 }
 
-TEST(MathOpTest, Concat3D_3) {
+TEST(ConcatOpTest, Concat3D_3) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{1});
 

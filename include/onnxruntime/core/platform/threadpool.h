@@ -7,12 +7,27 @@
 #include <functional>
 #include <memory>
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#else
+#pragma warning(push)
+#pragma warning(disable : 4267)
+#endif
+#include <unsupported/Eigen/CXX11/ThreadPool>
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#else
+#pragma warning(pop)
+#endif
+
 namespace onnxruntime {
 
 namespace concurrency {
 
 /**
  * Generic class for instantiating thread pools.
+ * Don't put any object of this type into a global variable in a Win32 DLL.
  */
 class ThreadPool {
  public:
@@ -43,14 +58,10 @@ class ThreadPool {
 
   int CurrentThreadId() const;
 
-  /*
-  Ensure that the pool has terminated and cleaned up all threads cleanly.
-  */
-  ~ThreadPool();
+  Eigen::ThreadPool& GetHandler() { return impl_; }
 
  private:
-  class Impl;
-  std::unique_ptr<Impl> impl_;
+  Eigen::ThreadPool impl_;
 };
 
 }  // namespace concurrency

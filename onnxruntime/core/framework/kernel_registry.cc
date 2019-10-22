@@ -62,10 +62,10 @@ void TraverseFormalParametersWithTypeProto(const Node& node,
 class TypeBindingResolver {
  public:
   TypeBindingResolver(const Node& node, bool use_lookup_map)
-      : node_{node},
-        type_binding_map_{} {
+      : node_(node),
+        type_binding_map_() {
     if (use_lookup_map) {
-      type_binding_map_ = std::make_unique<TypeBindingMap>();
+      type_binding_map_ = onnxruntime::make_unique<TypeBindingMap>();
       TraverseFormalParametersWithTypeProto(
           node_,
           [](const ONNX_NAMESPACE::OpSchema::FormalParameter&) -> bool { return true; },
@@ -115,32 +115,7 @@ class TypeBindingResolver {
 
 bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
                                      const KernelDef& kernel_def,
-                                     std::string& error_str,
-                                     onnxruntime::ProviderType exec_provider) {
-  // check if domain matches
-  if (node.Domain() != kernel_def.Domain()) {
-    std::ostringstream ostr;
-    ostr << "Op: " << node.OpType()
-         << " Domain mismatch: "
-         << " Expected: " << kernel_def.Domain()
-         << " Actual: " << node.Domain();
-    error_str = ostr.str();
-    return false;
-  }
-
-  // check if execution provider matches
-  const auto& node_provider = node.GetExecutionProviderType();
-  const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
-  if (expected_provider != kernel_def.Provider()) {
-    std::ostringstream ostr;
-    ostr << "Op: " << node.OpType()
-         << " Execution provider mismatch."
-         << " Expected: " << expected_provider
-         << " Actual: " << kernel_def.Provider();
-    error_str = ostr.str();
-    return false;
-  }
-
+                                     std::string& error_str) {
   // check if version matches
   int kernel_start_version;
   int kernel_end_version;
@@ -215,34 +190,35 @@ Status KernelRegistry::Register(KernelDefBuilder& kernel_builder,
 }
 
 Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
-  auto& op_name = create_info.kernel_def->OpName();
-
+  if (!create_info.kernel_def) {
+    return Status(ONNXRUNTIME, FAIL, "kernel def can't be NULL");
+  }
+  std::string key = GetMapKey(*create_info.kernel_def);
   // Check op version conflicts.
-  auto range = kernel_creator_fn_map_.equal_range(op_name);
+  auto range = kernel_creator_fn_map_.equal_range(key);
   for (auto i = range.first; i != range.second; ++i) {
     if (i->second.kernel_def &&
         i->second.status.IsOK() &&
         i->second.kernel_def->IsConflict(*create_info.kernel_def)) {
-      auto st = create_info.status =
-          Status(ONNXRUNTIME, FAIL,
-                 "Failed to add kernel for " + op_name +
-                     ": Conflicting with a registered kernel with op versions.");
-      // For invalid entries, we keep them in the map now. Must check for status
-      // when using the entries from the map.
-      kernel_creator_fn_map_.emplace(op_name, std::move(create_info));
-      return st;
+      return create_info.status =
+                 Status(ONNXRUNTIME, FAIL,
+                        "Failed to add kernel for " + key +
+                            ": Conflicting with a registered kernel with op versions.");
     }
   }
 
   // Register the kernel.
   // Ownership of the KernelDef is transferred to the map.
-  kernel_creator_fn_map_.emplace(op_name, std::move(create_info));
+  kernel_creator_fn_map_.emplace(key, std::move(create_info));
   return Status::OK();
 }
 
-Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node, const IExecutionProvider& execution_provider,
-                                       const std::unordered_map<int, OrtValue>& initialized_tensors,
-                                       const MLValueNameIdxMap& ort_value_name_idx_map, const FuncManager& funcs_mgr,
+Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node,
+                                       const IExecutionProvider& execution_provider,
+                                       const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
+                                       const OrtValueNameIdxMap& ort_value_name_idx_map,
+                                       const FuncManager& funcs_mgr,
+                                       const DataTransferManager& data_transfer_mgr,
                                        /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
   const KernelCreateInfo* kernel_create_info = TryFindKernel(node, execution_provider.Type());
 
@@ -250,8 +226,13 @@ Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node, const IExe
     return Status(ONNXRUNTIME, FAIL, "Failed to find kernel for " + node.OpType());
   }
 
-  OpKernelInfo kernel_info(node, *kernel_create_info->kernel_def, execution_provider, initialized_tensors,
-                           ort_value_name_idx_map, funcs_mgr);
+  OpKernelInfo kernel_info(node,
+                           *kernel_create_info->kernel_def,
+                           execution_provider,
+                           constant_initialized_tensors,
+                           ort_value_name_idx_map,
+                           funcs_mgr,
+                           data_transfer_mgr);
   op_kernel.reset(kernel_create_info->kernel_create_func(kernel_info));
   return Status::OK();
 }
@@ -270,8 +251,11 @@ static std::string ToString(const std::vector<std::string>& error_strs) {
 // otherwise, kernel_def.provider must equal to node.provider. exec_provider is ignored.
 const KernelCreateInfo* KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
                                                       onnxruntime::ProviderType exec_provider) const {
-  auto range = kernel_creator_fn_map_.equal_range(node.OpType());
-  std::vector<std::string> error_strs;
+  const auto& node_provider = node.GetExecutionProviderType();
+  const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
+
+  auto range = kernel_creator_fn_map_.equal_range(GetMapKey(node.OpType(), node.Domain(), expected_provider));
+  std::vector<std::string> verify_kernel_def_error_strs;
   for (auto i = range.first; i != range.second; ++i) {
     if (!i->second.status.IsOK()) {
       LOGS_DEFAULT(ERROR) << "Failed to create kernel for op: " << node.OpType()
@@ -279,15 +263,16 @@ const KernelCreateInfo* KernelRegistry::TryFindKernel(const onnxruntime::Node& n
       continue;
     }
     std::string error_str;
-    if (VerifyKernelDef(node, *i->second.kernel_def, error_str, exec_provider)) {
+    if (VerifyKernelDef(node, *i->second.kernel_def, error_str)) {
       return &i->second;
     }
-    error_strs.push_back(error_str);
+    verify_kernel_def_error_strs.push_back(error_str);
   }
-  std::string expected_provider =
-      (node.GetExecutionProviderType().empty() ? exec_provider : node.GetExecutionProviderType());
-  LOGS_DEFAULT(INFO) << node.OpType() << " kernel is not supported in " << expected_provider
-                     << " Encountered following errors: " << ToString(error_strs);
+
+  if (!verify_kernel_def_error_strs.empty()) {
+    LOGS_DEFAULT(INFO) << node.OpType() << " kernel is not supported in " << expected_provider
+                       << " Encountered following errors: (" << ToString(verify_kernel_def_error_strs) << ")";
+  }
   return nullptr;
 }
 

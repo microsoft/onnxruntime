@@ -7,7 +7,7 @@
 #include <boost/beast/http/status.hpp>
 #include <google/protobuf/stubs/status.h>
 
-#include "server/http/core/context.h"
+#include "http/core/context.h"
 
 namespace onnxruntime {
 namespace server {

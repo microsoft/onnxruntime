@@ -22,6 +22,11 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
+  return DoConvTranspose(context, false);
+}
+
+template <typename T>
+Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   const Tensor* X = context->Input<Tensor>(0);
@@ -35,7 +40,7 @@ Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
   auto w_data = reinterpret_cast<const CudaT*>(W->template Data<T>());
 
   size_t num_inputs = OpKernel::Node().InputDefs().size();
-  bool has_bias = (num_inputs == 3);
+  bool has_bias = dynamic_padding ? num_inputs == 4 : num_inputs == 3;
 
   CudaT* y_data = nullptr;
 
@@ -53,8 +58,8 @@ Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
         s_.cached_benchmark_results.clear();
       }
 
-      Prepare p;
-      ORT_RETURN_IF_ERROR(PrepareForCompute(context, has_bias, p));
+      ConvTransposeAttributes::Prepare p;
+      ORT_RETURN_IF_ERROR(conv_transpose_attrs_.PrepareForCompute(context, has_bias, p, dynamic_padding));
 
       const auto& y_dims = p.Y->Shape().GetDims();
       s_.y_dims = y_dims;
@@ -66,8 +71,10 @@ Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
         ORT_RETURN_IF_ERROR(s_.filter_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
 
       cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
-      ORT_RETURN_IF_ERROR(s_.conv_desc.Set(p.kernel_shape.size(), p.pads, p.strides, p.dilations, mode, CudnnTensor::GetDataType<CudaT>()));
-      CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(s_.conv_desc, gsl::narrow_cast<int>(group_)));
+      ORT_RETURN_IF_ERROR(s_.conv_desc.Set(p.kernel_shape.size(), p.pads, p.strides,
+                                           p.dilations, mode, CudnnTensor::GetDataType<CudaT>()));
+      CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(s_.conv_desc,
+                                                          gsl::narrow_cast<int>(conv_transpose_attrs_.group)));
 
       if (has_bias) {
         const auto& b_shape = p.B->Shape();
@@ -143,7 +150,7 @@ Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
           y_data));
 
   if (has_bias) {
-    const Tensor* B = context->Input<Tensor>(2);
+    const Tensor* B = dynamic_padding ? context->Input<Tensor>(3) : context->Input<Tensor>(2);
     auto b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
     CUDNN_RETURN_IF_ERROR(cudnnAddTensor(CudnnHandle(), &alpha, s_.b_tensor, b_data, &alpha, s_.y_tensor, y_data));
   }

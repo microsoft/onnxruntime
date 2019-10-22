@@ -70,6 +70,8 @@ with open("pipeline_vectorize.onnx", "wb") as f:
 # We load the model with ONNX Runtime and look at
 # its input and output.
 import onnxruntime as rt
+from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
+
 sess = rt.InferenceSession("pipeline_vectorize.onnx")
 
 import numpy
@@ -83,7 +85,7 @@ print("output name='{}' and shape={} and type={}".format(out.name, out.shape, ou
 
 try:
     pred_onx = sess.run([out.name], {inp.name: X_test_dict})[0]
-except RuntimeError as e:
+except (RuntimeError, InvalidArgument) as e:
     print(e)
 
 #############################

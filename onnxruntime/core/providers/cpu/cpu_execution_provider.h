@@ -28,35 +28,26 @@ class CPUExecutionProvider : public IExecutionProvider {
   explicit CPUExecutionProvider(const CPUExecutionProviderInfo& info)
       : IExecutionProvider{onnxruntime::kCpuExecutionProvider} {
     DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
-                                                [](int) { return std::make_unique<CPUAllocator>(); },
+                                                [](int) { return onnxruntime::make_unique<CPUAllocator>(); },
                                                 std::numeric_limits<size_t>::max()};
 #ifdef USE_JEMALLOC
     ORT_UNUSED_PARAMETER(info);
     //JEMalloc already has memory pool, so just use device allocator.
     InsertAllocator(
         std::shared_ptr<IArenaAllocator>(
-            std::make_unique<DummyArena>(device_info.factory(0))));
+            onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
 #else
     if (info.create_arena)
       InsertAllocator(CreateAllocator(device_info));
     else
       InsertAllocator(
           std::shared_ptr<IArenaAllocator>(
-              std::make_unique<DummyArena>(device_info.factory(0))));
+              onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
 #endif
   }
 
-  Status CopyTensor(const Tensor&, Tensor&) const override {
-    return Status(common::ONNXRUNTIME, common::FAIL, "Shouldn't reach here. CPUExecutionProvider doesn't support CopyTensor");
-  }
-
-  const void* GetExecutionHandle() const noexcept override {
-    // The CPU interface does not return anything interesting.
-    return nullptr;
-  }
-
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
-
+  std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
 
  private:
   std::vector<FuseRuleFn> fuse_rules_;

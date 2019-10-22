@@ -6,6 +6,7 @@
 #endif
 
 #include "core/session/inference_session.h"
+#include "core/session/ort_apis.h"
 #include "core/framework/customregistry.h"
 #include "core/framework/data_types.h"
 #include "core/framework/op_kernel_info.h"
@@ -15,60 +16,57 @@
 
 ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(const onnxruntime::DataTypeImpl* cpp_type);
 
-ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
   if (status.IsOK())
     return nullptr;
   return onnxruntime::ToOrtStatus(status);
 }
 
-ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out) {
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<int64_t>(name, out);
   if (status.IsOK())
     return nullptr;
   return onnxruntime::ToOrtStatus(status);
 }
 
-ORT_API(size_t, OrtKernelContext_GetInputCount, const OrtKernelContext* context) {
-  return reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->InputCount();
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetInputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out) {
+  *out = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->InputCount();
+  return nullptr;
 };
 
-ORT_API(size_t, OrtKernelContext_GetOutputCount, const OrtKernelContext* context) {
-  return reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->OutputCount();
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out) {
+  *out = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->OutputCount();
+  return nullptr;
 };
 
-ORT_API(const OrtValue*, OrtKernelContext_GetInput, const OrtKernelContext* context, _In_ size_t index) {
-  return reinterpret_cast<const OrtValue*>(reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->GetInputMLValue(index));
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetInput, _In_ const OrtKernelContext* context, _In_ size_t index, _Out_ const OrtValue** out) {
+  *out = reinterpret_cast<const OrtValue*>(reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->GetInputMLValue(index));
+  return nullptr;
 };
 
-ORT_API(OrtValue*, OrtKernelContext_GetOutput, OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count) {
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count, _Out_ OrtValue** out) {
   onnxruntime::TensorShape shape(dim_values, dim_count);
-  return reinterpret_cast<OrtValue*>(reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->OutputMLValue(index, shape));
+  *out = reinterpret_cast<OrtValue*>(reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->OutputMLValue(index, shape));
+  return nullptr;
 };
 
-constexpr OrtCustomOpApi g_custom_op_api = {
-    &OrtKernelInfoGetAttribute_float,
-    &OrtKernelInfoGetAttribute_int64,
-
-    &OrtGetTensorTypeAndShape,
-
-    &OrtGetTensorShapeElementCount,
-    &OrtGetTensorElementType,
-
-    &OrtGetDimensionsCount,
-    &OrtGetDimensions,
-    &OrtSetDimensions,
-    &OrtGetTensorMutableData,
-
-    &OrtReleaseTensorTypeAndShapeInfo,
-
-    &OrtKernelContext_GetInputCount,
-    &OrtKernelContext_GetInput,
-    &OrtKernelContext_GetOutputCount,
-    &OrtKernelContext_GetOutput,
-};
-
-const OrtCustomOpApi& GetCustomOpApi() { return g_custom_op_api; }
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ char* out, _Inout_ size_t* size) {
+  std::string value;
+  auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<std::string>(name, &value);
+  if (status.IsOK()) {
+    if (*size >= value.size() + 1) {
+      std::memcpy(out, value.data(), value.size());
+      out[value.size()] = '\0';
+      *size = value.size();
+      return nullptr;
+    } else {
+      *size = value.size() + 1;
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Result buffer is not large enough");
+    }
+  }
+  return onnxruntime::ToOrtStatus(status);
+}
 
 namespace onnxruntime {
 
@@ -76,7 +74,7 @@ struct CustomOpKernel : OpKernel {
   CustomOpKernel(const OpKernelInfo& info, OrtCustomOp& op) : OpKernel(info), op_(op) {
     if (op_.version != 1)
       throw std::invalid_argument("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
-    op_kernel_ = op_.CreateKernel(&op_, &g_custom_op_api, reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)));
+    op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version), reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)));
   }
 
   ~CustomOpKernel() override { op_.KernelDestroy(op_kernel_); }
@@ -130,8 +128,12 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
       KernelDefBuilder def_builder;
       def_builder.SetName(op->GetName(op))
           .SetDomain(domain->domain_)
-          .SinceVersion(1)
-          .Provider(onnxruntime::kCpuExecutionProvider);
+          .SinceVersion(1);
+      if (const char* provider_type = op->GetExecutionProviderType(op))
+        def_builder.Provider(provider_type);
+      else
+        def_builder.Provider(onnxruntime::kCpuExecutionProvider);
+
       KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new CustomOpKernel(info, *op); };
       KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
 
