@@ -16,7 +16,6 @@ static void RunTypedTest(
     const std::vector<int64_t>& output_dims,
     const std::vector<T>& output,
     std::string mode = "constant") {
-
   // ONNX domain opset-11
   OpTester test("Pad", 11);
   if (mode != "constant") test.AddAttribute("mode", mode);
@@ -47,14 +46,14 @@ static void RunTest(
 
   // ONNX domain opset-11
   RunTypedTest(input_dims,
-                           input,
-                           pads,
-                           (float) value,
-                           output_dims,
-                           output,
-                           mode);
+               input,
+               pads,
+               (float)value,
+               output_dims,
+               output,
+               mode);
 
-  #ifndef DISABLE_CONTRIB_OPS
+#ifndef DISABLE_CONTRIB_OPS
 
   // MSFT domain opset-1 (contrib op)
   OpTester test3("Pad", 1, kMSDomain);
@@ -66,7 +65,7 @@ static void RunTest(
   //TensorRT does not support pads as an input
   test3.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 
-  #endif
+#endif
 }
 
 // Some of the tests can't run on TensorrtExecutionProvider because only constant mode and value 0 of "Pad" node is supported.
@@ -86,11 +85,11 @@ TEST(TensorOpTest, Pad_Constant_1D_int) {
   int32_t value = 1234;
   std::vector<int32_t> Y = {1234, 1234, 1, 2, 1234, 1234, 3, 4, 1234, 1234, 5, 6};
   RunTypedTest({3, 2},
-          X,
-          {0, 2, 0, 0},
-          value,
-          {3, 4},
-          Y);
+               X,
+               {0, 2, 0, 0},
+               value,
+               {3, 4},
+               Y);
 }
 
 TEST(TensorOpTest, Pad_Constant_1D_long) {
@@ -98,11 +97,11 @@ TEST(TensorOpTest, Pad_Constant_1D_long) {
   int64_t value = 1234;
   std::vector<int64_t> Y = {1234, 1234, 1, 2, 1234, 1234, 3, 4, 1234, 1234, 5, 6};
   RunTypedTest({3, 2},
-          X,
-          {0, 2, 0, 0},
-          value,
-          {3, 4},
-          Y);
+               X,
+               {0, 2, 0, 0},
+               value,
+               {3, 4},
+               Y);
 }
 
 TEST(TensorOpTest, Pad_Constant_1D_double) {
@@ -110,11 +109,11 @@ TEST(TensorOpTest, Pad_Constant_1D_double) {
   double value = 0.;
   std::vector<double> Y = {0., 0., 1., 2., 0., 0., 3., 4., 0., 0., 5., 6.};
   RunTypedTest({3, 2},
-          X,
-          {0, 2, 0, 0},
-          value,
-          {3, 4},
-          Y);
+               X,
+               {0, 2, 0, 0},
+               value,
+               {3, 4},
+               Y);
 }
 
 TEST(TensorOpTest, Pad_Constant_1D) {
@@ -247,18 +246,18 @@ TEST(TensorOpTest, Pad_Constant_2D_int) {
                             12, 22, 32};
   int32_t value = 0;
   std::vector<int32_t> Y = {11, 11, 11, 21, 31, 31, 31,
-                                  11, 11, 11, 21, 31, 31, 31,
-                                  11, 11, 11, 21, 31, 31, 31,
-                                  12, 12, 12, 22, 32, 32, 32,
-                                  12, 12, 12, 22, 32, 32, 32,
-                                  12, 12, 12, 22, 32, 32, 32};
+                            11, 11, 11, 21, 31, 31, 31,
+                            11, 11, 11, 21, 31, 31, 31,
+                            12, 12, 12, 22, 32, 32, 32,
+                            12, 12, 12, 22, 32, 32, 32,
+                            12, 12, 12, 22, 32, 32, 32};
   RunTypedTest({2, 3},
-          X,
-          {2, 2, 2, 2},
-          value,
-          {6, 7},
-          Y,
-          "edge");
+               X,
+               {2, 2, 2, 2},
+               value,
+               {6, 7},
+               Y,
+               "edge");
 }
 
 TEST(TensorOpTest, Pad_Constant_2D_long) {
@@ -266,18 +265,18 @@ TEST(TensorOpTest, Pad_Constant_2D_long) {
                             12, 22, 32};
   int64_t value = 0;
   std::vector<int64_t> Y = {11, 11, 11, 21, 31, 31, 31,
-                                 11, 11, 11, 21, 31, 31, 31,
-                                 11, 11, 11, 21, 31, 31, 31,
-                                 12, 12, 12, 22, 32, 32, 32,
-                                 12, 12, 12, 22, 32, 32, 32,
-                                 12, 12, 12, 22, 32, 32, 32};
+                            11, 11, 11, 21, 31, 31, 31,
+                            11, 11, 11, 21, 31, 31, 31,
+                            12, 12, 12, 22, 32, 32, 32,
+                            12, 12, 12, 22, 32, 32, 32,
+                            12, 12, 12, 22, 32, 32, 32};
   RunTypedTest({2, 3},
-          X,
-          {2, 2, 2, 2},
-          value,
-          {6, 7},
-          Y,
-          "edge");
+               X,
+               {2, 2, 2, 2},
+               value,
+               {6, 7},
+               Y,
+               "edge");
 }
 
 TEST(TensorOpTest, Pad_Constant_2D_double) {
@@ -285,18 +284,18 @@ TEST(TensorOpTest, Pad_Constant_2D_double) {
                            12., 22., 32.};
   double value = 0.;
   std::vector<double> Y = {11., 11., 11., 21., 31., 31., 31.,
-                                 11., 11., 11., 21., 31., 31., 31.,
-                                 11., 11., 11., 21., 31., 31., 31.,
-                                 12., 12., 12., 22., 32., 32., 32.,
-                                 12., 12., 12., 22., 32., 32., 32.,
-                                 12., 12., 12., 22., 32., 32., 32.};
+                           11., 11., 11., 21., 31., 31., 31.,
+                           11., 11., 11., 21., 31., 31., 31.,
+                           12., 12., 12., 22., 32., 32., 32.,
+                           12., 12., 12., 22., 32., 32., 32.,
+                           12., 12., 12., 22., 32., 32., 32.};
   RunTypedTest({2, 3},
-          X,
-          {2, 2, 2, 2},
-          value,
-          {6, 7},
-          Y,
-          "edge");
+               X,
+               {2, 2, 2, 2},
+               value,
+               {6, 7},
+               Y,
+               "edge");
 }
 
 }  // namespace test

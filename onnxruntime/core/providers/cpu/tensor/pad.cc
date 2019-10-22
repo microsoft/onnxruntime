@@ -117,10 +117,10 @@ static void ReshapePads(const std::vector<int64_t>& src_pad, size_t src_dim_coun
 
 template <typename T1, typename T2>
 Status PadCpuImpl(OpKernelContext* ctx,
-                         const std::vector<int64_t>& pads,
-                         const std::vector<int64_t>& slices,
-                         const Mode& mode,
-                         T2 value) {
+                  const std::vector<int64_t>& pads,
+                  const std::vector<int64_t>& slices,
+                  const Mode& mode,
+                  T2 value) {
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   std::vector<int64_t> output_dims(input_tensor.Shape().GetDims());
   size_t data_rank = output_dims.size();
