@@ -1,0 +1,41 @@
+#-------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+#--------------------------------------------------------------------------
+
+FROM ubuntu:16.04 as build
+
+ARG PYTHON_VERSION=3.5
+ARG ONNXRUNTIME_REPO=https://github.com/zhijxu-MS/onnxruntime
+ARG ONNXRUNTIME_SERVER_BRANCH=master
+
+ENV DEBIAN_FRONTEND noninteractive
+
+RUN apt-get update && \
+    apt-get install -y sudo git bash
+
+ENV PATH="/opt/cmake/bin:${PATH}"
+RUN git clone --single-branch --branch ${ONNXRUNTIME_SERVER_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime
+RUN /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} && \
+    /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_deps.sh -p ${PYTHON_VERSION} && \
+    /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_server_deps.sh
+
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+WORKDIR /
+
+RUN mkdir -p /onnxruntime/build && \
+    pip3 install sympy packaging && \
+    python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --build_shared_lib --skip_submodule_sync \
+        --build_server \
+        --parallel --use_nuphar --use_mklml --use_tvm --use_llvm
+
+
+FROM ubuntu:16.04 AS final
+WORKDIR /onnxruntime/server/
+COPY --from=build /onnxruntime/build/Release/onnxruntime_server /onnxruntime/server/
+COPY --from=build /onnxruntime/build/Release/libonnxruntime.so.* /lib/
+COPY --from=build /onnxruntime/build/Release/mklml/src/project_mklml/lib/*.so* /lib/
+COPY --from=build /onnxruntime/build/Release/external/tvm/*.so* /lib/
+ENTRYPOINT ["/onnxruntime/server/onnxruntime_server"]
+
