@@ -94,9 +94,6 @@ struct Base {
   }
 
   T* p_{};
-
-  template <typename>
-  friend struct Unowned;
 };
 
 template <typename T>
