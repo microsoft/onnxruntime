@@ -20,6 +20,7 @@ namespace contrib {
 // once Keras Mask RCNN is shipped with all ONNX domain ops
 
 // Currently this kernel is required to support Keras Mask-RCNN
+// only float type is supported
 ONNX_OPERATOR_KERNEL_EX(Pad,
                         kMSDomain,
                         1,
@@ -31,6 +32,7 @@ ONNX_OPERATOR_KERNEL_EX(Pad,
 
 #endif
 
+// only float type is supported for opset-10
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Pad,
     2, 10,
@@ -41,10 +43,29 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
 // 'pads' and 'value' (attributes previously) became inputs in this version
 // The core logic remains the same
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(Pad, 11, float, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), Pad<float>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(Pad, 11, double, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()), Pad<double>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(Pad, 11, int32_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()), Pad<int32_t>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(Pad, 11, int64_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()), Pad<int64_t>);
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Pad,
+    11,
+    float,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), Pad<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Pad,
+    11,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()), Pad<double>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Pad,
+    11,
+    int32_t,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()), Pad<int32_t>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Pad,
+    11,
+    int64_t,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()), Pad<int64_t>);
 
 // This is the general padding method to n-dimensionally do edge or reflection padding (based on the inputDelta values)
 template <typename T>
@@ -319,6 +340,8 @@ Status Pad<T>::Compute(OpKernelContext* ctx) const {
     return PadCpuImpl<T, T>(ctx, pads, slices, mode_, value);
   } else {
     // kOnnxDomain Pad opset < 11
+    // In the earlier opset versions of Pad, the type for 'value' attribute was always float,
+    // irrespective of the data type of the actual input to be padded
     return PadCpuImpl<T, float>(ctx, pads_, slices_, mode_, value_);
   }
 }
