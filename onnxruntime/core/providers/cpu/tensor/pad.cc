@@ -104,6 +104,50 @@ static void FlattenInnerShape(const std::vector<int64_t>& input_dims, const std:
   reshaped_dims[inner_axis] = inner_size;
 }
 
+static Status PadEmptyInput(OpKernelContext* ctx,
+                            const Mode& mode,
+                            const TensorShape& input_shape,
+                            std::vector<int64_t>& output_dims,
+                            float value) {
+  switch (mode) {
+    case Mode::Constant: {
+      auto& output_tensor = *ctx->Output(0, output_dims);
+      auto* output = output_tensor.template MutableData<float>();
+      std::fill_n(output, output_tensor.Shape().Size(), value);
+      break;
+    }
+    case Mode::Edge: {  // we need to override the default logic and set the output dim to 0 where the input dim is zero.
+      // this is to match numpy behavior.
+      for (size_t i = 0, end = input_shape.NumDimensions(); i < end; ++i) {
+        if (input_shape[i] == 0)
+          output_dims[i] = 0;
+      }
+
+      // create output. it will be empty but have a valid shape
+      ORT_IGNORE_RETURN_VALUE(ctx->Output(0, output_dims));
+      break;
+    }
+    case Mode::Reflect: {
+      // match numpy behavior of failing if mode is 'reflect' and there's an attempt to pad a dimension with value of 0
+      for (size_t i = 0, end = input_shape.NumDimensions(); i < end; ++i) {
+        if (input_shape[i] == 0 && output_dims[i] > 0) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:",
+                                   input_shape);
+        }
+      }
+
+      // create output. it will be empty but have a valid shape
+      ORT_IGNORE_RETURN_VALUE(ctx->Output(0, output_dims));
+      break;
+    }
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected mode of ", static_cast<int>(mode));
+  }
+
+  return Status::OK();
+}
+
 static void ReshapePads(const std::vector<int64_t>& src_pad, size_t src_dim_count, size_t new_dim_count,
                         size_t inner_no_pad_size, std::vector<int64_t>& reshaped_pad) {
   size_t inner_axis = new_dim_count - 1;
@@ -122,7 +166,8 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
                          const Mode& mode,
                          float value) {
   const auto& input_tensor = *ctx->Input<Tensor>(0);
-  std::vector<int64_t> output_dims(input_tensor.Shape().GetDims());
+  const auto& orig_input_shape = input_tensor.Shape();
+  std::vector<int64_t> output_dims(orig_input_shape.GetDims());
   size_t data_rank = output_dims.size();
 
   // make copy of raw_pads as it may be mutated below
@@ -157,12 +202,18 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
   for (size_t i = 0; i < data_rank; i++) {
     output_dims[i] += pads[i] + pads[i + data_rank] + slices[i] + slices[i + data_rank];
   }
-  TensorShape output_shape(output_dims);
+
+  // special case an input with one or more dim values of 0. edge case that is easier to handle
+  // separately than to complicate all the code for normal usage.
+  if (orig_input_shape.Size() == 0) {
+    return PadEmptyInput(ctx, mode, orig_input_shape, output_dims, value);
+  }
 
   TensorShape input_shape(reshaped_input_dims);
   SliceIterator<float> input(input_tensor, input_shape, input_starts, input_extents, {});
 
   // output_shape need to keep original.
+  TensorShape output_shape(output_dims);
   auto& output_tensor = *ctx->Output(0, output_shape);
   auto* output = output_tensor.template MutableData<float>();
 
@@ -177,6 +228,7 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
 
   switch (mode) {
     case Mode::Constant:
+
       // Loop over the output tensor, writing out padding between the blocks of copied data
       // On loop entry, 'pad' is already set to the first continuous block of padding, and
       // after every pass through the inner loop it gets set to the next continuous pad size.

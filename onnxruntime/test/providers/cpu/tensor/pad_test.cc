@@ -14,7 +14,9 @@ static void RunTest(
     float value,
     const std::vector<int64_t>& output_dims,
     const std::vector<float>& output,
-    std::string mode = "constant") {
+    std::string mode = "constant",
+    OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
+    const std::string& error_msg = "") {
   // ONNX domain opset-10
   OpTester test1("Pad", 10);
   test1.AddInput<float>("data", input_dims, input);
@@ -22,7 +24,7 @@ static void RunTest(
   test1.AddAttribute("pads", pads);
   test1.AddAttribute("value", value);
   test1.AddOutput<float>("output", output_dims, output);
-  test1.Run();
+  test1.Run(expect, error_msg);
 
   // ONNX domain opset-11
   OpTester test2("Pad", 11);
@@ -32,10 +34,10 @@ static void RunTest(
   test2.AddInput<float>("value", {1}, {value});
   test2.AddOutput<float>("output", output_dims, output);
   // NGraph and TensorRT do not yet support opset-11 and builds break on this test, hence exclude the EP
-  test2.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+  test2.Run(expect, error_msg, {kNGraphExecutionProvider, kTensorrtExecutionProvider});
 
-  #ifndef DISABLE_CONTRIB_OPS
-  
+#ifndef DISABLE_CONTRIB_OPS
+
   // MSFT domain opset-1 (contrib op)
   OpTester test3("Pad", 1, kMSDomain);
   if (mode != "constant") test3.AddAttribute("mode", mode);
@@ -44,9 +46,9 @@ static void RunTest(
   test3.AddInput<float>("value", {1}, {value});
   test3.AddOutput<float>("output", output_dims, output);
   //TensorRT does not support pads as an input
-  test3.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test3.Run(expect, error_msg, {kTensorrtExecutionProvider});
 
-  #endif
+#endif
 }
 
 // Some of the tests can't run on TensorrtExecutionProvider because only constant mode and value 0 of "Pad" node is supported.
@@ -184,6 +186,114 @@ TEST(TensorOpTest, Pad_Reflect_2D) {
            32.0f, 22.0f, 12.0f, 22.0f, 32.0f, 22.0f, 12.0f,
            31.0f, 21.0f, 11.0f, 21.0f, 31.0f, 21.0f, 11.0f},
           "reflect");
+}
+
+/*
+Example numpy for testing behavior
+
+import numpy as np
+
+a = np.zeros((2, 0))
+
+b = np.pad(a, 1, 'constant')
+print('constant')
+print(b)
+print(b.shape)
+
+c = np.pad(a, ((1,1),(0,0)), 'reflect')  # allowed if we don't pad the dim with '0'. error otherwise
+print('reflect')
+print(c)
+print(c.shape)
+
+d = np.pad(a, 1, 'edge')
+print('edge')
+print(d)
+print(d.shape)
+
+Output:
+
+constant
+[[0. 0.]
+ [0. 0.]
+ [0. 0.]
+ [0. 0.]]
+(4, 2)
+reflect
+[]
+(4, 0)
+edge
+[]
+(4, 0)
+*/
+
+// test handling of input with a 0 for a dimension
+TEST(TensorOpTest, Pad_Constant_EmptyInput) {
+  RunTest({0},  // 1D
+          {},
+          {1, 1},
+          0.1f,
+          {2},
+          {0.1f, 0.1f});
+
+  RunTest({2, 0},  // 2D
+          {},
+          {1, 1, 1, 1},
+          0.1f,
+          {4, 2},
+          {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f});
+
+  RunTest({2, 0, 2},  // 3D
+          {},
+          {0, 1, 0, 0, 1, 0},
+          0.1f,
+          {2, 2, 2},
+          {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f});
+}
+
+TEST(TensorOpTest, Pad_Edge_EmptyInput) {
+  RunTest({0},  // 1D
+          {},
+          {1, 1},
+          0.1f,
+          {0},
+          {},
+          "edge");
+
+  RunTest({2, 0},  // 2D
+          {},
+          {1, 1, 1, 1},  // ignore pad for dims with value of 0 as there's no edge value to pad with
+          0.1f,
+          {4, 0},
+          {},
+          "edge");
+
+  RunTest({2, 2, 0},  // 3D
+          {},
+          {0, 1, 1, 0, 1, 1},
+          0.1f,
+          {2, 4, 0},
+          {},
+          "edge");
+}
+
+TEST(TensorOpTest, Pad_Reflect_EmptyInput) {
+  RunTest({2, 0},  // 2D
+          {},
+          {1, 0, 1, 0},  // allowed if it doesn't pad the empty dim
+          0.1f,
+          {4, 0},
+          {},
+          "reflect");
+
+  RunTest({0, 2, 1},  // 3D
+          {},
+          {1, 1, 1, 1, 1, 1},  // not allowed if it pads the empty dim
+          0.1f,
+          {0, 4, 2},
+          {},
+          "reflect",
+          OpTester::ExpectResult::kExpectFailure,
+          "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:{0,2,1}");
 }
 
 }  // namespace test
