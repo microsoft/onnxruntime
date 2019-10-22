@@ -18,8 +18,6 @@
 #include "executor.h"
 #include "util.h"
 
-const OrtApi* Ort::g_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-
 namespace onnxruntime {
 namespace server {
 

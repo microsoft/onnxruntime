@@ -25,8 +25,6 @@
 
 namespace Ort {
 
-extern const OrtApi* g_api;
-
 using std::nullptr_t;
 
 // All C++ methods that can fail will throw an exception of this type
@@ -41,9 +39,19 @@ struct Exception : std::exception {
   OrtErrorCode code_;
 };
 
+template <typename T>
+struct Global {
+  static const OrtApi& api_;
+};
+
+template <typename T>
+const OrtApi& Global<T>::api_ = *OrtGetApiBase()->GetApi(ORT_API_VERSION);
+
+inline const OrtApi& GetApi() { return Global<void>::api_; }
+
 // This Macro is to make it easy to generate overloaded methods for all of the various OrtRelease* functions for every Ort* type
 #define ORT_DEFINE_RELEASE(NAME) \
-  inline void OrtRelease(Ort##NAME* ptr) { g_api->Release##NAME(ptr); }
+  inline void OrtRelease(Ort##NAME* ptr) { Global<void>::api_.Release##NAME(ptr); }
 
 ORT_DEFINE_RELEASE(MemoryInfo);
 ORT_DEFINE_RELEASE(CustomOpDomain);
