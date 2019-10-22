@@ -278,7 +278,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
    *                 node_4 (NoOp)
    *                     |
    *                  SinkNode
-   */ 
+   */
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
 
@@ -455,7 +455,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
    *                  d (Split)
    *                /   \
    *              1  ..  10
-   */ 
+   */
   TypeProto tensor_int32;
   tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
   tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
@@ -906,6 +906,67 @@ TEST(NameResolutionTest, DuplicateName) {
   EXPECT_FALSE(status.IsOK());
   bool duplicate_error_found = status.ErrorMessage().find("Duplicate") != std::string::npos;
   EXPECT_TRUE(duplicate_error_found);
+}
+
+TEST(GraphUpdateTest, ReplaceInitializedTensor) {
+  Model model{"GraphUpdateTest"};
+  auto& graph = model.MainGraph();
+  const std::string initializer_name = "initializer";
+
+  ONNX_NAMESPACE::TensorProto original{};
+  original.set_data_type(TensorProto_DataType_INT32);
+  original.add_dims(2);
+  original.add_int32_data(1);
+  original.add_int32_data(2);
+  original.set_name(initializer_name);
+
+  graph.AddInitializedTensor(original);
+
+  Status status;
+
+  {
+    ONNX_NAMESPACE::TensorProto bad_name = original;
+    bad_name.set_name("invalid");
+
+    status = graph.ReplaceInitializedTensor(bad_name);
+    ASSERT_FALSE(status.IsOK());
+  }
+
+  {
+    ONNX_NAMESPACE::TensorProto bad_type = original;
+    bad_type.set_data_type(TensorProto_DataType_FLOAT16);
+
+    status = graph.ReplaceInitializedTensor(bad_type);
+    ASSERT_FALSE(status.IsOK());
+  }
+
+  {
+    ONNX_NAMESPACE::TensorProto bad_dims = original;
+    bad_dims.clear_dims();
+    bad_dims.add_dims(2);
+    bad_dims.add_dims(1);
+
+    status = graph.ReplaceInitializedTensor(bad_dims);
+    ASSERT_FALSE(status.IsOK());
+  }
+
+  {
+    ONNX_NAMESPACE::TensorProto valid_replacement = original;
+    valid_replacement.clear_int32_data();
+    valid_replacement.add_int32_data(3);
+    valid_replacement.add_int32_data(4);
+
+    status = graph.ReplaceInitializedTensor(valid_replacement);
+    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+    const ONNX_NAMESPACE::TensorProto* result;
+    ASSERT_TRUE(graph.GetInitializedTensor(initializer_name, result));
+
+    ASSERT_EQ(valid_replacement.int32_data_size(), result->int32_data_size());
+    for (int i = 0; i < valid_replacement.int32_data_size(); ++i) {
+      ASSERT_EQ(valid_replacement.int32_data(i), result->int32_data(i));
+    }
+  }
 }
 }  // namespace test
 }  // namespace onnxruntime
