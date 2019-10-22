@@ -58,21 +58,39 @@ jobs:
      zip -r win10-arm.zip runtimes
      copy *.zip $(Build.ArtifactStagingDirectory)
 
-- template: ../../templates/linux-ci.yml
-  parameters:
-    AgentPool : $(AgentPoolLinux)
-    JobName: 'Linux_CI_Dev'
-    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--disable_contrib_ops"'
-    DoNugetPack : 'true'
-    ArtifactName: 'drop-linux'
-    NuPackScript: |
-     set -e -x
-     mkdir $(Build.BinariesDirectory)/linux-x64
-     cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x64
-     cd $(Build.BinariesDirectory)
-     zip -r linux-x64.zip linux-x64
-     cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
-     ls -al $(Build.ArtifactStagingDirectory)
+- job: 'Linux_CI_Dev'
+  pool: $(AgentPoolLinux)
+  steps:    
+    - template: ../../templates/set-version-number-variables-step.yml
+    - template: ../../templates/linux-set-variables-and-download.yml
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker build -t onnxruntime-centos6 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos6 .
+        workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --enable_onnx_tests --disable_contrib_ops
+        workingDirectory: $(Build.SourcesDirectory)
+    - script: |
+       set -e -x
+       mkdir $(Build.BinariesDirectory)/linux-x64
+       cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x64
+       cd $(Build.BinariesDirectory)
+       zip -r linux-x64.zip linux-x64
+       cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
+       ls -al $(Build.ArtifactStagingDirectory)
+      displayName: 'Create Artifacts'
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifactName: 'drop-linux'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: succeeded()
+    - template: ../../templates/clean-agent-build-directory-step.yml
 
 - template: ../../templates/mac-ci.yml
   parameters:
