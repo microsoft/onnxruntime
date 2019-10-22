@@ -441,6 +441,36 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest) {
   test.Run();
 }
 
+TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_exclude_outside) {
+  OpTester test("Resize", 11);
+  std::vector<float> roi{};
+  std::vector<float> scales{0.8f, 0.8f};
+  std::vector<int64_t> sizes{};
+
+  test.AddAttribute("mode", "cubic");
+  test.AddAttribute("exclude_outside", static_cast<int64_t>(1));
+  test.AddAttribute("cubic_coeff_a", -0.5f);
+
+  const int64_t H = 4, W = 4;
+
+  std::vector<float> X = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f,
+      9.0f, 10.0f, 11.0f, 12.0f,
+      13.0f, 14.0f, 15.0f, 16.0f};
+
+  test.AddInput<float>("X", {H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {2}, scales);
+
+  std::vector<float> Y = {1.36813f, 2.6695f, 4.01334f,
+                          6.57363f, 7.875f, 9.21884f,
+                          11.949f, 13.2503f, 14.5942f};
+
+  test.AddOutput<float>("Y", {(int64_t)(H * scales[0]), (int64_t)(W * scales[1])}, Y);
+  test.Run();
+}
+
 TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_coeff) {
   OpTester test("Resize", 11);
   std::vector<float> scales{1.0f, 1.0f, 0.8f, 0.8f};

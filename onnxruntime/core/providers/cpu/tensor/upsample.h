@@ -79,7 +79,7 @@ class UpsampleBase {
       const Tensor* scale;
       bool get_scale = info.TryGetConstantInput(scales_input_idx_, &scale);
 
-      if (get_scale) {
+      if (get_scale&& scale->Shape().Size() > 0) {
         ParseScalesData(scale, scales_);
         scales_cached_ = true;
       }
@@ -214,7 +214,7 @@ class UpsampleBase {
       }
     }
 
-    if (UpsampleMode::LINEAR == mode) {
+    if (UpsampleMode::LINEAR == mode || UpsampleMode::CUBIC == mode) {
       ORT_ENFORCE(scales.size() == 2 || (scales.size() == 4 && scales[0] == 1 && scales[1] == 1),
                   "'Linear' mode only support 2-D inputs ('Bilinear') or 4-D inputs "
                   "with the corresponding outermost 2 scale values being 1 in the ",
