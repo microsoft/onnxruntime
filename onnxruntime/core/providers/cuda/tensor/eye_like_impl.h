@@ -12,10 +12,10 @@ namespace cuda {
 
 template <typename T>
 void EyeLikeImpl(
-    const int64_t k,
-    const fast_divmod& fdm_x,
-    T* output_data,
-    size_t count
+    size_t offset,                  // offset of first element in diagnal
+    size_t stripe,                  // stripe, here it's width + 1
+    T* output_data,                 // output buffer
+    size_t diag_count               // total number of elements in diagnal
 );
 
 }  // namespace cuda

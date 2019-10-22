@@ -12,40 +12,35 @@ namespace cuda {
 
 template <typename T>
 __global__ void _EyeLikeKernel(
-    const int64_t k,
-    const fast_divmod fdm_x,
+    size_t offset,
+    size_t stripe,
     T* output_data,
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  int x, y;
-  fdm_x.divmod(id, x, y);
-  T value = static_cast<T>(0);
 
-  if (x + k == y)
-    value = static_cast<T>(1);
-
-  output_data[id] = value;
+  // offset is the first elements, stripe is width + 1.
+  output_data[offset + id * stripe] = static_cast<T>(1);
 }
 
 template <typename T>
 void EyeLikeImpl(
-    const int64_t k,
-    const fast_divmod& fdm_x,
+    size_t offset,
+    size_t stripe,
     T* output_data,
-    size_t count) {
+    size_t diag_count) {
   constexpr int block_size = 256;
-  int blocksPerGrid = (int)(ceil(static_cast<float>(count) / block_size));
-  CUDA_LONG N = static_cast<CUDA_LONG>(count);
+  int blocksPerGrid = (int)(ceil(static_cast<float>(diag_count) / block_size));
+  CUDA_LONG N = static_cast<CUDA_LONG>(diag_count);
 
-  _EyeLikeKernel<<<blocksPerGrid, block_size, 0>>>(k, fdm_x, output_data, N);
+  _EyeLikeKernel<<<blocksPerGrid, block_size, 0>>>(offset, stripe, output_data, N);
 }
 
 #define SPECIALIZED_IMPL(T)                                          \
   template void EyeLikeImpl<T>(                                      \
-    const int64_t k,                                                 \
-    const fast_divmod& fdm_x,                                        \
+    size_t offset,                                                   \
+    size_t stripe,                                                   \
     T* output_data,                                                  \
-    size_t count);
+    size_t diag_count);
 
 SPECIALIZED_IMPL(int32_t)
 SPECIALIZED_IMPL(int64_t)
