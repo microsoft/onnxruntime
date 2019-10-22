@@ -136,7 +136,7 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
   // Reshape padding
   size_t new_dims_count = reshaped_input_dims.size();
   size_t inner_axis = new_dims_count - 1;
-  size_t inner_no_pad_size = reshaped_input_dims[inner_axis] / output_dims[inner_axis];
+  size_t inner_no_pad_size = output_dims[inner_axis] > 0 ? reshaped_input_dims[inner_axis] / output_dims[inner_axis] : 0;
   std::vector<int64_t> reshaped_pad(2 * new_dims_count), reshaped_slice(2 * new_dims_count);
   ReshapePads(pads, data_rank, new_dims_count, inner_no_pad_size, reshaped_pad);
   ReshapePads(slices, data_rank, new_dims_count, inner_no_pad_size, reshaped_slice);

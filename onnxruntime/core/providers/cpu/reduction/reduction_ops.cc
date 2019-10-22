@@ -65,14 +65,13 @@ namespace onnxruntime {
       x<int64_t>);
 
 #define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(x, startVer, endVer)   \
-  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                     \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                           \
       x,                                                                              \
       startVer,                                                                       \
       endVer,                                                                         \
       int64_t,                                                                        \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()), \
       x<int64_t>);
-
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL1, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceL1, 11);
@@ -120,7 +119,7 @@ REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMin, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 11);
 
 // When all reduce axises located at the tail of the dims, quite general cases, transpose and extra
-// copy could be skiped to improve performance, if required by check_no_transpose = true;
+// copy could be skipped to improve performance, if required by check_no_transpose = true;
 // return value: true means transposedInputData is not created/copied, input tensor data could
 //               be direct use as row major matrix [block_size, blocks], where blocks is the
 //               size of each reduce.
@@ -212,6 +211,11 @@ bool PrepareForReduce(OpKernelContext* ctx,
   *reducedTensor = ctx->Output(0, reduced_dims);
   block_size = input.Shape().Size() / first_dim;
   blocks = first_dim;
+
+  // edge case. one or more dims with value of 0
+  if (input.Shape().Size() == 0) {
+    return true;
+  }
 
   if (!need_copy && check_no_transpose) {
     return true;
