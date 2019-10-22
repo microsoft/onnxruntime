@@ -106,6 +106,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_DISABLE_ALL;
   bool user_graph_optimization_level_set = false;
+  int verbosity_option_count = 0;
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
@@ -116,7 +117,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           enable_cpu_mem_arena = false;
           break;
         case 'v':
-          logging_level = ORT_LOGGING_LEVEL_VERBOSE;
+          verbosity_option_count += 1;
           break;
         case 'c':
           concurrent_session_runs = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
@@ -217,6 +218,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       }
     }
   }
+
+  // set log level based on number of verbosity options
+  if (verbosity_option_count == 1) {
+    logging_level = ORT_LOGGING_LEVEL_INFO;
+  } else if (verbosity_option_count > 1) {
+    logging_level = ORT_LOGGING_LEVEL_VERBOSE;
+  }
+
   if (concurrent_session_runs > 1 && repeat_count > 1) {
     fprintf(stderr, "when you use '-r [repeat]', please set '-c' to 1\n");
     usage();
