@@ -41,7 +41,7 @@ class DataSetBuffer {
     std::unique_lock<std::mutex> lk(mutex_);
     data_sets_[index] = data_set;
     lk.unlock();
-    cv_.notify_one();
+    cv_.notify_all();
   }
 
   bool Remove(size_t index) {
@@ -51,6 +51,7 @@ class DataSetBuffer {
     }
 
     data_sets_[index].reset();
+    data_sets_.erase(index);
     return true;
   }
 
@@ -89,8 +90,8 @@ class DataLoader : public IDataLoader {
   DataLoader(const MapStringToString& input_name_map,
              const PATH_STRING_TYPE& dir_path,
              size_t max_num_files_preload = 2,
-             size_t shard_index = 0,
-             size_t total_shard = 1);
+             size_t world_rank = 0,
+             size_t world_size = 1);
 
   common::Status InitialPreLoadAsync();
 

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/logging/logging.h"
 #include "core/platform/env.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "test/training/runner/data_loader.h"
@@ -37,8 +38,8 @@ vector<PATH_STRING_TYPE> GetAllDataFiles(const PATH_STRING_TYPE& dir_path) {
 DataLoader::DataLoader(const MapStringToString& input_name_map,
                        const PATH_STRING_TYPE& dir_path,
                        size_t max_num_files_preload,
-                       size_t shard_index,
-                       size_t total_shard)
+                       size_t world_rank,
+                       size_t world_size)
     : input_name_map_(input_name_map),
       max_num_files_preload_(max_num_files_preload) {
   input_tensor_names_.reserve(input_name_map.size());
@@ -52,14 +53,14 @@ DataLoader::DataLoader(const MapStringToString& input_name_map,
   data_files_ = GetAllDataFiles(dir_path);
   vector<PATH_STRING_TYPE> partial_training_files;
   // If only need to load partial data for data-parallelism training
-  if (total_shard > 1) {
-    if (shard_index >= total_shard) {
-      ORT_THROW("shard_index must be 0~", total_shard - 1);
+  if (world_size > 1) {
+    if (world_rank >= world_size) {
+      ORT_THROW("world_rank must be 0~", world_size - 1);
     }
 
     int count = 0;
     for (const auto& file : data_files_) {
-      if ((count++ % total_shard) == shard_index) {
+      if ((count++ % world_size) == world_rank) {
         partial_training_files.push_back(file);
       }
     }
@@ -71,7 +72,7 @@ DataLoader::DataLoader(const MapStringToString& input_name_map,
 }
 
 Status DataLoader::InitialPreLoadAsync() {
-  for (size_t i = 0; i < max_num_files_preload_; ++i) {
+  for (size_t i = 0; i < std::min(max_num_files_preload_, NumShards()); ++i) {
     LoadAndRemoveInternalAsync(i, false, 0);
   }
   return Status::OK();
@@ -90,9 +91,14 @@ std::shared_ptr<DataSet> DataLoader::MoveToNextDataSet() {
 common::Status DataLoader::LoadAndRemoveInternalAsync(size_t index_to_load, bool need_remove, size_t index_to_remove) {
   data_loader_thread_pool_->Schedule([this, index_to_load, need_remove, index_to_remove]() {
     std::shared_ptr<DataSet> data_set = std::make_shared<DataSet>(input_tensor_names_);
+    if (index_to_load > data_files_.size() - 1) {
+      LOGS_DEFAULT(WARNING) << "Value of index_to_load is not in valid range";
+      return;
+    }
     Status s = LoadFile(data_files_[index_to_load], data_set);
     if (!s.IsOK()) {
-      ORT_THROW("Error Loading file ", data_files_[index_to_load].c_str());
+      LOGS_DEFAULT(WARNING) << "Fail to load file of index " << index_to_load;
+      buffer_.Set(index_to_load, nullptr);
     } else {
       buffer_.Set(index_to_load, data_set);
     }

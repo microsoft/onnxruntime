@@ -227,6 +227,11 @@ Status TrainingRunner::TrainingLoop(std::shared_ptr<IDataLoader> training_data_l
   while (step_ < params_.num_train_steps) {
     for (size_t shard_it = 0; shard_it < num_shards_to_visit; ++shard_it) {
       auto training_data = training_data_loader->CurrentDataSet();
+      if (training_data == nullptr) {
+        printf("Skip shard %d which is failed to load.\n", static_cast<int>(shard_it));
+        training_data_loader->MoveToNextDataSet();
+        continue;
+      }
 
       // Shuffle the data for each epoch
       if (params_.shuffle_data) {
