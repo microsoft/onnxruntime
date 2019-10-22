@@ -188,8 +188,8 @@ Status PadCpuImpl(OpKernelContext* ctx,
 
           int64_t prePad = reshaped_pad[inner_axis];
           int64_t postPad = reshaped_pad[inner_axis + new_dims_count];
-          PadAxisConstant(axisStart - prePad, (T1)value, prePad);
-          PadAxisConstant(output, (T1)value, postPad);
+          PadAxisConstant(axisStart - prePad, static_cast<T1>(value), prePad);
+          PadAxisConstant(output, static_cast<T1>(value), postPad);
           output += postPad;
           alignSkip = prePad;
         }
@@ -199,8 +199,8 @@ Status PadCpuImpl(OpKernelContext* ctx,
           T1* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
           int64_t prePad = reshaped_pad[input_counters.Axis()];
           int64_t postPad = reshaped_pad[input_counters.Axis() + new_dims_count];
-          PadAxisConstant(axisStart - prePad * inner_pitch, (T1)value, prePad * inner_pitch);
-          PadAxisConstant(output, (T1)value, postPad * inner_pitch);
+          PadAxisConstant(axisStart - prePad * inner_pitch, static_cast<T1>(value), prePad * inner_pitch);
+          PadAxisConstant(output, static_cast<T1>(value), postPad * inner_pitch);
           output += inner_pitch * postPad;
           alignSkip += inner_pitch * prePad;
         }
