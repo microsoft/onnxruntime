@@ -270,10 +270,15 @@ __global__ void _LambUpdate(
     half* fp16_weights_out,
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  // The confidence level should not exceed 1 for numerical stability.
-  // The threshold will be used even if r_norm is 0 because
-  // NaN > threshold ? NaN : threshold returns threshold.
-  const auto ratio = _Min(*w_norm / *r_norm, threshold);
+  // The reason to have _Min(...):
+  //   The confidence level should not exceed 1 for numerical stability.
+  //   The threshold will be used even if r_norm and w_norm are 0 because
+  //   NaN > threshold ? NaN : threshold returns threshold.
+  // The reason to have *w_norm != 0?:
+  //   If a tensor is zero-initialized, its w_norm will be 0 and therefore its
+  //   ratio is always 0 without the _Max(...). If a tensor's ratio is always
+  //   0, that tensor will never be updated.
+  const auto ratio = *w_norm != T2(0.0f)? _Min(*w_norm / *r_norm, threshold) : T2(1.0f);
   // Compute new weight using the saved update direction.
   weights_out[id] = weights[id] - ratio * T2((*eta) * T1(update_direction[id]));
 
