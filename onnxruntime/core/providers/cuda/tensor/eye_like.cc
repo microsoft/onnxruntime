@@ -52,7 +52,6 @@ Status EyeLike::ComputeInternal(OpKernelContext* context) const {
 
   // set output tensor shape same as input tensor and set all values to zero
   auto* T2 = context->Output(0, input_dims);  
-  auto dim0 = input_dims[0];
   auto dim1 = input_dims[1];
 
   fast_divmod fdm_x(gsl::narrow_cast<int>(dim1));
