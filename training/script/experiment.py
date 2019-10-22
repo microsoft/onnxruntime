@@ -26,6 +26,8 @@ parser.add_argument('--tags', type=str, default=None, help='Tags to be added to 
 parser.add_argument('--datastore', type=str, default='bert_premium', help='AzureML Datastore to be mounted into the Experiment')
 parser.add_argument('--train_dir', type=str, default='book/train', help='Path in the AzureML Datastore containing the train files')
 parser.add_argument('--test_dir', type=str, default='book/test', help='Path in the AzureML Datastore containing the test files')
+parser.add_argument('--train_dir2', type=str, default=None, help='Path in the AzureML Datastore containing the train files for phase 2')
+parser.add_argument('--test_dir2', type=str, default=None, help='Path in the AzureML Datastore containing the test files for phase 2')
 
 parser.add_argument('--container', type=str, default='onnxtraining.azurecr.io/azureml/bert:latest-openmpi4.0.0-cuda10.1-cudnn7-ubuntu16.04', help='Docker container to use to run the Experiment')
 parser.add_argument('--container_registry_resource_group', type=str, default='onnx_training', help='Azure resource group containing the Azure Container Registry (if not public)')
@@ -52,6 +54,12 @@ script_params = {
   '--train_data_dir': ds.path(args.train_dir).as_mount(),
   '--test_data_dir': ds.path(args.test_dir).as_mount(),
 }
+
+# Optional phase2 script parameters
+if args.train_dir2:
+  script_params['--train_data_dir_phase2'] = ds.path(args.train_dir2).as_mount()
+if args.test_dir2:
+  script_params['--test_data_dir_phase2'] = ds.path(args.test_dir2).as_mount()
 
 # Allow additional custom script parameters
 for params in args.script_params.split(' '):

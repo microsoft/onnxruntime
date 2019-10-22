@@ -48,7 +48,7 @@ if args.run is not None:
 
 # Optionally start synchronizing files from Run
 if args.remote_dir and args.local_dir:
-  local_root = os.path.join(os.path.normpath(args.local_dir), run.id)
+  local_root = os.path.normpath(args.local_dir)
   remote_root = args.remote_dir
 
   if run.get_status() in ['Completed', 'Failed', 'Canceled']:
