@@ -116,7 +116,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           enable_cpu_mem_arena = false;
           break;
         case 'v':
-          logging_level = ORT_LOGGING_LEVEL_INFO;
+          logging_level = ORT_LOGGING_LEVEL_VERBOSE;
           break;
         case 'c':
           concurrent_session_runs = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
