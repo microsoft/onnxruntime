@@ -104,6 +104,7 @@ static void FlattenInnerShape(const std::vector<int64_t>& input_dims, const std:
   reshaped_dims[inner_axis] = inner_size;
 }
 
+// special handling for edge case where the input has one or more dims with value of 0
 static Status PadEmptyInput(OpKernelContext* ctx,
                             const Mode& mode,
                             const TensorShape& input_shape,
@@ -132,8 +133,8 @@ static Status PadEmptyInput(OpKernelContext* ctx,
       for (size_t i = 0, end = input_shape.NumDimensions(); i < end; ++i) {
         if (input_shape[i] == 0 && output_dims[i] > 0) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                   "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:",
-                                   input_shape);
+                                 "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:",
+                                 input_shape);
         }
       }
 
@@ -228,7 +229,6 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
 
   switch (mode) {
     case Mode::Constant:
-
       // Loop over the output tensor, writing out padding between the blocks of copied data
       // On loop entry, 'pad' is already set to the first continuous block of padding, and
       // after every pass through the inner loop it gets set to the next continuous pad size.
