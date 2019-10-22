@@ -750,8 +750,9 @@ def run_server_tests(build_dir, configs):
             server_app_path = os.path.join(config_build_dir, 'onnxruntime_server')
             python_package_path = config_build_dir
         server_test_folder = os.path.join(config_build_dir, 'server_test')
-        server_test_data_folder = os.path.join(os.path.join(config_build_dir, 'testdata'), 'server')
-        run_subprocess([sys.executable, 'test_main.py', server_app_path, server_test_data_folder, server_test_data_folder, python_package_path, server_test_folder], cwd=server_test_folder, dll_path=None)
+        server_test_model_folder = os.path.join(config_build_dir, 'models', 'opset8', 'test_mnist')
+        server_test_data_folder = os.path.join(config_build_dir, 'testdata', 'server')
+        run_subprocess([sys.executable, 'test_main.py', server_app_path, server_test_model_folder, server_test_data_folder, python_package_path, server_test_folder], cwd=server_test_folder, dll_path=None)
 
 
 def run_server_model_tests(build_dir, configs):
