@@ -20,6 +20,7 @@ namespace cuda {
 
 REGISTER_VERSIONED_TYPED_SLICE(int32_t) 
 REGISTER_VERSIONED_TYPED_SLICE(int64_t)
+REGISTER_VERSIONED_TYPED_SLICE(float)
 
 #define REGISTER_V10_TYPED_SLICE(TIND)                                                    \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                          \
@@ -38,6 +39,7 @@ REGISTER_VERSIONED_TYPED_SLICE(int64_t)
 
 REGISTER_V10_TYPED_SLICE(int32_t) 
 REGISTER_V10_TYPED_SLICE(int64_t)
+REGISTER_V10_TYPED_SLICE(float)
 
 template<typename Tind, bool dynamic>
 Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {

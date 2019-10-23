@@ -13,7 +13,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolWin)
     JobName: 'Windows_CI_GPU_Dev'
-    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --use_openmp --build_shared_lib  --build_csharp --enable_onnx_tests --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10_trt6015dll" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --cuda_version 10.0'
+    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --build_shared_lib  --build_csharp --enable_onnx_tests --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10_trt6015dll" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --cuda_version 10.0'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
@@ -27,23 +27,38 @@ jobs:
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:PackageId=Microsoft.ML.OnnxRuntime.Gpu
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
 
-
-- template: ../../templates/linux-ci.yml
-  parameters:
-    AgentPool : $(AgentPoolLinux)
-    JobName: 'Linux_CI_GPU_Dev'
-    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) -x ""'
-    DoNugetPack : 'true'
-    ArtifactName: 'drop-linux'
-    NuPackScript: |
-     set -e -x
-     mkdir $(Build.BinariesDirectory)/linux-x64
-     cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x64
-     cd $(Build.BinariesDirectory)
-     zip -r linux-x64.zip linux-x64
-     cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
-     ls -al $(Build.ArtifactStagingDirectory)
-
+- job: 'Linux_CI_GPU_Dev'
+  pool: $(AgentPoolLinux)
+  steps:    
+    - template: ../../templates/set-version-number-variables-step.yml
+    - template: ../../templates/linux-set-variables-and-download.yml
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker build -t onnxruntime-centos6-gpu --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=$(python.version) -f Dockerfile.centos6_gpu .
+        workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6-gpu /usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --use_cuda --cuda_version=10.0 --cuda_home=/usr/local/cuda-10.0  --cudnn_home=/usr/local/cuda-10.0 --enable_onnx_tests
+    - script: |
+       set -e -x
+       mkdir $(Build.BinariesDirectory)/linux-x64
+       cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x64
+       cd $(Build.BinariesDirectory)
+       zip -r linux-x64.zip linux-x64
+       cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
+       ls -al $(Build.ArtifactStagingDirectory)
+       displayName: 'Create Artifacts'
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifactName: 'drop-linux'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: succeeded()
+    - template: ../../templates/clean-agent-build-directory-step.yml
 
 - job: NuGet_Packaging
   pool: $(AgentPoolWin)

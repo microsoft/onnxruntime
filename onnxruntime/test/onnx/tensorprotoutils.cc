@@ -8,6 +8,7 @@
 #include <limits>
 #include <gsl/gsl>
 #include "core/framework/data_types.h"
+#include "core/framework/endian.h"
 #include "core/framework/allocator.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/onnx_protobuf.h"
@@ -22,16 +23,6 @@ struct OrtStatus {
 
 namespace onnxruntime {
 namespace test {
-#ifdef __GNUC__
-constexpr inline bool IsLittleEndianOrder() noexcept { return __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__; }
-#else
-// On Windows and Mac, this function should always return true
-GSL_SUPPRESS(type .1)  // allow use of reinterpret_cast for this special case
-inline bool IsLittleEndianOrder() noexcept {
-  static int n = 1;
-  return (*reinterpret_cast<char*>(&n) == 1);
-}
-#endif
 
 //From core common
 inline void MakeStringInternal(std::ostringstream& /*ss*/) noexcept {
@@ -78,34 +69,19 @@ std::vector<int64_t> GetTensorShapeFromTensorProto(const onnx::TensorProto& tens
 template <typename T>
 static void UnpackTensorWithRawData(const void* raw_data, size_t raw_data_length, size_t expected_size,
                                     /*out*/ T* p_data) {
-  // allow this low level routine to be somewhat unsafe. assuming it's thoroughly tested and valid
-  GSL_SUPPRESS(type)       // type.1 reinterpret-cast; type.4 C-style casts; type.5 'T result;' is uninitialized;
-  GSL_SUPPRESS(bounds .1)  // pointer arithmetic
-  GSL_SUPPRESS(f .23)      // buff and temp_bytes never tested for nullness and could be gsl::not_null
-  {
-    size_t expected_size_in_bytes;
-    if (!onnxruntime::IAllocator::CalcMemSizeForArray(expected_size, sizeof(T), &expected_size_in_bytes)) {
-      throw Ort::Exception("size overflow", OrtErrorCode::ORT_FAIL);
-    }
-    if (raw_data_length != expected_size_in_bytes)
-      throw Ort::Exception(MakeString("UnpackTensor: the pre-allocated size does not match the raw data size, expected ",
-                                      expected_size_in_bytes, ", got ", raw_data_length),
-                           OrtErrorCode::ORT_FAIL);
-    if (IsLittleEndianOrder()) {
-      memcpy(p_data, raw_data, raw_data_length);
-    } else {
-      const size_t type_size = sizeof(T);
-      const char* buff = reinterpret_cast<const char*>(raw_data);
-      for (size_t i = 0; i < raw_data_length; i += type_size, buff += type_size) {
-        T result;
-        const char* temp_bytes = reinterpret_cast<char*>(&result);
-        for (size_t j = 0; j < type_size; ++j) {
-          memcpy((void*)&temp_bytes[j], (void*)&buff[type_size - 1 - i], 1);
-        }
-        p_data[i] = result;
-      }
-    }
+  size_t expected_size_in_bytes;
+  if (!onnxruntime::IAllocator::CalcMemSizeForArray(expected_size, sizeof(T), &expected_size_in_bytes)) {
+    throw Ort::Exception("size overflow", OrtErrorCode::ORT_FAIL);
   }
+  if (raw_data_length != expected_size_in_bytes)
+    throw Ort::Exception(MakeString("UnpackTensor: the pre-allocated size does not match the raw data size, expected ",
+                                    expected_size_in_bytes, ", got ", raw_data_length),
+                         OrtErrorCode::ORT_FAIL);
+  if (endian::native != endian::little) {
+    throw Ort::Exception("UnpackTensorWithRawData only handles little-endian native byte order for now.",
+                         OrtErrorCode::ORT_NOT_IMPLEMENTED);
+  }
+  memcpy(p_data, raw_data, raw_data_length);
 }
 
 // This macro doesn't work for Float16/bool/string tensors

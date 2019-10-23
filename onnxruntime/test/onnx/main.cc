@@ -106,6 +106,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_DISABLE_ALL;
   bool user_graph_optimization_level_set = false;
+  int verbosity_option_count = 0;
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
@@ -116,7 +117,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           enable_cpu_mem_arena = false;
           break;
         case 'v':
-          logging_level = ORT_LOGGING_LEVEL_INFO;
+          verbosity_option_count += 1;
           break;
         case 'c':
           concurrent_session_runs = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
@@ -217,6 +218,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       }
     }
   }
+
+  // set log level based on number of verbosity options
+  if (verbosity_option_count == 1) {
+    logging_level = ORT_LOGGING_LEVEL_INFO;
+  } else if (verbosity_option_count > 1) {
+    logging_level = ORT_LOGGING_LEVEL_VERBOSE;
+  }
+
   if (concurrent_session_runs > 1 && repeat_count > 1) {
     fprintf(stderr, "when you use '-r [repeat]', please set '-c' to 1\n");
     usage();
@@ -427,29 +436,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"mxnet_arcface", "Model is an invalid ONNX model"},
       {"unique_not_sorted_without_axis", "Expected data for 'Y' is incorrect and in sorted order."},
       {"cumsum_1d_reverse_exclusive", "only failing linux GPU CI. Likely build error."},
-      {"det_2d", "not implemented yet"},
-      {"det_nd", "not implemented yet"},
       {"resize_downsample_scales_cubic_align_corners", "results mismatch with onnx tests"},
       {"resize_downsample_scales_linear_align_corners", "results mismatch with onnx tests"},
       {"resize_tf_crop_and_resize", "Bad onnx test output. Needs test fix."},
       {"resize_upsample_sizes_nearest_ceil_half_pixel", "Bad onnx test output. Needs test fix."},
       {"resize_upsample_sizes_nearest_floor_align_corners", "Bad onnx test output. Needs test fix."},
       {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "Bad onnx test output. Needs test fix."},
-      {"scatternd", "not implemented yet"},
-      {"sequence_model7", "SplitToSequence not implemented yet"},
-      {"sequence_model6", "SplitToSequence not implemented yet"},
-      {"sequence_model5", "SequenceConstruct not implemented yet"},
-      {"sequence_model4", "SequenceConstruct not implemented yet"},
-      {"sequence_model3", "SequenceConstruct not implemented yet"},
-      {"sequence_model2", "SequenceConstruct not implemented yet"},
-      {"sequence_model1", "Sequence* not implemented yet"},
-      {"scatter_elements_with_negative_indices", "ScatterElements(11) not implemented yet"},
-      {"bitshift_right_uint8", "BitShift(11) uint8 support not enabled currently"},
       {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
-      {"bitshift_left_uint8", "BitShift(11) uint8 support not enabled currently"},
       {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
-      {"reflect_pad", "test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests"},
-      {"edge_pad", "test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests"},
       {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398" },
 };
 
