@@ -18,7 +18,7 @@ void OrtRunCallback(OrtCallback* f) noexcept;
  * Useful for something like a std::unique_ptr<> deleter.
  */
 struct OrtCallbackInvoker {
-  OrtCallback callback{};
+  OrtCallback callback{nullptr, nullptr};
 
   template <typename T>
   void operator()(T) {
