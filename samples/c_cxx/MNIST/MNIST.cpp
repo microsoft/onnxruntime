@@ -37,7 +37,7 @@ struct MNIST {
 
   std::array<float, width_ * height_> input_image_{};
   std::array<float, 10> results_{};
-  int result_{0};
+  int64_t result_{0};
 
  private:
   Ort::Session session_{env, L"model.onnx", Ort::SessionOptions{nullptr}};
@@ -94,7 +94,7 @@ void ConvertDibToMnist() {
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 // The Windows entry point function
-int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPTSTR lpCmdLine,
+int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE /*hPrevInstance*/, _In_ LPTSTR /*lpCmdLine*/,
                       _In_ int nCmdShow) {
   {
     WNDCLASSEX wc{};
@@ -124,7 +124,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
   hdc_dib_ = CreateCompatibleDC(nullptr);
   SelectObject(hdc_dib_, dib_);
   SelectObject(hdc_dib_, CreatePen(PS_SOLID, 2, RGB(0, 0, 0)));
-  FillRect(hdc_dib_, &RECT{0, 0, MNIST::width_, MNIST::height_}, (HBRUSH)GetStockObject(WHITE_BRUSH));
+  RECT rect{0, 0, MNIST::width_, MNIST::height_};
+  FillRect(hdc_dib_, &rect, (HBRUSH)GetStockObject(WHITE_BRUSH));
 
   HWND hWnd = CreateWindow(L"ONNXTest", L"ONNX Runtime Sample - MNIST", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 512, 256, nullptr, nullptr, hInstance, nullptr);
   if (!hWnd)
@@ -217,9 +218,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
       return 0;
 
     case WM_RBUTTONDOWN:  // Erase the image
-      FillRect(hdc_dib_, &RECT{0, 0, MNIST::width_, MNIST::height_}, (HBRUSH)GetStockObject(WHITE_BRUSH));
+    {
+      RECT rect{0, 0, MNIST::width_, MNIST::height_};
+      FillRect(hdc_dib_, &rect, (HBRUSH)GetStockObject(WHITE_BRUSH));
       InvalidateRect(hWnd, nullptr, false);
       return 0;
+    }
 
     case WM_DESTROY:
       PostQuitMessage(0);

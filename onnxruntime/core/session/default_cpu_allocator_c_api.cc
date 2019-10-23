@@ -13,15 +13,14 @@ struct OrtAllocatorImpl : OrtAllocator {
   virtual ~OrtAllocatorImpl() = default;
 };
 
-// This replaces the macro that's in onnxruntime_cxx_inline.h but uses the internal symbols vs the public API interface
-#undef ORT_THROW_ON_ERROR
-#define ORT_THROW_ON_ERROR(expr)                                           \
-  if (OrtStatus* onnx_status = (expr)) {                                   \
-    std::string ort_error_message = OrtApis::GetErrorMessage(onnx_status); \
-    OrtErrorCode ort_error_code = OrtApis::GetErrorCode(onnx_status);      \
-    OrtApis::ReleaseStatus(onnx_status);                                   \
-    throw Ort::Exception(std::move(ort_error_message), ort_error_code);    \
+void ThrowOnError(OrtStatus* status) {
+  if (status) {
+    std::string ort_error_message = OrtApis::GetErrorMessage(status);
+    OrtErrorCode ort_error_code = OrtApis::GetErrorCode(status);
+    OrtApis::ReleaseStatus(status);
+    throw Ort::Exception(std::move(ort_error_message), ort_error_code);
   }
+}
 
 struct OrtDefaultAllocator : OrtAllocatorImpl {
   OrtDefaultAllocator() {
@@ -29,7 +28,7 @@ struct OrtDefaultAllocator : OrtAllocatorImpl {
     OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<OrtDefaultAllocator*>(this_)->Alloc(size); };
     OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<OrtDefaultAllocator*>(this_)->Free(p); };
     OrtAllocator::Info = [](const OrtAllocator* this_) { return static_cast<const OrtDefaultAllocator*>(this_)->Info(); };
-    ORT_THROW_ON_ERROR(OrtApis::CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info));
+    ThrowOnError(OrtApis::CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info));
   }
 
   ~OrtDefaultAllocator() override { OrtApis::ReleaseMemoryInfo(cpu_memory_info); }

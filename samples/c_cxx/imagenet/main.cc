@@ -17,7 +17,7 @@
 #include "local_filesystem.h"
 #include "sync_api.h"
 
-#include <onnxruntime/core/session/onnxruntime_c_api.h>
+#include <onnxruntime/core/session/onnxruntime_cxx_api.h>
 
 #include "image_loader.h"
 #include "async_ring_buffer.h"
@@ -65,15 +65,14 @@ class Validator : public OutputCollector<TCharString> {
     return static_cast<int>(value);
   }
 
-  static void VerifyInputOutputCount(OrtSession* session) {
-    size_t count;
-    ORT_THROW_ON_ERROR(OrtSessionGetInputCount(session, &count));
+  static void VerifyInputOutputCount(Ort::Session& session) {
+    size_t count = session.GetInputCount();
     assert(count == 1);
-    ORT_THROW_ON_ERROR(OrtSessionGetOutputCount(session, &count));
+    count = session.GetOutputCount();
     assert(count == 1);
   }
 
-  OrtSession* session_ = nullptr;
+  Ort::Session session_{nullptr};
   const int output_class_count_ = 1001;
   std::vector<std::string> labels_;
   std::vector<std::string> validation_data_;
@@ -84,7 +83,7 @@ class Validator : public OutputCollector<TCharString> {
   std::mutex m_;
   char* input_name_ = nullptr;
   char* output_name_ = nullptr;
-  OrtEnv* const env_;
+  Ort::Env& env_;
   const TCharString model_path_;
   system_clock::time_point start_time_;
 
@@ -94,7 +93,6 @@ class Validator : public OutputCollector<TCharString> {
   ~Validator() {
     free(input_name_);
     free(output_name_);
-    OrtReleaseSession(session_);
   }
 
   void PrintResult() {
@@ -103,21 +101,18 @@ class Validator : public OutputCollector<TCharString> {
   }
 
   void ResetCache() override {
-    OrtReleaseSession(session_);
     CreateSession();
   }
 
   void CreateSession() {
-    OrtSessionOptions* session_option;
-    ORT_THROW_ON_ERROR(OrtCreateSessionOptions(&session_option));
+    Ort::SessionOptions session_options;
 #ifdef USE_CUDA
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(session_option, 0));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_option, 0));
 #endif
-    ORT_THROW_ON_ERROR(OrtCreateSession(env_, model_path_.c_str(), session_option, &session_));
-    OrtReleaseSessionOptions(session_option);
+    session_ = Ort::Session(env_, model_path_.c_str(), session_options);
   }
 
-  Validator(OrtEnv* env, const TCharString& model_path, const TCharString& label_file_path,
+  Validator(Ort::Env& env, const TCharString& model_path, const TCharString& label_file_path,
             const TCharString& validation_file_path, size_t input_image_count)
       : labels_(ReadFileToVec(label_file_path, 1000)),
         validation_data_(ReadFileToVec(validation_file_path, input_image_count)),
@@ -127,27 +122,23 @@ class Validator : public OutputCollector<TCharString> {
         model_path_(model_path) {
     CreateSession();
     VerifyInputOutputCount(session_);
-    OrtAllocator* ort_alloc;
-    ORT_THROW_ON_ERROR(OrtGetAllocatorWithDefaultOptions(&ort_alloc));
+    Ort::AllocatorWithDefaultOptions ort_alloc;
     {
       char* t;
-      ORT_THROW_ON_ERROR(OrtSessionGetInputName(session_, 0, ort_alloc, &t));
+      session_.GetInputName(0, ort_alloc);
       input_name_ = my_strdup(t);
-      OrtAllocatorFree(ort_alloc, t);
-      ORT_THROW_ON_ERROR(OrtSessionGetOutputName(session_, 0, ort_alloc, &t));
+      ort_alloc.Free(t);
+      session_.GetOutputName(0, ort_alloc);
       output_name_ = my_strdup(t);
-      OrtAllocatorFree(ort_alloc, t);
+      ort_alloc.Free(t);
     }
 
-    OrtTypeInfo* info;
-    ORT_THROW_ON_ERROR(OrtSessionGetInputTypeInfo(session_, 0, &info));
-    const OrtTensorTypeAndShapeInfo* tensor_info;
-    ORT_THROW_ON_ERROR(OrtCastTypeInfoToTensorInfo(info, &tensor_info));
-    size_t dim_count;
-    ORT_THROW_ON_ERROR(OrtGetDimensionsCount(tensor_info, &dim_count));
+    Ort::TypeInfo info = session_.GetInputTypeInfo(0);
+    auto tensor_info = info.GetTensorTypeAndShapeInfo();
+    size_t dim_count = tensor_info.GetDimensionsCount();
     assert(dim_count == 4);
     std::vector<int64_t> dims(dim_count);
-    ORT_THROW_ON_ERROR(OrtGetDimensions(tensor_info, dims.data(), dims.size()));
+    tensor_info.GetDimensions(dims.data(), dims.size());
     if (dims[1] != dims[2] || dims[3] != 3) {
       throw std::runtime_error("This model is not supported by this program. input tensor need be in NHWC format");
     }
@@ -156,14 +147,13 @@ class Validator : public OutputCollector<TCharString> {
     start_time_ = system_clock::now();
   }
 
-  void operator()(const std::vector<TCharString>& task_id_list, const OrtValue* input_tensor) override {
+  void operator()(const std::vector<TCharString>& task_id_list, const Ort::Value& input_tensor) override {
     {
       std::lock_guard<std::mutex> l(m_);
       const size_t remain = task_id_list.size();
-      OrtValue* output_tensor = nullptr;
-      ORT_THROW_ON_ERROR(OrtRun(session_, nullptr, &input_name_, &input_tensor, 1, &output_name_, 1, &output_tensor));
-      float* probs;
-      ORT_THROW_ON_ERROR(OrtGetTensorMutableData(output_tensor, (void**)&probs));
+      Ort::Value output_tensor{nullptr};
+      session_.Run(Ort::RunOptions{nullptr}, &input_name_, &input_tensor, 1, &output_name_, &output_tensor, 1);
+      float* probs = output_tensor.GetTensorMutableData<float>();
       for (const auto& s : task_id_list) {
         float* end = probs + output_class_count_;
         float* max_p = std::max_element(probs + 1, end);
@@ -182,7 +172,6 @@ class Validator : public OutputCollector<TCharString> {
       auto eta = progress > 0 ? duration_cast<minutes>(elapsed * (1 - progress) / progress).count() : 9999999;
       float accuracy = finished > 0 ? top_1_correct_count_ / static_cast<float>(finished) : 0;
       printf("accuracy = %.2f, progress %.2f%%, expect to be finished in %d minutes\n", accuracy, progress * 100, eta);
-      OrtReleaseValue(output_tensor);
     }
   }
 };
