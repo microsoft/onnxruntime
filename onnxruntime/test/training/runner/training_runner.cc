@@ -511,6 +511,7 @@ Status TrainingRunner::UpdateParams(Parameters params) {
   params_.lr_params.warmup_ratio = params.lr_params.warmup_ratio;
   params_.num_train_steps = params.num_train_steps;
   params_.batch_size = params.batch_size;
+  loss_scaler_->Reset();
   return Status::OK();
 }
 }  // namespace training

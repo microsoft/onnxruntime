@@ -140,10 +140,11 @@ class LossScaler {
              float max_loss_scale = static_cast<float>(1 << 24))
       : loss_scale_input_name_(loss_scale_input_name),
         is_dynamic_scale_(is_dynamic_scale),
-        loss_scale_(loss_scale),
+        initial_loss_scale_(loss_scale),
         up_scale_window_(up_scale_window),
         min_loss_scale_(min_loss_scale),
         max_loss_scale_(max_loss_scale),
+        loss_scale_(loss_scale),
         stable_steps_(0){};
 
   std::string GetLossScaleInputName() const { return loss_scale_input_name_; }
@@ -168,13 +169,19 @@ class LossScaler {
     }
   }
 
+  void Reset() {
+    loss_scale_ = initial_loss_scale_;
+    stable_steps_ = 0;
+  }
+
  private:
   const std::string loss_scale_input_name_;
   const bool is_dynamic_scale_;
-  float loss_scale_;
+  const float initial_loss_scale_;
   const size_t up_scale_window_;
   const float min_loss_scale_;
   const float max_loss_scale_;
+  float loss_scale_;
   size_t stable_steps_;
 };
 
