@@ -404,7 +404,8 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
       if (ele_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not have raw data");
       raw_data = const_cast<char*>(tensor_proto.raw_data().data());
-      // TODO below is a possible fix for the const_cast above. however, it requires extra memory
+      // TODO The line above has const-correctness issues. Below is a possible fix which copies the tensor_proto data
+      //      into a writeable buffer. However, it requires extra memory which may exceed the limit for certain tests.
       //auto buffer = onnxruntime::make_unique<char[]>(tensor_proto.raw_data().size());
       //std::memcpy(buffer.get(), tensor_proto.raw_data().data(), tensor_proto.raw_data().size());
       //deleter_for_file_data.d = OrtCallback{DeleteCharArray, buffer.get()};
