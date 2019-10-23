@@ -15,7 +15,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "Eigen/Core"
-#include "Eigen/src/Core/arch/GPU/Half.h"
+#include "Eigen/src/Core/arch/Default/Half.h"
 
 using namespace onnxruntime;
 

@@ -42,8 +42,7 @@ Status ConvTranspose<T>::Compute(OpKernelContext* context) const {
 
 template <typename T>
 Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
-  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
 
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   ConvTransposeAttributes::Prepare p;
@@ -55,7 +54,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   const int64_t Y_offset = p.Y->Shape().Size() / p.Y->Shape()[0] / conv_transpose_attrs_.group;
   const int64_t W_offset = p.F->Shape().Size() / conv_transpose_attrs_.group;
   const int64_t kernel_dim =
-    p.num_output_channels / conv_transpose_attrs_.group * p.kernel_shape[0] * p.kernel_shape[1];
+      p.num_output_channels / conv_transpose_attrs_.group * p.kernel_shape[0] * p.kernel_shape[1];
   const int64_t output_image_size = p.Y->Shape()[2] * p.Y->Shape()[3];
 
   AllocatorPtr alloc;

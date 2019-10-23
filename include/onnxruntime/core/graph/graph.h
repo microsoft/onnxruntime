@@ -195,7 +195,8 @@ class Node {
     void operator++();
     void operator--();
 
-    const Node& operator*();
+    const Node& operator*() const;
+    const Node* operator->() const;
 
    private:
     EdgeConstIterator m_iter;
@@ -212,6 +213,7 @@ class Node {
   NodeConstIterator OutputNodesBegin() const noexcept {
     return NodeConstIterator(relationships_.output_edges.cbegin());
   }
+
   /** Gets an iterator to the end of the output nodes from this Node. */
   NodeConstIterator OutputNodesEnd() const noexcept { return NodeConstIterator(relationships_.output_edges.cend()); }
 
@@ -522,7 +524,7 @@ class Graph {
   These are overridable initializers. This is a difference between 
   graph_inputs_including_initializers_ and graph_inputs_excluding_initializers_
   @remarks Contains no nullptr values. */
-  const std::vector<const NodeArg*>& GetOverridableInitializers () const {
+  const std::vector<const NodeArg*>& GetOverridableInitializers() const {
     return graph_overridable_initializers_;
   }
 
@@ -530,14 +532,19 @@ class Graph {
   @remarks Contains no nullptr values.*/
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return graph_outputs_; }
 
-  /** Returns true if a Node output is a Graph output. */
-  bool IsNodeOutputsInGraphOutputs(const Node& node) const {
+  /** Returns a vector with the indexes of the outputs of the given Node that are also Graph outputs. */
+  std::vector<int> GetNodeOutputsInGraphOutputs(const Node& node) const {
+    int output_idx = 0;
+    std::vector<int> indexes;
     for (auto output_def : node.OutputDefs()) {
       if (std::find(GetOutputs().cbegin(), GetOutputs().cend(), output_def) != GetOutputs().cend()) {
-        return true;
+        indexes.push_back(output_idx);
       }
+
+      ++output_idx;
     }
-    return false;
+
+    return indexes;
   }
 
   /** Gets the NodeArgs that represent value_info instances in the Graph.
@@ -927,7 +934,8 @@ class Graph {
     // likely) either a logic issue or a graph consistency/correctness issue.
     // use ORT_ENFORCE to prove that or uncover scenarios where we actually
     // expect attempts to retrieve a non-existent node.
-    ORT_ENFORCE(node_index < nodes_.size(), "Validating no unexpected access using an invalid node_index.");
+    ORT_ENFORCE(node_index < nodes_.size(), "Validating no unexpected access using an invalid node_index. Got:",
+                node_index, " Max:", nodes_.size());
     return nodes_[node_index].get();
   }
 
@@ -1000,6 +1008,9 @@ class Graph {
 
   // Model IR version.
   Version ir_version_{ONNX_NAMESPACE::Version::IR_VERSION};
+
+  // Is model using latest ONNX opset
+  bool using_latest_onnx_opset_{false};
 
   int name_generator_ = 0;
 

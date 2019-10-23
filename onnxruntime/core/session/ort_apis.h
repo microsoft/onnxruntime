@@ -3,6 +3,9 @@
 
 namespace OrtApis {
 
+ORT_API(const OrtApi*, GetApi, uint32_t version);
+ORT_API(const char*, GetVersionString);
+
 ORT_API(void, ReleaseEnv, OrtEnv*);
 ORT_API(void, ReleaseStatus, OrtStatus*);
 ORT_API(void, ReleaseMemoryInfo, OrtMemoryInfo*);
@@ -21,6 +24,8 @@ const char* ORT_API_CALL GetErrorMessage(_In_ const OrtStatus* status) NO_EXCEPT
 ORT_API_STATUS_IMPL(CreateEnv, OrtLoggingLevel default_logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out)
 ORT_ALL_ARGS_NONNULL;
 ORT_API_STATUS_IMPL(CreateEnvWithCustomLogger, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
+ORT_API_STATUS_IMPL(EnableTelemetryEvents, _In_ const OrtEnv* env);
+ORT_API_STATUS_IMPL(DisableTelemetryEvents, _In_ const OrtEnv* env);
 
 ORT_API_STATUS_IMPL(CreateSession, _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path,
                     _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
@@ -35,8 +40,7 @@ ORT_API_STATUS_IMPL(Run, _Inout_ OrtSession* sess,
 
 ORT_API_STATUS_IMPL(CreateSessionOptions, OrtSessionOptions** out);
 ORT_API_STATUS_IMPL(CloneSessionOptions, const OrtSessionOptions* input, OrtSessionOptions** out);
-ORT_API_STATUS_IMPL(EnableSequentialExecution, _In_ OrtSessionOptions* options);
-ORT_API_STATUS_IMPL(DisableSequentialExecution, _In_ OrtSessionOptions* options);
+ORT_API_STATUS_IMPL(SetSessionExecutionMode, _In_ OrtSessionOptions* options, ExecutionMode execution_mode);
 ORT_API_STATUS_IMPL(SetOptimizedModelFilePath, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* optimized_model_filepath);
 ORT_API_STATUS_IMPL(EnableProfiling, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix);
 ORT_API_STATUS_IMPL(DisableProfiling, _In_ OrtSessionOptions* options);
@@ -55,6 +59,7 @@ ORT_API_STATUS_IMPL(SetInterOpNumThreads, _Inout_ OrtSessionOptions* options, in
 ORT_API_STATUS_IMPL(CreateCustomOpDomain, _In_ const char* domain, _Outptr_ OrtCustomOpDomain** out);
 ORT_API_STATUS_IMPL(CustomOpDomain_Add, _Inout_ OrtCustomOpDomain* custom_op_domain, _In_ OrtCustomOp* op);
 ORT_API_STATUS_IMPL(AddCustomOpDomain, _Inout_ OrtSessionOptions* options, _In_ OrtCustomOpDomain* custom_op_domain);
+ORT_API_STATUS_IMPL(RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path, void** library_handle);
 
 ORT_API_STATUS_IMPL(SessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(SessionGetOutputCount, _In_ const OrtSession* sess, _Out_ size_t* out);
@@ -100,11 +105,12 @@ ORT_API_STATUS_IMPL(SetDimensions, OrtTensorTypeAndShapeInfo* info, _In_ const i
 ORT_API_STATUS_IMPL(GetTensorElementType, _In_ const OrtTensorTypeAndShapeInfo*, _Out_ enum ONNXTensorElementDataType* out);
 ORT_API_STATUS_IMPL(GetDimensionsCount, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(GetDimensions, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
+ORT_API_STATUS_IMPL(GetSymbolicDimensions, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ const char* dim_params[], size_t dim_params_length);
 ORT_API_STATUS_IMPL(GetTensorShapeElementCount, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(GetTensorTypeAndShape, _In_ const OrtValue* value, _Outptr_ OrtTensorTypeAndShapeInfo** out);
 ORT_API_STATUS_IMPL(GetTypeInfo, _In_ const OrtValue* value, _Outptr_ OrtTypeInfo** out);
 ORT_API_STATUS_IMPL(GetValueType, _In_ const OrtValue* value, _Out_ enum ONNXType* out);
-ORT_API_STATUS_IMPL(OrtAddFreeDimensionOverride, _Inout_ OrtSessionOptions* options, _In_ const char* symbolic_dim, _In_ int64_t dim_override);
+ORT_API_STATUS_IMPL(AddFreeDimensionOverride, _Inout_ OrtSessionOptions* options, _In_ const char* symbolic_dim, _In_ int64_t dim_override);
 
 ORT_API_STATUS_IMPL(CreateMemoryInfo, _In_ const char* name1, enum OrtAllocatorType type, int id1, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out);
 ORT_API_STATUS_IMPL(CreateCpuMemoryInfo, enum OrtAllocatorType type, enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out)

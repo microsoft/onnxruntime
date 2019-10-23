@@ -24,6 +24,9 @@ namespace onnxruntime {
 class IExecutionFrame;
 class OpKernelContext;
 class OpKernelWrapper;
+namespace concurrency {
+class ThreadPool;
+}
 
 class OpKernel {
  public:
@@ -63,6 +66,7 @@ class OpKernelContext {
 
   explicit OpKernelContext(IExecutionFrame* frame,
                            const OpKernel* kernel,
+                           concurrency::ThreadPool* threadpool,
                            const logging::Logger& logger);
 
   virtual ~OpKernelContext() = default;
@@ -163,6 +167,11 @@ class OpKernelContext {
   **/
   const std::string& GetOpDomain() const;
 
+  /** 
+  Returns the intra-op threadpool, if available.
+  */
+  _Ret_maybenull_ onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return threadpool_; }
+
  protected:
   onnxruntime::NodeIndex GetNodeIndex() const;
 
@@ -186,6 +195,7 @@ class OpKernelContext {
 
   IExecutionFrame* execution_frame_{nullptr};
   const OpKernel* kernel_{nullptr};
+  concurrency::ThreadPool* threadpool_{nullptr};
   const logging::Logger* logger_{nullptr};
 
   // The argument starting index in ExecutionFrame.

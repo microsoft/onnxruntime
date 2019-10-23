@@ -12,7 +12,8 @@ namespace onnxruntime {
 
 Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
   auto& conv_node = node;
-  const auto& mul_node = *conv_node.OutputNodesBegin();
+  auto& mul_node = *graph.GetNode(conv_node.OutputNodesBegin()->Index());
+
   const auto& conv_inputs = conv_node.InputDefs();
   const auto& mul_inputs = mul_node.InputDefs();
 
@@ -87,20 +88,28 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
   ONNX_NAMESPACE::TensorProto new_conv_W_tensor_proto(*conv_W_tensor_proto);
   conv_W->ToProto(new_conv_W_tensor_proto);
 
+  auto new_W_name = graph.GenerateNodeArgName("ConvMulFusion_W_" + conv_W_tensor_proto->name());
+  new_conv_W_tensor_proto.set_name(new_W_name);
+
   // Replace initializers of conv node
-  graph_utils::ReplaceInitializer(graph, conv_inputs[1]->Name(), new_conv_W_tensor_proto);
+  NodeArg& new_conv_W_node_arg = graph_utils::AddInitializer(graph, new_conv_W_tensor_proto);
+  graph_utils::ReplaceNodeInput(conv_node, 1, new_conv_W_node_arg);
 
   if (is_3d) {
     ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto(*conv_B_tensor_proto);
     conv_B->ToProto(new_conv_B_tensor_proto);
-    graph_utils::ReplaceInitializer(graph, conv_inputs[2]->Name(), new_conv_B_tensor_proto);
+
+    auto new_B_name = graph.GenerateNodeArgName("ConvMulFusion_Mul_B_" + mul_B_tensor_proto->name());
+    new_conv_B_tensor_proto.set_name(new_B_name);
+
+    NodeArg& new_conv_B_node_arg = graph_utils::AddInitializer(graph, new_conv_B_tensor_proto);
+    graph_utils::ReplaceNodeInput(conv_node, 2, new_conv_B_node_arg);
   }
 
-  // Remove Mul node.
-  auto* mul_node_to_remove = graph.GetNode(mul_node.Index());
-  if (graph_utils::RemoveNode(graph, *mul_node_to_remove)) {
-    rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;
-  }
+  // Move output name and edges from Mul node to Conv node and remove Mul node.
+  graph_utils::FinalizeNodeFusion(graph, conv_node, mul_node);
+
+  rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;
 
   return Status::OK();
 }
@@ -113,7 +122,7 @@ bool ConvMulFusion::SatisfyCondition(const Graph& graph, const Node& node) const
 
   const auto& next_node = *node.OutputNodesBegin();
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Mul", {7}) ||
-      next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node) ||
+      next_node.GetInputEdgesCount() != 1 ||
       // Make sure the two nodes do not span execution providers.
       next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
     return false;
@@ -123,6 +132,10 @@ bool ConvMulFusion::SatisfyCondition(const Graph& graph, const Node& node) const
   if (!graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[1]) ||
       (node.InputDefs().size() == 3 && !graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[2])) ||
       !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[1])) {
+    return false;
+  }
+
+  if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
     return false;
   }
 

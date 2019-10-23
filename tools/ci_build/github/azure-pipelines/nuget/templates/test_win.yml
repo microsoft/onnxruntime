@@ -38,7 +38,6 @@ jobs:
      test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .Net Core'
-    continueOnError: true
 
   - script: |
      @echo "Running Runtest.bat"
@@ -46,14 +45,12 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .Net Core x86'
     enabled: false
-    continueOnError: true
 
   - script: |
      @echo "Running Runtest.bat"
      test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x64 $(NuGetPackageVersionNumber)
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .NetFramework'
-    continueOnError: true
 
   - script: |
      @echo "Running Runtest.bat"
@@ -61,7 +58,6 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .NetFramework x86'
     enabled: false
-    continueOnError: true
 
   - script: |
      @echo "Running runtest.bat"
@@ -73,7 +69,6 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C-API) '
     timeoutInMinutes: 30
-    continueOnError: true
 
   # test C++ API sample
   - script: |
@@ -89,7 +84,6 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C++ API) '
     timeoutInMinutes: 30
-    continueOnError: true
 
   - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
     displayName: 'Component Detection'

@@ -12,7 +12,7 @@ namespace onnxruntime {
 
 Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
   auto& conv_node = node;
-  const Node& bn_node = *conv_node.OutputNodesBegin();
+  Node& bn_node = *graph.GetNode(conv_node.OutputNodesBegin()->Index());
 
   // Get value of attribute epsilon
   const onnxruntime::NodeAttributes& attributes = bn_node.GetAttributes();
@@ -114,29 +114,32 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   }
 
   // Replace initializers of conv node
-  graph_utils::ReplaceInitializer(graph, conv_W_tensor_proto->name(), new_conv_W_tensor_proto);
+  auto new_W_name = graph.GenerateNodeArgName("ConvBnFusion_W_" + conv_W_tensor_proto->name());
+  auto new_B_name = graph.GenerateNodeArgName("ConvBnFusion_BN_B_" + bn_B_tensor_proto->name());
+
+  new_conv_W_tensor_proto.set_name(new_W_name);
+  new_conv_B_tensor_proto.set_name(new_B_name);
+
+  NodeArg& new_conv_W_node_arg = graph_utils::AddInitializer(graph, new_conv_W_tensor_proto);
+  graph_utils::ReplaceNodeInput(node, 1, new_conv_W_node_arg);
+
+  auto& new_conv_B_node_arg = graph_utils::AddInitializer(graph, new_conv_B_tensor_proto);
 
   if (conv_inputs.size() == 3) {
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 6011)  // Not deferencing null pointer. conv_B_tensor_proto is set on line 93
-#endif
-    graph_utils::ReplaceInitializer(graph, conv_B_tensor_proto->name(), new_conv_B_tensor_proto);
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
-
+    graph_utils::ReplaceNodeInput(node, 2, new_conv_B_node_arg);
   } else {
-    graph_utils::ReplaceInitializer(graph, bn_B_tensor_proto->name(), new_conv_B_tensor_proto);
-    conv_node.MutableInputDefs().push_back(bn_B_node_arg);
-    conv_node.MutableInputArgsCount()[2] = 1;
+    graph_utils::AddNodeInput(node, 2, new_conv_B_node_arg);
   }
 
-  // Remove BN node.
-  auto* bn_node_to_remove = graph.GetNode(bn_node.Index());
-  if (graph_utils::RemoveNode(graph, *bn_node_to_remove)) {
-    rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;
-  }
+  // trim off any output defs that are optional in the bn_node before we finalize fusion, as we copy the '
+  // defs across to the Conv node so the output name is maintained. we checked in SatisfyCondition that
+  // none of these optional outputs exist, so it's safe to do this.
+  bn_node.MutableOutputDefs().resize(1);
+
+  // Move the output definition and edges from the BN node to the Conv node and delete the BN node.
+  graph_utils::FinalizeNodeFusion(graph, conv_node, bn_node);
+
+  rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;
 
   return Status::OK();
 }
@@ -149,7 +152,7 @@ bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node) const 
 
   const auto& next_node = *node.OutputNodesBegin();
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "BatchNormalization", {7, 9}) ||
-      next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node) ||
+      next_node.GetInputEdgesCount() != 1 ||
       // Make sure the two nodes do not span execution providers.
       next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
     return false;
@@ -162,6 +165,19 @@ bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node) const 
       !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[2]) ||
       !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[3]) ||
       !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[4])) {
+    return false;
+  }
+
+  // First output from BN is required. Others are optional. If any optional outputs exist we can't fuse.
+  const auto& output_defs = next_node.OutputDefs();
+  if (output_defs.size() > 1) {
+    for (size_t i = 1, end = output_defs.size(); i < end; ++i) {
+      if (output_defs[i] != nullptr && output_defs[i]->Exists())
+        return false;
+    }
+  }
+
+  if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
     return false;
   }
 

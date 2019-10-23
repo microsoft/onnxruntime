@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -29,6 +30,11 @@ TEST(GemmOpTest, GemmNoTrans) {
 // Only CUDA kernel has float 16 support
 #ifdef USE_CUDA
 TEST(GemmOpTest, GemmNoTrans_f16) {
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -229,7 +235,7 @@ TEST(GemmOpTest, GemmEmptyTensor) {
   test.AddInput<float>("C", {3}, std::vector<float>(3, 1.0f));
   test.AddOutput<float>("Y", {0, 3},
                         {});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: doesn't support dynamic shape yet
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kMklDnnExecutionProvider}); //TensorRT: doesn't support dynamic shape yet
 }
 
 TEST(GemmOpTest, GemmNoBiasOpset11) {

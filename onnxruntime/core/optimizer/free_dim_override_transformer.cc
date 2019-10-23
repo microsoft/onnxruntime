@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/logging/logging.h"
-#include "core/session/inference_session.h"
+#include "core/framework/session_options.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/free_dim_override_transformer.h"
 
@@ -19,7 +19,7 @@ static std::string ToLower(std::string s) {
 }
 
 /*explicit*/ FreeDimensionOverrideTransformer::FreeDimensionOverrideTransformer(gsl::span<const FreeDimensionOverride> overrides_to_apply)
-  : GraphTransformer("FreeDimensionOverrideTransformer") {
+    : GraphTransformer("FreeDimensionOverrideTransformer") {
   for (const auto& o : overrides_to_apply) {
     // Convert to lowercase to perform case-insensitive comparisons later
     std::string denotation = ToLower(o.dimension_denotation);

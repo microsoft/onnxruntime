@@ -9,6 +9,7 @@
 #include "core/framework/framework_common.h"
 #include "core/framework/iexecutor.h"
 #include "core/framework/session_state.h"
+#include "core/framework/session_options.h"
 
 namespace ONNX_NAMESPACE {
 class TensorShapeProto;
@@ -67,18 +68,21 @@ void FinalizeFeedFetchCopyInfo(const SessionState& session_state,
 // Execute the main graph. The feed_fetches_manager will be finalized based on the provided feeds and fetches.
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                            bool sequential_execution, const bool& terminate_flag, const logging::Logger& logger);
+                            ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger);
 
 // Execute a subgraph. The feeds_fetches_manager should have been finalized prior to calling this function.
 // See IControlFlowNode::SetupSubgraphExecutionInfo usage in the control flow kernels.
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               bool sequential_execution, const bool& terminate_flag, const logging::Logger& logger);
+                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger);
 
 #if defined(DEBUG_NODE_INPUTS_OUTPUTS)
-// to create a build with these enabled run the build script with
-//   --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=ON
+// to create a build with these enabled run the build script with 1 to dump just shapes, or 2 to dump shapes and data
+// e.g.
+//   --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
+// To unset you'll need to either delete CMakeCache.txt or run with
+//   --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=0
 void DumpNodeInputs(const OpKernelContext& context, const Node& node);
 void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionState& session_state);
 #endif

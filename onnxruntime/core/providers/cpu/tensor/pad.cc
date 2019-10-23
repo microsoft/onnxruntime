@@ -20,6 +20,7 @@ namespace contrib {
 // once Keras Mask RCNN is shipped with all ONNX domain ops
 
 // Currently this kernel is required to support Keras Mask-RCNN
+// only float type is supported
 ONNX_OPERATOR_KERNEL_EX(Pad,
                         kMSDomain,
                         1,
@@ -31,6 +32,7 @@ ONNX_OPERATOR_KERNEL_EX(Pad,
 
 #endif
 
+// only float type is supported for opset-10
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Pad,
     2, 10,
@@ -40,11 +42,30 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
 // The interface for the 'Pad' op was changed in opset-11
 // 'pads' and 'value' (attributes previously) became inputs in this version
 // The core logic remains the same
-ONNX_CPU_OPERATOR_KERNEL(
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Pad,
     11,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Pad<float>);
+    float,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), Pad<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Pad,
+    11,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()), Pad<double>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Pad,
+    11,
+    int32_t,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()), Pad<int32_t>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Pad,
+    11,
+    int64_t,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()), Pad<int64_t>);
 
 // This is the general padding method to n-dimensionally do edge or reflection padding (based on the inputDelta values)
 template <typename T>
@@ -115,12 +136,12 @@ static void ReshapePads(const std::vector<int64_t>& src_pad, size_t src_dim_coun
   reshaped_pad[inner_axis + new_dim_count] = src_pad[inner_axis + src_dim_count] * inner_no_pad_size;
 }
 
-template <>
-Status PadCpuImpl<float>(OpKernelContext* ctx,
-                         const std::vector<int64_t>& pads,
-                         const std::vector<int64_t>& slices,
-                         const Mode& mode,
-                         float value) {
+template <typename T1, typename T2>
+Status PadCpuImpl(OpKernelContext* ctx,
+                  const std::vector<int64_t>& pads,
+                  const std::vector<int64_t>& slices,
+                  const Mode& mode,
+                  T2 value) {
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   std::vector<int64_t> output_dims(input_tensor.Shape().GetDims());
   size_t data_rank = output_dims.size();
@@ -160,11 +181,11 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
   TensorShape output_shape(output_dims);
 
   TensorShape input_shape(reshaped_input_dims);
-  SliceIterator<float> input(input_tensor, input_shape, input_starts, input_extents, {});
+  SliceIterator<T1> input(input_tensor, input_shape, input_starts, input_extents, {});
 
   // output_shape need to keep original.
   auto& output_tensor = *ctx->Output(0, output_shape);
-  auto* output = output_tensor.template MutableData<float>();
+  auto* output = output_tensor.template MutableData<T1>();
 
   TensorPitches output_pitches(reshaped_output_dims);
   size_t alignSkip = 0;  // Amount to skip to align to where the next input tensor data needs to be written
@@ -183,24 +204,24 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
       while (input_counters) {
         output += alignSkip;
         {
-          float* axisStart = output;
+          T1* axisStart = output;
           output = input.CopyInnermostAxisSolitaryInnerStep(output);
 
           int64_t prePad = reshaped_pad[inner_axis];
           int64_t postPad = reshaped_pad[inner_axis + new_dims_count];
-          PadAxisConstant(axisStart - prePad, value, prePad);
-          PadAxisConstant(output, value, postPad);
+          PadAxisConstant(axisStart - prePad, static_cast<T1>(value), prePad);
+          PadAxisConstant(output, static_cast<T1>(value), postPad);
           output += postPad;
           alignSkip = prePad;
         }
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
         while (input_counters.Increment()) {
           ptrdiff_t inner_pitch = output_pitches[input_counters.Axis()];
-          float* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
+          T1* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
           int64_t prePad = reshaped_pad[input_counters.Axis()];
           int64_t postPad = reshaped_pad[input_counters.Axis() + new_dims_count];
-          PadAxisConstant(axisStart - prePad * inner_pitch, value, prePad * inner_pitch);
-          PadAxisConstant(output, value, postPad * inner_pitch);
+          PadAxisConstant(axisStart - prePad * inner_pitch, static_cast<T1>(value), prePad * inner_pitch);
+          PadAxisConstant(output, static_cast<T1>(value), postPad * inner_pitch);
           output += inner_pitch * postPad;
           alignSkip += inner_pitch * prePad;
         }
@@ -214,7 +235,7 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
       while (input_counters) {
         output += alignSkip;
         {
-          float* axisStart = output;
+          T1* axisStart = output;
           output = input.CopyInnermostAxisSolitaryInnerStep(output);
 
           int64_t prePad = reshaped_pad[inner_axis];
@@ -227,7 +248,7 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
         while (input_counters.Increment()) {
           ptrdiff_t inner_pitch = output_pitches[input_counters.Axis()];
-          float* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
+          T1* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
           int64_t prePad = reshaped_pad[input_counters.Axis()];
           int64_t postPad = reshaped_pad[input_counters.Axis() + new_dims_count];
           PadAxis(axisStart - prePad * inner_pitch, axisStart, 1, -inner_pitch, inner_pitch, prePad);
@@ -245,7 +266,7 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
       while (input_counters) {
         output += alignSkip;
         {
-          float* axisStart = output;
+          T1* axisStart = output;
           output = input.CopyInnermostAxisSolitaryInnerStep(output);
 
           int64_t prePad = reshaped_pad[inner_axis];
@@ -258,7 +279,7 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
         while (input_counters.Increment()) {
           ptrdiff_t inner_pitch = output_pitches[input_counters.Axis()];
-          float* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
+          T1* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
           int64_t prePad = reshaped_pad[input_counters.Axis()];
           int64_t postPad = reshaped_pad[input_counters.Axis() + new_dims_count];
           PadAxis(axisStart - prePad * inner_pitch, axisStart + prePad * inner_pitch, 1, -inner_pitch * 2, inner_pitch, prePad);
@@ -273,8 +294,8 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
   return Status::OK();
 }
 
-template <>
-Status Pad<float>::Compute(OpKernelContext* ctx) const {
+template <typename T>
+Status Pad<T>::Compute(OpKernelContext* ctx) const {
   // kOnnxDomain Pad opset >= 11 (Or) kMsDomain opset == 1
   if (is_dynamic_) {
     const Tensor& input_tensor = *ctx->Input<Tensor>(0);
@@ -307,19 +328,21 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
       }
     }
 
-    float value = 0;
+    T value = 0;
     const Tensor* value_tensor = ctx->Input<Tensor>(2);
     if (nullptr != value_tensor) {
-      ORT_ENFORCE(value_tensor->DataType() == DataTypeImpl::GetType<float>() &&
+      ORT_ENFORCE(value_tensor->DataType() == DataTypeImpl::GetType<T>() &&
                       value_tensor->Shape().Size() == 1,
                   "Value tensor should be a 1D tensor of size 1 with the same type as that of the input tensor");
-      value = value_tensor->template Data<float>()[0];
+      value = value_tensor->template Data<T>()[0];
     }
 
-    return PadCpuImpl<float>(ctx, pads, slices, mode_, value);
+    return PadCpuImpl<T, T>(ctx, pads, slices, mode_, value);
   } else {
     // kOnnxDomain Pad opset < 11
-    return PadCpuImpl<float>(ctx, pads_, slices_, mode_, value_);
+    // In the earlier opset versions of Pad, the type for 'value' attribute was always float,
+    // irrespective of the data type of the actual input to be padded
+    return PadCpuImpl<T, float>(ctx, pads_, slices_, mode_, value_);
   }
 }
 };  // namespace onnxruntime
