@@ -220,6 +220,7 @@ if (onnxruntime_USE_NGRAPH)
   )
 endif()
 
+#TODO: This is temporary till we build OV from binary
 if (onnxruntime_USE_INTEL)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
