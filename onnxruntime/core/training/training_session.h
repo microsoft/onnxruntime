@@ -58,10 +58,14 @@ class TrainingSession : public InferenceSession {
   @param summary_name name for the merged summary node.
   @param scalar_nodes tensor names to add scalar summary nodes for.
   @param histogram_nodes tensor names to add histogram summary nodes for.
+  @param norm_nodes tensor names to add norm summary nodes for.
+  @param dump_convergence_metrics add convergence metrics such as gradient norm to the summary or not.
   */
   common::Status AddTensorboard(const std::string& summary_name,
                                 const std::vector<std::string>& scalar_nodes,
-                                const std::vector<std::string>& histogram_nodes);
+                                const std::vector<std::string>& histogram_nodes,
+                                const std::vector<std::string>& norm_nodes,
+                                const bool dump_convergence_metrics);
 
   common::Status ApplyTransformationsToMainGraph();
 

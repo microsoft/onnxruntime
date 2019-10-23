@@ -112,7 +112,9 @@ Status TrainingRunner::Initialize() {
     if (opt_graph_outputs_.count(kGradientAllIsFiniteOutputKey) > 0){
       params_.scalar_names.push_back(opt_graph_outputs_[kGradientAllIsFiniteOutputKey]);
     }
-    ORT_RETURN_IF_ERROR(session_.AddTensorboard(params_.summary_name, params_.scalar_names, params_.histogram_names));
+    ORT_RETURN_IF_ERROR(session_.AddTensorboard(
+      params_.summary_name, params_.scalar_names, params_.histogram_names,
+      params_.norm_names, params_.dump_convergence_metrics));
   }
 
   // Expose all fetches as graph outputs

@@ -88,6 +88,10 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
       ("perf_warm_up_iters", "Num of warm-up iterations to run before the perf test", cxxopts::value<int>()->default_value("10"))
       ("histogram", "Tensor(s) to display a histogram on tensorboard (e.g. '417,3347,417_grad,3347_grad' for bert-large or '81,449,81_grad,449_grad' for bert-tiny)",
         cxxopts::value<std::vector<std::string>>()->default_value({}))
+      ("norm", "Tensor(s) to display their L2-norm values on tensorboard (e.g. '417,3347,417_grad,3347_grad' for bert-large or '81,449,81_grad,449_grad' for bert-tiny)",
+        cxxopts::value<std::vector<std::string>>()->default_value({}))
+      ("dump_convergence_metrics", "specify if tensorboard should include convergence metrics such as gradient norm.",
+        cxxopts::value<bool>()->default_value("false"))
       ("max_seq_length",
         "The maximum total input sequence length after WordPiece tokenization. "
         "Sequences longer than this will be truncated, and sequences shorter "
@@ -174,6 +178,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
     params.test_data_dir_phase2.assign(test_data_dir_phase2.begin(), test_data_dir_phase2.end());
     params.log_dir.assign(log_dir.begin(), log_dir.end());
     params.histogram_names = flags["histogram"].as<std::vector<std::string>>();
+    params.norm_names = flags["norm"].as<std::vector<std::string>>();
+    params.dump_convergence_metrics = flags["dump_convergence_metrics"].as<bool>();
 
     std::string mode = flags["mode"].as<std::string>();
     if (mode == "perf" || mode == "train") {

@@ -144,8 +144,12 @@ Status TrainingSession::BuildLossScalingFactorInput(const float loss_scale, std:
 
 Status TrainingSession::AddTensorboard(const std::string& summary_name,
                                        const std::vector<std::string>& scalar_nodes,
-                                       const std::vector<std::string>& histogram_nodes) {
-  ORT_RETURN_IF_ERROR(TransformGraphForTensorboard(model_->MainGraph(), summary_name, scalar_nodes, histogram_nodes));
+                                       const std::vector<std::string>& histogram_nodes,
+                                       const std::vector<std::string>& norm_nodes,
+                                       const bool dump_convergence_metrics) {
+  ORT_RETURN_IF_ERROR(
+    TransformGraphForTensorboard(
+      model_->MainGraph(), summary_name, scalar_nodes, histogram_nodes, norm_nodes, dump_convergence_metrics));
   return DoPostLoadProcessing(*model_);
 }
 

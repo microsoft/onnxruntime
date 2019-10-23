@@ -97,6 +97,7 @@ class TrainingRunner {
     MPIContext mpi_context;
     bool skip_evaluation = false;
     bool dump_fetches = false;
+    bool dump_convergence_metrics = false;
 
     VectorString fetch_names;
 
@@ -111,6 +112,7 @@ class TrainingRunner {
     std::string summary_name = "summary";
     VectorString scalar_names;
     VectorString histogram_names;
+    VectorString norm_names;
 
     bool EnableTensorboard() const {
       return !is_perf_test && !log_dir.empty() && mpi_context.world_rank == 0;
