@@ -16,8 +16,7 @@ struct ConvOpAndTestAttributes {
   vector<int64_t> kernel_shape;
   vector<int64_t> pads;
   vector<int64_t> strides;
-  // Disable TensorRT because weight as input is not supported
-  std::unordered_set<std::string> excluded_providers{kTensorrtExecutionProvider};
+  std::unordered_set<std::string> excluded_providers;
 };
 
 void TestConvOp(const ConvOpAndTestAttributes& attributes,
@@ -52,7 +51,11 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
   }
   test.AddOutput<float>("Y", expected_output_shape, expected_output);
 
-  test.Run(expect_result, err_str, attributes.excluded_providers);
+  std::unordered_set<std::string> excluded_providers(attributes.excluded_providers);
+  // Disable TensorRT because weight as input is not supported
+  excluded_providers.insert(kTensorrtExecutionProvider);
+
+  test.Run(expect_result, err_str, excluded_providers);
 }
 
 }  // namespace

@@ -199,6 +199,8 @@ bool PrepareForReduce(OpKernelContext* ctx,
   //set to-be-reduced axes to one. squeeze is keepdims_ is false
   int64_t first_dim = 1;
   std::vector<int64_t> reduced_dims;
+  reduced_dims.reserve(in_dims.size());
+
   for (size_t i = 0; i < in_dims.size(); i++) {
     const auto in_dim = in_dims[i];
     if (keep_axis[i]) {
@@ -208,7 +210,7 @@ bool PrepareForReduce(OpKernelContext* ctx,
       if (keepdims_) {
         reduced_dims.push_back(in_dim == 0 ? 0 : 1);
       } else {
-        // we are reducing on the axis and not keeping the dim, we can't drop a dim value of 0.
+        // as we are reducing on this axis and not keeping a dim for it, we can't drop a dim value of 0.
         // e.g. if input was {3, 0, 2} and we reduced on axis 1 without keeping it, the output shape would be
         // {3, 2} which is invalid given the input was empty.
         // note that if we do keep the dim the output shape will have a 0 in it,
@@ -221,7 +223,7 @@ bool PrepareForReduce(OpKernelContext* ctx,
     }
   }
 
-  *reducedTensor = ctx->Output(0, reduced_dims);
+  *reducedTensor = ctx->Output(0, std::move(reduced_dims));
   auto num_elements = input.Shape().Size();
 
   // edge case. one or more input dims with value of 0.
