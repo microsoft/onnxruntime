@@ -390,7 +390,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
 
-        [Theory(Skip = "TestPreTrainedModels is flaky and is blocking CI build progress. Enable it once this is fixed.")]
+        [Theory]
         [MemberData(nameof(GetModelsForTest))]
         [MemberData(nameof(GetSkippedModelForTest), Skip = "Skipped due to Error, please fix the error and enable the test")]
         private void TestPreTrainedModels(string opset, string modelName)
