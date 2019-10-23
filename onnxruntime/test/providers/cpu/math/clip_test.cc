@@ -61,5 +61,25 @@ TEST(MathOpTest, Clip) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
 }
 
+TEST(MathOpTest, ClipDimWithZero) {
+  std::vector<int64_t> dims{3, 0};  // dim with value of zero should be handled
+
+  OpTester test("Clip"); 
+  test.AddInput<float>("X", dims, {});
+  test.AddInput<float>("min", {}, {-5});
+  test.AddInput<float>("max", {}, {5});
+  test.AddOutput<float>("Y", dims, {});
+
+  // nGraph and Tensorrt does not support Clip opset 11 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+
+  OpTester test6("Clip", 6);  // CUDA only has opset 6 support currently
+  test6.AddInput<float>("X", dims, {});
+  test6.AddAttribute("min", -10.0f);
+  test6.AddAttribute("max", 10.0f);
+  test6.AddOutput<float>("Y", dims, {});
+  test6.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

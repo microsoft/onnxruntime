@@ -11,7 +11,7 @@
 namespace onnxruntime {
 namespace test {
 
-TEST(BroadcastingTest, ZeroDimHandling) {
+TEST(BroadcastingTest, DimWithZeroHandling) {
   // equal rank
   OpTester test("Add");
   test.AddInput<int64_t>("A", {3, 1}, {1, 2, 3});

@@ -359,6 +359,13 @@ TEST(TensorOpTest, Pad_Constant_DimWithZeroInput) {
                                {4, 2},
                                {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f});
 
+  RunAllOpsetAllDomainPadTests({0, 2},  // 2D
+                               {},
+                               {1, 1, 1, 1},
+                               0.1f,
+                               {2, 4},
+                               {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f});
+
   RunAllOpsetAllDomainPadTests({2, 0, 2},  // 3D
                                {},
                                {0, 1, 0, 0, 1, 0},

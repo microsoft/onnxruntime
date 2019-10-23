@@ -90,7 +90,8 @@ struct PoolAttributes {
   std::vector<int64_t> SetOutputSize(const TensorShape& input_shape,
                                      int64_t output_channel,
                                      std::vector<int64_t>* actual_pads) const {
-    ORT_ENFORCE(input_shape.Size() >= 0);
+    ORT_ENFORCE(input_shape.Size() > 0 || input_shape[0] == 0,
+                "Invalid input shape. Only N can be zero. Got:", input_shape);
     std::vector<int64_t> output_dims;
     int64_t N = input_shape[0];
     InferOutputSize(input_shape.GetDims(), &output_dims, actual_pads);

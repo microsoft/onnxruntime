@@ -26,8 +26,9 @@ void TestConvOp(const ConvOpAttributes& attributes,
                 bool is_cuda_supported = true,
                 bool is_mkldnn_supported = true,
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                const std::string& err_str = "") {
-  OpTester test("Conv");
+                const std::string& err_str = "",
+                int opset = -1) {
+  OpTester test("Conv", opset);
   test.AddAttribute("auto_pad", attributes.auto_pad);
   test.AddAttribute("group", attributes.group);
   test.AddAttribute("kernel_shape", attributes.kernel_shape);
@@ -573,6 +574,24 @@ TEST(ConvTest, Conv2D_group) {
   auto expected_vals = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 18.0f, 20.0f, 22.0f, 24.0f, 26.0f, 28.0f, 30.0f, 32.0f, 34.0f};
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+}
+
+TEST(ConvTest, ConvDimWithZero) {
+  ConvOpAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1}         // strides
+  };
+  vector<float> X = vector<float>();
+  vector<int64_t> X_shape = {0, 2, 4, 4}; // N of 0 should be handled
+  vector<float> W = {1.0f, 2.0f, 1.0f, 2.0f};
+  vector<int64_t> W_shape = {2, 2, 1, 1};
+  vector<int64_t> out_shape = {0, 2, 4, 4};
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, {}, out_shape, true, true,
+             OpTester::ExpectResult::kExpectSuccess, "", 10);
 }
 
 }  // namespace test

@@ -154,7 +154,9 @@ bool PrepareForReduce(OpKernelContext* ctx,
 
   // If all reduced axes are located at the tail of the input shape, then copy could be skipped is required
   bool need_copy = true;
-  if (axes.size() <= ndim && axes.front() == static_cast<int64_t>(ndim - axes.size()) && axes.back() == static_cast<int64_t>(ndim) - 1) {
+  if (axes.size() <= ndim &&
+      axes.front() == static_cast<int64_t>(ndim - axes.size()) &&
+      axes.back() == static_cast<int64_t>(ndim) - 1) {
     need_copy = false;
   }
 
@@ -198,24 +200,38 @@ bool PrepareForReduce(OpKernelContext* ctx,
   int64_t first_dim = 1;
   std::vector<int64_t> reduced_dims;
   for (size_t i = 0; i < in_dims.size(); i++) {
+    const auto in_dim = in_dims[i];
     if (keep_axis[i]) {
-      reduced_dims.push_back(in_dims[i]);
+      reduced_dims.push_back(in_dim);
     } else {
-      first_dim *= in_dims[i];
+      first_dim *= in_dim;
       if (keepdims_) {
-        reduced_dims.push_back(1);
+        reduced_dims.push_back(in_dim == 0 ? 0 : 1);
+      } else {
+        // we are reducing on the axis and not keeping the dim, we can't drop a dim value of 0.
+        // e.g. if input was {3, 0, 2} and we reduced on axis 1 without keeping it, the output shape would be
+        // {3, 2} which is invalid given the input was empty.
+        // note that if we do keep the dim the output shape will have a 0 in it,
+        // which is still valid for an empty tensor, so allow that.
+        ORT_ENFORCE(in_dim != 0,
+                    "Can't reduce on dim with value of 0 if 'keepdims' is false. "
+                    "Invalid output shape would be produced. input_shape:",
+                    input.Shape());
       }
     }
   }
 
   *reducedTensor = ctx->Output(0, reduced_dims);
-  block_size = input.Shape().Size() / first_dim;
-  blocks = first_dim;
+  auto num_elements = input.Shape().Size();
 
-  // edge case. one or more dims with value of 0
-  if (input.Shape().Size() == 0) {
+  // edge case. one or more input dims with value of 0.
+  if (num_elements == 0) {
+    block_size = blocks = 0;
     return true;
   }
+
+  block_size = num_elements / first_dim;
+  blocks = first_dim;
 
   if (!need_copy && check_no_transpose) {
     return true;
