@@ -436,11 +436,15 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   // print placement info
   if (is_verbose_mode) {
     LOGS(*session_logger_, VERBOSE) << "Node placements";
-    for (const auto& pr : node_placements) {
-      std::ostringstream all_nodes_str;
-      std::copy(pr.second.begin(), pr.second.end(), std::ostream_iterator<std::string>(all_nodes_str, ", "));
-      LOGS(*session_logger_, VERBOSE) << " Provider: [" << pr.first << "]"
-                                      << ": [" << all_nodes_str.str() << "]";
+    if (node_placements.size() == 1) {
+      LOGS(*session_logger_, VERBOSE) << "All nodes have been placed on [" << node_placements.begin()->first << "].";
+    } else {
+      for (const auto& pr : node_placements) {
+        std::ostringstream all_nodes_str;
+        std::copy(pr.second.begin(), pr.second.end(), std::ostream_iterator<std::string>(all_nodes_str, ", "));
+        LOGS(*session_logger_, VERBOSE) << " Provider: [" << pr.first << "]"
+                                        << ": [" << all_nodes_str.str() << "]";
+      }
     }
   }
 
