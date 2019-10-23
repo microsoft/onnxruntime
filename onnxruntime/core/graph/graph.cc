@@ -2080,11 +2080,6 @@ Node& Graph::AddNode(const NodeProto& node_proto,
 }
 
 std::string Graph::GenerateNodeArgName(const std::string& base_name) {
-  const bool found = node_args_.find(base_name) != node_args_.end();
-  if (!found) {
-    return base_name;
-  }
-
   std::string new_name;
   do {
     std::ostringstream str;
@@ -2095,12 +2090,6 @@ std::string Graph::GenerateNodeArgName(const std::string& base_name) {
 }
 
 std::string Graph::GenerateNodeName(const std::string& base_name) {
-  const bool found = std::find_if(nodes_.cbegin(), nodes_.cend(), [&base_name](const std::unique_ptr<Node>& n) {
-                  return (n != nullptr) && (n->Name() == base_name);}) != nodes_.end();
-  if (!found) {
-    return base_name;
-  }
-
   std::string new_name;
   bool keep_going = true;
 
