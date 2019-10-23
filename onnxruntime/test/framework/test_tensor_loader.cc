@@ -12,7 +12,6 @@
 #endif
 
 const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-const OrtApi* Ort::g_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
 namespace onnxruntime {
 namespace test {
