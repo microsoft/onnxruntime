@@ -711,18 +711,18 @@ class BertOnnxModel(OnnxModel):
 
         for reshape_node in self.get_nodes_by_op_type('Reshape'):
             concat_node = output_name_to_node[reshape_node.input[1]]
-            if concat_node.op_type != 'Concat' or len(concat_node.input) < 3:
+            if concat_node.op_type != 'Concat' or len(concat_node.input) < 3 or len(concat_node.input) > 4:
                 continue
 
-            path = self.match_parent_path(concat_node, ['Unsqueeze', 'Gather', 'Shape'], [0, 0, 0], output_name_to_node)
-            if path is None:
+            path0 = self.match_parent_path(concat_node, ['Unsqueeze', 'Gather', 'Shape'], [0, 0, 0], output_name_to_node)
+            if path0 is None:
                 continue
-            (unsqueeze_0, gather_0, shape_0) = path
+            (unsqueeze_0, gather_0, shape_0) = path0
 
-            path = self.match_parent_path(concat_node, ['Unsqueeze', 'Gather', 'Shape'], [1, 0, 0], output_name_to_node)
-            if path is None:
+            path1 = self.match_parent_path(concat_node, ['Unsqueeze', 'Gather', 'Shape'], [1, 0, 0], output_name_to_node)
+            if path1 is None:
                 continue
-            (unsqueeze_1, gather_1, shape_1) = path
+            (unsqueeze_1, gather_1, shape_1) = path1
 
             shape = []
             gather_value = self.get_constant_value(gather_0.input[1])
@@ -736,17 +736,43 @@ class BertOnnxModel(OnnxModel):
             if len(shape) != 2:
                 continue
 
-            if (len(concat_node.input) > 2):
+            path2 = []
+            path3 = []
+            shape_nodes = [shape_0, shape_1]
+            if len(concat_node.input) == 3 and self.get_initializer(concat_node.input[2]) is None:
+                path2 = self.match_parent_path(concat_node, ['Unsqueeze', 'Mul', 'Gather', 'Shape'], [2, 0, 0, 0], output_name_to_node)
+                path3 = self.match_parent_path(concat_node, ['Unsqueeze', 'Mul', 'Gather', 'Shape'], [2, 0, 1, 0], output_name_to_node)
+                if path2 is None or path3 is None:
+                    continue
+                shape_nodes.extend([path2[-1], path3[-1]])
+                shape.append(-1)
+            elif (len(concat_node.input) > 2):
                 concat_2 = self.get_initializer(concat_node.input[2])
                 if concat_2 is None:
                     continue
                 shape.extend(numpy_helper.to_array(concat_2))
 
-            if (len(concat_node.input) > 3):
+            if len(concat_node.input) == 4 and self.get_initializer(concat_node.input[3]) is None:
+                path2 = self.match_parent_path(concat_node, ['Unsqueeze', 'Div', 'Gather', 'Shape'], [3, 0, 0, 0], output_name_to_node)
+                shape_nodes.extend([path2[-1]])
+                if path2 is None or -1 in shape:
+                    continue
+                shape.append(-1)
+            elif (len(concat_node.input) > 3):
                 concat_3 = self.get_initializer(concat_node.input[3])
                 if concat_3 is None:
                     continue
                 shape.extend(numpy_helper.to_array(concat_3))
+
+            root_input = reshape_node.input[0]
+            same_shape_input = True
+            for shape_node in shape_nodes:
+                if shape_node.input[0] != root_input:
+                    same_shape_input = False
+
+            if not same_shape_input:
+                continue
+
             shape_value = np.asarray(shape, dtype=np.int64)
 
             constant_shape_name = self.create_node_name('Constant', 'constant_shape')
@@ -760,7 +786,12 @@ class BertOnnxModel(OnnxModel):
                     dims=shape_value.shape,
                     vals=shape_value))
             reshape_node.input[1] = constant_shape_name
-            nodes_to_remove.extend([concat_node, unsqueeze_0, unsqueeze_1, gather_0, gather_1, shape_0, shape_1])
+            reshape_node.name = self.create_node_name('Reshape', 'Reshape_Fuse')
+            nodes_to_remove.extend([concat_node])
+            nodes_to_remove.extend(path0)
+            nodes_to_remove.extend(path1)
+            nodes_to_remove.extend(path2)
+            nodes_to_remove.extend(path3)
             nodes_to_add.append(new_node)
 
         print("Fused reshape count:", len(nodes_to_add))
