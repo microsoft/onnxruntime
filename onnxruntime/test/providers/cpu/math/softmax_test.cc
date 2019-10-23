@@ -197,9 +197,9 @@ TEST(SoftmaxOperator, InvalidAxis) {
 TEST(SoftmaxOperator, DimWithZero) {
   std::vector<float> x_vals = {};
   std::vector<float> expected_vals = {};
-  std::vector<int64_t> dimensions = {1, 0}; // dim with value of 0 should be handled
+  std::vector<int64_t> dimensions = {1, 0};  // dim with value of 0 should be handled
 
-  RunTest(x_vals, expected_vals, dimensions, 0, true, OpTester::ExpectResult::kExpectSuccess, "", 10);
+  RunTest(x_vals, expected_vals, dimensions, 0, false, OpTester::ExpectResult::kExpectSuccess, "", 10);
 }
 
 }  // namespace test

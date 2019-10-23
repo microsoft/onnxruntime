@@ -1233,13 +1233,21 @@ TEST(ReductionOpTest, ArgMin_int32_neg_axis) {
 
 // test that PrepareForReduce handles this case. Called by all reduction ops so any op can be used in the test
 TEST(ReductionOpTest, ReduceDimWithZero) {
+  auto run = [](OpTester& tester, const std::string& error_msg = "") {
+    auto expect = error_msg.empty() ? OpTester::ExpectResult::kExpectSuccess
+                                    : OpTester::ExpectResult::kExpectFailure;
+
+    // exclude NGraph and TensorRT as this isn't handled by those EPs
+    tester.Run(expect, error_msg, {kTensorrtExecutionProvider, kNGraphExecutionProvider, kNupharExecutionProvider});
+  };
+
   // reduce on all axes keeping dims. should allow the 0 to be the reduced value
   OpTester test("ReduceSum", 10);
   test.AddAttribute("keepdims", int64_t(1));
   test.AddShapeToTensorData(true, 1);  // make second dim symbolic so that we don't break during shape inferencing
   test.AddInput<float>("data", {3, 0, 2}, {});
   test.AddOutput<float>("reduced", {1, 0, 1}, {});
-  test.Run();
+  run(test);
 
   // reduction without keeping dims on all axes. can't reduce on an axis with value of 0
   OpTester test2("ReduceSum", 10);
@@ -1247,9 +1255,9 @@ TEST(ReductionOpTest, ReduceDimWithZero) {
   test2.AddShapeToTensorData(true, 1);
   test2.AddInput<float>("data", {3, 0, 2}, {});
   test2.AddOutput<float>("reduced", {}, {0.f});
-  test2.Run(OpTester::ExpectResult::kExpectFailure,
-            "Can't reduce on dim with value of 0 if 'keepdims' is false. "
-            "Invalid output shape would be produced. input_shape:{3,0,2}");
+  run(test2,
+      "Can't reduce on dim with value of 0 if 'keepdims' is false. "
+      "Invalid output shape would be produced. input_shape:{3,0,2}");
 
   // reduction is possible without keeping dims if we only reduce on non-zero dims
   OpTester test3("ReduceSum", 10);
@@ -1258,7 +1266,7 @@ TEST(ReductionOpTest, ReduceDimWithZero) {
   test3.AddShapeToTensorData(true, 1);
   test3.AddInput<float>("data", {3, 0, 2}, {});
   test3.AddOutput<float>("reduced", {3, 0}, {});
-  test3.Run();
+  run(test3);
 }
 
 }  // namespace test

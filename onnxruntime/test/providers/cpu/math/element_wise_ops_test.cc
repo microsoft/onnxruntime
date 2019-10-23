@@ -12,33 +12,38 @@ namespace onnxruntime {
 namespace test {
 
 TEST(BroadcastingTest, DimWithZeroHandling) {
+  auto run = [](OpTester& tester) {
+    // exclude NGraph and TensorRT as this isn't handled by those EPs
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
+  };
+
   // equal rank
   OpTester test("Add");
   test.AddInput<int64_t>("A", {3, 1}, {1, 2, 3});
   test.AddInput<int64_t>("B", {3, 0}, {});
   test.AddOutput<int64_t>("C", {3, 0}, {});
-  test.Run();
+  run(test);
 
   // zero in shape with smaller rank
   OpTester test1("Add");
   test1.AddInput<int64_t>("A", {2, 1, 2}, {1, 2, 3, 4});
   test1.AddInput<int64_t>("B", {0, 2}, {});
   test1.AddOutput<int64_t>("C", {2, 0, 2}, {});
-  test1.Run();
+  run(test1);
 
   // zero in shape with larger rank
   OpTester test2("Add");
   test2.AddInput<int64_t>("A", {0, 2, 2}, {});
   test2.AddInput<int64_t>("B", {1, 2}, {1, 2});
   test2.AddOutput<int64_t>("C", {0, 2, 2}, {});
-  test2.Run();
+  run(test2);
 
   // test that BroadcastLoopSpan also works. Mod uses that
   OpTester test3("Mod");
   test3.AddInput<int64_t>("A", {2, 2, 0}, {});
   test3.AddInput<int64_t>("B", {2, 1}, {1, 2});
   test3.AddOutput<int64_t>("C", {2, 2, 0}, {});
-  test3.Run();
+  run(test3);
 }
 
 TEST(MathOpTest, Add_int32) {

@@ -9,22 +9,22 @@ namespace test {
 
 namespace {
 
-struct ConvOpAttributes {
+struct ConvOpAndTestAttributes {
   string auto_pad;
   vector<int64_t> dilations;
   int64_t group;
   vector<int64_t> kernel_shape;
   vector<int64_t> pads;
   vector<int64_t> strides;
+  // Disable TensorRT because weight as input is not supported
+  std::unordered_set<std::string> excluded_providers{kTensorrtExecutionProvider};
 };
 
-void TestConvOp(const ConvOpAttributes& attributes,
+void TestConvOp(const ConvOpAndTestAttributes& attributes,
                 const vector<vector<float>>& inputs,
                 const vector<vector<int64_t>>& input_shapes,
                 const std::initializer_list<float>& expected_output,
                 const vector<int64_t>& expected_output_shape,
-                bool is_cuda_supported = true,
-                bool is_mkldnn_supported = true,
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                 const std::string& err_str = "",
                 int opset = -1) {
@@ -51,22 +51,15 @@ void TestConvOp(const ConvOpAttributes& attributes,
     test.AddInput<float>(szNames[i], input_shapes[i], inputs[i]);
   }
   test.AddOutput<float>("Y", expected_output_shape, expected_output);
-  std::unordered_set<std::string> excluded_providers;
-  if (!is_cuda_supported) {
-    excluded_providers.insert(kCudaExecutionProvider);
-  }
-  if (!is_mkldnn_supported) {
-    excluded_providers.insert(kMklDnnExecutionProvider);
-  }
-  excluded_providers.insert(kTensorrtExecutionProvider);  // Disable TensorRT because weight as input is not supported
-  test.Run(expect_result, err_str, excluded_providers);
+
+  test.Run(expect_result, err_str, attributes.excluded_providers);
 }
 
 }  // namespace
 
 // Conv
 TEST(ConvTest, Conv1D_1) {
-  ConvOpAttributes attrs = {
+  ConvOpAndTestAttributes attrs = {
       "",                     // auto_pad
       vector<int64_t>{1},     // dilations
       1,                      // group
@@ -87,7 +80,7 @@ TEST(ConvTest, Conv1D_1) {
 }
 
 TEST(ConvTest, Conv1D_1_DefaultStridesAndDilations) {
-  ConvOpAttributes attrs = {
+  ConvOpAndTestAttributes attrs = {
       "",                     // auto_pad
       vector<int64_t>{},      // dilations
       1,                      // group
@@ -109,7 +102,7 @@ TEST(ConvTest, Conv1D_1_DefaultStridesAndDilations) {
 
 // Conv3
 TEST(ConvTest, Conv1D_2) {
-  ConvOpAttributes attrs = {
+  ConvOpAndTestAttributes attrs = {
       "",                     // auto_pad
       vector<int64_t>{2},     // dilations
       1,                      // group
@@ -141,7 +134,7 @@ TEST(ConvTest, Conv1D_2) {
 
 // Conv1
 TEST(ConvTest, Conv1D_Bias) {
-  ConvOpAttributes attrs = {
+  ConvOpAndTestAttributes attrs = {
       "",                     // auto_pad
       vector<int64_t>{2},     // dilations
       1,                      // group
@@ -172,7 +165,7 @@ TEST(ConvTest, Conv1D_Bias) {
 
 // Conv47
 TEST(ConvTest, Conv2D_1) {
-  ConvOpAttributes attrs = {
+  ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
       vector<int64_t>{1, 1},        // dilations
       1,                            // group
@@ -191,11 +184,13 @@ TEST(ConvTest, Conv2D_1) {
   vector<int64_t> Y_shape = {2, 2, 1, 2};
   auto expected_vals = {-0.012311071157455444f, 0.02822777070105076f, -0.028432954102754593f, -0.037657227367162704f,
                         -0.04396762326359749f, 0.10081233829259872f, -0.10154513269662857f, -0.13448859751224518f};
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false, true);  // asymmetric padding is not supported by cudnn
+
+  attrs.excluded_providers.insert(kCudaExecutionProvider);  // asymmetric padding is not supported by cudnn
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTest, Conv1D_Invalid_Input_Shape) {
-  ConvOpAttributes attrs = {
+  ConvOpAndTestAttributes attrs = {
       "",                     // auto_pad
       vector<int64_t>{1},     // dilations
       1,                      // group
@@ -207,14 +202,14 @@ TEST(ConvTest, Conv1D_Invalid_Input_Shape) {
   vector<int64_t> X_shape = {1, 1, 1};
   vector<int64_t> dummy_shape = {1, 1, 2};
   auto dummy_vals = {0.0f, 0.0f};
-  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, true, true,
+  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape,
              OpTester::ExpectResult::kExpectFailure,
              "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
              "Both source and target dimension have values but they differ. Source=0 Target=2 Dimension=2");
 }
 
 TEST(ConvTest, Conv2D_Invalid_Input_Shape) {
-  ConvOpAttributes attrs = {
+  ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
       vector<int64_t>{1, 1},        // dilations
       1,                            // group
@@ -227,7 +222,7 @@ TEST(ConvTest, Conv2D_Invalid_Input_Shape) {
   vector<int64_t> dummy_shape = {2, 2, 1, 2};
   auto dummy_vals = {-0.0f, 0.0f, -0.0f, -0.0f,
                      -0.0f, 0.0f, -0.0f, -0.0f};
-  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, true, true,
+  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape,
              OpTester::ExpectResult::kExpectFailure,
              "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
              "Both source and target dimension have values but they differ. Source=1 Target=2 Dimension=0");
@@ -235,7 +230,7 @@ TEST(ConvTest, Conv2D_Invalid_Input_Shape) {
 
 // Conv30
 TEST(ConvTest, Conv2D_2) {
-  ConvOpAttributes attrs = {
+  ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
       vector<int64_t>{1, 1},        // dilations
       1,                            // group
@@ -278,7 +273,7 @@ TEST(ConvTest, Conv2D_2) {
 }
 
 TEST(ConvTest, Conv2D_Bias_1) {
-  ConvOpAttributes attrs = {
+  ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
       vector<int64_t>{1, 1},        // dilations
       1,                            // group
@@ -300,7 +295,7 @@ TEST(ConvTest, Conv2D_Bias_1) {
 
 // Conv48
 TEST(ConvTest, Conv2D_Bias_2) {
-  ConvOpAttributes attrs = {
+  ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
       vector<int64_t>{1, 1},        // dilations
       1,                            // group
@@ -341,11 +336,14 @@ TEST(ConvTest, Conv2D_Bias_2) {
   vector<int64_t> Y_shape = {1, 1, 4, 2};
   auto expected_vals = {-0.3419531583786011f, -0.6116723418235779f, -0.39677709341049194f, -0.7316848039627075f,
                         -0.5647197365760803f, 0.02788025140762329f, -0.30450713634490967f, -0.6786775588989258f};
-  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, false, true);  // asymmetric padding is not supported by cudnn
+
+  attrs.excluded_providers.insert(kCudaExecutionProvider);  // asymmetric padding is not supported by cudnn
+
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTest, Conv2D_AutoPad1) {
-  ConvOpAttributes attrs = {
+  ConvOpAndTestAttributes attrs = {
       "SAME_UPPER",           // auto_pad
       vector<int64_t>{1, 1},  // dilations
       1,                      // group
@@ -370,7 +368,7 @@ TEST(ConvTest, Conv2D_AutoPad1) {
 }
 
 TEST(ConvTest, Conv2D_AutoPad2) {
-  ConvOpAttributes attrs = {
+  ConvOpAndTestAttributes attrs = {
       "SAME_LOWER",           // auto_pad
       vector<int64_t>{1, 1},  // dilations
       1,                      // group
@@ -400,7 +398,7 @@ TEST(ConvTest, Conv2D_AutoPad2) {
 
 // Conv10
 TEST(ConvTest, Conv3D_1) {
-  ConvOpAttributes attrs = {
+  ConvOpAndTestAttributes attrs = {
       "",                                 // auto_pad
       vector<int64_t>{1, 1, 1},           // dilations
       1,                                  // group
@@ -435,7 +433,7 @@ TEST(ConvTest, Conv3D_1) {
 
 // Conv22
 TEST(ConvTest, Conv3D_2) {
-  ConvOpAttributes attrs = {
+  ConvOpAndTestAttributes attrs = {
       "",                                 // auto_pad
       vector<int64_t>{1, 1, 1},           // dilations
       1,                                  // group
@@ -476,7 +474,7 @@ TEST(ConvTest, Conv3D_2) {
 
 // Conv23
 TEST(ConvTest, Conv3D_Bias) {
-  ConvOpAttributes attrs = {
+  ConvOpAndTestAttributes attrs = {
       "",                                 // auto_pad
       vector<int64_t>{2, 2, 2},           // dilations
       1,                                  // group
@@ -558,7 +556,7 @@ TEST(ConvTest, Conv3D_Bias) {
 }
 
 TEST(ConvTest, Conv2D_group) {
-  ConvOpAttributes attrs = {
+  ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
       vector<int64_t>{1, 1},        // dilations
       2,                            // group
@@ -577,7 +575,7 @@ TEST(ConvTest, Conv2D_group) {
 }
 
 TEST(ConvTest, ConvDimWithZero) {
-  ConvOpAttributes attrs = {
+  ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
       vector<int64_t>{1, 1},        // dilations
       1,                            // group
@@ -586,12 +584,15 @@ TEST(ConvTest, ConvDimWithZero) {
       vector<int64_t>{1, 1}         // strides
   };
   vector<float> X = vector<float>();
-  vector<int64_t> X_shape = {0, 2, 4, 4}; // N of 0 should be handled
+  vector<int64_t> X_shape = {0, 2, 4, 4};  // N of 0 should be handled
   vector<float> W = {1.0f, 2.0f, 1.0f, 2.0f};
   vector<int64_t> W_shape = {2, 2, 1, 1};
   vector<int64_t> out_shape = {0, 2, 4, 4};
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, {}, out_shape, true, true,
-             OpTester::ExpectResult::kExpectSuccess, "", 10);
+
+  // not handled by NGraph
+  attrs.excluded_providers.insert(kNGraphExecutionProvider);
+
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, {}, out_shape, OpTester::ExpectResult::kExpectSuccess, "", 10);
 }
 
 }  // namespace test
