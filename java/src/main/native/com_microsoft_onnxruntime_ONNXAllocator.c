@@ -106,13 +106,13 @@ JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXAllocator_createStrin
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
 
     // Extract the shape information
-    jlong* shapeArr;
+    int64_t* shapeArr;
     checkONNXStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(int64_t),(void**)&shapeArr));
     shapeArr[0] = 1;
 
     // Create the OrtValue
     OrtValue* ortValue;
-    checkONNXStatus(jniEnv, api, api->CreateTensorAsOrtValue(allocator,shapeArr,0,ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,&ortValue));
+    checkONNXStatus(jniEnv, api, api->CreateTensorAsOrtValue(allocator,shapeArr,1,ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,&ortValue));
 
     // Release the shape
     checkONNXStatus(jniEnv, api, api->AllocatorFree(allocator,shapeArr));

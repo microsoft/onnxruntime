@@ -217,7 +217,7 @@ JNIEXPORT jlongArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getLong
     }
 
     jlongArray outputArray = (*jniEnv)->NewLongArray(jniEnv,count);
-    (*jniEnv)->SetLongArrayRegion(jniEnv,outputArray,0,count,values);
+    (*jniEnv)->SetLongArrayRegion(jniEnv,outputArray,0,count,(jlong*)values);
 
     checkONNXStatus(jniEnv,api,api->AllocatorFree(allocator,values));
 

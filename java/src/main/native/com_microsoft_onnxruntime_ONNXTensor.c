@@ -171,7 +171,7 @@ JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_getArray
     checkONNXStatus(jniEnv,api,api->GetTensorTypeAndShape((OrtValue*) handle, &info));
     size_t dimensions;
     checkONNXStatus(jniEnv,api,api->GetDimensionsCount(info,&dimensions));
-    int64_t arrSize;
+    size_t arrSize;
     checkONNXStatus(jniEnv,api,api->GetTensorShapeElementCount(info,&arrSize));
     ONNXTensorElementDataType onnxTypeEnum;
     checkONNXStatus(jniEnv,api,api->GetTensorElementType(info,&onnxTypeEnum));
