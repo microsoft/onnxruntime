@@ -2062,7 +2062,6 @@ Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_in
   ORT_RETURN_IF_NOT(name_to_initializer_it != name_to_initial_tensor_.end(),
                     "Failed to find existing initializer with name ", initializer_name, ".");
 
-  assert(name_to_initializer_it->second);
   const auto& old_initializer = *(name_to_initializer_it->second);
 
   auto dims_eq = [&old_initializer, &new_initializer]() {
@@ -2080,7 +2079,7 @@ Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_in
   auto& mutable_initializers = *(graph_proto_->mutable_initializer());
   auto old_mutable_initializer_ptr_it = std::find(
       mutable_initializers.pointer_begin(), mutable_initializers.pointer_end(), &old_initializer);
-  assert(old_mutable_initializer_ptr_it != mutable_initializers.pointer_end());
+  ORT_ENFORCE(old_mutable_initializer_ptr_it != mutable_initializers.pointer_end());
   auto& old_mutable_initializer = **old_mutable_initializer_ptr_it;
 
   old_mutable_initializer = new_initializer;

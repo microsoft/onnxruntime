@@ -959,13 +959,24 @@ TEST(GraphUpdateTest, ReplaceInitializedTensor) {
     status = graph.ReplaceInitializedTensor(valid_replacement);
     ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
+    auto tensor_data_matches = [](
+        const ONNX_NAMESPACE::TensorProto& a, const ONNX_NAMESPACE::TensorProto& b) {
+      if (a.int32_data_size() != b.int32_data_size()) return false;
+      for (int i = 0; i < a.int32_data_size(); ++i) {
+        if (a.int32_data(i) != b.int32_data(i)) return false;
+      }
+      return true;
+    };
+
+    // check retrieved tensor
     const ONNX_NAMESPACE::TensorProto* result;
     ASSERT_TRUE(graph.GetInitializedTensor(initializer_name, result));
+    ASSERT_TRUE(tensor_data_matches(*result, valid_replacement));
 
-    ASSERT_EQ(valid_replacement.int32_data_size(), result->int32_data_size());
-    for (int i = 0; i < valid_replacement.int32_data_size(); ++i) {
-      ASSERT_EQ(valid_replacement.int32_data(i), result->int32_data(i));
-    }
+    // check GraphProto content
+    const ONNX_NAMESPACE::GraphProto graph_proto = graph.ToGraphProto();
+    ASSERT_EQ(graph_proto.initializer_size(), 1);
+    ASSERT_TRUE(tensor_data_matches(graph_proto.initializer(0), valid_replacement));
   }
 }
 }  // namespace test
