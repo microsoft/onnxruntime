@@ -545,11 +545,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"fp16_inception_v1", "Temporarily disabled pending investigation"});
     broken_tests.insert({"candy", "Temporarily disabled pending investigation"});
     broken_tests.insert({"BERT_Squad", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"simple_rnn_defaults", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"simple_rnn_with_initial_bias", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"gru_with_initial_bias", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"lstm_with_peephole", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"gru_defaults", "Temporarily disabled pending investigation"});
   }
 #endif
   // clang-format on
