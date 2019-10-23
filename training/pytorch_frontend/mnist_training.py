@@ -164,7 +164,7 @@ def main():
     input_size = 784
     hidden_size = 500
     num_classes = 10
-    model = NeuralNet(input_size, hidden_size, num_classes).to(device)
+    model = NeuralNet(input_size, hidden_size, num_classes)
 
     model_desc = mnist_model_description()
     if args.use_ort_trainer:

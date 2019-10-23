@@ -51,10 +51,26 @@ def generate_sample(desc, device=None):
     else: 
         return torch.randn(size, dtype=desc.dtype_, device=device)
 
+def get_device_index(input):
+    if isinstance(input, (list, tuple)):
+        device_index = input[0].device.index if input[0].device.index else 0
+    else:
+        device_index = input.device.index if input.device.index else 0
+    
+    return device_index
+
+def get_group_accumulated_gradients_output_node_arg_name(session):
+    # optimizer_graph_builder BuildGroupNode with fixed string: 'Group_Accumulated_Gradients'
+    accumulated_gradients_output_node_args = [x for x in session._outputs_meta if 'Group_Accumulated_Gradients' in x.name]
+    if len(accumulated_gradients_output_node_args) != 1:
+        raise RuntimeError("Failed to find a group NodeArg with name that matches 'Group_Accumulated_Gradients'\
+             from the training session.")
+    
+    return accumulated_gradients_output_node_args[0].name
 
 def ort_training_session_run_helper(session, iobinding, inputs, input_descs, output_descs, device, run_options=None):
     for input, input_desc in zip(inputs, input_descs):
-        device_index = input.device.index if input.device.index else 0
+        device_index = get_device_index(input)
         iobinding.bind_input(input_desc.name_, input.device.type, device_index, dtype_torch_to_numpy(input.dtype),
                                 list(input.size()), input.data_ptr())
 
@@ -220,15 +236,70 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device):
     model = FuseSofmaxNLLToSoftmaxCE(model)
     return model
 
-
-def create_ort_training_session_bind_parameters(model, device, enable_grad_accumulation=False):
+def create_ort_training_session_with_optimizer(model, device, training_optimizer_name, lr_params_feed_name, optimizer_attributes={},
+                                               world_rank=0, world_size=1, gradient_accumulation_steps=1):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
     ort_parameters.enable_mix_precision = False
-    ort_parameters.enable_grad_accumulation = enable_grad_accumulation
+    ort_parameters.world_rank=world_rank
+    ort_parameters.world_size=world_size
+    ort_parameters.gradient_accumulation_steps = gradient_accumulation_steps
+
+    output_types = {}
+    for output in model.graph.output:
+        output_types[output.name] = output.type.tensor_type
+
+    if len(model.graph.output) != 1:
+        raise RuntimeError("ORTTrainer requires model with single scaler output (loss) to run ORT optimizer.")
+    # pybind does not allow to add directly to ort_parameters.weights_to_train.
+    # Have to work around by using a temporary weights_to_train.
+    weights_to_train = set()
+    for initializer in model.graph.initializer:
+        weights_to_train.add(initializer.name)
+
+    ort_parameters.weights_to_train = weights_to_train
+    ort_parameters.loss_scale_input_name = output_name
+    ort_parameters.training_optimizer_name = training_optimizer_name
+    ort_parameters.lr_params_feed_name = lr_params_feed_name
+    ort_parameters.optimizer_attributes = optimizer_attributes
+    session = ort.TrainingSession(model.SerializeToString(), ort_parameters)
+    return session, session.io_binding(), session.io_binding(), output_name, output_types
+
+def create_and_bind_grad_or_grad_accumulate_buffer(train_io_binding, torch_tensor, param, enable_grad_accumulation, device, device_index):
+    # hardcode grad name
+    grad_buffer_name = (param + "_grad") if enable_grad_accumulation is False else (param + "_grad_accumulate_buffer")
+    if torch_tensor.grad is None:
+        torch_tensor.grad = torch.zeros(torch_tensor.size(), dtype=torch.float32, device=device)
+    if enable_grad_accumulation:
+        train_io_binding.bind_input(grad_buffer_name,
+                                    torch_tensor.grad.device.type,
+                                    device_index,
+                                    dtype_torch_to_numpy(torch_tensor.grad.dtype),
+                                    list(torch_tensor.grad.size()),
+                                    torch_tensor.grad.data_ptr())
+    else:
+        train_io_binding.bind_output(grad_buffer_name,
+                                    torch_tensor.grad.device.type,
+                                    device_index,
+                                    dtype_torch_to_numpy(torch_tensor.grad.dtype),
+                                    list(torch_tensor.grad.size()),
+                                    torch_tensor.grad.data_ptr())
+
+def create_ort_training_session_bind_parameters(model, device, world_rank=0, world_size=1, gradient_accumulation_steps=1):
+    output_name = model.graph.output[0].name
+    ort_parameters = ort.TrainingParameters()
+    ort_parameters.loss_output_name = output_name
+    ort_parameters.enable_mix_precision = False
+    ort_parameters.world_rank=world_rank
+    ort_parameters.world_size=world_size
+    ort_parameters.gradient_accumulation_steps = gradient_accumulation_steps
 
     torch_params = {}
+    output_types = {}
+    for output in model.graph.output:
+        output_types[output.name] = output.type.tensor_type
+
     for initializer in model.graph.initializer:
         torch_tensor = torch.nn.Parameter(torch.as_tensor(numpy_helper.to_array(initializer), device=device))
         delete_input_with_name(model.graph.input, initializer.name)
@@ -238,12 +309,8 @@ def create_ort_training_session_bind_parameters(model, device, enable_grad_accum
 
     del model.graph.initializer[:]
 
-    output_types = {}
-    for output in model.graph.output:
-        output_types[output.name] = output.type.tensor_type
-
     ort_parameters.weights_to_train = set(torch_params.keys())
-
+    
     if device.type == 'cuda' and hasattr(device, "index") and device.index is not None:
         from onnxruntime.capi._pybind_state import set_cuda_device_id 
         set_cuda_device_id(device.index) 
@@ -251,6 +318,8 @@ def create_ort_training_session_bind_parameters(model, device, enable_grad_accum
 
     train_io_binding = session.io_binding()
     eval_io_binding = session.io_binding()
+
+    enable_grad_accumulation = gradient_accumulation_steps > 1
     grad_buffers = {} if enable_grad_accumulation else None
     for param in torch_params.keys():
         torch_tensor = torch_params[param]
@@ -260,71 +329,93 @@ def create_ort_training_session_bind_parameters(model, device, enable_grad_accum
                                     dtype_torch_to_numpy(torch_params[param].dtype), list(torch_tensor.size()),
                                     torch_tensor.data_ptr())
         eval_io_binding.bind_input(param, torch_tensor.device.type, device_index,
-                                   dtype_torch_to_numpy(torch_params[param].dtype), list(torch_tensor.size()),
-                                   torch_tensor.data_ptr())
-        # hardcode grad name
-        grad_buffer_name = (param + "_grad") if enable_grad_accumulation is False else (param + "_grad_accumulate_buffer")
-        if torch_tensor.grad is None:
-            torch_tensor.grad = torch.zeros(torch_tensor.size(), dtype=torch.float32, device=device)
-        if enable_grad_accumulation:
-            train_io_binding.bind_input(grad_buffer_name,
-                                         torch_tensor.grad.device.type,
-                                         device_index,
-                                         dtype_torch_to_numpy(torch_tensor.grad.dtype),
-                                         list(torch_tensor.grad.size()),
-                                         torch_tensor.grad.data_ptr())
-        else:
-            train_io_binding.bind_output(grad_buffer_name,
-                                         torch_tensor.grad.device.type,
-                                         device_index,
-                                         dtype_torch_to_numpy(torch_tensor.grad.dtype),
-                                         list(torch_tensor.grad.size()),
-                                         torch_tensor.grad.data_ptr())
-    return session, train_io_binding, eval_io_binding, output_name, ort_parameters, torch_params, output_types
+                                dtype_torch_to_numpy(torch_params[param].dtype), list(torch_tensor.size()),
+                                torch_tensor.data_ptr())
+        
+        create_and_bind_grad_or_grad_accumulate_buffer(train_io_binding, torch_tensor, param, enable_grad_accumulation, device, device_index)
+
+    return session, train_io_binding, eval_io_binding, output_name, torch_params, output_types
 
 
 class ORTTrainer():
     def __init__(self, model, loss_fn, model_desc, optimizer_constructor_lambda, \
-                 device, use_ort_backend=True, accumulate_steps = 1):
+                 device, use_ort_backend=True, gradient_accumulation_steps=1, postprocess_model=None,
+                 training_optimizer_name="", lr_params_feed_name="",
+                 optimizer_attributes={}, world_rank=0, world_size=1):
         super(ORTTrainer, self).__init__()
         self.model_ = model
         self.loss_fn_ = loss_fn
         self.model_desc_ = model_desc
         self.optimizer_constructor_lambda_ = optimizer_constructor_lambda
+        self.world_rank = world_rank
+        self.world_size = world_size
+
+        if optimizer_constructor_lambda and training_optimizer_name:
+            raise RuntimeError("ORTTrainer shall be constructed with either python or ort optimizer, not both.")
 
         self.optimizer_ = None
         self.session = None
         self.device_ = device
-        self.accumulate_steps = accumulate_steps
+        self.gradient_accumulation_steps = gradient_accumulation_steps
         self.current_step = 0
 
         if use_ort_backend:
-            model = convert_model_loss_fn_to_onnx(self.model_, self.loss_fn_, self.model_desc_, device)
-            self.session, self.train_io_binding, self.eval_io_binding, self.output_name, self.ort_parameters, self.torch_params, self.output_types = \
-                create_ort_training_session_bind_parameters(model, device, True if self.accumulate_steps > 1 else False)
-            self.optimizer_ = self.optimizer_constructor_lambda_(list(self.torch_params.values()))
+            model = convert_model_loss_fn_to_onnx(self.model_, self.loss_fn_, self.model_desc_, torch.device('cpu'))
+
+            if postprocess_model:
+                postprocess_model(model)
+
+            if self.optimizer_constructor_lambda_:                
+                self.session, self.train_io_binding, self.eval_io_binding, self.output_name, self.torch_params, self.output_types = \
+                    create_ort_training_session_bind_parameters(model, device, self.world_rank, self.world_size,
+                    self.gradient_accumulation_steps)
+                self.optimizer_ = self.optimizer_constructor_lambda_(list(self.torch_params.values()))
+            else:
+                self.session, self.train_io_binding, self.eval_io_binding, self.output_name, self.output_types = \
+                    create_ort_training_session_with_optimizer(model, device,
+                        training_optimizer_name, lr_params_feed_name, optimizer_attributes,
+                        self.world_rank, self.world_size,
+                        self.gradient_accumulation_steps)
+
             self.device_ = device
         else:
             self.optimizer_ = self.optimizer_constructor_lambda_(self.model_.parameters())
 
-    def train_step(self, input, label, fetches=None):
+    def train_step(self, input, label=None, fetches=None, learning_rate_desc_value=None):
         self.current_step += 1
-        device_index = input.device.index if input.device.index else 0
+        device_index = get_device_index(input)
         if self.session is None:
             self.model_.train()
             output = self.model_(input)
             loss = self.loss_fn_(output, label)
             loss.backward()
-            if self.current_step % self.accumulate_steps == 0:
+            if self.current_step % self.gradient_accumulation_steps == 0:
                 self.optimizer_.step()
                 self.optimizer_.zero_grad()
             return loss
         else:
+            inputs = (input, label) if label is not None else input
+            input_descs = self.model_desc_.inputs_
+            if learning_rate_desc_value:
+                inputs = (*inputs, learning_rate_desc_value[1])
+                input_descs = [*self.model_desc_.inputs_, learning_rate_desc_value[0]]
 
-            session_run_results = ort_training_session_run_helper(self.session, self.train_io_binding, (input, label), \
-                                                                  self.model_desc_.inputs_, self.model_desc_.outputs_, 
-                                                                  self.device_)
-            if self.current_step % self.accumulate_steps == 0:
+            # handle gradient accumulation in fully optimized mode
+            run_options = None
+            output_desc = self.model_desc_.outputs_
+            if (not self.optimizer_) and (self.current_step % self.gradient_accumulation_steps != 0):
+                run_options = ort.RunOptions()
+                run_options.only_execute_path_to_fetches = True
+                # gradient accumulation buffers are connected to a single node with a boolean, dimension 1 tensor output.
+                # add a matching output to drive gradient accumulation.
+                output_desc.append(IODescription(get_group_accumulated_gradients_output_node_arg_name(self.session), [1], torch.bool))
+
+            session_run_results = ort_training_session_run_helper(self.session, self.train_io_binding, inputs, \
+                                                                  input_descs, output_desc, 
+                                                                  self.device_,
+                                                                  run_options)
+
+            if self.optimizer_ and self.current_step % self.gradient_accumulation_steps == 0:
                 self.optimizer_.step()
                 self.optimizer_.zero_grad()
             if not fetches or len(fetches) == 1:
@@ -362,19 +453,25 @@ class ORTTrainer():
 
 
 class ORTModel():
-    def __init__(self, model, loss_fn, model_desc, device, postprocess_model=None):
+    def __init__(self, model, loss_fn, model_desc, device, postprocess_model=None, world_rank=0, world_size=1,
+        gradient_accumulation_steps=1):
         super(ORTModel, self).__init__()
         self.model_ = model
         self.loss_fn_ = loss_fn
         self.model_desc_ = model_desc
         self.device_ = device
+        self.world_rank = world_rank
+        self.world_size = world_size
+        self.gradient_accumulation_steps = gradient_accumulation_steps
+
 
         model = convert_model_loss_fn_to_onnx(self.model_, self.loss_fn_, self.model_desc_, torch.device('cpu'))
         if postprocess_model:
             postprocess_model(model)
         # onnx.save_model(model, 'bert_model_base_after_postproc.onnx')
-        self.session_, self.train_io_binding, self.eval_io_binding, self.output_name, self.ort_parameters, self.torch_params, self.output_types = \
-            create_ort_training_session_bind_parameters(model, device, True)
+        self.session_, self.train_io_binding, self.eval_io_binding, self.output_name, self.torch_params, self.output_types = \
+            create_ort_training_session_bind_parameters(model, device, self.world_rank, self.world_size, 
+            gradient_accumulation_steps=self.gradient_accumulation_steps)
 
     def parameters(self):
         return list(self.torch_params.values())
@@ -398,18 +495,11 @@ class ORTModel():
 
     def _train(self, *inputs):
         #confirm does the grad buffer binded or not
+        enable_grad_accumulation = self.gradient_accumulation_steps > 1
         for param in self.torch_params.keys():
             torch_tensor = self.torch_params[param]
-            if torch_tensor.grad is None:
-                torch_tensor.grad = torch.zeros(torch_tensor.size(), dtype=torch.float32, device=self.device_)
-                grad_buffer_name = param + "_grad_accumulate_buffer"
-                device_index = torch_tensor.device.index if torch_tensor.device.index else 0
-                self.train_io_binding.bind_input(grad_buffer_name,
-                                             torch_tensor.grad.device.type,
-                                             device_index,
-                                             dtype_torch_to_numpy(torch_tensor.grad.dtype),
-                                             list(torch_tensor.grad.size()),
-                                             torch_tensor.grad.data_ptr())
+            device_index = torch_tensor.device.index if torch_tensor.device.index else 0
+            create_and_bind_grad_or_grad_accumulate_buffer(self.train_io_binding, torch_tensor, param, enable_grad_accumulation, torch_tensor.device, device_index)
 
         return ort_training_session_run_helper(self.session_, self.train_io_binding, inputs,
                                                   self.model_desc_.inputs_, self.model_desc_.outputs_,
