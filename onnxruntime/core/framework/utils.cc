@@ -624,7 +624,6 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
       if (type) {
         if (type->IsTensorType()) {
           const auto& tensor = *context.Output<Tensor>(i);
-          const auto data_type = tensor.DataType();
           const auto& shape = tensor.Shape();
 
           std::cout << " Shape: " << shape << "\n";
@@ -638,6 +637,7 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
             }
             std::cout << " Provider=" << provider->Type() << "\n";
 
+            const auto data_type = tensor.DataType();
             if (provider == cpu_execution_provider || tensor_location.mem_type == OrtMemTypeCPUOutput) {
               DispatchOnTensorType(data_type, DumpTensor, tensor, shape);
             } else if (provider == cuda_execution_provider) {
