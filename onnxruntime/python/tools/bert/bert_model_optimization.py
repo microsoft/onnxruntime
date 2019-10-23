@@ -687,9 +687,11 @@ class BertOnnxModel(OnnxModel):
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
-            gelu_node = onnx.helper.make_node(self.gelu_name,
+            gelu_node = onnx.helper.make_node(
+                self.gelu_name,
                 inputs=[root_node.output[0]],
-                outputs=[mul_after_tanh.input[0]])
+                outputs=mul_after_tanh.output,
+                name=self.create_node_name(self.gelu_name))
             gelu_node.domain = "com.microsoft"
             nodes_to_add.append(gelu_node)
 
@@ -946,30 +948,40 @@ class BertOnnxModel(OnnxModel):
         output_name_to_node = self.output_name_to_node()
 
         nodes_to_remove = []
-        nodes_to_add = []
-
+        skip_layernorm_nodes = []
+        layernorm_nodes = []
         for node in self.nodes():
-            if node.op_type == 'Add':
+            if node.op_type == 'ReduceMean':
                 children = self.get_children(node, input_name_to_nodes)
-                children_types = sorted([child.op_type for child in children])
-                if children_types != ["ReduceMean", "Sub"] and children_types != ["ReduceMean", "Sub", "Sub"]:
+                if len(children) == 0 or len(children) > 2:
                     continue
+
+                parent = self.get_parent(node, 0, output_name_to_node)
+                if parent is None:
+                    continue
+
+                if children[0].op_type != 'Sub' or self.get_parent(children[0], 0, output_name_to_node) != parent:
+                    continue
+
+                if len(children) == 2:
+                    if children[0].op_type != 'Sub' or self.get_parent(children[1], 0, output_name_to_node) != parent:
+                        continue
 
                 div_node = None
                 for child in children:
-                        if child.op_type == 'Sub':
-                            div_node = self.find_first_child_by_type(child, 'Div', input_name_to_nodes, recursive=False)
-                            if div_node is not None:
-                                break
+                    if child.op_type == 'Sub':
+                        div_node = self.find_first_child_by_type(child, 'Div', input_name_to_nodes, recursive=False)
+                        if div_node is not None:
+                            break
                 if div_node is None:
                     continue
 
-                parent_nodes = self.match_parent_path(div_node, ['Sqrt', 'Add', 'ReduceMean', 'Pow', 'Sub', 'Add'], [1, 0, 0, 0, 0, 0], output_name_to_node)
+                parent_nodes = self.match_parent_path(div_node, ['Sqrt', 'Add', 'ReduceMean', 'Pow', 'Sub'], [1, 0, 0, 0, 0], output_name_to_node)
                 if parent_nodes is None:
                     continue
 
-                sqrt_node, second_add_node, reduce_mean_node, pow_node, sub_node, first_add_node = parent_nodes
-                if first_add_node != node:
+                sqrt_node, second_add_node, reduce_mean_node, pow_node, sub_node = parent_nodes
+                if sub_node not in children:
                     continue
 
                 mul_node = input_name_to_nodes[div_node.output[0]][0]
@@ -980,23 +992,38 @@ class BertOnnxModel(OnnxModel):
                 if last_add_node.op_type != 'Add':
                     continue
 
-                nodes_to_remove.append(node)
-                nodes_to_remove.extend(children)
-                nodes_to_remove.extend([last_add_node, mul_node, div_node, sqrt_node, second_add_node, reduce_mean_node, pow_node])
+                subgraph_nodes = [node]
+                subgraph_nodes.extend(children)
+                subgraph_nodes.extend([last_add_node, mul_node, div_node, sqrt_node, second_add_node, reduce_mean_node, pow_node])
+                if not self.is_safe_to_fuse_nodes(subgraph_nodes, last_add_node.output, input_name_to_nodes, output_name_to_node):
+                    continue
 
-                normalize_node_name = self.create_node_name(self.normalize_name, name_prefix="SkipLayerNorm")
-                inputs = [i for i in node.input]
-                inputs.extend([mul_node.input[0], last_add_node.input[1]])
-                normalize_node = onnx.helper.make_node(self.normalize_name,
-                    inputs=inputs,
-                    outputs=[last_add_node.output[0]],
-                    name=normalize_node_name)
-                normalize_node.domain = "com.microsoft"
-                nodes_to_add.extend([normalize_node])
+                nodes_to_remove.extend(subgraph_nodes)
+
+                weight_input = mul_node.input[1 - self.input_index(div_node.output[0], mul_node)]
+                bias_input = last_add_node.input[ 1 - self.input_index(mul_node.output[0], last_add_node)]
+                if parent.op_type == 'Add' and self.is_safe_to_fuse_nodes([parent] + subgraph_nodes, last_add_node.output, input_name_to_nodes, output_name_to_node):
+                    nodes_to_remove.append(parent)
+                    normalize_node = onnx.helper.make_node(self.normalize_name,
+                        inputs=[parent.input[0], parent.input[1], weight_input, bias_input],
+                        outputs=[last_add_node.output[0]],
+                        name=self.create_node_name(self.normalize_name, name_prefix="SkipLayerNorm")
+                        )
+                    normalize_node.domain = "com.microsoft"
+                    skip_layernorm_nodes.extend([normalize_node])
+                else:
+                    normalize_node = onnx.helper.make_node(
+                        'LayerNormalization',
+                        inputs=[node.input[0], weight_input, bias_input],
+                        outputs=[last_add_node.output[0]]
+                        )
+                    layernorm_nodes.extend([normalize_node])
 
         self.remove_nodes(nodes_to_remove)
-        self.add_nodes(nodes_to_add)
-        print("Fused layer normalization count:", len(nodes_to_add))
+        self.add_nodes(skip_layernorm_nodes)
+        self.add_nodes(layernorm_nodes)
+        print("Fused skip layer normalization count:", len(skip_layernorm_nodes))
+        print("Fused layer normalization count:", len(layernorm_nodes))
 
 def main():
     parser = argparse.ArgumentParser()
@@ -1036,19 +1063,21 @@ def main():
     bert_model.fuse_attention(args.verbose)
 
     bert_model.fuse_embed_layer(args.verbose)
-    
+
+
     if bert_model.embed_node is None:
         print("Failed to fuse embedding layer.")
-        return
-
-    if args.input_int32:
-        bert_model.change_input_to_int32()
     else:
-        bert_model.cast_input_to_int32()
-
+        if args.input_int32:
+            bert_model.change_input_to_int32()
+        else:
+            bert_model.cast_input_to_int32()
 
     if args.float16:
         bert_model.convert_model_float32_to_float16()
+
+    bert_model.remove_unused_constant()
+    #bert_model.model.opset_import[0].version = 10
 
     with open(args.output, "wb") as out:
         out.write(bert_model.model.SerializeToString())
