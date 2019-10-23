@@ -1456,7 +1456,7 @@ TEST(InferenceSessionTests, TestL1AndL2Transformers) {
   // Models which cover all transformers.
   std::vector<std::string> test_model_uris = {"testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx",
                                               "testdata/transform/abs-id-max.onnx",
-                                              "testdata/transform/slice-elim.onnx",
+                                              "testdata/transform/slice-v11-elim.onnx",
                                               "testdata/transform/matmul_add_fusion/2Input/model.onnx",
                                               "testdata/transform/matmul_add_fusion/3Input/gemm_relu.onnx",
                                               "testdata/transform/fusion/fuse-conv-bn-add-mul-float16.onnx"};
@@ -1469,6 +1469,56 @@ TEST(InferenceSessionTests, TestL1AndL2Transformers) {
     ASSERT_TRUE(session_object.Load(model_uri).IsOK());
     ASSERT_TRUE(session_object.Initialize().IsOK());
   }
+}
+
+// fallback to lenient merging of shape info if model opset is not the latest
+TEST(InferenceSessionTests, TestLenientShapeInferencing) {
+  // latest opset should fail
+  std::vector<int64_t> input_shape{2, 2};
+  std::vector<float> input_data{0.f, 1.f, 2.f, 3.f};
+  std::vector<int64_t> invalid_output_shape{1, 2};  // valid shape is {2} as output data is input_shape
+  std::vector<int64_t> output_data{2, 2};
+
+  OpTester latest_opset("Shape");
+  latest_opset.AddInput("data", input_shape, input_data);
+  latest_opset.AddOutput<int64_t>("output", invalid_output_shape, output_data);
+  latest_opset.Run(OpTester::ExpectResult::kExpectFailure,
+                   "Mismatch between number of source and target dimensions. Source=1 Target=2");
+
+  // older opset should allow the mismatch with a warning.
+  // we also need for the output to be valid so OpTester doesn't throw so add an Unsqueeze after the Shape. 
+  // This should result in a warning log message but successful run.
+  class OpTesterWithReshape : public OpTester {
+   public:
+    OpTesterWithReshape() : OpTester("Shape", 7) {
+    }
+
+   protected:
+    void AddNodes(onnxruntime::Graph& graph,
+                  std::vector<onnxruntime::NodeArg*>& graph_input_defs,
+                  std::vector<onnxruntime::NodeArg*>& graph_output_defs,
+                  std::vector<std::function<void(onnxruntime::Node& node)>>& add_attribute_funcs) override {
+      // we need to create an intermediate output with a different name
+      auto tmp_output_defs = graph_output_defs;
+      auto type_info = *tmp_output_defs[0]->TypeAsProto();  // copy
+      auto& shape_output = graph.GetOrCreateNodeArg("shape_output", &type_info);
+      tmp_output_defs[0] = &shape_output;
+
+      // call base implementation to add the Shape node with invalid output shape
+      OpTester::AddNodes(graph, graph_input_defs, tmp_output_defs, add_attribute_funcs);
+
+      // add Unsqueeze node to fix the output shape
+
+      auto& unsqueeze = graph.AddNode("unsqueeze", "Unsqueeze", "Fix output shape", tmp_output_defs, graph_output_defs);
+      unsqueeze.AddAttribute("axes", std::vector<int64_t>{0});
+    }
+  };
+
+  OpTesterWithReshape old_opset;
+
+  old_opset.AddInput("data", input_shape, input_data);
+  old_opset.AddOutput<int64_t>("output", invalid_output_shape, output_data);
+  old_opset.Run();
 }
 
 #ifdef USE_CUDA

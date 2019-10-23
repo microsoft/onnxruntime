@@ -1,23 +1,23 @@
-## Nuphar Execution Provider (preview)
+# Nuphar Execution Provider (preview)
 
 NUPHAR stands for Neural-network Unified Preprocessing Heterogeneous ARchitecture. As an execution provider in the ONNX Runtime, it is built on top of [TVM](https://github.com/dmlc/tvm) and [LLVM](https://llvm.org) to accelerate ONNX models by compiling nodes in subgraphs into optimized functions via JIT. It also provides JIT caching to save compilation time at runtime. 
 
-This execution provider release is currently in preview. With the Nuphar execution provider, the ONNX Runtime delivers better inferencing performance on the same hardware compared to generic X64 CPU acceleration, especially for quantized recurrent neural networks. Various products at Microsoft have seen up to a 5x improvement in performance with no loss of accuracy, by running quantized LSTMs via the Nuphar execution provider in the ONNX Runtime.
+Developers can tap into the power of Nuphar through ONNX Runtime to accelerate inferencing of ONNX models. The Nuphar execution provider comes with a common ONNX to TVM lowering [library](../../onnxruntime/core/codegen) that can potentially be reused by other execution providers to leverage TVM. With the Nuphar execution provider, the ONNX Runtime delivers better inferencing performance on the same hardware compared to generic X64 CPU acceleration, especially for quantized recurrent neural networks. Various products at Microsoft have seen up to a 5x improvement in performance with no loss of accuracy, by running quantized LSTMs via the Nuphar execution provider in the ONNX Runtime.
 
-### Build Nuphar execution provider
-Developers can now tap into the power of Nuphar through ONNX Runtime to accelerate inferencing of ONNX models. Besides, the Nuphar execution provider also comes with a common ONNX to TVM lowering [library](../../onnxruntime/core/codegen), that could be reused by other execution providers to leverage TVM. Instructions to build the Nuphar execution provider from source is available [here](../../BUILD.md#nuphar).
+## Build
+For build instructions, please see the [BUILD page](../../BUILD.md#nuphar).
 
-### Using the Nuphar execution provider
-#### C/C++
+## Using the Nuphar execution provider
+### C/C++
 The Nuphar execution provider needs to be registered with ONNX Runtime to enable in the inference session. The C API details are [here](../C_API.md#c-api).
 
 ### Python
 You can use the Nuphar execution provider via the python wheel from the ONNX Runtime build. The Nuphar execution provider will be automatically prioritized over the default CPU execution providers, thus no need to separately register the execution provider. Python APIs details are [here](../python/api_summary.rst#api-summary).
 
-### Using onnxruntime_perf_test/onnx_test_runner for performance and accuracy test
+## Performance and Accuracy Testing
 You can test your ONNX model's performance with [onnxruntime_perf_test](../../onnxruntime/test/perftest/README.md), or test accuracy with [onnx_test_runner](../../onnxruntime/test/onnx/README.txt). To run these tools with the Nuphar execution provider, please pass `-e nuphar` in command line options.
 
-### Model conversion/quantization
+## Model Conversion and Quantization
 You may use Python script [model_editor.py](../../onnxruntime/core/providers/nuphar/scripts/model_editor.py) to turn LSTM/GRU/RNN ops to Scan ops for a given model, and then use [model_quantizer.py](../../onnxruntime/core/providers/nuphar/scripts/model_quantizer.py) to quantize MatMul ops into MatMulInteger ops.
 
 We use dynamic per-row quantization for inputs of LSTM MatMul, so MatMul becomes three parts: quantization, MatMulInteger and dequantization. Weights for MatMulInteger are statically quantized per-column to int8. We have observed good speed-up and no loss of accuracy with this quantization scheme inside Scan for various LSTM models.
@@ -36,7 +36,7 @@ As an experiment, you may test conversion and quantization on [the BiDAF model](
 
 Speed-up in this model is ~20% on Intel Xeon E5-1620v4 (Note that AVX2 is required for Nuphar int8 GEMV performance), when comparing CPU execution provider with the floating point model with LSTM ops, vs. the Nuphar execution provider with quantized MatMulInteger inside Scan ops. Profile shows that most of the cost is in input projection outside of Scan ops, which uses MKL SGEMM. It's worth noting that MKL int8 GEMM is about the same speed as SGEMM in this model, so quantization of SGEMMs outside of Scan won't help performance. We are looking at ways to speedup int8 GEMM for better performance on quantized models.
 
-### JIT caching
+## JIT caching
 You may cache JIT binaries to reduce model loading time spent in JIT, using [create_shared.cmd](../../onnxruntime/core/providers/nuphar/scripts/create_shared.cmd) on Windows with Visual Studio 2017, or [create_shared.sh](../../onnxruntime/core/providers/nuphar/scripts/create_shared.sh) on Linux with gcc.
 
 Windows
@@ -63,6 +63,9 @@ create_shared.sh -c /path/to/jit/cache/NUPHAR_CACHE_VERSION [-m optional_model_f
 # run Nuphar inference again with cached JIT dll
 ```
 
+
+## Debugging
+
 ### NGEMM
 NGEMM (Nuphar GEMM) is an optimized low-precision GEMM implementation based on compiler techniques.
 Please refer to our paper for more details of NGEMM: ["NGEMM: Optimizing GEMM for Deep Learning via Compiler-based Techniques"](https://arxiv.org/abs/1910.00178).
@@ -79,7 +82,7 @@ NGEMM has default tiling parameters, but users can overwrite them through enviro
     This enviornment variable is to control the loop permutation in GEMM.
     The default is to not apply any loop permutation. Other options are "inner/outer/all",referring to apply permutations to only inner tile loops / only outer loops / both inner and outer loops, respectively.
 
-### Debugging
+
 There are several [environment variables](../../onnxruntime/core/codegen/common/settings.h) to dump debug information during code generation, plus [some more environment variables](../../onnxruntime/core/providers/nuphar/common/nuphar_settings.h) to dump/control the Nuphar execution provider. You can set environment variables prior to inference to dump debug info to the console. To list some most useful ones:
 * CODEGEN_DUMP_LOWER
 
@@ -105,7 +108,7 @@ There are several [environment variables](../../onnxruntime/core/codegen/common/
 
     Set it to "1" to dump partitions.
 
-### Settings
+## Settings
 When there are conflicts of environment variables running Nuphar in multiple processes, user can specify settings string when creating the Nuphar execution provider. The string comprises of comma separated key:value pairs. Keys should be lower cased environment variable names as shown above, and separated from corresponding values with colon. For example, the equivalent string of setting environment variables of NUPHAR_CACHE_PATH/NUPHAR_CACHE_MODEL_CHECKSUM would be "nuphar_cache_path:<path_to_cache>, nuphar_cache_model_checksum:<model_file_checksum>".
 
 * Using in C/C++
@@ -134,7 +137,7 @@ onnxruntime.capi._pybind_state.set_nuphar_settings(nuphar_settings)
 sess = onnxruntime.InferenceSession(model_path)
 ```
 
-### Known issues
+## Known issues
 * ONNX shape inference dependency
 
     To save runtime JIT cost, Nuphar requires models to have shape inference information from ONNX after model is loaded. Some nodes in ONNX can generate dynamic output tensor shapes from input data value, i.e. ConstantOfShape, Tile, Slice in opset 10, Compress, etc. Those ops may block ONNX shape inference and make the part of graph after such nodes not runnable in Nuphar.

@@ -40,12 +40,42 @@ namespace onnxruntime {
     GraphProtoSyncNeeded(sync_needed);               \
   } while (0)
 
+static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
+  bool is_latest_opset = false;
+  auto onnx_opset = opset_versions.find(kOnnxDomain);
+
+  if (onnx_opset != opset_versions.cend()) {
+    static int latest_onnx_version =
+        ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
+
+    if (onnx_opset->second == latest_onnx_version) {
+      is_latest_opset = true;
+    }
+  }
+
+  return is_latest_opset;
+}
+
 static Status MergeShapeInfo(const std::string& output_name,
-                             const TypeProto_Tensor& source, TypeProto_Tensor& target) {
+                             const TypeProto_Tensor& source, TypeProto_Tensor& target,
+                             bool strict) {
   try {
     ONNX_NAMESPACE::mergeInShapeInfo(source, target);
   } catch (const ONNX_NAMESPACE::InferenceError& ex) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
+    // if this model was not created with the latest onnx version, allow the shape inferencing failure (strict == false).
+    // we do this to have strict testing of the latest inferencing to detect bugs, but lenient shape inferencing for
+    // older models in case later changes to the ONNX shape inferencing or ORT break them.
+    if (!strict) {
+      // mergeInShapeInfo does nothing unless source.shape() is not null, and there would be no conflict if
+      // target.shape() was empty. 'assert' just in case that ever changes.
+      assert(utils::HasShape(source) && utils::HasShape(target));
+      LOGS_DEFAULT(WARNING) << "Error merging shape info for output. '" << output_name
+                            << "' source:" << source.shape() << " target:" << target.shape()
+                            << ". Falling back to lenient merge.";
+      ONNX_NAMESPACE::UnionShapeInfo(source.shape(), target);
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
+    }
   }
 
   return Status::OK();
@@ -158,7 +188,25 @@ void NodeArg::SetShape(const TensorShapeProto& shape) {
   }
 }
 
-common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type) {
+void NodeArg::ClearShape() {
+  const auto type_case = node_arg_info_.type().value_case();
+  switch (type_case) {
+    case TypeProto::kTensorType:
+      node_arg_info_.mutable_type()->mutable_tensor_type()->clear_shape();
+      break;
+    case TypeProto::kSparseTensorType:
+      node_arg_info_.mutable_type()->mutable_sparse_tensor_type()->clear_shape();
+      break;
+    case TypeProto::kSequenceType:
+    case TypeProto::kMapType:
+    case TypeProto::kOpaqueType:
+    case TypeProto::VALUE_NOT_SET:
+    default:
+      return;
+  }
+}
+
+common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict) {
   if (!utils::HasType(node_arg_info_)) {
     *node_arg_info_.mutable_type() = input_type;
     type_ = DataTypeUtils::ToType(node_arg_info_.type());
@@ -187,7 +235,7 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       if (utils::HasShape(input_tensor_type)) {
         auto& current_tensor_type = *current_type.mutable_tensor_type();
         if (utils::HasShape(current_tensor_type)) {
-          ORT_RETURN_IF_ERROR(MergeShapeInfo(Name(), input_tensor_type, current_tensor_type));
+          ORT_RETURN_IF_ERROR(MergeShapeInfo(Name(), input_tensor_type, current_tensor_type, strict));
         } else {
           current_tensor_type = input_tensor_type;
         }
@@ -225,11 +273,11 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
   return Status::OK();
 }
 
-common::Status NodeArg::UpdateTypeAndShape(const NodeArg& node_arg) {
+common::Status NodeArg::UpdateTypeAndShape(const NodeArg& node_arg, bool strict) {
   auto status = Status::OK();
 
   if (utils::HasType(node_arg.node_arg_info_))
-    status = UpdateTypeAndShape(node_arg.node_arg_info_.type());
+    status = UpdateTypeAndShape(node_arg.node_arg_info_.type(), strict);
 
   return status;
 }
@@ -294,8 +342,12 @@ void Node::NodeConstIterator::operator--() {
   --m_iter;
 }
 
-const Node& Node::NodeConstIterator::operator*() {
+const Node& Node::NodeConstIterator::operator*() const {
   return (*m_iter).GetNode();
+}
+
+const Node* Node::NodeConstIterator::operator->() const {
+  return &(operator*());
 }
 
 NodeIndex Node::Index() const noexcept {
@@ -653,6 +705,7 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
       domain_to_version_(domain_to_version),
       model_functions_(model_functions),
       ir_version_(ir_version),
+      using_latest_onnx_opset_(UsingLatestOnnxOpset(domain_to_version)),
       parent_graph_(parent_graph),
       parent_node_(parent_node) {
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
@@ -1608,12 +1661,16 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
           // that have no values.
           TypeProto_Tensor merge_target;
           (*merge_target.mutable_shape()) = *output_def->Shape();
-          auto status = MergeShapeInfo(output_def->Name(), tensor_type, merge_target);
+          auto status = MergeShapeInfo(output_def->Name(), tensor_type, merge_target, using_latest_onnx_opset_);
           if (!status.IsOK()) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node_name, " ", status.ErrorMessage());
           }
 
-          output_def->SetShape(merge_target.shape());
+          // we may have cleared the shape if there was a mismatch so handle that
+          if (utils::HasShape(merge_target))
+            output_def->SetShape(merge_target.shape());
+          else
+            output_def->ClearShape();
         }
       }
     }
@@ -2146,18 +2203,21 @@ Node& Graph::AddNode(const std::string& name,
 
 bool Graph::RemoveNode(NodeIndex p_index) {
   auto node = GetNode(p_index);
-  if (nullptr == node /*|| 0 != node->GetRelationships().output_edges.size()*/) {
-    // Node should be removed after all out edges are removed.
-    // TODO: add the check commented out back.
+  if (nullptr == node) {
     return false;
   }
 
+  // Node must be disconnected from any downstream nodes before removal
+  ORT_ENFORCE(node->GetOutputEdgesCount() == 0, "Can't remove node ", node->Name(), " as it still has output edges.");
+
   // Remove all input edges.
+  // Need to copy the edge info first so we can remove the real edges while iterating the copy of edge info.
   auto input_edges = node->GetRelationships().input_edges;
 
   for (auto& input_edge : input_edges) {
     RemoveEdge(input_edge.GetNode().Index(), p_index, input_edge.GetSrcArgIndex(), input_edge.GetDstArgIndex());
   }
+
   return ReleaseNode(p_index);
 }
 

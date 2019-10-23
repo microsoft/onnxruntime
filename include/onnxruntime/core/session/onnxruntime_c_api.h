@@ -171,7 +171,8 @@ typedef void(ORT_API_CALL* OrtLoggingFunction)(
     const char* message);
 
 // Set Graph optimization level.
-// TODO (askhade) Add documentation about which optimizations are enabled for each value.
+// Refer https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Graph_Optimizations.md
+// for in-depth undersrtanding of Graph Optimizations in ORT
 typedef enum GraphOptimizationLevel {
   ORT_DISABLE_ALL = 0,
   ORT_ENABLE_BASIC = 1,
@@ -247,6 +248,10 @@ struct OrtApi {
                                                       _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level,
                                                       _In_ const char* logid,
                                                       _Outptr_ OrtEnv** out)NO_EXCEPTION;
+
+  // Platform telemetry events are on by default since they are lightweight.  You can manually turn them off.
+  OrtStatus*(ORT_API_CALL* EnableTelemetryEvents)(_In_ const OrtEnv* env)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* DisableTelemetryEvents)(_In_ const OrtEnv* env)NO_EXCEPTION;
 
   // TODO: document the path separator convention? '/' vs '\'
   // TODO: should specify the access characteristics of model_path. Is this read only during the

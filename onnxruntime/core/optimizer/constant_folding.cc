@@ -32,9 +32,6 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
         // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
         // by the Recurse call above
         node->ContainsSubgraph() ||
-        // if the node output is in the graph output, we will get a graph with no nodes.
-        // TODO check if this is allowed in ONNX and ORT.
-        graph.IsNodeOutputsInGraphOutputs(*node) ||
         !graph_utils::AllNodeInputsAreConstant(graph, *node, constant_inputs)) {
       continue;
     }
@@ -60,8 +57,16 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     // Go over all output node args and substitute them with the newly computed tensors, which will be
     // added to the graph as initializers.
     ORT_ENFORCE(fetches.size() == node->OutputDefs().size());
+    bool unsupported_output_type = false;
     for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
       OrtValue& ort_value = fetches[fetch_idx];
+
+      if (!ort_value.IsTensor()) {
+        LOGS_DEFAULT(WARNING) << "Unsupported output type of " << ort_value.Type()
+                              << ". Can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
+        unsupported_output_type = true;
+        break;
+      }
 
       // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
       const auto* constant_arg_out = node->OutputDefs()[fetch_idx];
@@ -72,6 +77,9 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
 
       graph.AddInitializedTensor(out_tensorproto);
     }
+
+    if (unsupported_output_type)
+      continue;
 
     // Remove the output edges of the constant node and then remove the node itself.
     graph_utils::RemoveNodeOutputEdges(graph, *node);
@@ -84,6 +92,5 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
   }
 
   return Status::OK();
-}  // namespace onnxruntime
-
+}
 }  // namespace onnxruntime

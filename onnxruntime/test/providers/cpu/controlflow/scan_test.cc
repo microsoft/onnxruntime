@@ -335,7 +335,7 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
   CreateSubgraph(graph, options, options.add_bad_shape ? failure_message : "");
   auto& proto = graph.ToGraphProto();
 
-  ScanOpTester test{9};
+  ScanOpTester test{11};  // use latest version - no significant change over 9
 
   test.AddAttribute("body", proto);
   test.AddAttribute<int64_t>("num_scan_inputs", 2);
@@ -553,9 +553,10 @@ static void OuterScopeAccess_NoShapeInMainGraph_NoTypeAndShapeInSubgraph(bool is
 
 TEST_8_AND_9(OuterScopeAccess_NoShapeInMainGraph_NoTypeAndShapeInSubgraph);
 
-static void BadShape(bool is_v8) {
+// shape inferencing is only strict for the latest version so only test BadShape with that
+TEST(Scan9, BadShape) {
   RunOptions options{};
-  options.is_v8 = is_v8;
+  options.is_v8 = false;
   options.include_dim_values_in_main_graph = false;
   options.include_types_in_subgraph = true;
   options.include_dim_values_in_subgraph = true;
@@ -566,9 +567,6 @@ static void BadShape(bool is_v8) {
       "Node:concat Output:concat_out_1 [ShapeInferenceError] Mismatch between number of source and target dimensions. "
       "Source=2 Target=1");
 }
-
-TEST_8_AND_9(BadShape);
-
 TEST(Scan8, ShortSequenceTwoInBatchOneLoopStateVar) {
   const int64_t batch_size = 2;
   const int64_t sequence_len = 2;
