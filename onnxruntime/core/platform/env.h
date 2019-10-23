@@ -26,6 +26,7 @@ limitations under the License.
 #include "core/common/common.h"
 #include "core/framework/callback.h"
 #include "core/platform/env_time.h"
+#include "core/platform/telemetry.h"
 
 #ifndef _WIN32
 #include <sys/types.h>
@@ -132,6 +133,9 @@ class Env {
   // "version" should be the version of the library or NULL
   // returns the name that LoadDynamicLibrary() can use
   virtual std::string FormatLibraryFileName(const std::string& name, const std::string& version) const = 0;
+
+  // \brief returns a provider that will handle telemetry on the current platform
+  virtual const Telemetry& GetTelemetryProvider() const = 0;
 
  protected:
   Env();

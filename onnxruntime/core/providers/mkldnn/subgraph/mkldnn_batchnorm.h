@@ -97,11 +97,11 @@ class MklDnnBatchNorm : public MklDnnKernel {
     }
   }
 
-  Status CreatePrimitives(const OrtCustomOpApi* api,
-                          OrtKernelContext* context,
-                          mkldnn::engine& cpu_engine,
-                          std::vector<mkldnn::primitive>& net,
-                          std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) override {
+  void CreatePrimitives(const OrtCustomOpApi* api,
+                        OrtKernelContext* context,
+                        mkldnn::engine& cpu_engine,
+                        std::vector<mkldnn::primitive>& net,
+                        std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) override {
     Ort::CustomOpApi ort{*api};
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
@@ -124,11 +124,11 @@ class MklDnnBatchNorm : public MklDnnKernel {
       ort_source_desc_ = mkldnn::memory::desc(
           {src_dims}, MklDnnType<T>(), ort_source_format_);
       source_desc_ = ort_source_desc_;
-      src_md_.reset(new mkldnn::memory::desc(
-          {src_dims}, MklDnnType<T>(), ort_source_format_));
+      src_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
+          mkldnn::memory::desc({src_dims}, MklDnnType<T>(), ort_source_format_));
     } else {
-      src_md_.reset(
-          new mkldnn::memory::desc(parents_[0].get()->primitive_dst_desc_));
+      src_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
+          mkldnn::memory::desc(parents_[0].get()->primitive_dst_desc_));
       x_shape = parents_[0].get()->primitive_dst_shape_;
       ort_source_format_ = parents_[0].get()->ort_source_format_;
       ort_source_desc_ = parents_[0].get()->ort_source_desc_;
@@ -137,9 +137,9 @@ class MklDnnBatchNorm : public MklDnnKernel {
 
     int num_dimensions = static_cast<int>(x_shape.NumDimensions());
     if (num_dimensions == 3) {
-      primitive_created_ = Status(common::ONNXRUNTIME,
-                                  common::NOT_IMPLEMENTED, "BatchNorm: Please call default CPU kernel.");
-      return primitive_created_;
+      primitive_created_status_ = ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                                  "1D BatchNormalization is not supported in MKLDNN.");
+      return;
     }
 
     const OrtValue* scale_input_tensor = ort.KernelContext_GetInput(context, input_index + 1);
@@ -177,9 +177,10 @@ class MklDnnBatchNorm : public MklDnnKernel {
 
     primitive_dst_shape_ = TensorShape(x_shape);
 
-    primitive_created_ = BatchNormHelper::ValidateInputs(x_shape, scale_shape, b_shape, mean_shape, var_shape);
-    if (!primitive_created_.IsOK())
-      return primitive_created_;
+    primitive_created_status_ = BatchNormHelper::ValidateInputs(x_shape, scale_shape, b_shape, mean_shape, var_shape);
+    if (!primitive_created_status_.IsOK()) {
+      return;
+    }
 
     mkldnn::memory::dims src_dims_mkl(
         x_shape.GetDims().begin(), x_shape.GetDims().end());
@@ -195,33 +196,34 @@ class MklDnnBatchNorm : public MklDnnKernel {
     mkldnn::memory::dims dst_dims_mkl(
         primitive_dst_shape_.GetDims().begin(), primitive_dst_shape_.GetDims().end());
 
-    scale_shift_md_.reset(new mkldnn::memory::desc(
-        {2, scale_dims_mkl[0]}, MklDnnType<T>(), mkldnn::memory::format_tag::nc));
-    mean_md_.reset(new mkldnn::memory::desc(
-        {mean_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format_tag::x));
-    var_md_.reset(new mkldnn::memory::desc(
-        {var_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format_tag::x));
-    primitive_dst_md_.reset(new mkldnn::memory::desc(
-        {dst_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format_tag::any));
+    scale_shift_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
+        mkldnn::memory::desc({2, scale_dims_mkl[0]}, MklDnnType<T>(), mkldnn::memory::format_tag::nc));
+    mean_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
+        mkldnn::memory::desc({mean_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format_tag::x));
+    var_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
+        mkldnn::memory::desc({var_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format_tag::x));
+    primitive_dst_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
+        mkldnn::memory::desc({dst_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format_tag::any));
 
     // scale_shift_mem will allocate 2*C*sizeof(float) buffer
     //
-    scale_shift_mem_.reset(
-        new mkldnn::memory({*scale_shift_md_, cpu_engine}));
+    scale_shift_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+        mkldnn::memory({*scale_shift_md_, cpu_engine}));
 
-    mean_mem_.reset(
-        new mkldnn::memory(*mean_md_, cpu_engine, nullptr));
-    var_mem_.reset(
-        new mkldnn::memory(*var_md_, cpu_engine, nullptr));
+    mean_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+        mkldnn::memory(*mean_md_, cpu_engine, nullptr));
+    var_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+        mkldnn::memory(*var_md_, cpu_engine, nullptr));
 
-    batchnorm_fwd_.reset(new mkldnn::batch_normalization_forward::desc(
-        mkldnn::prop_kind::forward_inference, *src_md_, epsilon_,
-        mkldnn::normalization_flags::use_scale_shift |
-            mkldnn::normalization_flags::use_global_stats));
+    batchnorm_fwd_ = onnxruntime::make_unique<mkldnn::batch_normalization_forward::desc>(
+        mkldnn::batch_normalization_forward::desc(
+            mkldnn::prop_kind::forward_inference, *src_md_, epsilon_,
+            mkldnn::normalization_flags::use_scale_shift |
+                mkldnn::normalization_flags::use_global_stats));
 
     if (fuse_relu_) {
       mkldnn::primitive_attr attr;
-      // attr.set_int_output_round_mode(mkldnn::round_mode::round_nearest); 
+      // attr.set_int_output_round_mode(mkldnn::round_mode::round_nearest);
       // Execute RELU as Fuse PostOps
       const float ops_scale = 1.f;
       const float ops_alpha = 0.f;  // relu negative slope
@@ -230,11 +232,11 @@ class MklDnnBatchNorm : public MklDnnKernel {
       ops.append_eltwise(ops_scale, mkldnn::algorithm::eltwise_relu, ops_alpha, ops_beta);
       attr.set_post_ops(ops);
 
-      batchnorm_fwd_pd_.reset(new mkldnn::batch_normalization_forward::primitive_desc(
-          *batchnorm_fwd_, attr, cpu_engine));
+      batchnorm_fwd_pd_ = onnxruntime::make_unique<mkldnn::batch_normalization_forward::primitive_desc>(
+          mkldnn::batch_normalization_forward::primitive_desc(*batchnorm_fwd_, attr, cpu_engine));
     } else {
-      batchnorm_fwd_pd_.reset(
-          new mkldnn::batch_normalization_forward::primitive_desc(
+      batchnorm_fwd_pd_ = onnxruntime::make_unique<mkldnn::batch_normalization_forward::primitive_desc>(
+          mkldnn::batch_normalization_forward::primitive_desc(
               *batchnorm_fwd_, cpu_engine));
     }
 
@@ -245,8 +247,8 @@ class MklDnnBatchNorm : public MklDnnKernel {
         batchnorm_fwd_pd_.get()->dst_desc());
 
     if (mklnode_ptr_->parent_nodes.empty()) {
-      src_mem_.reset(
-          new mkldnn::memory(batchnorm_fwd_pd_.get()->src_desc(), cpu_engine, nullptr));
+      src_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+          mkldnn::memory(batchnorm_fwd_pd_.get()->src_desc(), cpu_engine, nullptr));
     } else {
       src_mem_ = parents_[0].get()->primitive_dst_mem_;
     }
@@ -254,13 +256,16 @@ class MklDnnBatchNorm : public MklDnnKernel {
     if (mklnode_ptr_->output_index >= 0) {
       // Use mkldnn's internal output buffer
       if (primitive_dst_desc_ != ort_source_desc_) {
-        primitive_dst_mem_.reset(new mkldnn::memory(batchnorm_fwd_pd_->dst_desc(), cpu_engine));
+        primitive_dst_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+            mkldnn::memory(batchnorm_fwd_pd_->dst_desc(), cpu_engine));
       } else {
-        primitive_dst_mem_.reset(new mkldnn::memory(batchnorm_fwd_pd_->dst_desc(), cpu_engine, nullptr));
+        primitive_dst_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+            mkldnn::memory(batchnorm_fwd_pd_->dst_desc(), cpu_engine, nullptr));
       }
     } else {
       // last node of sub-graph. need to allocate memory for output_tensor
-      primitive_dst_mem_.reset(new mkldnn::memory(batchnorm_fwd_pd_->dst_desc(), cpu_engine));
+      primitive_dst_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+          mkldnn::memory(batchnorm_fwd_pd_->dst_desc(), cpu_engine));
     }
     auto bn = mkldnn::batch_normalization_forward(
         *batchnorm_fwd_pd_);
@@ -278,19 +283,16 @@ class MklDnnBatchNorm : public MklDnnKernel {
       mkldnn::memory::data_type t = MklDnnType<T>();
       InitDstReorderOutput(cpu_engine, t, net, net_args);
     }
-    return Status::OK();
   }
 
   Status Bind(const OrtCustomOpApi* api, OrtKernelContext* context) override {
     Ort::CustomOpApi ort{*api};
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
-    if (!primitive_created_.IsOK()) {
-      // abort as MKLDNN cannot execute this. but
-      // ORT try to delete output_tensor buffer data. allocate memory so that it can delete
-      // fix for test_averagepool_1d_default node test
-      return primitive_created_;
-    }
+    // abort as MKLDNN cannot execute this. but
+    // ORT try to delete output_tensor buffer data. allocate memory so that it can delete
+    // fix for test_averagepool_1d_default node test
+    ORT_RETURN_IF_ERROR(primitive_created_status_);
 
     if (mklnode_ptr_->parent_nodes.empty()) {
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);

@@ -110,7 +110,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     gemm_node.SetExecutionProviderType(matmul_node.GetExecutionProviderType());
 
     // move output definitions and edges from act_node to gemm_node. delete gemm_node and act_node.
-    graph_utils::FinalizeNodeFusion(graph, matmul_node, add_node, &gemm_node);
+    graph_utils::FinalizeNodeFusion(graph, {matmul_node, add_node}, gemm_node);
 
     modified = true;
   }

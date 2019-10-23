@@ -1198,27 +1198,30 @@ TensorWrapper::TensorWrapper(onnxruntime::Tensor* impl, bool isDataInterface, IW
         {
             // We assume that all data handles derive from IUnknown as their first base.
             m_dataInterface = static_cast<IUnknown*>(m_impl->MutableDataRaw());
-            
-            if (m_winmlExecutionProvider)
-            {
-                // The resource may require conversion to the layout expected according to the kernel options.  
-                // This will return either the original object or a shadow copy which uses a different layout.
-                // This pattern assumes that Lotus is not re-using tensor allocations, so each output is 
-                // a fresh allocation which will not trigger a conversion in the provider.
-                m_winmlExecutionProvider->GetShadowCopyIfRequired(m_internalOperator, m_dataInterface.Get(), m_dataInterfaceOrShadowCopy.GetAddressOf());
 
-                // Get the actual object to be returned from the ABI, which varies for internal and external 
-                // kernels (i.e. ID3D12Resource, versus something that tracks the layout).
-                TranslateAllocationDataToAbi(
-                    m_winmlExecutionProvider.Get(), 
-                    m_internalOperator, 
-                    m_impl->Location(), 
-                    m_dataInterfaceOrShadowCopy ? m_dataInterfaceOrShadowCopy.Get() : m_dataInterface.Get(),
-                    m_abiDataInterface.GetAddressOf());
-            }
-            else
+            if (m_dataInterface)
             {
-                m_abiDataInterface = m_dataInterface;
+                if (m_winmlExecutionProvider)
+                {
+                    // The resource may require conversion to the layout expected according to the kernel options.  
+                    // This will return either the original object or a shadow copy which uses a different layout.
+                    // This pattern assumes that Lotus is not re-using tensor allocations, so each output is 
+                    // a fresh allocation which will not trigger a conversion in the provider.
+                    m_winmlExecutionProvider->GetShadowCopyIfRequired(m_internalOperator, m_dataInterface.Get(), m_dataInterfaceOrShadowCopy.GetAddressOf());
+
+                    // Get the actual object to be returned from the ABI, which varies for internal and external 
+                    // kernels (i.e. ID3D12Resource, versus something that tracks the layout).
+                    TranslateAllocationDataToAbi(
+                        m_winmlExecutionProvider.Get(), 
+                        m_internalOperator, 
+                        m_impl->Location(), 
+                        m_dataInterfaceOrShadowCopy ? m_dataInterfaceOrShadowCopy.Get() : m_dataInterface.Get(),
+                        m_abiDataInterface.GetAddressOf());
+                }
+                else
+                {
+                    m_abiDataInterface = m_dataInterface;
+                }
             }
         }
         else
@@ -2000,8 +2003,6 @@ HRESULT STDMETHODCALLTYPE MLSchemaInferenceContext::SetOutputTensorShape(
 
     for (uint32_t i = 0; i < dimensionCount; ++i)
     {
-        ML_CHECK_BOOL(dimensions[i] > 0);
-
         auto dim = m_context->getOutputType(outputIndex)->mutable_tensor_type()->mutable_shape()->add_dim();
         dim->set_dim_value(dimensions[i]);
     }
@@ -2115,6 +2116,21 @@ bool TryGetStaticOutputShapes(const onnxruntime::Node& node, EdgeShapes& outputS
     }
 
     return true;
+}
+
+bool ContainsEmptyDimensions(const EdgeShapes& shapes)
+{
+    for (size_t i = 0; i < shapes.EdgeCount(); i++)
+    {
+        const std::vector<uint32_t>& shape = shapes.GetShape(i);
+
+        if (std::find(shape.begin(), shape.end(), 0) != shape.end())
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(const onnx::TensorProto& initializer)

@@ -13,6 +13,23 @@ jobs:
         python.version: '3.7'
         python.dir: '/opt/python/cp37-cp37m'
   steps:
+    - template: templates/set-test-data-variables-step.yml
+
+    - task: CmdLine@2
+      displayName: 'Download azcopy'
+      inputs:
+        script: |
+          curl -so azcopy.tar.gz -L 'https://aka.ms/downloadazcopy-v10-linux'
+          tar -zxvf azcopy.tar.gz --strip 1
+        workingDirectory: $(Build.BinariesDirectory)
+
+    - task: PythonScript@0
+      displayName: 'Download test data'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
+        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
+        pythonInterpreter: '/usr/bin/python3'
+        workingDirectory: $(Build.BinariesDirectory)
     - task: CmdLine@2
       inputs:
         script: |
@@ -21,7 +38,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-manylinux-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --build_wheel --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.dir)/include/python$(python.version)m PYTHON_LIBRARY=/usr/lib64/librt.so
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-manylinux-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --build_wheel --enable_onnx_tests --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.dir)/include/python$(python.version)m PYTHON_LIBRARY=/usr/lib64/librt.so
         workingDirectory: $(Build.SourcesDirectory)
 
     - task: CopyFiles@2
@@ -55,6 +72,23 @@ jobs:
         python.version: '3.7'
         python.dir: '/opt/python/cp37-cp37m'
   steps:
+    - template: templates/set-test-data-variables-step.yml
+
+    - task: CmdLine@2
+      displayName: 'Download azcopy'
+      inputs:
+        script: |
+          curl -so azcopy.tar.gz -L 'https://aka.ms/downloadazcopy-v10-linux'
+          tar -zxvf azcopy.tar.gz --strip 1
+        workingDirectory: $(Build.BinariesDirectory)
+
+    - task: PythonScript@0
+      displayName: 'Download test data'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
+        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
+        pythonInterpreter: '/usr/bin/python3'
+        workingDirectory: $(Build.BinariesDirectory)
     - task: CmdLine@2
       inputs:
         script: |
@@ -63,7 +97,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-manylinux-gpu-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --build_wheel --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.dir)/include/python$(python.version)m PYTHON_LIBRARY=/usr/lib64/librt.so --use_cuda --cuda_version=10.0 --cuda_home=/usr/local/cuda-10.0  --cudnn_home=/usr/local/cuda-10.0
+          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-manylinux-gpu-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --build_wheel --enable_onnx_tests --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.dir)/include/python$(python.version)m PYTHON_LIBRARY=/usr/lib64/librt.so --use_cuda --cuda_version=10.0 --cuda_home=/usr/local/cuda-10.0  --cudnn_home=/usr/local/cuda-10.0
         workingDirectory: $(Build.SourcesDirectory)
 
     - task: CopyFiles@2
@@ -160,7 +194,7 @@ jobs:
       inputs:
         filename: 'build.bat'
         arguments: ' --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10_trt6015dll"
-      --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --build_dir $(buildDirectory) --config Release --use_openmp --build_wheel'
+      --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --build_dir $(buildDirectory) --config Release --build_wheel'
         workingFolder: "$(Build.SourcesDirectory)"
 
     - task: CopyFiles@2
@@ -192,15 +226,13 @@ jobs:
       Python37:
         python.version: '3.7'
   steps:
-    - task: CondaEnvironment@1
+    - task: UsePythonVersion@0
+      displayName: 'Use Python'
       inputs:
-        createCustomEnvironment: true
-        environmentName: 'py$(python.version)'
-        packageSpecs: 'python=$(python.version)'
-        cleanEnvironment: true
+        versionSpec: $(python.version)
 
     - script: |
-        sudo python -m pip install numpy==1.15.0
+        sudo python -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
         ./build.sh --config Release --skip_submodule_sync --parallel --use_openmp --build_wheel      
       displayName: 'Command Line Script' 
@@ -219,5 +251,3 @@ jobs:
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
-
-    - template: templates/clean-agent-build-directory-step.yml

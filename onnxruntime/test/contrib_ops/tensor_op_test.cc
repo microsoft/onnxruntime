@@ -5,7 +5,6 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "contrib_ops/cpu/crop.h"
 
-
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::test;
 namespace onnxruntime {
@@ -29,7 +28,7 @@ TEST(CropContribOpTest, CropBorderOnly) {
 
       5.0f, 6.0f};
 
-  OpTester test("Crop");
+  OpTester test("Crop", 7);
   test.AddAttribute("border", border);
   test.AddInput<float>("input", {N, C, H, W}, X);
   test.AddOutput<float>("output", {N, C, (H - border[2] - border[0]), (W - border[3] - border[1])}, output);
@@ -56,7 +55,7 @@ TEST(CropContribOpTest, CropBorderAndScale) {
       4.0f, 5.0f,
       5.0f, 6.0f};
 
-  OpTester test("Crop");
+  OpTester test("Crop", 7);
   test.AddAttribute("border", border);
   test.AddAttribute("scale", scale);
   test.AddInput<float>("input", {N, C, H, W}, X);
@@ -83,7 +82,7 @@ TEST(ImageScalerContribOpTest, ImageScalerTest) {
       8.0f, 12.0f,
       16.0f, 20.0f};
 
-  OpTester test("ImageScaler");
+  OpTester test("ImageScaler", 7);
   test.AddAttribute("scale", scale);
   test.AddAttribute("bias", bias);
   test.AddInput<float>("input", {N, C, H, W}, X);
