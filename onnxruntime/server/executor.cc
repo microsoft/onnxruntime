@@ -18,8 +18,6 @@
 #include "executor.h"
 #include "util.h"
 
-const OrtApi* Ort::g_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-
 namespace onnxruntime {
 namespace server {
 
@@ -60,7 +58,7 @@ protobufutil::Status Executor::SetNameMLValueMap(std::vector<std::string>& input
   auto logger = env_->GetLogger(request_id_);
 
   OrtMemoryInfo* memory_info = nullptr;
-  auto ort_status = Ort::g_api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info);
+  auto ort_status = Ort::GetApi().CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info);
 
   if (ort_status != nullptr || memory_info == nullptr) {
     logger->error("OrtCreateCpuMemoryInfo failed");
@@ -74,7 +72,7 @@ protobufutil::Status Executor::SetNameMLValueMap(std::vector<std::string>& input
     Ort::Value ml_value{nullptr};
     auto status = SetMLValue(input.second, buffers, memory_info, ml_value);
     if (status != protobufutil::Status::OK) {
-      Ort::g_api->ReleaseMemoryInfo(memory_info);
+      Ort::GetApi().ReleaseMemoryInfo(memory_info);
       logger->error("SetMLValue() failed! Input name: {}", input.first);
       return status;
     }
@@ -83,7 +81,7 @@ protobufutil::Status Executor::SetNameMLValueMap(std::vector<std::string>& input
     input_values.push_back(std::move(ml_value));
   }
 
-  Ort::g_api->ReleaseMemoryInfo(memory_info);
+  Ort::GetApi().ReleaseMemoryInfo(memory_info);
   return protobufutil::Status::OK;
 }
 
