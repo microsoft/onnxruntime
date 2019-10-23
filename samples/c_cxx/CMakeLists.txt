@@ -22,6 +22,26 @@ option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
 option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(LIBPNG_ROOTDIR "libpng root dir")
+option(ONNXRUNTIME_ROOTDIR "libpng root dir")
+
+if(NOT ONNXRUNTIME_ROOTDIR)
+  set(ONNXRUNTIME_ROOTDIR "${CMAKE_INSTALL_PREFIX}")
+  set(ONNXRUNTIME_INCLUDE "${CMAKE_INSTALL_INCLUDEDIR}")
+  include_directories("${CMAKE_INSTALL_INCLUDEDIR}")
+  link_directories("${CMAKE_INSTALL_LIBDIR}")
+else()
+  include_directories("${ONNXRUNTIME_ROOTDIR}/include")
+  link_directories("${CMAKE_INSTALL_LIBDIR}/lib")
+endif()
+
+#TODO: remove this part(need to talk to Ryan and find a solution for this)
+# if(UNIX)
+ # include_directories("/usr/local/include/onnxruntime")
+# else()
+ # include_directories("C:\\Program Files (x86)\\onnxruntime\\include" "C:\\Program Files (x86)\\onnxruntime\\include\\onnxruntime" "C:\\Program Files (x86)\\onnxruntime\\include\\onnxruntime\\core\\session")
+ # link_directories("C:\\Program Files (x86)\\onnxruntime\\lib")
+# endif()
+
 
 #if JPEG lib is available, we'll use it for image decoding, otherwise we'll use WIC
 find_package(JPEG)
@@ -68,14 +88,6 @@ endif()
 if(onnxruntime_USE_DML)
   message("Enabling DML")
   add_definitions(-DUSE_DML)
-endif()
-
-#TODO: remove this part(need to talk to Ryan and find a solution for this)
-if(UNIX)
- include_directories("/usr/local/include/onnxruntime")
-else()
- include_directories("C:\\Program Files (x86)\\onnxruntime\\include" "C:\\Program Files (x86)\\onnxruntime\\include\\onnxruntime" "C:\\Program Files (x86)\\onnxruntime\\include\\onnxruntime\\core\\session")
- link_directories("C:\\Program Files (x86)\\onnxruntime\\lib")
 endif()
 
 
