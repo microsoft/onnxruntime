@@ -1,0 +1,27 @@
+diff -Naur git_org/cmake/external/eigen/Eigen/src/Core/products/GeneralBlockPanelKernel.h git/cmake/external/eigen/Eigen/src/Core/products/GeneralBlockPanelKernel.h
+--- git_org/cmake/external/eigen/Eigen/src/Core/products/GeneralBlockPanelKernel.h	2019-07-17 15:27:59.540667336 -0500
++++ git/cmake/external/eigen/Eigen/src/Core/products/GeneralBlockPanelKernel.h	2019-07-17 15:30:16.000000000 -0500
+@@ -1076,8 +1076,9 @@
+     dest = *b;
+   }
+ 
+-  EIGEN_STRONG_INLINE void updateRhs(const RhsScalar* b, RhsPacketx4& dest) const
+-  {}
++  EIGEN_STRONG_INLINE void updateRhs(const RhsScalar*, RhsPacketx4&) const
++  {
++  }
+ 
+   EIGEN_STRONG_INLINE void loadRhsQuad(const RhsScalar* b, RhsPacket& dest) const
+   {
+@@ -1145,8 +1146,9 @@
+     loadRhs(b,dest);
+   }
+ 
+-  EIGEN_STRONG_INLINE void updateRhs(const RhsScalar* b, RhsPacketx4& dest) const
+-  {}
++  EIGEN_STRONG_INLINE void updateRhs(const RhsScalar*, RhsPacketx4&) const
++  {
++  }
+ 
+   EIGEN_STRONG_INLINE void loadRhsQuad(const RhsScalar* b, RhsPacket& dest) const
+   {
