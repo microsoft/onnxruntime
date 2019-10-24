@@ -40,7 +40,7 @@ msbuild INSTALL.vcxproj /p:Configuration=RelWithDebInfo
 
 ## Build the samples
 
-Open Open Developer Command Prompt for Visual Studio version you are going to use, change your current directory to samples\c_cxx, then run
+Open Developer Command Prompt for Visual Studio version you are going to use, change your current directory to samples\c_cxx, then run
 ```bat
 mkdir build && cd build
 cmake .. -A x64 -T host=x64 -DLIBPNG_ROOTDIR=C:\path\to\your\libpng\binary -DONNXRUNTIME_ROOTDIR=c:\dev\ort_install
