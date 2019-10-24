@@ -1,5 +1,6 @@
 jobs:
 - job: Linux_nGraph_CI_Dev
+  timeoutInMinutes: 90
   pool: Linux-CPU
   steps:
     - template: templates/set-test-data-variables-step.yml
