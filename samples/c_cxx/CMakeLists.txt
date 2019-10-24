@@ -22,6 +22,20 @@ option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
 option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(LIBPNG_ROOTDIR "libpng root dir")
+option(ONNXRUNTIME_ROOTDIR "onnxruntime root dir")
+
+if(NOT ONNXRUNTIME_ROOTDIR)
+  if(WIN32)
+    set(ONNXRUNTIME_ROOTDIR "C:/Program Files (x86)/onnxruntime")
+  else()
+    include_directories("/usr/local/include/onnxruntime")
+  endif()
+endif()
+
+if(WIN32)
+  include_directories("${ONNXRUNTIME_ROOTDIR}/include" "${ONNXRUNTIME_ROOTDIR}/include/onnxruntime/core/session")
+  link_directories("${ONNXRUNTIME_ROOTDIR}/lib")
+endif()
 
 #if JPEG lib is available, we'll use it for image decoding, otherwise we'll use WIC
 find_package(JPEG)
@@ -68,14 +82,6 @@ endif()
 if(onnxruntime_USE_DML)
   message("Enabling DML")
   add_definitions(-DUSE_DML)
-endif()
-
-#TODO: remove this part(need to talk to Ryan and find a solution for this)
-if(UNIX)
- include_directories("/usr/local/include/onnxruntime")
-else()
- include_directories("C:\\Program Files (x86)\\onnxruntime\\include" "C:\\Program Files (x86)\\onnxruntime\\include\\onnxruntime" "C:\\Program Files (x86)\\onnxruntime\\include\\onnxruntime\\core\\session")
- link_directories("C:\\Program Files (x86)\\onnxruntime\\lib")
 endif()
 
 

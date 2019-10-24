@@ -418,13 +418,22 @@ struct Broadcaster {
         auto axis2 = *--iter2;
 
         auto largest = std::max(axis1, axis2);
-        *--output_shape = largest;
+        auto smallest = std::min(axis1, axis2);
+        auto dim_to_use = largest;
 
-        if (largest == 1 && index + 1 < dimension_count_min)  // Nothing to do in this case
+        if (smallest == 0) {
+          ORT_ENFORCE(largest <= 1, "Can broadcast 0 by 0 or 1. ", largest, " is invalid.");
+          dim_to_use = smallest;
+        }
+
+        *--output_shape = dim_to_use;
+
+        // if both 1, or a 1 and 0, and there are more dims, we can let the next iteration do the Init
+        if (dim_to_use <= 1 && index + 1 < dimension_count_min)
           continue;
 
-        iterator1_.Init(axis1, largest);
-        iterator2_.Init(axis2, largest);
+        iterator1_.Init(axis1, dim_to_use);
+        iterator2_.Init(axis2, dim_to_use);
         index++;  // Manually increment since we processed one axis
         break;
       }
@@ -435,13 +444,21 @@ struct Broadcaster {
       auto axis2 = *--iter2;
 
       auto largest = std::max(axis1, axis2);
-      *--output_shape = largest;
+      auto smallest = std::min(axis1, axis2);
+      auto dim_to_use = largest;
+
+      if (smallest == 0) {
+        ORT_ENFORCE(largest <= 1, "Can broadcast 0 by 0 or 1. ", largest, " is invalid.");
+        dim_to_use = smallest;
+      }
+
+      *--output_shape = dim_to_use;
 
       if (largest == 1)  // Nothing to do in this case
         continue;
 
-      iterator1_.Append(axis1, largest);
-      iterator2_.Append(axis2, largest);
+      iterator1_.Append(axis1, dim_to_use);
+      iterator2_.Append(axis2, dim_to_use);
     }
 
     // If one shape is bigger than another we need to broadcast the smaller onto the bigger from this point on
