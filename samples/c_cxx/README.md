@@ -1,8 +1,10 @@
-This directory contains a few C/C++ sample applications for demoing onnxruntime usage:
+This directory contains a few (Windows only) C/C++ sample applications for demoing onnxruntime usage:
 
 1. fns_candy_style_transfer: A C application that uses the FNS-Candy style transfer model to re-style images. 
 2. MNIST: A windows GUI application for doing handwriting recognition
 3. imagenet: An end-to-end sample for the [ImageNet Large Scale Visual Recognition Challenge 2012](http://www.image-net.org/challenges/LSVRC/2012/)
+
+Imagenet sample requires ATL libraries installed as a part of VS Studio installation.
 
 # How to build
 
@@ -16,23 +18,47 @@ You may get a precompiled libpng library from [https://onnxruntimetestdata.blob.
 ## Install ONNX Runtime
 You may either get a prebuit onnxruntime from nuget.org, or build it from source by following the [build instructions](../../BUILD.md). 
 If you build it by yourself, you must append the "--build_shared_lib" flag to your build command. 
+Open Developer Command Prompt for Visual Studio version you are going to use. This will setup necessary environment for the compiler and other things to be found.
 ```
-build.bat --config RelWithDebInfo --build_shared_lib --parallel
+build.bat --config RelWithDebInfo --build_shared_lib --parallel 
 ```
-When the build is done, run Visual Studio as administrator and open the onnxruntime.sln file in your build directory.
-![vs.png](vs.png)
 
-When the solution is loaded, change the build configuration to "RelWithDebInfo"(which must match your previous build command), then select the "INSTALL" project, and build it.  It will install your onnxruntime to  "C:\Program Files (x86)\onnxruntime"
+By default this will build a project with "C:\Program Files (x86)\onnxruntime" install destination. This is a protected folder on Windows. If you do not want to run installation with elevated priviliges you will need to override the default installation location by passing extra CMake arguments. For example:
+
+```
+build.bat --config RelWithDebInfo --build_shared_lib --parallel  --cmake_extra_defines CMAKE_INSTALL_PREFIX=c:\dev\ort_install
+```
+
+By default products of the build on Windows go to .\build\Windows\<config> folder. In the case above it would be .\build\Windows\RelWithDebInfo.
+If you did not specify alternative installation location above you would need to open an elevated command prompt to install onnxruntime.
+Run the following commands.
+
+```
+cd .\Windows\RelWithDebInfo
+msbuild INSTALL.vcxproj /p:Configuration=RelWithDebInfo
+```
 
 ## Build the samples
-Open cmd.exe, change your current directory to samples\c_cxx, then run
+
+Open Developer Command Prompt for Visual Studio version you are going to use, change your current directory to samples\c_cxx, then run
 ```bat
-mkdir build
-cmake .. -A x64 -T host=x64 -DLIBPNG_ROOTDIR=C:\path\to\your\libpng\binary
+mkdir build && cd build
+cmake .. -A x64 -T host=x64 -DLIBPNG_ROOTDIR=C:\path\to\your\libpng\binary -DONNXRUNTIME_ROOTDIR=c:\dev\ort_install
 ```
-You may omit the "-DLIBPNG_ROOTDIR=..." argument if you don't have the libpng library.     
+You may omit the "-DLIBPNG_ROOTDIR=..." argument if you don't have the libpng library.
+You may omit "-DONNXRUNTIME_ROOTDIR=..." if you installed to a default location.
+
 You may append "-Donnxruntime_USE_CUDA=ON" or "-Donnxruntime_USE_DML=ON" to the last command args if your onnxruntime binary was built with CUDA or DirectML support respectively.
 
-Then you can open the onnxruntime_samples.sln file in the "build" directory and build the solution.
+You can then either open the solution in a Visual Studio and build it from there
+```bat
+devenv onnxruntime_samples.sln
+```
+Or build it using msbuild
 
+```bat
+msbuild onnxruntime_samples.sln /p:Configuration=Debug|Release
+```
+
+To run the samples make sure that your Install Folder Bin is in the path so your sample executable can find onnxruntime dll and libpng if you used it.
 
