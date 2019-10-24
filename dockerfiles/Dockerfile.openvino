@@ -13,6 +13,16 @@ ARG DEVICE=CPU_FP32
 ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=master
 
+WORKDIR /code
+ENV PATH /opt/miniconda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:$PATH
+
+RUN git clone --recursive -b $ONNXRUNTIME_BRANCH $ONNXRUNTIME_REPO /onnxruntime && \
+    /bin/sh /onnxruntime/dockerfiles/scripts/install_common_deps.sh && \
+    cd /onnxruntime/cmake/external/onnx && python3 setup.py install && \
+    cp /onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt && \
+    cp /onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt && \
+    pip install azure-iothub-device-client azure-iothub-service-client azure-iot-provisioning-device-client
+
 ENV pattern="COMPONENTS=DEFAULTS"
 ENV replacement="COMPONENTS=intel-openvino-ie-sdk-ubuntu-xenial__x86_64;intel-openvino-ie-rt-cpu-ubuntu-xenial__x86_64;intel-openvino-ie-rt-gpu-ubuntu-xenial__x86_64;intel-openvino-ie-rt-vpu-ubuntu-xenial__x86_64;intel-openvino-ie-rt-hddl-ubuntu-xenial__x86_64;intel-openvino-model-optimizer__x86_64;intel-openvino-opencv-lib-ubuntu-xenial__x86_64"
 COPY l_openvino_*.tgz .
@@ -25,7 +35,10 @@ RUN tar -xzf l_openvino_toolkit*.tgz && \
     ./install_openvino_dependencies.sh && \
     cd - && \
     rm -rf l_openvino_toolkit* && \
-    cd /opt/intel/openvino/deployment_tools/model_optimizer/install_prerequisites && ./install_prerequisites_onnx.sh
+    cd /opt/intel/openvino/deployment_tools/model_optimizer/install_prerequisites && ./install_prerequisites_onnx.sh && \
+    # workaround due to issue in openvino install scripts which installs python dependency packages under system
+    # python instead of miniconda environment.
+    pip install networkx==2.3 && pip install defusedxml
 
 ENV LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2019.1.144
@@ -52,15 +65,5 @@ RUN wget https://github.com/intel/compute-runtime/releases/download/19.15.12831/
 RUN sudo dpkg -i *.deb && rm -rf *.deb
 
 ENV LANG en_US.UTF-8
-WORKDIR /code
-ENV PATH /opt/miniconda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:$PATH
-
-RUN git clone --recursive -b $ONNXRUNTIME_BRANCH $ONNXRUNTIME_REPO /onnxruntime && \
-    /bin/sh /onnxruntime/dockerfiles/scripts/install_common_deps.sh && \
-    cd /onnxruntime/cmake/external/onnx && python3 setup.py install && \
-    cp onnxruntime/docs/Privacy.md /code/Privacy.md &&\
-    cp /onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt && \
-    cp /onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt && \
-    pip install azure-iothub-device-client azure-iothub-service-client azure-iot-provisioning-device-client && \
-    cd /onnxruntime && ./build.sh --config RelWithDebInfo --update --build --parallel --use_openvino $DEVICE --build_wheel && \
+RUN cd /onnxruntime && ./build.sh --config RelWithDebInfo --update --build --parallel --use_openvino $DEVICE --build_wheel && \
     pip install /onnxruntime/build/Linux/RelWithDebInfo/dist/*-linux_x86_64.whl && rm -rf /onnxruntime cmake-3.14.3-Linux-x86_64
