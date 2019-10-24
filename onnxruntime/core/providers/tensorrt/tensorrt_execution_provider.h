@@ -58,6 +58,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   TensorrtExecutionProvider();
   virtual ~TensorrtExecutionProvider();
 
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
