@@ -1486,7 +1486,7 @@ TEST(InferenceSessionTests, TestLenientShapeInferencing) {
                    "Mismatch between number of source and target dimensions. Source=1 Target=2");
 
   // older opset should allow the mismatch with a warning.
-  // we also need for the output to be valid so OpTester doesn't throw so add an Unsqueeze after the Shape. 
+  // we also need for the output to be valid so OpTester doesn't throw so add an Unsqueeze after the Shape.
   // This should result in a warning log message but successful run.
   class OpTesterWithReshape : public OpTester {
    public:
@@ -1518,7 +1518,8 @@ TEST(InferenceSessionTests, TestLenientShapeInferencing) {
 
   old_opset.AddInput("data", input_shape, input_data);
   old_opset.AddOutput<int64_t>("output", invalid_output_shape, output_data);
-  old_opset.Run();
+  // TensorRT doesn't handle Unsqueeze
+  old_opset.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 #ifdef USE_CUDA
