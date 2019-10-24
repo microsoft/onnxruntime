@@ -21,7 +21,7 @@ Status TransformGraphForTensorboard(Graph& graph,
 
   // SummaryScalar nodes.
   for (const std::string& scalar_input : scalar_nodes) {
-    std::string scalar_output = graph.GenerateNodeArgName(summary_name + "/scalar/" + scalar_input);
+    std::string scalar_output = summary_name + "/scalar/" + scalar_input;
     summary_args.push_back(ArgDef(scalar_output));
     new_nodes.emplace_back(NodeDef("SummaryScalar",
                                    {ArgDef(scalar_input)},
@@ -32,7 +32,7 @@ Status TransformGraphForTensorboard(Graph& graph,
 
   // SummaryHistogram nodes.
   for (const std::string& histogram_input : histogram_nodes) {
-    std::string histogram_output = graph.GenerateNodeArgName(summary_name + "/histogram/" + histogram_input);
+    std::string histogram_output = summary_name + "/histogram/" + histogram_input;
     summary_args.push_back(ArgDef(histogram_output));
     new_nodes.emplace_back(NodeDef("SummaryHistogram",
                                    {ArgDef(histogram_input)},
