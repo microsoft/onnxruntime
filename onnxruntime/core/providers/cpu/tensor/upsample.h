@@ -60,7 +60,7 @@ class UpsampleBase {
     exclude_outside_ = info.GetAttrOrDefault<int64_t>("exclude_outside", 0) == 0 ? false : true;
 
     if (exclude_outside_ == 1 && mode_ != CUBIC) {
-      ORT_THROW("exclude_outside can be set to 1 only when mode is CUBIC. Current mode is set to " + mode );
+      ORT_THROW("exclude_outside can be set to 1 only when mode is CUBIC. Current mode is set to " + mode);
     }
 
     // after version 11 update, this optimization is no longer applicable for all the available modes...
@@ -79,7 +79,7 @@ class UpsampleBase {
       const Tensor* scale;
       bool get_scale = info.TryGetConstantInput(scales_input_idx_, &scale);
 
-      if (get_scale&& scale->Shape().Size() > 0) {
+      if (get_scale && scale->Shape().Size() > 0) {
         ParseScalesData(scale, scales_);
         scales_cached_ = true;
       }
