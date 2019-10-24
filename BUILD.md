@@ -16,6 +16,7 @@
 
 ### Build Instructions
 #### Windows
+Open Developer Command Prompt for Visual Studio version you are going to use. This will properly setup the environment including paths to your compiler, linker, utilities and header files.
 ```
 .\build.bat --config RelWithDebInfo --build_shared_lib --parallel
 ```
