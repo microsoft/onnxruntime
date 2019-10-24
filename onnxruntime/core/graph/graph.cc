@@ -2083,7 +2083,8 @@ Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_in
   auto& mutable_initializers = *(graph_proto_->mutable_initializer());
   auto old_mutable_initializer_ptr_it = std::find(
       mutable_initializers.pointer_begin(), mutable_initializers.pointer_end(), &old_initializer);
-  ORT_ENFORCE(old_mutable_initializer_ptr_it != mutable_initializers.pointer_end());
+  ORT_ENFORCE(old_mutable_initializer_ptr_it != mutable_initializers.pointer_end(),
+              "graph_proto_ is not in sync with name_to_initial_tensor_");
   auto& old_mutable_initializer = **old_mutable_initializer_ptr_it;
 
   old_mutable_initializer = new_initializer;
