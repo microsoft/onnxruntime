@@ -148,6 +148,12 @@ void RegisterGradientSchemas() {
           OpSchema::Optional)
       .Input(
           7,
+          "loss_scale",
+          "loss scale for mixed precision training",
+          "T3",
+          OpSchema::Optional)
+      .Input(
+          8,
           "do_update",
           "If this flag is set to false, optimizer will skip weight update.",
           "B",
@@ -263,6 +269,12 @@ void RegisterGradientSchemas() {
           OpSchema::Optional)
       .Input(
           6,
+          "loss_scale",
+          "loss scale for mixed precision training",
+          "T2",
+          OpSchema::Optional)
+      .Input(
+          7,
           "do_update",
           "If this flag is set to false, optimizer will skip weight update.",
           "B",

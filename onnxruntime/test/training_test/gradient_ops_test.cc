@@ -1590,6 +1590,7 @@ TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_SkipUpdate_Test) {
   test.AddInput<MLFloat16>("Moment_1", {3}, data.m1_half);
   test.AddInput<MLFloat16>("Moment_2", {3}, data.m2_half);
   test.AddInput<MLFloat16>("FP16_W", {3}, data.w_half);
+  test.AddInput<float>("loss_scale", {1}, {1.0});
   test.AddInput<bool>("DoUpdate", {}, {false});
 
   // Verify AdamOptimizer outputs
@@ -1696,7 +1697,9 @@ void run_lamb_test_with_baseline(
   if (!w_half.empty()) {
     test.AddInput<MLFloat16>("FP16_W", shape, w_half);
   }
+
   if (!do_update) {
+    test.AddInput<T2>("loss_scale", {1}, {1.0});
     test.AddInput<bool>("DoUpdate", {}, {false});
   }
 

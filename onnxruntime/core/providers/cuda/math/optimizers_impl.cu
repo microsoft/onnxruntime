@@ -46,14 +46,15 @@ void SGDOptimizerImpl(
 
 SPECIALIZED_IMPL__SGDOptimizerImpl(float)
 
-template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, bool update_fp16_weight>
-__global__ void _AdamOptimizer(
+template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, bool update_fp16_weight, bool has_loss_scale>
+    __global__ void _AdamOptimizer(
     const T1* eta,
     const T2 update_count,
     const T3* weights,
     const T_GRAD* grads,
     const T4* moment_1,
     const T4* moment_2,
+    const T3* loss_scale,
     T4 alpha,
     T4 beta,
     T4 lambda,
@@ -65,7 +66,11 @@ __global__ void _AdamOptimizer(
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   // Regularize gradient.
-  const T4 g_regularized = lambda * T4(weights[id]) + T4(grads[id]);
+  T4 new_grad = T4(grads[id]);
+  if (has_loss_scale) {
+    new_grad /= T4(*loss_scale);
+  }
+  const T4 g_regularized = lambda * T4(weights[id]) + new_grad;
 
   // A shared constant.
   const T4 one = T4(1.0f);
@@ -102,6 +107,7 @@ void AdamOptimizerImpl(
     const T_GRAD* grads,
     const T4* moment_1,
     const T4* moment_2,
+    const T3* loss_scale,
     T4 alpha,
     T4 beta,
     T4 lambda,
@@ -114,14 +120,51 @@ void AdamOptimizerImpl(
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
 
-  if (fp16_weights_out != nullptr) {
-    _AdamOptimizer<T1, T2, T3, T4, T_GRAD, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  if (fp16_weights_out != nullptr && loss_scale != nullptr) {
+    _AdamOptimizer<T1, T2, T3, T4, T_GRAD, true, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         eta,
         update_count,
         weights,
         grads,
         moment_1,
         moment_2,
+        loss_scale,
+        alpha,
+        beta,
+        lambda,
+        epsilon,
+        weights_out,
+        moment_1_out,
+        moment_2_out,
+        fp16_weights_out,
+        N);
+  } else if (fp16_weights_out != nullptr && loss_scale == nullptr) {
+    _AdamOptimizer<T1, T2, T3, T4, T_GRAD, true, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        eta,
+        update_count,
+        weights,
+        grads,
+        moment_1,
+        moment_2,
+        loss_scale,
+        alpha,
+        beta,
+        lambda,
+        epsilon,
+        weights_out,
+        moment_1_out,
+        moment_2_out,
+        fp16_weights_out,
+        N);
+  } else if (fp16_weights_out == nullptr && loss_scale != nullptr) {
+    _AdamOptimizer<T1, T2, T3, T4, T_GRAD, false, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        eta,
+        update_count,
+        weights,
+        grads,
+        moment_1,
+        moment_2,
+        loss_scale,
         alpha,
         beta,
         lambda,
@@ -132,13 +175,14 @@ void AdamOptimizerImpl(
         fp16_weights_out,
         N);
   } else {
-    _AdamOptimizer<T1, T2, T3, T4, T_GRAD, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _AdamOptimizer<T1, T2, T3, T4, T_GRAD, false, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         eta,
         update_count,
         weights,
         grads,
         moment_1,
         moment_2,
+        loss_scale,
         alpha,
         beta,
         lambda,
@@ -159,6 +203,7 @@ void AdamOptimizerImpl(
       const T_GRAD* grads,                                    \
       const T4* moment_1,                                     \
       const T4* moment_2,                                     \
+      const T3* loss_scale,                            \
       T4 alpha,                                               \
       T4 beta,                                                \
       T4 lambda,                                              \
@@ -175,12 +220,13 @@ SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, float)
 SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half)
 SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half)
 SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half)
-template <typename T1, typename T2, typename T3>
+template <typename T1, typename T2, typename T3, bool has_loss_scale>
 __global__ void _LambComputeDirection(
     const T1* weights,
     const T2* grads,
     const T3* moment_1,
     const T3* moment_2,
+    const T1* loss_scale,
     T3 alpha,
     T3 beta,
     T1 lambda,
@@ -191,8 +237,11 @@ __global__ void _LambComputeDirection(
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   const T3 one = T3(1.0);
-  const T3 g = T3(grads[id]);
+  T3 g = T3(grads[id]);
 
+  if (has_loss_scale) {
+    g /= T3(*loss_scale);
+  }
   // Update exponentially-averaged historical gradient
   moment_1_out[id] = alpha * moment_1[id] +
                      (one - alpha) * g;
@@ -212,6 +261,7 @@ void LambComputeDirectionImpl(
     const T2* grads,
     const T3* moment_1,
     const T3* moment_2,
+    const T1* loss_scale,
     T3 alpha,
     T3 beta,
     T1 lambda,
@@ -223,19 +273,37 @@ void LambComputeDirectionImpl(
   int blocksPerGrid =
       (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _LambComputeDirection<T1, T2, T3><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-      weights,
-      grads,
-      moment_1,
-      moment_2,
-      alpha,
-      beta,
-      lambda,
-      epsilon,
-      update_direction,
-      moment_1_out,
-      moment_2_out,
-      N);
+  if (loss_scale == nullptr) {
+    _LambComputeDirection<T1, T2, T3, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        weights,
+        grads,
+        moment_1,
+        moment_2,
+        loss_scale,
+        alpha,
+        beta,
+        lambda,
+        epsilon,
+        update_direction,
+        moment_1_out,
+        moment_2_out,
+        N);
+  } else {
+    _LambComputeDirection<T1, T2, T3, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        weights,
+        grads,
+        moment_1,
+        moment_2,
+        loss_scale,
+        alpha,
+        beta,
+        lambda,
+        epsilon,
+        update_direction,
+        moment_1_out,
+        moment_2_out,
+        N);
+  }
 }
 
 #define SPECIALIZED_IMPL_LambComputeDirectionImpl(T1, T2, T3) \
@@ -244,6 +312,7 @@ void LambComputeDirectionImpl(
       const T2* grads,                                        \
       const T3* moment_1,                                     \
       const T3* moment_2,                                     \
+      const T1* loss_scale,                            \
       T3 alpha,                                               \
       T3 beta,                                                \
       T1 lambda,                                              \

@@ -261,7 +261,7 @@ Status AddAllReduceForGradients(std::vector<ArgDef>& gradient_argdefs,  // updat
 
 Status AddGradientUnscaling(
     const NodeArgNameGeneratorFn& nodearg_name_generator,
-    const ArgDef& scaling_factor_argdef,
+    const ArgDef& /* scaling_factor_argdef*/,
     std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
     GraphAugmenter::GraphDefs& graph_defs) {
   std::vector<NodeDef> new_nodes{};
@@ -289,21 +289,22 @@ Status AddGradientUnscaling(
                   "to",
                   static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT))},
               gradient_fp32_argdef.name});
+      gradient_argdef = gradient_fp32_argdef;
     }
 
-    ArgDef unscaled_gradient_argdef{
-        nodearg_name_generator(MakeString(gradient_argdef.name, "_unscaled")),
-        gradient_fp32_type_proto};
+    //ArgDef unscaled_gradient_argdef{
+    //    nodearg_name_generator(MakeString(gradient_argdef.name, "_unscaled")),
+    //    gradient_fp32_type_proto};
 
-    new_nodes.emplace_back(
-        NodeDef{
-            "Div",
-            {gradient_fp32_argdef, scaling_factor_argdef},
-            {unscaled_gradient_argdef},
-            NodeAttributes{},
-            unscaled_gradient_argdef.name});
+    //new_nodes.emplace_back(
+    //    NodeDef{
+    //        "Div",
+    //        {gradient_fp32_argdef, scaling_factor_argdef},
+    //        {unscaled_gradient_argdef},
+    //        NodeAttributes{},
+    //        unscaled_gradient_argdef.name});
 
-    gradient_argdef = unscaled_gradient_argdef;
+    //gradient_argdef = unscaled_gradient_argdef;
   }
 
   graph_defs.AddNodeDefs(new_nodes);

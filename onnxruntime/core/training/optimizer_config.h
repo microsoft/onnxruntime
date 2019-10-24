@@ -17,6 +17,7 @@ struct OptimizerNodeConfig {
   std::string lr_feed_name{};
   std::unordered_map<std::string, float> attributes{};
   bool use_fp16_moments{false};
+  std::string loss_scale_input_name{};
 };
 
 // configuration for optimizer portion of graph

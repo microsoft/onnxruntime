@@ -66,12 +66,18 @@ Status AdamOptimizerBuilder::Build(
 
   int num_inputs = num_inputs_;
   int num_outputs = num_outputs_;
+
   // When mixed precision is enabled by using FP16 initializer, optimizer consumes fp32 weight tensor and its fp16 copy.
   // Thus, each optimizer will get one extra input and one extra output.
   if (opt_config.fp16_weight_arg != nullptr) {
     num_inputs += 1;
     num_outputs += 1;
   }
+
+  if (!opt_config.loss_scale_input_name.empty()) {
+    num_inputs += 1;
+  }
+
   if (do_update_argdef) {
     num_inputs += 1;
   }
@@ -127,8 +133,12 @@ Status AdamOptimizerBuilder::Build(
     output_args[4] = ArgDef(output_name, opt_config.fp16_weight_arg->TypeAsProto());
   }
 
+  if (!opt_config.loss_scale_input_name.empty()) {
+    input_args[7] = ArgDef(opt_config.loss_scale_input_name, graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+  }
+
   if (do_update_argdef) {
-    input_args[7] = *do_update_argdef;
+    input_args[8] = *do_update_argdef;
   }
 
   graph_defs.AddNodeDefs({NodeDef(OpType(),
@@ -162,12 +172,18 @@ Status LambOptimizerBuilder::Build(
 
   int num_inputs = num_inputs_;
   int num_outputs = num_outputs_;
+
   // When mixed precision is enabled by using FP16 initializer, optimizer consumes fp32 weight tensor and its fp16 copy.
   // Thus, each optimizer will get one extra input and one extra output.
   if (opt_config.fp16_weight_arg != nullptr) {
     num_inputs += 1;
     num_outputs += 1;
   }
+
+  if (!opt_config.loss_scale_input_name.empty()) {
+    num_inputs += 1;
+  }
+
   if (do_update_argdef) {
     num_inputs += 1;
   }
@@ -219,8 +235,12 @@ Status LambOptimizerBuilder::Build(
     output_args[3] = ArgDef(output_name, opt_config.fp16_weight_arg->TypeAsProto());
   }
 
+  if (!opt_config.loss_scale_input_name.empty()) {
+    input_args[6] = ArgDef(opt_config.loss_scale_input_name, graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+  }
+
   if (do_update_argdef) {
-    input_args[6] = *do_update_argdef;
+    input_args[7] = *do_update_argdef;
   }
 
   graph_defs.AddNodeDefs({NodeDef(OpType(),

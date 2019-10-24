@@ -62,7 +62,7 @@ Status CopyIfNotSameBuffer(const Tensor& source_tensor, Tensor& target_tensor) {
           .Alias(5, 2)                             /* Update moment-2 in-place */     \
           .Alias(6, 4)                             /* Update FP16 weights in-place */ \
           .InputMemoryType<OrtMemTypeCPUInput>(1)  /* Keep step count in CPU */       \
-          .InputMemoryType<OrtMemTypeCPUInput>(7)  /* Keep noop_flag in CPU */        \
+          .InputMemoryType<OrtMemTypeCPUInput>(8)  /* Keep do_update in CPU */        \
           .OutputMemoryType<OrtMemTypeCPUInput>(3) /* Keep step count in CPU */       \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                    \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                    \
@@ -100,16 +100,21 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD>::ComputeInternal(OpKernelContext* c
   Tensor& NS = *ctx->Output(3, S.Shape());
 
   half* fp16_weights_out = nullptr;
-
   if (ctx->InputCount() >= 7 && ctx->OutputCount() >= 5) {
     const Tensor& W_FP16 = *ctx->Input<Tensor>(6);
     Tensor& NW_FP16 = *ctx->Output(4, W_FP16.Shape());
     fp16_weights_out = reinterpret_cast<half*>(NW_FP16.template MutableData<MLFloat16>());
   }
 
-  const T2* S_in = S.template Data<T2>();
+  const CudaT3* loss_scale = nullptr;
   if (ctx->InputCount() >= 8) {
-    const Tensor& do_update_tensor = *ctx->Input<Tensor>(7);
+    const Tensor& loss_scale_tensor = *ctx->Input<Tensor>(7);
+    loss_scale = reinterpret_cast<const CudaT3*>(loss_scale_tensor.template Data<T3>());
+  }
+
+  const T2* S_in = S.template Data<T2>();
+  if (ctx->InputCount() >= 9) {
+    const Tensor& do_update_tensor = *ctx->Input<Tensor>(8);
     const bool do_update = *do_update_tensor.template Data<bool>();
     if (!do_update) {
       ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T3>(W, NW));
@@ -135,6 +140,7 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD>::ComputeInternal(OpKernelContext* c
       reinterpret_cast<const CudaT_GRAD*>(G.template Data<T_GRAD>()),
       reinterpret_cast<const CudaT4*>(M1.template Data<T4>()),
       reinterpret_cast<const CudaT4*>(M2.template Data<T4>()),
+      loss_scale,
       ToCudaType<T4>::FromFloat(alpha_),
       ToCudaType<T4>::FromFloat(beta_),
       ToCudaType<T4>::FromFloat(lambda_),
@@ -163,7 +169,7 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD>::ComputeInternal(OpKernelContext* c
           .Alias(3, 1)                            /* Update moment-1 in-place */     \
           .Alias(4, 2)                            /* Update moment-2 in-place */     \
           .Alias(5, 3)                            /* Update FP16 weights in-place */ \
-          .InputMemoryType<OrtMemTypeCPUInput>(6) /* Keep noop_flag in CPU */        \
+          .InputMemoryType<OrtMemTypeCPUInput>(7) /* Keep do_update in CPU */        \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                   \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                   \
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                   \
@@ -212,8 +218,14 @@ Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) cons
     fp16_weights_updated = reinterpret_cast<half*>(fp16_weights_tensor_updated.template MutableData<MLFloat16>());
   }
 
+  const CudaT2* loss_scale = nullptr;
   if (ctx->InputCount() >= 7) {
-    const Tensor& do_update_tensor = *ctx->Input<Tensor>(6);
+    const Tensor& loss_scale_tensor = *ctx->Input<Tensor>(6);
+    loss_scale = reinterpret_cast<const CudaT2*>(loss_scale_tensor.template Data<T2>());
+  }
+
+  if (ctx->InputCount() >= 8) {
+    const Tensor& do_update_tensor = *ctx->Input<Tensor>(7);
     const bool do_update = *do_update_tensor.template Data<bool>();
     if (!do_update) {
       ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T2>(weights_tensor, weights_tensor_updated));
@@ -237,6 +249,7 @@ Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) cons
       reinterpret_cast<const CudaT3*>(gradients_tensor.template Data<T3>()),
       reinterpret_cast<const CudaT4*>(moment_1_tensor.template Data<T4>()),
       reinterpret_cast<const CudaT4*>(moment_2_tensor.template Data<T4>()),
+      loss_scale,
       ToCudaType<T4>::FromFloat(alpha_),
       ToCudaType<T4>::FromFloat(beta_),
       ToCudaType<T2>::FromFloat(lambda_),

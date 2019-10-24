@@ -137,7 +137,9 @@ void TestOptimizersAndMixedPrecision(bool use_mixed_precision, bool use_loss_sca
     ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), k_weight_names.size());
     //TODO: enable this when AllIsFinite is introduced
     //ASSERT_EQ(GetOpCount(op_counts, k_is_finite_op_name), k_weight_names.size());
-    ASSERT_EQ(GetOpCount(op_counts, k_unscale_op_name), use_loss_scaling_factor ? k_weight_names.size() : 0);
+
+    // the scale for mixed precision is moved to optimizer, so this check is not needed.
+    //ASSERT_EQ(GetOpCount(op_counts, k_unscale_op_name), use_loss_scaling_factor ? k_weight_names.size() : 0);
 
     // TODO: Re-enable following code when condtional weight update is handeled by If Node
     /*
