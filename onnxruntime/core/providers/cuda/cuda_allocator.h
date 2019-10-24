@@ -19,7 +19,6 @@ class CUDAAllocator : public IDeviceAllocator {
   void CheckDevice() const;
 
  private:
-  const int device_id_;
   const OrtAllocatorInfo info_;
 };
 
