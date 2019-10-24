@@ -105,10 +105,10 @@ void Impl_Cast(
     const InT* input_data,
     OutT* output_data,
     size_t count) {
-  UnaryElementWiseImpl(input_data,
-                       output_data,
-                       OP_Cast<InT, OutT>(),
-                       count);
+    UnaryElementWiseImpl(input_data,
+                         output_data,
+                         OP_Cast<InT, OutT>(),
+                         count);
 }
 
 #define SPECIALIZED_CAST_IMPL2(InT, OutT) \
