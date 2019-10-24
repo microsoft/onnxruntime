@@ -189,6 +189,16 @@ class PRelu final : public BinaryElementwise<ShouldBroadcast> {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
+// AddGelu fuse Add + Gelu
+template <typename T>
+class AddGelu final : public BinaryElementwise<ShouldBroadcast> {
+ public:
+  AddGelu(const OpKernelInfo& info) : BinaryElementwise(info) {
+  }
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
 template <typename T, typename CudaT>
 class VariadicInputBase : public CudaKernel {
  public:

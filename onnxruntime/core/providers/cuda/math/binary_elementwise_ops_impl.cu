@@ -9,6 +9,15 @@
 namespace onnxruntime {
 namespace cuda {
 
+template <typename T>
+__device__ T Gelu(T x) {
+  const T sqrt_param = 0.79788456080286535587989211986876;
+  const T mul_param = 0.044715;
+  const T half = 0.5;
+  const T one = 1.0;
+  return x * half * (one + _Tanh(sqrt_param * (x + mul_param * x * x * x)));
+}
+
 #define OP(name, expr)                                   \
   template <class T>                                     \
   struct OP_##name {                                     \
@@ -87,6 +96,7 @@ SPECIALIZED_BINARY_ELEMENTWISE_IMPL(And, bool)
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL(Or, bool)
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL(Xor, bool)
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFD(PRelu)
+SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFD(AddGelu)
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZILHFD(Greater)
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL_OIL(Equal)
 SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFD(Max)

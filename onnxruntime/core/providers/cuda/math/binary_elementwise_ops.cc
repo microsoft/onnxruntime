@@ -223,6 +223,7 @@ BINARY_LOGICALOP_TYPED(And, 7, bool)
 BINARY_LOGICALOP_TYPED(Or, 7, bool)
 BINARY_LOGICALOP_TYPED(Xor, 7, bool)
 BINARY_OP_HFD(PRelu, 7)
+BINARY_OP_HFD(AddGelu, 1)
 
 template <typename T, typename CudaT>
 Status VariadicInputBase<T, CudaT>::ComputeMethod(OpKernelContext* context, ImplCompute Impl_Compute) const {

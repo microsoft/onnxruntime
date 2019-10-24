@@ -193,7 +193,6 @@ void RegisterNchwcSchemas() {
 }
 
 void RegisterBertSchemas() {
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -323,10 +322,10 @@ void RegisterBertSchemas() {
       .Input(1, "skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .Input(2, "gamma", "1D input tensor with shape (hidden_size)", "T")
       .Input(3, "beta", "1D skip tensor with shape (hidden_size", "T")
+      .Input(4, "bias", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
-
 }
 
 void RegisterContribSchemas() {
@@ -1927,6 +1926,20 @@ Example 4:
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA( AddGelu )
+     .SetDomain( kOnnxDomain )
+     .SinceVersion( 1 )
+     //.SetSupportLevel( OpSchema::SupportType::EXPERIMENTAL )
+     .SetDoc( "AddGelu" )
+     .Input( 0, "A", "The input data as Tensor.", "T" )
+     .Input( 1, "B", "The input data as Tensor.", "T" )
+     .Output( 0, "Y", "The output.", "T" )
+     .TypeConstraint(
+        "T",
+        { "tensor(float16)", "tensor(float)", "tensor(double)" },
+        "Constrain input and output types to float tensors." )
+     .TypeAndShapeInferenceFunction( ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput );
 
   RegisterBertSchemas();
 
