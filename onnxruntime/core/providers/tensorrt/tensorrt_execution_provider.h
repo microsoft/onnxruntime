@@ -55,7 +55,7 @@ struct TensorrtFuncState {
 // Logical device representation.
 class TensorrtExecutionProvider : public IExecutionProvider {
  public:
-  TensorrtExecutionProvider();
+  explicit TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info);
   virtual ~TensorrtExecutionProvider();
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
