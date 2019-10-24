@@ -959,7 +959,7 @@ class BertOnnxModel(OnnxModel):
           |                      |
           |                      v
         Add --> ReduceMean -->  Sub  --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add
-                                 |                                               ^
+                 (axis=2)        |      (Y=2)     (axis=2)     (E-12)            ^
                                  |                                               |
                                  +-----------------------------------------------+
 
@@ -973,6 +973,18 @@ class BertOnnxModel(OnnxModel):
           |                      ^
           |                      |
           +----------------------+
+
+      TODO: Batch Layer Norm from Keras in Tensorflow:
+         +----------------------+
+         |                      |
+         |                      v                                                                      (B)     (A)
+        Add --> ReduceMean -->  Sub  --> Mul --> ReduceMean --> Add --> Sqrt --> Reciprocol --> Mul --> Mul --> Sub --> Add
+         |          |                                                                            |       ^              ^
+         |          |                                                                            |       |              |
+         |          +----------------------------------------------------------------------------|-------+              |
+         |                                                                                       v                      |
+         +-------------------------------------------------------------------------------------> Mul--------------------+
+
     """
     def fuse_layer_norm(self):
         input_name_to_nodes = self.input_name_to_nodes()
@@ -1013,6 +1025,14 @@ class BertOnnxModel(OnnxModel):
 
                 sqrt_node, second_add_node, reduce_mean_node, pow_node, sub_node = parent_nodes
                 if sub_node not in children:
+                    continue
+
+                i, add_weight = self.get_constant_input(second_add_node)
+                if add_weight is None or add_weight <= 0 or add_weight > 1.0E-6:
+                    continue
+
+                i, pow_weight = self.get_constant_input(pow_node)
+                if pow_weight is None or i != 1 or pow_weight != 2:
                     continue
 
                 mul_node = input_name_to_nodes[div_node.output[0]][0]
