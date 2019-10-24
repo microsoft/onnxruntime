@@ -220,8 +220,6 @@ typedef struct OrtApiBase OrtApiBase;
 ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase() NO_EXCEPTION;
 
 struct OrtApi {
-  OrtApiBase base_;
-
   /**
 * \param msg A null-terminated string. Its content will be copied into the newly created OrtStatus
 */
