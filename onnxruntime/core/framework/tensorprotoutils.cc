@@ -328,6 +328,40 @@ class AutoDelete {
   }
 };
 
+static void DeleteCharArray(void* param) noexcept {
+  auto arr = reinterpret_cast<char*>(param);
+  delete[] arr;
+}
+
+static Status GetFileContent(
+    const Env& env, const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+    void*& raw_buffer, OrtCallback& deleter) {
+  // query length if it is 0
+  if (length == 0) {
+    ORT_RETURN_IF_ERROR(env.GetFileLength(file_path, length));
+  }
+
+  // first, try to map into memory
+  {
+    Env::MappedMemoryPtr mapped_memory{};
+    auto status = env.MapFileIntoMemory(file_path, offset, length, mapped_memory);
+    if (status.IsOK()) {
+      deleter = mapped_memory.get_deleter().callback;
+      raw_buffer = mapped_memory.release();
+      return Status::OK();
+    }
+  }
+
+  // if that fails, try to copy
+  auto buffer = onnxruntime::make_unique<char[]>(length);
+  ORT_RETURN_IF_ERROR(env.ReadFileIntoBuffer(
+      file_path, offset, length, gsl::make_span(buffer.get(), length)));
+
+  deleter = OrtCallback{DeleteCharArray, buffer.get()};
+  raw_buffer = buffer.release();
+  return Status::OK();
+}
+
 static void MoveOrtCallback(OrtCallback& from, OrtCallback& to) {
   to.f = from.f;
   to.param = from.param;
@@ -342,7 +376,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
   ONNXTensorElementDataType ele_type = utils::GetTensorElementType(tensor_proto);
   deleter.f = nullptr;
   deleter.param = nullptr;
-  const void* raw_data = nullptr;
+  void* raw_data = nullptr;
   size_t raw_data_len = 0;
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
   AutoDelete deleter_for_file_data;
@@ -363,20 +397,23 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
       }
       raw_data_len = external_data_info->GetLength();
       // load the file
-      {
-        void* file_data;
-        ORT_RETURN_IF_ERROR(env.ReadFileAsString(full_path.c_str(), external_data_info->GetOffset(),
-                                                 file_data, raw_data_len, deleter_for_file_data.d));
-        raw_data = file_data;
-      }
+      ORT_RETURN_IF_ERROR(GetFileContent(
+          env, full_path.c_str(), external_data_info->GetOffset(), raw_data_len,
+          raw_data, deleter_for_file_data.d));
     } else if (utils::HasRawData(tensor_proto)) {
       if (ele_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not have raw data");
-      raw_data = tensor_proto.raw_data().data();
+      raw_data = const_cast<char*>(tensor_proto.raw_data().data());
+      // TODO The line above has const-correctness issues. Below is a possible fix which copies the tensor_proto data
+      //      into a writeable buffer. However, it requires extra memory which may exceed the limit for certain tests.
+      //auto buffer = onnxruntime::make_unique<char[]>(tensor_proto.raw_data().size());
+      //std::memcpy(buffer.get(), tensor_proto.raw_data().data(), tensor_proto.raw_data().size());
+      //deleter_for_file_data.d = OrtCallback{DeleteCharArray, buffer.get()};
+      //raw_data = buffer.release();
       raw_data_len = tensor_proto.raw_data().size();
     }
     if (endian::native == endian::little && raw_data != nullptr && deleter_for_file_data.d.f != nullptr) {
-      tensor_data = const_cast<void*>(raw_data);
+      tensor_data = raw_data;
       MoveOrtCallback(deleter_for_file_data.d, deleter);
     } else {
       void* preallocated = m.GetBuffer();
