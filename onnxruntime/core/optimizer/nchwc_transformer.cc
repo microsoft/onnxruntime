@@ -684,7 +684,7 @@ void NchwcTransformerImpl::Transform(Node& node) {
     if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7}) ||
         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {6, 8})) {
       TransformAdd(node);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", {4})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", {4, 11})) {
       TransformConcat(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6})) {
       TransformActivation(node);
