@@ -2057,6 +2057,10 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
 }
 
 Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer) {
+  // name_to_initial_tensor_ maps from name to const TensorProto*, so we first
+  // look up the const pointer by name, then find and modify the mutable
+  // pointed-to TensorProto in graph_proto_.
+
   const auto& initializer_name = new_initializer.name();
   const auto name_to_initializer_it = name_to_initial_tensor_.find(initializer_name);
   ORT_RETURN_IF_NOT(name_to_initializer_it != name_to_initial_tensor_.end(),
