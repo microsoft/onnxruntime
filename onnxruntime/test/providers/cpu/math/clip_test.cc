@@ -64,7 +64,7 @@ TEST(MathOpTest, Clip) {
 TEST(MathOpTest, ClipDimWithZero) {
   std::vector<int64_t> dims{3, 0};  // dim with value of zero should be handled
 
-  OpTester test("Clip");
+  OpTester test("Clip", -1);  // latest opset
   test.AddInput<float>("X", dims, {});
   test.AddInput<float>("min", {}, {-5});
   test.AddInput<float>("max", {}, {5});
@@ -73,7 +73,7 @@ TEST(MathOpTest, ClipDimWithZero) {
   // nGraph and Tensorrt does not support Clip opset 11 yet.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
 
-  OpTester test1("Clip", 7);  //
+  OpTester test1("Clip");  //
   test1.AddInput<float>("X", dims, {});
   test1.AddAttribute("min", -10.0f);
   test1.AddAttribute("max", 10.0f);
