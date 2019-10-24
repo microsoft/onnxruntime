@@ -68,8 +68,10 @@ TEST(ConvTest, Conv1D_1) {
       1,                      // group
       vector<int64_t>{1},     // kernel_shape
       vector<int64_t>{0, 0},  // pads
-      vector<int64_t>{1}      // strides
+      vector<int64_t>{1},     // strides
+      {}                      // excluded EPs
   };
+
   vector<float> X = {-0.21559301018714905f, 0.4691687822341919f, 0.4426700472831726f, -0.4517466723918915f,
                      -0.05216419696807861f, 0.29067182540893555f, 0.251010000705719f};
   vector<int64_t> X_shape = {1, 1, 7};
@@ -89,8 +91,10 @@ TEST(ConvTest, Conv1D_1_DefaultStridesAndDilations) {
       1,                      // group
       vector<int64_t>{1},     // kernel_shape
       vector<int64_t>{0, 0},  // pads
-      vector<int64_t>{}       // strides
+      vector<int64_t>{},      // strides
+      {}                      // excluded EPs
   };
+
   vector<float> X = {-0.21559301018714905f, 0.4691687822341919f, 0.4426700472831726f, -0.4517466723918915f,
                      -0.05216419696807861f, 0.29067182540893555f, 0.251010000705719f};
   vector<int64_t> X_shape = {1, 1, 7};
@@ -111,8 +115,10 @@ TEST(ConvTest, Conv1D_2) {
       1,                      // group
       vector<int64_t>{2},     // kernel_shape
       vector<int64_t>{2, 2},  // pads
-      vector<int64_t>{2}      // strides
+      vector<int64_t>{2},     // strides
+      {}                      // excluded EPs
   };
+
   vector<float> X = {0.11094123125076294f, -0.0038032233715057373f, 0.3896123170852661f, 0.33259105682373047f,
                      0.02794349193572998f, -0.08360505104064941f, -0.4100455045700073f, -0.09502679109573364f,
                      -0.11361867189407349f, -0.025495320558547974f, 0.3696536421775818f, 0.3529144525527954f,
@@ -143,7 +149,8 @@ TEST(ConvTest, Conv1D_Bias) {
       1,                      // group
       vector<int64_t>{1},     // kernel_shape
       vector<int64_t>{1, 1},  // pads
-      vector<int64_t>{3}      // strides
+      vector<int64_t>{3},     // strides
+      {}                      // excluded EPs
   };
 
   vector<float> X = {0.4582272171974182f, 0.3877705931663513f, -0.05413919687271118f, -0.3013981878757477f,
@@ -174,8 +181,10 @@ TEST(ConvTest, Conv2D_1) {
       1,                            // group
       vector<int64_t>{3, 3},        // kernel_shape
       vector<int64_t>{1, 1, 1, 2},  // pads
-      vector<int64_t>{3, 1}         // strides
+      vector<int64_t>{3, 1},        // strides
+      {}                            // excluded EPs
   };
+
   vector<float> X = {-0.09103918075561523f, -0.32513630390167236f};
   vector<int64_t> X_shape = {2, 1, 1, 1};
   vector<float> W = {0.4312484860420227f, -0.12559029459953308f, 0.44889551401138306f, -0.3100617825984955f,
@@ -199,8 +208,10 @@ TEST(ConvTest, Conv1D_Invalid_Input_Shape) {
       1,                      // group
       vector<int64_t>{2},     // kernel_shape
       vector<int64_t>{0, 0},  // pads
-      vector<int64_t>{1}      // strides
+      vector<int64_t>{1},     // strides
+      {}                      // excluded EPs
   };
+
   vector<float> X = vector<float>(1, 1.0f);
   vector<int64_t> X_shape = {1, 1, 1};
   vector<int64_t> dummy_shape = {1, 1, 2};
@@ -218,8 +229,10 @@ TEST(ConvTest, Conv2D_Invalid_Input_Shape) {
       1,                            // group
       vector<int64_t>{3, 3},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
-      vector<int64_t>{1, 1}         // strides
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
   };
+
   vector<float> X = vector<float>(1 * 3 * 1 * 111, 1.0f);
   vector<int64_t> X_shape = {1, 3, 1, 111};
   vector<int64_t> dummy_shape = {2, 2, 1, 2};
@@ -239,7 +252,8 @@ TEST(ConvTest, Conv2D_2) {
       1,                            // group
       vector<int64_t>{1, 1},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
-      vector<int64_t>{1, 1}         // strides
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
   };
 
   vector<float> X = {0.45246148109436035f, 0.15498268604278564f, 0.11199361085891724f, -0.39421093463897705f,
@@ -282,8 +296,10 @@ TEST(ConvTest, Conv2D_Bias_1) {
       1,                            // group
       vector<int64_t>{2, 2},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
-      vector<int64_t>{1, 1}         // strides
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
   };
+
   vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
   vector<int64_t> X_shape = {1, 1, 3, 3};
   vector<float> W = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
@@ -304,8 +320,10 @@ TEST(ConvTest, Conv2D_Bias_2) {
       1,                            // group
       vector<int64_t>{4, 4},        // kernel_shape
       vector<int64_t>{1, 2, 3, 1},  // pads
-      vector<int64_t>{2, 3}         // strides
+      vector<int64_t>{2, 3},        // strides
+      {}                            // excluded EPs
   };
+
   vector<float> X = {-0.22904816269874573f, -0.20278319716453552f, -0.4723144471645355f, 0.027880489826202393f,
                      0.2685856819152832f, -0.19361668825149536f, -0.39857280254364014f, 0.40285515785217285f,
                      0.20966708660125732f, -0.39234158396720886f, -0.07502302527427673f, 0.4662899374961853f,
@@ -352,8 +370,10 @@ TEST(ConvTest, Conv2D_AutoPad1) {
       1,                      // group
       vector<int64_t>{3, 3},  // kernel_shape
       {},                     // pads
-      vector<int64_t>{1, 1}   // strides
+      vector<int64_t>{1, 1},  // strides
+      {}                      // excluded EPs
   };
+
   vector<float> X = vector<float>(25, 1.0f);
   vector<int64_t> X_shape = {1, 1, 5, 5};
   vector<float> W = {0.0f, 1.0f, 2.0f,
@@ -377,8 +397,10 @@ TEST(ConvTest, Conv2D_AutoPad2) {
       1,                      // group
       vector<int64_t>{3, 3},  // kernel_shape
       {},                     // pads
-      vector<int64_t>{1, 1}   // strides
+      vector<int64_t>{1, 1},  // strides
+      {}                      // excluded EPs
   };
+
   vector<float> X = {1.0f, 0.0f, 1.0f, 0.0f, 1.0f,
                      1.0f, 0.0f, 1.0f, 0.0f, 1.0f,
                      1.0f, 0.0f, 1.0f, 0.0f, 1.0f,
@@ -407,8 +429,10 @@ TEST(ConvTest, Conv3D_1) {
       1,                                  // group
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{0, 0, 0, 0, 0, 0},  // pads
-      vector<int64_t>{1, 1, 1}            // strides
+      vector<int64_t>{1, 1, 1},           // strides
+      {}                                  // excluded EPs
   };
+
   vector<float> X = {-0.43337246775627136f, -0.48385289311408997f, -0.30954962968826294f,
                      0.16074687242507935f, -0.46670910716056824f, 0.46576786041259766f,
                      -0.37056273221969604f, 0.40604978799819946f, -0.035478413105010986f,
@@ -442,8 +466,10 @@ TEST(ConvTest, Conv3D_2) {
       1,                                  // group
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{2, 2, 2, 2, 2, 2},  // pads
-      vector<int64_t>{2, 2, 2}            // strides
+      vector<int64_t>{2, 2, 2},           // strides
+      {}                                  // excluded EPs
   };
+
   vector<float> X = {0.010772407054901123f, -0.43806642293930054f, 0.455391526222229f, -0.28657248616218567f,
                      0.45676887035369873f, -0.0320507287979126f, 0.4229400157928467f, -0.18730869889259338f,
                      -0.45851585268974304f, 0.042054951190948486f, -0.13332295417785645f, -0.25374430418014526f,
@@ -483,7 +509,8 @@ TEST(ConvTest, Conv3D_Bias) {
       1,                                  // group
       vector<int64_t>{2, 2, 2},           // kernel_shape
       vector<int64_t>{2, 2, 2, 2, 2, 2},  // pads
-      vector<int64_t>{2, 2, 2}            // strides
+      vector<int64_t>{2, 2, 2},           // strides
+      {}                                  // excluded EPs
   };
 
   vector<float> X = {0.46796226501464844f, -0.4613912105560303f, 0.33512794971466064f, -0.4010460674762726f,
@@ -565,8 +592,10 @@ TEST(ConvTest, Conv2D_group) {
       2,                            // group
       vector<int64_t>{1, 1},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
-      vector<int64_t>{1, 1}         // strides
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
   };
+
   vector<float> X = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f};
   vector<int64_t> X_shape = {1, 2, 3, 3};
   vector<float> W = {1.0f, 2.0f};
@@ -584,8 +613,10 @@ TEST(ConvTest, ConvDimWithZero) {
       1,                            // group
       vector<int64_t>{1, 1},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
-      vector<int64_t>{1, 1}         // strides
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
   };
+
   vector<float> X = vector<float>();
   vector<int64_t> X_shape = {0, 2, 4, 4};  // N of 0 should be handled
   vector<float> W = {1.0f, 2.0f, 1.0f, 2.0f};
