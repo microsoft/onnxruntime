@@ -22,6 +22,54 @@ using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
 
+ONNX_OPERATOR_KERNEL_EX(
+    MemcpyFromHost,
+    kOnnxDomain,
+    1,
+    kTensorrtExecutionProvider,
+    KernelDefBuilder()
+        .InputMemoryType<OrtMemTypeCPUInput>(0)
+        .ExecQueueId(kCudaStreamCopyIn)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    Memcpy);
+
+ONNX_OPERATOR_KERNEL_EX(
+    MemcpyToHost,
+    kOnnxDomain,
+    1,
+    kTensorrtExecutionProvider,
+    KernelDefBuilder()
+        .OutputMemoryType<OrtMemTypeCPUOutput>(0)
+        .ExecQueueId(kCudaStreamCopyOut)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    Memcpy);
+
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
+
+static void RegisterTensorrtKernels(KernelRegistry& kernel_registry) {
+  static const BuildKernelCreateInfoFn function_table[] = {
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
+  };
+
+  for (auto& function_table_entry : function_table) {
+    kernel_registry.Register(function_table_entry());
+  }
+}
+
+std::shared_ptr<KernelRegistry> GetTensorrtKernelRegistry() {
+  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
+  RegisterTensorrtKernels(*kernel_registry);
+
+  return kernel_registry;
+}
+
+std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() const {
+  static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::GetTensorrtKernelRegistry();
+  return kernel_registry;
+}
+
 #define CHECK_CUDA(call)         \
   do {                           \
     cudaError_t status = call;   \
@@ -393,28 +441,5 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
   }
 
   return Status::OK();
-}
-
-static void RegisterTensorrtKernels(KernelRegistry& kernel_registry) {
-  static const BuildKernelCreateInfoFn function_table[] = {
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
-  };
-
-  for (auto& function_table_entry : function_table) {
-    kernel_registry.Register(function_table_entry());
-  }
-}
-
-std::shared_ptr<KernelRegistry> GetTensorrtKernelRegistry() {
-  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  RegisterTensorrtKernels(*kernel_registry);
-
-  return kernel_registry;
-}
-
-std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::GetTensorrtKernelRegistry();
-  return kernel_registry;
 }
 }  // namespace onnxruntime
