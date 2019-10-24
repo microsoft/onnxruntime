@@ -52,13 +52,11 @@
 #pragma warning(pop)
 #endif
 
-extern const OrtApi* g_ort;
-
 using namespace onnxruntime;
 using namespace onnxruntime::common;
 using google::protobuf::RepeatedPtrField;
 
-using ORT_VALUE_HOLDER = std::unique_ptr<OrtValue, decltype(g_ort->ReleaseValue)>;
+using ORT_VALUE_HOLDER = std::unique_ptr<OrtValue, decltype(Ort::GetApi().ReleaseValue)>;
 
 const std::string TestModelInfo::unknown_version = "unknown version";
 
@@ -89,16 +87,16 @@ template <typename T>
 OrtValue* CreateTensorWithDataAsOrtValue(OrtMemoryInfo* info, std::vector<T>& input) {
   std::vector<int64_t> dims(1, input.size());
   OrtValue* ret = nullptr;
-  ORT_THROW_ON_ERROR(g_ort->CreateTensorWithDataAsOrtValue(info, input.data(), input.size() * sizeof(T), dims.data(),
-                                                           dims.size(), NumericTypeToONNXType<T>(), &ret));
+  Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(info, input.data(), input.size() * sizeof(T), dims.data(),
+                                                                 dims.size(), NumericTypeToONNXType<T>(), &ret));
   return ret;
 }
 
 template <typename key_type, typename value_type>
 OrtValue* PbMapToOrtValue(const google::protobuf::Map<key_type, value_type>& map) {
   OrtMemoryInfo* info;
-  ORT_THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &info));
-  std::unique_ptr<OrtMemoryInfo, decltype(g_ort->ReleaseMemoryInfo)> rel_info(info, g_ort->ReleaseMemoryInfo);
+  Ort::ThrowOnError(Ort::GetApi().CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &info));
+  std::unique_ptr<OrtMemoryInfo, decltype(Ort::GetApi().ReleaseMemoryInfo)> rel_info(info, Ort::GetApi().ReleaseMemoryInfo);
   const size_t ele_count = map.size();
   std::vector<int64_t> dims(1, ele_count);
   std::vector<key_type> keys(ele_count);
@@ -120,15 +118,15 @@ OrtValue* PbMapToOrtValue(const google::protobuf::Map<key_type, value_type>& map
 
   // create map ort value
   OrtValue* map_ort = nullptr;
-  ORT_THROW_ON_ERROR(g_ort->CreateValue(map_in.Data(), map_in.Length(), ONNX_TYPE_MAP, &map_ort));
+  Ort::ThrowOnError(Ort::GetApi().CreateValue(map_in.Data(), map_in.Length(), ONNX_TYPE_MAP, &map_ort));
   return map_ort;
 }
 
 template <typename T>
 void VectorProtoToOrtValue(const RepeatedPtrField<T>& input, ORT_VALUE_HOLDER& output) {
   OrtMemoryInfo* info;
-  ORT_THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &info));
-  std::unique_ptr<OrtMemoryInfo, decltype(g_ort->ReleaseMemoryInfo)> rel_info(info, g_ort->ReleaseMemoryInfo);
+  Ort::ThrowOnError(Ort::GetApi().CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &info));
+  std::unique_ptr<OrtMemoryInfo, decltype(Ort::GetApi().ReleaseMemoryInfo)> rel_info(info, Ort::GetApi().ReleaseMemoryInfo);
   OrtValueArray in(input.size());
   size_t j = 0;
   for (const T& v : input) {
@@ -157,11 +155,11 @@ void VectorProtoToOrtValue(const RepeatedPtrField<T>& input, ORT_VALUE_HOLDER& o
 
     // create map ort value
     OrtValue* map_ort = nullptr;
-    ORT_THROW_ON_ERROR(g_ort->CreateValue(map_in.Data(), map_in.Length(), ONNX_TYPE_MAP, &map_ort));
+    Ort::ThrowOnError(Ort::GetApi().CreateValue(map_in.Data(), map_in.Length(), ONNX_TYPE_MAP, &map_ort));
     in.Set(j++, map_ort);
   }
   OrtValue* seq_ort = nullptr;
-  ORT_THROW_ON_ERROR(g_ort->CreateValue(in.Data(), in.Length(), ONNX_TYPE_SEQUENCE, &seq_ort));
+  Ort::ThrowOnError(Ort::GetApi().CreateValue(in.Data(), in.Length(), ONNX_TYPE_SEQUENCE, &seq_ort));
   output.reset(seq_ort);
 }
 
@@ -308,7 +306,7 @@ void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo* model
        google::protobuf::util::ParseDelimitedFromCodedStream(&data, &coded_input, &clean_eof);
        ++item_id, data.Clear()) {
     try {
-      ORT_VALUE_HOLDER gvalue(nullptr, g_ort->ReleaseValue);
+      ORT_VALUE_HOLDER gvalue(nullptr, Ort::GetApi().ReleaseValue);
       switch (data.values_case()) {
         case proto::TraditionalMLData::kVectorMapStringToFloat:
           VectorProtoToOrtValue(data.vector_map_string_to_float().v(), gvalue);
@@ -467,8 +465,8 @@ Status OnnxTestCase::GetPostProcessing(bool* value) {
 }
 
 // CentOS lacks find_if
-template<class Iter, class Pred>
-inline Iter find_with_pred (Iter first, Iter last, Pred p) {
+template <class Iter, class Pred>
+inline Iter find_with_pred(Iter first, Iter last, Pred p) {
   while (first != last) {
     if (p(*first)) {
       break;
