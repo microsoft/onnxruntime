@@ -92,7 +92,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   using unique_pointer = std::unique_ptr<T, InferDeleter>;
 
   OrtMutex tensorrt_mu_;
-  int device_id_;
   std::unordered_map<std::string, unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, unique_pointer<nvinfer1::ICudaEngine>> engines_;
   std::unordered_map<std::string, unique_pointer<nvinfer1::IExecutionContext>> contexts_;
