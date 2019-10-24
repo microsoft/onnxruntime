@@ -565,7 +565,7 @@ void ResizeBiCubic(
             auto x_interpolation_result = CubicInterpolation1D(Xdata, x_int, y_val,
                                                                input_height, input_width, coeff_x, x_coeff_sum,
                                                                interpolation_result_cache);
-            result += x_interpolation_result * coeff_y[i]/y_coeff_sum;
+            result += x_interpolation_result * coeff_y[i] / y_coeff_sum;
           }
 
           Ydata[y * output_width + x] = static_cast<T>(result);
@@ -574,6 +574,9 @@ void ResizeBiCubic(
 
       Xdata += input_height * input_width;
       Ydata += output_height * output_width;
+
+      // clear the cache when moving to the next channel
+      coeff_to_1Dinterpolation_map.clear();
     }
   }
 }
