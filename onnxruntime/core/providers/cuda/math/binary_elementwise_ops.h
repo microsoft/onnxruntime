@@ -186,6 +186,16 @@ class PRelu final : public BinaryElementwise<ShouldBroadcast> {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
+// AddGelu fuse Add + Gelu
+template <typename T>
+class AddGelu final : public BinaryElementwise<ShouldBroadcast> {
+ public:
+  AddGelu(const OpKernelInfo& info) : BinaryElementwise(info) {
+  }
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
 template <typename T, typename CudaT>
 class VariadicInputBase : public CudaKernel {
  public:
@@ -240,15 +250,15 @@ class CompareFunction : public BinaryElementwise<ShouldBroadcast> {
   CompareFunction(const OpKernelInfo& info) : BinaryElementwise(info) {}
 
   typedef void (*ImplCompare)(size_t output_rank_or_simple_broadcast,
-                               const int64_t* lhs_padded_strides,
-                               const CudaT* lhs_data,
-                               const int64_t* rhs_padded_strides,
-                               const CudaT* rhs_data,
-                               const fast_divmod* fdm_output_strides,
-                               const fast_divmod& fdm_H,
-                               const fast_divmod& fdm_C,
-                               CudaT* output_data,
-                               size_t count);
+                              const int64_t* lhs_padded_strides,
+                              const CudaT* lhs_data,
+                              const int64_t* rhs_padded_strides,
+                              const CudaT* rhs_data,
+                              const fast_divmod* fdm_output_strides,
+                              const fast_divmod& fdm_H,
+                              const fast_divmod& fdm_C,
+                              CudaT* output_data,
+                              size_t count);
 
   Status CompareMethod(OpKernelContext* context, ImplCompare Impl_Compare) const;
 };

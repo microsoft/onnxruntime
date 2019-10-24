@@ -800,11 +800,11 @@ class BertOnnxModel(OnnxModel):
                 if div_node is None:
                     continue
 
-                parent_nodes = self.match_parent_path(div_node, ['Sqrt', 'Add', 'ReduceMean', 'Pow', 'Sub', 'Add'], [1, 0, 0, 0, 0, 0], output_name_to_node)
+                parent_nodes = self.match_parent_path(div_node, ['Sqrt', 'Add', 'ReduceMean', 'Pow', 'Sub', 'Add', 'Add'], [1, 0, 0, 0, 0, 0, 0], output_name_to_node)
                 if parent_nodes is None:
                     continue
 
-                sqrt_node, second_add_node, reduce_mean_node, pow_node, sub_node, first_add_node = parent_nodes
+                sqrt_node, second_add_node, reduce_mean_node, pow_node, sub_node, first_add_node, top_add_node = parent_nodes
                 if first_add_node != node:
                     continue
 
@@ -818,14 +818,73 @@ class BertOnnxModel(OnnxModel):
 
                 nodes_to_remove.append(node)
                 nodes_to_remove.extend(children)
-                nodes_to_remove.extend([last_add_node, mul_node, div_node, sqrt_node, second_add_node, reduce_mean_node, pow_node])
+                nodes_to_remove.extend([last_add_node, mul_node, div_node, sqrt_node, second_add_node, reduce_mean_node, pow_node, top_add_node])
 
                 normalize_node_name = self.create_node_name(self.normalize_name, name_prefix="SkipLayerNorm")
-                inputs = [i for i in node.input]
+                inputs = [top_add_node.input[0], top_add_node.input[1],node.input[1]]
                 inputs.extend([mul_node.input[0], last_add_node.input[1]])
                 normalize_node = onnx.helper.make_node(self.normalize_name,
                     inputs=inputs,
                     outputs=[last_add_node.output[0]],
+                    name=normalize_node_name)
+                normalize_node.domain = "com.microsoft"
+                nodes_to_add.extend([normalize_node])
+
+        self.remove_nodes(nodes_to_remove)
+        self.add_nodes(nodes_to_add)
+        print("Fused layer normalization count:", len(nodes_to_add))
+
+    def fuse_gelu_add(self):
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+
+        nodes_to_remove = []
+        nodes_to_add = []
+
+        for node in self.nodes():
+            if node.op_type == 'Add':
+                children = self.get_children(node, input_name_to_nodes)
+                children_types = sorted([child.op_type for child in children])
+                if children_types != ["Gelu"]:
+                    continue
+
+                nodes_to_remove.append(node)
+                nodes_to_remove.extend(children)
+
+                addGelu_node_name = self.create_node_name(self.normalize_name, name_prefix="AddGelu")
+                normalize_node = onnx.helper.make_node("AddGelu",
+                    inputs=node.input,
+                    outputs=[children[0].output[0]],
+                    name=addGelu_node_name)
+                #normalize_node.domain = "com.microsoft"
+                nodes_to_add.extend([normalize_node])
+
+        self.remove_nodes(nodes_to_remove)
+        self.add_nodes(nodes_to_add)
+        print("Fused layer normalization count:", len(nodes_to_add))
+
+    def fuse_layer_norm_add(self):
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+
+        nodes_to_remove = []
+        nodes_to_add = []
+
+        for node in self.nodes():
+            if node.op_type == 'Add':
+                children = self.get_children(node, input_name_to_nodes)
+                children_types = sorted([child.op_type for child in children])
+                if children_types != ["SkipLayerNormalization"]:
+                    continue
+
+                nodes_to_remove.append(node)
+                nodes_to_remove.extend(children)
+
+                normalize_node_name = self.create_node_name(self.normalize_name, name_prefix="SkipLayerNorm")
+                inputs = [node.input[0], children[0].input[1], children[0].input[2], children[0].input[3], node.input[1]]
+                normalize_node = onnx.helper.make_node(self.normalize_name,
+                    inputs=inputs,
+                    outputs=[children[0].output[0]],
                     name=normalize_node_name)
                 normalize_node.domain = "com.microsoft"
                 nodes_to_add.extend([normalize_node])
@@ -863,28 +922,8 @@ def main():
 
     bert_model = BertOnnxModel(model, args.num_heads, args.hidden_size, args.sequence_length)
 
-    bert_model.fuse_layer_norm()
-
-    bert_model.fuse_gelu()
-
-    bert_model.fuse_reshape()
-
-    bert_model.fuse_attention(args.verbose)
-
-    bert_model.fuse_embed_layer(args.verbose)
-    
-    if bert_model.embed_node is None:
-        print("Failed to fuse embedding layer.")
-        return
-
-    if args.input_int32:
-        bert_model.change_input_to_int32()
-    else:
-        bert_model.cast_input_to_int32()
-
-
-    if args.float16:
-        bert_model.convert_model_float32_to_float16()
+    bert_model.fuse_gelu_add()
+    bert_model.fuse_layer_norm_add()
 
     with open(args.output, "wb") as out:
         out.write(bert_model.model.SerializeToString())

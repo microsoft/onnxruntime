@@ -38,6 +38,7 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* skip = ctx->Input<Tensor>(1);
   const Tensor* gamma = ctx->Input<Tensor>(2);
   const Tensor* beta = ctx->Input<Tensor>(3);
+  const Tensor* bias = ctx->Input<Tensor>(4);
   Tensor* output = ctx->Output(0, input->Shape());
 
   const auto input_dims = input->Shape().GetDims();
@@ -83,6 +84,7 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
           skip->template Data<T>(),
           gamma->template Data<T>(),
           beta->template Data<T>(),
+          bias->template Data<T>(),
           batch_size,
           hidden_size,
           element_count,
