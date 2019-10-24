@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "onnxruntime/core/session/onnxruntime_c_api.h"
+#include "onnxruntime_c_api.h"
 #include "providers.h"
 #include <stdio.h>
 #include <assert.h>
@@ -15,7 +15,7 @@
   #define tcscmp strcmp
 #endif
 
-const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+const OrtApi* g_ort = NULL;
 
 #define ORT_ABORT_ON_ERROR(expr)                             \
   do {                                                       \
@@ -125,8 +125,8 @@ static int write_tensor_to_png_file(OrtValue* tensor, const char* output_file) {
   memset(&image, 0, (sizeof image));
   image.version = PNG_IMAGE_VERSION;
   image.format = PNG_FORMAT_BGR;
-  image.height = dims[2];
-  image.width = dims[3];
+  image.height = (png_uint_32)dims[2];
+  image.width = (png_uint_32)dims[3];
   chw_to_hwc(f, image.height, image.width, &model_output_bytes);
   int ret = 0;
   if (png_image_write_to_file(&image, output_file, 0 /*convert_to_8bit*/, model_output_bytes, 0 /*row_stride*/,
@@ -240,6 +240,8 @@ int main(int argc, char* argv[]) {
     usage();
     return -1;
   }
+
+  g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 #ifdef _WIN32
   //CoInitializeEx is only needed if Windows Image Component will be used in this program for image loading/saving.
   HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
@@ -248,7 +250,7 @@ int main(int argc, char* argv[]) {
   ORTCHAR_T* model_path = argv[1];
   ORTCHAR_T* input_file = argv[2];
   ORTCHAR_T* output_file = argv[3];
-  ORTCHAR_T* execution_provider = argc >= 5 ? argv[4] : nullptr;
+  ORTCHAR_T* execution_provider = (argc >= 5) ? argv[4] : NULL;
   OrtEnv* env;
   ORT_ABORT_ON_ERROR(g_ort->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
   OrtSessionOptions* session_options;

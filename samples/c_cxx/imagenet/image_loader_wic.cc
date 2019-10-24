@@ -92,7 +92,7 @@ OrtStatus* LoadImageFromFileAndCrop(void* loader, const ORTCHAR_T* filename, dou
     *out_width = bbox_w_size;
     *out_height = bbox_h_size;
     return nullptr;
-  } catch (std::exception& ex) {
+  } catch (const std::exception& ex) {
     std::ostringstream oss;
     oss << "Load " << filename << " failed:" << ex.what();
     return Ort::GetApi().CreateStatus(ORT_FAIL, oss.str().c_str());
