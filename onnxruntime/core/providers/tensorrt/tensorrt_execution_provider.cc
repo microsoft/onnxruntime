@@ -8,12 +8,14 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/memcpy.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/platform/env.h"
 #include "onnx/shape_inference/implementation.h"
 #include "cuda_runtime_api.h"
 #include "gsl/pointers"
 #include "core/graph/model.h"
+#include "core/providers/cuda/gpu_data_transfer.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;

@@ -18,7 +18,8 @@ struct TensorrtProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> TensorrtProviderFactory::CreateProvider() {
-  return std::make_unique<TensorrtExecutionProvider>();
+  TensorrtExecutionProviderInfo info;
+  return std::make_unique<TensorrtExecutionProvider>(info);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt() {
