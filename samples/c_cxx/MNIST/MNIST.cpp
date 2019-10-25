@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <windowsx.h>
 #include <onnxruntime_cxx_api.h>
+#include <array>
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
@@ -37,7 +38,7 @@ struct MNIST {
 
   std::array<float, width_ * height_> input_image_{};
   std::array<float, 10> results_{};
-  int result_{0};
+  int64_t result_{0};
 
  private:
   Ort::Session session_{env, L"model.onnx", Ort::SessionOptions{nullptr}};
@@ -94,7 +95,7 @@ void ConvertDibToMnist() {
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 // The Windows entry point function
-int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPTSTR lpCmdLine,
+int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE /*hPrevInstance*/, _In_ LPTSTR /*lpCmdLine*/,
                       _In_ int nCmdShow) {
   {
     WNDCLASSEX wc{};
@@ -124,7 +125,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
   hdc_dib_ = CreateCompatibleDC(nullptr);
   SelectObject(hdc_dib_, dib_);
   SelectObject(hdc_dib_, CreatePen(PS_SOLID, 2, RGB(0, 0, 0)));
-  FillRect(hdc_dib_, &RECT{0, 0, MNIST::width_, MNIST::height_}, (HBRUSH)GetStockObject(WHITE_BRUSH));
+  RECT rect{0, 0, MNIST::width_, MNIST::height_};
+  FillRect(hdc_dib_, &rect, (HBRUSH)GetStockObject(WHITE_BRUSH));
 
   HWND hWnd = CreateWindow(L"ONNXTest", L"ONNX Runtime Sample - MNIST", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 512, 256, nullptr, nullptr, hInstance, nullptr);
   if (!hWnd)
@@ -160,10 +162,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
       auto greatest = mnist_.results_[mnist_.result_];
       auto range = greatest - least;
 
-      auto graphs_zero = graphs_left - least * graph_width / range;
+      int graphs_zero = static_cast<int>(graphs_left - least * graph_width / range);
 
       // Hilight the winner
-      RECT rc{graphs_left, mnist_.result_ * 16, graphs_left + graph_width + 128, (mnist_.result_ + 1) * 16};
+      RECT rc{graphs_left, static_cast<LONG>(mnist_.result_) * 16, graphs_left + graph_width + 128, static_cast<LONG>(mnist_.result_ + 1) * 16};
       FillRect(hdc, &rc, brush_winner_);
 
       // For every entry, draw the odds and the graph for it
@@ -176,7 +178,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         auto length = wsprintf(value, L"%2d: %d.%02d", i, int(result), abs(int(result * 100) % 100));
         TextOut(hdc, graphs_left + graph_width + 5, y, value, length);
 
-        Rectangle(hdc, graphs_zero, y + 1, graphs_zero + result * graph_width / range, y + 14);
+        Rectangle(hdc, graphs_zero, y + 1, static_cast<int>(graphs_zero + result * graph_width / range), y + 14);
       }
 
       // Draw the zero line
@@ -217,9 +219,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
       return 0;
 
     case WM_RBUTTONDOWN:  // Erase the image
-      FillRect(hdc_dib_, &RECT{0, 0, MNIST::width_, MNIST::height_}, (HBRUSH)GetStockObject(WHITE_BRUSH));
+    {
+      RECT rect{0, 0, MNIST::width_, MNIST::height_};
+      FillRect(hdc_dib_, &rect, (HBRUSH)GetStockObject(WHITE_BRUSH));
       InvalidateRect(hWnd, nullptr, false);
       return 0;
+    }
 
     case WM_DESTROY:
       PostQuitMessage(0);

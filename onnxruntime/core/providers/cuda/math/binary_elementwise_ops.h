@@ -48,8 +48,10 @@ struct BinaryElementwisePreparation {
     }
 
     // early return if one operand is scalar
-    if (lhs_shape.Size() <= 1 || rhs_shape.Size() <= 1) {
-      output_rank_or_simple_broadcast = static_cast<size_t>(lhs_shape.Size() <= 1 ? SimpleBroadcast::LeftScalar : SimpleBroadcast::RightScalar);
+    if (lhs_shape.Size() == 1 || rhs_shape.Size() == 1) {
+      output_rank_or_simple_broadcast = static_cast<size_t>(lhs_shape.Size() == 1
+                                                                ? SimpleBroadcast::LeftScalar
+                                                                : SimpleBroadcast::RightScalar);
       return Status::OK();
     }
 
@@ -59,7 +61,8 @@ struct BinaryElementwisePreparation {
     if (lhs_shape == output_shape) {
       const auto& rhs_dims = rhs_shape.GetDims();
       int64_t C = 0;
-      if (1 == std::count_if(rhs_dims.begin(), rhs_dims.end(), [&C](int64_t dim) { if (dim > 1) C = dim; return (dim > 1); })) {
+      if (1 == std::count_if(rhs_dims.begin(), rhs_dims.end(),
+                             [&C](int64_t dim) { if (dim != 1) C = dim; return (dim != 1); })) {
         auto dim_C = std::find(rhs_dims.begin(), rhs_dims.end(), C) - rhs_dims.begin() + output_shape.NumDimensions() - rhs_shape.NumDimensions();
         int64_t N = output_shape.SizeToDimension(dim_C);
         int64_t H = (dim_C < out_rank - 1 ? output_shape.SizeFromDimension(dim_C + 1) : 1);
@@ -240,15 +243,15 @@ class CompareFunction : public BinaryElementwise<ShouldBroadcast> {
   CompareFunction(const OpKernelInfo& info) : BinaryElementwise(info) {}
 
   typedef void (*ImplCompare)(size_t output_rank_or_simple_broadcast,
-                               const int64_t* lhs_padded_strides,
-                               const CudaT* lhs_data,
-                               const int64_t* rhs_padded_strides,
-                               const CudaT* rhs_data,
-                               const fast_divmod* fdm_output_strides,
-                               const fast_divmod& fdm_H,
-                               const fast_divmod& fdm_C,
-                               CudaT* output_data,
-                               size_t count);
+                              const int64_t* lhs_padded_strides,
+                              const CudaT* lhs_data,
+                              const int64_t* rhs_padded_strides,
+                              const CudaT* rhs_data,
+                              const fast_divmod* fdm_output_strides,
+                              const fast_divmod& fdm_H,
+                              const fast_divmod& fdm_C,
+                              CudaT* output_data,
+                              size_t count);
 
   Status CompareMethod(OpKernelContext* context, ImplCompare Impl_Compare) const;
 };

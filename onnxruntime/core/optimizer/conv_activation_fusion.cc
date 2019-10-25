@@ -141,7 +141,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     // move output definitions and edges from act_node to fused_conv. delete conv_node and act_node.
-    graph_utils::FinalizeNodeFusion(graph, conv_node, act_node, &fused_conv);
+    graph_utils::FinalizeNodeFusion(graph, {conv_node, act_node}, fused_conv);
 
     modified = true;
   }

@@ -176,6 +176,10 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   TensorShape input_shape = X->Shape().Slice(2);
   ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
+  // special case when there is a dim value of 0 in the shape.
+  if (Y->Shape().Size() == 0)
+    return Status::OK();
+
   TensorShape output_shape = Y->Shape().Slice(2);
 
   AllocatorPtr alloc;

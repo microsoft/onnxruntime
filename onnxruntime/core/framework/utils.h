@@ -78,8 +78,11 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger);
 
 #if defined(DEBUG_NODE_INPUTS_OUTPUTS)
-// to create a build with these enabled run the build script with
-//   --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=ON
+// to create a build with these enabled run the build script with 1 to dump just shapes, or 2 to dump shapes and data
+// e.g.
+//   --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
+// To unset you'll need to either delete CMakeCache.txt or run with
+//   --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=0
 void DumpNodeInputs(const OpKernelContext& context, const Node& node);
 void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionState& session_state);
 #endif

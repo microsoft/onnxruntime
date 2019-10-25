@@ -5,7 +5,7 @@
 
 #undef OPTIONAL
 #include "core/graph/graph_utils.h"
-#include "core/optimizer/initializer.h" 
+#include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 #include "bn_mul_fusion.h"
 
@@ -20,7 +20,7 @@ Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleE
   const auto& mul_inputs = mul_node.InputDefs();
 
   const ONNX_NAMESPACE::TensorProto* BatchNormalization_Scale_tensor_proto = nullptr;
-  if (!graph.GetInitializedTensor(BatchNormalization_inputs[1]->Name(), BatchNormalization_Scale_tensor_proto)){
+  if (!graph.GetInitializedTensor(BatchNormalization_inputs[1]->Name(), BatchNormalization_Scale_tensor_proto)) {
     return Status::OK();
   }
 
@@ -109,7 +109,7 @@ bool BatchNormalizationMulFusion::SatisfyCondition(const Graph& graph, const Nod
 
   const auto& next_node = *node.OutputNodesBegin();
   return !(!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Mul", {7}) ||
-           next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node) ||
+           next_node.GetInputEdgesCount() != 1 || !graph.GetNodeOutputsInGraphOutputs(next_node).empty() ||
            next_node.GetExecutionProviderType() != node.GetExecutionProviderType());
 }
 

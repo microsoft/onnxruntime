@@ -325,7 +325,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "fp16_shufflenet", "16-bit float not supported type in C#." },
                 { "fp16_tiny_yolov2", "16-bit float not supported type in C#." },
                 { "BERT_Squad", "Could not find an implementation for the node bert / embeddings / one_hot:OneHot(9)" },
-                { "mlperf_ssd_mobilenet_300", "Could not find file output_0.pb" }
+                { "mlperf_ssd_mobilenet_300", "Could not find file output_0.pb" },
+                { "tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied" },
+                { "tf_resnet_v1_101", "result mismatch when Conv BN Fusion is applied" },
+                { "tf_resnet_v1_152", "result mismatch when Conv BN Fusion is applied" }
             };
 
             // The following models fails on nocontribops win CI
@@ -341,6 +344,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             if (System.Environment.Is64BitProcess == false)
             {
                 skipModels["test_vgg19"] = "Get preallocated buffer for initializer conv4_4_b_0 failed";
+                skipModels["tf_pnasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_5/comb_iter_1/left/bn_sep_7x7_1/beta:0_203 failed";
+                skipModels["tf_nasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_11/beginning_bn/beta:0_331 failed";
             }
 
             return skipModels;

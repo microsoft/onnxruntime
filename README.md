@@ -30,9 +30,12 @@
 * [Technical Design Details](#technical-design-details)
 * [Extensibility Options](#extensibility-options)
 
+**[Data/Telemetry](#Data/Telemetry)**
+
 **[Contributions and Feedback](#contribute)**
 
 **[License](#license)**
+
 ***
 # Key Features
 ## Run any ONNX model
@@ -100,8 +103,7 @@ system.
     [vc_redist.x64.exe](https://aka.ms/vs/16/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/16/release/vc_redist.x86.exe)
   * For Linux, the system must have **libgomp.so.1** which can be installed using `apt-get install libgomp1`.
 * GPU builds require CUDA runtime libraries being installed on the system:
-	 * Version: **CUDA 10.0** and **cuDNN 7.3**
-	 * Linux Python packages require **CUDA 10.1** and **cuDNN 7.6** 
+	 * Version: **CUDA 10.0** and **cuDNN 7.6**
   * Older ONNX Runtime releases: used **CUDA 9.1** and **cuDNN 7.1** - please refer to [prior release notes](https://github.com/microsoft/onnxruntime/releases) for more details.
 * Python binaries are compatible with **Python 3.5-3.7**. See [Python Dev Notes](./docs/Python_Dev_Notes.md). If using `pip` to be download the Python binaries, run `pip install --upgrade pip` prior to downloading. 
 * Certain operators makes use of system locales. Installation of the **English language package** and configuring `en_US.UTF-8 locale` is required.
@@ -161,6 +163,10 @@ transform](include/onnxruntime/core/optimizer/graph_transformer.h)
 * [Add a new rewrite rule](include/onnxruntime/core/optimizer/rewrite_rule.h)
 
 ***
+# Data/Telemetry
+This project may collect usage data and send it to Microsoft to help improve our products and services. See the [privacy statement](docs/Privacy.md) for more details.
+
+***
 # Contribute
 We welcome contributions! Please see the [contribution guidelines](CONTRIBUTING.md).
 
@@ -171,6 +177,7 @@ For any feedback or to report a bug, please file a [GitHub Issue](https://github
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/)
 or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+
 ***
 # License
 [MIT License](LICENSE)

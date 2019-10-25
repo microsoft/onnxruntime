@@ -14,7 +14,7 @@ class TensorflowTestSession : public TestSession {
  private:
   std::mt19937 rand_engine_;
   std::uniform_int_distribution<int> dist_;
-  OrtCallback model_deleter;
+  std::vector<char> model_data_;
   std::vector<TF_Output> feed_;
   std::vector<TF_Output> fetches_;
   std::vector<std::vector<TF_Tensor*>> feed_tensors_;
@@ -46,17 +46,24 @@ class TensorflowTestSession : public TestSession {
   TensorflowTestSession(std::random_device& rd, const PerformanceTestConfig& performance_test_config,
                         const TestModelInfo* m)
       : rand_engine_(rd()) {
+    const auto& model_file_path = performance_test_config.model_info.model_file_path;
+    size_t model_file_length;
+    auto status = Env::Default().GetFileLength(model_file_path.c_str(), model_file_length);
+    if (!status.IsOK()) ORT_THROW(status.ErrorMessage());
+    model_data_.resize(model_file_length);
+    auto model_data_span = gsl::make_span(model_data_);
+    status = Env::Default().ReadFileIntoBuffer(model_file_path.c_str(), 0, model_file_length, model_data_span);
+    if (!status.IsOK()) {
+      ORT_THROW("read file ", model_file_path, " failed: ", status.ErrorMessage());
+    }
+    // TODO some of this doesn't look exception safe...
     TF_Status* s = TF_NewStatus();
     tf_graph_ = TF_NewGraph();
     TF_ImportGraphDefOptions* opts = TF_NewImportGraphDefOptions();
     TF_ImportGraphDefOptionsSetPrefix(opts, "");
     TF_Buffer* graph_def = TF_NewBuffer();
-    void* model_data;
-    auto st = Env::Default().ReadFileAsString(performance_test_config.model_info.model_file_path.c_str(), 0, model_data,
-                                              graph_def->length, model_deleter);
-    if (!st.IsOK())
-      ORT_THROW("read file ", performance_test_config.model_info.model_file_path, " failed:", st.ErrorMessage());
-    graph_def->data = model_data;
+    graph_def->length = model_file_length;
+    graph_def->data = model_data_.data();
     TF_GraphImportGraphDef(tf_graph_, graph_def, opts, s);
     if (TF_GetCode(s) != TF_OK) ORT_THROW("load TF model failed:", TF_Message(s));
     TF_SessionOptions* session_opts = TF_NewSessionOptions();
@@ -218,9 +225,6 @@ class TensorflowTestSession : public TestSession {
   }
 
   ~TensorflowTestSession() override {
-    if (model_deleter.f != nullptr) {
-      model_deleter.f(model_deleter.param);
-    }
     TF_Status* s = TF_NewStatus();
     TF_DeleteSession(sess_, s);
     TF_DeleteStatus(s);
