@@ -1,7 +1,7 @@
 // Copyright(C) 2019 Intel Corporation
 // Licensed under the MIT License
 
-#pragma once 
+#pragma once
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)
 #elif __GNUC__
@@ -90,7 +90,9 @@ class IntelGraph {
   const onnxruntime::Node* fused_node_;
   std::shared_ptr<InferenceEngine::CNNNetwork> intel_network_;
   size_t num_inf_reqs_;
+  IE_SUPPRESS_DEPRECATED_START
   InferenceEngine::InferencePlugin plugin_;
+  IE_SUPPRESS_DEPRECATED_END
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;
   std::string device_id_;
 //  mutable std::mutex compute_lock_;
