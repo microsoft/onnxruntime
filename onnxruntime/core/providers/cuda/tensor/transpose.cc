@@ -65,6 +65,10 @@ Status Transpose<T>::ComputeInternal(OpKernelContext* ctx) const {
   TensorShape output_shape{output_dims};
   Tensor* Y = ctx->Output(0, output_shape);
 
+  // special case when there is a dim value of 0 in the shape.
+  if (output_shape.Size() == 0)
+    return Status::OK();
+
   auto mn = TryTransposeWithCublas(*p_perm, input_shape);
   int M = std::get<0>(mn);
   int N = std::get<1>(mn);

@@ -15,6 +15,11 @@ enum class Mode : int {
 };
 
 class PadBase {
+ public:
+  // Update the output_shape to make it consistent with numpy handling where there are one or more dimensions
+  // in the input_shape with a value of zero.
+  static Status HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape);
+
  protected:
   PadBase(const OpKernelInfo& info) : value_(info.GetAttrOrDefault("value", 0.f)) {
     std::string mode;

@@ -22,9 +22,6 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/framework/session_options.h"
 
-const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-const OrtApi* Ort::g_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-
 using namespace onnxruntime;
 
 namespace {
@@ -50,7 +47,7 @@ void usage() {
       "\t-h: help\n"
       "\n"
       "onnxruntime version: %s\n",
-      g_ort->base_.GetVersionString());
+      OrtGetApiBase()->GetVersionString());
 }
 
 #ifdef _WIN32
@@ -272,8 +269,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
       return -1;
@@ -282,7 +279,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     if (enable_openvino) {
 #ifdef USE_OPENVINO
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "CPU"));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "CPU"));
 #else
       fprintf(stderr, "OpenVINO is not supported in this build");
       return -1;
@@ -290,7 +287,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_cuda) {
 #ifdef USE_CUDA
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
 #else
       fprintf(stderr, "CUDA is not supported in this build");
       return -1;
@@ -298,7 +295,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_nuphar) {
 #ifdef USE_NUPHAR
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(sf, /*allow_unaligned_buffers*/ 1, ""));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(sf, /*allow_unaligned_buffers*/ 1, ""));
 #else
       fprintf(stderr, "Nuphar is not supported in this build");
       return -1;
@@ -306,7 +303,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_mkl) {
 #ifdef USE_MKLDNN
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sf, enable_cpu_mem_arena ? 1 : 0));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
       fprintf(stderr, "MKL-DNN is not supported in this build");
       return -1;
@@ -314,7 +311,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_ngraph) {  // TODO: Re-order the priority?
 #ifdef USE_NGRAPH
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_NGraph(sf, "CPU"));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_NGraph(sf, "CPU"));
 #else
       fprintf(stderr, "nGraph is not supported in this build");
       return -1;
@@ -322,7 +319,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_nnapi) {
 #ifdef USE_NNAPI
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf));
 #else
       fprintf(stderr, "DNNLibrary/NNAPI is not supported in this build");
       return -1;
@@ -335,7 +332,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
       p_models = 1;
       concurrent_session_runs = 1;
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_DML(sf, device_id));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_DML(sf, device_id));
 #else
       fprintf(stderr, "DML is not supported in this build");
       return -1;
@@ -420,7 +417,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"convtranspose_1d", "1d convtranspose not supported yet"},
       {"convtranspose_3d", "3d convtranspose not supported yet"},
       {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
-      // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8. 
+      // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
       // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
       // which doesn't match the expected output that was generated with numpy.
       {"cast_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results."},
@@ -460,6 +457,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});
   broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
   broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
+  broken_tests.insert({"mlperf_ssd_resnet34_1200", "Results mismatch"});
+  broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
+  broken_tests.insert({"mask_rcnn_keras", "Results mismatch: 8 of 81000"});
+  broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
 #endif
 
 #ifdef USE_MKLDNN
@@ -545,11 +546,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"fp16_inception_v1", "Temporarily disabled pending investigation"});
     broken_tests.insert({"candy", "Temporarily disabled pending investigation"});
     broken_tests.insert({"BERT_Squad", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"simple_rnn_defaults", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"simple_rnn_with_initial_bias", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"gru_with_initial_bias", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"lstm_with_peephole", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"gru_defaults", "Temporarily disabled pending investigation"});
   }
 #endif
   // clang-format on

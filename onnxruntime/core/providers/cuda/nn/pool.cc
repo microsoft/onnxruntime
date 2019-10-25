@@ -125,6 +125,9 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
 
   std::vector<int64_t> y_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
   Tensor* Y = context->Output(0, TensorShape(y_dims));
+  // special case when there is a dim value of 0 in the shape.
+  if (Y->Shape().Size() == 0)
+    return Status::OK();
 
   auto x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
@@ -150,8 +153,8 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
 
   cudnnPoolingMode_t mode = CUDNN_POOLING_MAX;
   if (PoolType::type == onnxruntime::PoolType::kAveragePool) {
-    mode = pool_attrs_.count_include_pad ? CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING :
-                                           CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING;
+    mode = pool_attrs_.count_include_pad ? CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING 
+    : CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING;
   }
   CudnnPoolingDescriptor pooling_desc;
   ORT_RETURN_IF_ERROR(pooling_desc.Set(mode, kernel_shape, pads, strides));
@@ -184,6 +187,10 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
 
   std::vector<int64_t> y_dims = this->pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
   Tensor* Y = context->Output(0, TensorShape(y_dims));
+
+  // special case when there is a dim value of 0 in the shape.
+  if (Y->Shape().Size() == 0)
+    return Status::OK();
 
   auto x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());

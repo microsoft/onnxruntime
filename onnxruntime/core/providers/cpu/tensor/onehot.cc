@@ -158,6 +158,10 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
   const auto* values_data = values->Data<out_type>();
   Tensor* output = p_op_kernel_context->Output(0, TensorShape(output_shape));
 
+  // edge case where we have a dim with a value of 0
+  if (output->Shape().Size() == 0)
+    return Status::OK();
+
   int64_t prefix_dim_size = 1;
   for (int64_t i = 0; i < true_axis; ++i) {
     prefix_dim_size *= indices_dims[i];
@@ -171,11 +175,10 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
   // Handle negative indices. It's faster to create a new indices instead of comparing in generator
   // since generator has much larger loops.
   const auto* indices_data = indices->Data<in_type>();
-  const auto indices_size = indices_shape.Size();  
+  const auto indices_size = indices_shape.Size();
   std::vector<in_type> adjusted_indices;
   adjusted_indices.reserve(indices_size);
-  for (int64_t i = 0; i < indices_size; ++i)
-  {
+  for (int64_t i = 0; i < indices_size; ++i) {
     if (indices_data[i] < 0)
       adjusted_indices.push_back(indices_data[i] + static_cast<in_type>(depth_val));
     else
@@ -188,7 +191,7 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
   // Split output into 3-Tensor of size:
   //   prefix_dim_size x depth x suffix_dim_size.
   Eigen::array<Eigen::DenseIndex, 3> output_dims_e = {
-    {static_cast<Eigen::DenseIndex>(prefix_dim_size), static_cast<Eigen::DenseIndex>(depth_val), static_cast<Eigen::DenseIndex>(suffix_dim_size)}};
+      {static_cast<Eigen::DenseIndex>(prefix_dim_size), static_cast<Eigen::DenseIndex>(depth_val), static_cast<Eigen::DenseIndex>(suffix_dim_size)}};
   auto* output_data = output->MutableData<out_type>();
   typename EigenTensorTypes<out_type, 3>::EigenTensorMap output_tensor_e(output_data, output_dims_e);
 

@@ -201,7 +201,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (!_enableProfiling && value)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableProfiling(_nativePtr, ProfileOutputPathPrefix));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableProfiling(_nativePtr, NativeMethods.GetPlatformSerializedString(ProfileOutputPathPrefix)));
                     _enableProfiling = true;
                 }
                 else if (_enableProfiling && !value)
@@ -226,7 +226,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (value != _optimizedModelFilePath)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtSetOptimizedModelFilePath(_nativePtr, value));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtSetOptimizedModelFilePath(_nativePtr, NativeMethods.GetPlatformSerializedString(value)));
                     _optimizedModelFilePath = value;
                 }
             }

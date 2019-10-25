@@ -6,8 +6,6 @@
 #include <vector>
 #include <onnxruntime_cxx_api.h>
 
-const OrtApi* Ort::g_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-
 int main(int argc, char* argv[]) {
   //*************************************************************************
   // initialize  enviroment...one enviroment per process
