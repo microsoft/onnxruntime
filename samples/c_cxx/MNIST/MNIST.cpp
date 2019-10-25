@@ -9,7 +9,7 @@
 #pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "onnxruntime.lib")
 
-Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "test"};
+Ort::Env env{nullptr};
 
 // This is the structure to interface with the MNIST model
 // After instantiation, set the input_image_ data to be the 28x28 pixel image of the number to recognize
@@ -96,6 +96,7 @@ LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 // The Windows entry point function
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE /*hPrevInstance*/, _In_ LPTSTR /*lpCmdLine*/,
                       _In_ int nCmdShow) {
+  env = Ort::Env{};
   {
     WNDCLASSEX wc{};
     wc.cbSize = sizeof(WNDCLASSEX);
