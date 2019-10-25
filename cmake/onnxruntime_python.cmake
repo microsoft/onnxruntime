@@ -72,6 +72,7 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
+    ${PROVIDERS_INTEL}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_DML}
@@ -218,6 +219,18 @@ if (onnxruntime_USE_NGRAPH)
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()
+
+#TODO: This is temporary till we build OV from binary
+if (onnxruntime_USE_INTEL)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${OPENVINO_NGRAPH_LIB_DIR}/libngraph.so
+        ${OPENVINO_LIB_DIR}/libinference_engine.so
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+    )
+endif()
+
 
 if (onnxruntime_USE_TVM)
   add_custom_command(
