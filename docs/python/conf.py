@@ -67,7 +67,7 @@ pygments_style = 'sphinx'
 # -- Options for HTML output -------------------------------------------------
 
 html_theme = "pyramid"
-html_logo = "../ONNX_Runtime_icon.png"
+html_logo = "ONNX_Runtime_icon.png"
 html_static_path = ['_static']
 
 # -- Options for intersphinx extension ---------------------------------------
