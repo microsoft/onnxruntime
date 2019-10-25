@@ -172,15 +172,13 @@ Status MurmurHash3::Compute(OpKernelContext* ctx) const {
 
   const MLDataType keys_type = keys->DataType();
   const bool is_string = keys_type == DataTypeImpl::GetType<std::string>();
-  if (!is_string && (DataTypeImpl::GetType<int32_t>() != keys_type) && 
-      (DataTypeImpl::GetType<uint32_t>() != keys_type)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type not supported.");
-  }
 
   const auto input_element_bytes = keys->DataType()->Size();
   const auto output_element_bytes = output_tensor->DataType()->Size();
   const int64_t input_count = input_shape.Size();
-  // Output type is inferred by the inference function
+  // Output type is inferred by the inference function and it can be of two types int32_t and uint32_t
+  // however, all is needed is a ptr that can step 4 bytes at a time and for that reason we choose
+  // raw data casted to a type of choice.
   ORT_ENFORCE(sizeof(uint32_t) == output_element_bytes, "Invalid assumption of output element size");
   auto output = reinterpret_cast<uint32_t*>(output_tensor->MutableDataRaw());
 
