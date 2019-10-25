@@ -46,8 +46,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
         cxxopts::value<std::string>()->default_value(""))
       ("test_data_dir_phase2", "Input ONNX example files (can be a glob or comma separated).",
         cxxopts::value<std::string>()->default_value(""))
-      ("output_dir", "The output directory where the model checkpoints will be written.",
-        cxxopts::value<std::string>())
+      ("output_dir", "The output directory where the checkpoint and trained model files will be written.",
+        cxxopts::value<std::string>()->default_value(""))
       ("log_dir", "The directory to write tensorboard events.",
         cxxopts::value<std::string>()->default_value(""))
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>())
@@ -177,6 +177,12 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
     params.train_data_dir_phase2.assign(train_data_dir_phase2.begin(), train_data_dir_phase2.end());
     params.test_data_dir_phase2.assign(test_data_dir_phase2.begin(), test_data_dir_phase2.end());
     params.log_dir.assign(log_dir.begin(), log_dir.end());
+
+    params.output_dir = flags["output_dir"].as<std::string>();
+    if (params.output_dir.empty()) {
+      printf("No output directory specified. Checkpoint and trained model files will not be saved.\n");
+    }
+
     params.histogram_names = flags["histogram"].as<std::vector<std::string>>();
     params.norm_names = flags["norm"].as<std::vector<std::string>>();
     params.dump_convergence_metrics = flags["dump_convergence_metrics"].as<bool>();
@@ -295,8 +301,6 @@ void setup_training_params(BertParameters& params) {
   params.model_with_loss_func_path = params.model_name + "_with_cost.onnx";
   params.model_with_training_graph_path = params.model_name + "_bw.onnx";
   params.model_actual_running_graph_path = params.model_name + "_bw_running.onnx";
-  params.model_trained_path = params.model_name + "_trained.onnx";
-  params.model_trained_with_loss_func_path = params.model_name + "_with_cost_trained.onnx";
 
 #ifdef USE_HOROVOD
   params.mpi_context = setup_horovod();
@@ -513,6 +517,8 @@ int main(int argc, char* argv[]) {
     // Do phase-2 training
     RETURN_IF_FAIL(runner->Run(training_data_loader_phase2, test_data_loader_phase2));
   }
+
+  RETURN_IF_FAIL(runner->EndTraining(test_data_loader, false));
 
 #ifdef USE_HOROVOD
   shutdown_horovod();

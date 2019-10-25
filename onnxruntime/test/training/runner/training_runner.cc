@@ -8,6 +8,8 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
+#include "core/framework/path_lib.h"
+#include "core/platform/env.h"
 #include "core/session/environment.h"
 #include "core/training/optimizer_graph_builder.h"
 #include "test/training/runner/training_util.h"
@@ -45,7 +47,6 @@ TrainingRunner::TrainingRunner(Parameters params)
   ORT_ENFORCE(!params_.model_path.empty());
   if (!params.weights_to_train.empty())
     ORT_ENFORCE(params.weights_not_to_train.empty());
-  ORT_ENFORCE(!params_.model_trained_path.empty() || !params_.model_trained_with_loss_func_path.empty());
   ORT_ENFORCE(!params_.training_optimizer_name.empty());
 }
 
@@ -142,6 +143,11 @@ Status TrainingRunner::Initialize() {
   }
 #endif
   ORT_RETURN_IF_ERROR(session_.UpdateTrainableWeightsInfoInGraph());
+
+  // Create output directory if needed.
+  if (!params_.output_dir.empty()) {
+    ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(params_.output_dir));
+  }
 
   if (params_.use_profiler && !SESSION_OPTION.enable_profiling) {
     // Profiling has not already been enabled, so override from command line options.
@@ -343,7 +349,14 @@ Status TrainingRunner::TrainingLoop(std::shared_ptr<IDataLoader> training_data_l
   return Status::OK();
 }
 
-Status TrainingRunner::EndTraining(std::shared_ptr<IDataLoader> data_loader) {
+// this should be similar to path_lib.h:GetLastComponent(), except that this uses std::string and GetLastComponent() uses std::basic_string<ORTCHAR_T>
+static std::string BaseName(const std::string& path) {
+  const auto last_slash_pos = path.find_last_of("\\/");
+  return last_slash_pos != std::string::npos ? path.substr(last_slash_pos + 1) : path;
+}
+
+Status TrainingRunner::EndTraining(
+    std::shared_ptr<IDataLoader> data_loader, bool do_load_and_evaluate) {
   if (params_.use_profiler) {
     // Write profiler data to disk.
     // We do this first in case there are any problems saving the trained model.
@@ -360,18 +373,31 @@ Status TrainingRunner::EndTraining(std::shared_ptr<IDataLoader> data_loader) {
   printf("\nEvaluating the final model on the test set.\n");
   ORT_RETURN_IF_ERROR(Evaluate(session_, data_loader));
 
-  printf("\nSaving the trained model.\n");
-  if (!params_.model_trained_path.empty()) {
-    session_.Save(params_.model_trained_path, TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS);
-  }
-  if (!params_.model_trained_with_loss_func_path.empty()) {
-    session_.Save(params_.model_trained_with_loss_func_path,
-                  TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC);
+  if (params_.output_dir.empty()) {
+    printf("No output directory specified, skipping save of trained model.\n");
+    return Status::OK();
   }
 
+  printf("\nSaving the trained model.\n");
+  const std::string model_base_name = BaseName(params_.model_path);
+
+  const std::string trained_model_path =
+      MakeString(params_.output_dir, GetPathSep<char>(), model_base_name, "_trained.onnx");
+  ORT_RETURN_IF_ERROR(session_.Save(
+      trained_model_path, TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS));
+
+  const std::string trained_model_with_loss_func_path =
+      MakeString(params_.output_dir, GetPathSep<char>(), model_base_name, "_with_cost_trained.onnx");
+  ORT_RETURN_IF_ERROR(session_.Save(
+      trained_model_with_loss_func_path, TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC));
+
   // Load and test the trained model.
-  printf("\nTesting the saved model: %s\n", params_.model_trained_with_loss_func_path.c_str());
-  return LoadAndEvaluate(params_.model_trained_with_loss_func_path, data_loader);
+  if (do_load_and_evaluate) {
+    printf("\nTesting the saved model: %s\n", trained_model_with_loss_func_path.c_str());
+    ORT_RETURN_IF_ERROR(LoadAndEvaluate(trained_model_with_loss_func_path, data_loader));
+  }
+
+  return Status::OK();
 }
 
 Status TrainingRunner::Evaluate(InferenceSession& session, std::shared_ptr<IDataLoader> data_loader) {
@@ -392,7 +418,6 @@ Status TrainingRunner::Evaluate(InferenceSession& session, std::shared_ptr<IData
     feed_names.push_back(loss_scaler_->GetLossScaleInputName());
   }
   feed_names.push_back(params_.lr_params.feed_name);
-  // TODO add loss scaling factor and learning rate to feeds
   auto test_data = data_loader->CurrentDataSet();
   if (params_.shuffle_data && current_batch == 0) {
     printf("Randomly shuffle test data.\n");

@@ -25,19 +25,18 @@ class TrainingRunner {
   };
 
   struct Parameters {
-    Parameters() {}
-
     std::string model_name;
     std::string model_path;
-    std::string model_with_loss_func_path;          // To save the model after adding loss func.
-    std::string model_with_training_graph_path;     // To save the model after adding loss func and backward graph.
-    std::string model_actual_running_graph_path;    // To save the model with the actual running graph after transformations.
-    std::string model_trained_path;                 // To save the model after training.
-    std::string model_trained_with_loss_func_path;  // To save the model with loss func after training.
-    std::string model_gist_encode;                  // To save the model with gist encoding.
+    std::string model_with_loss_func_path;        // To save the model after adding loss func.
+    std::string model_with_training_graph_path;   // To save the model after adding loss func and backward graph.
+    std::string model_actual_running_graph_path;  // To save the model with the actual running graph after transformations.
+    std::string model_gist_encode;                // To save the model with gist encoding.
 
     PATH_STRING_TYPE train_data_dir;
     PATH_STRING_TYPE test_data_dir;
+
+    // TODO output_dir (and all other path values) should be PATH_STRING_TYPE
+    std::string output_dir;  // Output of training, including intermediate checkpoints and trained model files.
 
     bool is_perf_test;
     size_t perf_warm_up_iters;
@@ -48,7 +47,7 @@ class TrainingRunner {
     // For now all to-be-trained weights use the same optimizer type.
     std::string training_optimizer_name = "SGDOptimizer";
     std::function<std::unordered_map<std::string, float>(const std::string& weight)> optimizer_attributes =
-      [](const std::string&) { return std::unordered_map<std::string, float>(); };
+        [](const std::string&) { return std::unordered_map<std::string, float>(); };
     LearningRateParameters lr_params;
     int gradient_accumulation_steps = 1;
 
@@ -125,7 +124,7 @@ class TrainingRunner {
 
   common::Status Run(std::shared_ptr<IDataLoader> training_data_loader, std::shared_ptr<IDataLoader> test_data_loader);
 
-  common::Status EndTraining(std::shared_ptr<IDataLoader> data_loader);
+  common::Status EndTraining(std::shared_ptr<IDataLoader> data_loader, bool do_load_and_evaluate);
 
   common::Status UpdateParams(Parameters params);
 

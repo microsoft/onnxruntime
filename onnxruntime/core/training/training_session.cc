@@ -287,8 +287,7 @@ static Status UpdateWeightsBeforeSaving(Graph& graph, const NameMLValMap& weight
     }
 
     // Replace the TensorProto in the model.
-    graph.RemoveInitializedTensor(old_tensor_proto->name());
-    graph.AddInitializedTensor(new_tensor_proto);
+    ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(new_tensor_proto));
   }
   return Status::OK();
 }

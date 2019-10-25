@@ -24,8 +24,7 @@ const static int NUM_SAMPLES_FOR_EVALUATION = 32;
 const static char* ORIGINAL_MODEL_PATH = "squeezenet.onnx";
 const static char* GENERATED_MODEL_WITH_COST_PATH = "squeezenet_with_cost.onnx";
 const static char* BACKWARD_MODEL_PATH = "squeezenet_bw.onnx";
-const static char* TRAINED_MODEL_PATH = "squeezenet_trained.onnx";
-const static char* TRAINED_MODEL_WITH_COST_PATH = "squeezenet_with_cost_trained.onnx";
+const static char* OUTPUT_DIR = ".";
 const PATH_STRING_TYPE TRAINING_DATA_PATH = ORT_TSTR("squeezenet_data/training");
 const PATH_STRING_TYPE TEST_DATA_PATH = ORT_TSTR("squeezenet_data/test");
 
@@ -53,8 +52,7 @@ int main(int /*argc*/, char* /*args*/[]) {
   params.model_path_ = ORIGINAL_MODEL_PATH;
   params.model_with_loss_func_path_ = GENERATED_MODEL_WITH_COST_PATH;
   params.model_with_training_graph_path_ = BACKWARD_MODEL_PATH;
-  params.model_trained_path_ = TRAINED_MODEL_PATH;
-  params.model_trained_with_loss_func_path_ = TRAINED_MODEL_WITH_COST_PATH;
+  params.output_dir = OUTPUT_DIR;
   params.model_prediction_name_ = "pool10_1_reshaped";
   params.loss_func_info_ = LossFunctionInfo(OpDef("SoftmaxCrossEntropy"),
                                             "loss",

@@ -90,8 +90,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
   params.model_with_loss_func_path = params.model_name + "_with_cost.onnx";
   params.model_with_training_graph_path = params.model_name + "_bw.onnx";
   params.model_actual_running_graph_path = params.model_name + "_bw_running.onnx";
-  params.model_trained_path = params.model_name + "_trained.onnx";
-  params.model_trained_with_loss_func_path = params.model_name + "_with_cost_trained.onnx";
+  params.output_dir = ".";
 
   //Gist encode
   params.model_gist_encode = params.model_name + "_encode_gist.onnx";
@@ -212,7 +211,7 @@ int main(int argc, char* args[]) {
   auto runner = std::make_unique<TrainingRunner>(params);
   RETURN_IF_FAIL(runner->Initialize());
   RETURN_IF_FAIL(runner->Run(training_data_loader, test_data_loader));
-  RETURN_IF_FAIL(runner->EndTraining(test_data_loader));
+  RETURN_IF_FAIL(runner->EndTraining(test_data_loader, true));
 
 #ifdef USE_HOROVOD
   shutdown_horovod();
