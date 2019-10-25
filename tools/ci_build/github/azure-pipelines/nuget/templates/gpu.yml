@@ -49,7 +49,7 @@ jobs:
        zip -r linux-x64.zip linux-x64
        cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
        ls -al $(Build.ArtifactStagingDirectory)
-       displayName: 'Create Artifacts'
+      displayName: 'Create Artifacts'
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Pipeline Artifact'
       inputs:
