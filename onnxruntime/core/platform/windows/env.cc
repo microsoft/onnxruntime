@@ -14,24 +14,41 @@ limitations under the License.
 ==============================================================================*/
 // Portions Copyright (c) Microsoft Corporation
 
+#include "core/platform/env.h"
+
 #include <Shlwapi.h>
 #include <Windows.h>
 
+#include <fstream>
 #include <string>
 #include <thread>
+
 #include <fcntl.h>
-#include <fstream>
 #include <io.h>
 
 #include "core/common/logging/logging.h"
 #include "core/platform/env.h"
+#include "core/platform/scoped_resource.h"
 #include "core/platform/windows/telemetry.h"
 
 namespace onnxruntime {
 
 namespace {
 
-static void DeleteBuffer(void* param) noexcept { ::free(param); }
+struct FileHandleTraits {
+  using Handle = HANDLE;
+  static Handle GetInvalidHandleValue() noexcept { return INVALID_HANDLE_VALUE; }
+  static void CleanUp(Handle h) noexcept {
+    if (!CloseHandle(h)) {
+      const int err = GetLastError();
+      LOGS_DEFAULT(ERROR) << "Failed to close file handle " << h << " - error code: " << err;
+    }
+  }
+};
+
+// Note: File handle cleanup may fail but this class doesn't expose a way to check if it failed.
+//       If that's important, consider using another cleanup method.
+using ScopedFileHandle = ScopedResource<FileHandleTraits>;
 
 class WindowsEnv : public Env {
  public:
@@ -70,80 +87,73 @@ class WindowsEnv : public Env {
     return GetCurrentProcessId();
   }
 
-  static common::Status GetFileSizeIfUnknown(const wchar_t* fname, HANDLE hFile, size_t& length) {
-    if (length > 0) return Status::OK();
+  Status GetFileLength(const ORTCHAR_T* file_path, size_t& length) const override {
+    ScopedFileHandle file_handle{CreateFileW(
+        file_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
     LARGE_INTEGER filesize;
-    if (!GetFileSizeEx(hFile, &filesize)) {
-      int err = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileSizeEx ", ToMBString(fname), " fail, errcode =", err);
+    if (!GetFileSizeEx(file_handle.Get(), &filesize)) {
+      const int err = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileSizeEx ", ToMBString(file_path), " fail, errcode = ", err);
     }
     if (static_cast<ULONGLONG>(filesize.QuadPart) > std::numeric_limits<size_t>::max()) {
-      return common::Status(common::ONNXRUNTIME, common::FAIL, "ReadFileAsString: File is too large");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileLength: File is too large");
     }
     length = static_cast<size_t>(filesize.QuadPart);
     return Status::OK();
   }
 
-  common::Status ReadFileAsString(const wchar_t* fname, int64_t offset, void*& p, size_t& len,
-                                  OrtCallback& deleter) const override {
-    if (!fname) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "ReadFileAsString: 'fname' cannot be NULL");
+  Status ReadFileIntoBuffer(
+      const ORTCHAR_T* const file_path, const FileOffsetType offset, const size_t length,
+      const gsl::span<char> buffer) const override {
+    ORT_RETURN_IF_NOT(file_path);
+    ORT_RETURN_IF_NOT(offset >= 0);
+    ORT_RETURN_IF_NOT(length <= buffer.size());
+
+    ScopedFileHandle file_handle{CreateFileW(
+        file_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
+    if (!file_handle.IsValid()) {
+      const int err = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(file_path), " fail, errcode = ", err);
     }
-    if (offset > 0 && len == 0) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                            "ReadFileAsString: please specify length to read");
-    }
-    deleter.f = nullptr;
-    deleter.param = nullptr;
-    HANDLE hFile = CreateFileW(fname, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (hFile == INVALID_HANDLE_VALUE) {
-      int err = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(fname), " fail, errcode =", err);
-    }
-    std::unique_ptr<void, decltype(&CloseHandle)> handler_holder(hFile, CloseHandle);
-    ORT_RETURN_IF_ERROR(GetFileSizeIfUnknown(fname, hFile, len));
-    // check the file file for avoiding allocating a zero length buffer
-    if (len == 0) {  // empty file
-      p = nullptr;
-      len = 0;
-      return Status::OK();
-    }
-    std::unique_ptr<char[]> buffer(reinterpret_cast<char*>(malloc(len)));
-    char* wptr = reinterpret_cast<char*>(buffer.get());
-    size_t length_remain = len;
-    DWORD bytes_read = 0;
+
+    if (length == 0) return Status::OK();
+
     if (offset > 0) {
-      LARGE_INTEGER liCurrentPosition;
-      liCurrentPosition.QuadPart = offset;
-      if (SetFilePointerEx(hFile, liCurrentPosition, &liCurrentPosition, FILE_BEGIN) != TRUE) {
-        int err = GetLastError();
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SetFilePointerEx ", ToMBString(fname), " fail, errcode =", err);
+      LARGE_INTEGER current_position;
+      current_position.QuadPart = offset;
+      if (!SetFilePointerEx(file_handle.Get(), current_position, &current_position, FILE_BEGIN)) {
+        const int err = GetLastError();
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SetFilePointerEx ", ToMBString(file_path), " fail, errcode = ", err);
       }
     }
-    for (; length_remain > 0; wptr += bytes_read, length_remain -= bytes_read) {
-      //read at most 1GB each time
-      DWORD bytes_to_read;
-      if (length_remain > (1 << 30)) {
-        bytes_to_read = 1 << 30;
-      } else {
-        bytes_to_read = static_cast<DWORD>(length_remain);
+
+    size_t total_bytes_read = 0;
+    while (total_bytes_read < length) {
+      constexpr DWORD k_max_bytes_to_read = 1 << 30; // read at most 1GB each time
+      const size_t bytes_remaining = length - total_bytes_read;
+      const DWORD bytes_to_read = static_cast<DWORD>(std::min<size_t>(bytes_remaining, k_max_bytes_to_read));
+      DWORD bytes_read;
+
+      if (!ReadFile(
+              file_handle.Get(), buffer.data() + total_bytes_read, bytes_to_read, &bytes_read, nullptr)) {
+        const int err = GetLastError();
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(file_path), " fail, errcode = ", err);
       }
-      if (ReadFile(hFile, wptr, bytes_to_read, &bytes_read, nullptr) != TRUE) {
-        int err = GetLastError();
-        p = nullptr;
-        len = 0;
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(fname), " fail, errcode =", err);
-      }
+
       if (bytes_read != bytes_to_read) {
-        p = nullptr;
-        len = 0;
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(fname), " fail: unexpected end");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(file_path), " fail: unexpected end");
       }
+
+      total_bytes_read += bytes_read;
     }
-    p = buffer.release();
-    deleter.f = DeleteBuffer;
-    deleter.param = p;
-    return common::Status::OK();
+
+    return Status::OK();
+  }
+
+  Status MapFileIntoMemory(
+      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+      MappedMemoryPtr& mapped_memory) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "MapFileIntoMemory is not implemented on Windows.");
   }
 
   common::Status FileOpenRd(const std::wstring& path, /*out*/ int& fd) const override {

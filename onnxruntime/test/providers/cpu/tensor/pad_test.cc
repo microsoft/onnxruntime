@@ -16,7 +16,9 @@ static void RunOpset11TypedTest(
     T value,
     const std::vector<int64_t>& output_dims,
     const std::vector<T>& output,
-    std::string mode = "constant") {
+    std::string mode = "constant",
+    OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
+    const std::string& error_msg = "") {
   // ONNX domain opset-11
   OpTester test("Pad", 11);
   if (mode != "constant")
@@ -26,7 +28,7 @@ static void RunOpset11TypedTest(
   test.AddInput<T>("value", {1}, {value});
   test.AddOutput<T>("output", output_dims, output);
   // NGraph and TensorRT do not yet support opset-11 and builds break on this test, hence exclude the EP
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(expect, error_msg, {kNGraphExecutionProvider, kTensorrtExecutionProvider});
 }
 
 // There is only support for float type for opset-10 and MSDomain kernel in ORT
@@ -37,7 +39,9 @@ static void RunAllOpsetAllDomainPadTests(
     float value,
     const std::vector<int64_t>& output_dims,
     const std::vector<float>& output,
-    std::string mode = "constant") {
+    std::string mode = "constant",
+    OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
+    const std::string& error_msg = "") {
   // ONNX domain opset-10
   OpTester test1("Pad", 10);
   test1.AddInput<float>("data", input_dims, input);
@@ -45,7 +49,7 @@ static void RunAllOpsetAllDomainPadTests(
   test1.AddAttribute("pads", pads);
   test1.AddAttribute("value", value);
   test1.AddOutput<float>("output", output_dims, output);
-  test1.Run();
+  test1.Run(expect, error_msg);
 
   // ONNX domain opset-11
   RunOpset11TypedTest<float>(input_dims,
@@ -54,7 +58,7 @@ static void RunAllOpsetAllDomainPadTests(
                              value,
                              output_dims,
                              output,
-                             mode);
+                             mode, expect, error_msg);
 
 #ifndef DISABLE_CONTRIB_OPS
 
@@ -66,7 +70,7 @@ static void RunAllOpsetAllDomainPadTests(
   test3.AddInput<float>("value", {1}, {value});
   test3.AddOutput<float>("output", output_dims, output);
   //TensorRT does not support pads as an input
-  test3.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test3.Run(expect, error_msg, {kTensorrtExecutionProvider});
 
 #endif
 }
@@ -299,6 +303,142 @@ TEST(TensorOpTest, Pad_Constant_2D_double) {
                       {6, 7},
                       Y,
                       "edge");
+}
+
+/*
+Example numpy for testing behavior
+
+import numpy as np
+
+a = np.zeros((2, 0))
+
+b = np.pad(a, 1, 'constant')
+print('constant')
+print(b)
+print(b.shape)
+
+c = np.pad(a, ((1,1),(0,0)), 'reflect')  # allowed if we don't pad the dim with '0'. error otherwise
+print('reflect')
+print(c)
+print(c.shape)
+
+d = np.pad(a, 1, 'edge')
+print('edge')
+print(d)
+print(d.shape)
+
+Output:
+
+constant
+[[0. 0.]
+ [0. 0.]
+ [0. 0.]
+ [0. 0.]]
+(4, 2)
+reflect
+[]
+(4, 0)
+edge
+[]
+(4, 0)
+*/
+
+// test handling of input with a 0 for a dimension
+TEST(TensorOpTest, Pad_Constant_DimWithZeroInput) {
+  RunAllOpsetAllDomainPadTests({0},  // 1D
+                               {},
+                               {1, 1},
+                               0.1f,
+                               {2},
+                               {0.1f, 0.1f});
+
+  RunAllOpsetAllDomainPadTests({0},  // 1D empty pads
+                               {},
+                               {0, 0},
+                               0.1f,
+                               {0},
+                               {});
+
+  RunAllOpsetAllDomainPadTests({0},  // 1D offsetting pads
+                               {},
+                               {-1, 1},
+                               0.1f,
+                               {0},
+                               {});
+
+  RunAllOpsetAllDomainPadTests({2, 0},  // 2D
+                               {},
+                               {1, 1, 1, 1},
+                               0.1f,
+                               {4, 2},
+                               {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f});
+
+  RunAllOpsetAllDomainPadTests({0, 2},
+                               {},
+                               {1, 1, 1, 1},
+                               0.1f,
+                               {2, 4},
+                               {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f});
+
+  RunAllOpsetAllDomainPadTests({0, 2},
+                               {},
+                               {1, 0, 1, 0},  // empty pads for dim 1
+                               0.1f,
+                               {2, 2},
+                               {0.1f, 0.1f, 0.1f, 0.1f});
+
+  RunAllOpsetAllDomainPadTests({2, 0, 2},  // 3D
+                               {},
+                               {0, 1, 0, 0, 1, 0},
+                               0.1f,
+                               {2, 2, 2},
+                               {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f});
+}
+
+TEST(TensorOpTest, Pad_Edge_DimWithZeroInput) {
+  RunAllOpsetAllDomainPadTests({0},  // 1D
+                               {},
+                               {1, 1},
+                               0.1f,
+                               {0},
+                               {},
+                               "edge");
+
+  RunAllOpsetAllDomainPadTests({2, 0},  // 2D
+                               {},
+                               {1, 1, 1, 1},  // ignore pad for dims with value of 0 as there's no edge value to pad with
+                               0.1f,
+                               {4, 0},
+                               {},
+                               "edge");
+
+  RunAllOpsetAllDomainPadTests({2, 2, 0},  // 3D
+                               {},
+                               {0, 1, 1, 0, 1, 1},
+                               0.1f,
+                               {2, 4, 0},
+                               {},
+                               "edge");
+}
+
+TEST(TensorOpTest, Pad_Reflect_DimWithZeroInput) {
+  RunAllOpsetAllDomainPadTests({2, 0},  // 2D
+                               {},
+                               {1, 0, 1, 0},  // allowed if it doesn't pad the empty dim
+                               0.1f,
+                               {4, 0},
+                               {},
+                               "reflect");
+
+  RunAllOpsetAllDomainPadTests({0, 2, 1},  // 3D
+                               {},
+                               {1, 1, 1, 1, 1, 1},  // not allowed if it pads the empty dim
+                               0.1f,
+                               {0, 4, 2},
+                               {},
+                               "reflect",
+                               OpTester::ExpectResult::kExpectFailure,
+                               "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:{0,2,1}");
 }
 
 }  // namespace test
