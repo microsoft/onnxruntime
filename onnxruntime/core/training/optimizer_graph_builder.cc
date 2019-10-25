@@ -259,59 +259,6 @@ Status AddAllReduceForGradients(std::vector<ArgDef>& gradient_argdefs,  // updat
   return Status::OK();
 }
 
-Status AddGradientUnscaling(
-    const NodeArgNameGeneratorFn& nodearg_name_generator,
-    const ArgDef& /* scaling_factor_argdef*/,
-    std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
-    GraphAugmenter::GraphDefs& graph_defs) {
-  std::vector<NodeDef> new_nodes{};
-  for (auto& gradient_argdef : gradient_argdefs) {
-    TypeProto* gradient_fp32_type_proto = graph_defs.CopyTypeProto(gradient_argdef);
-    gradient_fp32_type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-
-    ArgDef gradient_fp32_argdef;
-    if (gradient_argdef.type_proto &&
-        gradient_argdef.type_proto->has_tensor_type() &&
-        gradient_argdef.type_proto->tensor_type().has_elem_type() &&
-        gradient_argdef.type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      gradient_fp32_argdef = gradient_argdef;
-    } else {
-      gradient_fp32_argdef = ArgDef{
-          nodearg_name_generator(MakeString(gradient_argdef.name, "_fp32")),
-          gradient_fp32_type_proto};
-
-      new_nodes.emplace_back(
-          NodeDef{
-              "Cast",
-              {gradient_argdef},
-              {gradient_fp32_argdef},
-              {MakeAttribute(
-                  "to",
-                  static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT))},
-              gradient_fp32_argdef.name});
-      gradient_argdef = gradient_fp32_argdef;
-    }
-
-    //ArgDef unscaled_gradient_argdef{
-    //    nodearg_name_generator(MakeString(gradient_argdef.name, "_unscaled")),
-    //    gradient_fp32_type_proto};
-
-    //new_nodes.emplace_back(
-    //    NodeDef{
-    //        "Div",
-    //        {gradient_fp32_argdef, scaling_factor_argdef},
-    //        {unscaled_gradient_argdef},
-    //        NodeAttributes{},
-    //        unscaled_gradient_argdef.name});
-
-    //gradient_argdef = unscaled_gradient_argdef;
-  }
-
-  graph_defs.AddNodeDefs(new_nodes);
-
-  return Status::OK();
-}
-
 Status AddDirectWeightUpdate(
     const OptimizerBuilderRegistry& opt_builder_registry,
     const std::vector<ArgDef>& weight_argdefs,
@@ -349,23 +296,46 @@ Status AddFiniteGradientChecks(
     const std::vector<ArgDef>& gradient_argdefs,
     GraphAugmenter::GraphDefs& graph_defs,
     ArgDef& all_gradients_finite_argdef) {
-  //Currently "all_gradients_finite" kernel only accepts input tensors with the same data type.
-  //Thus, enforce all the gradient_argdefs have the same data type.
-  auto gradient_argdefs_itr = gradient_argdefs.begin();
-  auto gradient_argdef_type = (gradient_argdefs_itr++)->type_proto->tensor_type().elem_type();
-  for (; gradient_argdefs_itr != gradient_argdefs.end(); ++gradient_argdefs_itr) {
-    ORT_ENFORCE(gradient_argdefs_itr->type_proto->tensor_type().elem_type() == gradient_argdef_type);
+  std::vector<ArgDef> fp32_gradient_argdefs, fp16_gradient_argdefs;
+  for (auto it = gradient_argdefs.begin(); it != gradient_argdefs.end(); ++it) {
+    auto type = it->type_proto->tensor_type().elem_type();
+    switch (type) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+        fp32_gradient_argdefs.push_back(*it);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+        fp16_gradient_argdefs.push_back(*it);
+        break;
+      default:
+        return Status(common::ONNXRUNTIME, common::FAIL,
+                      "Unsupport gradient type: it has to be either float or MLFloat16.");
+    }
   }
-  const TypeProto* const is_all_finite_output_type =
-      graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_BOOL);
 
-  all_gradients_finite_argdef = ArgDef{
-      nodearg_name_generator("all_gradients_finite"),
-      is_all_finite_output_type};
-  graph_defs.AddNodeDefs({NodeDef{
-      "IsAllFinite",
-      gradient_argdefs,
-      {all_gradients_finite_argdef}}});
+  const bool has_fp32_grad = !fp32_gradient_argdefs.empty();
+  const bool has_fp16_grad = !fp16_gradient_argdefs.empty();
+
+  const TypeProto* const is_all_finite_output_type = graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  ArgDef all_fp32_gradients_finite_argdef;
+  if (has_fp32_grad) {
+    all_fp32_gradients_finite_argdef = ArgDef{nodearg_name_generator("all_fp32_gradients_finite"), is_all_finite_output_type};
+    graph_defs.AddNodeDefs({NodeDef{"IsAllFinite", fp32_gradient_argdefs, {all_fp32_gradients_finite_argdef}}});
+  }
+
+  ArgDef all_fp16_gradients_finite_argdef;
+  if (has_fp16_grad) {
+    all_fp16_gradients_finite_argdef = ArgDef{nodearg_name_generator("all_fp16_gradients_finite"), is_all_finite_output_type};
+    graph_defs.AddNodeDefs({NodeDef{"IsAllFinite", fp16_gradient_argdefs, {all_fp16_gradients_finite_argdef}}});
+  }
+
+  if (has_fp32_grad && !has_fp16_grad) {
+    all_gradients_finite_argdef = all_fp32_gradients_finite_argdef;
+  } else if (!has_fp32_grad && has_fp16_grad) {
+    all_gradients_finite_argdef = all_fp16_gradients_finite_argdef;
+  } else if (has_fp32_grad && has_fp16_grad) {
+    all_gradients_finite_argdef = ArgDef{nodearg_name_generator("all_gradients_finite"), is_all_finite_output_type};
+    graph_defs.AddNodeDefs({NodeDef{"And", {all_fp32_gradients_finite_argdef, all_fp16_gradients_finite_argdef}, {all_gradients_finite_argdef}}});
+  }
 
   graph_defs.AddGraphOutputs({all_gradients_finite_argdef.name});
 
@@ -557,15 +527,6 @@ Status OptimizerGraphBuilder::Build(Graph& graph,
         weight_names_.begin(), weight_names_.end(), std::back_inserter(gradient_names),
         GradientBuilderBase::GradientName);
     ORT_RETURN_IF_ERROR(GetArgDefsFromGraph(graph, gradient_names, gradient_argdefs));
-  }
-
-  // unscale gradients by loss scaling factor
-  if (opt_graph_config_.use_mixed_precision) {
-    if (!opt_graph_config_.loss_scale_input_name.empty()) {
-      ArgDef loss_scaling_factor_argdef{opt_graph_config_.loss_scale_input_name};
-      ORT_RETURN_IF_ERROR(AddGradientUnscaling(nodearg_name_generator, loss_scaling_factor_argdef,
-                                               gradient_argdefs, graph_defs));
-    }
   }
 
   const bool is_gradient_accumulation_enabled = opt_graph_config_.gradient_accumulation_steps > 1;
