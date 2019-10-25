@@ -98,6 +98,10 @@ class Softmax final : public OpKernel {
 
     Tensor* Y = ctx->Output(0, input_shape);
 
+    // edge case. one or more dims with value of 0. nothing to do
+    if (input_shape.Size() == 0)
+      return Status::OK();
+
     const int64_t axis = HandleNegativeAxis(axis_, input_shape.NumDimensions());
 
     int N = static_cast<int>(input_shape.SizeToDimension(axis));

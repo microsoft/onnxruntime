@@ -16,7 +16,6 @@ namespace Microsoft.ML.OnnxRuntime
     [StructLayout(LayoutKind.Sequential)]
     public struct OrtApi
     {
-        public OrtApiBase base_;
         public IntPtr CreateStatus;
         public IntPtr GetErrorCode;
         public IntPtr GetErrorMessage;

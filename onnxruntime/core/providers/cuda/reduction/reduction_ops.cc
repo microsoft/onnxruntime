@@ -61,8 +61,9 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   typedef typename ToCudaType<T>::MappedType CudaT;
   const Tensor* X = ctx->Input<Tensor>(0);
   ORT_ENFORCE(nullptr != X);
-  const TensorShape input_shape{X->Shape()};
+  const TensorShape& input_shape{X->Shape()};
   const auto rank = input_shape.NumDimensions();
+  int64_t input_count = input_shape.Size();
 
   if (rank > 8) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "cuDNN only supports up to 8-D tensors in reduction");
@@ -72,15 +73,29 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   std::vector<int64_t> output_dims;
   std::vector<bool> reduced(rank, false);
   std::vector<int64_t> squeezed_output_dims;
+  output_dims.reserve(input_dims.size());
+
   if (axes_.size() > 0) {
     output_dims = input_dims;
     for (auto reduced_axis : axes_) {
       const int64_t axis = HandleNegativeAxis(reduced_axis, rank);
+      ORT_ENFORCE(input_dims[axis] != 0,
+                  "Can't reduce on dim with value of 0 if 'keepdims' is false. "
+                  "Invalid output shape would be produced. input_shape:",
+                  input_shape);
+
       output_dims[axis] = 1;
       reduced[axis] = true;
     }
   } else {
-    output_dims = std::vector<int64_t>(rank, 1);
+    for (auto dim : input_dims) {
+      ORT_ENFORCE(keepdims_ || dim != 0,
+                  "Can't reduce on dim with value of 0 if 'keepdims' is false. "
+                  "Invalid output shape would be produced. input_shape:",
+                  input_shape);
+
+      output_dims.push_back(dim == 0 ? 0 : 1);
+    }
   }
 
   if (keepdims_) {
@@ -94,7 +109,12 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
 
   Tensor* Y = ctx->Output(0, TensorShape(squeezed_output_dims));
 
-  int64_t input_count = input_shape.Size();
+  // special case when there is a dim value of 0 in the shape.
+  if (input_count == 0) {
+    assert(Y->Shape().Size() == 0);
+    return Status::OK();
+  }
+
   IAllocatorUniquePtr<float> temp_X;
   cudnnDataType_t cudnn_type_X = CudnnTensor::GetDataType<CudaT>();
   if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) {
@@ -133,7 +153,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   auto output_count = Y->Shape().Size();
 
   if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_NO_INDICES) {
-    IAllocatorUniquePtr<T> input_data_buffer(nullptr, [](T*){});
+    IAllocatorUniquePtr<T> input_data_buffer(nullptr, [](T*) {});
     CudaT* input_data = nullptr;
     if (calculate_sqt_) {
       input_data_buffer = GetScratchBuffer<T>(input_count);

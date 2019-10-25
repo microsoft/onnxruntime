@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <windowsx.h>
 #include <onnxruntime_cxx_api.h>
+#include <array>
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
@@ -162,10 +163,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
       auto greatest = mnist_.results_[mnist_.result_];
       auto range = greatest - least;
 
-      auto graphs_zero = graphs_left - least * graph_width / range;
+      int graphs_zero = static_cast<int>(graphs_left - least * graph_width / range);
 
       // Hilight the winner
-      RECT rc{graphs_left, mnist_.result_ * 16, graphs_left + graph_width + 128, (mnist_.result_ + 1) * 16};
+      RECT rc{graphs_left, static_cast<LONG>(mnist_.result_) * 16, graphs_left + graph_width + 128, static_cast<LONG>(mnist_.result_ + 1) * 16};
       FillRect(hdc, &rc, brush_winner_);
 
       // For every entry, draw the odds and the graph for it
@@ -178,7 +179,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         auto length = wsprintf(value, L"%2d: %d.%02d", i, int(result), abs(int(result * 100) % 100));
         TextOut(hdc, graphs_left + graph_width + 5, y, value, length);
 
-        Rectangle(hdc, graphs_zero, y + 1, graphs_zero + result * graph_width / range, y + 14);
+        Rectangle(hdc, graphs_zero, y + 1, static_cast<int>(graphs_zero + result * graph_width / range), y + 14);
       }
 
       // Draw the zero line
