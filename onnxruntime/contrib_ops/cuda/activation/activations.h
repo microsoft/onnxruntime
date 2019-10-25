@@ -66,6 +66,17 @@ class ScaledTanh final : public UnaryElementwise {
   float beta_;
 };
 
+template <typename T>
+class Gelu final : public UnaryElementwise {
+ public:
+  Gelu(const OpKernelInfo& info) : UnaryElementwise(info) {}
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  MAKE_FUNC_CTX_NULL()
+};
+
 }  // namespace cuda
-}  //namespace contrib
+}  // namespace contrib
 }  // namespace onnxruntime

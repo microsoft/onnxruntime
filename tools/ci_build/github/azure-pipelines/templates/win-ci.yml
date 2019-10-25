@@ -14,11 +14,14 @@ parameters:
   EnvSetupScript: 'setup_env.bat'
   CudaVersion: ''
   AgentPool: 'Win-CPU'
+  AgentDemands: []
 
 jobs:
 - job: ${{ parameters.JobName }}
   timeoutInMinutes: 120
-  pool: ${{ parameters.AgentPool }}
+  pool:
+    name: ${{ parameters.AgentPool }}
+    demands: ${{ parameters.AgentDemands }}
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     BuildCommand: ${{ parameters.BuildCommand }}
@@ -151,7 +154,7 @@ jobs:
         displayName: 'Setup VS2017 env vars'
         inputs:
           filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
-          arguments: 'x64 -vcvars_ver=14.11'
+          arguments: 'x64'
           modifyEnvironment: true
 
       # Esrp signing

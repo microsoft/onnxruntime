@@ -33,7 +33,8 @@ ThreadPool::ThreadPool(const std::string&, int num_threads) : impl_(num_threads)
 void ThreadPool::Schedule(std::function<void()> fn) { impl_.Schedule(fn); }
 
 void ThreadPool::ParallelFor(int32_t total, std::function<void(int32_t)> fn) {
-  if (total <= 0) return;
+  if (total <= 0)
+    return;
 
   if (total == 1) {
     fn(0);

@@ -36,11 +36,10 @@ tvm_codegen::Scheduler* SCHEDULE_DISPATCHER_CLASS(NupharX86Tensorize)::
   if (nullptr == node)
     return nullptr;
 
-  // special checking to bypass tensorization
+  // Special checking to bypass tensorization
   // when fall back to extern function call
-  if (tensor->op->InputTensors().size() > 0) {
-    auto& imatmul = tensor->op->InputTensors()[0];
-    auto extern_op = imatmul->op.as<tvm::ExternOpNode>();
+  if (tensor->op->InputTensors().size() == 2) {
+    auto extern_op = tensor->op.as<tvm::ExternOpNode>();
     // Extern function call
     if (nullptr != extern_op)
       return nullptr;

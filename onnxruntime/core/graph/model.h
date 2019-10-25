@@ -9,7 +9,7 @@
 #include <string>
 #include "core/graph/graph_viewer.h"
 
-#include "gsl/pointers"
+#include "gsl/gsl"
 
 namespace onnxruntime {
 typedef std::unordered_map<std::string, std::string> ModelMetaData;

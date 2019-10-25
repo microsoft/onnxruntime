@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <core/common/make_unique.h>
 #include "core/session/onnxruntime_cxx_api.h"
 #include "providers.h"
 #include <memory>
@@ -12,8 +13,6 @@
 #include "test_allocator.h"
 #include "test_fixture.h"
 #include "onnx_protobuf.h"
-
-extern const OrtApi* g_ort;
 
 struct Input {
   const char* name;
@@ -65,21 +64,21 @@ void TestInference(Ort::Env& env, T model_uri,
 
   if (provider_type == 1) {
 #ifdef USE_CUDA
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
     std::cout << "Running simple inference with cuda provider" << std::endl;
 #else
     return;
 #endif
   } else if (provider_type == 2) {
 #ifdef USE_MKLDNN
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(session_options, 1));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Mkldnn(session_options, 1));
     std::cout << "Running simple inference with mkldnn provider" << std::endl;
 #else
     return;
 #endif
   } else if (provider_type == 3) {
 #ifdef USE_NUPHAR
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, /*allow_unaligned_buffers*/ 1, ""));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, /*allow_unaligned_buffers*/ 1, ""));
     std::cout << "Running simple inference with nuphar provider" << std::endl;
 #else
     return;
@@ -92,7 +91,7 @@ void TestInference(Ort::Env& env, T model_uri,
   }
 
   Ort::Session session(env, model_uri, session_options);
-  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   // Now run
   //without preallocated output tensor
   RunSession(default_allocator.get(),
@@ -119,6 +118,8 @@ void TestInference(Ort::Env& env, T model_uri,
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/overridable_initializer.onnx");
+static constexpr PATH_TYPE NAMED_AND_ANON_DIM_PARAM_URI = TSTR("testdata/capi_symbolic_dims.onnx");
+
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 static constexpr PATH_TYPE PYOP_FLOAT_MODEL_URI = TSTR("testdata/pyop_1.onnx");
 #endif
@@ -142,6 +143,34 @@ TEST_P(CApiTestWithProvider, simple) {
   std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 
   TestInference<PATH_TYPE>(env_, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(), nullptr);
+}
+
+TEST_F(CApiTest, dim_param) {
+  Ort::SessionOptions session_options;
+  Ort::Session session(env_, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
+
+  auto in0 = session.GetInputTypeInfo(0);
+  auto in0_ttsi = in0.GetTensorTypeAndShapeInfo();
+
+  auto num_input_dims = in0_ttsi.GetDimensionsCount();
+  ASSERT_GE(num_input_dims, 1);
+  // reading 1st dimension only so don't need to malloc int64_t* or const char** values for the Get*Dimensions calls
+  int64_t dim_value = 0;
+  const char* dim_param = nullptr;
+  in0_ttsi.GetDimensions(&dim_value, 1);
+  in0_ttsi.GetSymbolicDimensions(&dim_param, 1);
+  ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
+  ASSERT_EQ(strcmp(dim_param, "n"), 0) << "Expected 'n'. Got: " << dim_param;
+
+  auto out0 = session.GetOutputTypeInfo(0);
+  auto out0_ttsi = out0.GetTensorTypeAndShapeInfo();
+  auto num_output_dims = out0_ttsi.GetDimensionsCount();
+  ASSERT_EQ(num_output_dims, 1);
+
+  out0_ttsi.GetDimensions(&dim_value, 1);
+  out0_ttsi.GetSymbolicDimensions(&dim_param, 1);
+  ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
+  ASSERT_EQ(strcmp(dim_param, ""), 0);
 }
 
 INSTANTIATE_TEST_CASE_P(CApiTestWithProviders,
@@ -222,7 +251,7 @@ TEST_F(CApiTest, custom_op_handler) {
 }
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS) && !defined(_WIN32)  // on windows, PYTHONHOME must be set explicitly
-TEST_F(CApiTest, test_pyop) {
+TEST_F(CApiTest, DISABLED_test_pyop) {
   std::cout << "Test model with pyop" << std::endl;
   std::ofstream module("mymodule.py");
   module << "class MyKernel:" << std::endl;
@@ -257,11 +286,11 @@ TEST_F(CApiTest, create_session_without_session_option) {
 TEST_F(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};
   int64_t expected_len = 2;
-  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
 
   Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
-  ORT_THROW_ON_ERROR(g_ort->FillStringTensor(tensor, s, expected_len));
+  Ort::ThrowOnError(Ort::GetApi().FillStringTensor(tensor, s, expected_len));
   auto shape_info = tensor.GetTensorTypeAndShapeInfo();
 
   int64_t len = shape_info.GetElementCount();
@@ -295,7 +324,7 @@ TEST_F(CApiTest, create_tensor_with_data) {
 
 TEST_F(CApiTest, override_initializer) {
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
-  auto allocator = std::make_unique<MockedOrtAllocator>();
+  auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   // CreateTensor which is not owning this ptr
   bool Label_input[] = {true};
   std::vector<int64_t> dims = {1, 1};
@@ -306,7 +335,7 @@ TEST_F(CApiTest, override_initializer) {
   Ort::Value f2_input_tensor = Ort::Value::CreateTensor(allocator.get(), dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
   // No C++ Api to either create a string Tensor or to fill one with string, so we use C
   const char* const input_char_string[] = {f2_data.c_str()};
-  ORT_THROW_ON_ERROR(g_ort->FillStringTensor(static_cast<OrtValue*>(f2_input_tensor), input_char_string, 1U));
+  Ort::ThrowOnError(Ort::GetApi().FillStringTensor(static_cast<OrtValue*>(f2_input_tensor), input_char_string, 1U));
 
   Ort::SessionOptions session_options;
   Ort::Session session(env_, OVERRIDABLE_INITIALIZER_MODEL_URI, session_options);

@@ -106,49 +106,7 @@
           CopyToOutputDirectory="Always"
           Visible="false"
     />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\onnxruntime\core\providers\nuphar\scripts\create_shared.cmd"
-          Condition="Exists('$(OnnxRuntimeCsharpRoot)\..\onnxruntime\core\providers\nuphar\scripts\create_shared.cmd')"
-          PackagePath="\scripts"
-          Pack="true"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\onnxruntime\core\providers\nuphar\scripts\create_shared.sh"
-          Condition="Exists('$(OnnxRuntimeCsharpRoot)\..\onnxruntime\core\providers\nuphar\scripts\create_shared.sh')"
-          PackagePath="\scripts"
-          Pack="true"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\onnxruntime\core\providers\nuphar\scripts\model_editor.py"
-          Condition="Exists('$(OnnxRuntimeCsharpRoot)\..\onnxruntime\core\providers\nuphar\scripts\model_editor.py')"
-          PackagePath="\scripts"
-          Pack="true"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\onnxruntime\core\providers\nuphar\scripts\model_quantizer.py"
-          Condition="Exists('$(OnnxRuntimeCsharpRoot)\..\onnxruntime\core\providers\nuphar\scripts\model_quantizer.py')"
-          PackagePath="\scripts"
-          Pack="true"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\onnxruntime\core\providers\nuphar\scripts\node_factory.py"
-          Condition="Exists('$(OnnxRuntimeCsharpRoot)\..\onnxruntime\core\providers\nuphar\scripts\node_factory.py')"
-          PackagePath="\scripts"
-          Pack="true"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\onnxruntime\core\providers\nuphar\scripts\symbolic_shape_infer.py"
-          Condition="Exists('$(OnnxRuntimeCsharpRoot)\..\onnxruntime\core\providers\nuphar\scripts\symbolic_shape_infer.py')"
-          PackagePath="\scripts"
-          Pack="true"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE.txt;$(OnnxRuntimeCsharpRoot)\..\ThirdPartyNotices.txt"
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE.txt;$(OnnxRuntimeCsharpRoot)\..\ThirdPartyNotices.txt;$(OnnxRuntimeCsharpRoot)\..\docs\Privacy.md"
           PackagePath="\"
           Pack="true"
           Visible="false"
@@ -200,14 +158,17 @@
     </Exec>
 
     <PropertyGroup>
+      <CurrentDate>$([System.DateTime]::UtcNow.ToString(yyyyMMdd))</CurrentDate>
+      <CurrentTime>$([System.DateTime]::UtcNow.ToString(hhmm))</CurrentTime>
       <PackageVersion>@(MajorVersionNumber)</PackageVersion>
       <Version>$(PackageVersion)</Version>
-      <PackageVersion Condition="'$(IsReleaseBuild)'!='true'">$(PackageVersion)-dev-$(GitCommitHashShort)</PackageVersion>
+      <PackageVersion Condition="'$(IsReleaseBuild)'!='true'">$(PackageVersion)-dev-$(CurrentDate)-$(CurrentTime)-$(GitCommitHashShort)</PackageVersion>
     </PropertyGroup>
     <Message Importance="High" Text="PackageVersion=$(PackageVersion)" />
     <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeCsharpRoot)\..\%(Filename).txt')"/>
     <Copy SourceFiles="@(PropertiesFile)" DestinationFiles="@(PropertiesFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).props')"/>
     <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).targets')"/>
+
   </Target>
 
   <ItemGroup>

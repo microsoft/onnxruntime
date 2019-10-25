@@ -6,21 +6,27 @@
 #pragma warning(disable : 4244)
 #endif
 
+#include <cassert>
 #include <fstream>
 #include <iostream>
 #include <numeric>
 #include <stack>
 
-#include "gsl/pointers"
+#include "gsl/gsl"
+#include "core/common/logging/logging.h"
+#include "core/framework/tensor_shape.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/utils.h"
 #include "core/graph/function.h"
 #include "core/graph/function_impl.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/indexed_sub_graph.h"
-#include "core/graph/op.h"
-#include "core/common/logging/logging.h"
-#include "onnx/checker.h"
 #include "core/graph/schema_registry.h"
+#include "core/graph/op.h"
+
+#include "onnx/checker.h"
+
 using namespace ONNX_NAMESPACE;
 using namespace ONNX_NAMESPACE::Utils;
 using namespace ONNX_NAMESPACE::checker;
@@ -35,12 +41,42 @@ namespace onnxruntime {
     GraphProtoSyncNeeded(sync_needed);               \
   } while (0)
 
+static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
+  bool is_latest_opset = false;
+  auto onnx_opset = opset_versions.find(kOnnxDomain);
+
+  if (onnx_opset != opset_versions.cend()) {
+    static int latest_onnx_version =
+        ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
+
+    if (onnx_opset->second == latest_onnx_version) {
+      is_latest_opset = true;
+    }
+  }
+
+  return is_latest_opset;
+}
+
 static Status MergeShapeInfo(const std::string& output_name,
-                             const TypeProto_Tensor& source, TypeProto_Tensor& target) {
+                             const TypeProto_Tensor& source, TypeProto_Tensor& target,
+                             bool strict) {
   try {
     ONNX_NAMESPACE::mergeInShapeInfo(source, target);
   } catch (const ONNX_NAMESPACE::InferenceError& ex) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
+    // if this model was not created with the latest onnx version, allow the shape inferencing failure (strict == false).
+    // we do this to have strict testing of the latest inferencing to detect bugs, but lenient shape inferencing for
+    // older models in case later changes to the ONNX shape inferencing or ORT break them.
+    if (!strict) {
+      // mergeInShapeInfo does nothing unless source.shape() is not null, and there would be no conflict if
+      // target.shape() was empty. 'assert' just in case that ever changes.
+      assert(utils::HasShape(source) && utils::HasShape(target));
+      LOGS_DEFAULT(WARNING) << "Error merging shape info for output. '" << output_name
+                            << "' source:" << source.shape() << " target:" << target.shape()
+                            << ". Falling back to lenient merge.";
+      ONNX_NAMESPACE::UnionShapeInfo(source.shape(), target);
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
+    }
   }
 
   return Status::OK();
@@ -69,6 +105,16 @@ static void RemoveInvalidValues(ONNX_NAMESPACE::TypeProto& type) {
       }
     }
   }
+}
+
+static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
+  TypeProto t;
+  t.mutable_tensor_type()->set_elem_type(tensor.data_type());
+  auto shape = t.mutable_tensor_type()->mutable_shape();
+  for (auto dim : tensor.dims())
+    shape->add_dim()->set_dim_value(dim);
+
+  return t;
 }
 
 NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
@@ -143,7 +189,25 @@ void NodeArg::SetShape(const TensorShapeProto& shape) {
   }
 }
 
-common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type) {
+void NodeArg::ClearShape() {
+  const auto type_case = node_arg_info_.type().value_case();
+  switch (type_case) {
+    case TypeProto::kTensorType:
+      node_arg_info_.mutable_type()->mutable_tensor_type()->clear_shape();
+      break;
+    case TypeProto::kSparseTensorType:
+      node_arg_info_.mutable_type()->mutable_sparse_tensor_type()->clear_shape();
+      break;
+    case TypeProto::kSequenceType:
+    case TypeProto::kMapType:
+    case TypeProto::kOpaqueType:
+    case TypeProto::VALUE_NOT_SET:
+    default:
+      return;
+  }
+}
+
+common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict) {
   if (!utils::HasType(node_arg_info_)) {
     *node_arg_info_.mutable_type() = input_type;
     type_ = DataTypeUtils::ToType(node_arg_info_.type());
@@ -172,7 +236,7 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       if (utils::HasShape(input_tensor_type)) {
         auto& current_tensor_type = *current_type.mutable_tensor_type();
         if (utils::HasShape(current_tensor_type)) {
-          ORT_RETURN_IF_ERROR(MergeShapeInfo(Name(), input_tensor_type, current_tensor_type));
+          ORT_RETURN_IF_ERROR(MergeShapeInfo(Name(), input_tensor_type, current_tensor_type, strict));
         } else {
           current_tensor_type = input_tensor_type;
         }
@@ -210,11 +274,11 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
   return Status::OK();
 }
 
-common::Status NodeArg::UpdateTypeAndShape(const NodeArg& node_arg) {
+common::Status NodeArg::UpdateTypeAndShape(const NodeArg& node_arg, bool strict) {
   auto status = Status::OK();
 
   if (utils::HasType(node_arg.node_arg_info_))
-    status = UpdateTypeAndShape(node_arg.node_arg_info_.type());
+    status = UpdateTypeAndShape(node_arg.node_arg_info_.type(), strict);
 
   return status;
 }
@@ -279,8 +343,12 @@ void Node::NodeConstIterator::operator--() {
   --m_iter;
 }
 
-const Node& Node::NodeConstIterator::operator*() {
+const Node& Node::NodeConstIterator::operator*() const {
   return (*m_iter).GetNode();
+}
+
+const Node* Node::NodeConstIterator::operator->() const {
+  return &(operator*());
 }
 
 NodeIndex Node::Index() const noexcept {
@@ -332,21 +400,25 @@ void Node::SetExecutionProviderType(ProviderType execution_provider_type) {
   execution_provider_type_ = execution_provider_type;
 }
 
-void Node::ToProto(NodeProto& proto) const {
-  // Set name.
+void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
   proto.set_name(name_);
-  // Set op type.
   proto.set_op_type(op_type_);
-  // Set op domain;
-  proto.set_domain(domain_);
-  // Set doc string.
-  proto.set_doc_string(description_);
+
+  if (!domain_.empty())
+    proto.set_domain(domain_);
+
+  if (!description_.empty())
+    proto.set_doc_string(description_);
 
   // Set attributes.
   proto.clear_attribute();
   for (const auto& attribute : attributes_) {
     const gsl::not_null<AttributeProto*> attr{proto.add_attribute()};
-    *attr = attribute.second;
+    *attr = attribute.second;  // copy
+    if (update_subgraphs && attr->has_g()) {
+      attr->clear_g();
+      *attr->mutable_g() = attr_to_subgraph_map_.find(attribute.first)->second->ToGraphProto();
+    }
   }
 
   // Set inputs' definitions.
@@ -415,7 +487,7 @@ void Node::CreateSubgraph(const std::string& attr_name) {
   if (attr != attributes_.cend() && utils::HasGraph(attr->second)) {
     GraphProto& mutable_graph = *attr->second.mutable_g();
     std::unique_ptr<Graph> subgraph{new Graph(*graph_, *this, mutable_graph)};
-    attr_to_subgraph_map_.insert({std::string{attr_name}, gsl::not_null<Graph*>{subgraph.get()}});
+    attr_to_subgraph_map_.insert({std::string(attr_name), gsl::not_null<Graph*>{subgraph.get()}});
     subgraphs_.push_back(std::move(subgraph));
   }
 }
@@ -570,8 +642,9 @@ const Graph* Node::GetGraphAttribute(const std::string& attr_name) const {
 std::vector<gsl::not_null<const Graph*>> Node::GetSubgraphs() const {
   std::vector<gsl::not_null<const Graph*>> subgraphs;
   subgraphs.reserve(attr_to_subgraph_map_.size());
+  using value_type = std::unordered_map<std::string, gsl::not_null<Graph*>>::value_type;
   std::transform(attr_to_subgraph_map_.cbegin(), attr_to_subgraph_map_.cend(), std::back_inserter(subgraphs),
-                 [](const auto& entry) { return entry.second; });
+                 [](const value_type& entry) { return entry.second; });
 
   return subgraphs;
 }
@@ -631,14 +704,15 @@ Graph::Graph(GraphProto* graph_proto,
 Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
              const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
-    : graph_proto_{graph_proto},
+    : graph_proto_(graph_proto),
       schema_registry_(schema_registry),
       graph_resolve_needed_(true),
       domain_to_version_(domain_to_version),
       model_functions_(model_functions),
       ir_version_(ir_version),
-      parent_graph_{parent_graph},
-      parent_node_{parent_node} {
+      using_latest_onnx_opset_(UsingLatestOnnxOpset(domain_to_version)),
+      parent_graph_(parent_graph),
+      parent_node_(parent_node) {
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
   ArgNameToTypeMap name_to_type_map;
 
@@ -650,12 +724,11 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
     }
 
     // Copy constant nodes _value to name_to_initial_tensor_
-    const gsl::not_null<TensorProto*>
-        tensor{graph_proto_->add_initializer()};
+    const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     const AttributeProto& constant_attribute = node.attribute(0);
     // TODO: Add support for parsing 'sparse_value' attribute from a 'Constant' node
-    // Discussion surrounding handling the SparseTensorProto must be had. 
-    // An easy way is to implement a method that converts a SparseTensorproto into a TensorProto 
+    // Discussion surrounding handling the SparseTensorProto must be had.
+    // An easy way is to implement a method that converts a SparseTensorproto into a TensorProto
     // to use the same downstream flow, but that is going to impact peak memory usage and probably a smarter way is required.
     ORT_ENFORCE(constant_attribute.has_t(), "Only 'value' attribute is supported within a 'Constant' node in ORT");
     *tensor = constant_attribute.t();
@@ -671,31 +744,40 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
                      }),
       graph_mutable_nodes->end());
 
+  // Collect all node arg name, type, shape information in the graph.
+  // type/shape information will be assigned to each node arg when going
+  // thru all nodes later.
+
+  // process graph inputs first as we want the type/shape from them to be preferred if a graph input
+  // has a matching initializer
+  for (auto& graph_input : graph_proto_->input()) {
+    if (utils::HasName(graph_input) && utils::HasType(graph_input)) {
+      name_to_type_map[graph_input.name()] = graph_input.type();
+      GetOrCreateNodeArg(graph_input.name(), &graph_input.type());
+    }
+  }
+
   // Copy initial tensors to a map.
   for (auto& tensor : graph_proto_->initializer()) {
     name_to_initial_tensor_[tensor.name()] = &tensor;
 
-    // v4 does not require initializers to be inputs, so we need to ensure there is a NodeArg created for all
-    // initializers in that case
-    if (ir_version_ > 3) {
-      TypeProto t;
-      t.mutable_tensor_type()->set_elem_type(tensor.data_type());
-      auto shape = t.mutable_tensor_type()->mutable_shape();
-      for (auto dim : tensor.dims())
-        shape->add_dim()->set_dim_value(dim);
+    NodeArg* matching_graph_input = GetNodeArg(tensor.name());
+    TypeProto t{TypeProtoFromTensorProto(tensor)};
 
-      GetOrCreateNodeArg(tensor.name(), &t);
-    }
-  }
-
-  // Collect all node arg name, type, shape information in the graph.
-  // type/shape information will be assigned to each node arg when going
-  // thru all nodes later.
-  for (auto& graph_input : graph_proto_->input()) {
-    if (utils::HasName(graph_input) && utils::HasType(graph_input)) {
-      name_to_type_map[graph_input.name()] = graph_input.type();
-      // always create a NodeArg for graph input in case its from an initializer
-      GetOrCreateNodeArg(graph_input.name(), &graph_input.type());
+    if (ir_version_ < 4) {
+      // initializers can have matching graph inputs but are treated as constant,
+      // so we prefer the shape from the initializer
+      name_to_type_map[tensor.name()] = t;
+      if (matching_graph_input != nullptr) {
+        ORT_THROW_IF_ERROR(matching_graph_input->UpdateTypeAndShape(t));
+      }
+    } else {
+      // v4 and later allows a constant initializer with no matching graph input. create a NodeArg for these.
+      // otherwise we prefer the shape from the graph input so leave matching_graph_input as is.
+      if (matching_graph_input == nullptr) {
+        name_to_type_map[tensor.name()] = t;
+        ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
+      }
     }
   }
 
@@ -1222,12 +1304,12 @@ using SubgraphInferencingFunc =
 class GraphInferencerImpl : public ONNX_NAMESPACE::GraphInferencer {
  public:
   GraphInferencerImpl(const Node& node, Graph& graph, SubgraphInferencingFunc& inferencing_func)
-      : node_{node}, graph_{graph}, inferencing_func_{inferencing_func} {
+      : node_(node), graph_(graph), inferencing_func_(inferencing_func) {
   }
 
   // Perform inferencing on the graph contained in GraphInferencer.
   // Returns the graph output types post-inferencing.
-  // We ignore input_data currently. Re-consider if InferenceContextImpl::getInputData gets implemented
+  // We ignore input_data currently as the inferencing happens prior to receiving user input.
   std::vector<const TypeProto*> doInferencing(const std::vector<const TypeProto*>& input_types,
                                               const std::vector<const TensorProto*>& /*input_data*/) override {
     std::vector<const TypeProto*> output_types;
@@ -1255,10 +1337,10 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
  public:
   InferenceContextImpl(Node& node,
                        SubgraphInferencingFunc subgraph_inferencing_func,
-                       const InitializedTensorSet& initialized_tensor_set = {}) noexcept
+                       const Graph& graph) noexcept
       : node_(node),
         subgraph_inferencing_func_(subgraph_inferencing_func),
-        initialized_tensor_set_(initialized_tensor_set) {
+        graph_(graph) {
     node_output_types_.resize(node.OutputDefs().size());
   }
 
@@ -1285,15 +1367,13 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   }
 
   const TypeProto* getInputType(size_t index) const override {
+    const TypeProto* type = nullptr;
     auto p_node_arg = node_.InputDefs().at(index);
     if ((nullptr != p_node_arg) && p_node_arg->Exists()) {
-      return p_node_arg->TypeAsProto();
-      // auto p_type_proto = p_node_arg->TypeAsProto();
-      //if ((p_type_proto != nullptr) && p_type_proto->has_tensor_type()) {
-      //  return &p_type_proto->tensor_type();
-      //}
+      type = p_node_arg->TypeAsProto();
     }
-    return nullptr;
+
+    return type;
   }
 
   size_t getNumOutputs() const noexcept override {
@@ -1308,9 +1388,11 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     auto def = node_.InputDefs()[index];
     if (!def)
       return nullptr;
-    if (initialized_tensor_set_.count(def->Name()) == 0)
-      return nullptr;
-    return initialized_tensor_set_.at(def->Name());
+
+    // only return data if it's for a constant initializer. checks for outer scope initializers
+    // if this is a subgraph and the name isn't found locally.
+    const TensorProto* initializer = graph_utils::GetConstantInitializer(graph_, def->Name(), true);
+    return initializer;
   }
 
   GraphInferencer* getGraphAttributeInferencer(const std::string& attribute_name) override {
@@ -1319,7 +1401,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     auto* subgraph = node_.GetMutableGraphAttribute(attribute_name);
 
     if (subgraph) {
-      auto inferencer = std::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_);
+      auto inferencer = onnxruntime::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_);
       graph_inferencer = inferencer.get();
       graph_inferencers_.push_back(std::move(inferencer));
     } else {
@@ -1336,7 +1418,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   std::vector<TypeProto> node_output_types_;
   SubgraphInferencingFunc subgraph_inferencing_func_;
   std::vector<std::unique_ptr<GraphInferencerImpl>> graph_inferencers_;
-  const InitializedTensorSet& initialized_tensor_set_;
+  const Graph& graph_;
 };
 
 Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
@@ -1512,7 +1594,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
   // Once that completes, the outputs from the node containing the subgraph will be updated, and the final values
   // returned here.
   SubgraphInferencingFunc func(Graph::InferAndVerifySubgraphTypes);
-  InferenceContextImpl context(node, func, name_to_initial_tensor_);
+  InferenceContextImpl context(node, func, *this);
 
   try {
     context.RunInferencing();
@@ -1520,7 +1602,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
     return Status(ONNXRUNTIME, FAIL, ex.what());
   }
 
-  const auto& onnx_inferred_types{context.InferredOutputTypes()};
+  const auto& onnx_inferred_types(context.InferredOutputTypes());
 
   // Infer and verify node output arg type information.
   int i = -1;
@@ -1584,12 +1666,16 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
           // that have no values.
           TypeProto_Tensor merge_target;
           (*merge_target.mutable_shape()) = *output_def->Shape();
-          auto status = MergeShapeInfo(output_def->Name(), tensor_type, merge_target);
+          auto status = MergeShapeInfo(output_def->Name(), tensor_type, merge_target, using_latest_onnx_opset_);
           if (!status.IsOK()) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node_name, " ", status.ErrorMessage());
           }
 
-          output_def->SetShape(merge_target.shape());
+          // we may have cleared the shape if there was a mismatch so handle that
+          if (utils::HasShape(merge_target))
+            output_def->SetShape(merge_target.shape());
+          else
+            output_def->ClearShape();
         }
       }
     }
@@ -1610,9 +1696,6 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
       return status;
     }
   }
-
-  // Note: The ONNX spec requires every initializer to be included in the graph input,
-  // but onnxruntime relaxes this requirement for various reasons.
 
   // Infer/check type and shape for all initializers from their values
   for (auto& initializer_pair : name_to_initial_tensor_) {
@@ -1637,22 +1720,33 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
       for (auto dim : tensor_proto->dims()) {
         inferred_shape.add_dim()->set_dim_value(dim);
       }
+
       const TensorShapeProto* p_existing_shape = node_arg->Shape();
-      if (nullptr == p_existing_shape)
-        node_arg->SetShape(inferred_shape);
-      else {
-        if (p_existing_shape->dim_size() != tensor_proto->dims_size())
-          return Status(ONNXRUNTIME, FAIL,
-                        "Type Error: Shape of initializer " + name + " does not match its type.");
+      if (nullptr == p_existing_shape) {
+        // use the inferred shape if this is a constant initializer (cannot be overridden).
+        // if not it has a matching graph input, and we prefer the shape info (or lack of info) from the graph input
+        if (graph_utils::IsConstantInitializer(*this, name, false)) {
+          node_arg->SetShape(inferred_shape);
+        }
+      } else {
+        if (p_existing_shape->dim_size() != tensor_proto->dims_size()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Type Error: Shape of initializer ", name, " does not match. ",
+                                 *p_existing_shape, " != ", *tensor_proto);
+        }
+
         for (int i = 0; i < p_existing_shape->dim_size(); ++i) {
           auto& d = p_existing_shape->dim(i);
-          if (utils::HasDimValue(d) && (d.dim_value() != tensor_proto->dims(i)))
-            return Status(ONNXRUNTIME, FAIL,
-                          "Type Error: Shape of initializer " + initializer_pair.first + " does not match its type.");
+          if (utils::HasDimValue(d) && (d.dim_value() != tensor_proto->dims(i))) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "Type Error: Shape of initializer ", name, " does not match. ",
+                                   *p_existing_shape, " != ", *tensor_proto);
+          }
         }
       }
     }
   }
+
   return Status::OK();
 }
 
@@ -1690,7 +1784,7 @@ Status Graph::VerifyNodeAndOpMatch() {
     auto iter = model_functions_.find(node.OpType());
     if (iter != model_functions_.end()) {
       const ONNX_NAMESPACE::FunctionProto* model_function_proto = iter->second;
-      auto model_func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), model_function_proto);
+      auto model_func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), *model_function_proto);
       function_container_.emplace_back(std::move(model_func_ptr));
       node.SetFunctionBody(*function_container_.back());
     }
@@ -1711,7 +1805,7 @@ Status Graph::VerifyNodeAndOpMatch() {
 
       if (node.op_ && node.op_->HasFunction()) {
         auto onnx_function_proto = node.op_->GetFunction();
-        auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto);
+        auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), *onnx_function_proto);
         function_container_.emplace_back(std::move(func_ptr));
         node.SetFunctionBody(*function_container_.back());
       }
@@ -1943,13 +2037,12 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
   *(tensor_added) = tensor;
   name_to_initial_tensor_[tensor.name()] = tensor_added;
 
-  if (!GraphLoadedFromModelFile(graph_proto_)) {
-    // make sure there is a NodeArg for the initializer as SetGraphInputsOutputs will add it to the graph inputs
+  if (!GraphLoadedFromModelFile(graph_proto_) && GetNodeArg(tensor.name()) == nullptr) {
+    // make sure there is a NodeArg for the initializer as SetGraphInputsOutputs may add it to the graph inputs.
+    // the shape will be set to the correct value in TypeCheckInputsAndInitializers as we don't yet know whether there
+    // will be a matching graph input for this initializer (we prefer shape info from the graph input).
     TypeProto t;
     t.mutable_tensor_type()->set_elem_type(tensor.data_type());
-    auto shape = t.mutable_tensor_type()->mutable_shape();
-    for (auto dim : tensor.dims())
-      shape->add_dim()->set_dim_value(dim);
 
     ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
   }
@@ -1965,6 +2058,42 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
     SetGraphProtoSyncNeeded();
     SetGraphResolveNeeded();
   }
+}
+
+Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer) {
+  // name_to_initial_tensor_ maps from name to const TensorProto*, so we first
+  // look up the const pointer by name, then find and modify the mutable
+  // pointed-to TensorProto in graph_proto_.
+
+  const auto& initializer_name = new_initializer.name();
+  const auto name_to_initializer_it = name_to_initial_tensor_.find(initializer_name);
+  ORT_RETURN_IF_NOT(name_to_initializer_it != name_to_initial_tensor_.end(),
+                    "Failed to find existing initializer with name ", initializer_name, ".");
+
+  const auto& old_initializer = *(name_to_initializer_it->second);
+
+  auto dims_eq = [&old_initializer, &new_initializer]() {
+    if (old_initializer.dims_size() != new_initializer.dims_size()) return false;
+    for (int i = 0; i < old_initializer.dims_size(); ++i) {
+      if (old_initializer.dims(i) != new_initializer.dims(i)) return false;
+    }
+    return true;
+  };
+
+  ORT_RETURN_IF_NOT(dims_eq(), "Replacement tensor's dimensions do not match.");
+  ORT_RETURN_IF_NOT(old_initializer.data_type() == new_initializer.data_type(),
+                    "Replacement tensor's data type does not match.");
+
+  auto& mutable_initializers = *(graph_proto_->mutable_initializer());
+  auto old_mutable_initializer_ptr_it = std::find(
+      mutable_initializers.pointer_begin(), mutable_initializers.pointer_end(), &old_initializer);
+  ORT_ENFORCE(old_mutable_initializer_ptr_it != mutable_initializers.pointer_end(),
+              "graph_proto_ is not in sync with name_to_initial_tensor_");
+  auto& old_mutable_initializer = **old_mutable_initializer_ptr_it;
+
+  old_mutable_initializer = new_initializer;
+
+  return Status::OK();
 }
 
 bool Graph::GetInitializedTensor(const std::string& tensor_name, const TensorProto*& value) const {
@@ -2115,18 +2244,21 @@ Node& Graph::AddNode(const std::string& name,
 
 bool Graph::RemoveNode(NodeIndex p_index) {
   auto node = GetNode(p_index);
-  if (nullptr == node /*|| 0 != node->GetRelationships().output_edges.size()*/) {
-    // Node should be removed after all out edges are removed.
-    // TODO: add the check commented out back.
+  if (nullptr == node) {
     return false;
   }
 
+  // Node must be disconnected from any downstream nodes before removal
+  ORT_ENFORCE(node->GetOutputEdgesCount() == 0, "Can't remove node ", node->Name(), " as it still has output edges.");
+
   // Remove all input edges.
+  // Need to copy the edge info first so we can remove the real edges while iterating the copy of edge info.
   auto input_edges = node->GetRelationships().input_edges;
 
   for (auto& input_edge : input_edges) {
     RemoveEdge(input_edge.GetNode().Index(), p_index, input_edge.GetSrcArgIndex(), input_edge.GetDstArgIndex());
   }
+
   return ReleaseNode(p_index);
 }
 
@@ -2236,7 +2368,9 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
   for (auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     const gsl::not_null<NodeProto*> node_proto{graph_proto.add_node()};
     const gsl::not_null<const Node*> p_node{GetNode(node_idx)};
-    p_node->ToProto(*node_proto);
+    // we need to update any GraphProto attributes for subgraphs so that any changes made by things
+    // such as the optimizers are captured. otherwise we can end up saving an invalid graph.
+    p_node->ToProto(*node_proto, /* update_subgraphs */ true);
   }
 }
 

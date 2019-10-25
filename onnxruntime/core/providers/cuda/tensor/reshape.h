@@ -6,7 +6,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cuda/cuda_common.h"
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 #include "core/providers/cpu/tensor/reshape_helper.h"
 
 namespace onnxruntime {

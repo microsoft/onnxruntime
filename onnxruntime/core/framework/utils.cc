@@ -16,7 +16,54 @@
 #include "core/framework/parallel_executor.h"
 #include "core/framework/session_state.h"
 #include "core/framework/sequential_executor.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"
+
+#include "core/graph/onnx_protobuf.h"
+
+namespace ONNX_NAMESPACE {
+std::ostream& operator<<(std::ostream& out, const TensorShapeProto& shape_proto) {
+  std::string result;
+  result.reserve(128);
+
+  result.append("{");
+  bool first = true;
+  for (auto& dim : shape_proto.dim()) {
+    if (!first) {
+      result.append(",");
+    }
+
+    if (onnxruntime::utils::HasDimValue(dim))
+      result.append(std::to_string(dim.dim_value()));
+    else if (onnxruntime::utils::HasDimParam(dim))
+      result.append(dim.dim_param());
+
+    first = false;
+  }
+  result.append("}");
+
+  return (out << result);
+}
+
+std::ostream& operator<<(std::ostream& out, const TensorProto& tensor_proto) {
+  std::string result;
+  result.reserve(128);
+
+  result.append("{");
+  bool first = true;
+  for (auto& dim : tensor_proto.dims()) {
+    if (!first) {
+      result.append(",");
+    }
+
+    result.append(std::to_string(dim));
+    first = false;
+  }
+  result.append("}");
+
+  return (out << result);
+}
+}  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
 namespace utils {
@@ -65,9 +112,9 @@ common::Status AllocateHelper(const IExecutionProvider& execution_provider, cons
     return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator");
   }
 
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(fetched_tensor.DataType(),
-                                                              fetched_tensor.Shape(),
-                                                              allocator);
+  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(fetched_tensor.DataType(),
+                                                                      fetched_tensor.Shape(),
+                                                                      allocator);
   output_mlvalue.Init(p_tensor.release(),
                       DataTypeImpl::GetType<Tensor>(),
                       DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
@@ -386,13 +433,19 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const FeedsFetchesManager& feeds_fetches_manager,
                                        const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                        const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                       bool sequential_execution, const bool& terminate_flag,
+                                       ExecutionMode execution_mode, const bool& terminate_flag,
                                        const logging::Logger& logger) {
   std::unique_ptr<IExecutor> p_exec;
-  if (sequential_execution) {
+  if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
     p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag));
-  } else {
-    p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
+  } else if (execution_mode == ExecutionMode::ORT_PARALLEL) {
+    auto* p_inter_op_thread_pool = session_state.GetInterOpThreadPool();
+    if (!p_inter_op_thread_pool) {
+      LOGS(logger, WARNING) << "Only one thread was configured for parallel execution. Hence will use sequential execution.";
+      p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag));
+    } else {
+      p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
+    }
   }
 
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
@@ -453,7 +506,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
 common::Status ExecuteGraph(const SessionState& session_state,
                             FeedsFetchesManager& feeds_fetches_manager,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                            bool sequential_execution, const bool& terminate_flag,
+                            ExecutionMode execution_mode, const bool& terminate_flag,
                             const logging::Logger& logger) {
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
 
@@ -461,7 +514,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
   FinalizeFeedFetchCopyInfo(session_state, feeds_fetches_manager, feeds, fetches);
 
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
-                                 sequential_execution, terminate_flag, logger);
+                                 execution_mode, terminate_flag, logger);
 
   return status;
 }
@@ -469,9 +522,9 @@ common::Status ExecuteGraph(const SessionState& session_state,
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               bool sequential_execution, const bool& terminate_flag, const logging::Logger& logger) {
+                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger) {
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
-                                 sequential_execution, terminate_flag, logger);
+                                 execution_mode, terminate_flag, logger);
   return status;
 }
 
@@ -504,15 +557,15 @@ static void DumpTensor(const Tensor& tensor, const TensorShape& shape) {
   auto data = tensor.DataAsSpan<T>();
 
   auto print_val = [](const T& value) {
-    if (std::is_floating_point_v<T>)
+    if (std::is_floating_point<T>::value)
       std::cout << std::setprecision(8) << value;
     else
       std::cout << value;
   };
 
-  for (int row = 0; row < num_rows; ++row) {
+  for (size_t row = 0; row < num_rows; ++row) {
     print_val(data[row * row_size]);
-    for (int i = 1; i < row_size; ++i) {
+    for (size_t i = 1; i < row_size; ++i) {
       std::cout << ", ";
       print_val(data[row * row_size + i]);
     }
@@ -569,22 +622,24 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
       if (type) {
         if (type->IsTensorType()) {
           const auto& tensor = *context.Output<Tensor>(i);
-          const auto data_type = tensor.DataType();
           const auto& shape = tensor.Shape();
 
           std::cout << " Shape: " << shape << "\n";
 
-          // check tensor is on CPU before dumping it
-          auto& tensor_location = tensor.Location();
-          auto* provider = execution_providers.Get(tensor_location);
-          if (!provider) {
-            provider = cpu_execution_provider;
-          }
+          if (DEBUG_NODE_INPUTS_OUTPUTS > 1) {
+            // check tensor is on CPU before dumping it
+            auto& tensor_location = tensor.Location();
+            auto* provider = execution_providers.Get(tensor_location);
+            if (!provider) {
+              provider = cpu_execution_provider;
+            }
 
-          if (provider == cpu_execution_provider || tensor_location.mem_type == OrtMemTypeCPUOutput) {
-            DispatchOnTensorType(data_type, DumpTensor, tensor, shape);
-          } else {
-            std::cout << " is not on CPU. Provider=" << provider->Type() << "\n";
+            if (provider == cpu_execution_provider || tensor_location.mem_type == OrtMemTypeCPUOutput) {
+              const auto data_type = tensor.DataType();
+              DispatchOnTensorType(data_type, DumpTensor, tensor, shape);
+            } else {
+              std::cout << " is not on CPU. Provider=" << provider->Type() << "\n";
+            }
           }
         } else {
           std::cout << " is non-tensor type.\n";

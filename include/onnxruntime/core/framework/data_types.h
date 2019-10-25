@@ -3,22 +3,26 @@
 
 #pragma once
 
+#include <cstdint>
+#include <cstring>
 #include <string>
-#include <stdint.h>
 #include <type_traits>
 #include <map>
 #include <unordered_map>
 
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
+#include "core/framework/endian.h"
 
 struct OrtValue;
 
 namespace ONNX_NAMESPACE {
 class TypeProto;
 }  // namespace ONNX_NAMESPACE
+
 namespace onnxruntime {
 /// Predefined registered types
+
 //maps
 using MapStringToString = std::map<std::string, std::string>;
 using MapStringToInt64 = std::map<std::string, int64_t>;
@@ -30,10 +34,6 @@ using MapInt64ToFloat = std::map<int64_t, float>;
 using MapInt64ToDouble = std::map<int64_t, double>;
 
 //vectors/sequences
-using VectorString = std::vector<std::string>;
-using VectorInt64 = std::vector<int64_t>;
-using VectorFloat = std::vector<float>;
-using VectorDouble = std::vector<double>;
 using VectorMapStringToFloat = std::vector<MapStringToFloat>;
 using VectorMapInt64ToFloat = std::vector<MapInt64ToFloat>;
 
@@ -58,19 +58,9 @@ inline bool operator!=(const MLFloat16& left, const MLFloat16& right) {
   return left.val != right.val;
 }
 
-struct ort_endian {
-  union q {
-    uint16_t v_;
-    uint8_t b_[2];
-    constexpr explicit q(uint16_t v) noexcept : v_(v) {}
-  };
-  static constexpr bool is_little() {
-    return q(0x200).b_[0] == 0x0;
-  }
-  static constexpr bool is_big() {
-    return q(0x200).b_[0] == 0x2;
-  }
-};
+inline bool operator<(const MLFloat16& left, const MLFloat16& right) {
+  return left.val < right.val;
+}
 
 //BFloat16
 struct BFloat16 {
@@ -78,22 +68,23 @@ struct BFloat16 {
   explicit BFloat16() = default;
   explicit BFloat16(uint16_t v) : val(v) {}
   explicit BFloat16(float v) {
-    uint16_t* dst = reinterpret_cast<uint16_t*>(&v);
-    if (ort_endian::is_little()) {
-      val = dst[1];
+    if (endian::native == endian::little) {
+      std::memcpy(&val, reinterpret_cast<char*>(&v) + sizeof(uint16_t), sizeof(uint16_t));
     } else {
-      val = dst[0];
+      std::memcpy(&val, &v, sizeof(uint16_t));
     }
   }
+
   float ToFloat() const {
     float result;
-    uint16_t* dst = reinterpret_cast<uint16_t*>(&result);
-    if (ort_endian::is_little()) {
-      dst[1] = val;
-      dst[0] = 0;
+    char* const first = reinterpret_cast<char*>(&result);
+    char* const second = first + sizeof(uint16_t);
+    if (endian::native == endian::little) {
+      std::memset(first, 0, sizeof(uint16_t));
+      std::memcpy(second, &val, sizeof(uint16_t));
     } else {
-      dst[0] = val;
-      dst[1] = 0;
+      std::memcpy(first, &val, sizeof(uint16_t));
+      std::memset(second, 0, sizeof(uint16_t));
     }
     return result;
   }
@@ -121,6 +112,10 @@ inline bool operator==(const BFloat16& left, const BFloat16& right) {
 
 inline bool operator!=(const BFloat16& left, const BFloat16& right) {
   return left.val != right.val;
+}
+
+inline bool operator<(const BFloat16& left, const BFloat16& right) {
+  return left.val < right.val;
 }
 
 // DataTypeImpl pointer as unique DataTypeImpl identifier.
@@ -188,6 +183,9 @@ class DataTypeImpl {
   template <typename elemT>
   static MLDataType GetTensorType();
 
+  template <typename elemT>
+  static MLDataType GetSequenceTensorType();
+
   // Return the MLDataType for a concrete sparse tensor type.
   template <typename elemT>
   static MLDataType GetSparseTensorType();
@@ -203,6 +201,7 @@ class DataTypeImpl {
 
   static const TensorTypeBase* TensorTypeFromONNXEnum(int type);
   static const SparseTensorTypeBase* SparseTensorTypeFromONNXEnum(int type);
+  static const NonTensorTypeBase* SequenceTensorTypeFromONNXEnum(int type);
 
   static const char* ToString(MLDataType type);
   // Registers ONNX_NAMESPACE::DataType (internalized string) with
@@ -212,6 +211,7 @@ class DataTypeImpl {
   static MLDataType GetDataType(const std::string&);
 
   static const std::vector<MLDataType>& AllTensorTypes();
+  static const std::vector<MLDataType>& AllSequenceTensorTypes();
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes();
   static const std::vector<MLDataType>& AllNumericTensorTypes();
   static const std::vector<MLDataType>& AllIEEEFloatTensorTypes();
@@ -650,12 +650,12 @@ class OpaqueType : public NonTensorType<T> {
     return this->IsOpaqueCompatible(type_proto);
   }
 
-  void FromDataContainer (const void* data, size_t data_size, OrtValue& output) const override {
+  void FromDataContainer(const void* data, size_t data_size, OrtValue& output) const override {
     NonTensorTypeConverter<T>::FromContainer(this, data, data_size, output);
   }
 
-  void ToDataContainer (const OrtValue& input, size_t data_size, void* data) const override {
-    NonTensorTypeConverter<T>::ToContainer(input, data_size, data); 
+  void ToDataContainer(const OrtValue& input, size_t data_size, void* data) const override {
+    NonTensorTypeConverter<T>::ToContainer(input, data_size, data);
   }
 
  private:
@@ -741,6 +741,17 @@ class NonOnnxType : public DataTypeImpl {
   template <>                                \
   MLDataType DataTypeImpl::GetType<TYPE>() { \
     return SequenceType<TYPE>::Type();       \
+  }
+
+#define ORT_REGISTER_SEQ_TENSOR_TYPE(ELEM_TYPE)                 \
+  template <>                                                   \
+  MLDataType SequenceTensorType<ELEM_TYPE>::Type() {            \
+    static SequenceTensorType<ELEM_TYPE> sequence_tensor_type;  \
+    return &sequence_tensor_type;                               \
+  }                                                             \
+  template <>                                                   \
+  MLDataType DataTypeImpl::GetSequenceTensorType<ELEM_TYPE>() { \
+    return SequenceTensorType<ELEM_TYPE>::Type();               \
   }
 
 #define ORT_REGISTER_NON_ONNX_TYPE(TYPE)     \

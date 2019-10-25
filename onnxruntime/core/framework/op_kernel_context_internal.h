@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <functional>
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -21,9 +22,9 @@ class OpKernelContextInternal : public OpKernelContext {
                                    const OpKernel& kernel,
                                    const logging::Logger& logger,
                                    const bool& terminate_flag)
-      : OpKernelContext(&frame, &kernel, logger),
-        session_state_{session_state},
-        terminate_flag_{terminate_flag} {
+      : OpKernelContext(&frame, &kernel, session_state.GetThreadPool(), logger),
+        session_state_(session_state),
+        terminate_flag_(terminate_flag) {
     const auto& implicit_inputs = kernel.Node().ImplicitInputDefs();
     int num_implicit_inputs = static_cast<int>(implicit_inputs.size());
     implicit_input_values_.reserve(num_implicit_inputs);
@@ -58,9 +59,6 @@ class OpKernelContextInternal : public OpKernelContext {
   }
 
   const bool& GetTerminateFlag() const noexcept { return terminate_flag_; }
-
-  _Ret_maybenull_ const onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return session_state_.GetThreadPool(); }
-  _Ret_maybenull_ onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() { return session_state_.GetThreadPool(); }
 
  private:
   const SessionState& session_state_;

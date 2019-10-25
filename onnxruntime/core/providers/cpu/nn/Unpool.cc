@@ -14,13 +14,20 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     MaxUnpool,
-    9,
+    9, 10,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),
-        // .TypeConstraint("Y", DataTypeImpl::GetTensorType<float>()),
+    MaxUnpool);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    MaxUnpool,
+    11,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),
     MaxUnpool);
 
 Status MaxUnpool::Compute(OpKernelContext* context) const {
@@ -46,151 +53,49 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(I_shape == X_shape, "Index tensor shape should be same as that of the input data tensor to unpool.");
 
   // Calculate output tensor shape from attributes
-  std::vector<int64_t> inferredOutputShape(X_shape.NumDimensions());
+  std::vector<int64_t> inferred_output_dims(X_shape.NumDimensions());
 
   // Copy batch and channel dims
-  inferredOutputShape[0] = X_shape[0];
-  inferredOutputShape[1] = X_shape[1];
+  inferred_output_dims[0] = X_shape[0];
+  inferred_output_dims[1] = X_shape[1];
 
-  // For feature dims calculate reversing the formula used for Maxpool
+  // For feature dims calculate reversing the formula used for MaxPool
   for (size_t dim = 0; dim < kernel_shape_.size(); ++dim) {
-    inferredOutputShape[dim + 2] = (X_shape[dim + 2] - 1) * strides_[dim] - (pads_[dim + 2] + pads_[kernel_shape_.size() + dim + 4]) + kernel_shape_[dim];
+    inferred_output_dims[dim + 2] =
+        (X_shape[dim + 2] - 1) * strides_[dim] - (pads_[dim] + pads_[kernel_shape_.size() + dim]) + kernel_shape_[dim];
   }
 
-  // If outputshape is provided use that to infer additional padding.
-  std::vector<int64_t> inferredPads;
-  std::vector<int64_t> givenOutputShape;
-  bool padsInferred = false;
+  TensorShape shape(inferred_output_dims);
 
   if (num_inputs_ == 3) {
     auto tensor_shape = context->Input<Tensor>(2);
-    if (tensor_shape == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
-    ORT_RETURN_IF_NOT(tensor_shape->Shape().GetDims().size() == 1, "Shape must be 1 dimensional as it's tensor data is a shape");
+    if (tensor_shape == nullptr)
+      return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+    ORT_RETURN_IF_NOT(tensor_shape->Shape().GetDims().size() == 1,
+                      "Shape must be 1 dimensional as it's tensor data of a shape");
 
     // Turn the shape tensor data into an actual shape
     const auto* p_shape = tensor_shape->template Data<int64_t>();
-    std::vector<int64_t> shape{p_shape, p_shape + tensor_shape->Shape().Size()};
-    givenOutputShape = shape;
+    std::vector<int64_t> given_output_dims(p_shape, p_shape + tensor_shape->Shape().Size());
+    TensorShape given_shape(given_output_dims);
 
-    inferredPads.resize(inferredOutputShape.size() * 2, 0);
+    ORT_RETURN_IF_NOT(given_shape.Size() >= shape.Size(),
+                      "output_shape is smaller than minimum required. output_shape:", given_shape,
+                      " inferred output shape:", shape);
 
-    // calculate if output shape has any padding over the inferred shape for feature dims.
-    for (size_t dim = 2; dim < shape.size(); dim++) {
-      ORT_RETURN_IF_NOT(inferredOutputShape[dim] <= shape[dim], "Incorrect output shape");
-
-      int64_t inferredPad = shape[dim] - inferredOutputShape[dim];
-      ORT_RETURN_IF_NOT(inferredPad <= kernel_shape_[dim - 2], "Incorrect output shape");
-
-      if (inferredPad > 0) {
-        padsInferred = true;
-        if (inferredPad == kernel_shape_[dim - 2]) {
-          inferredPads[dim] = 1;
-          inferredPads[dim + inferredOutputShape.size()] = inferredPad - 1;
-        } else {
-          inferredPads[dim + inferredOutputShape.size()] = inferredPad;
-        }
-      }
-    }
+    shape = std::move(given_shape);
   }
 
   // unpool
-  int64_t totalPooledElem = 1;
-  int64_t totalOutputElem = 1;
+  int64_t total_elements = X_shape.Size();
 
-  for (size_t dim = 0; dim < X_shape.NumDimensions(); dim++) {
-    totalPooledElem *= X_shape[dim];
-    totalOutputElem *= inferredOutputShape[dim];
-  }
+  Tensor* Y = context->Output(0, shape);
+  auto* Y_data = Y->template MutableData<float>();
+  auto out = gsl::make_span(Y_data, Y->Shape().Size());
+  std::fill_n(out.data(), out.size(), 0.f);
 
-  // if there are no pads inferred from outputshape simply create the new unpooled tensor
-  if (!padsInferred) {
-    TensorShape shape(inferredOutputShape);
-
-    Tensor* Y = context->Output(0, shape);
-    auto Y_data = Y->template MutableData<float>();
-    auto out = gsl::make_span(Y_data, Y->Shape().Size());
-    std::fill_n(out.data(), out.size(), 0.f);
-
-    for (auto curElem = 0; curElem < totalPooledElem; ++curElem) {
-      out[I_data[curElem]] = X_data[curElem];
-    }
-  } else {
-    // If the output shape has pads over the inferred dims , first
-    // create the tensor with the inferred dims and add the padding.
-
-    // Generate tensor with inferred dims.
-    TensorShape shape(inferredOutputShape);
-
-    AllocatorPtr alloc;
-    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-    auto element_type = DataTypeImpl::GetType<float>();
-
-    std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
-                                                                shape,
-                                                                alloc);
-
-    auto* p = p_tensor->template MutableData<float>();
-
-    auto out = gsl::make_span(p, p_tensor->Shape().Size());
-    std::fill_n(out.data(), out.size(), 0.f);
-
-    for (auto curElem = 0; curElem < totalPooledElem; ++curElem) {
-      out[I_data[curElem]] = X_data[curElem];
-    }
-
-    std::vector<int64_t> output_dims(inferredOutputShape);
-    size_t dimension_count = output_dims.size();
-
-    std::vector<int64_t> input_starts;
-    std::vector<int64_t> input_extents;
-
-    // Calculate output dimensions
-    for (size_t i = 0; i < dimension_count; i++) {
-      input_starts.push_back(slices_[i]);
-      input_extents.push_back(output_dims[i] + slices_[i] + slices_[i + dimension_count]);
-      output_dims[i] += inferredPads[i] + inferredPads[i + dimension_count] + slices_[i] + slices_[i + dimension_count];
-    }
-
-    // setup output object
-    TensorShape output_shape(givenOutputShape);
-    Tensor* Y = context->Output(0, output_shape);
-    auto Y_data = Y->template MutableData<float>();
-
-    auto outData = gsl::make_span(Y_data, Y->Shape().Size());
-
-    std::fill_n(outData.data(), outData.size(), 0.f);
-
-    // add padding
-    TensorPitches output_pitches(*Y);
-    size_t alignSkip = 0;  // Amount to skip to align to where the next input tensor data needs to be written
-
-    // Initial skip, sum up the begin padding on each axis
-    for (size_t i = 0; i < dimension_count; i++)
-      alignSkip += inferredPads[i] * output_pitches[i];
-
-    size_t inner_axis = dimension_count - 1;
-
-    TensorAxisCounters input_counters(*p_tensor);
-    SliceIterator<float> input(*p_tensor, input_starts, input_extents, {});
-
-    while (input_counters) {
-      Y_data += alignSkip;
-      {
-        Y_data = input.CopyInnermostAxisSolitaryInnerStep(Y_data);
-        int64_t prePad = inferredPads[inner_axis];
-        int64_t postPad = inferredPads[inner_axis + dimension_count];
-        Y_data += postPad;
-        alignSkip = prePad;
-      }
-      // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
-      while (input_counters.Increment()) {
-        ptrdiff_t inner_pitch = output_pitches[input_counters.Axis()];
-        int64_t prePad = inferredPads[input_counters.Axis()];
-        int64_t postPad = inferredPads[input_counters.Axis() + dimension_count];
-        Y_data += inner_pitch * postPad;
-        alignSkip += inner_pitch * prePad;
-      }
-    }
+  for (auto cur_elem = 0; cur_elem < total_elements; ++cur_elem) {
+    out[I_data[cur_elem]] = X_data[cur_elem];
   }
 
   return Status::OK();

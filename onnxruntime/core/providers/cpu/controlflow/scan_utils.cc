@@ -11,7 +11,7 @@
 
 #include "core/providers/cpu/controlflow/scan_utils.h"
 
-#include "gsl/gsl_algorithm"
+#include "gsl/gsl"
 
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/op_kernel_context_internal.h"
@@ -19,6 +19,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
+#include "core/framework/session_options.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -32,7 +33,7 @@ namespace scan {
 namespace detail {
 
 Info::Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs_in, bool is_v8)
-    : subgraph{subgraph_in}, num_scan_inputs{num_scan_inputs_in} {
+    : subgraph(subgraph_in), num_scan_inputs(num_scan_inputs_in) {
   num_inputs = static_cast<int>(node.InputDefs().size());
   num_variadic_inputs = is_v8 ? num_inputs - 1 : num_inputs;  // allow for sequence_lens input in v8
   num_loop_state_variables = num_variadic_inputs - num_scan_inputs;
@@ -91,7 +92,7 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
   }
 
   TensorShape output_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
-  auto& graph_output_dims{output_shape.GetDims()};
+  auto& graph_output_dims(output_shape.GetDims());
 
   std::vector<int64_t> scan_output_dims;
   scan_output_dims.reserve(graph_output_dims.size() + 2);
@@ -107,7 +108,7 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
     scan_output_dims.push_back(sequence_len);
   }
 
-  scan_output_dims.insert(scan_output_dims.cend(), graph_output_dims.cbegin(), graph_output_dims.cend());
+  std::copy(graph_output_dims.cbegin(), graph_output_dims.cend(), std::back_inserter(scan_output_dims));
 
   if (!temporary) {
     OutputIterator::Create(context, output_index, is_loop_state_var, is_v8, TensorShape(scan_output_dims),
@@ -231,21 +232,41 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
           auto& ort_value = *iterator;
           fetches.push_back(ort_value);
         } else {
+          // need a dummy empty entry in fetches so the order matches the output names
+          size_t i = fetches.size();
+          fetches.emplace_back();
+
           // use a custom allocator that will forward the allocation request to the Scan context
           // and add the sequence length dimension. this avoids using a temporary value for the first output
-          fetch_allocators[output] = [&iterator](const TensorShape& shape, OrtValue& ort_value) {
-            return iterator.AllocateSubgraphOutput(shape, ort_value);
-          };
+          fetch_allocators[output] = [i, &iterator, &fetches](const TensorShape& shape, const OrtMemoryInfo& location,
+                                                              OrtValue& ort_value, bool& allocated) {
+            auto status = iterator.AllocateFinalOutput(shape);
+            ORT_RETURN_IF_ERROR(status);
 
-          // also need a dummy empty entry in fetches so the order matches the output names
-          fetches.emplace_back();
+            const OrtValue& value = *iterator;
+
+            // for now we only allocate on CPU as currently all 'Scan' outputs are on CPU.
+            // if that does not match the required device we don't update the provided OrtValue and return false for
+            // 'allocated'. the execution frame will allocate a buffer on the required device, and the fetches copy
+            // logic in utils::ExecuteSubgraph will handle moving it to CPU (and into the tensor we allocated here)
+            if (value.Get<Tensor>().Location().device == location.device) {
+              // update OrtValue with a current slice from the iterator.
+              ort_value = value;
+              allocated = true;
+            } else {
+              // put the allocated value into fetches so the copy logic in utils::ExecuteGraphImpl can use it
+              fetches[i] = value;
+            }
+
+            return Status::OK();
+          };
         }
       }
     }
 
     // Create Executor and run graph.
     status = utils::ExecuteSubgraph(session_state, ffm, feeds, fetches, fetch_allocators,
-                                    /*sequential_execution*/ true, context.GetTerminateFlag(), context.Logger());
+                                    ExecutionMode::ORT_SEQUENTIAL, context.GetTerminateFlag(), context.Logger());
 
     ORT_RETURN_IF_ERROR(status);
 
@@ -267,9 +288,9 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 }
 
 OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator) {
-  auto new_tensor = std::make_unique<Tensor>(data_type,
-                                             shape,
-                                             allocator);
+  auto new_tensor = onnxruntime::make_unique<Tensor>(data_type,
+                                                     shape,
+                                                     allocator);
 
   return OrtValue{new_tensor.release(), DataTypeImpl::GetType<Tensor>(),
                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
@@ -390,14 +411,14 @@ OutputIterator::OutputIterator(OpKernelContextInternal& context,
                                ScanDirection direction,
                                bool temporary,
                                MLDataType data_type)
-    : context_{context},
-      is_v8_{is_v8},
-      output_index_{output_index},
-      final_shape_{final_shape},
-      is_loop_state_var_{is_loop_state_var},
-      direction_{direction},
-      cur_iteration_{0},
-      temporary_{temporary},
+    : context_(context),
+      is_v8_(is_v8),
+      output_index_(output_index),
+      final_shape_(final_shape),
+      is_loop_state_var_(is_loop_state_var),
+      direction_(direction),
+      cur_iteration_(0),
+      temporary_(temporary),
       data_type_{data_type} {
   is_concrete_shape_ = final_shape_.Size() >= 0;
 
@@ -432,7 +453,7 @@ Status OutputIterator::Initialize() {
     status = AllocateFinalBuffer();
     ORT_RETURN_IF_ERROR(status);
   } else {
-    // delay until the first subgraph execution calls AllocateSubgraphOutput.
+    // delay until the first subgraph execution calls AllocateFinalOutput.
   }
 
   return Status::OK();
@@ -493,7 +514,7 @@ Status OutputIterator::AllocateFinalBuffer() {
   return Status::OK();
 }
 
-Status OutputIterator::AllocateSubgraphOutput(const TensorShape& shape, OrtValue& ort_value) {
+Status OutputIterator::AllocateFinalOutput(const TensorShape& shape) {
   ORT_ENFORCE(!is_concrete_shape_, "If shape was concrete we shouldn't be using a custom allocator");
 
   // update the final shape now that we can fill in the symbolic dimension with an actual value
@@ -504,16 +525,13 @@ Status OutputIterator::AllocateSubgraphOutput(const TensorShape& shape, OrtValue
   status = AllocateFinalBuffer();
   ORT_RETURN_IF_ERROR(status);
 
-  // get OrtValue from operator*()
-  ort_value = **this;
-
   return Status::OK();
 }
 
 OrtValue& OutputIterator::operator*() {
   ORT_ENFORCE(cur_iteration_ < num_iterations_);
   ORT_ENFORCE(is_concrete_shape_,
-              "Expected AllocateSubgraphOutput to have been called to before we read the OrtValue from the iterator.");
+              "Expected AllocateFinalOutput to have been called to before we read the OrtValue from the iterator.");
 
   // for v8 both outputs and loop state vars use slicers. for v9 only outputs do
   if (is_v8_ || !is_loop_state_var_)
@@ -525,7 +543,7 @@ OrtValue& OutputIterator::operator*() {
 OutputIterator& OutputIterator::operator++() {
   if (cur_iteration_ < num_iterations_) {
     ORT_ENFORCE(is_concrete_shape_,
-                "Expected AllocateSubgraphOutput to have been called to before we increment the iterator");
+                "Expected AllocateFinalOutput to have been called to before we increment the iterator");
 
     ++cur_iteration_;
 

@@ -1,5 +1,6 @@
 jobs:
 - job: Linux_nGraph_CI_Dev
+  timeoutInMinutes: 90
   pool: Linux-CPU
   steps:
     - template: templates/set-test-data-variables-step.yml
@@ -26,8 +27,7 @@ jobs:
       displayName: 'Download test data'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
-        # nGraph provider fails on the latest 20190729.zip test. revert back to previous zip file until failures can be investigated
-        arguments: --test_data_url https://onnxruntimetestdata.blob.core.windows.net/models/20190419.zip --build_dir $(Build.BinariesDirectory)
+        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
         pythonInterpreter: '/usr/bin/python3'
         workingDirectory: $(Build.BinariesDirectory)
 

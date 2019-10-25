@@ -85,10 +85,10 @@ class FuseExecutionProvider : public IExecutionProvider {
  public:
   explicit FuseExecutionProvider() : IExecutionProvider{kFuseExecutionProvider} {
     DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault,
-                                                 [](int) { return std::make_unique<CPUAllocator>(); },
+                                                 [](int) { return onnxruntime::make_unique<CPUAllocator>(); },
                                                  std::numeric_limits<size_t>::max()});
     InsertAllocator(std::shared_ptr<IArenaAllocator>(
-        std::make_unique<DummyArena>(device_info.factory(0))));
+        onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
   }
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -96,11 +96,11 @@ class FuseExecutionProvider : public IExecutionProvider {
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override {
     // Fuse two add into one.
     std::vector<std::unique_ptr<ComputeCapability>> result;
-    std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+    std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
     for (auto& node : graph.Nodes()) {
       sub_graph->nodes.push_back(node.Index());
     }
-    auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
+    auto meta_def = onnxruntime::make_unique<IndexedSubGraph::MetaDef>();
     meta_def->name = "FuseAdd";
     meta_def->domain = "FuseTest";
     meta_def->inputs = {"X", "Y", "Z"};
@@ -108,7 +108,7 @@ class FuseExecutionProvider : public IExecutionProvider {
     meta_def->since_version = 1;
     meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
     sub_graph->SetMetaDef(meta_def);
-    result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+    result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
     return result;
   }
 
@@ -141,8 +141,8 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
   // Generate the input & output def lists
-  p_model = std::make_unique<onnxruntime::Model>("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
-                                                 domain_to_version);
+  p_model = onnxruntime::make_unique<onnxruntime::Model>("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
+                                                         domain_to_version);
   onnxruntime::Graph& graph = p_model->MainGraph();
 
   TypeProto tensor_float;
@@ -304,9 +304,9 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     auto element_type = rtensor.DataType();
     auto& shape = rtensor.Shape();
     auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
-    std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
-                                                                  shape,
-                                                                  cpu_allocator);
+    std::unique_ptr<Tensor> cpu_tensor = onnxruntime::make_unique<Tensor>(element_type,
+                                                                          shape,
+                                                                          cpu_allocator);
     st = GPUDataTransfer().CopyTensor(rtensor, *cpu_tensor.get(), 0);
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
@@ -523,7 +523,7 @@ TEST(InferenceSessionTests, CheckRunLogger) {
   // is around our pointer stays valid.
   auto capturing_sink = new CapturingSink();
 
-  auto logging_manager = std::make_unique<logging::LoggingManager>(
+  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(capturing_sink), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -680,7 +680,7 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
   // is around our pointer stays valid.
   auto capturing_sink = new CapturingSink();
 
-  auto logging_manager = std::make_unique<logging::LoggingManager>(
+  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(capturing_sink),
       logging::Severity::kVERBOSE,
       false,
@@ -740,7 +740,7 @@ TEST(InferenceSessionTests, TestRegisterExecutionProvider) {
 
   InferenceSession session_object{so};
   CPUExecutionProviderInfo epi;
-  ASSERT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CPUExecutionProvider>(epi)).IsOK());
+  ASSERT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CPUExecutionProvider>(epi)).IsOK());
 
   std::ifstream model_file_stream(MODEL_URI, ios::in | ios::binary);
   ASSERT_TRUE(model_file_stream.good());
@@ -768,7 +768,7 @@ static void TestBindHelper(const std::string& log_str,
 #ifdef USE_CUDA
     CUDAExecutionProviderInfo epi;
     epi.device_id = 0;
-    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
 #endif
   }
 
@@ -1077,7 +1077,7 @@ TEST(ExecutionProviderTest, FunctionTest) {
   run_options.run_tag = so.session_logid;
 
   CPUExecutionProviderInfo epi;
-  auto testCPUExecutionProvider = std::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
+  auto testCPUExecutionProvider = onnxruntime::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -1108,7 +1108,7 @@ TEST(ExecutionProviderTest, FunctionTest) {
 
   InferenceSession session_object_2{so};
   session_object_2.RegisterExecutionProvider(std::move(testCPUExecutionProvider));
-  session_object_2.RegisterExecutionProvider(std::make_unique<::onnxruntime::FuseExecutionProvider>());
+  session_object_2.RegisterExecutionProvider(onnxruntime::make_unique<::onnxruntime::FuseExecutionProvider>());
   status = session_object_2.Load(model_file_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object_2.Initialize();
@@ -1378,7 +1378,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
   ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
-  auto dummy_provider = std::make_unique<DummyExecutionProvider>();
+  auto dummy_provider = onnxruntime::make_unique<DummyExecutionProvider>();
   auto* p_dummy_provider = dummy_provider.get();
   session_object.RegisterExecutionProvider(std::move(dummy_provider));
 
@@ -1438,7 +1438,7 @@ TEST(InferenceSessionTests, TestRegisterTransformers) {
     InferenceSession session_object{so, &DefaultLoggingManager()};
 
     // Create and register dummy graph transformer
-    auto dummy_transformer_unique_ptr = std::make_unique<DummyGraphTransformer>("DummyTransformer");
+    auto dummy_transformer_unique_ptr = onnxruntime::make_unique<DummyGraphTransformer>("DummyTransformer");
     const auto* dummy_transformer = dummy_transformer_unique_ptr.get();
     session_object.RegisterGraphTransformer(std::move(dummy_transformer_unique_ptr));
 
@@ -1456,7 +1456,7 @@ TEST(InferenceSessionTests, TestL1AndL2Transformers) {
   // Models which cover all transformers.
   std::vector<std::string> test_model_uris = {"testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx",
                                               "testdata/transform/abs-id-max.onnx",
-                                              "testdata/transform/slice-elim.onnx",
+                                              "testdata/transform/slice-v11-elim.onnx",
                                               "testdata/transform/matmul_add_fusion/2Input/model.onnx",
                                               "testdata/transform/matmul_add_fusion/3Input/gemm_relu.onnx",
                                               "testdata/transform/fusion/fuse-conv-bn-add-mul-float16.onnx"};
@@ -1471,19 +1471,70 @@ TEST(InferenceSessionTests, TestL1AndL2Transformers) {
   }
 }
 
+// fallback to lenient merging of shape info if model opset is not the latest
+TEST(InferenceSessionTests, TestLenientShapeInferencing) {
+  // latest opset should fail
+  std::vector<int64_t> input_shape{2, 2};
+  std::vector<float> input_data{0.f, 1.f, 2.f, 3.f};
+  std::vector<int64_t> invalid_output_shape{1, 2};  // valid shape is {2} as output data is input_shape
+  std::vector<int64_t> output_data{2, 2};
+
+  OpTester latest_opset("Shape");
+  latest_opset.AddInput("data", input_shape, input_data);
+  latest_opset.AddOutput<int64_t>("output", invalid_output_shape, output_data);
+  latest_opset.Run(OpTester::ExpectResult::kExpectFailure,
+                   "Mismatch between number of source and target dimensions. Source=1 Target=2");
+
+  // older opset should allow the mismatch with a warning.
+  // we also need for the output to be valid so OpTester doesn't throw so add an Unsqueeze after the Shape.
+  // This should result in a warning log message but successful run.
+  class OpTesterWithReshape : public OpTester {
+   public:
+    OpTesterWithReshape() : OpTester("Shape", 7) {
+    }
+
+   protected:
+    void AddNodes(onnxruntime::Graph& graph,
+                  std::vector<onnxruntime::NodeArg*>& graph_input_defs,
+                  std::vector<onnxruntime::NodeArg*>& graph_output_defs,
+                  std::vector<std::function<void(onnxruntime::Node& node)>>& add_attribute_funcs) override {
+      // we need to create an intermediate output with a different name
+      auto tmp_output_defs = graph_output_defs;
+      auto type_info = *tmp_output_defs[0]->TypeAsProto();  // copy
+      auto& shape_output = graph.GetOrCreateNodeArg("shape_output", &type_info);
+      tmp_output_defs[0] = &shape_output;
+
+      // call base implementation to add the Shape node with invalid output shape
+      OpTester::AddNodes(graph, graph_input_defs, tmp_output_defs, add_attribute_funcs);
+
+      // add Unsqueeze node to fix the output shape
+
+      auto& unsqueeze = graph.AddNode("unsqueeze", "Unsqueeze", "Fix output shape", tmp_output_defs, graph_output_defs);
+      unsqueeze.AddAttribute("axes", std::vector<int64_t>{0});
+    }
+  };
+
+  OpTesterWithReshape old_opset;
+
+  old_opset.AddInput("data", input_shape, input_data);
+  old_opset.AddOutput<int64_t>("output", invalid_output_shape, output_data);
+  // TensorRT doesn't handle Unsqueeze
+  old_opset.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 #ifdef USE_CUDA
 
 TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
   string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
   SessionOptions so;
-  so.enable_sequential_execution = false;
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
   so.session_logid = "InferenceSessionTests.TestParallelExecutionWithCudaProvider";
   InferenceSession session_object{so};
 
   CUDAExecutionProviderInfo epi;
   epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
 
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 

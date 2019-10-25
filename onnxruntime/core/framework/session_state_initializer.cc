@@ -48,17 +48,17 @@ SessionStateInitializer::SessionStateInitializer(bool enable_mem_pattern,
                                                  const ExecutionProviders& providers,
                                                  KernelRegistryManager& kernel_registry_manager)
     : graph_loc_(graph_loc),
-      graph_{graph},
-      session_state_{session_state},
-      execution_providers_{providers},
-      kernel_registry_manager_{kernel_registry_manager},
-      logger_{session_state.Logger()},
+      graph_(graph),
+      session_state_(session_state),
+      execution_providers_(providers),
+      kernel_registry_manager_(kernel_registry_manager),
+      logger_(session_state.Logger()),
       enable_mem_pattern_(enable_mem_pattern) {}
 
 common::Status SessionStateInitializer::CreatePlan(
     const Node* parent_node,
     const ConstPointerContainer<std::vector<NodeArg*>>* outer_scope_node_args,
-    bool enable_sequential_execution) {
+    ExecutionMode execution_mode) {
   session_state_.SetGraph(graph_);
   const GraphViewer* graph_viewer = session_state_.GetGraphViewer();
 
@@ -78,7 +78,7 @@ common::Status SessionStateInitializer::CreatePlan(
   }
 
   std::unique_ptr<SequentialExecutionPlan> exec_plan;
-  SequentialPlannerContext context(!enable_sequential_execution);
+  SequentialPlannerContext context(execution_mode);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_registry_manager_,
                                                     ort_value_name_idx_map, context, exec_plan));
@@ -149,7 +149,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                                   MemBuffer(data.get(), cpu_tensor_length, info), tmp_ort_value, d));
   const Tensor& p_deserialize_tensor = tmp_ort_value.Get<Tensor>();
 
-  p_tensor = std::make_unique<Tensor>(p_deserialize_tensor.DataType(), p_deserialize_tensor.Shape(), m.GetBuffer(),
+  p_tensor = onnxruntime::make_unique<Tensor>(p_deserialize_tensor.DataType(), p_deserialize_tensor.Shape(), m.GetBuffer(),
                                       m.GetAllocInfo());
   // TODO: does this function work for string tensor?
   Status copy_status = data_transfer_mgr.CopyTensor(p_deserialize_tensor, *p_tensor);

@@ -75,7 +75,7 @@ class LoopOpTester : public OpTester {
       auto& loop_node = graph.AddNode("loop", "Loop", "Loop node", graph_input_defs, graph_output_defs);
 
       auto body = create_subgraph_(options_);
-      loop_node.AddAttribute("body", {body});
+      loop_node.AddAttribute("body", body);
     }
   }
 

@@ -7,7 +7,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
 
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 namespace onnxruntime {
 template <typename T>
 class MeanVarianceNormalization_0 : public OpKernel {

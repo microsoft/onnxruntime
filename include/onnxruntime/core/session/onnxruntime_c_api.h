@@ -171,13 +171,19 @@ typedef void(ORT_API_CALL* OrtLoggingFunction)(
     const char* message);
 
 // Set Graph optimization level.
-// TODO (askhade) Add documentation about which optimizations are enabled for each value.
+// Refer https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Graph_Optimizations.md
+// for in-depth undersrtanding of Graph Optimizations in ORT
 typedef enum GraphOptimizationLevel {
   ORT_DISABLE_ALL = 0,
   ORT_ENABLE_BASIC = 1,
   ORT_ENABLE_EXTENDED = 2,
   ORT_ENABLE_ALL = 99
 } GraphOptimizationLevel;
+
+typedef enum ExecutionMode {
+  ORT_SEQUENTIAL = 0,
+  ORT_PARALLEL = 1,
+} ExecutionMode;
 
 struct OrtKernelInfo;
 typedef struct OrtKernelInfo OrtKernelInfo;
@@ -201,6 +207,17 @@ typedef enum OrtMemType {
   OrtMemTypeCPU = OrtMemTypeCPUOutput,  // temporary CPU accessible memory allocated by non-CPU execution provider, i.e. CUDA_PINNED
   OrtMemTypeDefault = 0,                // the default allocator for execution provider
 } OrtMemType;
+
+struct OrtApi;
+typedef struct OrtApi OrtApi;
+
+struct OrtApiBase {
+  const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;  // Pass in ORT_API_VERSION
+  const char*(ORT_API_CALL* GetVersionString)() NO_EXCEPTION;
+};
+typedef struct OrtApiBase OrtApiBase;
+
+ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase() NO_EXCEPTION;
 
 struct OrtApi {
   /**
@@ -230,6 +247,10 @@ struct OrtApi {
                                                       _In_ const char* logid,
                                                       _Outptr_ OrtEnv** out)NO_EXCEPTION;
 
+  // Platform telemetry events are on by default since they are lightweight.  You can manually turn them off.
+  OrtStatus*(ORT_API_CALL* EnableTelemetryEvents)(_In_ const OrtEnv* env)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* DisableTelemetryEvents)(_In_ const OrtEnv* env)NO_EXCEPTION;
+
   // TODO: document the path separator convention? '/' vs '\'
   // TODO: should specify the access characteristics of model_path. Is this read only during the
   // execution of OrtCreateSession, or does the OrtSession retain a handle to the file/directory
@@ -256,8 +277,11 @@ struct OrtApi {
 
   // create a copy of an existing OrtSessionOptions
   OrtStatus*(ORT_API_CALL* CloneSessionOptions)(_In_ const OrtSessionOptions* in_options, _Outptr_ OrtSessionOptions** out_options)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* EnableSequentialExecution)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* DisableSequentialExecution)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
+
+  // Controls whether you want to execute operators in your graph sequentially or in parallel. Usually when the model
+  // has many branches, setting this option to ExecutionMode.ORT_PARALLEL will give you better performance.
+  // See [docs/ONNX_Runtime_Perf_Tuning.md] for more details.
+  OrtStatus*(ORT_API_CALL* SetSessionExecutionMode)(_Inout_ OrtSessionOptions* options, ExecutionMode execution_mode)NO_EXCEPTION;
 
   // Enable profiling for this session.
   OrtStatus*(ORT_API_CALL* EnableProfiling)(_Inout_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix)NO_EXCEPTION;
@@ -311,6 +335,15 @@ struct OrtApi {
 	 *  Note: The OrtCustomOpDomain* must not be deleted until the sessions using it are released
 	*/
   OrtStatus*(ORT_API_CALL* AddCustomOpDomain)(_Inout_ OrtSessionOptions* options, _In_ OrtCustomOpDomain* custom_op_domain)NO_EXCEPTION;
+
+  /*
+	 * Loads a DLL named 'library_path' and looks for this entry point:
+	 *		OrtStatus* RegisterCustomOps(OrtSessionOptions * options, const OrtApiBase* api);
+	 * It then passes in the provided session options to this function along with the api base.
+	 * The handle to the loaded library is returned in library_handle. It can be freed by the caller after all sessions using the passed in
+	 * session options are destroyed, or if an error occurs and it is non null.
+  */
+  OrtStatus*(ORT_API_CALL* RegisterCustomOpsLibrary)(_Inout_ OrtSessionOptions* options, _In_ const char* library_path, void** library_handle)NO_EXCEPTION;
 
   /**
 	* To use additional providers, you must build ORT with the extra providers enabled. Then call one of these
@@ -446,6 +479,7 @@ struct OrtApi {
   OrtStatus*(ORT_API_CALL* GetTensorElementType)(_In_ const OrtTensorTypeAndShapeInfo*, _Out_ enum ONNXTensorElementDataType* out)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* GetDimensionsCount)(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ size_t* out)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* GetDimensions)(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* GetSymbolicDimensions)(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ const char** dim_params, size_t dim_params_length)NO_EXCEPTION;
 
   /**
  * Return the number of elements specified by the tensor shape.
@@ -505,8 +539,8 @@ struct OrtApi {
 
   // Override symbolic dimensions with actual values if known at session initialization time to enable
   // optimizations that can take advantage of fixed values (such as memory planning, etc)
-  OrtStatus*(ORT_API_CALL* OrtAddFreeDimensionOverride)(_Inout_ OrtSessionOptions* options,
-                                                        _In_ const char* symbolic_dim, _In_ int64_t dim_override)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* AddFreeDimensionOverride)(_Inout_ OrtSessionOptions* options,
+                                                     _In_ const char* symbolic_dim, _In_ int64_t dim_override)NO_EXCEPTION;
 
   /**
    * APIs to support non-tensor types - map and sequence.
@@ -612,10 +646,6 @@ struct OrtApi {
   ORT_CLASS_RELEASE(SessionOptions);
   ORT_CLASS_RELEASE(CustomOpDomain);
 };
-
-typedef struct OrtApi OrtApi;
-ORT_EXPORT const OrtApi* ORT_API_CALL OrtGetApi(uint32_t version) NO_EXCEPTION;  // Pass in ORT_API_VERSION
-ORT_API(const char*, OrtGetVersionString);
 
 /*
  * Steps to use a custom op:

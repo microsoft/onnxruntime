@@ -7,6 +7,13 @@ using System.Runtime.InteropServices;
 namespace Microsoft.ML.OnnxRuntime
 {
     [StructLayout(LayoutKind.Sequential)]
+    public struct OrtApiBase
+    {
+        public IntPtr GetApi;
+        public IntPtr GetVersionString;
+    };
+
+    [StructLayout(LayoutKind.Sequential)]
     public struct OrtApi
     {
         public IntPtr CreateStatus;
@@ -14,6 +21,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetErrorMessage;
         public IntPtr CreateEnv;
         public IntPtr CreateEnvWithCustomLogger;
+        public IntPtr EnableTelemetryEvents;
+        public IntPtr DisableTelemetryEvents;
         public IntPtr CreateSession;
         public IntPtr CreateSessionFromArray;
         public IntPtr Run;
@@ -21,8 +30,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CreateSessionOptions;
         public IntPtr SetOptimizedModelFilePath;
         public IntPtr CloneSessionOptions;
-        public IntPtr EnableSequentialExecution;
-        public IntPtr DisableSequentialExecution;
+        public IntPtr SetSessionExecutionMode;
         public IntPtr EnableProfiling;
         public IntPtr DisableProfiling;
         public IntPtr EnableMemPattern;
@@ -39,6 +47,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CreateCustomOpDomain;
         public IntPtr CustomOpDomain_Add;
         public IntPtr AddCustomOpDomain;
+        public IntPtr RegisterCustomOpsLibrary;
 
         public IntPtr SessionGetInputCount;
         public IntPtr SessionGetOutputCount;
@@ -77,6 +86,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetTensorElementType;
         public IntPtr GetDimensionsCount;
         public IntPtr GetDimensions;
+        public IntPtr GetSymbolicDimensions;
         public IntPtr GetTensorShapeElementCount;
         public IntPtr GetTensorTypeAndShape;
         public IntPtr GetTypeInfo;
@@ -126,10 +136,15 @@ namespace Microsoft.ML.OnnxRuntime
 
         static OrtApi api_;
 
+        public delegate ref OrtApi DOrtGetApi(UInt32 version);
+
         static NativeMethods()
         {
+            DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetApi, typeof(DOrtGetApi));
+
             // TODO: Make this save the pointer, and not copy the whole structure across
-            api_ = OrtGetApi(1 /*ORT_API_VERSION*/);
+            api_ = (OrtApi)OrtGetApi(1 /*ORT_API_VERSION*/);
+
             OrtCreateEnv = (DOrtCreateEnv)Marshal.GetDelegateForFunctionPointer(api_.CreateEnv, typeof(DOrtCreateEnv));
             OrtReleaseEnv = (DOrtReleaseEnv)Marshal.GetDelegateForFunctionPointer(api_.ReleaseEnv, typeof(DOrtReleaseEnv));
             OrtGetErrorCode = (DOrtGetErrorCode)Marshal.GetDelegateForFunctionPointer(api_.GetErrorCode, typeof(DOrtGetErrorCode));
@@ -141,18 +156,22 @@ namespace Microsoft.ML.OnnxRuntime
             OrtRun = (DOrtRun)Marshal.GetDelegateForFunctionPointer(api_.Run, typeof(DOrtRun));
             OrtSessionGetInputCount = (DOrtSessionGetInputCount)Marshal.GetDelegateForFunctionPointer(api_.SessionGetInputCount, typeof(DOrtSessionGetInputCount));
             OrtSessionGetOutputCount = (DOrtSessionGetOutputCount)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOutputCount, typeof(DOrtSessionGetOutputCount));
+            OrtSessionGetOverridableInitializerCount = (DOrtSessionGetOverridableInitializerCount)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOverridableInitializerCount, typeof(DOrtSessionGetOverridableInitializerCount));
+
             OrtSessionGetInputName = (DOrtSessionGetInputName)Marshal.GetDelegateForFunctionPointer(api_.SessionGetInputName, typeof(DOrtSessionGetInputName));
             OrtSessionGetOutputName = (DOrtSessionGetOutputName)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOutputName, typeof(DOrtSessionGetOutputName));
+            OrtSessionGetOverridableInitializerName = (DOrtSessionGetOverridableInitializerName)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOverridableInitializerName, typeof(DOrtSessionGetOverridableInitializerName));
             OrtSessionGetInputTypeInfo = (DOrtSessionGetInputTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.SessionGetInputTypeInfo, typeof(DOrtSessionGetInputTypeInfo));
             OrtSessionGetOutputTypeInfo = (DOrtSessionGetOutputTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOutputTypeInfo, typeof(DOrtSessionGetOutputTypeInfo));
+            OrtSessionGetOverridableInitializerTypeInfo = (DOrtSessionGetOverridableInitializerTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOverridableInitializerTypeInfo, typeof(DOrtSessionGetOverridableInitializerTypeInfo));
+
             OrtReleaseTypeInfo = (DOrtReleaseTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.ReleaseTypeInfo, typeof(DOrtReleaseTypeInfo));
             OrtReleaseSession = (DOrtReleaseSession)Marshal.GetDelegateForFunctionPointer(api_.ReleaseSession, typeof(DOrtReleaseSession));
 
             OrtCreateSessionOptions = (DOrtCreateSessionOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateSessionOptions, typeof(DOrtCreateSessionOptions));
             OrtReleaseSessionOptions = (DOrtReleaseSessionOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseSessionOptions, typeof(DOrtReleaseSessionOptions));
             OrtCloneSessionOptions = (DOrtCloneSessionOptions)Marshal.GetDelegateForFunctionPointer(api_.CloneSessionOptions, typeof(DOrtCloneSessionOptions));
-            OrtEnableSequentialExecution = (DOrtEnableSequentialExecution)Marshal.GetDelegateForFunctionPointer(api_.EnableSequentialExecution, typeof(DOrtEnableSequentialExecution));
-            OrtDisableSequentialExecution = (DOrtDisableSequentialExecution)Marshal.GetDelegateForFunctionPointer(api_.DisableSequentialExecution, typeof(DOrtDisableSequentialExecution));
+            OrtSetSessionExecutionMode = (DOrtSetSessionExecutionMode)Marshal.GetDelegateForFunctionPointer(api_.SetSessionExecutionMode, typeof(DOrtSetSessionExecutionMode));
             OrtSetOptimizedModelFilePath = (DOrtSetOptimizedModelFilePath)Marshal.GetDelegateForFunctionPointer(api_.SetOptimizedModelFilePath, typeof(DOrtSetOptimizedModelFilePath));
             OrtEnableProfiling = (DOrtEnableProfiling)Marshal.GetDelegateForFunctionPointer(api_.EnableProfiling, typeof(DOrtEnableProfiling));
             OrtDisableProfiling = (DOrtDisableProfiling)Marshal.GetDelegateForFunctionPointer(api_.DisableProfiling, typeof(DOrtDisableProfiling));
@@ -201,12 +220,13 @@ namespace Microsoft.ML.OnnxRuntime
             OrtGetTensorElementType = (DOrtGetTensorElementType)Marshal.GetDelegateForFunctionPointer(api_.GetTensorElementType, typeof(DOrtGetTensorElementType));
             OrtGetDimensionsCount = (DOrtGetDimensionsCount)Marshal.GetDelegateForFunctionPointer(api_.GetDimensionsCount, typeof(DOrtGetDimensionsCount));
             OrtGetDimensions = (DOrtGetDimensions)Marshal.GetDelegateForFunctionPointer(api_.GetDimensions, typeof(DOrtGetDimensions));
+            OrtGetSymbolicDimensions = (DOrtGetSymbolicDimensions)Marshal.GetDelegateForFunctionPointer(api_.GetSymbolicDimensions, typeof(DOrtGetSymbolicDimensions));
             OrtGetTensorShapeElementCount = (DOrtGetTensorShapeElementCount)Marshal.GetDelegateForFunctionPointer(api_.GetTensorShapeElementCount, typeof(DOrtGetTensorShapeElementCount));
             OrtReleaseValue = (DOrtReleaseValue)Marshal.GetDelegateForFunctionPointer(api_.ReleaseValue, typeof(DOrtReleaseValue));
         }
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern ref OrtApi OrtGetApi(UInt32 version);
+        public static extern ref OrtApiBase OrtGetApiBase();
 
         #region Runtime/Environment API
 
@@ -259,8 +279,6 @@ namespace Microsoft.ML.OnnxRuntime
                                                 UIntPtr inputCount,
                                                 string[] outputNames,
                                                 UIntPtr outputCount,
-
-                                                [MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 5 /*index of outputCount*/)][In, Out]
                                                 IntPtr[] outputValues /* An array of output value pointers. Array must be allocated by the caller */
                                                 );
         public static DOrtRun OrtRun;
@@ -274,6 +292,11 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /*(OrtSession*)*/ session,
                                                 out UIntPtr count);
         public static DOrtSessionGetOutputCount OrtSessionGetOutputCount;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSessionGetOverridableInitializerCount(
+                                                IntPtr /*(OrtSession*)*/ session,
+                                                out UIntPtr count);
+        public static DOrtSessionGetOverridableInitializerCount OrtSessionGetOverridableInitializerCount;
 
         public delegate IntPtr /*(OrtStatus*)*/DOrtSessionGetInputName(
                                                 IntPtr /*(OrtSession*)*/ session,
@@ -289,6 +312,13 @@ namespace Microsoft.ML.OnnxRuntime
                                                 out IntPtr /*(char**)*/name);
         public static DOrtSessionGetOutputName OrtSessionGetOutputName;
 
+        public delegate IntPtr /*(OrtStatus*)*/DOrtSessionGetOverridableInitializerName(
+                                                IntPtr /*(OrtSession*)*/ session,
+                                                UIntPtr index,
+                                                IntPtr /*(OrtAllocator*)*/ allocator,
+                                                out IntPtr /*(char**)*/name);
+        public static DOrtSessionGetOverridableInitializerName OrtSessionGetOverridableInitializerName;
+
         // release the typeinfo using OrtReleaseTypeInfo
         public delegate IntPtr /*(OrtStatus*)*/DOrtSessionGetInputTypeInfo(
                                                 IntPtr /*(const OrtSession*)*/ session,
@@ -302,6 +332,14 @@ namespace Microsoft.ML.OnnxRuntime
                                                 UIntPtr index,
                                                 out IntPtr /* (struct OrtTypeInfo**)*/ typeInfo);
         public static DOrtSessionGetOutputTypeInfo OrtSessionGetOutputTypeInfo;
+
+        // release the typeinfo using OrtReleaseTypeInfo
+        public delegate IntPtr /*(OrtStatus*)*/DOrtSessionGetOverridableInitializerTypeInfo(
+                                                IntPtr /*(const OrtSession*)*/ session,
+                                                UIntPtr index,
+                                                out IntPtr /* (struct OrtTypeInfo**)*/ typeInfo);
+        public static DOrtSessionGetOverridableInitializerTypeInfo OrtSessionGetOverridableInitializerTypeInfo;
+
 
         public delegate void DOrtReleaseTypeInfo(IntPtr /*(OrtTypeInfo*)*/session);
         public static DOrtReleaseTypeInfo OrtReleaseTypeInfo;
@@ -322,16 +360,14 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/ DOrtCloneSessionOptions(IntPtr /*(OrtSessionOptions*)*/ sessionOptions, out IntPtr /*(OrtSessionOptions**)*/ output);
         public static DOrtCloneSessionOptions OrtCloneSessionOptions;
 
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtEnableSequentialExecution(IntPtr /*(OrtSessionOptions*)*/ options);
-        public static DOrtEnableSequentialExecution OrtEnableSequentialExecution;
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionExecutionMode(IntPtr /*(OrtSessionOptions*)*/ options,
+        ExecutionMode execution_mode);
+        public static DOrtSetSessionExecutionMode OrtSetSessionExecutionMode;
 
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtDisableSequentialExecution(IntPtr /*(OrtSessionOptions*)*/ options);
-        public static DOrtDisableSequentialExecution OrtDisableSequentialExecution;
-
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetOptimizedModelFilePath(IntPtr /* OrtSessionOptions* */ options, [MarshalAs(UnmanagedType.LPWStr)]string optimizedModelFilepath);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetOptimizedModelFilePath(IntPtr /* OrtSessionOptions* */ options, byte[] optimizedModelFilepath);
         public static DOrtSetOptimizedModelFilePath OrtSetOptimizedModelFilePath;
 
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtEnableProfiling(IntPtr /* OrtSessionOptions* */ options, string profilePathPrefix);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtEnableProfiling(IntPtr /* OrtSessionOptions* */ options, byte[] profilePathPrefix);
         public static DOrtEnableProfiling OrtEnableProfiling;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtDisableProfiling(IntPtr /* OrtSessionOptions* */ options);
@@ -591,6 +627,23 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtGetDimensions OrtGetDimensions;
 
         /**
+        * Get the symbolic dimension names for dimensions with a value of -1. 
+        * Order and number of entries is the same as values returned by GetDimensions. 
+        * The name may be empty for an unnamed symbolic dimension.
+        * e.g. 
+        * If OrtGetDimensions returns [-1, -1, 2], OrtGetSymbolicDimensions would return an array with 3 entries.
+        * If the values returned were ['batch', '', ''] it would indicate that
+        *  - the first dimension was a named symbolic dimension (-1 dim value and name in symbolic dimensions), 
+        *  - the second dimension was an unnamed symbolic dimension (-1 dim value and empty string), 
+        *  - the entry for the third dimension should be ignored as it is not a symbolic dimension (dim value >= 0).
+        */
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetSymbolicDimensions(
+                    IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo,
+                    IntPtr[] dim_params, /* const char* values, converted to string by caller */
+                    UIntPtr dim_params_length);
+        public static DOrtGetSymbolicDimensions OrtGetSymbolicDimensions;
+
+        /**
          * How many elements does this tensor have.
          * May return a negative value
          * e.g.
@@ -606,5 +659,13 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtReleaseValue OrtReleaseValue;
 
         #endregion
+
+        public static byte[] GetPlatformSerializedString(string str)
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                return System.Text.Encoding.Unicode.GetBytes(str + Char.MinValue);
+            else
+                return System.Text.Encoding.UTF8.GetBytes(str + Char.MinValue);
+        }
     } //class NativeMethods
 } //namespace

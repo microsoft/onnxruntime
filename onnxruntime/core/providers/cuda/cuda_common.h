@@ -39,6 +39,12 @@ class CudaKernel : public OpKernel {
     // use this to precisely locate the node where CUDA failure comes from
     //  if (cudaSuccess != cudaDeviceSynchronize())
     //    __debugbreak();
+
+    if (s.IsOK()) {
+      // ensure no kernel launch error occurred
+      CUDA_RETURN_IF_ERROR(cudaGetLastError());
+    }
+
     return s;
   }
 
@@ -84,7 +90,7 @@ class CudaKernel : public OpKernel {
       memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T));
     }
 
-    void AllocCpuPtr( size_t count) {
+    void AllocCpuPtr(size_t count) {
       cpu_pinned_copy_ = op_kernel_->AllocateBufferOnCPUPinned<T>(count);
       if (cpu_pinned_copy_ == nullptr)
         throw std::runtime_error("alloc failed");
@@ -169,17 +175,64 @@ class ToCudaType<MLFloat16> {
 
 inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int64_t>& dims) {
   int stride = 1;
-  if (dims.empty() || p.size() < gsl::narrow_cast<ptrdiff_t>(dims.size()))
+  if (dims.empty() || p.size() < dims.size())
     return false;
-  std::ptrdiff_t rank = p.size();
-  for (std::ptrdiff_t i = 0; i < rank; i++) {
+  auto rank = p.size();
+  for (size_t i = 0; i < rank; i++) {
     p[rank - 1 - i] = fast_divmod(stride);
-    if (static_cast<size_t>(i) < dims.size() - 1) {
+    if (i < dims.size() - 1) {
       stride *= static_cast<int>(dims[dims.size() - 1 - i]);
     }
   }
   return true;
 }
+
+struct DeviceProp {
+  static const std::vector<cudaDeviceProp>& GetCachedDeviceProps() {
+    std::call_once(s_cachedDevicePropsInitFlag, [=] {
+      int numDevices;
+      // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
+      CUDA_CALL_THROW(cudaDeviceSynchronize());
+      CUDA_CALL_THROW(cudaGetDeviceCount(&numDevices));
+      s_cachedDeviceProps.resize(numDevices);
+      for (int i = 0; i < numDevices; i++)
+        CUDA_CALL_THROW(cudaGetDeviceProperties(&s_cachedDeviceProps[i], i));
+    });
+
+    return s_cachedDeviceProps;
+  }
+
+  static size_t GetCurrentDeviceId() {
+    int deviceId;
+    cudaGetDevice(&deviceId);
+    return (size_t)deviceId;
+  }
+
+  // get device properties of current device
+  static const cudaDeviceProp& GetDeviceProps() {
+    const auto& cachedDevicesProps = GetCachedDeviceProps();
+    return cachedDevicesProps[GetCurrentDeviceId()];
+  }
+
+ private:
+  static std::vector<cudaDeviceProp> s_cachedDeviceProps;
+  static std::once_flag s_cachedDevicePropsInitFlag;
+};
+
+class CublasMathModeSetter {
+ public:
+  CublasMathModeSetter(cublasHandle_t handle, cublasMath_t mode) : handle_(handle) {
+    cublasGetMathMode(handle, &mode_);
+    cublasSetMathMode(handle, mode);
+  }
+  ~CublasMathModeSetter() {
+    cublasSetMathMode(handle_, mode_);
+  }
+
+ private:
+  cublasHandle_t handle_;
+  cublasMath_t mode_;
+};
 
 }  // namespace cuda
 }  // namespace onnxruntime

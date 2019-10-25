@@ -4,15 +4,16 @@
 #include "pad.h"
 #include "pad_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/cpu/tensor/pad.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Pad,                                                        \
       kOnnxDomain,                                                \
-      2,                                                          \
+      2, 10,                                                      \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
@@ -44,6 +45,12 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     output_dims[i] += lower_pads_span[i] + upper_pads_span[i];
   }
   TensorShape output_shape(output_dims);
+
+  // special case when there is a dim value of 0 in the shape. behavior depends on mode
+  if (input_shape.Size() == 0) {
+    ORT_RETURN_IF_ERROR(PadBase::HandleDimValueZero(mode_, input_shape, output_shape));
+  }
+
   auto& output_tensor = *ctx->Output(0, output_shape);
   ORT_ENFORCE(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_dims));
   ORT_RETURN_IF_ERROR(input_dims.CopyToGpu());

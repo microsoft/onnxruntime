@@ -9,11 +9,12 @@ set -x
 SOURCE_ROOT=$1
 BUILD_DIR=$2
 NUGET_REPO_DIRNAME=$3   # path relative to BUILD_DIR
+CurrentOnnxRuntimeVersion=$4
 PackageName=${PACKAGENAME:-Microsoft.ML.OnnxRuntime.Gpu}
 RunTestCsharp=${RunTestCsharp:-true}
 RunTestNative=${RunTestNative:-true}
 #CUDA_VER=cuda10.0-cudnn7.3, cuda9.1-cudnn7.1, cuda10.0-cudnn7.3
-CUDA_VER=${4:-cuda10.0-cudnn7.3}
+CUDA_VER=${5:-cuda10.0-cudnn7.3}
 
 PYTHON_VER=3.5
 IMAGE="ubuntu16.04-$CUDA_VER"
@@ -45,7 +46,7 @@ docker run -h $HOSTNAME \
         -e "RunTestNative=$RunTestNative" \
         "onnxruntime-$IMAGE" \
         /bin/bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
-        /home/onnxruntimedev/$NUGET_REPO_DIRNAME /onnxruntime_src /home/onnxruntimedev &
+        /home/onnxruntimedev/$NUGET_REPO_DIRNAME /onnxruntime_src /home/onnxruntimedev $CurrentOnnxRuntimeVersion &
 
 wait -n
 
