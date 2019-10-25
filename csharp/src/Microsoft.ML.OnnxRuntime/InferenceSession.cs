@@ -215,11 +215,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var envHandle = OnnxRuntime.Handle;
             var session = IntPtr.Zero;
-
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.Unicode.GetBytes(modelPath), options.Handle, out session));
-            else
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.UTF8.GetBytes(modelPath), options.Handle, out session));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeMethods.GetPlatformSerializedString(modelPath), options.Handle, out session));
 
             InitWithSessionHandle(session, options);
         }
