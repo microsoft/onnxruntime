@@ -54,5 +54,5 @@ class MLValueNameIdxMap {
   int ort_value_max_idx_ = 0;
   std::unordered_map<std::string, int> map_;
 };
-using OrtValueNameIdxMap = MLValueNameIdxMap;
+using MLValueNameIdxMap = MLValueNameIdxMap;
 }  // namespace onnxruntime

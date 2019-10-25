@@ -31,6 +31,10 @@ add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEP
 target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT})
 onnxruntime_add_include_to_target(onnxruntime gsl)
 
+if (onnxruntime_USE_CUDA)
+  target_include_directories(onnxruntime PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+endif()
+
 if(UNIX)
   if (APPLE)
     set(BEGIN_WHOLE_ARCHIVE -Xlinker -all_load)

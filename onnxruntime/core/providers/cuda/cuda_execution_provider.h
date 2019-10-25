@@ -7,6 +7,7 @@
 #include "core/graph/constants.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
+#include "core/providers/cuda/gpu_data_transfer.h"
 #include "shared_inc/cuda_utils.h"
 #include <deque>
 
@@ -15,13 +16,6 @@ namespace onnxruntime {
 // Information needed to construct CUDA execution providers.
 struct CUDAExecutionProviderInfo {
   int device_id{0};
-};
-
-enum CUDAStreamType : int {
-  kCudaStreamDefault = 0,
-  kCudaStreamCopyIn,
-  kCudaStreamCopyOut,
-  kTotalCudaStreams,
 };
 
 // Logical device representation.
@@ -37,15 +31,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
   Status OnRunStart() override;
 
   Status OnRunEnd() override;
-
-  Status CopyTensor(const Tensor& src, Tensor& dst) const override;
-
-  Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
-
-  const void* GetExecutionHandle() const noexcept override {
-    // The CUDA interface does not return anything interesting.
-    return nullptr;
-  }
 
   cublasHandle_t PerThreadCublasHandle() {
     // Assure each thread has its TLS context.

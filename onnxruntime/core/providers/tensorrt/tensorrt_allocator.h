@@ -12,7 +12,7 @@ class TensorrtPinnedAllocator : public CPUAllocator {
  public:
   virtual const OrtAllocatorInfo& Info() const override {
     static OrtAllocatorInfo tensorrt_cpu_allocator_info(TRT,
-                                                   OrtAllocatorType::OrtDeviceAllocator, 0,
+                                                   OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0,
                                                    OrtMemType::OrtMemTypeCPU);
     return tensorrt_cpu_allocator_info;
   }
@@ -25,8 +25,7 @@ class TensorrtAllocator : public CPUAllocator {
  public:
   virtual const OrtAllocatorInfo& Info() const override {
     static OrtAllocatorInfo tensorrt_default_allocator_info(TRT,
-                                                       OrtAllocatorType::OrtDeviceAllocator, 0,
-                                                       OrtMemType::OrtMemTypeDefault);
+                                                       OrtAllocatorType::OrtDeviceAllocator);
     return tensorrt_default_allocator_info;
   }
 };

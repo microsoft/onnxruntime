@@ -8,19 +8,68 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/memcpy.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/platform/env.h"
 #include "onnx/shape_inference/implementation.h"
 #include "cuda_runtime_api.h"
 #include "gsl/pointers"
 #include "core/graph/model.h"
-#include "cuda_runtime_api.h"
+#include "core/providers/cuda/gpu_data_transfer.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
+
+ONNX_OPERATOR_KERNEL_EX(
+    MemcpyFromHost,
+    kOnnxDomain,
+    1,
+    kTensorrtExecutionProvider,
+    KernelDefBuilder()
+        .InputMemoryType<OrtMemTypeCPUInput>(0)
+        .ExecQueueId(kCudaStreamCopyIn)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    Memcpy);
+
+ONNX_OPERATOR_KERNEL_EX(
+    MemcpyToHost,
+    kOnnxDomain,
+    1,
+    kTensorrtExecutionProvider,
+    KernelDefBuilder()
+        .OutputMemoryType<OrtMemTypeCPUOutput>(0)
+        .ExecQueueId(kCudaStreamCopyOut)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    Memcpy);
+
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
+
+static void RegisterTensorrtKernels(KernelRegistry& kernel_registry) {
+  static const BuildKernelCreateInfoFn function_table[] = {
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
+  };
+
+  for (auto& function_table_entry : function_table) {
+    kernel_registry.Register(function_table_entry());
+  }
+}
+
+std::shared_ptr<KernelRegistry> GetTensorrtKernelRegistry() {
+  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
+  RegisterTensorrtKernels(*kernel_registry);
+
+  return kernel_registry;
+}
+
+std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() const {
+  static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::GetTensorrtKernelRegistry();
+  return kernel_registry;
+}
 
 #define CHECK_CUDA(call)         \
   do {                           \
@@ -30,18 +79,18 @@ namespace onnxruntime {
     }                            \
   } while (0)
 
-TensorrtExecutionProvider::TensorrtExecutionProvider()
+TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider} {
   DeviceAllocatorRegistrationInfo trt_device_info({OrtMemTypeCPU, [](int) {
                                                      return std::make_unique<TensorrtPinnedAllocator>();
                                                    },
                                                    std::numeric_limits<size_t>::max()});
-  InsertAllocator(CreateAllocator(trt_device_info));
+  InsertAllocator(CreateAllocator(trt_device_info, info.device_id));
   DeviceAllocatorRegistrationInfo default_device_info({OrtMemTypeDefault, [](int) {
                                                          return std::make_unique<TensorrtAllocator>();
                                                        },
                                                        std::numeric_limits<size_t>::max()});
-  InsertAllocator(CreateAllocator(default_device_info));
+  InsertAllocator(CreateAllocator(default_device_info, info.device_id));
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {}
@@ -178,17 +227,6 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   }
 
   return result;
-}
-
-std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  return kernel_registry;
-}
-
-common::Status TensorrtExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) const {
-  ORT_UNUSED_PARAMETER(src);
-  ORT_UNUSED_PARAMETER(dst);
-  return Status::OK();
 }
 
 common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
