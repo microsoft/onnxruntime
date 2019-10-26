@@ -69,7 +69,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
  } else if (provider_name == onnxruntime::kIntelExecutionProvider) {
 #ifdef USE_INTEL
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Intel(session_options, "CPU"));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Intel(session_options, "CPU"));
 #else
     ORT_THROW("Intel is not supported in this build\n");
 #endif
