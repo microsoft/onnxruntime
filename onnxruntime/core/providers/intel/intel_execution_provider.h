@@ -13,15 +13,14 @@
 #include <map>
 
 namespace ngraph {
-  namespace runtime {
-    class Backend;
-  }
+namespace runtime {
+class Backend;
 }
+}  // namespace ngraph
 
 namespace onnxruntime {
 
 constexpr const char* INTEL = "Intel";
-
 
 // Information needed to construct OpenVINO execution providers.
 struct IntelExecutionProviderInfo {
@@ -68,4 +67,4 @@ class IntelExecutionProvider : public IExecutionProvider {
   std::shared_ptr<ngraph::runtime::Backend> ng_backend_;
 };
 
-}
+}  // namespace onnxruntime

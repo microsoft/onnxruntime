@@ -17,9 +17,9 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/logging/logging.h"
-#include "ngraph/ngraph.hpp" 
-#include "ngraph/pass/manager.hpp" 
-#include "ngraph/pass/opset1_upgrade.hpp" 
+#include "ngraph/ngraph.hpp"
+#include "ngraph/pass/manager.hpp"
+#include "ngraph/pass/opset1_upgrade.hpp"
 
 #include "intel_graph.h"
 //#include "intel_custom_op.h"
@@ -160,7 +160,7 @@ void IntelGraph::GetExecutableHandle(
   // Configure input & output
   // Prepare input blobs
   if (network)
-	  std::cout << "Network is not NULL" << std::endl;
+    std::cout << "Network is not NULL" << std::endl;
   auto inputInfo = network->getInputsInfo();
   LOGS_DEFAULT(INFO) << log_tag << "Loaded plugins";
   auto onnx_input_defs = fused_node_->InputDefs();
@@ -230,7 +230,7 @@ void IntelGraph::GetExecutableHandle(
 }
 
 size_t IntelGraph::DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* input_tensor,
-                                      InferenceEngine::SizeVector graph_dims) {
+                                   InferenceEngine::SizeVector graph_dims) {
   size_t batch_size = 1;
 
   // All the inputs and outputs are batched the same way.
@@ -249,8 +249,8 @@ size_t IntelGraph::DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* input_t
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
 void IntelGraph::StartAsyncInference(Ort::CustomOpApi ort, const OrtValue* input_tensors[],
-                                        size_t batch_slice_idx,
-                                        size_t infer_req_idx) {
+                                     size_t batch_slice_idx,
+                                     size_t infer_req_idx) {
   auto infer_request = infer_requests_[infer_req_idx];
   auto graph_input_info = intel_network_->getInputsInfo();
 
@@ -277,8 +277,8 @@ void IntelGraph::StartAsyncInference(Ort::CustomOpApi ort, const OrtValue* input
 // Wait for asynchronous inference completion on an Infer Request object indexed by infer_req_idx
 // and copy the results into a slice location within the batched output buffer indexed by batch_slice_idx
 void IntelGraph::CompleteAsyncInference(Ort::CustomOpApi ort, OrtValue* output_tensors[],
-                                           size_t batch_slice_idx,
-                                           size_t infer_req_idx) {
+                                        size_t batch_slice_idx,
+                                        size_t infer_req_idx) {
   auto infer_request = infer_requests_[infer_req_idx];
 
   // Wait for Async inference completion
@@ -338,10 +338,8 @@ void IntelGraph::GetOutputTensors(Ort::CustomOpApi ort, OrtKernelContext* contex
   }
 }
 
-
-void IntelGraph::CreateNGraphFunc(const ONNX_NAMESPACE::ModelProto& model_proto) 
-{  
-  model_proto_= model_proto;
+void IntelGraph::CreateNGraphFunc(const ONNX_NAMESPACE::ModelProto& model_proto) {
+  model_proto_ = model_proto;
   std::cout << "In CreateNgraphFunc" << std::endl;
   std::istringstream model_stream{model_proto_.SerializeAsString()};
   std::shared_ptr<ngraph::Function> ng_function;
@@ -349,26 +347,26 @@ void IntelGraph::CreateNGraphFunc(const ONNX_NAMESPACE::ModelProto& model_proto)
     ng_function = ngraph::onnx_import::import_onnx_model(model_stream);
     LOGS_DEFAULT(INFO) << "ONNX Import Done";
   } catch (const std::exception& exp) {
-    LOGS_DEFAULT(FATAL) << "[NGRAPHCustomOp] " << " - " << name_ << " - "
+    LOGS_DEFAULT(FATAL) << "[NGRAPHCustomOp] "
+                        << " - " << name_ << " - "
                         << "Exception while importing model to nGraph: " << std::string(exp.what());
     throw;
   } catch (...) {
-    LOGS_DEFAULT(FATAL) << "[NGRAPHCustomOp] " << " - " << name_ << " - "
+    LOGS_DEFAULT(FATAL) << "[NGRAPHCustomOp] "
+                        << " - " << name_ << " - "
                         << "Unknown exception while importing model to nGraph";
     throw;
   }
 
   //IE wrapper for nGraph function
   //InferenceEngine::CNNNetwork network(ng_function);
-  ngraph::pass::Manager pass_manager; 
-  pass_manager.register_pass<ngraph::pass::Opset1Upgrade>(); 
+  ngraph::pass::Manager pass_manager;
+  pass_manager.register_pass<ngraph::pass::Opset1Upgrade>();
   pass_manager.run_passes(ng_function);
-  InferenceEngine::CNNNetwork network(ng_function); 
+  InferenceEngine::CNNNetwork network(ng_function);
 
   intel_network_ = std::make_shared<InferenceEngine::CNNNetwork>(network);
-  
-}  
-
+}
 
 void IntelGraph::Infer(const ONNX_NAMESPACE::ModelProto& model_proto, Ort::CustomOpApi ort, OrtKernelContext* context) {
   // Preliminary Thread safety mechanism
@@ -439,5 +437,5 @@ void IntelGraph::Infer(const ONNX_NAMESPACE::ModelProto& model_proto, Ort::Custo
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
 }
 
-}  // namespace openvino_ep
+}  // namespace intel_ep
 }  // namespace onnxruntime

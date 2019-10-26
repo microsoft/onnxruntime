@@ -36,7 +36,6 @@ namespace intel_ep {
 
 class IntelGraph {
  public:
-
   IntelGraph(const onnxruntime::Node* fused_node);
 
   void Infer(const ONNX_NAMESPACE::ModelProto& model_proto, Ort::CustomOpApi ort, OrtKernelContext* context);
@@ -44,11 +43,10 @@ class IntelGraph {
   static void ConvertONNXModelToIntelIR(const std::string& onnx_model, std::string& intel_xml, std::string& intel_bin, bool precision_fp32);
 
   static const std::string log_tag;
-  void CreateNGraphFunc(const ONNX_NAMESPACE::ModelProto& model_proto);//, Ort::CustomOpApi api, OrtKernelContext* context) const;
+  void CreateNGraphFunc(const ONNX_NAMESPACE::ModelProto& model_proto);  //, Ort::CustomOpApi api, OrtKernelContext* context) const;
 
   //static std::shared_ptr<InferenceEngine::CNNNetwork> cnetwork;
   static InferenceEngine::CNNNetwork cnetwork;
-
 
  private:
   mutable std::shared_ptr<ngraph::runtime::Executable> ng_curr_exe_ = nullptr;
@@ -59,7 +57,7 @@ class IntelGraph {
 
   //AllocatorHandle allocator_ = nullptr;
 
-  std::string name_="test";
+  std::string name_ = "test";
   mutable std::unordered_map<std::string, std::shared_ptr<ngraph::runtime::Executable>> ng_exe_map_;
   mutable std::list<std::string> keyCache;
 
@@ -95,10 +93,10 @@ class IntelGraph {
   IE_SUPPRESS_DEPRECATED_END
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;
   std::string device_id_;
-//  mutable std::mutex compute_lock_;
+  //  mutable std::mutex compute_lock_;
   std::vector<int> input_indexes_;
   InferenceEngine::Precision precision_;
   const onnxruntime::Graph* onnx_graph_;
 };
-}  // namespace openvino_ep
+}  // namespace intel_ep
 }  // namespace onnxruntime

@@ -38,10 +38,10 @@ constexpr const char* Intel = "Intel";
 
 IntelExecutionProvider::IntelExecutionProvider(const IntelExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kIntelExecutionProvider} {
-  std::cout << "In the Intel EP" << std::endl;	    
+  std::cout << "In the Intel EP" << std::endl;
   ORT_UNUSED_PARAMETER(info);
 
-  DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) {return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(Intel, OrtDeviceAllocator));}, std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(Intel, OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(device_info));
 }
 
@@ -67,7 +67,7 @@ bool IsDimensionSupported(const Node* node) {
 
   if (node->OpType().find("Pool") != std::string::npos) {
     if (input_dims != 4 && input_dims != 5)
-       return false;
+      return false;
   }
   return true;
 }
@@ -104,23 +104,23 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     const auto& depth_arg = node->InputDefs()[1];
     return initializers.find(depth_arg->Name()) == initializers.end();
   } else if (optype == "Conv") {
-    if (GetInputCount(node, initializers) > 1) 
-      return true;			        
+    if (GetInputCount(node, initializers) > 1)
+      return true;
   } else if (optype == "BatchNormalization") {
     if (GetInputCount(node, initializers) > 1)
       return true;
   } else if (optype == "PRelu") {
-      return true;
+    return true;
   } else if (optype == "Selu") {
-      return true;
+    return true;
   } else if (optype == "Softplus") {
-      return true;
+    return true;
   } else if (optype == "HardSigmoid") {
-      return true;
+    return true;
   } else if (optype == "GlobalLpPool") {
-      return true;
+    return true;
   } else if (optype == "ThresholdedRelu") {
-      return true;
+    return true;
   } else if (optype == "TopK") {
     //TopK opset 10 is currently not supported.
     //K as input is currently not suppported.
@@ -183,7 +183,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       // disabling temporarily until it's fixed in the next release of nGraph
       const auto splits = split_attr->second.ints();
       return std::any_of(std::begin(splits), std::end(splits),
-        [](const auto split) { return split <= 0; });
+                         [](const auto split) { return split <= 0; });
     }
   } else if (optype == "QLinearMatMul") {
     const auto& a_zero_point = node->InputDefs()[2];
@@ -214,7 +214,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       // not found in initializers -> not const
       return initializers.find(a_zero_point->Name()) == initializers.end() ||
              initializers.find(b_zero_point->Name()) == initializers.end();
-    } // else -> azp & bzp are 0 by default according to ONNX spec
+    }  // else -> azp & bzp are 0 by default according to ONNX spec
   } else if (optype == "ConvInteger") {
     // all ConvInteger zero points need to be constants
     const auto inputs = node->InputDefs();
@@ -230,7 +230,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       // not found in initializers -> not const
       return initializers.find(x_zero_point->Name()) == initializers.end() ||
              initializers.find(w_zero_point->Name()) == initializers.end();
-    } // else -> xzp & wzp are 0 by default according to ONNX spec
+    }  // else -> xzp & wzp are 0 by default according to ONNX spec
   }
 
   //Op doesn't fall into known any of unsupported modes.
@@ -475,7 +475,7 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
 
 std::vector<std::unique_ptr<ComputeCapability>>
 IntelExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                       const std::vector<const KernelRegistry*>& kernel_registries) const {
+                                      const std::vector<const KernelRegistry*>& kernel_registries) const {
   ORT_UNUSED_PARAMETER(kernel_registries);
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
@@ -541,7 +541,6 @@ IntelExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   return result;
 }
 
-
 static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node) {
   const auto* node_function = fused_node->GetFunctionBody();
 
@@ -561,33 +560,32 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
   return model_proto;
 }
 
-
 common::Status IntelExecutionProvider::Compile(
     const std::vector<onnxruntime::Node*>& fused_nodes,
     std::vector<NodeComputeInfo>& node_compute_funcs) {
- for (const auto& fused_node : fused_nodes) {
+  for (const auto& fused_node : fused_nodes) {
     NodeComputeInfo compute_info;
     std::shared_ptr<intel_ep::IntelGraph> intel_graph;
-    intel_graph = std::make_shared<intel_ep::IntelGraph>(fused_node); 
+    intel_graph = std::make_shared<intel_ep::IntelGraph>(fused_node);
     auto model_proto = GetModelProtoFromFusedNode(fused_node);
 
-    compute_info.create_state_func = 
-	    [intel_graph](ComputeContext* context, FunctionState* state) {
-	    IntelEPFunctionState* p = new IntelEPFunctionState();
-	    p->allocate_func = context->allocate_func;
-	    p->destroy_func = context->release_func;
-	    p->allocator_handle = context->allocator_handle;
-	    p->intel_graph = intel_graph;
-	    *state = static_cast<FunctionState>(p);
-	    return 0;
-    };
+    compute_info.create_state_func =
+        [intel_graph](ComputeContext* context, FunctionState* state) {
+          IntelEPFunctionState* p = new IntelEPFunctionState();
+          p->allocate_func = context->allocate_func;
+          p->destroy_func = context->release_func;
+          p->allocator_handle = context->allocator_handle;
+          p->intel_graph = intel_graph;
+          *state = static_cast<FunctionState>(p);
+          return 0;
+        };
     compute_info.compute_func = [model_proto](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       auto function_state = static_cast<IntelEPFunctionState*>(state);
-          try {
-            function_state->intel_graph->Infer(model_proto,*api, context);
-          } catch (const char* msg) {
-            return common::Status(common::ONNXRUNTIME, common::FAIL);
-          }
+      try {
+        function_state->intel_graph->Infer(model_proto, *api, context);
+      } catch (const char* msg) {
+        return common::Status(common::ONNXRUNTIME, common::FAIL);
+      }
       return Status::OK();
     };
 
@@ -601,6 +599,6 @@ common::Status IntelExecutionProvider::Compile(
     node_compute_funcs.push_back(compute_info);
   }
 
-  return Status::OK(); 
- }
+  return Status::OK();
+}
 }  // namespace onnxruntime
