@@ -26,7 +26,7 @@ class BatchNorm final : public CudaKernel {
     }
 
     if (spatial_ == 0) {
-      cudnn_batch_norm_mode_ = CUDNN_BATCHNORM_PER_ACTIVATION;  // TODO add test case for this when implemented in CPU as well.
+      cudnn_batch_norm_mode_ = CUDNN_BATCHNORM_PER_ACTIVATION;
     }
   }
 

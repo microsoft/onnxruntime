@@ -186,12 +186,16 @@ Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const
 
   std::vector<int64_t> pads = pool_attrs_.pads;
   std::vector<int64_t> output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
-  Tensor* Y = context->Output(0, output_dims);
+  TensorShape output_shape(output_dims);
+  Tensor* Y = context->Output(0, output_shape);
+
+  // edge case: one or more dims with value of 0
+  if (output_shape.Size() == 0)
+    return Status::OK();
 
   // Get access to the internal threadpool
   // Temporarily derive concurrency parameters without access to session state
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
-  concurrency::ThreadPool* thread_pool = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
   MlasPool(kind,
            pooling_dims,
@@ -202,7 +206,7 @@ Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const
            output_dims.data(),
            X->template Data<float>(),
            Y->template MutableData<float>(),
-           const_cast<concurrency::ThreadPool*>(thread_pool));
+           thread_pool);
 
   return Status::OK();
 }

@@ -86,8 +86,7 @@ class Softmax final : public OpKernel {
 
   Status Compute(OpKernelContext* ctx) const override {
 #ifndef USE_OPENMP
-    auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-    concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
+    concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
 #endif
     const auto* tensor_pointer = ctx->Input<Tensor>(0);
     if (tensor_pointer == nullptr)
@@ -98,6 +97,10 @@ class Softmax final : public OpKernel {
     VLOGS(ctx->Logger(), 2) << "Input tensor shape: " << input_shape;
 
     Tensor* Y = ctx->Output(0, input_shape);
+
+    // edge case. one or more dims with value of 0. nothing to do
+    if (input_shape.Size() == 0)
+      return Status::OK();
 
     const int64_t axis = HandleNegativeAxis(axis_, input_shape.NumDimensions());
 

@@ -58,6 +58,7 @@ ENV PATH /opt/miniconda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:$PATH
 RUN git clone --recursive -b $ONNXRUNTIME_BRANCH $ONNXRUNTIME_REPO /onnxruntime && \
     /bin/sh /onnxruntime/dockerfiles/scripts/install_common_deps.sh && \
     cd /onnxruntime/cmake/external/onnx && python3 setup.py install && \
+    cp onnxruntime/docs/Privacy.md /code/Privacy.md &&\
     cp /onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt && \
     cp /onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt && \
     pip install azure-iothub-device-client azure-iothub-service-client azure-iot-provisioning-device-client && \

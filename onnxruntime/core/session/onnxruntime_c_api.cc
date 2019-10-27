@@ -91,10 +91,6 @@ class LoggingWrapper : public ISink {
   void* logger_param_;
 };
 
-ORT_API(const char*, OrtGetVersionString) {
-  return ORT_VERSION;
-}
-
 ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction logging_function,
                     _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid,
                     _Outptr_ OrtEnv** out) {
@@ -129,6 +125,27 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel default_warning_level,
   }
   *out = nullptr;
   return ToOrtStatus(status);
+  API_IMPL_END
+}
+
+// enable platform telemetry
+ORT_API_STATUS_IMPL(OrtApis::EnableTelemetryEvents, _In_ const OrtEnv* ort_env) {
+  API_IMPL_BEGIN
+  ORT_UNUSED_PARAMETER(ort_env);
+  // note telemetry is controlled via the platform Env object, not the OrtEnv object instance
+  const Env& env = Env::Default();
+  env.GetTelemetryProvider().EnableTelemetryEvents();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::DisableTelemetryEvents, _In_ const OrtEnv* ort_env) {
+  API_IMPL_BEGIN
+  ORT_UNUSED_PARAMETER(ort_env);
+  // note telemetry is controlled via the platform Env object, not the OrtEnv object instance
+  const Env& env = Env::Default();
+  env.GetTelemetryProvider().DisableTelemetryEvents();
+  return nullptr;
   API_IMPL_END
 }
 
@@ -349,10 +366,47 @@ ORT_API_STATUS_IMPL(OrtApis::AddCustomOpDomain, _In_ OrtSessionOptions* options,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path, void** library_handle) {
+  API_IMPL_BEGIN
+
+  Env::Default().LoadDynamicLibrary(library_path, library_handle);
+  if (!*library_handle)
+    return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Failed to load library");
+
+  OrtStatus* (*RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
+
+  Env::Default().GetSymbolFromLibrary(*library_handle, "RegisterCustomOps", (void**)&RegisterCustomOps);
+  if (!RegisterCustomOps)
+    return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Entry point RegisterCustomOps not found in library");
+
+  return RegisterCustomOps(options, OrtGetApiBase());
+  API_IMPL_END
+}
+
 namespace {
 template <typename Loader>
 OrtStatus* CreateSessionImpl(_In_ const OrtEnv* env, _In_ const OrtSessionOptions* options,
                              Loader loader, _Outptr_ OrtSession** out) {
+  // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
+  // byte addressable memory
+  auto session_options = options == nullptr ? onnxruntime::SessionOptions() : options->value;
+  std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
+  if (options) {
+    for (auto& factory : options->provider_factories) {
+      auto provider = factory->CreateProvider();
+      if (provider->Type() == kDmlExecutionProvider) {
+        if (options->value.enable_mem_pattern) {
+          // TODO Instead of returning an error, should we set mem pattern to false here and log a warning saying so?
+          // Doing so would be inconsistent with the Python API that doesn't go through this code path.
+          return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Mem pattern should be disabled when using DML execution provider.");
+        }
+        if (options->value.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
+          return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Sequential execution should be enabled when using DML execution provider.");
+        }
+      }
+      provider_list.push_back(std::move(provider));
+    }
+  }
   auto sess = onnxruntime::make_unique<::onnxruntime::InferenceSession>(
       options == nullptr ? onnxruntime::SessionOptions() : options->value, env->loggingManager);
   Status status;
@@ -364,12 +418,13 @@ OrtStatus* CreateSessionImpl(_In_ const OrtEnv* env, _In_ const OrtSessionOption
     }
   }
 
-  if (options != nullptr)
-    for (auto& factory : options->provider_factories) {
-      auto provider = factory->CreateProvider();
-      if (provider)
-        sess->RegisterExecutionProvider(std::move(provider));
+  // register the providers
+  for (auto& provider : provider_list) {
+    if (provider) {
+      sess->RegisterExecutionProvider(std::move(provider));
     }
+  }
+
   status = loader(*sess);
   if (!status.IsOK())
     return ToOrtStatus(status);
@@ -586,7 +641,7 @@ static OrtStatus* GetNodeDefTypeInfoHelper(const OrtSession* sess, GetDefListFn 
   if (p.second->size() <= index)
     return OrtApis::CreateStatus(ORT_FAIL, "out of index");
   const ONNX_NAMESPACE::TypeProto* type_proto = (*p.second)[index]->TypeAsProto();
-  return OrtTypeInfo::FromDataTypeImpl(type_proto, out);
+  return OrtTypeInfo::FromTypeProto(type_proto, out);
   API_IMPL_END
 }
 
@@ -836,7 +891,7 @@ OrtStatus* OrtGetValueImplSeqOfTensors(const OrtValue* p_ml_value, int index, Or
   } else if (tensor_elem_type == DataTypeImpl::GetType<std::string>()) {
     st = OrtGetValueImplSeqOfTensorsHelper<std::string>(allocator, one_tensor, out);
   } else {
-    st = OrtApis::CreateStatus(ORT_FAIL, "Only sequences that contain float tensors are supported.");
+    st = OrtApis::CreateStatus(ORT_FAIL, "Invalid tensor element type in the input.");
   }
   return st;
 }
@@ -989,14 +1044,14 @@ static OrtStatus* OrtCreateValueImplSeqHelperTensor(const Tensor& tensor,
 
 static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t num_values,
                                               OrtValue** out) {
-  auto seq_ptr = std::make_unique<TensorSeq>();
+  auto seq_ptr = onnxruntime::make_unique<TensorSeq>();
   seq_ptr->tensors.resize(num_values);
 
   // use the data type of the first tensor as the data type of the seq
-  seq_ptr->dtype = reinterpret_cast<const OrtValue*>(in[0])->Get<Tensor>().DataType();
+  seq_ptr->dtype = static_cast<const OrtValue*>(in[0])->Get<Tensor>().DataType();
 
   for (size_t idx = 0; idx < num_values; ++idx) {
-    auto& one_tensor = reinterpret_cast<const OrtValue*>(in[idx])->Get<Tensor>();
+    auto& one_tensor = static_cast<const OrtValue*>(in[idx])->Get<Tensor>();
     auto tensor_elem_type = one_tensor.DataType();
 
     // sequences must have tensors of the same data type
@@ -1218,6 +1273,11 @@ ORT_API_STATUS_IMPL(OrtApis::GetOpaqueValue, const char* domain_name, const char
 
 // End support for non-tensor types
 
+static constexpr OrtApiBase ort_api_base = {
+    &OrtApis::GetApi,
+    &OrtApis::GetVersionString,
+};
+
 static constexpr OrtApi ort_api_1 = {
     &OrtApis::CreateStatus,
     &OrtApis::GetErrorCode,
@@ -1225,6 +1285,9 @@ static constexpr OrtApi ort_api_1 = {
 
     &OrtApis::CreateEnv,
     &OrtApis::CreateEnvWithCustomLogger,
+    &OrtApis::EnableTelemetryEvents,
+    &OrtApis::DisableTelemetryEvents,
+
     &OrtApis::CreateSession,
     &OrtApis::CreateSessionFromArray,
     &OrtApis::Run,
@@ -1232,8 +1295,7 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::CreateSessionOptions,
     &OrtApis::SetOptimizedModelFilePath,
     &OrtApis::CloneSessionOptions,
-    &OrtApis::EnableSequentialExecution,
-    &OrtApis::DisableSequentialExecution,
+    &OrtApis::SetSessionExecutionMode,
     &OrtApis::EnableProfiling,
     &OrtApis::DisableProfiling,
     &OrtApis::EnableMemPattern,
@@ -1250,6 +1312,7 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::CreateCustomOpDomain,
     &OrtApis::CustomOpDomain_Add,
     &OrtApis::AddCustomOpDomain,
+    &OrtApis::RegisterCustomOpsLibrary,
 
     &OrtApis::SessionGetInputCount,
     &OrtApis::SessionGetOutputCount,
@@ -1289,6 +1352,7 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::GetTensorElementType,
     &OrtApis::GetDimensionsCount,
     &OrtApis::GetDimensions,
+    &OrtApis::GetSymbolicDimensions,
     &OrtApis::GetTensorShapeElementCount,
     &OrtApis::GetTensorTypeAndShape,
     &OrtApis::GetTypeInfo,
@@ -1304,7 +1368,7 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::AllocatorFree,
     &OrtApis::AllocatorGetInfo,
     &OrtApis::GetAllocatorWithDefaultOptions,
-    &OrtApis::OrtAddFreeDimensionOverride,
+    &OrtApis::AddFreeDimensionOverride,
     &OrtApis::GetValue,
     &OrtApis::GetValueCount,
     &OrtApis::CreateValue,
@@ -1331,11 +1395,19 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::ReleaseCustomOpDomain,
 };
 
-const OrtApi* ORT_API_CALL OrtGetApi(uint32_t version) NO_EXCEPTION {
+ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version > 1)
     return nullptr;
 
   return &ort_api_1;
+}
+
+ORT_API(const char*, OrtApis::GetVersionString) {
+  return ORT_VERSION;
+}
+
+const OrtApiBase* ORT_API_CALL OrtGetApiBase() NO_EXCEPTION {
+  return &ort_api_base;
 }
 
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Env, OrtEnv)

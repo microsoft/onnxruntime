@@ -3,14 +3,16 @@
 
 #pragma once
 
+#include <cstdint>
+#include <cstring>
 #include <string>
-#include <stdint.h>
 #include <type_traits>
 #include <map>
 #include <unordered_map>
 
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
+#include "core/framework/endian.h"
 
 struct OrtValue;
 
@@ -60,43 +62,29 @@ inline bool operator<(const MLFloat16& left, const MLFloat16& right) {
   return left.val < right.val;
 }
 
-struct ort_endian {
-  union q {
-    uint16_t v_;
-    uint8_t b_[2];
-    constexpr explicit q(uint16_t v) noexcept : v_(v) {}
-  };
-  static constexpr bool is_little() {
-    return q(0x200).b_[0] == 0x0;
-  }
-  static constexpr bool is_big() {
-    return q(0x200).b_[0] == 0x2;
-  }
-};
-
 //BFloat16
 struct BFloat16 {
   uint16_t val{0};
   explicit BFloat16() = default;
   explicit BFloat16(uint16_t v) : val(v) {}
   explicit BFloat16(float v) {
-    uint16_t* dst = reinterpret_cast<uint16_t*>(&v);
-    if (ort_endian::is_little()) {
-      val = dst[1];
+    if (endian::native == endian::little) {
+      std::memcpy(&val, reinterpret_cast<char*>(&v) + sizeof(uint16_t), sizeof(uint16_t));
     } else {
-      val = dst[0];
+      std::memcpy(&val, &v, sizeof(uint16_t));
     }
   }
 
   float ToFloat() const {
     float result;
-    uint16_t* dst = reinterpret_cast<uint16_t*>(&result);
-    if (ort_endian::is_little()) {
-      dst[1] = val;
-      dst[0] = 0;
+    char* const first = reinterpret_cast<char*>(&result);
+    char* const second = first + sizeof(uint16_t);
+    if (endian::native == endian::little) {
+      std::memset(first, 0, sizeof(uint16_t));
+      std::memcpy(second, &val, sizeof(uint16_t));
     } else {
-      dst[0] = val;
-      dst[1] = 0;
+      std::memcpy(first, &val, sizeof(uint16_t));
+      std::memset(second, 0, sizeof(uint16_t));
     }
     return result;
   }

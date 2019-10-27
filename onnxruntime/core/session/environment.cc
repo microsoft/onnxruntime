@@ -13,6 +13,11 @@
 #ifdef MICROSOFT_AUTOML
 #include "core/graph/automl_ops/automl_defs.h"
 #endif
+#ifdef USE_DML
+#include "core/graph/dml_ops/dml_defs.h"
+#endif
+
+#include "core/platform/env.h"
 
 namespace onnxruntime {
 using namespace ::onnxruntime::common;
@@ -37,6 +42,9 @@ Status Environment::Initialize() {
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSAutoMLDomain, 1, 1);
+#ifdef USE_DML
+      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDmlDomain, 1, 1);
+#endif
       // Register contributed schemas.
       // The corresponding kernels are registered inside the appropriate execution provider.
 #ifndef DISABLE_CONTRIB_OPS
@@ -44,6 +52,9 @@ Status Environment::Initialize() {
 #endif
 #ifdef MICROSOFT_AUTOML
       automl::RegisterAutoMLSchemas();
+#endif
+#ifdef USE_DML
+      dml::RegisterDmlSchemas();
 #endif
       RegisterOnnxOperatorSetSchema();
       RegisterOnnxMLOperatorSetSchema();
@@ -75,6 +86,10 @@ Internal copy node
         .SetDoc(R"DOC(
 Internal copy node
 )DOC");
+
+    // fire off startup telemetry (this call is idempotent)
+    const Env& env = Env::Default();
+    env.GetTelemetryProvider().LogProcessInfo();
 
     is_initialized_ = true;
   } catch (std::exception& ex) {
