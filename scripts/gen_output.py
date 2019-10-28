@@ -125,7 +125,7 @@ if __name__ == "__main__":
     subprocess.run(freeze_args, check=True)
   for opset in args.opset:
     print("opset: %d" % opset)
-    output_dir = os.path.join("opset_%d" % opset, model_name)
+    output_dir = os.path.join("opset%d" % opset, model_name)
     if os.path.exists(output_dir):
       shutil.rmtree(output_dir)
 
