@@ -103,9 +103,39 @@ AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type
     return IExecutionProvider::GetAllocator(id, mem_type);
   }
 }
-
+/*
 std::unique_ptr<onnxruntime::IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
   return onnxruntime::make_unique<onnxruntime::GPUDataTransfer>();
+}
+*/
+
+void ToGraphProtoInternal(const onnxruntime::GraphViewer& graph, ONNX_NAMESPACE::GraphProto& graph_proto) {//const
+  for (const auto* input_arg : graph.GetInputs()) {
+    *(graph_proto.mutable_input()->Add()) = input_arg->ToProto();
+  }
+
+  //Add all graph's initializers to the subgraph
+  const auto& init_tensors = graph.GetAllInitializedTensors();
+  for (const auto& tensor : init_tensors) {
+    *(graph_proto.mutable_initializer()->Add()) = *(tensor.second);
+  }
+
+
+  for (const auto* output_arg : graph.GetOutputs()) {
+    *(graph_proto.mutable_output()->Add()) = output_arg->ToProto();
+  }
+
+  for (const auto* value_info : graph.GetValueInfo()) {//value_info_
+    *(graph_proto.mutable_value_info()->Add()) = value_info->ToProto();
+  }
+
+  //GraphViewer graph_viewer(*this);
+  // Nodes must be sorted in Topological Order in the GraphProto per ONNX spec.
+  for (auto& node_idx : graph.GetNodesInTopologicalOrder()) {//graph_viewer
+    const gsl::not_null<NodeProto*> node_proto{graph_proto.add_node()};
+    const gsl::not_null<const Node*> p_node{graph.GetNode(node_idx)};
+    p_node->ToProto(*node_proto);
+  }
 }
 
 std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index, const onnxruntime::GraphViewer& graph) const {
@@ -115,10 +145,16 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   for (const auto& index : graph_nodes_index.first) {
     node_set.insert(node_index[index]);
   }
-  std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+
+  // Get parent graph output names
+  std::unordered_set<std::string> graph_output_names;
+  for (const auto* output_arg : graph.GetOutputs()) {
+    graph_output_names.insert(output_arg->Name());
+  }
 
   // Find inputs and outputs of the subgraph
-  std::unordered_map<const NodeArg *, int> fused_inputs, fused_outputs, fused_outputs_to_add;
+  std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+  std::unordered_map<const NodeArg *, int> fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
   std::unordered_set<const NodeArg*> erased;
   int input_order = 0;
   int output_order = 0;
@@ -137,10 +173,12 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
       }
     }
 
-    // For output searching, there is a special case:
-    // If node's OutputEdges are more than its outputs, meaning certain output is used more than once,
+    // For output searching, there is two special cases,
+    // One is, if node's OutputEdges are more than its outputs, meaning certain output is used more than once,
     // if the output is connected to nodes that don't belong to the subgraph, the output need to be added
     // to the output list
+    // The other one is, if subgraph's node output is parent graph's output. the node output should
+    // be also added to the subgraph's output list
     if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
       for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
         const auto& node_idx = it->GetNode().Index();
@@ -151,6 +189,9 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
             fused_inputs.erase(iter);
             erased.insert(output);
           } else if (erased.find(output) == erased.end()) {
+            if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
+              graph_outputs_to_add[output] = output_order;
+            }
             fused_outputs[output] = output_order++;
           }
         } else {
@@ -166,6 +207,9 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
         }
         // only when output is neither in input list nor erased list, add the output to output list
         else if (erased.find(output) == erased.end()) {
+          if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
+            graph_outputs_to_add[output] = output_order;
+          }
           fused_outputs[output] = output_order++;
         }
       }
@@ -173,6 +217,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   }
 
   fused_outputs.insert(fused_outputs_to_add.begin(), fused_outputs_to_add.end());
+  fused_outputs.insert(graph_outputs_to_add.begin(), graph_outputs_to_add.end());
 
   // Sort inputs and outputs by the order they were added
   std::multimap<int, const NodeArg *> inputs, outputs;
@@ -212,6 +257,12 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
     return nodes_list_output;
   }
 
+  // Get parent graph output names
+  std::unordered_set<std::string> graph_output_names;
+  for (const auto* output_arg : graph.GetOutputs()) {
+    graph_output_names.insert(output_arg->Name());
+  }
+
   iterations++;
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   int counter = 0;
@@ -227,6 +278,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         onnxruntime::Graph& graph_build = model_build.MainGraph();
 
         //Add node and node args
+        //If node output is also parent graph output, the  output will be added to the
+        //subgraph's output list
+        std::vector<std::string> subgraph_output_names;
         for (const auto& index : group.first) {
           const auto& node = graph.GetNode(node_index[index]);
           std::vector<onnxruntime::NodeArg *> inputs, outputs;
@@ -237,21 +291,44 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           for (auto output : node->OutputDefs()) {
             auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
             outputs.push_back(&n_output);
+            const auto name = output->Name();
+            if (graph_output_names.find(name) != graph_output_names.end()) {
+              subgraph_output_names.push_back(name);
+            }
           }
           graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
         }
 
         ORT_ENFORCE(graph_build.Resolve().IsOK());
 
-        for (const auto& input : sub_graph->GetMetaDef()->inputs) {
+        // Add parent graph output to the subgraph
+        int i = 0;
+        std::vector<const NodeArg*> subgraph_outputs;
+        subgraph_outputs.resize(subgraph_output_names.size());
+        for (auto& name : subgraph_output_names) {
+          auto output_arg = graph.GetNodeArg(name);
+          auto& subgraph_output_arg = graph_build.GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
+          subgraph_outputs[i] = &subgraph_output_arg;
+          ++i;
+        }
+        auto& graph_build_outputs = graph_build.GetOutputs();
+        subgraph_outputs.insert(subgraph_outputs.begin(), graph_build_outputs.begin(), graph_build_outputs.end());
+        graph_build.SetOutputs(graph_build_outputs);
+
+        for (const auto& input : sub_graph->GetMetaDef()->inputs) {//slx ??
           const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
           if (graph.GetInitializedTensor(input, initializer)) {
             graph_build.AddInitializedTensor(*initializer);
           }
         }
+        ORT_ENFORCE(graph_build.Resolve().IsOK());
 
         // Serialize modelproto to string
-        ONNX_NAMESPACE::ModelProto model_proto = model_build.ToProto();
+        //ONNX_NAMESPACE::ModelProto model_proto = model_build.ToProto();//slx ??
+        const onnxruntime::GraphViewer graph_viewer(graph_build);
+        onnxruntime::Model model(graph_viewer.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph_viewer.DomainToVersionMap());
+        ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
+        ToGraphProtoInternal(graph_viewer, *(model_proto.mutable_graph()));
         std::string string_buf;
         model_proto.SerializeToString(&string_buf);
 
@@ -266,7 +343,6 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list);
 
         SubGraphCollection_t next_nodes_list;
-        const onnxruntime::GraphViewer graph_viewer(graph_build);
         const std::vector<NodeIndex>& subgraph_node_index = graph_viewer.GetNodesInTopologicalOrder();
         next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, graph_viewer, early_termination);
         for (int i = 0, end = next_nodes_list.size(); i < end; ++i) {
@@ -287,20 +363,25 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // Construct modelproto from graph
   onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap());
   onnxruntime::Graph& graph_build = model.MainGraph();
-  for (const auto& node : graph.Nodes()) {
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+
+  //for (const auto& node : graph.Nodes()) {//slx
+  for (const auto& index : node_index) {
+    const auto& node = graph.GetNode(index);
     std::vector<onnxruntime::NodeArg *> inputs, outputs;
-    for (auto input : node.InputDefs()) {
+    for (auto input : node->InputDefs()) {
       auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
       inputs.push_back(&n_input);
     }
-    for (auto output : node.OutputDefs()) {
+    for (auto output : node->OutputDefs()) {
       auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
       outputs.push_back(&n_output);
     }
-    graph_build.AddNode(node.Name(), node.OpType(), node.Description(), inputs, outputs, &node.GetAttributes(), node.Domain());
+    graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
   }
+  graph_build.SetOutputs(graph.GetOutputs());
 
-  auto status = graph_build.Resolve();
+  //auto status = graph_build.Resolve();//slx ??
 
   //Add initializer to graph
   const auto& init_tensors = graph.GetAllInitializedTensors();
@@ -308,6 +389,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     graph_build.AddInitializedTensor(*(tensor.second));
   }
 
+  auto status = graph_build.Resolve();
   ORT_ENFORCE(status.IsOK(), status);
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -315,14 +397,13 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // Serialize modelproto to string
   std::string string_buf;
   model_proto.SerializeToString(&string_buf);
-    
+
   //save ModelProto to file
   int fd;
   Env::Default().FileOpenWr("trt_model_proto_getcap.onnx", fd);
   model_proto.SerializeToFileDescriptor(fd);
 
   //print out all nodes for debugging
-  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   int node_size = graph.NumberOfNodes();
   std::cout << "node size: " << node_size << std::endl;
   for (int index = 0; index < node_size; ++index){
@@ -332,6 +413,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   }
 
   // Get supported node list
+/*
   SubGraphCollection_t parser_nodes_vector;
   TensorrtLogger& trt_logger = GetTensorrtLogger();
   auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
@@ -339,7 +421,10 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
   auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
   trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_vector);
-
+*/
+  std::vector<size_t> nodes_vector(node_index.size());
+  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  SubGraphCollection_t parser_nodes_vector = {{nodes_vector, false}};
   SubGraphCollection_t supported_nodes_vector;
   const char* batch_env = getenv("ORT_TENSORRT_MAX_PARSER_ITERATIONS");
   const int max_iterations = batch_env ? atoi(batch_env) : max_parser_iterations_;
@@ -348,13 +433,6 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   if (early_termination) {
     supported_nodes_vector.clear();
   }
-
-  //for static shape faster-rcnn: /home/steven/work/model/Faster-RCNN_fromYufeng/static_shapes_from_cpu/
-  //supported_nodes_vector = {{{1, 2, 3, 4, 5, 6}, true}, {{ 8, 9, 10 }, true}, {{ 12 , 13 , 14 , 15 , 16 , 17 , 18 , 19 , 20 , 21 , 22 , 23 , 24 , 25 , 26 , 27 , 28 , 29 , 30 , 31 , 32 , 33 , 34 , 35 , 36 , 37 , 38 , 39 , 40 , 41 , 42 , 43 , 44 , 45 , 46 , 47 , 48 , 49 , 50 , 51 , 52 , 53 , 54 , 55 , 56 , 57 , 58 , 59 , 60 , 61 , 62 , 63 , 64 , 65 , 66 , 67 , 68 , 69 , 70 , 71 , 72 , 73 , 74 , 75 , 76 , 77 , 78 , 79 , 80 , 81 , 82 , 83 , 84 , 85 , 86 , 87 , 88 , 89 , 90 , 91 , 92 , 93 , 94 , 95 , 96 , 97 , 98 , 99 , 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213}, true}, {{ 216}, true}, {{ 218, 219, 220}, true}, {{ 222, 223, 224, 225}, true}, {{ 227, 228}, true}, {{ 230, 231, 232}, true}, {{ 234, 235, 236, 237, 238, 239, 240}, true}, {{ 242}, true}, {{ 244, 245, 246}, true}, {{ 248, 249, 250, 251}, true}, {{ 253, 254}, true}, {{ 256, 257, 258}, true}, {{ 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 284, 285, 286, 287, 288, 289, 290, 291}, true}, {{ 296}, true}, {{ 305, 306, 307, 308, 309}, true}, {{311, 312}, true}, {{ 314, 315}, true}, {{ 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 337, 338, 339}, true}, {{ 342}, true}, {{ 344, 345, 346}, true}, {{ 348, 349, 350, 351}, true}, {{ 353, 354}, true}, {{ 356, 357, 358}, true}, {{ 360, 361, 362, 363, 364, 365, 366}, true}, {{ 368}, true}, {{ 370, 371, 372}, true}, {{ 374, 375, 376, 377}, true}, {{ 379, 380}, true}, {{ 382, 383, 384}, true}, {{ 386, 387, 388, 389, 390, 391, 392, 393, 394, 395, 396, 397, 398, 399, 400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417}, true}, {{ 422}, true}, {{ 431, 432, 433, 434, 435}, true}, {{437, 438}, true}, {{ 440, 441}, true}, {{ 443, 444, 445, 446, 447, 448, 449, 450, 451, 452, 453, 454, 455, 456, 457, 458, 459, 460, 461, 462, 463, 464, 465}, true}, {{ 468}, true}, {{ 470, 471, 472}, true}, {{ 474, 475, 476, 477}, true}, {{ 479, 480}, true}, {{ 482, 483, 484}, true}, {{ 486, 487, 488, 489, 490, 491, 492}, true}, {{ 494}, true}, {{ 496, 497, 498}, true}, {{ 500, 501, 502, 503}, true}, {{ 505, 506}, true}, {{ 508, 509, 510}, true}, {{ 512, 513, 514, 515, 516, 517, 518, 519, 520, 521, 522, 523, 524, 525, 526, 527, 528, 529, 530, 531, 532, 533, 534, 535, 536, 537, 538, 539, 540, 541, 542, 543}, true}, {{ 548}, true}, {{ 557, 558, 559, 560, 561}, true}, {{563, 564}, true}, {{ 566, 567}, true}, {{ 569, 570, 571, 572, 573, 574, 575, 576, 577, 578, 579, 580, 581, 582, 583, 584, 585, 586, 587, 588, 589, 590, 591}, true}, {{ 594}, true}, {{ 596, 597, 598}, true}, {{ 600, 601, 602, 603}, true}, {{ 605, 606}, true}, {{ 608, 609, 610}, true}, {{ 612, 613, 614, 615, 616, 617, 618}, true}, {{ 620}, true}, {{ 622, 623, 624}, true}, {{ 626, 627, 628, 629}, true}, {{ 631, 632}, true}, {{ 634, 635, 636}, true}, {{ 638, 639, 640, 641, 642, 643, 644, 645, 646, 647, 648, 649, 650, 651, 652, 653, 654, 655, 656, 657, 658, 659, 660, 661, 662, 663, 664, 665, 666, 667, 668, 669}, true}, {{ 674}, true}, {{ 683, 684, 685, 686, 687}, true}, {{689, 690}, true}, {{ 692, 693}, true}, {{ 695, 696, 697, 698, 699, 700, 701, 702, 703, 704, 705, 706, 707, 708, 709, 710, 711, 712, 713, 714, 715, 716, 717}, true}, {{ 720}, true}, {{ 722, 723, 724}, true}, {{ 726, 727, 728, 729}, true}, {{ 731, 732}, true}, {{ 734, 735, 736}, true}, {{ 738, 739, 740, 741, 742, 743, 744}, true}, {{ 746}, true}, {{ 748, 749, 750}, true}, {{ 752, 753, 754, 755}, true}, {{ 757, 758}, true}, {{ 760, 761, 762}, true}, {{ 764, 765, 766, 767, 768, 769, 770, 771, 772, 773, 774, 775, 776, 777, 778, 779, 780, 781, 782, 783, 784, 785, 786, 787, 788, 789, 790, 791, 792, 793, 794, 795}, true}, {{ 800}, true}, {{ 809, 810, 811, 812, 813}, true}, {{ 815, 816}, true}, {{ 818, 819}, true}, {{ 821, 822, 823}, true}, /*{{ 825}, true},*/ /*{{ 827, 828, 829, 830, 831}, true},*/ {{ 833}, true}, {{ 835}, true}, {{ 837}, true}, {{ 839, 840, 841}, true}, {{ 843}, true}, {{ 845, 846, 847, 848, 849, 850, 851, 852, 853, 854, 855, 856}, true}, {{ 858}, true}, /*{{ 863}, true},*/ {{ 876, 877, 878, 879, 880}, true}, {{ 882}, true}, {{ 888, 889, 890, 891, 892}, true}, {{ 894}, true}, {{ 900, 901, 902, 903, 904}, true}, {{ 906}, true}, {{ 908, 909, 910}, true}, {{ 912, 913, 914}, true}, {{ 919, 920}, true}, {{ 924, 925, 926}, true}, {{ 931, 932}, true}, {{ 936, 937, 938}, true}, {{ 943, 944}, true}, {{ 948, 949, 950}, true},{{961, 962, 963, 964, 965, 966}, true},{{968, 969, 970, 971, 972, 973}, true}, {{ 976}, true}, {{ 978, 979, 980}, true}, {{ 982, 983, 984, 985}, true}, {{ 987, 988}, true}, {{ 990, 991, 992}, true}, {{ 994, 995, 996, 997, 998, 999, 1000}, true}, {{ 1002}, true}, {{ 1004, 1005, 1006}, true}, {{ 1008, 1009, 1010, 1011}, true}, {{ 1013, 1014}, true}, {{ 1016, 1017, 1018}, true}, {{ 1020, 1021, 1022, 1023, 1024, 1025, 1026, 1027, 1028, 1029, 1030, 1031, 1032}, true}, {{1034}, true}, {{1036, 1037, 1038, 1039, 1040, 1041, 1042}, true}, {{ 1044, 1045, 1046, 1047}, true}, {{ 1049, 1050, 1051}, true}, {{ 1053, 1054}, true}, {{ 1062, 1063, 1064}, true}, {{ 1067, 1068, 1069, 1070, 1071}, true}, {{ 1073, 1074, 1075, 1076, 1077, 1078}, true}, {{ 1082, 1083, 1084}, true}, {{ 1086}, true}, {{ 1092, 1093, 1094, 1095, 1096}, true}};
-  //supported_nodes_vector = {{{317}, true}};//317: gather_1001
-
-  //opset10/mask-rcnn
-  //supported_nodes_vector = {{{318}, true}};//reshape_829
 
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
@@ -371,6 +449,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
 common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                                   std::vector<NodeComputeInfo>& node_compute_funcs) {
+  std::cout << "TensorRT Compile" << std::endl;
   for (const auto* fused_node : fused_nodes) {
     std::vector<int> input_indexes;
     std::vector<int> input_dim_sizes;
@@ -436,7 +515,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     }
 
     trt_builder->setMaxBatchSize(max_batch_size_);
-
     trt_config->setMaxWorkspaceSize(max_workspace_size_);
 
     //Set optimization profile for dynamic shapes
@@ -466,7 +544,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         for (int j = 0, end = dims.nbDims; j < end; ++j) {
           if (dims.d[j] == -1) {
             dims_min.d[j] = 1;
-            dims_opt.d[j] = 1;//1000 , large batch size will cause out-of-memory on GTX1080
+            dims_opt.d[j] = 1;//1000 , large batch size may cause out-of-memory on GTX1080
             dims_max.d[j] = 1;
             dynamic_shape = true;
           }
@@ -513,7 +591,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         input_indexes[bindingIndex] = iter->second;
       }
       size_t dim_size = 1;
-      if (input->isShapeTensor()) {  // shape tensor
+      if (input->isShapeTensor()) {  // shape tensor //slx ???
         for (int j = 0, end = dimensions.nbDims; j < end; ++j) {
           input_shape_ranges[bindingIndex][j] = std::make_pair(INT_MAX, INT_MIN);
         }
