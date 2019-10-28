@@ -124,7 +124,7 @@ class Validator : public OutputCollector<TCharString> {
     VerifyInputOutputCount(session_);
     Ort::AllocatorWithDefaultOptions ort_alloc;
     {
-      char* t;
+      char* t = nullptr;
       session_.GetInputName(0, ort_alloc);
       input_name_ = my_strdup(t);
       ort_alloc.Free(t);

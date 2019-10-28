@@ -258,16 +258,16 @@ int main(int argc, char* argv[]) {
 
   if (execution_provider)
   {
-    if (tcscmp(execution_provider, ORT_TSTR("cpu"))) {
+    if (tcscmp(execution_provider, ORT_TSTR("cpu")) == 0) {
       // Nothing; this is the default
-    } else if (tcscmp(execution_provider, ORT_TSTR("cuda"))) {
+    } else if (tcscmp(execution_provider, ORT_TSTR("cuda")) == 0) {
     #ifdef USE_CUDA
       enable_cuda(session_options);
     #else
       puts("CUDA is not enabled in this build.");
       return -1;
     #endif
-    } else if (tcscmp(execution_provider, ORT_TSTR("dml"))) {
+    } else if (tcscmp(execution_provider, ORT_TSTR("dml")) == 0) {
     #ifdef USE_DML
       enable_dml(session_options);
     #else
