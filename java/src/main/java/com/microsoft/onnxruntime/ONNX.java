@@ -39,7 +39,7 @@ final class ONNX {
     static long ortApiHandle;
 
     /**
-     * Library names stored in the close
+     * Library names stored in the jar.
      */
     private static final List<String> libraryNames = Arrays.asList("onnxruntime","ONNX4j");
 
@@ -128,6 +128,9 @@ final class ONNX {
 
             if (filename != null && prefix.length() >= 3) {
                 File temp = File.createTempFile(prefix, suffix);
+                if (debugLogging) {
+                    logger.info("Writing " + path + " out to " + temp.getAbsolutePath());
+                }
                 temp.deleteOnExit();
                 if (!temp.exists()) {
                     throw new FileNotFoundException("File " + temp.getAbsolutePath() + " does not exist.");
