@@ -61,7 +61,7 @@ struct Identity {
   }
 };
 
-__forceinline__ __device__ int least_pow2_bound(int value) {
+__forceinline__ __host__ __device__ int least_pow2_bound(int value) {
   unsigned int value_ = static_cast<unsigned int>(value);
   --value_;
   value_ |= value_ >> 1;
@@ -314,6 +314,148 @@ template void reduce_mean<float, float>(
   const float* data, float* output, int size, float* buffer);
 template void reduce_mean<double, double>(
   const double* data, double* output, int size, double* buffer);
+
+bool is_matrix_row_reduction(
+    const cudnnReduceTensorOp_t cudnnReduceOp,
+    const int m,
+    const int n,
+    const size_t rank,
+    std::vector<int64_t> axes) {
+  // Because of the use of atomaticAdd with half numbers our matrix-row reduction kernel
+  // requires CUDA version >= 9.0.
+  static int cudaSmVersion = 0;
+  if (cudaSmVersion != 0) {
+    cudaDeviceGetAttribute(&cudaSmVersion, cudaDevAttrComputeCapabilityMajor, 0);
+  }
+
+  if (cudaSmVersion < 7)
+    return false;
+
+  if (m < 1)
+    return false;
+
+  if (n < 1)
+    return false;
+
+  if (rank < 2)
+    return false;
+
+  if (cudnnReduceOp != CUDNN_REDUCE_TENSOR_ADD)
+    return false;
+
+  // Check if all but the last axis are reduced. For example, reducing
+  // [N, C, H, W]-tensor to [W]-tensor can pass these two checks but reducing
+  // [N, C]-tensor to [N, 1]-tensor cannot.
+  if (axes.size() != rank - 1)
+    return false;
+
+  // The last reduced axis should be the second last axis. For
+  // [N, C, H, W]-input, the sorted axes should be [0, 1, 2].
+  std::sort(axes.begin(), axes.end());
+  if (axes.back() != rank - 2)
+    return false;
+
+  return true;
+}
+
+template<typename TIn, typename TOut, typename TBuf>
+__global__ void reduce_matrix_rows_kernel(const TIn *input, TOut *output, int m, int n) {
+  constexpr int x_load_count_per_thread = 1;
+  constexpr int y_load_count_per_thread = 4;
+  const int t_count_x_in_grid = blockDim.x * gridDim.x;
+  const int t_count_y_in_grid = blockDim.y * gridDim.y;
+  const int x_grid_stride = t_count_x_in_grid * x_load_count_per_thread;
+  const int y_grid_stride = t_count_y_in_grid * y_load_count_per_thread;
+  const int tid_x_in_grid = threadIdx.x + blockDim.x * blockIdx.x;
+  const int tid_y_in_grid = threadIdx.y + blockDim.y * blockIdx.y;
+  const int tid_in_block = threadIdx.x + blockDim.x * threadIdx.y;
+
+  // Shape is blockDim.y-by-blockDim.x and element type is TBuf.
+  extern __shared__ unsigned char shared_memory_[];
+  TBuf *shared_memory = reinterpret_cast<TBuf*>(shared_memory_);
+
+  for (int col = tid_x_in_grid; col < n; col += x_grid_stride) {
+    shared_memory[tid_in_block] = TBuf(0.0f);
+
+    // This loops load multiple blockDim.y-by-blockDim.x sub-tensors from the input.
+    for (int row = tid_y_in_grid; row < m; row += y_grid_stride) {
+      TBuf sum = 0.0f;
+      // Thread-level reduction. Each thread loads y_load_count_per_thread values
+      // and aggregrate them.
+#pragma unroll(y_load_count_per_thread)
+      for (int row_inner = 0; row_inner < y_load_count_per_thread; ++row_inner) {
+        int row_final = row + row_inner * t_count_y_in_grid;
+        int col_final = col;
+        if (row_final < m && col_final < n) {
+          sum += TBuf(input[row_final * n + col_final]);
+        }
+      }
+      // Write thread-level reduction result into shared memory.
+      shared_memory[tid_in_block] += sum;
+    }
+
+    // Wait all threads to finish their thread-level reductions.
+    __syncthreads();
+
+    // This loop conducts reduction on elements stored in shared memory.
+    // Each block reduces blockDim.y-by-blockDim.x tensor to 1-by-blockDim.x tensor.
+#pragma unroll(4)
+    for (int stride = blockDim.y / 2; stride > 0; stride /= 2) {
+      if (threadIdx.y < stride) {
+        shared_memory[tid_in_block] += shared_memory[tid_in_block + stride * blockDim.x];
+      }
+      __syncthreads();
+    }
+
+    if (threadIdx.y == 0) {
+
+#if __CUDA_ARCH__ >= 700
+      atomicAdd(output + col, TOut(shared_memory[threadIdx.x]));
+#endif
+    }
+
+    // Make sure all values in shared memory have been written into the output memory.
+    __syncthreads();
+  }
+}
+
+// This function reduces the given input tensor along all but the last axis.
+// For example, [N, C, H, W]-tensor may lead to a output [W]-tensor.
+// It's implementation is in reduction_ops.cu and called in reduction_ops.cc.
+template<typename TIn, typename TOut, typename TBuf>
+void call_reduce_matrix_rows(const TIn *input, TOut *output, int m, int n) {
+  constexpr int max_thread_count_in_block = 512;
+  constexpr int max_block_count_in_grid = 512;
+  constexpr int warp_size = 32;
+  constexpr int load_count_per_thread = 4;
+
+  const int block_x_dim = least_pow2_bound(std::max(1, std::min(n, warp_size)));
+  const int block_y_dim = least_pow2_bound(std::max(1, std::min(max_thread_count_in_block / block_x_dim, m / load_count_per_thread)));
+  const int grid_x_dim = std::max(1, std::min(n / block_x_dim, max_block_count_in_grid));
+  const int grid_y_dim = std::max(1, std::min(max_block_count_in_grid / grid_x_dim, m / block_y_dim / 4));
+
+  const dim3 grid(grid_x_dim, grid_y_dim, 1);
+  const dim3 block(block_x_dim, block_y_dim, 1);
+
+  reduce_matrix_rows_kernel<TIn, TOut, TBuf><<<grid, block, block.y * block.x * sizeof(TBuf)>>>(
+      input, output, m, n);
+}
+
+template<typename TIn, typename TOut>
+void reduce_matrix_rows(const TIn* data, TOut* output, int m, int n)
+{
+  call_reduce_matrix_rows<TIn, TOut, TOut>(data, output, m, n);
+}
+
+template<> void reduce_matrix_rows<half, half>(const half* data, half* output, int m, int n)
+{
+  call_reduce_matrix_rows<half, half, float>(data, output, m, n);
+}
+
+template void reduce_matrix_rows<float, float>(
+  const float* data, float* output, int m, int n);
+template void reduce_matrix_rows<double, double>(
+  const double* data, double* output, int m, int n);
 
 }  // namespace cuda
 }  // namespace onnxruntime

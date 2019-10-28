@@ -36,27 +36,20 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   cudnnDataType_t cudnn_type_X = CudnnTensor::GetDataType<CudaT>();
   const auto rank = input_shape.NumDimensions();
 
+// Block of fast matrix row reduction.
+// It relies on new atomicAdd for half type, so old CUDA can't use it.
   const auto stride = input_shape[input_shape.NumDimensions() - 1];
   const auto reduction_size = input_shape.Size() / stride;
   if (reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
-      apex::is_apex_reduction_sum(
-          cudnn_type_X, cudnnReduceOp,
-          static_cast<int>(reduction_size),
-          static_cast<int>(stride), rank, axes_)) {
-    dim3 block;
-    dim3 grid;
-
-    apex::compute_reduction_grid_and_block(static_cast<int>(reduction_size), static_cast<int>(stride), true, block, grid);
-    auto staging_data = GetScratchBuffer<float>(4 * stride * grid.y);
-    auto semaphores = GetScratchBuffer<int>(grid.x);
-
-    apex::reduce_sum_along_all_but_the_last_axis(
-        reinterpret_cast<const float*>(X),
-        reinterpret_cast<float*>(Y),
-        grid, block,
+      is_matrix_row_reduction(cudnnReduceOp,
         static_cast<int>(reduction_size),
-        static_cast<int>(stride),
-        staging_data.get(), semaphores.get());
+        static_cast<int>(stride), rank, axes_)) {
+
+    reduce_matrix_rows(
+      reinterpret_cast<const CudaT*>(X),
+      reinterpret_cast<CudaT*>(Y),
+      static_cast<int>(reduction_size),
+      static_cast<int>(stride));
     return Status::OK();
   }
 

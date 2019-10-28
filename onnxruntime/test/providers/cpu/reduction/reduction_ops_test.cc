@@ -791,7 +791,7 @@ void test_apex_reduce_sum(
   std::vector<float> Y(n, 0.0f);
   for (int64_t i = 0; i < m; ++i) {
     for (int64_t j = 0; j < n; ++j) {
-      const float value = float(i + j);
+      const float value = (float(i)/float(m) + float(j)/float(n)) / float(m);
       X[i * n + j] = value;
       Y[j] += value;
     }
@@ -805,12 +805,19 @@ void test_apex_reduce_sum(
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceSum_apex_matrix) {
-  for (int64_t m = 1; m < 2048; m *= 8) {
-    for (int64_t n = 1; n < 2048; n *= 8) {
-      if (m * n <= 32768) {
-        test_apex_reduce_sum(m, n);
+TEST(ReductionOpTest, ReduceSum_apex_matrix_large) {
+  for (int64_t m = 1; m < 2049; m *= 8) {
+    for (int64_t n = 2; n < 2049; n *= 8) {
+      if (m * n > 32768) {
+        continue;
       }
+      test_apex_reduce_sum(m, n);
+      test_apex_reduce_sum(m + 1, n);
+      test_apex_reduce_sum(m + 3, n);
+      test_apex_reduce_sum(m + 5, n);
+      test_apex_reduce_sum(m + 23, n);
+      test_apex_reduce_sum(m + 47, n);
+      test_apex_reduce_sum(m + 97, n);
     }
   }
 }
@@ -822,8 +829,12 @@ TEST(ReductionOpTest, ReduceSum_apex_bert) {
   test_apex_reduce_sum(8 * 128, 128);
   test_apex_reduce_sum(6 * 384, 128);
   test_apex_reduce_sum(8 * 384, 128);
-  test_apex_reduce_sum(6 * 512, 128);
-  test_apex_reduce_sum(8 * 512, 128);
+}
+
+TEST(ReductionOpTest, ReduceSum_bert_selected_batch_size) {
+  test_apex_reduce_sum(85, 2);
+  test_apex_reduce_sum(85 * 128, 768);
+  test_apex_reduce_sum(86 * 128, 768);
 }
 
 TEST(ReductionOpTest, ReduceSum_apex_more) {
