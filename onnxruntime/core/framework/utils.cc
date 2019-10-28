@@ -18,9 +18,10 @@
 #include "core/framework/sequential_executor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"
-#include "core/providers/cuda/gpu_data_transfer.h"
-
 #include "core/graph/onnx_protobuf.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/gpu_data_transfer.h"
+#endif
 
 namespace ONNX_NAMESPACE {
 std::ostream& operator<<(std::ostream& out, const TensorShapeProto& shape_proto) {
@@ -611,16 +612,18 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
   std::cout << "-----------\n";
   const auto& output_defs = node.OutputDefs();
 
+#ifdef USE_CUDA
   const auto& execution_providers = session_state.GetExecutionProviders();
   const auto* cpu_execution_provider = execution_providers.Get(onnxruntime::kCpuExecutionProvider);
-  const auto* cuda_execution_provider = execution_providers.Get(onnxruntime::kCudaExecutionProvider);
+  auto cpu_allocator = cpu_execution_provider->GetAllocator(0, OrtMemTypeDefault);
+  GPUDataTransfer gpu_data_transfer;
+#endif
 
   for (auto i = 0, end = context.OutputCount(); i < end; ++i) {
     if (output_defs[i]->Exists()) {
       std::cout << "Output " << i << " Name: " << output_defs[i]->Name();
 
       const auto* type = context.OutputType(i);
-
       if (type) {
         if (type->IsTensorType()) {
           const auto& tensor = *context.Output<Tensor>(i);
@@ -631,28 +634,23 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
           if (DEBUG_NODE_INPUTS_OUTPUTS > 1) {
             // check tensor is on CPU before dumping it
             auto& tensor_location = tensor.Location();
-            auto* provider = execution_providers.Get(tensor_location);
-            if (!provider) {
-              provider = cpu_execution_provider;
-            }
-            std::cout << " Provider=" << provider->Type() << "\n";
-
             const auto data_type = tensor.DataType();
-            if (provider == cpu_execution_provider || tensor_location.mem_type == OrtMemTypeCPUOutput) {
+            if (tensor_location.device.Type() == OrtDevice::CPU || tensor_location.mem_type == OrtMemTypeCPUOutput) {
               DispatchOnTensorType(data_type, DumpTensor, tensor, shape);
-            } else if (provider == cuda_execution_provider) {
-              // copy tensor from gpu to cpu then dump
-              auto cpu_allocator = cpu_execution_provider->GetAllocator(0, OrtMemTypeDefault);
-              std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(data_type,
-                                                                            shape,
-                                                                            cpu_allocator);
-              GPUDataTransfer data_transfer;
-              auto status = data_transfer.CopyTensor(tensor, *cpu_tensor.get(), 0);
-              if (status == common::Status::OK()) {
-                DispatchOnTensorType(data_type, DumpTensor, *cpu_tensor.get(), shape);
-              } else {
-                std::cout << " failed to transfer data to cpu.\n";
+            } else {
+              std::cout << tensor_location << "\n";
+#ifdef USE_CUDA
+              if (tensor_location.device.Type() == OrtDevice::GPU) {
+                // copy tensor from gpu to cpu then dump
+                std::unique_ptr<Tensor> cpu_tensor = onnxruntime::make_unique<Tensor>(data_type, shape, cpu_allocator);
+                auto status = gpu_data_transfer.CopyTensor(tensor, *cpu_tensor.get(), 0);
+                if (status == common::Status::OK()) {
+                  DispatchOnTensorType(data_type, DumpTensor, *cpu_tensor.get(), shape);
+                } else {
+                  std::cout << " failed to transfer data to cpu.\n";
+                }
               }
+#endif
             }
           }
         } else {
