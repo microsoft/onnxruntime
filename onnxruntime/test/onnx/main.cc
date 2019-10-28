@@ -22,9 +22,6 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/framework/session_options.h"
 
-const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-const OrtApi* Ort::g_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-
 using namespace onnxruntime;
 
 namespace {
@@ -50,7 +47,7 @@ void usage() {
       "\t-h: help\n"
       "\n"
       "onnxruntime version: %s\n",
-      g_ort->base_.GetVersionString());
+      OrtGetApiBase()->GetVersionString());
 }
 
 #ifdef _WIN32
@@ -106,6 +103,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_DISABLE_ALL;
   bool user_graph_optimization_level_set = false;
+  int verbosity_option_count = 0;
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
@@ -116,7 +114,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           enable_cpu_mem_arena = false;
           break;
         case 'v':
-          logging_level = ORT_LOGGING_LEVEL_INFO;
+          verbosity_option_count += 1;
           break;
         case 'c':
           concurrent_session_runs = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
@@ -217,6 +215,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       }
     }
   }
+
+  // set log level based on number of verbosity options
+  if (verbosity_option_count == 1) {
+    logging_level = ORT_LOGGING_LEVEL_INFO;
+  } else if (verbosity_option_count > 1) {
+    logging_level = ORT_LOGGING_LEVEL_VERBOSE;
+  }
+
   if (concurrent_session_runs > 1 && repeat_count > 1) {
     fprintf(stderr, "when you use '-r [repeat]', please set '-c' to 1\n");
     usage();
@@ -263,8 +269,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
       return -1;
@@ -273,7 +279,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     if (enable_openvino) {
 #ifdef USE_OPENVINO
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "CPU"));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "CPU"));
 #else
       fprintf(stderr, "OpenVINO is not supported in this build");
       return -1;
@@ -281,7 +287,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_cuda) {
 #ifdef USE_CUDA
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
 #else
       fprintf(stderr, "CUDA is not supported in this build");
       return -1;
@@ -289,7 +295,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_nuphar) {
 #ifdef USE_NUPHAR
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(sf, /*allow_unaligned_buffers*/ 1, ""));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(sf, /*allow_unaligned_buffers*/ 1, ""));
 #else
       fprintf(stderr, "Nuphar is not supported in this build");
       return -1;
@@ -297,7 +303,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_mkl) {
 #ifdef USE_MKLDNN
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sf, enable_cpu_mem_arena ? 1 : 0));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
       fprintf(stderr, "MKL-DNN is not supported in this build");
       return -1;
@@ -305,7 +311,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_ngraph) {  // TODO: Re-order the priority?
 #ifdef USE_NGRAPH
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_NGraph(sf, "CPU"));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_NGraph(sf, "CPU"));
 #else
       fprintf(stderr, "nGraph is not supported in this build");
       return -1;
@@ -313,7 +319,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_nnapi) {
 #ifdef USE_NNAPI
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf));
 #else
       fprintf(stderr, "DNNLibrary/NNAPI is not supported in this build");
       return -1;
@@ -326,7 +332,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
       p_models = 1;
       concurrent_session_runs = 1;
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_DML(sf, device_id));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_DML(sf, device_id));
 #else
       fprintf(stderr, "DML is not supported in this build");
       return -1;
@@ -337,8 +343,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.SetGraphOptimizationLevel(graph_optimization_level);
     }
 
-    static const char* cuda_flaky_tests[] = { "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2" };
-    static const char* dml_disabled_tests[] = { "mlperf_ssd_resnet34_1200", "mlperf_ssd_mobilenet_300", "mask_rcnn_keras", "mask_rcnn", "faster_rcnn" };
+    static const char* cuda_flaky_tests[] = {"fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
+    static const char* dml_disabled_tests[] = {"mlperf_ssd_resnet34_1200", "mlperf_ssd_mobilenet_300", "mask_rcnn_keras", "mask_rcnn", "faster_rcnn"};
 
     std::unordered_set<std::string> all_disabled_tests;
     if (enable_cuda) {
@@ -411,7 +417,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"convtranspose_1d", "1d convtranspose not supported yet"},
       {"convtranspose_3d", "3d convtranspose not supported yet"},
       {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
-      // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8. 
+      // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
       // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
       // which doesn't match the expected output that was generated with numpy.
       {"cast_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results."},
@@ -427,50 +433,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"mxnet_arcface", "Model is an invalid ONNX model"},
       {"unique_not_sorted_without_axis", "Expected data for 'Y' is incorrect and in sorted order."},
       {"cumsum_1d_reverse_exclusive", "only failing linux GPU CI. Likely build error."},
-      {"det_2d", "not implemented yet"},
-      {"det_nd", "not implemented yet"},
-      {"resize_downsample_scales_cubic_A_n0p5_exclude_outside", "not implemented yet"},
-      {"resize_downsample_scales_cubic_align_corners", "not implemented yet"},
-      {"resize_downsample_scales_cubic", "not implemented yet"},
-      {"resize_downsample_scales_linear_align_corners", "not implemented yet"},
-      {"resize_downsample_scales_linear", "not implemented yet"},
-      {"resize_downsample_scales_nearest", "not implemented yet"},
-      {"resize_downsample_sizes_cubic", "not implemented yet"},
-      {"resize_downsample_sizes_linear_pytorch_half_pixel", "not implemented yet"},
-      {"resize_downsample_sizes_nearest", "not implemented yet"},
-      {"resize_downsample_sizes_nearest_tf_half_pixel_for_nn", "not implemented yet"},
-      {"resize_tf_crop_and_resize", "not implemented yet"},
-      {"resize_upsample_scales_cubic_A_n0p5_exclude_outside", "not implemented yet"},
-      {"resize_upsample_scales_cubic_align_corners", "not implemented yet"},
-      {"resize_upsample_scales_cubic_asymmetric", "not implemented yet"},
-      {"resize_upsample_scales_cubic", "not implemented yet"},
-      {"resize_upsample_scales_linear_align_corners", "not implemented yet"},
-      {"resize_upsample_scales_linear", "not implemented yet"},
-      {"resize_upsample_scales_nearest", "not implemented yet"},
-      {"resize_upsample_sizes_cubic", "not implemented yet"},
-      {"resize_upsample_sizes_nearest_ceil_half_pixel", "not implemented yet"},
-      {"resize_upsample_sizes_nearest", "not implemented yet"},
-      {"resize_upsample_sizes_nearest_floor_align_corners", "not implemented yet"},
-      {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "not implemented yet"},
-      {"scatternd", "not implemented yet"},
-      {"sequence_model7", "SplitToSequence not implemented yet"},
-      {"sequence_model6", "SplitToSequence not implemented yet"},
-      {"sequence_model5", "SequenceConstruct not implemented yet"},
-      {"sequence_model4", "SequenceConstruct not implemented yet"},
-      {"sequence_model3", "SequenceConstruct not implemented yet"},
-      {"sequence_model2", "SequenceConstruct not implemented yet"},
-      {"sequence_model1", "Sequence* not implemented yet"},
-      {"scatter_elements_with_negative_indices", "ScatterElements(11) not implemented yet"},
-      {"onehot_without_axis", "OneHot(11) not implemented yet"},
-      {"onehot_with_negative_axis", "OneHot(11) not implemented yet"},
-      {"onehot_with_axis", "OneHot(11) not implemented yet"},
-      {"onehot_negative_indices", "OneHot(11) not implemented yet"},
-      {"bitshift_right_uint8", "BitShift(11) uint8 support not enabled currently"},
+      {"resize_downsample_scales_cubic_align_corners", "results mismatch with onnx tests"},
+      {"resize_downsample_scales_linear_align_corners", "results mismatch with onnx tests"},
+      {"resize_tf_crop_and_resize", "Bad onnx test output. Needs test fix."},
+      {"resize_upsample_sizes_nearest_ceil_half_pixel", "Bad onnx test output. Needs test fix."},
+      {"resize_upsample_sizes_nearest_floor_align_corners", "Bad onnx test output. Needs test fix."},
+      {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "Bad onnx test output. Needs test fix."},
       {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
-      {"bitshift_left_uint8", "BitShift(11) uint8 support not enabled currently"},
       {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
-      {"reflect_pad", "test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests"},
-      {"edge_pad", "test data type `int32_t` not supported yet, the `float` equivalent is covered via unit tests"},
+      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398" },
 };
 
 #ifdef USE_NGRAPH
@@ -486,6 +457,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});
   broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
   broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
+  broken_tests.insert({"mlperf_ssd_resnet34_1200", "Results mismatch"});
+  broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
+  broken_tests.insert({"mask_rcnn_keras", "Results mismatch: 8 of 81000"});
+  broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
 #endif
 
 #ifdef USE_MKLDNN
@@ -515,6 +490,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"scan9_sum", "Error with the extra graph"});
   broken_tests.insert({"scan_sum", "Error with the extra graph"});
   broken_tests.insert({"mvn_expanded", "Failed to find kernel for MemcpyFromHost(1) (node Memcpy_1)"});
+  broken_tests.insert({"dynamicquantizelinear_expanded", "Temporarily disabled pending investigation"});
+  broken_tests.insert({"dynamicquantizelinear_max_adjusted_expanded", "Temporarily disabled pending investigation"});
+  broken_tests.insert({"dynamicquantizelinear_min_adjusted_expanded", "Temporarily disabled pending investigation"});
+  broken_tests.insert({"gemm_transposeB", "Temporarily disabled pending investigation"});
+  broken_tests.insert({"range_float_type_positive_delta_expanded", "Temporarily disabled pending investigation"});
+  broken_tests.insert({"range_int32_type_negative_delta_expanded", "Temporarily disabled pending investigation"});
 #endif
 
 #ifdef USE_TENSORRT

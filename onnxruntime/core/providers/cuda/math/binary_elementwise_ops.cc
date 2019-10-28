@@ -14,13 +14,14 @@ Status BinaryElementwise<ShouldNotBroadcast>::Prepare(OpKernelContext* context, 
   p->lhs_tensor = context->Input<Tensor>(0);
   p->rhs_tensor = context->Input<Tensor>(1);
   if (!(p->lhs_tensor->Shape() == p->rhs_tensor->Shape()))
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, Node().Name(), ": mismatching input shapes: ", p->lhs_tensor->Shape().ToString(), " != ", p->rhs_tensor->Shape().ToString());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, Node().Name(), ": mismatching input shapes: ",
+                           p->lhs_tensor->Shape().ToString(), " != ", p->rhs_tensor->Shape().ToString());
   p->output_tensor = context->Output(0, p->lhs_tensor->Shape());
   p->output_rank_or_simple_broadcast = static_cast<size_t>(SimpleBroadcast::NoBroadcast);
   return Status::OK();
 }
 
- Status ComputeOutputShape(const std::string& node_name, const TensorShape& lhs_shape, const TensorShape& rhs_shape, TensorShape& out_shape) {
+Status ComputeOutputShape(const std::string& node_name, const TensorShape& lhs_shape, const TensorShape& rhs_shape, TensorShape& out_shape) {
   size_t lhs_rank = lhs_shape.NumDimensions();
   size_t rhs_rank = rhs_shape.NumDimensions();
   size_t out_rank = std::max(lhs_rank, rhs_rank);
@@ -33,7 +34,9 @@ Status BinaryElementwise<ShouldNotBroadcast>::Prepare(OpKernelContext* context, 
     int64_t rhs_dim = 1;
     if (i < rhs_rank)
       rhs_dim = rhs_shape[rhs_rank - 1 - i];
-    int64_t out_dim = std::max(lhs_dim, rhs_dim);
+    int64_t max = std::max(lhs_dim, rhs_dim);
+    int64_t min = std::min(lhs_dim, rhs_dim);
+    int64_t out_dim = (min == 0 ? min : max);  // special case a dim value of 0.
     if (lhs_dim != out_dim && lhs_dim != 1)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, node_name, ": left operand cannot broadcast on dim ", lhs_rank - 1 - i,
                              " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
@@ -92,15 +95,14 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       x<T>);
 
-#define BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(x, ver, T)           \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      x,                                                                        \
-      kOnnxDomain,                                                              \
-      ver,                                                                      \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
-                        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
+#define BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(x, ver, T)                                                                     \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                          \
+      x,                                                                                                                                  \
+      kOnnxDomain,                                                                                                                        \
+      ver,                                                                                                                                \
+      T,                                                                                                                                  \
+      kCudaExecutionProvider,                                                                                                             \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
       x<T>);
 
 #define BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(x, startver, endver, T) \
@@ -118,7 +120,7 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   template <>                                                                                                    \
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
     BinaryElementwisePreparation prepare(this);                                                                  \
-    Prepare(context, &prepare);                                                                                  \
+    ORT_RETURN_IF_ERROR(Prepare(context, &prepare));                                                             \
     ORT_RETURN_IF_ERROR(prepare.CopyToGpu());                                                                    \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
         prepare.output_rank_or_simple_broadcast,                                                                 \
@@ -141,7 +143,6 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
 #define BINARY_LOGICALOP_TYPED(name, ver, T)                       \
   BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, T) \
   BINARY_ELEMENTWISE_COMPUTE(name, T)
-
 
 // since different ops has different types, we cannot use BINARY_OPS() directly
 // the postfix of means the types supported by the op:
@@ -170,14 +171,14 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   BINARY_OP_TYPED(name, ver, int64_t)  \
   BINARY_OP_HFD(name, ver)
 
-#define BINARY_OP_REGISTER_OIL(name, ver)                        \
-  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, bool)      \
-  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, int32_t)   \
+#define BINARY_OP_REGISTER_OIL(name, ver)                      \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, bool)    \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, int32_t) \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, int64_t)
 
-#define BINARY_LOGICALOP_REGISTER_OIL(name, ver)                          \
-  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, bool)     \
-  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int32_t)  \
+#define BINARY_LOGICALOP_REGISTER_OIL(name, ver)                         \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, bool)    \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int32_t) \
   BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int64_t)
 
 #define BINARY_OP_REGISTER_HFD(name, ver)                        \
@@ -192,13 +193,13 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, int64_t)  \
   BINARY_OP_REGISTER_HFD(name, ver)
 
-#define BINARY_LOGICALOP_REGISTER_UZILHFD(name, ver)                        \
-  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, uint32_t)   \
-  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, uint64_t)   \
-  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int32_t)    \
-  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int64_t)    \
-  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, MLFloat16)  \
-  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, float)      \
+#define BINARY_LOGICALOP_REGISTER_UZILHFD(name, ver)                       \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, uint32_t)  \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, uint64_t)  \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int32_t)   \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int64_t)   \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, MLFloat16) \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, float)     \
   BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, double)
 
 #define BINARY_OP_REGISTER_VERSIONED_HFD(name, startver, endver)                        \
@@ -302,7 +303,6 @@ Status VariadicInputBase<T, CudaT>::ComputeMethod(OpKernelContext* context, Impl
 }
 template <typename T>
 Status Sum<T>::ComputeInternal(OpKernelContext* context) const {
-
   this->ComputeMethod(context, &Impl_Add);
 
   return Status::OK();
@@ -310,7 +310,6 @@ Status Sum<T>::ComputeInternal(OpKernelContext* context) const {
 
 template <typename T>
 Status Max<T>::ComputeInternal(OpKernelContext* context) const {
-
   this->ComputeMethod(context, &Impl_Max);
 
   return Status::OK();
@@ -318,7 +317,6 @@ Status Max<T>::ComputeInternal(OpKernelContext* context) const {
 
 template <typename T>
 Status Min<T>::ComputeInternal(OpKernelContext* context) const {
-
   this->ComputeMethod(context, &Impl_Min);
 
   return Status::OK();
@@ -329,7 +327,7 @@ Status Min<T>::ComputeInternal(OpKernelContext* context) const {
 template <typename T, typename CudaT>
 Status CompareFunction<T, CudaT>::CompareMethod(OpKernelContext* context, ImplCompare Impl_Compare) const {
   BinaryElementwisePreparation prepare(this);
-  Prepare(context, &prepare);
+  ORT_RETURN_IF_ERROR(Prepare(context, &prepare));
   size_t output_size = prepare.output_tensor->Shape().Size();
   IAllocatorUniquePtr<T> output_buffer = GetScratchBuffer<T>(output_size);
   ORT_RETURN_IF_ERROR(prepare.CopyToGpu());
@@ -357,7 +355,6 @@ Status CompareFunction<T, CudaT>::CompareMethod(OpKernelContext* context, ImplCo
 //for other elementwise ops
 template <typename T>
 Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
-
   this->CompareMethod(context, &Impl_Greater);
 
   return Status::OK();
@@ -365,7 +362,6 @@ Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
 
 template <typename T>
 Status Equal<T>::ComputeInternal(OpKernelContext* context) const {
-
   this->CompareMethod(context, &Impl_Equal);
 
   return Status::OK();
@@ -375,7 +371,6 @@ Status Equal<T>::ComputeInternal(OpKernelContext* context) const {
 //for other elementwise ops
 template <typename T>
 Status Less<T>::ComputeInternal(OpKernelContext* context) const {
-
   this->CompareMethod(context, &Impl_Less);
 
   return Status::OK();

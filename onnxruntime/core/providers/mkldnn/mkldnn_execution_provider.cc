@@ -296,28 +296,29 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
             bool create_subgraph = false;
             bool break_loop = false;
             while (!break_loop) {
-              if (temp_index > graph_viewer.MaxNodeIndex())
-                break_loop = true;
-
-              auto next_node = graph_viewer.GetNode(temp_index);
-              while (next_node == nullptr) {
+              if (temp_index < graph_viewer.MaxNodeIndex()) {
+                auto next_node = graph_viewer.GetNode(temp_index);
+                while (next_node == nullptr) {
+                  temp_index++;
+                  next_node = graph_viewer.GetNode(temp_index);
+                }
+                if (next_node->GetInputEdgesCount() == node->GetOutputEdgesCount()) {
+                  // if all nodes in the branch loop are mkldnn nodes
+                  // then continue with adding nodes to sub-graph
+                  break_loop = true;
+                }
+                // inner nodes. if inner nodes are not  mkldnn nodes
+                // create subgraph (inception v2)
+                auto sub_it = mkldnn_ops_.find(next_node->OpType());
+                if (sub_it == mkldnn_ops_.end()) {
+                  // break and create a sub-graph
+                  break_loop = true;
+                  create_subgraph = true;
+                }
                 temp_index++;
-                next_node = graph_viewer.GetNode(temp_index);
-              }
-              if (next_node->GetInputEdgesCount() == node->GetOutputEdgesCount()) {
-                // if all nodes in the branch loop are mkldnn nodes
-                // then continue with adding nodes to sub-graph
+              } else {
                 break_loop = true;
               }
-              // inner nodes. if inner nodes are not  mkldnn nodes
-              // create subgraph (inception v2)
-              auto sub_it = mkldnn_ops_.find(next_node->OpType());
-              if (sub_it == mkldnn_ops_.end()) {
-                // break and create a sub-graph
-                break_loop = true;
-                create_subgraph = true;
-              }
-              temp_index++;
             }
             if (create_subgraph) {
               CreateMetaDef(graph_viewer, subgraph_attributes, subgraph_ptr, sub_var, result);

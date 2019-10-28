@@ -80,6 +80,9 @@ void PadImpl(
     const fast_divmod* fdm_output_strides,
     T* output_data,
     const size_t N) {
+  if (N == 0) // special case where there's a dim value of 0 in the output shape
+    return;
+
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   switch (pad_mode) {
     case 0:
