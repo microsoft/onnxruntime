@@ -144,54 +144,23 @@ ArgDef BuildGradientScalingNode(const NodeArgNameGeneratorFn& nodearg_name_gener
                                 const ArgDef& gradient_argdef,
                                 GraphAugmenter::GraphDefs& graph_defs,
                                 const bool allreduce_in_fp16) {
-  ArgDef scaled_gradient_argdef = ArgDef(nodearg_name_generator(gradient_argdef.name + "_scaled"),
-                                         gradient_argdef.type_proto);
+  auto target_type = allreduce_in_fp16
+                         ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
+                         : ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
 
-  ArgDef gradient_cast_argdef = gradient_argdef;
-  auto scale_type = scale_argdef.type_proto->tensor_type().elem_type();
-  auto gradient_type = gradient_argdef.type_proto->tensor_type().elem_type();
-  if (scale_type != gradient_type) {
-    TypeProto* gradient_cast_type_proto = graph_defs.CopyTypeProto(gradient_argdef);
-    gradient_cast_type_proto->mutable_tensor_type()->set_elem_type(scale_type);
-    gradient_cast_argdef = ArgDef{
-        nodearg_name_generator(gradient_argdef.name),
-        gradient_cast_type_proto};
-    graph_defs.AddNodeDefs({NodeDef{
-        "Cast",
-        {gradient_argdef},
-        {gradient_cast_argdef},
-        {MakeAttribute(
-            "to",
-            static_cast<int64_t>(scale_type))},
-        gradient_cast_argdef.name}});
-  }
-  graph_defs.AddNodeDefs({NodeDef("Mul",
-                                  {gradient_cast_argdef, scale_argdef},
+  TypeProto* scaled_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdef);
+  scaled_gradient_type_proto->mutable_tensor_type()->set_elem_type(target_type);
+
+  ArgDef scaled_gradient_argdef = ArgDef(nodearg_name_generator(gradient_argdef.name + "_scaled"),
+                                         scaled_gradient_type_proto);
+
+  graph_defs.AddNodeDefs({NodeDef("MixedPrecisionScale",
+                                  {gradient_argdef, scale_argdef},
                                   {scaled_gradient_argdef},
-                                  NodeAttributes(),
+                                  {MakeAttribute("to", static_cast<int64_t>(target_type))},
                                   scaled_gradient_argdef.name)});
 
-  //Cast back to fp16 if necessary
-  ArgDef scaled_gradient_cast_argdef = scaled_gradient_argdef;
-  auto scaled_gradient_target_type = allreduce_in_fp16 ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 : ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-  auto scaled_gradient_type = scaled_gradient_argdef.type_proto->tensor_type().elem_type();
-  if (scaled_gradient_target_type != scaled_gradient_type) {
-    TypeProto* scaled_gradient_cast_type_proto = graph_defs.CopyTypeProto(scaled_gradient_argdef);
-    scaled_gradient_cast_type_proto->mutable_tensor_type()->set_elem_type(scaled_gradient_target_type);
-    scaled_gradient_cast_argdef = ArgDef{
-        nodearg_name_generator(scaled_gradient_argdef.name),
-        scaled_gradient_cast_type_proto};
-    graph_defs.AddNodeDefs({NodeDef{
-        "Cast",
-        {scaled_gradient_argdef},
-        {scaled_gradient_cast_argdef},
-        {MakeAttribute(
-            "to",
-            static_cast<int64_t>(scaled_gradient_target_type))},
-        scaled_gradient_cast_argdef.name}});
-  }
-
-  return scaled_gradient_cast_argdef;
+  return scaled_gradient_argdef;
 }
 
 Status AddGradientScalingNodes(const NodeArgNameGeneratorFn& nodearg_name_generator,
@@ -319,13 +288,21 @@ Status AddFiniteGradientChecks(
   ArgDef all_fp32_gradients_finite_argdef;
   if (has_fp32_grad) {
     all_fp32_gradients_finite_argdef = ArgDef{nodearg_name_generator("all_fp32_gradients_finite"), is_all_finite_output_type};
-    graph_defs.AddNodeDefs({NodeDef{"IsAllFinite", fp32_gradient_argdefs, {all_fp32_gradients_finite_argdef}}});
+    graph_defs.AddNodeDefs({NodeDef{"IsAllFinite",
+                                    fp32_gradient_argdefs,
+                                    {all_fp32_gradients_finite_argdef},
+                                    NodeAttributes(),
+                                    all_fp32_gradients_finite_argdef.name}});
   }
 
   ArgDef all_fp16_gradients_finite_argdef;
   if (has_fp16_grad) {
     all_fp16_gradients_finite_argdef = ArgDef{nodearg_name_generator("all_fp16_gradients_finite"), is_all_finite_output_type};
-    graph_defs.AddNodeDefs({NodeDef{"IsAllFinite", fp16_gradient_argdefs, {all_fp16_gradients_finite_argdef}}});
+    graph_defs.AddNodeDefs({NodeDef{"IsAllFinite",
+                                    fp16_gradient_argdefs,
+                                    {all_fp16_gradients_finite_argdef},
+                                    NodeAttributes(),
+                                    all_fp16_gradients_finite_argdef.name}});
   }
 
   if (has_fp32_grad && !has_fp16_grad) {
@@ -334,7 +311,11 @@ Status AddFiniteGradientChecks(
     all_gradients_finite_argdef = all_fp16_gradients_finite_argdef;
   } else if (has_fp32_grad && has_fp16_grad) {
     all_gradients_finite_argdef = ArgDef{nodearg_name_generator("all_gradients_finite"), is_all_finite_output_type};
-    graph_defs.AddNodeDefs({NodeDef{"And", {all_fp32_gradients_finite_argdef, all_fp16_gradients_finite_argdef}, {all_gradients_finite_argdef}}});
+    graph_defs.AddNodeDefs({NodeDef{"And",
+                                    {all_fp32_gradients_finite_argdef, all_fp16_gradients_finite_argdef},
+                                    {all_gradients_finite_argdef},
+                                    NodeAttributes(),
+                                    all_gradients_finite_argdef.name}});
   }
 
   graph_defs.AddGraphOutputs({all_gradients_finite_argdef.name});

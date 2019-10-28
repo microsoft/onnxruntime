@@ -2215,7 +2215,6 @@ Example 4:
         updateOutputShape(ctx, 0, {});
       });
 
-
   static const char* TransposeMatMul_doc = R"DOC(
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
 )DOC";
@@ -2390,7 +2389,7 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
           {"tensor(bool)"},
           "Constrain the output to a boolean tensor.")
       .Input(0, "input", "Input tensors to check.", "V",
-          OpSchema::Variadic)
+             OpSchema::Variadic)
       .Output(
           0,
           "output",
@@ -2407,7 +2406,6 @@ Return true if all elements are true and false otherwise.
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("All")
       .Input(0, "X", "input", "T")
       .Output(0, "Y", "output.", "T")
       .TypeConstraint(
@@ -2417,6 +2415,37 @@ Return true if all elements are true and false otherwise.
       .SetDoc(All_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MixedPrecisionScale)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("MixedPrecisionScale")
+      .Input(0, "X", "input", "SrcT")
+      .Input(1, "S", "scale", "ScaleT")
+      .Output(0, "Y", "output", "DstT")
+      .Attr("to",
+            "The data type to which the elements of the input tensor are cast. "
+            "Strictly must be one of the types from DataType enum in TensorProto",
+            AttributeProto::INT)
+      .TypeConstraint(
+          "SrcT",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.")
+      .TypeConstraint(
+          "ScaleT",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain scale types to float tensors.")
+      .TypeConstraint(
+          "DstT",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromAttributeToOutput(ctx, "to", 0);
+        if (hasNInputShapes(ctx, 1)) {
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }
       });
 
 #ifdef MICROSOFT_INTERNAL

@@ -2208,6 +2208,65 @@ TEST(GradientUtilsTest, ZeroGradientFloat16) {
 
   test.Run();
 }
+
+struct MixedPrecisionScaleInputOutput {
+  MixedPrecisionScaleInputOutput() {
+    input_half.resize(input.size());
+    output_half.resize(output.size());
+    ConvertFloatToMLFloat16(input.data(), input_half.data(), int(input.size()));
+    ConvertFloatToMLFloat16(output.data(), output_half.data(), int(output.size()));
+  }
+
+  // Fp32 Inputs/Output
+  std::vector<float> input = {1.0f, 2.0f, 3.0f};
+  std::vector<float> scale = {0.1f};
+  std::vector<float> output = {0.1f, 0.2f, 0.3f};
+
+  // Fp16 Inputs/Outputs
+  std::vector<MLFloat16> input_half;
+  std::vector<MLFloat16> output_half;
+};
+
+TEST(GradientUtilsTest, MixedPrecisionScaleF2F) {
+  MixedPrecisionScaleInputOutput data;
+  OpTester test("MixedPrecisionScale", 9, onnxruntime::kOnnxDomain);
+  test.AddAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
+  test.AddInput<float>("input", {3}, data.input);
+  test.AddInput<float>("scale", {1}, data.scale);
+  test.AddOutput<float>("output", {3}, data.output);
+  test.Run();
+}
+
+TEST(GradientUtilsTest, MixedPrecisionScaleF2H) {
+  MixedPrecisionScaleInputOutput data;
+  OpTester test("MixedPrecisionScale", 9, onnxruntime::kOnnxDomain);
+  test.AddAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16));
+  test.AddInput<float>("input", {3}, data.input);
+  test.AddInput<float>("scale", {1}, data.scale);
+  test.AddOutput<MLFloat16>("output", {3}, data.output_half);
+  test.Run();
+}
+
+TEST(GradientUtilsTest, MixedPrecisionScaleH2F) {
+  MixedPrecisionScaleInputOutput data;
+  OpTester test("MixedPrecisionScale", 9, onnxruntime::kOnnxDomain);
+  test.AddAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
+  test.AddInput<MLFloat16>("input", {3}, data.input_half);
+  test.AddInput<float>("scale", {1}, data.scale);
+  test.AddOutput<float>("output", {3}, data.output);
+  test.Run();
+}
+
+TEST(GradientUtilsTest, MixedPrecisionScaleH2H) {
+  MixedPrecisionScaleInputOutput data;
+  OpTester test("MixedPrecisionScale", 9, onnxruntime::kOnnxDomain);
+  test.AddAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16));
+  test.AddInput<MLFloat16>("input", {3}, data.input_half);
+  test.AddInput<float>("scale", {1}, data.scale);
+  test.AddOutput<MLFloat16>("output", {3}, data.output_half);
+  test.Run();
+}
+
 #endif
 
 }  // namespace test

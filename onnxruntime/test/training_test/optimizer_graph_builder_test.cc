@@ -33,8 +33,8 @@ const std::vector<const char*> k_weight_names{"weight_1", "weight_2"};
 constexpr const char* const k_loss_scaling_factor_name = "loss_scaling_factor";
 constexpr const char* const k_optimizer_op_name = "SGDOptimizer";
 constexpr const char* const k_all_reduce_op_name = "HorovodAllReduce";
-constexpr const char* const k_is_finite_op_name = "IsFinite";
-constexpr const char* const k_unscale_op_name = "Div";
+constexpr const char* const k_is_all_finite_op_name = "IsAllFinite";
+constexpr const char* const k_unscale_op_name = "MixedPrecisionScale";
 constexpr const char* const k_gradient_accumulator_op_name = "GradientAccumulator";
 constexpr const char* const k_zero_gradient_op_name = "ZeroGradient";
 
@@ -133,7 +133,6 @@ void TestOptimizersAndMixedPrecision(bool use_mixed_precision, bool use_loss_sca
     // verify that nothing is in the If else_branch subgraph
     // verify that finite gradient checks are in the main graph
     // verify that gradient unscaling is in the main graph if using a loss scaling factor
-
     ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), k_weight_names.size());
     //TODO: enable this when AllIsFinite is introduced
     //ASSERT_EQ(GetOpCount(op_counts, k_is_finite_op_name), k_weight_names.size());
@@ -168,10 +167,9 @@ void TestOptimizersAndMixedPrecision(bool use_mixed_precision, bool use_loss_sca
   } else {  // !use_mixed_precision
     // verify that optimizers are in the main graph
     // verify that gradient unscaling and finite gradient checks are not added
-
     ASSERT_EQ(GetOpCount(op_counts, "If"), 0);
     ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), k_weight_names.size());
-    ASSERT_EQ(GetOpCount(op_counts, k_is_finite_op_name), 0);
+    ASSERT_EQ(GetOpCount(op_counts, k_is_all_finite_op_name), 0);
     ASSERT_EQ(GetOpCount(op_counts, k_unscale_op_name), 0);
   }
 }
