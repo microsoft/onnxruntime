@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -22,11 +23,24 @@ final class ONNX {
     // The initial release of the ORT API.
     private static final int ORT_API_VERSION_1 = 1;
 
+    /**
+     * Turns on debug logging during library loading.
+     */
+    public static final String LIBRARY_LOAD_LOGGING = "ORT_LOAD_LOGGING";
+
+    /**
+     * Specifies that the libraries should be loaded from java.library.path rather than unzipped from the jar file.
+     */
+    public static final String LOAD_LIBRARY_PATH = "ORT_LOAD_FROM_LIBRARY_PATH";
+
     private static boolean loaded = false;
 
     // The API handle.
     static long ortApiHandle;
 
+    /**
+     * Library names stored in the close
+     */
     private static final List<String> libraryNames = Arrays.asList("onnxruntime","ONNX4j");
 
     private ONNX() {}
@@ -37,29 +51,68 @@ final class ONNX {
      */
     static synchronized void init() throws IOException {
         if (!loaded) {
-            try {
-                for (String libraryName : libraryNames) {
-                    try {
-                        // This code path is used during testing.
-                        String libraryFromJar = "/" + System.mapLibraryName(libraryName);
-                        String tempLibraryPath = createTempFileFromResource(libraryFromJar);
-                        System.load(tempLibraryPath);
-                    } catch (Exception e) {
-                        String libraryFromJar = "/lib/" + System.mapLibraryName(libraryName);
-                        String tempLibraryPath = createTempFileFromResource(libraryFromJar);
-                        System.load(tempLibraryPath);
-                    }
+            // Check system properties for load time configuration.
+            Properties props = System.getProperties();
+            boolean debug = props.containsKey(LIBRARY_LOAD_LOGGING);
+            boolean loadLibraryPath = props.containsKey(LOAD_LIBRARY_PATH);
+            if (loadLibraryPath) {
+                if (debug) {
+                    logger.info("Loading from java.library.path");
                 }
-                ortApiHandle = initialiseAPIBase(ORT_API_VERSION_1);
-                loaded = true;
-            } catch (IOException e) {
-                logger.log(Level.SEVERE,"Failed to load ONNX library from jar");
-                throw e;
+                try {
+                    for (String libraryName : libraryNames) {
+                        if (debug) {
+                            logger.info("Loading " + libraryName + " from java.library.path");
+                        }
+                        System.loadLibrary(libraryName);
+                    }
+                } catch (UnsatisfiedLinkError e) {
+                    logger.log(Level.SEVERE, "Failed to load ONNX library from library path.");
+                    throw e;
+                }
+            } else {
+                if (debug) {
+                    logger.info("Loading from classpath resource");
+                }
+                try {
+                    for (String libraryName : libraryNames) {
+                        try {
+                            // This code path is used during testing.
+                            String libraryFromJar = "/" + System.mapLibraryName(libraryName);
+                            if (debug) {
+                                logger.info("Attempting to load library from classpath using " + libraryFromJar);
+                            }
+                            String tempLibraryPath = createTempFileFromResource(libraryFromJar, debug);
+                            if (debug) {
+                                logger.info("Copied resource " + libraryFromJar + " to location " + tempLibraryPath);
+                            }
+                            System.load(tempLibraryPath);
+                        } catch (Exception e) {
+                            if (debug) {
+                                logger.info("Failed to load from testing location, looking for /lib/<library-name>");
+                            }
+                            String libraryFromJar = "/lib/" + System.mapLibraryName(libraryName);
+                            if (debug) {
+                                logger.info("Attempting to load library from classpath using " + libraryFromJar);
+                            }
+                            String tempLibraryPath = createTempFileFromResource(libraryFromJar, debug);
+                            if (debug) {
+                                logger.info("Copied resource " + libraryFromJar + " to location " + tempLibraryPath);
+                            }
+                            System.load(tempLibraryPath);
+                        }
+                    }
+                } catch (IOException e) {
+                    logger.log(Level.SEVERE, "Failed to load ONNX library from jar");
+                    throw e;
+                }
             }
+            ortApiHandle = initialiseAPIBase(ORT_API_VERSION_1);
+            loaded = true;
         }
     }
 
-    private static String createTempFileFromResource(String path) throws IOException, IllegalArgumentException {
+    private static String createTempFileFromResource(String path, boolean debugLogging) throws IOException, IllegalArgumentException {
         if (!path.startsWith("/")) {
             throw new IllegalArgumentException("The path has to be absolute (start with '/').");
         } else {
@@ -90,7 +143,6 @@ final class ONNX {
                                     os.write(buffer, 0, readBytes);
                                 }
                             }
-
                             return temp.getAbsolutePath();
                         }
                     }
