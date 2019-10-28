@@ -218,11 +218,11 @@ class OnnxModel:
             if current_node not in unique_nodes:
                 unique_nodes.append(current_node)
 
-            for output in current_node.output:
-                if output in input_name_to_nodes:
-                    children = input_name_to_nodes[output]
-                    for child in children:
-                        dq.appendleft(child)
+                for output in current_node.output:
+                    if output in input_name_to_nodes:
+                        children = input_name_to_nodes[output]
+                        for child in children:
+                            dq.appendleft(child)
 
         return unique_nodes
 
@@ -295,9 +295,9 @@ class OnnxModel:
             if current_node not in unique_nodes:
                 unique_nodes.append(current_node)
 
-            for input in current_node.input:
-                if input in output_name_to_node:
-                    dq.appendleft(output_name_to_node[input])
+                for input in current_node.input:
+                    if input in output_name_to_node:
+                        dq.appendleft(output_name_to_node[input])
 
         return unique_nodes
 
@@ -710,6 +710,8 @@ class BertOnnxModel(OnnxModel):
         nodes_to_add = []
 
         for reshape_node in self.get_nodes_by_op_type('Reshape'):
+            if reshape_node.input[1] not in output_name_to_node:
+                continue
             concat_node = output_name_to_node[reshape_node.input[1]]
             if concat_node.op_type != 'Concat' or len(concat_node.input) < 3 or len(concat_node.input) > 4:
                 continue
@@ -959,7 +961,7 @@ class BertOnnxModel(OnnxModel):
           |                      |
           |                      v
         Add --> ReduceMean -->  Sub  --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add
-                 (axis=2)        |      (Y=2)     (axis=2)     (E-12)            ^
+                 (axis=2 or -1)  |      (Y=2)   (axis=2 or -1)  (E-6 or E-12)    ^
                                  |                                               |
                                  +-----------------------------------------------+
 
@@ -1028,7 +1030,7 @@ class BertOnnxModel(OnnxModel):
                     continue
 
                 i, add_weight = self.get_constant_input(second_add_node)
-                if add_weight is None or add_weight <= 0 or add_weight > 1.0E-6:
+                if add_weight is None or add_weight <= 0 or add_weight > 1.0E-5:
                     continue
 
                 i, pow_weight = self.get_constant_input(pow_node)
@@ -1114,7 +1116,6 @@ def main():
     bert_model.fuse_attention(args.verbose)
 
     bert_model.fuse_embed_layer(args.verbose)
-
 
     if bert_model.embed_node is None:
         print("Failed to fuse embedding layer.")
