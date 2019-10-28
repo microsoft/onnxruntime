@@ -20,6 +20,8 @@ Options:
         
 	-o: [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all). Please see __onnxruntime_c_api.h__ (enum GraphOptimizationLevel) for the full list of all optimization levels.
 	
+	-u: [path to save optimized model]: Default is empty so no optimized model would be saved.
+	
 	-p: [profile_file]: Specifies the profile name to enable profiling and dump the profile data to the file.
 	
 	-r: [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.
