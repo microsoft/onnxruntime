@@ -4,6 +4,7 @@
 #include "core/providers/cpu/activation/activations.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 
 using namespace onnxruntime::test;
 
@@ -85,6 +86,17 @@ TEST(ActivationContribOpTest, Gelu) {
       input_values,
       [](float x) { return x * 0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))); },
       {}, false, 1, kMSDomain);
+}
+
+TEST(ActivationContribOpTest, FastGelu) {
+  int min_cuda_architecture = 0;   // required 530 for half
+  if (HasCudaEnvironment(min_cuda_architecture)) {
+    TestActivationContribOp(
+        "FastGelu",
+        input_values,
+        [](float x) { return x * (0.5f + 0.5f * tanh(x * (0.035677408136300125f * x * x + 0.7978845608028654f))); },
+        {}, false, 1, kMSDomain);
+  }
 }
 
 }  // namespace test

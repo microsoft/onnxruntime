@@ -314,6 +314,16 @@ void RegisterBertSchemas() {
         updateOutputShape(ctx, 1, mask_index_shape);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FastGelu)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Gelu")
+      .Input(0, "X", "input tensor", "T")
+      .Output(0, "Y", "output tensor", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(SkipLayerNormalization)
       .SetDomain(kMSDomain)
       .SinceVersion(1)

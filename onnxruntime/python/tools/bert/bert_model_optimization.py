@@ -350,7 +350,7 @@ class BertOnnxModel(OnnxModel):
 
         # constant node names
         self.normalize_name = "SkipLayerNormalization"
-        self.gelu_name = 'Gelu'
+        self.gelu_name = 'FastGelu'
         self.attention_name = 'Attention'
 
     def get_normalize_nodes(self):
@@ -882,9 +882,10 @@ def main():
     else:
         bert_model.cast_input_to_int32()
 
-
     if args.float16:
         bert_model.convert_model_float32_to_float16()
+
+    bert_model.update_dynamic_batch_io()
 
     with open(args.output, "wb") as out:
         out.write(bert_model.model.SerializeToString())
