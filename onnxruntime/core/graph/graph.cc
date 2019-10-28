@@ -2033,6 +2033,7 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
   if (existing != name_to_initial_tensor_.cend()) {
     ORT_ENFORCE(existing->second == &tensor,
                 "AddInitializedTensor already has tensor with name ", tensor.name(), " but different TensorProto.");
+    return;
   }
 
   const gsl::not_null<TensorProto*> tensor_added{graph_proto_->add_initializer()};
@@ -2066,16 +2067,17 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
   if (proto_entry != mutable_initializers.end()) {
     auto num_entries = mutable_initializers.size();
     if (num_entries > 1) {
-      // move the last value into the one being removed, and delete the final entry
+      // swap the entry being deleted with the last one, and delete it.
+      // we do this so we don't have to move all the entries past the one being deleted down one.
       auto slot = proto_entry - mutable_initializers.begin();
       auto last_entry = mutable_initializers.end() - 1;
-      mutable_initializers[slot] = std::move(*last_entry);
+      mutable_initializers.SwapElements(slot, num_entries - 1);
       mutable_initializers.erase(last_entry);
     } else {
       mutable_initializers.erase(proto_entry);
     }
   } else {
-    // these should always be in sync as the pointer in name_to_initial_tensor_ is to memory in graph_proto_
+    // these should always be in sync as the pointer in name_to_initial_tensor_ is to memory owned by graph_proto_
     ORT_ENFORCE(!found, "graph_proto_ is not in sync with name_to_initial_tensor_.");
   }
 }
@@ -2108,7 +2110,7 @@ Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_in
   auto existing_entry = std::find(mutable_initializers.pointer_begin(), mutable_initializers.pointer_end(),
                                   &old_initializer);
 
-  // these should always be in sync as the pointer in name_to_initial_tensor_ is to memory in graph_proto_
+  // these should always be in sync as the pointer in name_to_initial_tensor_ is to memory owned by graph_proto_
   ORT_ENFORCE(existing_entry != mutable_initializers.pointer_end(),
               "graph_proto_ is not in sync with name_to_initial_tensor_");
 

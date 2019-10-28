@@ -959,8 +959,7 @@ TEST(GraphUpdateTest, ReplaceInitializedTensor) {
     status = graph.ReplaceInitializedTensor(valid_replacement);
     ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-    auto tensor_data_matches = [](
-                                   const ONNX_NAMESPACE::TensorProto& a, const ONNX_NAMESPACE::TensorProto& b) {
+    auto tensor_data_matches = [](const ONNX_NAMESPACE::TensorProto& a, const ONNX_NAMESPACE::TensorProto& b) {
       if (a.int32_data_size() != b.int32_data_size()) return false;
       for (int i = 0; i < a.int32_data_size(); ++i) {
         if (a.int32_data(i) != b.int32_data(i)) return false;
@@ -1005,6 +1004,14 @@ TEST(GraphUpdateTest, AddRemoveInitializerHandling) {
 
   ASSERT_EQ(graph.GetAllInitializedTensors().size(), 2);
 
+  // check the values coming from name_to_initial_tensor_ are good;
+  const TensorProto* i = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor(init.name(), i));
+  ASSERT_TRUE(i->int32_data()[0] == 1);
+  ASSERT_TRUE(graph.GetInitializedTensor(init2.name(), i));
+  ASSERT_TRUE(i->int32_data()[0] == 2);
+
+  // check the values in the GraphProto are also correct
   ONNX_NAMESPACE::GraphProto graph_proto_from_const_graph = static_cast<const Graph&>(graph).ToGraphProto();
   ONNX_NAMESPACE::GraphProto graph_proto_from_graph = graph.ToGraphProto();
 
