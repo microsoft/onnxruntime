@@ -20,7 +20,7 @@
 3. Create Session: OrtCreateSession(env, model_uri, nullptr,...)
    - Optionally add more execution providers (e.g. for CUDA use OrtSessionOptionsAppendExecutionProvider_CUDA)
 4. Create Tensor
-   1) OrtCreateAllocatorInfo
+   1) OrtCreateMemoryInfo
    2) OrtCreateTensorWithDataAsOrtValue
 5. OrtRun
 
@@ -29,3 +29,6 @@
 The example below shows a sample run using the SqueezeNet model from ONNX model zoo, including dynamically reading model inputs, outputs, shape and type information, as well as running a sample vector and fetching the resulting class probabilities for inspection.
 
 * [../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
+
+## Telemetry
+To turn on/off telemetry collection on official Windows builds, please use Enable/DisableTelemetryEvents() in the C API. See the [Privacy](./Privacy.md) page for more information on telemetry collection and Microsoft's privacy policy.

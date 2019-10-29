@@ -9,10 +9,10 @@ namespace onnxruntime {
 namespace cuda {
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Pad,                                                        \
       kOnnxDomain,                                                \
-      2,                                                          \
+      2, 10,                                                      \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
@@ -24,12 +24,11 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   auto const& input_shape = input_tensor.Shape();
   auto dimension_count = input_shape.NumDimensions();
-  int device_id = GetDeviceId();
-  CudaAsyncBuffer<int64_t> input_dims(this, device_id, input_shape.GetDims());
-  CudaAsyncBuffer<int64_t> input_strides(this, device_id, dimension_count);
-  CudaAsyncBuffer<int64_t> lower_pads(this, device_id, dimension_count);
-  CudaAsyncBuffer<int64_t> upper_pads(this, device_id, dimension_count);
-  CudaAsyncBuffer<fast_divmod> fdm_output_strides(this, device_id, dimension_count);
+  CudaAsyncBuffer<int64_t> input_dims(this, input_shape.GetDims());
+  CudaAsyncBuffer<int64_t> input_strides(this, dimension_count);
+  CudaAsyncBuffer<int64_t> lower_pads(this, dimension_count);
+  CudaAsyncBuffer<int64_t> upper_pads(this, dimension_count);
+  CudaAsyncBuffer<fast_divmod> fdm_output_strides(this, dimension_count);
 
   TensorPitches::Calculate(input_strides.CpuSpan(), input_shape.GetDims());
   std::vector<int64_t> output_dims(input_shape.GetDims());

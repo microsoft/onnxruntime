@@ -4,6 +4,7 @@
 #include "core/codegen/mti/mti_tvm_utils.h"
 
 #include "core/codegen/common/settings.h"
+#include "core/codegen/mti/tensor/reshape_ops.h"
 #include <topi/detail/extern.h>
 #include <tvm/ir_pass.h>
 
@@ -156,6 +157,47 @@ bool BroadcastDim(const tvm::Array<tvm::Expr>& shape, size_t i, size_t output_ra
   }
   // auto broadcast to outer dims
   return true;
+}
+
+tvm::Array<tvm::Tensor> MakeInputsForExtern(const tvm::Array<tvm::Tensor>& inputs, const std::string& name) {
+  // note that currently TVM StorageFlatten creates strides like max(symbolic_dim, 1)
+  // which is not zero when checking symbolic_dim - max(symbolic_dim, 1)
+  // then triggers error like: Trying to bind compact buffer to strided one
+  // here's a workaround to reshape inputs to avoid that
+  tvm::Array<tvm::Tensor> fixed_inputs;
+  for (size_t idx_input = 0; idx_input < inputs.size(); ++idx_input) {
+    const auto& input = inputs[idx_input];
+    tvm::Array<tvm::Expr> fixed_shape;
+    if (input->shape.size() > 0) {
+      // stride compute does not use dim 0, so directly push to fixed_shape
+      fixed_shape.push_back(input->shape[0]);
+      bool need_fix = false;
+      for (size_t idx_dim = 1; idx_dim < input->shape.size(); ++idx_dim) {
+        const auto& dim = input->shape[idx_dim];
+        if (tvm::as_const_int(dim) == nullptr) {
+          fixed_shape.push_back(tvm::max(dim, tvm::make_const(HalideIR::Int(32), 1)));
+          need_fix = true;
+        } else {
+          fixed_shape.push_back(dim);
+        }
+      }
+      if (need_fix) {
+        fixed_inputs.push_back(tvm_codegen::Reshape(input, fixed_shape, name + "_" + std::to_string(idx_input)));
+        continue;
+      }
+    }
+    // no fix needed
+    fixed_inputs.push_back(input);
+  }
+  return fixed_inputs;
+}
+
+// Make sure idx is clamped in the range of [-bound, bound - 1]
+tvm::Expr ClampIndex(const tvm::Expr& idx, const tvm::Expr& bound) {
+  // when idx >= 0, we take tvm::max(..., 0), because (idx < 0) is 0
+  // when idx < 0, we take bound + tvm::max(...), because tvm::max(idx, 0) is 0
+  return tvm::max(tvm::min(idx, bound - 1), 0) +
+         (idx < 0) * (bound + tvm::max(idx, -bound));
 }
 
 }  // namespace tvm_codegen

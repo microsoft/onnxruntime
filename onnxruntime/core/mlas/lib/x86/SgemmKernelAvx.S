@@ -25,20 +25,21 @@ Abstract:
 // Stack frame layout for the SGEMM kernel.
 //
 
-#define SgemmKernelFrame 0
-#define SgemmKernelFrame_SavedEsi 4
-#define SgemmKernelFrame_SavedEbx 8
-#define SgemmKernelFrame_SavedEbp 12
-#define SgemmKernelFrame_ReturnAddress 16
-#define SgemmKernelFrame_MatrixA 20
-#define SgemmKernelFrame_MatrixB 24
-#define SgemmKernelFrame_MatrixC 28
-#define SgemmKernelFrame_CountK 32
-#define SgemmKernelFrame_CountM 36
-#define SgemmKernelFrame_CountN 40
-#define SgemmKernelFrame_lda 44
-#define SgemmKernelFrame_ldc 48
-#define SgemmKernelFrame_alpha 52
+        .equ    .LSgemmKernelFrame_SavedEdi, 0
+        .equ    .LSgemmKernelFrame_SavedEsi, 4
+        .equ    .LSgemmKernelFrame_SavedEbx, 8
+        .equ    .LSgemmKernelFrame_SavedEbp, 12
+        .equ    .LSgemmKernelFrame_ReturnAddress, 16
+        .equ    .LSgemmKernelFrame_MatrixA, 20
+        .equ    .LSgemmKernelFrame_MatrixB, 24
+        .equ    .LSgemmKernelFrame_MatrixC, 28
+        .equ    .LSgemmKernelFrame_CountK, 32
+        .equ    .LSgemmKernelFrame_CountM, 36
+        .equ    .LSgemmKernelFrame_CountN, 40
+        .equ    .LSgemmKernelFrame_lda, 44
+        .equ    .LSgemmKernelFrame_ldc, 48
+        .equ    .LSgemmKernelFrame_alpha, 52
+        .equ    .LSgemmKernelFrame_ZeroMode, 56
 
         .text
 
@@ -46,12 +47,11 @@ Abstract:
 
 Macro Description:
 
-    This macro multiplies and accumulates for a 16xN block (where N is 1,2)
-    of the output matrix.
+    This macro multiplies and accumulates for a 16xN block of the output matrix.
 
 Arguments:
 
-    Count - Supplies the number of rows to access from matrix A.
+    RowCount - Supplies the number of rows to process.
 
     VectorOffset - Supplies the byte offset from matrix B to fetch elements.
 
@@ -69,9 +69,9 @@ Implicit Arguments:
 
 --*/
 
-        .macro ComputeBlockAvxBy16 Count, VectorOffset, BroadcastOffset
+        .macro ComputeBlockAvxBy16 RowCount, VectorOffset, BroadcastOffset
 
-.if \Count\() == 1
+.if \RowCount\() == 1
         vbroadcastss ymm3,DWORD PTR [ecx+\BroadcastOffset\()]
         vmulps  ymm1,ymm3,YMMWORD PTR [edx+\VectorOffset\()]
         vaddps  ymm4,ymm1,ymm4
@@ -98,12 +98,11 @@ Implicit Arguments:
 
 Macro Description:
 
-    This macro multiplies and accumulates for a 8xN block (where N is 1,2)
-    of the output matrix.
+    This macro multiplies and accumulates for a 8xN block of the output matrix.
 
 Arguments:
 
-    Count - Supplies the number of rows to access from matrix A.
+    RowCount - Supplies the number of rows to process.
 
     VectorOffset - Supplies the byte offset from matrix B to fetch elements.
 
@@ -121,9 +120,9 @@ Implicit Arguments:
 
 --*/
 
-        .macro ComputeBlockAvxBy8 Count, VectorOffset, BroadcastOffset
+        .macro ComputeBlockAvxBy8 RowCount, VectorOffset, BroadcastOffset
 
-.if \Count\() == 1
+.if \RowCount\() == 1
         vbroadcastss ymm3,DWORD PTR [ecx+\BroadcastOffset\()]
         vmulps  ymm3,ymm3,YMMWORD PTR [edx+\VectorOffset\()]
         vaddps  ymm5,ymm3,ymm5
@@ -150,7 +149,7 @@ Arguments:
 
     ComputeBlock - Supplies the macro to compute a single block.
 
-    Count - Supplies the number of rows to access from matrix A.
+    RowCount - Supplies the number of rows to process.
 
 Implicit Arguments:
 
@@ -167,34 +166,34 @@ Implicit Arguments:
 
 --*/
 
-        .macro ComputeBlockAvxLoop Mode, ComputeBlock, Count
+        .macro ComputeBlockAvxLoop ComputeBlock, RowCount
 
         sub     edi,4
-        jb      .L\Mode\().\ComputeBlock\().\Count\().ProcessRemainingBlocks
+        jb      .LProcessRemainingBlocks\@
 
-.L\Mode\().\ComputeBlock\().\Count\().ComputeBlockBy4Loop:
-        \ComputeBlock\() \Count\(), 0, 0
-        \ComputeBlock\() \Count\(), 16*4, 4
+.LComputeBlockBy4Loop\@:
+        \ComputeBlock\() \RowCount\(), 0, 0
+        \ComputeBlock\() \RowCount\(), 16*4, 4
         sub     edx,-32*4                   # advance matrix B by 32 columns
-        \ComputeBlock\() \Count\(), 0, 8
-        \ComputeBlock\() \Count\(), 16*4, 12
+        \ComputeBlock\() \RowCount\(), 0, 8
+        \ComputeBlock\() \RowCount\(), 16*4, 12
         sub     edx,-32*4                   # advance matrix B by 32 columns
         add     ecx,4*4                     # advance matrix A by 4 columns
         sub     edi,4
-        jae     .L\Mode\().\ComputeBlock\().\Count\().ComputeBlockBy4Loop
+        jae     .LComputeBlockBy4Loop\@
 
-.L\Mode\().\ComputeBlock\().\Count\().ProcessRemainingBlocks:
+.LProcessRemainingBlocks\@:
         add     edi,4                       # correct for over-subtract above
-        jz      .L\Mode\().\ComputeBlock\().\Count\().OutputBlock
+        jz      .LOutputBlock\@
 
-.L\Mode\().\ComputeBlock\().\Count\().ComputeBlockBy1Loop:
-        \ComputeBlock\() \Count\(), 0, 0
+.LComputeBlockBy1Loop\@:
+        \ComputeBlock\() \RowCount\(), 0, 0
         add     edx,16*4                    # advance matrix B by 16 columns
         add     ecx,4                       # advance matrix A by 1 column
         dec     edi
-        jne     .L\Mode\().\ComputeBlock\().\Count\().ComputeBlockBy1Loop
+        jne     .LComputeBlockBy1Loop\@
 
-.L\Mode\().\ComputeBlock\().\Count\().OutputBlock:
+.LOutputBlock\@:
 
         .endm
 
@@ -214,21 +213,24 @@ Arguments:
 
     C - Supplies the address of matrix C.
 
-    CountK - Supplies the number of columns from matrix A and the number of
-        rows from matrix B to iterate over.
+    CountK - Supplies the number of columns from matrix A and the number of rows
+        from matrix B to iterate over.
 
     CountM - Supplies the maximum number of rows that can be processed for
         matrix A and matrix C. The actual number of rows handled for this
         invocation depends on the kernel implementation.
 
-    CountN - Supplies the number of columns from matrix B and matrix C to
-        iterate over.
+    CountN - Supplies the number of columns from matrix B and matrix C to iterate
+        over.
 
     lda - Supplies the first dimension of matrix A.
 
     ldc - Supplies the first dimension of matrix C.
 
-    Alpha - Supplies the scaler multiplier (see SGEMM definition).
+    Alpha - Supplies the scalar multiplier (see SGEMM definition).
+
+    ZeroMode - Supplies true if the output matrix must be zero initialized,
+        else false if the output matrix is accumulated into.
 
 Return Value:
 
@@ -236,79 +238,81 @@ Return Value:
 
 --*/
 
-        .macro  SgemmKernelAvxFunction Mode
-
-        .globl  C_UNDERSCORE(MlasSgemmKernel\Mode\()Avx)
-C_UNDERSCORE(MlasSgemmKernel\Mode\()Avx):
+        .globl  C_UNDERSCORE(MlasGemmFloatKernelAvx)
+C_UNDERSCORE(MlasGemmFloatKernelAvx):
 
         push    ebp
         push    ebx
         push    esi
         push    edi
-        mov     edx,SgemmKernelFrame_MatrixB[esp]
-        mov     esi,SgemmKernelFrame_MatrixC[esp]
-        mov     ebp,SgemmKernelFrame_CountN[esp]
+        mov     edx,.LSgemmKernelFrame_MatrixB[esp]
+        mov     esi,.LSgemmKernelFrame_MatrixC[esp]
+        mov     ebp,.LSgemmKernelFrame_CountN[esp]
 
 //
 // Process 2 rows of the matrices.
 //
 
-        cmp     DWORD PTR SgemmKernelFrame_CountM[esp],2
-        jb      .L\Mode\().ProcessCountMLessThan2
-        mov     BYTE PTR SgemmKernelFrame_CountM[esp],2
-        mov     eax,SgemmKernelFrame_ldc[esp]
-        mov     ebx,SgemmKernelFrame_lda[esp]
+        cmp     DWORD PTR .LSgemmKernelFrame_CountM[esp],2
+        jb      .LProcessCountMLessThan2
+        mov     BYTE PTR .LSgemmKernelFrame_CountM[esp],2
+        mov     eax,.LSgemmKernelFrame_ldc[esp]
+        mov     ebx,.LSgemmKernelFrame_lda[esp]
         shl     eax,2                       # convert ldc to bytes
         shl     ebx,2                       # convert lda to bytes
         cmp     ebp,8
-        jbe     .L\Mode\().ProcessRemainingCountN2
+        jbe     .LProcessRemainingCountN2
 
-.L\Mode\().ProcessNextColumnLoop16x2:
-        mov     edi,SgemmKernelFrame_CountK[esp]
-        mov     ecx,SgemmKernelFrame_MatrixA[esp]
+.LProcessNextColumnLoop16x2:
+        mov     edi,.LSgemmKernelFrame_CountK[esp]
+        mov     ecx,.LSgemmKernelFrame_MatrixA[esp]
         vxorps  xmm4,xmm4,xmm4              # clear block accumulators
         vxorps  xmm5,xmm5,xmm5
         vxorps  xmm6,xmm6,xmm6
         vxorps  xmm7,xmm7,xmm7
-        ComputeBlockAvxLoop \Mode\(), ComputeBlockAvxBy16, 2
-        vbroadcastss ymm2,DWORD PTR SgemmKernelFrame_alpha[esp]
+        ComputeBlockAvxLoop ComputeBlockAvxBy16, 2
+        vbroadcastss ymm2,DWORD PTR .LSgemmKernelFrame_alpha[esp]
         vmulps  ymm4,ymm4,ymm2              # multiply by alpha
         vmulps  ymm5,ymm5,ymm2
         vmulps  ymm6,ymm6,ymm2
         vmulps  ymm7,ymm7,ymm2
         sub     ebp,16
-        jb      .L\Mode\().OutputMasked16x2Block
-.ifeqs "\Mode\()","Add"
+        jb      .LOutputMasked16x2Block
+        cmp     BYTE PTR .LSgemmKernelFrame_ZeroMode[esp],0
+        jnz     .LSkipAccumulateOutput16x2
         vaddps  ymm4,ymm4,YMMWORD PTR [esi]
         vaddps  ymm5,ymm5,YMMWORD PTR [esi+32]
         vaddps  ymm6,ymm6,YMMWORD PTR [esi+eax]
         vaddps  ymm7,ymm7,YMMWORD PTR [esi+eax+32]
-.endif
+
+.LSkipAccumulateOutput16x2:
         vmovups YMMWORD PTR [esi],ymm4
         vmovups YMMWORD PTR [esi+32],ymm5
         vmovups YMMWORD PTR [esi+eax],ymm6
         vmovups YMMWORD PTR [esi+eax+32],ymm7
         add     esi,16*4                    # advance matrix C by 16 columns
         cmp     ebp,8
-        ja      .L\Mode\().ProcessNextColumnLoop16x2
+        ja      .LProcessNextColumnLoop16x2
         test    ebp,ebp
-        jz      .L\Mode\().ExitKernel
+        jz      .LExitKernel
 
-.L\Mode\().ProcessRemainingCountN2:
-        mov     edi,SgemmKernelFrame_CountK[esp]
-        mov     ecx,SgemmKernelFrame_MatrixA[esp]
+.LProcessRemainingCountN2:
+        mov     edi,.LSgemmKernelFrame_CountK[esp]
+        mov     ecx,.LSgemmKernelFrame_MatrixA[esp]
         vxorps  xmm5,xmm5,xmm5              # clear block accumulators
         vxorps  xmm7,xmm7,xmm7
-        ComputeBlockAvxLoop \Mode\(), ComputeBlockAvxBy8, 2
-        vbroadcastss ymm2,DWORD PTR SgemmKernelFrame_alpha[esp]
+        ComputeBlockAvxLoop ComputeBlockAvxBy8, 2
+        vbroadcastss ymm2,DWORD PTR .LSgemmKernelFrame_alpha[esp]
         vmulps  ymm5,ymm5,ymm2              # multiply by alpha
         vmulps  ymm7,ymm7,ymm2
         cmp     ebp,8
-        jb      .L\Mode\().OutputMasked8x2Block
-.ifeqs "\Mode\()","Add"
+        jb      .LOutputMasked8x2Block
+        cmp     BYTE PTR .LSgemmKernelFrame_ZeroMode[esp],0
+        jnz     .LSkipAccumulateOutput8x2
         vaddps  ymm5,ymm5,YMMWORD PTR [esi]
         vaddps  ymm7,ymm7,YMMWORD PTR [esi+eax]
-.endif
+
+.LSkipAccumulateOutput8x2:
         vmovups YMMWORD PTR [esi],ymm5
         vmovups YMMWORD PTR [esi+eax],ymm7
 
@@ -316,8 +320,8 @@ C_UNDERSCORE(MlasSgemmKernel\Mode\()Avx):
 // Restore non-volatile registers and return.
 //
 
-.L\Mode\().ExitKernel:
-        movzx   eax,BYTE PTR SgemmKernelFrame_CountM[esp]
+.LExitKernel:
+        movzx   eax,BYTE PTR .LSgemmKernelFrame_CountM[esp]
         vzeroupper
         pop     edi
         pop     esi
@@ -325,109 +329,116 @@ C_UNDERSCORE(MlasSgemmKernel\Mode\()Avx):
         pop     ebp
         ret
 
-.L\Mode\().OutputMasked16x2Block:
-.ifeqs "\Mode\()","Add"
+.LOutputMasked16x2Block:
+        cmp     BYTE PTR .LSgemmKernelFrame_ZeroMode[esp],0
+        jnz     .LSkipAccumulateMasked16x2Block
         vaddps  ymm4,ymm4,YMMWORD PTR [esi]
         vaddps  ymm6,ymm6,YMMWORD PTR [esi+eax]
-.endif
+
+.LSkipAccumulateMasked16x2Block:
         vmovups YMMWORD PTR [esi],ymm4
         vmovups YMMWORD PTR [esi+eax],ymm6
         add     esi,8*4                     # advance matrix C by 8 columns
         add     ebp,8                       # correct for over-subtract above
 
-.L\Mode\().OutputMasked8x2Block:
+.LOutputMasked8x2Block:
         call    __x86.get_pc_thunk.bx
         add     ebx,OFFSET _GLOBAL_OFFSET_TABLE_
         mov     ebx,DWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOT[ebx]
-        mov     SgemmKernelFrame_CountN[esp],ebp
-        vbroadcastss xmm0,SgemmKernelFrame_CountN[esp]
+        mov     .LSgemmKernelFrame_CountN[esp],ebp
+        vbroadcastss xmm0,.LSgemmKernelFrame_CountN[esp]
         vpcmpgtd xmm1,xmm0,XMMWORD PTR [ebx+16]
         vpcmpgtd xmm0,xmm0,XMMWORD PTR [ebx]
         vinsertf128 ymm0,ymm0,xmm1,1
-.ifeqs "\Mode\()","Add"
+        cmp     BYTE PTR .LSgemmKernelFrame_ZeroMode[esp],0
+        jnz     .LSkipAccumulateMasked8x2Block
         vmaskmovps ymm4,ymm0,YMMWORD PTR [esi]
         vmaskmovps ymm6,ymm0,YMMWORD PTR [esi+eax]
         vaddps  ymm5,ymm5,ymm4
         vaddps  ymm7,ymm7,ymm6
-.endif
+
+.LSkipAccumulateMasked8x2Block:
         vmaskmovps YMMWORD PTR [esi],ymm0,ymm5
         vmaskmovps YMMWORD PTR [esi+eax],ymm0,ymm7
-        jmp     .L\Mode\().ExitKernel
+        jmp     .LExitKernel
 
 //
 // Process 1 row of the matrices.
 //
 
-.L\Mode\().ProcessCountMLessThan2:
-        mov     BYTE PTR SgemmKernelFrame_CountM[esp],1
-        mov     ebx,SgemmKernelFrame_MatrixA[esp]
-        vbroadcastss ymm2,DWORD PTR SgemmKernelFrame_alpha[esp]
+.LProcessCountMLessThan2:
+        mov     BYTE PTR .LSgemmKernelFrame_CountM[esp],1
+        mov     ebx,.LSgemmKernelFrame_MatrixA[esp]
+        vbroadcastss ymm2,DWORD PTR .LSgemmKernelFrame_alpha[esp]
         cmp     ebp,8
-        jbe     .L\Mode\().ProcessRemainingCountN1
+        jbe     .LProcessRemainingCountN1
 
-.L\Mode\().ProcessNextColumnLoop16x1:
-        mov     edi,SgemmKernelFrame_CountK[esp]
+.LProcessNextColumnLoop16x1:
+        mov     edi,.LSgemmKernelFrame_CountK[esp]
         mov     ecx,ebx                     # reload matrix A
         vxorps  xmm4,xmm4,xmm4              # clear block accumulators
         vxorps  xmm5,xmm5,xmm5
-        ComputeBlockAvxLoop \Mode\(), ComputeBlockAvxBy16, 1
+        ComputeBlockAvxLoop ComputeBlockAvxBy16, 1
         vmulps  ymm4,ymm4,ymm2              # multiply by alpha
         vmulps  ymm5,ymm5,ymm2
         sub     ebp,16
-        jb      .L\Mode\().OutputMasked16x1Block
-.ifeqs "\Mode\()","Add"
+        jb      .LOutputMasked16x1Block
+        cmp     BYTE PTR .LSgemmKernelFrame_ZeroMode[esp],0
+        jnz     .LSkipAccumulate16x1Block
         vaddps  ymm4,ymm4,YMMWORD PTR [esi]
         vaddps  ymm5,ymm5,YMMWORD PTR [esi+32]
-.endif
+
+.LSkipAccumulate16x1Block:
         vmovups YMMWORD PTR [esi],ymm4
         vmovups YMMWORD PTR [esi+32],ymm5
         add     esi,16*4                    # advance matrix C by 16 columns
         cmp     ebp,8
-        ja      .L\Mode\().ProcessNextColumnLoop16x1
+        ja      .LProcessNextColumnLoop16x1
         test    ebp,ebp
-        jz      .L\Mode\().ExitKernel
+        jz      .LExitKernel
 
-.L\Mode\().ProcessRemainingCountN1:
-        mov     edi,SgemmKernelFrame_CountK[esp]
+.LProcessRemainingCountN1:
+        mov     edi,.LSgemmKernelFrame_CountK[esp]
         mov     ecx,ebx                     # reload matrix A
         vxorps  xmm5,xmm5,xmm5              # clear block accumulators
-        ComputeBlockAvxLoop \Mode\(), ComputeBlockAvxBy8, 1
+        ComputeBlockAvxLoop ComputeBlockAvxBy8, 1
         vmulps  ymm5,ymm5,ymm2              # multiply by alpha
         cmp     ebp,8
-        jb      .L\Mode\().OutputMasked8x1Block
-.ifeqs "\Mode\()","Add"
+        jb      .LOutputMasked8x1Block
+        cmp     BYTE PTR .LSgemmKernelFrame_ZeroMode[esp],0
+        jnz     .LSkipAccumulate8x1Block
         vaddps  ymm5,ymm5,YMMWORD PTR [esi]
-.endif
-        vmovups YMMWORD PTR [esi],ymm5
-        jmp     .L\Mode\().ExitKernel
 
-.L\Mode\().OutputMasked16x1Block:
-.ifeqs "\Mode\()","Add"
+.LSkipAccumulate8x1Block:
+        vmovups YMMWORD PTR [esi],ymm5
+        jmp     .LExitKernel
+
+.LOutputMasked16x1Block:
+        cmp     BYTE PTR .LSgemmKernelFrame_ZeroMode[esp],0
+        jnz     .LSkipAccumulateMasked16x1Block
         vaddps  ymm4,ymm4,YMMWORD PTR [esi]
-.endif
+
+.LSkipAccumulateMasked16x1Block:
         vmovups YMMWORD PTR [esi],ymm4
         add     esi,8*4                     # advance matrix C by 8 columns
         add     ebp,8                       # correct for over-subtract above
 
-.L\Mode\().OutputMasked8x1Block:
+.LOutputMasked8x1Block:
         call    __x86.get_pc_thunk.bx
         add     ebx,OFFSET _GLOBAL_OFFSET_TABLE_
         mov     ebx,DWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOT[ebx]
-        mov     SgemmKernelFrame_CountN[esp],ebp
-        vbroadcastss xmm0,SgemmKernelFrame_CountN[esp]
+        mov     .LSgemmKernelFrame_CountN[esp],ebp
+        vbroadcastss xmm0,.LSgemmKernelFrame_CountN[esp]
         vpcmpgtd xmm1,xmm0,XMMWORD PTR [ebx+16]
         vpcmpgtd xmm0,xmm0,XMMWORD PTR [ebx]
         vinsertf128 ymm0,ymm0,xmm1,1
-.ifeqs "\Mode\()","Add"
+        cmp     BYTE PTR .LSgemmKernelFrame_ZeroMode[esp],0
+        jnz     .LSkipAccumulateMasked8x1Block
         vmaskmovps ymm4,ymm0,YMMWORD PTR [esi]
         vaddps  ymm5,ymm5,ymm4
-.endif
+
+.LSkipAccumulateMasked8x1Block:
         vmaskmovps YMMWORD PTR [esi],ymm0,ymm5
-        jmp     .L\Mode\().ExitKernel
-
-        .endm
-
-        SgemmKernelAvxFunction Zero
-        SgemmKernelAvxFunction Add
+        jmp     .LExitKernel
 
         .end

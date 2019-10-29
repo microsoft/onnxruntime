@@ -11,9 +11,11 @@ namespace onnxruntime {
 
 OpKernelContext::OpKernelContext(IExecutionFrame* frame,
                                  const OpKernel* kernel,
+                                 concurrency::ThreadPool* threadpool,
                                  const logging::Logger& logger)
     : execution_frame_(frame),
       kernel_(kernel),
+      threadpool_(threadpool),
       logger_(&logger) {
   ORT_ENFORCE(frame != nullptr, "Execution frame was null");
   ORT_ENFORCE(kernel != nullptr, "OpKernel was null");
@@ -124,6 +126,10 @@ int OpKernelContext::GetOutputArgIndex(int index) const {
 
 onnxruntime::NodeIndex OpKernelContext::GetNodeIndex() const {
   return kernel_->Node().Index();
+}
+
+const std::string& OpKernelContext::GetOpDomain() const {
+  return kernel_->KernelDef().Domain();
 }
 
 const OrtValue* OpKernelContext::GetInputMLValue(int index) const {

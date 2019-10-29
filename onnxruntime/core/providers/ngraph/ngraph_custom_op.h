@@ -25,14 +25,16 @@ namespace ngraph_ep {
 
 class NGRAPHCustomOp {
  public:
-  NGRAPHCustomOp(const ComputeContext* context, const ONNX_NAMESPACE::ModelProto& model_proto, const std::shared_ptr<ngraph::runtime::Backend>& ng_backend);
+  NGRAPHCustomOp(const ComputeContext* context,
+                 const ONNX_NAMESPACE::ModelProto& model_proto,
+                 const std::shared_ptr<ngraph::runtime::Backend>& ng_backend);
 
   Status Compute(const OrtCustomOpApi* api, OrtKernelContext* context) const;
 
   ~NGRAPHCustomOp();
 
  private:
-  void Initialize(const OrtCustomOpApi* api, OrtKernelContext* context) const;
+  Status Initialize(const OrtCustomOpApi* api, OrtKernelContext* context) const;
 
   std::shared_ptr<ngraph::runtime::Backend> ng_backend_;
 
@@ -54,6 +56,7 @@ class NGRAPHCustomOp {
   key = [3,1,2,3,2,4,5]
 */
   mutable std::unordered_map<std::string, std::shared_ptr<ngraph::runtime::Executable>> ng_exe_map_;
+  mutable std::list<std::string> keyCache;
 
   mutable std::mutex compute_lock_;
 

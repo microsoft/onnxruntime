@@ -4,6 +4,7 @@
 #include "core/providers/cpu/nn/pool.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 using namespace std;
 namespace onnxruntime {
 namespace test {
@@ -58,6 +59,11 @@ TEST(PoolTest, MaxPool) {
 // Disable for now, still investigating the issue with cudnn lib
 #ifdef USE_CUDA
 TEST(PoolTest, MaxPool_F16) {
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
   OpTester test("MaxPool");
 
   test.AddAttribute("auto_pad", "");
@@ -223,6 +229,26 @@ TEST(PoolTest, MaxPool_10_Dilation_1d) {
   std::vector<int64_t> x_dims = {1, 1, 12};
   std::vector<int64_t> expected_dims = {1, 1, 6};
   std::vector<float> expected_vals = {4, 3, 2, 4, -1, -2};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool_DefaultDilations) {
+  OpTester test("MaxPool");
+
+  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+
+  std::vector<int64_t> x_dims = {1, 3, 3};
+  std::vector<float> x_vals = {0.f, 1.f, 2.f,
+                               3.f, 4.f, 5.f,
+                               6.f, 7.f, 8.f};
+
+  std::vector<int64_t> expected_dims = {1, 3, 2};
+  std::vector<float> expected_vals = {1.f, 2.f,
+                                      4.f, 5.f,
+                                      7.f, 8.f};
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
@@ -632,6 +658,25 @@ TEST(PoolTest, AveragePool_IncludePadPixel) {
                                       0.2501f, 0.5806f, 0.5767f, 0.2462f,
                                       0.3585f, 0.6897f, 0.7144f, 0.3832f,
                                       0.1919f, 0.4124f, 0.4419f, 0.2213f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// test 'strides' attribute not specified
+TEST(PoolTest, AveragePool_DefaultStrides) {
+  OpTester test("AveragePool");
+  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+  std::vector<float> x_vals = {0.f, 1.f, 2.f,
+                               3.f, 4.f, 5.f,
+                               6.f, 7.f, 8.f};
+
+  std::vector<int64_t> x_dims = {1, 3, 3};
+  std::vector<int64_t> expected_dims = {1, 3, 2};
+  std::vector<float> expected_vals = {0.5f, 1.5f,
+                                      3.5f, 4.5f,
+                                      6.5f, 7.5f};
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);

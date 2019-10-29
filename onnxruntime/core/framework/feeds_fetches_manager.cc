@@ -5,6 +5,7 @@
 
 #include "core/framework/execution_providers.h"
 #include "core/framework/ort_value_name_idx_map.h"
+#include "core/framework/utils.h"
 
 namespace onnxruntime {
 common::Status FeedsFetchesInfo::MapNamesToMLValueIdxs(const std::vector<std::string>& names,
@@ -43,24 +44,30 @@ Status FeedsFetchesManager::Create(const std::vector<std::string>& feed_names,
                                    const std::vector<std::string>& output_names,
                                    const OrtValueNameIdxMap& ort_value_name_idx_map,
                                    std::unique_ptr<FeedsFetchesManager>& feed_fetch_manager) {
-  FeedsFetchesInfo info{feed_names, output_names};
+  FeedsFetchesInfo info{feed_names, output_names, ort_value_name_idx_map};
 
-  ORT_RETURN_IF_ERROR(info.SetMLValueIdxs(ort_value_name_idx_map));
-
-  feed_fetch_manager = std::make_unique<FeedsFetchesManager>(std::move(info));
+  feed_fetch_manager = onnxruntime::make_unique<FeedsFetchesManager>(std::move(info));
 
   return Status::OK();
 }
 
-void FeedsFetchesManager::SetDeviceCopyChecks(DeviceCopyChecks checks) {
-  ORT_ENFORCE(checks.input_copy_needed != DeviceCopyCheck::Unknown &&
-              checks.output_copy_needed != DeviceCopyCheck::Unknown);
+FeedsFetchesManager::FeedsFetchesManager(FeedsFetchesInfo&& info)
+    : feeds_fetches_info_{info} {
+  // init with default values
+  feeds_device_copy_info_.resize(info.feed_names.size());
+  fetches_device_copy_info_.resize(info.output_names.size());
+}
 
-  device_copy_checks_ = checks;
+void FeedsFetchesManager::SetDeviceCopyChecks(DeviceCopyCheck input_copy_needed, DeviceCopyCheck output_copy_needed) {
+  ORT_ENFORCE(input_copy_needed != DeviceCopyCheck::Unknown &&
+              output_copy_needed != DeviceCopyCheck::Unknown);
+
+  device_copy_checks_.input_copy_needed = input_copy_needed;
+  device_copy_checks_.output_copy_needed = output_copy_needed;
 
   // make sure overall status is correct
   device_copy_checks_.status =
-      checks.input_copy_needed == DeviceCopyCheck::NoCopy && checks.output_copy_needed == DeviceCopyCheck::NoCopy
+      input_copy_needed == DeviceCopyCheck::NoCopy && output_copy_needed == DeviceCopyCheck::NoCopy
           ? DeviceCopyCheck::NoCopy
           : DeviceCopyCheck::Copy;
 }

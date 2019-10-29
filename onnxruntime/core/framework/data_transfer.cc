@@ -21,8 +21,8 @@ common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /
     return Status::OK();
   }
   // Copying only happens between two same size tensors.
-  ORT_ENFORCE(src.Size() == dst.Size());
-  memcpy(dst_data, src_data, src.Size());
+  ORT_ENFORCE(src.SizeInBytes() == dst.SizeInBytes());
+  memcpy(dst_data, src_data, src.SizeInBytes());
   return Status::OK();
 }
 

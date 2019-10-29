@@ -58,7 +58,7 @@ class TVMScheduleDispatcher : public codegen::DispatcherBase<Scheduler*> {
   TVMScheduleDispatcher(const std::string& name)
       : DispatcherBase(name) {}
 
-  ~TVMScheduleDispatcher() = default;
+  virtual ~TVMScheduleDispatcher() = default;
 
   virtual Scheduler* Find(const tvm::Tensor&,
                           const Node*,

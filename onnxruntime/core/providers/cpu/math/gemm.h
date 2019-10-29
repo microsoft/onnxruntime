@@ -8,6 +8,7 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "gemm_helper.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 
@@ -27,10 +28,14 @@ class Gemm : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override {
-    const auto X = context->Input<Tensor>(0);
-    const auto W = context->Input<Tensor>(1);
-    const auto B = context->Input<Tensor>(2);
-    GemmHelper helper(X->Shape(), trans_A_ != CblasNoTrans, W->Shape(), trans_B_ != CblasNoTrans, B->Shape());
+    concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+
+    const auto* X = context->Input<Tensor>(0);
+    const auto* W = context->Input<Tensor>(1);
+    const auto* B = context->Input<Tensor>(2);
+    // Bias could be missing. Treat as scalar 0 if that is the case.
+    GemmHelper helper(X->Shape(), trans_A_ != CblasNoTrans, W->Shape(), trans_B_ != CblasNoTrans,
+                      B != nullptr ? B->Shape() : TensorShape({}));
 
     if (!helper.State().IsOK())
       return helper.State();
@@ -38,13 +43,13 @@ class Gemm : public OpKernel {
     int64_t M = helper.M();
     int64_t N = helper.N();
     auto Y = context->Output(0, {M, N});
-    // if input is emtpy tensor, return directly as nothing need to be calculated.
+    // if input is empty tensor, return directly as nothing need to be calculated.
     if (M == 0 || N == 0)
       return Status::OK();
     T* y_data = Y->template MutableData<T>();
 
-    // Broadcast the bias as needed.
-    if (beta_ != 0) {
+    // Broadcast the bias as needed if bias is given
+    if (beta_ != 0 && B != nullptr) {
       auto output_mat = EigenMatrixMapRowMajor<T>(y_data, M, N);
       const auto& b_shape = B->Shape();
       const T* b_data = B->template Data<T>();
@@ -64,7 +69,7 @@ class Gemm : public OpKernel {
     }
 
     // W * x
-    math::Gemm<T, CPUMathUtil>(
+    math::Gemm<T>(
         trans_A_,
         trans_B_,
         M,
@@ -73,9 +78,11 @@ class Gemm : public OpKernel {
         alpha_,
         X->template Data<T>(),
         W->template Data<T>(),
-        beta_,
+        // ideally we need to set the output buffer contents to 0 if bias is missing,
+        // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
+        B != nullptr ? beta_ : 0,
         y_data,
-        &CPUMathUtil::Instance());
+        tp);
 
     FuseActivation<T>(activation_, y_data, M * N, leaky_relu_alpha_);
 

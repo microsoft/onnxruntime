@@ -18,14 +18,18 @@ class NchwcTransformerImpl {
   void Transform(Node& node);
   void Finalize(bool& modified);
 
-  static constexpr int kNchwcDims = 4;
+  static constexpr int kNchwcBatchChannelDims = 2;
+  static constexpr int kNchwcSpatialDims = 2;
+  static constexpr int kNchwcDims = kNchwcBatchChannelDims + kNchwcSpatialDims;
 
  private:
   // Associate the following state with each created NCHWc output keyed off the
   // original NodeArg.
   struct NchwcArgument {
     // Symbolic shape information for this NCHWc output. Each dimension stores
-    // the original NodeArg* that sourced the value.
+    // the original NodeArg* that sourced the value. Spatial dimensions also
+    // track the number of times the original value has been shifted down due
+    // to a stride count of 2.
     //
     // For example, the first Conv node that takes NCHW input will create a
     // NchwcArgument with the shape referencing itself. Other NCHWc nodes that
@@ -39,6 +43,30 @@ class NchwcTransformerImpl {
     // fusion that can be detected using this additional shape hint.
     struct Shape {
       const NodeArg* dims_[kNchwcDims];
+      size_t shifts_[kNchwcSpatialDims];
+
+      Shape(const NodeArg* initial_dim) {
+        std::fill_n(dims_, kNchwcDims, initial_dim);
+        std::fill_n(shifts_, kNchwcSpatialDims, 0);
+      }
+
+      bool IsDimEqual(const Shape& other, int dim) const {
+        bool is_dim_equal = false;
+        // Test if this dimension is derived from the same NodeArg.
+        if (dims_[dim] == other.dims_[dim]) {
+          if (dim >= kNchwcBatchChannelDims) {
+            // Test if the NodeArg has been shifted down the same number of
+            // times due to striding.
+            int spatial_dim = dim - kNchwcBatchChannelDims;
+            if (shifts_[spatial_dim] == other.shifts_[spatial_dim]) {
+              is_dim_equal = true;
+            }
+          } else {
+            is_dim_equal = true;
+          }
+        }
+        return is_dim_equal;
+      }
     };
 
     // Stores the node that generated the NCHWc output.
@@ -138,7 +166,7 @@ void NchwcTransformerImpl::CreateNchwcArgument(Node& node,
   std::string output_reorder_def_name = graph_.GenerateNodeArgName("reorder");
   auto* output_nchwc_arg = &graph_.GetOrCreateNodeArg(output_reorder_def_name, nullptr);
   nchwc_args_[output_original_arg] =
-      std::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, channels, shape);
+      onnxruntime::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, channels, shape);
   output_defs[0] = output_nchwc_arg;
 }
 
@@ -150,7 +178,7 @@ void NchwcTransformerImpl::FuseNchwcArgument(Node& node, const NchwcArgument& nc
   auto& nchwc_node = nchwc_arg.output_node_;
   auto* output_nchwc_arg = nchwc_node.MutableOutputDefs()[0];
   nchwc_args_[output_original_arg] =
-      std::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, nchwc_arg.channels_, nchwc_arg.shape_);
+      onnxruntime::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, nchwc_arg.channels_, nchwc_arg.shape_);
 }
 
 void NchwcTransformerImpl::InsertReorderInput(Node& node) {
@@ -181,7 +209,7 @@ void NchwcTransformerImpl::ConvPoolShapeInference(const Node& node,
                                                   NchwcArgument::Shape& output_shape,
                                                   const ONNX_NAMESPACE::TensorProto* filter_shape) {
   // Skip the leading batch and channel counts.
-  const int kernel_size = kNchwcDims - 2;
+  const int kernel_size = kNchwcSpatialDims;
 
   // Maintain the batch count dimension from the NCHWc input.
   output_shape.dims_[0] = input_shape.dims_[0];
@@ -208,7 +236,7 @@ void NchwcTransformerImpl::ConvPoolShapeInference(const Node& node,
 
   auto* auto_pad_attr = graph_utils::GetNodeAttribute(node, "auto_pad");
   bool auto_pad_same_shape = false;
-  if (auto_pad_attr != nullptr && auto_pad_attr->has_s()) {
+  if (auto_pad_attr != nullptr && utils::HasString(*auto_pad_attr)) {
     auto& auto_pad = auto_pad_attr->s();
     if (auto_pad != "NOTSET") {
       if (auto_pad == "SAME_UPPER" || auto_pad == "SAME_LOWER") {
@@ -221,9 +249,16 @@ void NchwcTransformerImpl::ConvPoolShapeInference(const Node& node,
   }
 
   for (int i = 0; i < kernel_size; i++) {
-    if ((strides_attr != nullptr && strides_attr->ints(i) != 1) ||
-        (dilations_attr != nullptr && dilations_attr->ints(i) != 1)) {
+    if (dilations_attr != nullptr && dilations_attr->ints(i) != 1) {
       continue;
+    }
+
+    int64_t stride = 1;
+    if (strides_attr != nullptr) {
+      stride = strides_attr->ints(i);
+      if (stride != 1 && stride != 2) {
+        continue;
+      }
     }
 
     int64_t padding = 0;
@@ -238,8 +273,14 @@ void NchwcTransformerImpl::ConvPoolShapeInference(const Node& node,
       kernel = filter_shape->dims(2 + i);
     }
 
+    // Maintain the spatial dimension from the NCHWc input if the implicit or
+    // explicit padding results in the same symbolic dimension before applying
+    // the stride. When the stride is 2, then the actual output dimensions is
+    // half the original value. Track the number of times the symbolic dimension
+    // has been halved in the shifts field.
     if (padding + 1 == kernel || auto_pad_same_shape) {
-      output_shape.dims_[2 + i] = input_shape.dims_[2 + i];
+      output_shape.dims_[kNchwcBatchChannelDims + i] = input_shape.dims_[kNchwcBatchChannelDims + i];
+      output_shape.shifts_[i] = input_shape.shifts_[i] + static_cast<size_t>(stride) - 1;
     }
   }
 }
@@ -262,7 +303,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
   int64_t group_count;
   auto* group_attr = graph_utils::GetNodeAttribute(node, "group");
-  if (group_attr != nullptr && group_attr->has_i()) {
+  if (group_attr != nullptr && utils::HasInt(*group_attr)) {
     group_count = group_attr->i();
   } else {
     group_count = 1;
@@ -323,7 +364,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     // Reuse the existing NodeArg.
     nchwc_conv_W_arg = filters_it->second;
   } else {
-    auto conv_W = std::make_unique<Initializer>(conv_W_tensor_proto);
+    auto conv_W = onnxruntime::make_unique<Initializer>(*conv_W_tensor_proto);
 
     std::vector<float> reordered_filter(conv_W->size() / output_channels * nchwc_output_channels);
 
@@ -359,7 +400,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
       // Reuse the existing NodeArg.
       nchwc_conv_B_arg = biases_it->second;
     } else {
-      auto conv_B = std::make_unique<Initializer>(conv_B_tensor_proto);
+      auto conv_B = onnxruntime::make_unique<Initializer>(*conv_B_tensor_proto);
 
       std::vector<float> aligned_bias(nchwc_output_channels);
       std::copy_n(conv_B->data<float>(), output_channels, aligned_bias.data());
@@ -396,8 +437,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     nchwc_node.MutableInputDefs()[2] = nchwc_conv_B_arg;
   }
 
-  NchwcArgument::Shape output_shape;
-  std::fill_n(output_shape.dims_, kNchwcDims, output_defs[0]);
+  NchwcArgument::Shape output_shape(output_defs[0]);
 
   if (do_reorder_input) {
     auto it = nchwc_args_.find(input_defs[0]);
@@ -431,7 +471,7 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
     return;
   }
   auto& channels_dim = input_shape->dim(1);
-  if (!channels_dim.has_dim_value()) {
+  if (!utils::HasDimValue(channels_dim)) {
     return;
   }
   const int64_t channels = channels_dim.dim_value();
@@ -450,8 +490,7 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
                                     kMSNchwcDomain);
   nchwc_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
-  NchwcArgument::Shape output_shape;
-  std::fill_n(output_shape.dims_, kNchwcDims, output_defs[0]);
+  NchwcArgument::Shape output_shape(output_defs[0]);
 
   auto it = nchwc_args_.find(input_defs[0]);
   if (it == nchwc_args_.end()) {
@@ -492,7 +531,7 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
     auto* nchwc_input_n = nchwc_inputs[n];
     for (int i = 0; i < kNchwcDims; i++) {
       // Test if this dimension is derived from the same NodeArg.
-      if (nchwc_input_0->shape_.dims_[i] != nchwc_input_n->shape_.dims_[i]) {
+      if (!nchwc_input_0->shape_.IsDimEqual(nchwc_input_n->shape_, i)) {
         // Check if ONNX shape inferencing has computed a precise dimension value.
         auto* nchwc_input_n_shape = input_defs[n]->Shape();
         if ((nchwc_input_0_shape == nullptr) || (nchwc_input_n_shape == nullptr)) {
@@ -500,8 +539,8 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
         }
         auto& nchwc_input_0_dim = nchwc_input_0_shape->dim(i);
         auto& nchwc_input_n_dim = nchwc_input_n_shape->dim(i);
-        if (!nchwc_input_0_dim.has_dim_value() ||
-            !nchwc_input_n_dim.has_dim_value() ||
+        if (!utils::HasDimValue(nchwc_input_0_dim) ||
+            !utils::HasDimValue(nchwc_input_n_dim) ||
             (nchwc_input_0_dim.dim_value() <= 0) ||
             (nchwc_input_0_dim.dim_value() != nchwc_input_n_dim.dim_value())) {
           return;
@@ -525,18 +564,24 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
       auto& nchwc_node = nchwc_input_n->output_node_;
       auto& nchwc_input_defs = nchwc_node.MutableInputDefs();
       auto& nchwc_input_args_count = nchwc_node.MutableInputArgsCount();
+      size_t nchwc_input_defs_count = nchwc_input_defs.size();
       // Check if this is a single use NCHWc convolution that hasn't already
       // been fused with another Add/Sum node. The Add/Sum can also only be
       // fused if the convolution isn't itself fused with an activation.
       if ((nchwc_node.OpType() == "Conv") && (nchwc_node.Domain() == kMSNchwcDomain) &&
-          (nchwc_input_defs.size() < 4) && (nchwc_input_args_count.size() < 4) &&
+          (nchwc_input_defs_count < 4) && (nchwc_input_args_count.size() < 4) &&
           (nchwc_input_n->starting_original_uses_ == 1) &&
           (graph_utils::GetNodeAttribute(nchwc_node, "activation") == nullptr)) {
         // Feed the output of the other NCHWc node into the selected convolution
         // node.
         nchwc_input_defs.resize(4);
-        nchwc_input_defs[3] = nchwc_inputs[n ^ 1]->output_node_.MutableOutputDefs()[0];
         nchwc_input_args_count.resize(4);
+        if (nchwc_input_defs_count < 3) {
+          // The optional bias parameter is empty so set to an empty string.
+          nchwc_input_defs[2] = &graph_.GetOrCreateNodeArg("", nullptr);
+          nchwc_input_args_count[2] = 1;
+        }
+        nchwc_input_defs[3] = nchwc_inputs[n ^ 1]->output_node_.MutableOutputDefs()[0];
         nchwc_input_args_count[3] = 1;
 
         FuseNchwcArgument(node, *nchwc_input_n);
@@ -555,7 +600,7 @@ void NchwcTransformerImpl::TransformConcat(Node& node) {
 
   // Verify that this is a concatenation along the channel axis.
   auto* axis_attr = graph_utils::GetNodeAttribute(node, "axis");
-  if (axis_attr == nullptr || !axis_attr->has_i() || axis_attr->i() != 1) {
+  if (axis_attr == nullptr || !utils::HasInt(*axis_attr) || axis_attr->i() != 1) {
     return;
   }
 
@@ -622,11 +667,11 @@ void NchwcTransformerImpl::TransformActivation(Node& node) {
 }
 
 void NchwcTransformerImpl::Transform(Node& node) {
-  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1}) ||
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11}) ||
       graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedConv", {1}, kMSDomain)) {
     TransformConv(node);
-  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {1, 8, 10}) ||
-             graph_utils::IsSupportedOptypeVersionAndDomain(node, "AveragePool", {1, 7, 10}) ||
+  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {1, 8, 10, 11}) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(node, "AveragePool", {1, 7, 10, 11}) ||
              graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalMaxPool", {1}) ||
              graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalAveragePool", {1})) {
     TransformPool(node);

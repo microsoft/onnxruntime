@@ -52,7 +52,7 @@ class TransformerMemcpyImpl {
   std::string provider_;
 };
 
-/** Helper that returns a pointer to the corresponding TensorProto for a name if it is an initializer. 
+/** Helper that returns a pointer to the corresponding TensorProto for a name if it is an initializer.
 @param check_outer_scope If true and the graph is a subgraph, check parent graph/s for 'name' if not found in 'graph'.
 */
 static const onnx::TensorProto* GetInitializer(const Graph& graph, const std::string& name, bool check_outer_scope) {
@@ -73,11 +73,11 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
         provider != onnxruntime::kMklDnnExecutionProvider &&
         provider != onnxruntime::kNGraphExecutionProvider &&
         provider != onnxruntime::kNupharExecutionProvider &&
-        provider != onnxruntime::kTensorrtExecutionProvider &&
         provider != onnxruntime::kOpenVINOExecutionProvider) {
       TransformerMemcpyImpl copy_impl(graph, provider);
       auto current_modified = copy_impl.ModifyGraph(registry_manager_);
       modified = modified || current_modified;
+      break;
     }
   }
 
@@ -100,7 +100,7 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
 
 Overview: The transformer transforms the input graph as follows:
 
-(1) For every initializer W that is referenced by both provider and non-provider nodes, 
+(1) For every initializer W that is referenced by both provider and non-provider nodes,
 we create a duplicate initializer W2 and change all provider nodes to reference this
 duplicate copy.
 
@@ -167,7 +167,8 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
 }
 
 void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries, InitializedTensorSet& initializers_consumed) {
-  if (node.GetExecutionProviderType() == provider_) {
+  auto node_provider_type = node.GetExecutionProviderType();
+  if ((node_provider_type == provider_) || (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_)) {
     provider_nodes_.insert(&node);
     // note KernelCreateInfo might be nullptr for custom kernel
     const KernelCreateInfo* kci = nullptr;
@@ -204,11 +205,11 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
       else
         provider_output_defs_.insert(arg);
     }
-  } else {
+  } else if (node_provider_type != kCudaExecutionProvider && node_provider_type != kTensorrtExecutionProvider) {
     // TODO: copy between devices? i.e. multiple GPUs
-    if (node.GetExecutionProviderType() != onnxruntime::kCpuExecutionProvider && node.GetExecutionProviderType() != onnxruntime::kTensorrtExecutionProvider &&
-        node.GetExecutionProviderType() != onnxruntime::kNGraphExecutionProvider && !node.GetExecutionProviderType().empty()) {
-      ORT_THROW("Execution type '", node.GetExecutionProviderType(), "' doesn't support memcpy ");
+    if (node_provider_type != onnxruntime::kCpuExecutionProvider &&
+        node_provider_type != onnxruntime::kNGraphExecutionProvider && !node_provider_type.empty()) {
+      ORT_THROW("Execution type '", node_provider_type, "' doesn't support memcpy ");
     }
 
     for (const auto* arg : node.InputDefs()) {
@@ -242,7 +243,8 @@ void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg, co
         output_it != it.MutableOutputDefs().end() ? static_cast<int>(output_it - it.MutableOutputDefs().begin()) : -1;
     if (arg_input_index == -1 && arg_output_index == -1)
       continue;
-    if (it.GetExecutionProviderType() == provider_) {
+    auto node_provider_type = it.GetExecutionProviderType();
+    if ((node_provider_type == provider_) || (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_)) {
       const KernelCreateInfo* kci = nullptr;
       kernel_registries.SearchKernelRegistry(it, &kci);
       if (arg_input_index != -1) {

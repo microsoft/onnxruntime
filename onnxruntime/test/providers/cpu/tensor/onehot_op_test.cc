@@ -65,6 +65,34 @@ TEST(OneHotOpTest, DefaultAxis_int64_float_int64 /*indices, output, depth*/) {
   test.Run();
 }
 
+TEST(OneHotOpTest, DefaultAxis_int32_float_float /*indices, output, depth*/) {
+  OpTester test("OneHot", 9);
+  test.AddInput<int32_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
+  test.AddInput<float>("depth", {1}, {10.0f});
+  test.AddInput<float>("values", {2}, {0.0f, 1.0f});
+  test.AddOutput<float>("output", {2, 3, 10}, {0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                               0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+                                               0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                                               0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                               0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                               0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f});
+  test.Run();
+}
+
+TEST(OneHotOpTest, DefaultAxis_int32_float_int32 /*indices, output, depth*/) {
+  OpTester test("OneHot", 9);
+  test.AddInput<int32_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
+  test.AddInput<int32_t>("depth", {1}, {10});
+  test.AddInput<float>("values", {2}, {0.0f, 1.0f});
+  test.AddOutput<float>("output", {2, 3, 10}, {0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                               0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+                                               0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                                               0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                               0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                               0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f});
+  test.Run();
+}
+
 TEST(OneHotOpTest, Axis_0) {
   OpTester test("OneHot", 9);
   int64_t axis = 0;
@@ -176,6 +204,26 @@ TEST(OneHotOpTest, FloatString) {
                                                 "off", "off", "on", "off", "off", "off", "off", "off", "off", "off",
                                                 "off", "off", "off", "off", "on", "off", "off", "off", "off", "off",
                                                 "off", "off", "off", "off", "off", "off", "on", "off", "off", "off",});
+  test.Run();
+}
+
+TEST(OneHotOpTest, Axis_Negative_NegIndex_NonDefault) {
+  OpTester test("OneHot", 11);
+  int64_t axis = -3;
+  test.AddAttribute("axis", axis);
+  test.AddInput<int64_t>("indices", {2, 3}, {1, -1, 8, 2, 4, 6});
+  test.AddInput<int64_t>("depth", {1}, {10});
+  test.AddInput<int64_t>("values", {2}, {0, 1});
+  test.AddOutput<int64_t>("output", {10, 2, 3}, { 0, 0, 0, 0, 0, 0,
+                                                  1, 0, 0, 0, 0, 0,
+                                                  0, 0, 0, 1, 0, 0,
+                                                  0, 0, 0, 0, 0, 0,
+                                                  0, 0, 0, 0, 1, 0,
+                                                  0, 0, 0, 0, 0, 0,
+                                                  0, 0, 0, 0, 0, 1,
+                                                  0, 0, 0, 0, 0, 0,
+                                                  0, 0, 1, 0, 0, 0,
+                                                  0, 1, 0, 0, 0, 0,});
   test.Run();
 }
 }

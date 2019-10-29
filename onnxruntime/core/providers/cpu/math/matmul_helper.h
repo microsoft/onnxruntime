@@ -29,13 +29,13 @@ class MatMulComputeHelper {
       M_ = left_shape.SizeToDimension(left_num_dims - 1);
       K_ = left_shape[left_num_dims - 1];
       N_ = right_shape[right_num_dims - 1];
-      std::vector<int64_t> output_dims = left_shape.GetDims();
-      output_dims[left_num_dims - 1] = N_;
-      output_shape_ = TensorShape(output_dims);
+      output_shape_ = left_shape;
+      output_shape_[left_num_dims - 1] = N_;
       output_offsets_ = {0};
       left_offsets_ = {0};
       right_offsets_ = {0};
-      ORT_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2], "MatMul dimension mismatch");
+      ORT_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2],
+                        "MatMul dimension mismatch, Left:", left_shape, " Right:", right_shape);
       return Status::OK();
     }
 
@@ -239,7 +239,7 @@ class MatMulComputeHelper {
   template <typename T>
   static void OffsetToArrays(T* p, const std::vector<size_t>& offsets, gsl::span<T*> arrays) {
     auto len = offsets.size();
-    ORT_ENFORCE(arrays.size() == gsl::narrow_cast<ptrdiff_t>(len));
+    ORT_ENFORCE(arrays.size() == len);
     for (size_t i = 0; i < len; i++) {
       arrays[i] = p + offsets[i];
     }
@@ -248,7 +248,7 @@ class MatMulComputeHelper {
   template <typename T>
   static void OffsetToArrays(const T* p, const std::vector<size_t>& offsets, gsl::span<const T*> arrays) {
     auto len = offsets.size();
-    ORT_ENFORCE(arrays.size() == gsl::narrow_cast<ptrdiff_t>(len));
+    ORT_ENFORCE(arrays.size() == len);
     for (size_t i = 0; i < len; i++) {
       arrays[i] = p + offsets[i];
     }

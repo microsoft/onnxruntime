@@ -14,9 +14,8 @@ This directory contains a few C/C++ sample applications for demoing onnxruntime 
 You may get a precompiled libpng library from [https://onnxruntimetestdata.blob.core.windows.net/models/libpng.zip](https://onnxruntimetestdata.blob.core.windows.net/models/libpng.zip)
 
 ## Install ONNX Runtime
-You may either get a prebuit onnxruntime from nuget.org, or build it from source by following the [BUILD.md document](../../../BUILD.md). 
-If you build it by yourself, you must append the "--build_shared_lib" flag to your build command. Like:
-
+You may either get a prebuit onnxruntime from nuget.org, or build it from source by following the [build instructions](../../BUILD.md). 
+If you build it by yourself, you must append the "--build_shared_lib" flag to your build command. 
 ```
 build.bat --config RelWithDebInfo --build_shared_lib --parallel
 ```
@@ -32,7 +31,7 @@ mkdir build
 cmake .. -A x64 -T host=x64 -DLIBPNG_ROOTDIR=C:\path\to\your\libpng\binary
 ```
 You may omit the "-DLIBPNG_ROOTDIR=..." argument if you don't have the libpng library.     
-You may append "-Donnxruntime_USE_CUDA=ON" to the last command args if your onnxruntime binary was built with CUDA support.
+You may append "-Donnxruntime_USE_CUDA=ON" or "-Donnxruntime_USE_DML=ON" to the last command args if your onnxruntime binary was built with CUDA or DirectML support respectively.
 
 Then you can open the onnxruntime_samples.sln file in the "build" directory and build the solution.
 

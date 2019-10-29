@@ -12,13 +12,18 @@ GPUDataTransfer::GPUDataTransfer() {
   CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyOut], cudaStreamNonBlocking));
 }
 
+GPUDataTransfer::~GPUDataTransfer() {
+  CUDA_CALL(cudaStreamDestroy(streams_[kCudaStreamCopyIn]));
+  CUDA_CALL(cudaStreamDestroy(streams_[kCudaStreamCopyOut]));
+}
+
 bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
   return src_device.Type() == OrtDevice::GPU || src_device.MemType() == OrtDevice::MemType::CUDA_PINNED
          || dst_device.Type() == OrtDevice::GPU || dst_device.MemType() == OrtDevice::MemType::CUDA_PINNED;
 }
 
 common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const {
-  size_t bytes = src.Size();
+  size_t bytes = src.SizeInBytes();
   const void* src_data = src.DataRaw();
   void* dst_data = dst.MutableDataRaw();
 

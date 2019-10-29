@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "utils.h"
+#include "core/providers/common.h"
 
 namespace onnxruntime {
 
@@ -13,13 +14,15 @@ class SqueezeBase {
  protected:
   explicit SqueezeBase(const OpKernelInfo& info) {
     std::vector<int64_t> axes;
-    Status status = info.GetAttrs<int64_t>("axes", axes);
-    ORT_ENFORCE(status.IsOK(), "Attribute axes is not set.");
+    // Parse attribute 'axes'
+    Status status = info.GetAttrs<int64_t>("axes", axes); 
 
-    // Handle out of order and repeating dims.
-    std::sort(axes.begin(), axes.end());
-    axes.erase(std::unique(axes.begin(), axes.end()), axes.end());
-    axes_ = axes;
+    // Handle out of order and repeating dims when 'axes' exists.
+    if (status.IsOK()) {
+      std::sort(axes.begin(), axes.end());
+      axes.erase(std::unique(axes.begin(), axes.end()), axes.end());
+      axes_ = axes;
+    }
   }
 
   static std::vector<int64_t> ComputeOutputShape(
@@ -27,8 +30,19 @@ class SqueezeBase {
       const TensorShape& axes) {
     size_t j = 0;
     std::vector<int64_t> output_shape;
-    for (size_t i = 0; i < input_shape.NumDimensions(); ++i) {
-      if (j < axes.NumDimensions() && axes[j] == static_cast<int64_t>(i)) {
+    auto num_dimensions = input_shape.NumDimensions();
+
+    // Handle negtive axis, then resort and uniq.
+    std::vector<int64_t> axes_corrected(axes.NumDimensions());
+    for (size_t i = 0; i < axes.NumDimensions(); i++) {
+      axes_corrected[i] = HandleNegativeAxis(axes[i], num_dimensions);
+    }
+    std::sort(axes_corrected.begin(), axes_corrected.end());
+    axes_corrected.erase(std::unique(axes_corrected.begin(), axes_corrected.end()), axes_corrected.end());
+
+    for (size_t i = 0; i < num_dimensions; ++i) {
+      if ((j < axes_corrected.size() && axes_corrected[j] == static_cast<int64_t>(i)) ||
+          (axes_corrected.size() == 0 && input_shape[i] == 1)) {
         ORT_ENFORCE(input_shape[i] == 1, "Dimension of input ", i, " must be 1 instead of ", input_shape[i],
                     ". shape=", input_shape);
         ++j;

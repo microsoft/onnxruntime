@@ -25,12 +25,13 @@ limitations under the License.
 
 #include "core/common/logging/logging.h"
 #include "core/platform/env.h"
+#include "core/platform/windows/telemetry.h"
 
 namespace onnxruntime {
 
 namespace {
 
-static void ORT_API_CALL DeleteBuffer(void* param) noexcept { ::free(param); }
+static void DeleteBuffer(void* param) noexcept { ::free(param); }
 
 class WindowsEnv : public Env {
  public:
@@ -211,6 +212,11 @@ class WindowsEnv : public Env {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
+  // \brief returns a provider that will handle telemetry on the current platform
+  const Telemetry& GetTelemetryProvider() const override {
+    return telemetry_provider_;
+  }
+
  private:
   WindowsEnv()
       : GetSystemTimePreciseAsFileTime_(nullptr) {
@@ -228,8 +234,8 @@ class WindowsEnv : public Env {
 
   typedef VOID(WINAPI* FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
   FnGetSystemTimePreciseAsFileTime GetSystemTimePreciseAsFileTime_;
+  WindowsTelemetry telemetry_provider_;
 };
-
 }  // namespace
 
 #if defined(PLATFORM_WINDOWS)

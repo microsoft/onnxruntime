@@ -15,12 +15,12 @@ jobs:
       displayName: 'Download test data'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
-        # There are some tests in 20190130.zip that TensorRT can't run. Instead here use 20181210 opset8 for TensorRT test.
-        arguments: --test_data_url https://onnxruntimetestdata.blob.core.windows.net/models/20181210.zip
+        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
         pythonInterpreter: '/usr/bin/python3'
         workingDirectory: $(Build.BinariesDirectory)
     
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d tensorrt -r $(Build.BinariesDirectory) -x "--build_wheel"'
+    # The latest TensorRT container (R19.09) only supports ubuntu18.04
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu18.04 -d tensorrt -r $(Build.BinariesDirectory) -p 3.6 -x "--build_wheel"'
 
       displayName: 'Command Line Script'
 

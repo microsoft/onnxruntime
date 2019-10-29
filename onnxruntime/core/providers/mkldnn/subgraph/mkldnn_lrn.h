@@ -22,11 +22,11 @@ class MklDnnLrn : public MklDnnKernel {
     ReadAttributes(attributes, attributes_prefix);
   }
 
-  Status CreatePrimitives(const OrtCustomOpApi* api,
-                          OrtKernelContext* context,
-                          mkldnn::engine& cpu_engine,
-                          std::vector<mkldnn::primitive>& net,
-                          mkldnn::memory::format& source_format) {
+  void CreatePrimitives(const OrtCustomOpApi* api,
+                        OrtKernelContext* context,
+                        mkldnn::engine& cpu_engine,
+                        std::vector<mkldnn::primitive>& net,
+                        std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) override {
     Ort::CustomOpApi ort{*api};
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
@@ -40,70 +40,71 @@ class MklDnnLrn : public MklDnnKernel {
       auto xdim = tensor_shape.size();
 
       ort_source_format_ = GetSourceFormat(static_cast<int>(xdim));
-      source_format = ort_source_format_;
       x_shape = TensorShape(xshape, xdim);
 
-      mkldnn::memory::dims src_dims_mkl(
+      mkldnn::memory::dims src_dims(
           x_shape.GetDims().begin(), x_shape.GetDims().end());
 
-      src_md_.reset(new mkldnn::memory::desc(
-          {src_dims_mkl}, MklDnnType<T>(), source_format));
-      src_mem_.reset(
-          new mkldnn::memory({*src_md_, cpu_engine}, nullptr));
+      ort_source_desc_ = mkldnn::memory::desc(
+          {src_dims}, MklDnnType<T>(), ort_source_format_);
+      src_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
+          mkldnn::memory::desc({src_dims}, MklDnnType<T>(), ort_source_format_));
+      src_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+          mkldnn::memory(*src_md_, cpu_engine, nullptr));
     } else {
-      src_md_.reset(
-          new mkldnn::memory::desc(parents_[0].get()->primitive_dst_mem_.get()->get_primitive_desc().desc()));
+      src_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
+          mkldnn::memory::desc(parents_[0].get()->primitive_dst_desc_));
       src_mem_ = parents_[0].get()->primitive_dst_mem_;
       x_shape = parents_[0].get()->primitive_dst_shape_;
-      ort_source_format_ = source_format;
+      ort_source_format_ = parents_[0].get()->ort_source_format_;
+      ort_source_desc_ = parents_[0].get()->ort_source_desc_;
+      source_desc_ = parents_[0].get()->primitive_dst_desc_;
     }
 
     primitive_dst_shape_ = TensorShape(x_shape);
 
     mkldnn::algorithm algo = mkldnn::algorithm::lrn_across_channels;
-    fwd_desc_.reset(new mkldnn::lrn_forward::desc(
-        mkldnn::prop_kind::forward_scoring, algo, *src_md_,
-        size_, alpha_, beta_, bias_));
+    fwd_desc_ = onnxruntime::make_unique<mkldnn::lrn_forward::desc>(
+        mkldnn::lrn_forward::desc(mkldnn::prop_kind::forward_scoring, algo, *src_md_,
+                                  size_, alpha_, beta_, bias_));
 
-    fwd_primitive_desc_.reset(new mkldnn::lrn_forward::primitive_desc(
-        *fwd_desc_, cpu_engine));
+    fwd_primitive_desc_ = onnxruntime::make_unique<mkldnn::lrn_forward::primitive_desc>(
+        mkldnn::lrn_forward::primitive_desc(*fwd_desc_, cpu_engine));
 
-    primitive_src_format_ = static_cast<mkldnn::memory::format>(
-        fwd_primitive_desc_.get()->src_primitive_desc().desc().data.format);
-    primitive_dst_format_ = static_cast<mkldnn::memory::format>(
-        fwd_primitive_desc_.get()->dst_primitive_desc().desc().data.format);
+    primitive_src_desc_ = fwd_primitive_desc_.get()->src_desc();
+    primitive_dst_desc_ = fwd_primitive_desc_.get()->dst_desc();
 
     if (mklnode_ptr_->output_index >= 0) {
       // last node of sub-graph. need to allocate memory for output_tensor
-      if (primitive_dst_format_ != ort_source_format_) {
+      if (primitive_dst_desc_ != ort_source_desc_) {
         // reorder neded. Use primitive output as input to reorder and
         // allocate buffer for reorder output, final output of this subgraph
-        primitive_dst_mem_.reset(
-            new mkldnn::memory(fwd_primitive_desc_.get()->dst_primitive_desc()));
+        primitive_dst_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+            mkldnn::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine));
       } else {
         // Last node but re-order not needed. Allocate buffer to output of this node
-        primitive_dst_mem_.reset(
-            new mkldnn::memory(fwd_primitive_desc_.get()->dst_primitive_desc(), nullptr));
+        primitive_dst_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+            mkldnn::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine, nullptr));
       }
     } else {
       // Intermediate node. Use mkldnn kernel internal memory for output and
       // use this as input to next node.
-      primitive_dst_mem_.reset(
-          new mkldnn::memory(fwd_primitive_desc_.get()->dst_primitive_desc()));
+      primitive_dst_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+          mkldnn::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine));
     }
 
-    lrn_fwd_.reset(
-        new mkldnn::lrn_forward(*fwd_primitive_desc_, *src_mem_, *primitive_dst_mem_));
+    lrn_fwd_ = onnxruntime::make_unique<mkldnn::lrn_forward>(
+        mkldnn::lrn_forward(*fwd_primitive_desc_));
     net.push_back(*lrn_fwd_);
+    net_args.push_back({{MKLDNN_ARG_SRC, *src_mem_},
+                        {MKLDNN_ARG_DST, *primitive_dst_mem_}});
 
     if (mklnode_ptr_->output_index >= 0) {
       // one of the end nodes. Allocate output buffer memory and
       // reorder is necessary
       mkldnn::memory::data_type t = MklDnnType<T>();
-      InitDstReorderOutput(cpu_engine, t, net);
+      InitDstReorderOutput(cpu_engine, t, net, net_args);
     }
-
-    return Status::OK();
   }
 
   Status Bind(const OrtCustomOpApi* api, OrtKernelContext* context) override {
@@ -123,7 +124,7 @@ class MklDnnLrn : public MklDnnKernel {
       OrtValue* output = ort.KernelContext_GetOutput(context, mklnode_ptr_->output_index, &y_dims[0], static_cast<int>(primitive_dst_shape_.GetDims().size()));
       T* dst_data = ort.GetTensorMutableData<T>(output);
 
-      if (primitive_dst_format_ != ort_source_format_) {
+      if (primitive_dst_desc_ != ort_source_desc_) {
         reorder_dst_mem_to_->set_data_handle(dst_data);
       } else {
         primitive_dst_mem_->set_data_handle(dst_data);
