@@ -140,6 +140,7 @@ static int write_tensor_to_png_file(OrtValue* tensor, const char* output_file) {
 
 static void usage() { printf("usage: <model_path> <input_file> <output_file> [cpu|cuda|dml] \n"); }
 
+#ifdef _WIN32
 static char* convert_string(const wchar_t* input) {
   size_t src_len = wcslen(input) + 1;
   if (src_len > INT_MAX) {
@@ -154,6 +155,7 @@ static char* convert_string(const wchar_t* input) {
   assert(len == r);
   return ret;
 }
+#endif
 
 int run_inference(OrtSession* session, const ORTCHAR_T* input_file, const ORTCHAR_T* output_file) {
   size_t input_height;
@@ -164,6 +166,7 @@ int run_inference(OrtSession* session, const ORTCHAR_T* input_file, const ORTCHA
   char* output_file_p = convert_string(output_file);
   char* input_file_p = convert_string(input_file);
 #else
+  char* output_file_p = output_file;
   char* input_file_p = input_file;
 #endif
   if (read_png_file(input_file_p, &input_height, &input_width, &model_input, &model_input_ele_count) != 0) {
