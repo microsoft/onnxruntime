@@ -42,7 +42,7 @@ TopK<inputk>::TopK(const OpKernelInfo& info) : CudaKernel(info) {
 }
 
 #define ISTYPE(T) tensor_X->DataType() == DataTypeImpl::GetType<T>()
-#define TOPKIMPL(T) TopKImpl<T>(tensor_X->Data<T>(),                               \
+#define TOPKIMPL(T) TopKImpl<T>(this, tensor_X->Data<T>(),                         \
                                 static_cast<T*>(tensor_V->MutableDataRaw()),       \
                                 static_cast<int64_t*>(tensor_I->MutableDataRaw()), \
                                 elem_nums_cuda.GpuPtr(),                           \
@@ -74,11 +74,11 @@ Status TopK<inputk>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   auto elem_nums = tensor_X->Shape().GetDims();
+  auto dimension = elem_nums[axis];
   for (auto i = static_cast<int32_t>(elem_nums.size()) - 2; i >= 0; --i) {
     elem_nums[i] *= elem_nums[i + 1];
   }
 
-  auto dimension = axis == elem_nums.size() - 1 ? elem_nums[axis] : elem_nums[axis] / elem_nums[axis + 1];
   auto N = elem_nums[0] / dimension;
   CudaAsyncBuffer<int64_t> elem_nums_cuda(this, elem_nums);
   ORT_RETURN_IF_ERROR(elem_nums_cuda.CopyToGpu());
