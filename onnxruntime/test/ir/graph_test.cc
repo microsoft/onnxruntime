@@ -989,8 +989,7 @@ TEST(GraphUpdateTest, ReplaceInitializedTensor) {
     status = graph.ReplaceInitializedTensor(valid_replacement);
     ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-    auto tensor_data_matches = [](
-                                   const ONNX_NAMESPACE::TensorProto& a, const ONNX_NAMESPACE::TensorProto& b) {
+    auto tensor_data_matches = [](const ONNX_NAMESPACE::TensorProto& a, const ONNX_NAMESPACE::TensorProto& b) {
       if (a.int32_data_size() != b.int32_data_size()) return false;
       for (int i = 0; i < a.int32_data_size(); ++i) {
         if (a.int32_data(i) != b.int32_data(i)) return false;
