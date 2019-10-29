@@ -2,23 +2,31 @@
 // Licensed under the MIT License.
 
 #include "TFModelInfo.h"
+
+#include <memory>
+
 #include <core/platform/env.h>
 
 TestModelInfo* TFModelInfo::Create(_In_ const PATH_CHAR_TYPE* model_url) {
-  TFModelInfo* ret = new TFModelInfo();
+  auto ret = std::unique_ptr<TFModelInfo>(new TFModelInfo{});
   ret->model_url_ = model_url;
   std::basic_string<PATH_CHAR_TYPE> meta_file_path = model_url;
   meta_file_path.append(ORT_TSTR(".meta"));
-  void* p = nullptr;
-  size_t len = 0;
-  onnxruntime::OrtCallback b;
-  auto st = onnxruntime::Env::Default().ReadFileAsString(meta_file_path.c_str(), 0, p, len, b);
-  if (!st.IsOK()) {
-    ORT_THROW(st.ErrorMessage());
+  const onnxruntime::Env& env = onnxruntime::Env::Default();
+  size_t len;
+  auto status = env.GetFileLength(meta_file_path.c_str(), len);
+  if (!status.IsOK()) {
+    ORT_THROW(status.ErrorMessage());
+  }
+  std::string file_content;
+  file_content.resize(len);
+  auto buffer_span = gsl::make_span(&file_content[0], file_content.size());
+  status = onnxruntime::Env::Default().ReadFileIntoBuffer(meta_file_path.c_str(), 0, len, buffer_span);
+  if (!status.IsOK()) {
+    ORT_THROW(status.ErrorMessage());
   }
   // this string is not null terminated
-  std::string filecontent(reinterpret_cast<char*>(p), len);
-  std::istringstream is(filecontent);
+  std::istringstream is{file_content};
 
   std::string line;
   while (std::getline(is, line)) {
@@ -40,9 +48,7 @@ TestModelInfo* TFModelInfo::Create(_In_ const PATH_CHAR_TYPE* model_url) {
     }
   }
 
-  if (b.f) b.f(b.param);
-
-  return ret;
+  return ret.release();
 }
 
 int TFModelInfo::GetInputCount() const { return static_cast<int>(input_names_.size()); }

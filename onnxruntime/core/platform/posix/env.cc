@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // Portions Copyright (c) Microsoft Corporation
 
+#include "core/platform/env.h"
+
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -25,29 +27,24 @@ limitations under the License.
 #include <dlfcn.h>
 #include <string.h>
 #include <thread>
+#include <utility> // for std::forward
 #include <vector>
 #include <assert.h>
-#include "core/platform/env.h"
+
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
-
-// MAC OS X doesn't have this macro
-#ifndef TEMP_FAILURE_RETRY
-#define TEMP_FAILURE_RETRY(X) X
-#endif
+#include "core/platform/scoped_resource.h"
 
 namespace onnxruntime {
 
 namespace {
-constexpr int OneMillion = 1000000;
 
-static void DeleteBuffer(void* param) noexcept { ::free(param); }
+constexpr int OneMillion = 1000000;
 
 class UnmapFileParam {
  public:
   void* addr;
   size_t len;
-  int fd;
 };
 
 static void UnmapFile(void* param) noexcept {
@@ -55,10 +52,35 @@ static void UnmapFile(void* param) noexcept {
   int ret = munmap(p->addr, p->len);
   if (ret != 0) {
     int err = errno;
-    LOGS_DEFAULT(INFO) << "munmap failed. error code:" << err;
+    LOGS_DEFAULT(ERROR) << "munmap failed. error code: " << err;
   }
-  (void)close(p->fd);
   delete p;
+}
+
+struct FileDescriptorTraits {
+  using Handle = int;
+  static Handle GetInvalidHandleValue() { return -1; }
+  static void CleanUp(Handle h) {
+    if (close(h) == -1) {
+      const int err = errno;
+      LOGS_DEFAULT(ERROR) << "Failed to close file descriptor " << h << " - error code: " << err;
+    }
+  }
+};
+
+// Note: File descriptor cleanup may fail but this class doesn't expose a way to check if it failed.
+//       If that's important, consider using another cleanup method.
+using ScopedFileDescriptor = ScopedResource<FileDescriptorTraits>;
+
+// non-macro equivalent of TEMP_FAILURE_RETRY, described here:
+// https://www.gnu.org/software/libc/manual/html_node/Interrupted-Primitives.html
+template<typename TFunc, typename... TFuncArgs>
+long int TempFailureRetry(TFunc retriable_operation, TFuncArgs&&... args) {
+  long int result;
+  do {
+    result = retriable_operation(std::forward<TFuncArgs>(args)...);
+  } while (result == -1 && errno == EINTR);
+  return result;
 }
 
 class PosixEnv : public Env {
@@ -99,80 +121,105 @@ class PosixEnv : public Env {
     return getpid();
   }
 
-  static common::Status ReadBinaryFile(int fd, off_t offset, const char* fname, void*& p, size_t len,
-                                       OrtCallback& deleter) {
-    std::unique_ptr<char[]> buffer(reinterpret_cast<char*>(malloc(len)));
-    char* wptr = reinterpret_cast<char*>(buffer.get());
-    auto length_remain = len;
-    do {
-      size_t bytes_to_read = length_remain;
-      ssize_t bytes_read;
-      TEMP_FAILURE_RETRY(bytes_read =
-                             offset > 0 ? pread(fd, wptr, bytes_to_read, offset) : read(fd, wptr, bytes_to_read));
-      if (bytes_read <= 0) {
-        int err = errno;
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "read file '", fname, "' fail, error code = ", err);
-      }
-      assert(static_cast<size_t>(bytes_read) <= bytes_to_read);
-      wptr += bytes_read;
-      length_remain -= bytes_read;
-    } while (length_remain > 0);
-    p = buffer.release();
-    deleter.f = DeleteBuffer;
-    deleter.param = p;
+  Status GetFileLength(const ORTCHAR_T* file_path, size_t& length) const override {
+    ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
+    if (file_descriptor.Get() < 0) {
+      return ReportSystemError("open", file_path);
+    }
+
+    struct stat stbuf;
+    if (fstat(file_descriptor.Get(), &stbuf) != 0) {
+      return ReportSystemError("fstat", file_path);
+    }
+
+    if (!S_ISREG(stbuf.st_mode)) {
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                            "GetFileLength: input is not a regular file");
+    }
+
+    length = static_cast<size_t>(stbuf.st_size);
     return Status::OK();
   }
 
-  common::Status ReadFileAsString(const char* fname, off_t offset, void*& p, size_t& len,
-                                  OrtCallback& deleter) const override {
-    if (!fname) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "ReadFileAsString: 'fname' cannot be NULL");
+  Status ReadFileIntoBuffer(
+      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+      gsl::span<char> buffer) const override {
+    ORT_RETURN_IF_NOT(file_path);
+    ORT_RETURN_IF_NOT(offset >= 0);
+    ORT_RETURN_IF_NOT(length <= buffer.size());
+
+    ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
+    if (!file_descriptor.IsValid()) {
+      return ReportSystemError("open", file_path);
     }
 
-    if (offset < 0) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                            "ReadFileAsString: offset must be non-negative");
-    }
-    deleter.f = nullptr;
-    deleter.param = nullptr;
-    int fd = open(fname, O_RDONLY);
-    if (fd < 0) {
-      return ReportSystemError("open", fname);
-    }
-    if (len <= 0) {
-      struct stat stbuf;
-      if (fstat(fd, &stbuf) != 0) {
-        return ReportSystemError("fstat", fname);
-      }
+    if (length == 0) return Status::OK();
 
-      if (!S_ISREG(stbuf.st_mode)) {
-        return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                              "ReadFileAsString: input is not a regular file");
-      }
-      len = static_cast<size_t>(stbuf.st_size);
-    }
-
-    if (len == 0) {
-      p = nullptr;
-    } else {
-      long page_size = sysconf(_SC_PAGESIZE);
-      off_t offset_to_page = offset % static_cast<off_t>(page_size);
-      p = mmap(nullptr, len + offset_to_page, PROT_READ, MAP_SHARED, fd, offset - offset_to_page);
-      if (p == MAP_FAILED) {
-        auto st = ReadBinaryFile(fd, offset, fname, p, len, deleter);
-        (void)close(fd);
-        if (!st.IsOK()) {
-          return st;
-        }
-      } else {
-        // leave the file open
-        deleter.f = UnmapFile;
-        deleter.param = new UnmapFileParam{p, len + offset_to_page, fd};
-        p = reinterpret_cast<char*>(p) + offset_to_page;
+    if (offset > 0) {
+      const FileOffsetType seek_result = lseek(file_descriptor.Get(), offset, SEEK_SET);
+      if (seek_result == -1) {
+        return ReportSystemError("lseek", file_path);
       }
     }
 
-    return common::Status::OK();
+    size_t total_bytes_read = 0;
+    while (total_bytes_read < length) {
+      constexpr size_t k_max_bytes_to_read = 1 << 30;  // read at most 1GB each time
+      const size_t bytes_remaining = length - total_bytes_read;
+      const size_t bytes_to_read = std::min(bytes_remaining, k_max_bytes_to_read);
+
+      const ssize_t bytes_read = TempFailureRetry(read, file_descriptor.Get(), buffer.data() + total_bytes_read, bytes_to_read);
+
+      if (bytes_read == -1) {
+        return ReportSystemError("read", file_path);
+      }
+
+      if (bytes_read == 0) {
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, FAIL, "ReadFileIntoBuffer - unexpected end of file. ",
+            "File: ", file_path, ", offset: ", offset, ", length: ", length);
+      }
+
+      total_bytes_read += bytes_read;
+    }
+
+    return Status::OK();
+  }
+
+  Status MapFileIntoMemory(
+      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+      MappedMemoryPtr& mapped_memory) const override {
+    ORT_RETURN_IF_NOT(file_path);
+    ORT_RETURN_IF_NOT(offset >= 0);
+
+    ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
+    if (!file_descriptor.IsValid()) {
+      return ReportSystemError("open", file_path);
+    }
+
+    if (length == 0) {
+      mapped_memory = MappedMemoryPtr{};
+      return Status::OK();
+    }
+
+    static const long page_size = sysconf(_SC_PAGESIZE);
+    const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
+    const size_t mapped_length = length + offset_to_page;
+    const FileOffsetType mapped_offset = offset - offset_to_page;
+    void* const mapped_base = mmap(
+        nullptr, mapped_length,
+        PROT_READ | PROT_WRITE, MAP_PRIVATE,
+        file_descriptor.Get(), mapped_offset);
+
+    if (mapped_base == MAP_FAILED) {
+      return ReportSystemError("mmap", file_path);
+    }
+
+    mapped_memory = MappedMemoryPtr{
+      reinterpret_cast<char*>(mapped_base) + offset_to_page,
+      OrtCallbackInvoker{OrtCallback{UnmapFile, new UnmapFileParam{mapped_base, mapped_length}}}};
+
+    return Status::OK();
   }
 
   static common::Status ReportSystemError(const char* operation_name, const std::string& path) {

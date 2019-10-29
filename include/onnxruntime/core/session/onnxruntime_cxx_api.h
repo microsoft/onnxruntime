@@ -25,10 +25,6 @@
 
 namespace Ort {
 
-extern const OrtApi* g_api;
-
-using std::nullptr_t;
-
 // All C++ methods that can fail will throw an exception of this type
 struct Exception : std::exception {
   Exception(std::string&& string, OrtErrorCode code) : message_{std::move(string)}, code_{code} {}
@@ -41,9 +37,23 @@ struct Exception : std::exception {
   OrtErrorCode code_;
 };
 
-// This Macro is to make it easy to generate overloaded methods for all of the various OrtRelease* functions for every Ort* type
+// This is used internally by the C++ API. This class holds the global variable that points to the OrtApi, it's in a template so that we can define a global variable in a header and make
+// it transparent to the users of the API.
+template <typename T>
+struct Global {
+  static const OrtApi& api_;
+};
+
+template <typename T>
+const OrtApi& Global<T>::api_ = *OrtGetApiBase()->GetApi(ORT_API_VERSION);
+
+// This returns a reference to the OrtApi interface in use, in case someone wants to use the C API functions
+inline const OrtApi& GetApi() { return Global<void>::api_; }
+
+// This is used internally by the C++ API. This macro is to make it easy to generate overloaded methods for all of the various OrtRelease* functions for every Ort* type
+// This can't be done in the C API since C doesn't have function overloading.
 #define ORT_DEFINE_RELEASE(NAME) \
-  inline void OrtRelease(Ort##NAME* ptr) { g_api->Release##NAME(ptr); }
+  inline void OrtRelease(Ort##NAME* ptr) { Global<void>::api_.Release##NAME(ptr); }
 
 ORT_DEFINE_RELEASE(MemoryInfo);
 ORT_DEFINE_RELEASE(CustomOpDomain);
@@ -55,6 +65,7 @@ ORT_DEFINE_RELEASE(TensorTypeAndShapeInfo);
 ORT_DEFINE_RELEASE(TypeInfo);
 ORT_DEFINE_RELEASE(Value);
 
+// This is used internally by the C++ API. This is the common base class used by the wrapper objects.
 template <typename T>
 struct Base {
   Base() = default;
@@ -85,7 +96,7 @@ struct Base {
   T* p_{};
 
   template <typename>
-  friend struct Unowned;
+  friend struct Unowned;  // This friend line is needed to keep the centos C++ compiler from giving an error
 };
 
 template <typename T>
@@ -102,8 +113,8 @@ struct TypeInfo;
 struct Value;
 
 struct Env : Base<OrtEnv> {
-  Env(nullptr_t) {}
-  Env(OrtLoggingLevel default_logging_level, _In_ const char* logid);
+  Env(std::nullptr_t) {}
+  Env(OrtLoggingLevel default_logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
   Env(OrtLoggingLevel default_logging_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
 
@@ -114,14 +125,14 @@ struct Env : Base<OrtEnv> {
 };
 
 struct CustomOpDomain : Base<OrtCustomOpDomain> {
-  explicit CustomOpDomain(nullptr_t) {}
+  explicit CustomOpDomain(std::nullptr_t) {}
   explicit CustomOpDomain(const char* domain);
 
   void Add(OrtCustomOp* op);
 };
 
 struct RunOptions : Base<OrtRunOptions> {
-  RunOptions(nullptr_t) {}
+  RunOptions(std::nullptr_t) {}
   RunOptions();
 
   RunOptions& SetRunLogVerbosityLevel(int);
@@ -140,7 +151,7 @@ struct RunOptions : Base<OrtRunOptions> {
 };
 
 struct SessionOptions : Base<OrtSessionOptions> {
-  explicit SessionOptions(nullptr_t) {}
+  explicit SessionOptions(std::nullptr_t) {}
   SessionOptions();
   explicit SessionOptions(OrtSessionOptions* p) : Base<OrtSessionOptions>{p} {}
 
@@ -169,15 +180,15 @@ struct SessionOptions : Base<OrtSessionOptions> {
 };
 
 struct Session : Base<OrtSession> {
-  explicit Session(nullptr_t) {}
+  explicit Session(std::nullptr_t) {}
   Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);
   Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options);
 
   // Run that will allocate the output values
-  std::vector<Value> Run(const RunOptions& run_options, const char* const* input_names, Value* input_values, size_t input_count,
+  std::vector<Value> Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
                          const char* const* output_names, size_t output_count);
   // Run for when there is a list of prealloated outputs
-  void Run(const RunOptions& run_options, const char* const* input_names, Value* input_values, size_t input_count,
+  void Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
            const char* const* output_names, Value* output_values, size_t output_count);
 
   size_t GetInputCount() const;
@@ -194,7 +205,7 @@ struct Session : Base<OrtSession> {
 };
 
 struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
-  explicit TensorTypeAndShapeInfo(nullptr_t) {}
+  explicit TensorTypeAndShapeInfo(std::nullptr_t) {}
   explicit TensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* p) : Base<OrtTensorTypeAndShapeInfo>{p} {}
 
   ONNXTensorElementDataType GetElementType() const;
@@ -208,7 +219,7 @@ struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
 };
 
 struct TypeInfo : Base<OrtTypeInfo> {
-  explicit TypeInfo(nullptr_t) {}
+  explicit TypeInfo(std::nullptr_t) {}
   explicit TypeInfo(OrtTypeInfo* p) : Base<OrtTypeInfo>{p} {}
 
   Unowned<TensorTypeAndShapeInfo> GetTensorTypeAndShapeInfo() const;
@@ -233,7 +244,7 @@ struct Value : Base<OrtValue> {
   template <typename T>
   void GetOpaqueData(const char* domain, const char* type_name, T&);
 
-  explicit Value(nullptr_t) {}
+  explicit Value(std::nullptr_t) {}
   explicit Value(OrtValue* p) : Base<OrtValue>{p} {}
   Value(Value&&) = default;
   Value& operator=(Value&&) = default;
@@ -270,7 +281,7 @@ struct AllocatorWithDefaultOptions {
 struct MemoryInfo : Base<OrtMemoryInfo> {
   static MemoryInfo CreateCpu(OrtAllocatorType type, OrtMemType mem_type1);
 
-  explicit MemoryInfo(nullptr_t) {}
+  explicit MemoryInfo(std::nullptr_t) {}
   MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type);
 
   explicit MemoryInfo(OrtMemoryInfo* p) : Base<OrtMemoryInfo>{p} {}

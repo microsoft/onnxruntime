@@ -10,6 +10,18 @@
 
 namespace onnxruntime {
 
+#ifdef USE_MIMALLOC
+void* MiMallocAllocator::Alloc(size_t size) {
+  return mi_malloc(size);
+}
+
+void MiMallocAllocator::Free(void* p) {
+  mi_free(p);
+}
+
+const OrtMemoryInfo& MiMallocAllocator::Info() const { return *memory_info_; }
+#endif
+
 void* CPUAllocator::Alloc(size_t size) {
   return utils::DefaultAlloc(size);
 }
