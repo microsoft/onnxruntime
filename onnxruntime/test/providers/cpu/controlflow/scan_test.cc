@@ -24,6 +24,8 @@ struct RunOptions {
   bool scalar_loop_state_value = false;
   bool add_bad_shape = false;
   bool mixed_execution_providers = false;
+  // Disable TensorRT because its parser fails, and it can't handle unknown dimensions
+  std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider};
 };
 
 static void CreateSubgraph(Graph& graph, RunOptions& options, const std::string& failure_message = "");
@@ -310,7 +312,7 @@ static void RunTest_v8(const std::string test_name, int64_t batch_size, int64_t 
   test.AddOutput<float>("scan_output_2", output_shape, output_2);
   test.AddOutput<float>("scan_output_3", output_shape, output_3);
 
-  test.Run(expect_result, failure_message, {kTensorrtExecutionProvider});  // Disable TensorRT because its parser failed
+  test.Run(expect_result, failure_message, options.excluded_provider_types);
 }
 
 static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_t input_size,
@@ -403,9 +405,9 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
     execution_providers.push_back(DefaultCudaExecutionProvider());
     execution_providers.push_back(DefaultCpuExecutionProvider());
 
-    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+    test.Run(expect_result, failure_message, options.excluded_provider_types, nullptr, &execution_providers);
   } else {
-    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider});  // Disable TensorRT because its parser failed
+    test.Run(expect_result, failure_message, options.excluded_provider_types);
   }
 }
 
@@ -533,6 +535,12 @@ static void OuterScopeAccess_ShapeInMainGraph_NoTypeAndShapeInSubgraph(bool is_v
   options.include_dim_values_in_subgraph = false;
 
   options.include_outer_scope_add = true;
+
+  // Scan9.OuterScopeAccess_ShapeInMainGraph_NoTypeAndShapeInSubgraph fails with nuphar. See Bug 525222.
+  // Remove this once that is fixed.
+  if (is_v8 == false) {
+    options.excluded_provider_types.insert(kNupharExecutionProvider);
+  }
 
   ShortSequenceOneInBatchOneLoopStateVar(options);
 }
@@ -887,7 +895,7 @@ TEST(Scan9, TransposeOutputDim2) {
   test.AddInput<float>("scan_input_1", input_shape, {1.0, 2.0});
   test.AddOutput<float>("scan_output_1", output_shape, {1.0, 2.0});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // Disable TensorRT on supported data types
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", RunOptions().excluded_provider_types);
 }
 
 static void InvalidInput(bool is_v8) {
@@ -1079,7 +1087,7 @@ void MixedTypeInputs(bool is_v8) {
   test.AddOutput<float>("scan_output_1", seq_shape, {0.0, 1.0, 2.0});
   test.AddOutput<int64_t>("scan_output_2", seq_shape, {0, 1, 2});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // Disable TensorRT on unsupported data types
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", RunOptions().excluded_provider_types);
 }
 
 TEST_8_AND_9(MixedTypeInputs);
@@ -1151,9 +1159,10 @@ void UnknownDimInSubgraphOutput(bool is_v8, bool mixed_execution_providers = fal
     execution_providers.push_back(DefaultCudaExecutionProvider());
     execution_providers.push_back(DefaultCpuExecutionProvider());
 
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", RunOptions().excluded_provider_types, nullptr,
+             &execution_providers);
   } else {
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //Disable TensorRT on unknown dimension tests
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", RunOptions().excluded_provider_types);
   }
 }
 

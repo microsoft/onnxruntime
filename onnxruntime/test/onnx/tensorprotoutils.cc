@@ -14,8 +14,6 @@
 #include "core/graph/onnx_protobuf.h"
 #include "callback.h"
 
-extern const OrtApi* g_ort;
-
 struct OrtStatus {
   OrtErrorCode code;
   char msg[1];  // a null-terminated string
@@ -295,7 +293,7 @@ OrtStatus* OrtInitializeBufferForTensor(void* input, size_t input_len,
       new (ptr + i) std::string();
     }
   } catch (std::exception& ex) {
-    return g_ort->CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
   }
   return nullptr;
 }
@@ -407,7 +405,7 @@ Status TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuff
           if (preallocated != nullptr) {
             OrtStatus* status = OrtInitializeBufferForTensor(preallocated, preallocated_size, ele_type);
             if (status != nullptr) {
-              g_ort->ReleaseStatus(status);
+              Ort::GetApi().ReleaseStatus(status);
               return Status(common::ONNXRUNTIME, common::FAIL, "initialize preallocated buffer failed");
             }
             deleter.f = UnInitTensor;

@@ -6,6 +6,7 @@
 #pragma warning(disable : 4244)
 #endif
 
+#include <cassert>
 #include <fstream>
 #include <iostream>
 #include <numeric>
@@ -399,21 +400,25 @@ void Node::SetExecutionProviderType(ProviderType execution_provider_type) {
   execution_provider_type_ = execution_provider_type;
 }
 
-void Node::ToProto(NodeProto& proto) const {
-  // Set name.
+void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
   proto.set_name(name_);
-  // Set op type.
   proto.set_op_type(op_type_);
-  // Set op domain;
-  proto.set_domain(domain_);
-  // Set doc string.
-  proto.set_doc_string(description_);
+
+  if (!domain_.empty())
+    proto.set_domain(domain_);
+
+  if (!description_.empty())
+    proto.set_doc_string(description_);
 
   // Set attributes.
   proto.clear_attribute();
   for (const auto& attribute : attributes_) {
     const gsl::not_null<AttributeProto*> attr{proto.add_attribute()};
-    *attr = attribute.second;
+    *attr = attribute.second;  // copy
+    if (update_subgraphs && attr->has_g()) {
+      attr->clear_g();
+      *attr->mutable_g() = attr_to_subgraph_map_.find(attribute.first)->second->ToGraphProto();
+    }
   }
 
   // Set inputs' definitions.
@@ -2055,6 +2060,42 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
   }
 }
 
+Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer) {
+  // name_to_initial_tensor_ maps from name to const TensorProto*, so we first
+  // look up the const pointer by name, then find and modify the mutable
+  // pointed-to TensorProto in graph_proto_.
+
+  const auto& initializer_name = new_initializer.name();
+  const auto name_to_initializer_it = name_to_initial_tensor_.find(initializer_name);
+  ORT_RETURN_IF_NOT(name_to_initializer_it != name_to_initial_tensor_.end(),
+                    "Failed to find existing initializer with name ", initializer_name, ".");
+
+  const auto& old_initializer = *(name_to_initializer_it->second);
+
+  auto dims_eq = [&old_initializer, &new_initializer]() {
+    if (old_initializer.dims_size() != new_initializer.dims_size()) return false;
+    for (int i = 0; i < old_initializer.dims_size(); ++i) {
+      if (old_initializer.dims(i) != new_initializer.dims(i)) return false;
+    }
+    return true;
+  };
+
+  ORT_RETURN_IF_NOT(dims_eq(), "Replacement tensor's dimensions do not match.");
+  ORT_RETURN_IF_NOT(old_initializer.data_type() == new_initializer.data_type(),
+                    "Replacement tensor's data type does not match.");
+
+  auto& mutable_initializers = *(graph_proto_->mutable_initializer());
+  auto old_mutable_initializer_ptr_it = std::find(
+      mutable_initializers.pointer_begin(), mutable_initializers.pointer_end(), &old_initializer);
+  ORT_ENFORCE(old_mutable_initializer_ptr_it != mutable_initializers.pointer_end(),
+              "graph_proto_ is not in sync with name_to_initial_tensor_");
+  auto& old_mutable_initializer = **old_mutable_initializer_ptr_it;
+
+  old_mutable_initializer = new_initializer;
+
+  return Status::OK();
+}
+
 bool Graph::GetInitializedTensor(const std::string& tensor_name, const TensorProto*& value) const {
   auto iter = name_to_initial_tensor_.find(tensor_name);
   if (name_to_initial_tensor_.end() == iter) {
@@ -2327,7 +2368,9 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
   for (auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     const gsl::not_null<NodeProto*> node_proto{graph_proto.add_node()};
     const gsl::not_null<const Node*> p_node{GetNode(node_idx)};
-    p_node->ToProto(*node_proto);
+    // we need to update any GraphProto attributes for subgraphs so that any changes made by things
+    // such as the optimizers are captured. otherwise we can end up saving an invalid graph.
+    p_node->ToProto(*node_proto, /* update_subgraphs */ true);
   }
 }
 

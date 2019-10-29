@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "onnxruntime/core/session/onnxruntime_c_api.h"
+#include "onnxruntime_c_api.h"
 #include "providers.h"
 #include <stdio.h>
 #include <assert.h>
@@ -15,7 +15,7 @@
   #define tcscmp strcmp
 #endif
 
-const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+const OrtApi* g_ort = NULL;
 
 #define ORT_ABORT_ON_ERROR(expr)                             \
   do {                                                       \
@@ -125,8 +125,8 @@ static int write_tensor_to_png_file(OrtValue* tensor, const char* output_file) {
   memset(&image, 0, (sizeof image));
   image.version = PNG_IMAGE_VERSION;
   image.format = PNG_FORMAT_BGR;
-  image.height = dims[2];
-  image.width = dims[3];
+  image.height = (png_uint_32)dims[2];
+  image.width = (png_uint_32)dims[3];
   chw_to_hwc(f, image.height, image.width, &model_output_bytes);
   int ret = 0;
   if (png_image_write_to_file(&image, output_file, 0 /*convert_to_8bit*/, model_output_bytes, 0 /*row_stride*/,
@@ -140,6 +140,7 @@ static int write_tensor_to_png_file(OrtValue* tensor, const char* output_file) {
 
 static void usage() { printf("usage: <model_path> <input_file> <output_file> [cpu|cuda|dml] \n"); }
 
+#ifdef _WIN32
 static char* convert_string(const wchar_t* input) {
   size_t src_len = wcslen(input) + 1;
   if (src_len > INT_MAX) {
@@ -154,6 +155,7 @@ static char* convert_string(const wchar_t* input) {
   assert(len == r);
   return ret;
 }
+#endif
 
 int run_inference(OrtSession* session, const ORTCHAR_T* input_file, const ORTCHAR_T* output_file) {
   size_t input_height;
@@ -164,6 +166,7 @@ int run_inference(OrtSession* session, const ORTCHAR_T* input_file, const ORTCHA
   char* output_file_p = convert_string(output_file);
   char* input_file_p = convert_string(input_file);
 #else
+  char* output_file_p = output_file;
   char* input_file_p = input_file;
 #endif
   if (read_png_file(input_file_p, &input_height, &input_width, &model_input, &model_input_ele_count) != 0) {
@@ -240,6 +243,8 @@ int main(int argc, char* argv[]) {
     usage();
     return -1;
   }
+
+  g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 #ifdef _WIN32
   //CoInitializeEx is only needed if Windows Image Component will be used in this program for image loading/saving.
   HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
@@ -248,7 +253,7 @@ int main(int argc, char* argv[]) {
   ORTCHAR_T* model_path = argv[1];
   ORTCHAR_T* input_file = argv[2];
   ORTCHAR_T* output_file = argv[3];
-  ORTCHAR_T* execution_provider = argc >= 5 ? argv[4] : nullptr;
+  ORTCHAR_T* execution_provider = (argc >= 5) ? argv[4] : NULL;
   OrtEnv* env;
   ORT_ABORT_ON_ERROR(g_ort->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
   OrtSessionOptions* session_options;
@@ -256,16 +261,16 @@ int main(int argc, char* argv[]) {
 
   if (execution_provider)
   {
-    if (tcscmp(execution_provider, ORT_TSTR("cpu"))) {
+    if (tcscmp(execution_provider, ORT_TSTR("cpu")) == 0) {
       // Nothing; this is the default
-    } else if (tcscmp(execution_provider, ORT_TSTR("cuda"))) {
+    } else if (tcscmp(execution_provider, ORT_TSTR("cuda")) == 0) {
     #ifdef USE_CUDA
       enable_cuda(session_options);
     #else
       puts("CUDA is not enabled in this build.");
       return -1;
     #endif
-    } else if (tcscmp(execution_provider, ORT_TSTR("dml"))) {
+    } else if (tcscmp(execution_provider, ORT_TSTR("dml")) == 0) {
     #ifdef USE_DML
       enable_dml(session_options);
     #else

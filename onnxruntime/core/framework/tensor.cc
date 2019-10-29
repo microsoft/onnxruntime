@@ -23,9 +23,16 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
   int64_t shape_size = shape.Size();
   if (shape_size < 0 || static_cast<uint64_t>(shape_size) >= std::numeric_limits<size_t>::max())
     ORT_THROW("shape.Size() must >=0");
+    
   void* p_data = nullptr;
-  if (shape_size > 0)
-    p_data = allocator->AllocArray(static_cast<size_t>(shape_size), p_type->Size());
+  if (shape_size > 0) {
+    size_t len = 0;
+    if (!allocator->CalcMemSizeForArray(static_cast<size_t>(shape_size), p_type->Size(), &len))
+      ORT_THROW("tensor failed memory size calculation");
+    len +=  offset;
+    p_data = allocator->Alloc(len);
+  }
+
   Init(p_type, shape, p_data, allocator, offset);
 }
 
