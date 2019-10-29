@@ -108,7 +108,7 @@ static bool RegisterCustomSchemas() {
       .SetDoc("Throw shape inference error.")
       .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
       .Output(0, "output_1", "docstr for output_1.", "tensor(int32)")
-      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+      .TypeAndShapeInferenceFunction([](InferenceContext&) {
         fail_shape_inference("try harder");
       });
 
