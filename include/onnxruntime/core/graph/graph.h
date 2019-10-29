@@ -966,7 +966,6 @@ class Graph {
   ONNX_NAMESPACE::GraphProto* graph_proto_;
 
   InitializedTensorSet name_to_initial_tensor_;
-  std::vector<int> removed_initializer_indexes_;
 
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
 
