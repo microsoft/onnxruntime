@@ -536,8 +536,8 @@ class BertOnnxModel(OnnxModel):
         self.update_graph(verbose)
         print("Fused Attention count:", attention_count)
 
-    def fuse_gelu(self):
-        self.fuse_gelu_with_elf()
+    def fuse_gelu(self, use_approximation):
+        self.fuse_gelu_with_elf(use_approximation)
         self.fuse_gelu_with_tanh()
 
     """
@@ -550,7 +550,7 @@ class BertOnnxModel(OnnxModel):
 
      Note that constant input for Add and Mul could be first or second input: like either A=0.5 or B=0.5 is fine.
     """
-    def fuse_gelu_with_elf(self):
+    def fuse_gelu_with_elf(self, use_approximation):
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
@@ -600,7 +600,7 @@ class BertOnnxModel(OnnxModel):
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
-            gelu_node = onnx.helper.make_node('Gelu',
+            gelu_node = onnx.helper.make_node('FastGelu' if use_approximation else 'Gelu',
                 inputs=[root_node.output[0]],
                 outputs=[mul_after_erf.output[0]])
             gelu_node.domain = "com.microsoft"
@@ -608,7 +608,8 @@ class BertOnnxModel(OnnxModel):
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
-        print("Fused Gelu count:", len(nodes_to_add))
+        if len(nodes_to_add) > 0:
+            print("Fused {} count:{}".format('FastGelu (approximation)' if use_approximation else 'Gelu', len(nodes_to_add)))
 
     """
      Fuse Gelu with tanh into one node:
@@ -1103,6 +1104,10 @@ def main():
     parser.add_argument('--float16', required=False, action='store_true')
     parser.set_defaults(float16=False)
 
+    # FastGelu uses approximation for Gelu. It is faster.
+    parser.add_argument('--fastgelu', required=False, action='store_true')
+    parser.set_defaults(fastgelu=False)
+
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
@@ -1116,7 +1121,7 @@ def main():
 
     bert_model.fuse_layer_norm()
 
-    bert_model.fuse_gelu()
+    bert_model.fuse_gelu(use_approximation=args.fastgelu)
 
     bert_model.fuse_reshape()
 
