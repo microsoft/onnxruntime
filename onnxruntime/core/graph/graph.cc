@@ -1599,7 +1599,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
   try {
     context.RunInferencing();
   } catch (const std::exception& ex) {
-    return Status(ONNXRUNTIME, FAIL, ex.what());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node (", node.Name(), ") Op (", node.OpType(), ") ", ex.what());
   }
 
   const auto& onnx_inferred_types(context.InferredOutputTypes());
