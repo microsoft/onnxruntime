@@ -36,7 +36,8 @@ Status Compress::ComputeInternal(OpKernelContext* ctx) const {
   int64_t compress_input_length = has_axis_ ? input_dimensions[axis_] : input_size;
   int64_t valid_condition_length = compress_input_length < condition_length ? compress_input_length : condition_length;
 
-  auto condition_cumulative_sum = GetScratchBuffer<int32_t>(valid_condition_length).get();
+  auto condition_cumulative_sum_buffer = GetScratchBuffer<int32_t>(valid_condition_length);
+  auto condition_cumulative_sum = condition_cumulative_sum_buffer.get();
   PrefixSumImpl(reinterpret_cast<const int8_t*>(condition_data), condition_cumulative_sum, valid_condition_length);
   
   int32_t positive_condition_count = 0;
@@ -60,7 +61,7 @@ Status Compress::ComputeInternal(OpKernelContext* ctx) const {
 
   int64_t axis_right_stride = 1;
   if (has_axis_) {
-    for (int i = static_cast<int>(axis_ + 1); i < rank; ++i) {
+    for (auto i = static_cast<size_t>(axis_ + 1); i < rank; ++i) {
       axis_right_stride *= input_dimensions[i];
     }
   }

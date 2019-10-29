@@ -128,6 +128,27 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel default_warning_level,
   API_IMPL_END
 }
 
+// enable platform telemetry
+ORT_API_STATUS_IMPL(OrtApis::EnableTelemetryEvents, _In_ const OrtEnv* ort_env) {
+  API_IMPL_BEGIN
+  ORT_UNUSED_PARAMETER(ort_env);
+  // note telemetry is controlled via the platform Env object, not the OrtEnv object instance
+  const Env& env = Env::Default();
+  env.GetTelemetryProvider().EnableTelemetryEvents();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::DisableTelemetryEvents, _In_ const OrtEnv* ort_env) {
+  API_IMPL_BEGIN
+  ORT_UNUSED_PARAMETER(ort_env);
+  // note telemetry is controlled via the platform Env object, not the OrtEnv object instance
+  const Env& env = Env::Default();
+  env.GetTelemetryProvider().DisableTelemetryEvents();
+  return nullptr;
+  API_IMPL_END
+}
+
 template <typename T>
 OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, OrtAllocator* allocator,
                             std::unique_ptr<Tensor>* out) {
@@ -366,6 +387,26 @@ namespace {
 template <typename Loader>
 OrtStatus* CreateSessionImpl(_In_ const OrtEnv* env, _In_ const OrtSessionOptions* options,
                              Loader loader, _Outptr_ OrtSession** out) {
+  // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
+  // byte addressable memory
+  auto session_options = options == nullptr ? onnxruntime::SessionOptions() : options->value;
+  std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
+  if (options) {
+    for (auto& factory : options->provider_factories) {
+      auto provider = factory->CreateProvider();
+      if (provider->Type() == kDmlExecutionProvider) {
+        if (options->value.enable_mem_pattern) {
+          // TODO Instead of returning an error, should we set mem pattern to false here and log a warning saying so?
+          // Doing so would be inconsistent with the Python API that doesn't go through this code path.
+          return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Mem pattern should be disabled when using DML execution provider.");
+        }
+        if (options->value.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
+          return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Sequential execution should be enabled when using DML execution provider.");
+        }
+      }
+      provider_list.push_back(std::move(provider));
+    }
+  }
   auto sess = onnxruntime::make_unique<::onnxruntime::InferenceSession>(
       options == nullptr ? onnxruntime::SessionOptions() : options->value, env->loggingManager);
   Status status;
@@ -377,12 +418,13 @@ OrtStatus* CreateSessionImpl(_In_ const OrtEnv* env, _In_ const OrtSessionOption
     }
   }
 
-  if (options != nullptr)
-    for (auto& factory : options->provider_factories) {
-      auto provider = factory->CreateProvider();
-      if (provider)
-        sess->RegisterExecutionProvider(std::move(provider));
+  // register the providers
+  for (auto& provider : provider_list) {
+    if (provider) {
+      sess->RegisterExecutionProvider(std::move(provider));
     }
+  }
+
   status = loader(*sess);
   if (!status.IsOK())
     return ToOrtStatus(status);
@@ -1237,14 +1279,15 @@ static constexpr OrtApiBase ort_api_base = {
 };
 
 static constexpr OrtApi ort_api_1 = {
-    ort_api_base,
-
     &OrtApis::CreateStatus,
     &OrtApis::GetErrorCode,
     &OrtApis::GetErrorMessage,
 
     &OrtApis::CreateEnv,
     &OrtApis::CreateEnvWithCustomLogger,
+    &OrtApis::EnableTelemetryEvents,
+    &OrtApis::DisableTelemetryEvents,
+
     &OrtApis::CreateSession,
     &OrtApis::CreateSessionFromArray,
     &OrtApis::Run,
@@ -1252,8 +1295,7 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::CreateSessionOptions,
     &OrtApis::SetOptimizedModelFilePath,
     &OrtApis::CloneSessionOptions,
-    &OrtApis::EnableSequentialExecution,
-    &OrtApis::DisableSequentialExecution,
+    &OrtApis::SetSessionExecutionMode,
     &OrtApis::EnableProfiling,
     &OrtApis::DisableProfiling,
     &OrtApis::EnableMemPattern,

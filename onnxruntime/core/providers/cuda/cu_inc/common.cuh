@@ -7,6 +7,7 @@
 #include <mutex>
 #include <assert.h>
 #include <cuda_runtime.h>
+#include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 
 namespace onnxruntime {
@@ -224,7 +225,7 @@ struct GridDim {
       N = 1;
 
     // get device information
-    const auto& props = GetDeviceProps();
+    const auto& props = DeviceProp::GetDeviceProps();
     CUDA_LONG numProcs = props.multiProcessorCount;
     CUDA_LONG warpSize = props.warpSize;
 
@@ -246,40 +247,10 @@ struct GridDim {
     assert(blocks_per_grid_ * threads_per_block_ >= N);
   }
 
-  static const std::vector<cudaDeviceProp>& GetCachedDeviceProps() {
-    std::call_once(s_cachedDevicePropsInitFlag, [=] {
-      int numDevices;
-      // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
-      CUDA_CALL_THROW(cudaDeviceSynchronize());
-      CUDA_CALL_THROW(cudaGetDeviceCount(&numDevices));
-      s_cachedDeviceProps.resize(numDevices);
-      for (int i = 0; i < numDevices; i++)
-        CUDA_CALL_THROW(cudaGetDeviceProperties(&s_cachedDeviceProps[i], i));
-    });
-
-    return s_cachedDeviceProps;
-  }
-
-  static size_t GetCurrentDeviceId() {
-    int deviceId;
-    cudaGetDevice(&deviceId);
-    return (size_t)deviceId;
-  }
-
-  // get device properties of current device
-  static const cudaDeviceProp& GetDeviceProps() {
-    const auto& cachedDevicesProps = GetCachedDeviceProps();
-    return cachedDevicesProps[GetCurrentDeviceId()];
-  }
-
   // compute our location on the grid
   static __device__ CUDA_LONG GetLinearThreadId() {
     return blockDim.x * blockIdx.x + threadIdx.x;
   }
-
- private:
-  static std::vector<cudaDeviceProp> s_cachedDeviceProps;
-  static std::once_flag s_cachedDevicePropsInitFlag;
 };
 
 #define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N) \

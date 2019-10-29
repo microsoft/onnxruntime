@@ -13,6 +13,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/session_options.h"
 
 #if USE_CUDA
 #define BACKEND_PROC "GPU"
@@ -135,7 +136,7 @@ using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
 static AllocatorPtr& GetAllocator() {
-  static AllocatorPtr alloc = std::make_shared<CPUAllocator>();
+  static AllocatorPtr alloc = std::make_shared<TAllocator>();
   return alloc;
 }
 
@@ -544,7 +545,12 @@ void addObjectMethods(py::module& m) {
       .value("ORT_ENABLE_EXTENDED", GraphOptimizationLevel::ORT_ENABLE_EXTENDED)
       .value("ORT_ENABLE_ALL", GraphOptimizationLevel::ORT_ENABLE_ALL);
 
-  py::class_<SessionOptions> sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
+  py::enum_<ExecutionMode>(m, "ExecutionMode")
+      .value("ORT_SEQUENTIAL", ExecutionMode::ORT_SEQUENTIAL)
+      .value("ORT_PARALLEL", ExecutionMode::ORT_PARALLEL);
+
+  py::class_<SessionOptions>
+      sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
   sess
       .def(py::init())
       .def_readwrite("enable_cpu_mem_arena", &SessionOptions::enable_cpu_mem_arena,
@@ -556,8 +562,6 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
                      R"pbdoc(File path to serialize optimized model. By default, optimized model is not serialized if optimized_model_filepath is not provided.)pbdoc")
       .def_readwrite("enable_mem_pattern", &SessionOptions::enable_mem_pattern,
                      R"pbdoc(Enable the memory pattern optimization. Default is true.)pbdoc")
-      .def_readwrite("enable_sequential_execution", &SessionOptions::enable_sequential_execution,
-                     R"pbdoc(Enables sequential execution, disables parallel execution. Default is true.)pbdoc")
       .def_readwrite("logid", &SessionOptions::session_logid,
                      R"pbdoc(Logger id to use for session output.)pbdoc")
       .def_readwrite("log_severity_level", &SessionOptions::session_log_severity_level,
@@ -570,6 +574,8 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                      R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
       .def_readwrite("inter_op_num_threads", &SessionOptions::inter_op_num_threads,
                      R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")
+      .def_readwrite("execution_mode", &SessionOptions::execution_mode,
+                     R"pbdoc(Sets the execution mode. Default is sequential.)pbdoc")
       .def_property(
           "graph_optimization_level",
           [](const SessionOptions* options) -> GraphOptimizationLevel {
@@ -787,9 +793,63 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       });
 }
 
+#ifdef USE_MIMALLOC
+  static struct {
+      PyMemAllocatorEx mem;
+      PyMemAllocatorEx raw;
+      PyMemAllocatorEx obj;
+  } allocators;
+#endif
+
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
+
+#ifdef USE_MIMALLOC
+  PyMemAllocatorEx alloc;
+  alloc.malloc = [] (void *ctx, size_t size) { 
+    ORT_UNUSED_PARAMETER(ctx);
+    return mi_malloc(size); 
+  };
+
+  alloc.calloc = [] (void *ctx, size_t nelem, size_t elsize) { 
+    ORT_UNUSED_PARAMETER(ctx);
+    return mi_calloc(nelem, elsize); 
+  };
+
+  alloc.realloc = [] (void *ctx, void *ptr, size_t new_size) { 
+    if(mi_is_in_heap_region(ptr)) {
+      return mi_realloc(ptr, new_size); 
+    }
+    else {
+      PyMemAllocatorEx * a = (PyMemAllocatorEx *)ctx;
+      return a->realloc(ctx, ptr, new_size); 
+    }
+  };
+
+  alloc.free = [] (void *ctx, void *ptr) { 
+    if(mi_is_in_heap_region(ptr)) {
+      mi_free(ptr);
+    }
+    else {
+      PyMemAllocatorEx* a = (PyMemAllocatorEx*)ctx;
+      a->free(ctx, ptr);
+    }
+  };
+  
+  alloc.ctx = &allocators.raw;
+  PyMem_GetAllocator(PYMEM_DOMAIN_RAW, &allocators.raw);
+  PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &alloc);
+
+  alloc.ctx = &allocators.mem;
+  PyMem_GetAllocator(PYMEM_DOMAIN_MEM, &allocators.mem);
+  PyMem_SetAllocator(PYMEM_DOMAIN_MEM, &alloc);
+
+  alloc.ctx = &allocators.obj;
+  PyMem_GetAllocator(PYMEM_DOMAIN_OBJ, &allocators.obj);
+  PyMem_SetAllocator(PYMEM_DOMAIN_OBJ, &alloc);
+
+#endif
 
   auto initialize = [&]() {
     // Initialization of the module

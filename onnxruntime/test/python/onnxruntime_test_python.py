@@ -302,32 +302,6 @@ class TestInferenceSession(unittest.TestCase):
                          ['identity', 'test\x00\x00\x00\x00']], dtype=object)
         np.testing.assert_equal(expr, res[0])
 
-    def testConvAutoPad(self):
-        sess = onnxrt.InferenceSession(self.get_name("conv_autopad.onnx"))
-        x = np.array(25 * [1.0], dtype=np.float32).reshape((1, 1, 5, 5))
-
-        x_name = sess.get_inputs()[0].name
-        self.assertEqual(x_name, "Input4")
-        x_shape = sess.get_inputs()[0].shape
-        self.assertEqual(x_shape, [1, 1, 5, 5])
-        x_type = sess.get_inputs()[0].type
-        self.assertEqual(x_type, 'tensor(float)')
-
-        output_name = sess.get_outputs()[0].name
-        self.assertEqual(output_name, "Convolution5_Output_0")
-        output_shape = sess.get_outputs()[0].shape
-        self.assertEqual(output_shape, [1, 1, 5, 5])
-        output_type = sess.get_outputs()[0].type
-        self.assertEqual(output_type, 'tensor(float)')
-
-        res = sess.run([output_name], {x_name: x})
-        output_expected = np.array([[[[24., 33., 33., 33., 20.],
-                                      [27., 36., 36., 36., 21.],
-                                      [27., 36., 36., 36., 21.],
-                                      [27., 36., 36., 36., 21.],
-                                      [12., 15., 15., 15.,  8.]]]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0])
-
     def testZipMapStringFloat(self):
         sess = onnxrt.InferenceSession(
             self.get_name("zipmap_stringfloat.onnx"))
@@ -573,7 +547,9 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_array_equal(output_expected, res[0])
 
     def testSequenceInsert(self):
-        sess = onnxrt.InferenceSession(self.get_name("sequence_insert.onnx"))
+        opt = onnxrt.SessionOptions()
+        opt.execution_mode = onnxrt.ExecutionMode.ORT_SEQUENTIAL
+        sess = onnxrt.InferenceSession(self.get_name("sequence_insert.onnx"), sess_options=opt)
 
         self.assertEqual(sess.get_inputs()[0].type, 'seq(tensor(int64))')
         self.assertEqual(sess.get_inputs()[1].type, 'tensor(int64)')
@@ -592,6 +568,11 @@ class TestInferenceSession(unittest.TestCase):
             [1, 0, 3, 44, 23, 11], dtype=np.int64).reshape((2, 3)), "input_seq": []})
         np.testing.assert_array_equal(output_expected, res[0])
 
+    def testOrtExecutionMode(self):
+        opt = onnxrt.SessionOptions()
+        self.assertEqual(opt.execution_mode, onnxrt.ExecutionMode.ORT_SEQUENTIAL)
+        opt.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
+        self.assertEqual(opt.execution_mode, onnxrt.ExecutionMode.ORT_PARALLEL)
 
 if __name__ == '__main__':
     unittest.main()

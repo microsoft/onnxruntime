@@ -17,11 +17,26 @@
 #include "test/test_environment.h"
 #include "test/framework/TestAllocatorManager.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/session_options.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include <gsl/gsl>
 #include "core/util/math_cpuonly.h"
+
+// helpers to run a function and check the status, outputting any error if it fails.
+// note: wrapped in do{} while(false) so the _tmp_status variable has limited scope
+#define ASSERT_STATUS_OK(function)                  \
+  do {                                              \
+    auto _tmp_status = function;                    \
+    ASSERT_TRUE(_tmp_status.IsOK()) << _tmp_status; \
+  } while (false)
+
+#define EXPECT_STATUS_OK(function)                  \
+  do {                                              \
+    auto _tmp_status = function;                    \
+    EXPECT_TRUE(_tmp_status.IsOK()) << _tmp_status; \
+  } while (false)
 
 namespace onnxruntime {
 class InferenceSession;
@@ -227,8 +242,14 @@ const SequenceTensorTypeProto<ElemType> SequenceTensorType<ElemType>::s_sequence
 // explanatory
 class OpTester {
  public:
-  explicit OpTester(const char* op, int opset_version = 7, const char* domain = onnxruntime::kOnnxDomain)
-      : op_(op), domain_(domain), opset_version_(opset_version) {}
+  explicit OpTester(const char* op, int opset_version = -1, const char* domain = onnxruntime::kOnnxDomain)
+      : op_(op), domain_(domain), opset_version_(opset_version) {
+    if (opset_version_ < 0) {
+      static int latest_onnx_version =
+          ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
+      opset_version_ = latest_onnx_version;
+    }
+  }
 
   ~OpTester();
 
@@ -393,9 +414,9 @@ class OpTester {
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
-           bool sequential_execution = true);
+           ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL);
 
-  void Run(const SessionOptions& session_options,
+  void Run(SessionOptions session_options,
            ExpectResult expect_result = ExpectResult::kExpectSuccess,
            const std::string& expected_failure_string = "",
            const std::unordered_set<std::string>& excluded_provider_types = {},
@@ -480,7 +501,7 @@ class OpTester {
     ptr->dtype = DataTypeImpl::GetType<T>();
     auto num_tensors = seq_tensors.tensors.size();
     ptr->tensors.resize(num_tensors);
-    for (int i = 0; i < num_tensors; ++i) {
+    for (size_t i = 0; i < num_tensors; ++i) {
       TensorShape shape{seq_tensors.tensors[i].shape};
       auto values_count = static_cast<int64_t>(seq_tensors.tensors[i].data.size());
       ORT_ENFORCE(shape.Size() == values_count, values_count,
