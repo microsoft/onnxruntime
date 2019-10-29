@@ -1279,8 +1279,6 @@ static constexpr OrtApiBase ort_api_base = {
 };
 
 static constexpr OrtApi ort_api_1 = {
-    ort_api_base,
-
     &OrtApis::CreateStatus,
     &OrtApis::GetErrorCode,
     &OrtApis::GetErrorMessage,
