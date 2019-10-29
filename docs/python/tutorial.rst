@@ -21,6 +21,8 @@ In this tutorial, we will briefly create a
 pipeline with *scikit-learn*, convert it into
 ONNX format and run the first predictions.
 
+.. _l-logreg-example:
+
 Step 1: Train a model using your favorite framework
 +++++++++++++++++++++++++++++++++++++++++++++++++++
 
