@@ -1479,7 +1479,7 @@ TEST(InferenceSessionTests, TestLenientShapeInferencing) {
   std::vector<int64_t> invalid_output_shape{1, 2};  // valid shape is {2} as output data is input_shape
   std::vector<int64_t> output_data{2, 2};
 
-  OpTester latest_opset("Shape");
+  OpTester latest_opset("Shape", -1);  // use latest opset for shape inference errors
   latest_opset.AddInput("data", input_shape, input_data);
   latest_opset.AddOutput<int64_t>("output", invalid_output_shape, output_data);
   latest_opset.Run(OpTester::ExpectResult::kExpectFailure,
