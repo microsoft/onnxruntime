@@ -15,7 +15,7 @@ static void RunTest(const std::vector<float>& x_vals,
                     bool is_tensorrt_supported = true,
                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                     const std::string& error_msg = "",
-                    int opset = -1) {
+                    int opset = 7) {
   OpTester test("Softmax", opset);
 
   if (axis != 1) {
@@ -191,7 +191,9 @@ TEST(SoftmaxOperator, InvalidAxis) {
           OpTester::ExpectResult::kExpectFailure,
           // bug in ONNX error message currently. Message should be
           // "[ShapeInferenceError] 'axis' must be in [-2 , 1]. Its actual value is: -10"
-          ", 1]. Its actual value is: -10");
+          ", 1]. Its actual value is: -10",
+          // latest opset so we get shape inferencing errors
+          -1);
 }
 
 TEST(SoftmaxOperator, DimWithZero) {
