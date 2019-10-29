@@ -201,6 +201,16 @@ class OnnxModel:
                 return i, value
         return None, None
 
+    def find_constant_input(self, node, expected_value, delta = 0.000001):
+        for i, input in enumerate(node.input):
+            value = self.get_constant_value(input)
+            if value is not None and value.size == 1 and abs(value - expected_value) < delta:
+                return i
+        return -1
+
+    def has_constant_input(self, node, expected_value, delta = 0.000001):
+        return self.find_constant_input(node, expected_value, delta) >= 0
+
     def get_children_subgraph_nodes(self, root_node, stop_nodes, input_name_to_nodes=None):
         if input_name_to_nodes is None:
             input_name_to_nodes = self.input_name_to_nodes()
@@ -387,7 +397,6 @@ class BertOnnxModel(OnnxModel):
 
         # constant node names
         self.normalize_name = "SkipLayerNormalization"
-        self.gelu_name = 'Gelu'
         self.attention_name = 'Attention'
 
     def get_normalize_nodes(self):
@@ -466,6 +475,7 @@ class BertOnnxModel(OnnxModel):
         output_name_to_node = self.output_name_to_node()
 
         nodes_to_remove = []
+        attention_count = 0
 
         for normalize_node in self.get_normalize_nodes():
             # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
@@ -520,9 +530,11 @@ class BertOnnxModel(OnnxModel):
                 nodes_to_remove.extend(k_nodes)
                 nodes_to_remove.extend(v_nodes)
                 nodes_to_remove.extend(mask_nodes)
+                attention_count += 1
 
         self.remove_nodes(nodes_to_remove)
         self.update_graph(verbose)
+        print("Fused Attention count:", attention_count)
 
     def fuse_gelu(self):
         self.fuse_gelu_with_elf()
@@ -555,8 +567,7 @@ class BertOnnxModel(OnnxModel):
                 continue
             add_after_erf = children[0]
 
-            i, add_weight = self.get_constant_input(add_after_erf)
-            if add_weight is None or add_weight != 1:
+            if not self.has_constant_input(add_after_erf, 1):
                 continue
 
             if add_after_erf.output[0] not in input_name_to_nodes:
@@ -570,8 +581,7 @@ class BertOnnxModel(OnnxModel):
             if div is None:
                 continue
 
-            i, div_weight = self.get_constant_input(div)
-            if i != 1 or not isinstance(div_weight, float) or abs(div_weight-1.4142) > 0.0001:
+            if self.find_constant_input(div, 1.4142, delta=0.001) != 1:
                 continue
 
             root_node = self.get_parent(div, 0, output_name_to_node)
@@ -582,8 +592,7 @@ class BertOnnxModel(OnnxModel):
             if mul_half is None:
                 continue
             
-            i, mul_half_weight = self.get_constant_input(mul_half)
-            if (not isinstance(mul_half_weight, float)) or div_weight != 0.5:
+            if not self.has_constant_input(mul_half, 0.5):
                 continue
 
             subgraph_nodes = [div, erf_node, add_after_erf, mul_after_erf, mul_half]
@@ -591,14 +600,15 @@ class BertOnnxModel(OnnxModel):
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
-            gelu_node = onnx.helper.make_node(self.gelu_name,
+            gelu_node = onnx.helper.make_node('Gelu',
                 inputs=[root_node.output[0]],
-                outputs=[mul_after_erf.input[0]])
+                outputs=[mul_after_erf.output[0]])
             gelu_node.domain = "com.microsoft"
             nodes_to_add.append(gelu_node)
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
+        print("Fused Gelu count:", len(nodes_to_add))
 
     """
      Fuse Gelu with tanh into one node:
@@ -628,8 +638,7 @@ class BertOnnxModel(OnnxModel):
                 continue
             add_after_tanh = children[0]
 
-            i, add_weight = self.get_constant_input(add_after_tanh)
-            if add_weight is None or add_weight != 1:
+            if not self.has_constant_input(add_after_tanh, 1.0):
                 continue
 
             if add_after_tanh.output[0] not in input_name_to_nodes:
@@ -643,8 +652,8 @@ class BertOnnxModel(OnnxModel):
             if mul_half is None:
                 continue
 
-            i, mul_half_weight = self.get_constant_input(mul_half)
-            if mul_half_weight is None or mul_half_weight != 0.5:
+            i = self.find_constant_input(mul_half, 0.5)
+            if i < 0:
                 continue
 
             root_node = self.get_parent(mul_half, 0 if i==1 else 1, output_name_to_node)
@@ -655,8 +664,7 @@ class BertOnnxModel(OnnxModel):
             if mul_before_tanh is None:
                 continue
 
-            i, mul_weight= self.get_constant_input(mul_before_tanh)
-            if mul_weight is None or abs(mul_weight - 0.7978) > 0.0001:
+            if not self.has_constant_input(mul_before_tanh, 0.7978, delta=0.0001):
                 continue
 
             add_before_tanh = self.match_parent(mul_before_tanh, 'Add', 0 if i==1 else 1, output_name_to_node)
@@ -667,17 +675,16 @@ class BertOnnxModel(OnnxModel):
             if mul_after_pow is None:
                 continue
 
-            i, mul_weight2 = self.get_constant_input(mul_after_pow)
-            if mul_weight2 is None or abs(mul_weight2 - 0.0447) > 0.0001:
+            if not self.has_constant_input(mul_after_pow, 0.0447, delta=0.0001):
                 continue
 
             pow = self.match_parent(mul_after_pow, 'Pow', 0 if i==1 else 1, output_name_to_node)
             if pow is None:
                 continue
 
-            i, pow_weight = self.get_constant_input(pow)
-            if pow_weight is None or pow_weight != 3:
+            if not self.has_constant_input(pow, 3.0):
                 continue
+
 
             if pow.input[0] != root_node.output[0]:
                 continue
@@ -688,7 +695,7 @@ class BertOnnxModel(OnnxModel):
 
             nodes_to_remove.extend(subgraph_nodes)
             gelu_node = onnx.helper.make_node(
-                self.gelu_name,
+                'FastGelu',  # FastGelu uses Tanh to approximate Elf
                 inputs=[root_node.output[0]],
                 outputs=mul_after_tanh.output,
                 name=self.create_node_name(self.gelu_name))
@@ -696,7 +703,7 @@ class BertOnnxModel(OnnxModel):
             nodes_to_add.append(gelu_node)
 
         if len(nodes_to_add) > 0:
-            print("fused gelu with tanh:", len(nodes_to_add))
+            print("Fused FastGelu count:", len(nodes_to_add))
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
@@ -796,7 +803,7 @@ class BertOnnxModel(OnnxModel):
             nodes_to_remove.extend(path3)
             nodes_to_add.append(new_node)
 
-        print("Fused reshape count:", len(nodes_to_add))
+        print("Fused Reshape count:", len(nodes_to_add))
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
@@ -826,7 +833,6 @@ class BertOnnxModel(OnnxModel):
         mask_input_name = self.mask_input
 
         nodes_to_remove = []
-        nodes_to_add = []
 
         # Find the first normalize node could be embedding layer.
         normalize_node = None
@@ -880,14 +886,13 @@ class BertOnnxModel(OnnxModel):
         # store embed node for other processing
         self.embed_node = embed_node
 
-        nodes_to_add.extend([embed_node])
-
         self.replace_input_of_all_nodes(normalize_node.output[0], 'embed_output')
         self.replace_input_of_all_nodes(mask_input_name, 'mask_idx')
 
         self.remove_nodes(nodes_to_remove)
-        self.add_nodes(nodes_to_add)
+        self.add_node(embed_node)
         self.update_graph(verbose)
+        print("Fused EmbedLayerNormalization count: 1")
 
     def get_batch_size_from_graph_input(self):
         graph = self.graph()
@@ -944,6 +949,9 @@ class BertOnnxModel(OnnxModel):
 
     # Update input and output using dynamic batch
     def update_dynamic_batch_io(self, dynamic_batch_dim='batch'):
+        if self.embed_node is None:
+            return
+
         dynamic_batch_inputs = {}
         for input in self.model.graph.input:
             for embed_input in self.embed_node.input[:3]:
@@ -1033,8 +1041,7 @@ class BertOnnxModel(OnnxModel):
                 if add_weight is None or add_weight <= 0 or add_weight > 1.0E-5:
                     continue
 
-                i, pow_weight = self.get_constant_input(pow_node)
-                if pow_weight is None or i != 1 or pow_weight != 2:
+                if not self.find_constant_input(pow_node, 2.0) == 1:
                     continue
 
                 mul_node = input_name_to_nodes[div_node.output[0]][0]
@@ -1075,8 +1082,8 @@ class BertOnnxModel(OnnxModel):
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(skip_layernorm_nodes)
         self.add_nodes(layernorm_nodes)
-        print("Fused skip layer normalization count:", len(skip_layernorm_nodes))
-        print("Fused layer normalization count:", len(layernorm_nodes))
+        print("Fused SkipLayerNormalization count:", len(skip_layernorm_nodes))
+        print("Fused LayerNormalization count:", len(layernorm_nodes))
 
 def main():
     parser = argparse.ArgumentParser()
@@ -1129,7 +1136,10 @@ def main():
         bert_model.convert_model_float32_to_float16()
 
     bert_model.remove_unused_constant()
+
+    bert_model.update_dynamic_batch_io()
     #bert_model.model.opset_import[0].version = 10
+    print("opset verion", bert_model.model.opset_import[0].version)
 
     with open(args.output, "wb") as out:
         out.write(bert_model.model.SerializeToString())
