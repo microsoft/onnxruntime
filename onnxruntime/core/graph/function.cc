@@ -207,7 +207,11 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   for (const auto& input : meta_def->inputs) {
     const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
     if (graph.GetInitializedTensor(input, initializer)) {
-      function_body_graph.AddInitializedTensor(*initializer);
+      // meta_def->inputs could have duplicates so make sure we only add once
+      const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
+      if (!function_body_graph.GetInitializedTensor(input, subgraph_initializer)) {
+        function_body_graph.AddInitializedTensor(*initializer);
+      }
     }
   }
 
@@ -221,9 +225,9 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
                            const ONNX_NAMESPACE::FunctionProto& onnx_func_proto)
     : parent_graph_(&graph) {
   // Make a copy of the FunctionProto.
-  // All FunctionBody ops with the same op type seem to share the same FunctionProto struct within a model. 
+  // All FunctionBody ops with the same op type seem to share the same FunctionProto struct within a model.
   // Hence, we make a copy prior to generating the graph representation of the function,
-  // as we might make some modifications to the FunctionProto along the way    
+  // as we might make some modifications to the FunctionProto along the way
   onnx_func_proto_ = onnx_func_proto;
 
   auto node_in_parent_graph = parent_graph_->GetNode(node_index);
@@ -360,12 +364,13 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
         new_attr_map[(*node_attr).name()] = *node_attr;
       }
     }
-    function_body_graph.AddNode(uniq_identifier + "_" + std::to_string(node_index), (*node).op_type(), (*node).doc_string(), inputs, outputs, &new_attr_map, (*node).domain());
+    function_body_graph.AddNode(uniq_identifier + "_" + std::to_string(node_index), (*node).op_type(),
+                                (*node).doc_string(), inputs, outputs, &new_attr_map, (*node).domain());
   }
 
   auto status = function_body_graph.Resolve();
   ORT_ENFORCE(status.IsOK(), "Resolve subgraph failed:", status.ErrorMessage());
-}  // namespace onnxruntime
+}
 
 FunctionImpl::~FunctionImpl() = default;
 
