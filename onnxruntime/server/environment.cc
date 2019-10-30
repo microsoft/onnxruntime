@@ -60,7 +60,7 @@ ServerEnvironment::ServerEnvironment(OrtLoggingLevel severity, spdlog::sinks_ini
   spdlog::initialize_logger(default_logger_);
 }
 
-void ServerEnvironment::RegisterEexcutionProviders(){
+void ServerEnvironment::RegisterExecutionProviders(){
   #ifdef USE_MKLDNN
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Mkldnn(options_, 1));
   #endif
@@ -75,7 +75,7 @@ void ServerEnvironment::RegisterEexcutionProviders(){
 }
 
 void ServerEnvironment::InitializeModel(const std::string& model_path, const std::string& model_name, const std::string& model_version) {
-  RegisterEexcutionProviders();
+  RegisterExecutionProviders();
   auto result = sessions_.emplace(std::piecewise_construct, std::forward_as_tuple(model_name, model_version), std::forward_as_tuple(runtime_environment_, model_path.c_str(), options_));
 
   if (!result.second) {

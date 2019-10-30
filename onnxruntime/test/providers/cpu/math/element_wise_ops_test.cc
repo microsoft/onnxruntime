@@ -46,7 +46,7 @@ TEST(BroadcastingTest, DimWithZeroHandling) {
   run(test3);
 
   // test that BroadcastLoopSpan also works. Mod uses that
-  OpTester test4("Mod");
+  OpTester test4("Mod", 10);
   test4.AddInput<int64_t>("A", {2, 2, 0}, {});
   test4.AddInput<int64_t>("B", {2, 1}, {1, 2});
   test4.AddOutput<int64_t>("C", {2, 2, 0}, {});
