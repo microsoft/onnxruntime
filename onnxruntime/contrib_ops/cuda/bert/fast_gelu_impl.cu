@@ -58,44 +58,48 @@ __device__ inline half2 tanh(const half2& x) {
 }
 
 template <typename T, unsigned TPB>
-__global__ void geluKernel(const T a, const T b, const T c, int n, const T* input, T* output) {
+__global__ void geluKernel(const T a, const T b, const T c, int mn, int n, const T* input, const T* bias, T* output) {
   const int idx = blockIdx.x * TPB + threadIdx.x;
 
-  if (idx < n) {
-    const T in = input[idx];
+  if (idx < mn) {
+    const T x = input[idx];
+    const T in = bias == nullptr ? x : (x  + bias[idx % n]);
     const T cdf = a + a * tanh(in * (c * in * in + b));
     output[idx] = in * cdf;
   }
 }
 
 template<>
-bool computeGelu<float>(cudaStream_t stream, int n, const float* input, float* output) {
+bool computeGelu<float>(cudaStream_t stream, int m, int n, const float* input, const float* bias, float* output) {
   constexpr int blockSize = 256;
-  const int gridSize = (n + blockSize - 1) / blockSize;
-  geluKernel<float, blockSize><<<gridSize, blockSize, 0, stream>>>(A, B, C, n, input, output);
+  const int mn = m * n;
+  const int gridSize = (mn + blockSize - 1) / blockSize;
+  geluKernel<float, blockSize><<<gridSize, blockSize, 0, stream>>>(A, B, C, mn, n, input, bias, output);
 
   return CUDA_CALL(cudaPeekAtLastError());
 }
 
 template<>
-bool computeGelu<half>(cudaStream_t stream, int n, const half* input, half* output) {
+bool computeGelu<half>(cudaStream_t stream, int m, int n, const half* input, const half* bias, half* output) {
   const int blockSize = 256;
+  const int mn = m * n;
 #if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
   if (0 == (n & 1)) {
-    const int n2 = n / 2;
+    const int mn2 = mn / 2;
 
-    const int gridSize = (n2 + blockSize - 1) / blockSize;
+    const int gridSize = (mn2 + blockSize - 1) / blockSize;
     const half2 A2 = __floats2half2_rn(A, A);
     const half2 B2 = __floats2half2_rn(B, B);
     const half2 C2 = __floats2half2_rn(C, C);
     const half2* input2 = reinterpret_cast<const half2*>(input);
+    const half2* bias2 = reinterpret_cast<const half2*>(bias);
     half2* output2 = reinterpret_cast<half2*>(output);
-    geluKernel<half2, blockSize><<<gridSize, blockSize, 0, stream>>>(A2, B2, C2, n2, input2, output2);
+    geluKernel<half2, blockSize><<<gridSize, blockSize, 0, stream>>>(A2, B2, C2, mn2, n / 2, input2, bias2, output2);
   } else 
 #endif
   {
-    const int gridSize = (n + blockSize - 1) / blockSize;
-    geluKernel<half, blockSize><<<gridSize, blockSize, 0, stream>>>(A, B, C, n, input, output);
+    const int gridSize = (mn + blockSize - 1) / blockSize;
+    geluKernel<half, blockSize><<<gridSize, blockSize, 0, stream>>>(A, B, C, mn, n, input, bias, output);
   }
 
   return CUDA_CALL(cudaPeekAtLastError());
