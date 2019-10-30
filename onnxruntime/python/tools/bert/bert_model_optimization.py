@@ -349,7 +349,7 @@ class BertOnnxModel(OnnxModel):
         self.embed_node = None
 
         # constant node names
-        self.normalize_name = "SkipLayerNormalization"
+        self.normalize_name = "LayerNormalization"
         self.gelu_name = 'Gelu'
         self.attention_name = 'Attention'
 
@@ -424,6 +424,76 @@ class BertOnnxModel(OnnxModel):
 
         self.add_node(attention_node)
 
+    def fuse_attention_tf(self, verbose=False):
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+
+        nodes_to_remove = []
+
+        for node in self.nodes():
+            if node.op_type != 'Reshape':
+                continue
+
+            base_nodes = self.match_parent_path(node, ['Transpose', 'MatMul'], [0, 0])
+            # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
+            if base_nodes is None or len(base_nodes) != 2:
+                continue
+            last_transpose, qkv_matmul = base_nodes
+
+            v_nodes = self.match_parent_path(qkv_matmul, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
+            if v_nodes is None or len(v_nodes)!=4:
+                continue
+            v_transpose, v_reshape, v_add, v_matmul = v_nodes
+
+            qk_nodes = self.match_parent_path(qkv_matmul, ['Softmax', 'Add', 'Mul', 'MatMul'], [0, 0, 0, 0])
+            if qk_nodes is None or len(qk_nodes) != 4:
+                continue
+            softmax_node, qk_add_node, qk_mul_node, qk_matmul_node = qk_nodes
+
+            q_nodes = self.match_parent_path(qk_matmul_node, ['Transpose', 'Reshape', 'Add', 'MatMul'], [0, 0, 0, 0])
+            if q_nodes is None or len(q_nodes) != 4:
+                continue
+            q_transpose_node, q_reshape_node, q_add_node, q_matmul_node = q_nodes
+
+            k_nodes = self.match_parent_path(qk_matmul_node, ['Transpose', 'Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0, 0])
+            if k_nodes is None or len(k_nodes) != 5:
+                continue
+            k_transpose_node_1, k_transpose_node_2, k_reshape_node, k_add_node, k_matmul_node = k_nodes
+
+            mask_nodes = self.match_parent_path(qk_add_node, ['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'], [1, 0, 1, 0, 0])
+            if mask_nodes is None:
+                continue
+            (mul_mask, sub_mask, cast_mask, unsqueeze_mask, unsqueeze_mask_0) = mask_nodes
+
+            if q_matmul_node.input[0] == k_matmul_node.input[0] and q_matmul_node.input[0] == v_matmul.input[0]:
+                self.set_mask_input(unsqueeze_mask_0.input[0])
+                self.create_attention_node(q_matmul_node, k_matmul_node, v_matmul, q_add_node, k_add_node, v_add, q_matmul_node.input[0], node.output[0])
+                nodes_to_remove.extend([node, last_transpose, qkv_matmul])
+                nodes_to_remove.extend(qk_nodes)
+                nodes_to_remove.extend(q_nodes)
+                nodes_to_remove.extend(k_nodes)
+                nodes_to_remove.extend(v_nodes)
+                nodes_to_remove.extend(mask_nodes)
+
+        self.remove_nodes(nodes_to_remove)
+        self.update_graph(verbose)
+
+        for node in self.nodes():
+            if node.op_type != 'Reshape':
+                continue
+            children = self.get_children(node)
+            children_types = sorted([child.op_type for child in children])
+            if children_types != ['Add', 'Attention']:
+                    continue
+
+            for child in children:
+                if child.op_type == "Attention":
+                    child.input[0]=node.input[0]
+                if child.op_type == "Add":
+                    child.input[1]=node.input[0]
+            self.remove_nodes([node])
+
+
     def fuse_attention(self, verbose=False):
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
@@ -488,52 +558,45 @@ class BertOnnxModel(OnnxModel):
         self.update_graph(verbose)
 
     def fuse_gelu(self):
-        nodes = self.nodes()
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
         nodes_to_remove = []
         nodes_to_add = []
 
-        for node in self.get_normalize_nodes():
+        for node in self.nodes():
+            if node.op_type == 'Add':               
+                children = input_name_to_nodes[node.output[0]]
+                if len(children) != 2:
+                    continue
 
-            children = input_name_to_nodes[node.output[0]]
-            if len(children) != 2:
-                continue
+                children_types = sorted([child.op_type for child in children])
+                if children_types != ['Div', 'Mul']:
+                    continue
 
-            children_types = sorted([child.op_type for child in children])
-            if children_types != ['MatMul', 'SkipLayerNormalization']:
-                continue
+                last_mul = self.find_first_child_by_type(node, 'Mul', input_name_to_nodes)
+                parent_nodes = self.match_parent_path(last_mul, ['Mul', 'Add', 'Erf', 'Div', 'Add'], [1, 1, 1, 0, 0], output_name_to_node)
+                if parent_nodes is None:
+                    continue
 
-            matmul_node = self.find_first_child_by_type(node, 'MatMul', input_name_to_nodes)
-            matmul_child = input_name_to_nodes[matmul_node.output[0]]
-            if len(matmul_child) != 1 or matmul_child[0].op_type != 'Add':
-                continue
-            add_node = matmul_child[0]
-            
-            children = input_name_to_nodes[add_node.output[0]]
+                mul_node, add_node, erf_node, div_node, input_add_node = parent_nodes
 
-            children_types = sorted([child.op_type for child in children])
-            if children_types != ['Div', 'Mul']:
-                continue
+                children_types = sorted([child.op_type for child in children])
+                if node != input_add_node:
+                    continue
 
-            matmul_2 = self.find_first_child_by_type(add_node, 'MatMul', input_name_to_nodes)
-            if matmul_2 is None:
-                continue
-
-            subgraph_nodes = self.get_children_subgraph_nodes(add_node, [matmul_2], input_name_to_nodes)
-            if len(subgraph_nodes) != 5:
-                continue
-
-            nodes_to_remove.extend(subgraph_nodes)
-            gelu_node = onnx.helper.make_node(self.gelu_name,
-                inputs=[add_node.output[0]],
-                outputs=[matmul_2.input[0]])
-            gelu_node.domain = "com.microsoft"
-            nodes_to_add.append(gelu_node)
+                gelu_node_name = self.create_node_name(self.gelu_name, name_prefix="Gelu")
+                gelu_node = onnx.helper.make_node(self.gelu_name,
+                    inputs=[node.output[0]],
+                    outputs=[last_mul.output[0]],
+                    name=gelu_node_name)
+                gelu_node.domain = "com.microsoft"
+                nodes_to_remove.extend([div_node, erf_node, add_node, mul_node, last_mul])
+                nodes_to_add.append(gelu_node)
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
+        print("Fused layer gelu count:", len(nodes_to_add))
 
     def fuse_reshape(self):
         nodes = self.nodes()
@@ -690,6 +753,99 @@ class BertOnnxModel(OnnxModel):
         self.add_nodes(nodes_to_add)
         self.update_graph(verbose)
 
+    """
+     Embed Layer Normalization will fuse embeddings and mask processing into one node.
+     The embeddings before conversion:
+
+     (input_ids) -------->  Gather ----------+       (segment_ids)
+        |                                    |            |
+        |                                    v            v
+        +--> Shape --> Expand -> Gather---->Add         Gather
+        |                ^                   |            |
+        |                |                   v            v
+        +---(optional graph)               SkipLayerNormalization
+
+      Optional graph is used to generate position list (0, 1, ...). It can be a constant in some model.
+    """
+    def fuse_embed_layer_tf(self, verbose=False):
+        if self.mask_input is None:
+            print("skip embed layer fusion since mask input is not found")
+            return
+
+        nodes = self.nodes()
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+        #mask_input_name = self.mask_input
+        mask_input_name = self.mask_input
+
+        nodes_to_remove = []
+        nodes_to_add = []
+
+        # Find the first normalize node could be embedding layer.
+        normalize_node = None
+        for node in self.get_normalize_nodes():
+            if self.match_parent_path(node, ['Add', 'Add', 'Gather'], [0, 0, 0]) is not None:
+                normalize_node = node
+                break
+
+        if normalize_node is None:
+            print("did not find embedding layer")
+
+        # Here we assume the order of embedding is word_embedding + position_embedding + segment_embedding.
+        word_embedding_path = self.match_parent_path(normalize_node, ['Add', 'Add', 'Gather', 'Concat'], [0, 0, 0, 0])
+        if word_embedding_path is None  or len(word_embedding_path) != 4:
+            print("Failed to find word embedding")
+            return
+        position_node, add_node, word_embedding_gather, word_embedding_concat = word_embedding_path
+
+        segment_embedding_path = self.match_parent_path(add_node, ['Gather'], [1])
+        if segment_embedding_path is None or len(segment_embedding_path) != 1:
+            print("failed to find segment embedding")
+            return
+        segment_embedding_gather = segment_embedding_path[0]
+
+        input_ids = word_embedding_gather.input[1]
+        segment_ids = segment_embedding_gather.input[1]
+
+        word_emb_weight_0 = self.get_initializer(word_embedding_concat.input[0])
+        word_emb_weight_1 = self.get_initializer(word_embedding_concat.input[1])
+        word_emb_weight_2 = self.get_initializer(word_embedding_concat.input[2])
+
+        word_emb_weight_0_array = numpy_helper.to_array(word_emb_weight_0)
+        word_emb_weight_1_array = numpy_helper.to_array(word_emb_weight_1)
+        word_emb_weight_2_array = numpy_helper.to_array(word_emb_weight_2)
+        word_emb_weight_array = np.concatenate((word_emb_weight_0_array, word_emb_weight_1_array, word_emb_weight_2_array), axis=0)
+        
+        word_embedding_tensor = numpy_helper.from_array(word_emb_weight_array, 'word_embedding_weight')
+        self.add_initializer(word_embedding_tensor)
+
+        position_weight = self.get_initializer(position_node.input[1])
+        position_weight_tensor = numpy_helper.from_array(np.squeeze(numpy_helper.to_array(position_weight)), 'position_weight')
+        self.add_initializer(position_weight_tensor)
+
+        nodes_to_remove.extend([node, segment_embedding_gather])
+        nodes_to_remove.extend(word_embedding_path)
+
+        embed_node = onnx.helper.make_node('EmbedLayerNormalization',
+                        inputs=[input_ids, segment_ids, mask_input_name, 
+                                'word_embedding_weight', 'position_weight', segment_embedding_gather.input[0],
+                                normalize_node.input[1], normalize_node.input[2]], # gamma and beta
+                        outputs=["embed_output", "mask_idx"],
+                        name="EmbedLayer")
+        embed_node.domain = "com.microsoft"
+        # store embed node for other processing
+        self.embed_node = embed_node
+
+        nodes_to_add.extend([embed_node])
+
+        self.replace_input_of_all_nodes(normalize_node.output[0], 'embed_output')
+        self.replace_input_of_all_nodes(mask_input_name, 'mask_idx')
+
+        self.remove_nodes(nodes_to_remove)
+        self.add_nodes(nodes_to_add)
+        self.update_graph(verbose)
+
+
     def get_batch_size_from_graph_input(self):
         graph = self.graph()
         for input in graph.input:
@@ -788,53 +944,135 @@ class BertOnnxModel(OnnxModel):
             if node.op_type == 'Add':
                 children = self.get_children(node, input_name_to_nodes)
                 children_types = sorted([child.op_type for child in children])
-                if children_types != ["ReduceMean", "Sub"] and children_types != ["ReduceMean", "Sub", "Sub"]:
-                    continue
+                if children_types == ["ReduceMean", "Sub"] or children_types == ["ReduceMean", "Sub", "Sub"]:#pytorch
+                    div_node = None
+                    for child in children:
+                            if child.op_type == 'Sub':
+                                div_node = self.find_first_child_by_type(child, 'Div', input_name_to_nodes, recursive=False)
+                                if div_node is not None:
+                                    break
+                    if div_node is None:
+                        continue
 
-                div_node = None
-                for child in children:
-                        if child.op_type == 'Sub':
-                            div_node = self.find_first_child_by_type(child, 'Div', input_name_to_nodes, recursive=False)
-                            if div_node is not None:
-                                break
-                if div_node is None:
-                    continue
+                    parent_nodes = self.match_parent_path(div_node, ['Sqrt', 'Add', 'ReduceMean', 'Pow', 'Sub', 'Add'], [1, 0, 0, 0, 0, 0], output_name_to_node)
+                    if parent_nodes is None:
+                        continue
 
-                parent_nodes = self.match_parent_path(div_node, ['Sqrt', 'Add', 'ReduceMean', 'Pow', 'Sub', 'Add', 'Add'], [1, 0, 0, 0, 0, 0, 0], output_name_to_node)
-                if parent_nodes is None:
-                    continue
+                    sqrt_node, second_add_node, reduce_mean_node, pow_node, sub_node, first_add_node = parent_nodes
+                    if first_add_node != node:
+                        continue
 
-                sqrt_node, second_add_node, reduce_mean_node, pow_node, sub_node, first_add_node, top_add_node = parent_nodes
-                if first_add_node != node:
-                    continue
+                    mul_node = input_name_to_nodes[div_node.output[0]][0]
+                    if mul_node.op_type != 'Mul':
+                        continue
 
-                mul_node = input_name_to_nodes[div_node.output[0]][0]
-                if mul_node.op_type != 'Mul':
-                    continue
+                    last_add_node = input_name_to_nodes[mul_node.output[0]][0]
+                    if last_add_node.op_type != 'Add':
+                        continue
 
-                last_add_node = input_name_to_nodes[mul_node.output[0]][0]
-                if last_add_node.op_type != 'Add':
-                    continue
+                    nodes_to_remove.append(node)
+                    nodes_to_remove.extend(children)
+                    nodes_to_remove.extend([last_add_node, mul_node, div_node, sqrt_node, second_add_node, reduce_mean_node, pow_node])
 
-                nodes_to_remove.append(node)
-                nodes_to_remove.extend(children)
-                nodes_to_remove.extend([last_add_node, mul_node, div_node, sqrt_node, second_add_node, reduce_mean_node, pow_node, top_add_node])
+                    normalize_node_name = self.create_node_name(self.normalize_name, name_prefix="SkipLayerNorm")
+                    inputs = [i for i in node.input]
+                    inputs.extend([mul_node.input[0], last_add_node.input[1]])
+                    normalize_node = onnx.helper.make_node(self.normalize_name,
+                        inputs=inputs,
+                        outputs=[last_add_node.output[0]],
+                        name=normalize_node_name)
+                    normalize_node.domain = "com.microsoft"
+                    nodes_to_add.extend([normalize_node])
+                if children_types == ["Mul", "ReduceMean", "Sub"]:#TF
+                    add_node = None
+                    for child in children:
+                            if child.op_type == 'Mul':
+                                add_node = self.find_first_child_by_type(child, 'Add', input_name_to_nodes, recursive=False)
+                                if add_node is not None:
+                                    break
+                    if add_node is None:
+                        continue
 
-                normalize_node_name = self.create_node_name(self.normalize_name, name_prefix="SkipLayerNorm")
-                inputs = [top_add_node.input[0], top_add_node.input[1],node.input[1]]
-                inputs.extend([mul_node.input[0], last_add_node.input[1]])
-                normalize_node = onnx.helper.make_node(self.normalize_name,
-                    inputs=inputs,
-                    outputs=[last_add_node.output[0]],
-                    name=normalize_node_name)
-                normalize_node.domain = "com.microsoft"
-                nodes_to_add.extend([normalize_node])
+                    parent_nodes = self.match_parent_path(add_node, ['Sub', 'Mul', 'Mul', 'Reciprocal', 'Sqrt', 'Add','ReduceMean', 'Mul'], [1, 1, 1, 0, 0, 0, 0, 0], output_name_to_node)
+                    if parent_nodes is None:
+                        continue
+
+                    sub_node, mul_2_node, mul_1_node, reciprocal_node, sqrt_node, adjust_add_node, reducemean_2_node, mul_0 = parent_nodes
+
+                    #nodes_to_remove.append(node)
+                    nodes_to_remove.extend(children)
+                    nodes_to_remove.extend([sub_node, mul_2_node, mul_1_node, reciprocal_node, sqrt_node, adjust_add_node, reducemean_2_node, mul_0])
+                    nodes_to_remove.append(add_node)
+
+                    normalize_node_name = self.create_node_name(self.normalize_name, name_prefix="LayerNormalization")
+
+
+                   # scale_weight = self.get_initializer(mul_1_node.input[1])
+
+                    #scale_weight_value = numpy_helper.to_array(scale_weight)*-1
+
+                    #scale_weight_initializer = onnx.helper.make_tensor(name=normalize_node_name + '_scale_value',
+                    #    data_type=TensorProto.FLOAT,
+                    #    dims=scale_weight.dims,
+                    #    vals=scale_weight_value.flatten().tolist())
+                    #self.add_initializer(scale_weight_initializer)
+
+                    inputs = [node.output[0]]
+                    #inputs.extend([normalize_node_name + '_scale_value', sub_node.input[0]])
+                    inputs.extend([mul_1_node.input[1], sub_node.input[0]])
+                    normalize_node = onnx.helper.make_node(self.normalize_name,
+                        inputs=inputs,
+                        outputs=[add_node.output[0]],
+                        name=normalize_node_name)
+                    
+                    #for attribute in reducemean_2_node.attribute:
+                    #    if attribute.name == 'axes':
+                    #        normalize_node.attribute.extend([onnx.helper.make_attribute("axis", onnx.helper.get_attribute_value(attribute)[0])])
+                    #normalize_node.domain = "com.microsoft"
+                    nodes_to_add.extend([normalize_node])                 
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
         print("Fused layer normalization count:", len(nodes_to_add))
 
-    def fuse_gelu_add(self):
+    def fuse_segment(self):
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+
+        nodes_to_remove = []
+        nodes_to_add = []
+
+        for node in self.nodes():
+            if node.op_type == 'OneHot':
+                children = self.get_children(node, input_name_to_nodes)
+                children_types = sorted([child.op_type for child in children])
+                if children_types == ["MatMul"]:#pytorch
+                    reshape_node = output_name_to_node[node.input[0]]
+                    concat_node = output_name_to_node[node.input[2]]
+
+                    if reshape_node.op_type != 'Reshape':
+                        continue
+                    if concat_node.op_type != 'Concat':
+                        continue
+
+
+                    nodes_to_remove.append(node)
+                    nodes_to_remove.extend(children)
+                    nodes_to_remove.extend([reshape_node, concat_node])
+
+                    node_name = self.create_node_name('Gather', name_prefix="Gather")
+                    normalize_node = onnx.helper.make_node('Gather',
+                        inputs=[children[0].input[1],reshape_node.input[0]],
+                        outputs=[children[0].output[0]],
+                        name=node_name)
+                    nodes_to_add.extend([normalize_node])
+ 
+
+        self.remove_nodes(nodes_to_remove)
+        self.add_nodes(nodes_to_add)
+        print("Fused gather count:", len(nodes_to_add))
+
+    def remove_unless_embedding_logic(self):
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
@@ -843,25 +1081,105 @@ class BertOnnxModel(OnnxModel):
 
         for node in self.nodes():
             if node.op_type == 'Add':
-                children = self.get_children(node, input_name_to_nodes)
-                children_types = sorted([child.op_type for child in children])
-                if children_types != ["Gelu"]:
+                useless_nodes_1 = self.match_parent_path(node,
+                                                         ['Reshape', 'Cast', 'Concat', 'Unsqueeze', 'Cast', 'Squeeze', 'Slice', 'Cast', 'Shape'],
+                                                         [0,         1,      0,        0,           0,       0,        0,        0,     0])
+                if useless_nodes_1 is None or len(useless_nodes_1) != 9:
                     continue
 
-                nodes_to_remove.append(node)
-                nodes_to_remove.extend(children)
+                useless_nodes_2 = self.match_parent_path(node,
+                                                         ['Reshape', 'Cast', 'Concat', 'Unsqueeze', 'Cast', 'Squeeze', 'Slice', 'Cast', 'Shape'],
+                                                         [1,         1,      0,        0,           0,       0,        0,        0,     0])
+                if useless_nodes_2 is None or len(useless_nodes_2) != 9:
+                    continue
 
-                addGelu_node_name = self.create_node_name(self.normalize_name, name_prefix="AddGelu")
-                normalize_node = onnx.helper.make_node("AddGelu",
-                    inputs=node.input,
-                    outputs=[children[0].output[0]],
-                    name=addGelu_node_name)
-                #normalize_node.domain = "com.microsoft"
-                nodes_to_add.extend([normalize_node])
+                reshape_node_1, cast_node_1_1, concat_node_1, unsequeeze_node_1, cast_node_1_2, squeeze_node_1, slice_node_1, cast_node_1_3, shape_node_1 = useless_nodes_1
+                reshape_node_2, cast_node_2_1, concat_node_2, unsequeeze_node_2, cast_node_2_2, squeeze_node_2, slice_node_2, cast_node_2_3, shape_node_2 = useless_nodes_2
+                nodes_to_remove.extend([reshape_node_1, cast_node_1_1, concat_node_1, unsequeeze_node_1, cast_node_1_2, squeeze_node_1, slice_node_1, cast_node_1_3, shape_node_1])
+                nodes_to_remove.extend([reshape_node_2, cast_node_2_1, concat_node_2, unsequeeze_node_2, cast_node_2_2, squeeze_node_2, slice_node_2, cast_node_2_3, shape_node_2])
+                reshape_1_parents = self.get_parents(reshape_node_1, output_name_to_node)
+                reshape_2_parents = self.get_parents(reshape_node_2, output_name_to_node)
+                gather_node_1 = reshape_1_parents[0]
+                gather_node_1
+                gather_node_2 = reshape_2_parents[0]
+                del node.input[1]
+                del node.input[0]
+                node.input.extend([gather_node_1.output[0], gather_node_2.output[0]])
+
+                shape_node_1_parents = self.get_parents(shape_node_1, output_name_to_node)
+                gather_node_1.input[1] = shape_node_1_parents[0].input[0]
+                nodes_to_remove.extend(shape_node_1_parents)
+                #print(reshape_node_1)
+                #print(reshape_node_2)
+            if node.op_type == 'Mul':
+                useless_nodes_1 = self.match_parent_path(node,
+                                                         ['ConstantOfShape', 'Cast', 'Concat', 'Unsqueeze', 'Cast', 'Squeeze', 'Slice', 'Cast', 'Shape'],
+                                                         [0,         0,      0,        0,           0,       0,        0,        0,     0])
+                useless_nodes_2 = self.match_parent_path(node,
+                                                         ['Cast', 'Reshape', 'Cast', 'Concat'],
+                                                         [1,         0,      1,        0])
+                if useless_nodes_1 is None or useless_nodes_2 is None or len(useless_nodes_1) != 9 or len(useless_nodes_2) !=4:
+                    continue
+
+                ConstantOfShape_node, cast_node_1_1, concat_node, unsqueeze_node, cast_node_1_2, squeeze_node, slice_node, cast_node, shape_node = useless_nodes_1
+                cast_node_2_1, reshape_node_2, cast_node_2_2, concat_node_2 = useless_nodes_2
+                mul_children = self.get_children(node, input_name_to_nodes)
+                reshape_children = self.get_children(mul_children[0], input_name_to_nodes)
+
+                squeeze_1_node = onnx.helper.make_node("Unsqueeze",
+                    inputs=[reshape_node_2.input[0]],
+                    outputs=['Unsqueeze_1'],
+                    name='Unsqueeze_1',axes=[1])
+                squeeze_2_node = onnx.helper.make_node("Unsqueeze",
+                    inputs=['Unsqueeze_1'],
+                    outputs=['Unsqueeze_2'],
+                    name='Unsqueeze_2',axes=[2])
+                cast_node_added = onnx.helper.make_node("Cast",
+                    inputs=['Unsqueeze_2'],
+                    outputs=['cast_node_added'],
+                    name='cast_node_added',to=1)
+                nodes_to_add.extend([squeeze_1_node, squeeze_2_node, cast_node_added])
+                nodes_to_remove.extend(mul_children)
+                nodes_to_remove.extend([node, ConstantOfShape_node, cast_node_1_1, concat_node, unsqueeze_node, cast_node_1_2, squeeze_node, slice_node, cast_node, shape_node])
+                nodes_to_remove.extend([cast_node_2_1, reshape_node_2, cast_node_2_2, concat_node_2])
+                reshape_children[0].input[1] = 'cast_node_added'
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
-        print("Fused layer normalization count:", len(nodes_to_add))
+        print("Remove useless nodes:", len(nodes_to_remove))
+
+    def cleanup_after_embedding(self):
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+
+        nodes_to_remove = []
+        nodes_to_add = []
+
+        for node in self.nodes():
+            if node.op_type == 'Reshape':
+                children = self.get_children(node, input_name_to_nodes)
+                children[0].input[0] = node.input[0]
+                nodes_to_remove.extend([node])
+                reshape_path = self.match_parent_path(node,
+                                                    ['Cast', 'Concat', 'Unsqueeze', 'Cast', 'Squeeze', 'Slice', 'Cast', 'Shape'],
+                                                    [1,         0,      0,          0,      0,          0,       0,     0])
+                if reshape_path is None:
+                    continue
+                nodes_to_remove.extend(reshape_path)
+            if node.op_type == 'Cast':
+                cast_path_1 = self.match_parent_path(node,
+                                                    ['Concat', 'Unsqueeze', 'Mul'],
+                                                    [0,         0,      0])
+                cast_path_2 = self.match_parent_path(node,
+                                                    ['Concat'],
+                                                    [0])
+                if cast_path_1 is not None:
+                    nodes_to_remove.extend(cast_path_1)
+                    nodes_to_remove.extend([node])
+                if cast_path_2 is not None:
+                    nodes_to_remove.extend(cast_path_2)
+                    nodes_to_remove.extend([node])
+        self.remove_nodes(nodes_to_remove)
 
     def fuse_layer_norm_add(self):
         input_name_to_nodes = self.input_name_to_nodes()
@@ -873,25 +1191,76 @@ class BertOnnxModel(OnnxModel):
         for node in self.nodes():
             if node.op_type == 'Add':
                 children = self.get_children(node, input_name_to_nodes)
-                children_types = sorted([child.op_type for child in children])
-                if children_types != ["SkipLayerNormalization"]:
+                if len(children) == 1 and children[0].op_type == 'LayerNormalization':
+                    nodes_to_remove.append(node)
+                    nodes_to_remove.extend(children)
+                    normalize_node_name = self.create_node_name('SkipLayerNormalization', name_prefix="SkipLayerNormalization")
+                    inputs = [i for i in node.input]
+                    inputs.extend([children[0].input[1], children[0].input[2]])
+                    normalize_node = onnx.helper.make_node('SkipLayerNormalization',
+                        inputs=inputs,
+                        outputs=[children[0].output[0]],
+                        name=normalize_node_name)
+                    normalize_node.domain = "com.microsoft"
+                    nodes_to_add.extend([normalize_node])
+
+        self.remove_nodes(nodes_to_remove)
+        self.add_nodes(nodes_to_add)      
+
+    def fuse_layer_norm_add_add(self):
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+
+        nodes_to_remove = []
+        nodes_to_add = []
+
+        for node in self.nodes():
+            if node.op_type == 'LayerNormalization':
+                add_path = self.match_parent_path(node,
+                                    ['Add', 'Add'],
+                                    [0,         0])
+                if add_path is None:
                     continue
-
+                add_1, add_0 = add_path
                 nodes_to_remove.append(node)
-                nodes_to_remove.extend(children)
-
-                normalize_node_name = self.create_node_name(self.normalize_name, name_prefix="SkipLayerNorm")
-                inputs = [node.input[0], children[0].input[1], children[0].input[2], children[0].input[3], node.input[1]]
-                normalize_node = onnx.helper.make_node(self.normalize_name,
+                nodes_to_remove.extend(add_path)
+                normalize_node_name = self.create_node_name('SkipLayerNormalization', name_prefix="SkipLayerNormalization")
+                inputs = [add_0.input[0], add_1.input[1]]
+                inputs.extend([node.input[1], node.input[2], add_0.input[1]])
+                normalize_node = onnx.helper.make_node('SkipLayerNormalization',
                     inputs=inputs,
-                    outputs=[children[0].output[0]],
+                    outputs=[node.output[0]],
                     name=normalize_node_name)
                 normalize_node.domain = "com.microsoft"
                 nodes_to_add.extend([normalize_node])
 
         self.remove_nodes(nodes_to_remove)
-        self.add_nodes(nodes_to_add)
-        print("Fused layer normalization count:", len(nodes_to_add))
+        self.add_nodes(nodes_to_add)    
+
+    def fuse_gelu_add(self):
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+
+        nodes_to_remove = []
+        nodes_to_add = []
+
+        for node in self.nodes():
+            if node.op_type == 'Add':
+                children = self.get_children(node, input_name_to_nodes)
+                if len(children) == 1 and children[0].op_type == 'Gelu':
+                    nodes_to_remove.append(node)
+                    nodes_to_remove.extend(children)
+                    normalize_node_name = self.create_node_name('Gelu', name_prefix="Gelu")
+                    inputs = [i for i in node.input]
+                    normalize_node = onnx.helper.make_node('AddGelu',
+                        inputs=inputs,
+                        outputs=[children[0].output[0]],
+                        name=normalize_node_name)
+                    #normalize_node.domain = "com.microsoft"
+                    nodes_to_add.extend([normalize_node])
+
+        self.remove_nodes(nodes_to_remove)
+        self.add_nodes(nodes_to_add)         
 
 def main():
     parser = argparse.ArgumentParser()
@@ -922,8 +1291,44 @@ def main():
 
     bert_model = BertOnnxModel(model, args.num_heads, args.hidden_size, args.sequence_length)
 
+    bert_model.fuse_layer_norm()
+
+    bert_model.fuse_gelu()
+
+    bert_model.fuse_segment()
+
+    bert_model.remove_unless_embedding_logic()
+
+    bert_model.fuse_attention_tf()
+
+    bert_model.fuse_embed_layer_tf()
+
+    bert_model.cleanup_after_embedding()
+
+    bert_model.fuse_layer_norm_add_add()
+
     bert_model.fuse_gelu_add()
-    bert_model.fuse_layer_norm_add()
+
+    #bert_model.remove_reshape()
+
+    #bert_model.fuse_reshape()
+
+    #bert_model.fuse_attention(args.verbose)
+
+    #bert_model.fuse_embed_layer(args.verbose)
+    
+    #if bert_model.embed_node is None:
+    #    print("Failed to fuse embedding layer.")
+    #    return
+
+    #if args.input_int32:
+    #    bert_model.change_input_to_int32()
+    #else:
+    #    bert_model.cast_input_to_int32()
+
+
+    #if args.float16:
+    #    bert_model.convert_model_float32_to_float16()
 
     with open(args.output, "wb") as out:
         out.write(bert_model.model.SerializeToString())
