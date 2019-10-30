@@ -15,16 +15,15 @@ namespace cuda {
 
 Status NonMaxSuppressionImpl(
     std::function<IAllocatorUniquePtr<void>(size_t)> allocator,
-    const PrepareContext &pc,
+    const PrepareContext& pc,
     const int64_t center_point_box,
     int64_t batch_index,
     int64_t class_index,
     int64_t max_output_boxes_per_class,
     float iou_threshold,
     float score_threshold,
-    IAllocatorUniquePtr<void> &selected_indices,
-    int *h_number_selected
-);
+    IAllocatorUniquePtr<void>& selected_indices,
+    int* h_number_selected);
 
 }  // namespace cuda
 }  // namespace onnxruntime

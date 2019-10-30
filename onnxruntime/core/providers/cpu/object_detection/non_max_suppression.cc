@@ -91,9 +91,9 @@ Status NonMaxSuppressionBase::PrepareCompute(OpKernelContext* ctx, PrepareContex
 }
 
 Status NonMaxSuppressionBase::GetThresholdsFromInputs(const PrepareContext& pc,
-                                                  int64_t& max_output_boxes_per_class,
-                                                  float& iou_threshold,
-                                                  float& score_threshold) {
+                                                      int64_t& max_output_boxes_per_class,
+                                                      float& iou_threshold,
+                                                      float& score_threshold) {
   if (pc.max_output_boxes_per_class_ != nullptr) {
     max_output_boxes_per_class = std::max<int64_t>(*pc.max_output_boxes_per_class_, 0);
   }
