@@ -332,6 +332,11 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         std::string string_buf;
         model_proto.SerializeToString(&string_buf);
 
+        //save ModelProto to file
+        int fd;
+        Env::Default().FileOpenWr("trt_model_proto_getsupportedlist.onnx", fd);
+        model_proto.SerializeToFileDescriptor(fd);
+          
         // Get supported node list recursively
         SubGraphCollection_t parser_nodes_list;
         TensorrtLogger& trt_logger = GetTensorrtLogger();
