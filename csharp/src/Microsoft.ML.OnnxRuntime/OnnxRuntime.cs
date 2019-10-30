@@ -88,7 +88,7 @@ namespace Microsoft.ML.OnnxRuntime
         private static void CheckLibcVersionGreaterThanMinimum()
         {
             // require libc version 2.12 or higher
-            // Centos 6 libc version is 2.12 which is the min verison onnxruntime supports from 1.0 release onwards
+            // 1.0 release onwards onnxruntime supports linux distributions similar to CentOS 6 or higher.
             var minVersion = new Version(2, 12);
             var curVersion = new Version(0, 0);
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
@@ -105,7 +105,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 throw new OnnxRuntimeException(ErrorCode.RuntimeException,
                         $"libc.so version={curVersion} does not meet the minimun of {minVersion} required by OnnxRuntime. " +
-                        "Linux distribution should be similar to Ubuntu 16.04 or higher");
+                        "Linux distribution should be similar to CentOS 6 or higher");
             }
         }
 
