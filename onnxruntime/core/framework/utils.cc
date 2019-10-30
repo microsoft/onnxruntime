@@ -19,9 +19,6 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/graph/onnx_protobuf.h"
-#ifdef USE_CUDA
-#include "core/providers/cuda/gpu_data_transfer.h"
-#endif
 
 namespace ONNX_NAMESPACE {
 std::ostream& operator<<(std::ostream& out, const TensorShapeProto& shape_proto) {
@@ -612,12 +609,10 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
   std::cout << "-----------\n";
   const auto& output_defs = node.OutputDefs();
 
-#ifdef USE_CUDA
   const auto& execution_providers = session_state.GetExecutionProviders();
   const auto* cpu_execution_provider = execution_providers.Get(onnxruntime::kCpuExecutionProvider);
+  const auto* cuda_execution_provider = execution_providers.Get(onnxruntime::kCudaExecutionProvider);
   auto cpu_allocator = cpu_execution_provider->GetAllocator(0, OrtMemTypeDefault);
-  GPUDataTransfer gpu_data_transfer;
-#endif
 
   for (auto i = 0, end = context.OutputCount(); i < end; ++i) {
     if (output_defs[i]->Exists()) {
@@ -639,18 +634,26 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
               DispatchOnTensorType(data_type, DumpTensor, tensor, shape);
             } else {
               std::cout << tensor_location << "\n";
-#ifdef USE_CUDA
+
+              if (cuda_execution_provider == nullptr) {
+                continue;
+              }
+
+              auto gpu_data_transfer = cuda_execution_provider->GetDataTransfer();
+              if (gpu_data_transfer == nullptr) {
+                continue;
+              }
+
               if (tensor_location.device.Type() == OrtDevice::GPU) {
                 // copy tensor from gpu to cpu then dump
                 std::unique_ptr<Tensor> cpu_tensor = onnxruntime::make_unique<Tensor>(data_type, shape, cpu_allocator);
-                auto status = gpu_data_transfer.CopyTensor(tensor, *cpu_tensor.get(), 0);
+                auto status = gpu_data_transfer->CopyTensor(tensor, *cpu_tensor.get(), 0);
                 if (status == common::Status::OK()) {
                   DispatchOnTensorType(data_type, DumpTensor, *cpu_tensor.get(), shape);
                 } else {
                   std::cout << " failed to transfer data to cpu.\n";
                 }
               }
-#endif
             }
           }
         } else {
