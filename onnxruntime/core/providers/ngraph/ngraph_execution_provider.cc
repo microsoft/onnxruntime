@@ -213,7 +213,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
   } else if (optype == "Expand") {
     // nGraph only supports constant shape input values
     const auto& shape_input = node->InputDefs()[1];
-    return initializers.find(shape_input->Name()) == initializers.end();
+    return !graph_viewer.IsConstantInitializer(shape_input->Name(), true);
   }
 
   //Op doesn't fall into known any of unsupported modes.
