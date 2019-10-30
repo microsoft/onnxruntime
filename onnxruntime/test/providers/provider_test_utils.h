@@ -242,7 +242,19 @@ const SequenceTensorTypeProto<ElemType> SequenceTensorType<ElemType>::s_sequence
 // explanatory
 class OpTester {
  public:
-  explicit OpTester(const char* op, int opset_version = -1, const char* domain = onnxruntime::kOnnxDomain)
+  // Default to the first opset that ORT was available (7).
+  // When operators are updated they need to explicitly add tests for the new opset version.
+  // This is due to the kernel matching logic. See KernelRegistry::VerifyKernelDef.
+  // Additionally, -1 is supported and defaults to the latest known opset.
+  //
+  // Defaulting to the latest opset version would result in existing operator implementations for non-CPU EPs to
+  // lose their test coverage until an implementation for the new version is added.
+  //   e.g. there are CPU and GPU implementations for version 1 of an op. both are tested by a single OpTester test.
+  //        opset changes from 1 to 2 and CPU implementation gets added. If 'opset_version' is 2 the kernel matching
+  //        will find and run the CPU v2 implementation, but will not match the GPU v1 implementation.
+  //        OpTester will say it was successful as at least one EP ran, and the GPU implementation of v1 no longer has
+  //        test coverage.
+  explicit OpTester(const char* op, int opset_version = 7, const char* domain = onnxruntime::kOnnxDomain)
       : op_(op), domain_(domain), opset_version_(opset_version) {
     if (opset_version_ < 0) {
       static int latest_onnx_version =

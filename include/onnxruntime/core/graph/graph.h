@@ -497,6 +497,14 @@ class Graph {
   /** Remove the initializer tensor with the provided name from the Graph. */
   void RemoveInitializedTensor(const std::string& tensor_name);
 
+  /** Replaces the initializer tensor with the same name as the given initializer tensor.
+  The replacement initializer tensor must have the same type and shape as the existing initializer tensor.
+
+  Note: This currently has linear time complexity. There is room for improvement but it would likely require changes to
+  how initializer tensors are stored and tracked.
+  */
+  common::Status ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer);
+
   /** Gets an initializer tensor with the provided name.
   @param[out] value Set to the TensorProto* if the initializer is found, or nullptr if not.
   @returns True if found.
@@ -958,7 +966,6 @@ class Graph {
   ONNX_NAMESPACE::GraphProto* graph_proto_;
 
   InitializedTensorSet name_to_initial_tensor_;
-  std::vector<int> removed_initializer_indexes_;
 
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
 
