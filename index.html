@@ -1,141 +1,445 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-  <meta http-equiv="x-ua-compatible" content="ie=edge">
-
-  <title>Python Bindings for ONNX Runtime</title>
-
-  <link rel="stylesheet" href="_static/sphinx-modern-theme.css" type="text/css"/>
-  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
-  <link rel="stylesheet" href="_static/gallery.css" type="text/css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <title>ONNX Runtime | Home</title>
+    <link rel="icon" href="./images/ONNXRuntime-Favicon.png" type="image/gif" sizes="16x16">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans:300,400,700">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lato:100,100i,300,300i,400,400i,700,700i,900,900i&display=swap">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <link rel="stylesheet" href="css/custom.css">
+    <link rel="stylesheet" href="css/responsive.css">
 </head>
+
 <body>
-<div class="container">
-  <div class="row" style="margin-top: 1rem;">
-    <div id="sidebar" class="col-xs-12 col-sm-3">
-      <a href="#">
-        <img style="margin-bottom: 0.5rem;" class="img-fluid" src="_static/ONNX_Runtime_icon.png"/>
-      </a>
-      <div id="searchbox" style="display: none" role="search">
-        <form class="form-inline" action="search.html" method="get">
-          <div class="form-group">
-            <label class="sr-only" for="searchInput">Search</label>
-            <input type="text" class="form-control" name="q" id="searchInput" placeholder="Search">
-          </div>
-          <button type="submit" class="btn btn-secondary" style="display:none">Go</button>
-          <input type="hidden" name="check_keywords" value="yes"/>
-          <input type="hidden" name="area" value="default"/>
-        </form>
-      </div>
 
-      <hr>
+    <a class="skip-main" id="topContent" href="#skipMain">Skip to main content</a>
+    <div class="main-wrapper">
+        <div class="top-banner-bg">
 
-        <div id="toc">
-        <ul>
-<li class="toctree-l1"><a class="reference internal" href="tutorial.html">Tutorial</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="tutorial.html#step-1-train-a-model-using-your-favorite-framework">Step 1: Train a model using your favorite framework</a></li>
-<li class="toctree-l2"><a class="reference internal" href="tutorial.html#step-2-convert-or-export-the-model-into-onnx-format">Step 2: Convert or export the model into ONNX format</a></li>
-<li class="toctree-l2"><a class="reference internal" href="tutorial.html#step-3-load-and-run-the-model-using-onnx-runtime">Step 3: Load and run the model using ONNX Runtime</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="api_summary.html">API Summary</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="api_summary.html#device">Device</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api_summary.html#examples-and-datasets">Examples and datasets</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api_summary.html#load-and-run-a-model">Load and run a model</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api_summary.html#backend">Backend</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="auto_examples/index.html">Gallery of examples</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="auto_examples/plot_backend.html">ONNX Runtime Backend for ONNX</a></li>
-<li class="toctree-l2"><a class="reference internal" href="auto_examples/plot_pipeline.html">Draw a pipeline</a></li>
-<li class="toctree-l2"><a class="reference internal" href="auto_examples/plot_load_and_predict.html">Load and predict with ONNX Runtime and a very simple model</a></li>
-<li class="toctree-l2"><a class="reference internal" href="auto_examples/plot_profiling.html">Profile the execution of a simple model</a></li>
-<li class="toctree-l2"><a class="reference internal" href="auto_examples/plot_metadata.html">Metadata</a></li>
-<li class="toctree-l2"><a class="reference internal" href="auto_examples/plot_dl_keras.html">ONNX Runtime for Keras</a></li>
-<li class="toctree-l2"><a class="reference internal" href="auto_examples/plot_convert_pipeline_vectorizer.html">Train, convert and predict with ONNX Runtime</a></li>
-<li class="toctree-l2"><a class="reference internal" href="auto_examples/plot_common_errors.html">Common errors with onnxruntime</a></li>
-<li class="toctree-l2"><a class="reference internal" href="auto_examples/plot_train_convert_predict.html">Train, convert and predict with ONNX Runtime</a></li>
-</ul>
-</li>
-</ul>
+            <header class="fixed-top header-content">
+                <nav class="navbar navbar-expand-md navbar-custom" aria-label="Main menu">
+                    <a id="ONNXLogo" class="navbar-brand" href="./index.html">
+                        <img src="images/svg/ONNX-Runtime-logo.svg" class="d-inline-block align-top onnx-logo" alt="ONNX Runtime Home" />
+                    </a>
+                    <button class="navbar-toggler p-0" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
+                    <div class="collapse navbar-collapse border-md-top mt-md-0 mt-2" id="navbarNav">
+                        <div class="mr-auto"></div>
+                        <div class="my-md-2 mb-0 mt-2 my-lg-0 pl-3 pl-md-0">
+                            <ul class="navbar-nav navbar-nav mr-auto text-uppercase" id="navigation">
+                                <li class="nav-item">
+                                    <a class="nav-link pr-3 btn-getStarted" href="JavaScript:void(0);">Get Started</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link pr-3" target="_blank" href="https://cloudblogs.microsoft.com/opensource/tag/onnx">News</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link pr-3" href="./about.html">About</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" target="_blank" href="http://github.com/microsoft/onnxruntime">GitHub</a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </nav>
+            </header>
 
+			<div role="main" id="skipMain">
+			
+	            <div class="container px-md-4 px-lg-5 pt-5 mx-auto text-center">
+	                <h1 class="pt-3 pb-3 pt-md-5 pb-lg-5 px-md-4 px-lg-5 mt-5 mb-0">Optimize and accelerate machine learning
+	                        inferencing across the cloud and the edge</h1>
+	                <a id="getStarted" href="JavaScript:void(0);" class="btn btn-lg btn-primary text-uppercase px-5 py-3 btn-blue btn-getStarted">Get Started</a>
+	            </div>
+	
+	            <div class="outer-container mx-auto pt-md-5 pt-3">
+	
+	                <section class="py-md-5 pt-3 pb-4 blue-title-columns">
+	                    <div class="container-fluid">
+	                        <div class="row equalHeight">
+	                            <div class="col-12 col-md-4 mb-2 mb-md-0">
+	                                <div class="row">
+	                                    <div class="col-2 col-md-3 col-xl-2">
+	                                        <div class="icon-container">
+	                                            <img src="images/svg/icon-1.svg" alt="" />
+	                                        </div>
+	                                    </div>
+	                                    <div class="col-10 col-sm-9 col-xl-10 pl-sm-0 pl-md-3 pl-lg-0 pl-xl-3">
+	                                        <h2 class="mr-xl-5">Easily optimize and accelerate inferencing</h2>
+	                                        <p class="mr-xl-5 mb-md-0">Reduce latency and inferencing costs across the cloud and the edge using built-in graph optimizations and hardware accelerators.
+	                                        </p>
+	                                    </div>
+	                                </div>
+	                            </div>
+	                            <div class="col-12 col-md-4 mb-2 mb-md-0">
+	                                <div class="row">
+	                                    <div class="col-2 col-md-3 col-xl-2">
+	                                        <div class="icon-container">
+	                                            <img src="images/svg/icon-2.svg" alt="" />
+	                                        </div>
+	                                    </div>
+	                                    <div class="col-10 col-sm-9 col-xl-10 pl-sm-0 pl-md-3 pl-lg-0 pl-xl-3">
+	                                        <h2 class="mr-xl-5">Plug-in to your technology stack</h2>
+	                                        <p class="mr-xl-5 mb-md-0">Cross-platform support and convenient <abbr title="Application Program Interface">API</abbr>s make inferencing with ONNX Runtime easy.</p>
+	                                    </div>
+	                                </div>
+	                            </div>
+	                            <div class="col-12 col-md-4">
+	                                <div class="row">
+	                                    <div class="col-2 col-md-3 col-xl-2">
+	                                        <div class="icon-container">
+	                                            <img src="images/svg/icon-3.svg" alt="" />
+	                                        </div>
+	                                    </div>
+	                                    <div class="col-10 col-sm-9 col-xl-10 pl-sm-0 pl-md-3 pl-lg-0 pl-xl-3">
+	                                        <h2 class="mr-xl-5">Leverage open source innovation</h2>
+	                                        <p class="mr-xl-5 mb-0">With innovation and support from its open source community, ONNX Runtime continuously improves while delivering the reliability you need.</p>
+	                                    </div>
+	                                </div>
+	                            </div>
+	                        </div>
+	                    </div>
+	                </section>
+	
+	                <section class="py-md-5 pb-4 pt-4 get-started-section border-top" id="getStartedTable">
+	                    <div class="container-fluid">
+	                        <div class="row ml-0">
+	                            <div class="col">
+	                                <div class="text-center pb-3">
+	                                    <h2>Get Started Easily</h2>
+	                                    <p class="mb-0 mb-md-3">Select your requirements and use the resources provided to get started quickly
+	                                    </p>
+	                                </div>
+	
+	                                <div class="row r-wrap mb-1 mb-md-0 mr-0" role="group">
+	                                    <div class="col-md-3 r-heading">
+	                                        <h3 id="selectOS"><abbr title="Operating System">OS</abbr></h3>
+	                                        <p id="decriptionOS" class="sr-only"><abbr>OS</abbr> list contains three items</p>
+	                                    </div>
+	                                    <div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-1" aria-labelledby="selectOS" aria-describedby="decriptionOS">
+	                                        <div class="row os">
+	                                            <div class="col-lg-2dot4 col-md-4 r-option version selected" role="option" tabindex="0" aria-selected="true" id="windows">
+	                                                <span>Windows</span>
+	                                            </div>
+	                                            <div class="col-lg-2dot4 col-md-4 r-option version" role="option" tabindex="-1" aria-selected="false" id="linux">
+	                                                <span>Linux</span>
+	                                            </div>
+	                                            <div class="col-lg-2dot4 col-md-4 r-option version" role="option" tabindex="-1" aria-selected="false" id="mac">
+	                                                <span>Mac</span>
+	                                            </div>
+	
+	                                        </div>
+	                                    </div>
+	                                </div>
+	
+	                                <div class="row r-wrap mb-1 mb-md-0 mr-0">
+	                                    <div class="col-md-3 r-heading">
+	                                        <h3 id="selectLanguage">Language</h3>
+	                                        <p id="decriptionLanguage" class="sr-only">Language list contains four items</p>
+	                                    </div>
+	                                    <div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-2" aria-labelledby="selectLanguage" aria-describedby="decriptionLanguage">
+	                                        <div class="row language">
+	                                            <div class="col-lg-2dot4 col r-option selected" role="option" tabindex="0" aria-selected="true" id="Python(3.5-3.7)"><span>Python (3.5-3.7)</span></div>
+	                                            <div class="col-lg-2dot4 col  r-option" role="option" tabindex="-1" aria-selected="false" id="C++"><span>C++</span></div>
+	                                            <div class="col-lg-2dot4 col r-option" aria-selected="false" role="option" tabindex="-1" id="C#"><span><abbr>C#</abbr></span></div>
+	                                            <div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="C"><span>C</span></div>
+	
+	                                        </div>
+	                                    </div>
+	                                </div>
+	
+	                                <div class="row r-wrap mb-1 mb-md-0 mr-0">
+	                                    <div class="col-md-3 r-heading ">
+	                                        <h3 id="selectArchitecture" class="align-self-center">Architecture</h3>
+	                                        <p id="decriptionArchitecture" class="sr-only">Architecture list contains five items</p>
+	                                    </div>
+	                                    <div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-3" aria-labelledby="selectArchitecture" aria-describedby="decriptionArchitecture">
+	                                        <div class="row architecture">
+	                                            <div class="col-lg-2dot4 col r-option selected" role="option" tabindex="0" aria-selected="true" id="X64">
+	                                                <span><abbr>X64</abbr></span></div>
+	                                            <div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="X86">
+	                                                <span><abbr>X86</abbr></span></div>
+	                                            <div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="ARM64">
+	                                                <span><abbr>ARM64</abbr></span></div>
+	                                            <div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="ARM32">
+	                                                <span><abbr>ARM32</abbr></span></div>
+	                                        </div>
+	                                    </div>
+	                                </div>
+	
+	                                <div class="row r-wrap mb-1 mb-md-0 mr-0">
+	                                    <div class="col-md-3 r-heading">
+	                                        <h3 id="selectHardwareAcceleration">Hardware Acceleration</h3>
+	                                        <p id="decriptionHardwareAcceleration" class="sr-only">Hardware Acceleration list contains nine items</p>
+	                                    </div>
+	                                    <div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-4" aria-labelledby="selectHardwareAcceleration" aria-describedby="decriptionHardwareAcceleration">
+	                                        <div class="row hardwareAcceleration">
+	                                            <div class="col-lg-2dot5 col r-option version selected" role="option" tabindex="0" aria-selected="true" id="DefaultCPU">
+	                                                <span>Default <abbr>CPU</abbr></span></div>
+	                                            <div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="CUDA">
+	                                                <span><abbr>CUDA</abbr></span>
+	                                            </div>
+	                                            <div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="TensorRT">
+	                                                <span>Tensor<abbr>RT</abbr></span></div>
+	                                            <div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="DirectML">
+	                                                <span>Direct<abbr>ML</abbr></span>
+	                                            </div>
+	                                            <div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="MKL-DNN">
+	                                                <span><abbr>MKL-DNN</abbr></span>
+	                                            </div>
+	                                            <!-- </div>
+	
+	                                        <div class="row hardwareAcceleration"> -->
+	                                            <div class="col-lg-2dot4 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="MKL-ML">
+	                                                <span><abbr>MKL-ML</abbr></span>
+	                                            </div>
+	                                            <div class="col-lg-2dot4 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="nGraph">
+	                                                <span>nGraph</span></div>
+	                                            <div class="col-lg-2dot4 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="NUPHAR">
+	                                                <span><abbr>NUPHAR</abbr></span></div>
+	                                            <div class="col-lg-2dot4 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="OpenVINO">
+	                                                <span>OpenVINO</span></div>
+	                                        </div>
+	                                    </div>
+	                                </div>
+	
+	                                <div class="row r-wrap command-block row-eq-height mr-0">
+	                                    <div class="col-md-3 r-heading">
+	                                        <h3 id="selectRunCommand">Installation Instructions</h3>
+	                                    </div>
+	                                    <div class="col-md-9 r-content pr-0 pl-md-4">
+	                                        <div class="row">
+	                                            <div class="col r-option command-container" id="command" role="status">
+	                                                <span>
+	                                                    Follow build instructions [here](https://aka.ms/build-ort-directml)
+	                                                </span>
+	                                            </div>
+	                                        </div>
+	                                    </div>
+	                                </div>
+	
+	                            </div>
+	                        </div>
+	                    </div>
+	                </section>
+	
+	                <section class="py-md-5 pb-4 pb-4 pt-4 blue-title-columns border-top">
+	                    <div class="container-fluid">
+	                        <div class="row equalHeight-1">
+	                            <div class="col-12 col-md-6 mb-2 mb-md-0">
+	                                <div class="row">
+	                                    <div class="col-1 col-sm-1 pr-5">
+	                                        <div class="icon-container">
+	                                            <img src="images/svg/icon-4.svg" alt="" />
+	                                        </div>
+	                                    </div>
+	                                    <div class="col-9 col-sm-9 pl-2 pl-md-4">
+	                                        <h2>Build an ONNX Model</h2>
+	                                        <div class="onnx-model-content">
+	                                            <p>Build and train a machine learning model to meet your project goals using the tools that best meet your needs:</p>
+	                                            <ul class="pl-0 custom-list mb-md-0">
+	                                                <li class="pb-3"><a href="https://github.com/onnx/tutorials#converting-to-onnx-format" target="_blank" class="link"><span class="link-content">Convert an existing model</span><span class="link-arrow fa fa-angle-right"></span></a></li>
+	                                                <li class="pb-3">
+	                                                    <p class="mb-0"><strong>Develop a new model</strong></p>
+	                                                    <ul class="custom-list pl-3">
+	                                                        <li><a href="https://github.com/Azure/MachineLearningNotebooks/tree/master/how-to-use-azureml/deployment/onnx#onnx-on-azure-machine-learning" target="_blank" class="link"><span class="link-content">Azure Machine Learning</span>
+	                                                                <span class="link-arrow fa fa-angle-right"></span></a></li>
+	                                                        <li><a href="https://www.customvision.ai/" target="_blank" class="link"><span class="link-content">Custom
+	                                                                Vision, an Azure Cognitive
+	                                                                Service</span><span class="link-arrow fa fa-angle-right"></span></a></li>
+	                                                    </ul>
+	                                                </li>
+	                                                <li><a href="https://github.com/onnx/models#onnx-model-zoo" target="_blank" class="link"><span class="link-content">Use
+	                                                        a pre-trained model</span><span class="link-arrow fa fa-angle-right"></span></a></li>
+	                                            </ul>
+	                                        </div>
+	                                    </div>
+	                                </div>
+	                            </div>
+	                            <div class="col-12 col-md-6">
+	                                <div class="row">
+	                                    <div class="col-1 col-sm-1 pr-5">
+	                                        <div class="icon-container">
+	                                            <img src="images/svg/icon-5.svg" alt="" />
+	                                        </div>
+	                                    </div>
+	                                    <div class="col-9 col-sm-9 pl-2 pl-md-4">
+	                                        <h2>Deploy your ONNX Model</h2>
+	                                        <div class="onnx-model-content">
+	                                            <p>Deploy your ONNX model across hardware devices:</p>
+	                                            <ul class="custom-list pl-0 mb-0">
+	                                                <li class="pb-3"><a href="https://aka.ms/onnxruntime-cloud" target="_blank" class="link"><span class="link-content">Cloud</span><span class="link-arrow fa fa-angle-right"></span></a></li>
+	                                                <li class="pb-3"><a href="https://aka.ms/onnxruntime-iot-edge" target="_blank" class="link"><span class="link-content"><abbr title="Internet of things">IoT</abbr> / Edge</span><span class="link-arrow fa fa-angle-right"></span></a></li>
+	                                                <li><a href="https://aka.ms/onnxruntime-local" target="_blank" class="link"><span class="link-content">Local
+	                                                        Applications</span> <span class="link-arrow fa fa-angle-right"></span></a></li>
+	                                            </ul>
+	                                        </div>
+	                                    </div>
+	                                </div>
+	                            </div>
+	                        </div>
+	                    </div>
+	                </section>
+	
+	                <section class="py-md-5 pb-4 pt-4 blue-title-columns border-top">
+	                    <div class="container-fluid">
+	                        <div class="row equalHeight-2">
+	                            <div class="col-12 col-md-4 mb-4 mb-md-0">
+	                                <div class="product-logo pb-4 pb-md-5 mr-xl-5 text-center">
+	                                    <img src="images/word-logo.png" class="msword-logo" alt="Microsoft Word Logo" />
+	                                </div>
+	                                <h2 class="blue-text mr-xl-5 mb-3">Improved performance by 14x</h2>
+	                                <p class="mr-xl-5 first-child">Microsoft Word Online includes a grammar checker that identifies missing determiners. This feature infers missing determiners in real-time on billions of sentences each month.
+	                                </p>
+	                                <p class="bold-text mr-xl-5 mb-md-0">Using ONNX and ONNX Runtime, inference speed improved by 14.2x
+	                                </p>
+	                            </div>
+	                            <div class="col-12 col-md-4 mb-4 mb-md-0">
+	                                <div class="product-logo pb-4 pb-md-5 mr-xl-5 text-center">
+	                                    <img src="images/Micorsoft-Azure-Logo.png" class="msazure-logo" alt="Microsoft Azure logo" />
+	                                </div>
+	                                <h2 class="blue-text mr-xl-5 mb-3">Improved performance by 3x</h2>
+	                                <p class="mr-xl-5 first-child">Computer Vision, an Azure Cognitive Service, uses optical character recognition to detect text in an image and extract the recognized words into a machine-readable character stream.
+	                                </p>
+	                                <p class="bold-text mr-xl-5 mb-md-0">Using ONNX and ONNX Runtime, inference speed improved by 3.7x
+	                                </p>
+	                            </div>
+	                            <div class="col-12 col-md-4">
+	                                <div class="product-logo pb-4 pb-md-5 mr-xl-5 text-center">
+	                                    <img src="images/bing-logo.svg" class="bing-logo" alt="bing logo" />
+	                                </div>
+	                                <h2 class="blue-text mr-xl-5 mb-3">Improved performance by 2x</h2>
+	                                <p class="mr-xl-5 first-child">Bing Visual Search allows users to search the web using an image instead of text.
+	                                </p>
+	                                <p class="bold-text mr-xl-5 mb-md-0">Using ONNX and ONNX Runtime, inference speed improved by 2x
+	                                </p>
+	                            </div>
+	                        </div>
+	                    </div>
+	                </section>
+	
+	                <section class="pb-md-4">
+	                    <div class="container-fluid border-top">
+	                        <div class="row">
+	                            <div class="col-sm-12 append-play-buttom">
+	                                <div id="ONNXCarousel" class="carousel slide" data-pause="hover" data-interval="15000" data-ride="carousel">
+	                                    <!-- Carousel indicators -->
+	                                    <ol class="carousel-indicators">
+	                                        <li data-target="#ONNXCarousel" data-slide-to="0" class="active"></li>
+	                                        <li data-target="#ONNXCarousel" data-slide-to="1"></li>
+	                                    </ol>
+	                                    <!-- Wrapper for carousel items -->
+	                                    <div class="carousel-inner">
+	                                        <div class="carousel-item item active">
+	                                            <div class="media row">
+	                                                <div class="media-left d-flex col-12 col-md-4 col-xl-3 mb-4 mb-md-0">
+	                                                    <img src="images/nvidia.png" alt="NVIDIA logo" />
+	                                                </div>
+	                                                <div class="media-body col-12 col-md-10 col-xl-9">
+	                                                    <div class="testimonial">
+	                                                        <p class="mb-1">&ldquo;ONNX Runtime enables our customers to easily apply NVIDIA TensorRT&rsquo;s powerful optimizations to machine learning models, irrespective of the training framework, and deploy across NVIDIA <abbr title="Graphics Processing Unit">GPUs</abbr> and edge devices.&rdquo;</p>
+	                                                        <p class="overview">&ndash; Kari Ann Briski, Sr. Director, Accelerated Computing Software and <abbr>AI</abbr> Product, NVIDIA</p>
+	                                                    </div>
+	                                                </div>
+	                                            </div>
+	                                        </div>
+	                                        <div class="carousel-item item">
+	                                            <div class="media row">
+	                                                <div class="media-left d-flex col-12 col-md-4 col-xl-3 mb-4 mb-md-0">
+	                                                    <img src="images/intel-logo.png" alt="Intel logo" />
+	                                                </div>
+	                                                <div class="media-body col-12 col-md-10 col-xl-9">
+	                                                    <div class="testimonial">
+	                                                        <p class="mb-1">&ldquo;We are excited to support ONNX Runtime on the Intel&reg; Distribution of OpenVINO&trade;. This accelerates machine learning inference across Intel hardware and gives developers the flexibility to choose the combination of Intel hardware that best meets their needs from <abbr title="Central Processing Unit">CPU</abbr> to <abbr title="Vision Processing Unit">VPU</abbr> or <abbr title="Field Programmable Gate Array">FPGA</abbr>.&rdquo;</p>
+	                                                        <p class="overview">&ndash; Jonathan Ballon, Vice President and General Manager, Intel Internet of Things Group</p>
+	                                                    </div>
+	                                                </div>
+	                                            </div>
+	                                        </div>
+	
+	                                    </div>
+	
+	                                </div>
+	                            </div>
+	                        </div>
+	                    </div>
+	                </section>
+	
+	            </div>
+			
+			</div>
+			
+            <footer class="border-top footer mt-auto py-4 text-white">
+                <div class="outer-container mx-auto">
+                    <div class="container-fluid">
+                        <div class="row">
+                            <div class="col-12 co-md">
+                                <h2 class="text-center py-4 mb-0">Get Involved</h2>
+                            </div>
+                        </div>
+                        <div class="row pb-md-4 pb-0">
+                            <div class="col-12 col-sm-6 col-md-3 pr-xl-5 pr-lg-4 mb-md-0 mb-4">
+                                <h3 class="footer-heading">Use ONNX Runtime</h3>
+                                <p class="mr-xl-5 mb-2">Accelerate your machine learning inferencing today.</p>
+                                <a class="mr-xl-5 btn-getStarted" href="JavaScript:void(0);">
+                                    <span class="link-content">Get Started</span><span class="link-arrow fa fa-angle-right"></span></a>
+                            </div>
+                            <div class="col-12 col-sm-6 col-md-3 pr-xl-5 pr-lg-4 mb-md-0 mb-4">
+                                <h3 class="footer-heading">Contribute</h3>
+                                <p class="mr-xl-5 mb-2">ONNX Runtime is a community project. We encourage you to join the effort and contribute feedback, ideas and code.</p>
+                                <a class="mr-xl-5" target="_blank" href="https://github.com/microsoft/onnxruntime">
+                                    <span class="link-content">Join us on Github</span><span class="link-arrow fa fa-angle-right"></span></a>
+                            </div>
+                            <div class="col-12 col-sm-6 col-md-3 pr-xl-5 pr-lg-4 mb-md-0 mb-4">
+                                <h3 class="footer-heading">Follow Us</h3>
+                                <p class="mr-xl-5 mb-2">Stay up to date with the latest ONNX news.</p>
+                                <a href="https://twitter.com/onnxruntime" target="_blank" title="Twitter" class="twitter-icon" aria-label="Social Icon Twitter">
+                                    <span class="fa fa-twitter" aria-hidden="true"></span></a>
+                            </div>
+                            <div class="col-6 col-sm-6 col-md-3">
+                                <h3 class="footer-heading">Resources</h3>
+                                <ul class="list-unstyled text-small">
+                                    <li class="mb-2">
+                                        <a target="_blank" href="https://cloudblogs.microsoft.com/opensource/tag/onnx">
+                                            <span class="link-content">News</span><span class="link-arrow fa fa-angle-right"></span></a>
+                                    </li>
+                                    <li class="mb-2">
+                                        <a target="_blank" href="https://github.com/microsoft/onnxruntime/tree/master/samples">
+                                            <span class="link-content">Tutorials</span><span class="link-arrow fa fa-angle-right"></span></a>
+                                    </li>
+                                    <li class="mb-2">
+                                        <a target="_blank" href="https://github.com/Microsoft/onnxruntime#api-documentation">
+                                            <span class="link-content"><abbr title="Application Program Interface">APIs</abbr></span><span class="link-arrow fa fa-angle-right"></span></a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="row pt-4 pb-4 text-center-sm">
+                            <div class="col-12">
+                                <a href="./index.html"><img class="mb-md-2 mb-0 onnx-footer-logo" src="images/svg/ONNX-Runtime-logo-white.svg" alt="ONNX Runtime Home"></a>
+                                <p class="text-copyright py-4 ml-md-5">Copyright &copy; 2019 Microsoft. All rights reserved.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </footer>
+
+            <a id="back-to-top" href="JavaScript:void(0);" class="btn btn-lg back-to-top" role="button" aria-label="Back to top"><span class="fa fa-angle-up"></span></a>
         </div>
     </div>
-    <div class="col-xs-12 col-sm-9">
-      <div class="section" id="python-bindings-for-onnx-runtime">
-<h1>Python Bindings for ONNX Runtime<a class="headerlink" href="#python-bindings-for-onnx-runtime" title="Permalink to this headline">¶</a></h1>
-<p>ONNX Runtime enables high-performance evaluation of trained machine learning (ML)
-models while keeping resource usage low.
-Building on Microsoft’s dedication to the
-<a class="reference external" href="https://onnx.ai/">Open Neural Network Exchange (ONNX)</a>
-community, it supports traditional ML models as well
-as Deep Learning algorithms in the
-<a class="reference external" href="https://github.com/onnx/onnx/blob/master/docs/IR.md">ONNX-ML format</a>.</p>
-<div class="toctree-wrapper compound">
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="tutorial.html">Tutorial</a></li>
-<li class="toctree-l1"><a class="reference internal" href="api_summary.html">API Summary</a></li>
-<li class="toctree-l1"><a class="reference internal" href="auto_examples/index.html">Gallery of examples</a></li>
-</ul>
-</div>
-<p><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></p>
-<p>The core library is implemented in C++.
-<em>ONNX Runtime</em> is available on
-PyPi for Linux Ubuntu 16.04, Python 3.5+ for both
-<a class="reference external" href="https://pypi.org/project/onnxruntime/">CPU</a> and
-<a class="reference external" href="https://pypi.org/project/onnxruntime-gpu/">GPU</a>.
-Please see <a class="reference external" href="https://github.com/Microsoft/onnxruntime#system-requirements">system requirements</a> before installating the packages.
-This example demonstrates a simple prediction for an
-<a class="reference external" href="https://github.com/onnx/onnx/blob/master/docs/IR.md">ONNX-ML format</a>
-model. The following file <code class="docutils literal notranslate"><span class="pre">model.onnx</span></code> is taken from
-github <a class="reference external" href="https://github.com/onnx/onnx/tree/master/onnx/backend/test/data/node/test_sigmoid">onnx…test_sigmoid</a>.</p>
-<p>&lt;&lt;&lt;</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">numpy</span>
-<span class="kn">import</span> <span class="nn">onnxruntime</span> <span class="k">as</span> <span class="nn">rt</span>
-<span class="n">sess</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="s2">&quot;model.onnx&quot;</span><span class="p">)</span>
-<span class="n">input_name</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span>
-<span class="n">X</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">((</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
-<span class="n">pred_onnx</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="p">{</span><span class="n">input_name</span><span class="p">:</span> <span class="n">X</span><span class="p">})</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">pred_onnx</span><span class="p">)</span>
-</pre></div>
-</div>
-<p>&gt;&gt;&gt;</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>    <span class="p">[</span><span class="n">array</span><span class="p">([[[</span><span class="mf">0.601</span><span class="p">,</span> <span class="mf">0.631</span><span class="p">,</span> <span class="mf">0.565</span><span class="p">,</span> <span class="mf">0.501</span><span class="p">,</span> <span class="mf">0.641</span><span class="p">],</span>
-            <span class="p">[</span><span class="mf">0.605</span><span class="p">,</span> <span class="mf">0.609</span><span class="p">,</span> <span class="mf">0.549</span><span class="p">,</span> <span class="mf">0.656</span><span class="p">,</span> <span class="mf">0.7</span>  <span class="p">],</span>
-            <span class="p">[</span><span class="mf">0.674</span><span class="p">,</span> <span class="mf">0.531</span><span class="p">,</span> <span class="mf">0.652</span><span class="p">,</span> <span class="mf">0.674</span><span class="p">,</span> <span class="mf">0.582</span><span class="p">],</span>
-            <span class="p">[</span><span class="mf">0.556</span><span class="p">,</span> <span class="mf">0.603</span><span class="p">,</span> <span class="mf">0.521</span><span class="p">,</span> <span class="mf">0.708</span><span class="p">,</span> <span class="mf">0.63</span> <span class="p">]],</span>
-    
-           <span class="p">[[</span><span class="mf">0.633</span><span class="p">,</span> <span class="mf">0.684</span><span class="p">,</span> <span class="mf">0.709</span><span class="p">,</span> <span class="mf">0.589</span><span class="p">,</span> <span class="mf">0.562</span><span class="p">],</span>
-            <span class="p">[</span><span class="mf">0.513</span><span class="p">,</span> <span class="mf">0.647</span><span class="p">,</span> <span class="mf">0.549</span><span class="p">,</span> <span class="mf">0.644</span><span class="p">,</span> <span class="mf">0.548</span><span class="p">],</span>
-            <span class="p">[</span><span class="mf">0.699</span><span class="p">,</span> <span class="mf">0.671</span><span class="p">,</span> <span class="mf">0.58</span> <span class="p">,</span> <span class="mf">0.622</span><span class="p">,</span> <span class="mf">0.727</span><span class="p">],</span>
-            <span class="p">[</span><span class="mf">0.633</span><span class="p">,</span> <span class="mf">0.686</span><span class="p">,</span> <span class="mf">0.508</span><span class="p">,</span> <span class="mf">0.675</span><span class="p">,</span> <span class="mf">0.689</span><span class="p">]],</span>
-    
-           <span class="p">[[</span><span class="mf">0.705</span><span class="p">,</span> <span class="mf">0.706</span><span class="p">,</span> <span class="mf">0.551</span><span class="p">,</span> <span class="mf">0.689</span><span class="p">,</span> <span class="mf">0.582</span><span class="p">],</span>
-            <span class="p">[</span><span class="mf">0.605</span><span class="p">,</span> <span class="mf">0.631</span><span class="p">,</span> <span class="mf">0.551</span><span class="p">,</span> <span class="mf">0.697</span><span class="p">,</span> <span class="mf">0.622</span><span class="p">],</span>
-            <span class="p">[</span><span class="mf">0.612</span><span class="p">,</span> <span class="mf">0.716</span><span class="p">,</span> <span class="mf">0.586</span><span class="p">,</span> <span class="mf">0.647</span><span class="p">,</span> <span class="mf">0.707</span><span class="p">],</span>
-            <span class="p">[</span><span class="mf">0.63</span> <span class="p">,</span> <span class="mf">0.657</span><span class="p">,</span> <span class="mf">0.503</span><span class="p">,</span> <span class="mf">0.71</span> <span class="p">,</span> <span class="mf">0.727</span><span class="p">]]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">float32</span><span class="p">)]</span>
-</pre></div>
-</div>
-</div>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+    <script src="./js/custom.js"></script>
+    <script src="./js/script.js"></script>
 
-    </div>
-  </div>
-</div>
-
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.0.0/jquery.min.js"
-        integrity="sha384-THPy051/pYDQGanwU6poAc/hOdQxjnOEXzbT+OuUAFqNqFjL+4IGLBgCJC3ZOShY"
-        crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/tether/1.2.0/js/tether.min.js"
-        integrity="sha384-Plbmg8JY28KFelvJVai01l8WyZzrYWG825m+cZ0eDDS1f7d/js6ikvy1+X+guPIB"
-        crossorigin="anonymous"></script>
-<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.3/js/bootstrap.min.js"
-        integrity="sha384-ux8v3A6CPtOTqOzMKiuo3d/DomGaaClxFYdCu2HPMBEkf6x2xiDyJ7gkXU0MWwaD"
-        crossorigin="anonymous"></script>
-<script src='https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML'></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/lunr.js/0.6.0/lunr.min.js"></script>
-<script src="_static/searchtools.js"></script>
-<script>$('#searchbox').show(0)</script>
 </body>
+
 </html>
