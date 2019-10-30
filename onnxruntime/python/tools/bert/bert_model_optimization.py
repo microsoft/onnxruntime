@@ -510,7 +510,7 @@ class BertOnnxModel(OnnxModel):
             if len(matmul_child) != 1 or matmul_child[0].op_type != 'Add':
                 continue
             add_node = matmul_child[0]
-            
+
             children = input_name_to_nodes[add_node.output[0]]
 
             children_types = sorted([child.op_type for child in children])
@@ -525,9 +525,11 @@ class BertOnnxModel(OnnxModel):
             if len(subgraph_nodes) != 5:
                 continue
 
+            nodes_to_remove.append(add_node)
             nodes_to_remove.extend(subgraph_nodes)
+            bias_input = add_node.input[1] if (add_node.input[0] == matmul_node.output[0]) else add_node.input[0]
             gelu_node = onnx.helper.make_node(self.gelu_name,
-                inputs=[add_node.output[0]],
+                inputs=[matmul_node.output[0], bias_input],
                 outputs=[matmul_2.input[0]])
             gelu_node.domain = "com.microsoft"
             nodes_to_add.append(gelu_node)
@@ -884,8 +886,6 @@ def main():
 
     if args.float16:
         bert_model.convert_model_float32_to_float16()
-
-    bert_model.update_dynamic_batch_io()
 
     with open(args.output, "wb") as out:
         out.write(bert_model.model.SerializeToString())
