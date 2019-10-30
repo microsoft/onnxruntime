@@ -271,7 +271,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   }
 
   return Status::OK();
-}  // namespace cuda
+}
 
 #define REGISTER_KERNEL_HFD(name)        \
   REGISTER_KERNEL_TYPED(name, MLFloat16) \
