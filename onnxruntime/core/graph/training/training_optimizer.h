@@ -95,14 +95,14 @@ class OptimizerBuilder {
    * @return The status of the optimizer node addition.
    */
   virtual Status Build(
-      const ArgDef& weight_argdef,
-      const ArgDef& gradient_argdef,
+      const std::vector<ArgDef>& weight_argdefs,
+      const std::vector<ArgDef>& gradient_argdefs,
       const ArgDef* do_update_argdef,
-      const OptimizerNodeConfig& opt_config,
+      const std::vector<OptimizerNodeConfig>& opt_configs,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,
       std::vector<TensorProto>& new_external_initializers,
-      ArgDef& output_weight_argdef) const = 0;
+      std::vector<ArgDef>& output_weight_argdefs) const = 0;
 
   const std::string& OpType() const { return name_; }
 
@@ -134,14 +134,14 @@ class SGDOptimizerBuilder final : public OptimizerBuilder {
   SGDOptimizerBuilder() : OptimizerBuilder("SGDOptimizer", 3, 1) {}
 
   virtual Status Build(
-      const ArgDef& weight_argdef,
-      const ArgDef& gradient_argdef,
+      const std::vector<ArgDef>& weight_argdefs,
+      const std::vector<ArgDef>& gradient_argdefs,
       const ArgDef* do_update_argdef,
-      const OptimizerNodeConfig& opt_config,
+      const std::vector<OptimizerNodeConfig>& opt_configs,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,
       std::vector<TensorProto>& new_external_initializers,
-      ArgDef& output_weight_argdef) const override;
+      std::vector<ArgDef>& output_weight_argdefs) const override;
 };
 
 class AdamOptimizerBuilder final : public OptimizerBuilder {
@@ -150,14 +150,14 @@ class AdamOptimizerBuilder final : public OptimizerBuilder {
                                             {"alpha", "beta", "lambda", "epsilon"}) {}
 
   virtual Status Build(
-      const ArgDef& weight_argdef,
-      const ArgDef& gradient_argdef,
+      const std::vector<ArgDef>& weight_argdefs,
+      const std::vector<ArgDef>& gradient_argdefs,
       const ArgDef* do_update_argdef,
-      const OptimizerNodeConfig& opt_config,
+      const std::vector<OptimizerNodeConfig>& opt_configs,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,
       std::vector<TensorProto>& new_external_initializers,
-      ArgDef& output_weight_argdef) const override;
+      std::vector<ArgDef>& output_weight_argdefs) const override;
 };
 
 class LambOptimizerBuilder final : public OptimizerBuilder {
@@ -166,14 +166,14 @@ class LambOptimizerBuilder final : public OptimizerBuilder {
                                             {"alpha", "beta", "lambda", "epsilon"}) {}
 
   virtual Status Build(
-      const ArgDef& weight_argdef,
-      const ArgDef& gradient_argdef,
+      const std::vector<ArgDef>& weight_argdefs,
+      const std::vector<ArgDef>& gradient_argdefs,
       const ArgDef* do_update_argdef,
-      const OptimizerNodeConfig& opt_config,
+      const std::vector<OptimizerNodeConfig>& opt_configs,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,
       std::vector<TensorProto>& new_external_initializers,
-      ArgDef& output_weight_argdef) const override;
+      std::vector<ArgDef>& output_weight_argdefs) const override;
 };
 
 class OptimizerBuilderRegistry : public GenericRegistry<OptimizerBuilder> {

@@ -239,23 +239,27 @@ Status AddDirectWeightUpdate(
   assert(weight_argdefs.size() == gradient_argdefs.size() &&
          weight_argdefs.size() == opt_configs.size());
 
+
   const size_t num_weights = weight_argdefs.size();
   std::vector<ArgDef> output_weight_argdefs(num_weights);
-  for (size_t i = 0; i < num_weights; ++i) {
-    auto opt_builder = opt_builder_registry.MakeUnique(opt_configs[i].name);
+  std::vector<ArgDef> inputs_including_initializers{};
+  std::vector<TensorProto> new_initializers{};
+
+  for (size_t i = 0; i < opt_configs.size(); ++i) {
     ORT_RETURN_IF_NOT(
-        opt_builder, "Failed to get Optimizer builder for ", opt_configs[i].name);
-
-    std::vector<ArgDef> inputs_including_initializers{};
-    std::vector<TensorProto> new_initializers{};
-
-    ORT_RETURN_IF_ERROR(opt_builder->Build(
-        weight_argdefs[i], gradient_argdefs[i], all_gradients_finite_argdef, opt_configs[i],
-        graph_defs, inputs_including_initializers, new_initializers, output_weight_argdefs[i]));
-
-    graph_defs.AddInitializers(new_initializers);
+        opt_configs[i].name == opt_configs[0].name,
+        "All optimizers must be the same type, but the graph contains ",
+        opt_configs[0].name, " and ", opt_configs[i].name);
   }
+  auto opt_builder = opt_builder_registry.MakeUnique(opt_configs[0].name);
+  ORT_RETURN_IF_NOT(
+      opt_builder, "Failed to get Optimizer builder for ", opt_configs[0].name);
 
+  ORT_RETURN_IF_ERROR(opt_builder->Build(
+      weight_argdefs, gradient_argdefs, all_gradients_finite_argdef, opt_configs,
+      graph_defs, inputs_including_initializers, new_initializers, output_weight_argdefs));
+
+  graph_defs.AddInitializers(new_initializers);
   updated_weight_argdefs = std::move(output_weight_argdefs);
   return Status::OK();
 }
@@ -371,29 +375,34 @@ Status AddConditionalWeightUpdate(
         GraphAugmenter::GraphDefs then_subgraph_defs{};
         std::vector<ArgDef> group_input_argdefs{};
 
-        const size_t num_weights = weight_argdefs.size();
-        for (size_t i = 0; i < num_weights; ++i) {
-          auto opt_builder = opt_builder_registry.MakeUnique(opt_configs[i].name);
+        auto opt_builder = opt_builder_registry.MakeUnique(opt_configs[0].name);
+        ORT_RETURN_IF_NOT(
+            opt_builder, "Failed to get Optimizer builder for ", opt_configs[0].name);
+
+        for (size_t i = 0; i < opt_configs.size(); ++i) {
           ORT_RETURN_IF_NOT(
-              opt_builder, "Failed to get Optimizer builder for ", opt_configs[i].name);
-
-          std::vector<ArgDef> external_inputs_including_initializers{};
-          std::vector<TensorProto> new_external_initializers{};
-          ArgDef output_weight_argdef{};
-
-          ORT_RETURN_IF_ERROR(opt_builder->Build(
-              weight_argdefs[i], gradient_argdefs[i], /*do_update_argdef*/ nullptr, opt_configs[i],
-              then_subgraph_defs, external_inputs_including_initializers,
-              new_external_initializers, output_weight_argdef));
-
-          group_input_argdefs.emplace_back(output_weight_argdef);
-
-          for (const auto& external_input : external_inputs_including_initializers) {
-            then_subgraph.AddOuterScopeNodeArg(external_input.name);
-          }
-
-          graph_defs.AddInitializers(new_external_initializers);
+              opt_configs[i].name == opt_configs[0].name,
+              "One graph can only contains one optimizer but ", opt_configs[0].name, " and ", opt_configs[i].name, " are found.");
         }
+
+        std::vector<ArgDef> external_inputs_including_initializers{};
+        std::vector<TensorProto> new_external_initializers{};
+        std::vector<ArgDef> output_weight_argdefs{};
+
+        ORT_RETURN_IF_ERROR(opt_builder->Build(
+            weight_argdefs, gradient_argdefs, /*do_update_argdef*/ nullptr, opt_configs,
+            then_subgraph_defs, external_inputs_including_initializers,
+            new_external_initializers, output_weight_argdefs));
+
+        for (auto &arg: output_weight_argdefs) {
+          group_input_argdefs.emplace_back(arg);
+        }
+
+        for (const auto& external_input : external_inputs_including_initializers) {
+          then_subgraph.AddOuterScopeNodeArg(external_input.name);
+        }
+
+        graph_defs.AddInitializers(new_external_initializers);
 
         then_subgraph_defs.AddNodeDefs({NodeDef{"Group", group_input_argdefs, {conditional_output_argdef}}});
 
