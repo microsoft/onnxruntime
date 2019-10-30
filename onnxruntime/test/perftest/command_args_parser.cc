@@ -46,12 +46,13 @@ namespace perftest {
       "\t-P: Use parallel executor instead of sequential executor.\n"
       "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. \n"
+      "\t-u [optimized_model_path]: Specify the optimized model path for saving.\n"
       "\t-h: help\n");
 }
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:o:AMPvhs"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:o:u:AMPvhs"))) != -1) {
     switch (ch) {
       case 'm':
         if (!CompareCString(optarg, ORT_TSTR("duration"))) {
@@ -168,6 +169,9 @@ namespace perftest {
         }
         break;
       }
+      case 'u':
+        test_config.run_config.optimized_model_path = optarg;
+        break;
       case '?':
       case 'h':
       default:

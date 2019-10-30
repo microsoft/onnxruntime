@@ -46,7 +46,7 @@ TEST(TensorOpTest, Unsqueeze_3) {
 }
 
 TEST(TensorOpTest, Unsqueeze_Duplicate) {
-  OpTester test("Unsqueeze");
+  OpTester test("Unsqueeze", -1);  // use latest opset for shape inference errors
 
   test.AddAttribute("axes", std::vector<int64_t>{2, 1, 0, 2});
   test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
@@ -57,7 +57,7 @@ TEST(TensorOpTest, Unsqueeze_Duplicate) {
 }
 
 TEST(TensorOpTest, Unsqueeze_OutOfRange) {
-  OpTester test("Unsqueeze");
+  OpTester test("Unsqueeze", -1);  // use latest opset for shape inference errors
 
   test.AddAttribute("axes", std::vector<int64_t>{4});
   test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
@@ -67,7 +67,7 @@ TEST(TensorOpTest, Unsqueeze_OutOfRange) {
 }
 
 TEST(TensorOpTest, UnsqueezeNegAxis_3) {
-  OpTester test("Unsqueeze", 11);
+  OpTester test("Unsqueeze", -1);  // use latest opset for shape inference errors
 
   test.AddAttribute("axes", std::vector<int64_t>{-4, 1, -6});
   test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));

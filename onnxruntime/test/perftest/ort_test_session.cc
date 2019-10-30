@@ -111,6 +111,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   session_options.SetGraphOptimizationLevel(performance_test_config.run_config.optimization_level);
   if (!performance_test_config.run_config.profile_file.empty())
     session_options.EnableProfiling(performance_test_config.run_config.profile_file.c_str());
+  if (!performance_test_config.run_config.optimized_model_path.empty())
+    session_options.SetOptimizedModelFilePath(performance_test_config.run_config.optimized_model_path.c_str());
   session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
 
   size_t output_count = session_.GetOutputCount();

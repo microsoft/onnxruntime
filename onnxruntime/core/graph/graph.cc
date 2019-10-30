@@ -1599,7 +1599,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
   try {
     context.RunInferencing();
   } catch (const std::exception& ex) {
-    return Status(ONNXRUNTIME, FAIL, ex.what());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node (", node.Name(), ") Op (", node.OpType(), ") ", ex.what());
   }
 
   const auto& onnx_inferred_types(context.InferredOutputTypes());
@@ -2029,7 +2029,10 @@ void Graph::SetDescription(const std::string& description) {
 }
 
 void Graph::AddInitializedTensor(const TensorProto& tensor) {
-  if (name_to_initial_tensor_.end() != name_to_initial_tensor_.find(tensor.name())) {
+  auto existing = name_to_initial_tensor_.find(tensor.name());
+  if (existing != name_to_initial_tensor_.cend()) {
+    ORT_ENFORCE(existing->second == &tensor,
+                "AddInitializedTensor already has tensor with name ", tensor.name(), " but different TensorProto.");
     return;
   }
 
@@ -2046,17 +2049,36 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
 
     ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
   }
-
-  SetGraphProtoSyncNeeded();
-  SetGraphResolveNeeded();
 }
 
 void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
+  bool found = false;
   auto iter = name_to_initial_tensor_.find(tensor_name);
-  if (name_to_initial_tensor_.end() != iter) {
+  found = iter != name_to_initial_tensor_.end();
+  if (found) {
     name_to_initial_tensor_.erase(tensor_name);
-    SetGraphProtoSyncNeeded();
     SetGraphResolveNeeded();
+  }
+
+  auto& mutable_initializers = *(graph_proto_->mutable_initializer());
+  auto proto_entry = std::find_if(mutable_initializers.begin(), mutable_initializers.end(),
+                                  [&tensor_name](const TensorProto& entry) { return entry.name() == tensor_name; });
+
+  if (proto_entry != mutable_initializers.end()) {
+    auto num_entries = mutable_initializers.size();
+    if (num_entries > 1) {
+      // swap the entry being deleted with the last one, and delete it.
+      // we do this so we don't have to move all the entries past the one being deleted down one.
+      auto slot = proto_entry - mutable_initializers.begin();
+      auto last_entry = mutable_initializers.end() - 1;
+      mutable_initializers.SwapElements(slot, num_entries - 1);
+      mutable_initializers.erase(last_entry);
+    } else {
+      mutable_initializers.erase(proto_entry);
+    }
+  } else {
+    // these should always be in sync as the pointer in name_to_initial_tensor_ is to memory owned by graph_proto_
+    ORT_ENFORCE(!found, "graph_proto_ is not in sync with name_to_initial_tensor_.");
   }
 }
 
@@ -2064,7 +2086,6 @@ Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_in
   // name_to_initial_tensor_ maps from name to const TensorProto*, so we first
   // look up the const pointer by name, then find and modify the mutable
   // pointed-to TensorProto in graph_proto_.
-
   const auto& initializer_name = new_initializer.name();
   const auto name_to_initializer_it = name_to_initial_tensor_.find(initializer_name);
   ORT_RETURN_IF_NOT(name_to_initializer_it != name_to_initial_tensor_.end(),
@@ -2085,13 +2106,15 @@ Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_in
                     "Replacement tensor's data type does not match.");
 
   auto& mutable_initializers = *(graph_proto_->mutable_initializer());
-  auto old_mutable_initializer_ptr_it = std::find(
-      mutable_initializers.pointer_begin(), mutable_initializers.pointer_end(), &old_initializer);
-  ORT_ENFORCE(old_mutable_initializer_ptr_it != mutable_initializers.pointer_end(),
-              "graph_proto_ is not in sync with name_to_initial_tensor_");
-  auto& old_mutable_initializer = **old_mutable_initializer_ptr_it;
+  // use cheaper pointer comparison to find old entry
+  auto existing_entry = std::find(mutable_initializers.pointer_begin(), mutable_initializers.pointer_end(),
+                                  &old_initializer);
 
-  old_mutable_initializer = new_initializer;
+  // these should always be in sync as the pointer in name_to_initial_tensor_ is to memory owned by graph_proto_
+  ORT_ENFORCE(existing_entry != mutable_initializers.pointer_end(),
+              "graph_proto_ is not in sync with name_to_initial_tensor_");
+
+  **existing_entry = new_initializer;
 
   return Status::OK();
 }
@@ -2108,7 +2131,6 @@ bool Graph::GetInitializedTensor(const std::string& tensor_name, const TensorPro
 
 void Graph::CleanAllInitializedTensors() noexcept {
   name_to_initial_tensor_.clear();
-  removed_initializer_indexes_.clear();
 
   // Clearing RepeatedPtrFields does not free objects' memory. The memory is retained
   // and can be reused. Need to explicitly release the cleared objects and free the
@@ -2288,35 +2310,6 @@ const ONNX_NAMESPACE::GraphProto& Graph::ToGraphProto() {
   // Nodes.
   ToGraphProtoInternal(*graph_proto_);
 
-  if (!removed_initializer_indexes_.empty()) {
-    // Move initializers.
-    std::sort(removed_initializer_indexes_.begin(), removed_initializer_indexes_.end());
-    int lastInUseInitializerIndex = graph_proto_->initializer_size() - 1;
-    int start = 0;
-    int end = gsl::narrow_cast<int>(removed_initializer_indexes_.size()) - 1;
-    int lastRemovedInitializerIndex = removed_initializer_indexes_[end];
-
-    for (; start <= end; start++) {
-      // Find a lastInUseInitializer.
-      while (start <= end && lastInUseInitializerIndex == lastRemovedInitializerIndex) {
-        graph_proto_->mutable_initializer()->RemoveLast();
-        lastInUseInitializerIndex--;
-        end--;
-        if (start <= end) {
-          lastRemovedInitializerIndex = removed_initializer_indexes_[end];
-        }
-      }
-
-      if (start <= end) {
-        // Copy the <lastInUseInitializerIndex> initializer in use to the <start> slot which is removed.
-        *graph_proto_->mutable_initializer(removed_initializer_indexes_[start]) = graph_proto_->initializer(lastInUseInitializerIndex);
-        graph_proto_->mutable_initializer()->RemoveLast();
-        lastInUseInitializerIndex--;
-      }
-    }
-    removed_initializer_indexes_.clear();
-  }
-
   GraphProtoSyncNeeded(false);
 
   return *graph_proto_;
@@ -2329,9 +2322,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   GraphProto result;
   ToGraphProtoInternal(result);
 
-  for (auto initializer : GetAllInitializedTensors()) {
-    *result.add_initializer() = *initializer.second;
-  }
+  *result.mutable_initializer() = graph_proto_->initializer();
 
   return result;
 }

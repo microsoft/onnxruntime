@@ -140,6 +140,7 @@ static int write_tensor_to_png_file(OrtValue* tensor, const char* output_file) {
 
 static void usage() { printf("usage: <model_path> <input_file> <output_file> [cpu|cuda|dml] \n"); }
 
+#ifdef _WIN32
 static char* convert_string(const wchar_t* input) {
   size_t src_len = wcslen(input) + 1;
   if (src_len > INT_MAX) {
@@ -154,6 +155,7 @@ static char* convert_string(const wchar_t* input) {
   assert(len == r);
   return ret;
 }
+#endif
 
 int run_inference(OrtSession* session, const ORTCHAR_T* input_file, const ORTCHAR_T* output_file) {
   size_t input_height;
@@ -164,6 +166,7 @@ int run_inference(OrtSession* session, const ORTCHAR_T* input_file, const ORTCHA
   char* output_file_p = convert_string(output_file);
   char* input_file_p = convert_string(input_file);
 #else
+  char* output_file_p = output_file;
   char* input_file_p = input_file;
 #endif
   if (read_png_file(input_file_p, &input_height, &input_width, &model_input, &model_input_ele_count) != 0) {
@@ -258,16 +261,16 @@ int main(int argc, char* argv[]) {
 
   if (execution_provider)
   {
-    if (tcscmp(execution_provider, ORT_TSTR("cpu"))) {
+    if (tcscmp(execution_provider, ORT_TSTR("cpu")) == 0) {
       // Nothing; this is the default
-    } else if (tcscmp(execution_provider, ORT_TSTR("cuda"))) {
+    } else if (tcscmp(execution_provider, ORT_TSTR("cuda")) == 0) {
     #ifdef USE_CUDA
       enable_cuda(session_options);
     #else
       puts("CUDA is not enabled in this build.");
       return -1;
     #endif
-    } else if (tcscmp(execution_provider, ORT_TSTR("dml"))) {
+    } else if (tcscmp(execution_provider, ORT_TSTR("dml")) == 0) {
     #ifdef USE_DML
       enable_dml(session_options);
     #else
