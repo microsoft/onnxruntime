@@ -959,8 +959,7 @@ TEST(GraphUpdateTest, ReplaceInitializedTensor) {
     status = graph.ReplaceInitializedTensor(valid_replacement);
     ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-    auto tensor_data_matches = [](
-        const ONNX_NAMESPACE::TensorProto& a, const ONNX_NAMESPACE::TensorProto& b) {
+    auto tensor_data_matches = [](const ONNX_NAMESPACE::TensorProto& a, const ONNX_NAMESPACE::TensorProto& b) {
       if (a.int32_data_size() != b.int32_data_size()) return false;
       for (int i = 0; i < a.int32_data_size(); ++i) {
         if (a.int32_data(i) != b.int32_data(i)) return false;
@@ -978,6 +977,60 @@ TEST(GraphUpdateTest, ReplaceInitializedTensor) {
     ASSERT_EQ(graph_proto.initializer_size(), 1);
     ASSERT_TRUE(tensor_data_matches(graph_proto.initializer(0), valid_replacement));
   }
+}
+
+TEST(GraphUpdateTest, AddRemoveInitializerHandling) {
+  Model m{"test_model"};
+  Graph& graph = m.MainGraph();
+
+  auto create_tensor_proto = [](const std::string& name, int32_t value) {
+    ONNX_NAMESPACE::TensorProto init{};
+    init.set_name(name);
+    init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+    init.add_dims(1);
+    init.add_int32_data(value);
+
+    return init;
+  };
+
+  auto init = create_tensor_proto("1", 1);
+  auto init2 = create_tensor_proto("2", 2);
+
+  // add both, remove the 1st (moves the second initializer into the first slot), and finally re-add the first
+  graph.AddInitializedTensor(init);
+  graph.AddInitializedTensor(init2);
+  graph.RemoveInitializedTensor(init.name());
+  graph.AddInitializedTensor(init);
+
+  ASSERT_EQ(graph.GetAllInitializedTensors().size(), 2);
+
+  // check the values coming from name_to_initial_tensor_ are good;
+  const TensorProto* i = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor(init.name(), i));
+  ASSERT_TRUE(i->int32_data()[0] == 1);
+  ASSERT_TRUE(graph.GetInitializedTensor(init2.name(), i));
+  ASSERT_TRUE(i->int32_data()[0] == 2);
+
+  // check the values in the GraphProto are also correct
+  ONNX_NAMESPACE::GraphProto graph_proto_from_const_graph = static_cast<const Graph&>(graph).ToGraphProto();
+  ONNX_NAMESPACE::GraphProto graph_proto_from_graph = graph.ToGraphProto();
+
+  ASSERT_EQ(graph_proto_from_const_graph.initializer_size(), 2);
+  ASSERT_EQ(graph_proto_from_graph.initializer_size(), 2);
+
+  auto validate_proto = [&](const GraphProto& proto) {
+    auto initializers = proto.initializer();
+    // we expect '2' to be before '1' due to the remove moving the last initializer into the slot of the one being
+    // removed in order to free memory and only move one entry
+    EXPECT_EQ(initializers[0].name(), init2.name());
+    EXPECT_EQ(initializers[0].int32_data()[0], 2);
+
+    EXPECT_EQ(initializers[1].name(), init.name());
+    EXPECT_EQ(initializers[1].int32_data()[0], 1);
+  };
+
+  validate_proto(graph_proto_from_const_graph);
+  validate_proto(graph_proto_from_graph);
 }
 }  // namespace test
 }  // namespace onnxruntime
