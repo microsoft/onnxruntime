@@ -88,16 +88,5 @@ TEST(ActivationContribOpTest, Gelu) {
       {}, false, 1, kMSDomain);
 }
 
-TEST(ActivationContribOpTest, FastGelu) {
-  int min_cuda_architecture = 0;   // required 530 for half
-  if (HasCudaEnvironment(min_cuda_architecture)) {
-    TestActivationContribOp(
-        "FastGelu",
-        input_values,
-        [](float x) { return x * (0.5f + 0.5f * tanh(x * (0.035677408136300125f * x * x + 0.7978845608028654f))); },
-        {}, false, 1, kMSDomain);
-  }
-}
-
 }  // namespace test
 }  // namespace onnxruntime

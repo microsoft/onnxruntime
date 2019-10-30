@@ -8,7 +8,7 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-bool computeGelu(cudaStream_t stream, int m, int n, const T* input, const T* bias, T* output);
+bool computeGelu(cudaStream_t stream, int input_length, int bias_length, const T* input, const T* bias, T* output);
 
 }  // namespace cuda
 }  // namespace contrib
