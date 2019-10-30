@@ -216,7 +216,7 @@ common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRe
 common::Status InferenceSession::Load(std::function<common::Status(std::shared_ptr<Model>&)> loader, const std::string& event_name) {
   Status status = Status::OK();
   TimePoint tp;
-  if (session_profiler_.FEnabled()) {
+  if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.StartTime();
   }
   try {
@@ -543,7 +543,7 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
 common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
   TimePoint tp;
-  if (session_profiler_.FEnabled()) {
+  if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.StartTime();
   }
 
@@ -782,7 +782,7 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
                              const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
                              std::vector<OrtValue>* p_fetches) {
   TimePoint tp;
-  if (session_profiler_.FEnabled()) {
+  if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.StartTime();
   }
   Status retval = Status::OK();
