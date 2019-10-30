@@ -21,6 +21,7 @@
 #include "core/graph/model.h"
 #include "core/graph/op.h"
 #include "gtest/gtest.h"
+#include "gmock/gmock.h"
 
 #ifdef __GNUC__
 #define UNUSED __attribute__((unused))
@@ -102,6 +103,14 @@ static bool RegisterCustomSchemas() {
       .Input(2, "input_3", "docstr for input_3.", "T")
       .Output(0, "output_1", "docstr for output_1.", "T")
       .TypeConstraint("T", {"tensor(int32)", "tensor(float)"}, "input/output types");
+
+  OPERATOR_SCHEMA(ShapeInferenceThrowsOp)
+      .SetDoc("Throw shape inference error.")
+      .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
+      .Output(0, "output_1", "docstr for output_1.", "tensor(int32)")
+      .TypeAndShapeInferenceFunction([](InferenceContext&) {
+        fail_shape_inference("try harder");
+      });
 
   return true;
 }
@@ -725,6 +734,27 @@ TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {
   }
   EXPECT_EQ(1, graph_proto.output_size());
   EXPECT_EQ("node_4_out_1", graph_proto.output(0).name());
+}
+
+TEST(ResolvingGraphTest, ShapeInferenceErrorHandling) {
+  ASSERT_TRUE(kSchemasRegistered);
+
+  Model model("graph");
+  auto& graph = model.MainGraph();
+
+  TypeProto tensor_int32;
+  tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& input_arg1 = graph.GetOrCreateNodeArg("node_1_in_1", &tensor_int32);
+  auto& output_arg1 = graph.GetOrCreateNodeArg("node_1_out_1", &tensor_int32);
+
+  graph.AddNode("node_1", "ShapeInferenceThrowsOp", "node 1", {&input_arg1}, {&output_arg1});
+
+  auto status = graph.Resolve();
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Node (node_1) Op (ShapeInferenceThrowsOp) "
+                                                        "[ShapeInferenceError] try harder"));
 }
 
 TEST(TestAddAttribute, AddTensorAttribute) {
