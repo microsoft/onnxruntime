@@ -38,23 +38,18 @@ __global__ void ExcludeOutput(int64_t* output_i, int64_t K, int64_t dimension) {
 
 template <typename T>
 Status TopKImpl(const CudaKernel* kernel, const T* input_x, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
-  CudaKernel::CudaAsyncBuffer<T> input_key_buffer(kernel, dimension);
-  CudaKernel::CudaAsyncBuffer<T> output_key_buffer(kernel, dimension);
-  CudaKernel::CudaAsyncBuffer<int64_t> input_value_buffer(kernel, dimension);
-  CudaKernel::CudaAsyncBuffer<int64_t> output_value_buffer(kernel, dimension);
-  ORT_RETURN_IF_ERROR(input_key_buffer.CopyToGpu());
-  ORT_RETURN_IF_ERROR(output_key_buffer.CopyToGpu());
-  ORT_RETURN_IF_ERROR(input_value_buffer.CopyToGpu());
-  ORT_RETURN_IF_ERROR(output_value_buffer.CopyToGpu());
-  auto input_key = input_key_buffer.GpuPtr();
-  auto output_key = output_key_buffer.GpuPtr();
-  auto input_value = input_value_buffer.GpuPtr();
-  auto output_value = output_value_buffer.GpuPtr();
+  auto input_key_buffer = kernel->GetScratchBuffer<T>(dimension);
+  auto output_key_buffer = kernel->GetScratchBuffer<T>(dimension);
+  auto input_value_buffer = kernel->GetScratchBuffer<int64_t>(dimension);
+  auto output_value_buffer = kernel->GetScratchBuffer<int64_t>(dimension);
+  auto input_key = input_key_buffer.get();
+  auto output_key = output_key_buffer.get();
+  auto input_value = input_value_buffer.get();
+  auto output_value = output_value_buffer.get();
   size_t temp_bytes = 0;
   CUDA_RETURN_IF_ERROR(cub::DeviceRadixSort::SortPairs(nullptr, temp_bytes, input_key, output_key, input_value, output_value, dimension));
-  CudaKernel::CudaAsyncBuffer<char> temp_storage_buffer(kernel, temp_bytes);
-  ORT_RETURN_IF_ERROR(temp_storage_buffer.CopyToGpu());
-  auto temp_storage = temp_storage_buffer.GpuPtr();
+  auto temp_storage_buffer = kernel->GetScratchBuffer<char>(temp_bytes);
+  auto temp_storage = temp_storage_buffer.get();
   auto blocksPerGridD = (int)(ceil(static_cast<float>(dimension) / GridDim::maxThreadsPerBlock));
   auto blocksPerGridK = (int)(ceil(static_cast<float>(K) / GridDim::maxThreadsPerBlock));
   for (int64_t i = 0; i < N; i++) {
