@@ -22,9 +22,12 @@ template <typename T>
 Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   const Tensor& X = *ctx->Input<Tensor>(0);
-  const TensorShape input_shape{X.Shape()};
+  const TensorShape& input_shape{X.Shape()};
 
   Tensor* Y = ctx->Output(0, input_shape);
+  // special case when there is a dim value of 0 in the shape.  
+  if (input_shape.Size() == 0)
+    return Status::OK();
 
   const int64_t axis = HandleNegativeAxis(axis_, input_shape.NumDimensions());
 

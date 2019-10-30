@@ -100,8 +100,7 @@ using EigenMatrixMapRowMajor = Eigen::Map<
 template <>
 Status RNN<float>::Compute(OpKernelContext* ctx) const {
   using namespace rnn::detail;
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-  concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
 
   // inputs
   const Tensor& X = *ctx->Input<Tensor>(0);
@@ -188,7 +187,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
           // the shape of initial_h is [num_directions, batch_size, hidden_size]
           // so pick the offset (multiple of Y_frame_size == batch_size * hidden_size_)
           // based on the direction
-          h_prev = initial_h->template Data<float>() + (direction * Y_frame_size);        
+          h_prev = initial_h->template Data<float>() + (direction * Y_frame_size);
         }
       } else {
         if (isReverse)

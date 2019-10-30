@@ -74,6 +74,7 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_DML}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -166,6 +167,9 @@ add_custom_command(
       ${REPO_ROOT}/ThirdPartyNotices.txt
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${REPO_ROOT}/docs/Privacy.md
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/LICENSE
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
   COMMAND ${CMAKE_COMMAND} -E copy
@@ -250,6 +254,7 @@ if (onnxruntime_USE_NUPHAR)
 endif()
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  include(onnxruntime_language_interop_ops.cmake)  
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy

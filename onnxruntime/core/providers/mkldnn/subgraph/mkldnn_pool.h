@@ -21,10 +21,10 @@ class MklDnnPool : public MklDnnKernel {
     ReadAttributes(attributes, attributes_prefix);
   }
 
-  Status CreatePrimitives(const OrtCustomOpApi* api,
-                          OrtKernelContext* context,
-                          mkldnn::engine& cpu_engine, std::vector<mkldnn::primitive>& net,
-                          mkldnn::memory::format& source_format) override {
+  void CreatePrimitives(const OrtCustomOpApi* api,
+                        OrtKernelContext* context,
+                        mkldnn::engine& cpu_engine, std::vector<mkldnn::primitive>& net,
+                        std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) override {
     Ort::CustomOpApi ort{*api};
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
@@ -37,33 +37,38 @@ class MklDnnPool : public MklDnnKernel {
       auto xdim = tensor_shape.size();
 
       mkldnn::memory::dims dims(xdim);
-      ort_source_format_ = GetSourceFormat(static_cast<int>(xdim));
-      source_format = ort_source_format_;
-      src_format_ = ort_source_format_;
       x_shape_ = TensorShape(xshape, xdim);
 
       mkldnn::memory::dims src_dims_mkl(x_shape_.GetDims().begin(), x_shape_.GetDims().end());
+      ort_source_format_ = GetSourceFormat(static_cast<int>(xdim));
+      // ort_source_desc is the format of ONNX Runtime tensor format
+      ort_source_desc_ = mkldnn::memory::desc({src_dims_mkl}, MklDnnType<T>(), ort_source_format_);
+      // source_desc is propagating format. input to this op.
+      source_desc_ = mkldnn::memory::desc({src_dims_mkl}, MklDnnType<T>(), ort_source_format_);
 
       // reorder for better performance
-      mkldnn::memory::format fmt = GetAVXFormat(src_dims_mkl);
-      src_md_.reset(new mkldnn::memory::desc(
-          {src_dims_mkl}, MklDnnType<T>(), fmt));
+      mkldnn::memory::format_tag src_format = GetAVXFormat(src_dims_mkl);
+      src_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
+          mkldnn::memory::desc({src_dims_mkl}, MklDnnType<T>(), src_format));
     } else {
       // get the output of previous node (mkldnn block propagation).
       // TODO Sourcenode will set src of this node.
       x_shape_ = parents_[0].get()->primitive_dst_shape_;
-      ort_source_format_ = source_format;
-      src_format_ = parents_[0].get()->primitive_dst_format_;
+      source_desc_ = parents_[0].get()->primitive_dst_desc_;
       mkldnn::memory::dims src_dims_mkl(x_shape_.GetDims().begin(), x_shape_.GetDims().end());
 
-      if (src_format_ == ort_source_format_) {
+      ort_source_format_ = parents_[0].get()->ort_source_format_;
+      ort_source_desc_ = parents_[0].get()->ort_source_desc_;
+      source_desc_ = parents_[0].get()->primitive_dst_desc_;
+
+      if (source_desc_ == ort_source_desc_) {
         // reorder for better performance
-        mkldnn::memory::format fmt = GetAVXFormat(src_dims_mkl);
-        src_md_.reset(new mkldnn::memory::desc(
-            {src_dims_mkl}, MklDnnType<T>(), fmt));
+        mkldnn::memory::format_tag fmt = GetAVXFormat(src_dims_mkl);
+        src_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
+            mkldnn::memory::desc({src_dims_mkl}, MklDnnType<T>(), fmt));
       } else {
-        src_md_.reset(new mkldnn::memory::desc(
-            parents_[0].get()->primitive_dst_mem_.get()->get_primitive_desc().desc()));
+        src_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
+            mkldnn::memory::desc(parents_[0].get()->primitive_dst_mem_->get_desc()));
       }
     }
 
@@ -72,7 +77,8 @@ class MklDnnPool : public MklDnnKernel {
     primitive_dst_shape_ = TensorShape(y_dims);
 
     if (x_shape_.NumDimensions() <= 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Please call default CPU kernel.");
+      primitive_created_status_ = ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                                  "1D Pooling is not supported by MKLDNN.");
     }
 
     if (global_pooling_) {
@@ -81,19 +87,14 @@ class MklDnnPool : public MklDnnKernel {
       strides_.assign(kernel_shape_.size(), 1);
     }
 
-    size_t num_outputs = 1;  //OpKernel::Node().OutputDefs().size(); TODO
-    if (num_outputs == 2) {
-      ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "can not call cpu default op");
-    }
-
     mkldnn::memory::dims dst_dims_mkl(y_dims.begin(), y_dims.end());
     mkldnn::memory::dims kernel_mkl(kernel_shape_.begin(), kernel_shape_.end());
     mkldnn::memory::dims strides_mkl(strides_.begin(), strides_.end());
     mkldnn::memory::dims padding_left_mkl(pads_.begin(), pads_.begin() + (pads_.size() / 2));
     mkldnn::memory::dims padding_right_mkl(pads_.begin() + (pads_.size() / 2), pads_.end());
 
-    primitive_dst_md_.reset(new mkldnn::memory::desc(
-        {dst_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format::any));
+    primitive_dst_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
+        mkldnn::memory::desc({dst_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format_tag::any));
 
     mkldnn::algorithm algo = mkldnn::algorithm::pooling_max;
     if (op_name_ == "AveragePool" || op_name_ == "GlobalAveragePool") {
@@ -102,50 +103,50 @@ class MklDnnPool : public MklDnnKernel {
         algo = mkldnn::algorithm::pooling_avg_include_padding;
       }
     }
-    fwd_desc_.reset(new mkldnn::pooling_forward::desc(
-        mkldnn::prop_kind::forward_inference, algo,
-        *src_md_, *primitive_dst_md_,
-        strides_mkl, kernel_mkl,
-        padding_left_mkl, padding_right_mkl,
-        mkldnn::padding_kind::zero));
+    fwd_desc_ = onnxruntime::make_unique<mkldnn::pooling_forward::desc>(
+        mkldnn::pooling_forward::desc(mkldnn::prop_kind::forward_inference, algo,
+                                      *src_md_, *primitive_dst_md_,
+                                      strides_mkl, kernel_mkl,
+                                      padding_left_mkl, padding_right_mkl));
 
-    fwd_primitive_desc_.reset(new mkldnn::pooling_forward::primitive_desc(
-        *fwd_desc_, cpu_engine));
+    fwd_primitive_desc_ = onnxruntime::make_unique<mkldnn::pooling_forward::primitive_desc>(
+        mkldnn::pooling_forward::primitive_desc(*fwd_desc_, cpu_engine));
 
     if (mklnode_ptr_->parent_nodes.empty()) {
       // Sub-graph's first node. Read input from input buffer
-      src_mem_.reset(new mkldnn::memory(
-          fwd_primitive_desc_.get()->src_primitive_desc(), nullptr));
+      src_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+          mkldnn::memory(fwd_primitive_desc_.get()->src_desc(), cpu_engine, nullptr));
     } else {
       // Sub-graph's inner node. set input to parent's output
       src_mem_ = parents_[0].get()->primitive_dst_mem_;
     }
 
-    primitive_src_format_ = static_cast<mkldnn::memory::format>(
-        fwd_primitive_desc_.get()->src_primitive_desc().desc().data.format);
+    primitive_src_desc_ = fwd_primitive_desc_.get()->src_desc();
+    primitive_dst_desc_ = fwd_primitive_desc_.get()->dst_desc();
 
-    primitive_dst_format_ = static_cast<mkldnn::memory::format>(
-        fwd_primitive_desc_.get()->dst_primitive_desc().desc().data.format);
-
-    src_size_ = fwd_primitive_desc_.get()->src_primitive_desc().get_size();
-    dst_size_ = fwd_primitive_desc_.get()->dst_primitive_desc().get_size();
+    src_size_ = fwd_primitive_desc_.get()->src_desc().get_size();
+    dst_size_ = fwd_primitive_desc_.get()->dst_desc().get_size();
 
     // reorder source memory for best performance (AVX512);
-    if (primitive_src_format_ != src_format_) {
-      mkldnn::memory::dims src_dims_mkl(x_shape_.GetDims().begin(), x_shape_.GetDims().end());
-      auto src_md = mkldnn::memory::desc(src_dims_mkl, MklDnnType<T>(), src_format_);
-      auto pd = mkldnn::memory::primitive_desc(src_md, cpu_engine);
+    if (primitive_src_desc_ != source_desc_) {
+      mkldnn::memory::dims src_dims(x_shape_.GetDims().begin(), x_shape_.GetDims().end());
+      auto pd = mkldnn::memory::desc(source_desc_);
 
       if (mklnode_ptr_->parent_nodes.empty())
-        src_mem_from_.reset(new mkldnn::memory(pd, nullptr));
+        src_mem_from_ = onnxruntime::make_unique<mkldnn::memory>(
+            mkldnn::memory(pd, cpu_engine, nullptr));
       else
         src_mem_from_ = parents_[0].get()->primitive_dst_mem_;
 
-      src_mem_.reset(new mkldnn::memory(fwd_primitive_desc_->src_primitive_desc(), nullptr));
+      src_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+          mkldnn::memory(fwd_primitive_desc_->src_desc(), cpu_engine, nullptr));
       net.push_back(mkldnn::reorder(*src_mem_from_, *src_mem_));
+      net_args.push_back({{MKLDNN_ARG_FROM, *src_mem_from_},
+                          {MKLDNN_ARG_TO, *src_mem_}});
     } else {
       if (mklnode_ptr_->parent_nodes.empty()) {
-        src_mem_.reset(new mkldnn::memory(fwd_primitive_desc_->src_primitive_desc(), nullptr));
+        src_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+            mkldnn::memory(fwd_primitive_desc_->src_desc(), cpu_engine, nullptr));
       } else {
         src_mem_ = parents_[0].get()->primitive_dst_mem_;
       }
@@ -153,54 +154,43 @@ class MklDnnPool : public MklDnnKernel {
 
     if (mklnode_ptr_->output_index >= 0) {
       // last node of sub-graph. need to allocate memory for output_tensor
-      if (primitive_dst_format_ != ort_source_format_) {
+      if (primitive_dst_desc_ != ort_source_desc_) {
         // reorder neded. Use primitive output as input to reorder and
         // allocate buffer for reorder output, final output of this subgraph
-        primitive_dst_mem_.reset(
-            new mkldnn::memory(fwd_primitive_desc_.get()->dst_primitive_desc()));
+        primitive_dst_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+            mkldnn::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine));
       } else {
         // Last node but re-order not needed. Allocate buffer to output of this node
-        primitive_dst_mem_.reset(
-            new mkldnn::memory(fwd_primitive_desc_.get()->dst_primitive_desc(), nullptr));
+        primitive_dst_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+            mkldnn::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine, nullptr));
       }
     } else {
       // Intermediate node. Use mkldnn kernel internal memory for output and
       // use this as input to next node.
-      primitive_dst_mem_.reset(
-          new mkldnn::memory(fwd_primitive_desc_.get()->dst_primitive_desc()));
+      primitive_dst_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+          mkldnn::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine));
     }
-    pool_fwd_.reset(
-        new mkldnn::pooling_forward(*fwd_primitive_desc_, *src_mem_, *primitive_dst_mem_));
+    pool_fwd_ = onnxruntime::make_unique<mkldnn::pooling_forward>(
+        mkldnn::pooling_forward(*fwd_primitive_desc_));
 
     net.push_back(*pool_fwd_);
-
+    net_args.push_back({{MKLDNN_ARG_SRC, *src_mem_},
+                        {MKLDNN_ARG_DST, *primitive_dst_mem_}});
     if (mklnode_ptr_->output_index >= 0) {
       // one of the end nodes. Allocate output buffer memory and
       // reorder is necessary
       mkldnn::memory::data_type t = MklDnnType<T>();
-      InitDstReorderOutput(cpu_engine, t, net);
+      InitDstReorderOutput(cpu_engine, t, net, net_args);
     }
-    return Status::OK();
   }
 
   Status Bind(const OrtCustomOpApi* api, OrtKernelContext* context) override {
     Ort::CustomOpApi ort{*api};
+
+    ORT_RETURN_IF_ERROR(primitive_created_status_);
+
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
-
-    if (x_shape_.NumDimensions() <= 3) {
-      if (mklnode_ptr_->parent_nodes.empty()) {
-        // abort as MKLDNN cannot execute this. but
-        // ORT try to delete output_tensor buffer data. allocate memory so that it can delete
-        // fix for test_averagepool_1d_default node test
-        //auto xshape = input_tensors[input_index].shape;
-        //auto xdim = input_tensors[input_index].ndim;
-        //AllocateOutputTensor(output_tensors, mklnode_ptr_->output_index, xshape, xdim, input_tensors[0].dtype);
-      }
-      std::cout << "MKLDNN cannot compute shape with dim less than three." << std::endl;
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Please call default CPU kernel.");
-    }
-
-    if (primitive_src_format_ != src_format_) {
+    if (fwd_primitive_desc_.get()->src_desc() != source_desc_) {
       if (mklnode_ptr_->parent_nodes.empty()) {
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
         const T* src_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));
@@ -209,7 +199,7 @@ class MklDnnPool : public MklDnnKernel {
         src_mem_from_ = parents_[0].get()->primitive_dst_mem_;
       }
 
-      auto src_size = fwd_primitive_desc_.get()->src_primitive_desc().get_size();
+      auto src_size = fwd_primitive_desc_.get()->src_desc().get_size();
       src_reorder_buffer_ = IAllocator::MakeUniquePtr<void>(alloc_, src_size);
       src_mem_->set_data_handle(src_reorder_buffer_.get());
     } else {
@@ -230,7 +220,7 @@ class MklDnnPool : public MklDnnKernel {
       OrtValue* output = ort.KernelContext_GetOutput(context, mklnode_ptr_->output_index, &y_dims[0], static_cast<int>(primitive_dst_shape_.GetDims().size()));
       T* dst_data = ort.GetTensorMutableData<T>(output);
 
-      if (primitive_dst_format_ != ort_source_format_) {
+      if (primitive_dst_desc_ != ort_source_desc_) {
         reorder_dst_mem_to_->set_data_handle(dst_data);
       } else {
         primitive_dst_mem_->set_data_handle(dst_data);
@@ -322,15 +312,15 @@ class MklDnnPool : public MklDnnKernel {
   std::unique_ptr<mkldnn::memory> dst_mem_to_;
 
  private:
-  mkldnn::memory::format GetAVXFormat(const mkldnn::memory::dims& src_dims_mkl) {
+  mkldnn::memory::format_tag GetAVXFormat(const mkldnn::memory::dims& src_dims_mkl) {
     bool is_2D = src_dims_mkl.size() == 4 ? true : false;
-    mkldnn::memory::format fmt = mkldnn::memory::format::any;
+    mkldnn::memory::format_tag fmt = mkldnn::memory::format_tag::any;
     if (CPUIDInfo::GetCPUIDInfo().HasAVX512f()) {
-      fmt = is_2D ? mkldnn::memory::format::nChw16c : mkldnn::memory::format::nCdhw16c;
+      fmt = is_2D ? mkldnn::memory::format_tag::nChw16c : mkldnn::memory::format_tag::nCdhw16c;
     } else if (CPUIDInfo::GetCPUIDInfo().HasAVX2() && (src_dims_mkl[1] % 8 == 0)) {
-      fmt = is_2D ? mkldnn::memory::format::nChw8c : mkldnn::memory::format::ncdhw;
+      fmt = is_2D ? mkldnn::memory::format_tag::nChw8c : mkldnn::memory::format_tag::ncdhw;
     } else {
-      fmt = is_2D ? mkldnn::memory::format::nchw : mkldnn::memory::format::ncdhw;
+      fmt = is_2D ? mkldnn::memory::format_tag::nchw : mkldnn::memory::format_tag::ncdhw;
     }
     return fmt;
   }

@@ -82,6 +82,12 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
       ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape<true>(x_shape.Slice(2), kernel_shape,
                                                              strides, dilations, &pads, &y_dims));
       s_.y_dims = y_dims;
+      Tensor* Y = context->Output(0, TensorShape(s_.y_dims));
+      y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
+
+      // special case when there is a dim value of 0 in the shape.
+      if (Y->Shape().Size() == 0)
+        return Status::OK();
 
       std::vector<int64_t> x_dims_cudnn = x_dims;
       std::vector<int64_t> y_dims_cudnn = y_dims;
@@ -114,14 +120,11 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
         std::vector<int64_t> b_dims(2 + kernel_shape.size());
         b_dims[0] = 1;           // N
         b_dims[1] = b_shape[0];  // C
-        for (int i = 0; i < kernel_shape.size(); i++)
+        for (size_t i = 0; i < kernel_shape.size(); i++)
           b_dims[2 + i] = 1;
 
         ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
       }
-
-      Tensor* Y = context->Output(0, TensorShape(s_.y_dims));
-      y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
       if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {
         IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize);
@@ -158,6 +161,10 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (!y_data) {
     Tensor* Y = context->Output(0, TensorShape(s_.y_dims));
+    // special case when there is a dim value of 0 in the shape.
+    if (Y->Shape().Size() == 0)
+      return Status::OK();
+
     y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
   }
 
@@ -212,7 +219,7 @@ Status CudnnConvolutionDescriptor::Set(
   std::vector<int> pad_dims(rank);
   std::vector<int> stride_dims(rank);
   std::vector<int> dilation_dims(rank);
-  for (int i = 0; i < rank; i++) {
+  for (size_t i = 0; i < rank; i++) {
     pad_dims[i] = gsl::narrow_cast<int>(pads[i]);
     stride_dims[i] = gsl::narrow_cast<int>(strides[i]);
     dilation_dims[i] = gsl::narrow_cast<int>(dilations[i]);

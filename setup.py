@@ -48,7 +48,7 @@ if '--nightly_build' in sys.argv:
     sys.argv.remove('--nightly_build')
 
 is_manylinux1 = False
-if environ.get('AUDITWHEEL_PLAT', None) == 'manylinux1_x86_64':
+if environ.get('AUDITWHEEL_PLAT', None) == 'manylinux1_x86_64' or environ.get('AUDITWHEEL_PLAT', None) == 'manylinux2010_x86_64' :
     is_manylinux1 = True
 
 
@@ -105,7 +105,7 @@ try:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
                 logger.info('repairing %s for manylinux1', file)
                 try:
-                    subprocess.run(['auditwheel', 'repair', '--plat', 'manylinux1_x86_64', '-w', self.dist_dir, file], check=True, stdout=subprocess.PIPE)
+                    subprocess.run(['auditwheel', 'repair', '-w', self.dist_dir, file], check=True, stdout=subprocess.PIPE)
                 finally:
                     logger.info('removing %s', file)
                     remove(file)
@@ -115,7 +115,7 @@ except ImportError:
 
 # Additional binaries
 if platform.system() == 'Linux':
-  libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.so.0', 'libmklml_intel.so', 'libiomp5.so', 'mimalloc.so']
+  libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.so.1', 'libmklml_intel.so', 'libiomp5.so', 'mimalloc.so']
   # nGraph Libs
   libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
   # Nuphar Libs
@@ -123,7 +123,7 @@ if platform.system() == 'Linux':
   if nightly_build:
     libs.extend(['libonnxruntime_pywrapper.so'])
 elif platform.system() == "Darwin":
-  libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.0.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
+  libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.1.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
   if nightly_build:
     libs.extend(['libonnxruntime_pywrapper.dylib'])
 else:
@@ -158,7 +158,7 @@ examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join('datasets', x) for x in examples_names]
 
 # Extra files such as EULA and ThirdPartyNotices
-extra = ["LICENSE", "ThirdPartyNotices.txt"]
+extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md"]
 
 # Description
 README = path.join(getcwd(), "docs/python/README.rst")

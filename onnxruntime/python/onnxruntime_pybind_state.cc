@@ -12,6 +12,8 @@
 #include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/framework/TensorSeq.h"
+#include "core/framework/session_options.h"
 
 #if USE_CUDA
 #define BACKEND_PROC "GPU"
@@ -134,7 +136,7 @@ using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
 static AllocatorPtr& GetAllocator() {
-  static AllocatorPtr alloc = std::make_shared<CPUAllocator>();
+  static AllocatorPtr alloc = std::make_shared<TAllocator>();
   return alloc;
 }
 
@@ -148,9 +150,53 @@ void AddNonTensor(OrtValue& val, std::vector<py::object>& pyobjs) {
   pyobjs.push_back(py::cast(val.Get<T>()));
 }
 
+void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj) {
+  std::vector<npy_intp> npy_dims;
+  const TensorShape& shape = rtensor.Shape();
+
+  for (size_t n = 0; n < shape.NumDimensions(); ++n) {
+    npy_dims.push_back(shape[n]);
+  }
+
+  MLDataType dtype = rtensor.DataType();
+  const int numpy_type = OnnxRuntimeTensorToNumpyType(dtype);
+  obj = py::reinterpret_steal<py::object>(PyArray_SimpleNew(
+      shape.NumDimensions(), npy_dims.data(), numpy_type));
+
+  void* outPtr = static_cast<void*>(
+      PyArray_DATA(reinterpret_cast<PyArrayObject*>(obj.ptr())));
+
+  if (numpy_type != NPY_OBJECT) {
+    memcpy(outPtr, rtensor.DataRaw(dtype), dtype->Size() * shape.Size());
+  } else {
+    // Handle string type.
+    py::object* outObj = static_cast<py::object*>(outPtr);
+    const std::string* src = rtensor.template Data<std::string>();
+    for (int i = 0; i < rtensor.Shape().Size(); i++, src++) {
+      outObj[i] = py::cast(*src);
+    }
+  }
+}
+
+template <>
+void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
+  const auto& seq_tensors = val.Get<TensorSeq>();
+  size_t num_tensors = seq_tensors.tensors.size();
+  py::list py_list;
+  for (size_t i = 0; i < num_tensors; ++i) {
+    const auto& rtensor = seq_tensors.tensors[i];
+    py::object obj;
+    GetPyObjFromTensor(rtensor, obj);
+    py_list.append(obj);
+  }
+  pyobjs.push_back(py_list);
+}
+
 void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   // Should be in sync with core/framework/datatypes.h
-  if (val.Type() == DataTypeImpl::GetType<MapStringToString>()) {
+  if (val.Type() == DataTypeImpl::GetType<TensorSeq>()) {
+    AddNonTensor<TensorSeq>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<MapStringToString>()) {
     AddNonTensor<MapStringToString>(val, pyobjs);
   } else if (val.Type() == DataTypeImpl::GetType<MapStringToInt64>()) {
     AddNonTensor<MapStringToInt64>(val, pyobjs);
@@ -177,31 +223,8 @@ void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
 
 void AddTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   const Tensor& rtensor = val.Get<Tensor>();
-  std::vector<npy_intp> npy_dims;
-  const TensorShape& shape = rtensor.Shape();
-
-  for (size_t n = 0; n < shape.NumDimensions(); ++n) {
-    npy_dims.push_back(shape[n]);
-  }
-
-  MLDataType dtype = rtensor.DataType();
-  const int numpy_type = OnnxRuntimeTensorToNumpyType(dtype);
-  py::object obj = py::reinterpret_steal<py::object>(PyArray_SimpleNew(
-      shape.NumDimensions(), npy_dims.data(), numpy_type));
-
-  void* outPtr = static_cast<void*>(
-      PyArray_DATA(reinterpret_cast<PyArrayObject*>(obj.ptr())));
-
-  if (numpy_type != NPY_OBJECT) {
-    memcpy(outPtr, rtensor.DataRaw(dtype), dtype->Size() * shape.Size());
-  } else {
-    // Handle string type.
-    py::object* outObj = static_cast<py::object*>(outPtr);
-    const std::string* src = rtensor.template Data<std::string>();
-    for (int i = 0; i < rtensor.Shape().Size(); i++, src++) {
-      outObj[i] = py::cast(*src);
-    }
-  }
+  py::object obj;
+  GetPyObjFromTensor(rtensor, obj);
   pyobjs.push_back(obj);
 }
 
@@ -522,7 +545,12 @@ void addObjectMethods(py::module& m) {
       .value("ORT_ENABLE_EXTENDED", GraphOptimizationLevel::ORT_ENABLE_EXTENDED)
       .value("ORT_ENABLE_ALL", GraphOptimizationLevel::ORT_ENABLE_ALL);
 
-  py::class_<SessionOptions> sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
+  py::enum_<ExecutionMode>(m, "ExecutionMode")
+      .value("ORT_SEQUENTIAL", ExecutionMode::ORT_SEQUENTIAL)
+      .value("ORT_PARALLEL", ExecutionMode::ORT_PARALLEL);
+
+  py::class_<SessionOptions>
+      sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
   sess
       .def(py::init())
       .def_readwrite("enable_cpu_mem_arena", &SessionOptions::enable_cpu_mem_arena,
@@ -534,8 +562,6 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
                      R"pbdoc(File path to serialize optimized model. By default, optimized model is not serialized if optimized_model_filepath is not provided.)pbdoc")
       .def_readwrite("enable_mem_pattern", &SessionOptions::enable_mem_pattern,
                      R"pbdoc(Enable the memory pattern optimization. Default is true.)pbdoc")
-      .def_readwrite("enable_sequential_execution", &SessionOptions::enable_sequential_execution,
-                     R"pbdoc(Enables sequential execution, disables parallel execution. Default is true.)pbdoc")
       .def_readwrite("logid", &SessionOptions::session_logid,
                      R"pbdoc(Logger id to use for session output.)pbdoc")
       .def_readwrite("log_severity_level", &SessionOptions::session_log_severity_level,
@@ -548,6 +574,8 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                      R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
       .def_readwrite("inter_op_num_threads", &SessionOptions::inter_op_num_threads,
                      R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")
+      .def_readwrite("execution_mode", &SessionOptions::execution_mode,
+                     R"pbdoc(Sets the execution mode. Default is sequential.)pbdoc")
       .def_property(
           "graph_optimization_level",
           [](const SessionOptions* options) -> GraphOptimizationLevel {
@@ -692,7 +720,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {
           OrtValue ml_value;
-          CreateGenericMLValue(GetAllocator(), _.first, _.second, &ml_value);
+          auto px = sess->GetModelInputs();
+          if (!px.first.IsOK() || !px.second) {
+            throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+          }
+          CreateGenericMLValue(px.second, GetAllocator(), _.first, _.second, &ml_value);
           if (PyErr_Occurred()) {
             PyObject *ptype, *pvalue, *ptraceback;
             PyErr_Fetch(&ptype, &pvalue, &ptraceback);
@@ -761,9 +793,63 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       });
 }
 
+#ifdef USE_MIMALLOC
+  static struct {
+      PyMemAllocatorEx mem;
+      PyMemAllocatorEx raw;
+      PyMemAllocatorEx obj;
+  } allocators;
+#endif
+
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
+
+#ifdef USE_MIMALLOC
+  PyMemAllocatorEx alloc;
+  alloc.malloc = [] (void *ctx, size_t size) { 
+    ORT_UNUSED_PARAMETER(ctx);
+    return mi_malloc(size); 
+  };
+
+  alloc.calloc = [] (void *ctx, size_t nelem, size_t elsize) { 
+    ORT_UNUSED_PARAMETER(ctx);
+    return mi_calloc(nelem, elsize); 
+  };
+
+  alloc.realloc = [] (void *ctx, void *ptr, size_t new_size) { 
+    if(mi_is_in_heap_region(ptr)) {
+      return mi_realloc(ptr, new_size); 
+    }
+    else {
+      PyMemAllocatorEx * a = (PyMemAllocatorEx *)ctx;
+      return a->realloc(ctx, ptr, new_size); 
+    }
+  };
+
+  alloc.free = [] (void *ctx, void *ptr) { 
+    if(mi_is_in_heap_region(ptr)) {
+      mi_free(ptr);
+    }
+    else {
+      PyMemAllocatorEx* a = (PyMemAllocatorEx*)ctx;
+      a->free(ctx, ptr);
+    }
+  };
+  
+  alloc.ctx = &allocators.raw;
+  PyMem_GetAllocator(PYMEM_DOMAIN_RAW, &allocators.raw);
+  PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &alloc);
+
+  alloc.ctx = &allocators.mem;
+  PyMem_GetAllocator(PYMEM_DOMAIN_MEM, &allocators.mem);
+  PyMem_SetAllocator(PYMEM_DOMAIN_MEM, &alloc);
+
+  alloc.ctx = &allocators.obj;
+  PyMem_GetAllocator(PYMEM_DOMAIN_OBJ, &allocators.obj);
+  PyMem_SetAllocator(PYMEM_DOMAIN_OBJ, &alloc);
+
+#endif
 
   auto initialize = [&]() {
     // Initialization of the module
