@@ -4,6 +4,7 @@
 #include "non_max_suppression.h"
 #include "core/providers/cpu/object_detection/non_max_suppression_helper.h"
 #include "non_max_suppression_impl.h"
+#include "core/providers/cuda/tensor/concat_impl.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -82,16 +83,48 @@ Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
   if (total_num_saved_outputs == 0){
     ctx->Output(0, {0, 3});
   } else {
+    // concatenate outputs
     const auto last_dim = 3;
+    const auto num_elements = last_dim * total_num_saved_outputs;
     Tensor* output = ctx->Output(0, {static_cast<int64_t>(total_num_saved_outputs), last_dim});
     ORT_ENFORCE(output != nullptr);
     int64_t *dst = output->MutableData<int64_t>();
-    for (auto& it: all_selected_indices) {
-      void *src = std::get<0>(it).get();
-      size_t count = std::get<1>(it) * last_dim;
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst, src, count * sizeof(int64_t), cudaMemcpyDeviceToDevice));
-      dst += count;
+    size_t count = all_selected_indices.size();
+
+    CudaAsyncBuffer<const void*> input_ptr(this, count);
+    CudaAsyncBuffer<int64_t> concat_sizes_gpu(this, count);
+    CudaAsyncBuffer<int64_t> concat_sizes_range_gpu(this, count);
+    CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, total_num_saved_outputs);
+
+    int index = 0;
+    for (size_t i = 0; i < count; i++) {
+      auto &it = all_selected_indices[i];
+      auto src = std::get<0>(it).get();
+      auto size = std::get<1>(it);
+
+      input_ptr.CpuPtr()[i] = src;
+      concat_sizes_gpu.CpuPtr()[i] = size;
+      concat_sizes_range_gpu.CpuPtr()[i] = (i == 0) ? size : size + concat_sizes_range_gpu.CpuPtr()[i - 1];
+      for (int j = 0; j < size; j++) {
+        axis_dimension_input_output_mapping_gpu.CpuPtr()[index++] = i;
+      }
     }
+    
+    concat_sizes_gpu.CopyToGpu();
+    axis_dimension_input_output_mapping_gpu.CopyToGpu();
+    concat_sizes_range_gpu.CopyToGpu();
+    input_ptr.CopyToGpu();
+
+    ORT_RETURN_IF_ERROR(ConcatImpl(sizeof(int64_t),
+                                    num_elements,
+                                    last_dim,
+                                    concat_sizes_gpu.GpuPtr(),
+                                    concat_sizes_range_gpu.GpuPtr(),
+                                    axis_dimension_input_output_mapping_gpu.GpuPtr(),
+                                    count,
+                                    dst,
+                                    input_ptr.GpuPtr(),
+                                    num_elements));
   }
 
   return Status::OK();
