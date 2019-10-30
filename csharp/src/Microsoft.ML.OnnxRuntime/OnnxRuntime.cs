@@ -87,8 +87,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         private static void CheckLibcVersionGreaterThanMinimum()
         {
-            // require libc version 2.23 or higher
-            var minVersion = new Version(2, 23);
+            // require libc version 2.12 or higher
+            // Centos 6 libc version is 2.12 which is the min verison onnxruntime supports from 1.0 release onwards
+            var minVersion = new Version(2, 12);
             var curVersion = new Version(0, 0);
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
