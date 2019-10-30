@@ -36,6 +36,19 @@ bool IsRecurrentNode(const onnxruntime::Node& node) {
 
 bool IsAliasNode(const onnxruntime::Node& node) {
   auto op_type = node.OpType();
+  if (op_type == "Transpose") {
+    // Treat Transpose (1,N) -> (N,1) as Alias
+    const auto shape = node.OutputDefs()[0]->Shape();
+    if (shape != nullptr && shape->dim_size() == 2) {
+      for (int i = 0; i < 2; ++i) {
+        if (shape->dim(i).has_dim_value() && shape->dim(i).dim_value() == 1) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   return (op_type == "Flatten" || op_type == "Identity" || op_type == "Reshape" ||
           op_type == "Squeeze" || op_type == "Unsqueeze");
 }
