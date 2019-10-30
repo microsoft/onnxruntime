@@ -34,7 +34,6 @@ FastGelu<T>::FastGelu(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel
 template <typename T>
 Status FastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* input = ctx->Input<Tensor>(0);
-  Tensor* output = ctx->Output(0, input->Shape());
 
   const auto input_dims = input->Shape().GetDims();
   if (input_dims.size() < 1) {
@@ -66,6 +65,7 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
     bias_length = static_cast<int>(bias_dims[0]);
   }
 
+  Tensor* output = ctx->Output(0, input->Shape());
   bool is_ok = false;
   if (sizeof(T) == 4) {
     is_ok = computeGelu<T>(nullptr, input_length, bias_length, input->template Data<T>(), has_bias ? bias->template Data<T>() : nullptr, output->template MutableData<T>());

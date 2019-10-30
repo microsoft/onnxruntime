@@ -17,6 +17,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Modifications: Add (bias) before Gelu is merged into this op to get better performance.
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -69,7 +70,7 @@ __global__ void geluKernel(const T a, const T b, const T c, int input_length, in
   }
 }
 
-template<>
+template <>
 bool computeGelu<float>(cudaStream_t stream, int input_length, int bias_length, const float* input, const float* bias, float* output) {
   constexpr int blockSize = 256;
   const int gridSize = (input_length + blockSize - 1) / blockSize;
@@ -78,7 +79,7 @@ bool computeGelu<float>(cudaStream_t stream, int input_length, int bias_length, 
   return CUDA_CALL(cudaPeekAtLastError());
 }
 
-template<>
+template <>
 bool computeGelu<half>(cudaStream_t stream, int input_length, int bias_length, const half* input, const half* bias, half* output) {
   const int blockSize = 256;
 
@@ -93,7 +94,7 @@ bool computeGelu<half>(cudaStream_t stream, int input_length, int bias_length, c
     const half2* bias2 = reinterpret_cast<const half2*>(bias);
     half2* output2 = reinterpret_cast<half2*>(output);
     geluKernel<half2, blockSize><<<gridSize, blockSize, 0, stream>>>(A2, B2, C2, n, bias_length / 2, input2, bias2, output2);
-  } else 
+  } else
 #endif
   {
     const int gridSize = (input_length + blockSize - 1) / blockSize;

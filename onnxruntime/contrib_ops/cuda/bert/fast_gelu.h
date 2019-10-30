@@ -14,7 +14,7 @@ using namespace onnxruntime::cuda;
 
 template <typename T>
 class FastGelu final : public CudaKernel {
-public:
+ public:
   FastGelu(const OpKernelInfo& op_kernel_info);
   Status ComputeInternal(OpKernelContext* ctx) const override;
 };
