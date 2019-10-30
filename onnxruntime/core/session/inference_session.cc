@@ -607,9 +607,9 @@ common::Status InferenceSession::Initialize() {
       if (session_options_.graph_optimization_level >= TransformerLevel::Level3) {
         LOGS(*session_logger_, WARNING) << "Serializing Optimized ONNX model with Graph Optimization"
                                            " level greater than ORT_ENABLE_EXTENDED. The generated"
-                                           " model may contain hardware and execution-provider specific"
-                                           " optimizations, and should only be used on the same environment"
-                                           " the model was optimized on.";
+                                           " model may contain hardware and execution provider specific"
+                                           " optimizations, and should only be used in the same environment"
+                                           " the model was optimized for.";
       }
     }
 
