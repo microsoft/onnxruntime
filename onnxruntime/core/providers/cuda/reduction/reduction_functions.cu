@@ -321,15 +321,13 @@ bool is_matrix_row_reduction(
     const int n,
     const size_t rank,
     std::vector<int64_t> axes) {
-  // Because of the use of atomaticAdd with half numbers our matrix-row reduction kernel
-  // requires CUDA version >= 9.0.
-  static int cudaSmVersion = 0;
-  if (cudaSmVersion != 0) {
-    cudaDeviceGetAttribute(&cudaSmVersion, cudaDevAttrComputeCapabilityMajor, 0);
+  auto propGroups = GridDim::GetCachedDeviceProps();
+  for (auto &group : propGroups) {
+    // Because of the use of atomaticAdd with half numbers our matrix-row reduction kernel
+    // requires CUDA version >= 9.0. Note that CUDA 9 maps to __CUDA_ARCH__ >= 700.
+    if (group.major < 7)
+      return false;
   }
-
-  if (cudaSmVersion < 7)
-    return false;
 
   if (m < 1)
     return false;
