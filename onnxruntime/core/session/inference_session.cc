@@ -602,12 +602,12 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
 
     if (!session_options_.optimized_model_filepath.empty()) {
-      if (session_options_.graph_optimization_level < TransformerLevel::Level3) {
-        // Serialize optimized ONNX model.
-        ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
-      } else {
+      // Serialize optimized ONNX model.
+      ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
+      if (session_options_.graph_optimization_level >= TransformerLevel::Level3) {
         LOGS(*session_logger_, WARNING) << "Serializing Optimized ONNX model with Graph Optimization"
-                                           " level greater than 2 is not supported.";
+                                           " level greater than 2, the generated model should only be"
+                                           " used on compatible CPU ISAs to the one optimized on.";
       }
     }
 
