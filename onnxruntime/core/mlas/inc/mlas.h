@@ -16,7 +16,6 @@ Abstract:
 --*/
 
 #pragma once
-// clang-format off
 
 #include <cstdlib>
 #include <cstdint>
@@ -46,7 +45,7 @@ typedef enum { CblasLeft=141, CblasRight=142} CBLAS_SIDE;
 //
 // Forward declare the thread pool implementation class.
 //
-// N.B. Avoid including onnxruntime headers here to keep the dependencies for
+// N.B. Avoid including ONNX Runtime headers here to keep the dependencies for
 // standalone MLAS test executables smaller.
 //
 
@@ -59,6 +58,16 @@ namespace onnxruntime {
 using MLAS_THREADPOOL = onnxruntime::concurrency::ThreadPool;
 
 //
+// Platform routines.
+//
+
+size_t
+MLASCALL
+MlasGetPreferredBufferAlignment(
+    void
+    );
+
+//
 // Activation routines.
 //
 
@@ -68,32 +77,41 @@ enum MLAS_ACTIVATION_KIND {
     MlasLeakyReluActivation,
     MlasTanhActivation,
     MlasLogisticActivation,
+    MlasClipActivation,
 };
 
 struct MLAS_ACTIVATION {
     MLAS_ACTIVATION_KIND ActivationKind;
-    float alpha;
+    union {
+        struct {
+            float alpha;
+        } LeakyRelu;
+        struct {
+            float minimum;
+            float maximum;
+        } Clip;
+        float Values[2];
+    } Parameters;
 };
 
 void
 MLASCALL
 MlasActivation(
     const MLAS_ACTIVATION* Activation,
-    const float* Input,
+    float* Buffer,
     const float* Bias,
     size_t M,
-    float* Output,
     size_t N,
     size_t ldc
     );
 
 //
-// Single precision matrix/matrix multiply routine.
+// Matrix/matrix multiply routines.
 //
 
 void
 MLASCALL
-MlasSgemm(
+MlasGemm(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t M,
@@ -106,6 +124,59 @@ MlasSgemm(
     size_t ldb,
     float beta,
     float* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    double alpha,
+    const double* A,
+    size_t lda,
+    const double* B,
+    size_t ldb,
+    double beta,
+    double* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    uint8_t offa,
+    const int8_t* B,
+    size_t ldb,
+    int8_t offb,
+    int32_t* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    uint8_t offa,
+    const uint8_t* B,
+    size_t ldb,
+    uint8_t offb,
+    int32_t* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
     );

@@ -6,6 +6,7 @@
 #include "core/providers/mkldnn/mkldnn_execution_provider.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/func_api.h"
+#include "mkldnn_kernel.h"
 
 namespace onnxruntime {
 namespace mkl_dnn {
@@ -37,8 +38,8 @@ class MkldnnFuncKernel {
     if (sub_it->second.type() == ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING) {
       params_.subgraph_id = sub_it->second.s();
       params_.subgraph = provider->GetMklDnnSubgraph(params_.subgraph_id);
-      
-	  std::ostringstream key_os;
+
+      std::ostringstream key_os;
       key_os << params_.subgraph->graph_name << "_" << params_.subgraph_id << "-";
       key_os << params_.subgraph->mkldnn_nodes.back().ToString() << "-";
       key_os << params_.subgraph->mkldnn_nodes.back().output_name;
@@ -146,7 +147,7 @@ class MkldnnFuncKernel {
     if (attr != attributes.end()) {
       key.append(1, '#');
       ONNX_NAMESPACE::AttributeProto proto = attr->second;
-	  key.append(proto.s());
+      key.append(proto.s());
       key.append(1, '#');
     }
 
@@ -183,19 +184,19 @@ class MkldnnFuncKernel {
       key.append(1, '#');
     }
 
-	attr = attributes.find(attributes_prefix + "group");
+    attr = attributes.find(attributes_prefix + "group");
     if (attr != attributes.end()) {
       key.append(1, '#');
       ONNX_NAMESPACE::AttributeProto proto = attr->second;
-	  key.append(std::to_string(proto.i()));
+      key.append(std::to_string(proto.i()));
       key.append(1, '#');
     }
 
     return key;
   }
-  
+
   std::string GetLrnAttributeKey(const NodeAttributes& attributes,
-                                  const std::string attributes_prefix = "") {
+                                 const std::string attributes_prefix = "") {
     std::string key;
 
     auto attr = attributes.find(attributes_prefix + "alpha");
@@ -214,7 +215,7 @@ class MkldnnFuncKernel {
       key.append(1, '#');
     }
 
-	attr = attributes.find(attributes_prefix + "bias");
+    attr = attributes.find(attributes_prefix + "bias");
     if (attr != attributes.end()) {
       key.append(1, '#');
       ONNX_NAMESPACE::AttributeProto proto = attr->second;

@@ -5,110 +5,48 @@
 #pragma warning(disable : 4996)
 #endif
 
-#include "mkldnn_execution_provider.h"
 #include "core/framework/allocator.h"
-#include "core/framework/memcpy.h"
-#include "core/framework/kernel_registry.h"
-#include "mkldnn_fwd.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/kernel_registry.h"
 #include "core/providers/mkldnn/subgraph/mkldnn_func_kernel.h"
+#include "mkldnn_execution_provider.h"
+#include "mkldnn_fwd.h"
 
 namespace onnxruntime {
 
 constexpr const char* MKLDNN = "MklDnn";
 constexpr const char* MKLDNN_CPU = "MklDnnCpu";
 
-namespace mkl_dnn {
-
-ONNX_OPERATOR_KERNEL_EX(
-    MemcpyFromHost,
-    kOnnxDomain,
-    1,
-    kMklDnnExecutionProvider,
-    KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(0).TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
-    Memcpy);
-
-ONNX_OPERATOR_KERNEL_EX(
-    MemcpyToHost,
-    kOnnxDomain,
-    1,
-    kMklDnnExecutionProvider,
-    KernelDefBuilder().OutputMemoryType<OrtMemTypeCPUOutput>(0).TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
-    Memcpy);
-
-}  // namespace mkl_dnn
-
 MKLDNNExecutionProvider::MKLDNNExecutionProvider(const MKLDNNExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kMklDnnExecutionProvider} {
-  DeviceAllocatorRegistrationInfo default_allocator_info({OrtMemTypeDefault,
-                                                          [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(MKLDNN, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault)); }, std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo default_memory_info({OrtMemTypeDefault,
+                                                       [](int) { return onnxruntime::make_unique<CPUAllocator>(onnxruntime::make_unique<OrtMemoryInfo>(MKLDNN, OrtAllocatorType::OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
 
-  DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUOutput,
-                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(MKLDNN_CPU, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeCPUOutput)); }, std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo cpu_memory_info({OrtMemTypeCPUOutput,
+                                                   [](int) { return onnxruntime::make_unique<CPUAllocator>(onnxruntime::make_unique<OrtMemoryInfo>(MKLDNN_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); }, std::numeric_limits<size_t>::max()});
 
   if (info.create_arena) {
-    InsertAllocator(CreateAllocator(default_allocator_info));
+    InsertAllocator(CreateAllocator(default_memory_info));
 
-    InsertAllocator(CreateAllocator(cpu_allocator_info));
+    InsertAllocator(CreateAllocator(cpu_memory_info));
   } else {
     InsertAllocator(std::shared_ptr<IArenaAllocator>(
-        std::make_unique<DummyArena>(default_allocator_info.factory(0))));
+        onnxruntime::make_unique<DummyArena>(default_memory_info.factory(0))));
 
     InsertAllocator(std::shared_ptr<IArenaAllocator>(
-        std::make_unique<DummyArena>(cpu_allocator_info.factory(0))));
+        onnxruntime::make_unique<DummyArena>(cpu_memory_info.factory(0))));
   }
 }  // namespace onnxruntime
 
 MKLDNNExecutionProvider::~MKLDNNExecutionProvider() {
 }
 
-Status MKLDNNExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) const {
-  // Support CPU <-> MKLDNN for now
-  if (!(strcmp(src.Location().name, MKLDNN) == 0 && strcmp(dst.Location().name, CPU) == 0) &&
-      !(strcmp(src.Location().name, CPU) == 0 && strcmp(dst.Location().name, MKLDNN) == 0) &&
-      !(strcmp(src.Location().name, MKLDNN) == 0 && strcmp(dst.Location().name, MKLDNN_CPU) == 0)) {
-    ORT_NOT_IMPLEMENTED(src.Location().name, " copy to ", dst.Location().name, " is not implemented");
-  }
-
-  // Todo: Copy for now. May optimize later to avoid copy.
-  size_t bytes = src.DataType()->Size() * src.Shape().Size();
-  const void* src_data = src.DataRaw();
-  void* dst_data = dst.MutableDataRaw();
-  memcpy(dst_data, src_data, bytes);
-
-  return Status::OK();
-}
-
 namespace mkl_dnn {
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, Conv);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 7, Gemm);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 6, Relu);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 6, Sum);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 7, BatchNormalization);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 7, 8, float, AveragePool);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, 8, float, GlobalAveragePool);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, 7, float, MaxPool);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 8, 8, float, MaxPool);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, 8, float, GlobalMaxPool);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, float, LRN);
 
 void RegisterMKLDNNKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, Conv)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 7, Gemm)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 6, Relu)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 6, Sum)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 7, BatchNormalization)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 7, 8, float, AveragePool)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, 8, float, GlobalAveragePool)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, 7, float, MaxPool)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 8, 8, float, MaxPool)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, 8, float, GlobalMaxPool)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, float, LRN)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -128,35 +66,47 @@ std::shared_ptr<KernelRegistry> MKLDNNExecutionProvider::GetKernelRegistry() con
   return kernel_registry;
 }
 
-bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_viewer,
-                                          const std::vector<const KernelRegistry*>& kernel_registries,
-                                          std::vector<std::unique_ptr<ComputeCapability>>& result) const {
+bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_viewer) const {
   // switch between mkldnn-vanilla and mkldnn-subgraph implementation using
   // MKLDNN_SUBGRAPH environment variable
   bool use_subgraph = true;
 
   bool FP16_graph = false;
-  if (graph_viewer.MaxNodeIndex() > 0) {
-    int index = 0;
-    auto node = graph_viewer.GetNode(index);
-    while (node == NULL) {
-      index++;
-      node = graph_viewer.GetNode(index);
-    }
-    if (node->InputDefs()[0]->Type() != nullptr)
+  bool mkldnn_nodes_in_the_graph = false;
+  int max_node_index = graph_viewer.MaxNodeIndex();
+
+  for (auto node_index = 0; node_index < max_node_index; node_index++) {
+    auto node = graph_viewer.GetNode(node_index);
+    if (node == NULL)
+      continue;
+
+    if (!node->InputDefs().empty() && node->InputDefs()[0]->Type() != nullptr) {
       FP16_graph = node->InputDefs()[0]->Type()->find("16") != std::string::npos;
+      break;
+    }
   }
 
-  if (FP16_graph) {
+  for (auto node_index = 0; node_index < max_node_index; node_index++) {
+    auto node = graph_viewer.GetNode(node_index);
+    if (node == nullptr) {
+      continue;
+    }
+
+    auto op_it = mkldnn_ops_.find(node->OpType());
+    if (op_it != mkldnn_ops_.end()) {
+      mkldnn_nodes_in_the_graph = true;
+      break;
+    }
+  }
+
+  if (FP16_graph || !mkldnn_nodes_in_the_graph) {
     // FP16 not supported yet.
     use_subgraph = false;
-    result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
   } else {
     const char* env = getenv("ORT_MKLDNN_SUBGRAPH");
     if (env != nullptr) {
       if (atoi(env) == 0) {
         use_subgraph = false;
-        result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
       }
     }
   }
@@ -191,6 +141,7 @@ void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
     subgraph_ptr->mkldnn_nodes.push_back(mkldnn_node);
     output_to_source_node_map.insert(std::make_pair(node_outputs[0]->Name(), subgraph_ptr->mkldnn_nodes.size() - 1));
   } else {
+    subgraph_ptr->mkldnn_nodes.back().num_inputs += static_cast<int>(node->InputDefs().size() - 1);
     const auto& node_outputs = node->OutputDefs();
     output_to_source_node_map.erase(subgraph_ptr->mkldnn_nodes.back().output_name);
     subgraph_ptr->mkldnn_nodes.back().output_name = node_outputs[0]->Name();
@@ -213,9 +164,17 @@ void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
   NodeAttributes attributes = node->GetAttributes();
   if (attributes.size() > 0) {
     size_t index = subgraph_ptr->mkldnn_nodes.size();
+    std::string op_name;
+    if (fused) {
+      for (auto iter = node->InputNodesBegin(); iter != node->InputNodesEnd(); ++iter) {
+        op_name = (*iter).OpType();
+      }
+    } else {
+      op_name = node->OpType();
+    }
 
     for (auto att_it = attributes.begin(); att_it != attributes.end(); ++att_it) {
-      std::string key = node->OpType() + "-" + std::to_string(index) + "-" + att_it->first;
+      std::string key = op_name + "-" + std::to_string(index) + "-" + att_it->first;
       std::pair<std::string, ONNX_NAMESPACE::AttributeProto> att(key, att_it->second);
       subgraph_attributes[key] = att_it->second;
     }
@@ -226,16 +185,16 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
     const onnxruntime::GraphViewer& graph_viewer,
     const std::vector<const KernelRegistry*>& kernel_registries) const {
   ORT_UNUSED_PARAMETER(kernel_registries);
-  std::vector<std::unique_ptr<ComputeCapability>> result;
 
   // temporary switch to toggle between mkldnn-vanilla and mkldnn-subgraph implementation using
   // ORT_MKLDNN_SUBGRAPH environment variable
-  if (UseSubgraph(graph_viewer, kernel_registries, result) == false) {
-    return result;
+  if (UseSubgraph(graph_viewer) == false) {
+    return IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
   }
 
   LOGS_DEFAULT(INFO) << "Using MKL-DNN Subgraph";
   // use sub-graph implementation
+  std::vector<std::unique_ptr<ComputeCapability>> result;
   mkl_dnn::Subgraph::SubgraphVariables sub_var;
   std::shared_ptr<mkl_dnn::Subgraph> subgraph_ptr;
 
@@ -243,7 +202,8 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
   // There are several identical graphs in Model zoo and only differ in
   // few attribute values. GetGraphName return graph-name + first-node-output name
   std::string graph_name = GetGraphName(graph_viewer);
-  subgraph_ptr.reset(new mkl_dnn::Subgraph(graph_name));
+  subgraph_ptr = onnxruntime::make_unique<mkl_dnn::Subgraph>(
+      mkl_dnn::Subgraph(graph_name));
 
   // output name to node index map. Using it to find sub-graph end nodes
   // if output of a node is not an input to any node in a sub-graph is end node
@@ -260,6 +220,12 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
 
     if (IsDimensionSupported(node) == false) {
       node_index++;
+      if (subgraph_ptr->mkldnn_nodes.size() > 0) {
+        CreateMetaDef(graph_viewer, subgraph_attributes, subgraph_ptr, sub_var, result);
+        subgraph_ptr = std::make_shared<mkl_dnn::Subgraph>(mkl_dnn::Subgraph(graph_name));
+        subgraph_attributes.clear();
+        output_to_source_node_map.clear();
+      }
       continue;
     }
 
@@ -269,8 +235,14 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
 
       // can we fuse (at mkldnn level) nodes?
       bool fused = false;
+      if (sub_var.subgraph_node_indexes.size() > 1 && node->OpType() == "BatchNormalization") {
+        if (subgraph_ptr->mkldnn_nodes.back().name == "Conv") {
+          subgraph_ptr->mkldnn_nodes.back().name += "-BatchNormalization";
+          fused = true;
+        }
+      }
       if (sub_var.subgraph_node_indexes.size() > 1 && node->OpType() == "Relu") {
-        if (subgraph_ptr->mkldnn_nodes.back().name == "BatchNormalization" || subgraph_ptr->mkldnn_nodes.back().name == "Conv") {
+        if (subgraph_ptr->mkldnn_nodes.back().name == "Conv-BatchNormalization" || subgraph_ptr->mkldnn_nodes.back().name == "BatchNormalization" || subgraph_ptr->mkldnn_nodes.back().name == "Conv") {
           subgraph_ptr->mkldnn_nodes.back().name += "-Relu";
           fused = true;
         }
@@ -310,7 +282,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
             if (input_from_subgraph == false) {
               CreateMetaDef(graph_viewer, subgraph_attributes, subgraph_ptr, sub_var, result);
               subgraph_attributes.clear();
-              subgraph_ptr.reset(new mkl_dnn::Subgraph(graph_name));
+              subgraph_ptr = std::make_shared<mkl_dnn::Subgraph>(mkl_dnn::Subgraph(graph_name));
               output_to_source_node_map.clear();
             }
           }
@@ -324,32 +296,33 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
             bool create_subgraph = false;
             bool break_loop = false;
             while (!break_loop) {
-              if (temp_index > graph_viewer.MaxNodeIndex())
-                break_loop = true;
-
-              auto next_node = graph_viewer.GetNode(temp_index);
-              while (next_node == nullptr) {
+              if (temp_index < graph_viewer.MaxNodeIndex()) {
+                auto next_node = graph_viewer.GetNode(temp_index);
+                while (next_node == nullptr) {
+                  temp_index++;
+                  next_node = graph_viewer.GetNode(temp_index);
+                }
+                if (next_node->GetInputEdgesCount() == node->GetOutputEdgesCount()) {
+                  // if all nodes in the branch loop are mkldnn nodes
+                  // then continue with adding nodes to sub-graph
+                  break_loop = true;
+                }
+                // inner nodes. if inner nodes are not  mkldnn nodes
+                // create subgraph (inception v2)
+                auto sub_it = mkldnn_ops_.find(next_node->OpType());
+                if (sub_it == mkldnn_ops_.end()) {
+                  // break and create a sub-graph
+                  break_loop = true;
+                  create_subgraph = true;
+                }
                 temp_index++;
-                next_node = graph_viewer.GetNode(temp_index);
-              }
-              if (next_node->GetInputEdgesCount() == node->GetOutputEdgesCount()) {
-                // if all nodes in the branch loop are mkldnn nodes
-                // then continue with adding nodes to sub-graph
+              } else {
                 break_loop = true;
               }
-              // inner nodes. if inner nodes are not  mkldnn nodes
-              // create subgraph (inception v2)
-              auto sub_it = mkldnn_ops_.find(next_node->OpType());
-              if (sub_it == mkldnn_ops_.end()) {
-                // break and create a sub-graph
-                break_loop = true;
-                create_subgraph = true;
-              }
-              temp_index++;
             }
             if (create_subgraph) {
               CreateMetaDef(graph_viewer, subgraph_attributes, subgraph_ptr, sub_var, result);
-              subgraph_ptr.reset(new mkl_dnn::Subgraph(graph_name));
+              subgraph_ptr = std::make_shared<mkl_dnn::Subgraph>(mkl_dnn::Subgraph(graph_name));
               subgraph_attributes.clear();
               output_to_source_node_map.clear();
             }
@@ -359,7 +332,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
     } else {
       if (!sub_var.subgraph_node_indexes.empty()) {
         CreateMetaDef(graph_viewer, subgraph_attributes, subgraph_ptr, sub_var, result);
-        subgraph_ptr.reset(new mkl_dnn::Subgraph(graph_name));
+        subgraph_ptr = std::make_shared<mkl_dnn::Subgraph>(mkl_dnn::Subgraph(graph_name));
         subgraph_attributes.clear();
         output_to_source_node_map.clear();
       }
@@ -368,7 +341,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
   }  // graph_viewer node iterator ends
   if (!sub_var.subgraph_node_indexes.empty()) {
     CreateMetaDef(graph_viewer, subgraph_attributes, subgraph_ptr, sub_var, result);
-    subgraph_ptr.reset(new mkl_dnn::Subgraph(graph_name));
+    subgraph_ptr = std::make_shared<mkl_dnn::Subgraph>(mkl_dnn::Subgraph(graph_name));
     subgraph_attributes.clear();
     output_to_source_node_map.clear();
   }
@@ -382,8 +355,8 @@ void MKLDNNExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& grap
                                             std::vector<std::unique_ptr<ComputeCapability>>& result) const {
   std::string graph_fused_nodes;
   std::string node_list;
-  std::string subgraph_id = std::to_string(sub_var.subgraph_index);
-  sub_var.subgraph_index++;
+  std::string subgraph_id = std::to_string(subgraph_index_);
+  subgraph_index_++;
 
   // This is a list of initializers that subgraph considers as constants.
   // Example weights, reshape shape etc.
@@ -401,9 +374,9 @@ void MKLDNNExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& grap
     }
   }
 
-  auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+  auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
   meta_def->attributes["initializers"] = initializers;
-  meta_def->name = "MkldnnCustomOp" + std::to_string(sub_var.subgraph_index);
+  meta_def->name = "MkldnnCustomOp" + std::to_string(subgraph_index_);
   meta_def->domain = kMSDomain;
   meta_def->since_version = 1;
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
@@ -424,10 +397,10 @@ void MKLDNNExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& grap
   ap.set_s(subgraph_id);
   ap.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
   meta_def->attributes["subgraph_id"] = ap;
-  std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
   sub_graph->nodes = sub_var.subgraph_node_indexes;
   sub_graph->SetMetaDef(meta_def);
-  result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+  result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
   mkl_subgraphs_.insert(std::make_pair(subgraph_id, subgraph_ptr));
 
   // Reset subgraph and meta_Def
@@ -453,7 +426,7 @@ Status MKLDNNExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& f
 
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       onnxruntime::mkl_dnn::MkldnnFuncKernel<float>* custom_op = reinterpret_cast<mkl_dnn::MkldnnFuncKernel<float>*>(state);
-      return  custom_op->Compute(api, context);
+      return custom_op->Compute(api, context);
     };
 
     node_compute_funcs.push_back(compute_info);

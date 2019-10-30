@@ -12,7 +12,10 @@ set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 
-# Set C++14 as standard for the whole project
+# CentOS compiler is old but it does allow certain C++14 features
+# such as lambda captures and they are convinient
+# On the other hand it does not allow some others.
+# So we cant' regulate simply with the standard.
 set(CMAKE_CXX_STANDARD 14)
 
 # General C# prperties
@@ -50,9 +53,10 @@ option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_NSYNC "Build with NSYNC support. This option only takes effect on Linux" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" OFF)
-option(onnxruntime_USE_MLAS "Use optimized blas library for GEMM and 2D Convolution" ON)
 option(onnxruntime_USE_MKLDNN "Build with MKL-DNN support" OFF)
 option(onnxruntime_USE_MKLML "Build MKL-DNN with MKL-ML binary dependency" OFF)
+option(onnxruntime_USE_GEMMLOWP "Build with gemmlowp for quantized gemm" OFF)
+option(onnxruntime_USE_AUTOML "Build AutoML support" ON)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
@@ -79,23 +83,31 @@ option(onnxruntime_USE_EIGEN_THREADPOOL "Use eigen threadpool. Otherwise OpenMP 
 option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir")
 option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in language other than cpp" OFF)
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output data to standard output when executing the model." OFF)
+option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
-
-if(onnxruntime_USE_OPENMP AND UNIX)
-  #if you enabled both of them, the code can still be built and run, but you may see
-  # 10x performance degradation, because one process should only have one openmp implementation
-  # mkl(or mklml) depends on Intel OpenMP
-  # GCC does not support linking against the Intel OpenMP runtime library
-  # Clang should be ok, but it's not in our consideration right now.
-  if(onnxruntime_USE_MKLML)
-    message(FATAL_ERROR "Please use only one of onnxruntime_USE_MKLML, onnxruntime_USE_OPENMP")
-  endif()
-  if(onnxruntime_USE_NGRAPH)
-    message(FATAL_ERROR "Please use only one of onnxruntime_USE_NGRAPH, onnxruntime_USE_OPENMP")
+if(NOT onnxruntime_ENABLE_PYTHON)
+  set(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OFF)
+endif()
+if(onnxruntime_USE_OPENMP)
+  find_package(OpenMP)
+  if (OPENMP_FOUND)
+    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    add_definitions(-DUSE_OPENMP)
+    # MKLML and NGraph depend on their own OpenMP library that may be different with the compiler's.
+    # Disable the options to build mklml/NGraph and OpenMP together.
+    if(onnxruntime_USE_MKLML)
+      message(FATAL_ERROR "Please use only one of onnxruntime_USE_MKLML, onnxruntime_USE_OPENMP")
+    endif()
+    if(onnxruntime_USE_NGRAPH)
+      message(FATAL_ERROR "Please use only one of onnxruntime_USE_NGRAPH, onnxruntime_USE_OPENMP")
+    endif()
+  else()
+    set(onnxruntime_USE_OPENMP OFF)
   endif()
 endif()
 if(onnxruntime_ENABLE_LTO)
@@ -118,23 +130,17 @@ set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
 file (STRINGS "${REPO_ROOT}/VERSION_NUMBER" ORT_VERSION)
 
-if(onnxruntime_USE_OPENMP)
-  find_package(OpenMP)
-  if (OPENMP_FOUND)
-    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-    add_definitions(-DUSE_OPENMP)
-  endif()
-endif()
-
 # Guarantee that the Eigen code that you are #including is licensed
 # under the MPL2 and possibly more permissive licenses (like BSD).
 add_definitions(-DEIGEN_MPL2_ONLY)
 
 if(onnxruntime_CROSS_COMPILING)
   set(CMAKE_CROSSCOMPILING ON)
-  string(APPEND CMAKE_CXX_FLAGS " -Wno-error=attributes")
-  string(APPEND CMAKE_C_FLAGS " -Wno-error=attributes")
+  check_cxx_compiler_flag(-Wno-error HAS_NOERROR)
+  if(HAS_NOERROR)
+    string(APPEND CMAKE_CXX_FLAGS " -Wno-error=attributes")
+    string(APPEND CMAKE_C_FLAGS " -Wno-error=attributes")
+  endif()
 endif()
 
 #must after OpenMP settings
@@ -298,14 +304,14 @@ get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
 set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
-add_subdirectory(external/gsl EXCLUDE_FROM_ALL)
 add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
 set_target_properties(re2 PROPERTIES FOLDER "External/re2")
-add_library(gsl ALIAS GSL)
 
 # bounds checking behavior.
 # throw instead of calling terminate if there's a bounds checking violation.
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGSL_THROW_ON_CONTRACT_VIOLATION")
+# we make it through via a handler so CUDA does not complain
+# The following -DGSL macros are recognized by gsl-lite along with -Dgsl macros
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Dgsl_CONFIG_CONTRACT_VIOLATION_THROWS")
 # no bounds checking in release build so no perf cost
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DGSL_UNENFORCED_ON_CONTRACT_VIOLATION")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -DGSL_UNENFORCED_ON_CONTRACT_VIOLATION")
@@ -323,7 +329,7 @@ function(onnxruntime_add_include_to_target dst_target)
     endforeach()
 endfunction()
 
-set(onnxruntime_EXTERNAL_DEPENDENCIES gsl onnx_proto re2)
+set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto re2)
 
 # TVM
 if (onnxruntime_USE_TVM)
@@ -349,8 +355,13 @@ if (onnxruntime_USE_TVM)
   add_definitions(-DUSE_TVM)
 
   set(onnxruntime_tvm_libs onnxruntime_codegen_tvm)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm nnvm_compiler)
-
+  # needs to link with stdc++fs in Linux
+  if(UNIX)
+    if (NOT APPLE)
+      set(FS_STDLIB stdc++fs)
+    endif()
+  endif()
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm nnvm_compiler ${FS_STDLIB})
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm nnvm_compiler)
 endif()
 
@@ -365,10 +376,6 @@ endif()
 
 if (onnxruntime_RUN_ONNX_TESTS)
   add_definitions(-DORT_RUN_EXTERNAL_ONNX_TESTS)
-endif()
-
-if (onnxruntime_USE_MLAS)
-  add_definitions(-DUSE_MLAS)
 endif()
 
 #Adjust warning flags
@@ -441,6 +448,7 @@ else()
   check_cxx_compiler_flag(-Wmissing-braces HAS_MISSING_BRACES)
   check_cxx_compiler_flag(-Wignored-attributes HAS_IGNORED_ATTRIBUTES)
   check_cxx_compiler_flag(-Wdeprecated-copy HAS_DEPRECATED_COPY)
+  check_cxx_compiler_flag(-Wclass-memaccess HAS_CLASS_MEMACCESS)
 
   if(HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -452,12 +460,21 @@ else()
     string(APPEND CMAKE_CXX_FLAGS_DEBUG " -Wno-nonnull-compare")
     string(APPEND CMAKE_C_FLAGS_DEBUG " -Wno-nonnull-compare")
   endif()
+  if(HAS_DEPRECATED_COPY)
+    #too many such errors in eigen and gemmlowp
+    string(APPEND CMAKE_CXX_FLAGS_DEBUG " -Wno-deprecated-copy")
+    string(APPEND CMAKE_C_FLAGS_DEBUG " -Wno-deprecated-copy")
+  endif()
   if(HAS_PARENTHESES)
     string(APPEND CMAKE_CXX_FLAGS " -Wno-parentheses")
   endif()
 endif()
 
 if (onnxruntime_USE_JEMALLOC)
+  if (onnxruntime_USE_MIMALLOC)
+    message( FATAL_ERROR "You cannot specify both jemalloc and mimalloc." )
+  endif()
+
   if (Win32)
     message( FATAL_ERROR "Jemalloc is not supported on Windows." )
   endif()
@@ -467,10 +484,17 @@ if (onnxruntime_USE_JEMALLOC)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES jemalloc)
 endif()
 
-include_directories(${ONNXRUNTIME_INCLUDE_DIR})
+include_directories(
+  ${ONNXRUNTIME_INCLUDE_DIR}
+  ${REPO_ROOT}/include/onnxruntime/core/session
+)
 
 if (onnxruntime_USE_MKLDNN OR onnxruntime_USE_MKLML)
   include(mkldnn)
+endif()
+
+if(onnxruntime_USE_GEMMLOWP)
+  add_definitions(-DUSE_GEMMLOWP=1)
 endif()
 
 if (onnxruntime_USE_MKLML)
@@ -506,10 +530,6 @@ endif()
 
 if(onnxruntime_USE_OPENVINO)
 
-    if(WIN32)
-        message(FATAL_ERROR "Building on Windows using OpenVINO execution provider is not supported")
-    endif()
-
     add_definitions(-DUSE_OPENVINO=1)
 
 	if (onnxruntime_USE_OPENVINO_SOURCE)
@@ -539,8 +559,12 @@ if(onnxruntime_USE_OPENVINO)
 		add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
 	endif()
 
-	if(onnxruntime_USE_OPENVINO_VAD_R)
-		add_definitions(-DOPENVINO_CONFIG_VAD_R=1)
+	if(onnxruntime_USE_OPENVINO_VAD_M)
+		add_definitions(-DOPENVINO_CONFIG_VAD_M=1)
+    endif()
+
+	if(onnxruntime_USE_OPENVINO_VAD_F)
+		add_definitions(-DOPENVINO_CONFIG_VAD_F=1)
 	endif()
 
 endif()
@@ -568,17 +592,19 @@ if (onnxruntime_USE_CUDA)
   endif()
   string(APPEND CMAKE_CUDA_FLAGS "-cudart shared")
   enable_language(CUDA)
-  set(CMAKE_CUDA_STANDARD 14)
+  set(CMAKE_CUDA_STANDARD 11)
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
   list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn)
   if (WIN32)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
-    string(REGEX REPLACE "([0-9]+)\\.([0-9]+).*" "\\1" onnxruntime_CUDA_VERSION_MAJOR ${CMAKE_CUDA_COMPILER_VERSION})
-    string(REGEX REPLACE "([0-9]+)\\.([0-9]+).*" "\\2" onnxruntime_CUDA_VERSION_MINOR ${CMAKE_CUDA_COMPILER_VERSION})
 
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cublas64_${onnxruntime_CUDA_VERSION_MAJOR}${onnxruntime_CUDA_VERSION_MINOR}.dll")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cudart64_${onnxruntime_CUDA_VERSION_MAJOR}${onnxruntime_CUDA_VERSION_MINOR}.dll")
+    file(GLOB cuda_dll_paths "${onnxruntime_CUDA_HOME}/bin/cublas64_*" "${onnxruntime_CUDA_HOME}/bin/cudart64_*")
+    foreach(cuda_dll_path ${cuda_dll_paths})
+        get_filename_component(cuda_dll_file_name ${cuda_dll_path} NAME)
+        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:${cuda_dll_file_name}")
+    endforeach(cuda_dll_path)
+
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cudnn64_7.dll")
   else()
     link_directories(${onnxruntime_CUDNN_HOME}/lib64)
@@ -589,7 +615,7 @@ if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_70,code=sm_70") # V series
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --default-stream per-thread")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --default-stream legacy")
   if (NOT WIN32)
     set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --compiler-options -fPIC")
   endif()
@@ -598,6 +624,8 @@ endif()
 if (onnxruntime_USE_TENSORRT)
   if (WIN32)
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:nvinfer.dll")
+  else()
+    set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
   endif()
 endif()
 
@@ -628,6 +656,15 @@ if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   add_definitions(-DMICROSOFT_INTERNAL)
 endif()
 
+if (onnxruntime_USE_DML)
+  if(NOT WIN32)
+    message(FATAL_ERROR "The DirectML execution provider is only supported when building for Windows.")
+  endif()
+
+  add_definitions(-DUSE_DML=1)
+  include(dml)
+endif()
+
 #names in this var must match the directory names under onnxruntime/core/providers
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 
@@ -640,6 +677,12 @@ include(onnxruntime_providers.cmake)
 include(onnxruntime_optimizer.cmake)
 include(onnxruntime_session.cmake)
 include(onnxruntime_mlas.cmake)
+
+if(onnxruntime_USE_AUTOML)
+  add_definitions(-DMICROSOFT_AUTOML)
+  # Build shared featurizer library
+  include(onnxruntime_automl_featurizers.cmake)
+endif()
 
 if(WIN32)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES Shlwapi)

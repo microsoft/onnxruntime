@@ -3,4 +3,4 @@ jobs:
   parameters:
     AgentPool : 'Hosted macOS High Sierra'
     DoNugetPack: 'false'
-    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --build_wheel --skip_submodule_sync --parallel --build_shared_lib --enable_language_interop_ops --enable_onnx_tests --config Debug RelWithDebInfo'
+    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --build_wheel --skip_submodule_sync --use_automl --parallel --build_shared_lib --enable_language_interop_ops --enable_onnx_tests --config Debug RelWithDebInfo'

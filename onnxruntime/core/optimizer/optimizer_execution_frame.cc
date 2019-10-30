@@ -1,14 +1,17 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "core/common/common.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/macros.h"
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/data_types.h"
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/fuse_nodes_funcs.h"
-#include "core/common/callback.h"
+#include "core/framework/callback.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 
 namespace onnxruntime {
@@ -18,9 +21,11 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   // Create CPU execution provider
   // For now, CPU execution provider will be created every time when initializing Info.
   // Later, it will be changed to pass by Info ctor.
-  cpu_execution_provider_ = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  cpu_execution_provider_ = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   allocator_ptr_ = cpu_execution_provider_->GetAllocator(device_id_, mem_type_);
   ORT_ENFORCE(allocator_ptr_ != nullptr, "Failed to get allocator for optimizer");
+
+  data_transfer_mgr_.RegisterDataTransfer(onnxruntime::make_unique<CPUDataTransfer>());
 
   // Create MLValues related maps
   auto initialize_maps = [this, &initialized_tensor_set](const NodeArg& arg, size_t /*index*/) -> Status {
@@ -34,7 +39,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
       size_t cpu_tensor_length;
       ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &cpu_tensor_length));
       OrtValue ort_value;
-      const OrtAllocatorInfo& info = cpu_execution_provider_->GetAllocator(0, OrtMemTypeDefault)->Info();
+      const OrtMemoryInfo& info = cpu_execution_provider_->GetAllocator(0, OrtMemTypeDefault)->Info();
       std::unique_ptr<char[]> data(new char[cpu_tensor_length]);
       std::unique_ptr<Tensor> p_tensor;
       OrtCallback d;
@@ -56,14 +61,14 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
     onnxruntime::Node::ForEachWithIndex(node->OutputDefs(), initialize_maps);
   }
 
-  node_index_info_ = std::make_unique<NodeIndexInfo>(nodes, ort_value_name_idx_map_);
+  node_index_info_ = onnxruntime::make_unique<NodeIndexInfo>(nodes, ort_value_name_idx_map_);
 
   // create kernels for these nodes
   for (auto* node : nodes) {
     std::unique_ptr<OpKernel> op_kernel;
     std::shared_ptr<KernelRegistry> kernel_registry = cpu_execution_provider_->GetKernelRegistry();
     auto status = kernel_registry->TryCreateKernel(*node, *cpu_execution_provider_, initializers_,
-                                                   ort_value_name_idx_map_, FuncManager(), op_kernel);
+                                                   ort_value_name_idx_map_, FuncManager(), data_transfer_mgr_, op_kernel);
     kernels_[node->Index()] = std::move(op_kernel);
   }
 }
@@ -83,7 +88,7 @@ OptimizerExecutionFrame::OptimizerExecutionFrame(const Info& info, const std::ve
                       std::vector<OrtValue>(), info.GetMLValueNameIdxMap(), info.GetNodeIndexInfo()),
       info_(info) {}
 
-AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtAllocatorInfo& info) const {
+AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {
   return info_.GetAllocator(info);
 }
 
@@ -98,7 +103,7 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
   if (ml_type->IsSparseTensorType()) {
     auto element_type = ml_type->AsSparseTensorType()->GetElementType();
     auto container_type = DataTypeImpl::GetType<SparseTensor>();
-    auto sparse = std::make_unique<SparseTensor>(element_type, *shape, nnz, info_.GetAllocator());
+    auto sparse = onnxruntime::make_unique<SparseTensor>(element_type, *shape, nnz, info_.GetAllocator());
     ort_value.Init(sparse.release(), container_type, container_type->GetDeleteFunc());
     return Status::OK();
   }
@@ -112,7 +117,7 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
   // tensors
   auto element_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
   AllocatorPtr allocator_ptr = info_.GetAllocator();
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
+  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type,
                                                               *shape,
                                                               allocator_ptr);
 

@@ -15,6 +15,9 @@ __global__ void _UnaryElementWise(
     OutT* output_data,
     const FuncT& functor,
     CUDA_LONG N) {
+  if (N == 0)  // special case where there's a dim value of 0 in the shape
+    return;
+
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   output_data[id] = functor(input_data[id]);
 }
@@ -25,6 +28,9 @@ void UnaryElementWiseImpl(
     OutT* output_data,
     const FuncT& func,
     size_t count) {
+  if (count == 0)  // special case where there's a dim value of 0 in the shape
+    return;
+
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   _UnaryElementWise<InT, OutT, FuncT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(

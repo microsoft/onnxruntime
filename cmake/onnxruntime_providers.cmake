@@ -25,6 +25,16 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
 )
 
+file(GLOB onnxruntime_cpu_automl_cc_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/automl_ops/cpu_automl_kernels.h"
+  "${ONNXRUNTIME_ROOT}/automl_ops/cpu_automl_kernels.cc"
+  "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.h"
+  "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.cc"
+  "${ONNXRUNTIME_ROOT}/automl_ops/automl_featurizers.h"
+  "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.h"
+  "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.cc"
+)
+
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
@@ -37,6 +47,10 @@ endif()
 if(onnxruntime_USE_NGRAPH)
   set(PROVIDERS_NGRAPH onnxruntime_providers_ngraph)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES ngraph)
+endif()
+if(onnxruntime_USE_NUPHAR)
+  set(PROVIDERS_NUPHAR onnxruntime_providers_nuphar)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES nuphar)
 endif()
 if(onnxruntime_USE_CUDA)
   set(PROVIDERS_CUDA onnxruntime_providers_cuda)
@@ -54,18 +68,35 @@ if(onnxruntime_USE_NNAPI)
   set(PROVIDERS_NNAPI onnxruntime_providers_nnapi)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
 endif()
+if(onnxruntime_USE_DML)
+  set(PROVIDERS_DML onnxruntime_providers_dml)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES dml)
+endif()
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
-# add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
-source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_contrib_ops_srcs})
+
+set(onnxruntime_providers_src ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
 # disable contrib ops conditionally
-if(onnxruntime_DISABLE_CONTRIB_OPS)
-  add_library(onnxruntime_providers ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
-else()
-  add_library(onnxruntime_providers ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs} ${onnxruntime_cpu_contrib_ops_srcs})
+if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
+  source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_contrib_ops_srcs})
+  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_contrib_ops_srcs})
 endif()
 
-onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+if (onnxruntime_USE_AUTOML)
+  source_group(TREE ${ONNXRUNTIME_ROOT}/ FILES ${onnxruntime_cpu_automl_cc_srcs})
+  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_automl_cc_srcs})
+endif()
+
+add_library(onnxruntime_providers ${onnxruntime_providers_src})
+onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+
+if (onnxruntime_USE_AUTOML)
+  add_dependencies(onnxruntime_providers automl_featurizers)
+  onnxruntime_add_include_to_target(onnxruntime_providers automl_featurizers)
+  target_link_libraries(onnxruntime_providers automl_featurizers)
+endif()
+
 if(HAS_DEPRECATED_COPY)
   #temporarily ignore this warning
   #see: https://en.wikipedia.org/wiki/Rule_of_three_(C%2B%2B_programming)
@@ -77,10 +108,10 @@ if(HAS_DEPRECATED_COPY)
   set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/onehot.cc" PROPERTIES COMPILE_FLAGS -Wno-deprecated-copy)
   set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/where_op.cc" PROPERTIES COMPILE_FLAGS -Wno-deprecated-copy)
 endif()
-set(gemmlowp_src ${PROJECT_SOURCE_DIR}/external/gemmlowp)
+
 set(re2_src ${ONNXRUNTIME_ROOT}/../cmake/external/re2)
 target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${gemmlowp_src} ${re2_src})
-add_dependencies(onnxruntime_providers gsl onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+add_dependencies(onnxruntime_providers onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cpu  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 set_target_properties(onnxruntime_providers PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
@@ -96,7 +127,7 @@ if (onnxruntime_USE_CUDA)
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
-  
+
   # disable contrib ops conditionally
   if(onnxruntime_DISABLE_CONTRIB_OPS)
     add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
@@ -110,9 +141,9 @@ if (onnxruntime_USE_CUDA)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
   endif()
-  onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+  onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
   add_dependencies(onnxruntime_providers_cuda ${onnxruntime_EXTERNAL_DEPENDENCIES} ${onnxruntime_tvm_dependencies})
-  target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${PROJECT_SOURCE_DIR}/external/cub ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cuda  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES LINKER_LANGUAGE CUDA)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES FOLDER "ONNXRuntime")
@@ -150,7 +181,7 @@ if (onnxruntime_USE_MKLDNN)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_mkldnn_cc_srcs})
   add_library(onnxruntime_providers_mkldnn ${onnxruntime_providers_mkldnn_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_mkldnn gsl onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+  onnxruntime_add_include_to_target(onnxruntime_providers_mkldnn onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
   add_dependencies(onnxruntime_providers_mkldnn ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_mkldnn PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_mkldnn PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${MKLDNN_INCLUDE_DIR})
@@ -169,18 +200,19 @@ if (onnxruntime_USE_TENSORRT)
   set(OLD_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
   if (WIN32)
     set(OLD_CMAKE_CUDA_FLAGS ${CMAKE_CUDA_FLAGS})
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4996 /wd4244 /wd4267 /wd4099 /wd4551 /wd4505 /wd4515 /wd4706 /wd4456 /wd2220")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4996 /wd4244 /wd4267 /wd4099 /wd4551 /wd4505 /wd4515 /wd4706 /wd4456 /wd4324 /wd4701")
     if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4701 /wd4805")
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4805")
     endif()
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -include algorithm")
     set(PROTOBUF_LIBRARY libprotobuf)
     set(DISABLED_WARNINGS_FOR_TRT /wd4267 /wd4244 /wd4996)
+    list(APPEND CUDA_LIBRARIES cudart.lib cudadevrt.lib)
   endif()
   if ( CMAKE_COMPILER_IS_GNUCC )
     set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter -Wno-missing-field-initializers")
   endif()
-  set(CXX_VERSION_DEFINED TRUE)
+  set(CXX_VERSION_DEFINED TRUE)  
   add_subdirectory(${ONNXRUNTIME_ROOT}/../cmake/external/onnx-tensorrt)
   set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
   if (WIN32)
@@ -189,7 +221,6 @@ if (onnxruntime_USE_TENSORRT)
     unset(OLD_CMAKE_CXX_FLAGS)
     unset(OLD_CMAKE_CUDA_FLAGS)
     set_target_properties(nvonnxparser PROPERTIES LINK_FLAGS "/ignore:4199")
-    set_target_properties(nvonnxparser_runtime PROPERTIES LINK_FLAGS "/ignore:4199")
     set_target_properties(trt_onnxify PROPERTIES LINK_FLAGS "/ignore:4199")
     target_compile_definitions(trt_onnxify PRIVATE ONNXIFI_BUILD_LIBRARY=1)
     target_sources(onnx2trt PRIVATE ${ONNXRUNTIME_ROOT}/test/win_getopt/mb/getopt.cc)
@@ -205,7 +236,7 @@ if (onnxruntime_USE_TENSORRT)
   include_directories(${ONNXRUNTIME_ROOT}/../cmake/external/onnx-tensorrt)
   include_directories(${TENSORRT_INCLUDE_DIR})
   set(trt_link_libs cudnn ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
-  set(onnxparser_link_libs nvonnxparser_static nvonnxparser_plugin)
+  set(onnxparser_link_libs nvonnxparser_static)
 
   file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.h"
@@ -215,7 +246,7 @@ if (onnxruntime_USE_TENSORRT)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_tensorrt_cc_srcs})
   add_library(onnxruntime_providers_tensorrt ${onnxruntime_providers_tensorrt_cc_srcs})
   target_link_libraries(onnxruntime_providers_tensorrt ${onnxparser_link_libs} ${trt_link_libs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+  onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
   add_dependencies(onnxruntime_providers_tensorrt ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/tensorrt  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
@@ -237,7 +268,7 @@ if (onnxruntime_USE_NGRAPH)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_ngraph_cc_srcs})
   add_library(onnxruntime_providers_ngraph ${onnxruntime_providers_ngraph_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_ngraph onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+  onnxruntime_add_include_to_target(onnxruntime_providers_ngraph onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
   add_dependencies(onnxruntime_providers_ngraph ngraph onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_ngraph PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_ngraph PRIVATE ${ONNXRUNTIME_ROOT} ${ngraph_INCLUDE_DIRS})
@@ -260,23 +291,100 @@ if (onnxruntime_USE_OPENVINO)
 
   # Below variables point to directories within the OpenVINO installation directory
   # whose value is set in INTEL_CVSDK_DIR variable by running the setupvars.sh script
-  if (onnxruntime_USE_OPENVINO_BINARY)
-    set(OPENVINO_INCLUDE_DIR $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/include)
-    set(OPENVINO_LIB_DIR $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/lib/ubuntu_16.04/intel64/)
+if (onnxruntime_USE_OPENVINO_BINARY)
+  if ($ENV{INTEL_CVSDK_DIR} MATCHES "2019.1")
+     message($ENV{INTEL_CVSDK_DIR})
+     set(OPENVINO_INCLUDE_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/include)
+     set(OPENVINO_TBB_INCLUDE_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/include)
+    if(WIN32)
+     set(OPENVINO_LIB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/Release)
+     set(OPENVINO_TBB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/Release)
+     set(OPENVINO_MKL_TINY_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/bin/intel64/Release)
+	 
+    else()
+     set(OPENVINO_LIB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/)
+     set(OPENVINO_TBB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib)
+     set(OPENVINO_MKL_TINY_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib)
+    endif()
   endif()
+  if ($ENV{INTEL_CVSDK_DIR} MATCHES "2018.5")
+     set(OPENVINO_INCLUDE_DIR $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/include)
+     set(OPENVINO_LIB_DIR $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/lib/ubuntu_16.04/intel64/)
+  endif()
+endif()
 
   find_package(PythonLibs REQUIRED)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
   add_library(onnxruntime_providers_openvino ${onnxruntime_providers_openvino_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_openvino gsl onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+  onnxruntime_add_include_to_target(onnxruntime_providers_openvino onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
   add_dependencies(onnxruntime_providers_openvino ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_openvino PROPERTIES FOLDER "ONNXRuntime")
-  target_include_directories(onnxruntime_providers_openvino PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/openvino  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES LINKER_LANGUAGE CXX)
-  link_directories(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR})
-  target_link_libraries(onnxruntime_providers_openvino -linference_engine ${PYTHON_LIBRARIES})
+  if (WIN32)
+    target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${OPENVINO_TBB_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS} ${PYTHONPATH})
+   #${pybind11_INCLUDE_DIRS}
+  else()
+    target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${OPENVINO_TBB_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS})
+  endif()
+  
+  if ($ENV{INTEL_CVSDK_DIR} MATCHES "2019.1")
+   if (WIN32)
+    
+     string(REPLACE "include" "libs" PYTHON_LIB ${PYTHON_INCLUDE_DIRS})	
+     set(PYTHON_LIBRARIES ${PYTHON_LIB})
+     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4996 /wd4244 /wd4267 /wd4099 /wd4551 /wd4505 /wd4515 /wd4706 /wd4456 /w")
+     link_directories(onnxruntime_providers_openvino -linference_engine ${PYTHON_LIBRARIES} ${OPENVINO_LIB_DIR} ${OPENVINO_TBB_DIR} ${OPENVINO_MKL_TINY_DIR} ${PYTHONPATH})
+     target_link_libraries(onnxruntime_providers_openvino $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/lib/intel64/Release/inference_engine.lib)
+     file(COPY ${onnxruntime_providers_openvino_py_srcs} DESTINATION ${onnxruntime_BINARY_DIR}/${CMAKE_BUILD_TYPE})
+   else()
+      link_directories(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR} ${OPENVINO_TBB_DIR} ${OPENVINO_MKL_TINY_DIR})
+      target_link_libraries(onnxruntime_providers_openvino -linference_engine -ltbb ${PYTHON_LIBRARIES})
+      file(COPY ${onnxruntime_providers_openvino_py_srcs} DESTINATION ${onnxruntime_BINARY_DIR})
+   endif()
+  endif()
+  if ($ENV{INTEL_CVSDK_DIR} MATCHES "2018.5")
+    link_directories(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR})
+    target_link_libraries(onnxruntime_providers_openvino -linference_engine ${PYTHON_LIBRARIES})
+  endif()
   file(COPY ${onnxruntime_providers_openvino_py_srcs} DESTINATION ${onnxruntime_BINARY_DIR})
+endif()
+
+if (onnxruntime_USE_NUPHAR)
+  add_definitions(-DUSE_NUPHAR=1)
+
+  if (NOT onnxruntime_USE_TVM)
+    message(FATAL_ERROR "onnxruntime_USE_TVM required for onnxruntime_USE_NUPHAR")
+  endif()
+
+  if (NOT onnxruntime_USE_LLVM)
+    message(FATAL_ERROR "onnxruntime_USE_LLVM required for onnxruntime_USE_NUPHAR")
+  endif()
+
+  include(onnxruntime_nuphar_extern.cmake)
+
+  file(GLOB_RECURSE onnxruntime_providers_nuphar_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/*.cc"
+  )
+
+  # following files required different build flag for AVX2 in separate onnxruntime_nuphar_extern.cmake file
+  list (REMOVE_ITEM onnxruntime_providers_nuphar_cc_srcs "${ONNXRUNTIME_ROOT}/core/providers/nuphar/extern/igemv_avx2.cc")
+  list (REMOVE_ITEM onnxruntime_providers_nuphar_cc_srcs "${ONNXRUNTIME_ROOT}/core/providers/nuphar/extern/igemv_avx2.h")
+
+  if (onnxruntime_USE_MKLML)
+    add_definitions(-DNUPHAR_USE_MKL)
+  endif()
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nuphar_cc_srcs})
+  add_library(onnxruntime_providers_nuphar ${onnxruntime_providers_nuphar_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_nuphar onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+  set_target_properties(onnxruntime_providers_nuphar PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_nuphar PRIVATE ${ONNXRUNTIME_ROOT} ${TVM_INCLUDES} ${eigen_INCLUDE_DIRS})
+  set_target_properties(onnxruntime_providers_nuphar PROPERTIES LINKER_LANGUAGE CXX)
+  target_compile_options(onnxruntime_providers_nuphar PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
+  add_dependencies(onnxruntime_providers_nuphar ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/nuphar  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 endif()
 
 if (onnxruntime_USE_NNAPI)
@@ -293,7 +401,7 @@ if (onnxruntime_USE_NNAPI)
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nnapi_cc_srcs})
   add_library(onnxruntime_providers_nnapi ${onnxruntime_providers_nnapi_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_nnapi onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf-lite dnnlibrary::dnnlibrary)
+  onnxruntime_add_include_to_target(onnxruntime_providers_nnapi onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite dnnlibrary::dnnlibrary)
   target_link_libraries(onnxruntime_providers_nnapi dnnlibrary::dnnlibrary)
   add_dependencies(onnxruntime_providers_nnapi
     dnnlibrary::dnnlibrary
@@ -304,6 +412,39 @@ if (onnxruntime_USE_NNAPI)
   set_target_properties(onnxruntime_providers_nnapi PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_nnapi PRIVATE ${ONNXRUNTIME_ROOT} ${nnapi_INCLUDE_DIRS})
   set_target_properties(onnxruntime_providers_nnapi PROPERTIES LINKER_LANGUAGE CXX)
+endif()
+
+if (onnxruntime_USE_DML)
+  file(GLOB_RECURSE onnxruntime_providers_dml_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/dml/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/dml/*.cpp"
+    "${ONNXRUNTIME_ROOT}/core/providers/dml/*.cc"
+  )
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dml_cc_srcs})
+  add_library(onnxruntime_providers_dml ${onnxruntime_providers_dml_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_dml onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+  add_dependencies(onnxruntime_providers_dml ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_include_directories(onnxruntime_providers_dml PRIVATE ${ONNXRUNTIME_ROOT} ${ONNXRUNTIME_ROOT}/../cmake/external/wil/include)
+  
+  target_link_libraries(onnxruntime_providers_dml ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/build/DirectML.targets)
+  target_link_libraries(onnxruntime_providers_dml d3d12.lib dxgi.lib)
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll")
+
+  # The DML EP requires C++17
+  set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD 17)
+  set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD_REQUIRED ON)
+  
+  target_compile_definitions(onnxruntime_providers_dml PRIVATE ONNX_NAMESPACE=onnx ONNX_ML LOTUS_LOG_THRESHOLD=2 LOTUS_ENABLE_STDERR_LOGGING PLATFORM_WINDOWS)
+  target_compile_definitions(onnxruntime_providers_dml PRIVATE UNICODE _UNICODE NOMINMAX)
+  if (MSVC)
+    target_compile_definitions(onnxruntime_providers_dml PRIVATE _SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING)
+    target_compile_options(onnxruntime_providers_dml PRIVATE "/W3")
+  endif()
+  
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dml  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+
+  set_target_properties(onnxruntime_providers_dml PROPERTIES LINKER_LANGUAGE CXX)
+  set_target_properties(onnxruntime_providers_dml PROPERTIES FOLDER "ONNXRuntime")
 endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)

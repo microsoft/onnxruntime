@@ -77,6 +77,7 @@ SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Sqrt)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Log)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Exp)
 SPECIALIZED_UNARY_ELEMENTWISE_IMPL_HFD(Erf)
+SPECIALIZED_UNARY_ELEMENTWISE_IMPL(Not, bool)
 
 // When casting, half needs to be converted via float type from most other types
 template <typename T>
@@ -104,10 +105,10 @@ void Impl_Cast(
     const InT* input_data,
     OutT* output_data,
     size_t count) {
-  UnaryElementWiseImpl(input_data,
-                       output_data,
-                       OP_Cast<InT, OutT>(),
-                       count);
+    UnaryElementWiseImpl(input_data,
+                         output_data,
+                         OP_Cast<InT, OutT>(),
+                         count);
 }
 
 #define SPECIALIZED_CAST_IMPL2(InT, OutT) \

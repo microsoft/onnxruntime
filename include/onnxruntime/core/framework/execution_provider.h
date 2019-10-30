@@ -4,11 +4,12 @@
 #pragma once
 
 #include <unordered_map>
-#include "gsl/pointers"
+#include "gsl/gsl"
 
 #include "core/common/status.h"
 #include "core/framework/tensor.h"
 #include "core/framework/func_api.h"
+#include "core/framework/data_transfer.h"
 
 namespace onnxruntime {
 class GraphViewer;
@@ -28,7 +29,7 @@ typedef std::map<int, AllocatorPtr> AllocatorMap;
 // if we are export the fused function to dll, the function will still in the same binary as lotus
 // use std function to give execution provider some chance to capture some state.
 using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
-using ComputeFunc = std::function<Status(FunctionState, const OrtCustomOpApi*, OrtKernelContext*)>;
+using ComputeFunc = std::function<Status(FunctionState, const OrtApi*, OrtKernelContext*)>;
 using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
 
 struct NodeComputeInfo {
@@ -57,6 +58,16 @@ class IExecutionProvider {
   virtual AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const;
 
   /**
+   * Returns a data transfer object that implements methods to copy to and
+   * from this device.
+   * If no copy is required for the successful operation of this provider,
+   * return a nullptr.
+   */
+  virtual std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const {
+    return nullptr;
+  }
+
+  /**
      Get execution provider's capability for the specified <graph>.
      Return a bunch of IndexedSubGraphs <*this> execution provider can run if
      the sub-graph contains only one node or can fuse to run if the sub-graph
@@ -83,20 +94,6 @@ class IExecutionProvider {
      execution provider lib.
   */
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const;
-
-  /**
-   * Copy tensor between execution providers.  It's always a deep copy
-   * Either src.location is CPU, or dst.location is CPU. They can't be both on CPU.
-   */
-  virtual common::Status CopyTensor(const Tensor& src, Tensor& dst) const = 0;
-
-  /**
-   * Copy tensor between execution providers on specified exec queue
-   * It's always a deep copy
-   * Either src.location is CPU, or dst.location is CPU. They can't be both on CPU.
-   */
-  virtual common::Status CopyTensor(const Tensor& src, Tensor& dst,
-                                    int exec_queue_id) const;
 
   /**
      Returns an opaque handle whose exact type varies based on the provider

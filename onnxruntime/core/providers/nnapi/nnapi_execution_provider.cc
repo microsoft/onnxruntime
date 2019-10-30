@@ -17,36 +17,20 @@ constexpr const char* NNAPI = "Nnapi";
 NnapiExecutionProvider::NnapiExecutionProvider()
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider} {
   DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
-                                              [](int) { return std::make_unique<CPUAllocator>(
-                                                            std::make_unique<OrtAllocatorInfo>(NNAPI,
-                                                                                               OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault)); },
+                                              [](int) { return onnxruntime::make_unique<CPUAllocator>(
+                                                            onnxruntime::make_unique<OrtMemoryInfo>(NNAPI,
+                                                                                               OrtAllocatorType::OrtDeviceAllocator)); },
                                               std::numeric_limits<size_t>::max()};
   InsertAllocator(CreateAllocator(device_info));
 
-  DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUOutput,
-                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(NNAPI, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeCPUOutput)); },
+  DeviceAllocatorRegistrationInfo cpu_memory_info({OrtMemTypeCPUOutput,
+                                                      [](int) { return onnxruntime::make_unique<CPUAllocator>(onnxruntime::make_unique<OrtMemoryInfo>(NNAPI, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); },
                                                       std::numeric_limits<size_t>::max()});
 
-  InsertAllocator(CreateAllocator(cpu_allocator_info));
+  InsertAllocator(CreateAllocator(cpu_memory_info));
 }
 
 NnapiExecutionProvider::~NnapiExecutionProvider() {}
-
-Status NnapiExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) const {
-  if (!(strcmp(src.Location().name, NNAPI) == 0 && strcmp(dst.Location().name, CPU) == 0) &&
-      !(strcmp(src.Location().name, CPU) == 0 && strcmp(dst.Location().name, NNAPI) == 0) &&
-      !(strcmp(src.Location().name, NNAPI) == 0 && strcmp(dst.Location().name, NNAPI) == 0)) {
-    ORT_NOT_IMPLEMENTED(src.Location().name, " copy to ", dst.Location().name, " is not implemented");
-  }
-
-  // Todo: Copy for now. May optimize later to avoid copy.
-  size_t bytes = src.DataType()->Size() * src.Shape().Size();
-  const void* src_data = src.DataRaw();
-  void* dst_data = dst.MutableDataRaw();
-  memcpy(dst_data, src_data, bytes);
-
-  return Status::OK();
-}
 
 std::vector<std::vector<int>> NnapiExecutionProvider::GetSupportedNodes(const ONNX_NAMESPACE::ModelProto& model_proto) const {
   dnn::OnnxConverter converter;
@@ -88,7 +72,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
   const auto supported_nodes_vector = GetSupportedNodes(model_proto);
 
-  std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
 
   // Find inputs, initializers and outputs for each supported subgraph
   std::vector<std::unique_ptr<ComputeCapability>> result;
@@ -102,7 +86,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       for (const auto& index : group) {
         node_set.insert(node_index[index]);
       }
-      std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+      std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
       // Find inputs and outputs of the subgraph
       std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add;
       std::unordered_set<const NodeArg*> erased;
@@ -186,7 +170,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       }
 
       // Assign inputs and outputs to subgraph's meta_def
-      auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+      auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
       meta_def->name = "NNAPI_" + std::to_string(counter++);
       meta_def->domain = kMSDomain;
 
@@ -201,7 +185,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       meta_def->since_version = 1;
       sub_graph->SetMetaDef(meta_def);
 
-      result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+      result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
     }
   }
 
@@ -211,28 +195,6 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                                std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto* fused_node : fused_nodes) {
-    std::vector<int> input_indexes;
-    std::vector<int> input_dim_sizes;
-    std::vector<int> output_indexes;
-    std::vector<int> output_dim_sizes;
-    std::vector<std::vector<int64_t>> output_shapes;
-
-    // Build map from input name to its index in input definitions
-    std::unordered_map<std::string, int> input_map;
-    const auto& input_defs = fused_node->InputDefs();
-    input_map.reserve(input_defs.size());
-    for (int i = 0, end = input_defs.size(); i < end; ++i) {
-      input_map[input_defs[i]->Name()] = i;
-    }
-
-    // Build map from output name to its index in output definitions
-    std::unordered_map<std::string, int> output_map;
-    const auto& output_defs = fused_node->OutputDefs();
-    output_map.reserve(output_defs.size());
-    for (int i = 0, end = output_defs.size(); i < end; ++i) {
-      output_map[output_defs[i]->Name()] = i;
-    }
-
     // Reconstruct graph proto from fused node's function body
     const auto* func_body = fused_node->GetFunctionBody();
     if (!func_body) {
@@ -248,6 +210,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
     dnn::OnnxReader onnx_reader;
     dnn::ModelBuilder model_builder;
     onnx_reader.ReadOnnx(model_proto, model_builder);
+    model_builder.AllowFp16(true);
     auto dnn_model = model_builder.Compile(model_builder.PREFERENCE_SUSTAINED_SPEED);
     dnn_models_.emplace(fused_node->Name(), std::move(dnn_model));
 

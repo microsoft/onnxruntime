@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "cudnn_common.h"
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 #include "shared_inc/cuda_call.h"
 #include "core/providers/cpu/tensor/utils.h"
 
@@ -83,7 +83,8 @@ Status CudnnDataTensor::Set(cudnnDataType_t dataType,
                             const int32_t* seq_lengths) {
   ORT_RETURN_IF_ERROR(CreateTensorIfNeeded());
 
-  cudnnRNNDataLayout_t layout = CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_PACKED;
+  // CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED works with CUDNN_RNN_PADDED_IO_ENABLED, so that it will auto fill 0 for the shorter sequences
+  cudnnRNNDataLayout_t layout = CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED;
   float padding_fill = 0.0f;
   CUDNN_RETURN_IF_ERROR(cudnnSetRNNDataDescriptor(tensor_, dataType, layout,
                                                   static_cast<int>(max_seq_length),
@@ -142,6 +143,9 @@ const double Consts<double>::Zero = 0;
 const float Consts<half>::Zero = 0;
 
 const float Consts<half>::One = 1;
+
+std::vector<cudaDeviceProp> DeviceProp::s_cachedDeviceProps;
+std::once_flag DeviceProp::s_cachedDevicePropsInitFlag;
 
 }  // namespace cuda
 }  // namespace onnxruntime

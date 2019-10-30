@@ -2,29 +2,40 @@
   Copyright(C) 2019 Intel Corporation
   Licensed under the MIT License
 """
+
+from mo.utils.version import get_version
+from mo.utils.utils import refer_to_faq_msg
+from mo.utils.unsupported_ops import UnsupportedOps
+from mo.graph.graph import *
+from mo.front.extractor import update_ie_fields
+from xml.etree.ElementTree import Element, SubElement, tostring
+import xml.dom.minidom
+import hashlib
 import sys
 import os
-
-import hashlib
-import xml.dom.minidom
-from xml.etree.ElementTree import Element, SubElement, tostring
-
-from mo.front.extractor import update_ie_fields
-from mo.graph.graph import *
-from mo.utils.unsupported_ops import UnsupportedOps
-from mo.utils.utils import refer_to_faq_msg
-from mo.utils.version import get_version
-
 ov_root = os.environ['INTEL_CVSDK_DIR']
-mo_path = os.path.join(ov_root, "deployment_tools", "model_optimizer")
+if '2019' in ov_root:
+    version = 'R1'
+else:
+    version = 'R5'
+mo_path = ov_root + "/deployment_tools/model_optimizer"
 sys.path.append(mo_path)
 
 
 def create_const_nodes(graph: nx.MultiDiGraph, start_data_nodes_are_not_allowed: bool = True):
 
     for node_name in list(graph.nodes()):
-        node = NodeWrap(graph, node_name)
-        if (node.has('kind') and node.kind == 'data' and ((len(node.out_edges()) == 1 and 'bin' not in node.out_edge(0)) or node.has_and_set('is_output')) and len(node.in_nodes()) == 0):
+        if 'R5' in version:
+            node = NodeWrap(graph, node_name)
+        else:
+            node = Node(graph, node_name)
+        if (
+                node.has('kind') and
+                node.kind == 'data' and (
+                (len(node.out_edges()) == 1 and 'bin' not in node.out_edge(0)) or
+                node.has_and_set('is_output')
+                ) and
+                len(node.in_nodes()) == 0):
 
             if node.has_valid('value'):
                 const_node_name = node.id + '_const'
@@ -74,7 +85,10 @@ def serialize_constants_recursively(weights, graph: nx.MultiDiGraph, data_type, 
     elif (data_type == np.float16):
         precision = 2
     for node in nodes:
-        node = NodeWrap(graph, node)
+        if 'R5' in version:
+            node = NodeWrap(graph, node)
+        else:
+            node = Node(graph, node)
 
         if node.kind == 'data' and node.value is not None and any('bin' in d for u, v, d in graph.out_edges(node.node, data=True)):
             blob = node.value
@@ -101,7 +115,10 @@ def serialize_constants_recursively(weights, graph: nx.MultiDiGraph, data_type, 
                     graph, node.soft_get('name'), node.id, node.shape, node.offset, node.size))
 
     for node in nodes:
-        node = NodeWrap(graph, node)
+        if 'R5' in version:
+            node = NodeWrap(graph, node)
+        else:
+            node = Node(graph, node)
         # Dump blobs recursively if sub-graphs are present in the node
         if node.has_valid('sub_graphs'):
             for sub_graph_attr_name in node.sub_graphs:
@@ -131,6 +148,8 @@ def xml_shape(shape: np.ndarray, element: xml.etree.ElementTree.Element):
         dim = SubElement(element, 'dim')
         if d <= 0:
             d = 1
+           # raise Error('The value "{}" for shape is less or equal to 0. May be the input shape of the topology is '
+           #         'wrong.'.format(d))
         if int(d) != d:
             raise Error('The value "{}" for shape is not integer.'.format(d))
         if not isinstance(d, np.int64):
@@ -140,10 +159,24 @@ def xml_shape(shape: np.ndarray, element: xml.etree.ElementTree.Element):
         dim.text = str(d)
 
 
+def sorted_inputs(node):
+    if 'R5' in version:
+        return get_sorted_inputs(node)
+    else:
+        return node.get_sorted_inputs(node)
+
+
+def sorted_outputs(node):
+    if 'R5' in version:
+        return get_sorted_outputs(node)
+    else:
+        return node.get_sorted_outputs(node)
+
+
 def xml_ports(node: Node, element: xml.etree.ElementTree.Element, edges: xml.etree.ElementTree.Element):
     # input ports
     inputs = None  # will create input section only if at least one input is available
-    for u, d in get_sorted_inputs(node):
+    for u, d in sorted_inputs(node):
         if 'bin' not in d and ('xml_skip' not in d or not d['xml_skip']):
             if inputs is None:
                 inputs = SubElement(element, 'input')
@@ -166,7 +199,7 @@ def xml_ports(node: Node, element: xml.etree.ElementTree.Element, edges: xml.etr
 
     # output ports
     outputs = None
-    for v, d in get_sorted_outputs(node):
+    for v, d in sorted_outputs(node):
         if 'xml_skip' not in d or not d['xml_skip']:
             if outputs is None:
                 outputs = SubElement(element, 'output')
@@ -180,7 +213,7 @@ def xml_ports(node: Node, element: xml.etree.ElementTree.Element, edges: xml.etr
 
 def xml_consts(graph: nx.MultiDiGraph, node: Node, element: xml.etree.ElementTree.Element):
     blobs = None  # sub-element that will be created on-demand
-    for u, d in get_sorted_inputs(node):
+    for u, d in sorted_inputs(node):
         if 'bin' in d:
             if not blobs:
                 blobs = SubElement(element, 'blobs')
@@ -346,7 +379,10 @@ def serialize_network(graph, net_element, unsupported):
         return
     nodes = sorted(graph.nodes())
     for node in nodes:
-        node = NodeWrap(graph, node)
+        if 'R5' in version:
+            node = NodeWrap(graph, node)
+        else:
+            node = Node(graph, node)
         if not node.has('IE'):
             continue
         if node.kind == 'op' and (not node.has('type') or node.type is None):
@@ -394,12 +430,15 @@ def generate_ie_ir(graph: nx.MultiDiGraph, file_name: str, input_names: tuple = 
 
 def port_renumber(graph: nx.MultiDiGraph):
     for node in list(graph.nodes()):
-        node = NodeWrap(graph, node)
+        if 'R5' in version:
+            node = NodeWrap(graph, node)
+        else:
+            node = Node(graph, node)
         if node.kind == 'op':
             base = 0
-            for u, d in get_sorted_inputs(node):
+            for u, d in sorted_inputs(node):
                 d['in'] = base
                 base += 1
-            for v, d in get_sorted_outputs(node):
+            for v, d in sorted_outputs(node):
                 d['out'] = base
                 base += 1

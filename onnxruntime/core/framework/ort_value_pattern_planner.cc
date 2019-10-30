@@ -7,9 +7,9 @@
 
 namespace onnxruntime {
 OrtValuePatternPlanner::OrtValuePatternPlanner(const ExecutionPlanBase& execution_plan)
-    : execution_planner_{execution_plan} {
+    : execution_planner_(execution_plan) {
   for (auto& location : execution_plan.GetAllLocations()) {
-    planner_map_.emplace(location, std::make_unique<MemPatternPlanner>());
+    planner_map_.emplace(location, onnxruntime::make_unique<MemPatternPlanner>());
   }
 }
 

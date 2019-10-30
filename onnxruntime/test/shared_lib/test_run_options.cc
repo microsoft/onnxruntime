@@ -10,5 +10,5 @@ TEST_F(CApiTest, run_options) {
   options.SetRunLogVerbosityLevel(1);
   options.SetRunTag("abc");
   ASSERT_STREQ(options.GetRunTag(), "abc");
-  ASSERT_EQ(options.GetRunLogVerbosityLevel(), unsigned(1));
+  ASSERT_EQ(options.GetRunLogVerbosityLevel(), 1);
 }

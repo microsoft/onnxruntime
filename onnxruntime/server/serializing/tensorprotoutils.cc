@@ -6,7 +6,7 @@
 #include <memory>
 #include <algorithm>
 #include <limits>
-#include <gsl/pointers>
+#include <gsl/gsl>
 #include "core/framework/data_types.h"
 #include "core/framework/allocator.h"
 #include "onnx-ml.pb.h"
@@ -353,7 +353,7 @@ ONNXTensorElementDataType GetTensorElementType(const onnx::TensorProto& tensor_p
 }
 
 void TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuffer& m, Ort::Value& value) {
-  const OrtAllocatorInfo& allocator = m.GetAllocInfo();
+  const OrtMemoryInfo& allocator = m.GetAllocInfo();
   ONNXTensorElementDataType ele_type = server::GetTensorElementType(tensor_proto);
   const void* raw_data = nullptr;
   size_t raw_data_len = 0;

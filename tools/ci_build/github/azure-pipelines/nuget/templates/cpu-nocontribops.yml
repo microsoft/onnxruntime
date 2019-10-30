@@ -12,7 +12,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolWin)
     JobName: 'Windows_CI_Dev'
-    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --disable_contrib_ops --enable_msvc_static_runtime --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)'
+    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --disable_contrib_ops --enable_msvc_static_runtime --build_shared_lib --build_csharp --enable_onnx_tests'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
@@ -26,7 +26,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolWin)
     JobName: 'Windows_CI_Dev_x86'
-    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --disable_contrib_ops --enable_msvc_static_runtime --build_shared_lib  --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --x86'
+    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --disable_contrib_ops --enable_msvc_static_runtime --build_shared_lib  --build_csharp --enable_onnx_tests --x86'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
@@ -37,37 +37,39 @@ jobs:
      ren *.nupkg win-x86.zip
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
 
-- template: ../../templates/linux-ci.yml
-  parameters:
-    AgentPool : $(AgentPoolLinux)
-    JobName: 'Linux_CI_Dev'
-    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--disable_contrib_ops"'
-    DoNugetPack : 'true'
-    ArtifactName: 'drop-linux'
-    NuPackScript: |
-     set -e -x
-     mkdir $(Build.BinariesDirectory)/linux-x64
-     cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x64
-     cd $(Build.BinariesDirectory)
-     zip -r linux-x64.zip linux-x64
-     cp $(Build.BinariesDirectory)/*.zip $(Build.ArtifactStagingDirectory)
-     ls -al $(Build.ArtifactStagingDirectory)
-
-- template: ../../templates/linux-ci.yml
-  parameters:
-    AgentPool : $(AgentPoolLinux)
-    JobName: 'Linux_CI_Dev_x86'
-    BuildCommand : 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -a x86 -x "--x86 --disable_contrib_ops"'
-    DoNugetPack : 'true'
-    ArtifactName: 'drop-linux-x86'
-    NuPackScript: |
-     set -e -x
-     mkdir $(Build.BinariesDirectory)/linux-x86
-     cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x86
-     cd $(Build.BinariesDirectory)
-     zip -r linux-x86.zip linux-x86
-     cp $(Build.BinariesDirectory)/*.zip $(Build.ArtifactStagingDirectory)
-     ls -al $(Build.ArtifactStagingDirectory)
+- job: 'Linux_CI_Dev'
+  pool: $(AgentPoolLinux)
+  steps:    
+    - template: ../../templates/set-version-number-variables-step.yml
+    - template: ../../templates/linux-set-variables-and-download.yml
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker build -t onnxruntime-centos6 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos6 .
+        workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --enable_onnx_tests --disable_contrib_ops
+        workingDirectory: $(Build.SourcesDirectory)
+    - script: |
+       set -e -x
+       mkdir $(Build.BinariesDirectory)/linux-x64
+       cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x64
+       cd $(Build.BinariesDirectory)
+       zip -r linux-x64.zip linux-x64
+       cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
+       ls -al $(Build.ArtifactStagingDirectory)
+      displayName: 'Create Artifacts'
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifactName: 'drop-linux'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: succeeded()
+    - template: ../../templates/clean-agent-build-directory-step.yml
 
 - template: ../../templates/mac-ci.yml
   parameters:
@@ -95,7 +97,6 @@ jobs:
   - Windows_CI_Dev
   - Windows_CI_Dev_x86
   - Linux_CI_Dev
-  - Linux_CI_Dev_x86
   - MacOS_CI_Dev
   condition: succeeded()
   steps:  
@@ -121,13 +122,6 @@ jobs:
     continueOnError: true
 
   - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - Linux-x86'
-    inputs:
-      artifactName: 'drop-linux-x86'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-    continueOnError: true
-
-  - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - MacOS'
     inputs:
       artifactName: 'drop-osx'
@@ -139,7 +133,7 @@ jobs:
   - template: ../../templates/esrp_nuget.yml
     parameters:
       DisplayName: 'ESRP - sign NuGet package'
-      FolderPath: '$(Build.BinariesDirectory)/nuget-artifact'
+      FolderPath: '$(Build.ArtifactStagingDirectory)'
       DoEsrp: ${{ parameters.DoEsrp }}
 
   - task: PublishPipelineArtifact@0

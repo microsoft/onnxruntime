@@ -9,8 +9,9 @@ set -x
 SOURCE_ROOT=$1
 BUILD_DIR=$2
 NUGET_REPO_DIRNAME=$3   # path relative to BUILD_DIR
-Arch=${4:-x64}          # x32, x64
-PackageName=${PackageName:-Microsoft.ML.OnnxRuntime}
+CurrentOnnxRuntimeVersion=$4
+Arch=${5:-x64}          # x32, x64
+PackageName=${PACKAGENAME:-Microsoft.ML.OnnxRuntime}
 RunTestCsharp=${RunTestCsharp:-true}
 RunTestNative=${RunTestNative:-true}
 PYTHON_VER=3.5
@@ -36,14 +37,14 @@ docker run -h $HOSTNAME \
         --volume "$BUILD_DIR:/home/onnxruntimedev" \
         --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
         -e "OnnxRuntimeBuildDirectory=/home/onnxruntimedev" \
-        -e "IsReleaseBuild=$IsReleaseBuild" \
+        -e "IsReleaseBuild=$ISRELEASEBUILD" \
         -e "PackageName=$PackageName" \
         -e "DisableContribOps=$DISABLECONTRIBOPS" \
         -e "RunTestCsharp=$RunTestCsharp" \
         -e "RunTestNative=$RunTestNative" \
         "onnxruntime-$IMAGE" \
         /bin/bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
-        /home/onnxruntimedev/$NUGET_REPO_DIRNAME /onnxruntime_src /home/onnxruntimedev &
+        /home/onnxruntimedev/$NUGET_REPO_DIRNAME /onnxruntime_src /home/onnxruntimedev $CurrentOnnxRuntimeVersion &
 
 wait -n
 

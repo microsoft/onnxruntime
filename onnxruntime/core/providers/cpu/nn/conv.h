@@ -1,33 +1,39 @@
-/**
-* Copyright (c) 2016-present, Facebook, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
-/* Modifications Copyright (c) Microsoft. */
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #pragma once
 
-#include "core/providers/cpu/nn/conv_base.h"
+#include "core/framework/op_kernel.h"
+#include "core/providers/cpu/nn/conv_attributes.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 
 template <typename T>
-class Conv : public OpKernel, public ConvBase {
+class Conv : public OpKernel {
  public:
-  Conv(const OpKernelInfo& info) : OpKernel(info), ConvBase(info) {
+  Conv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
+
+ private:
+  ConvAttributes conv_attrs_;
+};
+
+template <>
+class Conv<float> : public OpKernel {
+ public:
+  Conv<float>(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
+    activation_.ActivationKind = MlasIdentityActivation;
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+
+ protected:
+  MLAS_ACTIVATION activation_;
+
+  ConvAttributes conv_attrs_;
 };
 
 }  // namespace onnxruntime

@@ -17,7 +17,7 @@ class OrtValueArray {
   OrtValueArray(int n) : values(static_cast<size_t>(n), nullptr){};
   ~OrtValueArray() {
     for (OrtValue* v : values) {
-      if (v != nullptr) OrtReleaseValue(v);
+      if (v != nullptr) Ort::GetApi().ReleaseValue(v);
     }
   }
   OrtValue* Get(size_t index) {

@@ -9,6 +9,7 @@
 #include "core/framework/tensor.h"
 #include "core/framework/path_lib.h"
 #include "core/framework/tensor_allocator.h"
+#include "core/framework/session_options.h"
 
 namespace onnxruntime {
 class ExecutionProviders;
@@ -36,13 +37,10 @@ class SessionStateInitializer {
                           KernelRegistryManager& kernel_registry_manager);
 
   // First perform any transformations and create the execution plan
-  common::Status CreatePlan(const Node* parent_node,
-                            const ConstPointerContainer<std::vector<NodeArg*>>* outer_scope_node_args,
-                            bool enable_sequential_execution);
-
-  // initialize tensors, and save. save kernels and input/output node mappings
-  // \param implicit_inputs could be NULL
-  common::Status InitializeAndSave(const ConstPointerContainer<std::vector<NodeArg*>>* implicit_inputs);
+  // Then initialize tensors, and save. save kernels and input/output node mappings
+  common::Status CreatePlan(_In_opt_ const Node* parent_node,
+                            _In_opt_ const ConstPointerContainer<std::vector<NodeArg*>>* outer_scope_node_args,
+                            ExecutionMode execution_mode);
 
  private:
   const std::basic_string<PATH_CHAR_TYPE>& graph_loc_;

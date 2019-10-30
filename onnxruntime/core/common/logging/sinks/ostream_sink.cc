@@ -21,9 +21,9 @@ void OStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger
   std::ostringstream msg;
 
   msg << timestamp << " [" << message.SeverityPrefix() << ":" << message.Category() << ":" << logger_id << ", "
-      << message.Location().ToString() << "] " << message.Message();
+      << message.Location().ToString() << "] " << message.Message() << "\n";
 
-  (*stream_) << msg.str() << "\n";
+  (*stream_) << msg.str();
 
   if (flush_) {
     stream_->flush();

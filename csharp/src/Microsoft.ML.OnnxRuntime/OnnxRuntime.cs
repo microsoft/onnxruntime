@@ -15,7 +15,7 @@ namespace Microsoft.ML.OnnxRuntime
         public LogLevel LogLevel { get; set; }
     }
 
-    internal enum LogLevel
+    public enum LogLevel
     {
         Verbose = 0,
         Info = 1,

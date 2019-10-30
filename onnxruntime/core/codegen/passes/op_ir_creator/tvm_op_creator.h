@@ -29,7 +29,7 @@ class OpIRDispatcher : public codegen::DispatcherBase<OpIRCreator*> {
   OpIRDispatcher(const std::string& name)
       : DispatcherBase(name) {}
 
-  ~OpIRDispatcher() = default;
+  virtual ~OpIRDispatcher() = default;
 
   virtual OpIRCreator* Find(const Node&) = 0;
 

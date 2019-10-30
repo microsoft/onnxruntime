@@ -20,11 +20,11 @@ class MemoryPattern {
  public:
   MemoryPattern() = default;
 
-  MemoryPattern(MemoryPattern&& rhs)
+  MemoryPattern(MemoryPattern&& rhs) noexcept
       : patterns_{std::move(rhs.patterns_)},
         peak_size_{std::move(rhs.peak_size_)} {}
 
-  MemoryPattern& operator=(MemoryPattern&& rhs) {
+  MemoryPattern& operator=(MemoryPattern&& rhs) noexcept {
     patterns_ = std::move(rhs.patterns_);
     peak_size_ = std::move(rhs.peak_size_);
     return *this;
@@ -51,10 +51,10 @@ class MemoryPattern {
 };
 
 struct MemoryPatternGroup {
-  std::vector<OrtAllocatorInfo> locations;
+  std::vector<OrtMemoryInfo> locations;
   std::vector<MemoryPattern> patterns;
 
-  const MemoryPattern* GetPatterns(const OrtAllocatorInfo& location) const {
+  const MemoryPattern* GetPatterns(const OrtMemoryInfo& location) const {
     for (size_t i = 0; i < locations.size(); i++)
       if (locations[i] == location) {
         return &patterns[i];

@@ -14,18 +14,18 @@ namespace server {
 
 namespace protobufutil = google::protobuf::util;
 
-#define GenerateErrorResponse(logger, error_code, message, context)                     \
-  {                                                                                     \
-    auto http_error_code = (error_code);                                                \
-    (context).response.insert("x-ms-request-id", ((context).request_id));               \
-    if (!(context).client_request_id.empty()) {                                         \
-      (context).response.insert("x-ms-client-request-id", (context).client_request_id); \
-    }                                                                                   \
-    auto json_error_message = CreateJsonError(http_error_code, (message));              \
-    logger->debug(json_error_message);                                                  \
-    (context).response.result(http_error_code);                                         \
-    (context).response.body() = json_error_message;                                     \
-    (context).response.set(http::field::content_type, "application/json");              \
+#define GenerateErrorResponse(logger, error_code, message, context)                              \
+  {                                                                                              \
+    auto http_error_code = (error_code);                                                         \
+    (context).response.insert(util::MS_REQUEST_ID_HEADER, ((context).request_id));               \
+    if (!(context).client_request_id.empty()) {                                                  \
+      (context).response.insert(util::MS_CLIENT_REQUEST_ID_HEADER, (context).client_request_id); \
+    }                                                                                            \
+    auto json_error_message = CreateJsonError(http_error_code, (message));                       \
+    logger->debug(json_error_message);                                                           \
+    (context).response.result(http_error_code);                                                  \
+    (context).response.body() = json_error_message;                                              \
+    (context).response.set(http::field::content_type, "application/json");                       \
   }
 
 static bool ParseRequestPayload(const HttpContext& context, SupportedContentType request_type,
@@ -39,8 +39,11 @@ void Predict(const std::string& name,
   auto logger = env->GetLogger(context.request_id);
   logger->info("Model Name: {}, Version: {}, Action: {}", name, version, action);
 
+  auto effective_name = name.empty() ? "default" : name;
+  auto effective_version = version.empty() ? "1" : version;
+
   if (!context.client_request_id.empty()) {
-    logger->info("x-ms-client-request-id: [{}]", context.client_request_id);
+    logger->info("{}: [{}]", util::MS_CLIENT_REQUEST_ID_HEADER, context.client_request_id);
   }
 
   // Request and Response content type information
@@ -64,7 +67,7 @@ void Predict(const std::string& name,
   // Run Prediction
   Executor executor(env.get(), context.request_id);
   PredictResponse predict_response{};
-  auto status = executor.Predict(name, version, predict_request, predict_response);
+  auto status = executor.Predict(effective_name, effective_version, predict_request, predict_response);
   if (!status.ok()) {
     GenerateErrorResponse(logger, GetHttpStatusCode((status)), status.error_message(), context);
     return;
@@ -89,9 +92,9 @@ void Predict(const std::string& name,
   }
 
   // Build HTTP response
-  context.response.insert("x-ms-request-id", context.request_id);
+  context.response.insert(util::MS_REQUEST_ID_HEADER, context.request_id);
   if (!context.client_request_id.empty()) {
-    context.response.insert("x-ms-client-request-id", context.client_request_id);
+    context.response.insert(util::MS_CLIENT_REQUEST_ID_HEADER, context.client_request_id);
   }
   context.response.body() = response_body;
   context.response.result(http::status::ok);

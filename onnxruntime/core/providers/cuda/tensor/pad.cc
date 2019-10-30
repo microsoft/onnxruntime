@@ -4,15 +4,16 @@
 #include "pad.h"
 #include "pad_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/cpu/tensor/pad.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Pad,                                                        \
       kOnnxDomain,                                                \
-      2,                                                          \
+      2, 10,                                                      \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
@@ -24,12 +25,11 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   auto const& input_shape = input_tensor.Shape();
   auto dimension_count = input_shape.NumDimensions();
-  int device_id = GetDeviceId();
-  CudaAsyncBuffer<int64_t> input_dims(this, device_id, input_shape.GetDims());
-  CudaAsyncBuffer<int64_t> input_strides(this, device_id, dimension_count);
-  CudaAsyncBuffer<int64_t> lower_pads(this, device_id, dimension_count);
-  CudaAsyncBuffer<int64_t> upper_pads(this, device_id, dimension_count);
-  CudaAsyncBuffer<fast_divmod> fdm_output_strides(this, device_id, dimension_count);
+  CudaAsyncBuffer<int64_t> input_dims(this, input_shape.GetDims());
+  CudaAsyncBuffer<int64_t> input_strides(this, dimension_count);
+  CudaAsyncBuffer<int64_t> lower_pads(this, dimension_count);
+  CudaAsyncBuffer<int64_t> upper_pads(this, dimension_count);
+  CudaAsyncBuffer<fast_divmod> fdm_output_strides(this, dimension_count);
 
   TensorPitches::Calculate(input_strides.CpuSpan(), input_shape.GetDims());
   std::vector<int64_t> output_dims(input_shape.GetDims());
@@ -45,6 +45,12 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     output_dims[i] += lower_pads_span[i] + upper_pads_span[i];
   }
   TensorShape output_shape(output_dims);
+
+  // special case when there is a dim value of 0 in the shape. behavior depends on mode
+  if (input_shape.Size() == 0) {
+    ORT_RETURN_IF_ERROR(PadBase::HandleDimValueZero(mode_, input_shape, output_shape));
+  }
+
   auto& output_tensor = *ctx->Output(0, output_shape);
   ORT_ENFORCE(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_dims));
   ORT_RETURN_IF_ERROR(input_dims.CopyToGpu());

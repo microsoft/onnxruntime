@@ -19,8 +19,7 @@ Status EliminateIdentity::Apply(Graph& graph, Node& node, RewriteRuleEffect& rul
 }
 
 bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node) const {
-  return graph_utils::IsSingleInSingleOutNode(node) &&
-         !graph.IsNodeOutputsInGraphOutputs(node);
+  return graph_utils::CanRemoveNode(graph, node);
 }
 
 }  // namespace onnxruntime
