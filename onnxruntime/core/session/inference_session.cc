@@ -606,8 +606,10 @@ common::Status InferenceSession::Initialize() {
       ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
       if (session_options_.graph_optimization_level >= TransformerLevel::Level3) {
         LOGS(*session_logger_, WARNING) << "Serializing Optimized ONNX model with Graph Optimization"
-                                           " level greater than 2, the generated model should only be"
-                                           " used on compatible CPU ISAs to the one optimized on.";
+                                           " level greater than ORT_ENABLE_EXTENDED. The generated"
+                                           " model may contain hardware and execution-provider specific"
+                                           " optimizations, and should only be used on the same environment"
+                                           " the model was optimized on.";
       }
     }
 
