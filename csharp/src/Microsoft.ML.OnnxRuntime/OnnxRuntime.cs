@@ -104,7 +104,7 @@ namespace Microsoft.ML.OnnxRuntime
                     // trap any obscure exception
                 }
                 throw new OnnxRuntimeException(ErrorCode.RuntimeException,
-                        $"libc.so version={curVersion} does not meet the minimun of 2.23 required by OnnxRuntime. " +
+                        $"libc.so version={curVersion} does not meet the minimun of {minVersion} required by OnnxRuntime. " +
                         "Linux distribution should be similar to Ubuntu 16.04 or higher");
             }
         }
