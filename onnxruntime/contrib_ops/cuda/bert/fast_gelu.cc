@@ -68,7 +68,7 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   Tensor* output = ctx->Output(0, input->Shape());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
-  if (!computeGelu<CudaT>(nullptr,
+  if (!LaunchFastGeluKernel<CudaT>(nullptr,
                           input_length,
                           bias_length,
                           reinterpret_cast<const CudaT*>(input->template Data<T>()),

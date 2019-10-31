@@ -41,16 +41,16 @@ constexpr float B = 0.7978845608028654;  // sqrt(2.0/M_PI)
 
 constexpr float C = 0.035677408136300125;  // 0.044715 * sqrt(2.0/M_PI)
 
-__device__ inline float tanh(const float& x) {
+__device__ inline float Tanh(const float& x) {
   return tanhf(x);
 }
 
-__device__ inline half tanh(const half& x) {
+__device__ inline half Tanh(const half& x) {
   const float tmp = tanhf(__half2float(x));
   return __float2half(tmp);
 }
 
-__device__ inline half2 tanh(const half2& x) {
+__device__ inline half2 Tanh(const half2& x) {
   // at the moment, there is no half2 tanh builtin
   float2 tmp = (__half22float2(x));
   tmp.x = tanhf(tmp.x);
@@ -59,29 +59,29 @@ __device__ inline half2 tanh(const half2& x) {
 }
 
 template <typename T, unsigned TPB>
-__global__ void geluKernel(const T a, const T b, const T c, int input_length, int bias_length, const T* input, const T* bias, T* output) {
+__global__ void FastGeluKernel(const T a, const T b, const T c, int input_length, int bias_length, const T* input, const T* bias, T* output) {
   const int idx = blockIdx.x * TPB + threadIdx.x;
 
   if (idx < input_length) {
     const T x = input[idx];
     const T in = (bias == nullptr) ? x : (x + bias[idx % bias_length]);
-    const T cdf = a + a * tanh(in * (c * in * in + b));
+    const T cdf = a + a * Tanh(in * (c * in * in + b));
     output[idx] = in * cdf;
   }
 }
 
 template <>
-bool computeGelu<float>(cudaStream_t stream, int input_length, int bias_length, const float* input, const float* bias, float* output) {
+bool LaunchFastGeluKernel(cudaStream_t stream, int input_length, int bias_length, const float* input, const float* bias, float* output) {
   constexpr int blockSize = 256;
   const int gridSize = (input_length + blockSize - 1) / blockSize;
-  geluKernel<float, blockSize><<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length, input, bias, output);
+  FastGeluKernel<float, blockSize><<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length, input, bias, output);
 
   return CUDA_CALL(cudaPeekAtLastError());
 }
 
 template <>
-bool computeGelu<half>(cudaStream_t stream, int input_length, int bias_length, const half* input, const half* bias, half* output) {
-  const int blockSize = 256;
+bool LaunchFastGeluKernel(cudaStream_t stream, int input_length, int bias_length, const half* input, const half* bias, half* output) {
+  constexpr int blockSize = 256;
 
 #if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
   if (0 == (bias_length & 1)) {
@@ -93,12 +93,12 @@ bool computeGelu<half>(cudaStream_t stream, int input_length, int bias_length, c
     const half2* input2 = reinterpret_cast<const half2*>(input);
     const half2* bias2 = reinterpret_cast<const half2*>(bias);
     half2* output2 = reinterpret_cast<half2*>(output);
-    geluKernel<half2, blockSize><<<gridSize, blockSize, 0, stream>>>(A2, B2, C2, n, bias_length / 2, input2, bias2, output2);
+    FastGeluKernel<half2, blockSize><<<gridSize, blockSize, 0, stream>>>(A2, B2, C2, n, bias_length / 2, input2, bias2, output2);
   } else
 #endif
   {
     const int gridSize = (input_length + blockSize - 1) / blockSize;
-    geluKernel<half, blockSize><<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length, input, bias, output);
+    FastGeluKernel<half, blockSize><<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length, input, bias, output);
   }
 
   return CUDA_CALL(cudaPeekAtLastError());
