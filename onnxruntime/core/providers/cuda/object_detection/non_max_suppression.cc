@@ -84,8 +84,8 @@ Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
     ctx->Output(0, {0, 3});
   } else {
     // concatenate outputs
-    const auto last_dim = 3;
-    const auto num_elements = last_dim * total_num_saved_outputs;
+    const int last_dim = 3;
+    const int num_elements = last_dim * total_num_saved_outputs;
     Tensor* output = ctx->Output(0, {static_cast<int64_t>(total_num_saved_outputs), last_dim});
     ORT_ENFORCE(output != nullptr);
     int64_t* dst = output->MutableData<int64_t>();
@@ -124,7 +124,7 @@ Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
                                    count,
                                    dst,
                                    input_ptr.GpuPtr(),
-                                   num_elements));
+                                   static_cast<size_t>(num_elements)));
   }
 
   return Status::OK();
