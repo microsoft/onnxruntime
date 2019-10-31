@@ -609,11 +609,6 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
   std::cout << "-----------\n";
   const auto& output_defs = node.OutputDefs();
 
-  const auto& execution_providers = session_state.GetExecutionProviders();
-  const auto* cpu_execution_provider = execution_providers.Get(onnxruntime::kCpuExecutionProvider);
-  const auto* cuda_execution_provider = execution_providers.Get(onnxruntime::kCudaExecutionProvider);
-  auto cpu_allocator = cpu_execution_provider->GetAllocator(0, OrtMemTypeDefault);
-
   for (auto i = 0, end = context.OutputCount(); i < end; ++i) {
     if (output_defs[i]->Exists()) {
       std::cout << "Output " << i << " Name: " << output_defs[i]->Name();
@@ -635,6 +630,10 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
             } else {
               std::cout << tensor_location << "\n";
 
+#ifdef USE_CUDA
+              // Dumping GPU only when cuda is enabled. Most op has only one output, so put GPU related code here to get best performance.
+              const auto& execution_providers = session_state.GetExecutionProviders();
+              const auto* cuda_execution_provider = execution_providers.Get(onnxruntime::kCudaExecutionProvider);
               if (cuda_execution_provider == nullptr) {
                 continue;
               }
@@ -645,7 +644,9 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
               }
 
               if (tensor_location.device.Type() == OrtDevice::GPU) {
-                // copy tensor from gpu to cpu then dump
+                // Copy tensor from gpu to cpu then dump it.
+                const auto* cpu_execution_provider = execution_providers.Get(onnxruntime::kCpuExecutionProvider);
+                auto cpu_allocator = cpu_execution_provider->GetAllocator(0, OrtMemTypeDefault);
                 std::unique_ptr<Tensor> cpu_tensor = onnxruntime::make_unique<Tensor>(data_type, shape, cpu_allocator);
                 auto status = gpu_data_transfer->CopyTensor(tensor, *cpu_tensor.get(), 0);
                 if (status == common::Status::OK()) {
@@ -654,6 +655,7 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
                   std::cout << " failed to transfer data to cpu.\n";
                 }
               }
+#endif
             }
           }
         } else {
