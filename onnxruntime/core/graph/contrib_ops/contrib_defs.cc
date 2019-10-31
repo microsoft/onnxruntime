@@ -193,7 +193,6 @@ void RegisterNchwcSchemas() {
 }
 
 void RegisterBertSchemas() {
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -326,7 +325,6 @@ void RegisterBertSchemas() {
       .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
-
 }
 
 void RegisterContribSchemas() {
@@ -1908,6 +1906,196 @@ Example 4:
           saved_inv_std_var_shape->CopyFrom(input_shape);
           saved_inv_std_var_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
         }
+      });
+
+  const char* auto_pad_doc =
+      "auto_pad must be either NOTSET, SAME_UPPER, SAME_LOWER or VALID. Where "
+      "default value is NOTSET, which means explicit padding is used. "
+      "SAME_UPPER or SAME_LOWER mean pad the input so that the output size match the input."
+      "In case of odd number add the extra padding at the end for SAME_UPPER and at the "
+      "beginning for SAME_LOWER. VALID mean no padding.";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConvInteger)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(	
+The convolution operator consumes a quantized input tensor, its scale and zero point,	
+a quantized filter, its scale and zero point, and computes the output. 
+Depending on attribute 'requantize' the output will be fp32 .i.e the actual output in 32 bit range or 
+it will be quantized back to 8 bit. This operator fuses multiple operations around ConvInteger .i.e
+If requantize == 0 then it fuses ConvInteger + int32->FP32 step
+If requantize == 1 then it fuses ConvInteger + int32->FP32 + QuantizeLinear
+When requantize == 1 this operator behaves similar to QLinearConv with the difference that it does not need 
+output scale and zero point and therefore no calibration.
+Bias can be FP32 or int32. When bias is FP32 it fuses bias quantization as well by internally quantizing the bias using input and weight scale
+Each scale and zero point pair must have same shape. It means they must be either scalars (per tensor) or 1-D tensors (per channel).	
+The production MUST never overflow. The accumulation may overflow in 32 bits	
+if the input is 8 bits or in 64 bits if the input is 16 bits.)DOC")
+      .Input(
+          0,
+          "x",
+          "Input data tensor from previous layer; "
+          "has size (N x C x H x W), where N is the batch size, "
+          "C is the number of channels, and H and W are the "
+          "height and width. Note that this is for the 2D image. "
+          "Otherwise the size is (N x C x D1 x D2 ... x Dn). "
+          "Optionally, if dimension denotation is "
+          "in effect, the operation expects input data tensor "
+          "to arrive with the dimension denotation of [DATA_BATCH, "
+          "DATA_CHANNEL, DATA_FEATURE, DATA_FEATURE ...].",
+          "T1")
+      .Input(
+          1,
+          "w",
+          "The weight tensor that will be used in the "
+          "convolutions; has size (M x C/group x kH x kW), where C "
+          "is the number of channels, and kH and kW are the "
+          "height and width of the kernel, and M is the number "
+          "of feature maps. For more than 2 dimensions, the "
+          "kernel shape will be (M x C/group x k1 x k2 x ... x kn), "
+          "where (k1 x k2 x ... kn) is the dimension of the kernel. "
+          "Optionally, if dimension denotation is in effect, "
+          "the operation expects the weight tensor to arrive "
+          "with the dimension denotation of [FILTER_OUT_CHANNEL, "
+          "FILTER_IN_CHANNEL, FILTER_SPATIAL, FILTER_SPATIAL ...]. "
+          "X.shape[1] == (W.shape[1] * group) == C "
+          "(assuming zero based indices for the shape array). "
+          "Or in other words FILTER_IN_CHANNEL should be equal to DATA_CHANNEL. ",
+          "T2")
+      .Input(
+          2,
+          "x_zero_point",
+          "Zero point tensor for input 'x'. It's optional and default value is 0. It's a scalar, which means a per-tensor/layer quantization.",
+          "T1",
+          OpSchema::Optional)
+      .Input(
+          3,
+          "w_zero_point",
+          "Scale tensor for input 'w'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, "
+          "which means a per-tensor/layer or per output channel quantization. If it's a 1-D tensor, its number "
+          "of elements should be equal to the number of output channels (M)",
+          "T2",
+          OpSchema::Optional)
+      .Input(
+          4,
+          "x_scale",
+          "Scale tensor for input 'x'. It's a scalar, which means a per-tensor/layer quantization.",
+          "tensor(float)")
+      .Input(
+          5,
+          "w_scale",
+          "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor/layer or per output channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of output channels (M).",
+          "tensor(float)")
+      .Input(
+          6,
+          "B",
+          "Optional 1D bias to be added to the convolution, has size of M."
+          "Bias can be quantized or in fp32 format. When it is in FP32 the operator internally quantizes "
+          "it using the input and weight scales",
+          "T4",
+          OpSchema::Optional)
+      .Output(
+          0,
+          "y",
+          "Output data tensor that contains the result of the "
+          "convolution. The output dimensions are functions "
+          "of the kernel size, stride size, and pad lengths."
+          "When the data type is float, output is converted to the final fp32 value using input ad weight scales. "
+          "When the data type is 8-bit FP32 output is requantized to 8-bit",
+          "T3")
+      .TypeConstraint(
+          "T1",
+          {"tensor(int8)", "tensor(uint8)"},
+          "Constrain input x and its zero point data type to 8-bit integer tensor.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(int8)", "tensor(uint8)"},
+          "Constrain input w and its zero point data type to 8-bit integer tensor.")
+      .TypeConstraint(
+          "T3",
+          {"tensor(float)", "tensor(int8)", "tensor(uint8)"},
+          "Constrain output y data type to float or 8-bit integer tensor.")
+      .TypeConstraint(
+          "T4",
+          {"tensor(float)", "tensor(int32)"},
+          "Constrain output y data type to float or 8-bit integer tensor.")
+      .Attr(
+          "auto_pad",
+          auto_pad_doc,
+          AttributeProto::STRING,
+          std::string("NOTSET"))
+      .Attr(
+          "kernel_shape",
+          "The shape of the convolution kernel. If not present, should be inferred from input 'w'.",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "dilations",
+          "dilation value along each spatial axis of the filter. If not present, the dilation defaults to 1 along each axis.",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "strides",
+          "Stride along each spatial axis. If not present, the stride defaults to 1 along each axis.",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "pads",
+          "Padding for the beginning and ending along each spatial axis, it can take any value greater than or equal to 0."
+          "The value represent the number of pixels added to the beginning and end part of the corresponding axis."
+          "`pads` format should be as follow [x1_begin, x2_begin...x1_end, x2_end,...], where xi_begin the number of"
+          "pixels added at the beginning of axis `i` and xi_end, the number of pixels added at the end of axis `i`."
+          "This attribute cannot be used simultaneously with auto_pad attribute. If not present, the padding defaults"
+          "to 0 along start and end of each spatial axis.",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "group",
+          "number of groups input channels and output channels are divided into. default is 1.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .Attr(
+          "requantize",
+          "Defaults to 0. When set to 1, the output will be requantized to 8-bit. "
+          "When requantize is 0 output data type should be float and when requantize is set to 1 it should be 8-bit",
+          AttributeProto::INT,
+          OPTIONAL)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto x_type = ctx.getInputType(0);
+        auto w_type = ctx.getInputType(1);
+        auto y_type = ctx.getOutputType(0);
+        if (nullptr == x_type || nullptr == w_type ||
+            x_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
+            w_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
+          fail_type_inference("inputs are expected to have tensor type.");
+        }
+
+        auto x_zero_point_type = ctx.getInputType(2);
+        if (nullptr == x_zero_point_type ||
+            x_zero_point_type->tensor_type().elem_type() !=
+                x_type->tensor_type().elem_type()) {
+          fail_type_inference(
+              "input and zero_point pair is expected to have be same type.");
+        }
+
+        auto w_zero_point_type = ctx.getInputType(3);
+        if (nullptr == w_zero_point_type ||
+            w_zero_point_type->tensor_type().elem_type() !=
+                w_type->tensor_type().elem_type()) {
+          fail_type_inference(
+              "weight and zero_point pair is expected to have same type.");
+        }
+
+        int64_t requantize = getAttribute(ctx, "requantize", 0);
+        if (requantize == 0) {
+          y_type->mutable_tensor_type()->set_elem_type(
+              ONNX_NAMESPACE::TensorProto::FLOAT);
+        } else {
+          // In all the following cases u8*u8, u8*s8, s8*s8 => output type will be same as input type
+          y_type->mutable_tensor_type()->set_elem_type(
+              x_type->tensor_type().elem_type());
+        }
+        convPoolShapeInference(ctx, true, false, 0, 1);
       });
 
   // Register the NCHWc schemas if supported by the platform.
