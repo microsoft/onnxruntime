@@ -15,7 +15,7 @@ Here is simple tutorial for getting started with running inference on an existin
     
     var session = new InferenceSession("model.onnx");
 
-Once a session is created, you can execute queries using the `Run` method of the  `InferenceSession` object. Currently, only `Tensor` type of input and outputs  are supported. The results of the `Run` method are represented as a collection of .Net `Tensor` objects (as defined in [System.Numerics.Tensor](https://www.nuget.org/packages/System.Numerics.Tensors)).
+Once a session is created, you can execute queries using the `Run` method of the  `InferenceSession` object. Currently, only `Tensor` type of input and outputs  are supported. The results of the `Run` method are represented as a collection of `Tensor` objects.
     
     Tensor<float> t1, t2;  // let's say data is fed into the Tensor objects
     var inputs = new List<NamedOnnxValue>()
@@ -50,12 +50,18 @@ The runtime representation of an ONNX model
 #### Constructor
     InferenceSession(string modelPath);
     InferenceSession(string modelPath, SesionOptions options);
-    
+Loads the model from file and initilazes the session.    
+    InferenceSession(byte[] model);
+    InferenceSession(byte[] model, SessionOptions options);
+Loads the model from a serialized protobuf.
+
 #### Properties
     IReadOnlyDictionary<NodeMetadata> InputMetadata;    
 Data types and shapes of the input nodes of the model.    
     IReadOnlyDictionary<NodeMetadata> OutputMetadata; 
 Data types and shapes of the output nodes of the model.
+    IReadOnlyDictionary<string, NodeMetadata> OverridableInitializerMetadata
+Types and shapes of the overridable initializers.    
 
 #### Methods
     IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs);
@@ -63,6 +69,9 @@ Runs the model with the given input data to compute all the output nodes and ret
 
     IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> desiredOutputNodes);
 Runs the model on given inputs for the given output nodes only.
+
+    IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames, RunOptions options);
+Runs the model on given inputs and outputs, using runtime options.
 
 ### System.Numerics.Tensor
 The primary .Net object that is used for holding input-output of the model inference. Details on this newly introduced data type can be found in its [open-source implementation](https://github.com/dotnet/corefx/tree/master/src/System.Numerics.Tensors). The binaries are available as a [.Net NuGet package](https://www.nuget.org/packages/System.Numerics.Tensors).
