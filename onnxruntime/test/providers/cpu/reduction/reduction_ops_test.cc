@@ -789,9 +789,12 @@ void test_apex_reduce_sum(
   std::vector<float> X(m * n, 0.0f);
   // Reduced tensor.
   std::vector<float> Y(n, 0.0f);
+  // Random number generator.
+  std::default_random_engine generator(0);
+  std::uniform_real_distribution<float> distribution(0.0,1.0);
   for (int64_t i = 0; i < m; ++i) {
     for (int64_t j = 0; j < n; ++j) {
-      const float value = (float(i)/float(m) + float(j)/float(n)) / float(m);
+      const float value = distribution(generator) / float(m);
       X[i * n + j] = value;
       Y[j] += value;
     }
@@ -823,16 +826,35 @@ TEST(ReductionOpTest, ReduceSum_apex_matrix_large) {
 }
 
 TEST(ReductionOpTest, ReduceSum_apex_bert) {
-  test_apex_reduce_sum(6, 2);
-  test_apex_reduce_sum(8, 2);
   test_apex_reduce_sum(6 * 128, 128);
   test_apex_reduce_sum(8 * 128, 128);
   test_apex_reduce_sum(6 * 384, 128);
   test_apex_reduce_sum(8 * 384, 128);
 }
 
+TEST(ReductionOpTest, ReduceSum_batch_by_two) {
+  for (int i = 1; i < 128; ++i) {
+    test_apex_reduce_sum(i, 2);
+  }
+}
+
+TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_128) {
+  for (int i = 1; i < 16; i += 1) {
+    test_apex_reduce_sum(i * 128, 128);
+    test_apex_reduce_sum(i * 512, 128);
+    test_apex_reduce_sum(i * 128, 768);
+    test_apex_reduce_sum(i * 512, 768);
+    test_apex_reduce_sum(i * 128, 1024);
+    test_apex_reduce_sum(i * 512, 1024);
+  }
+}
+
+TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_30528) {
+    test_apex_reduce_sum(4 * 128, 30528);
+    test_apex_reduce_sum(4 * 512, 30528);
+}
+
 TEST(ReductionOpTest, ReduceSum_bert_selected_batch_size) {
-  test_apex_reduce_sum(85, 2);
   test_apex_reduce_sum(85 * 128, 768);
   test_apex_reduce_sum(86 * 128, 768);
 }
