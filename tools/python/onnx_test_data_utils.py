@@ -5,17 +5,15 @@ import sys
 
 import numpy as np
 
+import onnx
 from onnx import numpy_helper
 from onnx import mapping
 from onnx import TensorProto
 
-
 def dump_tensorproto_pb_file(filename):
     """Dump the data from a pb file containing a TensorProto."""
 
-    tensor = TensorProto()
-    with open(filename, 'rb') as f:
-        tensor.ParseFromString(f.read())
+    tensor = onnx.load_tensor(filename)
 
     print("Name: {}".format(tensor.name))
 
@@ -40,8 +38,7 @@ def numpy_to_pb(name, np_data, out_filename):
     """Convert numpy data to a protobuf file."""
 
     tensor = numpy_helper.from_array(np_data, name)
-    with open(out_filename, 'wb') as f:
-        f.write(tensor.SerializeToString())
+    onnx.save_tensor(tensor, out_filename)
 
 
 def image_to_numpy(filename, shape, channels_last, add_batch_dim):
@@ -73,16 +70,13 @@ def create_random_data(shape, type, minvalue, maxvalue, seed):
 def update_name_in_pb(filename, name, output_filename):
     """Update the name of the tensor in the pb file."""
 
-    tensor = TensorProto()
-    with open(filename, 'rb') as f_in:
-        tensor.ParseFromString(f_in.read())
-        tensor.name = name
+    tensor = onnx.load_tensor(filename)
+    tensor.name = name
 
     if not output_filename:
         output_filename = filename
 
-    with open(output_filename, 'wb') as f_out:
-        f_out.write(tensor.SerializeToString())
+    onnx.save_tensor(tensor, output_filename)
 
 
 def get_arg_parser():
@@ -144,13 +138,13 @@ if __name__ == '__main__':
 
     if args.action == 'dump_pb':
         if not args.input:
-            print("Missing argument. Need input to be specified.", sys.stderr)
+            print("Missing argument. Need input to be specified.", file=sys.stderr)
             sys.exit(-1)
         np.set_printoptions(precision=10)
         dump_pb(args.input)
     elif args.action == 'numpy_to_pb':
         if not args.input or not args.output or not args.name:
-            print("Missing argument. Need input, output and name to be specified.", sys.stderr)
+            print("Missing argument. Need input, output and name to be specified.", file=sys.stderr)
             sys.exit(-1)
         # read data saved with
         data = np.load(args.input)
