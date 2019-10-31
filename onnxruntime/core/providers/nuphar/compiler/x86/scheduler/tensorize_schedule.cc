@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/codegen/common/utils.h"
 #include "core/common/cpuid_info.h"
 #include "core/framework/op_kernel_info.h"
 #include "core/providers/nuphar/common/analysis/subgraph_codegen_stats.h"
@@ -315,16 +316,19 @@ static bool IMatMulTensorizeSchedule(
   // so add option to fall back to a general reduction
   bool is_scalar = isGEMV && (*p_embed_dim == 1);
 
+  codegen::CodeGenSettings& settings = codegen::CodeGenSettings::Instance();
+  TargetFeature feature = GetTargetInfo(settings);
+
   bool status_tensorize = true;
   if (is8bit) {
-    if (CPUIDInfo::GetCPUIDInfo().HasAVX512Skylake()) {
+    if (feature.hasAVX512) {  // isAVX512
       status_tensorize = is_scalar ? TensorizeIGEMV(imatmul, ctx_sched, /*tensorize=*/false, "avx512-skylake").IsOK()
                                    : TensorizeIGEMM(imatmul, ctx_codegen, ctx_sched, batchseq_expr,
                                                     {*p_embed_dim, *p_embed_dim_padded},
                                                     {*p_input_dim, *p_input_dim_padded},
                                                     "avx512-skylake")
                                          .IsOK();
-    } else if (CPUIDInfo::GetCPUIDInfo().HasAVX2()) {
+    } else if (feature.hasAVX2) {  // isAVX2
       ORT_ENFORCE(!is_scalar, "scalar AVX2 is not supported!");
       // TODO: release 8bit tensorize GEMV for AVX2
       status_tensorize = isGEMV ? TensorizeGEMVInteger(imatmul, *p_input_dim, ctx_sched).IsOK()
@@ -333,21 +337,25 @@ static bool IMatMulTensorizeSchedule(
                                                  {*p_input_dim, *p_input_dim_padded},
                                                  "avx2")
                                       .IsOK();
-    } else if (CPUIDInfo::GetCPUIDInfo().HasAVX()) {
+    } else if (feature.hasAVX) {  // isAVX
       status_tensorize = is_scalar ? TensorizeIGEMV(imatmul, ctx_sched, /*tensorize=*/false, "avx").IsOK()
                                    : TensorizeIGEMM(imatmul, ctx_codegen, ctx_sched, batchseq_expr,
                                                     {*p_embed_dim, *p_embed_dim_padded},
                                                     {*p_input_dim, *p_input_dim_padded},
                                                     "avx")
                                          .IsOK();
+    } else {
+      ORT_NOT_IMPLEMENTED("Not supported target in 8bit Tensorization, should be one of avx/avx2/avx512.");
     }
   } else {  // 16bit
     // TODO: add 16bit tensorize GEMV/GEMM for AVX512
-    if (CPUIDInfo::GetCPUIDInfo().HasAVX2()) {
+    if (feature.hasAVX2) {  //isAVX2
       // TODO: add 16bit tensorize GEMM for AVX2
       ORT_ENFORCE(isGEMV, "16bit GEMM is not supported!");
       // TODO: release 16bit tensorize GEMV for AVX2
       status_tensorize = TensorizeGEMVInteger16(imatmul, *p_input_dim, ctx_sched).IsOK();
+    } else {
+      ORT_NOT_IMPLEMENTED("Not supported target in 16bit Tensorization.");
     }
   }
 
