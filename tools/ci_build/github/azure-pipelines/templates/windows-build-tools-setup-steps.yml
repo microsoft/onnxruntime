@@ -2,8 +2,6 @@
 
 parameters:
   EnvSetupScript: ''
-  buildArch: amd64
-  setVcvars: false
 steps:
     - task: NuGetToolInstaller@0
       displayName: Use Nuget 4.9
@@ -25,13 +23,6 @@ steps:
         targetType: 'inline'
         script: |
           Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\azcopy.exe https://onnxruntimetestdata.blob.core.windows.net/models/azcopy.exe
-
-    # - task: PowerShell@2
-    #   displayName: 'Download Python'
-    #   inputs:
-    #     targetType: 'inline'
-    #     script: |
-    #       Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\Miniconda3-4.7.10-Windows-x86_64.exe https://onnxruntimetestdata.blob.core.windows.net/models/Miniconda3-4.7.10-Windows-x86_64.exe
 
     - task: CmdLine@1
       displayName: 'Download Python'
@@ -73,12 +64,4 @@ steps:
       displayName: 'Run OpenCPPCoverage installer'
       inputs:
         filename: '$(Build.BinariesDirectory)\installer\opencppcoverage\installer.exe'
-        arguments: '/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="$(Build.BinariesDirectory)\OpenCppCoverage"'
-
-    - task: BatchScript@1
-      displayName: 'Setup VS2017 env vars'
-      inputs:
-        filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
-        arguments: '${{parameters.buildArch}}'
-        modifyEnvironment: true
-      condition: ${{parameters.setVcvars}}
+        arguments: '/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="$(Build.BinariesDirectory)\OpenCppCoverage"'    
