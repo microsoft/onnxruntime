@@ -75,9 +75,10 @@ void RunTypedTest() {
                      {1, 1,
                       4, 4});
   // skip nuphar, which will not throw error message but will ensure no out-of-bound access
+  // skip cuda as the cuda thread won't throw the error message
   test5.Run(OpTester::ExpectResult::kExpectFailure,
             "GatherElements op: Value in indices must be within bounds [-2 , 1]. Actual value is 2",
-            {kNupharExecutionProvider});
+            {kNupharExecutionProvider, kCudaExecutionProvider});
 
   // 3D input - axis 1
   OpTester test6("GatherElements", 11);
