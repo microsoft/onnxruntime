@@ -101,7 +101,7 @@ inline bool HasDataType(const ONNX_NAMESPACE::TensorProto& ten_proto) {
 }
 
 inline bool HasName(const ONNX_NAMESPACE::TensorProto& ten_proto) {
-  return ten_proto.has_name(); // XXX
+  return ten_proto.has_name();  // XXX
 }
 
 inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_Sequence& seq_proto) {
@@ -125,7 +125,7 @@ inline bool HasType(const ONNX_NAMESPACE::ValueInfoProto& vi_proto) {
 }
 
 inline bool HasName(const ONNX_NAMESPACE::ValueInfoProto& vi_proto) {
-  return vi_proto.has_name(); // XXX: Figure out proto3 way
+  return vi_proto.has_name();  // XXX: Figure out proto3 way
 }
 
 inline bool HasDomain(const ONNX_NAMESPACE::TypeProto_Opaque& op_proto) {
@@ -181,10 +181,10 @@ inline bool HasGraphs(const ONNX_NAMESPACE::AttributeProto& at_proto) {
 }
 
 inline bool HasName(const ONNX_NAMESPACE::AttributeProto& at_proto) {
-  return at_proto.has_name(); // XXX: Fugure out proto3
+  return at_proto.has_name();  // XXX: Fugure out proto3
 }
 
-inline bool HasGraph (const ONNX_NAMESPACE::ModelProto& m_proto) {
+inline bool HasGraph(const ONNX_NAMESPACE::ModelProto& m_proto) {
   return m_proto.has_graph();  // XXX proto3
 }
 
@@ -196,10 +196,14 @@ inline bool HasModelVersion(const ONNX_NAMESPACE::ModelProto& m_proto) {
   return m_proto.has_model_version();  // XXX proto3
 }
 
-
 inline bool HasName(const ONNX_NAMESPACE::NodeProto& node_proto) {
   //XXX: Figure out proto3 style
   return node_proto.has_name();
+}
+
+inline bool IsDataTypeString (MLDataType dt_type) {
+  auto prim_type = dt_type->AsPrimitiveDataType();
+  return (prim_type != nullptr && prim_type->GetTensorElementType() == ONNX_NAMESPACE::TensorProto_DataType_STRING);
 }
 
 }  // namespace utils

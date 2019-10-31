@@ -265,18 +265,18 @@ static Status CreateOutputTensorFromTensorShape(OpKernelContext* ctx, const Tens
 }
 
 static TensorProto::DataType InferDataType(const Tensor& tensor) {
-  auto tensor_type = tensor.DataType();
-  TensorProto::DataType dtype = TensorProto_DataType_UNDEFINED;
+  auto tensor_type = tensor.DataType()->AsPrimitiveDataType();
+  int dtype = TensorProto_DataType_UNDEFINED;
 
-  if (tensor_type == DataTypeImpl::GetType<float>())
-    dtype = TensorProto_DataType_FLOAT;
-  else if (tensor_type == DataTypeImpl::GetType<double>())
-    dtype = TensorProto_DataType_DOUBLE;
-  else {
-    // unsupported. return UNDEFINED
+  if (tensor_type != nullptr) {
+    auto dt_type = tensor_type->GetTensorElementType();
+    if (TensorProto_DataType_FLOAT == dt_type || TensorProto_DataType_DOUBLE == dt_type) {
+      dtype = dt_type;
+     } else {
+      // unsupported. return UNDEFINED
+    }
   }
-
-  return dtype;
+  return static_cast<TensorProto::DataType>(dtype);
 }
 
 static Status RandomNormalCompute(float mean, float scale,

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensor.h"
+#include "core/framework/tensorprotoutils.h"
 
 #include <utility>
 #include "core/framework/allocatormgr.h"
@@ -59,7 +60,7 @@ void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data,
   buffer_deleter_ = std::move(deleter);
   // for string tensors, if this tensor own the buffer (caller passed in the deleter)
   // do the placement new for strings on pre-allocated buffer.
-  if (buffer_deleter_ && dtype_ == DataTypeImpl::GetType<string>()) {
+  if (buffer_deleter_ && utils::IsDataTypeString(dtype_)) {
     auto* ptr = static_cast<string*>(p_data_);
     for (int64_t i = 0, n = shape_size; i < n; ++i) {
       new (ptr + i) string();
@@ -111,7 +112,7 @@ void Tensor::ReleaseBuffer() {
     // if current tensor is responsible for delete the buffer
     // and it is a string tensor, need to explict call string's
     // deconstructor.
-    if (dtype_ == DataTypeImpl::GetType<string>()) {
+    if (utils::IsDataTypeString(dtype_)) {
       auto* ptr = static_cast<string*>(p_data_);
       int64_t len = shape_.Size();
       for (int64_t i = 0; i < len; i++)

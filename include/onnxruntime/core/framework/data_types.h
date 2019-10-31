@@ -41,6 +41,7 @@ class DataTypeImpl;
 class TensorTypeBase;
 class SparseTensorTypeBase;
 class NonTensorTypeBase;
+class PrimitiveDataTypeBase;
 
 // MLFloat16
 union MLFloat16 {
@@ -175,6 +176,10 @@ class DataTypeImpl {
     return nullptr;
   }
 
+  virtual const PrimitiveDataTypeBase* AsPrimitiveDataType() const {
+    return nullptr;
+  }
+
   // Return the type meta that we are using in the runtime.
   template <typename T>
   static MLDataType GetType();
@@ -234,6 +239,7 @@ template <typename... Types>
 struct TensorContainedTypeSetter {
   static void SetTensorElementType(ONNX_NAMESPACE::TypeProto&);
   static void SetMapKeyType(ONNX_NAMESPACE::TypeProto&);
+  static int GetElementType();
 };
 
 /// Is a given type on the list of types?
@@ -694,6 +700,59 @@ class NonOnnxType : public DataTypeImpl {
   NonOnnxType() = default;
 };
 
+class PrimitiveDataTypeBase : public DataTypeImpl {
+ public:
+  bool IsCompatible(const ONNX_NAMESPACE::TypeProto&) const override {
+    return false;
+  }
+
+  const PrimitiveDataTypeBase* AsPrimitiveDataType() const override final {
+    return this;
+  }
+
+  const ONNX_NAMESPACE::TypeProto* GetTypeProto() const final {
+    return nullptr;
+  }
+
+  int GetTensorElementType() const {
+    return data_type_;
+  }
+
+ protected:
+  PrimitiveDataTypeBase() = default;
+
+  void set_data_type(int data_type) {
+    data_type_ = data_type;
+  }
+
+ private:
+  int data_type_;
+};
+
+template <typename T>
+class PrimitiveDataType : public PrimitiveDataTypeBase {
+ private:
+  static void Delete(void* p) {
+    delete static_cast<T*>(p);
+  }
+
+ public:
+  static MLDataType Type();
+
+  size_t Size() const override {
+    return sizeof(T);
+  }
+
+  DeleteFunc GetDeleteFunc() const override {
+    return &Delete;
+  }
+
+ private:
+  PrimitiveDataType() {
+    this->set_data_type(data_types_internal::TensorContainedTypeSetter<T>::GetElementType());
+  }
+};
+
 // Explicit specialization of base class template function
 // is only possible within the enclosing namespace scope,
 // thus a simple way to pre-instantiate a given template
@@ -763,6 +822,17 @@ class NonOnnxType : public DataTypeImpl {
   template <>                                \
   MLDataType DataTypeImpl::GetType<TYPE>() { \
     return NonOnnxType<TYPE>::Type();        \
+  }
+
+#define ORT_REGISTER_PRIM_TYPE(TYPE)               \
+  template <>                                      \
+  MLDataType PrimitiveDataType<TYPE>::Type() {     \
+    static PrimitiveDataType<TYPE> prim_data_type; \
+    return &prim_data_type;                        \
+  }                                                \
+  template <>                                      \
+  MLDataType DataTypeImpl::GetType<TYPE>() {       \
+    return PrimitiveDataType<TYPE>::Type();        \
   }
 
 #define ORT_REGISTER_OPAQUE_TYPE(CPPType, Domain, Name)   \

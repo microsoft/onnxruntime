@@ -5,6 +5,7 @@
 #include "core/framework/tensor.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/sparse_tensor.h"
+#include "core/framework/utils.h"
 #include "core/graph/onnx_protobuf.h"
 
 #ifdef MICROSOFT_AUTOML
@@ -51,75 +52,18 @@ static bool IsTensorTypeScalar(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_ty
 namespace data_types_internal {
 
 template <typename T>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType();
-
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<float>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-}
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint8_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT8;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int8_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT8;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint16_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT16;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int16_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT16;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int32_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT32;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int64_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT64;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<std::string>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_STRING;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<bool>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_BOOL;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<MLFloat16>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<double>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint32_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT32;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint64_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT64;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<BFloat16>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
-};
-
-template <typename T>
 struct TensorContainedTypeSetter<T> {
   static void SetTensorElementType(ONNX_NAMESPACE::TypeProto& proto) {
-    proto.mutable_tensor_type()->set_elem_type(ToTensorDataType<T>());
+    proto.mutable_tensor_type()->set_elem_type(utils::ToTensorDataType<T>());
   }
   static void SetSparseTensorElementType(ONNX_NAMESPACE::TypeProto& proto) {
-    proto.mutable_sparse_tensor_type()->set_elem_type(ToTensorDataType<T>());
+    proto.mutable_sparse_tensor_type()->set_elem_type(utils::ToTensorDataType<T>());
   }
   static void SetMapKeyType(ONNX_NAMESPACE::TypeProto& proto) {
-    proto.mutable_map_type()->set_key_type(ToTensorDataType<T>());
+    proto.mutable_map_type()->set_key_type(utils::ToTensorDataType<T>());
+  }
+  static int GetElementType () {
+    return utils::ToTensorDataType<T>();
   }
 };
 
@@ -954,20 +898,20 @@ MLDataType DataTypeImpl::TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto) {
 
 //Below are the types the we need to execute the runtime
 //They are not compatible with TypeProto in ONNX.
-ORT_REGISTER_NON_ONNX_TYPE(int32_t);
-ORT_REGISTER_NON_ONNX_TYPE(float);
-ORT_REGISTER_NON_ONNX_TYPE(bool);
-ORT_REGISTER_NON_ONNX_TYPE(std::string);
-ORT_REGISTER_NON_ONNX_TYPE(int8_t);
-ORT_REGISTER_NON_ONNX_TYPE(uint8_t);
-ORT_REGISTER_NON_ONNX_TYPE(uint16_t);
-ORT_REGISTER_NON_ONNX_TYPE(int16_t);
-ORT_REGISTER_NON_ONNX_TYPE(int64_t);
-ORT_REGISTER_NON_ONNX_TYPE(double);
-ORT_REGISTER_NON_ONNX_TYPE(uint32_t);
-ORT_REGISTER_NON_ONNX_TYPE(uint64_t);
-ORT_REGISTER_NON_ONNX_TYPE(MLFloat16);
-ORT_REGISTER_NON_ONNX_TYPE(BFloat16);
+ORT_REGISTER_PRIM_TYPE(int32_t);
+ORT_REGISTER_PRIM_TYPE(float);
+ORT_REGISTER_PRIM_TYPE(bool);
+ORT_REGISTER_PRIM_TYPE(std::string);
+ORT_REGISTER_PRIM_TYPE(int8_t);
+ORT_REGISTER_PRIM_TYPE(uint8_t);
+ORT_REGISTER_PRIM_TYPE(uint16_t);
+ORT_REGISTER_PRIM_TYPE(int16_t);
+ORT_REGISTER_PRIM_TYPE(int64_t);
+ORT_REGISTER_PRIM_TYPE(double);
+ORT_REGISTER_PRIM_TYPE(uint32_t);
+ORT_REGISTER_PRIM_TYPE(uint64_t);
+ORT_REGISTER_PRIM_TYPE(MLFloat16);
+ORT_REGISTER_PRIM_TYPE(BFloat16);
 
 const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorExceptHalfTypes() {
   static std::vector<MLDataType> all_fixed_size_tensor_types =

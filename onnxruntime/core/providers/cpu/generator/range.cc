@@ -1,4 +1,5 @@
 #include "range.h"
+#include <core/framework/utils.h>
 
 #include <cmath>
 
@@ -80,22 +81,34 @@ static Status ComputeRange(OpKernelContext* ctx) {
   return Status::OK();
 }
 
+template<typename T, class... Types>
+struct CallDispatcher {
+  static Status Call (int dt_type, OpKernelContext* ctx) {
+    if (dt_type == utils::ToTensorDataType<T>()) {
+      return ComputeRange<T>(ctx);
+    }
+    return CallDispatcher<Types...>::Call(dt_type, ctx);
+  }
+};
+
+template<typename T>
+struct CallDispatcher<T> {
+  static Status Call(int dt_type, OpKernelContext* ctx) {
+    if (dt_type == utils::ToTensorDataType<T>()) {
+      return ComputeRange<T>(ctx);
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Range op: Unsupported tensor data type:", dt_type);
+  }
+};
+
 Status Range::Compute(OpKernelContext* ctx) const {
   const auto* input_tensor = ctx->Input<Tensor>(0);
   if (input_tensor == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
-  auto data_type = input_tensor->DataType();
-  if (data_type == DataTypeImpl::GetType<int32_t>()) {
-    return ComputeRange<int32_t>(ctx);
-  } else if (data_type == DataTypeImpl::GetType<float>()) {
-    return ComputeRange<float>(ctx);
-  } else if (data_type == DataTypeImpl::GetType<int64_t>()) {
-    return ComputeRange<int64_t>(ctx);
-  } else if (data_type == DataTypeImpl::GetType<double>()) {
-    return ComputeRange<double>(ctx);
-  } else if (data_type == DataTypeImpl::GetType<int16_t>()) {
-    return ComputeRange<int16_t>(ctx);
+  auto data_type = input_tensor->DataType()->AsPrimitiveDataType();
+  if (data_type != nullptr) {
+    return CallDispatcher<int32_t, float, int64_t, double, int16_t>::Call(data_type->GetTensorElementType(), ctx);
   }
-
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                          "Range op: Unsupported tensor data type:", data_type);
 }

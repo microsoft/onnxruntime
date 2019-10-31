@@ -9,6 +9,7 @@
 #include "core/framework/execution_plan_base.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/ort_value_pattern_planner.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
@@ -304,7 +305,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   // trace the memory allocation.
   // don't trace the memory allocation on string tensors, as it need
   // placement new, we don't support it in memory pattern optimization.
-  if (element_type != DataTypeImpl::GetType<std::string>()) {
+  if (!utils::IsDataTypeString(element_type)) {
     TraceAllocate(ort_value_index, size);
   }
 
@@ -506,7 +507,7 @@ void ExecutionFrame::TraceFree(int ort_value_idx) {
       // tensors
       auto ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
       // don't trace string tensors
-      if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
+      if (!utils::IsDataTypeString(ml_data_type)) {
         auto status = planner_->TraceFree(ort_value_idx);
         if (!status.IsOK()) {
           LOGS(session_state_.Logger(), WARNING)

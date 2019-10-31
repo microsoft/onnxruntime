@@ -5,6 +5,7 @@
 #include "core/session/allocator_impl.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/utils.h"
 #include <cassert>
 #include <cstring>
 #include <sstream>
@@ -797,31 +798,6 @@ static OrtStatus* OrtGetValueImplSeqOfMap(const OrtValue* p_ml_value, int index,
 }
 
 template <typename T>
-ONNXTensorElementDataType GetONNXTensorElementDataType() {
-  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-}
-
-template <>
-ONNXTensorElementDataType GetONNXTensorElementDataType<std::string>() {
-  return ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
-}
-
-template <>
-ONNXTensorElementDataType GetONNXTensorElementDataType<float>() {
-  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-}
-
-template <>
-ONNXTensorElementDataType GetONNXTensorElementDataType<double>() {
-  return ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
-}
-
-template <>
-ONNXTensorElementDataType GetONNXTensorElementDataType<int64_t>() {
-  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
-}
-
-template <typename T>
 OrtStatus* PopulateTensorWithData(OrtValue* oval, const T* data_elem, size_t num_elems) {
   void* raw_data = nullptr;
   auto st = OrtApis::GetTensorMutableData(oval, &raw_data);
@@ -854,9 +830,59 @@ OrtStatus* OrtGetValueImplSeqOfTensorsHelper(OrtAllocator* allocator, const Tens
   const auto& shape = tensor.Shape();
   const auto* tensor_data = tensor.Data<TensorElemType>();
   OrtStatus* st = OrtApis::CreateTensorAsOrtValue(allocator, shape.GetDims().data(), shape.NumDimensions(),
-                                                  GetONNXTensorElementDataType<TensorElemType>(), out);
+                                                  onnxruntime::utils::GetONNXTensorElementDataType<TensorElemType>(), out);
   return st ? st : PopulateTensorWithData<TensorElemType>(*out, tensor_data, shape.Size());
 }
+
+namespace on = ONNX_NAMESPACE;
+#define DispatchOnTensorTypeWithStatusReturn(tensor_type, retval, function, ...)         \
+  switch (tensor_type->AsPrimitiveDataType()->GetTensorElementType()) {                  \
+    case on::TensorProto_DataType_FLOAT:                                                 \
+      retval = function<float>(__VA_ARGS__);                                             \
+      break;                                                                             \
+    case on::TensorProto_DataType_BOOL:                                                  \
+      retval = function<bool>(__VA_ARGS__);                                              \
+      break;                                                                             \
+    case on::TensorProto_DataType_DOUBLE:                                                \
+      retval = function<double>(__VA_ARGS__);                                            \
+      break;                                                                             \
+    case on::TensorProto_DataType_STRING:                                                \
+      retval = function<std::string>(__VA_ARGS__);                                       \
+      break;                                                                             \
+    case on::TensorProto_DataType_INT8:                                                  \
+      retval = function<int8_t>(__VA_ARGS__);                                            \
+      break;                                                                             \
+    case on::TensorProto_DataType_UINT8:                                                 \
+      retval = function<uint8_t>(__VA_ARGS__);                                           \
+      break;                                                                             \
+    case on::TensorProto_DataType_UINT16:                                                \
+      retval = function<uint16_t>(__VA_ARGS__);                                          \
+      break;                                                                             \
+    case on::TensorProto_DataType_INT16:                                                 \
+      retval = function<int16_t>(__VA_ARGS__);                                           \
+      break;                                                                             \
+    case on::TensorProto_DataType_INT32:                                                 \
+      retval = function<int32_t>(__VA_ARGS__);                                           \
+      break;                                                                             \
+    case on::TensorProto_DataType_UINT32:                                                \
+      retval = function<uint32_t>(__VA_ARGS__);                                          \
+      break;                                                                             \
+    case on::TensorProto_DataType_INT64:                                                 \
+      retval = function<int64_t>(__VA_ARGS__);                                           \
+      break;                                                                             \
+    case on::TensorProto_DataType_UINT64:                                                \
+      retval = function<uint64_t>(__VA_ARGS__);                                          \
+      break;                                                                             \
+    case on::TensorProto_DataType_FLOAT16:                                               \
+      retval = function<MLFloat16>(__VA_ARGS__);                                         \
+      break;                                                                             \
+    case on::TensorProto_DataType_BFLOAT16:                                              \
+      retval = function<BFloat16>(__VA_ARGS__);                                          \
+      break;                                                                             \
+    default:                                                                             \
+      st = OrtApis::CreateStatus(ORT_FAIL, "Invalid tensor element type in the input."); \
+      break;                                                                             \
+  }
 
 template <typename T>
 OrtStatus* OrtGetValueImplSeqOfTensors(const OrtValue* p_ml_value, int index, OrtAllocator* allocator,
@@ -864,35 +890,13 @@ OrtStatus* OrtGetValueImplSeqOfTensors(const OrtValue* p_ml_value, int index, Or
   auto& data = p_ml_value->Get<T>();
   auto& one_tensor = data.tensors.at(index);
 
-  auto tensor_elem_type = one_tensor.DataType();
   OrtStatus* st{};
-  if (tensor_elem_type == DataTypeImpl::GetType<bool>()) {
-    st = OrtGetValueImplSeqOfTensorsHelper<bool>(allocator, one_tensor, out);
-  } else if (tensor_elem_type == DataTypeImpl::GetType<float>()) {
-    st = OrtGetValueImplSeqOfTensorsHelper<float>(allocator, one_tensor, out);
-  } else if (tensor_elem_type == DataTypeImpl::GetType<MLFloat16>()) {
-    st = OrtGetValueImplSeqOfTensorsHelper<MLFloat16>(allocator, one_tensor, out);
-  } else if (tensor_elem_type == DataTypeImpl::GetType<double>()) {
-    st = OrtGetValueImplSeqOfTensorsHelper<double>(allocator, one_tensor, out);
-  } else if (tensor_elem_type == DataTypeImpl::GetType<int8_t>()) {
-    st = OrtGetValueImplSeqOfTensorsHelper<int8_t>(allocator, one_tensor, out);
-  } else if (tensor_elem_type == DataTypeImpl::GetType<uint8_t>()) {
-    st = OrtGetValueImplSeqOfTensorsHelper<uint8_t>(allocator, one_tensor, out);
-  } else if (tensor_elem_type == DataTypeImpl::GetType<int16_t>()) {
-    st = OrtGetValueImplSeqOfTensorsHelper<int16_t>(allocator, one_tensor, out);
-  } else if (tensor_elem_type == DataTypeImpl::GetType<uint16_t>()) {
-    st = OrtGetValueImplSeqOfTensorsHelper<uint16_t>(allocator, one_tensor, out);
-  } else if (tensor_elem_type == DataTypeImpl::GetType<int32_t>()) {
-    st = OrtGetValueImplSeqOfTensorsHelper<int32_t>(allocator, one_tensor, out);
-  } else if (tensor_elem_type == DataTypeImpl::GetType<uint32_t>()) {
-    st = OrtGetValueImplSeqOfTensorsHelper<uint32_t>(allocator, one_tensor, out);
-  } else if (tensor_elem_type == DataTypeImpl::GetType<int64_t>()) {
-    st = OrtGetValueImplSeqOfTensorsHelper<int64_t>(allocator, one_tensor, out);
-  } else if (tensor_elem_type == DataTypeImpl::GetType<std::string>()) {
-    st = OrtGetValueImplSeqOfTensorsHelper<std::string>(allocator, one_tensor, out);
-  } else {
+  auto tensor_elem_type = one_tensor.DataType();
+  if (tensor_elem_type->AsPrimitiveDataType() == nullptr) {
     st = OrtApis::CreateStatus(ORT_FAIL, "Invalid tensor element type in the input.");
+    return st;
   }
+  DispatchOnTensorTypeWithStatusReturn(tensor_elem_type, st, OrtGetValueImplSeqOfTensorsHelper, allocator, one_tensor, out);
   return st;
 }
 
@@ -915,6 +919,7 @@ static OrtStatus* OrtGetValueImplSeq(const OrtValue* value, int index, OrtAlloca
 template <typename T>
 static OrtStatus* OrtGetValueImplMapHelper(const OrtValue* p_ml_value, int index, OrtAllocator* allocator,
                                            OrtValue** out) {
+  using namespace onnxruntime::utils;
   using TKey = typename T::key_type;
   using TVal = typename T::mapped_type;
   auto& data = p_ml_value->Get<T>();
