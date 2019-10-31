@@ -66,14 +66,14 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   Tensor* output = ctx->Output(0, input->Shape());
-  bool is_ok = false;
-  if (sizeof(T) == 4) {
-    is_ok = computeGelu<T>(nullptr, input_length, bias_length, input->template Data<T>(), has_bias ? bias->template Data<T>() : nullptr, output->template MutableData<T>());
-  } else {
-    is_ok = computeGelu<half>(nullptr, input_length, bias_length, reinterpret_cast<const half*>(input->template Data<T>()), has_bias ? reinterpret_cast<const half*>(bias->template Data<T>()) : nullptr, reinterpret_cast<half*>(output->template MutableData<T>()));
-  }
 
-  if (!is_ok) {
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  if (!computeGelu<CudaT>(nullptr,
+                          input_length,
+                          bias_length,
+                          reinterpret_cast<const CudaT*>(input->template Data<T>()),
+                          has_bias ? reinterpret_cast<const CudaT*>(bias->template Data<T>()) : nullptr,
+                          reinterpret_cast<CudaT*>(output->template MutableData<T>()))) {
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
