@@ -14,7 +14,6 @@ namespace onnxruntime {
 namespace training {
 
 static const std::unordered_set<std::string> FP32_Nodes = {
-    "ReduceSum",
     "SparseSoftmaxCrossEntropy",
     "SparseSoftmaxCrossEntropyGrad"};
 
@@ -31,7 +30,6 @@ static const std::unordered_map<std::string, std::vector<int>> stage1_fp32_node_
 static const std::unordered_map<std::string, std::vector<int>> stage2_fp32_node_args = {
     {"TrainableDropout", {1}},
     {"TrainableDropoutGrad", {2}},
-    {"ReduceSum", {0}},
     {"SparseSoftmaxCrossEntropy", {0, 2}},
     {"SparseSoftmaxCrossEntropyGrad", {0, 1, 3}},
 };
@@ -323,7 +321,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
   // At this point, the model has been transformed to a valid FP16 model.
   ORT_RETURN_IF_ERROR(graph.Resolve(&weights_to_train));
 
-  // Stage 2: Keep nodes such as ReduceSum in FP32
+  // Stage 2: Keep nodes such as SparseSoftmaxCrossEntropy in FP32
   // Add cast node for nodes which need to be computed in FP32
   // Convert fp16 tensor --> Op --> fp16 tensor to
   // fp16 tensor --> Cast --> fp32 tensor --> Op --> fp32 tensor --> Cast --> fp16 tensor
