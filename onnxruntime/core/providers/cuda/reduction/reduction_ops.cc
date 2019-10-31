@@ -238,6 +238,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   }
 
   Tensor* Y = ctx->Output(0, TensorShape(squeezed_output_dims));
+  CUDA_RETURN_IF_ERROR(cudaMemset(Y->MutableDataRaw(), 0, Y->SizeInBytes()));
   if ((cudnnReduceOp == CUDNN_REDUCE_TENSOR_MAX ||
        cudnnReduceOp == CUDNN_REDUCE_TENSOR_MIN) &&
       !allow_multi_axes) {
