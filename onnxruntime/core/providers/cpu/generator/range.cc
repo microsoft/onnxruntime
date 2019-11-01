@@ -81,36 +81,32 @@ static Status ComputeRange(OpKernelContext* ctx) {
   return Status::OK();
 }
 
-template<typename T, class... Types>
-struct CallDispatcher {
-  static Status Call (int dt_type, OpKernelContext* ctx) {
-    if (dt_type == utils::ToTensorDataType<T>()) {
-      return ComputeRange<T>(ctx);
-    }
-    return CallDispatcher<Types...>::Call(dt_type, ctx);
-  }
-};
+namespace range_internal {
+template<typename... Types>
+Status CallDispatcher(int32_t dt_type, OpKernelContext* ctx) {
+  Status s;
+  size_t called = 0;
 
-template<typename T>
-struct CallDispatcher<T> {
-  static Status Call(int dt_type, OpKernelContext* ctx) {
-    if (dt_type == utils::ToTensorDataType<T>()) {
-      return ComputeRange<T>(ctx);
-    }
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Range op: Unsupported tensor data type:", dt_type);
+  int results[] = {0, [&] { 
+  if(utils::ToTensorDataType<Types>() == dt_type) {
+    s = ComputeRange<Types>(ctx);
+    ++called;
   }
-};
+  return 0; }()...};
+
+  ORT_UNUSED_PARAMETER(results);
+  ORT_ENFORCE(called < 2, "Range CallDispatcher broken. Check for duplicate type.");
+  ORT_ENFORCE(called == 1, "Range op: Unsupported tensor data type:", dt_type);
+  return s;
+}
+}  // namespace range_internal
 
 Status Range::Compute(OpKernelContext* ctx) const {
   const auto* input_tensor = ctx->Input<Tensor>(0);
   if (input_tensor == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   auto data_type = input_tensor->DataType()->AsPrimitiveDataType();
-  if (data_type != nullptr) {
-    return CallDispatcher<int32_t, float, int64_t, double, int16_t>::Call(data_type->GetTensorElementType(), ctx);
-  }
-  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                         "Range op: Unsupported tensor data type:", data_type);
+  ORT_ENFORCE(data_type != nullptr, "Tensor is expected to have primitive data type");
+  return range_internal::CallDispatcher<int32_t, float, int64_t, double, int16_t>(data_type->GetTensorElementType(), ctx);
 }
 
 }  // namespace onnxruntime

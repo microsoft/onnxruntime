@@ -239,7 +239,7 @@ template <typename... Types>
 struct TensorContainedTypeSetter {
   static void SetTensorElementType(ONNX_NAMESPACE::TypeProto&);
   static void SetMapKeyType(ONNX_NAMESPACE::TypeProto&);
-  static int GetElementType();
+  static int32_t GetElementType();
 };
 
 /// Is a given type on the list of types?
@@ -721,12 +721,12 @@ class PrimitiveDataTypeBase : public DataTypeImpl {
  protected:
   PrimitiveDataTypeBase() = default;
 
-  void set_data_type(int data_type) {
+  void set_data_type(int32_t data_type) {
     data_type_ = data_type;
   }
 
  private:
-  int data_type_;
+  int32_t data_type_;
 };
 
 template <typename T>

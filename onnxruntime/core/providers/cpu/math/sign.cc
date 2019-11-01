@@ -4,6 +4,7 @@
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/utils.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
@@ -71,6 +72,22 @@ void SignBFloat16(const Tensor* input, Tensor* output) {
     return BFloat16(FloatingImpl(fl));
   });
 }
+
+template<typename... Types>
+void CallDispatcher(int32_t dt_type, const Tensor* input, Tensor* output) {
+  size_t called = 0;
+
+  int results[] = {0, [&] { 
+    if(utils::ToTensorDataType<Types>() == dt_type) {
+      EigenMap<Types>(*output) = EigenMap<Types>(*input).array().cwiseSign();
+      ++called;
+    }
+    return 0; }()...};
+  ORT_UNUSED_PARAMETER(results);
+  ORT_ENFORCE(called < 2, "Sign CallDispatcher broken. Check for duplicate type.");
+  ORT_ENFORCE(called == 1, "Unsupported data type");
+}
+
 }  // namespace sign_internal
 
 Status Sign::Compute(OpKernelContext* ctx) const {
@@ -80,34 +97,18 @@ Status Sign::Compute(OpKernelContext* ctx) const {
   auto output = ctx->Output(0, input->Shape());
 
   auto dtype = input->DataType()->AsPrimitiveDataType();
-  if (dtype != nullptr) {
-    if (dtype == DataTypeImpl::GetType<float>()) {
-      EigenMap<float>(*output) = EigenMap<float>(*input).array().cwiseSign();
-    } else if (dtype == DataTypeImpl::GetType<double>()) {
-      EigenMap<double>(*output) = EigenMap<double>(*input).array().cwiseSign();
-    } else if (dtype == DataTypeImpl::GetType<int8_t>()) {
-      EigenMap<int8_t>(*output) = EigenMap<int8_t>(*input).array().cwiseSign();
-    } else if (dtype == DataTypeImpl::GetType<int16_t>()) {
-      EigenMap<int16_t>(*output) = EigenMap<int16_t>(*input).array().cwiseSign();
-    } else if (dtype == DataTypeImpl::GetType<int32_t>()) {
-      EigenMap<int32_t>(*output) = EigenMap<int32_t>(*input).array().cwiseSign();
-    } else if (dtype == DataTypeImpl::GetType<int64_t>()) {
-      EigenMap<int64_t>(*output) = EigenMap<int64_t>(*input).array().cwiseSign();
-    } else if (dtype == DataTypeImpl::GetType<uint8_t>()) {
-      EigenMap<uint8_t>(*output) = EigenMap<uint8_t>(*input).array().cwiseSign();
-    } else if (dtype == DataTypeImpl::GetType<uint16_t>()) {
-      EigenMap<uint16_t>(*output) = EigenMap<uint16_t>(*input).array().cwiseSign();
-    } else if (dtype == DataTypeImpl::GetType<uint32_t>()) {
-      EigenMap<uint32_t>(*output) = EigenMap<uint32_t>(*input).array().cwiseSign();
-    } else if (dtype == DataTypeImpl::GetType<uint64_t>()) {
-      EigenMap<uint64_t>(*output) = EigenMap<uint64_t>(*input).array().cwiseSign();
-    } else if (dtype == DataTypeImpl::GetType<MLFloat16>()) {
-      SignMLFloat16(input, output);
-    } else if (dtype == DataTypeImpl::GetType<BFloat16>()) {
+  ORT_ENFORCE(dtype != nullptr, "Expect primitive data type within a tensor");
+  switch (dtype->GetTensorElementType ()) {
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
       SignBFloat16(input, output);
-    }
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported input datatype");
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      SignMLFloat16(input, output);
+      break;
+    default:
+      CallDispatcher<float, double, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
+        (dtype->GetTensorElementType(), input, output);
+      break;
   }
   return Status::OK();
 }

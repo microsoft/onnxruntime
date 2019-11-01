@@ -1092,35 +1092,25 @@ void BroadCastMFloat16FMod(const Tensor& X, const Tensor& Y, OpKernelContext* co
       });
 }
 
-template <typename T, class... Types>
-struct CallDispatcher {
-  static void Call(int dt_type, bool fmod, const Tensor& X, const Tensor& Y, OpKernelContext* ctx) {
-    if (dt_type == utils::ToTensorDataType<T>()) {
-      if (fmod) {
-        BroadCastFMod<T>(X, Y, ctx);
-      } else {
-        BroadCastMod<T>(X, Y, ctx);
-      }
-    } else {
-      CallDispatcher<Types...>::Call(dt_type, fmod, X, Y, ctx);
-    }
-  }
-};
+template <class... Types>
+void CallDispatcher(int dt_type, bool fmod, const Tensor& X, const Tensor& Y, OpKernelContext* ctx) {
+  size_t called = 0;
 
-template <typename T>
-struct CallDispatcher<T> {
-  static void Call(int dt_type, bool fmod, const Tensor& X, const Tensor& Y, OpKernelContext* ctx) {
-    if (dt_type == utils::ToTensorDataType<T>()) {
-      if (fmod) {
-        BroadCastFMod<T>(X, Y, ctx);
-      } else {
-        BroadCastMod<T>(X, Y, ctx);
-      }
-      return;
+  int results[] = {0, [&] { 
+  if(utils::ToTensorDataType<Types>() == dt_type) {
+    if (fmod) {
+      BroadCastFMod<Types>(X, Y, ctx);
+    } else {
+      BroadCastMod<Types>(X, Y, ctx);
     }
-    ORT_ENFORCE(false, "Unsupported data type", dt_type);
+    ++called;
   }
-};
+  return 0; }()...};
+
+  ORT_UNUSED_PARAMETER(results);
+  ORT_ENFORCE(called < 2, "Mod CallDispatcher broken. Check for duplicate type.");
+  ORT_ENFORCE(called == 1, "Mod op: Unsupported tensor data type:", dt_type);
+}
 
 }  // namespace mod_internal
 
@@ -1157,7 +1147,7 @@ Status Mod::Compute(OpKernelContext* context) const {
         BroadCastMFloat16FMod(X, Y, context);
         break;
       default:
-        CallDispatcher<uint8_t, int8_t, uint16_t, int16_t, uint32_t, int32_t, uint64_t, int64_t>::Call(dt_type, fmod_, X, Y, context);
+        CallDispatcher<uint8_t, int8_t, uint16_t, int16_t, uint32_t, int32_t, uint64_t, int64_t>(dt_type, fmod_, X, Y, context);
         break;
     }
    }

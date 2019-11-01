@@ -62,7 +62,7 @@ struct TensorContainedTypeSetter<T> {
   static void SetMapKeyType(ONNX_NAMESPACE::TypeProto& proto) {
     proto.mutable_map_type()->set_key_type(utils::ToTensorDataType<T>());
   }
-  static int GetElementType () {
+  constexpr static int32_t GetElementType () {
     return utils::ToTensorDataType<T>();
   }
 };

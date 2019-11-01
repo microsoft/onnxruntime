@@ -834,55 +834,28 @@ OrtStatus* OrtGetValueImplSeqOfTensorsHelper(OrtAllocator* allocator, const Tens
   return st ? st : PopulateTensorWithData<TensorElemType>(*out, tensor_data, shape.Size());
 }
 
-namespace on = ONNX_NAMESPACE;
-#define DispatchOnTensorTypeWithStatusReturn(tensor_type, retval, function, ...)         \
-  switch (tensor_type->AsPrimitiveDataType()->GetTensorElementType()) {                  \
-    case on::TensorProto_DataType_FLOAT:                                                 \
-      retval = function<float>(__VA_ARGS__);                                             \
-      break;                                                                             \
-    case on::TensorProto_DataType_BOOL:                                                  \
-      retval = function<bool>(__VA_ARGS__);                                              \
-      break;                                                                             \
-    case on::TensorProto_DataType_DOUBLE:                                                \
-      retval = function<double>(__VA_ARGS__);                                            \
-      break;                                                                             \
-    case on::TensorProto_DataType_STRING:                                                \
-      retval = function<std::string>(__VA_ARGS__);                                       \
-      break;                                                                             \
-    case on::TensorProto_DataType_INT8:                                                  \
-      retval = function<int8_t>(__VA_ARGS__);                                            \
-      break;                                                                             \
-    case on::TensorProto_DataType_UINT8:                                                 \
-      retval = function<uint8_t>(__VA_ARGS__);                                           \
-      break;                                                                             \
-    case on::TensorProto_DataType_UINT16:                                                \
-      retval = function<uint16_t>(__VA_ARGS__);                                          \
-      break;                                                                             \
-    case on::TensorProto_DataType_INT16:                                                 \
-      retval = function<int16_t>(__VA_ARGS__);                                           \
-      break;                                                                             \
-    case on::TensorProto_DataType_INT32:                                                 \
-      retval = function<int32_t>(__VA_ARGS__);                                           \
-      break;                                                                             \
-    case on::TensorProto_DataType_UINT32:                                                \
-      retval = function<uint32_t>(__VA_ARGS__);                                          \
-      break;                                                                             \
-    case on::TensorProto_DataType_INT64:                                                 \
-      retval = function<int64_t>(__VA_ARGS__);                                           \
-      break;                                                                             \
-    case on::TensorProto_DataType_UINT64:                                                \
-      retval = function<uint64_t>(__VA_ARGS__);                                          \
-      break;                                                                             \
-    case on::TensorProto_DataType_FLOAT16:                                               \
-      retval = function<MLFloat16>(__VA_ARGS__);                                         \
-      break;                                                                             \
-    case on::TensorProto_DataType_BFLOAT16:                                              \
-      retval = function<BFloat16>(__VA_ARGS__);                                          \
-      break;                                                                             \
-    default:                                                                             \
-      st = OrtApis::CreateStatus(ORT_FAIL, "Invalid tensor element type in the input."); \
-      break;                                                                             \
+namespace c_api_internal {
+template <typename... Types>
+OrtStatus* GetValueImplSeqOfTensorsDispatcher(int32_t dt_type, OrtAllocator* allocator, const onnxruntime::Tensor& one_tensor,
+                                              OrtValue** out) {
+  OrtStatus* st{};
+  size_t called = 0;
+
+  int results[] = {0, [&] { 
+  if(utils::ToTensorDataType<Types>() == dt_type) {
+    st = OrtGetValueImplSeqOfTensorsHelper<Types>(allocator, one_tensor, out);
+    ++called;
   }
+  return 0; }()...};
+
+  ORT_UNUSED_PARAMETER(results);
+  ORT_ENFORCE(called < 2, "OrtGetValueImplSeqOfTensors CallDispatcher broken. Check for duplicate type.");
+  if (called == 0) {
+    st = OrtApis::CreateStatus(ORT_FAIL, "Unsupported tensor element type in the input.");
+  }
+  return st;
+}
+}  // namespace c_api_internal
 
 template <typename T>
 OrtStatus* OrtGetValueImplSeqOfTensors(const OrtValue* p_ml_value, int index, OrtAllocator* allocator,
@@ -891,12 +864,14 @@ OrtStatus* OrtGetValueImplSeqOfTensors(const OrtValue* p_ml_value, int index, Or
   auto& one_tensor = data.tensors.at(index);
 
   OrtStatus* st{};
-  auto tensor_elem_type = one_tensor.DataType();
-  if (tensor_elem_type->AsPrimitiveDataType() == nullptr) {
+  auto tensor_elem_type = one_tensor.DataType()->AsPrimitiveDataType();
+  if (tensor_elem_type == nullptr) {
     st = OrtApis::CreateStatus(ORT_FAIL, "Invalid tensor element type in the input.");
     return st;
   }
-  DispatchOnTensorTypeWithStatusReturn(tensor_elem_type, st, OrtGetValueImplSeqOfTensorsHelper, allocator, one_tensor, out);
+  st = c_api_internal::GetValueImplSeqOfTensorsDispatcher<float, double, MLFloat16, bool, std::string,
+                                                          int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t>(
+      tensor_elem_type->GetTensorElementType(), allocator, one_tensor, out);
   return st;
 }
 
@@ -1047,6 +1022,32 @@ static OrtStatus* OrtCreateValueImplSeqHelperTensor(const Tensor& tensor,
   return nullptr;
 }
 
+namespace c_api_internal {
+
+template<typename... Types>
+OrtStatus* CreateValueImplSeqHelperDispatcher(MLDataType tensor_elem_type, int32_t dt_type, const onnxruntime::Tensor& one_tensor, onnxruntime::Tensor& out) {
+  OrtStatus* st{};
+  size_t called = 0;
+
+  int results[] = {0, [&] { 
+  if(utils::ToTensorDataType<Types>() == dt_type) {
+    st = OrtCreateValueImplSeqHelperTensor<Types>(one_tensor, out);
+    ++called;
+  }
+  return 0; }()...};
+
+  ORT_UNUSED_PARAMETER(results);
+  ORT_ENFORCE(called < 2, "OrtCreateValueImplSeqHelper CallDispatcher broken. Check for duplicate type.");
+  if (called == 0) {
+    std::string err_msg = std::string("Unsupported data type: ") + DataTypeImpl::ToString(tensor_elem_type);
+    st = OrtApis::CreateStatus(ORT_FAIL, err_msg.c_str());
+  }
+  return st;
+}
+
+}  // namespace c_api_internal
+
+
 static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t num_values,
                                               OrtValue** out) {
   auto seq_ptr = onnxruntime::make_unique<TensorSeq>();
@@ -1065,31 +1066,15 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t 
                                    "Sequences must have tensors of the same data type. There was at least one tensor in the input that was different.");
     }
 
-    OrtStatus* st{};
-    if (tensor_elem_type == DataTypeImpl::GetType<bool>()) {
-      st = OrtCreateValueImplSeqHelperTensor<bool>(one_tensor, seq_ptr->tensors[idx]);
-    } else if (tensor_elem_type == DataTypeImpl::GetType<float>()) {
-      st = OrtCreateValueImplSeqHelperTensor<float>(one_tensor, seq_ptr->tensors[idx]);
-    } else if (tensor_elem_type == DataTypeImpl::GetType<double>()) {
-      st = OrtCreateValueImplSeqHelperTensor<double>(one_tensor, seq_ptr->tensors[idx]);
-    } else if (tensor_elem_type == DataTypeImpl::GetType<int8_t>()) {
-      st = OrtCreateValueImplSeqHelperTensor<int8_t>(one_tensor, seq_ptr->tensors[idx]);
-    } else if (tensor_elem_type == DataTypeImpl::GetType<uint8_t>()) {
-      st = OrtCreateValueImplSeqHelperTensor<uint8_t>(one_tensor, seq_ptr->tensors[idx]);
-    } else if (tensor_elem_type == DataTypeImpl::GetType<int16_t>()) {
-      st = OrtCreateValueImplSeqHelperTensor<int16_t>(one_tensor, seq_ptr->tensors[idx]);
-    } else if (tensor_elem_type == DataTypeImpl::GetType<uint16_t>()) {
-      st = OrtCreateValueImplSeqHelperTensor<uint16_t>(one_tensor, seq_ptr->tensors[idx]);
-    } else if (tensor_elem_type == DataTypeImpl::GetType<int32_t>()) {
-      st = OrtCreateValueImplSeqHelperTensor<int32_t>(one_tensor, seq_ptr->tensors[idx]);
-    } else if (tensor_elem_type == DataTypeImpl::GetType<uint32_t>()) {
-      st = OrtCreateValueImplSeqHelperTensor<uint32_t>(one_tensor, seq_ptr->tensors[idx]);
-    } else if (tensor_elem_type == DataTypeImpl::GetType<int64_t>()) {
-      st = OrtCreateValueImplSeqHelperTensor<int64_t>(one_tensor, seq_ptr->tensors[idx]);
-    } else {
-      std::string err_msg = std::string("Unsupported data type: ") + DataTypeImpl::ToString(tensor_elem_type);
-      st = OrtApis::CreateStatus(ORT_FAIL, err_msg.c_str());
+    auto prim_type = tensor_elem_type->AsPrimitiveDataType();
+    if (prim_type == nullptr) {
+      return OrtApis::CreateStatus(ORT_FAIL,
+                                   "OrtCreateValueImplSeqHelper: Expecting a primitive data type");
     }
+
+    OrtStatus* st{};
+    st = c_api_internal::CreateValueImplSeqHelperDispatcher<bool, float, double, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t>(
+        tensor_elem_type, prim_type->GetTensorElementType(), one_tensor, seq_ptr->tensors[idx]);
 
     if (st) {
       return st;
@@ -1175,19 +1160,28 @@ static OrtStatus* OrtCreateMapMLValue(const Tensor& key_tensor, const Tensor& va
 template <typename KeyType>
 static OrtStatus* OrtCreateValueImplMapHelper(const Tensor& key_tensor, const Tensor& value_tensor,
                                               OrtValue** out) {
-  auto value_type = value_tensor.DataType();
-  if (value_type == DataTypeImpl::GetType<std::string>()) {
-    return OrtCreateMapMLValue<KeyType, std::string>(key_tensor, value_tensor, out);
-  }
-  if (value_type == DataTypeImpl::GetType<int64_t>()) {
-    return OrtCreateMapMLValue<KeyType, int64_t>(key_tensor, value_tensor, out);
-  } else if (value_type == DataTypeImpl::GetType<float>()) {
-    return OrtCreateMapMLValue<KeyType, float>(key_tensor, value_tensor, out);
-  } else if (value_type == DataTypeImpl::GetType<double>()) {
-    return OrtCreateMapMLValue<KeyType, double>(key_tensor, value_tensor, out);
-  } else {
+  auto value_type = value_tensor.DataType()->AsPrimitiveDataType();
+  if (value_type == nullptr) {
     return OrtApis::CreateStatus(ORT_FAIL, "Value type is not supported yet.");
   }
+  switch (value_type->GetTensorElementType ()) {
+    case ONNX_NAMESPACE::TensorProto_DataType_STRING:
+      return OrtCreateMapMLValue<KeyType, std::string>(key_tensor, value_tensor, out);
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      return OrtCreateMapMLValue<KeyType, int64_t>(key_tensor, value_tensor, out);
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      return OrtCreateMapMLValue<KeyType, float>(key_tensor, value_tensor, out);
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+      return OrtCreateMapMLValue<KeyType, double>(key_tensor, value_tensor, out);
+      break;
+    default:
+      break;
+  }
+
+  return OrtApis::CreateStatus(ORT_FAIL, "Value type is not supported yet.");
 }
 
 static OrtStatus* OrtCreateValueImplMap(const OrtValue* const* in, size_t num_values, OrtValue** out) {
