@@ -28,12 +28,12 @@ namespace perftest {
       "perf_test [options...] model_path result_file\n"
       "Options:\n"
       "\t-m [test_mode]: Specifies the test mode. Value could be 'duration' or 'times'.\n"
-      "\t\tProvide 'duration' to run the test for a fix duration, and 'times' to repeated for a certain times. "
+      "\t\tProvide 'duration' to run the test for a fix duration, and 'times' to repeated for a certain times. \n"
       "\t-M: Disable memory pattern.\n"
       "\t-A: Disable memory arena\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
-      "\t-e [cpu|cuda|mkldnn|tensorrt|ngraph|openvino|nuphar]: Specifies the provider 'cpu','cuda','mkldnn','tensorrt', "
-      "'ngraph', 'openvino' or 'nuphar'. "
+      "\t-e [cpu|cuda|mkldnn|tensorrt|ngraph|openvino|nuphar|dml|acl]: Specifies the provider 'cpu','cuda','mkldnn','tensorrt', "
+      "'ngraph', 'openvino', 'nuphar', 'dml' or 'acl'. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
@@ -46,12 +46,13 @@ namespace perftest {
       "\t-P: Use parallel executor instead of sequential executor.\n"
       "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. \n"
+      "\t-u [optimized_model_path]: Specify the optimized model path for saving.\n"
       "\t-h: help\n");
 }
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:o:AMPvhs"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:o:u:AMPvhs"))) != -1) {
     switch (ch) {
       case 'm':
         if (!CompareCString(optarg, ORT_TSTR("duration"))) {
@@ -93,6 +94,10 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kNnapiExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kNupharExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kDmlExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
         } else {
           return false;
         }
@@ -130,7 +135,7 @@ namespace perftest {
         }
         break;
       case 'P':
-        test_config.run_config.enable_sequential_execution = false;
+        test_config.run_config.execution_mode = ExecutionMode::ORT_PARALLEL;
         break;
       case 'c':
         test_config.run_config.concurrent_session_runs =
@@ -164,6 +169,9 @@ namespace perftest {
         }
         break;
       }
+      case 'u':
+        test_config.run_config.optimized_model_path = optarg;
+        break;
       case '?':
       case 'h':
       default:

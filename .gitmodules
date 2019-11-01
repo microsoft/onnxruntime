@@ -43,3 +43,7 @@
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git
+[submodule "cmake/external/wil"]
+	path = cmake/external/wil
+	url = https://github.com/microsoft/wil
+

@@ -18,7 +18,6 @@
 #include "core/framework/sequential_executor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"
-
 #include "core/graph/onnx_protobuf.h"
 
 namespace ONNX_NAMESPACE {
@@ -433,12 +432,12 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const FeedsFetchesManager& feeds_fetches_manager,
                                        const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                        const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                       bool sequential_execution, const bool& terminate_flag,
+                                       ExecutionMode execution_mode, const bool& terminate_flag,
                                        const logging::Logger& logger) {
   std::unique_ptr<IExecutor> p_exec;
-  if (sequential_execution) {
+  if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
     p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag));
-  } else {
+  } else if (execution_mode == ExecutionMode::ORT_PARALLEL) {
     auto* p_inter_op_thread_pool = session_state.GetInterOpThreadPool();
     if (!p_inter_op_thread_pool) {
       LOGS(logger, WARNING) << "Only one thread was configured for parallel execution. Hence will use sequential execution.";
@@ -506,7 +505,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
 common::Status ExecuteGraph(const SessionState& session_state,
                             FeedsFetchesManager& feeds_fetches_manager,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                            bool sequential_execution, const bool& terminate_flag,
+                            ExecutionMode execution_mode, const bool& terminate_flag,
                             const logging::Logger& logger) {
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
 
@@ -514,7 +513,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
   FinalizeFeedFetchCopyInfo(session_state, feeds_fetches_manager, feeds, fetches);
 
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
-                                 sequential_execution, terminate_flag, logger);
+                                 execution_mode, terminate_flag, logger);
 
   return status;
 }
@@ -522,9 +521,9 @@ common::Status ExecuteGraph(const SessionState& session_state,
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               bool sequential_execution, const bool& terminate_flag, const logging::Logger& logger) {
+                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger) {
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
-                                 sequential_execution, terminate_flag, logger);
+                                 execution_mode, terminate_flag, logger);
   return status;
 }
 
@@ -557,15 +556,15 @@ static void DumpTensor(const Tensor& tensor, const TensorShape& shape) {
   auto data = tensor.DataAsSpan<T>();
 
   auto print_val = [](const T& value) {
-    if (std::is_floating_point_v<T>)
+    if (std::is_floating_point<T>::value)
       std::cout << std::setprecision(8) << value;
     else
       std::cout << value;
   };
 
-  for (int row = 0; row < num_rows; ++row) {
+  for (size_t row = 0; row < num_rows; ++row) {
     print_val(data[row * row_size]);
-    for (int i = 1; i < row_size; ++i) {
+    for (size_t i = 1; i < row_size; ++i) {
       std::cout << ", ";
       print_val(data[row * row_size + i]);
     }
@@ -610,34 +609,44 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
   std::cout << "-----------\n";
   const auto& output_defs = node.OutputDefs();
 
-  const auto& execution_providers = session_state.GetExecutionProviders();
-  const auto* cpu_execution_provider = execution_providers.Get(onnxruntime::kCpuExecutionProvider);
-
   for (auto i = 0, end = context.OutputCount(); i < end; ++i) {
     if (output_defs[i]->Exists()) {
       std::cout << "Output " << i << " Name: " << output_defs[i]->Name();
 
       const auto* type = context.OutputType(i);
-
       if (type) {
         if (type->IsTensorType()) {
           const auto& tensor = *context.Output<Tensor>(i);
-          const auto data_type = tensor.DataType();
           const auto& shape = tensor.Shape();
 
           std::cout << " Shape: " << shape << "\n";
 
-          // check tensor is on CPU before dumping it
-          auto& tensor_location = tensor.Location();
-          auto* provider = execution_providers.Get(tensor_location);
-          if (!provider) {
-            provider = cpu_execution_provider;
-          }
+          if (DEBUG_NODE_INPUTS_OUTPUTS > 1) {
+            // check tensor is on CPU before dumping it
+            auto& tensor_location = tensor.Location();
+            const auto data_type = tensor.DataType();
+            if (tensor_location.device.Type() == OrtDevice::CPU || tensor_location.mem_type == OrtMemTypeCPUOutput) {
+              DispatchOnTensorType(data_type, DumpTensor, tensor, shape);
+            } else {
+              std::cout << tensor_location << "\n";
 
-          if (provider == cpu_execution_provider || tensor_location.mem_type == OrtMemTypeCPUOutput) {
-            DispatchOnTensorType(data_type, DumpTensor, tensor, shape);
-          } else {
-            std::cout << " is not on CPU. Provider=" << provider->Type() << "\n";
+#ifdef USE_CUDA
+              // Dumping GPU only when cuda is enabled. Most op has only one output, so put GPU related code here to get best performance.
+              if (tensor_location.device.Type() == OrtDevice::GPU) {
+                const auto& execution_providers = session_state.GetExecutionProviders();
+                const auto* cpu_execution_provider = execution_providers.Get(onnxruntime::kCpuExecutionProvider);
+                auto cpu_allocator = cpu_execution_provider->GetAllocator(0, OrtMemTypeDefault);
+                std::unique_ptr<Tensor> cpu_tensor = onnxruntime::make_unique<Tensor>(data_type, shape, cpu_allocator);
+                const auto& data_transfer_mgr = session_state.GetDataTransferMgr();
+                auto status = data_transfer_mgr.CopyTensor(tensor, *cpu_tensor.get(), 0);
+                if (status == common::Status::OK()) {
+                  DispatchOnTensorType(data_type, DumpTensor, *cpu_tensor.get(), shape);
+                } else {
+                  std::cout << " failed to transfer data to cpu.\n";
+                }
+              }
+#endif
+            }
           }
         } else {
           std::cout << " is non-tensor type.\n";

@@ -6,12 +6,10 @@
 #include "core/providers/nuphar/runtime/control_flow/scan_exec_ctx.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/onnxruntime_typeinfo.h"
 #include "core/codegen/common/common.h"
 #include "core/providers/nuphar/common/analysis/subgraph_codegen_stats.h"
 #include <unordered_map>
-
-// from onnxruntime_typeinf.cc, in global namespace
-const onnxruntime::DataTypeImpl* ElementTypeFromProto(int type);
 
 namespace onnxruntime {
 namespace nuphar {
@@ -64,7 +62,7 @@ static void FillBasicFuncInfo(NupharFuncInfo* func_info,
 
     // fill in func args
     NupharFuncInfo::FuncArgMeta input_meta;
-    input_meta.dtype = ElementTypeFromProto(def->TypeAsProto()->tensor_type().elem_type());
+    input_meta.dtype = OrtTypeInfo::ElementTypeFromProto(def->TypeAsProto()->tensor_type().elem_type());
     input_meta.ort_arg_index = def_index;
 
     // fill in shape info and symobolic info
@@ -160,7 +158,7 @@ static void FillBasicFuncInfo(NupharFuncInfo* func_info,
     }
 
     NupharFuncInfo::FuncArgMeta output_meta;
-    output_meta.dtype = ElementTypeFromProto(def->TypeAsProto()->tensor_type().elem_type());
+    output_meta.dtype = OrtTypeInfo::ElementTypeFromProto(def->TypeAsProto()->tensor_type().elem_type());
     output_meta.ort_arg_index = def_index;
 
     // fill in shape info and symobolic info
@@ -345,7 +343,7 @@ static void FillScanExecInfo(NupharFuncInfo* func_info,
     }
 
     NupharFuncInfo::FuncArgMeta input_meta;
-    input_meta.dtype = ElementTypeFromProto(def->TypeAsProto()->tensor_type().elem_type());
+    input_meta.dtype = OrtTypeInfo::ElementTypeFromProto(def->TypeAsProto()->tensor_type().elem_type());
     input_meta.ort_arg_index = gsl::narrow_cast<int>(ort_input_idx);
 
     // fill in shape info and symobolic info
@@ -395,7 +393,7 @@ static void FillScanExecInfo(NupharFuncInfo* func_info,
     }
 
     NupharFuncInfo::FuncArgMeta input_meta;
-    input_meta.dtype = ElementTypeFromProto(def->TypeAsProto()->tensor_type().elem_type());
+    input_meta.dtype = OrtTypeInfo::ElementTypeFromProto(def->TypeAsProto()->tensor_type().elem_type());
     input_meta.ort_arg_index = gsl::narrow_cast<int>(ort_input_idx);
 
     std::vector<std::pair<size_t, std::string>> symbols;
@@ -514,7 +512,7 @@ static void FillScanExecInfo(NupharFuncInfo* func_info,
     }
 
     NupharFuncInfo::FuncArgMeta output_meta;
-    output_meta.dtype = ElementTypeFromProto(def->TypeAsProto()->tensor_type().elem_type());
+    output_meta.dtype = OrtTypeInfo::ElementTypeFromProto(def->TypeAsProto()->tensor_type().elem_type());
     output_meta.ort_arg_index = ort_arg_index;
 
     // shape and symbols

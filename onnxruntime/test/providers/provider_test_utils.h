@@ -17,11 +17,26 @@
 #include "test/test_environment.h"
 #include "test/framework/TestAllocatorManager.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/session_options.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include <gsl/gsl>
 #include "core/util/math_cpuonly.h"
+
+// helpers to run a function and check the status, outputting any error if it fails.
+// note: wrapped in do{} while(false) so the _tmp_status variable has limited scope
+#define ASSERT_STATUS_OK(function)                  \
+  do {                                              \
+    auto _tmp_status = function;                    \
+    ASSERT_TRUE(_tmp_status.IsOK()) << _tmp_status; \
+  } while (false)
+
+#define EXPECT_STATUS_OK(function)                  \
+  do {                                              \
+    auto _tmp_status = function;                    \
+    EXPECT_TRUE(_tmp_status.IsOK()) << _tmp_status; \
+  } while (false)
 
 namespace onnxruntime {
 class InferenceSession;
@@ -227,8 +242,26 @@ const SequenceTensorTypeProto<ElemType> SequenceTensorType<ElemType>::s_sequence
 // explanatory
 class OpTester {
  public:
+  // Default to the first opset that ORT was available (7).
+  // When operators are updated they need to explicitly add tests for the new opset version.
+  // This is due to the kernel matching logic. See KernelRegistry::VerifyKernelDef.
+  // Additionally, -1 is supported and defaults to the latest known opset.
+  //
+  // Defaulting to the latest opset version would result in existing operator implementations for non-CPU EPs to
+  // lose their test coverage until an implementation for the new version is added.
+  //   e.g. there are CPU and GPU implementations for version 1 of an op. both are tested by a single OpTester test.
+  //        opset changes from 1 to 2 and CPU implementation gets added. If 'opset_version' is 2 the kernel matching
+  //        will find and run the CPU v2 implementation, but will not match the GPU v1 implementation.
+  //        OpTester will say it was successful as at least one EP ran, and the GPU implementation of v1 no longer has
+  //        test coverage.
   explicit OpTester(const char* op, int opset_version = 7, const char* domain = onnxruntime::kOnnxDomain)
-      : op_(op), domain_(domain), opset_version_(opset_version) {}
+      : op_(op), domain_(domain), opset_version_(opset_version) {
+    if (opset_version_ < 0) {
+      static int latest_onnx_version =
+          ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
+      opset_version_ = latest_onnx_version;
+    }
+  }
 
   ~OpTester();
 
@@ -283,35 +316,12 @@ class OpTester {
 
   template <typename T>
   void AddSeqInput(const char* name, const SeqTensors<T>& seq_tensors) {
-    auto mltype = DataTypeImpl::GetType<TensorSeq>();
-    ORT_ENFORCE(mltype != nullptr, "TensorSeq must be a registered cpp type");
-    auto ptr = onnxruntime::make_unique<TensorSeq>();
-    auto num_tensors = seq_tensors.tensors.size();
-    ptr->tensors.resize(num_tensors);
-    for (int i = 0; i < num_tensors; ++i) {
-      TensorShape shape{seq_tensors.tensors[i].shape};
-      auto values_count = static_cast<int64_t>(seq_tensors.tensors[i].data.size());
-      ORT_ENFORCE(shape.Size() == values_count, values_count,
-                  " input values doesn't match tensor size of ", shape.Size());
+    AddSeqData<T>(input_data_, name, seq_tensors);
+  }
 
-      auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-      auto& tensor = ptr->tensors[i];
-
-      tensor = Tensor(DataTypeImpl::GetType<T>(),
-                      shape,
-                      allocator);
-
-      auto* data_ptr = tensor.template MutableData<T>();
-      for (int64_t x = 0; x < values_count; ++x) {
-        data_ptr[x] = seq_tensors.tensors[i].data[x];
-      }
-    }
-
-    OrtValue value;
-    value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
-    ptr.release();
-    input_data_.push_back(Data(NodeArg(name, &SequenceTensorType<T>::s_sequence_tensor_type_proto), std::move(value),
-                               optional<float>(), optional<float>()));
+  template <typename T>
+  void AddSeqOutput(const char* name, const SeqTensors<T>& seq_tensors) {
+    AddSeqData<T>(output_data_, name, seq_tensors);
   }
 
   template <typename TKey, typename TVal>
@@ -416,9 +426,9 @@ class OpTester {
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
-           bool sequential_execution = true);
+           ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL);
 
-  void Run(const SessionOptions& session_options,
+  void Run(SessionOptions session_options,
            ExpectResult expect_result = ExpectResult::kExpectSuccess,
            const std::string& expected_failure_string = "",
            const std::unordered_set<std::string>& excluded_provider_types = {},
@@ -493,6 +503,40 @@ class OpTester {
       std::cerr << "AddData for '" << name << "' threw: " << ex.what();
       throw;
     }
+  }
+
+  template <typename T>
+  void AddSeqData(std::vector<Data>& data, const char* name, const SeqTensors<T>& seq_tensors) {
+    auto mltype = DataTypeImpl::GetType<TensorSeq>();
+    ORT_ENFORCE(mltype != nullptr, "TensorSeq must be a registered cpp type");
+    auto ptr = onnxruntime::make_unique<TensorSeq>();
+    ptr->dtype = DataTypeImpl::GetType<T>();
+    auto num_tensors = seq_tensors.tensors.size();
+    ptr->tensors.resize(num_tensors);
+    for (size_t i = 0; i < num_tensors; ++i) {
+      TensorShape shape{seq_tensors.tensors[i].shape};
+      auto values_count = static_cast<int64_t>(seq_tensors.tensors[i].data.size());
+      ORT_ENFORCE(shape.Size() == values_count, values_count,
+                  " input values doesn't match tensor size of ", shape.Size());
+
+      auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+      auto& tensor = ptr->tensors[i];
+
+      tensor = Tensor(DataTypeImpl::GetType<T>(),
+                      shape,
+                      allocator);
+
+      auto* data_ptr = tensor.template MutableData<T>();
+      for (int64_t x = 0; x < values_count; ++x) {
+        data_ptr[x] = seq_tensors.tensors[i].data[x];
+      }
+    }
+
+    OrtValue value;
+    value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
+    ptr.release();
+    data.push_back(Data(NodeArg(name, &SequenceTensorType<T>::s_sequence_tensor_type_proto), std::move(value),
+                        optional<float>(), optional<float>()));
   }
 
   void ExecuteModel(Model& model, InferenceSession& session_object, ExpectResult expect_result,

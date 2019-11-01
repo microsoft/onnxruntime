@@ -240,6 +240,35 @@ void Check(const OpTester::Data& expected_data, const T& run_output, const std::
   EXPECT_EQ(expected_data.data_.Get<T>(), run_output) << "provider_type: " << provider_type;
 }
 
+template <>
+void Check<TensorSeq>(const OpTester::Data& expected_data, const TensorSeq& output_seq,
+                      const std::string& provider_type) {
+  const auto& exp_seq = expected_data.data_.Get<TensorSeq>();
+
+  // first ensure data types match
+  EXPECT_EQ(exp_seq.dtype, output_seq.dtype) << "Data types don't match: Expected: " << DataTypeImpl::ToString(exp_seq.dtype)
+                                             << " Output: " << output_seq.dtype << " provider_type: " << provider_type;
+
+  // check num of contained tensors
+  size_t expected_num_tensors = exp_seq.tensors.size();
+  size_t output_num_tensors = output_seq.tensors.size();
+  EXPECT_EQ(expected_num_tensors, output_num_tensors) << "Mismatch in number of tensors in the sequence"
+                                                      << " Expected: " << expected_num_tensors << " Output: "
+                                                      << output_num_tensors << " provider_type: " << provider_type;
+
+  // now check the contents of the tensors
+  auto null_deleter = [](void*) {};
+
+  for (size_t i = 0; i < output_num_tensors; ++i) {
+    OrtValue temp_value;
+    // Reason for null_deleter: we don't want the tensor destructor to be called as part of this OrtValue destructor
+    // as we're creating this OrtValue only to reuse the Check functionality
+    temp_value.Init(const_cast<Tensor*>(&exp_seq.tensors[i]), DataTypeImpl::GetType<Tensor>(), null_deleter);
+    OpTester::Data temp_data(NodeArg("dummy", nullptr), std::move(temp_value), optional<float>(), optional<float>());
+    Check(temp_data, output_seq.tensors[i], provider_type);
+  }
+}
+
 template <typename Type>
 void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, OrtValue& ort_value,
                    const std::string& provider_type) {
@@ -260,11 +289,11 @@ void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, OrtValu
 
 void Check(const OpTester::Data& expected_data, OrtValue& ort_value, const std::string& provider_type) {
 #ifdef MICROSOFT_AUTOML
-  CheckDispatch<dtf::TimePoint, VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
-                                                                               provider_type);
+  CheckDispatch<dtf::TimePoint, VectorMapStringToFloat, VectorMapInt64ToFloat, TensorSeq>(expected_data.data_.Type(), expected_data, ort_value,
+                                                                                          provider_type);
 #else
-  CheckDispatch<VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
-                                                               provider_type);
+  CheckDispatch<VectorMapStringToFloat, VectorMapInt64ToFloat, TensorSeq>(expected_data.data_.Type(), expected_data, ort_value,
+                                                                          provider_type);
 #endif
 }
 
@@ -480,20 +509,22 @@ void OpTester::Run(ExpectResult expect_result,
                    const std::unordered_set<std::string>& excluded_provider_types,
                    const RunOptions* run_options,
                    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
-                   bool sequential_execution) {
+                   ExecutionMode execution_mode) {
   SessionOptions so;
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
-  so.enable_sequential_execution = sequential_execution;
+  so.execution_mode = execution_mode;
+  so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
   Run(so, expect_result, expected_failure_string, excluded_provider_types, run_options, execution_providers);
 }
 
-void OpTester::Run(const SessionOptions& so,
+void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e. make a copy) because we may need to modify it
                    ExpectResult expect_result,
                    const std::string& expected_failure_string,
                    const std::unordered_set<std::string>& excluded_provider_types,
                    const RunOptions* run_options,
                    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
+  std::string cur_provider = "not set";
   try {
 #ifndef NDEBUG
     run_called_ = true;
@@ -541,11 +572,20 @@ void OpTester::Run(const SessionOptions& so,
         kBrainSliceExecutionProvider,
         kTensorrtExecutionProvider,
         kOpenVINOExecutionProvider,
-    };
+        kDmlExecutionProvider,
+        kAclExecutionProvider,};
 
     bool has_run = false;
 
     if (execution_providers) {
+      for (auto& entry : *execution_providers) {
+        if (entry->Type() == kDmlExecutionProvider) {
+          so.enable_mem_pattern = false;
+          so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+          break;
+        }
+      }
+
       InferenceSession session_object{so};
 
       ASSERT_TRUE(!execution_providers->empty()) << "Empty execution providers vector.";
@@ -563,6 +603,12 @@ void OpTester::Run(const SessionOptions& so,
         if (excluded_provider_types.count(provider_type) > 0)
           continue;
 
+        cur_provider = provider_type;
+
+        if (provider_type == kDmlExecutionProvider) {
+          so.enable_mem_pattern = false;
+          so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+        }
         InferenceSession session_object{so};
 
         for (auto& custom_session_registry : custom_session_registries_)
@@ -587,6 +633,8 @@ void OpTester::Run(const SessionOptions& so,
           execution_provider = DefaultOpenVINOExecutionProvider();
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
           execution_provider = DefaultNnapiExecutionProvider();
+        else if (provider_type == onnxruntime::kAclExecutionProvider)
+          execution_provider = DefaultAclExecutionProvider();
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;
@@ -630,12 +678,14 @@ void OpTester::Run(const SessionOptions& so,
 
         ExecuteModel(*p_model, session_object, expect_result, expected_failure_string, run_options, feeds,
                      output_names, provider_type);
+
+        cur_provider = "not set";
       }
 
       EXPECT_TRUE(has_run) << "No registered execution providers were able to run the model.";
     }
   } catch (const std::exception& ex) {
-    std::cerr << ex.what();
+    std::cerr << ex.what() << "\nProvider:" << cur_provider << "\n";
     // rethrow as some tests for error handling expect this
     throw;
   }

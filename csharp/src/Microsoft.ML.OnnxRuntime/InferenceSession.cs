@@ -215,11 +215,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var envHandle = OnnxRuntime.Handle;
             var session = IntPtr.Zero;
-
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.Unicode.GetBytes(modelPath), options.Handle, out session));
-            else
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.UTF8.GetBytes(modelPath), options.Handle, out session));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeMethods.GetPlatformSerializedString(modelPath), options.Handle, out session));
 
             InitWithSessionHandle(session, options);
         }
@@ -433,7 +429,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             if (valueType != OnnxValueType.ONNX_TYPE_TENSOR && valueType != OnnxValueType.ONNX_TYPE_SPARSETENSOR)
             {
-                return new NodeMetadata(valueType, new int[] { }, typeof(NamedOnnxValue));
+                return new NodeMetadata(valueType, new int[] { }, new string[] { },  typeof(NamedOnnxValue));
             }
 
             IntPtr tensorInfo;
@@ -453,14 +449,26 @@ namespace Microsoft.ML.OnnxRuntime
             TensorElementTypeConverter.GetTypeAndWidth(type, out dotnetType, out width);
             UIntPtr numDimensions;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensionsCount(tensorInfo, out numDimensions));
+
             long[] dimensions = new long[(int)numDimensions];
-            NativeMethods.OrtGetDimensions(tensorInfo, dimensions, numDimensions);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensions(tensorInfo, dimensions, numDimensions));
             int[] intDimensions = new int[(int)numDimensions];
             for (var i = 0; i < (long)numDimensions; i++)
             {
                 intDimensions[i] = (int)dimensions[i];
             }
-            return new NodeMetadata(valueType, intDimensions, dotnetType);
+
+            IntPtr[] dimensionNamePtrs = new IntPtr[(int)numDimensions];
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtGetSymbolicDimensions(tensorInfo, dimensionNamePtrs, numDimensions));
+
+            string[] symbolicDimensions = new string[(int)numDimensions];
+            for (var i = 0; i < (int)numDimensions; i++)
+            {
+                symbolicDimensions[i] = Marshal.PtrToStringAnsi(dimensionNamePtrs[i]); //assumes charset = ANSI
+            }
+          
+            return new NodeMetadata(valueType, intDimensions, symbolicDimensions, dotnetType);
         }
 
         #endregion
@@ -514,12 +522,14 @@ namespace Microsoft.ML.OnnxRuntime
     {
         private OnnxValueType _onnxValueType;
         private int[] _dimensions;
+        private string[] _symbolicDimensions;
         private Type _type;
 
-        internal NodeMetadata(OnnxValueType onnxValueType, int[] dimensions, Type type)
+        internal NodeMetadata(OnnxValueType onnxValueType, int[] dimensions, string[] symbolicDimensions, Type type)
         {
             _onnxValueType = onnxValueType;
             _dimensions = dimensions;
+            _symbolicDimensions = symbolicDimensions;
             _type = type;
         }
 
@@ -538,6 +548,15 @@ namespace Microsoft.ML.OnnxRuntime
                 return _dimensions;
             }
         }
+
+        public string[] SymbolicDimensions
+        {
+            get
+            {
+                return _symbolicDimensions;
+            }
+        }
+
         public System.Type ElementType
         {
             get
