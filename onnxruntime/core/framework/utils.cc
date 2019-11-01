@@ -634,21 +634,11 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
               // Dumping GPU only when cuda is enabled. Most op has only one output, so put GPU related code here to get best performance.
               if (tensor_location.device.Type() == OrtDevice::GPU) {
                 const auto& execution_providers = session_state.GetExecutionProviders();
-                const auto* cuda_execution_provider = execution_providers.Get(onnxruntime::kCudaExecutionProvider);
-                if (cuda_execution_provider == nullptr) {
-                  continue;
-                }
-
-                auto gpu_data_transfer = cuda_execution_provider->GetDataTransfer();
-                if (gpu_data_transfer == nullptr) {
-                  continue;
-                }
-
-                // Copy tensor from gpu to cpu then dump it.
                 const auto* cpu_execution_provider = execution_providers.Get(onnxruntime::kCpuExecutionProvider);
                 auto cpu_allocator = cpu_execution_provider->GetAllocator(0, OrtMemTypeDefault);
                 std::unique_ptr<Tensor> cpu_tensor = onnxruntime::make_unique<Tensor>(data_type, shape, cpu_allocator);
-                auto status = gpu_data_transfer->CopyTensor(tensor, *cpu_tensor.get(), 0);
+                const auto& data_transfer_mgr = session_state.GetDataTransferMgr();
+                auto status = data_transfer_mgr.CopyTensor(tensor, *cpu_tensor.get(), 0);
                 if (status == common::Status::OK()) {
                   DispatchOnTensorType(data_type, DumpTensor, *cpu_tensor.get(), shape);
                 } else {
