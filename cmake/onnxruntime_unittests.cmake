@@ -143,6 +143,13 @@ file(GLOB_RECURSE onnxruntime_test_providers_cpu_src CONFIGURE_DEPENDS
   )
 list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cpu_src})
 
+if (onnxruntime_USE_CUDA)
+  file(GLOB_RECURSE onnxruntime_test_providers_cuda_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/cuda/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_src})
+endif()
+
 if (onnxruntime_USE_NGRAPH)
   file(GLOB_RECURSE onnxruntime_test_providers_ngraph_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/ngraph/*"
@@ -695,13 +702,13 @@ if (onnxruntime_BUILD_SERVER)
           LANGUAGE python
           TARGET onnxruntime_server_tests
           OUT_VAR server_test_py)
-          
+
   set(grpc_py "${CMAKE_CURRENT_BINARY_DIR}/prediction_service_pb2_grpc.py")
 
   add_custom_command(
     TARGET onnxruntime_server_tests
     COMMAND $<TARGET_FILE:protobuf::protoc>
-    ARGS 
+    ARGS
       --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
       --plugin=protoc-gen-grpc="${_GRPC_PY_PLUGIN_EXECUTABLE}"
       -I ${grpc_proto_path}

@@ -3,8 +3,27 @@
 #include "core/util/math.h"
 #include "test/providers/provider_test_utils.h"
 
-namespace onnxruntime{
-namespace test{
+namespace onnxruntime {
+namespace test {
+
+template <class T>
+inline std::vector<T> UniformRandom(const std::vector<int64_t>& dims, float min, float max) {
+  int64_t size = std::accumulate(dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+  std::vector<T> val(size);
+  static std::default_random_engine generator;
+  std::uniform_real_distribution<float> distribution(min, max);
+  for (size_t i = 0; i < val.size(); ++i) {
+    val[i] = T(distribution(generator));
+  }
+  return val;
+}
+
+template <class T>
+inline std::vector<T> FillZeros(const std::vector<int64_t>& dims) {
+  int64_t size = std::accumulate(dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+  std::vector<T> val(size, T(0));
+  return val;
+}
 
 template <class T>
 inline void FillRandom(std::vector<T>& val, T min, T max) {
@@ -29,7 +48,7 @@ inline std::pair<float, float> MeanStdev(std::vector<float>& v) {
 }
 
 inline void Normalize(std::vector<float>& v,
-               std::pair<float, float>& mean_stdev, bool normalize_variance) {
+                      std::pair<float, float>& mean_stdev, bool normalize_variance) {
   float mean = mean_stdev.first;
   float stdev = mean_stdev.second;
 
@@ -42,5 +61,5 @@ inline void Normalize(std::vector<float>& v,
   }
 }
 
-}
-}
+}  // namespace test
+}  // namespace onnxruntime

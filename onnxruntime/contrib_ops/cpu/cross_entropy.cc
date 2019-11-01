@@ -183,7 +183,7 @@ Status SparseSoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
   const int d = gsl::narrow_cast<int>(D);
   const int nd = gsl::narrow_cast<int>(N * D);
 
-  Tensor* loss = context->Output(0, TensorShape({1}));
+  Tensor* loss = context->Output(0, TensorShape({}));
   Tensor* probability = context->Output(1, logit_shape);
 
   const float* logit_data = logit.template Data<float>();
