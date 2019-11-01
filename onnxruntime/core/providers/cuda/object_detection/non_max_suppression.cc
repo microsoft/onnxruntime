@@ -121,7 +121,6 @@ Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
                                    concat_sizes_gpu.GpuPtr(),
                                    concat_sizes_range_gpu.GpuPtr(),
                                    axis_dimension_input_output_mapping_gpu.GpuPtr(),
-                                   static_cast<int>(count),
                                    dst,
                                    input_ptr.GpuPtr(),
                                    static_cast<size_t>(num_elements)));
