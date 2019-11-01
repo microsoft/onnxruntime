@@ -75,6 +75,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   std::vector<int64_t> squeezed_output_dims;
   output_dims.reserve(input_dims.size());
 
+  // explicit 'axes' provided => reduce only on given axis values
   if (axes_.size() > 0) {
     output_dims = input_dims;
     for (auto reduced_axis : axes_) {
@@ -88,6 +89,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
       reduced[axis] = true;
     }
   } else {
+    // no axes provided (i.e.) default axes  => reduce on all dims
     for (auto dim : input_dims) {
       ORT_ENFORCE(keepdims_ || dim != 0,
                   "Can't reduce on dim with value of 0 if 'keepdims' is false. "
@@ -99,12 +101,18 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   }
 
   if (keepdims_) {
+    // since keepdims is set, the final output dim is the same as the output_dims computed above
     squeezed_output_dims = output_dims;
-  } else {
+  } else if (axes_.size() > 0) {
+    // we are not going to keep the reduced dims, hence compute the final output dim accordingly
+    squeezed_output_dims.reserve(rank);  // even though we won't use the full capacity, it is better to reserve for peak possible usage
     for (size_t i = 0; i < rank; ++i) {
       if (!reduced[i])
         squeezed_output_dims.push_back(input_dims[i]);
     }
+  } else {
+    // 'axes' is empty and keepdims is false => we reduce on all axes AND drop all dims,
+    // so the result is just a scalar, we keep 'squeezed_output_dims' empty (i.e.) no-op
   }
 
   Tensor* Y = ctx->Output(0, TensorShape(squeezed_output_dims));

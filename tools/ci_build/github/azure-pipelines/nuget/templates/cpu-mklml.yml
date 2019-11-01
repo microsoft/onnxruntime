@@ -22,6 +22,8 @@ jobs:
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
 
 - job: 'Linux_CI_Dev'
+  workspace:
+    clean: all
   pool: $(AgentPoolLinux)
   steps:
     - template: ../../templates/set-version-number-variables-step.yml
@@ -86,6 +88,8 @@ jobs:
      cd $cwd
 
 - job: NuGet_Packaging
+  workspace:
+    clean: all
   pool: $(AgentPoolWin)
   dependsOn:
   - Windows_CI_Dev

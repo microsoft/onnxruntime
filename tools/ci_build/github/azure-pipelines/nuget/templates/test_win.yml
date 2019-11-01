@@ -3,6 +3,8 @@ parameters:
 
 jobs:
 - job: NuGet_Test_Win
+  workspace:
+    clean: all
   pool: ${{ parameters.AgentPool }}
   dependsOn:
   - NuGet_Packaging

@@ -12,7 +12,7 @@ namespace test {
 // and limited data types. Those tests will fallback to other EPs
 
 TEST(UpsampleOpTest, UpsampleOpNearestTest) {
-  OpTester test("Upsample", 7);
+  OpTester test("Upsample");
 
   std::vector<float> scales{1.0f, 1.0f, 2.0f, 3.0f};
   test.AddAttribute("mode", "nearest");
@@ -43,7 +43,7 @@ TEST(UpsampleOpTest, UpsampleOpNearestTest) {
 }
 
 TEST(UpsampleOpTest, UpsampleOpNearestTest_int32) {
-  OpTester test("Upsample", 7);
+  OpTester test("Upsample");
 
   std::vector<float> scales{1.0f, 1.0f, 2.0f, 3.0f};
   test.AddAttribute("mode", "nearest");
@@ -74,7 +74,7 @@ TEST(UpsampleOpTest, UpsampleOpNearestTest_int32) {
 }
 
 TEST(UpsampleOpTest, UpsampleOpNearestTest_uint8) {
-  OpTester test("Upsample", 7);
+  OpTester test("Upsample");
 
   std::vector<float> scales{1.0f, 1.0f, 2.0f, 3.0f};
   test.AddAttribute("mode", "nearest");
@@ -105,7 +105,7 @@ TEST(UpsampleOpTest, UpsampleOpNearestTest_uint8) {
 }
 
 TEST(UpsampleOpTest, UpsampleOpNearest2XTest) {
-  OpTester test("Upsample", 7);
+  OpTester test("Upsample");
 
   std::vector<float> scales{1.0f, 1.0f, 2.0f, 2.0f};
   test.AddAttribute("mode", "nearest");
@@ -136,7 +136,7 @@ TEST(UpsampleOpTest, UpsampleOpNearest2XTest) {
 }
 
 TEST(UpsampleOpTest, UpsampleOpNearest222XTest) {
-  OpTester test("Upsample", 7);
+  OpTester test("Upsample");
 
   std::vector<float> scales{2.0f, 1.0f, 2.0f, 2.0f};
   test.AddAttribute("mode", "nearest");
@@ -177,7 +177,7 @@ TEST(UpsampleOpTest, UpsampleOpNearest222XTest) {
 }
 
 TEST(UpsampleOpTest, UpsampleOpNearest15XTest) {
-  OpTester test("Upsample", 7);
+  OpTester test("Upsample");
 
   std::vector<float> scales{1.0f, 1.0f, 2.0f, 1.5f};
   test.AddAttribute("mode", "nearest");
@@ -208,7 +208,7 @@ TEST(UpsampleOpTest, UpsampleOpNearest15XTest) {
 }
 
 TEST(UpsampleOpTest, UpsampleOpNearestTest_NoScale) {
-  OpTester test("Upsample", 7);
+  OpTester test("Upsample");
 
   std::vector<float> scales{1.0f, 1.0f, 1.0f, 1.0f};
   test.AddAttribute("mode", "nearest");
@@ -234,7 +234,7 @@ TEST(UpsampleOpTest, UpsampleOpNearestTest_NoScale) {
 }
 
 TEST(UpsampleOpTest, UpsampleOpNearest2XTest_int32) {
-  OpTester test("Upsample", 7);
+  OpTester test("Upsample");
 
   std::vector<float> scales{1.0f, 1.0f, 2.0f, 2.0f};
   test.AddAttribute("mode", "nearest");
@@ -265,7 +265,7 @@ TEST(UpsampleOpTest, UpsampleOpNearest2XTest_int32) {
 }
 
 TEST(UpsampleOpTest, UpsampleOp4DBilinearTest) {
-  OpTester test("Upsample", 7);
+  OpTester test("Upsample");
 
   std::vector<float> scales{1.0f, 1.0f, 2.0f, 4.0f};
   test.AddAttribute("mode", "linear");
@@ -296,7 +296,7 @@ TEST(UpsampleOpTest, UpsampleOp4DBilinearTest) {
 }
 
 TEST(UpsampleOpTest, UpsampleOp2DBilinearTest) {
-  OpTester test("Upsample", 7);
+  OpTester test("Upsample");
 
   std::vector<float> scales{2.0f, 4.0f};
   test.AddAttribute("mode", "linear");
@@ -319,7 +319,7 @@ TEST(UpsampleOpTest, UpsampleOp2DBilinearTest) {
 }
 
 TEST(UpsampleOpTest, UpsampleOp4DBilinearTest_ScalesNoOp) {
-  OpTester test("Upsample", 7);
+  OpTester test("Upsample");
 
   std::vector<float> scales{1.0f, 1.0f, 1.0f, 1.0f};
   test.AddAttribute("mode", "linear");
@@ -345,7 +345,7 @@ TEST(UpsampleOpTest, UpsampleOp4DBilinearTest_ScalesNoOp) {
 }
 
 TEST(UpsampleOpTest, UpsampleOp4DBilinearTest_int32) {
-  OpTester test("Upsample", 7);
+  OpTester test("Upsample");
 
   std::vector<float> scales{1.0f, 1.0f, 2.0f, 4.0f};
   test.AddAttribute("mode", "linear");
@@ -376,7 +376,7 @@ TEST(UpsampleOpTest, UpsampleOp4DBilinearTest_int32) {
 }
 
 TEST(UpsampleOpTest, UpsampleOpNearestTest_1D) {
-  OpTester test("Upsample", 7);
+  OpTester test("Upsample");
 
   std::vector<float> scales{2.0f};
   test.AddAttribute("mode", "nearest");

@@ -415,15 +415,6 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   InferenceSession session_object_emptyValidation{so_opt, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object_emptyValidation.Load(test_model).IsOK());
   ASSERT_TRUE(session_object_emptyValidation.Initialize().IsOK());
-
-  // Assert that level 3 optimization doesn't result in serialized model.
-  so_opt.optimized_model_filepath = ToWideString("ShouldNotSerialize");
-  so_opt.graph_optimization_level = TransformerLevel::Level3;
-  InferenceSession session_object_Level3Test{so_opt, &DefaultLoggingManager()};
-  ASSERT_TRUE(session_object_Level3Test.Load(test_model).IsOK());
-  ASSERT_TRUE(session_object_Level3Test.Initialize().IsOK());
-  std::ifstream model_fs_Level3(so_opt.optimized_model_filepath, ios::in | ios::binary);
-  ASSERT_TRUE(model_fs_Level3.fail());
 }
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
@@ -1479,7 +1470,7 @@ TEST(InferenceSessionTests, TestLenientShapeInferencing) {
   std::vector<int64_t> invalid_output_shape{1, 2};  // valid shape is {2} as output data is input_shape
   std::vector<int64_t> output_data{2, 2};
 
-  OpTester latest_opset("Shape");
+  OpTester latest_opset("Shape", -1);  // use latest opset for shape inference errors
   latest_opset.AddInput("data", input_shape, input_data);
   latest_opset.AddOutput<int64_t>("output", invalid_output_shape, output_data);
   latest_opset.Run(OpTester::ExpectResult::kExpectFailure,

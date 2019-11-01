@@ -13,10 +13,10 @@ class NodeFactory:
     node_count_ = 0
     const_count_ = 0
 
-    def __init__(self, main_graph, sub_graph=None):
+    def __init__(self, main_graph, sub_graph=None, prefix=''):
         self.graph_ = sub_graph if sub_graph else main_graph
         self.main_graph_ = main_graph
-        self.name_prefix_ = ''
+        self.name_prefix_ = prefix
 
     class ScopedPrefix:
         def __init__(self, nf, name):
