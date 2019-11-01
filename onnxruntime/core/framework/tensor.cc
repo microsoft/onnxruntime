@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensor.h"
-#include "core/framework/tensorprotoutils.h"
+#include "core/framework/utils.h"
 
 #include <utility>
 #include "core/framework/allocatormgr.h"

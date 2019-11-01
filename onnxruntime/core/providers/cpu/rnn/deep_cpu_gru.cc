@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "core/platform/threadpool.h"
 #include "core/framework/op_kernel_context_internal.h"
+#include "core/framework/utils.h"
 
 // there's no way to use a raw pointer as the copy destination with std::copy_n
 // (which gsl::copy uses with span::data() which returns a raw pointer) with the 14.11 toolset
@@ -254,9 +255,9 @@ Status DeepCpuGruOp::Compute(OpKernelContext* context) const {
   Status status;
 
   auto data_type = X.DataType();
-  if (data_type == DataTypeImpl::GetType<float>())
+  if (utils::IsPrimDataType<float>(data_type))
     status = ComputeImpl<float>(*context);
-  else if (data_type == DataTypeImpl::GetType<double>()) {
+  else if (utils::IsPrimDataType<double>(data_type)) {
     /* Need to update all the helpers to support double...
     status = ComputeImpl<double>(*context); */
     ORT_NOT_IMPLEMENTED("GRU operator does not support double yet");

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/utils.h"
 #include "core/providers/cpu/ml/feature_vectorizer.h"
 
 #include <gsl/gsl>
@@ -62,14 +63,14 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
     auto data_type = input_tensor.DataType();
     auto cur_out = out.begin() + feature_offset;
 
-    if (data_type == DataTypeImpl::GetType<float>()) {
+    if (utils::IsPrimDataType<float>(data_type)) {
       // straight copy for float to float
       VectorizeTensor<float>(input_tensor, feature_size, total_dimensions_, cur_out);
-    } else if (data_type == DataTypeImpl::GetType<int32_t>()) {
+    } else if (utils::IsPrimDataType<int32_t>(data_type)) {
       VectorizeTensor<int32_t>(input_tensor, feature_size, total_dimensions_, cur_out);
-    } else if (data_type == DataTypeImpl::GetType<int64_t>()) {
+    } else if (utils::IsPrimDataType<int64_t>(data_type)) {
       VectorizeTensor<int64_t>(input_tensor, feature_size, total_dimensions_, cur_out);
-    } else if (data_type == DataTypeImpl::GetType<double>()) {
+    } else if (utils::IsPrimDataType<double>(data_type)) {
       VectorizeTensor<double>(input_tensor, feature_size, total_dimensions_, cur_out);
     } else {
       // should never happen. graph validation should have failed

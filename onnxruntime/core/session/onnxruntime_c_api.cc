@@ -1208,10 +1208,10 @@ static OrtStatus* OrtCreateValueImplMap(const OrtValue* const* in, size_t num_va
     return OrtApis::CreateStatus(ORT_FAIL, "Key and value tensors have unequal number of elements.");
   }
 
-  if (key_type == DataTypeImpl::GetType<std::string>()) {
+  if (utils::IsDataTypeString(key_type)) {
     return OrtCreateValueImplMapHelper<std::string>(key_tensor, value_tensor, out);
   }
-  if (key_type == DataTypeImpl::GetType<int64_t>()) {
+  if (utils::IsPrimDataType<int64_t>(key_type)) {
     return OrtCreateValueImplMapHelper<int64_t>(key_tensor, value_tensor, out);
   }
   return OrtApis::CreateStatus(ORT_FAIL, "Key type is not supported yet.");

@@ -71,7 +71,7 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
 
   const auto* src_base = static_cast<const Tdata*>(data_input->DataRaw());
   auto* dst_base = static_cast<Tdata*>(data_output->MutableDataRaw());
-  bool is_string_type = data_input->DataType() == DataTypeImpl::GetType<std::string>();
+  bool is_string_type = utils::IsDataTypeString(data_input->DataType());
 
   // We allow runtime to re-use input for output. If input/output Tensor* are the same
   // we do not copy

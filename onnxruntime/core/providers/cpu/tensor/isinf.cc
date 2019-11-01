@@ -4,6 +4,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+#include "core/framework/utils.h"
 #include "core/util/math_cpuonly.h"
 
 #include <cmath>
@@ -76,9 +77,9 @@ Status IsInf::Compute(OpKernelContext* context) const {
   using namespace isinf_internal;
 
   auto dtype = X.DataType();
-  if (dtype == DataTypeImpl::GetType<float>()) {
+  if (utils::IsPrimDataType<float>(dtype)) {
     ComputeImpl<float>(X, Y, detect_positive_ != 0, detect_negative_ != 0);
-  } else if (dtype == DataTypeImpl::GetType<double>()) {
+  } else if (utils::IsPrimDataType<double>(dtype)) {
     ComputeImpl<double>(X, Y, detect_positive_ != 0, detect_negative_ != 0);
   } else {
     // should not reach this as no kernel is registered for this condition to be triggered - just an additional safety check

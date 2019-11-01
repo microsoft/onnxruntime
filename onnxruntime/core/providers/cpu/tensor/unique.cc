@@ -81,13 +81,13 @@ Status Unique::Compute(OpKernelContext* context) const {
   auto data_type = input.DataType();
 
   // arbitrary set of types to support initially
-  if (data_type == DataTypeImpl::GetType<float>())
+  if (utils::IsPrimDataType<float>(data_type))
     status = ComputeImpl<float>(*context);
-  else if (data_type == DataTypeImpl::GetType<int64_t>())
+  else if (utils::IsPrimDataType<int64_t>(data_type))
     status = ComputeImpl<int64_t>(*context);
-  else if (data_type == DataTypeImpl::GetType<int8_t>())
+  else if (utils::IsPrimDataType<int8_t>(data_type))
     status = ComputeImpl<int8_t>(*context);
-  else if (data_type == DataTypeImpl::GetType<std::string>())
+  else if (utils::IsDataTypeString(data_type))
     status = ComputeImpl<std::string>(*context);
   else
     status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported tensor type of ", data_type);

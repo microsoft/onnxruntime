@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/ml/imputer.h"
+#include "core/framework/utils.h"
 #include <cmath>
 /**
 https://github.com/onnx/onnx/blob/master/onnx/defs/traditionalml/defs.cc
@@ -116,10 +117,10 @@ common::Status ImputerOp::Compute(OpKernelContext* context) const {
   const auto* input_tensor_ptr = context->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor_ptr != nullptr);
   auto input_type = input_tensor_ptr->DataType();
-  if (input_type == DataTypeImpl::GetType<float>()) {
+  if (utils::IsPrimDataType<float>(input_type)) {
     return ComputeByType<float>(context, replaced_value_float_, imputed_values_float_);
   }
-  if (input_type == DataTypeImpl::GetType<int64_t>()) {
+  if (utils::IsPrimDataType<int64_t>(input_type)) {
     return ComputeByType<int64_t>(context, replaced_value_int64_, imputed_values_int64_);
   } else {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid type");

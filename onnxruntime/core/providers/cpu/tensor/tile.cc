@@ -11,6 +11,7 @@
 
 #include "gsl/gsl"
 #include "core/providers/cpu/tensor/tile.h"
+#include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 
 #ifdef _MSC_VER
@@ -35,7 +36,7 @@ ONNX_CPU_OPERATOR_KERNEL(
                                             DataTypeImpl::GetTensorType<uint32_t>(),
                                             DataTypeImpl::GetTensorType<uint64_t>(),
                                             DataTypeImpl::GetTensorType<bool>()})
-                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Tile);
 
 Status TileCoreForFixedSizeTypes(const Tensor& input_tensor, Tensor& output_tensor, const int64_t* repeats, TensorAxisCounters& input_counters, const TensorPitches& output_pitches, size_t element_size) {
@@ -114,30 +115,32 @@ Status Tile::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  const auto& dtype = input_tensor.DataType();
   TensorAxisCounters input_counters(input_tensor);
   TensorPitches output_pitches(output_tensor);
 
   static_assert(sizeof(float) == sizeof(int32_t), "Float and Int32 are of different sizes");
   static_assert(sizeof(double) == sizeof(int64_t), "Double and Int64 are of different sizes");
 
-  if (dtype == DataTypeImpl::GetType<float>() ||
-      dtype == DataTypeImpl::GetType<int32_t>() ||
-      dtype == DataTypeImpl::GetType<uint32_t>())
+  auto dtype = input_tensor.DataType()->AsPrimitiveDataType();
+  ORT_ENFORCE(dtype != nullptr, "Tile doesn't have an implementation yet for the type: ", dtype);
+
+  if (utils::IsPrimDataType<float>(dtype) ||
+      utils::IsPrimDataType<int32_t>(dtype) ||
+      utils::IsPrimDataType<uint32_t>(dtype))
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(float));
 
-  if (dtype == DataTypeImpl::GetType<double>() || dtype == DataTypeImpl::GetType<int64_t>() ||
-      dtype == DataTypeImpl::GetType<uint64_t>())
+  if (utils::IsPrimDataType<double>(dtype) || utils::IsPrimDataType<int64_t>(dtype) ||
+      utils::IsPrimDataType<uint64_t>(dtype))
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(double));
 
-  else if (dtype == DataTypeImpl::GetType<int8_t>() ||
-           dtype == DataTypeImpl::GetType<uint8_t>())
+  else if (utils::IsPrimDataType<int8_t>(dtype) ||
+           utils::IsPrimDataType<uint8_t>(dtype))
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(int8_t));
 
-  if (dtype == DataTypeImpl::GetType<int16_t>() || dtype == DataTypeImpl::GetType<uint16_t>())
+  if (utils::IsPrimDataType<int16_t>(dtype) || utils::IsPrimDataType<uint16_t>(dtype))
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(int16_t));
 
-  else if (dtype == DataTypeImpl::GetType<bool>())
+  else if (utils::IsPrimDataType<bool>(dtype))
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(bool));
 
   // TODO: Support 'string' and 'float16' types for completeness

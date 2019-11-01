@@ -3,6 +3,7 @@
 
 #include "gather_elements.h"
 #include "onnxruntime_config.h"
+#include "core/framework/utils.h"
 
 namespace onnxruntime {
 
@@ -99,11 +100,11 @@ static std::vector<int64_t> parse_and_validate_indices_tensor(const Tensor* indi
   std::vector<int64_t> indices_data;
   // reserving memory ahead as we know the size of the container
   indices_data.reserve(num_elements);
-  if (indices_tensor->DataType() == DataTypeImpl::GetType<int32_t>()) {
+  if (utils::IsPrimDataType<int32_t>(indices_tensor->DataType())) {
     const auto* data = indices_tensor->Data<int32_t>();
     for (int64_t i = 0; i < num_elements; ++i)
       indices_data.push_back(data[i]);
-  } else if (indices_tensor->DataType() == DataTypeImpl::GetType<int64_t>()) {
+  } else if (utils::IsPrimDataType<int64_t>(indices_tensor->DataType())) {
     const auto* data = indices_tensor->Data<int64_t>();
     for (int64_t i = 0; i < num_elements; ++i)
       indices_data.push_back(data[i]);
@@ -245,7 +246,7 @@ Status GatherElements::Compute(OpKernelContext* context) const {
 
   int64_t axis = HandleNegativeAxis(axis_, input_data_shape.NumDimensions());
 
-  if (input_data_type == DataTypeImpl::GetType<std::string>())
+  if (utils::IsDataTypeString(input_data_type))
     core_impl<true, std::string>(input_tensor, indices_tensor, output_tensor, axis);
 
   else

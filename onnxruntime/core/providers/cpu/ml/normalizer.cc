@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/ml/normalizer.h"
+#include "core/framework/utils.h"
 
 #include <algorithm>
 #include "gsl/gsl"
@@ -41,26 +42,6 @@ ONNX_CPU_OPERATOR_ML_KERNEL(
                                                      DataTypeImpl::GetTensorType<int32_t>(),
                                                      DataTypeImpl::GetTensorType<int64_t>()}),
     Normalizer);
-
-Status Normalizer::Compute(OpKernelContext* context) const {
-  const auto* input_tensor_ptr = context->Input<Tensor>(0);
-  ORT_ENFORCE(input_tensor_ptr != nullptr);
-  MLDataType input_type = input_tensor_ptr->DataType();
-
-  if (input_type == DataTypeImpl::GetType<float>()) {
-    Normalize<float>(context);
-  } else if (input_type == DataTypeImpl::GetType<double>()) {
-    Normalize<double>(context);
-  } else if (input_type == DataTypeImpl::GetType<int64_t>()) {
-    Normalize<int64_t>(context);
-  } else if (input_type == DataTypeImpl::GetType<int32_t>()) {
-    Normalize<int32_t>(context);
-  } else {
-    ORT_THROW("Invalid input type of ", input_type);
-  }
-
-  return Status::OK();
-}
 
 template <typename T>
 void NormalizeMax(const gsl::span<const T>& in, gsl::span<float>& out,
@@ -186,6 +167,34 @@ void Normalizer::Normalize(OpKernelContext* context) const {
       }
     }
   }
+}
+
+template <typename... Types>
+void Normalizer::CallDispatcher(int32_t dt_type, OpKernelContext* ctx) const {
+  size_t called = 0;
+
+  int results[] = {0, [&] { 
+  if(utils::ToTensorDataType<Types>() == dt_type) {
+    Normalize<Types>(ctx);
+    ++called;
+  }
+  return 0; }()...};
+
+  ORT_UNUSED_PARAMETER(results);
+  ORT_ENFORCE(called < 2, "Normalizer CallDispatcher broken. Check for duplicate type.");
+  ORT_ENFORCE(called == 1, "Normalizer op: Unsupported tensor data type:", dt_type);
+}
+
+Status Normalizer::Compute(OpKernelContext* context) const {
+  const auto* input_tensor_ptr = context->Input<Tensor>(0);
+  ORT_ENFORCE(input_tensor_ptr != nullptr);
+  auto input_type = input_tensor_ptr->DataType()->AsPrimitiveDataType();
+
+  ORT_ENFORCE(input_type != nullptr, "Invalid input type of ", input_type);
+
+  CallDispatcher<float, double, int64_t, int32_t>(input_type->GetTensorElementType(), context);
+
+  return Status::OK();
 }
 
 }  // namespace ml

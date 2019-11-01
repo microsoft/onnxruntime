@@ -7,7 +7,7 @@
 //This material is licensed under the BSD License (see https://github.com/scikit-learn/scikit-learn/blob/master/COPYING);
 /* Modifications Copyright (c) Microsoft. */
 
-#include <core/framework/tensorprotoutils.h>
+#include <core/framework/utils.h>
 #include "contrib_ops/cpu/murmur_hash3.h"
 
 // Platform-specific functions and macros

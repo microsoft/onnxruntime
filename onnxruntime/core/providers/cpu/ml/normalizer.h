@@ -27,6 +27,9 @@ class Normalizer final : public OpKernel {
   template <typename T>
   void Normalize(OpKernelContext* context) const;
 
+  template <typename... Types>
+  void CallDispatcher(int32_t dt_type, OpKernelContext* ctx) const;
+
   NORMALIZE normalization_;
 };
 

@@ -201,10 +201,5 @@ inline bool HasName(const ONNX_NAMESPACE::NodeProto& node_proto) {
   return node_proto.has_name();
 }
 
-inline bool IsDataTypeString (MLDataType dt_type) {
-  auto prim_type = dt_type->AsPrimitiveDataType();
-  return (prim_type != nullptr && prim_type->GetTensorElementType() == ONNX_NAMESPACE::TensorProto_DataType_STRING);
-}
-
 }  // namespace utils
 }  // namespace onnxruntime

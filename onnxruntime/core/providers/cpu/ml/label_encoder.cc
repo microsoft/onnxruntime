@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/ml/label_encoder.h"
+#include "core/framework/utils.h"
 #include <algorithm>
 #include <gsl/gsl>
 using namespace ::onnxruntime::common;
@@ -30,8 +31,8 @@ Status LabelEncoder::Compute(OpKernelContext* context) const {
 
   auto input_type = X.DataType();
 
-  if (input_type == DataTypeImpl::GetType<std::string>()) {
-    if (Y.DataType() != DataTypeImpl::GetType<int64_t>())
+  if (utils::IsDataTypeString(input_type)) {
+    if (!utils::IsPrimDataType<int64_t>(Y.DataType()))
       return Status(ONNXRUNTIME, FAIL, "Input of tensor(string) must have output of tensor(int64)");
 
     auto input = gsl::make_span(X.template Data<std::string>(), shape.Size());
@@ -48,7 +49,7 @@ Status LabelEncoder::Compute(OpKernelContext* context) const {
                     ++out;
                   });
   } else {
-    if (Y.DataType() != DataTypeImpl::GetType<std::string>())
+    if (!utils::IsDataTypeString(Y.DataType()))
       return Status(ONNXRUNTIME, FAIL, "Input of tensor(int64) must have output of tensor(string)");
 
     auto input = gsl::make_span(X.template Data<int64_t>(), shape.Size());

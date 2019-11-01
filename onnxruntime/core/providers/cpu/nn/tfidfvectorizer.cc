@@ -5,6 +5,7 @@
 #include "onnx/defs/schema.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+#include "core/framework/utils.h"
 
 #include <functional>
 #include <unordered_set>
@@ -586,11 +587,17 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
 
   auto X = ctx->Input<Tensor>(0);
 
-  if (X->DataType() == DataTypeImpl::GetType<int32_t>()) {
+  auto prim_type = X->DataType()->AsPrimitiveDataType();
+  if (prim_type == nullptr) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+               "Invalid type of the input argument");
+  }
+
+  if (utils::IsPrimDataType<int32_t>(prim_type)) {
     s = ComputeImpl<int32_t>(ctx);
-  } else if (X->DataType() == DataTypeImpl::GetType<int64_t>()) {
+  } else if (utils::IsPrimDataType<int64_t>(prim_type)) {
     s = ComputeImpl<int64_t>(ctx);
-  } else if (X->DataType() == DataTypeImpl::GetType<std::string>()) {
+  } else if (utils::IsPrimDataType<std::string>(prim_type)) {
     s = ComputeImpl<std::string>(ctx);
   } else {
     s = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,

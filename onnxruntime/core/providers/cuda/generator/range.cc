@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/utils.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "range.h"
 #include "range_impl.h"
@@ -80,27 +81,40 @@ static Status ComputeRange(OpKernelContext* ctx) {
   return Status::OK();
 }
 
+namespace cuda_range_internal {
+template <typename... Types>
+Status CallDispatcher(int32_t dt_type, OpKernelContext* ctx) {
+  Status s;
+  size_t called = 0;
+
+  int results[] = {0, [&] { 
+  if(utils::ToTensorDataType<Types>() == dt_type) {
+    s = ComputeRange<Types>(ctx);
+    ++called;
+  }
+  return 0; }()...};
+
+  ORT_UNUSED_PARAMETER(results);
+  ORT_ENFORCE(called < 2, "Range CallDispatcher broken. Check for duplicate type.");
+  if (called == 0) {
+    s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                         "Range op: Unsupported tensor data type:", dt_type);
+  }
+
+  return s;
+}
+}  // namespace cuda_range_internal
+
+
 Status Range::ComputeInternal(OpKernelContext* ctx) const {
   const auto* input_tensor = ctx->Input<Tensor>(0);
   if (input_tensor == nullptr) {
       return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   }
 
-  auto data_type = input_tensor->DataType();
-  if (data_type == DataTypeImpl::GetType<int32_t>()) {
-    return ComputeRange<int32_t>(ctx);
-  } else if (data_type == DataTypeImpl::GetType<float>()) {
-    return ComputeRange<float>(ctx);
-  } else if (data_type == DataTypeImpl::GetType<int64_t>()) {
-    return ComputeRange<int64_t>(ctx);
-  } else if (data_type == DataTypeImpl::GetType<double>()) {
-    return ComputeRange<double>(ctx);
-  } else if (data_type == DataTypeImpl::GetType<int16_t>()) {
-    return ComputeRange<int16_t>(ctx);
-  }
-
-  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                         "Range op: Unsupported tensor data type:", data_type);
+  auto data_type = input_tensor->DataType()->AsPrimitiveDataType();
+  ORT_RETURN_IF_NOT(data_type != nullptr, "Range op: Unsupported tensor data type:", data_type);
+  return cuda_range_internal::CallDispatcher<int32_t, float, int64_t, double, int16_t>(ctx);
 }
 
 }  // namespace cuda

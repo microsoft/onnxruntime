@@ -317,5 +317,24 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() {
     default:                                                               \
       ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type);          \
   }
+
+inline bool IsDataTypeString(MLDataType dt_type) {
+  auto prim_type = dt_type->AsPrimitiveDataType();
+  return (prim_type != nullptr && prim_type->GetTensorElementType() == ONNX_NAMESPACE::TensorProto_DataType_STRING);
+}
+
+template<class T>
+inline bool IsPrimDataType(MLDataType dt_type) {
+  auto prim_type = dt_type->AsPrimitiveDataType();
+  return (prim_type != nullptr && prim_type->GetTensorElementType() == ToTensorDataType<T>());
+}
+
+// Use after AsPrimitiveDataType() is successful
+template<class T>
+inline bool IsPrimDataType (const PrimitiveDataTypeBase* prim_type) {
+  assert(prim_type != nullptr);
+  return prim_type->GetTensorElementType() == ToTensorDataType<T>();
+}
+
 }  // namespace utils
 }  // namespace onnxruntime

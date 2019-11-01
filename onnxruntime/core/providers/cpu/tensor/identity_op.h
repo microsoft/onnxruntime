@@ -12,6 +12,7 @@
 #pragma warning(pop)
 #endif
 #include "core/framework/op_kernel.h"
+#include "core/framework/utils.h"
 
 namespace onnxruntime {
 
@@ -32,7 +33,7 @@ class IdentityOp final : public OpKernel {
     void* target = Y->MutableDataRaw(X_type);
     //If source and target pointers are not equal, we need to copy the data.
     if (target != source) {
-      if (X_type != DataTypeImpl::GetType<std::string>()) {
+      if (!utils::IsDataTypeString(X_type)) {
         memcpy(target, source, shape.Size() * X_type->Size());
       } else {
         // handle std::string

@@ -5,6 +5,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/utils.h"
 #include "core/providers/common.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
@@ -348,13 +349,13 @@ Status SplitToSequence::Compute(OpKernelContext* context) const {
   Status status;
   auto data_type = input.DataType();
 
-  if (data_type == DataTypeImpl::GetType<float>())
+  if (utils::IsPrimDataType<float>(data_type))
     status = ComputeImpl<float>(*context, input, p_split_input);
-  else if (data_type == DataTypeImpl::GetType<double>())
+  else if (utils::IsPrimDataType<double>(data_type))
     status = ComputeImpl<double>(*context, input, p_split_input);
-  else if (data_type == DataTypeImpl::GetType<int32_t>())
+  else if (utils::IsPrimDataType<int32_t>(data_type))
     status = ComputeImpl<int32_t>(*context, input, p_split_input);
-  else if (data_type == DataTypeImpl::GetType<std::string>())
+  else if (utils::IsDataTypeString(data_type))
     status = ComputeImpl<std::string>(*context, input, p_split_input);
   else
     ORT_THROW("SplitToSequence operator does not support ", data_type, " yet");
@@ -422,9 +423,9 @@ inline void copy_data<std::string>(const std::string* src, std::string* dst, siz
 static int64_t GetScalarSplitInput(const Tensor& tensor) {
   int64_t retval = INT_MAX;
   auto data_type = tensor.DataType();
-  if (data_type == DataTypeImpl::GetType<int32_t>()) {
+  if (utils::IsPrimDataType<int32_t>(data_type)) {
     retval = *(tensor.Data<int32_t>());
-  } else if (data_type == DataTypeImpl::GetType<int64_t>()) {
+  } else if (utils::IsPrimDataType<int64_t>(data_type)) {
     retval = *(tensor.Data<int64_t>());
   } else {
     ORT_THROW("Invalid data type for split tensor ", DataTypeImpl::ToString(data_type));

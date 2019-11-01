@@ -11,6 +11,7 @@
 
 #include "core/platform/threadpool.h"
 #include "core/framework/op_kernel_context_internal.h"
+#include "core/framework/utils.h"
 
 #include "core/providers/cpu/rnn/deep_cpu_lstm.h"
 
@@ -293,9 +294,9 @@ DeepCpuLstmOp::Compute(OpKernelContext* context) const {
   // auto& logger = context->Logger();
 
   auto data_type = X.DataType();
-  if (data_type == DataTypeImpl::GetType<float>())
+  if (utils::IsPrimDataType<float>(data_type))
     status = ComputeImpl<float>(*context);
-  else if (data_type == DataTypeImpl::GetType<double>()) {
+  else if (utils::IsPrimDataType<double>(data_type)) {
     /* Need to update all the helpers to support double...
     status = ComputeImpl<double>(*context); */
     ORT_NOT_IMPLEMENTED("LSTM operator does not support double yet");
