@@ -129,7 +129,7 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   TYPED_FUNCTION_CALL(double)
   TYPED_FUNCTION_CALL(bool)
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "String type is not supported yet in GatherElements.");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "String type is not supported yet for the GatherElements op");
 }
 
 }  // namespace cuda
