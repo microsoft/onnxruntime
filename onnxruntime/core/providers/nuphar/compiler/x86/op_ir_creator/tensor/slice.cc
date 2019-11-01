@@ -5,6 +5,7 @@
 
 #include "core/codegen/mti/tensor/tile.h"
 #include "core/framework/op_kernel_info.h"
+#include "core/framework/utils.h"
 #include "core/providers/common.h"
 #include "core/providers/nuphar/compiler/nuphar_codegen_ctx.h"
 
@@ -53,7 +54,7 @@ Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(Slice)::Evaluate(
       if (i < node.InputDefs().size()) {
         const auto* tensor = ctx_nuphar->GetOrtInitializerTensor(node.InputDefs()[i]->Name());
         if (tensor) {
-          if (tensor->DataType() == DataTypeImpl::GetType<int64_t>()) {
+          if (utils::IsPrimDataType<int64_t>(tensor->DataType())) {
             const int64_t* data = tensor->Data<int64_t>();
             slice_params.push_back(std::vector<int64_t>(data, data + tensor->Shape().Size()));
           } else {

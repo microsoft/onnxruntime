@@ -114,7 +114,7 @@ Status Range::ComputeInternal(OpKernelContext* ctx) const {
 
   auto data_type = input_tensor->DataType()->AsPrimitiveDataType();
   ORT_RETURN_IF_NOT(data_type != nullptr, "Range op: Unsupported tensor data type:", data_type);
-  return cuda_range_internal::CallDispatcher<int32_t, float, int64_t, double, int16_t>(ctx);
+  return cuda_range_internal::CallDispatcher<int32_t, float, int64_t, double, int16_t>(data_type->GetTensorElementType(), ctx);
 }
 
 }  // namespace cuda

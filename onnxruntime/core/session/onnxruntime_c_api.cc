@@ -869,8 +869,8 @@ OrtStatus* OrtGetValueImplSeqOfTensors(const OrtValue* p_ml_value, int index, Or
     st = OrtApis::CreateStatus(ORT_FAIL, "Invalid tensor element type in the input.");
     return st;
   }
-  st = c_api_internal::GetValueImplSeqOfTensorsDispatcher<float, double, MLFloat16, bool, std::string,
-                                                          int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t>(
+  st = c_api_internal::GetValueImplSeqOfTensorsDispatcher<float, double, MLFloat16, BFloat16, bool, std::string,
+                                                          int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>(
       tensor_elem_type->GetTensorElementType(), allocator, one_tensor, out);
   return st;
 }
@@ -1073,7 +1073,7 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t 
     }
 
     OrtStatus* st{};
-    st = c_api_internal::CreateValueImplSeqHelperDispatcher<bool, float, double, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t>(
+    st = c_api_internal::CreateValueImplSeqHelperDispatcher<bool, float, double, MLFloat16, BFloat16, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>(
         tensor_elem_type, prim_type->GetTensorElementType(), one_tensor, seq_ptr->tensors[idx]);
 
     if (st) {
