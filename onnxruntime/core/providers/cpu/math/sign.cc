@@ -73,16 +73,25 @@ void SignBFloat16(const Tensor* input, Tensor* output) {
   });
 }
 
-template<typename... Types>
-void CallDispatcher(int32_t dt_type, const Tensor* input, Tensor* output) {
-  size_t called = 0;
-
-  int results[] = {0, [&] { 
-    if(utils::ToTensorDataType<Types>() == dt_type) {
-      EigenMap<Types>(*output) = EigenMap<Types>(*input).array().cwiseSign();
+// Workaround GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226
+// can not specify lambda directly
+template <class T>
+inline int invoke_sign_callable(size_t& called, int32_t dt_type, const Tensor* input, Tensor* output) {
+  auto fn = [&] {
+    if (utils::ToTensorDataType<T>() == dt_type) {
+      EigenMap<T>(*output) = EigenMap<T>(*input).array().cwiseSign();
       ++called;
     }
-    return 0; }()...};
+    return 0;
+  };
+  return fn();
+}
+
+template<typename... Types>
+inline void CallDispatcher(int32_t dt_type, const Tensor* input, Tensor* output) {
+  size_t called = 0;
+
+  int results[] = {0, invoke_sign_callable<Types>(called, dt_type, input, output)...};
   ORT_UNUSED_PARAMETER(results);
   ORT_ENFORCE(called < 2, "Sign CallDispatcher broken. Check for duplicate type.");
   ORT_ENFORCE(called == 1, "Unsupported data type");

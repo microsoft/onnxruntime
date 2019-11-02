@@ -169,16 +169,25 @@ void Normalizer::Normalize(OpKernelContext* context) const {
   }
 }
 
+// Workaround GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226
+// can not specify lambda directly
+template <class T>
+inline int Normalizer::invoke_normalizer_callable(size_t& called, int32_t dt_type, OpKernelContext* ctx) const {
+  auto fn = [&] {
+    if (utils::ToTensorDataType<T>() == dt_type) {
+      Normalize<T>(ctx);
+      ++called;
+    }
+    return 0;
+  };
+  return fn();
+}
+
 template <typename... Types>
-void Normalizer::CallDispatcher(int32_t dt_type, OpKernelContext* ctx) const {
+inline void Normalizer::CallDispatcher(int32_t dt_type, OpKernelContext* ctx) const {
   size_t called = 0;
 
-  int results[] = {0, [&] { 
-  if(utils::ToTensorDataType<Types>() == dt_type) {
-    Normalize<Types>(ctx);
-    ++called;
-  }
-  return 0; }()...};
+  int results[] = {0, invoke_normalizer_callable<Types>(called, dt_type, ctx)...};
 
   ORT_UNUSED_PARAMETER(results);
   ORT_ENFORCE(called < 2, "Normalizer CallDispatcher broken. Check for duplicate type.");

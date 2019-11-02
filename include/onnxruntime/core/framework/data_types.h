@@ -714,7 +714,7 @@ class PrimitiveDataTypeBase : public DataTypeImpl {
     return nullptr;
   }
 
-  int GetTensorElementType() const {
+  int32_t GetTensorElementType() const {
     return data_type_;
   }
 

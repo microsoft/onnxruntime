@@ -22,7 +22,7 @@ namespace tvm_codegen {
 // DLDataType: {DLDataTypeCode, bits, lanes}
 DLDataType ToTvmDLDataType(MLDataType ml_type) {
   if (ml_type->IsTensorType()) {
-    ml_type = ml_type->AsTensorTypeBase()->GetElementType();
+    ml_type = ml_type->AsTensorType()->GetElementType();
   }
   auto prim_type = ml_type->AsPrimitiveDataType();
   if (prim_type == nullptr) {

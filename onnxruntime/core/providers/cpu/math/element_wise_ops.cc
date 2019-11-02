@@ -1092,20 +1092,29 @@ void BroadCastMFloat16FMod(const Tensor& X, const Tensor& Y, OpKernelContext* co
       });
 }
 
+// Workaround GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226
+// can not specify lambda directly
+template <class T, class... Args>
+inline int invoke_broadcast_fmod_callable(size_t& called, int32_t dt_type, bool fmod, Args&&... args) {
+  auto fn = [&] {
+    if (utils::ToTensorDataType<T>() == dt_type) {
+      if (fmod) {
+        BroadCastFMod<T>(std::forward<Args>(args)...);
+      } else {
+        BroadCastMod<T>(std::forward<Args>(args)...);
+      }
+      ++called;
+    }
+    return 0;
+  };
+  return fn();
+}
+
 template <class... Types>
-void CallDispatcher(int dt_type, bool fmod, const Tensor& X, const Tensor& Y, OpKernelContext* ctx) {
+inline void CallDispatcher(int dt_type, bool fmod, const Tensor& X, const Tensor& Y, OpKernelContext* ctx) {
   size_t called = 0;
 
-  int results[] = {0, [&] { 
-  if(utils::ToTensorDataType<Types>() == dt_type) {
-    if (fmod) {
-      BroadCastFMod<Types>(X, Y, ctx);
-    } else {
-      BroadCastMod<Types>(X, Y, ctx);
-    }
-    ++called;
-  }
-  return 0; }()...};
+  int results[] = {0, invoke_broadcast_fmod_callable<Types>(called, dt_type, fmod, X, Y, ctx)...};
 
   ORT_UNUSED_PARAMETER(results);
   ORT_ENFORCE(called < 2, "Mod CallDispatcher broken. Check for duplicate type.");

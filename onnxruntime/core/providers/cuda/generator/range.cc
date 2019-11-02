@@ -82,17 +82,27 @@ static Status ComputeRange(OpKernelContext* ctx) {
 }
 
 namespace cuda_range_internal {
+
+// Workaround GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226
+// can not specify lambda directly
+template <class T>
+inline int invoke_cuda_range_callable(size_t& called, Status& s, int32_t dt_type, OpKernelContext* ctx) {
+  auto fn = [&] {
+    if (utils::ToTensorDataType<T>() == dt_type) {
+      s = ComputeRange<T>(ctx);
+      ++called;
+    }
+    return 0;
+  };
+  return fn();
+}
+
 template <typename... Types>
-Status CallDispatcher(int32_t dt_type, OpKernelContext* ctx) {
+inline Status CallDispatcher(int32_t dt_type, OpKernelContext* ctx) {
   Status s;
   size_t called = 0;
 
-  int results[] = {0, [&] { 
-  if(utils::ToTensorDataType<Types>() == dt_type) {
-    s = ComputeRange<Types>(ctx);
-    ++called;
-  }
-  return 0; }()...};
+  int results[] = {0, invoke_cuda_range_callable<Types>(called, s, dt_type, ctx)...};
 
   ORT_UNUSED_PARAMETER(results);
   ORT_ENFORCE(called < 2, "Range CallDispatcher broken. Check for duplicate type.");
