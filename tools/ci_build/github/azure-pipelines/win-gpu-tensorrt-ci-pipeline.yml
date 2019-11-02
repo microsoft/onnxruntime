@@ -11,6 +11,6 @@ jobs:
     DoTestCoverage: 'false'
     BuildArch: 'amd64'
     SetVcvars: 'true'
-    MsbuildArguments: '/m /p:CudaToolkitDir=C:\local\cuda_10.0.130_win10_trt6015dll'
+    MsbuildArguments: '/m /p:CudaToolkitDir=C:\local\cuda_10.0.130_win10_trt6015dll\'
     EnvSetupScript: 'setup_env_cuda.bat'
     CudaVersion: '10.0'
