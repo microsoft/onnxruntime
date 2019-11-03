@@ -70,6 +70,22 @@ public class ONNXAllocator implements AutoCloseable {
     }
 
     /**
+     * Create a tensor from a flatten string array
+     * @param data The tensor data
+     * @param shape the shape of the tensor
+     * @return An ONNXTensor of the required shape.
+     * @throws ONNXException Thrown if there is an onnx error or if the data and shape don't match.
+     */
+    public ONNXTensor createTensor(String[] data, long[]shape) throws ONNXException {
+        if (!closed) {
+            TensorInfo info = new TensorInfo(shape, ONNXJavaType.STRING, TensorInfo.ONNXTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+            return new ONNXTensor(createStringTensor(ONNX.ortApiHandle, handle, data, shape), handle, info);
+        } else {
+            throw new IllegalStateException("Trying to create an ONNXTensor on a closed ONNXSession.");
+        }
+    }
+
+    /**
      * Create an ONNXTensor backed by a direct FloatBuffer.
      *
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime

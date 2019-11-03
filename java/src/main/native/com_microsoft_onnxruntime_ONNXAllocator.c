@@ -145,7 +145,7 @@ JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXAllocator_createStrin
     jsize shapeLen = (*jniEnv)->GetArrayLength(jniEnv,shape);
 
     // Array length
-    jlong length = shapeArr[0];
+    jsize length = (*jniEnv)->GetArrayLength(jniEnv, stringArr);
 
     // Create the OrtValue
     OrtValue* ortValue;

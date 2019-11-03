@@ -171,7 +171,7 @@ public class TensorInfo implements ValueInfo {
             case BOOL:
                 return ONNXUtil.newBooleanArray(shape);
             case STRING:
-                return new String[(int)shape[0]];
+                return new String[(int) ONNXUtil.elementCount(shape)];
             case UNKNOWN:
                 throw new ONNXException("Can't construct a carrier for an invalid type.");
             default:
@@ -201,8 +201,6 @@ public class TensorInfo implements ValueInfo {
             throw new ONNXException("Cannot create an ONNXTensor from a base type of " + objClass);
         } else if (dimensions > MAX_DIMENSIONS) {
             throw new ONNXException("Cannot create an ONNXTensor with more than " + MAX_DIMENSIONS + " dimensions. Found " + dimensions + " dimensions.");
-        } else if ((dimensions > 1) && objClass.equals(String.class)) {
-            throw new ONNXException("Cannot create a multidimensional ONNXTensor from Strings. Found " + dimensions + " dimensions.");
         }
         ONNXJavaType javaType = ONNXJavaType.mapFromClass(objClass);
 
