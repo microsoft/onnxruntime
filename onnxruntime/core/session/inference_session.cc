@@ -215,7 +215,10 @@ common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRe
 
 common::Status InferenceSession::Load(std::function<common::Status(std::shared_ptr<Model>&)> loader, const std::string& event_name) {
   Status status = Status::OK();
-  auto tp = session_profiler_.StartTime();
+  TimePoint tp;
+  if (session_profiler_.IsEnabled()) {
+    tp = session_profiler_.StartTime();
+  }
   try {
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
     if (is_model_loaded_) {  // already loaded
@@ -539,7 +542,10 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
 
 common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
-  auto tp = session_profiler_.StartTime();
+  TimePoint tp;
+  if (session_profiler_.IsEnabled()) {
+    tp = session_profiler_.StartTime();
+  }
 
   try {
     LOGS(*session_logger_, INFO) << "Initializing session.";
@@ -602,12 +608,14 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
 
     if (!session_options_.optimized_model_filepath.empty()) {
-      if (session_options_.graph_optimization_level < TransformerLevel::Level3) {
-        // Serialize optimized ONNX model.
-        ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
-      } else {
+      // Serialize optimized ONNX model.
+      ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
+      if (session_options_.graph_optimization_level >= TransformerLevel::Level3) {
         LOGS(*session_logger_, WARNING) << "Serializing Optimized ONNX model with Graph Optimization"
-                                           " level greater than 2 is not supported.";
+                                           " level greater than ORT_ENABLE_EXTENDED. The generated"
+                                           " model may contain hardware and execution provider specific"
+                                           " optimizations, and should only be used in the same environment"
+                                           " the model was optimized for.";
       }
     }
 
@@ -775,7 +783,10 @@ common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>&
 Status InferenceSession::Run(const RunOptions& run_options, const std::vector<std::string>& feed_names,
                              const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
                              std::vector<OrtValue>* p_fetches) {
-  auto tp = session_profiler_.StartTime();
+  TimePoint tp;
+  if (session_profiler_.IsEnabled()) {
+    tp = session_profiler_.StartTime();
+  }
   Status retval = Status::OK();
 
   try {

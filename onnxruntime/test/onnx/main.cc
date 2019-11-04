@@ -37,7 +37,7 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph', "
-      "'openvino' or 'nuphar'. "
+      "'openvino', 'nuphar' or 'acl'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
@@ -100,6 +100,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_openvino = false;
   bool enable_nnapi = false;
   bool enable_dml = false;
+  bool enable_acl = false;
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_DISABLE_ALL;
   bool user_graph_optimization_level_set = false;
@@ -164,6 +165,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_nnapi = true;
           } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
             enable_dml = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
+            enable_acl = true;
           } else {
             usage();
             return -1;
@@ -335,6 +338,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_DML(sf, device_id));
 #else
       fprintf(stderr, "DML is not supported in this build");
+      return -1;
+#endif
+    }
+    if (enable_acl) {
+#ifdef USE_ACL
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ACL(sf, enable_cpu_mem_arena ? 1 : 0));
+#else
+      fprintf(stderr, "ACL is not supported in this build");
       return -1;
 #endif
     }
