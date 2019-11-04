@@ -32,9 +32,11 @@ class TestNuphar(unittest.TestCase):
         bidaf_dir = os.path.join(cwd, 'bidaf')
         bidaf_model = os.path.join(bidaf_dir, 'bidaf.onnx')
         bidaf_scan_model = os.path.join(bidaf_dir, 'bidaf_scan.onnx')
+        bidaf_opt_scan_model = os.path.join(bidaf_dir, 'bidaf_opt_scan.onnx')
         bidaf_int8_scan_only_model = os.path.join(bidaf_dir, 'bidaf_int8_scan_only.onnx')
         subprocess.run([sys.executable, '-m', 'onnxruntime.nuphar.model_editor', '--input', bidaf_model, '--output', bidaf_scan_model, '--mode', 'to_scan'], check=True, cwd=cwd)
-        subprocess.run([sys.executable, '-m', 'onnxruntime.nuphar.model_quantizer', '--input', bidaf_scan_model, '--output', bidaf_int8_scan_only_model, '--only_for_scan'], check=True, cwd=cwd)
+        subprocess.run([sys.executable, '-m', 'onnxruntime.nuphar.model_editor', '--input', bidaf_scan_model, '--output', bidaf_opt_scan_model, '--mode', 'opt_inproj'], check=True, cwd=cwd)
+        subprocess.run([sys.executable, '-m', 'onnxruntime.nuphar.model_quantizer', '--input', bidaf_opt_scan_model, '--output', bidaf_int8_scan_only_model, '--only_for_scan'], check=True, cwd=cwd)
 
         # run onnx_test_runner to verify results
         # use -M to disable memory pattern

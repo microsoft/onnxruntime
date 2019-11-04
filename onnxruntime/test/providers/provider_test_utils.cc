@@ -572,7 +572,8 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
         kBrainSliceExecutionProvider,
         kTensorrtExecutionProvider,
         kOpenVINOExecutionProvider,
-        kDmlExecutionProvider};
+        kDmlExecutionProvider,
+        kAclExecutionProvider,};
 
     bool has_run = false;
 
@@ -632,6 +633,8 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
           execution_provider = DefaultOpenVINOExecutionProvider();
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
           execution_provider = DefaultNnapiExecutionProvider();
+        else if (provider_type == onnxruntime::kAclExecutionProvider)
+          execution_provider = DefaultAclExecutionProvider();
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;

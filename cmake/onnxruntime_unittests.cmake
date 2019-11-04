@@ -243,6 +243,10 @@ if(onnxruntime_USE_NUPHAR)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nuphar)
 endif()
 
+if(onnxruntime_USE_ACL)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_acl)
+endif()
+
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   include(onnxruntime_unittests_internal.cmake)
 endif()
@@ -258,6 +262,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_DML}
+    ${PROVIDERS_ACL}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util

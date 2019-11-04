@@ -7,6 +7,8 @@ parameters:
 
 jobs:
 - job: ${{ parameters.JobName }}
+  workspace:
+    clean: all
   pool: ${{ parameters.AgentPool }}
   variables:
     BuildCommand: ${{ parameters.BuildCommand }}

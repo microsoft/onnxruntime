@@ -35,7 +35,6 @@ docker run -h $HOSTNAME \
         --name "onnxruntime-cpu" \
         --volume "$SOURCE_ROOT:/onnxruntime_src" \
         --volume "$BUILD_DIR:/home/onnxruntimedev" \
-        --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
         -e "OnnxRuntimeBuildDirectory=/home/onnxruntimedev" \
         -e "IsReleaseBuild=$ISRELEASEBUILD" \
         -e "PackageName=$PackageName" \
