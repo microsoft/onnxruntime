@@ -50,10 +50,6 @@ void GatherElementsImpl(
     const int axis,
     T* output_data) {
 
-  if (input_data != output_data) {
-    cudaMemcpyAsync(output_data, input_data, input_size * sizeof(T), cudaMemcpyDeviceToDevice, 0);
-  }
-
   if (indices_size > 0) {
     int blocksPerGrid = static_cast<int>((indices_size + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
     _GatherElementsKernel<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
