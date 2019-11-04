@@ -15,7 +15,7 @@ import java.nio.LongBuffer;
 import java.nio.ShortBuffer;
 
 /**
- * A wrapper around the onnx memory allocator.
+ * An ONNX runtime memory allocator.
  */
 public class ONNXAllocator implements AutoCloseable {
 
@@ -32,7 +32,7 @@ public class ONNXAllocator implements AutoCloseable {
     }
 
     /**
-     * Constructs a CPU allocator.
+     * Constructs the default CPU allocator.
      * @throws ONNXException If the onnx runtime threw an error.
      */
     public ONNXAllocator() throws ONNXException {
@@ -66,7 +66,7 @@ public class ONNXAllocator implements AutoCloseable {
                 return new ONNXTensor(createTensor(ONNX.ortApiHandle, handle, data, info.shape, info.onnxType.value), handle, info);
             }
         } else {
-            throw new IllegalStateException("Trying to create an ONNXTensor on a closed ONNXSession.");
+            throw new IllegalStateException("Trying to create an ONNXTensor on a closed ONNXAllocator.");
         }
     }
 
@@ -84,7 +84,7 @@ public class ONNXAllocator implements AutoCloseable {
             TensorInfo info = new TensorInfo(shape, ONNXJavaType.STRING, TensorInfo.ONNXTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
             return new ONNXTensor(createStringTensor(ONNX.ortApiHandle, handle, data, shape), handle, info);
         } else {
-            throw new IllegalStateException("Trying to create an ONNXTensor on a closed ONNXSession.");
+            throw new IllegalStateException("Trying to create an ONNXTensor on a closed ONNXAllocator.");
         }
     }
 
@@ -113,7 +113,7 @@ public class ONNXAllocator implements AutoCloseable {
             TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
             return new ONNXTensor(createTensorFromBuffer(ONNX.ortApiHandle, handle, tmp, bufferSize, shape, info.onnxType.value), handle, info, tmp);
         } else {
-            throw new IllegalStateException("Trying to create an ONNXTensor on a closed ONNXSession.");
+            throw new IllegalStateException("Trying to create an ONNXTensor on a closed ONNXAllocator.");
         }
     }
 
@@ -142,7 +142,7 @@ public class ONNXAllocator implements AutoCloseable {
             TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
             return new ONNXTensor(createTensorFromBuffer(ONNX.ortApiHandle, handle, tmp, bufferSize, shape, info.onnxType.value), handle, info, tmp);
         } else {
-            throw new IllegalStateException("Trying to create an ONNXTensor on a closed ONNXSession.");
+            throw new IllegalStateException("Trying to create an ONNXTensor on a closed ONNXAllocator.");
         }
     }
 
@@ -170,7 +170,7 @@ public class ONNXAllocator implements AutoCloseable {
             TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
             return new ONNXTensor(createTensorFromBuffer(ONNX.ortApiHandle, handle, tmp, bufferSize, shape, info.onnxType.value), handle, info, tmp);
         } else {
-            throw new IllegalStateException("Trying to create an ONNXTensor on a closed ONNXSession.");
+            throw new IllegalStateException("Trying to create an ONNXTensor on a closed ONNXAllocator.");
         }
     }
 
@@ -199,7 +199,7 @@ public class ONNXAllocator implements AutoCloseable {
             TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
             return new ONNXTensor(createTensorFromBuffer(ONNX.ortApiHandle, handle, tmp, bufferSize, shape, info.onnxType.value), handle, info, tmp);
         } else {
-            throw new IllegalStateException("Trying to create an ONNXTensor on a closed ONNXSession.");
+            throw new IllegalStateException("Trying to create an ONNXTensor on a closed ONNXAllocator.");
         }
     }
 
@@ -228,7 +228,7 @@ public class ONNXAllocator implements AutoCloseable {
             TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
             return new ONNXTensor(createTensorFromBuffer(ONNX.ortApiHandle, handle, tmp, bufferSize, shape, info.onnxType.value), handle, info, tmp);
         } else {
-            throw new IllegalStateException("Trying to create an ONNXTensor on a closed ONNXSession.");
+            throw new IllegalStateException("Trying to create an ONNXTensor on a closed ONNXAllocator.");
         }
     }
 
@@ -257,7 +257,7 @@ public class ONNXAllocator implements AutoCloseable {
             TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
             return new ONNXTensor(createTensorFromBuffer(ONNX.ortApiHandle, handle, tmp, bufferSize, shape, info.onnxType.value), handle, info, tmp);
         } else {
-            throw new IllegalStateException("Trying to create an ONNXTensor on a closed ONNXSession.");
+            throw new IllegalStateException("Trying to create an ONNXTensor on a closed ONNXAllocator.");
         }
     }
 
@@ -268,10 +268,12 @@ public class ONNXAllocator implements AutoCloseable {
     @Override
     public void close() throws ONNXException {
         if (!closed) {
+            // Turned off as it can only construct the default allocator, which cannot be closed.
+            // Will need to be enabled when non-default allocators can be constructed.
             //closeAllocator(ONNX.ortApiHandle,handle);
             closed = true;
         } else {
-            throw new IllegalStateException("Trying to close an already closed ONNXSession.");
+            throw new IllegalStateException("Trying to close an already closed ONNXAllocator.");
         }
     }
 
@@ -303,6 +305,7 @@ public class ONNXAllocator implements AutoCloseable {
 
     private native long createAllocator(long apiHandle) throws ONNXException;
 
+    // The default allocator cannot be closed. When support for non-default allocators is added this method will need to be re-enabled.
     //private native void closeAllocator(long apiHandle, long nativeHandle) throws ONNXException;
 
     private native long createTensor(long apiHandle, long allocatorHandle, Object data, long[] shape, int onnxType) throws ONNXException;
