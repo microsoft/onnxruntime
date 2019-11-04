@@ -37,6 +37,7 @@ import java.util.regex.Pattern;
 public class InferenceTest {
     private static final Pattern LOAD_PATTERN = Pattern.compile("[,\\[\\] ]");
     private static final Path resourcePath = Paths.get("..","csharp","testdata");
+    private static final Path otherTestPath = Paths.get("..","onnxruntime","test", "testdata");
 
     @Test
     public void createSessionFromPath() {
@@ -628,6 +629,65 @@ public class InferenceTest {
             assertEquals(0.25938290, map.get("0"), 1e-6);
             assertEquals(0.40904793, map.get("1"), 1e-6);
             assertEquals(0.33156919, map.get("2"), 1e-6);
+        }
+    }
+
+    @Test
+    public void testStringIdentity() throws ONNXException {
+        String modelPath = otherTestPath.resolve("identity_string.onnx").toString();
+        try (ONNXEnvironment env = new ONNXEnvironment("testStringIdentity");
+             SessionOptions options = new SessionOptions();
+             ONNXAllocator allocator = new ONNXAllocator();
+             ONNXSession session = env.createSession(modelPath, allocator, options)) {
+
+            List<NodeInfo> outputInfos = session.getOutputInfo();
+            ValueInfo firstOutputInfo = outputInfos.get(0).getInfo();
+            assertTrue(firstOutputInfo instanceof TensorInfo);
+            assertEquals(ONNXJavaType.STRING,((TensorInfo)firstOutputInfo).type);
+
+            List<ONNXTensor> container = new ArrayList<>();
+            String[][] tensorIn = new String[][]{new String[] {"this", "is"}, new String[] {"identity", "test"}};
+            ONNXTensor ov = allocator.createTensor(tensorIn);
+            container.add(ov);
+
+            List<ONNXValue> outputs = session.run(container);
+            assertEquals(1,outputs.size());
+
+            // first output is a tensor containing label
+            ONNXValue firstOutput = outputs.get(0);
+            assertTrue(firstOutput instanceof ONNXTensor);
+
+            String[] labelOutput = (String[]) firstOutput.getValue();
+
+            assertEquals("this", labelOutput[0]);
+            assertEquals("is", labelOutput[1]);
+            assertEquals("identity", labelOutput[2]);
+            assertEquals("test", labelOutput[3]);
+            assertEquals(4,labelOutput.length);
+
+            ONNXValue.close(container);
+            container.clear();
+            ONNXValue.close(outputs);
+
+            container = new ArrayList<>();
+            String[] tensorInFlatArr = new String[]{"this", "is", "identity", "test"};
+            ov = allocator.createTensor(tensorInFlatArr, new long[]{2,2});
+            container.add(ov);
+
+            outputs = session.run(container);
+            assertEquals(1,outputs.size());
+
+            // first output is a tensor containing label
+            firstOutput = outputs.get(0);
+            assertTrue(firstOutput instanceof ONNXTensor);
+
+            labelOutput = (String[]) firstOutput.getValue();
+
+            assertEquals("this", labelOutput[0]);
+            assertEquals("is", labelOutput[1]);
+            assertEquals("identity", labelOutput[2]);
+            assertEquals("test", labelOutput[3]);
+            assertEquals(4,labelOutput.length);
         }
     }
 

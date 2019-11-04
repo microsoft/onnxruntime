@@ -57,7 +57,7 @@ public class ONNXAllocator implements AutoCloseable {
                 if (info.shape.length == 0) {
                     return new ONNXTensor(createString(ONNX.ortApiHandle, handle,(String)data), handle, info);
                 } else {
-                    return new ONNXTensor(createStringTensor(ONNX.ortApiHandle, handle, (String[])data, info.shape), handle, info);
+                    return new ONNXTensor(createStringTensor(ONNX.ortApiHandle, handle, ONNXUtil.flattenString(data), info.shape), handle, info);
                 }
             } else {
                 if (info.shape.length == 0) {
@@ -65,6 +65,24 @@ public class ONNXAllocator implements AutoCloseable {
                 }
                 return new ONNXTensor(createTensor(ONNX.ortApiHandle, handle, data, info.shape, info.onnxType.value), handle, info);
             }
+        } else {
+            throw new IllegalStateException("Trying to create an ONNXTensor on a closed ONNXSession.");
+        }
+    }
+
+    /**
+     * Create a tensor from a flattened string array.
+     * <p>
+     * Requires the array to be flattened in row-major order.
+     * @param data The tensor data
+     * @param shape the shape of the tensor
+     * @return An ONNXTensor of the required shape.
+     * @throws ONNXException Thrown if there is an onnx error or if the data and shape don't match.
+     */
+    public ONNXTensor createTensor(String[] data, long[]shape) throws ONNXException {
+        if (!closed) {
+            TensorInfo info = new TensorInfo(shape, ONNXJavaType.STRING, TensorInfo.ONNXTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+            return new ONNXTensor(createStringTensor(ONNX.ortApiHandle, handle, data, shape), handle, info);
         } else {
             throw new IllegalStateException("Trying to create an ONNXTensor on a closed ONNXSession.");
         }
