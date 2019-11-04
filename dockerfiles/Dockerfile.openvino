@@ -35,11 +35,10 @@ RUN tar -xzf l_openvino_toolkit*.tgz && \
     ./install.sh -s silent.cfg && \
     cd - && \
     rm -rf l_openvino_toolkit* && \
-    cd /opt/intel/openvino/install_dependencies && sudo ./install_openvino_dependencies.sh && sudo dpkg -i *.deb && \
-    cd /opt/intel/openvino/deployment_tools/model_optimizer/install_prerequisites && sudo ./install_prerequisites_onnx.sh && \
-    pip install onnx>=1.1.2 networkx==2.3 numpy>=1.12.0 test-generator==0.1.1 defusedxml>=0.5.0
+    cd /opt/intel/openvino/install_dependencies && ./_install_all_dependencies.sh && dpkg -i *.deb && \
+    pip install networkx==2.3 numpy>=1.12.0 test-generator==0.1.1 defusedxml>=0.5.0
 
-ENV LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/opt/miniconda/lib:/usr/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2019.3.376
 ENV INTEL_CVSDK_DIR=/opt/intel/openvino_2019.3.376
 ENV InferenceEngine_DIR=${INTEL_CVSDK_DIR}/deployment_tools/inference_engine/share
@@ -54,5 +53,5 @@ ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/exte
 RUN locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8
 ENV LANG en_US.UTF-8
 
-RUN cd /onnxruntime && ./build.sh --config RelWithDebInfo --update --build --parallel --use_openvino $DEVICE --build_wheel && \
-    pip install /onnxruntime/build/Linux/RelWithDebInfo/dist/*-linux_x86_64.whl && rm -rf /onnxruntime cmake-3.14.3-Linux-x86_64
+RUN cd onnxruntime && ./build.sh --config RelWithDebInfo --update --build --parallel --use_openvino $DEVICE --build_wheel && \
+    pip install build/Linux/RelWithDebInfo/dist/*-linux_x86_64.whl && rm -rf /code/onnxruntime /code/cmake-3.14.3-Linux-x86_64
