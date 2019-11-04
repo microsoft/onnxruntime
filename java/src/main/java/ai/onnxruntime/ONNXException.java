@@ -2,7 +2,7 @@
  * Copyright © 2019, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
-package com.microsoft.onnxruntime;
+package ai.onnxruntime;
 
 /**
  * An exception which contains any error messages out of ONNX.

@@ -4,14 +4,14 @@
  */
 #include <jni.h>
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
-#include "com_microsoft_onnxruntime_ONNX.h"
+#include "ai_onnxruntime_ONNX.h"
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNX
+ * Class:     ai_onnxruntime_ONNX
  * Method:    initialiseAPIBase
  * Signature: (I)J
  */
-JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNX_initialiseAPIBase
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNX_initialiseAPIBase
   (JNIEnv * jniEnv, jclass clazz, jint apiVersion) {
     const OrtApi* ortPtr = OrtGetApiBase()->GetApi((uint32_t) apiVersion);
     return (jlong) ortPtr;

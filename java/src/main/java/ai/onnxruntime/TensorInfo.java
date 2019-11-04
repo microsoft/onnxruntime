@@ -2,7 +2,7 @@
  * Copyright © 2019, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
-package com.microsoft.onnxruntime;
+package ai.onnxruntime;
 
 import java.lang.reflect.Array;
 import java.nio.Buffer;

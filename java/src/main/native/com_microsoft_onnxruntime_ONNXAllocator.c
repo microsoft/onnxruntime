@@ -5,14 +5,14 @@
 #include <jni.h>
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "ONNXUtil.h"
-#include "com_microsoft_onnxruntime_ONNXAllocator.h"
+#include "ai_onnxruntime_ONNXAllocator.h"
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXAllocator
+ * Class:     ai_onnxruntime_ONNXAllocator
  * Method:    createAllocator
  * Signature: ()J
  */
-JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXAllocator_createAllocator
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createAllocator
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator;
@@ -21,11 +21,11 @@ JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXAllocator_createAlloc
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXAllocator
+ * Class:     ai_onnxruntime_ONNXAllocator
  * Method:    createTensor
  * Signature: (JJLjava/lang/Object;[JI)J
  */
-JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXAllocator_createTensor
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createTensor
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jobject dataObj, jlongArray shape, jint onnxTypeJava) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -65,11 +65,11 @@ JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXAllocator_createTenso
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXAllocator
+ * Class:     ai_onnxruntime_ONNXAllocator
  * Method:    createTensorFromBuffer
  * Signature: (JJLjava/nio/Buffer;J[JI)J
  */
-JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXAllocator_createTensorFromBuffer
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createTensorFromBuffer
         (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jobject buffer, jlong bufferSize, jlongArray shape, jint onnxTypeJava) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -97,11 +97,11 @@ JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXAllocator_createTenso
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXAllocator
+ * Class:     ai_onnxruntime_ONNXAllocator
  * Method:    createString
  * Signature: (JJLjava/lang/String;)J
  */
-JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXAllocator_createString
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createString
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jstring input) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -131,11 +131,11 @@ JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXAllocator_createStrin
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXAllocator
+ * Class:     ai_onnxruntime_ONNXAllocator
  * Method:    createStringTensor
  * Signature: (JJ[Ljava/lang/Object;[J)J
  */
-JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXAllocator_createStringTensor
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createStringTensor
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jobjectArray stringArr, jlongArray shape) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;

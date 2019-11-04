@@ -6,4 +6,4 @@
 /**
  * A Java interface to the onnxruntime.
  */
-package com.microsoft.onnxruntime;
+package ai.onnxruntime;

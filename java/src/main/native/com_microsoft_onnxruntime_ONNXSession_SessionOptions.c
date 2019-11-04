@@ -5,7 +5,7 @@
 #include <jni.h>
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "ONNXUtil.h"
-#include "com_microsoft_onnxruntime_ONNXSession_SessionOptions.h"
+#include "ai_onnxruntime_ONNXSession_SessionOptions.h"
 
 // Providers
 #include "onnxruntime/core/providers/cpu/cpu_provider_factory.h"
@@ -18,11 +18,11 @@
 #include "onnxruntime/core/providers/tensorrt/tensorrt_provider_factory.h"
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession_SessionOptions
+ * Class:     ai_onnxruntime_ONNXSession_SessionOptions
  * Method:    setSequentialExecution
  * Signature: (JJZ)V
  */
-JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOptions_setSequentialExecution
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setSequentialExecution
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jboolean setSequential) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     if (setSequential) {
@@ -33,44 +33,44 @@ JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOp
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession_SessionOptions
+ * Class:     ai_onnxruntime_ONNXSession_SessionOptions
  * Method:    setOptimisationLevel
  * Signature: (JJI)V
  */
-JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOptions_setOptimisationLevel
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setOptimisationLevel
   (JNIEnv * jniEnv, jobject obj, jlong apiHandle, jlong handle, jint optLevel) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     checkONNXStatus(jniEnv,api,api->SetSessionGraphOptimizationLevel((OrtSessionOptions*) handle, convertOptimizationLevel(optLevel)));
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession_SessionOptions
+ * Class:     ai_onnxruntime_ONNXSession_SessionOptions
  * Method:    setIntraThreadPoolSize
  * Signature: (JJI)V
  */
-JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOptions_setIntraThreadPoolSize
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setIntraThreadPoolSize
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint numThreads) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     checkONNXStatus(jniEnv,api,api->SetIntraOpNumThreads((OrtSessionOptions*) handle, numThreads));
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession_SessionOptions
+ * Class:     ai_onnxruntime_ONNXSession_SessionOptions
  * Method:    setIntraThreadPoolSize
  * Signature: (JJI)V
  */
-JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOptions_setInterThreadPoolSize
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setInterThreadPoolSize
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint numThreads) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     checkONNXStatus(jniEnv,api,api->SetInterOpNumThreads((OrtSessionOptions*) handle, numThreads));
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession_SessionOptions
+ * Class:     ai_onnxruntime_ONNXSession_SessionOptions
  * Method:    createOptions
  * Signature: (J)J
  */
-JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOptions_createOptions
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_createOptions
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtSessionOptions* opts;
@@ -81,32 +81,32 @@ JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionO
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession_SessionOptions
+ * Class:     ai_onnxruntime_ONNXSession_SessionOptions
  * Method:    closeOptions
  * Signature: (JJ)V
  */
-JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOptions_closeOptions
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_closeOptions
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     api->ReleaseSessionOptions((OrtSessionOptions*) handle);
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession_SessionOptions
+ * Class:     ai_onnxruntime_ONNXSession_SessionOptions
  * Method:    addCPU
  * Signature: (JJI)V
  */
-JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOptions_addCPU
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addCPU
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint useArena) {
     checkONNXStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_CPU((OrtSessionOptions*)handle,useArena));
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession_SessionOptions
+ * Class:     ai_onnxruntime_ONNXSession_SessionOptions
  * Method:    addCUDA
  * Signature: (JJI)V
  */
-JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOptions_addCUDA
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addCUDA
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceID) {
   #ifdef BUILD_CUDA
     checkONNXStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_CUDA((OrtSessionOptions*) handle, deviceID));
@@ -116,11 +116,11 @@ JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOp
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession_SessionOptions
+ * Class:     ai_onnxruntime_ONNXSession_SessionOptions
  * Method:    addMkldnn
  * Signature: (JJI)V
  */
-JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOptions_addMkldnn
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addMkldnn
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint useArena) {
   #ifdef BUILD_MKLDNN
     checkONNXStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Mkldnn((OrtSessionOptions*) handle,useArena));
@@ -130,11 +130,11 @@ JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOp
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession_SessionOptions
+ * Class:     ai_onnxruntime_ONNXSession_SessionOptions
  * Method:    addNGraph
  * Signature: (JJLjava/lang/String;)V
  */
-JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOptions_addNGraph
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addNGraph
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jstring backendString) {
   #ifdef BUILD_NGRAPH
     const char* backendType = (*jniEnv)->GetStringUTFChars(jniEnv, backendString, NULL);
@@ -146,11 +146,11 @@ JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOp
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession_SessionOptions
+ * Class:     ai_onnxruntime_ONNXSession_SessionOptions
  * Method:    addOpenVINO
  * Signature: (JJLjava/lang/String;)V
  */
-JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOptions_addOpenVINO
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addOpenVINO
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jstring deviceIDString) {
   #ifdef BUILD_OPEN_VINO
     const char* deviceID = (*jniEnv)->GetStringUTFChars(jniEnv, deviceIDString, NULL);
@@ -162,11 +162,11 @@ JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOp
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession_SessionOptions
+ * Class:     ai_onnxruntime_ONNXSession_SessionOptions
  * Method:    addTensorrt
  * Signature: (JJI)V
  */
-JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOptions_addTensorrt
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addTensorrt
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceNum) {
   #ifdef BUILD_TENSOR_RT
     checkONNXStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Tensorrt((OrtSessionOptions*) handle, deviceNum));
@@ -176,11 +176,11 @@ JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOp
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession_SessionOptions
+ * Class:     ai_onnxruntime_ONNXSession_SessionOptions
  * Method:    addNnapi
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOptions_addNnapi
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addNnapi
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
   #ifdef BUILD_NNAPI
     checkONNXStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Nnapi((OrtSessionOptions*) handle));
@@ -190,12 +190,12 @@ JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOp
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession_SessionOptions
+ * Class:     ai_onnxruntime_ONNXSession_SessionOptions
  * Method:    addNuphar
  * Signature: (JILjava/lang/String {
 	})V
  */
-JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_00024SessionOptions_addNuphar
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addNuphar
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint allowUnalignedBuffers, jstring settingsString) {
   #ifdef BUILD_NUPHAR
     const char* settings = (*jniEnv)->GetStringUTFChars(jniEnv, settingsString, NULL);

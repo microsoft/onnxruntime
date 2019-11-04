@@ -6,14 +6,14 @@
 #include <math.h>
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "ONNXUtil.h"
-#include "com_microsoft_onnxruntime_ONNXTensor.h"
+#include "ai_onnxruntime_ONNXTensor.h"
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXTensor
+ * Class:     ai_onnxruntime_ONNXTensor
  * Method:    getFloat
  * Signature: (JI)F
  */
-JNIEXPORT jfloat JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_getFloat
+JNIEXPORT jfloat JNICALL Java_ai_onnxruntime_ONNXTensor_getFloat
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
     const OrtApi* api = (const OrtApi*) apiHandle;
   if (onnxType == 9) {
@@ -31,11 +31,11 @@ JNIEXPORT jfloat JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_getFloat
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXTensor
+ * Class:     ai_onnxruntime_ONNXTensor
  * Method:    getDouble
  * Signature: (JI)D
  */
-JNIEXPORT jdouble JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_getDouble
+JNIEXPORT jdouble JNICALL Java_ai_onnxruntime_ONNXTensor_getDouble
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     jdouble* arr;
@@ -44,11 +44,11 @@ JNIEXPORT jdouble JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_getDouble
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXTensor
+ * Class:     ai_onnxruntime_ONNXTensor
  * Method:    getByte
  * Signature: (JI)B
  */
-JNIEXPORT jbyte JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_getByte
+JNIEXPORT jbyte JNICALL Java_ai_onnxruntime_ONNXTensor_getByte
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
     const OrtApi* api = (const OrtApi*) apiHandle;
   if (onnxType == 1) {
@@ -65,11 +65,11 @@ JNIEXPORT jbyte JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_getByte
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXTensor
+ * Class:     ai_onnxruntime_ONNXTensor
  * Method:    getShort
  * Signature: (JI)S
  */
-JNIEXPORT jshort JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_getShort
+JNIEXPORT jshort JNICALL Java_ai_onnxruntime_ONNXTensor_getShort
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
     const OrtApi* api = (const OrtApi*) apiHandle;
   if (onnxType == 3) {
@@ -86,11 +86,11 @@ JNIEXPORT jshort JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_getShort
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXTensor
+ * Class:     ai_onnxruntime_ONNXTensor
  * Method:    getInt
  * Signature: (JI)I
  */
-JNIEXPORT jint JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_getInt
+JNIEXPORT jint JNICALL Java_ai_onnxruntime_ONNXTensor_getInt
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
     const OrtApi* api = (const OrtApi*) apiHandle;
   if (onnxType == 5) {
@@ -107,11 +107,11 @@ JNIEXPORT jint JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_getInt
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXTensor
+ * Class:     ai_onnxruntime_ONNXTensor
  * Method:    getLong
  * Signature: (JI)J
  */
-JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_getLong
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXTensor_getLong
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
     const OrtApi* api = (const OrtApi*) apiHandle;
   if (onnxType == 7) {
@@ -128,11 +128,11 @@ JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_getLong
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXTensor
+ * Class:     ai_onnxruntime_ONNXTensor
  * Method:    getString
  * Signature: (JJI)Ljava/lang/String;
  */
-JNIEXPORT jstring JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_getString
+JNIEXPORT jstring JNICALL Java_ai_onnxruntime_ONNXTensor_getString
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle, jint onnxType) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     // Extract a String array - if this becomes a performance issue we'll refactor later.
@@ -148,11 +148,11 @@ JNIEXPORT jstring JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_getString
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXTensor
+ * Class:     ai_onnxruntime_ONNXTensor
  * Method:    getBool
  * Signature: (JI)Z
  */
-JNIEXPORT jboolean JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_getBool
+JNIEXPORT jboolean JNICALL Java_ai_onnxruntime_ONNXTensor_getBool
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     jboolean* arr;
@@ -161,11 +161,11 @@ JNIEXPORT jboolean JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_getBool
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXTensor
+ * Class:     ai_onnxruntime_ONNXTensor
  * Method:    getArray
  * Signature: (JJLjava/lang/Object;)V
  */
-JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_getArray
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXTensor_getArray
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle, jobject carrier) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtTensorTypeAndShapeInfo* info;
@@ -188,11 +188,11 @@ JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_getArray
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXTensor
+ * Class:     ai_onnxruntime_ONNXTensor
  * Method:    close
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXTensor_close(JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXTensor_close(JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     api->ReleaseValue((OrtValue*)handle);
 }

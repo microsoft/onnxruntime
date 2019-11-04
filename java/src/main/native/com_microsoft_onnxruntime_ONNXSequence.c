@@ -5,13 +5,13 @@
 #include <jni.h>
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "ONNXUtil.h"
-#include "com_microsoft_onnxruntime_ONNXSequence.h"
+#include "ai_onnxruntime_ONNXSequence.h"
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSequence
+ * Class:     ai_onnxruntime_ONNXSequence
  * Method:    getStringKeys
  * Signature: (JJI)[Ljava/lang/String;
  */
-JNIEXPORT jobjectArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getStringKeys
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSequence_getStringKeys
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle, jint index) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -32,11 +32,11 @@ JNIEXPORT jobjectArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getSt
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSequence
+ * Class:     ai_onnxruntime_ONNXSequence
  * Method:    getLongKeys
  * Signature: (JJI)[J
  */
-JNIEXPORT jlongArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getLongKeys
+JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_ONNXSequence_getLongKeys
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle, jint index) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -57,11 +57,11 @@ JNIEXPORT jlongArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getLong
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSequence
+ * Class:     ai_onnxruntime_ONNXSequence
  * Method:    getStringValues
  * Signature: (JJI)[Ljava/lang/String;
  */
-JNIEXPORT jobjectArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getStringValues
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSequence_getStringValues
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle, jint index) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -82,11 +82,11 @@ JNIEXPORT jobjectArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getSt
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSequence
+ * Class:     ai_onnxruntime_ONNXSequence
  * Method:    getLongValues
  * Signature: (JJI)[J
  */
-JNIEXPORT jlongArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getLongValues
+JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_ONNXSequence_getLongValues
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle, jint index) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -107,11 +107,11 @@ JNIEXPORT jlongArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getLong
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSequence
+ * Class:     ai_onnxruntime_ONNXSequence
  * Method:    getFloatValues
  * Signature: (JJI)[F
  */
-JNIEXPORT jfloatArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getFloatValues
+JNIEXPORT jfloatArray JNICALL Java_ai_onnxruntime_ONNXSequence_getFloatValues
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle, jint index) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -132,11 +132,11 @@ JNIEXPORT jfloatArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getFlo
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSequence
+ * Class:     ai_onnxruntime_ONNXSequence
  * Method:    getDoubleValues
  * Signature: (JJI)[D
  */
-JNIEXPORT jdoubleArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getDoubleValues
+JNIEXPORT jdoubleArray JNICALL Java_ai_onnxruntime_ONNXSequence_getDoubleValues
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle, jint index) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -157,11 +157,11 @@ JNIEXPORT jdoubleArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getDo
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSequence
+ * Class:     ai_onnxruntime_ONNXSequence
  * Method:    getStrings
  * Signature: (JJ)[Ljava/lang/String;
  */
-JNIEXPORT jobjectArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getStrings
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSequence_getStrings
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtValue* sequence = (OrtValue*) handle;
@@ -187,11 +187,11 @@ JNIEXPORT jobjectArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getSt
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSequence
+ * Class:     ai_onnxruntime_ONNXSequence
  * Method:    getLongs
  * Signature: (JJ)[J
  */
-JNIEXPORT jlongArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getLongs
+JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_ONNXSequence_getLongs
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtValue* sequence = (OrtValue*) handle;
@@ -226,11 +226,11 @@ JNIEXPORT jlongArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getLong
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSequence
+ * Class:     ai_onnxruntime_ONNXSequence
  * Method:    getFloats
  * Signature: (JJ)[F
  */
-JNIEXPORT jfloatArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getFloats
+JNIEXPORT jfloatArray JNICALL Java_ai_onnxruntime_ONNXSequence_getFloats
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtValue* sequence = (OrtValue*) handle;
@@ -265,11 +265,11 @@ JNIEXPORT jfloatArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getFlo
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSequence
+ * Class:     ai_onnxruntime_ONNXSequence
  * Method:    getDoubles
  * Signature: (JJ)[D
  */
-JNIEXPORT jdoubleArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getDoubles
+JNIEXPORT jdoubleArray JNICALL Java_ai_onnxruntime_ONNXSequence_getDoubles
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtValue* sequence = (OrtValue*) handle;
@@ -304,11 +304,11 @@ JNIEXPORT jdoubleArray JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_getDo
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSequence
+ * Class:     ai_onnxruntime_ONNXSequence
  * Method:    close
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSequence_close(JNIEnv * jniEnv, jobject obj, jlong apiHandle, jlong handle) {
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSequence_close(JNIEnv * jniEnv, jobject obj, jlong apiHandle, jlong handle) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     api->ReleaseValue((OrtValue*)handle);
 }

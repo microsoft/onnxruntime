@@ -5,14 +5,14 @@
 #include <jni.h>
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "ONNXUtil.h"
-#include "com_microsoft_onnxruntime_ONNXSession.h"
+#include "ai_onnxruntime_ONNXSession.h"
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession
+ * Class:     ai_onnxruntime_ONNXSession
  * Method:    createSession
  * Signature: (JJLjava/lang/String;J)J
  */
-JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXSession_createSession__JJLjava_lang_String_2J
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_createSession__JJLjava_lang_String_2J
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong envHandle, jstring modelPath, jlong optsHandle) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtSession* session;
@@ -26,11 +26,11 @@ JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXSession_createSession
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession
+ * Class:     ai_onnxruntime_ONNXSession
  * Method:    createSession
  * Signature: (JJ[BJ)J
  */
-JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXSession_createSession__JJ_3BJ
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_createSession__JJ_3BJ
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong envHandle, jbyteArray jModelArray, jlong optsHandle) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtSession* session;
@@ -46,11 +46,11 @@ JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXSession_createSession
   }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession
+ * Class:     ai_onnxruntime_ONNXSession
  * Method:    getNumInputs
  * Signature: (J)J
  */
-JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXSession_getNumInputs
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_getNumInputs
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     size_t numInputs;
@@ -59,17 +59,17 @@ JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXSession_getNumInputs
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession
+ * Class:     ai_onnxruntime_ONNXSession
  * Method:    getInputNames
  * Signature: (JJ)J
  */
-JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXSession_getInputNames
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_getInputNames
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong sessionHandle, jlong allocatorHandle) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
 
     // Get the number of inputs
-    size_t numInputs = Java_com_microsoft_onnxruntime_ONNXSession_getNumInputs(jniEnv, jobj, apiHandle, sessionHandle);
+    size_t numInputs = Java_ai_onnxruntime_ONNXSession_getNumInputs(jniEnv, jobj, apiHandle, sessionHandle);
 
     char** inputNames;
     checkONNXStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(char*)*numInputs,(void**)&inputNames));
@@ -84,11 +84,11 @@ JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXSession_getInputNames
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession
+ * Class:     ai_onnxruntime_ONNXSession
  * Method:    getNumOutputs
  * Signature: (J)J
  */
-JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXSession_getNumOutputs
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_getNumOutputs
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     size_t numOutputs;
@@ -97,17 +97,17 @@ JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXSession_getNumOutputs
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession
+ * Class:     ai_onnxruntime_ONNXSession
  * Method:    getOutputNames
  * Signature: (JJ)J
  */
-JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXSession_getOutputNames
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_getOutputNames
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong sessionHandle, jlong allocatorHandle) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
 
     // Get the number of outputs
-    size_t numOutputs = Java_com_microsoft_onnxruntime_ONNXSession_getNumOutputs(jniEnv, jobj, apiHandle, sessionHandle);
+    size_t numOutputs = Java_ai_onnxruntime_ONNXSession_getNumOutputs(jniEnv, jobj, apiHandle, sessionHandle);
 
     char** outputNames;
     checkONNXStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(char*)*numOutputs,(void**)&outputNames));
@@ -122,20 +122,20 @@ JNIEXPORT jlong JNICALL Java_com_microsoft_onnxruntime_ONNXSession_getOutputName
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession
+ * Class:     ai_onnxruntime_ONNXSession
  * Method:    getInputInfo
- * Signature: (JJ)[Lcom/microsoft/onnxruntime/NodeInfo;
+ * Signature: (JJ)[Lai/onnxruntime/NodeInfo;
  */
-JNIEXPORT jobjectArray JNICALL Java_com_microsoft_onnxruntime_ONNXSession_getInputInfo
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSession_getInputInfo
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong sessionHandle, jlong inputNamesHandle) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     // Setup
-    char *nodeInfoClassName = "com/microsoft/onnxruntime/NodeInfo";
+    char *nodeInfoClassName = "ai/onnxruntime/NodeInfo";
     jclass nodeInfoClazz = (*jniEnv)->FindClass(jniEnv, nodeInfoClassName);
-    jmethodID nodeInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,nodeInfoClazz, "<init>", "(Ljava/lang/String;Lcom/microsoft/onnxruntime/ValueInfo;)V");
+    jmethodID nodeInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,nodeInfoClazz, "<init>", "(Ljava/lang/String;Lai/onnxruntime/ValueInfo;)V");
 
     // Get the number of inputs
-    size_t numInputs = Java_com_microsoft_onnxruntime_ONNXSession_getNumInputs(jniEnv, jobj, apiHandle, sessionHandle);
+    size_t numInputs = Java_ai_onnxruntime_ONNXSession_getNumInputs(jniEnv, jobj, apiHandle, sessionHandle);
 
     // Allocate the return array
     jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv,numInputs,nodeInfoClazz,NULL);
@@ -158,20 +158,20 @@ JNIEXPORT jobjectArray JNICALL Java_com_microsoft_onnxruntime_ONNXSession_getInp
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession
+ * Class:     ai_onnxruntime_ONNXSession
  * Method:    getOutputInfo
- * Signature: (JJ)[Lcom/microsoft/onnxruntime/NodeInfo;
+ * Signature: (JJ)[Lai/onnxruntime/NodeInfo;
  */
-JNIEXPORT jobjectArray JNICALL Java_com_microsoft_onnxruntime_ONNXSession_getOutputInfo
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSession_getOutputInfo
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong sessionHandle, jlong outputNamesHandle) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     // Setup
-    char *nodeInfoClassName = "com/microsoft/onnxruntime/NodeInfo";
+    char *nodeInfoClassName = "ai/onnxruntime/NodeInfo";
     jclass nodeInfoClazz = (*jniEnv)->FindClass(jniEnv, nodeInfoClassName);
-    jmethodID nodeInfoConstructor = (*jniEnv)->GetMethodID(jniEnv, nodeInfoClazz, "<init>", "(Ljava/lang/String;Lcom/microsoft/onnxruntime/ValueInfo;)V");
+    jmethodID nodeInfoConstructor = (*jniEnv)->GetMethodID(jniEnv, nodeInfoClazz, "<init>", "(Ljava/lang/String;Lai/onnxruntime/ValueInfo;)V");
 
     // Get the number of outputs
-    size_t numOutputs = Java_com_microsoft_onnxruntime_ONNXSession_getNumOutputs(jniEnv, jobj, apiHandle, sessionHandle);
+    size_t numOutputs = Java_ai_onnxruntime_ONNXSession_getNumOutputs(jniEnv, jobj, apiHandle, sessionHandle);
 
     // Allocate the return array
     jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv,numOutputs,nodeInfoClazz,NULL);
@@ -194,12 +194,12 @@ JNIEXPORT jobjectArray JNICALL Java_com_microsoft_onnxruntime_ONNXSession_getOut
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession
+ * Class:     ai_onnxruntime_ONNXSession
  * Method:    score
- * Signature: (JJJJ[JJJ)[Lcom/microsoft/onnxruntime/ONNXValue;
+ * Signature: (JJJJ[JJJ)[Lai/onnxruntime/ONNXValue;
  * private native ONNXValue[] score(long nativeHandle, long allocatorHandle, long inputNamesHandle, long numInputs, long[] inputTensorHandles, long outputNamesHandle, long numOutputs) throws ONNXException;
  */
-JNIEXPORT jobjectArray JNICALL Java_com_microsoft_onnxruntime_ONNXSession_score
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSession_score
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong sessionHandle, jlong allocatorHandle, jlong inputNamesHandle, jlong numInputs, jlongArray tensorArr, jlong outputNamesHandle, jlong numOutputs) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -218,7 +218,7 @@ JNIEXPORT jobjectArray JNICALL Java_com_microsoft_onnxruntime_ONNXSession_score
     (*jniEnv)->ReleaseLongArrayElements(jniEnv,tensorArr,inputTensors,JNI_ABORT);
 
     // Construct the output array of ONNXValues
-    char *onnxValueClassName = "com/microsoft/onnxruntime/ONNXValue";
+    char *onnxValueClassName = "ai/onnxruntime/ONNXValue";
     jclass onnxValueClass = (*jniEnv)->FindClass(jniEnv, onnxValueClassName);
     jobjectArray outputArray = (*jniEnv)->NewObjectArray(jniEnv,numOutputs,onnxValueClass,NULL);
 
@@ -235,22 +235,22 @@ JNIEXPORT jobjectArray JNICALL Java_com_microsoft_onnxruntime_ONNXSession_score
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession
+ * Class:     ai_onnxruntime_ONNXSession
  * Method:    closeSession
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_closeSession
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_closeSession
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     api->ReleaseSession((OrtSession*)handle);
 }
 
 /*
- * Class:     com_microsoft_onnxruntime_ONNXSession
+ * Class:     ai_onnxruntime_ONNXSession
  * Method:    releaseNamesHandle
  * Signature: (JJJ)V
  */
-JNIEXPORT void JNICALL Java_com_microsoft_onnxruntime_ONNXSession_releaseNamesHandle
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_releaseNamesHandle
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jlong namesHandle, jlong length) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;

@@ -2,11 +2,9 @@
  * Copyright © 2019, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
-package com.microsoft.onnxruntime;
+package ai.onnxruntime;
 
 import java.util.Arrays;
-
-import static com.microsoft.onnxruntime.TensorInfo.MAX_DIMENSIONS;
 
 /**
  * Util code for interacting with shape arrays.
@@ -644,6 +642,6 @@ public class ONNXUtil {
             valid &= shape[i] > 0;
             valid &= ((int)shape[i]) == shape[i];
         }
-        return valid && shape.length <= MAX_DIMENSIONS;
+        return valid && shape.length <= TensorInfo.MAX_DIMENSIONS;
     }
 }
