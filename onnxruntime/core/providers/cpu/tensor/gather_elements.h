@@ -10,7 +10,7 @@
 
 namespace onnxruntime {
 
-class GatherElements : public OpKernel {
+class GatherElements final : public OpKernel {
  public:
   GatherElements(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK(), "Missing/Invalid 'axis' attribute value");
