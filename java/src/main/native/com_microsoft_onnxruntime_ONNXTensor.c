@@ -1,5 +1,6 @@
 /*
  * Copyright © 2019, Oracle and/or its affiliates. All rights reserved.
+ * Licensed under the MIT License.
  */
 #include <jni.h>
 #include <math.h>

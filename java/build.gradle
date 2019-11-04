@@ -1,5 +1,6 @@
 /*
  * Copyright © 2019, Oracle and/or its affiliates. All rights reserved.
+ * Licensed under the MIT License.
  */
 import org.gradle.internal.jvm.Jvm
 import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform
