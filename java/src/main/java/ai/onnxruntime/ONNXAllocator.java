@@ -57,7 +57,7 @@ public class ONNXAllocator implements AutoCloseable {
                 if (info.shape.length == 0) {
                     return new ONNXTensor(createString(ONNX.ortApiHandle, handle,(String)data), handle, info);
                 } else {
-                    return new ONNXTensor(createStringTensor(ONNX.ortApiHandle, handle, (String[])data, info.shape), handle, info);
+                    return new ONNXTensor(createStringTensor(ONNX.ortApiHandle, handle, ONNXUtil.flattenString(data), info.shape), handle, info);
                 }
             } else {
                 if (info.shape.length == 0) {
@@ -71,7 +71,9 @@ public class ONNXAllocator implements AutoCloseable {
     }
 
     /**
-     * Create a tensor from a flatten string array
+     * Create a tensor from a flattened string array.
+     * <p>
+     * Requires the array to be flattened in row-major order.
      * @param data The tensor data
      * @param shape the shape of the tensor
      * @return An ONNXTensor of the required shape.

@@ -6,6 +6,7 @@ package ai.onnxruntime;
 
 import java.lang.reflect.Array;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -139,13 +140,21 @@ class TestHelpers {
         return toPrimitiveDouble(output);
     }
 
+    static String[] flattenString(Object o) {
+        List<String> output = new ArrayList<>();
+
+        flatten((Object[]) o,output, String.class);
+
+        return output.toArray(new String[0]);
+    }
+
     static void flatten(Object[] input, List output, Class<?> primitiveClazz) {
         for (Object i : input) {
             Class<?> iClazz = i.getClass();
             if (iClazz.isArray()) {
                 if (iClazz.getComponentType().isArray()) {
                     flatten((Object[]) i, output, primitiveClazz);
-                } else if (iClazz.getComponentType().isPrimitive() && iClazz.getComponentType().equals(primitiveClazz)){
+                } else if ((iClazz.getComponentType().isPrimitive() || iClazz.getComponentType().equals(String.class)) && iClazz.getComponentType().equals(primitiveClazz)){
                     flattenBase(i,output,primitiveClazz);
                 } else {
                     throw new IllegalStateException("Found a non-primitive, non-array element type, " + iClazz);
@@ -170,7 +179,9 @@ class TestHelpers {
         } else if (primitiveClass.equals(float.class)) {
             flattenFloatBase((float[])input,output);
         } else if (primitiveClass.equals(double.class)) {
-            flattenDoubleBase((double[])input,output);
+            flattenDoubleBase((double[]) input, output);
+        } else if (primitiveClass.equals(String.class)) {
+            flattenStringBase((String[]) input, output);
         } else {
             throw new IllegalStateException("Flattening a non-primitive class");
         }
@@ -216,6 +227,10 @@ class TestHelpers {
         for (int i = 0; i < input.length; i++) {
             output.add(input[i]);
         }
+    }
+
+    static void flattenStringBase(String[] input, List<String> output) {
+        output.addAll(Arrays.asList(input));
     }
 
     public static Object reshape(boolean[] input, long[] shape) {

@@ -4,7 +4,9 @@
  */
 package ai.onnxruntime;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Util code for interacting with shape arrays.
@@ -643,5 +645,30 @@ public class ONNXUtil {
             valid &= ((int)shape[i]) == shape[i];
         }
         return valid && shape.length <= TensorInfo.MAX_DIMENSIONS;
+    }
+
+    public static String[] flattenString(Object o) {
+        List<String> output = new ArrayList<>();
+
+        flattenString((Object[]) o,output);
+
+        return output.toArray(new String[0]);
+    }
+
+    private static void flattenString(Object[] input, List output) {
+        for (Object i : input) {
+            Class<?> iClazz = i.getClass();
+            if (iClazz.isArray()) {
+                if (iClazz.getComponentType().isArray()) {
+                    flattenString((Object[]) i, output);
+                } else if (iClazz.getComponentType().equals(String.class)) {
+                    output.addAll(Arrays.asList((String[])i));
+                } else {
+                    throw new IllegalStateException("Found a non-String, non-array element type, " + iClazz);
+                }
+            } else {
+                throw new IllegalStateException("Found an element type where there should have been an array. Class = " + iClazz);
+            }
+        }
     }
 }

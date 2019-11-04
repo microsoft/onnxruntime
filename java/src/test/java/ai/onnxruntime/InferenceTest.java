@@ -646,11 +646,11 @@ public class InferenceTest {
             assertEquals(ONNXJavaType.STRING,((TensorInfo)firstOutputInfo).type);
 
             List<ONNXTensor> container = new ArrayList<>();
-            String[] tensorIn = new String[] {"this", "is", "identity", "test"};
-            ONNXTensor ov = allocator.createTensor(tensorIn, new long[] { 2, 2 });
+            String[][] tensorIn = new String[][]{new String[] {"this", "is"}, new String[] {"identity", "test"}};
+            ONNXTensor ov = allocator.createTensor(tensorIn);
             container.add(ov);
 
-            List<ONNXValue> outputs = session.score(container);
+            List<ONNXValue> outputs = session.run(container);
             assertEquals(1,outputs.size());
 
             // first output is a tensor containing label
@@ -658,6 +658,30 @@ public class InferenceTest {
             assertTrue(firstOutput instanceof ONNXTensor);
 
             String[] labelOutput = (String[]) firstOutput.getValue();
+
+            assertEquals("this", labelOutput[0]);
+            assertEquals("is", labelOutput[1]);
+            assertEquals("identity", labelOutput[2]);
+            assertEquals("test", labelOutput[3]);
+            assertEquals(4,labelOutput.length);
+
+            ONNXValue.close(container);
+            container.clear();
+            ONNXValue.close(outputs);
+
+            container = new ArrayList<>();
+            String[] tensorInFlatArr = new String[]{"this", "is", "identity", "test"};
+            ov = allocator.createTensor(tensorInFlatArr, new long[]{2,2});
+            container.add(ov);
+
+            outputs = session.run(container);
+            assertEquals(1,outputs.size());
+
+            // first output is a tensor containing label
+            firstOutput = outputs.get(0);
+            assertTrue(firstOutput instanceof ONNXTensor);
+
+            labelOutput = (String[]) firstOutput.getValue();
 
             assertEquals("this", labelOutput[0]);
             assertEquals("is", labelOutput[1]);
