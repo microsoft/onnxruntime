@@ -158,7 +158,7 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
                 y_data,
                 &activation_,
                 Sum == nullptr,
-                const_cast<concurrency::ThreadPool*>(static_cast<OpKernelContextInternal*>(context)->GetOperatorThreadPool()));
+                context->GetOperatorThreadPool());
 
   return Status::OK();
 }
@@ -169,7 +169,6 @@ Status NchwcPoolBase::NchwcPool(OpKernelContext* context, MLAS_POOLING_KIND kind
   const auto& X_shape = X->Shape();
   ORT_ENFORCE(X_shape.NumDimensions() == 4);
   ORT_ENFORCE((X_shape[1] % MlasNchwcGetBlockSize()) == 0);
-
 
   std::vector<int64_t> pads = pool_attrs_.pads;
   std::vector<int64_t> output_dims = pool_attrs_.SetOutputSize(X_shape, X_shape[1], &pads);
@@ -185,7 +184,7 @@ Status NchwcPoolBase::NchwcPool(OpKernelContext* context, MLAS_POOLING_KIND kind
                 output_dims.data(),
                 X->template Data<float>(),
                 Y->template MutableData<float>(),
-                const_cast<concurrency::ThreadPool*>(static_cast<OpKernelContextInternal*>(context)->GetOperatorThreadPool()));
+                context->GetOperatorThreadPool());
 
   return Status::OK();
 }
@@ -195,8 +194,8 @@ Status NchwcMaxPool::Compute(OpKernelContext* context) const {
 }
 
 Status NchwcAveragePool::Compute(OpKernelContext* context) const {
-  return NchwcPoolBase::NchwcPool(context, pool_attrs_.count_include_pad ? MlasAveragePoolingIncludePad :
-                                                                           MlasAveragePoolingExcludePad);
+  return NchwcPoolBase::NchwcPool(context, pool_attrs_.count_include_pad ? MlasAveragePoolingIncludePad
+                                                                         : MlasAveragePoolingExcludePad);
 }
 
 }  // namespace contrib

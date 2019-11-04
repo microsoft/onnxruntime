@@ -21,11 +21,11 @@ class MklDnnSum : public MklDnnKernel {
     ReadAttributes(attributes, attributes_prefix);
   }
 
-  Status CreatePrimitives(const OrtCustomOpApi* api,
-                          OrtKernelContext* context,
-                          mkldnn::engine& cpu_engine,
-                          std::vector<mkldnn::primitive>& net,
-                          mkldnn::memory::format& source_format) override {
+  void CreatePrimitives(const OrtCustomOpApi* api,
+                        OrtKernelContext* context,
+                        mkldnn::engine& cpu_engine,
+                        std::vector<mkldnn::primitive>& net,
+                        std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) override {
     Ort::CustomOpApi ort{*api};
     int num_inputs = mklnode_ptr_->num_inputs;
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
@@ -41,12 +41,18 @@ class MklDnnSum : public MklDnnKernel {
       auto xdim = tensor_shape.size();
 
       ort_source_format_ = GetSourceFormat(static_cast<int>(xdim));
-      source_format = ort_source_format_;
-      src_format_ = ort_source_format_;
+
       x_shape = TensorShape(xshape, xdim);
+      mkldnn::memory::dims src_dims(
+          x_shape.GetDims().begin(), x_shape.GetDims().end());
+      ort_source_desc_ = mkldnn::memory::desc(
+          {src_dims}, MklDnnType<T>(), ort_source_format_);
+      source_desc_ = ort_source_desc_;
     } else {
       x_shape = parents_[0].get()->primitive_dst_shape_;
-      src_format_ = parents_[0].get()->primitive_dst_format_;
+      ort_source_format_ = parents_[0].get()->ort_source_format_;
+      ort_source_desc_ = parents_[0].get()->ort_source_desc_;
+      source_desc_ = parents_[0].get()->primitive_dst_desc_;
     }
     primitive_dst_shape_ = TensorShape(x_shape);
 
@@ -65,68 +71,64 @@ class MklDnnSum : public MklDnnKernel {
         auto xdim = tensor_shape.size();
         mkldnn::memory::dims dims(xdim);
 
-        ort_source_format_ = GetSourceFormat(static_cast<int>(xdim));
         x_shape1 = TensorShape(xshape, xdim);
-        mkldnn::memory::dims src_dims_mkl(
+        mkldnn::memory::dims src_dims(
             x_shape1.GetDims().begin(), x_shape1.GetDims().end());
-
-        src_md_.reset(new mkldnn::memory::desc(
-            {src_dims_mkl}, MklDnnType<T>(), src_format_));
-
-        auto mpd = mkldnn::memory::primitive_desc(*src_md_, cpu_engine);
-        auto src_memory = mkldnn::memory(mpd, nullptr);
+        auto mpd = mkldnn::memory::desc({src_dims}, MklDnnType<T>(), ort_source_format_);
+        auto src_memory = mkldnn::memory(mpd, cpu_engine, nullptr);
         srcs_pd_.push_back(mpd);
         srcs_memory_.push_back(src_memory);
         coeff.push_back(1.0);
       } else {
-        src_md_.reset(
-            new mkldnn::memory::desc(parents_[i].get()->primitive_dst_mem_.get()->get_primitive_desc().desc()));
-        auto mpd = mkldnn::memory::primitive_desc(*src_md_, cpu_engine);
-        auto src_memory = *parents_[i].get()->primitive_dst_mem_;  //mkldnn::memory(mpd);
+        x_shape = parents_[0].get()->primitive_dst_shape_;
+        auto mpd = mkldnn::memory::desc(parents_[i].get()->primitive_dst_desc_);
+        auto src_memory = *parents_[i].get()->primitive_dst_mem_;
         srcs_pd_.push_back(mpd);
         srcs_memory_.push_back(src_memory);
         coeff.push_back(1.0);
-        ort_source_format_ = source_format;
       }
     }
 
-    primitive_dst_md_.reset(new mkldnn::memory::desc(
-        {dst_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format::any));
-    sum_pd_.reset(new mkldnn::sum::primitive_desc(
-        *primitive_dst_md_, coeff, srcs_pd_));
-    primitive_dst_format_ = static_cast<mkldnn::memory::format>(sum_pd_->dst_primitive_desc().desc().data.format);
+    primitive_dst_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
+        mkldnn::memory::desc({dst_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format_tag::any));
+    sum_pd_ = onnxruntime::make_unique<mkldnn::sum::primitive_desc>(
+        mkldnn::sum::primitive_desc(*primitive_dst_md_, coeff, srcs_pd_, cpu_engine));
 
     if (mklnode_ptr_->output_index >= 0) {
       // last node of sub-graph. need to allocate memory for output_tensor
-      if (primitive_dst_format_ != ort_source_format_) {
+      if (primitive_dst_desc_ != ort_source_desc_) {
         // reorder neded. Use primitive output as input to reorder and
         // allocate buffer for reorder output, final output of this subgraph
-        primitive_dst_mem_.reset(new mkldnn::memory(sum_pd_->dst_primitive_desc()));
+        primitive_dst_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+            mkldnn::memory(sum_pd_->dst_desc(), cpu_engine));
       } else {
         // Last node but re-order not needed. Allocate buffer to output of this node
-        primitive_dst_mem_.reset(new mkldnn::memory(sum_pd_->dst_primitive_desc(), nullptr));
+        primitive_dst_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+            mkldnn::memory(sum_pd_->dst_desc(), cpu_engine, nullptr));
       }
     } else {
       // Intermediate node. Use mkldnn kernel internal memory for output and
       // use this as input to next node.
-      primitive_dst_mem_.reset(new mkldnn::memory(sum_pd_->dst_primitive_desc()));
+      primitive_dst_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+          mkldnn::memory(sum_pd_->dst_desc(), cpu_engine));
     }
-    primitive_dst_format_ = static_cast<mkldnn::memory::format>(sum_pd_->dst_primitive_desc().desc().data.format);
+    primitive_dst_desc_ = sum_pd_->dst_desc();
 
-    std::vector<mkldnn::primitive::at> inputs;
-    for (int i = 0; i < num_inputs; i++) {
-      inputs.push_back(srcs_memory_[i]);
-    }
-    auto c = mkldnn::sum(*sum_pd_, inputs, *primitive_dst_mem_);
+    auto c = mkldnn::sum(*sum_pd_);
     net.push_back(c);
+    std::unordered_map<int, mkldnn::memory> args{
+        {MKLDNN_ARG_DST, *primitive_dst_mem_}};
+    for (int i = 0; i < (int)num_inputs; i++) {
+      args.insert({MKLDNN_ARG_MULTIPLE_SRC + i, srcs_memory_[i]});
+    }
+    net_args.push_back(args);
 
     if (mklnode_ptr_->output_index >= 0) {
       // one of the end nodes. Allocate output buffer memory and
       // reorder is necessary
       mkldnn::memory::data_type t = MklDnnType<T>();
-      InitDstReorderOutput(cpu_engine, t, net);
+      InitDstReorderOutput(cpu_engine, t, net, net_args);
     }
-    return Status::OK();
   }
 
   Status Bind(const OrtCustomOpApi* api, OrtKernelContext* context) override {
@@ -150,7 +152,7 @@ class MklDnnSum : public MklDnnKernel {
       OrtValue* output = ort.KernelContext_GetOutput(context, mklnode_ptr_->output_index, &y_dims[0], static_cast<int>(primitive_dst_shape_.GetDims().size()));
       T* dst_data = ort.GetTensorMutableData<T>(output);
 
-      if (primitive_dst_format_ != ort_source_format_) {
+      if (primitive_dst_desc_ != ort_source_desc_) {
         reorder_dst_mem_to_->set_data_handle(dst_data);
       } else {
         primitive_dst_mem_->set_data_handle(dst_data);
@@ -161,11 +163,12 @@ class MklDnnSum : public MklDnnKernel {
 
  private:
   std::unique_ptr<mkldnn::memory::desc> src_md_;
+  std::vector<mkldnn::memory::desc> src_mds_;
   std::vector<mkldnn::memory> srcs_memory_;
 
-  std::vector<mkldnn::memory::primitive_desc> srcs_pd_;
-  std::unique_ptr<mkldnn::memory::primitive_desc> src_mpd_;
-  std::unique_ptr<mkldnn::memory::primitive_desc> dst_pd_;
+  std::vector<mkldnn::memory::desc> srcs_pd_;
+  std::unique_ptr<mkldnn::memory::desc> src_mpd_;
+  std::unique_ptr<mkldnn::memory::desc> dst_pd_;
   std::unique_ptr<mkldnn::sum::primitive_desc> sum_pd_;
 };
 }  // namespace mkl_dnn

@@ -28,7 +28,7 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
   auto input_shape = input0.Shape().GetDims();
 
   // pad input_dims with 1 to make ranks match
-  for (int i = 0; i < rank - input_shape.size(); i++) {
+  for (size_t i = 0; i < rank - input_shape.size(); i++) {
     input_shape.insert(input_shape.begin(), 1);
   }
 
@@ -41,7 +41,7 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
     auto out_span = fdm_output_dims.CpuSpan();
     auto sdm_span = fdm_output_subdim_size.CpuSpan();
     auto subdim_size = output_shape.Size();
-    for (auto i = 0; i < rank; i++) {
+    for (size_t i = 0; i < rank; i++) {
       in_span[i] = fast_divmod(static_cast<int>(input_shape[i]));
       out_span[i] = fast_divmod(static_cast<int>(output_shape[i]));
       // output_shape[i] won't be 0 here, it's covered in (0 == output_shape.Size())

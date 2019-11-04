@@ -118,6 +118,11 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
   }
 
+  // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
+  // doing it here saves all providers checking for this in GetCapability
+  if (graph.NumberOfNodes() == 0)
+    return Status::OK();
+
   // recurse into nested graphs first so we partition bottom up.
   for (auto& node : graph.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {

@@ -9,9 +9,10 @@ namespace onnxruntime {
 ONNX_CPU_OPERATOR_KERNEL(
     GatherElements,
     11,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-                      .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), 
-                                                                      DataTypeImpl::GetTensorType<int64_t>()}),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
+                                                        DataTypeImpl::GetTensorType<int64_t>()}),
     GatherElements);
 
 // Some helpers needed for GatherElements op -
@@ -57,7 +58,7 @@ static inline void increment_over_inner_dim(std::vector<int64_t>& current_dims, 
   int64_t rank = static_cast<int64_t>(current_dims.size());
 
   // 'reset' innermost dimension value
-  current_dims[0] = 0;
+  current_dims[rank - 1] = 0;
 
   // nothing to increment over
   if (rank == 1) {
@@ -77,7 +78,7 @@ static inline void increment_over_inner_dim(std::vector<int64_t>& current_dims, 
 
 // parse indices_tensor and along the way validate its shape and contents
 static std::vector<int64_t> parse_and_validate_indices_tensor(const Tensor* indices_tensor,
-                                                             int64_t axis, const TensorShape& input_shape) {
+                                                              int64_t axis, const TensorShape& input_shape) {
   const auto& indices_shape = indices_tensor->Shape().GetDims();
   int64_t indices_rank = static_cast<int64_t>(indices_shape.size());
   for (int64_t i = 0; i < indices_rank; ++i) {
@@ -86,8 +87,10 @@ static std::vector<int64_t> parse_and_validate_indices_tensor(const Tensor* indi
     // value if within bounds of the corresponding 'data' shape
     if (i != axis) {
       if (indices_shape[i] < 0 || indices_shape[i] > input_shape[i])
-        ORT_THROW("GatherElements op: 'indices' shape should have values within bounds of 'data' shape. "
-                  "Invalid value in indices shape is: ", indices_shape[i]);
+        ORT_THROW(
+            "GatherElements op: 'indices' shape should have values within bounds of 'data' shape. "
+            "Invalid value in indices shape is: ",
+            indices_shape[i]);
     }
   }
 
@@ -131,21 +134,20 @@ static std::vector<int64_t> parse_and_validate_indices_tensor(const Tensor* indi
 #pragma GCC diagnostic ignored "-Wclass-memaccess"
 #endif
 #endif
-template<bool is_string, typename T>
+template <bool is_string, typename T>
 static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
-                                      Tensor* output_tensor, int64_t axis) {
-
-  // get pointer to input data 
-  // optimizer will remove the redundant if/else block based on 'is_string' template parameter 
+                      Tensor* output_tensor, int64_t axis) {
+  // get pointer to input data
+  // optimizer will remove the redundant if/else block based on 'is_string' template parameter
   const T* input_data = nullptr;
   if (is_string) {
-    input_data = input_tensor->Data<T>();  
+    input_data = input_tensor->Data<T>();
   } else {
-    input_data = reinterpret_cast<const T*>(input_tensor->DataRaw());  
+    input_data = reinterpret_cast<const T*>(input_tensor->DataRaw());
   }
 
   // get pointer to output data
-  // optimizer will remove the redundant if/else block based on 'is_string' template parameter 
+  // optimizer will remove the redundant if/else block based on 'is_string' template parameter
   T* output_data = nullptr;
   if (is_string) {
     output_data = output_tensor->MutableData<T>();
@@ -176,18 +178,19 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
 
       // process 1 chunk of 'inner dimension' length
       for (int64_t i = 0; i < inner_dim_size; ++i) {
-        // optimizer will remove the redundant if/else block based on 'is_string' template parameter 
+        // optimizer will remove the redundant if/else block based on 'is_string' template parameter
         if (is_string) {
-          output_data[++output_counter] = input_data[base_offset + (indices_data[++indices_counter] * input_shape_pitches[axis]) + i];        
+          output_data[++output_counter] = input_data[base_offset + (indices_data[++indices_counter] * input_shape_pitches[axis]) + i];
         } else {
-          memcpy(output_data, input_data + (base_offset + (indices_data[++indices_counter] * input_shape_pitches[axis]) + i) * element_size, element_size);
-          output_data += element_size;        
+          memcpy(output_data,
+                 input_data + (base_offset + (indices_data[++indices_counter] * input_shape_pitches[axis]) + i) * element_size, element_size);
+          output_data += element_size;
         }
       }
 
       increment_over_inner_dim(process_dims, indices_shape);
     }
-  } 
+  }
   // we special-case inner dim as we can weed-out some unnecessary computations in element offset calculations
   else {
     while (num_inner_dim-- != 0) {
@@ -196,12 +199,12 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
       // process 1 chunk of 'inner dimension' length
       for (int64_t i = 0; i < inner_dim_size; ++i) {
         // for innermost axis, input_shape_pitches[axis] = 1 (so no need to multiply)
-        // optimizer will remove the redundant if/else block based on 'is_string' template parameter 
-        if (is_string) { 
-          output_data[++output_counter] = input_data[base_offset + indices_data[++indices_counter]];        
+        // optimizer will remove the redundant if/else block based on 'is_string' template parameter
+        if (is_string) {
+          output_data[++output_counter] = input_data[base_offset + indices_data[++indices_counter]];
         } else {
           memcpy(output_data, input_data + (base_offset + indices_data[++indices_counter]) * element_size, element_size);
-          output_data += element_size;        
+          output_data += element_size;
         }
       }
 

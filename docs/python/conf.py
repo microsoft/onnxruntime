@@ -16,7 +16,6 @@ import onnxruntime
 # markdown output: it requires two extensions available at:
 # https://github.com/xadupre/sphinx-docfx-yaml
 # https://github.com/xadupre/sphinx-docfx-markdown
-import sphinx_modern_theme
 import recommonmark
 
 # -- Project information -----------------------------------------------------
@@ -67,8 +66,7 @@ pygments_style = 'sphinx'
 
 # -- Options for HTML output -------------------------------------------------
 
-html_theme = "sphinx_modern_theme"
-html_theme_path = [sphinx_modern_theme.get_html_theme_path()]
+html_theme = "pyramid"
 html_logo = "../ONNX_Runtime_icon.png"
 html_static_path = ['_static']
 

@@ -107,6 +107,9 @@ struct Env : Base<OrtEnv> {
   Env(OrtLoggingLevel default_logging_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
 
+  Env& EnableTelemetryEvents();
+  Env& DisableTelemetryEvents();
+
   static const OrtApi* s_api;
 };
 
@@ -158,8 +161,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& EnableMemPattern();
   SessionOptions& DisableMemPattern();
 
-  SessionOptions& EnableSequentialExecution();
-  SessionOptions& DisableSequentialExecution();
+  SessionOptions& SetExecutionMode(ExecutionMode execution_mode);
 
   SessionOptions& SetLogId(const char* logid);
 
@@ -200,6 +202,8 @@ struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
 
   size_t GetDimensionsCount() const;
   void GetDimensions(int64_t* values, size_t values_count) const;
+  void GetSymbolicDimensions(const char** values, size_t values_count) const;
+
   std::vector<int64_t> GetShape() const;
 };
 

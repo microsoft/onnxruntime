@@ -10,6 +10,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/framework/endian_utils.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
 #include "core/framework/ort_value_pattern_planner.h"
@@ -23,17 +24,6 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 
 namespace {
-
-#ifdef __GNUC__
-constexpr inline bool IsLittleEndianOrder() noexcept { return __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__; }
-#else
-// On Windows and Mac, this function should always return true
-GSL_SUPPRESS(type .1)  // allow use of reinterpret_cast for this special case
-inline bool IsLittleEndianOrder() noexcept {
-  static int n = 1;
-  return (*reinterpret_cast<char*>(&n) == 1);
-}
-#endif
 
 std::vector<int64_t> GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
   const auto& dims = tensor_proto.dims();
@@ -49,35 +39,19 @@ std::vector<int64_t> GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorP
 template <typename T>
 static Status UnpackTensorWithRawData(const void* raw_data, size_t raw_data_length, size_t expected_size,
                                       /*out*/ T* p_data) {
-  // allow this low level routine to be somewhat unsafe. assuming it's thoroughly tested and valid
-  GSL_SUPPRESS(type)       // type.1 reinterpret-cast; type.4 C-style casts; type.5 'T result;' is uninitialized;
-  GSL_SUPPRESS(bounds .1)  // pointer arithmetic
-  GSL_SUPPRESS(f .23)      // buff and temp_bytes never tested for nullness and could be gsl::not_null
-  {
-    size_t expected_size_in_bytes;
-    if (!onnxruntime::IAllocator::CalcMemSizeForArray(expected_size, sizeof(T), &expected_size_in_bytes)) {
-      return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "size overflow");
-    }
-    if (raw_data_length != expected_size_in_bytes)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "UnpackTensor: the pre-allocated size does not match the raw data size, expected ",
-                             expected_size_in_bytes, ", got ", raw_data_length);
-    if (IsLittleEndianOrder()) {
-      memcpy(p_data, raw_data, raw_data_length);
-    } else {
-      const size_t type_size = sizeof(T);
-      const char* buff = reinterpret_cast<const char*>(raw_data);
-      for (size_t i = 0; i < raw_data_length; i += type_size, buff += type_size) {
-        T result;
-        const char* temp_bytes = reinterpret_cast<char*>(&result);
-        for (size_t j = 0; j < type_size; ++j) {
-          memcpy((void*)&temp_bytes[j], (void*)&buff[type_size - 1 - i], 1);
-        }
-        p_data[i] = result;
-      }
-    }
-    return Status::OK();
+  size_t expected_size_in_bytes;
+  if (!onnxruntime::IAllocator::CalcMemSizeForArray(expected_size, sizeof(T), &expected_size_in_bytes)) {
+    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "size overflow");
   }
+  if (raw_data_length != expected_size_in_bytes)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "UnpackTensor: the pre-allocated size does not match the raw data size, expected ",
+                           expected_size_in_bytes, ", got ", raw_data_length);
+
+  const char* const raw_data_bytes = reinterpret_cast<const char*>(raw_data);
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::ReadLittleEndian(
+      gsl::make_span(raw_data_bytes, raw_data_length), gsl::make_span(p_data, expected_size)));
+  return Status::OK();
 }
 }  // namespace
 
@@ -280,7 +254,7 @@ TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShape
   std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
   for (int i = 0; i < dims.size(); ++i) {
     tensor_shape_vec[i] = HasDimValue(dims[i]) ? dims[i].dim_value()
-                                                  : -1; /* symbolic dimensions are represented as -1 in onnxruntime*/
+                                               : -1; /* symbolic dimensions are represented as -1 in onnxruntime*/
   }
   return TensorShape(std::move(tensor_shape_vec));
 }
@@ -401,7 +375,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
       raw_data = tensor_proto.raw_data().data();
       raw_data_len = tensor_proto.raw_data().size();
     }
-    if (IsLittleEndianOrder() && raw_data != nullptr && deleter_for_file_data.d.f != nullptr) {
+    if (endian::native == endian::little && raw_data != nullptr && deleter_for_file_data.d.f != nullptr) {
       tensor_data = const_cast<void*>(raw_data);
       MoveOrtCallback(deleter_for_file_data.d, deleter);
     } else {
@@ -541,7 +515,7 @@ TensorProto::DataType GetTensorProtoType(const Tensor& tensor) {
 ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name,
                                                 const ONNX_NAMESPACE::TypeProto& tensor_proto_type) {
   // Given we are using the raw_data field in the protobuf, this will work only for little-endian format.
-  ORT_ENFORCE(IsLittleEndianOrder());
+  ORT_ENFORCE(endian::native == endian::little);
 
   // Set name, dimensions, type, and data of the TensorProto.
   ONNX_NAMESPACE::TensorProto tensor_proto;

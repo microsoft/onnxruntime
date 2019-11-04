@@ -83,12 +83,15 @@ option(onnxruntime_USE_EIGEN_THREADPOOL "Use eigen threadpool. Otherwise OpenMP 
 option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir")
 option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in language other than cpp" OFF)
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output data to standard output when executing the model." OFF)
+option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
-
+if(NOT onnxruntime_ENABLE_PYTHON)
+  set(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OFF)
+endif()
 if(onnxruntime_USE_OPENMP)
   find_package(OpenMP)
   if (OPENMP_FOUND)
@@ -589,7 +592,7 @@ if (onnxruntime_USE_CUDA)
   endif()
   string(APPEND CMAKE_CUDA_FLAGS "-cudart shared")
   enable_language(CUDA)
-  set(CMAKE_CUDA_STANDARD 14)
+  set(CMAKE_CUDA_STANDARD 11)
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
   list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn)
@@ -612,7 +615,7 @@ if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_70,code=sm_70") # V series
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --default-stream per-thread")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --default-stream legacy")
   if (NOT WIN32)
     set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --compiler-options -fPIC")
   endif()
@@ -651,6 +654,15 @@ endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   add_definitions(-DMICROSOFT_INTERNAL)
+endif()
+
+if (onnxruntime_USE_DML)
+  if(NOT WIN32)
+    message(FATAL_ERROR "The DirectML execution provider is only supported when building for Windows.")
+  endif()
+
+  add_definitions(-DUSE_DML=1)
+  include(dml)
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers

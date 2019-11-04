@@ -23,7 +23,7 @@ struct RunOptions {
   bool include_dim_values_in_subgraph = true;
   bool mixed_execution_providers = false;
 };
-}
+}  // namespace
 
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const RunOptions& options);
 
@@ -44,8 +44,8 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const R
 
 class IfOpTester : public OpTester {
  public:
-  IfOpTester(const RunOptions& options, int opset_version = 10) : 
-      OpTester("If", opset_version), options_{options}, opset_version_(opset_version) {
+  IfOpTester(const RunOptions& options, int opset_version = 10)
+      : OpTester("If", opset_version), options_{options}, opset_version_(opset_version) {
   }
 
  protected:
@@ -81,7 +81,7 @@ class IfOpTester : public OpTester {
         attr_proto.set_type(AttributeProto_AttributeType_INTS);
 
         auto* split_attribute = attr_proto.mutable_ints();
-        *split_attribute->Add() = 1; // split "unevenly" to create different shapes across the "then" and "else" branches
+        *split_attribute->Add() = 1;  // split "unevenly" to create different shapes across the "then" and "else" branches
         *split_attribute->Add() = 2;
 
         split_node.AddAttribute("split", attr_proto);
@@ -114,7 +114,7 @@ class IfOpTester : public OpTester {
   int opset_version_;
 };
 
-   /* Subgraphs looks like this. All inputs come from outer scope so we just
+/* Subgraphs looks like this. All inputs come from outer scope so we just
    create a NodeArg with the input name. The numbers in [] are the values the tests are expected to produce
    as output from each node.
 
@@ -294,6 +294,15 @@ TEST(If, NoShapeInMainGraph_ShapeInSubgraph_False) {
 TEST(If, MixedExecutionProviders) {
   RunOptions options{};
   options.mixed_execution_providers = true;
+  RunTest(true, options);
+}
+
+TEST(If, MixedExecutionProvidersNoShapeInSubgraph) {
+  RunOptions options{};
+  options.mixed_execution_providers = true;
+  options.include_dim_values_in_main_graph = true;
+  options.symbolic_dim_value_in_main_graph = 0;
+  options.include_dim_values_in_subgraph = false;
   RunTest(true, options);
 }
 #endif  // USE_CUDA

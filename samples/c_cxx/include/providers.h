@@ -22,3 +22,6 @@
 #ifdef USE_TENSORRT
 #include "onnxruntime/core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
+#ifdef USE_DML
+#include "onnxruntime/core/providers/dml/dml_provider_factory.h"
+#endif

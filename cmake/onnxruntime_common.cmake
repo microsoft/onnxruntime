@@ -16,6 +16,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/env.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.h"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/telemetry.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
 )
 
 if(WIN32)
@@ -25,6 +27,8 @@ if(WIN32)
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.h"
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.cc"
     )
+    # wndows platform adapter code uses advapi32
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES advapi32)
 else()
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/posix/*.h"
