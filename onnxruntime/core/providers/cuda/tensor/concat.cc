@@ -67,7 +67,6 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
                                  concat_sizes_gpu.GpuPtr(),
                                  concat_sizes_range_gpu.GpuPtr(),
                                  axis_dimension_input_output_mapping_gpu.GpuPtr(),
-                                 input_count,
                                  p.output_tensor->MutableDataRaw(),
                                  input_ptr.GpuPtr(),
                                  p.output_num_elements));
