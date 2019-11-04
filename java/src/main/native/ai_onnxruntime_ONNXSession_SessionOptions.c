@@ -34,10 +34,10 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setSe
 
 /*
  * Class:     ai_onnxruntime_ONNXSession_SessionOptions
- * Method:    setOptimisationLevel
+ * Method:    setOptimizationLevel
  * Signature: (JJI)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setOptimisationLevel
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setOptimizationLevel
   (JNIEnv * jniEnv, jobject obj, jlong apiHandle, jlong handle, jint optLevel) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     checkONNXStatus(jniEnv,api,api->SetSessionGraphOptimizationLevel((OrtSessionOptions*) handle, convertOptimizationLevel(optLevel)));
@@ -45,10 +45,10 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setOp
 
 /*
  * Class:     ai_onnxruntime_ONNXSession_SessionOptions
- * Method:    setIntraThreadPoolSize
+ * Method:    setIntraOpNumThreads
  * Signature: (JJI)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setIntraThreadPoolSize
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setIntraOpNumThreads
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint numThreads) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     checkONNXStatus(jniEnv,api,api->SetIntraOpNumThreads((OrtSessionOptions*) handle, numThreads));
@@ -56,10 +56,10 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setIn
 
 /*
  * Class:     ai_onnxruntime_ONNXSession_SessionOptions
- * Method:    setIntraThreadPoolSize
+ * Method:    setInterOpNumThreads
  * Signature: (JJI)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setInterThreadPoolSize
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setInterOpNumThreads
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint numThreads) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     checkONNXStatus(jniEnv,api,api->SetInterOpNumThreads((OrtSessionOptions*) handle, numThreads));

@@ -195,11 +195,11 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSession_getOutputInfo
 
 /*
  * Class:     ai_onnxruntime_ONNXSession
- * Method:    score
+ * Method:    run
  * Signature: (JJJJ[JJJ)[Lai/onnxruntime/ONNXValue;
- * private native ONNXValue[] score(long nativeHandle, long allocatorHandle, long inputNamesHandle, long numInputs, long[] inputTensorHandles, long outputNamesHandle, long numOutputs) throws ONNXException;
+ * private native ONNXValue[] run(long nativeHandle, long allocatorHandle, long inputNamesHandle, long numInputs, long[] inputTensorHandles, long outputNamesHandle, long numOutputs) throws ONNXException;
  */
-JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSession_score
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSession_run
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong sessionHandle, jlong allocatorHandle, jlong inputNamesHandle, jlong numInputs, jlongArray tensorArr, jlong outputNamesHandle, jlong numOutputs) {
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;

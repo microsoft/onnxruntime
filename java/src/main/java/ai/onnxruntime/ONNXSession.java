@@ -113,7 +113,7 @@ public class ONNXSession implements AutoCloseable {
      * @return The inferred outputs.
      * @throws ONNXException If there was an error in native code, or if there are zero or too many inputs.
      */
-    public List<ONNXValue> score(List<ONNXTensor> inputs) throws ONNXException {
+    public List<ONNXValue> run(List<ONNXTensor> inputs) throws ONNXException {
         if (!closed) {
             if (inputs.isEmpty() || (inputs.size() > numInputs)) {
                 throw new ONNXException("Unexpected number of inputs, expected [1," + numInputs + ") found " + inputs.size());
@@ -124,7 +124,7 @@ public class ONNXSession implements AutoCloseable {
                 inputHandles[i] = t.getNativeHandle();
                 i++;
             }
-            return Arrays.asList(score(ONNX.ortApiHandle,nativeHandle, allocator.handle, inputNamesHandle, numInputs, inputHandles, outputNamesHandle, numOutputs));
+            return Arrays.asList(run(ONNX.ortApiHandle,nativeHandle, allocator.handle, inputNamesHandle, numInputs, inputHandles, outputNamesHandle, numOutputs));
         } else {
             throw new IllegalStateException("Trying to score a closed ONNXSession.");
         }
@@ -157,7 +157,7 @@ public class ONNXSession implements AutoCloseable {
     private native long getOutputNames(long apiHandle, long nativeHandle, long allocatorHandle) throws ONNXException;
     private native NodeInfo[] getOutputInfo(long apiHandle, long nativeHandle, long outputNamesHandle) throws ONNXException;
 
-    private native ONNXValue[] score(long apiHandle, long nativeHandle, long allocatorHandle, long inputNamesHandle, long numInputs, long[] inputs, long outputNamesHandle, long numOutputs) throws ONNXException;
+    private native ONNXValue[] run(long apiHandle, long nativeHandle, long allocatorHandle, long inputNamesHandle, long numInputs, long[] inputs, long outputNamesHandle, long numOutputs) throws ONNXException;
 
     private native void closeSession(long apiHandle, long nativeHandle) throws ONNXException;
     private native void releaseNamesHandle(long apiHandle, long allocatorHandle, long namesHandle, long numNames) throws ONNXException;
@@ -218,12 +218,12 @@ public class ONNXSession implements AutoCloseable {
         }
 
         /**
-         * Sets the optimisation level of this options object, overriding the old setting.
-         * @param level The optimisation level to use.
+         * Sets the optimization level of this options object, overriding the old setting.
+         * @param level The optimization level to use.
          * @throws ONNXException If there was an error in native code.
          */
-        public void setOptimisationLevel(OptLevel level) throws ONNXException {
-            setOptimisationLevel(ONNX.ortApiHandle,nativeHandle, level.getID());
+        public void setOptimizationLevel(OptLevel level) throws ONNXException {
+            setOptimizationLevel(ONNX.ortApiHandle,nativeHandle, level.getID());
         }
 
         /**
@@ -231,8 +231,8 @@ public class ONNXSession implements AutoCloseable {
          * @param numThreads The number of threads to use.
          * @throws ONNXException If there was an error in native code.
          */
-        public void setInterThreadPoolSize(int numThreads) throws ONNXException {
-            setInterThreadPoolSize(ONNX.ortApiHandle,nativeHandle,numThreads);
+        public void setInterOpNumThreads(int numThreads) throws ONNXException {
+            setInterOpNumThreads(ONNX.ortApiHandle,nativeHandle,numThreads);
         }
 
         /**
@@ -240,8 +240,8 @@ public class ONNXSession implements AutoCloseable {
          * @param numThreads The number of threads to use.
          * @throws ONNXException If there was an error in native code.
          */
-        public void setIntraThreadPoolSize(int numThreads) throws ONNXException {
-            setIntraThreadPoolSize(ONNX.ortApiHandle,nativeHandle,numThreads);
+        public void setIntraOpNumThreads(int numThreads) throws ONNXException {
+            setIntraOpNumThreads(ONNX.ortApiHandle,nativeHandle,numThreads);
         }
 
         /**
@@ -291,10 +291,10 @@ public class ONNXSession implements AutoCloseable {
         //ORT_API(void, OrtDisableSequentialExecution, _In_ OrtSessionOptions* options);
         private native void setSequentialExecution(long apiHandle, long nativeHandle, boolean enable) throws ONNXException;
 
-        private native void setOptimisationLevel(long apiHandle, long nativeHandle, int level) throws ONNXException;
+        private native void setOptimizationLevel(long apiHandle, long nativeHandle, int level) throws ONNXException;
 
-        private native void setInterThreadPoolSize(long apiHandle, long nativeHandle, int numThreads) throws ONNXException;
-        private native void setIntraThreadPoolSize(long apiHandle, long nativeHandle, int numThreads) throws ONNXException;
+        private native void setInterOpNumThreads(long apiHandle, long nativeHandle, int numThreads) throws ONNXException;
+        private native void setIntraOpNumThreads(long apiHandle, long nativeHandle, int numThreads) throws ONNXException;
 
         private native long createOptions(long apiHandle);
 

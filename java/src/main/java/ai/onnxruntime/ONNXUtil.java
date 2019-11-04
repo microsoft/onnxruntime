@@ -228,7 +228,7 @@ public class ONNXUtil {
     }
 
     /**
-     * Reshapes an int array into the desired n-dimensional array.
+     * Reshapes an int array into the desired n-dimensional array, assuming the int array is stored in n-dimensional row-major order.
      * Throws {@link IllegalArgumentException} if the number of elements doesn't match between the shape and the input.
      * @param input The int array.
      * @param shape The desired shape.
