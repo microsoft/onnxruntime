@@ -65,6 +65,7 @@ REG_ONE_HOT_OP(int32_t, float, float);
 REG_ONE_HOT_OP(float, float, float);      // added this to satisfy onnx model tests
 REG_ONE_HOT_OP(int64_t, int32_t, float);  // added this to satisfy onnx model tests
 REG_ONE_HOT_OP(int64_t, float, float);    // added this to satisfy onnx model tests
+REG_ONE_HOT_OP(int64_t, float, int32_t);  // added this to satisfy onnx model tests
 
 Status ValidateInputs(const Tensor* depth,
                       const Tensor* values) {
