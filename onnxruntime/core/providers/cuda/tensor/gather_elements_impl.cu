@@ -16,7 +16,7 @@ __global__ void _GatherElementsKernel(
     const Tin* indices_data,
     const int64_t indices_size,
     const fast_divmod* indices_strides,
-    const int axis,
+    const int64_t axis,
     T* output_data) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(indices_index, indices_size);
   int dim, remain = indices_index;
@@ -47,7 +47,7 @@ void GatherElementsImpl(
     const Tin* indices_data,
     const int64_t indices_size,
     const fast_divmod* indices_strides,
-    const int axis,
+    const int64_t axis,
     T* output_data) {
 
   if (indices_size > 0) {
@@ -69,7 +69,7 @@ void GatherElementsImpl(
       const int32_t* indices_data,                    \
       const int64_t indices_size,                     \
       const fast_divmod* indices_strides,             \
-      const int axis,                                 \
+      const int64_t axis,                             \
       T* output_data);                                \
   template void GatherElementsImpl<T, int64_t>(       \
       const int64_t rank,                             \
@@ -80,7 +80,7 @@ void GatherElementsImpl(
       const int64_t* indices_data,                    \
       const int64_t indices_size,                     \
       const fast_divmod* indices_strides,             \
-      const int axis,                                 \
+      const int64_t axis,                             \
       T* output_data);                                \
 
 SPECIALIZED_IMPL(int8_t)

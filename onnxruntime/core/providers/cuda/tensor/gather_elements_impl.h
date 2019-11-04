@@ -19,7 +19,7 @@ void GatherElementsImpl(
     const Tin* indices_data,
     const int64_t indices_size,
     const fast_divmod* indices_strides,
-    const int axis,
+    const int64_t axis,
     T* output_data);
 
 }  // namespace cuda

@@ -65,11 +65,6 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   const auto& input_dims = input_shape.GetDims();
   const int64_t input_rank = static_cast<int64_t>(input_dims.size());
   const int64_t input_size = input_shape.Size();
-  if (input_rank < 1)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "GatherElements op: Cannot operate on scalar input");
-
-  const int axis = static_cast<int>(HandleNegativeAxis(axis_, input_rank));
 
   // Process indices tensor
   const auto* indices_tensor = context->Input<Tensor>(1);
@@ -77,23 +72,12 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   const auto& indices_dims = indices_shape.GetDims();
   const int64_t indices_rank = static_cast<int64_t>(indices_dims.size());
   const int64_t indices_size = indices_shape.Size();
-  if (input_rank != indices_rank)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "GatherElements op: Rank of input 'data' needs to be equal to rank of input 'indices'");
 
-  // Some shape checks for inidces and input tensors
-  for (int64_t i = 0; i < indices_rank; ++i) {
-    // for all axes except the axis of interest,
-    // make sure that the corresponding 'indices' shape
-    // value if within bounds of the corresponding 'data' shape
-    if (i != axis) {
-      if (indices_shape[i] < 0 || indices_shape[i] > input_shape[i])
-        ORT_THROW(
-            "GatherElements op: 'indices' shape should have values within bounds of 'data' shape. "
-            "Invalid value in indices shape is: ",
-            indices_shape[i]);
-    }
-  }
+  // Handle negative axis if any
+  const int64_t axis = static_cast<int64_t>(HandleNegativeAxis(axis_, input_rank));
+
+  // Validate input shapes and ranks
+  ValidateInputShapes(input_shape, indices_shape, axis);
 
   // create output tensor
   auto* output_tensor = context->Output(0, TensorShape(indices_shape));

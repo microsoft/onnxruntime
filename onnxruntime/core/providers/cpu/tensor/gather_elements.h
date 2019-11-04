@@ -10,7 +10,7 @@
 
 namespace onnxruntime {
 
-class GatherElements final : public OpKernel {
+class GatherElements : public OpKernel {
  public:
   GatherElements(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK(), "Missing/Invalid 'axis' attribute value");
@@ -27,5 +27,10 @@ class GatherElements final : public OpKernel {
 
   int64_t axis_;
 };
+
+// holds common checks for the CPU and CUDA GatherElements kernel
+Status ValidateInputShapes(const TensorShape& input_data_shape,
+                           const TensorShape& indices_shape,
+                           int64_t axis);  // axis might be different from the memeber axis_ based on input being processed
 
 }  // namespace onnxruntime
