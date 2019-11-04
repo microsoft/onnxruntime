@@ -31,6 +31,6 @@ class GatherElements final : public OpKernel {
 // holds common checks for the CPU and CUDA GatherElements kernel
 Status ValidateInputShapes(const TensorShape& input_data_shape,
                            const TensorShape& indices_shape,
-                           int64_t axis);  // axis might be different from the memeber axis_ based on input being processed
+                           int64_t axis);
 
 }  // namespace onnxruntime
