@@ -246,7 +246,6 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
 		  graph_utils::IsGraphInput(graph, last_add_node.MutableInputDefs()[i])) {
         bias = mul_node.MutableInputDefs()[i];
 	  }
-	  }
     }
     if (scale == nullptr || bias == nullptr) {
 		continue;
