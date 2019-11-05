@@ -34,14 +34,23 @@ static Eigen::Tensor<T, 2, Eigen::RowMajor, Eigen::DenseIndex> GetCoefficients(c
 }
 
 template <typename T>
+static Eigen::Tensor<T, 2, Eigen::RowMajor, Eigen::DenseIndex> GetIntercepts(const OpKernelInfo& info) {
+  std::vector<float> c = info.GetAttrsOrDefault<float>("intercepts");
+  Eigen::Tensor<T, 2, Eigen::RowMajor, Eigen::DenseIndex> t(1, c.size());
+  std::copy_n(c.data(), c.size(), t.data());
+}
+
+template <typename T>
 LinearRegressor<T>::LinearRegressor(const OpKernelInfo& info)
     : OpKernel(info),
       targets_(GetAttr<int64_t>(info, "targets")),
       coefficients_(GetCoefficients<T>(info, targets_)),
+      intercepts_(1, targets_),
       post_transform_(MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))) {
+  ORT_ENFORCE(targets_ > 0);
   {
     std::vector<float> c = info.GetAttrsOrDefault<float>("intercepts");
-    intercepts_.resize(c.size());
+    ORT_ENFORCE(c.size() == static_cast<size_t>(targets_));
     std::copy_n(c.data(), c.size(), intercepts_.data());
   }
 
@@ -49,11 +58,9 @@ LinearRegressor<T>::LinearRegressor(const OpKernelInfo& info)
   if (targets_ == 1) {
     // In RS4, we implemented the PROBIT transform for single class cases,
     // but the outputted value is most likely NaN
-    post_transform_ = POST_EVAL_TRANSFORM::NONE;
-  } else if (post_transform_ == POST_EVAL_TRANSFORM::PROBIT) {
-    // In RS4, we didn't implement the PROBIT transform for multiclass cases
-    post_transform_ = POST_EVAL_TRANSFORM::NONE;
-  }
+    ORT_ENFORCE(post_transform_ == POST_EVAL_TRANSFORM::NONE);
+  } else
+    ORT_ENFORCE(post_transform_ != POST_EVAL_TRANSFORM::PROBIT);
 }
 
 }  // namespace ml
