@@ -19,6 +19,7 @@ WORKDIR /root
 
 ENV INTEL_CVSDK_DIR /data/dldt/openvino_2019.3.376
 ENV INTEL_OPENVINO_DIR /data/dldt/openvino_2019.3.376
+ENV InferenceEngine_DIR /data/dldt/openvino_2019.3.376/deployment_tools/inference_engine/build
 
 ENV LD_LIBRARY_PATH $INTEL_CVSDK_DIR/deployment_tools/inference_engine/lib/intel64:$INTEL_CVSDK_DIR/deployment_tools/inference_engine/temp/omp/lib:$INTEL_CVSDK_DIR/deployment_tools/inference_engine/external/tbb/lib:/usr/local/openblas/lib:$LD_LIBRARY_PATH
 
