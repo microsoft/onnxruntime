@@ -11,11 +11,6 @@
 #include "intel_execution_provider.h"
 #include "intel_graph.h"
 
-#include "core/framework/tensorprotoutils.h"
-#include "core/session/onnxruntime_cxx_api.h"
-#include "core/util/protobuf_parsing_utils.h"
-#include "core/common/logging/logging.h"
-
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)
 #elif __GNUC__
@@ -31,19 +26,62 @@
 #endif
 
 #define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, std::min(destsz, srcsz))
-
+			        
 namespace onnxruntime {
 
 constexpr const char* Intel = "Intel";
 
 IntelExecutionProvider::IntelExecutionProvider(const IntelExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kIntelExecutionProvider} {
+
   std::cout << "In the Intel EP" << std::endl;
+  //ORT_ENFORCE(info.ng_backend_type == "CPU", "nGraph Execution Provider for onnxruntime currently is only supported for CPU backend.");
   ORT_UNUSED_PARAMETER(info);
 
-  DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(Intel, OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(Intel,     OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(device_info));
-}
+  }
+
+
+  /*
+  auto default_allocator_factory = [](int) {
+    auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator);
+    return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
+  };
+
+  DeviceAllocatorRegistrationInfo default_memory_info{
+    OrtMemTypeDefault,
+    std::move(default_allocator_factory),
+    std::numeric_limits<size_t>::max()
+  };
+
+  InsertAllocator(CreateAllocator(default_memory_info));
+
+  
+  auto cpu_allocator_factory = [](int) {
+    auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(
+      NGRAPH, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput);
+    return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
+  };
+
+  DeviceAllocatorRegistrationInfo cpu_memory_info{
+    OrtMemTypeCPUOutput,
+    std::move(cpu_allocator_factory),
+    std::numeric_limits<size_t>::max()
+  };
+
+  InsertAllocator(CreateAllocator(cpu_memory_info));
+
+  try {
+    ng_backend_ = ngraph::runtime::Backend::create(info.ng_backend_type);
+  } catch (const std::exception& exp) {
+    LOGS_DEFAULT(FATAL) << "Exception while creating nGraph " << info.ng_backend_type << " Backend: " << std::string(exp.what());
+  } catch (...) {
+    LOGS_DEFAULT(FATAL) << "Unknown exception while while creating nGraph " << info.ng_backend_type << " Backend";
+    throw;
+  }
+  
+} */
 
 //Gets the input count of given node
 int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set) {
@@ -72,11 +110,29 @@ bool IsDimensionSupported(const Node* node) {
   return true;
 }
 
+
 // Returns true only if op is in a mode that is not currently supported
 static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer) {
   const auto& optype = node->OpType();
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
-  std::cout << "Op Type: " << optype << std::endl;
+ 
+  auto node_inputs = node->InputDefs();
+
+  //Zero dimension check
+  for (size_t i = 0; i < node_inputs.size(); i++) {
+
+    auto name = node_inputs[i]->Name();
+    auto it = initializers.find(name);
+    std::cout << "Name: " << node_inputs[i]->Shape() << "Dims: " << node_inputs[i]->Shape()->dim_size() << std::endl;
+    if(it == initializers.end() && node_inputs[i]->Shape() != nullptr){
+      if (node_inputs[i]->Shape()->dim_size() == 0) {
+	std::cout << "Dims: " << node_inputs[i]->Shape()->dim_size() << std::endl;
+        //throw "Node_input is zero dimension";
+        return true;
+      }
+    }
+  }
+
 
   if (optype == "Reshape") {
     //nGraph Reshape op currently requires shape info available in advance.
@@ -84,7 +140,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     return initializers.find(shape_arg->Name()) == initializers.end();
   } else if (optype == "MaxPool") {
     //MaxPool "indices" output is not currently supported.
-    if (node->OutputDefs().size() > 1 || IsDimensionSupported(node) == false) {
+    if (node->OutputDefs().size() > 1) {
       return true;
     }
 
@@ -106,9 +162,9 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
   } else if (optype == "Conv") {
     if (GetInputCount(node, initializers) > 1)
       return true;
-  } else if (optype == "BatchNormalization") {
+/*  } else if (optype == "BatchNormalization") {
     if (GetInputCount(node, initializers) > 1)
-      return true;
+      return true; */
   } else if (optype == "PRelu") {
     return true;
   } else if (optype == "Selu") {
@@ -121,22 +177,22 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     return true;
   } else if (optype == "ThresholdedRelu") {
     return true;
+
   } else if (optype == "TopK") {
     //TopK opset 10 is currently not supported.
     //K as input is currently not suppported.
     return node->InputDefs().size() > 1;
-  } else if (optype == "LSTM") {
-    const auto& attributes = node->GetAttributes();
-    const auto direction_attr = attributes.find("direction");
-    if (direction_attr != attributes.end()) {
-      return direction_attr->second.s() == "reverse";
-    }
   } else if (optype == "MatMul") {
     //All matmuls except float have computation missmatch
     const bool A_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
     const bool B_is_float = node->InputDefs()[1]->Type()->find("float") != std::string::npos;
     return (A_is_float && B_is_float) ? false : true;
   } else if (optype == "Pad") {
+    // Pad is only supported only up to opset 10 (in opset 11 more inputs were added)
+    if (node->InputDefs().size() > 1) {
+      return true;
+    }
+
     //3D pad with negative padding have computation missmatch
     const auto& attributes = node->GetAttributes();
     const auto pad_attr = attributes.find("pads");
@@ -145,6 +201,14 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
         if (val < 0)
           return true;
       }
+    }
+    const auto mode_attr = attributes.find("mode");
+    if(mode_attr != attributes.end())
+    {
+        const auto mode = mode_attr->second.s();
+        static const std::set<std::string> allowed_modes = {"constant", "reflect"};
+
+        return allowed_modes.count(mode) == 0;
     }
   } else if (optype == "Slice") {
     //Slice in opset 10 is currently not supported.
@@ -173,17 +237,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     // default value of ceil_mode (0) is supported.
     if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
       return true;
-    }
-  } else if (optype == "Split") {
-    const auto& attributes = node->GetAttributes();
-    const auto split_attr = attributes.find("split");
-
-    if (split_attr != attributes.end()) {
-      // split implementation contains a bug that doesn't throw for incorrect split values
-      // disabling temporarily until it's fixed in the next release of nGraph
-      const auto splits = split_attr->second.ints();
-      return std::any_of(std::begin(splits), std::end(splits),
-                         [](const auto split) { return split <= 0; });
     }
   } else if (optype == "QLinearMatMul") {
     const auto& a_zero_point = node->InputDefs()[2];
@@ -214,7 +267,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       // not found in initializers -> not const
       return initializers.find(a_zero_point->Name()) == initializers.end() ||
              initializers.find(b_zero_point->Name()) == initializers.end();
-    }  // else -> azp & bzp are 0 by default according to ONNX spec
+    } // else -> azp & bzp are 0 by default according to ONNX spec
   } else if (optype == "ConvInteger") {
     // all ConvInteger zero points need to be constants
     const auto inputs = node->InputDefs();
@@ -230,7 +283,11 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       // not found in initializers -> not const
       return initializers.find(x_zero_point->Name()) == initializers.end() ||
              initializers.find(w_zero_point->Name()) == initializers.end();
-    }  // else -> xzp & wzp are 0 by default according to ONNX spec
+    } // else -> xzp & wzp are 0 by default according to ONNX spec
+  } else if (optype == "Expand") {
+    // nGraph only supports constant shape input values
+    const auto& shape_input = node->InputDefs()[1];
+    return !graph_viewer.IsConstantInitializer(shape_input->Name(), true);
   }
 
   //Op doesn't fall into known any of unsupported modes.
@@ -301,13 +358,12 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
 }
 
 static void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
-                                    const onnxruntime::GraphViewer& graph_viewer,
                                     const std::vector<std::string>& inputs,
                                     const std::vector<std::string>& outputs,
                                     std::vector<std::unique_ptr<ComputeCapability>>& result) {
   static size_t op_counter = 0;
 
-  auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
+  auto meta_def = onnxruntime::make_unique<IndexedSubGraph::MetaDef>();
   meta_def->name = "NGRAPHCustomOp_" + std::to_string(++op_counter);
   meta_def->domain = kNGraphDomain;
   meta_def->since_version = 1;
@@ -315,17 +371,10 @@ static void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
   meta_def->inputs = inputs;
   meta_def->outputs = outputs;
 
-  //store the name of the graph this node belongs to - used to retrieve graph initializers from the cache
-  ONNX_NAMESPACE::AttributeProto graph_name;
-  graph_name.set_name("graph_name");
-  graph_name.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
-  graph_name.set_s(graph_viewer.Name());
-  meta_def->attributes["graph_name"] = graph_name;
-
-  std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
   sub_graph->nodes = nodes;
   sub_graph->SetMetaDef(meta_def);
-  result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+  result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
 }
 
 static int GetOnnxOpSet(const GraphViewer& graph_viewer) {
@@ -337,7 +386,7 @@ static std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int 
   std::map<std::string, std::set<std::string>> ng_supported_ops;
   ng_supported_ops.emplace(kOnnxDomain, ngraph::onnx_import::get_supported_operators(onnx_opset, kOnnxDomain));
 
-  const std::set<std::string> ng_disabled_ops = {"LSTM", "Gather"};  //Place-holder for ops not supported.
+  const std::set<std::string> ng_disabled_ops = {"LSTM"};  //Place-holder for ops not supported.
 
   for (const auto& disabled_op : ng_disabled_ops) {
     ng_supported_ops.at(kOnnxDomain).erase(disabled_op);
@@ -455,13 +504,24 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
   }
 
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
+  std::vector<std::string> const_inputs;
   for (const auto& in_arg : ordered_input_args) {
     if ((initializers.count(in_arg) && !original_graph_inputs.count(in_arg)) ||
         ng_required_initializers.count(in_arg)) {
-      cluster_inputs.push_back(in_arg);
-    } else if (!output_args.count(in_arg)) {
+      const_inputs.push_back(in_arg);
+    }
+  }
+
+  for (const auto& in_arg : ordered_input_args) {
+    if (!output_args.count(in_arg) &&
+        !((initializers.count(in_arg) && !original_graph_inputs.count(in_arg)) ||
+        ng_required_initializers.count(in_arg))) {
       cluster_inputs.push_back(in_arg);
     }
+  }
+
+  for (const auto& in_arg : const_inputs) {
+    cluster_inputs.push_back(in_arg);
   }
 
   std::copy(external_output_args.begin(), external_output_args.end(), std::back_inserter(cluster_outputs));
@@ -475,7 +535,7 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
 
 std::vector<std::unique_ptr<ComputeCapability>>
 IntelExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                      const std::vector<const KernelRegistry*>& kernel_registries) const {
+                                       const std::vector<const KernelRegistry*>& kernel_registries) const {
   ORT_UNUSED_PARAMETER(kernel_registries);
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
@@ -523,7 +583,7 @@ IntelExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
                   [&outputs](const NodeArg* node_arg) { outputs.push_back(node_arg->Name()); });
 
     // Create and add this graph to result.
-    AppendClusterToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), graph_viewer, inputs, outputs, result);
+    AppendClusterToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), inputs, outputs, result);
 
   } else {  // unsupported_nodes_idx.empty()
     const auto ng_clusters = GetPartitionedClusters(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
@@ -533,7 +593,7 @@ IntelExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
       GetInputsOutputsOfCluster(graph_viewer, this_cluster, ng_required_initializers, cluster_inputs, cluster_outputs);
 
       if (!cluster_inputs.empty()) {
-        AppendClusterToSubGraph(this_cluster, graph_viewer, cluster_inputs, cluster_outputs, result);
+        AppendClusterToSubGraph(this_cluster, cluster_inputs, cluster_outputs, result);
       }
     }
   }
@@ -547,16 +607,14 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
   ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", fused_node->Name());
 
   const Graph& node_subgraph = node_function->Body();
-  onnxruntime::Model model{node_subgraph.Name(), true};
+  onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{},
+                           IOnnxRuntimeOpSchemaRegistryList{}, node_subgraph.DomainToVersionMap()};
 
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
   *(model_proto.mutable_graph()) = node_subgraph.ToGraphProto();
 
-  auto opset = model_proto.add_opset_import();
-  opset->set_domain(kOnnxDomain);
-  opset->set_version(node_subgraph.DomainToVersionMap().at(kOnnxDomain));
   return model_proto;
 }
 
@@ -602,3 +660,38 @@ common::Status IntelExecutionProvider::Compile(
   return Status::OK();
 }
 }  // namespace onnxruntime
+
+/*
+Status NGRAPHExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                                        std::vector<NodeComputeInfo>& node_compute_funcs) {
+  for (const auto& fused_node : fused_nodes) {
+    NodeComputeInfo compute_info;
+
+    // Local copy of backend since, class members cannot be captured.
+    auto ngraph_backend = ng_backend_;
+    compute_info.create_state_func = [model_proto = GetModelProtoFromFusedNode(fused_node), ngraph_backend]
+                                     (ComputeContext* context, FunctionState* state)
+    {
+      auto* p = new ngraph_ep::NGRAPHCustomOp(context, model_proto, ngraph_backend);
+      *state = p;
+      return 0;
+    };
+
+    compute_info.release_state_func = [](FunctionState state) {
+      if (state)
+        delete reinterpret_cast<onnxruntime::ngraph_ep::NGRAPHCustomOp*>(state);
+    };
+
+    compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
+      onnxruntime::ngraph_ep::NGRAPHCustomOp* ng_custom_op = reinterpret_cast<onnxruntime::ngraph_ep::NGRAPHCustomOp*>(state);
+      return ng_custom_op->Compute(api, context);
+    };
+
+    node_compute_funcs.push_back(compute_info);
+  }
+
+  return Status::OK();
+}
+
+}  // namespace onnxruntime
+*/

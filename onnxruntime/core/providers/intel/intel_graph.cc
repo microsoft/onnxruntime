@@ -364,7 +364,7 @@ void IntelGraph::CreateNGraphFunc(const ONNX_NAMESPACE::ModelProto& model_proto)
   pass_manager.register_pass<ngraph::pass::Opset1Upgrade>();
   pass_manager.run_passes(ng_function);
   InferenceEngine::CNNNetwork network(ng_function);
-
+  //network.serialize("IR.xml", "IR.bin");
   intel_network_ = std::make_shared<InferenceEngine::CNNNetwork>(network);
 }
 

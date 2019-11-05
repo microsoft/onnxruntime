@@ -42,6 +42,7 @@ void TestBatchNorm(const InputDataMap& input_data_map,
   std::unordered_set<std::string> excluded_eps = {kTensorrtExecutionProvider};
   if (spatial_mode == 0) {
     excluded_eps.insert(kNGraphExecutionProvider);
+    excluded_eps.insert(kIntelExecutionProvider);
   }
   test.Run(expect_result, err_str, excluded_eps);
 }
