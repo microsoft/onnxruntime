@@ -32,7 +32,7 @@ Status LabelEncoder::Compute(OpKernelContext* context) const {
   auto input_type = X.DataType();
 
   if (utils::IsDataTypeString(input_type)) {
-    if (!utils::IsPrimDataType<int64_t>(Y.DataType()))
+    if (!utils::IsPrimitiveDataType<int64_t>(Y.DataType()))
       return Status(ONNXRUNTIME, FAIL, "Input of tensor(string) must have output of tensor(int64)");
 
     auto input = gsl::make_span(X.template Data<std::string>(), shape.Size());

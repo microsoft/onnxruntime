@@ -17,7 +17,6 @@ namespace contrib {
 
 using ::onnxruntime::contrib::rnn::detail::UniDirectionalAttnLstm;
 using ::onnxruntime::rnn::detail::Allocate;
-namespace on = ONNX_NAMESPACE;
 
 extern template class BahdanauAttention<float>;
 
@@ -40,12 +39,11 @@ DeepCpuAttnLstmOp::Compute(OpKernelContext* context) const {
   // auto& logger = context->Logger();
 
   auto prim_type = X.DataType()->AsPrimitiveDataType();
-  ORT_ENFORCE(prim_type  != nullptr, "Invalid data type for LSTM operator of ", X.DataType());
-  switch (prim_type->GetTensorElementType()) {
-    case on::TensorProto_DataType_FLOAT:
+  switch (prim_type->GetDataType()) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       status = ComputeImpl<float>(*context);
       break;
-    case on::TensorProto_DataType_DOUBLE:
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
       /* Need to update all the helpers to support double...
     status = ComputeImpl<double>(*context); */
       ORT_NOT_IMPLEMENTED("LSTM operator does not support double yet");

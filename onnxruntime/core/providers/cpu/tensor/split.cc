@@ -77,9 +77,9 @@ Status Split::Compute(OpKernelContext* context) const {
   Status status;
   auto data_type = input.DataType();
 
-  if (utils::IsPrimDataType<float>(data_type))
+  if (utils::IsPrimitiveDataType<float>(data_type))
     status = ComputeImpl<float>(*context, input);
-  else if (utils::IsPrimDataType<int32_t>(data_type))
+  else if (utils::IsPrimitiveDataType<int32_t>(data_type))
     status = ComputeImpl<int32_t>(*context, input);
   else if (utils::IsDataTypeString(data_type))
     status = ComputeImpl<std::string>(*context, input);

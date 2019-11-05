@@ -100,11 +100,11 @@ static std::vector<int64_t> parse_and_validate_indices_tensor(const Tensor* indi
   std::vector<int64_t> indices_data;
   // reserving memory ahead as we know the size of the container
   indices_data.reserve(num_elements);
-  if (utils::IsPrimDataType<int32_t>(indices_tensor->DataType())) {
+  if (utils::IsPrimitiveDataType<int32_t>(indices_tensor->DataType())) {
     const auto* data = indices_tensor->Data<int32_t>();
     for (int64_t i = 0; i < num_elements; ++i)
       indices_data.push_back(data[i]);
-  } else if (utils::IsPrimDataType<int64_t>(indices_tensor->DataType())) {
+  } else if (utils::IsPrimitiveDataType<int64_t>(indices_tensor->DataType())) {
     const auto* data = indices_tensor->Data<int64_t>();
     for (int64_t i = 0; i < num_elements; ++i)
       indices_data.push_back(data[i]);

@@ -839,16 +839,14 @@ namespace c_api_internal {
 
 // Workaround GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226
 // can not specify lambda directly
-template <class T, class... Args>
-inline int invoke_get_value_callable (size_t& called, OrtStatus** st, int32_t dt_type, Args&&... args) {
-  auto fn = [&] {
-    if (utils::ToTensorDataType<T>() == dt_type) {
-      *st = OrtGetValueImplSeqOfTensorsHelper<T>(std::forward<Args>(args)...);
-      ++called;
-    }
-    return 0;
-  };
-  return fn();
+template <class T>
+inline int InvokeGetValueCallable(int32_t dt_type, size_t& called, OrtStatus** st, OrtAllocator* allocator, const onnxruntime::Tensor& one_tensor,
+                                  OrtValue** out) {
+  if (utils::ToTensorProtoElementType<T>() == dt_type) {
+    *st = OrtGetValueImplSeqOfTensorsHelper<T>(allocator, one_tensor, out);
+    ++called;
+  }
+  return 0;
 }
 
 template <typename... Types>
@@ -857,7 +855,7 @@ inline OrtStatus* GetValueImplSeqOfTensorsDispatcher(int32_t dt_type, OrtAllocat
   OrtStatus* st{};
   size_t called = 0;
 
-  int results[] = {0, invoke_get_value_callable<Types>(called, &st, dt_type, allocator, one_tensor, out)...};
+  int results[] = {0, InvokeGetValueCallable<Types>(dt_type, called, &st, allocator, one_tensor, out)...};
 
   ORT_UNUSED_PARAMETER(results);
   ORT_ENFORCE(called < 2, "OrtGetValueImplSeqOfTensors CallDispatcher broken. Check for duplicate type.");
@@ -882,7 +880,7 @@ OrtStatus* OrtGetValueImplSeqOfTensors(const OrtValue* p_ml_value, int index, Or
   }
   st = c_api_internal::GetValueImplSeqOfTensorsDispatcher<float, double, MLFloat16, BFloat16, bool, std::string,
                                                           int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>(
-      tensor_elem_type->GetTensorElementType(), allocator, one_tensor, out);
+      tensor_elem_type->GetDataType(), allocator, one_tensor, out);
   return st;
 }
 
@@ -1037,16 +1035,13 @@ namespace c_api_internal {
 
 // Workaround GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226
 // can not specify lambda directly
-template <class T, class... Args>
-inline int invoke_createvalue_callable(size_t& called, OrtStatus** st, int32_t dt_type, Args&&... args) {
-  auto fn = [&] {
-    if (utils::ToTensorDataType<T>() == dt_type) {
-      *st = OrtCreateValueImplSeqHelperTensor<T>(std::forward<Args>(args)...);
-      ++called;
-    }
-    return 0;
-  };
-  return fn();
+template <class T>
+inline int InvokeCreateValueCallable(int32_t dt_type, size_t& called, OrtStatus** st, const onnxruntime::Tensor& one_tensor, onnxruntime::Tensor& out) {
+  if (utils::ToTensorProtoElementType<T>() == dt_type) {
+    *st = OrtCreateValueImplSeqHelperTensor<T>(one_tensor, out);
+    ++called;
+  }
+  return 0;
 }
 
 template <typename... Types>
@@ -1054,7 +1049,7 @@ inline OrtStatus* CreateValueImplSeqHelperDispatcher(MLDataType tensor_elem_type
   OrtStatus* st{};
   size_t called = 0;
 
-  int results[] = {0, invoke_createvalue_callable<Types>(called, &st, dt_type, one_tensor, out)...};
+  int results[] = {0, InvokeCreateValueCallable<Types>(dt_type, called, &st, one_tensor, out)...};
 
   ORT_UNUSED_PARAMETER(results);
   ORT_ENFORCE(called < 2, "OrtCreateValueImplSeqHelper CallDispatcher broken. Check for duplicate type.");
@@ -1093,7 +1088,7 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t 
 
     OrtStatus* st{};
     st = c_api_internal::CreateValueImplSeqHelperDispatcher<bool, float, double, MLFloat16, BFloat16, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>(
-        tensor_elem_type, prim_type->GetTensorElementType(), one_tensor, seq_ptr->tensors[idx]);
+        tensor_elem_type, prim_type->GetDataType(), one_tensor, seq_ptr->tensors[idx]);
 
     if (st) {
       return st;
@@ -1180,10 +1175,10 @@ template <typename KeyType>
 static OrtStatus* OrtCreateValueImplMapHelper(const Tensor& key_tensor, const Tensor& value_tensor,
                                               OrtValue** out) {
   auto value_type = value_tensor.DataType()->AsPrimitiveDataType();
-  if (value_type == nullptr) {
-    return OrtApis::CreateStatus(ORT_FAIL, "Value type is not supported yet.");
-  }
-  switch (value_type->GetTensorElementType()) {
+  ORT_ENFORCE(value_type != nullptr, "Tensor must always contain primitive types. Found: ",
+    DataTypeImpl::ToString(value_tensor.DataType()));
+
+  switch (value_type->GetDataType()) {
     case ONNX_NAMESPACE::TensorProto_DataType_STRING:
       return OrtCreateMapMLValue<KeyType, std::string>(key_tensor, value_tensor, out);
       break;
@@ -1200,7 +1195,9 @@ static OrtStatus* OrtCreateValueImplMapHelper(const Tensor& key_tensor, const Te
       break;
   }
 
-  return OrtApis::CreateStatus(ORT_FAIL, "Value type is not supported yet.");
+  std::string msg("Value type is not supported yet: ");
+  msg += DataTypeImpl::ToString(value_tensor.DataType());
+  return OrtApis::CreateStatus(ORT_FAIL, msg.c_str());
 }
 
 static OrtStatus* OrtCreateValueImplMap(const OrtValue* const* in, size_t num_values, OrtValue** out) {
@@ -1230,7 +1227,7 @@ static OrtStatus* OrtCreateValueImplMap(const OrtValue* const* in, size_t num_va
   if (utils::IsDataTypeString(key_type)) {
     return OrtCreateValueImplMapHelper<std::string>(key_tensor, value_tensor, out);
   }
-  if (utils::IsPrimDataType<int64_t>(key_type)) {
+  if (utils::IsPrimitiveDataType<int64_t>(key_type)) {
     return OrtCreateValueImplMapHelper<int64_t>(key_tensor, value_tensor, out);
   }
   return OrtApis::CreateStatus(ORT_FAIL, "Key type is not supported yet.");

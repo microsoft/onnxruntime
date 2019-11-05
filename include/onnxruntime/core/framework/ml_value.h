@@ -44,7 +44,7 @@ struct OrtValue {
   }
 
   bool IsTensor() const noexcept {
-    return type_->IsTensorType();
+    return (type_ != nullptr && type_->IsTensorType());
   }
 
   onnxruntime::MLDataType Type() const {

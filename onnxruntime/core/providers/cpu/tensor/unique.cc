@@ -81,11 +81,11 @@ Status Unique::Compute(OpKernelContext* context) const {
   auto data_type = input.DataType();
 
   // arbitrary set of types to support initially
-  if (utils::IsPrimDataType<float>(data_type))
+  if (utils::IsPrimitiveDataType<float>(data_type))
     status = ComputeImpl<float>(*context);
-  else if (utils::IsPrimDataType<int64_t>(data_type))
+  else if (utils::IsPrimitiveDataType<int64_t>(data_type))
     status = ComputeImpl<int64_t>(*context);
-  else if (utils::IsPrimDataType<int8_t>(data_type))
+  else if (utils::IsPrimitiveDataType<int8_t>(data_type))
     status = ComputeImpl<int8_t>(*context);
   else if (utils::IsDataTypeString(data_type))
     status = ComputeImpl<std::string>(*context);

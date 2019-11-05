@@ -137,7 +137,7 @@ ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(
   if (prim_type == nullptr) {
     return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   }
-  return TensorDataTypeToOnnxRuntimeTensorElementDataType(prim_type->GetTensorElementType());
+  return TensorDataTypeToOnnxRuntimeTensorElementDataType(prim_type->GetDataType());
 }
 
 OrtStatus* GetTensorShapeAndTypeHelper(ONNXTensorElementDataType type, const onnxruntime::TensorShape shape,

@@ -93,12 +93,12 @@ void PyCustomKernel::Compute(OrtKernelContext* context) {
 int32_t PyCustomKernel::GetType(const OrtValue* input) const {
   int32_t numpy_type;
   ORT_ENFORCE(nullptr != input);
-  ORT_ENFORCE(const_cast<MLValue*>(input)->IsTensor(), "input must be a tensor");
-  auto data_type = const_cast<MLValue*>(input)->Get<Tensor>().DataType()->AsPrimitiveDataType();
+  ORT_ENFORCE(input->IsTensor(), "input must be a tensor");
+  auto data_type = input->Get<Tensor>().DataType()->AsPrimitiveDataType();
   ORT_ENFORCE(data_type != nullptr, "Input type not supported");
 
   namespace on = ONNX_NAMESPACE;
-  switch (data_type->GetTensorElementType ()) {
+  switch (data_type->GetDataType ()) {
     case on::TensorProto_DataType_BOOL:
       numpy_type = 0;
       break;
@@ -133,7 +133,7 @@ int32_t PyCustomKernel::GetType(const OrtValue* input) const {
       numpy_type = 12;
       break;
     default:
-      ORT_ENFORCE(false, "Input primitive type not supported");
+      ORT_THROW("Input primitive type not supported: ", DataTypeImpl::ToString(data_type));
   }
   return numpy_type;
 }

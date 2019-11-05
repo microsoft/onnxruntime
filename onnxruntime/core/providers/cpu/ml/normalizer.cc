@@ -172,22 +172,19 @@ void Normalizer::Normalize(OpKernelContext* context) const {
 // Workaround GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226
 // can not specify lambda directly
 template <class T>
-inline int Normalizer::invoke_normalizer_callable(size_t& called, int32_t dt_type, OpKernelContext* ctx) const {
-  auto fn = [&] {
-    if (utils::ToTensorDataType<T>() == dt_type) {
-      Normalize<T>(ctx);
-      ++called;
-    }
-    return 0;
-  };
-  return fn();
+inline int Normalizer::InvokeNormalizerCallable(int32_t dt_type, size_t& called, OpKernelContext* ctx) const {
+  if (utils::ToTensorProtoElementType<T>() == dt_type) {
+    Normalize<T>(ctx);
+    ++called;
+  }
+  return 0;
 }
 
 template <typename... Types>
 inline void Normalizer::CallDispatcher(int32_t dt_type, OpKernelContext* ctx) const {
   size_t called = 0;
 
-  int results[] = {0, invoke_normalizer_callable<Types>(called, dt_type, ctx)...};
+  int results[] = {0, InvokeNormalizerCallable<Types>(dt_type, called, ctx)...};
 
   ORT_UNUSED_PARAMETER(results);
   ORT_ENFORCE(called < 2, "Normalizer CallDispatcher broken. Check for duplicate type.");
@@ -201,7 +198,7 @@ Status Normalizer::Compute(OpKernelContext* context) const {
 
   ORT_ENFORCE(input_type != nullptr, "Invalid input type of ", input_type);
 
-  CallDispatcher<float, double, int64_t, int32_t>(input_type->GetTensorElementType(), context);
+  CallDispatcher<float, double, int64_t, int32_t>(input_type->GetDataType(), context);
 
   return Status::OK();
 }

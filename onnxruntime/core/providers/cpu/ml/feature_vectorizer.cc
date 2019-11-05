@@ -63,14 +63,14 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
     auto data_type = input_tensor.DataType();
     auto cur_out = out.begin() + feature_offset;
 
-    if (utils::IsPrimDataType<float>(data_type)) {
+    if (utils::IsPrimitiveDataType<float>(data_type)) {
       // straight copy for float to float
       VectorizeTensor<float>(input_tensor, feature_size, total_dimensions_, cur_out);
-    } else if (utils::IsPrimDataType<int32_t>(data_type)) {
+    } else if (utils::IsPrimitiveDataType<int32_t>(data_type)) {
       VectorizeTensor<int32_t>(input_tensor, feature_size, total_dimensions_, cur_out);
-    } else if (utils::IsPrimDataType<int64_t>(data_type)) {
+    } else if (utils::IsPrimitiveDataType<int64_t>(data_type)) {
       VectorizeTensor<int64_t>(input_tensor, feature_size, total_dimensions_, cur_out);
-    } else if (utils::IsPrimDataType<double>(data_type)) {
+    } else if (utils::IsPrimitiveDataType<double>(data_type)) {
       VectorizeTensor<double>(input_tensor, feature_size, total_dimensions_, cur_out);
     } else {
       // should never happen. graph validation should have failed

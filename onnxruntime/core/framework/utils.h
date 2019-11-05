@@ -88,62 +88,62 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
 #endif
 
 template <typename T>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType();
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType();
 
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<float>() {
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<float>() {
   return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
 }
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint8_t>() {
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<uint8_t>() {
   return ONNX_NAMESPACE::TensorProto_DataType_UINT8;
 };
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int8_t>() {
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<int8_t>() {
   return ONNX_NAMESPACE::TensorProto_DataType_INT8;
 };
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint16_t>() {
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<uint16_t>() {
   return ONNX_NAMESPACE::TensorProto_DataType_UINT16;
 };
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int16_t>() {
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<int16_t>() {
   return ONNX_NAMESPACE::TensorProto_DataType_INT16;
 };
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int32_t>() {
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<int32_t>() {
   return ONNX_NAMESPACE::TensorProto_DataType_INT32;
 };
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int64_t>() {
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<int64_t>() {
   return ONNX_NAMESPACE::TensorProto_DataType_INT64;
 };
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<std::string>() {
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<std::string>() {
   return ONNX_NAMESPACE::TensorProto_DataType_STRING;
 };
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<bool>() {
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<bool>() {
   return ONNX_NAMESPACE::TensorProto_DataType_BOOL;
 };
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<MLFloat16>() {
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<MLFloat16>() {
   return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
 };
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<double>() {
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<double>() {
   return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
 };
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint32_t>() {
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<uint32_t>() {
   return ONNX_NAMESPACE::TensorProto_DataType_UINT32;
 };
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint64_t>() {
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<uint64_t>() {
   return ONNX_NAMESPACE::TensorProto_DataType_UINT64;
 };
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<BFloat16>() {
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<BFloat16>() {
   return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
 };
 
@@ -223,7 +223,7 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() {
 }
 
 #define DispatchOnTensorType(tensor_type, function, ...)                \
-  switch (tensor_type->AsPrimitiveDataType()->GetTensorElementType()) { \
+  switch (tensor_type->AsPrimitiveDataType()->GetDataType()) { \
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:                    \
       function<float>(__VA_ARGS__);                                     \
       break;                                                            \
@@ -271,7 +271,7 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() {
   }
 
 #define DispatchOnTensorTypeWithReturn(tensor_type, retval, function, ...) \
-  switch (tensor_type->AsPrimitiveDataType()->GetTensorElementType()) {    \
+  switch (tensor_type->AsPrimitiveDataType()->GetDataType()) {    \
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:                       \
       retval = function<float>(__VA_ARGS__);                               \
       break;                                                               \
@@ -318,22 +318,26 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() {
       ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type);          \
   }
 
+// This is a frequently used check so we make a separate utility function.
 inline bool IsDataTypeString(MLDataType dt_type) {
   auto prim_type = dt_type->AsPrimitiveDataType();
-  return (prim_type != nullptr && prim_type->GetTensorElementType() == ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  return (prim_type != nullptr && prim_type->GetDataType() == ONNX_NAMESPACE::TensorProto_DataType_STRING);
 }
 
+// Test if MLDataType is a concrete type of PrimitiveDataTypeBase
+// and it is T
 template<class T>
-inline bool IsPrimDataType(MLDataType dt_type) {
+inline bool IsPrimitiveDataType(MLDataType dt_type) {
   auto prim_type = dt_type->AsPrimitiveDataType();
-  return (prim_type != nullptr && prim_type->GetTensorElementType() == ToTensorDataType<T>());
+  return (prim_type != nullptr && prim_type->GetDataType() == ToTensorProtoElementType<T>());
 }
 
 // Use after AsPrimitiveDataType() is successful
+// Check if PrimitiveDataTypeBase is of type T
 template<class T>
-inline bool IsPrimDataType (const PrimitiveDataTypeBase* prim_type) {
+inline bool IsPrimitiveDataType (const PrimitiveDataTypeBase* prim_type) {
   assert(prim_type != nullptr);
-  return prim_type->GetTensorElementType() == ToTensorDataType<T>();
+  return prim_type->GetDataType() == ToTensorProtoElementType<T>();
 }
 
 }  // namespace utils

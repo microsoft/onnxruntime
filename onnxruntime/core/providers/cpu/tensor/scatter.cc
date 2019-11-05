@@ -227,10 +227,9 @@ Status Scatter::Compute(OpKernelContext* context) const {
   MLDataType Tind_type = indices_input->DataType();
   MLDataType Tdata_type = data_input->DataType();
   Status status;
-  auto dt_type = Tind_type->AsPrimitiveDataType()->GetTensorElementType();
-  if (dt_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+  if (utils::IsPrimitiveDataType<int32_t>(Tind_type)) {
     DispatchOnTensorTypeWithReturn(Tdata_type, status, CopyInt32Index, data_input, indices_input, updates_input, axis, data_output);
-  } else if (dt_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+  } else if (utils::IsPrimitiveDataType<int64_t>(Tind_type)) {
     DispatchOnTensorTypeWithReturn(Tdata_type, status, CopyInt64Index, data_input, indices_input, updates_input, axis, data_output);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expecting indices to be either int32_t or int64_t");

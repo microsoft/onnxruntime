@@ -122,25 +122,24 @@ Status Tile::Compute(OpKernelContext* ctx) const {
   static_assert(sizeof(double) == sizeof(int64_t), "Double and Int64 are of different sizes");
 
   auto dtype = input_tensor.DataType()->AsPrimitiveDataType();
-  ORT_ENFORCE(dtype != nullptr, "Tile doesn't have an implementation yet for the type: ", dtype);
 
-  if (utils::IsPrimDataType<float>(dtype) ||
-      utils::IsPrimDataType<int32_t>(dtype) ||
-      utils::IsPrimDataType<uint32_t>(dtype))
+  if (utils::IsPrimitiveDataType<float>(dtype) ||
+      utils::IsPrimitiveDataType<int32_t>(dtype) ||
+      utils::IsPrimitiveDataType<uint32_t>(dtype))
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(float));
 
-  if (utils::IsPrimDataType<double>(dtype) || utils::IsPrimDataType<int64_t>(dtype) ||
-      utils::IsPrimDataType<uint64_t>(dtype))
+  if (utils::IsPrimitiveDataType<double>(dtype) || utils::IsPrimitiveDataType<int64_t>(dtype) ||
+      utils::IsPrimitiveDataType<uint64_t>(dtype))
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(double));
 
-  else if (utils::IsPrimDataType<int8_t>(dtype) ||
-           utils::IsPrimDataType<uint8_t>(dtype))
+  else if (utils::IsPrimitiveDataType<int8_t>(dtype) ||
+           utils::IsPrimitiveDataType<uint8_t>(dtype))
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(int8_t));
 
-  if (utils::IsPrimDataType<int16_t>(dtype) || utils::IsPrimDataType<uint16_t>(dtype))
+  if (utils::IsPrimitiveDataType<int16_t>(dtype) || utils::IsPrimitiveDataType<uint16_t>(dtype))
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(int16_t));
 
-  else if (utils::IsPrimDataType<bool>(dtype))
+  else if (utils::IsPrimitiveDataType<bool>(dtype))
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(bool));
 
   // TODO: Support 'string' and 'float16' types for completeness

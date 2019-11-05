@@ -52,50 +52,50 @@ static bool IsTensorTypeScalar(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_ty
 namespace data_types_internal {
 
 template <typename T>
-struct TensorContainedTypeSetter<T> {
+struct TensorElementTypeSetter<T> {
   static void SetTensorElementType(ONNX_NAMESPACE::TypeProto& proto) {
-    proto.mutable_tensor_type()->set_elem_type(utils::ToTensorDataType<T>());
+    proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
   }
   static void SetSparseTensorElementType(ONNX_NAMESPACE::TypeProto& proto) {
-    proto.mutable_sparse_tensor_type()->set_elem_type(utils::ToTensorDataType<T>());
+    proto.mutable_sparse_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
   }
   static void SetMapKeyType(ONNX_NAMESPACE::TypeProto& proto) {
-    proto.mutable_map_type()->set_key_type(utils::ToTensorDataType<T>());
+    proto.mutable_map_type()->set_key_type(utils::ToTensorProtoElementType<T>());
   }
   constexpr static int32_t GetElementType () {
-    return utils::ToTensorDataType<T>();
+    return utils::ToTensorProtoElementType<T>();
   }
 };
 
 // Pre-instantiate
 template struct
-    TensorContainedTypeSetter<float>;
+    TensorElementTypeSetter<float>;
 template struct
-    TensorContainedTypeSetter<uint8_t>;
+    TensorElementTypeSetter<uint8_t>;
 template struct
-    TensorContainedTypeSetter<int8_t>;
+    TensorElementTypeSetter<int8_t>;
 template struct
-    TensorContainedTypeSetter<uint16_t>;
+    TensorElementTypeSetter<uint16_t>;
 template struct
-    TensorContainedTypeSetter<int16_t>;
+    TensorElementTypeSetter<int16_t>;
 template struct
-    TensorContainedTypeSetter<int32_t>;
+    TensorElementTypeSetter<int32_t>;
 template struct
-    TensorContainedTypeSetter<int64_t>;
+    TensorElementTypeSetter<int64_t>;
 template struct
-    TensorContainedTypeSetter<std::string>;
+    TensorElementTypeSetter<std::string>;
 template struct
-    TensorContainedTypeSetter<bool>;
+    TensorElementTypeSetter<bool>;
 template struct
-    TensorContainedTypeSetter<MLFloat16>;
+    TensorElementTypeSetter<MLFloat16>;
 template struct
-    TensorContainedTypeSetter<double>;
+    TensorElementTypeSetter<double>;
 template struct
-    TensorContainedTypeSetter<uint32_t>;
+    TensorElementTypeSetter<uint32_t>;
 template struct
-    TensorContainedTypeSetter<uint64_t>;
+    TensorElementTypeSetter<uint64_t>;
 template struct
-    TensorContainedTypeSetter<BFloat16>;
+    TensorElementTypeSetter<BFloat16>;
 
 void CopyMutableMapValue(const ONNX_NAMESPACE::TypeProto& value_proto,
                          ONNX_NAMESPACE::TypeProto& map_proto) {

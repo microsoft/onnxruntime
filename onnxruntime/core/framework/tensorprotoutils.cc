@@ -518,7 +518,7 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
 TensorProto::DataType GetTensorProtoType(const Tensor& tensor) {
   auto tensor_prim_type = tensor.DataType()->AsPrimitiveDataType();
   assert(tensor_prim_type != nullptr);
-  return static_cast<TensorProto::DataType>(tensor_prim_type->GetTensorElementType());
+  return static_cast<TensorProto::DataType>(tensor_prim_type->GetDataType());
 }
 
 ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name,

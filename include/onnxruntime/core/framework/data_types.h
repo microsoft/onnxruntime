@@ -176,6 +176,8 @@ class DataTypeImpl {
     return nullptr;
   }
 
+  // Returns this if this is one of the primitive data types (specialization of PrimitiveDataTypeBase)
+  // and null otherwise
   virtual const PrimitiveDataTypeBase* AsPrimitiveDataType() const {
     return nullptr;
   }
@@ -236,7 +238,7 @@ namespace data_types_internal {
 // There is a specialization only for one
 // type argument.
 template <typename... Types>
-struct TensorContainedTypeSetter {
+struct TensorElementTypeSetter {
   static void SetTensorElementType(ONNX_NAMESPACE::TypeProto&);
   static void SetMapKeyType(ONNX_NAMESPACE::TypeProto&);
   static int32_t GetElementType();
@@ -309,7 +311,7 @@ void CopyMutableMapValue(const ONNX_NAMESPACE::TypeProto&,
 template <typename K, typename V>
 struct SetMapTypes {
   static void Set(ONNX_NAMESPACE::TypeProto& proto) {
-    TensorContainedTypeSetter<K>::SetMapKeyType(proto);
+    TensorElementTypeSetter<K>::SetMapKeyType(proto);
     MLDataType dt = GetMLDataType<V, IsTensorContainedType<V>::value>::Get();
     const auto* value_proto = dt->GetTypeProto();
     ORT_ENFORCE(value_proto != nullptr, typeid(V).name(),
@@ -414,7 +416,7 @@ class TensorType : public TensorTypeBase {
  private:
   TensorType() {
     using namespace data_types_internal;
-    TensorContainedTypeSetter<elemT>::SetTensorElementType(this->mutable_type_proto());
+    TensorElementTypeSetter<elemT>::SetTensorElementType(this->mutable_type_proto());
   }
 };
 
@@ -474,7 +476,7 @@ class SparseTensorType : public SparseTensorTypeBase {
  private:
   SparseTensorType() {
     using namespace data_types_internal;
-    TensorContainedTypeSetter<elemT>::SetSparseTensorElementType(mutable_type_proto());
+    TensorElementTypeSetter<elemT>::SetSparseTensorElementType(mutable_type_proto());
   }
 };
 
@@ -714,14 +716,14 @@ class PrimitiveDataTypeBase : public DataTypeImpl {
     return nullptr;
   }
 
-  int32_t GetTensorElementType() const {
+  int32_t GetDataType() const {
     return data_type_;
   }
 
  protected:
   PrimitiveDataTypeBase() = default;
 
-  void set_data_type(int32_t data_type) {
+  void SetDataType(int32_t data_type) {
     data_type_ = data_type;
   }
 
@@ -749,7 +751,7 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
 
  private:
   PrimitiveDataType() {
-    this->set_data_type(data_types_internal::TensorContainedTypeSetter<T>::GetElementType());
+    this->SetDataType(data_types_internal::TensorElementTypeSetter<T>::GetElementType());
   }
 };
 

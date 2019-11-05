@@ -215,7 +215,7 @@ struct MLTypeTraits<onnxruntime::MLFloat16> {
 };
 
 #define ML_TENSOR_TYPE_CASE(x)          \
-  if (onnxruntime::utils::IsPrimDataType<x>(type)) { \
+  if (onnxruntime::utils::IsPrimitiveDataType<x>(type)) { \
     return MLTypeTraits<x>::TensorType; \
   }
 

@@ -29,7 +29,7 @@ DLDataType ToTvmDLDataType(MLDataType ml_type) {
     ORT_NOT_IMPLEMENTED("converting MLDataType ", ml_type, " to tvm DLDataType is not implemented");
   }
 
-  switch (prim_type->GetTensorElementType()) {
+  switch (prim_type->GetDataType()) {
   RETURN_DLDATATYPE_IF_MATCH(ONNX_NAMESPACE::TensorProto_DataType_INT8, int8_t, kDLInt);
   RETURN_DLDATATYPE_IF_MATCH(ONNX_NAMESPACE::TensorProto_DataType_UINT8, uint8_t, kDLUInt);
   RETURN_DLDATATYPE_IF_MATCH(ONNX_NAMESPACE::TensorProto_DataType_INT16, int16_t, kDLInt);
@@ -37,18 +37,16 @@ DLDataType ToTvmDLDataType(MLDataType ml_type) {
   RETURN_DLDATATYPE_IF_MATCH(ONNX_NAMESPACE::TensorProto_DataType_INT32, int32_t, kDLInt);
   RETURN_DLDATATYPE_IF_MATCH(ONNX_NAMESPACE::TensorProto_DataType_UINT32, uint32_t, kDLUInt);
   RETURN_DLDATATYPE_IF_MATCH(ONNX_NAMESPACE::TensorProto_DataType_INT64, int64_t, kDLInt);
-  RETURN_DLDATATYPE_IF_MATCH(ONNX_NAMESPACE::TensorProto_DataType_UINT64, uint64_tkDLUInt);
+  RETURN_DLDATATYPE_IF_MATCH(ONNX_NAMESPACE::TensorProto_DataType_UINT64, uint64_t, uint64_tkDLUInt);
   RETURN_DLDATATYPE_IF_MATCH(ONNX_NAMESPACE::TensorProto_DataType_BOOL, bool, kDLUInt);
 
   RETURN_DLDATATYPE_IF_MATCH(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, float, kDLFloat);
   RETURN_DLDATATYPE_IF_MATCH(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, double, kDLFloat);
   RETURN_DLDATATYPE_IF_MATCH(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, MLFloat16, kDLFloat);
   default:
-    break;
+    ORT_NOT_IMPLEMENTED("converting MLDataType ", ml_type, " to tvm DLDataType is not implemented");
   }
-  ORT_NOT_IMPLEMENTED("converting MLDataType ", ml_type, " to tvm DLDataType is not implemented");
 }
-}  // namespace tvm_codegen
 
 tvm::Type ToTvmType(ONNX_NAMESPACE::TensorProto_DataType proto_type) {
   switch (proto_type) {
@@ -192,5 +190,5 @@ tvm::Tensor ProfileEnd(tvm::Tensor X, const std::string& event_name) {
 }
 #endif
 
-}  // namespace onnxruntime
+}  // namespace tvm_codegen
 }  // namespace onnxruntime

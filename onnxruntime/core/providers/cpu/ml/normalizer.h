@@ -31,7 +31,7 @@ class Normalizer final : public OpKernel {
   void CallDispatcher(int32_t dt_type, OpKernelContext* ctx) const;
 
   template<typename T>
-  int invoke_normalizer_callable(size_t& called, int32_t dt_type, OpKernelContext* ctx) const;
+  int InvokeNormalizerCallable(int32_t dt_type, size_t& called, OpKernelContext* ctx) const;
 
   NORMALIZE normalization_;
 };

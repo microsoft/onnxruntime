@@ -269,7 +269,7 @@ static TensorProto::DataType InferDataType(const Tensor& tensor) {
   int dtype = TensorProto_DataType_UNDEFINED;
 
   if (tensor_type != nullptr) {
-    auto dt_type = tensor_type->GetTensorElementType();
+    auto dt_type = tensor_type->GetDataType();
     if (TensorProto_DataType_FLOAT == dt_type || TensorProto_DataType_DOUBLE == dt_type) {
       dtype = dt_type;
      } else {

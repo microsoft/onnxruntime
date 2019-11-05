@@ -86,15 +86,12 @@ namespace cuda_range_internal {
 // Workaround GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226
 // can not specify lambda directly
 template <class T>
-inline int invoke_cuda_range_callable(size_t& called, Status& s, int32_t dt_type, OpKernelContext* ctx) {
-  auto fn = [&] {
-    if (utils::ToTensorDataType<T>() == dt_type) {
-      s = ComputeRange<T>(ctx);
-      ++called;
-    }
-    return 0;
-  };
-  return fn();
+inline int InvokeCudaRangeCallable(int32_t dt_type, size_t& called, Status& s, OpKernelContext* ctx) {
+  if (utils::ToTensorProtoElementType<T>() == dt_type) {
+    s = ComputeRange<T>(ctx);
+    ++called;
+  }
+  return 0;
 }
 
 template <typename... Types>
@@ -102,7 +99,7 @@ inline Status CallDispatcher(int32_t dt_type, OpKernelContext* ctx) {
   Status s;
   size_t called = 0;
 
-  int results[] = {0, invoke_cuda_range_callable<Types>(called, s, dt_type, ctx)...};
+  int results[] = {0, InvokeCudaRangeCallable<Types>(dt_type, called, s, ctx)...};
 
   ORT_UNUSED_PARAMETER(results);
   ORT_ENFORCE(called < 2, "Range CallDispatcher broken. Check for duplicate type.");
@@ -124,7 +121,7 @@ Status Range::ComputeInternal(OpKernelContext* ctx) const {
 
   auto data_type = input_tensor->DataType()->AsPrimitiveDataType();
   ORT_RETURN_IF_NOT(data_type != nullptr, "Range op: Unsupported tensor data type:", data_type);
-  return cuda_range_internal::CallDispatcher<int32_t, float, int64_t, double, int16_t>(data_type->GetTensorElementType(), ctx);
+  return cuda_range_internal::CallDispatcher<int32_t, float, int64_t, double, int16_t>(data_type->GetDataType(), ctx);
 }
 
 }  // namespace cuda

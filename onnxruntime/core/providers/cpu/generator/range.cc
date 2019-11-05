@@ -85,16 +85,13 @@ namespace range_internal {
 
 // Workaround GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226
 // can not specify lambda directly
-template <class T, class... Args>
-inline int invoke_computerange_callable(size_t& called, Status& s, int32_t dt_type, Args&&... args) {
-  auto fn = [&] {
-    if (utils::ToTensorDataType<T>() == dt_type) {
-      s = ComputeRange<T>(std::forward<Args>(args)...);
-      ++called;
-    }
-    return 0;
-  };
-  return fn();
+template <class T>
+inline int InvokeComputeRangeCallable(int32_t dt_type, size_t& called, Status& s, OpKernelContext* ctx) {
+  if (utils::ToTensorProtoElementType<T>() == dt_type) {
+    s = ComputeRange<T>(ctx);
+    ++called;
+  }
+  return 0;
 }
 
 
@@ -103,7 +100,7 @@ inline Status CallDispatcher(int32_t dt_type, OpKernelContext* ctx) {
   Status s;
   size_t called = 0;
 
-  int results[] = {0, invoke_computerange_callable<Types>(called, s, dt_type, ctx)...};
+  int results[] = {0, InvokeComputeRangeCallable<Types>(dt_type, called, s, ctx)...};
 
   ORT_UNUSED_PARAMETER(results);
   ORT_ENFORCE(called < 2, "Range CallDispatcher broken. Check for duplicate type.");
@@ -117,7 +114,7 @@ Status Range::Compute(OpKernelContext* ctx) const {
   if (input_tensor == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   auto data_type = input_tensor->DataType()->AsPrimitiveDataType();
   ORT_ENFORCE(data_type != nullptr, "Tensor is expected to have primitive data type");
-  return range_internal::CallDispatcher<int32_t, float, int64_t, double, int16_t>(data_type->GetTensorElementType(), ctx);
+  return range_internal::CallDispatcher<int32_t, float, int64_t, double, int16_t>(data_type->GetDataType(), ctx);
 }
 
 }  // namespace onnxruntime

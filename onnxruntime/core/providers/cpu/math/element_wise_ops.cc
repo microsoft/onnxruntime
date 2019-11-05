@@ -1095,26 +1095,23 @@ void BroadCastMFloat16FMod(const Tensor& X, const Tensor& Y, OpKernelContext* co
 // Workaround GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226
 // can not specify lambda directly
 template <class T, class... Args>
-inline int invoke_broadcast_fmod_callable(size_t& called, int32_t dt_type, bool fmod, Args&&... args) {
-  auto fn = [&] {
-    if (utils::ToTensorDataType<T>() == dt_type) {
-      if (fmod) {
-        BroadCastFMod<T>(std::forward<Args>(args)...);
-      } else {
-        BroadCastMod<T>(std::forward<Args>(args)...);
-      }
-      ++called;
+inline int InvokeBroadcastFmodCallable(int32_t dt_type, size_t& called, bool fmod, Args&&... args) {
+  if (utils::ToTensorProtoElementType<T>() == dt_type) {
+    if (fmod) {
+      BroadCastFMod<T>(std::forward<Args>(args)...);
+    } else {
+      BroadCastMod<T>(std::forward<Args>(args)...);
     }
-    return 0;
-  };
-  return fn();
+    ++called;
+  }
+  return 0;
 }
 
 template <class... Types>
 inline void CallDispatcher(int dt_type, bool fmod, const Tensor& X, const Tensor& Y, OpKernelContext* ctx) {
   size_t called = 0;
 
-  int results[] = {0, invoke_broadcast_fmod_callable<Types>(called, dt_type, fmod, X, Y, ctx)...};
+  int results[] = {0, InvokeBroadcastFmodCallable<Types>(dt_type, called, fmod, X, Y, ctx)...};
 
   ORT_UNUSED_PARAMETER(results);
   ORT_ENFORCE(called < 2, "Mod CallDispatcher broken. Check for duplicate type.");
@@ -1141,7 +1138,7 @@ Status Mod::Compute(OpKernelContext* context) const {
   namespace on = ONNX_NAMESPACE;
   auto p_type = dtype->AsPrimitiveDataType();
   if (p_type != nullptr) {
-    auto dt_type = p_type->GetTensorElementType();
+    auto dt_type = p_type->GetDataType();
     switch (dt_type) {
       case on::TensorProto_DataType_FLOAT:
         ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");

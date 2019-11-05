@@ -113,11 +113,11 @@ Status Gather::Compute(OpKernelContext* context) const {
   auto* dst_base = static_cast<uint8_t*>(p.output_tensor->MutableDataRaw());
 
   MLDataType Tind_type = p.indices_tensor->DataType();
-  if (utils::IsPrimDataType<int32_t>(Tind_type)) {
+  if (utils::IsPrimitiveDataType<int32_t>(Tind_type)) {
     return GatherCopyData<int32_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
                                    block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis);
   }
-  if (utils::IsPrimDataType<int64_t>(Tind_type)) {
+  if (utils::IsPrimitiveDataType<int64_t>(Tind_type)) {
     return GatherCopyData<int64_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
                                    block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis);
   }

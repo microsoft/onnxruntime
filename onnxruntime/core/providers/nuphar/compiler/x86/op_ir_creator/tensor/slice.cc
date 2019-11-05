@@ -54,7 +54,7 @@ Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(Slice)::Evaluate(
       if (i < node.InputDefs().size()) {
         const auto* tensor = ctx_nuphar->GetOrtInitializerTensor(node.InputDefs()[i]->Name());
         if (tensor) {
-          if (utils::IsPrimDataType<int64_t>(tensor->DataType())) {
+          if (utils::IsPrimitiveDataType<int64_t>(tensor->DataType())) {
             const int64_t* data = tensor->Data<int64_t>();
             slice_params.push_back(std::vector<int64_t>(data, data + tensor->Shape().Size()));
           } else {

@@ -109,7 +109,7 @@ Status GatherND::Compute(OpKernelContext* context) const {
   Prepare p;
   auto prim_type = context->Input<Tensor>(1)->DataType()->AsPrimitiveDataType();
   ORT_RETURN_IF_NOT(prim_type != nullptr, "GatherND Invalid input datatype");
-  ORT_RETURN_IF_ERROR(utils::IsPrimDataType<int32_t>(prim_type)
+  ORT_RETURN_IF_ERROR(utils::IsPrimitiveDataType<int32_t>(prim_type)
                           ? PrepareForCompute<int32_t>(context, p)
                           : PrepareForCompute<int64_t>(context, p));
 
