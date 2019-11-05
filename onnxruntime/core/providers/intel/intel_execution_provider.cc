@@ -115,7 +115,7 @@ bool IsDimensionSupported(const Node* node) {
 static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer) {
   const auto& optype = node->OpType();
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
- 
+
   auto node_inputs = node->InputDefs();
 
   //Zero dimension check
@@ -123,17 +123,21 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
 
     auto name = node_inputs[i]->Name();
     auto it = initializers.find(name);
-    std::cout << "Name: " << node_inputs[i]->Shape() << "Dims: " << node_inputs[i]->Shape()->dim_size() << std::endl;
     if(it == initializers.end() && node_inputs[i]->Shape() != nullptr){
-      if (node_inputs[i]->Shape()->dim_size() == 0) {
-	std::cout << "Dims: " << node_inputs[i]->Shape()->dim_size() << std::endl;
-        //throw "Node_input is zero dimension";
+      if (node_inputs[i]->Shape()->dim_size() == 0){
         return true;
+      }
+      else{
+	auto num_dims = node_inputs[i]->Shape()->dim_size();
+	for(int j = 0; j < num_dims; j++){
+	   if(node_inputs[i]->Shape()->dim(j).dim_value() == 0)
+	      return true;
+	}
       }
     }
   }
 
-
+  std::cout << "Op Type: " << optype << std::endl;  
   if (optype == "Reshape") {
     //nGraph Reshape op currently requires shape info available in advance.
     const auto& shape_arg = node->InputDefs()[1];
@@ -303,15 +307,15 @@ static bool IsTypeSupported(const NodeArg* node_arg) {
   switch (type_proto->tensor_type().elem_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
-    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE:
+  //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32:
-    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64:
+  //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16:
-    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32:
-    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT64:
+  //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32:
+  //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT64:
       return true;
     default:
       return false;
