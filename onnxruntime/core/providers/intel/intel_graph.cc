@@ -40,6 +40,7 @@
 #include <cpp/ie_cnn_network.h>
 #include <ngraph/function.hpp>
 #include <ie_ir_reader.hpp>
+#include <ngraph/serializer.hpp>
 
 namespace onnxruntime {
 namespace intel_ep {
@@ -358,13 +359,27 @@ void IntelGraph::CreateNGraphFunc(const ONNX_NAMESPACE::ModelProto& model_proto)
     throw;
   }
 
-  //IE wrapper for nGraph function
-  //InferenceEngine::CNNNetwork network(ng_function);
+  //Serializing nGraph function
+  std::string json_string = serialize(ng_function,4);
+  std::ofstream out("serialize_function_before_PM.json");
+  out << json_string;
+    
+  //Pass Manager for V1 transformations
   ngraph::pass::Manager pass_manager;
   pass_manager.register_pass<ngraph::pass::Opset1Upgrade>();
   pass_manager.run_passes(ng_function);
+
+  //Serializing nGraph function
+  std::string json_string_pm = serialize(ng_function,4);
+  std::ofstream out_pm("serialize_function_after_PM.json");
+  out_pm << json_string_pm;
+
+  //IE wrapper for nGraph function
   InferenceEngine::CNNNetwork network(ng_function);
+
+  //Serialize CNNNetwork
   //network.serialize("IR.xml", "IR.bin");
+  
   intel_network_ = std::make_shared<InferenceEngine::CNNNetwork>(network);
 }
 

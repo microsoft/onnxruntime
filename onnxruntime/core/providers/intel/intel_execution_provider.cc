@@ -10,6 +10,8 @@
 #include "core/graph/model.h"
 #include "intel_execution_provider.h"
 #include "intel_graph.h"
+#include "core/util/protobuf_parsing_utils.h"
+#include "core/framework/tensorprotoutils.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)
@@ -82,6 +84,20 @@ IntelExecutionProvider::IntelExecutionProvider(const IntelExecutionProviderInfo&
   }
 
 } */
+
+//Save ONNX Model
+static common::Status SaveModel(ONNX_NAMESPACE::ModelProto& model_proto, const std::string& file_path){
+   int fd;
+   Status status = Env::Default().FileOpenWr(file_path,fd);
+
+   google::protobuf::io::FileOutputStream output(fd);
+   const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
+   if(result)
+	return Status::OK();
+   else
+        return Status::OK();
+}
+
 
 //Gets the input count of given node
 int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set) {
@@ -619,6 +635,7 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 
   *(model_proto.mutable_graph()) = node_subgraph.ToGraphProto();
 
+  SaveModel(model_proto, "intel_model.onnx");
   return model_proto;
 }
 
