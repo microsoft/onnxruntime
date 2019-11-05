@@ -314,6 +314,32 @@ void RegisterBertSchemas() {
         updateOutputShape(ctx, 1, mask_index_shape);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MaskIndex)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Mask Index for BERT")
+      .Input(0, "mask", "2D attention mask with shape (batch_size, sequence_length)", "T")
+      .Output(0, "mask_index", "1D mask_index tensor with shape (batch_size)", "Ti")
+      .TypeConstraint("T", {"tensor(int32)", "tensor(int64)"}, "Constrain input integer tensors types")
+      .TypeConstraint("Ti", {"tensor(int32)"}, "Constrain output integer tensors types")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (!hasInputShape(ctx, 0))
+          return;
+
+        auto& mask_shape = getInputShape(ctx, 0);
+        auto& mask_dims = mask_shape.dim();
+
+        if (mask_dims.size() != 2) {
+          fail_shape_inference("Inputs 0 shall be 2 dimensions");
+        }
+
+        // mask_index shape is (batch_size)
+        ONNX_NAMESPACE::TensorShapeProto mask_index_shape;
+        *mask_index_shape.add_dim() = mask_shape.dim(0);
+        updateOutputShape(ctx, 0, mask_index_shape);
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(SkipLayerNormalization)
       .SetDomain(kMSDomain)
       .SinceVersion(1)

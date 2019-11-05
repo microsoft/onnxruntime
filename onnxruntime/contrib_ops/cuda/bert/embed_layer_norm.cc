@@ -2,11 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/providers/common.h"
-#include "core/providers/cuda/cudnn_common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "onnx/defs/tensor_proto_util.h"
 #include "embed_layer_norm.h"
 #include "embed_layer_norm_impl.h"
+#include "mask_index_impl.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -95,12 +95,16 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   int sequence_length = static_cast<int>(input_dims[1]);
   size_t element_size = sizeof(T);
 
-  if (!LaunchEmbedLayerNormKernel(
+  cudaStream_t stream = nullptr;  // use default stream
+  if (!LaunchMaskIndexKernel(stream,
+                             mask->template Data<int32_t>(),
+                             mask_index->template MutableData<int32_t>(),
+                             batch_size,
+                             sequence_length) ||
+      !LaunchEmbedLayerNormKernel(
           output->template MutableData<T>(),
-          mask_index->template MutableData<int32_t>(),
           input_ids->template Data<int32_t>(),
           segment_ids->template Data<int32_t>(),
-          mask->template Data<int32_t>(),
           gamma->template Data<T>(),
           beta->template Data<T>(),
           word_embedding->template Data<T>(),

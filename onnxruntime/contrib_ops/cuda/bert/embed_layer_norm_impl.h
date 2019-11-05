@@ -7,10 +7,8 @@ namespace contrib {
 namespace cuda {
 
 bool LaunchEmbedLayerNormKernel(void* output,                     // output tensor
-                                void* mask_index,                 // output mask index
                                 const int* input_ids,             // input word IDs
                                 const int* segment_ids,           // input segment IDs
-                                const int* input_mask,            // input mask
                                 const void* gamma,                // weight for layer normalization
                                 const void* beta,                 // bias for layer normalization
                                 const void* word_embedding,       // weights for word embeddings
