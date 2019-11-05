@@ -9,6 +9,7 @@
  *
  */
 
+
 if (!Scorer) {
   /**
    * Simple result scoring code.

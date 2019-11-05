@@ -2,7 +2,9 @@
 Sphinx-Gallery has compatible CSS to fix default sphinx themes
 Tested for Sphinx 1.3.1 for all themes: default, alabaster, sphinxdoc,
 scrolls, agogo, traditional, nature, haiku, pyramid
-Tested for Read the Docs theme 0.1.7 */
+Tested for Read the Docs theme 0.1.7
+*/
+
 .sphx-glr-thumbcontainer {
   background: #fff;
   border: solid #fff 1px;
