@@ -5,6 +5,7 @@
 package ai.onnxruntime;
 
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -284,23 +285,9 @@ public class ONNXAllocator implements AutoCloseable {
      * @return The boxed primitive in an array.
      */
     private Object convertBoxedPrimitiveToArray(Object data) {
-        if (data instanceof Boolean) {
-            return new Boolean[]{(Boolean)data};
-        } else if (data instanceof Byte) {
-            return new Byte[]{(Byte)data};
-        } else if (data instanceof Short) {
-            return new Short[]{(Short)data};
-        } else if (data instanceof Integer) {
-            return new Integer[]{(Integer)data};
-        } else if (data instanceof Long) {
-            return new Long[]{(Long)data};
-        } else if (data instanceof Float) {
-            return new Float[]{(Float)data};
-        } else if (data instanceof Double) {
-            return new double[]{(Double)data};
-        } else {
-            return data;
-        }
+        Object array = Array.newInstance(data.getClass(), 1);
+        Array.set(array, 0, data);
+        return array;
     }
 
     private native long createAllocator(long apiHandle) throws ONNXException;

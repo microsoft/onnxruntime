@@ -4,6 +4,7 @@
  */
 package ai.onnxruntime;
 
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -11,222 +12,138 @@ import java.util.List;
 /**
  * Util code for interacting with shape arrays.
  */
-public class ONNXUtil {
+public final class ONNXUtil {
+
+    /**
+     * Private constructor for static util class.
+     */
+    private ONNXUtil() {}
+
+    /**
+     * Converts an long shape into a int shape.
+     *
+     * Validates that the shape has more than 1 elements,
+     * less than 9 elements, each element is less than {@link Integer#MAX_VALUE}
+     * and that each entry is non-negative.
+     * @param shape The long shape.
+     * @return The int shape.
+     */
+    public static int[] transformShape(long[] shape) {
+        if (shape.length == 0 || shape.length > TensorInfo.MAX_DIMENSIONS) {
+            throw new IllegalArgumentException("Arrays with less than 1 and greater than " +
+                    TensorInfo.MAX_DIMENSIONS + " dimensions are not supported.");
+        }
+        int[] newShape = new int[shape.length];
+        for (int i = 0; i < shape.length; i++) {
+            long curDim = shape[i];
+            if (curDim < 1 || curDim > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException("Invalid shape for a Java array, expected positive entries smaller than Integer.MAX_VALUE. Found " + Arrays.toString(shape));
+            } else {
+                newShape[i] = (int) curDim;
+            }
+        }
+        return newShape;
+    }
+
+    /**
+     * Converts an int shape into a long shape.
+     *
+     * Validates that the shape has more than 1 elements, less than 9 elements and that each entry is non-negative.
+     * @param shape The int shape.
+     * @return The long shape.
+     */
+    public static long[] transformShape(int[] shape) {
+        if (shape.length == 0 || shape.length > 8) {
+            throw new IllegalArgumentException("Arrays with less than 1 and greater than " +
+                    TensorInfo.MAX_DIMENSIONS + " dimensions are not supported.");
+        }
+        long[] newShape = new long[shape.length];
+        for (int i = 0; i < shape.length; i++) {
+            long curDim = shape[i];
+            if (curDim < 1) {
+                throw new IllegalArgumentException("Invalid shape for a Java array, expected positive entries smaller than Integer.MAX_VALUE. Found " + Arrays.toString(shape));
+            } else {
+                newShape[i] = curDim;
+            }
+        }
+        return newShape;
+    }
+
     /**
      * Creates a new primitive boolean array of up to 8 dimensions, using the supplied shape.
-     * <p>
-     * Does not check the shape to see if all it's elements are positive.
      *
      * @param shape The shape of array to create.
      * @return A boolean array.
      */
     public static Object newBooleanArray(long[] shape) {
-        switch (shape.length) {
-            case 1:
-                return new boolean[(int) shape[0]];
-            case 2:
-                return new boolean[(int) shape[0]][(int) shape[1]];
-            case 3:
-                return new boolean[(int) shape[0]][(int) shape[1]][(int) shape[2]];
-            case 4:
-                return new boolean[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]];
-            case 5:
-                return new boolean[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]];
-            case 6:
-                return new boolean[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]];
-            case 7:
-                return new boolean[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]][(int) shape[6]];
-            case 8:
-                return new boolean[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]][(int) shape[6]][(int) shape[7]];
-            default:
-                throw new IllegalArgumentException("Arrays with less than 1 and more than 8 dimensions are not supported.");
-        }
+        int[] intShape = transformShape(shape);
+        return Array.newInstance(boolean.class, intShape);
     }
 
     /**
      * Creates a new primitive byte array of up to 8 dimensions, using the supplied shape.
-     * <p>
-     * Does not check the shape to see if all it's elements are positive.
      *
      * @param shape The shape of array to create.
      * @return A byte array.
      */
     public static Object newByteArray(long[] shape) {
-        switch (shape.length) {
-            case 1:
-                return new byte[(int) shape[0]];
-            case 2:
-                return new byte[(int) shape[0]][(int) shape[1]];
-            case 3:
-                return new byte[(int) shape[0]][(int) shape[1]][(int) shape[2]];
-            case 4:
-                return new byte[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]];
-            case 5:
-                return new byte[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]];
-            case 6:
-                return new byte[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]];
-            case 7:
-                return new byte[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]][(int) shape[6]];
-            case 8:
-                return new byte[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]][(int) shape[6]][(int) shape[7]];
-            default:
-                throw new IllegalArgumentException("Arrays with less than 1 and more than 8 dimensions are not supported.");
-        }
+        int[] intShape = transformShape(shape);
+        return Array.newInstance(byte.class, intShape);
     }
 
     /**
      * Creates a new primitive short array of up to 8 dimensions, using the supplied shape.
-     * <p>
-     * Does not check the shape to see if all it's elements are positive.
      *
      * @param shape The shape of array to create.
      * @return A short array.
      */
     public static Object newShortArray(long[] shape) {
-        switch (shape.length) {
-            case 1:
-                return new short[(int) shape[0]];
-            case 2:
-                return new short[(int) shape[0]][(int) shape[1]];
-            case 3:
-                return new short[(int) shape[0]][(int) shape[1]][(int) shape[2]];
-            case 4:
-                return new short[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]];
-            case 5:
-                return new short[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]];
-            case 6:
-                return new short[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]];
-            case 7:
-                return new short[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]][(int) shape[6]];
-            case 8:
-                return new short[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]][(int) shape[6]][(int) shape[7]];
-            default:
-                throw new IllegalArgumentException("Arrays with less than 1 and more than 8 dimensions are not supported.");
-        }
+        int[] intShape = transformShape(shape);
+        return Array.newInstance(short.class, intShape);
     }
 
     /**
      * Creates a new primitive int array of up to 8 dimensions, using the supplied shape.
-     * <p>
-     * Does not check the shape to see if all it's elements are positive.
      *
      * @param shape The shape of array to create.
      * @return A int array.
      */
     public static Object newIntArray(long[] shape) {
-        switch (shape.length) {
-            case 1:
-                return new int[(int) shape[0]];
-            case 2:
-                return new int[(int) shape[0]][(int) shape[1]];
-            case 3:
-                return new int[(int) shape[0]][(int) shape[1]][(int) shape[2]];
-            case 4:
-                return new int[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]];
-            case 5:
-                return new int[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]];
-            case 6:
-                return new int[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]];
-            case 7:
-                return new int[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]][(int) shape[6]];
-            case 8:
-                return new int[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]][(int) shape[6]][(int) shape[7]];
-            default:
-                throw new IllegalArgumentException("Arrays with less than 1 and more than 8 dimensions are not supported.");
-        }
+        int[] intShape = transformShape(shape);
+        return Array.newInstance(int.class, intShape);
     }
 
     /**
      * Creates a new primitive long array of up to 8 dimensions, using the supplied shape.
-     * <p>
-     * Does not check the shape to see if all it's elements are positive.
      *
      * @param shape The shape of array to create.
      * @return A long array.
      */
     public static Object newLongArray(long[] shape) {
-        switch (shape.length) {
-            case 1:
-                return new long[(int) shape[0]];
-            case 2:
-                return new long[(int) shape[0]][(int) shape[1]];
-            case 3:
-                return new long[(int) shape[0]][(int) shape[1]][(int) shape[2]];
-            case 4:
-                return new long[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]];
-            case 5:
-                return new long[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]];
-            case 6:
-                return new long[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]];
-            case 7:
-                return new long[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]][(int) shape[6]];
-            case 8:
-                return new long[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]][(int) shape[6]][(int) shape[7]];
-            default:
-                throw new IllegalArgumentException("Arrays with less than 1 and more than 8 dimensions are not supported.");
-        }
+        int[] intShape = transformShape(shape);
+        return Array.newInstance(long.class, intShape);
     }
 
     /**
      * Creates a new primitive float array of up to 8 dimensions, using the supplied shape.
-     * <p>
-     * Does not check the shape to see if all it's elements are positive.
      *
      * @param shape The shape of array to create.
      * @return A float array.
      */
     public static Object newFloatArray(long[] shape) {
-        switch (shape.length) {
-            case 1:
-                return new float[(int) shape[0]];
-            case 2:
-                return new float[(int) shape[0]][(int) shape[1]];
-            case 3:
-                return new float[(int) shape[0]][(int) shape[1]][(int) shape[2]];
-            case 4:
-                return new float[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]];
-            case 5:
-                return new float[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]];
-            case 6:
-                return new float[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]];
-            case 7:
-                return new float[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]][(int) shape[6]];
-            case 8:
-                return new float[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]][(int) shape[6]][(int) shape[7]];
-            default:
-                throw new IllegalArgumentException("Arrays with less than 1 and more than 8 dimensions are not supported.");
-        }
+        int[] intShape = transformShape(shape);
+        return Array.newInstance(float.class, intShape);
     }
 
     /**
      * Creates a new primitive double array of up to 8 dimensions, using the supplied shape.
-     * <p>
-     * Does not check the shape to see if all it's elements are positive.
      *
      * @param shape The shape of array to create.
      * @return A double array.
      */
     public static Object newDoubleArray(long[] shape) {
-        switch (shape.length) {
-            case 1:
-                return new double[(int) shape[0]];
-            case 2:
-                return new double[(int) shape[0]][(int) shape[1]];
-            case 3:
-                return new double[(int) shape[0]][(int) shape[1]][(int) shape[2]];
-            case 4:
-                return new double[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]];
-            case 5:
-                return new double[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]];
-            case 6:
-                return new double[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]];
-            case 7:
-                return new double[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]][(int) shape[6]];
-            case 8:
-                return new double[(int) shape[0]][(int) shape[1]][(int) shape[2]][(int) shape[3]][(int) shape[4]][(int) shape[5]][(int) shape[6]][(int) shape[7]];
-            default:
-                throw new IllegalArgumentException("Arrays with less than 1 and more than 8 dimensions are not supported.");
-        }
+        int[] intShape = transformShape(shape);
+        return Array.newInstance(double.class, intShape);
     }
 
     /**
