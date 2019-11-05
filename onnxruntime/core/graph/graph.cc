@@ -2419,20 +2419,20 @@ void Graph::CleanUnusedInitializers() {
 
                   // handle edge case where the unused initializer has a matching graph input
                   auto& proto_inputs = *graph_proto_->mutable_input();
-                  auto i = std::find_if(proto_inputs.cbegin(), proto_inputs.cend(),
+                  auto i = std::find_if(proto_inputs.begin(), proto_inputs.end(),
                                         [&name](const ONNX_NAMESPACE::ValueInfoProto& input) {
                                           return input.name() == name;
                                         });
 
-                  if (i != proto_inputs.cend()) {
+                  if (i != proto_inputs.end()) {
                     RemoveRepeatedFieldEntry(proto_inputs, i);
                   }
 
                   auto& inputs_including_initializers = graph_inputs_including_initializers_;
-                  auto j = std::find_if(inputs_including_initializers.cbegin(), inputs_including_initializers.cend(),
+                  auto j = std::find_if(inputs_including_initializers.begin(), inputs_including_initializers.end(),
                                         [&name](const NodeArg* input) { return input->Name() == name; });
 
-                  if (j != inputs_including_initializers.cend()) {
+                  if (j != inputs_including_initializers.end()) {
                     inputs_including_initializers.erase(j);
                   }
                 });
