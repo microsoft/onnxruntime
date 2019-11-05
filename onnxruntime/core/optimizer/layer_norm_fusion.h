@@ -10,7 +10,7 @@ namespace onnxruntime {
 /**
 @Class LayerNormFusion
 
-Rewrite graph fusing Layer Normalization subgraph to a single LayerNorm node.
+Rewrite graph fusing Layer Normalization subgraph to a single LayerNormalization node.
 
 The formula corresponding to LayerNorm activation subgraph:
 (x - mean(x, axis)) / sqrt(var(x, axis)) * scale + bias, where x is the input.
