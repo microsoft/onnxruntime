@@ -7,6 +7,7 @@
 # --------------------------------------------------------------------------
 
 import os
+import sys
 import argparse
 import numpy as np
 from PIL import Image
@@ -64,7 +65,31 @@ def load_and_resize_image(image_filepath, height, width):
     nchw_data = nhwc_data.transpose(0, 3, 1, 2) # ONNX Runtime standard
     return nchw_data
 
-def load_batch(images_folder, height, width, size_limit=30):
+def set_preprocess(customized_preprocess, file_path):
+    '''
+    Set up the user defined data preprocess function. The function needs to handel data loading and processing.
+        parameter customized_preprocess: string with module name and function name
+        parameter file_path: path to the module
+        return: user defined data preprocessing function
+    '''
+    import importlib.util
+    if not customized_preprocess:
+        print("Warning: no customized data preporcess method is given. Using the default preprocess method.")
+        return load_and_resize_image
+    namelist = customized_preprocess.split('.')
+    if not file_path:
+        file_path = os.getcwd()
+    file_path = file_path + '\\'+ namelist[0] + '.py'
+    try:
+        spec = importlib.util.spec_from_file_location(namelist[0], file_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except FileNotFoundError:
+        sys.exit("Cannot found custromized preprocess file.")
+    return getattr(module, namelist[1])
+
+def load_batch(images_folder, height, width, size_limit=30,
+                customized_preprocess='', file_path=''):
     '''
     Loads a batch of images
     parameter images_folder: path to folder storing images
@@ -79,9 +104,14 @@ def load_batch(images_folder, height, width, size_limit=30):
     else:
         batch_filenames = image_names
     unconcatenated_batch_data = []
+
+    if customized_preprocess:
+        preprocess_func = set_preprocess(customized_preprocess, file_path)
+    else:
+        preprocess_func = load_and_resize_image
     for image_name in batch_filenames:
         image_filepath = images_folder + '/' + image_name
-        nchw_data = load_and_resize_image(image_filepath, height, width)
+        nchw_data = preprocess_func(image_filepath, height, width)
         unconcatenated_batch_data.append(nchw_data)
     batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
     return batch_data
@@ -206,6 +236,8 @@ def main():
     parser.add_argument('--dataset_path', required=True)
     parser.add_argument('--calib_mode', default='naive')
     parser.add_argument('--dataset_size', type=int, default=30)
+    parser.add_argument('--data_preprocess', type=str, default='')
+    parser.add_argument('--data_preprocess_filepath', type=str, default='')
     args = parser.parse_args()
     model_path = args.model_path
     images_folder = args.dataset_path
@@ -223,7 +255,7 @@ def main():
     (samples, channels, height, width) = session.get_inputs()[0].shape
 
     # Generating inputs for quantization
-    inputs = load_batch(images_folder, height, width, size_limit)
+    inputs = load_batch(images_folder, height, width, size_limit, args.data_preprocess, args.data_preprocess_filepath)
     dict_for_quantization = get_intermediate_outputs(model_path, session, inputs, calib_mode)
     quantization_params_dict = calculate_quantization_params(model, quantization_thresholds=dict_for_quantization)
     calibrated_quantized_model = quantize(onnx.load(model_path), quantization_mode=QuantizationMode.QLinearOps, quantization_params=quantization_params_dict)
