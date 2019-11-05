@@ -26,7 +26,7 @@
 #endif
 
 #define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, std::min(destsz, srcsz))
-			        
+
 namespace onnxruntime {
 
 constexpr const char* Intel = "Intel";
@@ -57,7 +57,7 @@ IntelExecutionProvider::IntelExecutionProvider(const IntelExecutionProviderInfo&
 
   InsertAllocator(CreateAllocator(default_memory_info));
 
-  
+
   auto cpu_allocator_factory = [](int) {
     auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(
       NGRAPH, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput);
@@ -80,7 +80,7 @@ IntelExecutionProvider::IntelExecutionProvider(const IntelExecutionProviderInfo&
     LOGS_DEFAULT(FATAL) << "Unknown exception while while creating nGraph " << info.ng_backend_type << " Backend";
     throw;
   }
-  
+
 } */
 
 //Gets the input count of given node
@@ -115,7 +115,7 @@ bool IsDimensionSupported(const Node* node) {
 static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer) {
   const auto& optype = node->OpType();
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
- 
+
   auto node_inputs = node->InputDefs();
 
   //Zero dimension check
@@ -123,13 +123,22 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
 
     auto name = node_inputs[i]->Name();
     auto it = initializers.find(name);
-    std::cout << "Name: " << node_inputs[i]->Shape() << "Dims: " << node_inputs[i]->Shape()->dim_size() << std::endl;
+    // std::cout << "Name: " << node_inputs[i]->Shape() << "Dims: " << node_inputs[i]->Shape()->dim_size() << std::endl;
     if(it == initializers.end() && node_inputs[i]->Shape() != nullptr){
       if (node_inputs[i]->Shape()->dim_size() == 0) {
-	std::cout << "Dims: " << node_inputs[i]->Shape()->dim_size() << std::endl;
         //throw "Node_input is zero dimension";
         return true;
       }
+      else{
+
+        auto num_dims = node_inputs[i]->Shape()->dim_size();
+        for(int j = 0; j < num_dims; j++){
+
+          if(node_inputs[i]->Shape()->dim(j).dim_value() == 0)
+            return true;
+        }
+      }
+
     }
   }
 
