@@ -26,7 +26,7 @@
 #endif
 
 #define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, std::min(destsz, srcsz))
-			        
+
 namespace onnxruntime {
 
 constexpr const char* Intel = "Intel";
@@ -57,7 +57,7 @@ IntelExecutionProvider::IntelExecutionProvider(const IntelExecutionProviderInfo&
 
   InsertAllocator(CreateAllocator(default_memory_info));
 
-  
+
   auto cpu_allocator_factory = [](int) {
     auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(
       NGRAPH, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput);
@@ -80,7 +80,7 @@ IntelExecutionProvider::IntelExecutionProvider(const IntelExecutionProviderInfo&
     LOGS_DEFAULT(FATAL) << "Unknown exception while while creating nGraph " << info.ng_backend_type << " Backend";
     throw;
   }
-  
+
 } */
 
 //Gets the input count of given node
