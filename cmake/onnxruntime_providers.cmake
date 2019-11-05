@@ -72,6 +72,10 @@ if(onnxruntime_USE_DML)
   set(PROVIDERS_DML onnxruntime_providers_dml)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES dml)
 endif()
+if(onnxruntime_USE_ACL)
+  set(PROVIDERS_ACL onnxruntime_providers_acl)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES acl)
+endif()
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
 set(onnxruntime_providers_src ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
@@ -115,88 +119,6 @@ add_dependencies(onnxruntime_providers onnx ${onnxruntime_EXTERNAL_DEPENDENCIES}
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cpu  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 set_target_properties(onnxruntime_providers PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
-
-
-if (onnxruntime_USE_MIMALLOC)
-  set(mimalloc_root_dir ${PROJECT_SOURCE_DIR}/external/mimalloc)
-  set(mimalloc_output_dir ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/)
-  set(mimalloc_wheel_dir ${mimalloc_output_dir}/onnxruntime/capi/)
-
-  add_definitions(
-    -DUSE_MIMALLOC=1 # used in ONNXRuntime
-    -DMI_OVERRIDE=ON) # used in building MiMalloc
-  include_directories(${mimalloc_root_dir}/include)
-  
-  if(NOT IS_DIRECTORY ${mimalloc_wheel_dir})
-    file(MAKE_DIRECTORY ${mimalloc_wheel_dir})
-  endif()
-  
-  if (WIN32)
-    # The generic MiMalloc CMakeLists.txt project lacks 
-    # the needed hooks to override malloc at runtime on Windows
-    # so we fall back to the specially provided VS solutions (which
-    # do have those hooks)
-    set(mimalloc_output mimalloc-override)
-
-    if(NOT ${CMAKE_GENERATOR_PLATFORM} MATCHES "x64|Win32")
-      message(FATAL_ERROR "MiMalloc doesn't support ARM/ARM64 targets")
-    endif()
-    
-    set(vs_version "vs2019")
-    if (${CMAKE_GENERATOR} MATCHES "Visual Studio [1-5]+ [0-9]+")
-      set(vs_version "vs2017")
-    endif()
-    
-    set(mimalloc_config "Release")
-    if(${CMAKE_BUILD_TYPE} MATCHES "Debug")
-      set(mimalloc_config, "Debug")
-    endif()
-
-    set(mimalloc_target_winsdk ${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION})
-    if(DEFINED ENV{WindowsSDKVersion})
-      set(mimalloc_target_winsdk $ENV{WindowsSDKVersion})
-    endif()
-    
-    set(mimalloc_deps ${mimalloc_output_dir}mimalloc-redirect.dll)
-    set(mimalloc_platform ${CMAKE_GENERATOR_PLATFORM})
-    if(${CMAKE_GENERATOR_PLATFORM} MATCHES "Win32")
-      set(mimalloc_deps ${mimalloc_output_dir}mimalloc-redirect32.dll)
-      set(mimalloc_platform x86)
-    endif()
-
-    # msbuild throws a fit during a postbuild step when copying files if the source uses backslashes and the destination uses forward slashes
-    STRING(REGEX REPLACE "/" "\\\\" msbuild_converted_output_dir ${mimalloc_output_dir})
-    add_custom_command(OUTPUT ${mimalloc_output} COMMAND msbuild ${mimalloc_root_dir}/ide/${vs_version}/mimalloc.sln
-                      /p:OutDir=${msbuild_converted_output_dir} /p:Platform=${mimalloc_platform} /p:Configuration=${mimalloc_config}
-                      /p:WindowsTargetPlatformVersion=${mimalloc_target_winsdk})
-    add_custom_target(mimalloc_override ALL DEPENDS ${mimalloc_output})
-
-    add_library(mimalloc IMPORTED SHARED STATIC)
-    add_dependencies(mimalloc mimalloc_override)
-    set_target_properties(mimalloc PROPERTIES IMPORTED_LOCATION "${mimalloc_output_dir}${mimalloc_output}.lib")
-
-    # copy the dlls into the directory where setup.py will look for them
-    add_custom_command(TARGET mimalloc_override POST_BUILD
-                   COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                       ${mimalloc_output_dir}mimalloc-override.dll ${mimalloc_deps}
-                       ${mimalloc_wheel_dir}
-                   )
-
-  else()
-    set(MI_BUILD_TESTS OFF CACHE BOOL "Build mimalloc tests" FORCE)
-    add_subdirectory(${mimalloc_root_dir} EXCLUDE_FROM_ALL)
-    set_target_properties(mimalloc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
-
-    target_compile_definitions(mimalloc PUBLIC MI_USE_CXX=ON)
-
-    # copy the dll into the directory where setup.py will look for it
-    get_target_property(mimalloc_output_name mimalloc OUTPUT_NAME)
-    install(TARGETS mimalloc DESTINATION ${mimalloc_wheel_dir})
-  endif()
-  
-  # TODO: enable linking once mimalloc has been integrated with an allocator class
-  # target_link_libraries(onnxruntime_providers mimalloc)
-endif()
 
 if (onnxruntime_USE_CUDA)
   file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
@@ -529,10 +451,23 @@ if (onnxruntime_USE_DML)
   set_target_properties(onnxruntime_providers_dml PROPERTIES FOLDER "ONNXRuntime")
 endif()
 
-if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
-  include(onnxruntime_providers_internal.cmake)
+if (onnxruntime_USE_ACL)
+  add_definitions(-DUSE_ACL=1)
+  file(GLOB_RECURSE onnxruntime_providers_acl_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/acl/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/acl/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_acl_cc_srcs})
+  add_library(onnxruntime_providers_acl ${onnxruntime_providers_acl_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_acl onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+  add_dependencies(onnxruntime_providers_acl ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_acl PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_acl PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${ACL_INCLUDE_DIR})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/acl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_acl PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 
-if(onnxruntime_USE_EIGEN_THREADPOOL)
-    target_compile_definitions(onnxruntime_providers PUBLIC USE_EIGEN_THREADPOOL)
+if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
+  include(onnxruntime_providers_internal.cmake)
 endif()

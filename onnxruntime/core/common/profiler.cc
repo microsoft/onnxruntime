@@ -18,6 +18,7 @@ profiling::Profiler::~Profiler() {}
 #endif
 
 ::onnxruntime::TimePoint profiling::Profiler::StartTime() const {
+  ORT_ENFORCE(enabled_);
   return std::chrono::high_resolution_clock::now();
 }
 

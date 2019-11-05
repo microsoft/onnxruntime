@@ -26,7 +26,7 @@ jobs:
       displayName: 'Download test data and generate cmake config'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug Release --build_dir $(Build.BinariesDirectory) --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --build_csharp --use_openmp --use_mkldnn --build_shared_lib  --enable_onnx_tests --cuda_home="C:\local\cuda_10.0.130_win10_trt6015dll" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --use_tensorrt --tensorrt_home="C:\local\TensorRT-6.0.1.5" --update --cuda_version=10.0'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug Release --build_dir $(Build.BinariesDirectory) --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --build_csharp --use_mkldnn --build_shared_lib  --enable_onnx_tests --cuda_home="C:\local\cuda_10.0.130_win10_trt6015dll" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --use_tensorrt --tensorrt_home="C:\local\TensorRT-6.0.1.5" --update --cuda_version=10.0'
         workingDirectory: "$(Build.BinariesDirectory)"
 
     - task: VSBuild@1
@@ -43,7 +43,7 @@ jobs:
       displayName: 'Test Debug'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --use_openmp --use_mkldnn --build_shared_lib  --enable_onnx_tests --cuda_version=10.0 --cuda_home="C:\local\cuda_10.0.130_win10_trt6015dll" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --use_tensorrt --tensorrt_home="C:\local\TensorRT-6.0.1.5" --test'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --use_mkldnn --build_shared_lib  --enable_onnx_tests --cuda_version=10.0 --cuda_home="C:\local\cuda_10.0.130_win10_trt6015dll" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --use_tensorrt --tensorrt_home="C:\local\TensorRT-6.0.1.5" --test'
         workingFolder: '$(Build.BinariesDirectory)'
 
     - task: MSBuild@1
@@ -81,7 +81,7 @@ jobs:
       displayName: 'Test Release'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Release --build_dir $(Build.BinariesDirectory) --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --use_openmp --use_mkldnn --build_shared_lib  --enable_onnx_tests --cuda_version=10.0 --cuda_home="C:\local\cuda_10.0.130_win10_trt6015dll" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --use_tensorrt --tensorrt_home="C:\local\TensorRT-6.0.1.5" --test'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Release --build_dir $(Build.BinariesDirectory) --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --use_mkldnn --build_shared_lib  --enable_onnx_tests --cuda_version=10.0 --cuda_home="C:\local\cuda_10.0.130_win10_trt6015dll" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --use_tensorrt --tensorrt_home="C:\local\TensorRT-6.0.1.5" --test'
         workingFolder: "$(Build.BinariesDirectory)"
 
     - task: MSBuild@1

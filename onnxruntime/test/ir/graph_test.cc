@@ -21,6 +21,7 @@
 #include "core/graph/model.h"
 #include "core/graph/op.h"
 #include "gtest/gtest.h"
+#include "gmock/gmock.h"
 
 #ifdef __GNUC__
 #define UNUSED __attribute__((unused))
@@ -103,6 +104,14 @@ static bool RegisterCustomSchemas() {
       .Output(0, "output_1", "docstr for output_1.", "T")
       .TypeConstraint("T", {"tensor(int32)", "tensor(float)"}, "input/output types");
 
+  OPERATOR_SCHEMA(ShapeInferenceThrowsOp)
+      .SetDoc("Throw shape inference error.")
+      .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
+      .Output(0, "output_1", "docstr for output_1.", "tensor(int32)")
+      .TypeAndShapeInferenceFunction([](InferenceContext&) {
+        fail_shape_inference("try harder");
+      });
+
   return true;
 }
 
@@ -114,16 +123,17 @@ TEST(GraphTraversalTest, ReverseDFS) {
   Model model("graph_1");
   auto& graph = model.MainGraph();
 
-  // Case 1: A normal graph.
-  //                 SouceNode
-  //                 /       \
-            //  node_1 (Variable)      node_2 (Variable)
-  //                 \       /
-  //                 node_3 (Add)
-  //                     |
-  //                 node_4 (NoOp)
-  //                     |
-  //                  SinkNode
+  /* Case 1: A normal graph.
+   *                 SouceNode
+   *                 /       \
+   *  node_1 (Variable)      node_2 (Variable)
+   *                 \       /
+   *                 node_3 (Add)
+   *                     |
+   *                 node_4 (NoOp)
+   *                     |
+   *                  SinkNode
+  */
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
 
@@ -267,16 +277,17 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
   Model model("graph_1");
   auto& graph = model.MainGraph();
 
-  // A normal graph.
-  //                 SouceNode
-  //                 /       \
-            //    node_1 (Variable)  node_2 (Variable)
-  //                 \       /
-  //                 node_3 (Add)
-  //                     |
-  //                 node_4 (NoOp)
-  //                     |
-  //                  SinkNode
+  /* A normal graph.
+   *                 SouceNode
+   *                 /       \
+   *    node_1 (Variable)  node_2 (Variable)
+   *                 \       /
+   *                 node_3 (Add)
+   *                     |
+   *                 node_4 (NoOp)
+   *                     |
+   *                  SinkNode
+   */
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
 
@@ -445,14 +456,15 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
     map.insert({std::to_string(i), i});
   }
 
-  //               |         |
-  //       b (Identity)  a (Identity)   values
-  //                \   /
-  //                  c (Merge)
-  //                  |
-  //                  d (Split)
-  //                /   \
-  //              1  ..  10
+  /*               |         |
+   *       b (Identity)  a (Identity)   values
+   *                \   /
+   *                  c (Merge)
+   *                  |
+   *                  d (Split)
+   *                /   \
+   *              1  ..  10
+   */
   TypeProto tensor_int32;
   tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
   tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
@@ -653,14 +665,15 @@ TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {
   Model model("graph_1");
   auto& graph = model.MainGraph();
 
-  // Case 1: A normal graph.
-  //                         SourceNode
-  //                   /         |         \
-            //  node_1 (Variable)  node_2 (Variable)  node_3 (Variable)
-  //                   \         |         / (it's all 3 nodes above outputs to the one input of node_4)
-  //                        node_4 (Max)
-  //                             |
-  //                          SinkNode
+  /* Case 1: A normal graph.
+   *                         SourceNode
+   *                   /         |         \
+   *  node_1 (Variable)  node_2 (Variable)  node_3 (Variable)
+   *                   \         |         / (it's all 3 nodes above outputs to the one input of node_4)
+   *                        node_4 (Max)
+   *                             |
+   *                          SinkNode
+  */
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
 
@@ -721,6 +734,27 @@ TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {
   }
   EXPECT_EQ(1, graph_proto.output_size());
   EXPECT_EQ("node_4_out_1", graph_proto.output(0).name());
+}
+
+TEST(ResolvingGraphTest, ShapeInferenceErrorHandling) {
+  ASSERT_TRUE(kSchemasRegistered);
+
+  Model model("graph");
+  auto& graph = model.MainGraph();
+
+  TypeProto tensor_int32;
+  tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& input_arg1 = graph.GetOrCreateNodeArg("node_1_in_1", &tensor_int32);
+  auto& output_arg1 = graph.GetOrCreateNodeArg("node_1_out_1", &tensor_int32);
+
+  graph.AddNode("node_1", "ShapeInferenceThrowsOp", "node 1", {&input_arg1}, {&output_arg1});
+
+  auto status = graph.Resolve();
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Node (node_1) Op (ShapeInferenceThrowsOp) "
+                                                        "[ShapeInferenceError] try harder"));
 }
 
 TEST(TestAddAttribute, AddTensorAttribute) {
@@ -902,6 +936,131 @@ TEST(NameResolutionTest, DuplicateName) {
   EXPECT_FALSE(status.IsOK());
   bool duplicate_error_found = status.ErrorMessage().find("Duplicate") != std::string::npos;
   EXPECT_TRUE(duplicate_error_found);
+}
+
+TEST(GraphUpdateTest, ReplaceInitializedTensor) {
+  Model model{"GraphUpdateTest"};
+  auto& graph = model.MainGraph();
+  const std::string initializer_name = "initializer";
+
+  ONNX_NAMESPACE::TensorProto original{};
+  original.set_data_type(TensorProto_DataType_INT32);
+  original.add_dims(2);
+  original.add_int32_data(1);
+  original.add_int32_data(2);
+  original.set_name(initializer_name);
+
+  graph.AddInitializedTensor(original);
+
+  Status status;
+
+  {
+    ONNX_NAMESPACE::TensorProto bad_name = original;
+    bad_name.set_name("invalid");
+
+    status = graph.ReplaceInitializedTensor(bad_name);
+    ASSERT_FALSE(status.IsOK());
+  }
+
+  {
+    ONNX_NAMESPACE::TensorProto bad_type = original;
+    bad_type.set_data_type(TensorProto_DataType_FLOAT16);
+
+    status = graph.ReplaceInitializedTensor(bad_type);
+    ASSERT_FALSE(status.IsOK());
+  }
+
+  {
+    ONNX_NAMESPACE::TensorProto bad_dims = original;
+    bad_dims.clear_dims();
+    bad_dims.add_dims(2);
+    bad_dims.add_dims(1);
+
+    status = graph.ReplaceInitializedTensor(bad_dims);
+    ASSERT_FALSE(status.IsOK());
+  }
+
+  {
+    ONNX_NAMESPACE::TensorProto valid_replacement = original;
+    valid_replacement.clear_int32_data();
+    valid_replacement.add_int32_data(3);
+    valid_replacement.add_int32_data(4);
+
+    status = graph.ReplaceInitializedTensor(valid_replacement);
+    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+    auto tensor_data_matches = [](const ONNX_NAMESPACE::TensorProto& a, const ONNX_NAMESPACE::TensorProto& b) {
+      if (a.int32_data_size() != b.int32_data_size()) return false;
+      for (int i = 0; i < a.int32_data_size(); ++i) {
+        if (a.int32_data(i) != b.int32_data(i)) return false;
+      }
+      return true;
+    };
+
+    // check retrieved tensor
+    const ONNX_NAMESPACE::TensorProto* result;
+    ASSERT_TRUE(graph.GetInitializedTensor(initializer_name, result));
+    ASSERT_TRUE(tensor_data_matches(*result, valid_replacement));
+
+    // check GraphProto content
+    const ONNX_NAMESPACE::GraphProto graph_proto = graph.ToGraphProto();
+    ASSERT_EQ(graph_proto.initializer_size(), 1);
+    ASSERT_TRUE(tensor_data_matches(graph_proto.initializer(0), valid_replacement));
+  }
+}
+
+TEST(GraphUpdateTest, AddRemoveInitializerHandling) {
+  Model m{"test_model"};
+  Graph& graph = m.MainGraph();
+
+  auto create_tensor_proto = [](const std::string& name, int32_t value) {
+    ONNX_NAMESPACE::TensorProto init{};
+    init.set_name(name);
+    init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+    init.add_dims(1);
+    init.add_int32_data(value);
+
+    return init;
+  };
+
+  auto init = create_tensor_proto("1", 1);
+  auto init2 = create_tensor_proto("2", 2);
+
+  // add both, remove the 1st (moves the second initializer into the first slot), and finally re-add the first
+  graph.AddInitializedTensor(init);
+  graph.AddInitializedTensor(init2);
+  graph.RemoveInitializedTensor(init.name());
+  graph.AddInitializedTensor(init);
+
+  ASSERT_EQ(graph.GetAllInitializedTensors().size(), 2);
+
+  // check the values coming from name_to_initial_tensor_ are good;
+  const TensorProto* i = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor(init.name(), i));
+  ASSERT_TRUE(i->int32_data()[0] == 1);
+  ASSERT_TRUE(graph.GetInitializedTensor(init2.name(), i));
+  ASSERT_TRUE(i->int32_data()[0] == 2);
+
+  // check the values in the GraphProto are also correct
+  ONNX_NAMESPACE::GraphProto graph_proto_from_const_graph = static_cast<const Graph&>(graph).ToGraphProto();
+  ONNX_NAMESPACE::GraphProto graph_proto_from_graph = graph.ToGraphProto();
+
+  ASSERT_EQ(graph_proto_from_const_graph.initializer_size(), 2);
+  ASSERT_EQ(graph_proto_from_graph.initializer_size(), 2);
+
+  auto validate_proto = [&](const GraphProto& proto) {
+    auto initializers = proto.initializer();
+    // we expect '2' to be before '1' due to the remove moving the last initializer into the slot of the one being
+    // removed in order to free memory and only move one entry
+    EXPECT_EQ(initializers[0].name(), init2.name());
+    EXPECT_EQ(initializers[0].int32_data()[0], 2);
+
+    EXPECT_EQ(initializers[1].name(), init.name());
+    EXPECT_EQ(initializers[1].int32_data()[0], 1);
+  };
+
+  validate_proto(graph_proto_from_const_graph);
+  validate_proto(graph_proto_from_graph);
 }
 }  // namespace test
 }  // namespace onnxruntime

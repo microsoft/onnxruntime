@@ -210,6 +210,10 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return initializers.find(x_zero_point->Name()) == initializers.end() ||
              initializers.find(w_zero_point->Name()) == initializers.end();
     } // else -> xzp & wzp are 0 by default according to ONNX spec
+  } else if (optype == "Expand") {
+    // nGraph only supports constant shape input values
+    const auto& shape_input = node->InputDefs()[1];
+    return !graph_viewer.IsConstantInitializer(shape_input->Name(), true);
   }
 
   //Op doesn't fall into known any of unsupported modes.

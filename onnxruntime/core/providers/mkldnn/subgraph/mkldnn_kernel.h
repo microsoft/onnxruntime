@@ -26,11 +26,11 @@ class MklDnnKernel {
   }
   virtual ~MklDnnKernel(){};
 
-  virtual Status CreatePrimitives(const OrtCustomOpApi* api,
-                                  OrtKernelContext* context,
-                                  mkldnn::engine& cpu_engine,
-                                  std::vector<mkldnn::primitive>& net,
-                                  std::vector<std::unordered_map<int, mkldnn::memory>> &net_args) = 0;
+  virtual void CreatePrimitives(const OrtCustomOpApi* api,
+                                OrtKernelContext* context,
+                                mkldnn::engine& cpu_engine,
+                                std::vector<mkldnn::primitive>& net,
+                                std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) = 0;
 
   virtual void ReorderWeights(const OrtCustomOpApi* api, OrtKernelContext* context, mkldnn::engine& cpu_engine) {
     ORT_UNUSED_PARAMETER(api);
@@ -103,9 +103,9 @@ class MklDnnKernel {
   // It can be ORT format (nchw) or blocked memory format from parent node
   // mkldnn::memory::format_tag source_format_ = mkldnn::memory::format_tag::any;
   mkldnn::memory::desc source_desc_ = mkldnn::memory::desc();
+  Status primitive_created_status_;
 
  protected:
-
   // Pointer to MklNode of subgraph IR
   std::shared_ptr<MklDnnNode> mklnode_ptr_;
   // input format expected by primitive object
@@ -113,9 +113,6 @@ class MklDnnKernel {
 
   // memory used for reorders
   std::unique_ptr<mkldnn::memory> reorder_dst_mem_to_;
-
- protected:
-  Status primitive_created_;
   AllocatorPtr alloc_;
   MKLDNNExecutionProvider* provider_;
 };

@@ -6,6 +6,7 @@
 #pragma warning(disable : 4244)
 #endif
 
+#include <cassert>
 #include <fstream>
 #include <iostream>
 #include <numeric>
@@ -40,12 +41,42 @@ namespace onnxruntime {
     GraphProtoSyncNeeded(sync_needed);               \
   } while (0)
 
+static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
+  bool is_latest_opset = false;
+  auto onnx_opset = opset_versions.find(kOnnxDomain);
+
+  if (onnx_opset != opset_versions.cend()) {
+    static int latest_onnx_version =
+        ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
+
+    if (onnx_opset->second == latest_onnx_version) {
+      is_latest_opset = true;
+    }
+  }
+
+  return is_latest_opset;
+}
+
 static Status MergeShapeInfo(const std::string& output_name,
-                             const TypeProto_Tensor& source, TypeProto_Tensor& target) {
+                             const TypeProto_Tensor& source, TypeProto_Tensor& target,
+                             bool strict) {
   try {
     ONNX_NAMESPACE::mergeInShapeInfo(source, target);
   } catch (const ONNX_NAMESPACE::InferenceError& ex) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
+    // if this model was not created with the latest onnx version, allow the shape inferencing failure (strict == false).
+    // we do this to have strict testing of the latest inferencing to detect bugs, but lenient shape inferencing for
+    // older models in case later changes to the ONNX shape inferencing or ORT break them.
+    if (!strict) {
+      // mergeInShapeInfo does nothing unless source.shape() is not null, and there would be no conflict if
+      // target.shape() was empty. 'assert' just in case that ever changes.
+      assert(utils::HasShape(source) && utils::HasShape(target));
+      LOGS_DEFAULT(WARNING) << "Error merging shape info for output. '" << output_name
+                            << "' source:" << source.shape() << " target:" << target.shape()
+                            << ". Falling back to lenient merge.";
+      ONNX_NAMESPACE::UnionShapeInfo(source.shape(), target);
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
+    }
   }
 
   return Status::OK();
@@ -158,7 +189,25 @@ void NodeArg::SetShape(const TensorShapeProto& shape) {
   }
 }
 
-common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type) {
+void NodeArg::ClearShape() {
+  const auto type_case = node_arg_info_.type().value_case();
+  switch (type_case) {
+    case TypeProto::kTensorType:
+      node_arg_info_.mutable_type()->mutable_tensor_type()->clear_shape();
+      break;
+    case TypeProto::kSparseTensorType:
+      node_arg_info_.mutable_type()->mutable_sparse_tensor_type()->clear_shape();
+      break;
+    case TypeProto::kSequenceType:
+    case TypeProto::kMapType:
+    case TypeProto::kOpaqueType:
+    case TypeProto::VALUE_NOT_SET:
+    default:
+      return;
+  }
+}
+
+common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict) {
   if (!utils::HasType(node_arg_info_)) {
     *node_arg_info_.mutable_type() = input_type;
     type_ = DataTypeUtils::ToType(node_arg_info_.type());
@@ -187,7 +236,7 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       if (utils::HasShape(input_tensor_type)) {
         auto& current_tensor_type = *current_type.mutable_tensor_type();
         if (utils::HasShape(current_tensor_type)) {
-          ORT_RETURN_IF_ERROR(MergeShapeInfo(Name(), input_tensor_type, current_tensor_type));
+          ORT_RETURN_IF_ERROR(MergeShapeInfo(Name(), input_tensor_type, current_tensor_type, strict));
         } else {
           current_tensor_type = input_tensor_type;
         }
@@ -225,11 +274,11 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
   return Status::OK();
 }
 
-common::Status NodeArg::UpdateTypeAndShape(const NodeArg& node_arg) {
+common::Status NodeArg::UpdateTypeAndShape(const NodeArg& node_arg, bool strict) {
   auto status = Status::OK();
 
   if (utils::HasType(node_arg.node_arg_info_))
-    status = UpdateTypeAndShape(node_arg.node_arg_info_.type());
+    status = UpdateTypeAndShape(node_arg.node_arg_info_.type(), strict);
 
   return status;
 }
@@ -351,21 +400,25 @@ void Node::SetExecutionProviderType(ProviderType execution_provider_type) {
   execution_provider_type_ = execution_provider_type;
 }
 
-void Node::ToProto(NodeProto& proto) const {
-  // Set name.
+void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
   proto.set_name(name_);
-  // Set op type.
   proto.set_op_type(op_type_);
-  // Set op domain;
-  proto.set_domain(domain_);
-  // Set doc string.
-  proto.set_doc_string(description_);
+
+  if (!domain_.empty())
+    proto.set_domain(domain_);
+
+  if (!description_.empty())
+    proto.set_doc_string(description_);
 
   // Set attributes.
   proto.clear_attribute();
   for (const auto& attribute : attributes_) {
     const gsl::not_null<AttributeProto*> attr{proto.add_attribute()};
-    *attr = attribute.second;
+    *attr = attribute.second;  // copy
+    if (update_subgraphs && attr->has_g()) {
+      attr->clear_g();
+      *attr->mutable_g() = attr_to_subgraph_map_.find(attribute.first)->second->ToGraphProto();
+    }
   }
 
   // Set inputs' definitions.
@@ -657,6 +710,7 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
       domain_to_version_(domain_to_version),
       model_functions_(model_functions),
       ir_version_(ir_version),
+      using_latest_onnx_opset_(UsingLatestOnnxOpset(domain_to_version)),
       parent_graph_(parent_graph),
       parent_node_(parent_node) {
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
@@ -1545,7 +1599,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
   try {
     context.RunInferencing();
   } catch (const std::exception& ex) {
-    return Status(ONNXRUNTIME, FAIL, ex.what());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node (", node.Name(), ") Op (", node.OpType(), ") ", ex.what());
   }
 
   const auto& onnx_inferred_types(context.InferredOutputTypes());
@@ -1612,12 +1666,16 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
           // that have no values.
           TypeProto_Tensor merge_target;
           (*merge_target.mutable_shape()) = *output_def->Shape();
-          auto status = MergeShapeInfo(output_def->Name(), tensor_type, merge_target);
+          auto status = MergeShapeInfo(output_def->Name(), tensor_type, merge_target, using_latest_onnx_opset_);
           if (!status.IsOK()) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node_name, " ", status.ErrorMessage());
           }
 
-          output_def->SetShape(merge_target.shape());
+          // we may have cleared the shape if there was a mismatch so handle that
+          if (utils::HasShape(merge_target))
+            output_def->SetShape(merge_target.shape());
+          else
+            output_def->ClearShape();
         }
       }
     }
@@ -1971,7 +2029,10 @@ void Graph::SetDescription(const std::string& description) {
 }
 
 void Graph::AddInitializedTensor(const TensorProto& tensor) {
-  if (name_to_initial_tensor_.end() != name_to_initial_tensor_.find(tensor.name())) {
+  auto existing = name_to_initial_tensor_.find(tensor.name());
+  if (existing != name_to_initial_tensor_.cend()) {
+    ORT_ENFORCE(existing->second == &tensor,
+                "AddInitializedTensor already has tensor with name ", tensor.name(), " but different TensorProto.");
     return;
   }
 
@@ -1988,18 +2049,74 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
 
     ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
   }
-
-  SetGraphProtoSyncNeeded();
-  SetGraphResolveNeeded();
 }
 
 void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
+  bool found = false;
   auto iter = name_to_initial_tensor_.find(tensor_name);
-  if (name_to_initial_tensor_.end() != iter) {
+  found = iter != name_to_initial_tensor_.end();
+  if (found) {
     name_to_initial_tensor_.erase(tensor_name);
-    SetGraphProtoSyncNeeded();
     SetGraphResolveNeeded();
   }
+
+  auto& mutable_initializers = *(graph_proto_->mutable_initializer());
+  auto proto_entry = std::find_if(mutable_initializers.begin(), mutable_initializers.end(),
+                                  [&tensor_name](const TensorProto& entry) { return entry.name() == tensor_name; });
+
+  if (proto_entry != mutable_initializers.end()) {
+    auto num_entries = mutable_initializers.size();
+    if (num_entries > 1) {
+      // swap the entry being deleted with the last one, and delete it.
+      // we do this so we don't have to move all the entries past the one being deleted down one.
+      auto slot = proto_entry - mutable_initializers.begin();
+      auto last_entry = mutable_initializers.end() - 1;
+      mutable_initializers.SwapElements(slot, num_entries - 1);
+      mutable_initializers.erase(last_entry);
+    } else {
+      mutable_initializers.erase(proto_entry);
+    }
+  } else {
+    // these should always be in sync as the pointer in name_to_initial_tensor_ is to memory owned by graph_proto_
+    ORT_ENFORCE(!found, "graph_proto_ is not in sync with name_to_initial_tensor_.");
+  }
+}
+
+Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer) {
+  // name_to_initial_tensor_ maps from name to const TensorProto*, so we first
+  // look up the const pointer by name, then find and modify the mutable
+  // pointed-to TensorProto in graph_proto_.
+  const auto& initializer_name = new_initializer.name();
+  const auto name_to_initializer_it = name_to_initial_tensor_.find(initializer_name);
+  ORT_RETURN_IF_NOT(name_to_initializer_it != name_to_initial_tensor_.end(),
+                    "Failed to find existing initializer with name ", initializer_name, ".");
+
+  const auto& old_initializer = *(name_to_initializer_it->second);
+
+  auto dims_eq = [&old_initializer, &new_initializer]() {
+    if (old_initializer.dims_size() != new_initializer.dims_size()) return false;
+    for (int i = 0; i < old_initializer.dims_size(); ++i) {
+      if (old_initializer.dims(i) != new_initializer.dims(i)) return false;
+    }
+    return true;
+  };
+
+  ORT_RETURN_IF_NOT(dims_eq(), "Replacement tensor's dimensions do not match.");
+  ORT_RETURN_IF_NOT(old_initializer.data_type() == new_initializer.data_type(),
+                    "Replacement tensor's data type does not match.");
+
+  auto& mutable_initializers = *(graph_proto_->mutable_initializer());
+  // use cheaper pointer comparison to find old entry
+  auto existing_entry = std::find(mutable_initializers.pointer_begin(), mutable_initializers.pointer_end(),
+                                  &old_initializer);
+
+  // these should always be in sync as the pointer in name_to_initial_tensor_ is to memory owned by graph_proto_
+  ORT_ENFORCE(existing_entry != mutable_initializers.pointer_end(),
+              "graph_proto_ is not in sync with name_to_initial_tensor_");
+
+  **existing_entry = new_initializer;
+
+  return Status::OK();
 }
 
 bool Graph::GetInitializedTensor(const std::string& tensor_name, const TensorProto*& value) const {
@@ -2014,7 +2131,6 @@ bool Graph::GetInitializedTensor(const std::string& tensor_name, const TensorPro
 
 void Graph::CleanAllInitializedTensors() noexcept {
   name_to_initial_tensor_.clear();
-  removed_initializer_indexes_.clear();
 
   // Clearing RepeatedPtrFields does not free objects' memory. The memory is retained
   // and can be reused. Need to explicitly release the cleared objects and free the
@@ -2194,35 +2310,6 @@ const ONNX_NAMESPACE::GraphProto& Graph::ToGraphProto() {
   // Nodes.
   ToGraphProtoInternal(*graph_proto_);
 
-  if (!removed_initializer_indexes_.empty()) {
-    // Move initializers.
-    std::sort(removed_initializer_indexes_.begin(), removed_initializer_indexes_.end());
-    int lastInUseInitializerIndex = graph_proto_->initializer_size() - 1;
-    int start = 0;
-    int end = gsl::narrow_cast<int>(removed_initializer_indexes_.size()) - 1;
-    int lastRemovedInitializerIndex = removed_initializer_indexes_[end];
-
-    for (; start <= end; start++) {
-      // Find a lastInUseInitializer.
-      while (start <= end && lastInUseInitializerIndex == lastRemovedInitializerIndex) {
-        graph_proto_->mutable_initializer()->RemoveLast();
-        lastInUseInitializerIndex--;
-        end--;
-        if (start <= end) {
-          lastRemovedInitializerIndex = removed_initializer_indexes_[end];
-        }
-      }
-
-      if (start <= end) {
-        // Copy the <lastInUseInitializerIndex> initializer in use to the <start> slot which is removed.
-        *graph_proto_->mutable_initializer(removed_initializer_indexes_[start]) = graph_proto_->initializer(lastInUseInitializerIndex);
-        graph_proto_->mutable_initializer()->RemoveLast();
-        lastInUseInitializerIndex--;
-      }
-    }
-    removed_initializer_indexes_.clear();
-  }
-
   GraphProtoSyncNeeded(false);
 
   return *graph_proto_;
@@ -2235,9 +2322,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   GraphProto result;
   ToGraphProtoInternal(result);
 
-  for (auto initializer : GetAllInitializedTensors()) {
-    *result.add_initializer() = *initializer.second;
-  }
+  *result.mutable_initializer() = graph_proto_->initializer();
 
   return result;
 }
@@ -2274,7 +2359,9 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
   for (auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     const gsl::not_null<NodeProto*> node_proto{graph_proto.add_node()};
     const gsl::not_null<const Node*> p_node{GetNode(node_idx)};
-    p_node->ToProto(*node_proto);
+    // we need to update any GraphProto attributes for subgraphs so that any changes made by things
+    // such as the optimizers are captured. otherwise we can end up saving an invalid graph.
+    p_node->ToProto(*node_proto, /* update_subgraphs */ true);
   }
 }
 

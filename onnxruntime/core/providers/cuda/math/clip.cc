@@ -26,9 +26,12 @@ Status Clip<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   size_t count = input_shape.Size();
 
-  auto* y_data = Y->template MutableData<T>();
-  const auto* x_data = X.template Data<T>();
-  ClipImpl<T>(x_data, y_data, min_, max_, count);
+  if (count > 0) {
+    auto* y_data = Y->template MutableData<T>();
+    const auto* x_data = X.template Data<T>();
+    ClipImpl<T>(x_data, y_data, min_, max_, count);
+  }
+
   return Status::OK();
 }
 

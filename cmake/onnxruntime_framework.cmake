@@ -18,7 +18,7 @@ set_target_properties(onnxruntime_framework PROPERTIES FOLDER "ONNXRuntime")
 add_dependencies(onnxruntime_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
-  target_compile_definitions(onnxruntime_framework PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
+  target_compile_definitions(onnxruntime_framework PRIVATE DEBUG_NODE_INPUTS_OUTPUTS=${onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS})
 endif()
 
 
