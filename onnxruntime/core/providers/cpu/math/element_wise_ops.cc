@@ -1092,31 +1092,17 @@ void BroadCastMFloat16FMod(const Tensor& X, const Tensor& Y, OpKernelContext* co
       });
 }
 
-// Workaround GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226
-// can not specify lambda directly
-template <class T, class... Args>
-inline int InvokeBroadcastFmodCallable(int32_t dt_type, size_t& called, bool fmod, Args&&... args) {
-  if (utils::ToTensorProtoElementType<T>() == dt_type) {
+// Generic implementation of Mod kernel
+template <class T>
+struct CallModImpl {
+  void operator()(bool fmod, const Tensor& X, const Tensor& Y, OpKernelContext* ctx) const {
     if (fmod) {
-      BroadCastFMod<T>(std::forward<Args>(args)...);
+      BroadCastFMod<T>(X, Y, ctx);
     } else {
-      BroadCastMod<T>(std::forward<Args>(args)...);
+      BroadCastMod<T>(X, Y, ctx);
     }
-    ++called;
   }
-  return 0;
-}
-
-template <class... Types>
-inline void CallDispatcher(int dt_type, bool fmod, const Tensor& X, const Tensor& Y, OpKernelContext* ctx) {
-  size_t called = 0;
-
-  int results[] = {0, InvokeBroadcastFmodCallable<Types>(dt_type, called, fmod, X, Y, ctx)...};
-
-  ORT_UNUSED_PARAMETER(results);
-  ORT_ENFORCE(called < 2, "Mod CallDispatcher broken. Check for duplicate type.");
-  ORT_ENFORCE(called == 1, "Mod op: Unsupported tensor data type:", dt_type);
-}
+};
 
 }  // namespace mod_internal
 
@@ -1153,11 +1139,14 @@ Status Mod::Compute(OpKernelContext* context) const {
         BroadCastMFloat16FMod(X, Y, context);
         break;
       default:
-        CallDispatcher<uint8_t, int8_t, uint16_t, int16_t, uint32_t, int32_t, uint64_t, int64_t>(dt_type, fmod_, X, Y, context);
+        utils::MLTypeCallDispatcher<mod_internal::CallModImpl, uint8_t, int8_t, uint16_t, int16_t,
+                                    uint32_t, int32_t, uint64_t, int64_t>
+            t_disp(dt_type);
+        t_disp.Invoke(fmod_, X, Y, context);
         break;
     }
-   }
-   return s;
+  }
+  return s;
 }
 
 }  // namespace onnxruntime

@@ -73,27 +73,14 @@ void SignBFloat16(const Tensor* input, Tensor* output) {
   });
 }
 
-// Workaround GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226
-// can not specify lambda directly
+// MLTypeTypeCallDispatcher functor. This is a generic
+// implementation for all types other than MLFloat16 and BFloat16 above.
 template <class T>
-inline int InvokeSignCallable(int32_t dt_type, size_t& called, const Tensor* input, Tensor* output) {
-  if (utils::ToTensorProtoElementType<T>() == dt_type) {
+struct CallSignImpl {
+  void operator()(const Tensor* input, Tensor* output) const {
     EigenMap<T>(*output) = EigenMap<T>(*input).array().cwiseSign();
-    ++called;
   }
-  return 0;
-}
-
-template<typename... Types>
-inline void CallDispatcher(int32_t dt_type, const Tensor* input, Tensor* output) {
-  size_t called = 0;
-
-  int results[] = {0, InvokeSignCallable<Types>(dt_type, called, input, output)...};
-  ORT_UNUSED_PARAMETER(results);
-  ORT_ENFORCE(called < 2, "Sign CallDispatcher broken. Check for duplicate type.");
-  ORT_ENFORCE(called == 1, "Unsupported data type: ", dt_type);
-}
-
+};
 }  // namespace sign_internal
 
 Status Sign::Compute(OpKernelContext* ctx) const {
@@ -103,7 +90,7 @@ Status Sign::Compute(OpKernelContext* ctx) const {
   auto output = ctx->Output(0, input->Shape());
 
   auto dtype = input->DataType()->AsPrimitiveDataType();
-  switch (dtype->GetDataType ()) {
+  switch (dtype->GetDataType()) {
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
       SignBFloat16(input, output);
       break;
@@ -111,8 +98,10 @@ Status Sign::Compute(OpKernelContext* ctx) const {
       SignMLFloat16(input, output);
       break;
     default:
-      CallDispatcher<float, double, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
-        (dtype->GetDataType(), input, output);
+      utils::MLTypeCallDispatcher<CallSignImpl, float, double, int8_t, uint8_t,
+                                  int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
+          t_disp(dtype->GetDataType());
+      t_disp.Invoke(input, output);
       break;
   }
   return Status::OK();

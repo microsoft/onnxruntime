@@ -86,42 +86,26 @@ namespace cuda_range_internal {
 // Workaround GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226
 // can not specify lambda directly
 template <class T>
-inline int InvokeCudaRangeCallable(int32_t dt_type, size_t& called, Status& s, OpKernelContext* ctx) {
-  if (utils::ToTensorProtoElementType<T>() == dt_type) {
-    s = ComputeRange<T>(ctx);
-    ++called;
+struct CallCudaRangeImpl {
+  Status operator()(OpKernelContext* ctx) const {
+    return ComputeRange<T>(ctx);
   }
-  return 0;
-}
+};
 
-template <typename... Types>
-inline Status CallDispatcher(int32_t dt_type, OpKernelContext* ctx) {
-  Status s;
-  size_t called = 0;
-
-  int results[] = {0, InvokeCudaRangeCallable<Types>(dt_type, called, s, ctx)...};
-
-  ORT_UNUSED_PARAMETER(results);
-  ORT_ENFORCE(called < 2, "Range CallDispatcher broken. Check for duplicate type.");
-  if (called == 0) {
-    s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                         "Range op: Unsupported tensor data type:", dt_type);
-  }
-
-  return s;
-}
 }  // namespace cuda_range_internal
-
 
 Status Range::ComputeInternal(OpKernelContext* ctx) const {
   const auto* input_tensor = ctx->Input<Tensor>(0);
   if (input_tensor == nullptr) {
-      return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+    return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   }
 
   auto data_type = input_tensor->DataType()->AsPrimitiveDataType();
   ORT_RETURN_IF_NOT(data_type != nullptr, "Range op: Unsupported tensor data type:", data_type);
-  return cuda_range_internal::CallDispatcher<int32_t, float, int64_t, double, int16_t>(data_type->GetDataType(), ctx);
+  utils::MLTypeCallDispatcherRet<Status, cuda_range_internal::CallCudaRangeImpl, int32_t,
+                                 float, int64_t, double, int16_t>
+      t_disp(data_type->GetDataType());
+  return t_disp.Invoke(ctx);
 }
 
 }  // namespace cuda

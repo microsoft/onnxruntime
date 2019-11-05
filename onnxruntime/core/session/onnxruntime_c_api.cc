@@ -836,22 +836,23 @@ OrtStatus* OrtGetValueImplSeqOfTensorsHelper(OrtAllocator* allocator, const Tens
 }
 
 namespace c_api_internal {
-
-// Workaround GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226
-// can not specify lambda directly
 template <class T>
-inline int InvokeGetValueCallable(int32_t dt_type, size_t& called, OrtStatus** st, OrtAllocator* allocator, const onnxruntime::Tensor& one_tensor,
-                                  OrtValue** out) {
-  if (utils::ToTensorProtoElementType<T>() == dt_type) {
-    *st = OrtGetValueImplSeqOfTensorsHelper<T>(allocator, one_tensor, out);
-    ++called;
+struct CallGetValueImpl {
+  OrtStatus* operator()(OrtAllocator* allocator, const onnxruntime::Tensor& one_tensor, OrtValue** out) const {
+    return OrtGetValueImplSeqOfTensorsHelper<T>(allocator, one_tensor, out);
   }
-  return 0;
-}
+};
+
+// Return status instead of throwing if unsupported type specified
+struct UnsupportedReturnFailStatus {
+  OrtStatus* operator()(int32_t /* dt_type */) const {
+    return OrtApis::CreateStatus(ORT_FAIL, "Unsupported tensor element type in the input: ");
+  }
+};
 
 template <typename... Types>
 inline OrtStatus* GetValueImplSeqOfTensorsDispatcher(int32_t dt_type, OrtAllocator* allocator, const onnxruntime::Tensor& one_tensor,
-                                              OrtValue** out) {
+                                                     OrtValue** out) {
   OrtStatus* st{};
   size_t called = 0;
 
@@ -872,16 +873,12 @@ OrtStatus* OrtGetValueImplSeqOfTensors(const OrtValue* p_ml_value, int index, Or
   auto& data = p_ml_value->Get<T>();
   auto& one_tensor = data.tensors.at(index);
 
-  OrtStatus* st{};
   auto tensor_elem_type = one_tensor.DataType()->AsPrimitiveDataType();
-  if (tensor_elem_type == nullptr) {
-    st = OrtApis::CreateStatus(ORT_FAIL, "Invalid tensor element type in the input.");
-    return st;
-  }
-  st = c_api_internal::GetValueImplSeqOfTensorsDispatcher<float, double, MLFloat16, BFloat16, bool, std::string,
-                                                          int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>(
-      tensor_elem_type->GetDataType(), allocator, one_tensor, out);
-  return st;
+  using namespace c_api_internal;
+  utils::MLTypeCallDispatcherRet<OrtStatus*, CallGetValueImpl, float, double, MLFloat16, BFloat16, bool, std::string,
+                                 int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
+      t_disp(tensor_elem_type->GetDataType());
+  return t_disp.InvokeWithUnsupportedPolicy<UnsupportedReturnFailStatus>(allocator, one_tensor, out);
 }
 
 static OrtStatus* OrtGetValueImplSeq(const OrtValue* value, int index, OrtAllocator* allocator,
@@ -1033,37 +1030,18 @@ static OrtStatus* OrtCreateValueImplSeqHelperTensor(const Tensor& tensor,
 
 namespace c_api_internal {
 
-// Workaround GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226
-// can not specify lambda directly
 template <class T>
-inline int InvokeCreateValueCallable(int32_t dt_type, size_t& called, OrtStatus** st, const onnxruntime::Tensor& one_tensor, onnxruntime::Tensor& out) {
-  if (utils::ToTensorProtoElementType<T>() == dt_type) {
-    *st = OrtCreateValueImplSeqHelperTensor<T>(one_tensor, out);
-    ++called;
+struct CallCreateValueImpl {
+  OrtStatus* operator()(const onnxruntime::Tensor& one_tensor, onnxruntime::Tensor& out) const {
+    return OrtCreateValueImplSeqHelperTensor<T>(one_tensor, out);
   }
-  return 0;
-}
-
-template <typename... Types>
-inline OrtStatus* CreateValueImplSeqHelperDispatcher(MLDataType tensor_elem_type, int32_t dt_type, const onnxruntime::Tensor& one_tensor, onnxruntime::Tensor& out) {
-  OrtStatus* st{};
-  size_t called = 0;
-
-  int results[] = {0, InvokeCreateValueCallable<Types>(dt_type, called, &st, one_tensor, out)...};
-
-  ORT_UNUSED_PARAMETER(results);
-  ORT_ENFORCE(called < 2, "OrtCreateValueImplSeqHelper CallDispatcher broken. Check for duplicate type.");
-  if (called == 0) {
-    std::string err_msg = std::string("Unsupported data type: ") + DataTypeImpl::ToString(tensor_elem_type);
-    st = OrtApis::CreateStatus(ORT_FAIL, err_msg.c_str());
-  }
-  return st;
-}
+};
 
 }  // namespace c_api_internal
 
 static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t num_values,
                                               OrtValue** out) {
+  using namespace c_api_internal;
   auto seq_ptr = onnxruntime::make_unique<TensorSeq>();
   seq_ptr->tensors.resize(num_values);
 
@@ -1071,6 +1049,7 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t 
   seq_ptr->dtype = static_cast<const OrtValue*>(in[0])->Get<Tensor>().DataType();
 
   for (size_t idx = 0; idx < num_values; ++idx) {
+    ORT_ENFORCE(in[idx]->IsTensor(), "Expecting all elements to be tensors. Got: ", DataTypeImpl::ToString(in[idx]->Type()));
     auto& one_tensor = static_cast<const OrtValue*>(in[idx])->Get<Tensor>();
     auto tensor_elem_type = one_tensor.DataType();
 
@@ -1087,8 +1066,11 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t 
     }
 
     OrtStatus* st{};
-    st = c_api_internal::CreateValueImplSeqHelperDispatcher<bool, float, double, MLFloat16, BFloat16, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>(
-        tensor_elem_type, prim_type->GetDataType(), one_tensor, seq_ptr->tensors[idx]);
+    utils::MLTypeCallDispatcherRet<OrtStatus*, CallCreateValueImpl, bool, float, double,
+                                   MLFloat16, BFloat16, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
+        t_disp(prim_type->GetDataType());
+
+    st = t_disp.InvokeWithUnsupportedPolicy<UnsupportedReturnFailStatus>(one_tensor, seq_ptr->tensors[idx]);
 
     if (st) {
       return st;
@@ -1176,7 +1158,7 @@ static OrtStatus* OrtCreateValueImplMapHelper(const Tensor& key_tensor, const Te
                                               OrtValue** out) {
   auto value_type = value_tensor.DataType()->AsPrimitiveDataType();
   ORT_ENFORCE(value_type != nullptr, "Tensor must always contain primitive types. Found: ",
-    DataTypeImpl::ToString(value_tensor.DataType()));
+              DataTypeImpl::ToString(value_tensor.DataType()));
 
   switch (value_type->GetDataType()) {
     case ONNX_NAMESPACE::TensorProto_DataType_STRING:

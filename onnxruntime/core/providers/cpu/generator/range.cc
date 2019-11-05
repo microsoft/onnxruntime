@@ -82,31 +82,12 @@ static Status ComputeRange(OpKernelContext* ctx) {
 }
 
 namespace range_internal {
-
-// Workaround GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226
-// can not specify lambda directly
 template <class T>
-inline int InvokeComputeRangeCallable(int32_t dt_type, size_t& called, Status& s, OpKernelContext* ctx) {
-  if (utils::ToTensorProtoElementType<T>() == dt_type) {
-    s = ComputeRange<T>(ctx);
-    ++called;
+struct CallRangeImpl {
+  Status operator()(OpKernelContext* ctx) const {
+    return ComputeRange<T>(ctx);
   }
-  return 0;
-}
-
-
-template<typename... Types>
-inline Status CallDispatcher(int32_t dt_type, OpKernelContext* ctx) {
-  Status s;
-  size_t called = 0;
-
-  int results[] = {0, InvokeComputeRangeCallable<Types>(dt_type, called, s, ctx)...};
-
-  ORT_UNUSED_PARAMETER(results);
-  ORT_ENFORCE(called < 2, "Range CallDispatcher broken. Check for duplicate type.");
-  ORT_ENFORCE(called == 1, "Range op: Unsupported tensor data type:", dt_type);
-  return s;
-}
+};
 }  // namespace range_internal
 
 Status Range::Compute(OpKernelContext* ctx) const {
@@ -114,7 +95,8 @@ Status Range::Compute(OpKernelContext* ctx) const {
   if (input_tensor == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   auto data_type = input_tensor->DataType()->AsPrimitiveDataType();
   ORT_ENFORCE(data_type != nullptr, "Tensor is expected to have primitive data type");
-  return range_internal::CallDispatcher<int32_t, float, int64_t, double, int16_t>(data_type->GetDataType(), ctx);
+  utils::MLTypeCallDispatcherRet<Status, range_internal::CallRangeImpl, int32_t, float, int64_t, double, int16_t> t_disp(data_type->GetDataType());
+  return t_disp.Invoke(ctx);
 }
 
 }  // namespace onnxruntime

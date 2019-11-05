@@ -169,37 +169,21 @@ void Normalizer::Normalize(OpKernelContext* context) const {
   }
 }
 
-// Workaround GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226
-// can not specify lambda directly
+// MLTypeCallDispather implementation wrapper
 template <class T>
-inline int Normalizer::InvokeNormalizerCallable(int32_t dt_type, size_t& called, OpKernelContext* ctx) const {
-  if (utils::ToTensorProtoElementType<T>() == dt_type) {
-    Normalize<T>(ctx);
-    ++called;
+struct Normalizer::CallNormalizerImpl {
+  void operator()(const Normalizer* norm, OpKernelContext* ctx) const {
+    norm->Normalize<T>(ctx);
   }
-  return 0;
-}
-
-template <typename... Types>
-inline void Normalizer::CallDispatcher(int32_t dt_type, OpKernelContext* ctx) const {
-  size_t called = 0;
-
-  int results[] = {0, InvokeNormalizerCallable<Types>(dt_type, called, ctx)...};
-
-  ORT_UNUSED_PARAMETER(results);
-  ORT_ENFORCE(called < 2, "Normalizer CallDispatcher broken. Check for duplicate type.");
-  ORT_ENFORCE(called == 1, "Normalizer op: Unsupported tensor data type:", dt_type);
-}
+};
 
 Status Normalizer::Compute(OpKernelContext* context) const {
   const auto* input_tensor_ptr = context->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor_ptr != nullptr);
   auto input_type = input_tensor_ptr->DataType()->AsPrimitiveDataType();
 
-  ORT_ENFORCE(input_type != nullptr, "Invalid input type of ", input_type);
-
-  CallDispatcher<float, double, int64_t, int32_t>(input_type->GetDataType(), context);
-
+  utils::MLTypeCallDispatcher<CallNormalizerImpl, float, double, int64_t, int32_t> t_disp(input_type->GetDataType());
+  t_disp.Invoke(this, context);
   return Status::OK();
 }
 
