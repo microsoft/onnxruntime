@@ -2409,7 +2409,7 @@ void Graph::CleanUnusedInitializers() {
   }
 
   std::for_each(erase_list.cbegin(), erase_list.cend(),
-                [this](const std::string& name) { name_to_initial_tensor_.erase(name); });
+                [this](const std::string& name) { RemoveInitializedTensor(name); });
 }
 
 GSL_SUPPRESS(es .84)  // warning about ignoring return value from insert(...)
