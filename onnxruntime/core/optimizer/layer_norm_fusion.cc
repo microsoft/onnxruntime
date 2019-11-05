@@ -45,21 +45,21 @@ static bool IsSupportedDataType(const Node& node) {
 /**
 Layer Normalization will fuse LayerNormalization into one node : 
 +---------------------+ 
-|					  |
-|					  v 
+|                     |
+|                     v 
 X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add 
-					  |												  ^ 
-					  |												  |
-					  +-----------------------------------------------+
+                      |                                               ^ 
+                      |                                               |
+                 	  +-----------------------------------------------+
 It also handles cases of duplicated sub nodes exported from older version of PyTorch : 
 +---------------------+ 
-|					  v 
-|		   +-------> Sub ---------------------------------------------+ 
-|		   |														  |
-|		   |														  v 
+|                     v 
+|          +-------> Sub ---------------------------------------------+ 
+|          |                                                          |
+|          |                                                          v 
 X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add 
-|					  ^
-|					  |
+|                     ^
+|                     |
 +---------------------+
 */
 Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
@@ -118,20 +118,20 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
 	// Find the "Div" node after "Sub".
     const Node* p_div = nullptr;
     p_div = first_child_by_type(sub_node, "Div");
-    if (p_div == nullptr) {
-      // Find the sub_dup node if exist
-      if (p_sub_node_dup != nullptr) {
-        Node& sub_node_dup = *graph.GetNode(p_sub_node_dup->Index());
-        nodes_to_remove.push_back(sub_node_dup);
-        if (!graph_utils::IsSupportedOptypeVersionAndDomain(sub_node_dup, "Sub", {7}) ||
-            sub_node_dup.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
-            sub_node_dup.GetOutputEdgesCount() != 1 ||
-            !IsSupportedDataType(sub_node_dup)) {
-          continue;
-        }
-        p_div = first_child_by_type(sub_node_dup, "Div");
-      } else {
+
+    // Find the sub_dup node if exist
+    if (p_sub_node_dup != nullptr) {
+      Node& sub_node_dup = *graph.GetNode(p_sub_node_dup->Index());
+      if (!graph_utils::IsSupportedOptypeVersionAndDomain(sub_node_dup, "Sub", {7}) ||
+          sub_node_dup.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
+          sub_node_dup.GetOutputEdgesCount() != 1 ||
+          !IsSupportedDataType(sub_node_dup)) {
         continue;
+      }      
+	  nodes_to_remove.push_back(sub_node_dup);
+	  // Find Div node after the duplicated sub node if it's not found after the first sub node. 
+      if (p_div == nullptr) {
+        p_div = first_child_by_type(sub_node_dup, "Div");
       }
     }
 
@@ -154,7 +154,6 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     }
     Node& sqrt_node = *graph.GetNode(p_sqrt->Index());
 
-    std::cout << IsSupportedDataType(sqrt_node);
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(sqrt_node, "Sqrt", {6}) ||
         sqrt_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         sqrt_node.GetOutputEdgesCount() != 1 ||
@@ -204,7 +203,6 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
         !IsSupportedDataType(sub2_node)) {
       continue;
     }
-    nodes_to_remove.push_back(sub2_node);
 
 	// Traceback the sub node to find reduceMean --> sub
     const Node* p_reduce_mean_check = first_parent_by_type(sub2_node, "ReduceMean");
@@ -234,14 +232,14 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
 	// Get the inputs for the new LayerNormalization node
 	NodeArg* scale = nullptr;
     NodeArg* bias = nullptr;
-    for (int i = 0; i < mul_node.MutableInputDefs().size(); i++) {
+    for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
 	  if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) || 
 		  graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
         scale = mul_node.MutableInputDefs()[i];
 	  }
 	}
 
-	for (int i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
+	for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
       if (graph_utils::NodeArgIsConstant(graph, *(last_add_node.MutableInputDefs()[i])) ||
 		  graph_utils::IsGraphInput(graph, last_add_node.MutableInputDefs()[i])) {
         bias = mul_node.MutableInputDefs()[i];
