@@ -146,7 +146,7 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     auto s =
         node.ForEachWithIndex(
             node.OutputDefs(),
-            [&](const NodeArg& def, size_t index) {
+            [&](const NodeArg& def, size_t) {
               if (def.Shape())
                 return Status::OK();
               else
@@ -254,6 +254,18 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         return false;
     }
 
+    if (node.OpType() == "Split") {
+      const onnxruntime::NodeAttributes& attrs = node.GetAttributes();
+      auto axis = std::vector<int64_t>(1);
+      auto it = attrs.find("axis");
+      if (it != attrs.end()) {
+        axis[0] = it->second.i();
+      }
+      // check if we have symbolic dimension on axis, as TVM split cannot handle that
+      if (HasUnknownShapeOnAxes(inputs[0], axis))
+        return false;
+    }
+
     if (IsAliasNode(node)) {
       // for AliasNode as final output, skip them to avoid potential copy
       for (auto iter = node.OutputEdgesBegin(); iter != node.OutputEdgesEnd(); ++iter) {
@@ -288,6 +300,8 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
       node->ForEachDef(
           [this, &all_initialized_tensors, &graph_viewer](const NodeArg& def, bool is_input) {
+            if (!is_input)
+              return;
             auto iter = all_initialized_tensors.find(def.Name());
             if (iter != all_initialized_tensors.end()) {
               if (graph_viewer.IsConstantInitializer(def.Name(), true)) {
