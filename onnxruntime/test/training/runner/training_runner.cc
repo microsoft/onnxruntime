@@ -61,7 +61,7 @@ Status TrainingRunner::Initialize() {
 
     if (params_.loss_scale == 0.0f) {
       // use dynamic loss_scale
-      loss_scaler_ = std::make_unique<LossScaler>(loss_scale_input_name, true, static_cast<float>(1 << 20));
+      loss_scaler_ = std::make_unique<LossScaler>(loss_scale_input_name, true, static_cast<float>(1 << 16));
     } else {
       // use static loss_scale
       loss_scaler_ = std::make_unique<LossScaler>(loss_scale_input_name, false, params_.loss_scale);
