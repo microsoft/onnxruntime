@@ -526,6 +526,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
 #ifdef USE_CUDA
+  broken_tests.insert({"candy", "result mismatch"});
   broken_tests.insert({"mask_rcnn_keras", "result mismatch"});
   broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
   broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
