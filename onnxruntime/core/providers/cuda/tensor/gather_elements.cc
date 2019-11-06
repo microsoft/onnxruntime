@@ -39,7 +39,7 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   // Handle negative axis if any
   const int64_t axis = static_cast<int64_t>(HandleNegativeAxis(axis_, input_rank));
 
-  // Validate input shapes and ranks (invoke the static method in the CPU GatherElements kenrel that hosts the shared checks)
+  // Validate input shapes and ranks (invoke the static method in the CPU GatherElements kernel that hosts the shared checks)
   onnxruntime::GatherElements::ValidateInputShapes(input_shape, indices_shape, axis);
 
   // create output tensor
