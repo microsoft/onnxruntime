@@ -65,14 +65,6 @@ ADD_TYPED_SLICE_V10_OP(string);
       KernelDefBuilder()                                                                                             \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())                                             \
           .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}), \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                                    \
-      Slice,                                                                                                         \
-      11,                                                                                                            \
-      data_type,                                                                                                     \
-      KernelDefBuilder()                                                                                             \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())                                             \
-          .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}), \
->>>>>>> master
       Slice<data_type, true>);
 
 ADD_TYPED_SLICE_V11_OP(uint8_t);
