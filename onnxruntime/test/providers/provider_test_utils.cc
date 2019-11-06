@@ -259,7 +259,7 @@ void Check<TensorSeq>(const OpTester::Data& expected_data, const TensorSeq& outp
   // now check the contents of the tensors
   auto null_deleter = [](void*) {};
 
-  for (int i = 0; i < output_num_tensors; ++i) {
+  for (size_t i = 0; i < output_num_tensors; ++i) {
     OrtValue temp_value;
     // Reason for null_deleter: we don't want the tensor destructor to be called as part of this OrtValue destructor
     // as we're creating this OrtValue only to reuse the Check functionality
@@ -514,19 +514,17 @@ void OpTester::Run(ExpectResult expect_result,
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
   so.execution_mode = execution_mode;
-  // TODO: Optimizers should be off by default so we test the operator as is, however currently
-  // Scan9.OuterScopeAccess_ShapeInMainGraph_NoTypeAndShapeInSubgraph fails with nuphar. See Bug 525222.
-  // Uncomment this line once that is addressed.
-  // so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
+  so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
   Run(so, expect_result, expected_failure_string, excluded_provider_types, run_options, execution_providers);
 }
 
-void OpTester::Run(SessionOptions so, // Take the SessionOptions by value (i.e. make a copy) because we may need to modify it
+void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e. make a copy) because we may need to modify it
                    ExpectResult expect_result,
                    const std::string& expected_failure_string,
                    const std::unordered_set<std::string>& excluded_provider_types,
                    const RunOptions* run_options,
                    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
+  std::string cur_provider = "not set";
   try {
 #ifndef NDEBUG
     run_called_ = true;
@@ -574,8 +572,8 @@ void OpTester::Run(SessionOptions so, // Take the SessionOptions by value (i.e. 
         kBrainSliceExecutionProvider,
         kTensorrtExecutionProvider,
         kOpenVINOExecutionProvider,
-        kDmlExecutionProvider
-    };
+        kDmlExecutionProvider,
+        kAclExecutionProvider,};
 
     bool has_run = false;
 
@@ -605,6 +603,8 @@ void OpTester::Run(SessionOptions so, // Take the SessionOptions by value (i.e. 
         if (excluded_provider_types.count(provider_type) > 0)
           continue;
 
+        cur_provider = provider_type;
+
         if (provider_type == kDmlExecutionProvider) {
           so.enable_mem_pattern = false;
           so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
@@ -633,6 +633,8 @@ void OpTester::Run(SessionOptions so, // Take the SessionOptions by value (i.e. 
           execution_provider = DefaultOpenVINOExecutionProvider();
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
           execution_provider = DefaultNnapiExecutionProvider();
+        else if (provider_type == onnxruntime::kAclExecutionProvider)
+          execution_provider = DefaultAclExecutionProvider();
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;
@@ -676,12 +678,14 @@ void OpTester::Run(SessionOptions so, // Take the SessionOptions by value (i.e. 
 
         ExecuteModel(*p_model, session_object, expect_result, expected_failure_string, run_options, feeds,
                      output_names, provider_type);
+
+        cur_provider = "not set";
       }
 
       EXPECT_TRUE(has_run) << "No registered execution providers were able to run the model.";
     }
   } catch (const std::exception& ex) {
-    std::cerr << ex.what();
+    std::cerr << ex.what() << "\nProvider:" << cur_provider << "\n";
     // rethrow as some tests for error handling expect this
     throw;
   }

@@ -14,8 +14,9 @@ static void RunTest(const std::vector<float>& x_vals,
                     int64_t axis = 1,
                     bool is_tensorrt_supported = true,
                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                    const std::string& error_msg = "") {
-  OpTester test("Softmax");
+                    const std::string& error_msg = "",
+                    int opset = 7) {
+  OpTester test("Softmax", opset);
 
   if (axis != 1) {
     test.AddAttribute("axis", axis);
@@ -96,7 +97,7 @@ TEST(SoftmaxOperator, ThreeDimsAxis0) {
       0.017545262f, 0.0135920765f, 0.027506188f, 0.010684152f, 0.0049549243f,
       0.01401341f, 0.011721271f, 0.027815264f, 0.021463264f, 0.014014485f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 0, false);// Axis=0 is not supported by TensorRT
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 0, false);  // Axis=0 is not supported by TensorRT
 }
 
 TEST(SoftmaxOperator, ThreeDimsAxis1) {
@@ -188,7 +189,19 @@ TEST(SoftmaxOperator, InvalidAxis) {
           dimensions,
           /* invalid axis */ -10, false,
           OpTester::ExpectResult::kExpectFailure,
-          "-10 is not in valid range [-2,1]");
+          // bug in ONNX error message currently. Message should be
+          // "[ShapeInferenceError] 'axis' must be in [-2 , 1]. Its actual value is: -10"
+          ", 1]. Its actual value is: -10",
+          // latest opset so we get shape inferencing errors
+          -1);
+}
+
+TEST(SoftmaxOperator, DimWithZero) {
+  std::vector<float> x_vals = {};
+  std::vector<float> expected_vals = {};
+  std::vector<int64_t> dimensions = {1, 0};  // dim with value of 0 should be handled
+
+  RunTest(x_vals, expected_vals, dimensions, 0, false, OpTester::ExpectResult::kExpectSuccess, "", 10);
 }
 
 }  // namespace test

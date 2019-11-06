@@ -21,6 +21,9 @@ __global__ void _BinaryElementWise(
     T* output_data,
     const FuncT& functor,
     CUDA_LONG N) {
+  if (N == 0)  // special case where there's a dim value of 0 in the output shape
+    return;
+
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG lhs_index = (lhs_need_compute ? 0 : id);
   CUDA_LONG rhs_index = (rhs_need_compute ? 0 : id);
@@ -53,6 +56,9 @@ __global__ void _BinaryElementWiseSimple(
     T* output_data,
     const FuncT& func,
     CUDA_LONG N) {
+  if (N == 0)  // special case where there's a dim value of 0 in the output shape
+    return;
+
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   output_data[id] = func(lhs_data[IncL ? id : 0], rhs_data[IncR ? id : 0]);
 }
@@ -95,6 +101,9 @@ void BinaryElementWiseNoBroadcastImpl(
     T* output_data,
     const FuncT& func,
     size_t count) {
+  if (count == 0)  // special case where there's a dim value of 0 in the output shape
+    return;
+
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   _BinaryElementWiseSimple<true, true, T, FuncT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
@@ -118,6 +127,9 @@ void BinaryElementWiseImpl(
     T* output_data,
     const FuncT& func,
     size_t count) {
+  if (count == 0)  // special case where there's a dim value of 0 in the output shape
+    return;
+
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   if (output_rank_or_simple_broadcast == static_cast<size_t>(SimpleBroadcast::NoBroadcast)) {

@@ -239,10 +239,9 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
 
     //Zero dimension check
     for (size_t i = 0; i < node_inputs.size(); i++) {
-
       auto name = node_inputs[i]->Name();
       auto it = initializers.find(name);
-      if(it == initializers.end() && node_inputs[i]->Shape() != nullptr){
+      if (it == initializers.end() && node_inputs[i]->Shape() != nullptr) {
         if (node_inputs[i]->Shape()->dim_size() == 0) {
           throw "Node_input is zero dimension";
         }
@@ -297,6 +296,22 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
       }
     }
 
+    if (node->OpType() == "Mul" || node->OpType() == "Add" || node->OpType() == "Div" || node->OpType() == "Sub") {
+      for (size_t i = 0; i < node->InputDefs().size(); i++) {
+        if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64) {
+          throw "int64 inputs not supported";
+        }
+      }
+    }
+
+    if (node->OpType() == "Div") {
+      for (size_t i = 0; i < node->InputDefs().size(); i++) {
+        if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) {
+          throw "int32 inputs not supported for Div";
+        }
+      }
+    }
+
     //MatMul is only supported if it is followed by Add
     if (node->OpType() == "MatMul") {
       for (size_t i = 0; i < node->InputDefs().size(); i++) {
@@ -327,13 +342,13 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
     }
 
     //Dropout , Identity and Concat can't have graph inputs
-    if (node->OpType() == "Dropout" || node->OpType() == "Identity" || node->OpType() == "Concat") {
+    if (node->OpType() == "Dropout" || node->OpType() == "Identity" || node->OpType() == "Concat" || node->OpType() == "Gemm") {
       auto graph_inputs = graph_viewer.GetInputs();
       for (const auto& input : node->InputDefs()) {
         auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
         if (it != graph_inputs.end()) {
           {
-            throw "Dropout, Identity and Concat can't have graph inputs";
+            throw "Dropout, Identity, Concat, and Gemm can't have graph inputs";
           }
         }
       }
@@ -548,6 +563,8 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 
   sub_graph->SetMetaDef(meta_def);
   result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+
+  LOGS_DEFAULT(INFO) << openvino_ep::OpenVINOGraph::log_tag << "Returning result of GetCapability Function";
 
   return result;
 }

@@ -14,7 +14,6 @@ __global__ void _ConcatKernel(const fast_divmod block_size_including_axis_dim_di
                               const int64_t* concat_sizes,
                               const int64_t* concat_sizes_range,
                               const int64_t* axis_dimension_input_output_mapping,
-                              const int num_inputs,
                               T* output_data,
                               const void** input_ptr,
                               const CUDA_LONG N) {
@@ -45,7 +44,6 @@ Status ConcatImpl(const size_t element_bytes,
                   const int64_t* concat_sizes,
                   const int64_t* concat_sizes_range,
                   const int64_t* axis_dimension_input_output_mapping,
-                  const int num_inputs,
                   void* output_data,
                   const void** input_ptr,
                   const size_t N) {
@@ -59,7 +57,6 @@ Status ConcatImpl(const size_t element_bytes,
       _ConcatKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
           concat_sizes, concat_sizes_range, axis_dimension_input_output_mapping,
-          num_inputs,
           reinterpret_cast<int8_t*>(output_data),
           input_ptr,
           (CUDA_LONG)N);
@@ -68,7 +65,6 @@ Status ConcatImpl(const size_t element_bytes,
       _ConcatKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
           concat_sizes, concat_sizes_range, axis_dimension_input_output_mapping,
-          num_inputs,
           reinterpret_cast<int16_t*>(output_data),
           input_ptr,
           (CUDA_LONG)N);
@@ -77,7 +73,6 @@ Status ConcatImpl(const size_t element_bytes,
       _ConcatKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
           concat_sizes, concat_sizes_range, axis_dimension_input_output_mapping,
-          num_inputs,
           reinterpret_cast<int32_t*>(output_data),
           input_ptr,
           (CUDA_LONG)N);
@@ -86,7 +81,6 @@ Status ConcatImpl(const size_t element_bytes,
       _ConcatKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
           concat_sizes, concat_sizes_range, axis_dimension_input_output_mapping,
-          num_inputs,
           reinterpret_cast<int64_t*>(output_data),
           input_ptr,
           (CUDA_LONG)N);

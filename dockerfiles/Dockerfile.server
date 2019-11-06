@@ -28,7 +28,7 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 
 WORKDIR /
 RUN mkdir -p /onnxruntime/build && \
-    python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --build_server --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER)
+    python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --build_server --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER)
 
 FROM minimal AS final
 WORKDIR /onnxruntime/server/

@@ -52,9 +52,8 @@ for /f %%i in ('dir /b *.cc') do (
   cl /Fo:%%i.o /c %%i
 )
 
-for /f %%i in ('dir /b *.o') do (set OBJS=!OBJS! %%i)
 echo Linking %CACHE_DIR%\%OUTPUT_DLL%...
-link -dll -FORCE:MULTIPLE !OBJS! -EXPORT:__tvm_main__ -out:%CACHE_DIR%\%OUTPUT_DLL%
+link -dll -FORCE:MULTIPLE *.o -EXPORT:__tvm_main__ -out:%CACHE_DIR%\%OUTPUT_DLL%
 del *.o *.cc
 
 exit /b

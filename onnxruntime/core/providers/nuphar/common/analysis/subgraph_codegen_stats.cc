@@ -36,6 +36,11 @@ int CodeGenUnitStats::NodeUseCount(const onnxruntime::Node* node) const {
 
 bool CodeGenUnitStats::IsCheapNodeReuse(const onnxruntime::Node* node) const {
   ORT_ENFORCE(passes_.size() > UseCountAnalysisOffset);
+
+  // always inline(not reuse) alias node
+  if (IsAliasNode(*node))
+    return false;
+
   // Define cheap nodes include Add / Sub / Mul
   if (node->OpType() == "Add" || node->OpType() == "Sub" || node->OpType() == "Mul")
     return Promote<NupharUseCountAnalysis>(passes_[UseCountAnalysisOffset])->NodeUseCount(node) > CheapNodeTrueReuseCount;

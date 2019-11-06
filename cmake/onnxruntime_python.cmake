@@ -167,6 +167,9 @@ add_custom_command(
       ${REPO_ROOT}/ThirdPartyNotices.txt
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${REPO_ROOT}/docs/Privacy.md
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/LICENSE
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
   COMMAND ${CMAKE_COMMAND} -E copy
@@ -215,6 +218,15 @@ if (onnxruntime_USE_NGRAPH)
 		${ngraph_LIBRARIES}/${NGRAPH_MKLML_SHARED_LIB}
 		${ngraph_LIBRARIES}/${NGRAPH_TBB_SHARED_LIB}
 		${ngraph_LIBRARIES}/${NGRAPH_TBB_SHARED_LIB_2}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+  )
+endif()
+
+if (onnxruntime_USE_OPENVINO)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${OPENVINO_CPU_EXTENSION_DIR}/${OPENVINO_CPU_EXTENSION_LIB}
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()
