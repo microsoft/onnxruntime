@@ -392,7 +392,7 @@ struct CallableDispatchableRetHelper {
   size_t called_;
   Ret result_;
 
-  explicit CallableDispatchableRetHelper(int32_t dt_type) : dt_type_(dt_type), called_(0) {}
+  explicit CallableDispatchableRetHelper(int32_t dt_type) : dt_type_(dt_type), called_(0), result_() {}
 
   Ret Get() {
     // See if there were multiple invocations.It is a bug.
