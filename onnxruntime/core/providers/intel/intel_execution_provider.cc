@@ -126,11 +126,42 @@ bool IsDimensionSupported(const Node* node) {
   return true;
 }
 
+//Ops which are not supported by Intel EP
+bool IsUnsupportedOp(std::string name){
+
+  std::set<std::string> unsupported_ops = {
+    "Where",
+    "Hardmax",
+    "ReduceL1",
+    "ReduceL2",
+    "ReduceSumSquare",
+    "ReduceLogSum",
+    "ReduceLogSumExp",
+    "Eyelike",
+    "ConvTranspose",
+    "Shrink",
+    "SpaceToDepth",
+    "DepthToSpace",
+    "ThresholdedRelu",
+    "PRelu",
+    "Selu",
+    "Softplus",
+    "HardSigmoid",
+    "GlobalLpPool"
+  };
+
+  auto iter = unsupported_ops.find(name);
+  return iter != unsupported_ops.end();
+}
 
 // Returns true only if op is in a mode that is not currently supported
 static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer) {
   const auto& optype = node->OpType();
+  if(IsUnsupportedOp(optype))
+    return true;
+
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
+
 
   auto node_inputs = node->InputDefs();
 
@@ -153,7 +184,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     }
   }
 
-  std::cout << "Op Type: " << optype << std::endl;  
+  std::cout << "Op Type: " << optype << std::endl;
   if (optype == "Reshape") {
     //nGraph Reshape op currently requires shape info available in advance.
     const auto& shape_arg = node->InputDefs()[1];
@@ -182,22 +213,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
   } else if (optype == "Conv") {
     if (GetInputCount(node, initializers) > 1)
       return true;
-/*  } else if (optype == "BatchNormalization") {
-    if (GetInputCount(node, initializers) > 1)
-      return true; */
-  } else if (optype == "PRelu") {
-    return true;
-  } else if (optype == "Selu") {
-    return true;
-  } else if (optype == "Softplus") {
-    return true;
-  } else if (optype == "HardSigmoid") {
-    return true;
-  } else if (optype == "GlobalLpPool") {
-    return true;
-  } else if (optype == "ThresholdedRelu") {
-    return true;
-
   } else if (optype == "TopK") {
     //TopK opset 10 is currently not supported.
     //K as input is currently not suppported.
