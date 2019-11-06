@@ -113,28 +113,39 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
   auto* p = per_thread_context_map_.get();
   if (p->count(this) == 0) {
     std::lock_guard<OrtMutex> lock(context_pool_mutex_);
-    if (context_pool_.empty()) {
-      p->insert(std::make_pair(this, std::make_shared<PerThreadContext>(device_id_)));
+    unsigned int tid = logging::GetThreadId();
+    auto inuse_iter = inuse_contexts_.find(tid);
+    std::shared_ptr<PerThreadContext> ptc;
+    if (inuse_iter == inuse_contexts_.end()) {
+      if (retired_context_pool_.empty()) {
+        ptc = std::make_shared<PerThreadContext>(device_id_);
+      } else {
+        ptc = retired_context_pool_.back();
+        retired_context_pool_.pop_back();
+      }
     } else {
-      p->insert(std::make_pair(this, context_pool_.back()));
-      context_pool_.pop_back();
+      ptc = inuse_iter->second;
     }
+    p->insert(std::make_pair(this, ptc));
   }
   return *(p->at(this));
 }
 
 void CUDAExecutionProvider::ReleasePerThreadStuffs() const {
-  if (per_thread_context_map_ != nullptr && !per_thread_context_map_->empty()) {
-    auto iter_ctx = per_thread_context_map_->find(this);
-    if (iter_ctx != per_thread_context_map_->end()) {
-      std::lock_guard<OrtMutex> lock(context_pool_mutex_);
-      context_pool_.push_back(iter_ctx->second);
-      per_thread_context_map_->erase(iter_ctx);
-      // Release TLS if empty to avoid memory leak report
-      if (per_thread_context_map_->empty()) {
-        per_thread_context_map_.reset(nullptr);
-      }
-    }
+  ORT_ENFORCE(per_thread_context_map_ != nullptr);
+  auto iter_ctx = per_thread_context_map_->find(this);
+  ORT_ENFORCE(iter_ctx != per_thread_context_map_->end());
+
+  std::lock_guard<OrtMutex> lock(context_pool_mutex_);
+  unsigned int tid = logging::GetThreadId();
+  if (inuse_contexts_.count(tid)) {
+    inuse_contexts_.erase(tid);
+  }
+  retired_context_pool_.push_back(iter_ctx->second);
+  per_thread_context_map_->erase(iter_ctx);
+  // Release TLS if empty to avoid memory leak report
+  if (per_thread_context_map_->empty()) {
+    per_thread_context_map_.reset(nullptr);
   }
 }
 
