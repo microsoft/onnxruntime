@@ -7,7 +7,8 @@
 #pragma once
 
 // build/external/eigen/unsupported/Eigen/CXX11/src/Tensor/TensorEvaluator.h:162:71:
-// error: ignoring attributes on template argument "Eigen::PacketType<const float, Eigen::DefaultDevice>::type {aka __vector(4) float}" [-Werror=ignored-attributes]
+// error: ignoring attributes on template argument "Eigen::PacketType<const float, Eigen::DefaultDevice>::type {aka
+// __vector(4) float}" [-Werror=ignored-attributes]
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #if __GNUC__ >= 6
@@ -25,6 +26,11 @@
 #pragma warning(disable : 4554)
 #pragma warning(disable : 4324)
 #pragma warning(disable : 4245)
+// TensorContractionThreadPool.h(726,0): Warning C4348:
+// 'Eigen::TensorEvaluator<LeftArgType,Device>::EvalParallelContext<Eigen::TensorEvaluator<LeftArgType,Device>
+// ::NoCallback,true,true,true,0>::ThreadLocalBlocksInitialize<float
+// *,false>::ThreadLocalBlocksAllocator': redefinition of default parameter: parameter 2
+#pragma warning(disable : 4348)
 #endif
 
 #include "unsupported/Eigen/CXX11/Tensor"
