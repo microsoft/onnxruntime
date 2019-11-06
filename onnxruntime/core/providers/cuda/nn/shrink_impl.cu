@@ -15,7 +15,7 @@ __global__ void _ShrinkKernel(
     const float lambda,
     T* output_data,
     const CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, 1);
 
   T x = input_data[id];
   if (x < -lambda) {
@@ -37,7 +37,7 @@ __global__ void _ShrinkKernel(
     const float lambda,
     half* output_data,
     const CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, 1);
 
   half x = input_data[id];
   if ((float)x < -lambda) {

@@ -11,7 +11,7 @@ namespace cuda {
 
 template <typename T>
 __global__ void FillInput(const T* input_x, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t offset, int64_t dimension) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, dimension);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, dimension, 1);
   auto left = offset / (axis == size - 1 ? 1 : elem_nums[axis + 1]) * elem_nums[axis];
   auto right = axis == size - 1 ? 0 : offset % elem_nums[axis + 1];
   auto input_offset = left + id * (axis == size - 1 ? 1 : elem_nums[axis + 1]) + right;
@@ -21,7 +21,7 @@ __global__ void FillInput(const T* input_x, T* output_v, int64_t* output_i, cons
 
 template <typename T>
 __global__ void FillOutput(const T* input_v, const int64_t* input_i, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t offset, int64_t dimension) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, dimension);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, dimension, 1);
   auto left = offset / (axis == size - 1 ? 1 : elem_nums[axis + 1]) * elem_nums[axis] * K / dimension;
   auto right = axis == size - 1 ? 0 : offset % elem_nums[axis + 1];
   auto output_offset = left + id * (axis == size - 1 ? 1 : elem_nums[axis + 1]) + right;
@@ -30,7 +30,7 @@ __global__ void FillOutput(const T* input_v, const int64_t* input_i, T* output_v
 }
 
 __global__ void ExcludeOutput(int64_t* output_i, int64_t K, int64_t dimension) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, dimension);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, dimension, 1);
   if (id >= K) {
     output_i[id] = dimension;
   }
