@@ -245,7 +245,9 @@ Status GatherElements::Compute(OpKernelContext* context) const {
 
   int64_t axis = HandleNegativeAxis(axis_, input_data_shape.NumDimensions());
 
-  ValidateInputShapes(input_data_shape, indices_shape, axis);
+  auto& status = ValidateInputShapes(input_data_shape, indices_shape, axis);
+  if (!status.IsOK())
+    return status;
 
   Tensor* output_tensor = context->Output(0, TensorShape(indices_shape));
 
