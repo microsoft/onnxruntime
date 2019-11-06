@@ -142,6 +142,22 @@ void RunTypedTest() {
 }
 
 template <>
+void RunTypedTest<bool>() {
+  // 3D input - axis 2
+  OpTester test1("GatherElements", 11);
+  test1.AddAttribute<int64_t>("axis", 2LL);
+  test1.AddInput<bool>("data", {2, 2, 2},
+                       {true, false,
+                        true, false,
+                        true, false,
+                        true, false});
+  test1.AddInput<int64_t>("indices", {1, 2, 1},
+                          {0, 1});
+  test1.AddOutput<bool>("output", {1, 2, 1}, {true, false});
+  test1.Run();
+}
+
+template <>
 void RunTypedTest<std::string>() {
   // int32_t indices - axis 0
   OpTester test1("GatherElements", 11);
@@ -281,6 +297,18 @@ TEST(GatherElementsOpTest, uint32_t) {
 
 TEST(GatherElementsOpTest, uint64_t) {
   RunTypedTest<uint64_t>();
+}
+
+TEST(GatherElementsOpTest, float) {
+  RunTypedTest<float>();
+}
+
+TEST(GatherElementsOpTest, double) {
+  RunTypedTest<double>();
+}
+
+TEST(GatherElementsOpTest, bool) {
+  RunTypedTest<bool>();
 }
 
 TEST(GatherElementsOpTest, string) {

@@ -19,7 +19,8 @@ __global__ void _GatherElementsKernel(
     const int64_t axis,
     T* output_data) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(indices_index, indices_size);
-  int dim, remain = indices_index;
+  int dim = 0; 
+  int remain = indices_index;
   size_t data_idx = 0;
   for (int i = 0; i < rank; ++i) {
     indices_strides[i].divmod(remain, dim, remain);

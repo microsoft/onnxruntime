@@ -202,9 +202,9 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
 #pragma GCC diagnostic pop
 #endif
 
-Status ValidateInputShapes(const TensorShape& input_data_shape,
-                           const TensorShape& indices_shape,
-                           int64_t axis) {
+Status GatherElements::ValidateInputShapes(const TensorShape& input_data_shape,
+                                           const TensorShape& indices_shape,
+                                           int64_t axis) {
   int64_t input_data_rank = static_cast<int64_t>(input_data_shape.NumDimensions());
   int64_t indices_rank = static_cast<int64_t>(indices_shape.NumDimensions());
 
