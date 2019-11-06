@@ -123,6 +123,8 @@ if platform.system() == 'Linux':
   libs.extend(['libinference_engine.so'])
   # Nuphar Libs
   libs.extend(['libtvm.so.0.5.1'])
+  # Openvino Libs
+  libs.extend(['libcpu_extension.so'])
   if nightly_build:
     libs.extend(['libonnxruntime_pywrapper.so'])
 elif platform.system() == "Darwin":
@@ -134,6 +136,8 @@ else:
   libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll', 'mimalloc-override.dll', 'mimalloc-redirect.dll', 'mimalloc-redirect32.dll'])
   # Nuphar Libs
   libs.extend(['tvm.dll'])
+  # Openvino Libs
+  libs.extend(['cpu_extension.dll'])
   if nightly_build:
     libs.extend(['onnxruntime_pywrapper.dll'])
 

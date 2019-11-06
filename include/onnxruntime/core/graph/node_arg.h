@@ -39,6 +39,7 @@ class NodeArg {
           const ONNX_NAMESPACE::TypeProto* p_arg_type);
 
   NodeArg(NodeArg&&) = default;
+  NodeArg& operator=(NodeArg&& other) = default;
 
   /** Gets the name. */
   const std::string& Name() const noexcept;
@@ -88,8 +89,6 @@ class NodeArg {
 
   void SetType(ONNX_NAMESPACE::DataType p_type);
   void SetType(const ONNX_NAMESPACE::TypeProto& type_proto);
-
-  NodeArg& operator=(NodeArg&& other) = delete;
 
   // Node arg PType.
   ONNX_NAMESPACE::DataType type_;

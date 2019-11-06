@@ -443,7 +443,7 @@ void addGlobalMethods(py::module& m) {
 	    onnxruntime::CreateExecutionProviderFactory_Intel("CPU"),
 #endif
 #ifdef USE_TENSORRT
-            onnxruntime::CreateExecutionProviderFactory_Tensorrt()
+            onnxruntime::CreateExecutionProviderFactory_Tensorrt(0)
 #endif
         };
 
