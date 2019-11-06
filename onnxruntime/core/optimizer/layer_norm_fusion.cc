@@ -10,7 +10,7 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
-static const Node* first_child_by_type(Node& node, std::string child_type) {
+static const Node* first_child_by_type(Node& node, const std::string& child_type) {
   for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
     if ((*it).OpType().compare(child_type) == 0) {
       return &(*it);
@@ -20,7 +20,7 @@ static const Node* first_child_by_type(Node& node, std::string child_type) {
   return nullptr;
 }
 
-static const Node* first_parent_by_type(Node& node, std::string parent_type) {
+static const Node* first_parent_by_type(Node& node, const std::string& parent_type) {
   for (auto it = node.InputNodesBegin(); it != node.InputNodesEnd(); ++it) {
     if ((*it).OpType().compare(parent_type) == 0) {
       return &(*it);
