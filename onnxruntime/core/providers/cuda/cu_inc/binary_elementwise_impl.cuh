@@ -21,10 +21,7 @@ __global__ void _BinaryElementWise(
     T* output_data,
     const FuncT& functor,
     CUDA_LONG N) {
-  if (N == 0)  // special case where there's a dim value of 0 in the output shape
-    return;
-
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
+   CUDA_LONG id = NumElementsPerThread * blockDim.x * blockIdx.x + threadIdx.x;
 
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
@@ -63,10 +60,7 @@ __global__ void _BinaryElementWiseSimple(
     T* output_data,
     const FuncT& func,
     CUDA_LONG N) {
-  if (N == 0)  // special case where there's a dim value of 0 in the output shape
-    return;
-
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
+   CUDA_LONG id = NumElementsPerThread * blockDim.x * blockIdx.x + threadIdx.x;
 
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
@@ -86,7 +80,7 @@ __global__ void _BinaryElementWiseRhsPerChannelBatch1(
     T* output_data,
     FuncT func,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
+   CUDA_LONG id = NumElementsPerThread * blockDim.x * blockIdx.x + threadIdx.x;
 
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
@@ -107,7 +101,7 @@ __global__ void _BinaryElementWiseRhsPerChannelBatchN(
     T* output_data,
     FuncT func,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
+   CUDA_LONG id = NumElementsPerThread * blockDim.x * blockIdx.x + threadIdx.x;
 
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {

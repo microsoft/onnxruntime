@@ -18,7 +18,7 @@ __global__ void ExpandKernel(
     const fast_divmod* fdm_input_dims,
     const fast_divmod* fdm_output_dims,
     const fast_divmod* fdm_output_subdim_size) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, 1);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
 
   // initialize
   auto output_index = id;

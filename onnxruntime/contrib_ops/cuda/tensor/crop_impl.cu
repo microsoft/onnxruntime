@@ -21,7 +21,7 @@ __global__ void _CropKernel(
     const fast_divmod fdm_dst_hw,
     T* output_data,
     const CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, 1);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   int dst_xy, dst_nc;
   fdm_dst_hw.divmod(id, dst_nc, dst_xy);
   int dst_x, dst_y;

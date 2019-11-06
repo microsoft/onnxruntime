@@ -247,16 +247,16 @@ struct GridDim {
       threads_per_block_ = N;  // don't launch more than necessary
     assert(blocks_per_grid_ * threads_per_block_ >= N);
   }
+
+  // compute our location on the grid
+  static __device__ CUDA_LONG GetLinearThreadId() {
+    return blockDim.x * blockIdx.x + threadIdx.x;
+  }
 };
 
-#define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N)       \
-  CUDA_LONG id = blockDim.x * blockIdx.x + threadIdx.x; \
-  if (id >= N)                                                                 \
-    return;
-
-#define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread)       \
-  CUDA_LONG id = NumElementsPerThread * blockDim.x * blockIdx.x + threadIdx.x; \
-  if (id >= N)                                                                 \
+#define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N) \
+  CUDA_LONG id = GridDim::GetLinearThreadId();     \
+  if (id >= N)                                     \
     return;
 
 }  // namespace cuda

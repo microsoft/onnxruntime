@@ -20,7 +20,7 @@ __global__ void _InstanceNormKernel(
     const fast_divmod fdm_C,
     T* output_data,
     const CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, 1);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   int nc = fdm_HW.div(id);
   int n, c;
   fdm_C.divmod(nc, n, c);

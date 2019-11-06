@@ -15,7 +15,7 @@ __global__ void _Fill(
     T* output_data,
     T val,
     CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
+  CUDA_LONG id = NumElementsPerThread * blockDim.x * blockIdx.x + threadIdx.x;
 
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {

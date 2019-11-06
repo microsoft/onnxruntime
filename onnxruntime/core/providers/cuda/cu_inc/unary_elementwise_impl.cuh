@@ -15,10 +15,7 @@ __global__ void _UnaryElementWise(
     OutT* output_data,
     const FuncT& functor,
     CUDA_LONG N) {
-  if (N == 0)  // special case where there's a dim value of 0 in the shape
-    return;
-
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, NumElementsPerThread);
+  CUDA_LONG id = NumElementsPerThread * blockDim.x * blockIdx.x + threadIdx.x;
 
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {

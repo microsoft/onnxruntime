@@ -14,7 +14,7 @@ __global__ void _ReverseBySequenceKernel(const int32_t seq_length,
                                          const T* data,
                                          T* reversed_data,
                                          const CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, 1);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   int seq_id, offset;
   div_batch_block.divmod(id, seq_id, offset);
   int org_id = (seq_length - seq_id - 1) * block_size + offset;
@@ -46,7 +46,7 @@ __global__ void _BidirectionalDataKernel(const int32_t seq_length,
                                          const T* data,
                                          T* reordered_data,
                                          const CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N, 1);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   int seq_id, seq_offset, output_id, offset;
   div_seq_block.divmod(id, seq_id, seq_offset);
   div_output_block.divmod(seq_offset, output_id, offset);
