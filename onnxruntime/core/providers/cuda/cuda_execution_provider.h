@@ -138,9 +138,11 @@ class CUDAExecutionProvider : public IExecutionProvider {
   // thread local context during execution
   using PerThreadContextMap = std::unordered_map<const CUDAExecutionProvider*, std::shared_ptr<PerThreadContext>>;
   static thread_local std::unique_ptr<PerThreadContextMap> per_thread_context_map_;
+  // in some compilers, TLS may not be accessible in EP's dtor, so hold ownership in here
+  mutable std::unordered_map<unsigned int, std::shared_ptr<PerThreadContext>> inuse_contexts_;
 
   // reuse thread local context
-  mutable std::deque<std::shared_ptr<PerThreadContext>> context_pool_;
+  mutable std::deque<std::shared_ptr<PerThreadContext>> retired_context_pool_;
   mutable OrtMutex context_pool_mutex_;
 
   PerThreadContext& GetPerThreadContext() const;
