@@ -446,7 +446,7 @@ class MLTypeCallDispatcher {
   template <typename... Args>
   void Invoke(Args&&... args) const {
     mltype_dispatcher_internal::CallableDispatchableHelper helper(dt_type_);
-    int results[] = {0, helper.Invoke<Types>(Fn<Types>(), std::forward<Args>(args)...)...};
+    int results[] = {0, helper.template Invoke<Types>(Fn<Types>(), std::forward<Args>(args)...)...};
     ORT_UNUSED_PARAMETER(results);
     ORT_ENFORCE(helper.called_ < 2, "Check for duplicate types in MLTypeCallDispatcher");
     ORT_ENFORCE(helper.called_ == 1, "Unsupported data type: ", dt_type_);
@@ -467,7 +467,7 @@ class MLTypeCallDispatcherRet {
   template <typename... Args>
   Ret Invoke(Args&&... args) const {
     mltype_dispatcher_internal::CallableDispatchableRetHelper<Ret> helper(dt_type_);
-    int results[] = {0, helper.Invoke<Types>(Fn<Types>(), std::forward<Args>(args)...)...};
+    int results[] = {0, helper.template Invoke<Types>(Fn<Types>(), std::forward<Args>(args)...)...};
     ORT_UNUSED_PARAMETER(results);
     return helper.Get();
   }
@@ -475,7 +475,7 @@ class MLTypeCallDispatcherRet {
   template <class UnsupportedPolicy, typename... Args>
   Ret InvokeWithUnsupportedPolicy(Args&&... args) const {
     mltype_dispatcher_internal::CallableDispatchableRetHelper<Ret, UnsupportedPolicy> helper(dt_type_);
-    int results[] = {0, helper.Invoke<Types>(Fn<Types>(), std::forward<Args>(args)...)...};
+    int results[] = {0, helper.template Invoke<Types>(Fn<Types>(), std::forward<Args>(args)...)...};
     ORT_UNUSED_PARAMETER(results);
     return helper.Get();
   }

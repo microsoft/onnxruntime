@@ -878,7 +878,7 @@ OrtStatus* OrtGetValueImplSeqOfTensors(const OrtValue* p_ml_value, int index, Or
   utils::MLTypeCallDispatcherRet<OrtStatus*, CallGetValueImpl, float, double, MLFloat16, BFloat16, bool, std::string,
                                  int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
       t_disp(tensor_elem_type->GetDataType());
-  return t_disp.InvokeWithUnsupportedPolicy<UnsupportedReturnFailStatus>(allocator, one_tensor, out);
+  return t_disp.template InvokeWithUnsupportedPolicy<UnsupportedReturnFailStatus>(allocator, one_tensor, out);
 }
 
 static OrtStatus* OrtGetValueImplSeq(const OrtValue* value, int index, OrtAllocator* allocator,
