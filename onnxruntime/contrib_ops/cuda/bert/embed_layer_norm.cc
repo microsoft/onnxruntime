@@ -6,7 +6,6 @@
 #include "onnx/defs/tensor_proto_util.h"
 #include "embed_layer_norm.h"
 #include "embed_layer_norm_impl.h"
-#include "mask_index_impl.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -36,16 +35,15 @@ template <typename T>
 Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* segment_ids = context->Input<Tensor>(1);
-  const Tensor* mask = context->Input<Tensor>(2);
-  const Tensor* word_embedding = context->Input<Tensor>(3);
-  const Tensor* position_embedding = context->Input<Tensor>(4);
-  const Tensor* segment_embedding = context->Input<Tensor>(5);
-  const Tensor* gamma = context->Input<Tensor>(6);
-  const Tensor* beta = context->Input<Tensor>(7);
+  const Tensor* word_embedding = context->Input<Tensor>(2);
+  const Tensor* position_embedding = context->Input<Tensor>(3);
+  const Tensor* segment_embedding = context->Input<Tensor>(4);
+  const Tensor* gamma = context->Input<Tensor>(5);
+  const Tensor* beta = context->Input<Tensor>(6);
 
-  if (input_ids->Shape() != segment_ids->Shape() || input_ids->Shape() != mask->Shape()) {
+  if (input_ids->Shape() != segment_ids->Shape()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 0, 1 and 2 shall have same shape");
+                           "Input 0 and 1 shall have same shape");
   }
 
   const auto input_dims = input_ids->Shape().GetDims();
@@ -86,22 +84,11 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   TensorShape output_shape(out_dims);
   Tensor* output = context->Output(0, output_shape);
 
-  std::vector<int64_t> mask_index_dims;
-  mask_index_dims.push_back(input_dims[0]);
-  TensorShape mask_index_shape(mask_index_dims);
-  Tensor* mask_index = context->Output(1, mask_index_shape);
-
   int batch_size = static_cast<int>(input_dims[0]);
   int sequence_length = static_cast<int>(input_dims[1]);
   size_t element_size = sizeof(T);
 
-  cudaStream_t stream = nullptr;  // use default stream
-  if (!LaunchMaskIndexKernel(stream,
-                             mask->template Data<int32_t>(),
-                             mask_index->template MutableData<int32_t>(),
-                             batch_size,
-                             sequence_length) ||
-      !LaunchEmbedLayerNormKernel(
+  if (!LaunchEmbedLayerNormKernel(
           output->template MutableData<T>(),
           input_ids->template Data<int32_t>(),
           segment_ids->template Data<int32_t>(),

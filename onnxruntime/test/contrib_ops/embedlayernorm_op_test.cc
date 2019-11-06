@@ -11,14 +11,12 @@ namespace test {
 static void RunTest(
     const std::vector<int32_t>& input_ids_data,
     const std::vector<int32_t>& segment_ids_data,
-    const std::vector<int32_t>& mask_data,
     const std::vector<float>& word_embedding_data,
     const std::vector<float>& position_embedding_data,
     const std::vector<float>& segment_embedding_data,
     const std::vector<float>& gamma_data,
     const std::vector<float>& beta_data,
     const std::vector<float>& output_data,
-    const std::vector<int32_t>& mask_index_data,
     int batch_size,
     int sequence_length,
     int hidden_size,
@@ -39,7 +37,6 @@ static void RunTest(
 
     std::vector<int64_t> input_ids_dims = {batch_size, sequence_length};
     std::vector<int64_t> segment_ids_dims = {batch_size, sequence_length};
-    std::vector<int64_t> mask_dims = {batch_size, sequence_length};
 
     ASSERT_TRUE(word_embedding_data.size() % hidden_size == 0);
     std::vector<int64_t> word_embedding_dims = {static_cast<int64_t>(word_embedding_data.size() / hidden_size), hidden_size};
@@ -53,12 +50,10 @@ static void RunTest(
     std::vector<int64_t> gamma_dims = {hidden_size};
     std::vector<int64_t> beta_dims = gamma_dims;
     std::vector<int64_t> output_dims = {batch_size, sequence_length, hidden_size};
-    std::vector<int64_t> mask_index_dims = {batch_size};
 
     OpTester tester("EmbedLayerNormalization", 1, onnxruntime::kMSDomain);
     tester.AddInput<int32_t>("input_ids", input_ids_dims, input_ids_data);
     tester.AddInput<int32_t>("segment_ids", segment_ids_dims, segment_ids_data);
-    tester.AddInput<int32_t>("mask", mask_dims, mask_data);
     if (use_float16) {
       tester.AddInput<MLFloat16>("word_embedding", word_embedding_dims, ToFloat16(word_embedding_data));
       tester.AddInput<MLFloat16>("position_embedding", position_embedding_dims, ToFloat16(position_embedding_data));
@@ -74,7 +69,6 @@ static void RunTest(
       tester.AddInput<float>("beta", beta_dims, beta_data);
       tester.AddOutput<float>("output", output_dims, output_data);
     }
-    tester.AddOutput<int32_t>("mask_index", mask_index_dims, mask_index_data);
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
@@ -92,9 +86,6 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1) {
 
   std::vector<int32_t> segment_ids_data = {
       0, 1};
-
-  std::vector<int32_t> mask_data = {
-      1, 1};
 
   std::vector<float> word_embedding_data = {
       0.2f, 0.1f, 0.4f, -0.6f,
@@ -123,19 +114,14 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1) {
       0.36917170882225037, 0.061503000557422638, 1.1598974466323853, -0.85092413425445557,
       0.74301940202713013, -0.057434864342212677, 0.84324657917022705, -0.85171419382095337};
 
-  std::vector<int32_t> mask_index_data = {
-      2};
-
   RunTest(input_ids_data,
           segment_ids_data,
-          mask_data,
           word_embedding_data,
           position_embedding_data,
           segment_embedding_data,
           gamma_data,
           beta_data,
           output_data,
-          mask_index_data,
           batch_size,
           sequence_length,
           hidden_size);
@@ -151,9 +137,6 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_Float16) {
 
   std::vector<int32_t> segment_ids_data = {
       0, 1};
-
-  std::vector<int32_t> mask_data = {
-      1, 1};
 
   std::vector<float> word_embedding_data = {
       0.2f, 0.1f, 0.4f, -0.6f,
@@ -182,19 +165,14 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_Float16) {
       0.369873046875, 0.061676025390625, 1.1591796875, -0.8515625,
       0.7431640625, -0.057586669921875, 0.84326171875, -0.8525390625};
 
-  std::vector<int32_t> mask_index_data = {
-      2};
-
   RunTest(input_ids_data,
           segment_ids_data,
-          mask_data,
           word_embedding_data,
           position_embedding_data,
           segment_embedding_data,
           gamma_data,
           beta_data,
           output_data,
-          mask_index_data,
           batch_size,
           sequence_length,
           hidden_size,
@@ -215,11 +193,6 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch2) {
       0, 1,
       0, 1,
       0, 0};
-
-  std::vector<int32_t> mask_data = {
-      1, 1,
-      1, 1,
-      1, 0};
 
   std::vector<float> word_embedding_data = {
       0.2f, 0.1f, 0.4f, -0.6f,
@@ -252,19 +225,14 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch2) {
       0.57668739557266235, 0.2979130744934082, 0.96158987283706665, 0.44627034664154053,
       0.64977931976318359, 0.11039737612009048, 1.1869535446166992, 0.14469735324382782};
 
-  std::vector<int32_t> mask_index_data = {
-      2, 2, 1};
-
   RunTest(input_ids_data,
           segment_ids_data,
-          mask_data,
           word_embedding_data,
           position_embedding_data,
           segment_embedding_data,
           gamma_data,
           beta_data,
           output_data,
-          mask_index_data,
           batch_size,
           sequence_length,
           hidden_size);
@@ -289,13 +257,6 @@ TEST(EmbedLayerNormTest, EmbedLayerNormLargeBatchSmallHiddenSize) {
       0, 0,
       0, 1,
       0, 0};
-
-  std::vector<int32_t> mask_data = {
-      1, 1,
-      1, 1,
-      1, 0,
-      1, 1,
-      1, 0};
 
   std::vector<float> word_embedding_data = {
       0.2f, 0.1f, 0.4f, -0.6f,
@@ -333,19 +294,14 @@ TEST(EmbedLayerNormTest, EmbedLayerNormLargeBatchSmallHiddenSize) {
       0.64977931976318359, 0.11039737612009048, 1.1869535446166992, 0.14469735324382782
   };
 
-  std::vector<int32_t> mask_index_data = {
-      2, 2, 1, 2, 1};
-
   RunTest(input_ids_data,
           segment_ids_data,
-          mask_data,
           word_embedding_data,
           position_embedding_data,
           segment_embedding_data,
           gamma_data,
           beta_data,
           output_data,
-          mask_index_data,
           batch_size,
           sequence_length,
           hidden_size);
