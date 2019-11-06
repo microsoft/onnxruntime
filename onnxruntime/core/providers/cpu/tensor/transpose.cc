@@ -181,7 +181,7 @@ static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const 
   auto rank = input_shape.NumDimensions();
 
   const auto element_size = input.DataType()->Size();
-  const bool is_string_type = input.DataType() == DataTypeImpl::GetType<std::string>();
+  const bool is_string_type = utils::IsDataTypeString(input.DataType());
 
   std::vector<size_t> stride(rank);
   for (size_t i = 0; i < rank; i++) {

@@ -453,8 +453,10 @@ class MLTypeCallDispatcher {
   }
 };
 
-// Version of the MLTypeDispatcher
+// Version of the MLTypeDispatcher with a return type.
 // Return type of Fn must return type convertible to Ret
+// The value of the return type will be the return value
+// of the function for type T which was specified for execution.
 template <class Ret, template <typename> class Fn, typename... Types>
 class MLTypeCallDispatcherRet {
   int32_t dt_type_;
