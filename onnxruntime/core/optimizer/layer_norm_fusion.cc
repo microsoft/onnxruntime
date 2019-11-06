@@ -16,7 +16,6 @@ static const Node* first_child_by_type(Node& node, const std::string& child_type
       return &(*it);
     }
   }
-
   return nullptr;
 }
 
@@ -35,7 +34,7 @@ static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(
 static bool IsSupportedDataType(const Node& node) {
   for (const auto& input_arg : node.InputDefs()) {
     if (std::find(supported_data_types.begin(), supported_data_types.end(),
-                  *(input_arg->Type())) == supported_data_types.end()) {
+      *(input_arg->Type())) == supported_data_types.end()) {
       return false;
     }
   }
@@ -50,7 +49,7 @@ Layer Normalization will fuse LayerNormalization into one node :
 X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add 
                       |                                               ^ 
                       |                                               |
-                 	  +-----------------------------------------------+
+                      +-----------------------------------------------+
 It also handles cases of duplicated sub nodes exported from older version of PyTorch : 
 +---------------------+ 
 |                     v 
@@ -114,8 +113,8 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       continue;
     }
     nodes_to_remove.push_back(sub_node);
-
-	// Find the "Div" node after "Sub".
+    
+    // Find the "Div" node after "Sub".
     const Node* p_div = nullptr;
     p_div = first_child_by_type(sub_node, "Div");
 
@@ -127,9 +126,9 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
           sub_node_dup.GetOutputEdgesCount() != 1 ||
           !IsSupportedDataType(sub_node_dup)) {
         continue;
-      }      
-	  nodes_to_remove.push_back(sub_node_dup);
-	  // Find Div node after the duplicated sub node if it's not found after the first sub node. 
+      }
+      nodes_to_remove.push_back(sub_node_dup);
+      // Find Div node after the duplicated sub node if it's not found after the first sub node. 
       if (p_div == nullptr) {
         p_div = first_child_by_type(sub_node_dup, "Div");
       }
@@ -204,9 +203,9 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       continue;
     }
 
-	// Traceback the sub node to find reduceMean --> sub
+    // Traceback the sub node to find reduceMean --> sub
     const Node* p_reduce_mean_check = first_parent_by_type(sub2_node, "ReduceMean");
-	// Check if the reduceMean node after traceback is the same node as the reduceMean node from the beginning.
+    // Check if the reduceMean node after traceback is the same node as the reduceMean node from the beginning.
     if (p_reduce_mean_check == nullptr || p_reduce_mean_check != &reduce_mean_node) {
       continue;
     }
@@ -229,28 +228,26 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     }
     nodes_to_remove.push_back(last_add_node);
 
-	// Get the inputs for the new LayerNormalization node
-	NodeArg* scale = nullptr;
+    // Get the inputs for the new LayerNormalization node
+    NodeArg* scale = nullptr;
     NodeArg* bias = nullptr;
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
-	  if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) || 
-		  graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
+      if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) || 
+          graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
         scale = mul_node.MutableInputDefs()[i];
+	    }
 	  }
-	}
 
-	for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
+    for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
       if (graph_utils::NodeArgIsConstant(graph, *(last_add_node.MutableInputDefs()[i])) ||
-		  graph_utils::IsGraphInput(graph, last_add_node.MutableInputDefs()[i])) {
+		      graph_utils::IsGraphInput(graph, last_add_node.MutableInputDefs()[i])) {
         bias = mul_node.MutableInputDefs()[i];
-	  }
+      }
     }
     if (scale == nullptr || bias == nullptr) {
-		continue;
-	}
-    const std::vector<NodeArg*> layer_norm_input_defs{reduce_mean_node.MutableInputDefs()[0],
-                                                    scale,
-                                                    bias};
+      continue;
+    }
+    const std::vector<NodeArg*> layer_norm_input_defs{reduce_mean_node.MutableInputDefs()[0], scale, bias};
     Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName("LayerNormalization"),
                                           "LayerNormalization",
                                           "fused LayerNorm subgraphs ",
