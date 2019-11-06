@@ -87,7 +87,8 @@ void GatherElementsImpl(
 
       // should not reach here as we validate if the all relevant types are supported in the Compute method 
       default:
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported element size by the GatherElements CUDA kernel");
+        ORT_THROW("Unsupported element size by the GatherElements CUDA kernel");
+    }
   }
 }
 
