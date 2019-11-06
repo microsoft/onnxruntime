@@ -10,24 +10,6 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
-static const Node* first_child_by_type(Node& node, const std::string& child_type) {
-  for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
-    if ((*it).OpType().compare(child_type) == 0) {
-      return &(*it);
-    }
-  }
-  return nullptr;
-}
-
-static const Node* first_parent_by_type(Node& node, const std::string& parent_type) {
-  for (auto it = node.InputNodesBegin(); it != node.InputNodesEnd(); ++it) {
-    if ((*it).OpType().compare(parent_type) == 0) {
-      return &(*it);
-    }
-  }
-  return nullptr;
-}
-
 // LayerNorm supports limited data types.
 static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)"};
 
@@ -116,7 +98,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     
     // Find the "Div" node after "Sub".
     const Node* p_div = nullptr;
-    p_div = first_child_by_type(sub_node, "Div");
+    p_div = graph_utils::FirstChildByType(sub_node, "Div");
 
     // Find the sub_dup node if exist
     if (p_sub_node_dup != nullptr) {
@@ -130,7 +112,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       nodes_to_remove.push_back(sub_node_dup);
       // Find Div node after the duplicated sub node if it's not found after the first sub node. 
       if (p_div == nullptr) {
-        p_div = first_child_by_type(sub_node_dup, "Div");
+        p_div = graph_utils::FirstChildByType(sub_node_dup, "Div");
       }
     }
 
@@ -147,7 +129,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     nodes_to_remove.push_back(div_node);
 
     // Traceback the div node to find sqrt --> div
-    const Node* p_sqrt = first_parent_by_type(div_node, "Sqrt");
+    const Node* p_sqrt = graph_utils::FirstParentByType(div_node, "Sqrt");
     if (p_sqrt == nullptr) {
       continue;
     }
@@ -174,7 +156,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     // Traceback the add node to find reduceMean --> add
     const Node* p_reduce_mean2 = nullptr;
 
-    p_reduce_mean2 = first_parent_by_type(add2_node, "ReduceMean");
+    p_reduce_mean2 = graph_utils::FirstParentByType(add2_node, "ReduceMean");
     Node& reduce_mean2_node = *graph.GetNode(p_reduce_mean2->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean2_node, "ReduceMean", {1}) ||
         reduce_mean2_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
@@ -195,7 +177,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     nodes_to_remove.push_back(pow_node);
 
     // Traceback the pow node to find sub --> pow
-    const Node* p_sub2_node = first_parent_by_type(pow_node, "Sub");
+    const Node* p_sub2_node = graph_utils::FirstParentByType(pow_node, "Sub");
     Node& sub2_node = *graph.GetNode(p_sub2_node->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(sub2_node, "Sub", {7}) ||
         sub2_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
@@ -204,7 +186,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     }
 
     // Traceback the sub node to find reduceMean --> sub
-    const Node* p_reduce_mean_check = first_parent_by_type(sub2_node, "ReduceMean");
+    const Node* p_reduce_mean_check = graph_utils::FirstParentByType(sub2_node, "ReduceMean");
     // Check if the reduceMean node after traceback is the same node as the reduceMean node from the beginning.
     if (p_reduce_mean_check == nullptr || p_reduce_mean_check != &reduce_mean_node) {
       continue;
@@ -240,7 +222,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
 
     for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
       if (graph_utils::NodeArgIsConstant(graph, *(last_add_node.MutableInputDefs()[i])) ||
-		      graph_utils::IsGraphInput(graph, last_add_node.MutableInputDefs()[i])) {
+          graph_utils::IsGraphInput(graph, last_add_node.MutableInputDefs()[i])) {
         bias = mul_node.MutableInputDefs()[i];
       }
     }
