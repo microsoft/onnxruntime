@@ -849,22 +849,6 @@ struct UnsupportedReturnFailStatus {
     return OrtApis::CreateStatus(ORT_FAIL, "Unsupported tensor element type in the input: ");
   }
 };
-
-template <typename... Types>
-inline OrtStatus* GetValueImplSeqOfTensorsDispatcher(int32_t dt_type, OrtAllocator* allocator, const onnxruntime::Tensor& one_tensor,
-                                                     OrtValue** out) {
-  OrtStatus* st{};
-  size_t called = 0;
-
-  int results[] = {0, InvokeGetValueCallable<Types>(dt_type, called, &st, allocator, one_tensor, out)...};
-
-  ORT_UNUSED_PARAMETER(results);
-  ORT_ENFORCE(called < 2, "OrtGetValueImplSeqOfTensors CallDispatcher broken. Check for duplicate type.");
-  if (called == 0) {
-    st = OrtApis::CreateStatus(ORT_FAIL, "Unsupported tensor element type in the input.");
-  }
-  return st;
-}
 }  // namespace c_api_internal
 
 template <typename T>
