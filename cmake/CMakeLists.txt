@@ -534,18 +534,7 @@ endif()
 
 if(onnxruntime_USE_OPENVINO)
 
-    add_definitions(-DUSE_OPENVINO=1)
-
-	if (onnxruntime_USE_OPENVINO_SOURCE)
-	  include(openvino)
-	  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_openvino)
-	  link_directories(${OPENVINO_LIB_DIR})
-	  #TODO: set plugin path var
-	endif()
-
-	if (onnxruntime_USE_OPENVINO_BINARY)
-	    #TODO: set plugin path var
-	endif()
+  add_definitions(-DUSE_OPENVINO=1)
 
 	if(onnxruntime_USE_OPENVINO_MYRIAD)
 		add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
