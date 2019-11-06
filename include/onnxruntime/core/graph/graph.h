@@ -463,20 +463,6 @@ and the edges connecting the nodes.
 */
 class Graph {
  public:
-  /**
-  Resolve this Graph to ensure it is completely valid, fully initialized, and able to be executed.
-  1. Run through all validation rules.
-      a. Node name and node output's names should be unique.
-      b. Attribute match between node and op definition.
-      c. Input/Output match between node and op definition.
-      d. Graph is acyclic and sort nodes in topological order.
-  2. Check & Setup inner nodes' dependency.
-  3. Cleanup function definition lists.
-  Note: the weights for training can't be cleaned during resolve.
-  @returns common::Status with success or error information.
-  */
-  common::Status Resolve(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
-
   /** Gets the Graph name. */
   const std::string& Name() const noexcept;
   /** Sets the Graph name. */
@@ -772,6 +758,9 @@ class Graph {
   /** Returns the mutable parent graph if this is a subgraph */
   Graph* MutableParentGraph() { return parent_graph_; }
 
+  /** Sets the type of a NodeArg, replacing existing type/shape if any */
+  void SetType(NodeArg& arg, const onnx::TypeProto& type_proto);
+
   const Node* GetProducerNode(const std::string& node_arg_name) const {
     auto iter = node_arg_to_producer_node_.find(node_arg_name);
 
@@ -826,6 +815,38 @@ class Graph {
     for (Node* node : nodes) {
       node_arg_to_consumer_nodes_[node_arg_name].insert(node->Index());
     }
+  }
+
+  // Options to control Graph::Resolve.
+  struct ResolveOptions {
+    bool override_types = false;
+    const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr;
+    bool no_proto_sync_required = false;
+  };
+
+  /**
+  Resolve this Graph to ensure it is completely valid, fully initialized, and able to be executed.
+  1. Run through all validation rules.
+  a. Node name and node output's names should be unique.
+  b. Attribute match between node and op definition.
+  c. Input/Output match between node and op definition.
+  d. Graph is acyclic and sort nodes in topological order.
+  2. Check & Setup inner nodes' dependency.
+  3. Cleanup function definition lists.
+  Note: the weights for training can't be cleaned during resolve.
+  @returns common::Status with success or error information.
+  */
+  common::Status Resolve(const ResolveOptions& options);
+
+  common::Status Resolve() {
+    ResolveOptions default_options;
+    return Resolve(default_options);
+  }
+
+  common::Status ResolveAfterTypeTranformation() {
+    ResolveOptions options;
+    options.override_types = true;
+    return Resolve(options);
   }
 
   /** Construct a Graph instance for a subgraph that is created from a GraphProto attribute in a Node.
@@ -928,9 +949,7 @@ class Graph {
   // order if <Status> returned is "OK", otherwise it's undefined.
   common::Status PerformTopologicalSortAndCheckIsAcyclic();
 
-  common::Status PerformTypeAndShapeInferencing();
-
-  common::Status Resolve(bool no_proto_sync_required, const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
+  common::Status PerformTypeAndShapeInferencing(const ResolveOptions& options);
 
   // Recursively find all subgraphs including nested subgraphs
   void FindAllSubgraphs(std::vector<Graph*>& subgraphs);
@@ -938,7 +957,7 @@ class Graph {
   // Iterate this Graph instance and all subgraphs, calling the provided function for each.
   common::Status ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::function<Status(Graph&)> func);
 
-  common::Status InferAndVerifyTypeMatch(Node& node, const ONNX_NAMESPACE::OpSchema& op);
+  common::Status InferAndVerifyTypeMatch(Node& node, const ONNX_NAMESPACE::OpSchema& op, const ResolveOptions& options);
 
   // perform type and shape inferencing on the subgraph and Resolve to validate
   static common::Status InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
@@ -953,7 +972,7 @@ class Graph {
 
   // Infer and set type information across <*this> graph if needed, and verify type/attribute
   // information matches between node and op.
-  common::Status VerifyNodeAndOpMatch();
+  common::Status VerifyNodeAndOpMatch(const ResolveOptions& options);
 
   // Set graph inputs/outputs when resolving a graph..
   common::Status SetGraphInputsOutputs();
@@ -1062,5 +1081,7 @@ class Graph {
   // number of times Resolve has run.
   int num_resolves_ = 0;
 };
+
+std::ostream& operator<<(std::ostream& out, const Graph& graph);
 
 }  // namespace onnxruntime
