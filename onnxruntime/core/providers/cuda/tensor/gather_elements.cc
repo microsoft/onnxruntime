@@ -21,43 +21,6 @@ ONNX_OPERATOR_KERNEL_EX(
                                     DataTypeImpl::GetTensorType<int64_t>()}),
     GatherElements);
 
-#define TYPED_FUNCTION_CALL(T)                                                                                            \
-  if (T_type == DataTypeImpl::GetType<T>()) {                                                                             \
-    T* output_data = output_tensor->template MutableData<T>();                                                            \
-    const T* input_data = input_tensor->template Data<T>();                                                               \
-    if (Tin_type == DataTypeImpl::GetType<int32_t>()) {                                                                   \
-      const int32_t* indices_data = indices_tensor->template Data<int32_t>();                                             \
-      GatherElementsImpl(                                                                                                 \
-          input_rank,                                                                                                     \
-          reinterpret_cast<const ToCudaType<T>::MappedType*>(input_data),                                                 \
-          input_size,                                                                                                     \
-          input_dims[axis],                                                                                               \
-          gpu_input_strides.GpuPtr(),                                                                                     \
-          indices_data,                                                                                                   \
-          indices_size,                                                                                                   \
-          fdm_indices_strides.GpuPtr(),                                                                                   \
-          axis,                                                                                                           \
-          reinterpret_cast<ToCudaType<T>::MappedType*>(output_data));                                                     \
-      return Status::OK();                                                                                                \
-    }                                                                                                                     \
-    if (Tin_type == DataTypeImpl::GetType<int64_t>()) {                                                                   \
-      const int64_t* indices_data = indices_tensor->template Data<int64_t>();                                             \
-      GatherElementsImpl(                                                                                                 \
-          input_rank,                                                                                                     \
-          reinterpret_cast<const ToCudaType<T>::MappedType*>(input_data),                                                 \
-          input_size,                                                                                                     \
-          input_dims[axis],                                                                                               \
-          gpu_input_strides.GpuPtr(),                                                                                     \
-          indices_data,                                                                                                   \
-          indices_size,                                                                                                   \
-          fdm_indices_strides.GpuPtr(),                                                                                   \
-          axis,                                                                                                           \
-          reinterpret_cast<ToCudaType<T>::MappedType*>(output_data));                                                     \
-      return Status::OK();                                                                                                \
-    }                                                                                                                     \
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "GatherElements op: Type of 'indices' must be int32 or int64"); \
-  }
-
 Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   // Process input data tensor
   const auto* input_tensor = context->Input<Tensor>(0);
@@ -95,23 +58,42 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(gpu_input_strides.CopyToGpu());
   ORT_RETURN_IF_ERROR(fdm_indices_strides.CopyToGpu());
 
-  MLDataType T_type = input_tensor->DataType();
+  size_t element_size = input_tensor->DataType()->Size();
   MLDataType Tin_type = indices_tensor->DataType();
 
-  // If one TYPED_FUNCTION_CALL finishes execution, the macro has a return statement in it,
-  // and hence won't make subsequent checks
-  TYPED_FUNCTION_CALL(float)
-  TYPED_FUNCTION_CALL(MLFloat16)
-  TYPED_FUNCTION_CALL(int16_t)
-  TYPED_FUNCTION_CALL(int8_t)
-  TYPED_FUNCTION_CALL(int32_t)
-  TYPED_FUNCTION_CALL(int64_t)
-  TYPED_FUNCTION_CALL(uint8_t)
-  TYPED_FUNCTION_CALL(uint16_t)
-  TYPED_FUNCTION_CALL(uint32_t)
-  TYPED_FUNCTION_CALL(uint64_t)
-  TYPED_FUNCTION_CALL(double)
-  TYPED_FUNCTION_CALL(bool)
+  if (Tin_type == DataTypeImpl::GetType<int32_t>()) {
+    const int32_t* indices_data = indices_tensor->template Data<int32_t>();
+    GatherElementsImpl<int32_t>(
+        input_rank,
+        input_tensor->DataRaw(),
+        input_size,
+        input_dims[axis],
+        gpu_input_strides.GpuPtr(),
+        indices_data,
+        indices_size,
+        fdm_indices_strides.GpuPtr(),
+        axis,
+        output_tensor->MutableDataRaw(),
+        element_size);
+    return Status::OK();
+  } else if (Tin_type == DataTypeImpl::GetType<int64_t>()) {
+    const int64_t* indices_data = indices_tensor->template Data<int64_t>();
+    GatherElementsImpl<int64_t>(
+        input_rank,
+        input_tensor->DataRaw(),
+        input_size,
+        input_dims[axis],
+        gpu_input_strides.GpuPtr(),
+        indices_data,
+        indices_size,
+        fdm_indices_strides.GpuPtr(),
+        axis,
+        output_tensor->MutableDataRaw(),
+        element_size);
+    return Status::OK();
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "GatherElements op: Type of 'indices' must be int32 or int64");
+  }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "String type is not supported yet for the GatherElements op");
 }

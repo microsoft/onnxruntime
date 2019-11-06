@@ -38,10 +38,10 @@ __global__ void _GatherElementsKernel(
   output_data[indices_index] = input_data[data_idx];
 }
 
-template <typename T, typename Tin>
+template <typename Tin>
 void GatherElementsImpl(
     const int64_t rank,
-    const T* input_data,
+    const void* input_data,
     const int64_t input_size,
     const int64_t input_dim_along_axis,
     const int64_t* input_strides,
@@ -49,53 +49,47 @@ void GatherElementsImpl(
     const int64_t indices_size,
     const fast_divmod* indices_strides,
     const int64_t axis,
-    T* output_data) {
+    void* output_data,
+    size_t element_size) {
 
   if (indices_size > 0) {
+
     int blocksPerGrid = static_cast<int>((indices_size + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
-    _GatherElementsKernel<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-        rank, input_data, input_dim_along_axis, input_strides,
-        indices_data, indices_size, indices_strides,
-        axis, output_data);
+
+    switch (element_size) {
+      case sizeof(int8_t):
+         _GatherElementsKernel<int8_t, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+            rank, reinterpret_cast<const ToCudaType<int8_t>::MappedType*>(input_data), input_dim_along_axis, input_strides,
+            indices_data, indices_size, indices_strides,
+            axis, reinterpret_cast<ToCudaType<int8_t>::MappedType*>(output_data));
+        break;
+
+      case sizeof(int16_t):
+        _GatherElementsKernel<int16_t, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+            rank, reinterpret_cast<const ToCudaType<int16_t>::MappedType*>(input_data), input_dim_along_axis, input_strides,
+            indices_data, indices_size, indices_strides,
+            axis, reinterpret_cast<ToCudaType<int16_t>::MappedType*>(output_data));
+        break;
+
+      case sizeof(int32_t):
+        _GatherElementsKernel<int32_t, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+            rank, reinterpret_cast<const ToCudaType<int32_t>::MappedType*>(input_data), input_dim_along_axis, input_strides,
+            indices_data, indices_size, indices_strides,
+            axis, reinterpret_cast<ToCudaType<int32_t>::MappedType*>(output_data));
+        break;
+
+      case sizeof(int64_t):
+        _GatherElementsKernel<int64_t, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+            rank, reinterpret_cast<const ToCudaType<int64_t>::MappedType*>(input_data), input_dim_along_axis, input_strides,
+            indices_data, indices_size, indices_strides,
+            axis, reinterpret_cast<ToCudaType<int64_t>::MappedType*>(output_data));
+        break;
+
+      // should not reach here as we validate if the all relevant types are supported in the Compute method 
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported element size by the GatherElements CUDA kernel");
   }
 }
-
-#define SPECIALIZED_IMPL(T)                           \
-  template void GatherElementsImpl<T, int32_t>(       \
-      const int64_t rank,                             \
-      const T* input_data,                            \
-      const int64_t input_size,                       \
-      const int64_t input_dim_along_axis,             \
-      const int64_t* input_strides,                   \
-      const int32_t* indices_data,                    \
-      const int64_t indices_size,                     \
-      const fast_divmod* indices_strides,             \
-      const int64_t axis,                             \
-      T* output_data);                                \
-  template void GatherElementsImpl<T, int64_t>(       \
-      const int64_t rank,                             \
-      const T* input_data,                            \
-      const int64_t input_size,                       \
-      const int64_t input_dim_along_axis,             \
-      const int64_t* input_strides,                   \
-      const int64_t* indices_data,                    \
-      const int64_t indices_size,                     \
-      const fast_divmod* indices_strides,             \
-      const int64_t axis,                             \
-      T* output_data);                                \
-
-SPECIALIZED_IMPL(int8_t)
-SPECIALIZED_IMPL(int16_t)
-SPECIALIZED_IMPL(int32_t)
-SPECIALIZED_IMPL(int64_t)
-SPECIALIZED_IMPL(uint8_t)
-SPECIALIZED_IMPL(uint16_t)
-SPECIALIZED_IMPL(uint32_t)
-SPECIALIZED_IMPL(uint64_t)
-SPECIALIZED_IMPL(half)
-SPECIALIZED_IMPL(float)
-SPECIALIZED_IMPL(double)
-SPECIALIZED_IMPL(bool)
 
 }  // namespace cuda
 }  // namespace onnxruntime
