@@ -245,7 +245,7 @@ Status GatherElements::Compute(OpKernelContext* context) const {
 
   int64_t axis = HandleNegativeAxis(axis_, input_data_shape.NumDimensions());
 
-  auto& status = ValidateInputShapes(input_data_shape, indices_shape, axis);
+  auto status = ValidateInputShapes(input_data_shape, indices_shape, axis);
   if (!status.IsOK())
     return status;
 
