@@ -383,7 +383,7 @@ class OnnxModel:
         return True
 
 class BertOnnxModel(OnnxModel):
-    def __init__(self, model, num_heads, hidden_size, sequence_length, separate_mask):
+    def __init__(self, model, num_heads, hidden_size, sequence_length, separate_mask, mask_reduce_sum):
         assert num_heads > 0
         assert hidden_size % num_heads == 0
         assert sequence_length > 0
@@ -393,6 +393,8 @@ class BertOnnxModel(OnnxModel):
         self.sequence_length = sequence_length
         self.hidden_size = hidden_size
         self.separate_mask = separate_mask
+        self.mask_reduce_sum = mask_reduce_sum
+
         # A lookup table with mask input as key, and mask index output as value
         self.mask_indice = {}
         self.embed_node = None
@@ -412,15 +414,22 @@ class BertOnnxModel(OnnxModel):
             return self.mask_indice[input]
 
         # Add a mask processing node
-        output_name = input + "_mask_index"
-        mask_index_node = onnx.helper.make_node(
-            'MaskIndex',
-            inputs=[input],
-            outputs=[output_name],
-            name=self.create_node_name('mask_index'))
-        mask_index_node.domain = "com.microsoft"
+        output_name = self.create_node_name('mask_index')
+        if self.mask_reduce_sum:
+            mask_index_node = onnx.helper.make_node(
+                'ReduceSum',
+                inputs=[input],
+                outputs=[output_name],
+                name=self.create_node_name('ReduceSum', 'MaskReduceSum'))
+            mask_index_node.attribute.extend([onnx.helper.make_attribute("axes", [1])])
+        else:
+            mask_index_node = onnx.helper.make_node(
+                'MaskIndex',
+                inputs=[input],
+                outputs=[output_name],
+                name=self.create_node_name('MaskIndex'))
+            mask_index_node.domain = "com.microsoft"
         self.add_node(mask_index_node)
-
         self.mask_indice[input] = output_name
 
         return self.mask_indice[input]
@@ -1207,13 +1216,16 @@ def main():
     parser.add_argument('--separate_mask', required=False, action='store_true')
     parser.set_defaults(separate_mask=False)
 
+    parser.add_argument('--mask_reduce_sum', required=False, action='store_true')
+    parser.set_defaults(mask_reduce_sum=False)
+
     args = parser.parse_args()
 
     model = ModelProto()
     with open(args.input, "rb") as f:
         model.ParseFromString(f.read())
 
-    bert_model = BertOnnxModel(model, args.num_heads, args.hidden_size, args.sequence_length, args.separate_mask)
+    bert_model = BertOnnxModel(model, args.num_heads, args.hidden_size, args.sequence_length, args.separate_mask, args.mask_reduce_sum)
 
     bert_model.fuse_layer_norm()
 
