@@ -383,7 +383,7 @@ class OnnxModel:
         return True
 
 class BertOnnxModel(OnnxModel):
-    def __init__(self, model, num_heads, hidden_size, sequence_length):
+    def __init__(self, model, num_heads, hidden_size, sequence_length, separate_mask):
         assert num_heads > 0
         assert hidden_size % num_heads == 0
         assert sequence_length > 0
@@ -392,6 +392,7 @@ class BertOnnxModel(OnnxModel):
         self.num_heads = num_heads
         self.sequence_length = sequence_length
         self.hidden_size = hidden_size
+        self.separate_mask = separate_mask
         # A lookup table with mask input as key, and mask index output as value
         self.mask_indice = {}
         self.embed_node = None
@@ -888,11 +889,12 @@ class BertOnnxModel(OnnxModel):
 
       Optional graph is used to generate position list (0, 1, ...). It can be a constant in some model.
     """
-    def fuse_embed_layer(self, has_mask=True, verbose=False):
+    def fuse_embed_layer(self, verbose=False):
         nodes = self.nodes()
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
+        has_mask = not self.separate_mask
         if has_mask:
             if len(self.mask_indice) == 0:
                 print("skip embed layer fusion since mask input is not found")
@@ -975,10 +977,19 @@ class BertOnnxModel(OnnxModel):
         self.update_graph(verbose)
         print("Fused EmbedLayerNormalization count: 1")
 
+    def get_bert_inputs(self):
+        if self.separate_mask:
+            inputs = self.embed_node.input[:2]
+            inputs.append(next(iter(self.mask_indice)))
+            return inputs
+        else:
+            return self.embed_node.input[:3]
+
     def get_batch_size_from_graph_input(self):
         graph = self.graph()
+        bert_inputs = self.get_bert_inputs()
         for input in graph.input:
-            if input.name in self.embed_node.input[:3]:
+            if input.name in bert_inputs:
                 tensor_type = input.type.tensor_type
                 if (tensor_type.HasField("shape")):
                     for d in tensor_type.shape.dim:
@@ -996,8 +1007,9 @@ class BertOnnxModel(OnnxModel):
         batch_size = self.get_batch_size_from_graph_input()
         input_batch_size = batch_size if isinstance(batch_size, int) else 1
         new_graph_inputs = []
+        bert_inputs = self.get_bert_inputs()
         for input in graph.input:
-            if input.name in self.embed_node.input[:3]: # Only the first 3 inputs of embed node need int32 conversion.
+            if input.name in bert_inputs:
                 int32_input = onnx.helper.make_tensor_value_info(input.name, TensorProto.INT32, [input_batch_size, self.sequence_length])
                 new_graph_inputs.append(int32_input)
             else:
@@ -1019,7 +1031,8 @@ class BertOnnxModel(OnnxModel):
         self.model.opset_import[0].version = original_opset_version
 
     def cast_input_to_int32(self):
-        for input in self.embed_node.input[:3]:
+        bert_inputs = self.get_bert_inputs()
+        for input in bert_inputs:
             graph_input = self.find_graph_input(input)
             if graph_input is not None and graph_input.type.tensor_type.elem_type == TensorProto.INT64:
                 cast_output = input + '_int32'
@@ -1033,14 +1046,11 @@ class BertOnnxModel(OnnxModel):
         if self.embed_node is None:
             return
 
+        bert_inputs = self.get_bert_inputs()
         dynamic_batch_inputs = {}
         for input in self.model.graph.input:
-            if input.name in self.mask_indice:
-                dim_proto = input.type.tensor_type.shape.dim[0]
-                dim_proto.dim_param = dynamic_batch_dim
-                continue
-            for embed_input in self.embed_node.input[:3]:
-                if embed_input == input.name:
+            for bert_input in bert_inputs:
+                if bert_input == input.name:
                     dim_proto = input.type.tensor_type.shape.dim[0]
                     dim_proto.dim_param = dynamic_batch_dim
 
@@ -1203,7 +1213,7 @@ def main():
     with open(args.input, "rb") as f:
         model.ParseFromString(f.read())
 
-    bert_model = BertOnnxModel(model, args.num_heads, args.hidden_size, args.sequence_length)
+    bert_model = BertOnnxModel(model, args.num_heads, args.hidden_size, args.sequence_length, args.separate_mask)
 
     bert_model.fuse_layer_norm()
 
@@ -1216,7 +1226,7 @@ def main():
 
     bert_model.fuse_attention(args.verbose)
 
-    bert_model.fuse_embed_layer(not args.separate_mask, args.verbose)
+    bert_model.fuse_embed_layer(args.verbose)
 
     if bert_model.embed_node is None:
         print("Failed to fuse embedding layer.")
