@@ -9,7 +9,6 @@
 namespace onnxruntime {
 namespace contrib {
 
-template <typename T>
 class AttentionBase {
  protected:
   AttentionBase(const OpKernelInfo& info);
@@ -19,7 +18,7 @@ class AttentionBase {
 };
 
 template <typename T>
-class Attention : public OpKernel, public AttentionBase<T> {
+class Attention : public OpKernel, public AttentionBase {
  public:
   explicit Attention(const OpKernelInfo& info);
   Status Compute(OpKernelContext* context) const override;

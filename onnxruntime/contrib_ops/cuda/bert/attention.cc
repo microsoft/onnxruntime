@@ -31,7 +31,7 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase<T>(info) {}
+Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info) {}
 
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {

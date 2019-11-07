@@ -27,15 +27,13 @@ namespace contrib {
 
 REGISTER_KERNEL_TYPED(float)
 
-template <typename T>
-AttentionBase<T>::AttentionBase(const OpKernelInfo& info) {
+AttentionBase::AttentionBase(const OpKernelInfo& info) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int>(num_heads);
 }
 
-template <typename T>
-Status AttentionBase<T>::CheckInputs(const OpKernelContext* context) const {
+Status AttentionBase::CheckInputs(const OpKernelContext* context) const {
   // Input and output shapes:
   //   Input 0 - input       : (batch_size, sequence_length, hidden_size)
   //   Input 1 - weights     : (hidden_size, 3 * hidden_size)
@@ -97,7 +95,7 @@ Status AttentionBase<T>::CheckInputs(const OpKernelContext* context) const {
 }
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionBase<T>(info) {}
+Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionBase(info) {}
 
 template <typename T>
 Status Attention<T>::Compute(OpKernelContext* context) const {
