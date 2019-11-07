@@ -392,7 +392,8 @@ class BertOnnxModel(OnnxModel):
         self.num_heads = num_heads
         self.sequence_length = sequence_length
         self.hidden_size = hidden_size
-        self.mask_input = None
+        # A lookup table with mask input as key, and mask index output as value
+        self.mask_indice = {}
         self.embed_node = None
 
         # constant node names
@@ -405,13 +406,25 @@ class BertOnnxModel(OnnxModel):
     def normalize_children_types(self):
         return ['MatMul', 'MatMul', 'MatMul', 'SkipLayerNormalization']
 
-    def set_mask_input(self, input):
-        if self.mask_input is not None and input != self.mask_input:
-            raise Exception("Different mask inputs", self.mask_input, input)
+    def process_mask(self, input):
+        if input in self.mask_indice:
+            return self.mask_indice[input]
 
-        self.mask_input = input
+        # Add a mask processing node
+        output_name = input + "_mask_index"
+        mask_index_node = onnx.helper.make_node(
+            'MaskIndex',
+            inputs=[input],
+            outputs=[output_name],
+            name=self.create_node_name('mask_index'))
+        mask_index_node.domain = "com.microsoft"
+        self.add_node(mask_index_node)
 
-    def create_attention_node(self, q_matmul, k_matmul, v_matmul, q_add, k_add, v_add, input, output):
+        self.mask_indice[input] = output_name
+
+        return self.mask_indice[input]
+
+    def create_attention_node(self, mask_index, q_matmul, k_matmul, v_matmul, q_add, k_add, v_add, input, output):
         q_weight = self.get_initializer(q_matmul.input[1])
         k_weight = self.get_initializer(k_matmul.input[1])
         v_weight = self.get_initializer(v_matmul.input[1])
@@ -462,8 +475,7 @@ class BertOnnxModel(OnnxModel):
         self.add_input(bias_input)
 
         attention_node = onnx.helper.make_node(self.attention_name,
-            inputs=[input, attention_node_name + '_qkv_weight', attention_node_name + '_qkv_bias', self.mask_input],
-            outputs=[output],
+            inputs=[input, attention_node_name + '_qkv_weight', attention_node_name + '_qkv_bias', mask_index],            outputs=[output],
             name=attention_node_name)
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([onnx.helper.make_attribute("num_heads", self.num_heads)])
@@ -522,8 +534,8 @@ class BertOnnxModel(OnnxModel):
             (mul_mask, sub_mask, cast_mask, unsqueeze_mask, unsqueeze_mask_0) = mask_nodes
 
             if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_v.input[0] == root_input:
-                self.set_mask_input(unsqueeze_mask_0.input[0])
-                self.create_attention_node(matmul_q, matmul_k, matmul_v, add_q, add_k, add_v, root_input, reshape_qkv.output[0])
+                mask_index = self.process_mask(unsqueeze_mask_0.input[0])
+                self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v, root_input, reshape_qkv.output[0])
                 nodes_to_remove.extend([reshape_qkv, transpose_qkv, matmul_qkv])
                 nodes_to_remove.extend(qk_nodes)
                 nodes_to_remove.extend(q_nodes)
@@ -699,12 +711,65 @@ class BertOnnxModel(OnnxModel):
                 'FastGelu',  # FastGelu uses Tanh to approximate Elf
                 inputs=[root_node.output[0]],
                 outputs=mul_after_tanh.output,
-                name=self.create_node_name(self.gelu_name))
+                name=self.create_node_name('FastGelu'))
             gelu_node.domain = "com.microsoft"
             nodes_to_add.append(gelu_node)
 
         if len(nodes_to_add) > 0:
             print("Fused FastGelu count:", len(nodes_to_add))
+
+        self.remove_nodes(nodes_to_remove)
+        self.add_nodes(nodes_to_add)
+
+    def fuse_add_bias_gelu(self):
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+        nodes_to_remove = []
+        nodes_to_add = []
+
+        for node in self.get_nodes_by_op_type('FastGelu'):
+            if len(node.input) != 1:
+                continue
+
+            nodes = self.match_parent_path(node, ['Add', 'MatMul'], [0, None])
+            if nodes is None:
+                print("not found Add MatMul before FastGelu")
+                continue
+            (add, matmul) = nodes
+
+            # bias should be one dimension
+            #i, bias_weight = self.get_constant_input(add)
+
+            for i, input in enumerate(add.input):
+                initializer = self.get_initializer(input)
+                if initializer is None:
+                    continue
+                bias_weight = numpy_helper.to_array(initializer)
+                break
+
+            if bias_weight is None:
+                print("Bias constant input not found")
+                continue
+            if len(bias_weight.shape) != 1:
+                print("Bias shape not expected", bias_weight.shape)
+                continue
+
+            subgraph_nodes = [node, add]
+            if not self.is_safe_to_fuse_nodes(subgraph_nodes, [node.output[0]], input_name_to_nodes, output_name_to_node):
+                print("not safe to fuse add & FastGelu")
+                continue
+
+            nodes_to_remove.extend(subgraph_nodes)
+            gelu_node = onnx.helper.make_node(
+                'FastGelu',
+                inputs=[node.input[0], matmul.output[0]],
+                outputs=node.output,
+                name=self.create_node_name('FastGelu', "FastGelu_AddBias_"))
+            gelu_node.domain = "com.microsoft"
+            nodes_to_add.append(gelu_node)
+
+        if len(nodes_to_add) > 0:
+            print("Fused FastGelu with Bias count:", len(nodes_to_add))
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
@@ -823,15 +888,21 @@ class BertOnnxModel(OnnxModel):
 
       Optional graph is used to generate position list (0, 1, ...). It can be a constant in some model.
     """
-    def fuse_embed_layer(self, verbose=False):
-        if self.mask_input is None:
-            print("skip embed layer fusion since mask input is not found")
-            return
-
+    def fuse_embed_layer(self, has_mask=True, verbose=False):
         nodes = self.nodes()
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
-        mask_input_name = self.mask_input
+
+        if has_mask:
+            if len(self.mask_indice) == 0:
+                print("skip embed layer fusion since mask input is not found")
+                return
+            if len(self.mask_indice) > 1:
+                print("skip embed layer fusion since there are multiple mask inputs found")
+                return
+            mask_input_name = next(iter(self.mask_indice))
+            mask_output_name = self.mask_indice[mask_input_name]
+            mask_node = output_name_to_node[mask_output_name]
 
         nodes_to_remove = []
 
@@ -877,18 +948,27 @@ class BertOnnxModel(OnnxModel):
         nodes_to_remove.extend(subgraph_nodes)
         nodes_to_remove.extend([normalize_node, add_node, segment_embedding_gather, word_embedding_gather, position_embedding_gather, position_embedding_expand])
 
-        embed_node = onnx.helper.make_node('EmbedLayerNormalization',
-                        inputs=[input_ids, segment_ids, mask_input_name, 
-                                word_embedding_gather.input[0], position_embedding_gather.input[0], segment_embedding_gather.input[0],
-                                normalize_node.input[2], normalize_node.input[3]], # gamma and beta
-                        outputs=["embed_output", "mask_idx"],
-                        name="EmbedLayer")
+        if has_mask:
+            nodes_to_remove.extend([mask_node])
+            embed_node = onnx.helper.make_node('EmbedLayerNormalization',
+                            inputs=[input_ids, segment_ids, mask_input_name, 
+                                    word_embedding_gather.input[0], position_embedding_gather.input[0], segment_embedding_gather.input[0],
+                                    normalize_node.input[2], normalize_node.input[3]], # gamma and beta
+                            outputs=["embed_output", self.mask_indice[mask_input_name]],
+                            name="EmbedLayer")
+        else:
+            embed_node = onnx.helper.make_node('EmbedLayerNormalization',
+                            inputs=[input_ids, segment_ids, 
+                                    word_embedding_gather.input[0], position_embedding_gather.input[0], segment_embedding_gather.input[0],
+                                    normalize_node.input[2], normalize_node.input[3]], # gamma and beta
+                            outputs=["embed_output"],
+                            name="EmbedLayer")
         embed_node.domain = "com.microsoft"
         # store embed node for other processing
         self.embed_node = embed_node
 
         self.replace_input_of_all_nodes(normalize_node.output[0], 'embed_output')
-        self.replace_input_of_all_nodes(mask_input_name, 'mask_idx')
+        #self.replace_input_of_all_nodes(mask_input_name, 'mask_idx')
 
         self.remove_nodes(nodes_to_remove)
         self.add_node(embed_node)
@@ -955,6 +1035,10 @@ class BertOnnxModel(OnnxModel):
 
         dynamic_batch_inputs = {}
         for input in self.model.graph.input:
+            if input.name in self.mask_indice:
+                dim_proto = input.type.tensor_type.shape.dim[0]
+                dim_proto.dim_param = dynamic_batch_dim
+                continue
             for embed_input in self.embed_node.input[:3]:
                 if embed_input == input.name:
                     dim_proto = input.type.tensor_type.shape.dim[0]
@@ -1104,12 +1188,14 @@ def main():
     parser.add_argument('--float16', required=False, action='store_true')
     parser.set_defaults(float16=False)
 
-    # FastGelu uses approximation for Gelu. It is faster.
-    parser.add_argument('--fastgelu', required=False, action='store_true')
-    parser.set_defaults(fastgelu=False)
+    # Choose Gelu Implementation. FastGelu uses approximation for Gelu. It is faster.
+    parser.add_argument('--gelu', required=False, type=str.lower, default='fastgelu', choices=['gelu', 'fastgelu'])
 
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
+
+    parser.add_argument('--separate_mask', required=False, action='store_true')
+    parser.set_defaults(separate_mask=False)
 
     args = parser.parse_args()
 
@@ -1121,13 +1207,16 @@ def main():
 
     bert_model.fuse_layer_norm()
 
-    bert_model.fuse_gelu(use_approximation=args.fastgelu)
+    use_approximation = (args.gelu == 'fastgelu')
+    bert_model.fuse_gelu(use_approximation)
+
+    bert_model.fuse_add_bias_gelu()
 
     bert_model.fuse_reshape()
 
     bert_model.fuse_attention(args.verbose)
 
-    bert_model.fuse_embed_layer(args.verbose)
+    bert_model.fuse_embed_layer(not args.separate_mask, args.verbose)
 
     if bert_model.embed_node is None:
         print("Failed to fuse embedding layer.")
