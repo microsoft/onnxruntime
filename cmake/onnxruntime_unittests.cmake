@@ -202,7 +202,7 @@ if(onnxruntime_USE_CUDA)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda)
 endif()
 
-if(onnxruntime_USE_MKLDNN)
+if(onnxruntime_USE_DNNL)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_mkldnn)
 endif()
 
@@ -309,8 +309,8 @@ onnxruntime_add_include_to_target(onnxruntime_test_utils_for_framework onnxrunti
 if (onnxruntime_USE_FULL_PROTOBUF)
   target_compile_definitions(onnxruntime_test_utils_for_framework PRIVATE USE_FULL_PROTOBUF=1)
 endif()
-if (onnxruntime_USE_MKLDNN)
-  target_compile_definitions(onnxruntime_test_utils_for_framework PUBLIC USE_MKLDNN=1)
+if (onnxruntime_USE_DNNL)
+  target_compile_definitions(onnxruntime_test_utils_for_framework PUBLIC USE_DNNL=1)
 endif()
 add_dependencies(onnxruntime_test_utils_for_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime_test_utils_for_framework PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE ${eigen_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT})
@@ -324,8 +324,8 @@ onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_framework g
 if (onnxruntime_USE_FULL_PROTOBUF)
   target_compile_definitions(onnxruntime_test_utils PRIVATE USE_FULL_PROTOBUF=1)
 endif()
-if (onnxruntime_USE_MKLDNN)
-  target_compile_definitions(onnxruntime_test_utils PUBLIC USE_MKLDNN=1)
+if (onnxruntime_USE_DNNL)
+  target_compile_definitions(onnxruntime_test_utils PUBLIC USE_DNNL=1)
 endif()
 add_dependencies(onnxruntime_test_utils ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE ${eigen_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT})
@@ -437,7 +437,7 @@ add_custom_command(
   ${TEST_DATA_SRC}
   ${TEST_DATA_DES})
 if(WIN32)
-  if (onnxruntime_USE_MKLDNN)
+  if (onnxruntime_USE_DNNL)
     list(APPEND onnx_test_libs mkldnn)
     add_custom_command(
       TARGET ${test_data_target} POST_BUILD

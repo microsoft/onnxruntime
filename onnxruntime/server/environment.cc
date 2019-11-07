@@ -5,7 +5,7 @@
 #include "environment.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
-#ifdef USE_MKLDNN
+#ifdef USE_DNNL
 
 #include "core/providers/mkldnn/mkldnn_provider_factory.h"
 

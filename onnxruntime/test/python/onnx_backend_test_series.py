@@ -139,7 +139,7 @@ def create_backend_test(testname=None):
                                       'test_edge_pad_cpu',
                                       'test_reflect_pad_cpu']
 
-        if c2.supports_device('MKL-DNN'):
+        if c2.supports_device('DNNL'):
             current_failing_tests += ['^test_range_float_type_positive_delta_expanded_cpu',
                                       '^test_range_int32_type_negative_delta_expanded_cpu']
 

@@ -3,7 +3,7 @@
 
 #include "core/providers/mkldnn/mkldnn_provider_factory.h"
 #include <atomic>
-#include "mkldnn_execution_provider.h"
+#include "dnnl_execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
 
 using namespace onnxruntime;

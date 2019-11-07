@@ -1,15 +1,15 @@
 # Subgraph Optimization
 
-MKL-DNN uses blocked layout (example: nhwc with channels blocked by 16 – nChw16c) to take advantage of vector operations using AVX512.  To get best performance, we avoid reorders (example. Nchw16c to nchw) and propagate blocked layout to next primitive. 
+DNNL uses blocked layout (example: nhwc with channels blocked by 16 – nChw16c) to take advantage of vector operations using AVX512.  To get best performance, we avoid reorders (example. Nchw16c to nchw) and propagate blocked layout to next primitive. 
 
 Subgraph optimization achieves this in the following steps.
 1.	Parses ONNX Runtime graph and creates an Internal Representation of subgraph..
-2.	Subgraph Operator (MklDnnFunKernel) iterates through MKL-DNN nodes and creates a vector MKL-DNN Kernels
-3.	Compute Function of MklDnnFunKernel iterates and binds data to MKL-DNN primitives in the vector and submits vector for execution.
+2.	Subgraph Operator (MklDnnFunKernel) iterates through DNNL nodes and creates a vector DNNL Kernels
+3.	Compute Function of MklDnnFunKernel iterates and binds data to DNNL primitives in the vector and submits vector for execution.
 
 
 ## Subgraph (IR) Internal Representation
-MklDnnExecutionProvicer::GetCapability() parses ONNX model graph and creates IR (Internal Representation) of subgraphs of MKL-DNN operators.
+MklDnnExecutionProvicer::GetCapability() parses ONNX model graph and creates IR (Internal Representation) of subgraphs of DNNL operators.
 Each subgraph contains a vector MklDnnNodes, inputs, outputs and attributes for all its MklDnnNodes. There can be attributes of same name. So, we prefix attribute names with Node name and its index. 
 Unique id for subgraph is set as an attribute. 
 
@@ -51,7 +51,7 @@ SubgraphPrimitve::CreatePrimitives()
       .
       .
 ```      
-In CreatePrimitives method, we iterate MklDnnNodes and creates MklDnnKernel objects and add MKL-DNN primitive to a vector. It also reads attributes. This is done only once, at first iteration.
+In CreatePrimitives method, we iterate MklDnnNodes and creates MklDnnKernel objects and add DNNL primitive to a vector. It also reads attributes. This is done only once, at first iteration.
 
 ``` 
 SubgraphPrimitve::Compute()
@@ -61,5 +61,5 @@ SubgraphPrimitve::Compute()
     stream->submit(net);
 ```
 
-In SubgraphPrimitve::Compute() method, we iterate thru MklDnn Kernels and bind input data. Then we submit the vector of Primitives to MKL-DNN stream.
+In SubgraphPrimitve::Compute() method, we iterate thru MklDnn Kernels and bind input data. Then we submit the vector of Primitives to DNNL stream.
 

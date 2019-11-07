@@ -96,7 +96,7 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 **Execution Providers**
 * [NVIDIA CUDA](#CUDA)
 * [NVIDIA TensorRT](#TensorRT)
-* [Intel MKL-DNN/MKL-ML](#MKLDNN-and-MKLML)
+* [Intel DNNL/MKL-ML](#MKLDNN-and-MKLML)
 * [Intel nGraph](#nGraph)
 * [Intel OpenVINO](#openvino)
 * [Android NNAPI](#Android)
@@ -204,13 +204,13 @@ Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 ---
 
 ### MKLDNN and MKLML
-See more information on MKL-DNN and MKL-ML [here](./docs/execution_providers/MKL-DNN-ExecutionProvider.md).
+See more information on DNNL and MKL-ML [here](./docs/execution_providers/DNNL-ExecutionProvider.md).
 
 #### Build Instructions
 ##### Linux
-MKL-DNN: `./build.sh --use_mkldnn`
+DNNL: `./build.sh --use_dnnl`
 
-MKL-DNN built with dependency on MKL small libraries: `./build.sh --use_mkldnn --use_mklml`
+DNNL built with dependency on MKL small libraries: `./build.sh --use_dnnl --use_mklml`
 
 ---
 

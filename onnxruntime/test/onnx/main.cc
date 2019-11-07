@@ -305,10 +305,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
     }
     if (enable_mkl) {
-#ifdef USE_MKLDNN
+#ifdef USE_DNNL
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
-      fprintf(stderr, "MKL-DNN is not supported in this build");
+      fprintf(stderr, "DNNL is not supported in this build");
       return -1;
 #endif
     }
@@ -475,7 +475,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
 #endif
 
-#ifdef USE_MKLDNN
+#ifdef USE_DNNL
   broken_tests.insert({"tf_mobilenet_v2_1.0_224", "result mismatch"});
   broken_tests.insert({"tf_mobilenet_v2_1.4_224", "result mismatch"});
   broken_tests.insert({"tf_mobilenet_v1_1.0_224", "result mismatch"});

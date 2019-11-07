@@ -459,7 +459,7 @@ void OpTester::ExecuteModel(Model& model, InferenceSession& session_object, Expe
       }
     } else {
       if (expect_result == ExpectResult::kExpectFailure) {
-        // Disable expected_failure_string checks for MKL-DNN and nGraph EP's
+        // Disable expected_failure_string checks for DNNL and nGraph EP's
         if (provider_type != kMklDnnExecutionProvider && provider_type != kNGraphExecutionProvider) {
           EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
         }

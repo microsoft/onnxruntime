@@ -27,8 +27,8 @@
 #define BACKEND_OPENMP ""
 #endif
 
-#if USE_MKLDNN
-#define BACKEND_MKLDNN "-MKL-DNN"
+#if USE_DNNL
+#define BACKEND_MKLDNN "-DNNL"
 #include "core/providers/mkldnn/mkldnn_execution_provider.h"
 #else
 #define BACKEND_MKLDNN ""
@@ -90,7 +90,7 @@
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
-#ifdef USE_MKLDNN
+#ifdef USE_DNNL
 #include "core/providers/mkldnn/mkldnn_provider_factory.h"
 #endif
 #ifdef USE_NGRAPH
@@ -271,7 +271,7 @@ const std::vector<std::string>& GetAvailableProviders() {
 #ifdef USE_CUDA
     available_providers.push_back(kCudaExecutionProvider);
 #endif
-#ifdef USE_MKLDNN
+#ifdef USE_DNNL
     available_providers.push_back(kMklDnnExecutionProvider);
 #endif
 #ifdef USE_NGRAPH
@@ -306,7 +306,7 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(0));
 #endif
     } else if (type == kMklDnnExecutionProvider) {
-#ifdef USE_MKLDNN
+#ifdef USE_DNNL
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Mkldnn(sess->GetSessionOptions().enable_cpu_mem_arena));
 #endif
     } else if (type == kNGraphExecutionProvider) {
@@ -398,7 +398,7 @@ void addGlobalMethods(py::module& m) {
 #ifdef USE_CUDA
             onnxruntime::CreateExecutionProviderFactory_CUDA(0),
 #endif
-#ifdef USE_MKLDNN
+#ifdef USE_DNNL
             onnxruntime::CreateExecutionProviderFactory_Mkldnn(1),
 #endif
 #ifdef USE_NGRAPH

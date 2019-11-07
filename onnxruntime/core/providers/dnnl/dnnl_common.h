@@ -3,28 +3,28 @@
 
 #pragma once
 #include "core/common/common.h"
-#include "mkldnn.hpp"
+#include "dnnl.hpp"
 #include <unordered_map>
 #include <list>
 
 namespace onnxruntime {
-namespace mkl_dnn {
+namespace ort_dnnl {
 
 template <typename T>
-static mkldnn::memory::data_type MklDnnType();
+static dnnl::memory::data_type MklDnnType();
 
 // Add more types here as needed.
 template <>
-mkldnn::memory::data_type MklDnnType<float>() {
-  return mkldnn::memory::data_type::f32;
+dnnl::memory::data_type MklDnnType<float>() {
+  return dnnl::memory::data_type::f32;
 }
 
-static mkldnn::engine& GetEngine() {
-  static mkldnn::engine cpu_engine = mkldnn::engine(mkldnn::engine::kind::cpu, 0);
+static dnnl::engine& GetEngine() {
+  static dnnl::engine cpu_engine = dnnl::engine(dnnl::engine::kind::cpu, 0);
   return cpu_engine;
 }
 
-static void AddDimsToKey(std::string& key, const mkldnn::memory::dims& dims) {
+static void AddDimsToKey(std::string& key, const dnnl::memory::dims& dims) {
   key.append(1, '#');
   for (size_t i = 0; i < dims.size(); i++) {
     key.append(std::to_string(dims[i]));
@@ -69,5 +69,5 @@ class PrimitivePool {
     return map;
   }
 };
-}  // namespace mkl_dnn
+}  // namespace ort_dnnl
 }  // namespace onnxruntime

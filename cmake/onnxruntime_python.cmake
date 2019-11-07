@@ -50,8 +50,8 @@ if(onnxruntime_PYBIND_EXPORT_OPSCHEMA)
   target_compile_definitions(onnxruntime_pybind11_state PRIVATE onnxruntime_PYBIND_EXPORT_OPSCHEMA)
 endif()
 
-if (onnxruntime_USE_MKLDNN)
-  target_compile_definitions(onnxruntime_pybind11_state PRIVATE USE_MKLDNN=1)
+if (onnxruntime_USE_DNNL)
+  target_compile_definitions(onnxruntime_pybind11_state PRIVATE USE_DNNL=1)
 endif()
 
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${PYTHON_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR})
@@ -198,7 +198,7 @@ add_custom_command(
       $<TARGET_FILE_DIR:${test_data_target}>
 )
 
-if (onnxruntime_USE_MKLDNN)
+if (onnxruntime_USE_DNNL)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy ${MKLDNN_DLL_PATH}
