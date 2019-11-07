@@ -2,16 +2,16 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "mkldnn_types.h"
+#include "dnnl_types.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/mkldnn/mkldnn_fwd.h"
+#include "core/providers/mkldnn/dnnl_fwd.h"
 #include "core/providers/cpu/nn/autopad_type.h"
-#include "core/providers/mkldnn/mkldnn_execution_provider.h"
-#include "core/providers/mkldnn/subgraph/mkldnn_kernel.h"
+#include "core/providers/mkldnn/dnnl_execution_provider.h"
+#include "core/providers/mkldnn/subgraph/dnnl_kernel.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {
-namespace mkl_dnn {
+namespace ort_dnnl {
 
 template <typename T>
 class MklDnnConvBatchNorm : public MklDnnKernel {
@@ -25,11 +25,11 @@ class MklDnnConvBatchNorm : public MklDnnKernel {
 
   void CreatePrimitives(const OrtCustomOpApi* api,
                         OrtKernelContext* context,
-                        mkldnn::engine& cpu_engine,
-                        std::vector<mkldnn::primitive>& net,
-                        std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) override {
+                        dnnl::engine& cpu_engine,
+                        std::vector<dnnl::primitive>& net,
+                        std::vector<std::unordered_map<int, dnnl::memory>>& net_args) override {
     Ort::CustomOpApi ort{*api};
-    stream_ = onnxruntime::make_unique<mkldnn::stream>(mkldnn::stream(cpu_engine));
+    stream_ = onnxruntime::make_unique<dnnl::stream>(dnnl::stream(cpu_engine));
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
     const OrtValue* winput_tensor = ort.KernelContext_GetInput(context, input_index + 1);
     auto wtensor_info = ort.GetTensorTypeAndShape(winput_tensor);
@@ -50,7 +50,7 @@ class MklDnnConvBatchNorm : public MklDnnKernel {
       ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
       auto xshape = tensor_shape.data();
       auto xdim = tensor_shape.size();
-      ort_source_format_ = mkldnn::memory::format_tag::any;
+      ort_source_format_ = dnnl::memory::format_tag::any;
       x_shape = TensorShape(xshape, xdim);
     } else {
       // get the output of previous node (mkldnn block propagation).
@@ -116,11 +116,11 @@ class MklDnnConvBatchNorm : public MklDnnKernel {
     TensorShape y_shape(y_dims);
     primitive_dst_shape_ = TensorShape(y_dims);
     TensorShape output_shape = y_shape.Slice(2);
-    mkldnn::memory::dims dst_dims_mkl(y_dims.begin(), y_dims.end());
-    primitive_dst_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
-        mkldnn::memory::desc({dst_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format_tag::any));
+    dnnl::memory::dims dst_dims_mkl(y_dims.begin(), y_dims.end());
+    primitive_dst_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+        dnnl::memory::desc({dst_dims_mkl}, MklDnnType<T>(), dnnl::memory::format_tag::any));
 
-    mkldnn::memory::dims filter_dims_mkl;
+    dnnl::memory::dims filter_dims_mkl;
     if (group_mkl == 1) {
       filter_dims_mkl.assign(w_shape.GetDims().begin(), w_shape.GetDims().end());
     } else {
@@ -128,16 +128,16 @@ class MklDnnConvBatchNorm : public MklDnnKernel {
                               static_cast<int>(w_shape[0] / group_mkl)});
       filter_dims_mkl.insert(filter_dims_mkl.end(), w_shape.GetDims().begin() + 1, w_shape.GetDims().end());
     }
-    mkldnn::memory::dims strides_mkl(strides.begin(), strides.end());
-    mkldnn::memory::dims dilations_mkl(dilations.begin(), dilations.end());
+    dnnl::memory::dims strides_mkl(strides.begin(), strides.end());
+    dnnl::memory::dims dilations_mkl(dilations.begin(), dilations.end());
     // mkldnn dilations start from 0 so we need to subtract 1 from each dim.
     for (size_t dim = 0; dim < kernel_rank; dim++) {
       dilations_mkl[dim] -= 1;
     }
 
-    mkldnn::memory::dims padding_left_mkl(pads.begin(), pads.begin() + kernel_rank);
-    mkldnn::memory::dims padding_right_mkl(pads.begin() + kernel_rank, pads.end());
-    mkldnn::memory::dims bias_dims_mkl;
+    dnnl::memory::dims padding_left_mkl(pads.begin(), pads.begin() + kernel_rank);
+    dnnl::memory::dims padding_right_mkl(pads.begin() + kernel_rank, pads.end());
+    dnnl::memory::dims bias_dims_mkl;
 
     int batchNormIndix = (mklnode_ptr_->num_inputs == 7) ? input_index + 3 : input_index + 2;
     if (mklnode_ptr_->num_inputs == 7) {
@@ -160,109 +160,109 @@ class MklDnnConvBatchNorm : public MklDnnKernel {
       bias_dims_mkl.assign(b_shape.GetDims().begin(), b_shape.GetDims().end());
     }
 
-    auto src_format = mkldnn::memory::format_tag::any;
+    auto src_format = dnnl::memory::format_tag::any;
     if (kernel_rank == 1) {
-      src_format = mkldnn::memory::format_tag::ncw;
+      src_format = dnnl::memory::format_tag::ncw;
       if (group_mkl == 1) {
-        filter_format_ = mkldnn::memory::format_tag::oiw;
+        filter_format_ = dnnl::memory::format_tag::oiw;
       } else {
-        filter_format_ = mkldnn::memory::format_tag::goiw;
+        filter_format_ = dnnl::memory::format_tag::goiw;
       }
     } else if (kernel_rank == 2) {
-      src_format = mkldnn::memory::format_tag::nchw;
+      src_format = dnnl::memory::format_tag::nchw;
       if (group_mkl == 1) {
-        filter_format_ = mkldnn::memory::format_tag::oihw;
+        filter_format_ = dnnl::memory::format_tag::oihw;
       } else {
-        filter_format_ = mkldnn::memory::format_tag::goihw;
+        filter_format_ = dnnl::memory::format_tag::goihw;
       }
     } else {
-      src_format = mkldnn::memory::format_tag::ncdhw;
+      src_format = dnnl::memory::format_tag::ncdhw;
       if (group_mkl == 1) {
-        filter_format_ = mkldnn::memory::format_tag::oidhw;
+        filter_format_ = dnnl::memory::format_tag::oidhw;
       } else {
-        filter_format_ = mkldnn::memory::format_tag::goidhw;
+        filter_format_ = dnnl::memory::format_tag::goidhw;
       }
     }
 
-    mkldnn::memory::dims src_dims_mkl(x_shape.GetDims().begin(), x_shape.GetDims().end());
+    dnnl::memory::dims src_dims_mkl(x_shape.GetDims().begin(), x_shape.GetDims().end());
     if (mklnode_ptr_->parent_nodes.empty()) {
       ort_source_format_ = src_format;
-      ort_source_desc_ = mkldnn::memory::desc({src_dims_mkl}, MklDnnType<T>(), src_format);
-      source_desc_ = mkldnn::memory::desc({src_dims_mkl}, MklDnnType<T>(), src_format);
+      ort_source_desc_ = dnnl::memory::desc({src_dims_mkl}, MklDnnType<T>(), src_format);
+      source_desc_ = dnnl::memory::desc({src_dims_mkl}, MklDnnType<T>(), src_format);
     }
 
-    src_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
-        mkldnn::memory::desc({src_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format_tag::any));
+    src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+        dnnl::memory::desc({src_dims_mkl}, MklDnnType<T>(), dnnl::memory::format_tag::any));
 
     // Set the memory descriptors to format::any to allow MKLDNN to decide what the optimal memory layout should be
     // for the computation given the input
-    filter_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
-        mkldnn::memory::desc({filter_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format_tag::any));
-    bias_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
-        mkldnn::memory::desc({bias_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format_tag::any));
+    filter_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+        dnnl::memory::desc({filter_dims_mkl}, MklDnnType<T>(), dnnl::memory::format_tag::any));
+    bias_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+        dnnl::memory::desc({bias_dims_mkl}, MklDnnType<T>(), dnnl::memory::format_tag::any));
 
-    mkldnn::memory::dims conv_zero_padding = {0, 0};
+    dnnl::memory::dims conv_zero_padding = {0, 0};
 
-    fwd_desc_ = onnxruntime::make_unique<mkldnn::convolution_forward::desc>(
-        mkldnn::convolution_forward::desc(
-            mkldnn::prop_kind::forward_inference, mkldnn::algorithm::convolution_direct, *src_md_,
+    fwd_desc_ = onnxruntime::make_unique<dnnl::convolution_forward::desc>(
+        dnnl::convolution_forward::desc(
+            dnnl::prop_kind::forward_inference, dnnl::algorithm::convolution_direct, *src_md_,
             *filter_md_, *bias_md_, *primitive_dst_md_,
             strides_mkl, dilations_mkl, padding_left_mkl,
             padding_right_mkl));
 
     if (fuse_relu_) {
-      mkldnn::primitive_attr attr;
-      // attr.set_int_output_round_mode(mkldnn::round_mode::round_nearest);
+      dnnl::primitive_attr attr;
+      // attr.set_int_output_round_mode(dnnl::round_mode::round_nearest);
       // Execute RELU as Fuse PostOps
       const float ops_scale = 1.f;
       const float ops_alpha = 0.f;  // relu negative slope
       const float ops_beta = 0.f;
-      mkldnn::post_ops ops;
-      ops.append_eltwise(ops_scale, mkldnn::algorithm::eltwise_relu, ops_alpha, ops_beta);
+      dnnl::post_ops ops;
+      ops.append_eltwise(ops_scale, dnnl::algorithm::eltwise_relu, ops_alpha, ops_beta);
       attr.set_post_ops(ops);
 
-      conv_fwd_pd_ = onnxruntime::make_unique<mkldnn::convolution_forward::primitive_desc>(
-          mkldnn::convolution_forward::primitive_desc(*fwd_desc_, attr, cpu_engine));
+      conv_fwd_pd_ = onnxruntime::make_unique<dnnl::convolution_forward::primitive_desc>(
+          dnnl::convolution_forward::primitive_desc(*fwd_desc_, attr, cpu_engine));
     } else {
-      conv_fwd_pd_ = onnxruntime::make_unique<mkldnn::convolution_forward::primitive_desc>(
-          mkldnn::convolution_forward::primitive_desc(*fwd_desc_, cpu_engine));
+      conv_fwd_pd_ = onnxruntime::make_unique<dnnl::convolution_forward::primitive_desc>(
+          dnnl::convolution_forward::primitive_desc(*fwd_desc_, cpu_engine));
     }
 
-    primitive_src_desc_ = static_cast<mkldnn::memory::desc>(
+    primitive_src_desc_ = static_cast<dnnl::memory::desc>(
         conv_fwd_pd_.get()->src_desc());
 
-    filter_desc_ = static_cast<mkldnn::memory::desc>(
+    filter_desc_ = static_cast<dnnl::memory::desc>(
         conv_fwd_pd_.get()->weights_desc());
 
-    primitive_dst_desc_ = static_cast<mkldnn::memory::desc>(
+    primitive_dst_desc_ = static_cast<dnnl::memory::desc>(
         conv_fwd_pd_.get()->dst_desc());
 
     src_size_ = conv_fwd_pd_.get()->src_desc().get_size();
     filter_size_ = conv_fwd_pd_.get()->weights_desc().get_size();
     dst_size_ = conv_fwd_pd_.get()->dst_desc().get_size();
 
-    filter_mem_ = onnxruntime::make_unique<mkldnn::memory>(
-        mkldnn::memory(conv_fwd_pd_.get()->weights_desc(), cpu_engine, nullptr));
+    filter_mem_ = onnxruntime::make_unique<dnnl::memory>(
+        dnnl::memory(conv_fwd_pd_.get()->weights_desc(), cpu_engine, nullptr));
 
     if (primitive_src_desc_ != source_desc_) {
-      mkldnn::memory::dims src_dims(x_shape.GetDims().begin(), x_shape.GetDims().end());
-      auto pd = mkldnn::memory::desc({{src_dims}, MklDnnType<T>(), ort_source_format_});
+      dnnl::memory::dims src_dims(x_shape.GetDims().begin(), x_shape.GetDims().end());
+      auto pd = dnnl::memory::desc({{src_dims}, MklDnnType<T>(), ort_source_format_});
 
       if (mklnode_ptr_->parent_nodes.empty())
-        src_mem_from_ = onnxruntime::make_unique<mkldnn::memory>(
-            mkldnn::memory(pd, cpu_engine, nullptr));
+        src_mem_from_ = onnxruntime::make_unique<dnnl::memory>(
+            dnnl::memory(pd, cpu_engine, nullptr));
       else
         src_mem_from_ = parents_[0].get()->primitive_dst_mem_;
 
-      src_mem_ = onnxruntime::make_unique<mkldnn::memory>(
-          mkldnn::memory(conv_fwd_pd_->src_desc(), cpu_engine, nullptr));
-      net.push_back(mkldnn::reorder(*src_mem_from_, *src_mem_));
-      net_args.push_back({{MKLDNN_ARG_FROM, *src_mem_from_},
-                          {MKLDNN_ARG_TO, *src_mem_}});
+      src_mem_ = onnxruntime::make_unique<dnnl::memory>(
+          dnnl::memory(conv_fwd_pd_->src_desc(), cpu_engine, nullptr));
+      net.push_back(dnnl::reorder(*src_mem_from_, *src_mem_));
+      net_args.push_back({{DNNL_ARG_FROM, *src_mem_from_},
+                          {DNNL_ARG_TO, *src_mem_}});
     } else {
       if (mklnode_ptr_->parent_nodes.empty()) {
-        src_mem_ = onnxruntime::make_unique<mkldnn::memory>(
-            mkldnn::memory(conv_fwd_pd_->src_desc(), cpu_engine, nullptr));
+        src_mem_ = onnxruntime::make_unique<dnnl::memory>(
+            dnnl::memory(conv_fwd_pd_->src_desc(), cpu_engine, nullptr));
       } else {
         src_mem_ = parents_[0].get()->primitive_dst_mem_;
       }
@@ -271,32 +271,32 @@ class MklDnnConvBatchNorm : public MklDnnKernel {
     if (mklnode_ptr_->output_index >= 0) {
       // Use mkldnn's internal output buffer
       if (primitive_dst_desc_ != ort_source_desc_) {
-        primitive_dst_mem_ = onnxruntime::make_unique<mkldnn::memory>(
-            mkldnn::memory(conv_fwd_pd_.get()->dst_desc(), cpu_engine));
+        primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+            dnnl::memory(conv_fwd_pd_.get()->dst_desc(), cpu_engine));
       } else {
-        primitive_dst_mem_ = onnxruntime::make_unique<mkldnn::memory>(
-            mkldnn::memory(conv_fwd_pd_.get()->dst_desc(), cpu_engine, nullptr));
+        primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+            dnnl::memory(conv_fwd_pd_.get()->dst_desc(), cpu_engine, nullptr));
       }
     } else {
       // last node of sub-graph. need to allocate memory for output_tensor
-      primitive_dst_mem_ = onnxruntime::make_unique<mkldnn::memory>(
-          mkldnn::memory(conv_fwd_pd_.get()->dst_desc(), cpu_engine));
+      primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+          dnnl::memory(conv_fwd_pd_.get()->dst_desc(), cpu_engine));
     }
 
-    bias_mem_ = onnxruntime::make_unique<mkldnn::memory>(
-        mkldnn::memory(conv_fwd_pd_.get()->bias_desc(), cpu_engine, nullptr));
-    conv_fwd_ = onnxruntime::make_unique<mkldnn::convolution_forward>(
-        mkldnn::convolution_forward(*conv_fwd_pd_));
+    bias_mem_ = onnxruntime::make_unique<dnnl::memory>(
+        dnnl::memory(conv_fwd_pd_.get()->bias_desc(), cpu_engine, nullptr));
+    conv_fwd_ = onnxruntime::make_unique<dnnl::convolution_forward>(
+        dnnl::convolution_forward(*conv_fwd_pd_));
     net.push_back(*conv_fwd_);
-    net_args.push_back({{MKLDNN_ARG_SRC, *src_mem_},
-                        {MKLDNN_ARG_WEIGHTS, *filter_mem_},
-                        {MKLDNN_ARG_BIAS, *bias_mem_},
-                        {MKLDNN_ARG_DST, *primitive_dst_mem_}});
+    net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
+                        {DNNL_ARG_WEIGHTS, *filter_mem_},
+                        {DNNL_ARG_BIAS, *bias_mem_},
+                        {DNNL_ARG_DST, *primitive_dst_mem_}});
 
     if (mklnode_ptr_->output_index >= 0) {
       // one of the end nodes. Allocate output buffer memory and
       // reorder is necessary
-      mkldnn::memory::data_type t = MklDnnType<T>();
+      dnnl::memory::data_type t = MklDnnType<T>();
       InitDstReorderOutput(cpu_engine, t, net, net_args);
     }
   }
@@ -357,7 +357,7 @@ class MklDnnConvBatchNorm : public MklDnnKernel {
     }
   }
 
-  virtual void ReorderWeights(const OrtCustomOpApi* api, OrtKernelContext* context, mkldnn::engine& cpu_engine) override {
+  virtual void ReorderWeights(const OrtCustomOpApi* api, OrtKernelContext* context, dnnl::engine& cpu_engine) override {
     Ort::CustomOpApi ort{*api};
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
     const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index + 1);
@@ -369,7 +369,7 @@ class MklDnnConvBatchNorm : public MklDnnKernel {
     TensorShape W(xshape, xdim);
 
     const int group_mkl = static_cast<int>(group_);
-    mkldnn::memory::dims filter_dims_mkl;
+    dnnl::memory::dims filter_dims_mkl;
     if (group_mkl == 1) {
       filter_dims_mkl.assign(W.GetDims().begin(), W.GetDims().end());
     } else {
@@ -393,29 +393,29 @@ class MklDnnConvBatchNorm : public MklDnnKernel {
     {
       // lock to make sure reordering is done only once
       std::lock_guard<OrtMutex> lock(provider_->GetMutex());
-      std::shared_ptr<mkldnn::memory> filter_dst_mem = provider_->GetWeightsMemoryBuffer(mklnode_ptr_->weight_name);
+      std::shared_ptr<dnnl::memory> filter_dst_mem = provider_->GetWeightsMemoryBuffer(mklnode_ptr_->weight_name);
 
       if (filter_dst_mem == nullptr) {
-        mkldnn::memory src = mkldnn::memory({{filter_dims_mkl}, MklDnnType<T>(), filter_format_}, cpu_engine, (void*)weights_scaled_by_axis.data());
+        dnnl::memory src = dnnl::memory({{filter_dims_mkl}, MklDnnType<T>(), filter_format_}, cpu_engine, (void*)weights_scaled_by_axis.data());
         IAllocatorUniquePtr<void> filter_reorder_buffer =
             IAllocator::MakeUniquePtr<void>(alloc_, filter_size_);
-        filter_dst_mem = onnxruntime::make_unique<mkldnn::memory>(
-            mkldnn::memory(conv_fwd_pd_->weights_desc(), cpu_engine, filter_reorder_buffer.get()));
+        filter_dst_mem = onnxruntime::make_unique<dnnl::memory>(
+            dnnl::memory(conv_fwd_pd_->weights_desc(), cpu_engine, filter_reorder_buffer.get()));
 
-        mkldnn::reorder(src, *filter_dst_mem)
+        dnnl::reorder(src, *filter_dst_mem)
             .execute(cpu_engine, src, *filter_dst_mem);
 
         provider_->SaveAllocatedMemory(std::move(filter_reorder_buffer));
         provider_->SetWeightsMemoryBuffer(mklnode_ptr_->weight_name, filter_dst_mem);
       }
 
-      std::shared_ptr<mkldnn::memory> bias_mem = provider_->GetBiasMemoryBuffer(mklnode_ptr_->weight_name);
+      std::shared_ptr<dnnl::memory> bias_mem = provider_->GetBiasMemoryBuffer(mklnode_ptr_->weight_name);
       if (bias_mem == nullptr) {
         auto bias_size = conv_fwd_pd_.get()->bias_desc().get_size();
         IAllocatorUniquePtr<void> bias_buffer =
             IAllocator::MakeUniquePtr<void>(alloc_, bias_size);
-        bias_mem = onnxruntime::make_unique<mkldnn::memory>(
-            mkldnn::memory(conv_fwd_pd_->bias_desc(), cpu_engine, bias_buffer.get()));
+        bias_mem = onnxruntime::make_unique<dnnl::memory>(
+            dnnl::memory(conv_fwd_pd_->bias_desc(), cpu_engine, bias_buffer.get()));
         float* bias_buffer_data = static_cast<float*>(bias_buffer.get());
         if (mklnode_ptr_->num_inputs == 7) {
           const OrtValue* conv_bias_tensor = ort.KernelContext_GetInput(context, input_index + 2);
@@ -460,7 +460,7 @@ class MklDnnConvBatchNorm : public MklDnnKernel {
     const OrtValue* winput_tensor = ort.KernelContext_GetInput(context, input_index + 1);
     const T* filter_data = const_cast<T*>(ort.GetTensorData<T>(winput_tensor));
 
-    std::shared_ptr<mkldnn::memory> filter_dst_mem = provider_->GetWeightsMemoryBuffer(mklnode_ptr_->weight_name);
+    std::shared_ptr<dnnl::memory> filter_dst_mem = provider_->GetWeightsMemoryBuffer(mklnode_ptr_->weight_name);
     if (filter_dst_mem == nullptr) {
       ReorderWeights(api, context, GetEngine());
       filter_dst_mem = provider_->GetWeightsMemoryBuffer(mklnode_ptr_->weight_name);
@@ -468,7 +468,7 @@ class MklDnnConvBatchNorm : public MklDnnKernel {
     filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
     filter_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(filter_data)));
 
-    std::shared_ptr<mkldnn::memory> bias_mem = provider_->GetBiasMemoryBuffer(mklnode_ptr_->weight_name);
+    std::shared_ptr<dnnl::memory> bias_mem = provider_->GetBiasMemoryBuffer(mklnode_ptr_->weight_name);
     const T* bias_data = static_cast<T*>(bias_mem->get_data_handle());
     bias_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(bias_data)));
 
@@ -574,28 +574,28 @@ class MklDnnConvBatchNorm : public MklDnnKernel {
   }
 
  private:
-  mkldnn::memory::desc filter_desc_;
-  mkldnn::memory::format_tag filter_format_;
+  dnnl::memory::desc filter_desc_;
+  dnnl::memory::format_tag filter_format_;
 
-  std::shared_ptr<mkldnn::memory> src_mem_from_;
-  std::unique_ptr<mkldnn::memory> src_mem_to_;
+  std::shared_ptr<dnnl::memory> src_mem_from_;
+  std::unique_ptr<dnnl::memory> src_mem_to_;
 
   size_t src_size_;
   size_t filter_size_;
   size_t dst_size_;
 
-  std::shared_ptr<mkldnn::memory> src_mem_;
-  std::unique_ptr<mkldnn::memory> filter_mem_;
-  std::unique_ptr<mkldnn::memory> bias_mem_;
+  std::shared_ptr<dnnl::memory> src_mem_;
+  std::unique_ptr<dnnl::memory> filter_mem_;
+  std::unique_ptr<dnnl::memory> bias_mem_;
 
-  std::unique_ptr<mkldnn::convolution_forward::desc> fwd_desc_;
+  std::unique_ptr<dnnl::convolution_forward::desc> fwd_desc_;
 
-  std::unique_ptr<mkldnn::memory::desc> src_md_;
-  std::unique_ptr<mkldnn::memory::desc> filter_md_;
-  std::unique_ptr<mkldnn::memory::desc> bias_md_;
+  std::unique_ptr<dnnl::memory::desc> src_md_;
+  std::unique_ptr<dnnl::memory::desc> filter_md_;
+  std::unique_ptr<dnnl::memory::desc> bias_md_;
 
-  std::unique_ptr<mkldnn::convolution_forward::primitive_desc> conv_fwd_pd_;
-  std::unique_ptr<mkldnn::primitive> conv_fwd_;
+  std::unique_ptr<dnnl::convolution_forward::primitive_desc> conv_fwd_pd_;
+  std::unique_ptr<dnnl::primitive> conv_fwd_;
 
  private:
   IAllocatorUniquePtr<void> src_reorder_buffer_;
@@ -683,7 +683,7 @@ class MklDnnConvBatchNorm : public MklDnnKernel {
   }
 
  private:
-  std::unique_ptr<mkldnn::stream> stream_;
+  std::unique_ptr<dnnl::stream> stream_;
   std::vector<int64_t> kernel_shape_;  // must use ComputeKernelShape(...), instead of kernel_shape_
   AutoPadType auto_pad_;
   int64_t group_;
@@ -695,5 +695,5 @@ class MklDnnConvBatchNorm : public MklDnnKernel {
   float alpha_;
   float epsilon_ = 1e-5f;  // attribute of fused batchnorm.
 };
-}  // namespace mkl_dnn
+}  // namespace ort_dnnl
 }  // namespace onnxruntime

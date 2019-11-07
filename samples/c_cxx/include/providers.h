@@ -7,7 +7,7 @@
 #ifdef USE_CUDA
 #include "onnxruntime/core/providers/cuda/cuda_provider_factory.h"
 #endif
-#ifdef USE_MKLDNN
+#ifdef USE_DNNL
 #include "onnxruntime/core/providers/mkldnn/mkldnn_provider_factory.h"
 #endif
 #ifdef USE_NGRAPH

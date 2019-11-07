@@ -10,7 +10,7 @@
 #include "core/graph/graph.h"
 
 namespace onnxruntime {
-namespace mkl_dnn {
+namespace ort_dnnl {
 
 struct MklDnnNode {
   std::string name;
@@ -63,7 +63,7 @@ struct Subgraph {
 
   std::string graph_name;
   std::string subgraph_id;
-  std::vector<MklDnnNode> mkldnn_nodes;
+  std::vector<MklDnnNode> DNNL_nodes;
 };
-}  // namespace mkl_dnn
+}  // namespace ort_dnnl
 }  // namespace onnxruntime

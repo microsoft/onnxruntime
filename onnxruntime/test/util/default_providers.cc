@@ -49,7 +49,7 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 }
 
 std::unique_ptr<IExecutionProvider> DefaultMkldnnExecutionProvider(bool enable_arena) {
-#ifdef USE_MKLDNN
+#ifdef USE_DNNL
   return CreateExecutionProviderFactory_Mkldnn(enable_arena ? 1 : 0)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(enable_arena);

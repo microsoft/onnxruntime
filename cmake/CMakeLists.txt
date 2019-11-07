@@ -53,8 +53,8 @@ option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_NSYNC "Build with NSYNC support. This option only takes effect on Linux" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" OFF)
-option(onnxruntime_USE_MKLDNN "Build with MKL-DNN support" OFF)
-option(onnxruntime_USE_MKLML "Build MKL-DNN with MKL-ML binary dependency" OFF)
+option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
+option(onnxruntime_USE_MKLML "Build DNNL with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_GEMMLOWP "Build with gemmlowp for quantized gemm" OFF)
 option(onnxruntime_USE_AUTOML "Build AutoML support" ON)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
@@ -318,7 +318,7 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -DGSL_UNEN
 
 include(eigen)
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn, jemalloc,
-# mkldnn/mklml, openblas, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
+# dnnl/mklml, openblas, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
 # pthread is always at the last
 set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto protobuf::libprotobuf re2)
 
@@ -489,8 +489,8 @@ include_directories(
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
 
-if (onnxruntime_USE_MKLDNN OR onnxruntime_USE_MKLML)
-  include(mkldnn)
+if (onnxruntime_USE_DNNL OR onnxruntime_USE_MKLML)
+  include(dnnl)
 endif()
 
 if(onnxruntime_USE_GEMMLOWP)
@@ -509,10 +509,10 @@ if (onnxruntime_USE_MKLML)
   link_directories(${MKLML_LIB_DIR})
 endif()
 
-if (onnxruntime_USE_MKLDNN)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES mkldnn)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mkldnn)
-  link_directories(${MKLDNN_LIB_DIR})
+if (onnxruntime_USE_DNNL)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES dnnl)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_dnnl)
+  link_directories(${DNNL_LIB_DIR})
 endif()
 
 if (onnxruntime_USE_NGRAPH)

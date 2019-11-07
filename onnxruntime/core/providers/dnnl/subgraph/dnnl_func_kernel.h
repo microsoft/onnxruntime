@@ -3,13 +3,13 @@
 #pragma once
 
 #include "core/graph/onnx_protobuf.h"
-#include "core/providers/mkldnn/mkldnn_execution_provider.h"
+#include "core/providers/mkldnn/dnnl_execution_provider.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/func_api.h"
-#include "mkldnn_kernel.h"
+#include "dnnl_kernel.h"
 
 namespace onnxruntime {
-namespace mkl_dnn {
+namespace ort_dnnl {
 
 namespace {
 struct SubgraphParams {
@@ -41,24 +41,24 @@ class MkldnnFuncKernel {
 
       std::ostringstream key_os;
       key_os << params_.subgraph->graph_name << "_" << params_.subgraph_id << "-";
-      key_os << params_.subgraph->mkldnn_nodes.back().ToString() << "-";
-      key_os << params_.subgraph->mkldnn_nodes.back().output_name;
+      key_os << params_.subgraph->DNNL_nodes.back().ToString() << "-";
+      key_os << params_.subgraph->DNNL_nodes.back().output_name;
 
-      if (params_.subgraph->mkldnn_nodes[0].name == "Conv") {
+      if (params_.subgraph->DNNL_nodes[0].name == "Conv") {
         std::ostringstream os;
-        os << "Conv-" << params_.subgraph->mkldnn_nodes[0].node_index << "-";
+        os << "Conv-" << params_.subgraph->DNNL_nodes[0].node_index << "-";
         key_os << GetConvAttributeKey(attributes, os.str());
       }
 
-      if (params_.subgraph->mkldnn_nodes[0].name == "LRN") {
+      if (params_.subgraph->DNNL_nodes[0].name == "LRN") {
         std::ostringstream os;
-        os << "LRN-" << params_.subgraph->mkldnn_nodes[0].node_index << "-";
+        os << "LRN-" << params_.subgraph->DNNL_nodes[0].node_index << "-";
         key_os << GetLrnAttributeKey(attributes, os.str());
       }
 
-      if (params_.subgraph->mkldnn_nodes[0].name.find("Pool") != std::string::npos) {
+      if (params_.subgraph->DNNL_nodes[0].name.find("Pool") != std::string::npos) {
         std::ostringstream os;
-        os << params_.subgraph->mkldnn_nodes[0].name << "-" << params_.subgraph->mkldnn_nodes[0].node_index << "-";
+        os << params_.subgraph->DNNL_nodes[0].name << "-" << params_.subgraph->DNNL_nodes[0].node_index << "-";
         key_os << GetPoolAttributesKey(attributes, os.str());
       }
 
@@ -231,5 +231,5 @@ class MkldnnFuncKernel {
  private:
   SubgraphParams params_;
 };
-}  // namespace mkl_dnn
+}  // namespace ort_dnnl
 }  // namespace onnxruntime

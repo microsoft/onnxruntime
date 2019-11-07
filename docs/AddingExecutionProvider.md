@@ -15,7 +15,7 @@ Examples:
        Provider](../onnxruntime/core/providers/cpu/cpu_execution_provider.h)               
  * [CUDA Execution
        Provider](../onnxruntime/core/providers/cuda/cuda_execution_provider.h)               
- * [MKL-DNN Execution
+ * [DNNL Execution
        Provider](../onnxruntime/core/providers/mkldnn/mkldnn_execution_provider.h)               
 
 

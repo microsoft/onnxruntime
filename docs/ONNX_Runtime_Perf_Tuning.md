@@ -20,7 +20,7 @@ Official Python packages on Pypi only support the default CPU (MLAS) and default
 
 For example: 
 
-`MKLDNN:		 ./build.sh --config RelWithDebInfo --use_mkldnn --build_wheel --parallel`
+`MKLDNN:		 ./build.sh --config RelWithDebInfo --use_dnnl --build_wheel --parallel`
 
 ` CUDA:	     ./build.sh --config RelWithDebInfo --use_cuda  --build_wheel --parallel`
 
@@ -30,7 +30,7 @@ Official release (nuget package) supports default (MLAS) and MKL-ML for CPU, and
 
 For example:
 
-`MKLDNN:		 ./build.sh --config RelWithDebInfo --use_mkldnn --build_csharp --parallel`
+`MKLDNN:		 ./build.sh --config RelWithDebInfo --use_dnnl --build_csharp --parallel`
 
 `CUDA:	     ./build.sh --config RelWithDebInfo --use_cuda  --build_csharp --parallel`
 

@@ -31,10 +31,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   Ort::SessionOptions session_options;
   const std::string& provider_name = performance_test_config.machine_config.provider_type_name;
   if (provider_name == onnxruntime::kMklDnnExecutionProvider) {
-#ifdef USE_MKLDNN
+#ifdef USE_DNNL
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Mkldnn(session_options, performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
 #else
-    ORT_THROW("MKL-DNN is not supported in this build\n");
+    ORT_THROW("DNNL is not supported in this build\n");
 #endif
   } else if (provider_name == onnxruntime::kNGraphExecutionProvider) {
 #ifdef USE_NGRAPH

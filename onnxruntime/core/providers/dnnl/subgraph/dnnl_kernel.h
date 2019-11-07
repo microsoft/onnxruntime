@@ -6,14 +6,14 @@
 #pragma warning(disable : 4244)
 #endif
 
-#include "mkldnn.hpp"
+#include "dnnl.hpp"
 #include "core/common/cpuid_info.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/mkldnn/subgraph/subgraph.h"
-#include "core/providers/mkldnn/mkldnn_execution_provider.h"
+#include "core/providers/mkldnn/dnnl_execution_provider.h"
 
 namespace onnxruntime {
-namespace mkl_dnn {
+namespace ort_dnnl {
 
 class MklDnnKernel {
  public:
@@ -28,11 +28,11 @@ class MklDnnKernel {
 
   virtual void CreatePrimitives(const OrtCustomOpApi* api,
                                 OrtKernelContext* context,
-                                mkldnn::engine& cpu_engine,
-                                std::vector<mkldnn::primitive>& net,
-                                std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) = 0;
+                                dnnl::engine& cpu_engine,
+                                std::vector<dnnl::primitive>& net,
+                                std::vector<std::unordered_map<int, dnnl::memory>>& net_args) = 0;
 
-  virtual void ReorderWeights(const OrtCustomOpApi* api, OrtKernelContext* context, mkldnn::engine& cpu_engine) {
+  virtual void ReorderWeights(const OrtCustomOpApi* api, OrtKernelContext* context, dnnl::engine& cpu_engine) {
     ORT_UNUSED_PARAMETER(api);
     ORT_UNUSED_PARAMETER(context);
     ORT_UNUSED_PARAMETER(cpu_engine);
@@ -79,43 +79,43 @@ class MklDnnKernel {
     return Status::OK();
   }
 
-  void InitDstReorderOutput(mkldnn::engine& cpu_engine,
-                            mkldnn::memory::data_type& data_type,
-                            std::vector<mkldnn::primitive>& net,
-                            std::vector<std::unordered_map<int, mkldnn::memory>>& net_args);
+  void InitDstReorderOutput(dnnl::engine& cpu_engine,
+                            dnnl::memory::data_type& data_type,
+                            std::vector<dnnl::primitive>& net,
+                            std::vector<std::unordered_map<int, dnnl::memory>>& net_args);
 
-  mkldnn::memory::format_tag GetSourceFormat(int dim_size);
+  dnnl::memory::format_tag GetSourceFormat(int dim_size);
 
  public:
   std::string name_;
   std::vector<std::shared_ptr<MklDnnKernel>> parents_;
   bool fuse_relu_ = false;
   bool fuse_sum_ = false;
-  std::shared_ptr<mkldnn::memory> primitive_dst_mem_;
-  std::unique_ptr<mkldnn::memory::desc> primitive_dst_md_;
+  std::shared_ptr<dnnl::memory> primitive_dst_mem_;
+  std::unique_ptr<dnnl::memory::desc> primitive_dst_md_;
   TensorShape primitive_dst_shape_;
-  mkldnn::memory::desc primitive_dst_desc_;
+  dnnl::memory::desc primitive_dst_desc_;
   // ONNX Runtime format
-  mkldnn::memory::format_tag ort_source_format_;
-  mkldnn::memory::desc ort_source_desc_;
+  dnnl::memory::format_tag ort_source_format_;
+  dnnl::memory::desc ort_source_desc_;
 
   // input format.
   // It can be ORT format (nchw) or blocked memory format from parent node
-  // mkldnn::memory::format_tag source_format_ = mkldnn::memory::format_tag::any;
-  mkldnn::memory::desc source_desc_ = mkldnn::memory::desc();
+  // dnnl::memory::format_tag source_format_ = dnnl::memory::format_tag::any;
+  dnnl::memory::desc source_desc_ = dnnl::memory::desc();
   Status primitive_created_status_;
 
  protected:
   // Pointer to MklNode of subgraph IR
   std::shared_ptr<MklDnnNode> mklnode_ptr_;
   // input format expected by primitive object
-  mkldnn::memory::desc primitive_src_desc_;
+  dnnl::memory::desc primitive_src_desc_;
 
   // memory used for reorders
-  std::unique_ptr<mkldnn::memory> reorder_dst_mem_to_;
+  std::unique_ptr<dnnl::memory> reorder_dst_mem_to_;
   AllocatorPtr alloc_;
   MKLDNNExecutionProvider* provider_;
 };
 
-}  // namespace mkl_dnn
+}  // namespace ort_dnnl
 }  // namespace onnxruntime
