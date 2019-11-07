@@ -9,10 +9,10 @@ graph = helper.make_graph(
         
         # Gelu subgraph
         helper.make_node("Div", ["add0_out", "div_const"], ["div_out"], "div"),
-        helper.make_node("Mul", ["add0_out", "mul_const"], ["mul_out"], "mul"),
+        helper.make_node("Mul", ["add0_out", "mul_const"], ["mul_out"], "mul0"),
         helper.make_node("Erf", ["div_out"], ["erf_out"], "erf"),
         helper.make_node("Add", ["erf_out", "add_const"], ["add1_out"], "add1"),
-        helper.make_node("Mul", ["mul_out", "add1_out"], ["C"], "mul"),
+        helper.make_node("Mul", ["mul_out", "add1_out"], ["C"], "mul1"),
     ],
     "Gelu_Add_Fusion",  #name
     [  # inputs
@@ -23,9 +23,9 @@ graph = helper.make_graph(
         helper.make_tensor_value_info('C', TensorProto.FLOAT, ['unk_3', 'unk_4', 3072]),
     ],
     [  # initializers
-        helper.make_tensor('div_const', TensorProto.FLOAT, [1], [1.4142135381698608]),
-        helper.make_tensor('mul_const', TensorProto.FLOAT, [1], [0.5]),
-        helper.make_tensor('add_const', TensorProto.FLOAT, [1], [1]),
+        helper.make_tensor('div_const', TensorProto.FLOAT, [], [1.4142135381698608]),
+        helper.make_tensor('mul_const', TensorProto.FLOAT, [], [0.5]),
+        helper.make_tensor('add_const', TensorProto.FLOAT, [], [1]),
     ]
 )
 

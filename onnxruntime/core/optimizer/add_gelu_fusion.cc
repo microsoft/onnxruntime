@@ -10,7 +10,7 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-Status GeluAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status AddGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -35,7 +35,7 @@ Status GeluAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) c
     }
 
     const Node& next_node = (*next_node_itr);
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Gelu", {1}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Gelu", {1}, kMSDomain) ||
         next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
       continue;
     }
@@ -47,10 +47,10 @@ Status GeluAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) c
     Node& add_node = node;
     Node& gelu_node = const_cast<Node&>(next_node);
 
-    Node& gelu_add_fusion_node = graph.AddNode(graph.GenerateNodeName("GeluFusion"),
-                                               "GeluFusion",
+    Node& gelu_add_fusion_node = graph.AddNode(graph.GenerateNodeName("AddGeluFusion"),
+                                               "AddGeluFusion",
                                                "fused Add and Gelu",
-                                               {},
+                                               {add_node.MutableInputDefs()},
                                                {});
 
     // Assign provider to this new node. Provider should be same as the provider for old node.

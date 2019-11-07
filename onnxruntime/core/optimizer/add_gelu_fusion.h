@@ -11,11 +11,11 @@ namespace onnxruntime {
 @Class GeluFusion
 Fuse Add + Gelu to GeluFusion
 */
-class GeluAddFusion : public GraphTransformer
+class AddGeluFusion : public GraphTransformer
 {
 public:
-   GeluAddFusion( const std::unordered_set<std::string>& compatible_execution_providers = {} ) noexcept
-      : GraphTransformer( "GeluAddFusion", compatible_execution_providers )
+   AddGeluFusion( const std::unordered_set<std::string>& compatible_execution_providers = {} ) noexcept
+      : GraphTransformer( "AddGeluFusion", compatible_execution_providers )
    {
    }
 

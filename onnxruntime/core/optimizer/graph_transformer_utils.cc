@@ -21,6 +21,7 @@
 #include "core/optimizer/add_gelu_fusion.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/layer_norm_fusion.h"
+>>>>>>> add GPU kernel for AddGelu
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
 
@@ -116,6 +117,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 
       // create standalone transformers
 #ifndef DISABLE_CONTRIB_OPS
+<<<<<<< HEAD
       transformers.emplace_back(onnxruntime::make_unique<GemmActivationFusion>(cpu_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(cpu_execution_providers));
 
@@ -125,6 +127,12 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 
       std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
       transformers.emplace_back(onnxruntime::make_unique<GeluAddFusion>(cuda_execution_providers));
+=======
+      transformers.emplace_back(onnxruntime::make_unique<GemmActivationFusion>(l2_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(l2_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(l2_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<AddGeluFusion>(l2_execution_providers));
+>>>>>>> add GPU kernel for AddGelu
 #endif
     } break;
 
