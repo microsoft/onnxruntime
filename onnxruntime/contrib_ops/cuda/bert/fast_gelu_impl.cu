@@ -70,6 +70,20 @@ __global__ void FastGeluKernel(const T a, const T b, const T c, int input_length
   }
 }
 
+template <unsigned TPB>
+__global__ void FastGeluKernel2(const half2 a, const half2 b, const half2 c, int input_length, int bias_length, const half2* input, const half2* bias, half2* output) {
+// half2 Arithmetic functions requires cuda architecture >= 5.3
+#if __CUDA_ARCH__ >= 530
+  const int idx = blockIdx.x * TPB + threadIdx.x;
+  if (idx < input_length) {
+    const half2 x = input[idx];
+    const half2 in = (bias == nullptr) ? x : (x + bias[idx % bias_length]);
+    const half2 cdf = a + a * Tanh(in * (c * in * in + b));
+    output[idx] = in * cdf;
+  }
+#endif
+}
+
 template <>
 bool LaunchFastGeluKernel(cudaStream_t stream, int input_length, int bias_length, const float* input, const float* bias, float* output) {
   constexpr int blockSize = 256;
@@ -83,8 +97,7 @@ template <>
 bool LaunchFastGeluKernel(cudaStream_t stream, int input_length, int bias_length, const half* input, const half* bias, half* output) {
   constexpr int blockSize = 256;
 
-#if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
-  if (0 == (bias_length & 1)) {
+  if (0 == (bias_length & 1) && DeviceProp::GetDeviceProps().major >= 7) {
     const int n = input_length / 2;
     const int gridSize = (n + blockSize - 1) / blockSize;
     const half2 A2 = __floats2half2_rn(A, A);
@@ -93,10 +106,8 @@ bool LaunchFastGeluKernel(cudaStream_t stream, int input_length, int bias_length
     const half2* input2 = reinterpret_cast<const half2*>(input);
     const half2* bias2 = reinterpret_cast<const half2*>(bias);
     half2* output2 = reinterpret_cast<half2*>(output);
-    FastGeluKernel<half2, blockSize><<<gridSize, blockSize, 0, stream>>>(A2, B2, C2, n, bias_length / 2, input2, bias2, output2);
-  } else
-#endif
-  {
+    FastGeluKernel2<blockSize><<<gridSize, blockSize, 0, stream>>>(A2, B2, C2, n, bias_length / 2, input2, bias2, output2);
+  } else {
     const int gridSize = (input_length + blockSize - 1) / blockSize;
     FastGeluKernel<half, blockSize><<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length, input, bias, output);
   }
