@@ -138,7 +138,8 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(sqrt_node, "Sqrt", {6}) ||
         sqrt_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         sqrt_node.GetOutputEdgesCount() != 1 ||
-        !IsSupportedDataType(sqrt_node)) {
+        !IsSupportedDataType(sqrt_node) || 
+        sqrt_node.GetInputEdgesCount() == 0) {
       continue;
     }
     nodes_to_remove.push_back(sqrt_node);
@@ -157,11 +158,15 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     const Node* p_reduce_mean2 = nullptr;
 
     p_reduce_mean2 = graph_utils::FirstParentByType(add2_node, "ReduceMean");
+    if (p_reduce_mean2 == nullptr) {
+      continue;
+    }
     Node& reduce_mean2_node = *graph.GetNode(p_reduce_mean2->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean2_node, "ReduceMean", {1}) ||
         reduce_mean2_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         reduce_mean2_node.GetOutputEdgesCount() != 1 ||
-        !IsSupportedDataType(reduce_mean2_node)) {
+        !IsSupportedDataType(reduce_mean2_node) || 
+        reduce_mean2_node.GetInputEdgesCount() == 0) {
       continue;
     }
     nodes_to_remove.push_back(reduce_mean2_node);
@@ -178,6 +183,9 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
 
     // Traceback the pow node to find sub --> pow
     const Node* p_sub2_node = graph_utils::FirstParentByType(pow_node, "Sub");
+    if (p_sub2_node == nullptr) {
+      continue;
+    }
     Node& sub2_node = *graph.GetNode(p_sub2_node->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(sub2_node, "Sub", {7}) ||
         sub2_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
@@ -217,8 +225,8 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) || 
           graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
         scale = mul_node.MutableInputDefs()[i];
-	    }
-	  }
+      }
+    }
 
     for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
       if (graph_utils::NodeArgIsConstant(graph, *(last_add_node.MutableInputDefs()[i])) ||

@@ -64,6 +64,7 @@ Currently ONNX Runtime supports the following accelerators:
 * [Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)
 * [Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md)
 * [DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)
+* [ACL](./docs/execution_providers/ACL-ExecutionProvider.md) (in preview, for ARM Compute Library)
 
 Not all variations are supported in the [official release builds](#apis-and-official-builds), but can be built from source following [these instructions](./BUILD.md).
 

@@ -9,16 +9,17 @@ FROM nvcr.io/nvidia/tensorrt:19.09-py3
 MAINTAINER Vinitra Swamy "viswamy@microsoft.com"
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
-ARG ONNXRUNTIME_SERVER_BRANCH=master
+ARG ONNXRUNTIME_BRANCH=master
 
 RUN apt-get update &&\
     apt-get install -y sudo git bash
 
 WORKDIR /code
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:/opt/miniconda/bin:${PATH}
+ENV LD_LIBRARY_PATH /opt/miniconda/lib:$LD_LIBRARY_PATH
 
 # Prepare onnxruntime repository & build onnxruntime with TensorRT
-RUN git clone --single-branch --branch ${ONNXRUNTIME_SERVER_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
+RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
     /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh &&\
     cp onnxruntime/docs/Privacy.md /code/Privacy.md &&\
     cp onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt &&\
