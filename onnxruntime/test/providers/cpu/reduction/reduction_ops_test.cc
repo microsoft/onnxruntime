@@ -77,7 +77,7 @@ TEST(ReductionOpTest, ReduceL1_default_axes_keepdims) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceL1_do_not_keepdims) {
+TEST(ReductionOpTest, ReduceL1_do_not_keep_dims) {
   OpTester test("ReduceL1");
   test.AddAttribute("axes", std::vector<int64_t>{2});
   test.AddAttribute("keepdims", (int64_t)0);
@@ -94,7 +94,7 @@ TEST(ReductionOpTest, ReduceL1_do_not_keepdims) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
-TEST(ReductionOpTest, ReduceL1_do_not_keepdims_2) {
+TEST(ReductionOpTest, ReduceL1_do_not_keep_dims_2) {
   OpTester test("ReduceL1");
   test.AddAttribute("axes", std::vector<int64_t>{0});
   test.AddAttribute("keepdims", (int64_t)0);
@@ -167,6 +167,22 @@ TEST(ReductionOpTest, ReduceL2_default_axes_keepdims) {
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 1, 1}, {25.49509757f});
   test.Run();
+}
+
+TEST(ReductionOpTest, ReduceL2_default_axes_do_not_keep_dims) {
+  OpTester test("ReduceL2");
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {}, {25.49509757f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceL2_do_not_keepdims) {
@@ -304,6 +320,22 @@ TEST(ReductionOpTest, ReduceLogSumExp_default_axes_keepdims) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceLogSumExp_default_axes_do_not_keep_dims) {
+  OpTester test("ReduceLogSumExp");
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<float>("data", {3, 2, 2},
+                       {5.0f, 1.0f,
+                        20.0f, 2.0f,
+
+                        30.0f, 1.0f,
+                        40.0f, 2.0f,
+
+                        55.0f, 1.0f,
+                        60.0f, 2.0f});
+  test.AddOutput<float>("reduced", {}, {60.00671387f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+}
+
 TEST(ReductionOpTest, ReduceLogSumExp_do_not_keepdims) {
   OpTester test("ReduceLogSumExp");
   test.AddAttribute("axes", std::vector<int64_t>{1});
@@ -396,6 +428,22 @@ TEST(ReductionOpTest, ReduceMax_default_axes_keepdims) {
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {1, 1, 1}, {60.0f});
   test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMax_default_axes_do_not_keep_dims) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<float>("data", {3, 2, 2},
+                       {5.0f, 1.0f,
+                        20.0f, 2.0f,
+
+                        30.0f, 1.0f,
+                        40.0f, 2.0f,
+
+                        55.0f, 1.0f,
+                        60.0f, 2.0f});
+  test.AddOutput<float>("reduced", {}, {60.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceMax_do_not_keepdims) {
@@ -509,6 +557,22 @@ TEST(ReductionOpTest, ReduceMean_default_axes_keepdims) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceMean_default_axes_do_not_keep_dims) {
+  OpTester test("ReduceMean");
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<float>("data", {3, 2, 2},
+                       {5.0f, 1.0f,
+                        20.0f, 2.0f,
+
+                        30.0f, 1.0f,
+                        40.0f, 2.0f,
+
+                        55.0f, 1.0f,
+                        60.0f, 2.0f});
+  test.AddOutput<float>("reduced", {}, {18.25f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+}
+
 TEST(ReductionOpTest, ReduceMean_do_not_keepdims) {
   OpTester test("ReduceMean");
   test.AddAttribute("axes", std::vector<int64_t>{1});
@@ -601,6 +665,32 @@ TEST(ReductionOpTest, ReduceMin_default_axes_keepdims) {
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {1, 1, 1}, {1.0f});
   test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMin_default_axes_do_not_keep_dims) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<float>("data", {3, 2, 2},
+                       {5.0f, 1.0f,
+                        20.0f, 2.0f,
+
+                        30.0f, 1.0f,
+                        40.0f, 2.0f,
+
+                        55.0f, 1.0f,
+                        60.0f, 2.0f});
+  test.AddOutput<float>("reduced", {}, {1.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+}
+
+TEST(ReductionOpTest, ReduceMin_default_axes_do_not_keep_dims_2D) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<float>("data", {2, 2},
+                       {5.0f, 1.0f,
+                        20.0f, 2.0f});
+  test.AddOutput<float>("reduced", {}, {1.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceMin_do_not_keepdims) {
@@ -799,6 +889,22 @@ TEST(ReductionOpTest, ReduceSum_default_axes_keepdims) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceSum_default_axes_do_not_keep_dims) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {}, {78.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+}
+
 TEST(ReductionOpTest, ReduceSum_do_not_keepdims) {
   OpTester test("ReduceSum");
   test.AddAttribute("axes", std::vector<int64_t>{1});
@@ -904,6 +1010,22 @@ TEST(ReductionOpTest, ReduceSumSquare_default_axes_keepdims) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceSumSquare_default_axes_do_not_keep_dims) {
+  OpTester test("ReduceSumSquare");
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {}, {650.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+}
+
 TEST(ReductionOpTest, ReduceSumSquare_do_not_keepdims) {
   OpTester test("ReduceSumSquare");
   test.AddAttribute("axes", std::vector<int64_t>{1});
@@ -961,6 +1083,22 @@ TEST(ReductionOpTest, ReduceProd_default_axes_keepdims) {
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 1, 1}, {479001600.f});
   test.Run();
+}
+
+TEST(ReductionOpTest, ReduceProd_default_axes_do_not_keep_dims) {
+  OpTester test("ReduceProd");
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {}, {479001600.f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
 TEST(ReductionOpTest, ReduceProd_do_not_keepdims) {

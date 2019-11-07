@@ -44,9 +44,9 @@ def compile_all_cc(path):
         if ext != '.cc':
             continue
         if is_windows():
-            subprocess.run(['cl', '/Fo' + os.path.join(path, name + '.o'), '/c', os.path.join(path, f)], check=True)
+            subprocess.run(['cl', '/Fo' + name + '.o', '/c', f], cwd=path, check=True)
         else:
-            subprocess.run(['g++', '-std=c++14', '-fPIC', '-o', os.path.join(path, name + '.o'), '-c', os.path.join(path, f)], check=True)
+            subprocess.run(['g++', '-std=c++14', '-fPIC', '-o', name + '.o', '-c', f], cwd=path, check=True)
         os.remove(os.path.join(path, f))
 
 def parse_arguments():
@@ -74,13 +74,15 @@ if __name__ == '__main__':
             print("                      DWORD   ul_reason_for_call,", file=dllmain_cc)
             print("                      LPVOID  lpReserved)", file=dllmain_cc)
             print(" {return TRUE;}", file=dllmain_cc)
-        compile_all_cc(args.input_dir)
-        objs = [os.path.join(args.input_dir, f) for f in os.listdir(args.input_dir) if os.path.isfile(os.path.join(args.input_dir, f)) and '.o' == os.path.splitext(f)[1]]
-        subprocess.run(['link', '-dll', '-FORCE:MULTIPLE', '-EXPORT:__tvm_main__', '-out:' + os.path.join(args.input_dir, args.output_name)] + objs, check=True)
+
+    compile_all_cc(args.input_dir)
+    objs = [f for f in os.listdir(args.input_dir) if os.path.isfile(os.path.join(args.input_dir, f)) and '.o' == os.path.splitext(f)[1]]
+
+    if is_windows():
+        subprocess.run(['link', '-dll', '-FORCE:MULTIPLE', '-EXPORT:__tvm_main__', '-out:' + args.output_name, '*.o'], cwd=args.input_dir, check=True)
     else:
-        compile_all_cc(args.input_dir)
-        objs = [os.path.join(args.input_dir, f) for f in os.listdir(args.input_dir) if os.path.isfile(os.path.join(args.input_dir, f)) and '.o' == os.path.splitext(f)[1]]
-        subprocess.run(['g++', '-shared', '-fPIC', '-o', os.path.join(args.input_dir, args.output_name)] + objs, check=True)
+        subprocess.run(['g++', '-shared', '-fPIC', '-o', args.output_name] + objs, cwd=args.input_dir, check=True)
+
     if not args.keep_input:
         for f in objs:
-            os.remove(f)
+            os.remove(os.path.join(args.input_dir, f))

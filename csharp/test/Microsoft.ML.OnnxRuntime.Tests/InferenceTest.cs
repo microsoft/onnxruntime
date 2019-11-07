@@ -969,7 +969,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact(Skip = "The Model Serialization Test fails on linux. Test skipped until fixed. Serialization API should not be used before fix.")]
+        [Fact]
         private void TestModelSerialization()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");

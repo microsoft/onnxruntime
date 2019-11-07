@@ -19,6 +19,8 @@ parameters:
 jobs:
 - job: ${{ parameters.JobName }}
   timeoutInMinutes: 120
+  workspace:
+    clean: all
   pool:
     name: ${{ parameters.AgentPool }}
     demands: ${{ parameters.AgentDemands }}

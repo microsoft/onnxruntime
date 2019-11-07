@@ -5,6 +5,24 @@
 #include "environment.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
+#ifdef USE_MKLDNN
+
+#include "core/providers/mkldnn/mkldnn_provider_factory.h"
+
+#endif
+
+#ifdef USE_NGRAPH
+
+#include "core/providers/ngraph/ngraph_provider_factory.h"
+
+#endif
+
+#ifdef USE_NUPHAR
+
+#include "core/providers/nuphar/nuphar_provider_factory.h"
+
+#endif
+
 namespace onnxruntime {
 namespace server {
 
@@ -42,8 +60,23 @@ ServerEnvironment::ServerEnvironment(OrtLoggingLevel severity, spdlog::sinks_ini
   spdlog::initialize_logger(default_logger_);
 }
 
+void ServerEnvironment::RegisterExecutionProviders(){
+  #ifdef USE_MKLDNN
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Mkldnn(options_, 1));
+  #endif
+
+  #ifdef USE_NGRAPH
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_NGraph(options_, "CPU"));
+  #endif
+
+  #ifdef USE_NUPHAR
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(options_, 1, ""));
+  #endif
+}
+
 void ServerEnvironment::InitializeModel(const std::string& model_path, const std::string& model_name, const std::string& model_version) {
-  auto result = sessions_.emplace(std::piecewise_construct, std::forward_as_tuple(model_name, model_version), std::forward_as_tuple(runtime_environment_, model_path.c_str(), Ort::SessionOptions()));
+  RegisterExecutionProviders();
+  auto result = sessions_.emplace(std::piecewise_construct, std::forward_as_tuple(model_name, model_version), std::forward_as_tuple(runtime_environment_, model_path.c_str(), options_));
 
   if (!result.second) {
     throw Ort::Exception("Model of that name already loaded.", ORT_INVALID_ARGUMENT);

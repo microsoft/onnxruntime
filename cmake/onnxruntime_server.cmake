@@ -175,7 +175,7 @@ target_link_libraries(onnxruntime_server_lib PRIVATE
   onnxruntime_server_http_core_lib
   PUBLIC
   protobuf::libprotobuf
-  ${onnxruntime_EXTERNAL_DEPENDENCIES}
+  ${onnxruntime_EXTERNAL_LIBRARIES}
   spdlog::spdlog
   onnxruntime
 )

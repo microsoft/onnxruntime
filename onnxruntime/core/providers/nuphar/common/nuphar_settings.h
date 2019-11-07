@@ -42,7 +42,7 @@ constexpr static const char* kNupharFastMath_ShortPolynormial = "short_polynormi
 constexpr static const char* kNupharFastActivation = "nuphar_fast_activation";  // fast activation
 constexpr static const char* kNupharActivations_DeepCpu = "deep_cpu_activation";
 
-// Option to control nuphar code generation target (avx2 or avx512)
+// Option to control nuphar code generation target (avx / avx2 / avx512)
 constexpr static const char* kNupharCodeGenTarget = "nuphar_codegen_target";
 
 // cache version number (MAJOR.MINOR.PATCH) following https://semver.org/

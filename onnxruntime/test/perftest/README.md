@@ -14,11 +14,13 @@ Options:
 	
 	-c: [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.
 	
-	-e: [cpu|cuda|mkldnn|tensorrt|ngraph|openvino|nuphar]: Specifies the execution provider 'cpu','cuda','mkldnn','tensorrt', 'ngraph', 'openvino' or 'nuphar'. Default is 'cpu'.
+	-e: [cpu|cuda|mkldnn|tensorrt|ngraph|openvino|nuphar|acl]: Specifies the execution provider 'cpu','cuda','mkldnn','tensorrt', 'ngraph', 'openvino', 'nuphar' or 'acl'. Default is 'cpu'.
         
 	-m: [test_mode]: Specifies the test mode. Value coulde be 'duration' or 'times'. Provide 'duration' to run the test for a fix duration, and 'times' to repeated for a certain times. Default:'duration'.
         
 	-o: [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all). Please see __onnxruntime_c_api.h__ (enum GraphOptimizationLevel) for the full list of all optimization levels.
+	
+	-u: [path to save optimized model]: Default is empty so no optimized model would be saved.
 	
 	-p: [profile_file]: Specifies the profile name to enable profiling and dump the profile data to the file.
 	
