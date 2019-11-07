@@ -24,7 +24,11 @@ static void RunTest(
     int hidden_size,
     bool use_float16 = false) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
-  if (HasCudaEnvironment(min_cuda_architecture)) {
+
+  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_cpu = !use_float16;
+
+  if (enable_cpu || enable_cuda) {
     // Input and output shapes
     //   Input 0 - input_ids          : (batch_size, sequence_length)
     //   Input 1 - segment_ids        : (batch_size, sequence_length)
@@ -76,9 +80,7 @@ static void RunTest(
     }
     tester.AddOutput<int32_t>("mask_index", mask_index_dims, mask_index_data);
 
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-    execution_providers.push_back(DefaultCudaExecutionProvider());
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    tester.Run();
   }
 }
 
