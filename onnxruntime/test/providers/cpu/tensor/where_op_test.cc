@@ -119,7 +119,8 @@ TEST(WhereOpTest, BroadcastDimWithZero) {
 
   test.AddOutput<int64_t>("output", {0, 3}, {});
 
-  test.Run();
+  // exclude NGraph as this isn't handled by that EP
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 }
 }  // namespace test
 }  // namespace onnxruntime
