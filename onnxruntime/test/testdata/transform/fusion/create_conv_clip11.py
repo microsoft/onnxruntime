@@ -5,7 +5,7 @@ from onnx import TensorProto
 graph = helper.make_graph(
     [ # nodes
         # fusable, const_min_negative should be replaced
-        helper.make_node("Conv", ["X", "W"], ["conv0_out"], "Conv0"),
+        helper.make_node("Add", ["A", "B"], ["Add_out"], "Add0"),
         helper.make_node("Clip", ["conv0_out", "const_min", "const_max"], ["clip0_out"], "Clip0"),
 
         # mutable input. no fusion.
