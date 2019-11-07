@@ -381,7 +381,7 @@ template<class Ret>
 struct UnsupportedTypeDefaultPolicy {
   Ret operator()(int32_t dt_type) const {
     ORT_THROW("Unsupported data type: ", dt_type);
-    return Ret();
+    // return Ret();
   }
 };
 
