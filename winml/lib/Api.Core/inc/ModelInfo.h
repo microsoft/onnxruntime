@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "WinMLAdapter.h"
+
 namespace Windows::AI::MachineLearning {
 
 class ModelInfo {
@@ -25,9 +27,9 @@ class ModelInfo {
 };
 
 // factory methods for creating an ort model from a path
-std::unique_ptr<onnx::ModelProto> CreateModelProto(const char* path);
+onnx::ModelProto* CreateModelProto(const char* path);
 
 // factory methods for creating an ort model from a stream
-std::unique_ptr<onnx::ModelProto> CreateModelProto(const wss::IRandomAccessStreamReference& stream_reference);
+onnx::ModelProto* CreateModelProto(const wss::IRandomAccessStreamReference& stream_reference);
 
 }  // namespace Windows::AI::MachineLearning

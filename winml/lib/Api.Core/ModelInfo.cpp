@@ -133,7 +133,7 @@ void ModelInfo::Initialize(
 }
 
 // factory methods for creating an ort model from a path
-std::unique_ptr<onnx::ModelProto>
+onnx::ModelProto*
 WinML::CreateModelProto(
     const char* path) {
   int file_descriptor;
@@ -152,7 +152,7 @@ WinML::CreateModelProto(
   auto stream = google::protobuf::io::FileInputStream(file_descriptor);
   stream.SetCloseOnDelete(true);
 
-  auto model_proto = std::make_unique<onnx::ModelProto>();
+  auto model_proto = new onnx::ModelProto();
   WINML_THROW_HR_IF_FALSE_MSG(
       E_INVALIDARG,
       model_proto->ParseFromZeroCopyStream(&stream),
@@ -162,12 +162,12 @@ WinML::CreateModelProto(
 }
 
 // factory methods for creating an ort model from a stream
-std::unique_ptr<onnx::ModelProto>
+onnx::ModelProto*
 WinML::CreateModelProto(
-    const wss::IRandomAccessStreamReference& stream_reference) {
+  const wss::IRandomAccessStreamReference& stream_reference) {
   ZeroCopyInputStreamWrapper wrapper(stream_reference);
 
-  auto model_proto = std::make_unique<onnx::ModelProto>();
+  auto model_proto = new onnx::ModelProto();
   WINML_THROW_HR_IF_FALSE_MSG(
       E_INVALIDARG,
       model_proto->ParseFromZeroCopyStream(&wrapper),

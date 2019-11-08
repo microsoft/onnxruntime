@@ -347,8 +347,8 @@ static void GPUTensorize(
     void* pAllocatedResource,
     WinML::BindingContext& context) {
   auto d3dResource =
-      Dml::GetD3D12ResourceFromAllocation(
-          spSession->GetExecutionProvider()->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault).get(),
+      _winmla::GetD3D12ResourceFromAllocation(
+          spSession->GetExecutionProvider(),
           pAllocatedResource);
   auto spDevice = spSession->Device().as<LearningModelDevice>();
 
@@ -391,14 +391,11 @@ static void GPUTensorize(
 static OrtValue CreateMLValue(
     com_ptr<LearningModelSession> spSession,
     const ImageTensorDescription& tensorDescriptor) {
-  auto shape =
-      std::vector<int64_t>(
-          std::begin(tensorDescriptor.sizes),
-          std::end(tensorDescriptor.sizes));
-  auto pTensor = new onnxruntime::Tensor(
-      tensorDescriptor.dataType == kImageTensorDataTypeFloat32 ? onnxruntime::DataTypeImpl::GetType<float>() : onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>(),
-      onnxruntime::TensorShape(shape),
-      spSession->GetExecutionProvider()->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault));
+  auto pTensor = _winmla::CreateTensor(
+      tensorDescriptor.dataType == kImageTensorDataTypeFloat32 ? TensorKind::Float : TensorKind::Float16,
+      &(tensorDescriptor.sizes[0]),
+      sizeof(tensorDescriptor.sizes) / sizeof(tensorDescriptor.sizes[0]),
+      spSession->GetExecutionProvider());
 
   OrtValue ort_value;
   ort_value.Init(pTensor,
@@ -591,7 +588,7 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, Ort
     auto pooledConverter = PoolObjectWrapper::Create(spDevice->DetensorizerStore()->Fetch(descriptor));
 
     auto pProvider = spSession->GetExecutionProvider();
-    auto d3dResource = Dml::GetD3D12ResourceFromAllocation(pProvider->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault).get(), pAllocatedResource);
+    auto d3dResource = _winmla::GetD3D12ResourceFromAllocation(pProvider, pAllocatedResource);
 
     for (uint32_t batchIdx = 0; batchIdx < m_batchSize; ++batchIdx) {
       auto videoFrame = m_videoFrames.GetAt(batchIdx);

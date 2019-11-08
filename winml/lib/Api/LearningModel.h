@@ -4,10 +4,11 @@
 #pragma once
 
 #include "LearningModel.g.h"
+#include "WinMLAdapter.h"
 
-namespace Windows::AI::MachineLearning {
-class LotusEnvironment;
-class ModelInfo;
+    namespace Windows::AI::MachineLearning {
+  class LotusEnvironment;
+  class ModelInfo;
 }  // namespace Windows::AI::MachineLearning
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
@@ -101,10 +102,10 @@ struct LearningModel : LearningModelT<LearningModel> {
   IMLOperatorRegistry*
   GetOperatorRegistry();
 
-  std::unique_ptr<onnx::ModelProto>
+  std::unique_ptr<_winmla::ModelProto>
   DetachModelProto();
 
-  std::unique_ptr<onnx::ModelProto>
+  std::unique_ptr<_winmla::ModelProto>
   CopyModelProto();
 
  private:
@@ -125,7 +126,7 @@ struct LearningModel : LearningModelT<LearningModel> {
 
  private:
   std::shared_ptr<WinML::LotusEnvironment> lotus_environment_;
-  std::unique_ptr<onnx::ModelProto> model_proto_;
+  std::unique_ptr<WinML::Adapter::ModelProto> model_proto_;
   std::unique_ptr<WinML::ModelInfo> model_info_;
   ILearningModelOperatorProvider operator_provider_;
 };

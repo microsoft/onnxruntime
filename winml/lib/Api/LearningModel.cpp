@@ -17,8 +17,6 @@
 #include "SequenceFeatureDescriptor.h"
 #include "TensorFeatureDescriptor.h"
 
-using namespace OperatorHelper;
-
 namespace winrt::Windows::AI::MachineLearning::implementation {
 LearningModel::LearningModel(
     const hstring& path,
@@ -35,7 +33,7 @@ LearningModel::LearningModel(
 
   OverrideShapeInferenceMethods();
 
-  model_proto_ = WinML::CreateModelProto(path.c_str());
+  model_proto_ = std::make_unique<_winmla::ModelProto>(WinML::CreateModelProto(path.c_str()));
 
   Initialize();
 
@@ -52,7 +50,7 @@ LearningModel::LearningModel(
 
   OverrideShapeInferenceMethods();
 
-  model_proto_ = WinML::CreateModelProto(stream);
+  model_proto_ = std::make_unique<_winmla::ModelProto>(WinML::CreateModelProto(stream));
 
   Initialize();
 
@@ -62,7 +60,7 @@ WINML_CATCH_ALL
 
 void LearningModel::Initialize() {
   model_info_ = std::make_unique<WinML::ModelInfo>(
-      model_proto_.get());
+      model_proto_.get()->p_);
 }
 
 void LearningModel::LogCreationEvent(bool fromStream) {
@@ -257,9 +255,9 @@ LearningModel::LoadFromStream(
 }
 WINML_CATCH_ALL
 
-std::unique_ptr<onnx::ModelProto>
+std::unique_ptr<_winmla::ModelProto>
 LearningModel::DetachModelProto() {
-  std::unique_ptr<onnx::ModelProto> detached_model_proto;
+  std::unique_ptr<_winmla::ModelProto> detached_model_proto;
   if (model_proto_ != nullptr) {
     detached_model_proto = std::move(model_proto_);
 
@@ -269,13 +267,13 @@ LearningModel::DetachModelProto() {
   return detached_model_proto;
 }
 
-std::unique_ptr<onnx::ModelProto>
+std::unique_ptr<_winmla::ModelProto>
 LearningModel::CopyModelProto() {
   if (model_proto_ == nullptr) {
     return nullptr;
   }
 
-  return std::make_unique<onnx::ModelProto>(*model_proto_);
+  return std::make_unique<_winmla::ModelProto>(*model_proto_);
 }
 
 static std::once_flag g_schema_override_once_flag;

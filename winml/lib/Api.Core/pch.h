@@ -4,3 +4,4 @@
 #pragma once
 
 #include "cppwinrt_onnx.h"
+#include "dx.h"

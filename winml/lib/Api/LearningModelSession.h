@@ -7,6 +7,7 @@
 
 #include "LearningModelBinding.h"
 #include "WinML_Lock.h"
+#include "WinMLAdapter.h"
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 
@@ -74,10 +75,10 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   void
   Initialize();
 
-  std::unique_ptr<onnx::ModelProto>
+  std::unique_ptr<_winmla::ModelProto>
   GetOptimizedModel();
 
-  std::unique_ptr<onnx::ModelProto>
+  std::unique_ptr<_winmla::ModelProto>
   GetOptimizedModel(bool should_close_model);
 
   uint64_t

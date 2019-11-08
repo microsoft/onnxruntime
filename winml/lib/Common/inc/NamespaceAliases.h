@@ -35,3 +35,6 @@ namespace WinML = ::Windows::AI::MachineLearning;
 
 namespace Windows::AI::MachineLearning::Telemetry {}
 namespace _winmlt = ::Windows::AI::MachineLearning::Telemetry;
+
+namespace Windows::AI::MachineLearning::Adapter {}
+namespace _winmla = ::Windows::AI::MachineLearning::Adapter;

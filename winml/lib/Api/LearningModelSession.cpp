@@ -5,9 +5,9 @@
 
 #include "LearningModelSession.h"
 
-#include "CustomRegistryHelper.h"
 #include "ImageFeatureDescriptor.h"
 #include "IOrtSessionBuilder.h"
+#include "WinMLAdapter.h"
 #include "LearningModel.h"
 #include "LearningModelBinding.h"
 #include "LearningModelEvaluationResult.h"
@@ -39,110 +39,6 @@ struct __declspec(uuid("D113B493-BBA2-4993-8608-D706A73B91CE")) __declspec(novta
 static const GUID WINML_PIX_EVAL_CAPTURABLE_WORK_GUID = __uuidof(guid_details::WINML_PIX_EVAL_CAPTURABLE_WORK_GUID);
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
-// ORT intentionally requires callers derive from their session class to access
-// the protected Load method used below.
-class InferenceSessionProtectedLoadAccessor : public onnxruntime::InferenceSession {
- public:
-  onnxruntime::common::Status
-  Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto) {
-    return onnxruntime::InferenceSession::Load(std::move(p_model_proto));
-  }
-};
-
-static bool
-IsFeatureDescriptorFp16(
-    winml::ILearningModelFeatureDescriptor descriptor) {
-  if (auto imageFeatureDescriptor = descriptor.try_as<ImageFeatureDescriptor>()) {
-    return TensorKind::Float16 == imageFeatureDescriptor->TensorKind();
-  }
-
-  if (auto tensorFeatureDescriptor = descriptor.try_as<TensorFeatureDescriptor>()) {
-    return TensorKind::Float16 == tensorFeatureDescriptor->TensorKind();
-  }
-
-  return false;
-}
-
-static void
-EnsureModelDeviceCompatibility(
-    winml::LearningModel const& model,
-    onnx::ModelProto* p_model_proto,
-    winml::LearningModelDevice const& device) {
-  auto isFloat16Supported = device.as<LearningModelDevice>()->GetD3DDeviceCache()->IsFloat16Supported();
-  if (!isFloat16Supported) {
-    auto& graph = p_model_proto->graph();
-
-    // The model will not contain fp16 operations if:
-    // 1. The model has no fp16 inputs
-    // 2. The model has no fp16 initializers
-    // 3. The model does not create any fp16 intermediary tensors via the Cast (to float16) operator
-    // 4. The model does not have any fp16 outputs
-
-    // 1. Ensure that The model has no fp16 inputs
-    for (auto descriptor : model.InputFeatures()) {
-      WINML_THROW_HR_IF_TRUE_MSG(
-          DXGI_ERROR_UNSUPPORTED,
-          IsFeatureDescriptorFp16(descriptor),
-          "The model contains a 16-bit input (%ls), but the current device does not support 16-bit float.",
-          descriptor.Name().c_str());
-    }
-
-    // 2. Ensure that the model has no fp16 initializers
-    for (int i = 0; i < graph.node_size(); i++) {
-      auto node = graph.node(i);
-      if (node.op_type() == "Cast" && node.domain().empty()) {
-        for (int attribIndex = 0; attribIndex < node.attribute_size(); attribIndex++) {
-          auto attribute = node.attribute(attribIndex);
-          if (attribute.name() == "to") {
-            WINML_THROW_HR_IF_TRUE_MSG(
-                DXGI_ERROR_UNSUPPORTED,
-                attribute.i() == onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16,
-                "The model contains a 16-bit float Cast Op (%s), but the current device does not support 16-bit float.",
-                node.name().c_str());
-          }
-        }
-      }
-    }
-
-    // 3. Ensure that the model does not create any fp16 intermediary
-    //    tensors via the Cast (to float16) operator
-    for (int i = 0; i < graph.initializer_size(); i++) {
-      auto initializer = graph.initializer(i);
-
-      WINML_THROW_HR_IF_TRUE_MSG(
-          DXGI_ERROR_UNSUPPORTED,
-          initializer.data_type() == onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16,
-          "The model contains a 16-bit float initializer (%s), but the current device does not support 16-bit float.",
-          initializer.name().c_str());
-    }
-
-    // 4. Ensure that the model does not have any fp16 outputs
-    for (auto descriptor : model.OutputFeatures()) {
-      WINML_THROW_HR_IF_TRUE_MSG(
-          DXGI_ERROR_UNSUPPORTED,
-          IsFeatureDescriptorFp16(descriptor),
-          "The model contains a 16-bit output (%ls), but the current device does not support 16-bit float.",
-          descriptor.Name().c_str());
-    }
-  }
-}
-
-static HRESULT
-RegisterCustomRegistry(
-    onnxruntime::InferenceSession* p_session,
-    IMLOperatorRegistry* registry) {
-  RETURN_HR_IF(S_OK, registry == nullptr);
-  RETURN_HR_IF_NULL(E_POINTER, p_session);
-
-  auto custom_registries = WinML::GetLotusCustomRegistries(registry);
-
-  // Register
-  for (auto& custom_registry : custom_registries) {
-    WINML_THROW_IF_NOT_OK(p_session->RegisterCustomRegistry(custom_registry));
-  }
-
-  return S_OK;
-}
 
 LearningModelSession::LearningModelSession(
     winml::LearningModel const& model) try : LearningModelSession(model,
@@ -166,7 +62,7 @@ LearningModelSession::LearningModelSession(
 }
 WINML_CATCH_ALL
 
-std::unique_ptr<onnx::ModelProto>
+std::unique_ptr<_winmla::ModelProto>
 LearningModelSession::GetOptimizedModel() {
   // Get the model proto
   auto should_close_model =
@@ -176,9 +72,9 @@ LearningModelSession::GetOptimizedModel() {
   return GetOptimizedModel(should_close_model);
 }
 
-std::unique_ptr<onnx::ModelProto>
+std::unique_ptr<_winmla::ModelProto>
 LearningModelSession::GetOptimizedModel(bool should_close_model) {
-  std::unique_ptr<onnx::ModelProto> model_proto;
+  std::unique_ptr<_winmla::ModelProto> model_proto;
 
   {
     // Lock the model detach/copy since multiple threads can access concurrently
@@ -196,7 +92,7 @@ LearningModelSession::GetOptimizedModel(bool should_close_model) {
   }
 
   // Ensure that the model is runnable on the device
-  EnsureModelDeviceCompatibility(model_, model_proto.get(), device_);
+  WINML_THROW_IF_FAILED(_winmla::EnsureModelDeviceCompatibility(model_, model_proto.get()->p_, device_));
 
   return model_proto;
 }
@@ -230,16 +126,16 @@ void LearningModelSession::Initialize() {
 
   // Register the custom operator registry
   auto model = model_.as<winmlp::LearningModel>();
-  RegisterCustomRegistry(session.get(), model->GetOperatorRegistry());
+  WINML_THROW_IF_FAILED(_winmla::RegisterCustomRegistry(session.get(), model->GetOperatorRegistry()));
 
   // Register only the transformers not already in ORT
   const bool registerLotusTransformers = false;
   GraphTransformerHelpers::RegisterGraphTransformers(session.get(), registerLotusTransformers);
 
   // Load the model into the session
-  auto session_protected_load_accessor =
-      static_cast<InferenceSessionProtectedLoadAccessor*>(session.get());
-  WINML_THROW_IF_NOT_OK(session_protected_load_accessor->Load(std::move(model_proto)));
+  WINML_THROW_IF_FAILED(_winmla::LoadModel(session.get(), model_proto.get()->p_));
+  // the session owns the model_proto now
+  model_proto.release();
 
   // Initialize the session
   session_builder->Initialize(session.get(), p_cached_execution_provider);
@@ -525,7 +421,7 @@ void LearningModelSession::ApplyEvaluationProperties() try {
   if (evaluation_properties_) {
     auto is_debug_output_enabled = evaluation_properties_.HasKey(c_enable_debug_output);
     if (is_debug_output_enabled) {
-      WinML::CWinMLLogSink::EnableDebugOutput();
+      _winmla::EnableDebugOutput();
     }
   }
 }
