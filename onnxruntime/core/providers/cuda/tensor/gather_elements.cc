@@ -61,7 +61,6 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(fdm_indices_strides.CopyToGpu());
 
   size_t element_size = input_tensor->DataType()->Size();
-  MLDataType Tin_type = indices_tensor->DataType();
 
   if (indices_tensor->IsDataType<int32_t>()) {
     const int32_t* indices_data = indices_tensor->template Data<int32_t>();
