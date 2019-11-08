@@ -55,6 +55,7 @@ LoadModel(
       static_cast<InferenceSessionProtectedLoadAccessor*>(session);
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ptr(model_proto);
   WINML_THROW_IF_NOT_OK(session_protected_load_accessor->Load(std::move(model_proto_ptr)));
+  return S_OK;
 }
 
 static bool
@@ -133,14 +134,17 @@ EnsureModelDeviceCompatibility(
           descriptor.Name().c_str());
     }
   }
+  return S_OK;
 }
 
 HRESULT STDMETHODCALLTYPE ReleaseOrtObject(onnx::ModelProto* model_proto) {
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> ptr(model_proto);
+  return S_OK;
 }
 
 HRESULT STDMETHODCALLTYPE ReleaseOrtObject(onnxruntime::IOBinding* io_binding) {
   std::unique_ptr<onnxruntime::IOBinding> ptr(io_binding);
+  return S_OK;
 }
 
 ID3D12Resource* STDMETHODCALLTYPE

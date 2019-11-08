@@ -11,13 +11,12 @@
 using namespace Windows::AI::MachineLearning;
 
 std::unique_ptr<IOrtSessionBuilder> Windows::AI::MachineLearning::CreateOrtSessionBuilder(
-    winml::LearningModelDevice const& device) {
-  auto device_impl = device.as<winmlp::LearningModelDevice>();
+    ID3D12Device* device, ID3D12CommandQueue* queue) {
 
   auto session_builder =
-      device_impl->IsCpuDevice()
+      (device == nullptr)
           ? std::unique_ptr<IOrtSessionBuilder>(new CpuOrtSessionBuilder())
-          : std::unique_ptr<IOrtSessionBuilder>(new DmlOrtSessionBuilder(device));
+          : std::unique_ptr<IOrtSessionBuilder>(new DmlOrtSessionBuilder(device, queue));
 
   return session_builder;
 }

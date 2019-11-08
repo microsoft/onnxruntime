@@ -33,6 +33,7 @@ struct __declspec(novtable) IOrtSessionBuilder {
 // factory method for creating an ortsessionbuilder from a device
 std::unique_ptr<WinML::IOrtSessionBuilder>
 CreateOrtSessionBuilder(
-    winml::LearningModelDevice const& device);
+    ID3D12Device* device = nullptr,
+    ID3D12CommandQueue* queue = nullptr);
 
 }  // namespace Windows::AI::MachineLearning

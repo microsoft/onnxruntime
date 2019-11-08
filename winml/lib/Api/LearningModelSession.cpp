@@ -106,7 +106,10 @@ void LearningModelSession::Initialize() {
   auto model_proto = GetOptimizedModel();
 
   // Create the session builder
-  auto session_builder = WinML::CreateOrtSessionBuilder(device_);
+  auto device_impl = device_.as<winmlp::LearningModelDevice>();
+  auto session_builder = WinML::CreateOrtSessionBuilder(
+      device_impl->GetD3DDevice(), 
+      device_impl->GetDeviceQueue());
 
   onnxruntime::SessionOptions options = {};
   WINML_THROW_IF_FAILED(session_builder->CreateSessionOptions(&options));
@@ -143,7 +146,6 @@ void LearningModelSession::Initialize() {
   // Cache the constructed session
   inference_session_ = std::move(session);
 
-  auto device_impl = device_.as<winmlp::LearningModelDevice>();
   telemetry_helper.LogSessionCreation(
       WinML::Strings::UTF8FromHString(model_.Name()),
       device_impl->IsCpuDevice(),

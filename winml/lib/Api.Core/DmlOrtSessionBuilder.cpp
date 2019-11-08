@@ -29,7 +29,10 @@
 using namespace Windows::AI::MachineLearning;
 
 DmlOrtSessionBuilder::DmlOrtSessionBuilder(
-    winml::LearningModelDevice const& device) : device_(device) {}
+    ID3D12Device* device, ID3D12CommandQueue* queue){
+  device_.copy_from(device);
+  queue_.copy_from(queue);
+}
 
 HRESULT
 DmlOrtSessionBuilder::CreateSessionOptions(
@@ -101,9 +104,8 @@ HRESULT DmlOrtSessionBuilder::CreateSession(
   RETURN_HR_IF_NULL(E_POINTER, pp_provider);
   RETURN_HR_IF(E_POINTER, *pp_provider != nullptr);
 
-  auto device = device_.as<winmlp::LearningModelDevice>();
-  auto p_d3d_device = device->GetD3DDevice();
-  auto p_queue = device->GetDeviceQueue();
+  auto p_d3d_device = device_.get();
+  auto p_queue = queue_.get();
 
   Microsoft::WRL::ComPtr<IDMLDevice> dmlDevice = CreateDmlDevice(p_d3d_device);
 

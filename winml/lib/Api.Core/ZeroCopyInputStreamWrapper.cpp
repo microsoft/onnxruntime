@@ -31,10 +31,14 @@ bool ZeroCopyInputStreamWrapper::Next(
                     .get();
 
   bytes_ = buffer.try_as<::Windows::Storage::Streams::IBufferByteAccess>();
+#ifdef LAYERING_DONE
   WINML_THROW_HR_IF_NULL_MSG(E_UNEXPECTED, bytes_, "Model stream is invalid.");
   WINML_THROW_IF_FAILED_MSG(
       bytes_->Buffer(reinterpret_cast<byte**>(const_cast<void**>(data))),
       "Failed to acquire buffer from model stream.");
+#else
+  bytes_->Buffer(reinterpret_cast<byte**>(const_cast<void**>(data)));
+#endif
 
   *size = static_cast<uint32_t>(content.Size());
   finished_reading_ = true;
@@ -57,10 +61,16 @@ void ZeroCopyInputStreamWrapper::BackUp(int count) {
 // but they aren't actually used by ModelProto parse code,
 bool ZeroCopyInputStreamWrapper::Skip(
     int count) {
+#ifdef LAYERING_DONE
   WINML_THROW_HR(E_NOTIMPL);
+#endif
+  return false;
 }
 
 __int64
 ZeroCopyInputStreamWrapper::ByteCount() const {
+#ifdef LAYERING_DONE
   WINML_THROW_HR(E_NOTIMPL);
+#endif
+  return 0;
 }

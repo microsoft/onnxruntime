@@ -12,6 +12,7 @@ void Windows::AI::MachineLearning::CWinMLLogSink::SendImpl(
     const onnxruntime::logging::Timestamp& timestamp,
     const std::string& logger_id,
     const onnxruntime::logging::Capture& message) {
+#ifdef LAYERING_DONE
   // ORT Fatal and Error Messages are logged as Telemetry, rest are non-telemetry.
   switch (message.Severity()) {
     case (onnxruntime::logging::Severity::kFATAL):  //Telemetry
@@ -80,12 +81,14 @@ void Windows::AI::MachineLearning::CWinMLLogSink::SendImpl(
           TraceLoggingString(message.Message().c_str()),
           TraceLoggingString(message.Location().ToString(onnxruntime::CodeLocation::kFilenameAndPath).c_str()));
   }
+#endif
   if (debug_output_) {
     OutputDebugStringA(std::string(message.Message() + "\r\n").c_str());
   }
 }
 
 void Windows::AI::MachineLearning::CWinMLLogSink::SendProfileEvent(onnxruntime::profiling::EventRecord& eventRecord) const {
+#ifdef LAYERING_DONE
   if (eventRecord.cat == onnxruntime::profiling::EventCategory::NODE_EVENT) {
     TraceLoggingWrite(
         winml_trace_logging_provider,
@@ -115,4 +118,5 @@ void Windows::AI::MachineLearning::CWinMLLogSink::SendProfileEvent(onnxruntime::
         TraceLoggingInt32(eventRecord.pid, "Process ID"),
         TraceLoggingInt32(eventRecord.tid, "Thread ID"));
   }
+#endif
 }

@@ -13,6 +13,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorSetSchema(
     uint32_t schemaCount,
     _In_opt_ IMLOperatorTypeInferrer* typeInferrer,
     _In_opt_ IMLOperatorShapeInferrer* shapeInferrer) const noexcept try {
+#ifdef LAYERING_DONE
   for (uint32_t i = 0; i < schemaCount; ++i) {
     telemetry_helper.RegisterOperatorSetSchema(
         schema[i]->name,
@@ -22,6 +23,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorSetSchema(
         schema[i]->attributeCount,
         schema[i]->defaultAttributeCount);
   }
+#endif
 
   // Delegate to base class
   return AbiCustomRegistry::RegisterOperatorSetSchema(
@@ -52,6 +54,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
     bool requiresFloatFormatsForGraph,
     _In_reads_(constantCpuInputCount) const uint32_t* requiredConstantCpuInputs,
     uint32_t constantCpuInputCount) const noexcept try {
+#ifdef LAYERING_DONE
   // Log a custom op telemetry if the operator is not a built-in DML operator
   if (!isInternalOperator) {
     telemetry_helper.LogRegisterOperatorKernel(
@@ -59,6 +62,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
         opKernel->domain,
         static_cast<int>(opKernel->executionType));
   }
+#endif
 
   // Delegate to base class
   return AbiCustomRegistry::RegisterOperatorKernel(

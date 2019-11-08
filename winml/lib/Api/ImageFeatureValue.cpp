@@ -306,8 +306,8 @@ static void CPUTensorize(
 
   ConverterResourceDescription descriptor = {};
   descriptor.pixel_format = static_cast<DWORD>(BitmapPixelFormat::Bgra8);
-  descriptor.width = tensorDescriptor.sizes[3];
-  descriptor.height = tensorDescriptor.sizes[2];
+  descriptor.width = static_cast<int>(tensorDescriptor.sizes[3]);
+  descriptor.height = static_cast<int>(tensorDescriptor.sizes[2]);
   descriptor.luid = {};  // Converted image on CPU
 
   auto pooledConverter = PoolObjectWrapper::Create(spDevice->TensorizerStore()->Fetch(descriptor));
@@ -354,8 +354,8 @@ static void GPUTensorize(
 
   ConverterResourceDescription descriptor = {};
   descriptor.pixel_format = static_cast<DWORD>(DirectXPixelFormat::B8G8R8X8UIntNormalized);
-  descriptor.width = tensorDescriptor.sizes[3];
-  descriptor.height = tensorDescriptor.sizes[2];
+  descriptor.width = static_cast<int>(tensorDescriptor.sizes[3]);
+  descriptor.height = static_cast<int>(tensorDescriptor.sizes[2]);
   descriptor.luid = spDevice->GetD3DDevice()->GetAdapterLuid();  // Converted image on GPU
 
   // Tensorize video frames one by one without extra copy.
@@ -526,11 +526,11 @@ HRESULT ImageFeatureValue::GetOrtValue(WinML::BindingContext& context, OrtValue*
 
   if (context.type == BindingType::kInput) {
     // Only tensorize inputs
-    auto bufferSize = std::accumulate(std::begin(resourceMetadata.TensorDescriptor.sizes), std::end(resourceMetadata.TensorDescriptor.sizes), 1, std::multiplies<UINT>());
+    auto bufferSize = std::accumulate(std::begin(resourceMetadata.TensorDescriptor.sizes), std::end(resourceMetadata.TensorDescriptor.sizes), static_cast<int64_t>(1), std::multiplies<int64_t>());
     auto bufferByteSize = GetSizeFromTensorDataType(resourceMetadata.TensorDescriptor.dataType) * bufferSize;
     auto singleFrameBufferSize = bufferByteSize / m_batchSize;
     if (spDevice->IsCpuDevice()) {
-      CPUTensorize(m_videoFrames, resourceMetadata.Bounds, resourceMetadata.TensorDescriptor, spSession, pAllocatedResource, singleFrameBufferSize);
+      CPUTensorize(m_videoFrames, resourceMetadata.Bounds, resourceMetadata.TensorDescriptor, spSession, pAllocatedResource, static_cast<unsigned int>(singleFrameBufferSize));
     } else {
       GPUTensorize(m_videoFrames, resourceMetadata.Bounds, resourceMetadata.TensorDescriptor, spSession, pAllocatedResource, context);
     }
@@ -560,8 +560,8 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, Ort
   ImageResourceMetadata resourceMetadata = metadata.value();
 
   ConverterResourceDescription descriptor = {};
-  descriptor.width = resourceMetadata.TensorDescriptor.sizes[3];
-  descriptor.height = resourceMetadata.TensorDescriptor.sizes[2];
+  descriptor.width = static_cast<int>(resourceMetadata.TensorDescriptor.sizes[3]);
+  descriptor.height = static_cast<int>(resourceMetadata.TensorDescriptor.sizes[2]);
 
   if (!strcmp(tensor.Location().name, onnxruntime::CPU) ||
       tensor.Location().mem_type == ::OrtMemType::OrtMemTypeCPUOutput ||
@@ -571,7 +571,7 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, Ort
 
     auto pooledConverter = PoolObjectWrapper::Create(spDevice->DetensorizerStore()->Fetch(descriptor));
 
-    auto bufferSize = std::accumulate(std::begin(resourceMetadata.TensorDescriptor.sizes), std::end(resourceMetadata.TensorDescriptor.sizes), 1, std::multiplies<UINT>());
+    auto bufferSize = std::accumulate(std::begin(resourceMetadata.TensorDescriptor.sizes), std::end(resourceMetadata.TensorDescriptor.sizes), static_cast< int64_t>(1), std::multiplies<int64_t>());
     auto bufferByteSize = GetSizeFromTensorDataType(resourceMetadata.TensorDescriptor.dataType) * bufferSize / m_batchSize;
 
     BYTE* tempPAllocatedResource = reinterpret_cast<BYTE*>(pAllocatedResource);

@@ -131,12 +131,12 @@ add_library(winml_lib_core STATIC
   ${winml_lib_api_core_dir}/CpuOrtSessionBuilder.h
   ${winml_lib_api_core_dir}/DmlOrtSessionBuilder.h
   ${winml_lib_api_core_dir}/FeatureDescriptorFactory.h
+  ${winml_lib_api_core_dir}/FeatureDescriptorFactory.cpp
   ${winml_lib_api_core_dir}/ZeroCopyInputStreamWrapper.h
   ${winml_lib_api_core_dir}/pch.h
   ${winml_lib_api_core_dir}/AbiCustomRegistryImpl.cpp
   ${winml_lib_api_core_dir}/CpuOrtSessionBuilder.cpp
   ${winml_lib_api_core_dir}/DmlOrtSessionBuilder.cpp
-  ${winml_lib_api_core_dir}/FeatureDescriptorFactory.cpp
   ${winml_lib_api_core_dir}/LotusEnvironment.cpp
   ${winml_lib_api_core_dir}/ModelInfo.cpp
   ${winml_lib_api_core_dir}/OrtSessionBuilder.cpp
@@ -201,8 +201,9 @@ target_link_libraries(winml_lib_core PRIVATE wil)
 target_link_libraries(winml_lib_core PRIVATE onnxruntime_providers_dml)
 
 # add it to the onnxruntime shared library
-list(APPEND onnxruntime_EXTERNAL_LIBRARIES winml_lib_core)
-list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES winml_lib_core)
+#list(APPEND onnxruntime_EXTERNAL_LIBRARIES -WHOLEARCHIVE:$<TARGET_FILE:winml_lib_core>)
+#list(APPEND onnxruntime_EXTERNAL_LIBRARIES windowsapp.lib)
+#list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES winml_lib_core)
 
 ###########################
 # Add winml_lib_image
@@ -471,26 +472,25 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
 endif("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
 
 # Link libraries
-target_link_libraries(winml_dll PRIVATE windowsapp.lib)
-# target_link_libraries(winml_dll PRIVATE libprotobuf)
-# target_link_libraries(winml_dll PRIVATE onnx)
-# target_link_libraries(winml_dll PRIVATE onnxruntime_common)
-# target_link_libraries(winml_dll PRIVATE onnxruntime_graph)
-# target_link_libraries(winml_dll PRIVATE onnxruntime_framework)
-# target_link_libraries(winml_dll PRIVATE onnxruntime_mlas)
-# target_link_libraries(winml_dll PRIVATE onnxruntime_optimizer)
-# target_link_libraries(winml_dll PRIVATE onnxruntime_providers)
-# target_link_libraries(winml_dll PRIVATE onnxruntime_providers_dml)
-# target_link_libraries(winml_dll PRIVATE onnxruntime_session)
-# target_link_libraries(winml_dll PRIVATE onnxruntime_util)
-# target_link_libraries(winml_dll PRIVATE onnx_proto)
+target_link_libraries(winml_dll PRIVATE libprotobuf)
+target_link_libraries(winml_dll PRIVATE onnx)
+target_link_libraries(winml_dll PRIVATE onnxruntime_common)
+target_link_libraries(winml_dll PRIVATE onnxruntime_graph)
+target_link_libraries(winml_dll PRIVATE onnxruntime_framework)
+target_link_libraries(winml_dll PRIVATE onnxruntime_mlas)
+target_link_libraries(winml_dll PRIVATE onnxruntime_optimizer)
+target_link_libraries(winml_dll PRIVATE onnxruntime_providers)
+target_link_libraries(winml_dll PRIVATE onnxruntime_providers_dml)
+target_link_libraries(winml_dll PRIVATE onnxruntime_session)
+target_link_libraries(winml_dll PRIVATE onnxruntime_util)
+target_link_libraries(winml_dll PRIVATE onnx_proto)
 target_link_libraries(winml_dll PRIVATE re2)
 target_link_libraries(winml_dll PRIVATE wil)
+target_link_libraries(winml_dll PRIVATE windowsapp.lib)
 target_link_libraries(winml_dll PRIVATE winml_lib_api)
-# target_link_libraries(winml_dll PRIVATE winml_lib_core)
+target_link_libraries(winml_dll PRIVATE winml_lib_core)
 target_link_libraries(winml_dll PRIVATE winml_lib_image)
 target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)
-target_link_libraries(winml_dll PRIVATE onecoreuap_apiset.lib)
 target_link_libraries(winml_dll PRIVATE ${DBGHELP})
 
 # 1 of 3 projects that fail in link with 'failed to do memory mapped file I/O' (Only release)
