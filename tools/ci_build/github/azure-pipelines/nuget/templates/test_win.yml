@@ -19,6 +19,12 @@ jobs:
       buildArch: 'x64'
       setVcvars: true
 
+  - task: BatchScript@1
+    displayName: 'Setup VS2017 env vars'
+    inputs:
+      filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
+      arguments: 'amd64'
+      modifyEnvironment: true
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact'
     inputs:
