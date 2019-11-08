@@ -17,8 +17,9 @@ jobs:
     DoNugetPack : 'true'
     DoCompliance: 'false'
     DoEsrp: ${{ parameters.DoEsrp }}
+    OrtPackageId: 'Microsoft.ML.OnnxRuntime.MKLML'
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:PackageId=Microsoft.ML.OnnxRuntime.MKLML
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.MKLML
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
 
 - job: 'Linux_CI_Dev'
@@ -36,18 +37,17 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --use_mklml --enable_onnx_tests
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --use_mklml --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
         workingDirectory: $(Build.SourcesDirectory)
     - script: |
        set -e -x
-       mkdir $(Build.BinariesDirectory)/linux-x64
-       cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x64
-       cp $(Build.BinariesDirectory)/Release/mklml/src/project_mklml/lib/libiomp5.so $(Build.BinariesDirectory)/linux-x64
-       cp $(Build.BinariesDirectory)/Release/mklml/src/project_mklml/lib/libmklml_intel.so $(Build.BinariesDirectory)/linux-x64
-       ldd $(Build.BinariesDirectory)/linux-x64/libonnxruntime.so
-       cd $(Build.BinariesDirectory)
+       mv $(Build.BinariesDirectory)/linux-x64/usr/local/lib64 $(Build.BinariesDirectory)/linux-x64/linux-x64
+       cp $(Build.BinariesDirectory)/Release/mklml/src/project_mklml/lib/libiomp5.so $(Build.BinariesDirectory)/linux-x64/linux-x64
+       cp $(Build.BinariesDirectory)/Release/mklml/src/project_mklml/lib/libmklml_intel.so $(Build.BinariesDirectory)/linux-x64/linux-x64
+       ldd $(Build.BinariesDirectory)/linux-x64/linux-x64/libonnxruntime.so
+       cd $(Build.BinariesDirectory)/linux-x64
        zip -r linux-x64.zip linux-x64
-       cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
+       cp $(Build.BinariesDirectory)/linux-x64/linux*.zip $(Build.ArtifactStagingDirectory)
        ls -al $(Build.ArtifactStagingDirectory)
       displayName: 'Create Artifacts'
     - task: PublishPipelineArtifact@0
