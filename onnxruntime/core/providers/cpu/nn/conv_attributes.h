@@ -136,7 +136,9 @@ struct ConvAttributes {
                              " W: ", W->Shape().ToString().c_str());
     }
 
-    if (C != W->Shape()[1] * group) {
+    if (-1 == group) {
+      group = C / W->Shape()[1];
+    } else if (C != W->Shape()[1] * group) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input channels C is not equal to kernel channels * group.",
                              " C: ", C,
                              " kernel channels: ", W->Shape()[1],
@@ -184,7 +186,7 @@ struct ConvAttributes {
   }
 
   AutoPadType auto_pad;
-  int64_t group;
+  mutable int64_t group;
   bool kernel_shape_specified;
   std::vector<int64_t> strides;
   std::vector<int64_t> pads;
