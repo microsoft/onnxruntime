@@ -75,7 +75,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 else
                 {
-                   UIntPtr strLen;
+                    UIntPtr strLen;
                     var offsets = new UIntPtr[_elementCount];
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorDataLength(_onnxValueHandle, out strLen));
                     var dataBuffer = new byte[strLen.ToUInt64()];
