@@ -21,7 +21,16 @@ namespace cuda {
       Transpose<T>);
 
 // special case acceleration using cublas matrix transpose
-std::tuple<int, int> TryTransposeWithCublas(const std::vector<size_t>& perm, const TensorShape& input_shape) {
+template <typename T>
+Status TryCublasTranspose(cublasHandle_t handle,
+                          const std::vector<size_t>& perm,
+                          const TensorShape& input_shape,
+                          const typename ToCudaType<T>::MappedType* input_data,
+                          typename ToCudaType<T>::MappedType* output_data,
+                          bool* is_transposed);
+
+// calculate dimensions to use in cublas matrix transpose
+std::tuple<int, int> CalculateCublasTransposeDimensions(const std::vector<size_t>& perm, const TensorShape& input_shape) {
   int M = 0;
   int N = 0;
 
@@ -69,30 +78,14 @@ Status Transpose<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (output_shape.Size() == 0)
     return Status::OK();
 
-  auto mn = TryTransposeWithCublas(*p_perm, input_shape);
-  int M = std::get<0>(mn);
-  int N = std::get<1>(mn);
-  if (M != 0 && N != 0) {
-    typedef typename ToCudaType<T>::MappedType CudaT;
-    CudaT one = ToCudaType<T>::FromFloat(1.0f);
-    CudaT zero = ToCudaType<T>::FromFloat(0.0f);
-    const CudaT* input_data = reinterpret_cast<const CudaT*>(X.template Data<T>());
-    CudaT* output_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
-    CUBLAS_RETURN_IF_ERROR(
-        cublasTransposeHelper(
-            CublasHandle(),
-            CUBLAS_OP_T,
-            CUBLAS_OP_T,
-            M,
-            N,
-            &one,
-            input_data,
-            N,
-            &zero,
-            input_data,
-            N,
-            output_data,
-            M));
+  bool is_transposed = false;
+  ORT_RETURN_IF_ERROR(TryCublasTranspose<T>(CublasHandle(),
+                                            *p_perm,
+                                            input_shape,
+                                            reinterpret_cast<const typename ToCudaType<T>::MappedType*>(X.template Data<T>()),
+                                            reinterpret_cast<typename ToCudaType<T>::MappedType*>(Y->template MutableData<T>()),
+                                            &is_transposed));
+  if (is_transposed) {
     return Status::OK();
   }
 
@@ -118,6 +111,67 @@ Status Transpose<T>::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
+#define CUBLAS_TRANSPOSE_IMPL_UNSUPPORTED(T)                                               \
+  template <>                                                                              \
+  Status TryCublasTranspose<T>(cublasHandle_t /* handle */,                                \
+                               const std::vector<size_t>& /* perm */,                      \
+                               const TensorShape& /* input_shape */,                       \
+                               const typename ToCudaType<T>::MappedType* /* input_data */, \
+                               typename ToCudaType<T>::MappedType* /* output_data */,      \
+                               bool* is_transposed) {                                      \
+    *is_transposed = false;                                                                \
+    return Status::OK();                                                                   \
+  }
+
+#define CUBLAS_TRANSPOSE_IMPL_SUPPORTED(T)                                      \
+  template <>                                                                   \
+  Status TryCublasTranspose<T>(cublasHandle_t handle,                           \
+                               const std::vector<size_t>& perm,                 \
+                               const TensorShape& input_shape,                  \
+                               const ToCudaType<T>::MappedType* input_data,     \
+                               ToCudaType<T>::MappedType* output_data,          \
+                               bool* is_transposed) {                           \
+    auto mn = CalculateCublasTransposeDimensions(perm, input_shape);            \
+    int M = std::get<0>(mn);                                                    \
+    int N = std::get<1>(mn);                                                    \
+    if (M == 0 || N == 0) {                                                     \
+      *is_transposed = false;                                                   \
+    } else {                                                                    \
+      typename ToCudaType<T>::MappedType one = ToCudaType<T>::FromFloat(1.0f);  \
+      typename ToCudaType<T>::MappedType zero = ToCudaType<T>::FromFloat(0.0f); \
+      CUBLAS_RETURN_IF_ERROR(                                                   \
+          cublasTransposeHelper(                                                \
+              handle,                                                           \
+              CUBLAS_OP_T,                                                      \
+              CUBLAS_OP_T,                                                      \
+              M,                                                                \
+              N,                                                                \
+              &one,                                                             \
+              input_data,                                                       \
+              N,                                                                \
+              &zero,                                                            \
+              input_data,                                                       \
+              N,                                                                \
+              output_data,                                                      \
+              M));                                                              \
+      *is_transposed = true;                                                    \
+    }                                                                           \
+    return Status::OK();                                                        \
+  }
+
+CUBLAS_TRANSPOSE_IMPL_SUPPORTED(float)
+CUBLAS_TRANSPOSE_IMPL_SUPPORTED(double)
+CUBLAS_TRANSPOSE_IMPL_SUPPORTED(MLFloat16)
+CUBLAS_TRANSPOSE_IMPL_UNSUPPORTED(int8_t)
+CUBLAS_TRANSPOSE_IMPL_UNSUPPORTED(int16_t)
+CUBLAS_TRANSPOSE_IMPL_UNSUPPORTED(int32_t)
+CUBLAS_TRANSPOSE_IMPL_UNSUPPORTED(int64_t)
+CUBLAS_TRANSPOSE_IMPL_UNSUPPORTED(uint8_t)
+CUBLAS_TRANSPOSE_IMPL_UNSUPPORTED(uint16_t)
+CUBLAS_TRANSPOSE_IMPL_UNSUPPORTED(uint32_t)
+CUBLAS_TRANSPOSE_IMPL_UNSUPPORTED(uint64_t)
+CUBLAS_TRANSPOSE_IMPL_UNSUPPORTED(bool)
+
 #define SPECIALIZED_COMPUTE(T) \
   REGISTER_KERNEL_TYPED(T)     \
   template Status Transpose<T>::ComputeInternal(OpKernelContext* ctx) const;
@@ -125,6 +179,15 @@ Status Transpose<T>::ComputeInternal(OpKernelContext* ctx) const {
 SPECIALIZED_COMPUTE(float)
 SPECIALIZED_COMPUTE(double)
 SPECIALIZED_COMPUTE(MLFloat16)
+SPECIALIZED_COMPUTE(int8_t)
+SPECIALIZED_COMPUTE(int16_t)
+SPECIALIZED_COMPUTE(int32_t)
+SPECIALIZED_COMPUTE(int64_t)
+SPECIALIZED_COMPUTE(uint8_t)
+SPECIALIZED_COMPUTE(uint16_t)
+SPECIALIZED_COMPUTE(uint32_t)
+SPECIALIZED_COMPUTE(uint64_t)
+SPECIALIZED_COMPUTE(bool)
 
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -40,6 +40,15 @@ void TransposeImpl(size_t shape_rank, const int64_t* input_strides, const size_t
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)
 SPECIALIZED_IMPL(half)
+SPECIALIZED_IMPL(int8_t)
+SPECIALIZED_IMPL(int16_t)
+SPECIALIZED_IMPL(int32_t)
+SPECIALIZED_IMPL(int64_t)
+SPECIALIZED_IMPL(uint8_t)
+SPECIALIZED_IMPL(uint16_t)
+SPECIALIZED_IMPL(uint32_t)
+SPECIALIZED_IMPL(uint64_t)
+SPECIALIZED_IMPL(bool)
 
 }  // namespace cuda
 }  // namespace onnxruntime
