@@ -421,7 +421,7 @@ class BertOnnxModel(OnnxModel):
                 inputs=[input],
                 outputs=[output_name],
                 name=self.create_node_name('ReduceSum', 'MaskReduceSum'))
-            mask_index_node.attribute.extend([onnx.helper.make_attribute("axes", [1])])
+            mask_index_node.attribute.extend([onnx.helper.make_attribute("axes", [1]), onnx.helper.make_attribute("keepdims", 0)])
         else:
             mask_index_node = onnx.helper.make_node(
                 'MaskIndex',
