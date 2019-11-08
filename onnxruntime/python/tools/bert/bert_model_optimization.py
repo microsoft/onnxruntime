@@ -14,9 +14,10 @@ from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper
 
 class OnnxModel:
-    def __init__(self, model):
+    def __init__(self, model, verbose):
         self.model = model
         self.node_name_counter = {}
+        self.verbose = verbose
 
     def input_name_to_nodes(self):
         input_name_to_nodes = {}
@@ -335,7 +336,7 @@ class OnnxModel:
         if len(unused_nodes) > 0:
             print("Removed unused constant nodes:", len(unused_nodes))
 
-    def update_graph(self, verbose=False):
+    def update_graph(self):
         graph = self.model.graph
 
         remaining_input_names = []
@@ -344,7 +345,7 @@ class OnnxModel:
                 for input_name in node.input:
                     if input_name not in remaining_input_names:
                         remaining_input_names.append(input_name)
-        if verbose:
+        if self.verbose:
             print("remaining input names", remaining_input_names)
 
         # remove graph input that is not used
@@ -354,7 +355,7 @@ class OnnxModel:
                 inputs_to_remove.append(input)
         for input in inputs_to_remove:
             graph.input.remove(input)
-        if verbose:
+        if self.verbose:
             print("remove unused input ", len(inputs_to_remove), [input.name for input in inputs_to_remove])
         
         # remove weights that are not used
@@ -364,7 +365,7 @@ class OnnxModel:
                 weights_to_remove.append(initializer)
         for initializer in weights_to_remove:
             graph.initializer.remove(initializer)
-        if verbose:
+        if self.verbose:
             print("remove unused initializers:", len(weights_to_remove), [initializer.name for initializer in weights_to_remove])
 
         self.remove_unused_constant()
@@ -378,17 +379,18 @@ class OnnxModel:
                 if output in input_name_to_nodes:
                     for node in input_name_to_nodes[output]:
                         if node not in nodes_to_remove:
-                            print("warning: it is not safe to remove nodes since output", output, "used by", node)
+                            if self.verbose:
+                                print("warning: it is not safe to remove nodes since output", output, "used by", node)
                             return False
         return True
 
 class BertOnnxModel(OnnxModel):
-    def __init__(self, model, num_heads, hidden_size, sequence_length, separate_mask, mask_reduce_sum):
+    def __init__(self, model, num_heads, hidden_size, sequence_length, separate_mask, mask_reduce_sum, verbose):
         assert num_heads > 0
         assert hidden_size % num_heads == 0
         assert sequence_length > 0
         
-        super(BertOnnxModel, self).__init__(model)
+        super(BertOnnxModel, self).__init__(model, verbose)
         self.num_heads = num_heads
         self.sequence_length = sequence_length
         self.hidden_size = hidden_size
@@ -492,7 +494,7 @@ class BertOnnxModel(OnnxModel):
 
         self.add_node(attention_node)
 
-    def fuse_attention(self, verbose=False):
+    def fuse_attention(self):
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
@@ -555,7 +557,7 @@ class BertOnnxModel(OnnxModel):
                 attention_count += 1
 
         self.remove_nodes(nodes_to_remove)
-        self.update_graph(verbose)
+        self.update_graph()
         print("Fused Attention count:", attention_count)
 
     def fuse_gelu(self, gelu_op_name):
@@ -726,7 +728,7 @@ class BertOnnxModel(OnnxModel):
             nodes_to_add.append(gelu_node)
 
         if len(nodes_to_add) > 0:
-            print("Fused {} count: {}", 'Gelu (FastGelu fits better)' if gelu_op_name == 'Gelu' else 'FastGelu', len(nodes_to_add))
+            print("Fused {} count: {}".format('Gelu (FastGelu fits better)' if gelu_op_name == 'Gelu' else 'FastGelu', len(nodes_to_add)))
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
@@ -891,7 +893,7 @@ class BertOnnxModel(OnnxModel):
 
       Optional graph is used to generate position list (0, 1, ...). It can be a constant in some model.
     """
-    def fuse_embed_layer(self, verbose=False):
+    def fuse_embed_layer(self):
         nodes = self.nodes()
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
@@ -976,7 +978,7 @@ class BertOnnxModel(OnnxModel):
 
         self.remove_nodes(nodes_to_remove)
         self.add_node(embed_node)
-        self.update_graph(verbose)
+        self.update_graph()
         print("Fused EmbedLayerNormalization count: 1")
 
     def get_bert_inputs(self):
@@ -1221,7 +1223,7 @@ def main():
     with open(args.input, "rb") as f:
         model.ParseFromString(f.read())
 
-    bert_model = BertOnnxModel(model, args.num_heads, args.hidden_size, args.sequence_length, args.separate_mask, args.mask_reduce_sum)
+    bert_model = BertOnnxModel(model, args.num_heads, args.hidden_size, args.sequence_length, args.separate_mask, args.mask_reduce_sum, args.verbose)
 
     bert_model.fuse_layer_norm()
 
@@ -1233,9 +1235,9 @@ def main():
 
     bert_model.fuse_reshape()
 
-    bert_model.fuse_attention(args.verbose)
+    bert_model.fuse_attention()
 
-    bert_model.fuse_embed_layer(args.verbose)
+    bert_model.fuse_embed_layer()
 
     if bert_model.embed_node is None:
         print("Failed to fuse embedding layer.")
