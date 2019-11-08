@@ -23,7 +23,7 @@ namespace Microsoft.ML.OnnxRuntime
         private int _elementWidth;
         private int[] _dimensions;
 
-        public NativeOnnxTensorMemory(IntPtr onnxValueHandle, bool isStringTensor = false)
+        public NativeOnnxTensorMemory(IntPtr onnxValueHandle)
         {
             IntPtr typeAndShape = IntPtr.Zero;
             try
@@ -69,15 +69,13 @@ namespace Microsoft.ML.OnnxRuntime
                     _dimensions[i] = (int)shape[i];
                 }
 
-                if (!isStringTensor)
+                if (typeof(T) != typeof(string))
                 {
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorMutableData(_onnxValueHandle, out _dataBufferPointer));
                 }
                 else
                 {
-                    if (typeof(T) != typeof(byte))
-                        throw new NotSupportedException(nameof(NativeOnnxTensorMemory<T>) + " T = " + nameof(T) + ". Should = byte, when isStringTensor is true");
-                    UIntPtr strLen;
+                   UIntPtr strLen;
                     var offsets = new UIntPtr[_elementCount];
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorDataLength(_onnxValueHandle, out strLen));
                     var dataBuffer = new byte[strLen.ToUInt64()];
@@ -191,7 +189,7 @@ namespace Microsoft.ML.OnnxRuntime
             if (IsDisposed)
                 throw new ObjectDisposedException(nameof(NativeOnnxTensorMemory<T>));
 
-            if (typeof(T) != typeof(byte))
+            if (typeof(T) != typeof(string))
                 throw new NotSupportedException(nameof(NativeOnnxTensorMemory<T>.GetBytesAsStringMemory) + ": T must be byte");
 
             return (_dataBufferAsString == null) ? new Memory<string>() : new Memory<string>(_dataBufferAsString);
