@@ -1689,33 +1689,34 @@ void run_lamb_test_with_baseline(
     bool do_update = true) {
   OpTester test("LambOptimizer", 9, onnxruntime::kOnnxDomain, true);
 
-  test.AddInput<T1>("ETA", {}, eta);
+  test.AddInput<T2>("", {1}, {0});
+  test.AddInput<bool>("update_signal", {1}, {do_update});
+  test.AddInput<T1>("ETA", {1}, eta);
   test.AddInput<T2>("W", shape, w);
   test.AddInput<T3>("G", shape, g);
   test.AddInput<T4>("Moment_1", shape, m);
   test.AddInput<T4>("Moment_2", shape, v);
   if (!w_half.empty()) {
     test.AddInput<MLFloat16>("FP16_W", shape, w_half);
+  } else {
+    test.AddMissingOptionalInput<MLFloat16>();
   }
 
-  if (!do_update) {
-    test.AddInput<T2>("loss_scale", {1}, {1.0});
-    test.AddInput<bool>("DoUpdate", {}, {false});
-  }
-
-  test.AddAttribute<float>("alpha", alpha);
-  test.AddAttribute<float>("beta", beta);
-  test.AddAttribute<float>("lambda", lambda);
-  test.AddAttribute<float>("epsilon", epsilon);
+  test.AddAttribute("alpha", std::vector<float>(1, alpha));
+  test.AddAttribute("beta", std::vector<float>(1, beta));
+  test.AddAttribute("lambda", std::vector<float>(1, lambda));
+  test.AddAttribute("epsilon", std::vector<float>(1, epsilon));
   // Tests should not trigger the thresholding mechnism,
   // so we assign a big value here.
-  test.AddAttribute<float>("threshold", 10000.0f);
+  test.AddAttribute("threshold", std::vector<float>(1, 10000.0f));
 
   test.AddOutput<T2>("W_Out", shape, w_new);
   test.AddOutput<T4>("Moment_1_Out", shape, m_new);
   test.AddOutput<T4>("Moment_2_Out", shape, v_new);
   if (!w_new_half.empty()) {
     test.AddOutput<MLFloat16>("FP16_W_Out", shape, w_new_half);
+  } else {
+    test.AddMissingOptionalOutput<MLFloat16>();
   }
 
   test.Run();

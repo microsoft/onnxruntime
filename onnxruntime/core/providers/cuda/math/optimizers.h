@@ -103,21 +103,21 @@ template <typename T1, typename T2, typename T3, typename T4>
 class LambOptimizer final : public CudaKernel {
  public:
   LambOptimizer(const OpKernelInfo& info) : CudaKernel(info) {
-    info.GetAttrOrDefault("alpha", &alpha_, 0.9f);
-    info.GetAttrOrDefault("beta", &beta_, 0.999f);
-    info.GetAttrOrDefault("lambda", &lambda_, 0.0f);
-    info.GetAttrOrDefault("epsilon", &epsilon_, 1e-6f);
-    info.GetAttrOrDefault("threshold", &threshold_, 1.0f);
+    alpha_ = info.GetAttrsOrDefault("alpha", std::vector<float>(1024, 0.9f));
+    beta_ = info.GetAttrsOrDefault("beta", std::vector<float>(1024, 0.999f));
+    lambda_ = info.GetAttrsOrDefault("lambda", std::vector<float>(1024, 0.0f));
+    epsilon_ = info.GetAttrsOrDefault("epsilon", std::vector<float>(1024, 1e-6f));
+    threshold_ = info.GetAttrsOrDefault("threshold", std::vector<float>(1024, 1.0f));
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  float alpha_;
-  float beta_;
-  float lambda_;
-  float epsilon_;
-  float threshold_;
+  std::vector<float> alpha_;
+  std::vector<float> beta_;
+  std::vector<float> lambda_;
+  std::vector<float> epsilon_;
+  std::vector<float> threshold_;
 };
 
 // Implementation can be found in cuda file, optimizers_impl.cu
