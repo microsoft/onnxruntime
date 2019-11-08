@@ -558,9 +558,9 @@ class BertOnnxModel(OnnxModel):
         self.update_graph(verbose)
         print("Fused Attention count:", attention_count)
 
-    def fuse_gelu(self, use_approximation):
-        self.fuse_gelu_with_elf(use_approximation)
-        self.fuse_gelu_with_tanh()
+    def fuse_gelu(self, gelu_op_name):
+        self.fuse_gelu_with_elf(gelu_op_name)
+        self.fuse_gelu_with_tanh(gelu_op_name)
 
     """
      Fuse Gelu with tanh into one node:
@@ -572,7 +572,7 @@ class BertOnnxModel(OnnxModel):
 
      Note that constant input for Add and Mul could be first or second input: like either A=0.5 or B=0.5 is fine.
     """
-    def fuse_gelu_with_elf(self, use_approximation):
+    def fuse_gelu_with_elf(self, gelu_op_name):
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
@@ -622,7 +622,7 @@ class BertOnnxModel(OnnxModel):
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
-            gelu_node = onnx.helper.make_node('FastGelu' if use_approximation else 'Gelu',
+            gelu_node = onnx.helper.make_node(gelu_op_name,
                 inputs=[root_node.output[0]],
                 outputs=[mul_after_erf.output[0]])
             gelu_node.domain = "com.microsoft"
@@ -631,7 +631,7 @@ class BertOnnxModel(OnnxModel):
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
         if len(nodes_to_add) > 0:
-            print("Fused {} count:{}".format('FastGelu (approximation)' if use_approximation else 'Gelu', len(nodes_to_add)))
+            print("Fused {} count:{}".format('FastGelu (approximation)' if gelu_op_name == 'FastGelu' else 'Gelu', len(nodes_to_add)))
 
     """
      Fuse Gelu with tanh into one node:
@@ -644,7 +644,7 @@ class BertOnnxModel(OnnxModel):
           +------> Mul(B=0.5)--------------------------------------------+
      Note that constant input for Add and Mul could be first or second input: like either A=0.5 or B=0.5 is fine.
     """
-    def fuse_gelu_with_tanh(self):
+    def fuse_gelu_with_tanh(self, gelu_op_name):
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
@@ -718,15 +718,15 @@ class BertOnnxModel(OnnxModel):
 
             nodes_to_remove.extend(subgraph_nodes)
             gelu_node = onnx.helper.make_node(
-                'FastGelu',  # FastGelu uses Tanh to approximate Elf
+                gelu_op_name,
                 inputs=[root_node.output[0]],
                 outputs=mul_after_tanh.output,
-                name=self.create_node_name('FastGelu'))
+                name=self.create_node_name(gelu_op_name))
             gelu_node.domain = "com.microsoft"
             nodes_to_add.append(gelu_node)
 
         if len(nodes_to_add) > 0:
-            print("Fused FastGelu count:", len(nodes_to_add))
+            print("Fused {} count: {}", 'Gelu (FastGelu fits better)' if gelu_op_name == 'Gelu' else 'FastGelu', len(nodes_to_add))
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
@@ -743,30 +743,23 @@ class BertOnnxModel(OnnxModel):
 
             nodes = self.match_parent_path(node, ['Add', 'MatMul'], [0, None])
             if nodes is None:
-                print("not found Add MatMul before FastGelu")
                 continue
             (add, matmul) = nodes
 
             # bias should be one dimension
-            #i, bias_weight = self.get_constant_input(add)
-
             for i, input in enumerate(add.input):
                 initializer = self.get_initializer(input)
                 if initializer is None:
                     continue
                 bias_weight = numpy_helper.to_array(initializer)
                 break
-
             if bias_weight is None:
-                print("Bias constant input not found")
                 continue
             if len(bias_weight.shape) != 1:
-                print("Bias shape not expected", bias_weight.shape)
                 continue
 
             subgraph_nodes = [node, add]
             if not self.is_safe_to_fuse_nodes(subgraph_nodes, [node.output[0]], input_name_to_nodes, output_name_to_node):
-                print("not safe to fuse add & FastGelu")
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
@@ -1219,6 +1212,9 @@ def main():
     parser.add_argument('--mask_reduce_sum', required=False, action='store_true')
     parser.set_defaults(mask_reduce_sum=False)
 
+    parser.add_argument('--fuse_gelu_add', required=False, action='store_true')
+    parser.set_defaults(fuse_gelu_add=False)
+
     args = parser.parse_args()
 
     model = ModelProto()
@@ -1229,10 +1225,11 @@ def main():
 
     bert_model.fuse_layer_norm()
 
-    use_approximation = (args.gelu == 'fastgelu')
-    bert_model.fuse_gelu(use_approximation)
+    gelu_op_name = 'Gelu' if args.gelu == 'gelu' else 'FastGelu'
+    bert_model.fuse_gelu(gelu_op_name)
 
-    bert_model.fuse_add_bias_gelu()
+    if args.fuse_gelu_add:
+        bert_model.fuse_add_bias_gelu()
 
     bert_model.fuse_reshape()
 
