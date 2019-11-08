@@ -10,8 +10,8 @@ RUN apt update && \
     python3.5 python3-pip zip x11-apps lsb-core cpio libboost-python-dev libpng-dev zlib1g-dev libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.58.0 libboost-thread1.58.0 protobuf-compiler libprotoc-dev libusb-1.0-0-dev
 ARG PYTHON_VERSION=3.5
 ARG DEVICE=CPU_FP32
-ARG ONNXRUNTIME_REPO=https://github.com/intel/onnxruntime
-ARG ONNXRUNTIME_SERVER_BRANCH=openvino_R3.1
+ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime
+ARG ONNXRUNTIME_SERVER_BRANCH=master
 
 RUN git clone --single-branch --branch ${ONNXRUNTIME_SERVER_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime
 RUN /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} && \
@@ -63,7 +63,7 @@ WORKDIR /onnxruntime/build/Release/
 RUN mkdir -p /onnxruntime/build
 RUN rm -rf /usr/bin/python && ln -s /usr/bin/python3 /usr/bin/python && \
     ln -s /usr/bin/pip3 /usr/bin/pip
-RUN python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --use_openvino CPU_FP32 --build_server --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER)
+RUN python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --use_openvino $DEVICE --build_server --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER)
 
 ENTRYPOINT ["/onnxruntime/build/Release/onnxruntime_server"]
   
