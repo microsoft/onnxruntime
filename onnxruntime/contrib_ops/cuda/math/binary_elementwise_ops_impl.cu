@@ -10,11 +10,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template <typename T>
-__device__ T Gelu(T x) {
-  return x * onnxruntime::cuda::_Normcdf(x);
-}
-
 #define OP(name, expr)                                   \
   template <class T>                                     \
   struct OP_##name {                                     \
@@ -73,9 +68,8 @@ __device__ T Gelu(T x) {
   OP(name, expr)                                \
   CONTRIB_BINARY_ELEMENTWISE_IMPL(name)
 
-CONTRIB_BINARY_OP_NAME_EXPR(AddGeluFusion, Gelu(a + b))
-
 CONTRIB_BINARY_OPS()
+
 #undef CONTRIB_BINARY_OP_NAME_EXPR
 
 // create specialized impl

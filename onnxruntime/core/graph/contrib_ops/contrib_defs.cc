@@ -1946,11 +1946,11 @@ inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)D
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(AddGeluFusion)
       .SetDomain(kMSDomain)
-      .SinceVersion(7)
+      .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("AddGeluFusion fuses Add+Gelu. The fused Add op is the parent node of the fused Gelu.")
       .Input(0, "A", "The input data as Tensor.", "T")
-      .Input(0, "B", "The input data as Tensor.", "T")
+      .Input(1, "B", "The input data as Tensor.", "T")
       .Output(0, "C", "The output.", "T")
       .TypeConstraint(
           "T",
