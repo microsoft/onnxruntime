@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "gather_nd.h"
-#include "core/framework/utils.h"
 
 namespace onnxruntime {
 
@@ -72,7 +71,7 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
   const int64_t offset_count = indices_shape.Size() / last_indices_dimension;  // Times to copy
   p.element_offsets.assign(offset_count, 0LL);
 
-  if (utils::IsDataTypeString(input_tensor->DataType())) {
+  if (input_tensor->IsDataTypeString()) {
     p.input_str_base = static_cast<const std::string*>(input_tensor->DataRaw());
     p.output_str_base = static_cast<std::string*>(output_tensor->MutableDataRaw());
   } else {
@@ -107,9 +106,7 @@ template Status GatherNDBase::PrepareForCompute<int64_t>(OpKernelContext*, Prepa
 
 Status GatherND::Compute(OpKernelContext* context) const {
   Prepare p;
-  auto prim_type = context->Input<Tensor>(1)->DataType()->AsPrimitiveDataType();
-  ORT_RETURN_IF_NOT(prim_type != nullptr, "GatherND Invalid input datatype");
-  ORT_RETURN_IF_ERROR(utils::IsPrimitiveDataType<int32_t>(prim_type)
+  ORT_RETURN_IF_ERROR(context->Input<Tensor>(1)->IsDataType<int32_t>()
                           ? PrepareForCompute<int32_t>(context, p)
                           : PrepareForCompute<int64_t>(context, p));
 

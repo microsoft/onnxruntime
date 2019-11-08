@@ -4,7 +4,6 @@
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
 #include "core/framework/op_kernel.h"
-#include "core/framework/utils.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
@@ -89,8 +88,8 @@ Status Sign::Compute(OpKernelContext* ctx) const {
   auto input = ctx->Input<Tensor>(0);
   auto output = ctx->Output(0, input->Shape());
 
-  auto dtype = input->DataType()->AsPrimitiveDataType();
-  switch (dtype->GetDataType()) {
+  auto dtype = input->GetElementType();
+  switch (dtype) {
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
       SignBFloat16(input, output);
       break;
@@ -100,7 +99,7 @@ Status Sign::Compute(OpKernelContext* ctx) const {
     default:
       utils::MLTypeCallDispatcher<CallSignImpl, float, double, int8_t, uint8_t,
                                   int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
-          t_disp(dtype->GetDataType());
+          t_disp(dtype);
       t_disp.Invoke(input, output);
       break;
   }

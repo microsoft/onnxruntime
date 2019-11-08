@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/compress.h"
 #include "core/providers/common.h"
 using namespace ::onnxruntime::common;
@@ -67,7 +66,7 @@ Status Compress::Compute(OpKernelContext* ctx) const {
   const auto* input_data = static_cast<const uint8_t*>(input_tensor->DataRaw());
   auto* output_data = static_cast<uint8_t*>(output_tensor->MutableDataRaw());
   auto element_bytes = input_tensor->DataType()->Size();
-  bool is_string_type = utils::IsDataTypeString(input_tensor->DataType());
+  bool is_string_type = input_tensor->IsDataTypeString();
   int64_t output_index = 0;
 
   if (has_axis_) {

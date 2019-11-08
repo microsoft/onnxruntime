@@ -265,16 +265,13 @@ static Status CreateOutputTensorFromTensorShape(OpKernelContext* ctx, const Tens
 }
 
 static TensorProto::DataType InferDataType(const Tensor& tensor) {
-  auto tensor_type = tensor.DataType()->AsPrimitiveDataType();
+  auto elem_type = tensor.GetElementType();
   int dtype = TensorProto_DataType_UNDEFINED;
 
-  if (tensor_type != nullptr) {
-    auto dt_type = tensor_type->GetDataType();
-    if (TensorProto_DataType_FLOAT == dt_type || TensorProto_DataType_DOUBLE == dt_type) {
-      dtype = dt_type;
-     } else {
-      // unsupported. return UNDEFINED
-    }
+  if (TensorProto_DataType_FLOAT == elem_type || TensorProto_DataType_DOUBLE == elem_type) {
+    dtype = elem_type;
+    } else {
+    // unsupported. return UNDEFINED
   }
   return static_cast<TensorProto::DataType>(dtype);
 }

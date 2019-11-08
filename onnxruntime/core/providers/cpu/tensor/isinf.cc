@@ -4,7 +4,6 @@
 #include "core/framework/op_kernel.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
-#include "core/framework/utils.h"
 #include "core/util/math_cpuonly.h"
 
 #include <cmath>

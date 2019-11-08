@@ -3,7 +3,6 @@
 
 #include "topk.h"
 #include "topk_impl.h"
-#include "core/framework/utils.h"
 
 namespace onnxruntime {
 namespace cuda {

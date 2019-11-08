@@ -3,7 +3,6 @@
 
 #include "gather_elements.h"
 #include "onnxruntime_config.h"
-#include "core/framework/utils.h"
 
 namespace onnxruntime {
 
@@ -262,7 +261,7 @@ Status GatherElements::Compute(OpKernelContext* context) const {
     return Status::OK();
 
 
-  if (utils::IsDataTypeString(input_data_type))
+  if (input_tensor->IsDataTypeString())
     core_impl<true, std::string>(input_tensor, indices_tensor, output_tensor, axis);
 
   else

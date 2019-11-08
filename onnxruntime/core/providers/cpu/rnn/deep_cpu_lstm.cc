@@ -11,7 +11,6 @@
 
 #include "core/platform/threadpool.h"
 #include "core/framework/op_kernel_context_internal.h"
-#include "core/framework/utils.h"
 
 #include "core/providers/cpu/rnn/deep_cpu_lstm.h"
 

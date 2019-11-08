@@ -3,7 +3,6 @@
 
 #include "gather.h"
 #include "gather_impl.h"
-#include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/common.h"
 

@@ -4,7 +4,6 @@
 #include "core/providers/cpu/tensor/concat.h"
 #include "core/providers/common.h"
 #include "core/framework/TensorSeq.h"
-#include "core/framework/utils.h"
 
 namespace onnxruntime {
 
@@ -147,7 +146,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
   }
 
   // Make note if the input Tensors of type 'string'
-  p.is_string_type = utils::IsDataTypeString(p.inputs[0].tensor->DataType());
+  p.is_string_type = p.inputs[0].tensor->IsDataTypeString();
 
   return Status::OK();
 }

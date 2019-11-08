@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensorprotoutils.h"
-#include "core/framework/utils.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "range.h"
 #include "range_impl.h"

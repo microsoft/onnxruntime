@@ -69,5 +69,18 @@ struct OrtValue {
   onnxruntime::FencePtr fence_;
 };
 
+template <>
+inline const onnxruntime::Tensor& OrtValue::Get<onnxruntime::Tensor>() const {
+  ORT_ENFORCE(IsTensor(), "Trying to get a Tensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
+  return *static_cast<onnxruntime::Tensor*>(data_.get());
+}
+
+template <>
+inline onnxruntime::Tensor* OrtValue::GetMutable<onnxruntime::Tensor>() {
+  ORT_ENFORCE(IsTensor(), "Trying to get a Tensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
+  return static_cast<onnxruntime::Tensor*> (data_.get());
+}
+
+
 //TODO: remove the following line
 #define MLValue OrtValue

@@ -5,7 +5,6 @@
 
 #include "core/codegen/mti/tensor/tile.h"
 #include "core/framework/op_kernel_info.h"
-#include "core/framework/utils.h"
 #include "core/providers/common.h"
 #include "core/providers/nuphar/compiler/nuphar_codegen_ctx.h"
 

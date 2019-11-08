@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel_context_internal.h"
-#include "core/framework/utils.h"
 #include "core/providers/cpu/math/matmul_integer.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/qmath.h"

@@ -1,5 +1,7 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "range.h"
-#include <core/framework/utils.h>
 
 #include <cmath>
 
@@ -93,9 +95,9 @@ struct CallRangeImpl {
 Status Range::Compute(OpKernelContext* ctx) const {
   const auto* input_tensor = ctx->Input<Tensor>(0);
   if (input_tensor == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
-  auto data_type = input_tensor->DataType()->AsPrimitiveDataType();
-  ORT_ENFORCE(data_type != nullptr, "Tensor is expected to have primitive data type");
-  utils::MLTypeCallDispatcherRet<Status, range_internal::CallRangeImpl, int32_t, float, int64_t, double, int16_t> t_disp(data_type->GetDataType());
+  utils::MLTypeCallDispatcherRet<Status, range_internal::CallRangeImpl,
+                                 int32_t, float, int64_t, double, int16_t>
+      t_disp(input_tensor->GetElementType());
   return t_disp.Invoke(ctx);
 }
 

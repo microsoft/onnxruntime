@@ -479,8 +479,10 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
   std::vector<int64_t> tensor_shape_vec = GetTensorShapeFromTensorProto(tensor_proto);
   // Note: We permit an empty tensor_shape_vec, and treat it as a scalar (a tensor of size 1).
   TensorShape tensor_shape{tensor_shape_vec};
-  value.Init(new Tensor(type, tensor_shape, tensor_data, allocator), DataTypeImpl::GetType<Tensor>(),
-             DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  value.Init(new Tensor(type, tensor_shape, tensor_data, allocator), ml_tensor,
+             ml_tensor->GetDeleteFunc());
   return Status::OK();
 }
 
@@ -513,12 +515,6 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
 
 ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
   return CApiElementTypeFromProtoType(tensor_proto.data_type());
-}
-
-TensorProto::DataType GetTensorProtoType(const Tensor& tensor) {
-  auto tensor_prim_type = tensor.DataType()->AsPrimitiveDataType();
-  assert(tensor_prim_type != nullptr);
-  return static_cast<TensorProto::DataType>(tensor_prim_type->GetDataType());
 }
 
 ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name,

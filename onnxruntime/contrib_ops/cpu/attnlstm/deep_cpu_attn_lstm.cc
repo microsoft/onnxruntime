@@ -38,8 +38,7 @@ DeepCpuAttnLstmOp::Compute(OpKernelContext* context) const {
   Status status;
   // auto& logger = context->Logger();
 
-  auto prim_type = X.DataType()->AsPrimitiveDataType();
-  switch (prim_type->GetDataType()) {
+  switch (X.GetElementType()) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       status = ComputeImpl<float>(*context);
       break;

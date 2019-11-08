@@ -4,7 +4,6 @@
 //https://github.com/onnx/onnx/blob/master/docs/Operators.md#Gather
 #include "core/providers/cpu/tensor/gather.h"
 #include "core/common/common.h"
-#include "core/framework/utils.h"
 
 namespace onnxruntime {
 
@@ -99,7 +98,7 @@ Status Gather::Compute(OpKernelContext* context) const {
 
   const TensorShape& input_data_shape = p.input_tensor->Shape();
 
-  bool is_string_type = utils::IsDataTypeString(p.input_tensor->DataType());
+  bool is_string_type = p.input_tensor->IsDataTypeString();
 
   const size_t element_bytes = p.input_tensor->DataType()->Size();
   const int64_t block = input_data_shape.SizeFromDimension(p.axis + 1);

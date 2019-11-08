@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "batch_norm.h"
-#include "core/framework/utils.h"
 #include "core/providers/common.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cpu/nn/batch_norm_helper.h"

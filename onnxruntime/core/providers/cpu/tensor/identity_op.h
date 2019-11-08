@@ -12,7 +12,6 @@
 #pragma warning(pop)
 #endif
 #include "core/framework/op_kernel.h"
-#include "core/framework/utils.h"
 
 namespace onnxruntime {
 

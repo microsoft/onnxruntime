@@ -11,7 +11,6 @@
 
 #include "gsl/gsl"
 #include "core/providers/cpu/tensor/tile.h"
-#include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 
 #ifdef _MSC_VER

@@ -4,7 +4,6 @@
 //https://github.com/onnx/onnx/blob/master/docs/Operators.md#Scatter
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/framework/utils.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {

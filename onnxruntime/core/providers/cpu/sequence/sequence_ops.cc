@@ -5,7 +5,6 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/framework/TensorSeq.h"
-#include "core/framework/utils.h"
 #include "core/providers/common.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
@@ -52,7 +51,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 static int64_t GetSeqIdx(const Tensor& idx_tensor) {
   int64_t seq_idx = INT_MAX;
-  auto idx_tensor_dtype = utils::GetTensorProtoType(idx_tensor);
+  auto idx_tensor_dtype = idx_tensor.GetElementType();
   switch (idx_tensor_dtype) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
       const auto* idx_data = idx_tensor.Data<int32_t>();

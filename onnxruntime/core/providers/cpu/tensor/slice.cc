@@ -3,7 +3,6 @@
 
 #include "core/providers/cpu/tensor/slice.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/framework/utils.h"
 #include "core/providers/common.h"
 #include <unordered_map>
 #include <limits>

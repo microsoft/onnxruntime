@@ -5,7 +5,6 @@
 #include "onnx/defs/schema.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
-#include "core/framework/utils.h"
 
 #include <functional>
 #include <unordered_set>

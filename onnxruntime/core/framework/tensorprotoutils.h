@@ -34,8 +34,6 @@ TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShape
 common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
                                     const ONNX_NAMESPACE::TensorProto& input, const MemBuffer& m, OrtValue& value,
                                     OrtCallback& deleter);
-// This function doesn't support string tensors
-ONNX_NAMESPACE::TensorProto::DataType GetTensorProtoType(const Tensor& tensor);
 
 /** Creates a TensorProto from a Tensor.
     @param[in] tensor the Tensor whose data and shape will be used to create the TensorProto.

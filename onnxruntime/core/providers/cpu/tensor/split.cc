@@ -3,7 +3,6 @@
 
 #include "core/providers/cpu/tensor/split.h"
 #include "core/providers/common.h"
-#include "core/framework/utils.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 

@@ -4,7 +4,6 @@
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "core/framework/op_kernel.h"
-#include "core/framework/utils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "onnx/defs/schema.h"
 

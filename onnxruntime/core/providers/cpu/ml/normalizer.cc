@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/ml/normalizer.h"
-#include "core/framework/utils.h"
 
 #include <algorithm>
 #include "gsl/gsl"

@@ -63,7 +63,7 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   size_t element_size = input_tensor->DataType()->Size();
   MLDataType Tin_type = indices_tensor->DataType();
 
-  if (Tin_type == DataTypeImpl::GetType<int32_t>()) {
+  if (indices_tensor->IsDataType<int32_t>()) {
     const int32_t* indices_data = indices_tensor->template Data<int32_t>();
     GatherElementsImpl<int32_t>(
         input_rank,
@@ -78,7 +78,7 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
         output_tensor->MutableDataRaw(),
         element_size);
     return Status::OK();
-  } else if (Tin_type == DataTypeImpl::GetType<int64_t>()) {
+  } else if (indices_tensor->IsDataType<int64_t>()) {
     const int64_t* indices_data = indices_tensor->template Data<int64_t>();
     GatherElementsImpl<int64_t>(
         input_rank,

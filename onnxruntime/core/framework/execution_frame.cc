@@ -300,7 +300,10 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   //no memory pattern, or the pattern is not correct.
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
 
-  ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  {
+    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+    ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+  }
 
   // trace the memory allocation.
   // don't trace the memory allocation on string tensors, as it need
@@ -357,8 +360,9 @@ Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_v
                                                                  MLDataType element_type,
                                                                  const OrtMemoryInfo& location,
                                                                  const TensorShape& shape) {
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   auto p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, pBuffer, location);
-  ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
 
   return Status::OK();
 }

@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "scatter_nd.h"
-#include "core/framework/utils.h"
 
 namespace onnxruntime {
 

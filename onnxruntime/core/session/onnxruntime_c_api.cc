@@ -267,9 +267,10 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorWithDataAsOrtValue, _In_ const OrtMemor
     }
   }
   auto value = onnxruntime::make_unique<OrtValue>();
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   value->Init(tensor.release(),
-              DataTypeImpl::GetType<Tensor>(),
-              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+              ml_tensor,
+              ml_tensor->GetDeleteFunc());
   *out = value.release();
   return nullptr;
   API_IMPL_END
@@ -333,9 +334,10 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorAsOrtValue, _Inout_ OrtAllocator* alloc
     }
   }
   auto value = onnxruntime::make_unique<OrtValue>();
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   value->Init(tensor.release(),
-              DataTypeImpl::GetType<Tensor>(),
-              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+              ml_tensor,
+              ml_tensor->GetDeleteFunc());
   *out = value.release();
   return nullptr;
   API_IMPL_END

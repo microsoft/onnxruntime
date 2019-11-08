@@ -9,7 +9,6 @@
 #endif
 #include "core/providers/cpu/tensor/pad.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/framework/utils.h"
 
 namespace onnxruntime {
 

@@ -3,7 +3,6 @@
 
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include <unsupported/Eigen/SpecialFunctions>
-#include <core/framework/utils.h>
 #include "core/util/math.h"
 #include "core/mlas/inc/mlas.h"
 
@@ -1122,29 +1121,26 @@ Status Mod::Compute(OpKernelContext* context) const {
   using namespace mod_internal;
 
   namespace on = ONNX_NAMESPACE;
-  auto p_type = dtype->AsPrimitiveDataType();
-  if (p_type != nullptr) {
-    auto dt_type = p_type->GetDataType();
-    switch (dt_type) {
-      case on::TensorProto_DataType_FLOAT:
-        ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
-        BroadCastFMod<float>(X, Y, context);
-        break;
-      case on::TensorProto_DataType_DOUBLE:
-        ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
-        BroadCastFMod<double>(X, Y, context);
-        break;
-      case on::TensorProto_DataType_FLOAT16:
-        ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
-        BroadCastMFloat16FMod(X, Y, context);
-        break;
-      default:
-        utils::MLTypeCallDispatcher<mod_internal::CallModImpl, uint8_t, int8_t, uint16_t, int16_t,
-                                    uint32_t, int32_t, uint64_t, int64_t>
-            t_disp(dt_type);
-        t_disp.Invoke(fmod_, X, Y, context);
-        break;
-    }
+  auto dt_type = X.GetElementType();
+  switch (dt_type) {
+    case on::TensorProto_DataType_FLOAT:
+      ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
+      BroadCastFMod<float>(X, Y, context);
+      break;
+    case on::TensorProto_DataType_DOUBLE:
+      ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
+      BroadCastFMod<double>(X, Y, context);
+      break;
+    case on::TensorProto_DataType_FLOAT16:
+      ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
+      BroadCastMFloat16FMod(X, Y, context);
+      break;
+    default:
+      utils::MLTypeCallDispatcher<mod_internal::CallModImpl, uint8_t, int8_t, uint16_t, int16_t,
+                                  uint32_t, int32_t, uint64_t, int64_t>
+          t_disp(dt_type);
+      t_disp.Invoke(fmod_, X, Y, context);
+      break;
   }
   return s;
 }

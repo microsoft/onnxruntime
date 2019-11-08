@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 #include "core/platform/threadpool.h"
 #include "core/framework/op_kernel_context_internal.h"
-#include "core/framework/utils.h"
 
 // there's no way to use a raw pointer as the copy destination with std::copy_n
 // (which gsl::copy uses with span::data() which returns a raw pointer) with the 14.11 toolset

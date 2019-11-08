@@ -5,7 +5,6 @@
 
 #include <map>
 #include "gsl/gsl"
-#include "core/framework/utils.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {

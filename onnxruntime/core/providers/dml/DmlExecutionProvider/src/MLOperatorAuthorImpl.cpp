@@ -5,7 +5,6 @@
 
 #include "core/framework/customregistry.h"
 #include "core/framework/execution_frame.h"
-#include "core/framework/utils.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
 
