@@ -7,6 +7,7 @@
 #include <mutex>
 #include <assert.h>
 #include <cuda_runtime.h>
+#include <cuda_fp16.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 
@@ -153,6 +154,14 @@ __device__ __inline__ double _Tanh(double a) { return tanh(a); }
 
 template <>
 __device__ __inline__ half _Tanh(half a) { return half(tanhf((float)a)); }
+
+template <>
+__device__ __inline__ half2 _Tanh(half2 a) {
+  float2 tmp = (__half22float2(a));
+  tmp.x = tanhf(tmp.x);
+  tmp.y = tanhf(tmp.y);
+  return __float22half2_rn(tmp);
+}
 
 template <typename T>
 __device__ __inline__ T _Pow(T a, T b);
