@@ -94,14 +94,12 @@ class Tensor final {
      Returns the data type enum contant
   */
   int32_t GetElementType() const {
-    ORT_ENFORCE(dtype_ != nullptr, "Tensor not initialized");
-    return dtype_->AsPrimitiveDataType()->GetDataType();
+    return dtype_->GetDataType();
   }
 
   // Check if contains string data. This is a separate
   // interface bc it is frequently used.
   bool IsDataTypeString() const {
-    ORT_ENFORCE(dtype_ != nullptr, "Tensor not initialized");
     return utils::IsPrimitiveDataType<std::string>(dtype_);
   }
 
@@ -215,7 +213,7 @@ class Tensor final {
   AllocatorPtr buffer_deleter_;
 
   TensorShape shape_;
-  MLDataType dtype_;
+  const PrimitiveDataTypeBase* dtype_;
   OrtMemoryInfo alloc_info_;
   int64_t byte_offset_;
 };

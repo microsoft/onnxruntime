@@ -23,13 +23,13 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
   int64_t shape_size = shape.Size();
   if (shape_size < 0 || static_cast<uint64_t>(shape_size) >= std::numeric_limits<size_t>::max())
     ORT_THROW("shape.Size() must >=0");
-    
+
   void* p_data = nullptr;
   if (shape_size > 0) {
     size_t len = 0;
     if (!allocator->CalcMemSizeForArray(static_cast<size_t>(shape_size), p_type->Size(), &len))
       ORT_THROW("tensor failed memory size calculation");
-    len +=  offset;
+    len += offset;
     p_data = allocator->Alloc(len);
   }
 
@@ -51,7 +51,9 @@ size_t Tensor::SizeInBytes() const {
 void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data, AllocatorPtr deleter, int64_t offset) {
   int64_t shape_size = shape.Size();
   if (shape_size < 0) ORT_THROW("shape.Size() must >=0");
-  dtype_ = p_type;
+  dtype_ = p_type->AsPrimitiveDataType();
+  ORT_ENFORCE(dtype_ != nullptr, "Tensor is expected to contain one of the primitive data types. Got: ",
+              DataTypeImpl::ToString(p_type));
   shape_ = shape;
   p_data_ = p_raw_data;
   // if caller passed in a deleter, that means this tensor own this buffer
@@ -75,8 +77,8 @@ Tensor::Tensor(Tensor&& other) noexcept
       dtype_(other.dtype_),
       alloc_info_(other.alloc_info_),
       byte_offset_(other.byte_offset_) {
-  other.dtype_ = DataTypeImpl::GetType<float>();
-  other.shape_ = TensorShape(vector<int64_t>(1, 0));
+  other.dtype_ = DataTypeImpl::GetType<float>()->AsPrimitiveDataType();
+  other.shape_ = TensorShape(std::vector<int64_t>(1, 0));
   other.p_data_ = nullptr;
   other.buffer_deleter_ = nullptr;
   other.byte_offset_ = 0;
@@ -93,8 +95,8 @@ Tensor& Tensor::operator=(Tensor&& other) noexcept {
     p_data_ = other.p_data_;
     buffer_deleter_ = other.buffer_deleter_;
 
-    other.dtype_ = DataTypeImpl::GetType<float>();
-    other.shape_ = TensorShape(vector<int64_t>(1, 0));
+    other.dtype_ = DataTypeImpl::GetType<float>()->AsPrimitiveDataType();
+    other.shape_ = TensorShape(std::vector<int64_t>(1, 0));
     other.p_data_ = nullptr;
     other.byte_offset_ = 0;
     other.buffer_deleter_ = nullptr;

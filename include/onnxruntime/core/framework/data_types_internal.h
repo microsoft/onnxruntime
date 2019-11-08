@@ -7,9 +7,9 @@
 #include <stdint.h>
 #include <string>
 
-#include "onnx/onnx_pb.h"
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
+#include "core/graph/onnx_protobuf.h"
 
 
 namespace onnxruntime {
@@ -234,7 +234,6 @@ template <class Ret>
 struct UnsupportedTypeDefaultPolicy {
   Ret operator()(int32_t dt_type) const {
     ORT_THROW("Unsupported data type: ", dt_type);
-    // return Ret();
   }
 };
 
