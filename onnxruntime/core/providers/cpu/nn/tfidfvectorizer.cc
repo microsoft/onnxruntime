@@ -586,17 +586,11 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
 
   auto X = ctx->Input<Tensor>(0);
 
-  auto prim_type = X->DataType()->AsPrimitiveDataType();
-  if (prim_type == nullptr) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-               "Invalid type of the input argument");
-  }
-
-  if (utils::IsPrimitiveDataType<int32_t>(prim_type)) {
+  if (X->IsDataType<int32_t>()) {
     s = ComputeImpl<int32_t>(ctx);
-  } else if (utils::IsPrimitiveDataType<int64_t>(prim_type)) {
+  } else if (X->IsDataType<int64_t>()) {
     s = ComputeImpl<int64_t>(ctx);
-  } else if (utils::IsDataTypeString(prim_type)) {
+  } else if (X->IsDataTypeString()) {
     s = ComputeImpl<std::string>(ctx);
   } else {
     s = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,

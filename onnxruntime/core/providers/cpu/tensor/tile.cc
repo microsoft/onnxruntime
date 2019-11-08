@@ -120,29 +120,27 @@ Status Tile::Compute(OpKernelContext* ctx) const {
   static_assert(sizeof(float) == sizeof(int32_t), "Float and Int32 are of different sizes");
   static_assert(sizeof(double) == sizeof(int64_t), "Double and Int64 are of different sizes");
 
-  auto dtype = input_tensor.DataType()->AsPrimitiveDataType();
-
-  if (utils::IsPrimitiveDataType<float>(dtype) ||
-      utils::IsPrimitiveDataType<int32_t>(dtype) ||
-      utils::IsPrimitiveDataType<uint32_t>(dtype))
+  if (input_tensor.IsDataType<float>() ||
+      input_tensor.IsDataType<int32_t>() ||
+      input_tensor.IsDataType<uint32_t>())
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(float));
 
-  if (utils::IsPrimitiveDataType<double>(dtype) || utils::IsPrimitiveDataType<int64_t>(dtype) ||
-      utils::IsPrimitiveDataType<uint64_t>(dtype))
+  if (input_tensor.IsDataType<double>() || input_tensor.IsDataType<int64_t>() ||
+      input_tensor.IsDataType<uint64_t>())
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(double));
 
-  else if (utils::IsPrimitiveDataType<int8_t>(dtype) ||
-           utils::IsPrimitiveDataType<uint8_t>(dtype))
+  else if (input_tensor.IsDataType<int8_t>() ||
+           input_tensor.IsDataType<uint8_t>())
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(int8_t));
 
-  if (utils::IsPrimitiveDataType<int16_t>(dtype) || utils::IsPrimitiveDataType<uint16_t>(dtype))
+  if (input_tensor.IsDataType<int16_t>() || input_tensor.IsDataType<uint16_t>())
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(int16_t));
 
-  else if (utils::IsPrimitiveDataType<bool>(dtype))
+  else if (input_tensor.IsDataType<bool>())
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(bool));
 
   // TODO: Support 'string' and 'float16' types for completeness
   else
-    ORT_THROW("Tile doesn't have an implementation yet for the type: ", dtype);
+    ORT_THROW("Tile doesn't have an implementation yet for the type: ", input_tensor.DataType());
 }
 }  // namespace onnxruntime

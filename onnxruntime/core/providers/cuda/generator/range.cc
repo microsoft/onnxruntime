@@ -82,8 +82,6 @@ static Status ComputeRange(OpKernelContext* ctx) {
 
 namespace cuda_range_internal {
 
-// Workaround GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226
-// can not specify lambda directly
 template <class T>
 struct CallCudaRangeImpl {
   Status operator()(OpKernelContext* ctx) const {
@@ -99,11 +97,9 @@ Status Range::ComputeInternal(OpKernelContext* ctx) const {
     return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   }
 
-  auto data_type = input_tensor->DataType()->AsPrimitiveDataType();
-  ORT_RETURN_IF_NOT(data_type != nullptr, "Range op: Unsupported tensor data type:", data_type);
   utils::MLTypeCallDispatcherRet<Status, cuda_range_internal::CallCudaRangeImpl, int32_t,
                                  float, int64_t, double, int16_t>
-      t_disp(data_type->GetDataType());
+      t_disp(input_tensor->GetElementType());
   return t_disp.Invoke(ctx);
 }
 

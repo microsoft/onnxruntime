@@ -861,11 +861,10 @@ OrtStatus* OrtGetValueImplSeqOfTensors(const OrtValue* p_ml_value, int index, Or
   auto& data = p_ml_value->Get<T>();
   auto& one_tensor = data.tensors.at(index);
 
-  auto tensor_elem_type = one_tensor.DataType()->AsPrimitiveDataType();
   using namespace c_api_internal;
   utils::MLTypeCallDispatcherRet<OrtStatus*, CallGetValueImpl, float, double, MLFloat16, BFloat16, bool, std::string,
                                  int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
-      t_disp(tensor_elem_type->GetDataType());
+      t_disp(one_tensor.GetElementType());
   return t_disp.template InvokeWithUnsupportedPolicy<UnsupportedReturnFailStatus>(allocator, one_tensor, out);
 }
 
@@ -1047,16 +1046,10 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t 
                                    "Sequences must have tensors of the same data type. There was at least one tensor in the input that was different.");
     }
 
-    auto prim_type = tensor_elem_type->AsPrimitiveDataType();
-    if (prim_type == nullptr) {
-      return OrtApis::CreateStatus(ORT_FAIL,
-                                   "OrtCreateValueImplSeqHelper: Expecting a primitive data type");
-    }
-
     OrtStatus* st{};
     utils::MLTypeCallDispatcherRet<OrtStatus*, CallCreateValueImpl, bool, float, double,
                                    MLFloat16, BFloat16, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
-        t_disp(prim_type->GetDataType());
+        t_disp(one_tensor.GetElementType());
 
     st = t_disp.InvokeWithUnsupportedPolicy<UnsupportedReturnFailStatus>(one_tensor, seq_ptr->tensors[idx]);
 

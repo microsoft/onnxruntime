@@ -435,15 +435,14 @@ static int64_t GetScalarSplitInput(const Tensor& tensor) {
 static void GetSplitSizesInput(const Tensor& tensor, std::vector<int64_t>& split_sizes) {
   auto num_elems = tensor.Shape().Size();
   split_sizes.reserve(num_elems);
-  auto data_type = tensor.DataType();
-  if (data_type == DataTypeImpl::GetType<int32_t>()) {
+  if (tensor.IsDataType<int32_t>()) {
     const int32_t* data_ptr = tensor.Data<int32_t>();
     std::copy(data_ptr, data_ptr + num_elems, std::back_inserter(split_sizes));
-  } else if (data_type == DataTypeImpl::GetType<int64_t>()) {
+  } else if (tensor.IsDataType<int64_t>()) {
     const int64_t* data_ptr = tensor.Data<int64_t>();
     std::copy(data_ptr, data_ptr + num_elems, std::back_inserter(split_sizes));
   } else {
-    ORT_THROW("Invalid data type for split tensor ", DataTypeImpl::ToString(data_type));
+    ORT_THROW("Invalid data type for split tensor ", DataTypeImpl::ToString(tensor.DataType()));
   }
 }
 

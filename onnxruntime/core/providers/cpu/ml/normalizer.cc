@@ -179,9 +179,8 @@ struct Normalizer::CallNormalizerImpl {
 Status Normalizer::Compute(OpKernelContext* context) const {
   const auto* input_tensor_ptr = context->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor_ptr != nullptr);
-  auto input_type = input_tensor_ptr->DataType()->AsPrimitiveDataType();
 
-  utils::MLTypeCallDispatcher<CallNormalizerImpl, float, double, int64_t, int32_t> t_disp(input_type->GetDataType());
+  utils::MLTypeCallDispatcher<CallNormalizerImpl, float, double, int64_t, int32_t> t_disp(input_tensor_ptr->GetElementType());
   t_disp.Invoke(this, context);
   return Status::OK();
 }
