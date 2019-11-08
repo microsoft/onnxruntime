@@ -471,7 +471,7 @@ namespace Microsoft.ML.OnnxRuntime
                     width = sizeof(sbyte);
                     break;
                 case TensorElementType.String:
-                    type = typeof(byte);
+                    type = typeof(string);
                     width = sizeof(byte);
                     break;
                 case TensorElementType.Bool:
