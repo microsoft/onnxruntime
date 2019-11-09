@@ -96,7 +96,7 @@ class ONNXModelsTest : public ::testing::TestWithParam<ORTCHAR_T> {
   // TestWithParam<T>.
  public:
   std::basic_string<ORTCHAR_T> GetModelFileName() const {
-    std::basic_ostringstream<ORT_TSTR> oss;
+    std::basic_ostringstream<ORTCHAR_T> oss;
     oss << ORT_TSTR("../models/opset7/test_") << GetParam() << ORT_TSTR("/model.onnx");
     return oss.str();
   }
