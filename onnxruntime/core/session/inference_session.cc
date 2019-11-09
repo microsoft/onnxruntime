@@ -56,6 +56,8 @@
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/util/thread_utils.h"
 
+#include "single_include/nlohmann/json.hpp"
+
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
