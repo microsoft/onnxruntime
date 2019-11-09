@@ -30,6 +30,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
+  auto group = conv_attrs_.group == -1 ? X->Shape()[1] / W->Shape()[1] : conv_attrs_.group;
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
 
   std::vector<int64_t> kernel_shape;
@@ -59,10 +60,10 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   const int64_t input_image_size = input_shape.Size();
   const int64_t output_image_size = output_shape.Size();
   const int64_t kernel_size = TensorShape(kernel_shape).Size();
-  const int64_t X_offset = C / conv_attrs_.group * input_image_size;
-  const int64_t Y_offset = Y->Shape().Size() / Y->Shape()[0] / conv_attrs_.group;
-  const int64_t W_offset = W->Shape().Size() / conv_attrs_.group;
-  const int64_t kernel_dim = C / conv_attrs_.group * kernel_size;
+  const int64_t X_offset = C / group * input_image_size;
+  const int64_t Y_offset = Y->Shape().Size() / Y->Shape()[0] / group;
+  const int64_t W_offset = W->Shape().Size() / group;
+  const int64_t kernel_dim = C / group * kernel_size;
   const int64_t col_buffer_size = kernel_dim * output_image_size;
 
   AllocatorPtr alloc;
@@ -83,11 +84,11 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
 
   for (int image_id = 0; image_id < N; ++image_id) {
-    for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
+    for (int group_id = 0; group_id < group; ++group_id) {
       if (Is2DKernel) {
         math::Im2col<T, CPUMathUtil, StorageOrder::NCHW>(
             Xdata + group_id * X_offset,
-            C / conv_attrs_.group,
+            C / group,
             input_shape[0],
             input_shape[1],
             kernel_shape[0],
@@ -121,7 +122,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       math::Gemm<T>(
           CblasNoTrans,
           CblasNoTrans,
-          M / conv_attrs_.group,
+          M / group,
           output_image_size,
           kernel_dim,
           1,
@@ -138,8 +139,8 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       Ymatrix.rowwise() += Bvec.transpose();
     }
 
-    Xdata += X_offset * conv_attrs_.group;
-    Ydata += Y_offset * conv_attrs_.group;
+    Xdata += X_offset * group;
+    Ydata += Y_offset * group;
   }
 
   return Status::OK();
@@ -153,6 +154,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
+  auto group = conv_attrs_.group == -1 ? X->Shape()[1] / W->Shape()[1] : conv_attrs_.group;
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
 
   std::vector<int64_t> kernel_shape;
@@ -198,15 +200,15 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     MlasConvPrepare(&Parameters,
                     kernel_rank,
                     static_cast<size_t>(N),
-                    static_cast<size_t>(conv_attrs_.group),
-                    static_cast<size_t>(C / conv_attrs_.group),
+                    static_cast<size_t>(group),
+                    static_cast<size_t>(C / group),
                     input_shape.GetDims().data(),
                     kernel_shape.data(),
                     dilations.data(),
                     pads.data(),
                     strides.data(),
                     output_shape.GetDims().data(),
-                    static_cast<size_t>(M / conv_attrs_.group),
+                    static_cast<size_t>(M / group),
                     &activation_,
                     &WorkingBufferSize,
                     tp);
@@ -225,10 +227,10 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     const int64_t input_image_size = input_shape.Size();
     const int64_t output_image_size = output_shape.Size();
     const int64_t kernel_size = TensorShape(kernel_shape).Size();
-    const int64_t X_offset = C / conv_attrs_.group * input_image_size;
-    const int64_t Y_offset = Y->Shape().Size() / Y->Shape()[0] / conv_attrs_.group;
-    const int64_t W_offset = W->Shape().Size() / conv_attrs_.group;
-    const int64_t kernel_dim = C / conv_attrs_.group * kernel_size;
+    const int64_t X_offset = C / group * input_image_size;
+    const int64_t Y_offset = Y->Shape().Size() / Y->Shape()[0] / group;
+    const int64_t W_offset = W->Shape().Size() / group;
+    const int64_t kernel_dim = C / group * kernel_size;
     const int64_t col_buffer_size = kernel_dim * output_image_size;
 
     auto col_data = alloc->Alloc(sizeof(float) * col_buffer_size);
@@ -241,7 +243,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                             output_shape.GetDims().end());
 
     for (int image_id = 0; image_id < N; ++image_id) {
-      for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
+      for (int group_id = 0; group_id < group; ++group_id) {
         math::Im2colNd<float, CPUMathUtil, StorageOrder::NCHW>()(
             Xdata + group_id * X_offset,
             image_shape.GetDims().data(),
@@ -259,7 +261,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
         math::Gemm<float>(
             CblasNoTrans,
             CblasNoTrans,
-            M / conv_attrs_.group,
+            M / group,
             output_image_size,
             kernel_dim,
             1,
@@ -272,8 +274,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
       MlasActivation(&activation_, Ydata, Bdata, M, output_image_size, output_image_size);
 
-      Xdata += X_offset * conv_attrs_.group;
-      Ydata += Y_offset * conv_attrs_.group;
+      Xdata += X_offset * group;
+      Ydata += Y_offset * group;
     }
   }
 
