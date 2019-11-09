@@ -24,7 +24,7 @@ static bool IsSupportedDataType(const Node& node) {
 }
 
 /**
-Skip Layer Normalization will fuse Add + LayerNormalization into one node
+Skip Layer Normalization will fuse Add + LayerNormalization into one node.
 */
 Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
   GraphViewer graph_viewer(graph);
@@ -34,7 +34,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     nodes_to_remove.clear();
     auto* p_add = graph.GetNode(node_index);
     if (p_add == nullptr)
-      continue;  // we removed the node as part of an earlier fusion
+      continue;  // we removed the node as part of an earlier fusion.
 
     Node& add_node = *p_add;
     ORT_RETURN_IF_ERROR(Recurse(add_node, modified, graph_level));
@@ -45,9 +45,33 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
         !IsSupportedDataType(add_node)) {
       continue;
     }
+
+    // Check the input dimensions of the "Add" node.
+    const TensorShapeProto* add_input1_shape = add_node.MutableInputDefs()[0]->Shape();
+    const TensorShapeProto* add_input2_shape = add_node.MutableInputDefs()[1]->Shape();
+
+    if (add_input1_shape == nullptr || add_input2_shape == nullptr) {
+      continue;
+    }
+    // "Add" inputs have to be 3d.
+    if (add_input1_shape->dim_size() != 3 || add_input2_shape->dim_size() != 3) {
+      continue;
+    }
+    // "Add" inputs have to be of same dimensions. 
+    bool isValidInput = true;
+    for (int i = 0; i < 3; i++) {
+      if (add_input1_shape->dim(i).dim_value() != add_input2_shape->dim(i).dim_value()) {
+        isValidInput = false;
+        break;
+      }
+    }
+    if (!isValidInput) {
+      continue;
+    }
+
     nodes_to_remove.push_back(add_node);
 
-    // Find "LayerNormalization" node after the "Add"
+    // Find "LayerNormalization" node after the "Add".
     Node& ln_node = *graph.GetNode(add_node.OutputNodesBegin()->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(ln_node, "LayerNormalization", {1}) ||
         ln_node.GetExecutionProviderType() != add_node.GetExecutionProviderType() ||
@@ -56,16 +80,16 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     }
     nodes_to_remove.push_back(ln_node);
 
-    // Get the inputs for the new SkipLayerNormalization node
-    const std::vector<NodeArg*> skip_layer_norm_input_defs{add_node.MutableInputDefs()[0], 
-      add_node.MutableInputDefs()[1], 
-      ln_node.MutableInputDefs()[1], 
-      ln_node.MutableInputDefs()[2]};
+    // Get the inputs for the new SkipLayerNormalization node.
+    const std::vector<NodeArg*> skip_layer_norm_input_defs{add_node.MutableInputDefs()[0],
+                                                           add_node.MutableInputDefs()[1],
+                                                           ln_node.MutableInputDefs()[1],
+                                                           ln_node.MutableInputDefs()[2]};
     Node& skip_layer_norm_node = graph.AddNode(graph.GenerateNodeName("SkipLayerNormalization"),
-                                          "SkipLayerNormalization",
-                                          "fused SkipLayerNorm subgraphs ",
-                                          skip_layer_norm_input_defs,
-                                          {}, {}, kMSDomain);
+                                               "SkipLayerNormalization",
+                                               "fused SkipLayerNorm subgraphs ",
+                                               skip_layer_norm_input_defs,
+                                               {}, {}, kMSDomain);
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     skip_layer_norm_node.SetExecutionProviderType(add_node.GetExecutionProviderType());
