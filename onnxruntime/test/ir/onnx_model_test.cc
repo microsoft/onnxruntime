@@ -7,6 +7,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
+#include "core/session/onnxruntime_c_api.h"
 #include "gtest/gtest.h"
 
 using namespace onnxruntime;
@@ -47,29 +48,17 @@ static void TestResolve(onnxruntime::Graph& graph) {
 TEST(ONNXModelsTest, squeeze_net) {
   // NOTE: this requires the current directory to be where onnxruntime_ir_UT.exe is located
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load("../models/opset8/test_squeezenet/model.onnx", model, nullptr, nullptr).IsOK());
+  ASSERT_TRUE(Model::Load(ORT_TSTR("../models/opset8/test_squeezenet/model.onnx"), model, nullptr, nullptr).IsOK());
   TestResolve(model->MainGraph());
-#ifdef _WIN32
-  // wstring version
-  std::shared_ptr<Model> model2;
-  ASSERT_TRUE(Model::Load(L"../models/opset8/test_squeezenet/model.onnx", model2, nullptr, nullptr).IsOK());
-  TestResolve(model2->MainGraph());
-#endif
 }
 #endif
 
 TEST(ONNXModelsTest, non_existing_model) {
   // NOTE: this requires the current directory to be where onnxruntime_ir_UT.exe is located
   std::shared_ptr<Model> model;
-  common::Status st = Model::Load("./testdata/non_existing_model_XXXXXX/model.onnx", model, nullptr, nullptr);
+  common::Status st = Model::Load(ORT_TSTR("./testdata/non_existing_model_XXXXXX/model.onnx"), model, nullptr, nullptr);
   ASSERT_FALSE(st.IsOK());
   ASSERT_EQ(st.Code(), common::NO_SUCHFILE);
-#ifdef _WIN32
-  // wstring version
-  std::shared_ptr<Model> model2;
-  ASSERT_FALSE(Model::Load(L"./testdata/non_existing_model_XXXXXX/model.onnx", model2, nullptr, nullptr).IsOK());
-  ASSERT_EQ(st.Code(), common::NO_SUCHFILE);
-#endif
 }
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
@@ -78,7 +67,7 @@ TEST(ONNXModelsTest1, bvlc_alexnet_1) {
   using ::google::protobuf::io::FileInputStream;
   using ::google::protobuf::io::ZeroCopyInputStream;
   int fd;
-  ASSERT_TRUE(Env::Default().FileOpenRd("../models/opset8/test_bvlc_alexnet/model.onnx", fd).IsOK());
+  ASSERT_TRUE(Env::Default().FileOpenRd(ORT_TSTR("../models/opset8/test_bvlc_alexnet/model.onnx"), fd).IsOK());
   ASSERT_TRUE(fd > 0);
   std::unique_ptr<ZeroCopyInputStream> raw_input(new FileInputStream(fd));
   std::unique_ptr<CodedInputStream> coded_input(new CodedInputStream(raw_input.get()));
@@ -92,7 +81,7 @@ TEST(ONNXModelsTest1, bvlc_alexnet_1) {
   ASSERT_TRUE(Env::Default().FileClose(fd).IsOK());
 
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load("../models/opset8/test_bvlc_alexnet/model.onnx", model, nullptr, nullptr).IsOK());
+  ASSERT_TRUE(Model::Load(ORT_TSTR("../models/opset8/test_bvlc_alexnet/model.onnx"), model, nullptr, nullptr).IsOK());
 
   // Check the graph input/output/value_info should have the same size as specified in the model file.
   EXPECT_EQ(model_proto.graph().value_info_size(), model->MainGraph().GetValueInfo().size());
@@ -101,14 +90,14 @@ TEST(ONNXModelsTest1, bvlc_alexnet_1) {
   TestResolve(model->MainGraph());
 }
 
-class ONNXModelsTest : public ::testing::TestWithParam<const char*> {
+class ONNXModelsTest : public ::testing::TestWithParam<ORTCHAR_T> {
   // You can implement all the usual fixture class members here.
   // To access the test parameter, call GetParam() from class
   // TestWithParam<T>.
  public:
-  std::string GetModelFileName() const {
-    std::ostringstream oss;
-    oss << "../models/opset7/test_" << GetParam() << "/model.onnx";
+  std::basic_string<ORTCHAR_T> GetModelFileName() const {
+    std::basic_ostringstream<ORT_TSTR> oss;
+    oss << ORT_TSTR("../models/opset7/test_") << GetParam() << ORT_TSTR("/model.onnx");
     return oss.str();
   }
 };
@@ -144,11 +133,11 @@ TEST_P(ONNXModelsTest, LoadFromProtobuf) {
 #ifndef DISABLE_CONTRIB_OPS
 INSTANTIATE_TEST_CASE_P(ONNXModelsTests,
                         ONNXModelsTest,
-                        ::testing::Values("bvlc_alexnet", "bvlc_googlenet", "bvlc_reference_caffenet", "bvlc_reference_rcnn_ilsvrc13", "densenet121", "emotion_ferplus", "inception_v1", "inception_v2", "mnist", "resnet50", "shufflenet", "squeezenet", "tiny_yolov2", "vgg19", "zfnet512"));
+                        ::testing::Values(ORT_TSTR("bvlc_alexnet"), ORT_TSTR("bvlc_googlenet"), ORT_TSTR("bvlc_reference_caffenet"), ORT_TSTR("bvlc_reference_rcnn_ilsvrc13"), ORT_TSTR("densenet121"), ORT_TSTR("emotion_ferplus"), ORT_TSTR("inception_v1"), ORT_TSTR("inception_v2"), ORT_TSTR("mnist"), ORT_TSTR("resnet50"), ORT_TSTR("shufflenet"), ORT_TSTR("squeezenet"), ORT_TSTR("tiny_yolov2"), ORT_TSTR("vgg19"), ORT_TSTR("zfnet512")));
 #else
 INSTANTIATE_TEST_CASE_P(ONNXModelsTests,
                         ONNXModelsTest,
-                        ::testing::Values("bvlc_alexnet", "bvlc_googlenet", "bvlc_reference_caffenet", "bvlc_reference_rcnn_ilsvrc13", "densenet121", "emotion_ferplus", "inception_v1", "inception_v2", "mnist", "resnet50", "shufflenet", "squeezenet", "vgg19", "zfnet512"));
+                        ::testing::Values(ORT_TSTR("bvlc_alexnet"), ORT_TSTR("bvlc_googlenet"), ORT_TSTR("bvlc_reference_caffenet"), ORT_TSTR("bvlc_reference_rcnn_ilsvrc13"), ORT_TSTR("densenet121"), ORT_TSTR("emotion_ferplus"), ORT_TSTR("inception_v1"), ORT_TSTR("inception_v2"), ORT_TSTR("mnist"), ORT_TSTR("resnet50"), ORT_TSTR("shufflenet"), ORT_TSTR("squeezenet"), ORT_TSTR("vgg19"), ORT_TSTR("zfnet512")));
 #endif
 
 #endif
@@ -159,7 +148,7 @@ INSTANTIATE_TEST_CASE_P(ONNXModelsTests,
 // for Graph::Resolve to succeed when processing the subgraph.
 TEST(ONNXModelsTest, TestIRv4NonInputInitializers) {
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load("testdata/subgraph_implicit_input_from_initializer.onnx", model, nullptr, nullptr).IsOK());
+  ASSERT_TRUE(Model::Load(ORT_TSTR("testdata/subgraph_implicit_input_from_initializer.onnx"), model, nullptr, nullptr).IsOK());
   EXPECT_TRUE(model->MainGraph().Resolve().IsOK());
 }
 
@@ -170,7 +159,7 @@ TEST(ONNXModelsTest, TestIRv4NonInputInitializers) {
 TEST(ONNXModelsTest, TestModelsWithAnOpContainingAFunctionBody) {
   std::shared_ptr<Model> model;
 
-  auto status = Model::Load("testdata/model_containing_op_with_function_body.onnx", model, nullptr, nullptr);
+  auto status = Model::Load(ORT_TSTR("testdata/model_containing_op_with_function_body.onnx"), model, nullptr, nullptr);
   EXPECT_TRUE(status.IsOK()) << status;
 
   status = model->MainGraph().Resolve();
