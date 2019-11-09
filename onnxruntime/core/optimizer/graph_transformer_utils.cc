@@ -124,7 +124,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(cpu_cuda_execution_providers));
 
       std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
-      transformers.emplace_back(onnxruntime::make_unique<GeluAddFusion>(cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<AddGeluFusion>(cuda_execution_providers));
 
 #endif
     } break;
