@@ -209,6 +209,11 @@ class OpTester {
   }
 
   template <typename T>
+  void AddOutput(const char* name, const std::vector<int64_t>& dims, const T* p_values, const size_t size) {
+    AddData(output_data_, name, dims, p_values, size);
+  }
+
+  template <typename T>
   void AddMissingOptionalOutput() {
     std::string name;  // empty == input doesn't exist
     output_data_.push_back({{name, &s_type_proto<T>}, {}, optional<float>(), optional<float>()});
@@ -275,11 +280,15 @@ class OpTester {
     kExpectFailure
   };
 
+  using CustomOutputVerifierFn =
+      std::function<void(const std::vector<OrtValue>& /*fetches*/, const std::string& /*provider_type*/)>;
+
   void Run(ExpectResult expect_result = ExpectResult::kExpectSuccess, const std::string& expected_failure_string = "",
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
-           bool sequential_execution = true);
+           bool sequential_execution = true,
+           const CustomOutputVerifierFn& custom_output_verifier = {});
 
   std::vector<MLValue> GetFetches() { return fetches_; }
 
@@ -311,7 +320,8 @@ class OpTester {
                                     const RunOptions* run_options,
                                     std::unordered_map<std::string, OrtValue> feeds,
                                     std::vector<std::string> output_names,
-                                    const std::string& provider_type);
+                                    const std::string& provider_type,
+                                    const CustomOutputVerifierFn& custom_output_verifier);
 
   const char* op_;
   std::vector<Data> input_data_;

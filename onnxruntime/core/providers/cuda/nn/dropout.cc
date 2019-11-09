@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "dropout.h"
+
 #include "core/providers/common.h"
 
 namespace onnxruntime {
@@ -34,6 +35,7 @@ Status TrainableDropout<T>::ComputeInternal(OpKernelContext* context) const {
   if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "X Input is not available.");
   const TensorShape& shape = X->Shape();
   auto X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
+  const int64_t N = shape.Size();
 
   //Get Y_data
   auto Y = context->Output(0, shape);
@@ -41,6 +43,13 @@ Status TrainableDropout<T>::ComputeInternal(OpKernelContext* context) const {
 
   //Get mask_data
   auto mask = context->Output(1, shape);
+  ORT_ENFORCE(!mask || mask->Shape().Size() == N);
+  IAllocatorUniquePtr<bool> temp_mask_buffer{};  // buffer to use if mask is not provided
+  bool* const mask_data = [this, N, mask, &temp_mask_buffer]() {
+    if (mask) return mask->MutableData<bool>();
+    temp_mask_buffer = GetScratchBuffer<bool>(N);
+    return temp_mask_buffer.get();
+  }();
 
   //Get the ratio_data
   float ratio_data = default_ratio_;
@@ -48,19 +57,9 @@ Status TrainableDropout<T>::ComputeInternal(OpKernelContext* context) const {
   if (ratio) {
     ratio_data = *(ratio->template Data<float>());
   }
-  ORT_ENFORCE(ratio_data >= 0 && ratio_data < 1);
+  ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f);
 
-  bool is_test = (ratio_data == 0);
-  if (is_test) {
-    if (Y_data != X_data) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->SizeInBytes(), cudaMemcpyDeviceToDevice));
-    }
-  } else {
-    const int64_t N = shape.Size();
-    ORT_ENFORCE(mask->Shape().Size() == N);
-    bool* mask_data = mask->template MutableData<bool>();
-    DropoutKernelImpl(N, ratio_data, generator_, X_data, Y_data, mask_data);
-  }
+  DropoutKernelImpl(N, ratio_data, generator_, X_data, Y_data, mask_data);
 
   return Status::OK();
 }
@@ -90,8 +89,10 @@ Status TrainableDropoutGrad<T>::ComputeInternal(OpKernelContext* context) const 
   auto dY = context->Input<Tensor>(0);
   const TensorShape& shape = dY->Shape();
   auto dY_data = reinterpret_cast<const CudaT*>(dY->template Data<T>());
+  const int64_t N = shape.Size();
 
   auto mask = context->Input<Tensor>(1);
+  ORT_ENFORCE(mask->Shape().Size() == N);
 
   auto dX = context->Output(0, shape);
   auto dX_data = reinterpret_cast<CudaT*>(dX->template MutableData<T>());
@@ -101,20 +102,10 @@ Status TrainableDropoutGrad<T>::ComputeInternal(OpKernelContext* context) const 
   if (ratio) {
     ratio_data = *(ratio->template Data<float>());
   }
-  ORT_ENFORCE(ratio_data >= 0 && ratio_data < 1);
+  ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f);
 
-  bool is_test = (ratio_data == 0);
-  if (is_test) {
-    if (dX_data != dY_data) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dX_data, dY_data, dX->SizeInBytes(), cudaMemcpyDeviceToDevice));
-    }
-  } else {
-    const float scale = 1.f / (1.f - ratio_data);
-    const int64_t N = shape.Size();
-    ORT_ENFORCE(mask->Shape().Size() == N);
-    const bool* mask_data = mask->template Data<bool>();
-    DropoutGradientKernelImpl(N, dY_data, mask_data, scale, dX_data);
-  }
+  const bool* mask_data = mask->template Data<bool>();
+  DropoutGradientKernelImpl(N, dY_data, mask_data, ratio_data, dX_data);
 
   return Status::OK();
 }

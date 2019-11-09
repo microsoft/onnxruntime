@@ -1758,7 +1758,7 @@ Example 4:
       .AllowUncheckedAttributes()
       .Input(0, "data", "The input data as Tensor.", "T")
       .Input(1, "ratio",
-             "The ratio of random dropout, with value in [0, 1]. If this input was not set, "
+             "The ratio of random dropout, with value in [0, 1). If this input was not set, "
              "or if it was set to 0, the output would be a simple copy of the input. "
              "If it's non-zero, output will be a random dropout of input, which is typically "
              "the case during training.",
@@ -1798,7 +1798,7 @@ Example 4:
       .Input(1, "mask",
              "The mask tensor of the dropout. ", "T2")
       .Input(2, "ratio",
-             "The ratio of random dropout, with value in [0, 1]. If this input was not set, "
+             "The ratio of random dropout, with value in [0, 1). If this input was not set, "
              "or if it was set to 0, the output would be a simple copy of the input. "
              "If it's non-zero, output will be a random dropout of input, which is typically "
              "the case during training.",

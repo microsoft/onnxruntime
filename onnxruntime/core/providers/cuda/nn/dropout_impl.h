@@ -40,7 +40,7 @@ void DropoutGradientKernelImpl(
   const int64_t N,
   const T* dY_data,
   const bool* mask_data,
-  const float scale,
+  const float ratio,
   T* dX_data);
 
 }  // namespace cuda
