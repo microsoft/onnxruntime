@@ -189,7 +189,12 @@ Status SubgraphPartitioner::Partition(
           bool unused_initializer = false;
           if (t != nullptr) {
             // note for Reshape and Tile, shape/repeats as initializer is not used at runtime
-            unused_initializer = ((node.OpType() == "Reshape" || node.OpType() == "Tile") && i == 1);
+            // scalar initializers in binary ops are not used at runtime either
+            static const std::unordered_set<std::string> binary_ops =
+                {"Add", "Div", "Sub", "Mul", "Pow", "Equal", "Greater", "Less"};
+
+            unused_initializer = ((node.OpType() == "Reshape" || node.OpType() == "Tile") && i == 1) ||
+                                 (binary_ops.count(node.OpType()) > 0 && t->Shape().Size() == 1);
 
             if (!unused_initializer) {
               subgraph.initializers.emplace(def.Name(), t);

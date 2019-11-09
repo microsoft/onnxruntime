@@ -21,10 +21,10 @@ namespace nuphar {
 #define NUPHAR_TVM_X86_OP_IR_CREATOR_STRING(OP) \
   STRINGIZE(NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(OP))
 
-#define LIST_X86_POOL_OPS()  \
-  POOL_OP(MaxPool)           \
-  POOL_OP(AveragePool)       \
-  POOL_OP(GlobalMaxPool)     \
+#define LIST_X86_POOL_OPS() \
+  POOL_OP(MaxPool)          \
+  POOL_OP(AveragePool)      \
+  POOL_OP(GlobalMaxPool)    \
   POOL_OP(GlobalAveragePool)
 
 #define LIST_X86_UNARY_OPS()   \
@@ -38,6 +38,18 @@ namespace nuphar {
   UNARY_OP(Softplus)           \
   UNARY_OP(Tanh)
 
+#define LIST_X86_BINARY_OPS() \
+  BINARY_OP(Add)              \
+  BINARY_OP(Div)              \
+  BINARY_OP(Mul)              \
+  BINARY_OP(Pow)              \
+  BINARY_OP(Sub)
+
+#define LIST_X86_BINARY_CMP_OPS() \
+  BINARY_CMP_OP(Equal)            \
+  BINARY_CMP_OP(Greater)          \
+  BINARY_CMP_OP(Less)
+
 #define LIST_REDUCE_V_OPS() \
   REDUCE_V_OP(ReduceMax)    \
   REDUCE_V_OP(ReduceMin)    \
@@ -46,6 +58,8 @@ namespace nuphar {
 #define LIST_ALL_X86_OPS()     \
   LIST_REDUCE_V_OPS()          \
   LIST_X86_POOL_OPS()          \
+  LIST_X86_BINARY_OPS()        \
+  LIST_X86_BINARY_CMP_OPS()    \
   LIST_X86_UNARY_OPS()         \
   ADD_OP_ITEM(Gemm)            \
   ADD_OP_ITEM(LogSoftmax)      \
@@ -62,6 +76,8 @@ namespace nuphar {
 #define ADD_OP_ITEM(OP) DECLARE_NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(OP)
 #define POOL_OP(OP) ADD_OP_ITEM(OP)
 #define REDUCE_V_OP(OP) ADD_OP_ITEM(OP)
+#define BINARY_OP(OP) ADD_OP_ITEM(OP)
+#define BINARY_CMP_OP(OP) ADD_OP_ITEM(OP)
 #define UNARY_OP(OP) ADD_OP_ITEM(OP)
 
 LIST_ALL_X86_OPS()
@@ -69,6 +85,8 @@ LIST_ALL_X86_OPS()
 #undef ADD_OP_ITEM
 #undef REDUCE_V_OP
 #undef POOL_OP
+#undef BINARY_OP
+#undef BINARY_CMP_OP
 #undef UNARY_OP
 
 }  // namespace nuphar
