@@ -331,12 +331,12 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         ToGraphProtoInternal(graph_viewer, *(model_proto.mutable_graph()));
         std::string string_buf;
         model_proto.SerializeToString(&string_buf);
-
+/*
         //save ModelProto to file
         int fd;
         Env::Default().FileOpenWr("trt_model_proto_getsupportedlist.onnx", fd);
         model_proto.SerializeToFileDescriptor(fd);
-          
+*/
         // Get supported node list recursively
         SubGraphCollection_t parser_nodes_list;
         TensorrtLogger& trt_logger = GetTensorrtLogger();
@@ -439,10 +439,79 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     supported_nodes_vector.clear();
   }
 
+  //remove nonzero related nodes because TRT6 doens't support shape dimension 0
+        SubGraphCollection_t post_processed_supported_nodes_vector;
+        for (auto& group : supported_nodes_vector)
+        {
+            std::cout << "=============group================" << std:: endl;
+            if (!group.first.empty())
+            {
+                post_processed_supported_nodes_vector.push_back({});
+                for (const auto& index : group.first)
+                {
+                    const auto& node = graph.GetNode(node_index[index]);
+                    //std::cout << "node index in topo order: " << *iter << ", graph node index (node_index[*iter]): " << node_index[*iter] << "," << node->Name() << "," << node->OpType() << std::endl;
+                    std::cout << "node: " << node->Name() << std::endl;
+                    bool exclude_node = false;
+                    for (auto input : node->InputDefs())
+                    {
+                        auto input_shape = input->Shape();
+                        if (input_shape){
+                        for (auto dim : input_shape->dim())
+                        {
+                            std::string dim_name = dim.dim_param();
+                            std::string exclude_dim_name1 = "NonZero";
+                            std::string exclude_dim_name2 = "NonMaxSuppression";
+                            if (!dim_name.empty()) {
+                              if ((dim_name.find(exclude_dim_name1) != std::string::npos) || (dim_name.find(exclude_dim_name2) != std::string::npos))
+                              {
+                                std::cout << "GetCap: find NonZero consumer node: index: " << index << ", name: " << node->Name()
+                                          << ", dim name: " << dim_name << std::endl;
+                                exclude_node = true;
+                                break;
+                              }
+                            }
+                            /*
+                            if (!dim_name.empty() && symbolic_shape_names.find(dim_name) != symbolic_shape_names.end())
+                            {
+                                std::cout << "GetCap: find NonZero consumer node: index: " << index << ", name: " << node->Name()
+                                          << ", dim name: " << dim_name << std::endl;
+                                exclude_node = true;
+                                break;
+                            }
+                            */
+                        }
+                        }
+
+                        if (exclude_node)
+                        {
+                            break;
+                        }
+
+                    }
+                    if (!exclude_node)
+                    {
+                    //    std::cout << "GetCap: find NonZero consumer node: " << node->Name() << std::endl;
+                    //}
+                    //else
+                    //{
+                        post_processed_supported_nodes_vector.back().first.push_back(index);
+                    }
+                }
+
+                if (post_processed_supported_nodes_vector.back().first.empty())
+                {
+                    post_processed_supported_nodes_vector.pop_back();
+                } else {
+                    post_processed_supported_nodes_vector.back().second = group.second;
+                }
+            }
+        }
+
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
   int counter = 0;
-  for (const auto& group : supported_nodes_vector) {
+  for (const auto& group : post_processed_supported_nodes_vector) {//slx supported_nodes_vector
     if (!group.first.empty()) {
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, counter, graph);
       result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
@@ -523,7 +592,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     trt_config->setMaxWorkspaceSize(max_workspace_size_);
 
     //Set optimization profile for dynamic shapes
-    bool opt_profile = false;
     auto trt_profile = trt_builder->createOptimizationProfile();
     for (unsigned int i = 0, end = trt_network->getNbInputs(); i < end; ++i) {
       auto input = trt_network->getInput(i);
@@ -540,7 +608,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         trt_profile->setShapeValues(input->getName(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shapes_size);
         trt_profile->setShapeValues(input->getName(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shapes_size);
         trt_profile->setShapeValues(input->getName(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shapes_size);
-        opt_profile = true;
       } else {  // execution tensor
         bool dynamic_shape = false;
         nvinfer1::Dims dims_min = dims;
@@ -548,26 +615,26 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         nvinfer1::Dims dims_max = dims;
         for (int j = 0, end = dims.nbDims; j < end; ++j) {
           if (dims.d[j] == -1) {
-            dims_min.d[j] = 1;
-            dims_opt.d[j] = 1;//1000 , large batch size may cause out-of-memory on GTX1080
+            dims_min.d[j] = 1;//large batch size may result in out of memory on GTX1080
+            dims_opt.d[j] = 1;
             dims_max.d[j] = 1;
             dynamic_shape = true;
           }
         }
 
         if (dynamic_shape) {
-          std::cout << "Compile: Create optimization profile for dynamic shape: " << input->getName() << std::endl;
-          trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMIN, dims_min);
-          trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
-          trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, dims_max);
-          opt_profile = true;
+          std::cout << input->getName() << " has dynamic shape."<< std::endl;
         }
+
+        // TRT6: Optimization profile need to be provided for all inputs if one of them has dynamic shape
+        std::cout << "Compile: Create optimization profile for input: " << input->getName() << std::endl;
+        trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMIN, dims_min);
+        trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
+        trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, dims_max);
       }
     }
-    if (opt_profile) {
-      std::cout << "Compile: Set optimization profile" << std::endl;
-      trt_config->addOptimizationProfile(trt_profile);
-    }
+    std::cout << "Compile: Set optimization profile" << std::endl;
+    trt_config->addOptimizationProfile(trt_profile);
 
     auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
     if (trt_engine == nullptr) {
@@ -596,7 +663,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         input_indexes[bindingIndex] = iter->second;
       }
       size_t dim_size = 1;
-      if (input->isShapeTensor()) {  // shape tensor //slx ???
+      if (input->isShapeTensor()) {  // shape tensor
         for (int j = 0, end = dimensions.nbDims; j < end; ++j) {
           input_shape_ranges[bindingIndex][j] = std::make_pair(INT_MAX, INT_MIN);
         }
@@ -676,7 +743,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
     // Create compute function
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
-      ///std::cout << "TRT compute" << std::endl;
+      //std::cout << "TRT compute" << std::endl;
       Ort::CustomOpApi ort{*api};
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
       const std::vector<int>& input_indexes = (trt_state->input_info)[0];
@@ -691,7 +758,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       bool dynamic_shape = false;
       if (!trt_state->context->allInputDimensionsSpecified()) {
         dynamic_shape = true;
-        std::cout << "This run has dynamic shape inputs" << std::endl;
+        //std::cout << "This run has dynamic shape inputs" << std::endl;
       }
 
       //TRT6: statistics of input dimensions
@@ -701,15 +768,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_indexes[i]);
         auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
         const auto& tensor_shape = ort.GetTensorShape(tensor_info);
-        if (trt_state->input_shape_ranges.find(i) != trt_state->input_shape_ranges.end()) {
-          // Dynamic tensor
-          auto input = trt_state->network->getInput(i);  //TODO: check if getInput indexing is same with binding index
-          std::cout << "input name: " << input->getName() << std::endl;
-          nvinfer1::Dims dims = input->getDimensions();
-          nvinfer1::Dims dims_min = dims;
-          nvinfer1::Dims dims_opt = dims;
-          nvinfer1::Dims dims_max = dims;
+        auto input = trt_state->network->getInput(i);  //TODO: check if getInput indexing is same with binding index
+        nvinfer1::Dims dims = input->getDimensions();
+        nvinfer1::Dims dims_min = dims;
+        nvinfer1::Dims dims_opt = dims;
+        nvinfer1::Dims dims_max = dims;
 
+        if (trt_state->input_shape_ranges.find(i) != trt_state->input_shape_ranges.end()) {
           nvinfer1::Dims dimensions = trt_state->context->getEngine().getBindingDimensions(static_cast<int>(i));
           for (int j = 0, end = dimensions.nbDims; j < end; ++j) {
             if (trt_state->input_shape_ranges[i].find(j) != trt_state->input_shape_ranges[i].end()) {
@@ -724,18 +789,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
                 dims_opt.d[j] = tensor_shape[j];  //note: set opt profile to max dimension for now
                 dimension_update = true;
               }
-
-              if (dimension_update) {
-                std::cout << "Shape range updated: Binding input " << i << ", dimension " << j
-                          << ": min: " << trt_state->input_shape_ranges[i][j].first
-                          << ", max: " << trt_state->input_shape_ranges[i][j].second << std::endl;
-              }
             }
           }
 
-          if (dimension_update) {
             if (trt_state->context->getEngine().isShapeBinding(i)) {
-              std::cout << "Compute: update optimization profile for shape tensor: " << input->getName() << std::endl;
               int shapes_size = dims_min.nbDims;
               std::vector<int32_t> shapes_min(shapes_size), shapes_opt(shapes_size), shapes_max(shapes_size);
               for (int j = 0, end = shapes_size; j < end; ++j) {
@@ -747,20 +804,19 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
               trt_profile->setShapeValues(input->getName(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shapes_size);
               trt_profile->setShapeValues(input->getName(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shapes_size);
             } else {
-              std::cout << "Compute: update optimization profile for dynamic shape: " << input->getName() << std::endl;
               trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMIN, dims_min);
               trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
               trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, dims_max);
             }
-          }
         }
       }
 
-      //regenerate engine and context
+      // Regenerate engine and context
+      // Only one profile is generated, so no need to explicitly set optimization profile.
       if (dimension_update) {
-        std::cout << "Compute: create new engine" << std::endl;
-        trt_state->config->addOptimizationProfile(trt_profile);
-        trt_state->engine = trt_state->builder->buildEngineWithConfig(*trt_state->network, *trt_state->config);
+        auto trt_config = unique_pointer<nvinfer1::IBuilderConfig>(trt_state->builder->createBuilderConfig());
+        trt_config->addOptimizationProfile(trt_profile);
+        trt_state->engine = trt_state->builder->buildEngineWithConfig(*trt_state->network, *trt_config);
         ORT_ENFORCE(trt_state->engine != nullptr);
 
         trt_state->context = trt_state->engine->createExecutionContext();
@@ -774,7 +830,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         const auto& tensor_shape = ort.GetTensorShape(tensor_info);
 
         //Set dynamic shapes
-        nvinfer1::Dims dimensions = trt_state->context->getEngine().getBindingDimensions(static_cast<int>(i));
+        nvinfer1::Dims dimensions = trt_state->context->getBindingDimensions(static_cast<int>(i));
         if (dynamic_shape) {
           for (int j = 0, end = tensor_shape.size(); j < end; ++j)
             dimensions.d[j] = tensor_shape[j];
