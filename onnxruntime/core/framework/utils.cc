@@ -114,9 +114,10 @@ common::Status AllocateHelper(const IExecutionProvider& execution_provider, cons
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(fetched_tensor.DataType(),
                                                                       fetched_tensor.Shape(),
                                                                       allocator);
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   output_mlvalue.Init(p_tensor.release(),
-                      DataTypeImpl::GetType<Tensor>(),
-                      DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+                      ml_tensor,
+                      ml_tensor->GetDeleteFunc());
 
   return Status::OK();
 }

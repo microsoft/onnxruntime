@@ -93,32 +93,47 @@ void PyCustomKernel::Compute(OrtKernelContext* context) {
 int32_t PyCustomKernel::GetType(const OrtValue* input) const {
   int32_t numpy_type;
   ORT_ENFORCE(nullptr != input);
-  ORT_ENFORCE(const_cast<MLValue*>(input)->IsTensor(), "input must be a tensor");
-  auto data_type = const_cast<MLValue*>(input)->Get<Tensor>().DataType();
-  if (data_type == DataTypeImpl::GetType<bool>()) {
-    numpy_type = 0;
-  } else if (data_type == DataTypeImpl::GetType<int8_t>()) {
-    numpy_type = 1;
-  } else if (data_type == DataTypeImpl::GetType<uint8_t>()) {
-    numpy_type = 2;
-  } else if (data_type == DataTypeImpl::GetType<int16_t>()) {
-    numpy_type = 3;
-  } else if (data_type == DataTypeImpl::GetType<uint16_t>()) {
-    numpy_type = 4;
-  } else if (data_type == DataTypeImpl::GetType<int32_t>()) {
-    numpy_type = 5;
-  } else if (data_type == DataTypeImpl::GetType<uint32_t>()) {
-    numpy_type = 6;
-  } else if (data_type == DataTypeImpl::GetType<int64_t>()) {
-    numpy_type = 9;
-  } else if (data_type == DataTypeImpl::GetType<uint64_t>()) {
-    numpy_type = 10;
-  } else if (data_type == DataTypeImpl::GetType<float>()) {
-    numpy_type = 11;
-  } else if (data_type == DataTypeImpl::GetType<double>()) {
-    numpy_type = 12;
-  } else
-    ORT_ENFORCE(false, "Input type not supported");
+  ORT_ENFORCE(input->IsTensor(), "input must be a tensor");
+  auto elem_type = input->Get<Tensor>().GetElementType();
+
+  namespace on = ONNX_NAMESPACE;
+  switch (elem_type) {
+    case on::TensorProto_DataType_BOOL:
+      numpy_type = 0;
+      break;
+    case on::TensorProto_DataType_INT8:
+      numpy_type = 1;
+      break;
+    case on::TensorProto_DataType_UINT8:
+      numpy_type = 2;
+      break;
+    case on::TensorProto_DataType_INT16:
+      numpy_type = 3;
+      break;
+    case on::TensorProto_DataType_UINT16:
+      numpy_type = 4;
+      break;
+    case on::TensorProto_DataType_INT32:
+      numpy_type = 5;
+      break;
+    case on::TensorProto_DataType_UINT32:
+      numpy_type = 6;
+      break;
+    case on::TensorProto_DataType_INT64:
+      numpy_type = 9;
+      break;
+    case on::TensorProto_DataType_UINT64:
+      numpy_type = 10;
+      break;
+    case on::TensorProto_DataType_FLOAT:
+      numpy_type = 11;
+      break;
+    case on::TensorProto_DataType_DOUBLE:
+      numpy_type = 12;
+      break;
+    default:
+      ORT_THROW("Input primitive type not supported: ", DataTypeImpl::ToString(input->Get<Tensor>().DataType()));
+  }
   return numpy_type;
 }
 

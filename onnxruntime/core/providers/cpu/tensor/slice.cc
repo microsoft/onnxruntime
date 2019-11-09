@@ -289,7 +289,7 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
   if (nullptr != steps_tensor)
     input_steps.resize(size);
 
-  if (dtype == DataTypeImpl::GetType<int32_t>()) {
+  if (utils::IsPrimitiveDataType<int32_t>(dtype)) {
     std::copy(start_tensor->Data<int32_t>(), start_tensor->Data<int32_t>() + size, input_starts.begin());
     std::copy(ends_tensor->Data<int32_t>(), ends_tensor->Data<int32_t>() + size, input_ends.begin());
     if (nullptr != axes_tensor)
@@ -299,7 +299,7 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
       std::copy(steps_tensor->Data<int32_t>(), steps_tensor->Data<int32_t>() + size, input_steps.begin());
   }
 
-  else if (dtype == DataTypeImpl::GetType<int64_t>()) {
+  else if (utils::IsPrimitiveDataType<int64_t>(dtype)) {
     std::copy(start_tensor->Data<int64_t>(), start_tensor->Data<int64_t>() + size, input_starts.begin());
     std::copy(ends_tensor->Data<int64_t>(), ends_tensor->Data<int64_t>() + size, input_ends.begin());
     if (nullptr != axes_tensor)
