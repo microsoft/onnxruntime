@@ -74,11 +74,13 @@ Model::Model(const std::string& graph_name,
                          logger, model_functions_map));
 }
 
-Model::Model(const ModelProto& model_proto, const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger* logger)
+Model::Model(const ModelProto& model_proto, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+             const logging::Logger* logger)
     : Model(onnxruntime::make_unique<ModelProto>(model_proto), local_registries, logger) {
 }
 
-Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger* logger) {
+Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+             const logging::Logger* logger) {
   if (!model_proto) {
     throw std::invalid_argument("ModelProto was null.");
   }
@@ -148,7 +150,8 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
 
   // create instance. need to call private ctor so can't use make_unique
   GSL_SUPPRESS(r .11)
-  graph_.reset(new Graph(model_proto_->mutable_graph(), domain_to_version, IrVersion(), schema_registry, logger, model_functions_map));
+  graph_.reset(new Graph(model_proto_->mutable_graph(), domain_to_version, IrVersion(), schema_registry, logger,
+                         model_functions_map));
 }
 
 Version Model::IrVersion() const {
@@ -239,7 +242,8 @@ Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
   return Status::OK();
 }
 
-Status Model::Load(const ModelProto& model_proto, std::shared_ptr<Model>& model, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+Status Model::Load(const ModelProto& model_proto, std::shared_ptr<Model>& model,
+                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                    const logging::Logger* logger) {
   // we expect a graph to be present
   if (!utils::HasGraph(model_proto)) {
@@ -337,8 +341,9 @@ static Status SaveModel(Model& model, const T& file_path) {
 #ifdef _WIN32
 GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the internal call to Load
 GSL_SUPPRESS(r .35)
-Status Model::Load(const std::wstring& file_path, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
-  return LoadModel(file_path, p_model, local_registries);
+Status Model::Load(const std::wstring& file_path, std::shared_ptr<Model>& p_model,
+                   const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
+  return LoadModel(file_path, p_model, local_registries, nullptr, nullptr);
 }
 
 Status Model::Save(Model& model, const std::wstring& file_path) {
