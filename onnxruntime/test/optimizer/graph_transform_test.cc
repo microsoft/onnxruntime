@@ -822,7 +822,7 @@ TEST(GraphTransformationTests, GeluFusionTest) {
   ASSERT_TRUE(op_to_count["Gelu"] == 1);
 }
 
-TEST(GraphTransformationTests, GeluAddFusionTest) {
+TEST(GraphTransformationTests, AddGeluFusionTest) {
   string model_uri = MODEL_FOLDER + "fusion/add_gelu_fusion.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
@@ -842,27 +842,49 @@ TEST(GraphTransformationTests, GeluAddFusionTest) {
   ASSERT_TRUE(op_to_count["GeluFusion"] == 0);
 }
 
-TEST(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
-  string model_uri = MODEL_FOLDER + "fusion/layer_norm_sub_dup.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-  Graph& graph = p_model->MainGraph();
+TEST( GraphTransformationTests, LayerNormFusionTest )
+{
+   string model_uri = MODEL_FOLDER + "fusion/layer_norm.onnx";
+   std::shared_ptr<Model> p_model;
+   ASSERT_TRUE( Model::Load( model_uri, p_model ).IsOK() );
+   Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<LayerNormFusion>(), TransformerLevel::Level2);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2);
-  ASSERT_TRUE(ret.IsOK());
+   onnxruntime::GraphTransformerManager graph_transformation_mgr { 5 };
+   graph_transformation_mgr.Register( onnxruntime::make_unique<LayerNormFusion>(), TransformerLevel::Level2 );
+   auto ret = graph_transformation_mgr.ApplyTransformers( graph, TransformerLevel::Level2 );
+   ASSERT_TRUE( ret.IsOK() );
 
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Div"] == 0);
-  ASSERT_TRUE(op_to_count["Add"] == 0);
-  ASSERT_TRUE(op_to_count["Sub"] == 0);
-  ASSERT_TRUE(op_to_count["ReduceMean"] == 0);
-  ASSERT_TRUE(op_to_count["Pow"] == 0);
-  ASSERT_TRUE(op_to_count["Sqrt"] == 0);
-  ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
+   std::map<std::string, int> op_to_count = CountOpsInGraph( graph );
+   ASSERT_TRUE( op_to_count[ "Div" ] == 0 );
+   ASSERT_TRUE( op_to_count[ "Add" ] == 0 );
+   ASSERT_TRUE( op_to_count[ "Sub" ] == 0 );
+   ASSERT_TRUE( op_to_count[ "ReduceMean" ] == 0 );
+   ASSERT_TRUE( op_to_count[ "Pow" ] == 0 );
+   ASSERT_TRUE( op_to_count[ "Sqrt" ] == 0 );
+   ASSERT_TRUE( op_to_count[ "LayerNormalization" ] == 1 );
 }
 
+TEST( GraphTransformationTests, LayerNormWithSubDupFusionTest )
+{
+   string model_uri = MODEL_FOLDER + "fusion/layer_norm_sub_dup.onnx";
+   std::shared_ptr<Model> p_model;
+   ASSERT_TRUE( Model::Load( model_uri, p_model ).IsOK() );
+   Graph& graph = p_model->MainGraph();
+
+   onnxruntime::GraphTransformerManager graph_transformation_mgr { 5 };
+   graph_transformation_mgr.Register( onnxruntime::make_unique<LayerNormFusion>(), TransformerLevel::Level2 );
+   auto ret = graph_transformation_mgr.ApplyTransformers( graph, TransformerLevel::Level2 );
+   ASSERT_TRUE( ret.IsOK() );
+
+   std::map<std::string, int> op_to_count = CountOpsInGraph( graph );
+   ASSERT_TRUE( op_to_count[ "Div" ] == 0 );
+   ASSERT_TRUE( op_to_count[ "Add" ] == 0 );
+   ASSERT_TRUE( op_to_count[ "Sub" ] == 0 );
+   ASSERT_TRUE( op_to_count[ "ReduceMean" ] == 0 );
+   ASSERT_TRUE( op_to_count[ "Pow" ] == 0 );
+   ASSERT_TRUE( op_to_count[ "Sqrt" ] == 0 );
+   ASSERT_TRUE( op_to_count[ "LayerNormalization" ] == 1 );
+}
 #endif
 
 }  // namespace test

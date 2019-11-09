@@ -77,7 +77,8 @@ const std::vector<float> ComputeGeluWithErf(const std::vector<float>& input_data
                  input_data.end(),
                  output.begin(),
                  [](float x) {
-                   return 0.5f * x * (1.0f + erfcf(x * static_cast<float>(M_SQRT1_2)));
+                   float y = erf(x * static_cast<float>(M_SQRT1_2));
+                   return x * 0.5f * (y + 1.0f);
                  });
 
   return output;
@@ -87,24 +88,16 @@ static void RunAddGeluFusionTest(
     const std::vector<float>& input_a_data,
     const std::vector<float>& input_b_data,
     const std::vector<int64_t>& input_a_dims,
-    const std::vector<int64_t>& input_b_dims,
-    bool use_float16 = false) {
-  int min_cuda_architecture = use_float16 ? 530 : 0;
-  if (HasCudaEnvironment(min_cuda_architecture)) {
+    const std::vector<int64_t>& input_b_dims) {
+  if (HasCudaEnvironment(0)) {
     std::vector<float> output_data = ComputeGeluWithErf(Add_Simple(input_a_data, input_b_data));
 
     OpTester tester("AddGeluFusion", 1, onnxruntime::kMSDomain);
 
     const std::vector<int64_t>& output_dims = input_a_dims.size() >= input_b_dims.size() ? input_a_dims : input_b_dims;
-    if (use_float16) {
-      tester.AddInput<MLFloat16>("A", input_a_dims, ToFloat16(input_a_data));
-      tester.AddInput<MLFloat16>("B", input_b_dims, ToFloat16(input_b_data));
-      tester.AddOutput<MLFloat16>("C", output_dims, ToFloat16(output_data));
-    } else {
-      tester.AddInput<float>("A", input_a_dims, input_a_data);
-      tester.AddInput<float>("B", input_b_dims, input_b_data);
-      tester.AddOutput<float>("C", output_dims, output_data);
-    }
+    tester.AddInput<float>("A", input_a_dims, input_a_data);
+    tester.AddInput<float>("B", input_b_dims, input_b_data);
+    tester.AddOutput<float>("C", output_dims, output_data);
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
@@ -120,11 +113,10 @@ TEST(AddGeluFusionTest, Two_One_Dim) {
   std::vector<float> input_b_data = {
       -0.5f, 0.6f, 1.2f, 2.1f};
 
-  RunAddGeluFusionTest(input_a_data, input_b_data, {2, 4}, {4}, false);
-  RunAddGeluFusionTest(input_a_data, input_b_data, {2, 4}, {4}, true);
+  RunAddGeluFusionTest(input_a_data, input_b_data, {2, 4}, {4});
 }
 
-TEST(FastGeluTest, Two_Two_Dim) {
+TEST(AddGeluFusionTest, Two_Two_Dim) {
   std::vector<float> input_a_data = {
       0.8f, -0.5f, 0.0f, 1.f,
       0.5f, 0.2f, 0.3f, -0.6f};
@@ -133,8 +125,7 @@ TEST(FastGeluTest, Two_Two_Dim) {
       -0.5f, 0.6f, 1.2f, 2.1f,
       0.4f, 0.6f, 0.2f, -0.4f};
 
-  RunAddGeluFusionTest(input_a_data, input_b_data, {2, 4}, {2, 4}, false);
-  RunAddGeluFusionTest(input_a_data, input_b_data, {2, 4}, {2, 4}, true);
+  RunAddGeluFusionTest(input_a_data, input_b_data, {2, 4}, {2, 4});
 }
 
 }  // namespace test
