@@ -91,10 +91,6 @@ class Model {
 
 #ifdef _WIN32
   static common::Status Save(Model& model, const std::wstring& file_path);
-
-  // TODO(Task:132) Use of shared_ptr<X>* in Load/Save methods is confusing.
-  static common::Status Load(const std::wstring& file_path, /*out*/ std::shared_ptr<Model>& p_model,
-                             const IOnnxRuntimeOpSchemaRegistryList* local_registry = nullptr);
 #endif
   static common::Status Save(Model& model, const std::string& file_path);
 
@@ -102,7 +98,8 @@ class Model {
 
   static common::Status Load(std::istream& model_istream, ONNX_NAMESPACE::ModelProto* p_model_proto);
 
-  static common::Status Load(const std::string& file_path,
+  // TODO(Task:132) Use of shared_ptr<X>* in Load/Save methods is confusing.
+  static common::Status Load(const std::basic_string<ORTCHAR_T>& file_path,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger* logger);

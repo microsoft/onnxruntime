@@ -339,22 +339,14 @@ static Status SaveModel(Model& model, const T& file_path) {
 }
 
 #ifdef _WIN32
-GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the internal call to Load
-GSL_SUPPRESS(r .35)
-Status Model::Load(const std::wstring& file_path, std::shared_ptr<Model>& p_model,
-                   const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
-  return LoadModel(file_path, p_model, local_registries, nullptr, nullptr);
-}
-
 Status Model::Save(Model& model, const std::wstring& file_path) {
   return SaveModel(model, file_path);
 }
-
 #endif
 
 GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the internal call to Load
 GSL_SUPPRESS(r .35)
-Status Model::Load(const std::string& file_path, std::shared_ptr<Model>& p_model,
+Status Model::Load(const std::basic_string<ORTCHAR_T>& file_path, std::shared_ptr<Model>& p_model,
                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                    const logging::Logger* logger) {
   return LoadModel(file_path, p_model, local_registries, logger);
