@@ -77,9 +77,7 @@ const std::vector<float> ComputeGeluWithErf(const std::vector<float>& input_data
                  input_data.end(),
                  output.begin(),
                  [](float x) {
-                   float y = x * static_cast<float>(M_SQRT1_2);
-                   MlasComputeErf(&y, &y, 1);
-                   return x * 0.5f * (y + 1.0f);
+                   return 0.5f * x * (1.0f + erfcf(x * static_cast<float>(M_SQRT1_2)));
                  });
 
   return output;
