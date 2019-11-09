@@ -39,7 +39,7 @@ TEST(MemcpyTest, copy1) {
   const bool result = mp.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
   ASSERT_TRUE(result);
 
-  Model model(mp);
+  Model model(mp, nullptr, nullptr);
   st = model.MainGraph().Resolve();
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
   PutAllNodesOnOneProvider(model.MainGraph(), onnxruntime::kCpuExecutionProvider);

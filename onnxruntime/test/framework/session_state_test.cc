@@ -97,7 +97,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   std::string model_path = "testdata/optional_inputs_ir" + std::to_string(param.ir_version) + ".onnx";
   Status status;
   std::shared_ptr<Model> model;
-  ASSERT_TRUE((status = Model::Load(model_path, model)).IsOK()) << status;
+  ASSERT_TRUE((status = Model::Load(model_path, model, nullptr, nullptr)).IsOK()) << status;
   Graph& graph = model->MainGraph();
   // take a copy as this gets cleared during session state initialization
   InitializedTensorSet initializers = graph.GetAllInitializedTensors();

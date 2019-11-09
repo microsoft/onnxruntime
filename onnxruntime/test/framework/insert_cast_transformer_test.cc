@@ -111,7 +111,7 @@ TEST(TransformerTest, InsertCastAllCPUTest) {
 TEST(TransformerTest, ThreeInARowRemoval) {
   std::string model_uri = MODEL_FOLDER + "triple-cast.onnx";
   std::shared_ptr<Model> model;
-  auto status = Model::Load(model_uri, model);
+  auto status = Model::Load(model_uri, model, nullptr, nullptr);
   ASSERT_TRUE(status.IsOK()) << status;
 
   Graph& graph = model->MainGraph();

@@ -183,15 +183,17 @@ static void RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edges) 
 /** Given a graph, a list of edges, and a NodeArg name, checks if each of the edges provides an implicit input
     to a subgraph. If so, it checks if there is no clash of the given NodeArg name in each of the subgraphs. 
     This is important when removing a node with this NodeArg as input. */
-bool CanUpdateImplicitInputNameInSubgraphs(const Graph& graph,
-                                           const std::vector<GraphEdge>& output_edges,
-                                           const std::string& new_arg_name) {
+static bool CanUpdateImplicitInputNameInSubgraphs(const Graph& graph,
+                                                  const std::vector<GraphEdge>& output_edges,
+                                                  const std::string& new_arg_name, logging::Logger* logger) {
   for (const auto& output_edge : output_edges) {
     if (OutputEdgeProvidesImplicitInput(graph, output_edge)) {
       const Node& output_edge_node = *graph.GetNode(output_edge.dst_node);
       if (!CanUpdateImplicitInputNameInSubgraph(output_edge_node, output_edge.arg_name, new_arg_name)) {
-        LOGS_DEFAULT(WARNING) << " Implicit input name " << output_edge.arg_name
-                              << " cannot be safely updated to " << new_arg_name << " in one of the subgraphs.";
+        if (logger != nullptr) {
+          LOGS(*logger, WARNING) << " Implicit input name " << output_edge.arg_name
+                                 << " cannot be safely updated to " << new_arg_name << " in one of the subgraphs.";
+        }
         return false;
       }
     }
@@ -354,7 +356,7 @@ bool IsOutputUsed(const Node& node, int index) {
   return false;
 }
 
-bool CanRemoveNode(const Graph& graph, const Node& node) {
+bool CanRemoveNode(const Graph& graph, const Node& node, logging::Logger* logger) {
   const std::string* output_name = nullptr;
   if (!IsOnlyOneOutputUsed(graph, node, output_name)) {
     return false;
@@ -386,7 +388,7 @@ bool CanRemoveNode(const Graph& graph, const Node& node) {
   if (new_name) {
     // Check that changing the current output name to the new name won't break any subgraphs that consume it
     std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
-    can_remove = CanUpdateImplicitInputNameInSubgraphs(graph, output_edges, *new_name);
+    can_remove = CanUpdateImplicitInputNameInSubgraphs(graph, output_edges, *new_name, logger);
   }
 
   return can_remove;
@@ -411,7 +413,8 @@ bool RemoveNode(Graph& graph, Node& node) {
   ORT_THROW("Should be unreachable if CanRemoveNodeAndMergeEdges is in sync with the logic here.");
 }
 
-bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const std::string& initializer_name) {
+bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const std::string& initializer_name,
+                                   logging::Logger* logger) {
   // we have no way to handle replacing multiple outputs so check only one is used
   const std::string* output_name = nullptr;
   if (!IsOnlyOneOutputUsed(graph, node, output_name)) {
@@ -435,7 +438,7 @@ bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const s
     // Check that changing the current output name to the new name won't break any subgraphs
     // that consume the current name
     std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
-    can_remove = CanUpdateImplicitInputNameInSubgraphs(graph, output_edges, initializer_name);
+    can_remove = CanUpdateImplicitInputNameInSubgraphs(graph, output_edges, initializer_name, logger);
   }
 
   return can_remove;

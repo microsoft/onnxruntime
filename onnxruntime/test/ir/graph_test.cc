@@ -336,7 +336,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
 
   EXPECT_TRUE(Model::Save(model, "graph_1.onnx").IsOK());
   std::shared_ptr<Model> model2;
-  EXPECT_TRUE(Model::Load("graph_1.onnx", model2).IsOK());
+  EXPECT_TRUE(Model::Load("graph_1.onnx", model2, nullptr, nullptr).IsOK());
 
   auto model_proto = model.ToProto();
   auto model_proto2 = model2->ToProto();
@@ -345,7 +345,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
 
   // Load the model again to ensure that it's still the right thing.
   //EXPECT_EQ(Model::Load(model_proto2, &model2), Status::OK());
-  model2.reset(new Model(model_proto2));
+  model2.reset(new Model(model_proto2, nullptr, nullptr));
   Graph& graph2 = model2->MainGraph();
   for (auto& node : graph2.Nodes()) {
     auto node_name_to_input_output_iter = expected_node_name_to_input_output_args.find(node.Name());
@@ -541,7 +541,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
   ASSERT_TRUE(result) << "Failed to load model from serialized protobuf";
 
   std::shared_ptr<onnxruntime::Model> p_tmp_model;
-  auto x = onnxruntime::Model::Load(model_proto, p_tmp_model, nullptr);
+  auto x = onnxruntime::Model::Load(model_proto, p_tmp_model, nullptr, nullptr);
 
   auto& graph2 = p_tmp_model->MainGraph();
   status = graph2.Resolve();
@@ -596,7 +596,7 @@ TEST(ResolvingGraphTest, UnusedInitializerIsIgnored) {
   ASSERT_TRUE(result) << "Failed to load model from serialized protobuf";
 
   std::shared_ptr<onnxruntime::Model> p_tmp_model;
-  auto x = onnxruntime::Model::Load(model_proto, p_tmp_model, nullptr);
+  auto x = onnxruntime::Model::Load(model_proto, p_tmp_model, nullptr, nullptr);
 
   auto& graph2 = p_tmp_model->MainGraph();
   status = graph2.Resolve();
@@ -725,7 +725,7 @@ TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {
 
   EXPECT_TRUE(Model::Save(model, "model_x.onnx").IsOK());
   std::shared_ptr<Model> loaded_model;
-  EXPECT_TRUE(Model::Load("model_x.onnx", loaded_model).IsOK());
+  EXPECT_TRUE(Model::Load("model_x.onnx", loaded_model, nullptr, nullptr).IsOK());
   EXPECT_EQ(2, loaded_model->MainGraph().GetInputs().size());
 
   auto& graph_proto = graph.ToGraphProto();
@@ -901,7 +901,7 @@ TEST(TypeInferenceTest, NonConstInitializer) {
   ASSERT_TRUE(model.ToProto().SerializeToString(&s1));
   ASSERT_TRUE(model_proto.ParseFromString(s1));
 
-  auto status = onnxruntime::Model::Load(model_proto, p_model, nullptr);
+  auto status = onnxruntime::Model::Load(model_proto, p_model, nullptr, nullptr);
   ASSERT_TRUE(status.IsOK()) << status;
 
   auto& graph2 = p_model->MainGraph();

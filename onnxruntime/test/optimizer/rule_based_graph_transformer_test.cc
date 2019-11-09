@@ -21,7 +21,7 @@ TEST(RuleBasedGraphTransformerTest, TestCompatibleProviders) {
   string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr, nullptr).IsOK());
   Graph& graph = model->MainGraph();
   
   // Create rule based transformer with a dummy rewrite rule and register it with Cuda as compatible provider

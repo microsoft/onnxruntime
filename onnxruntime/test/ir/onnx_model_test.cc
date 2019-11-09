@@ -47,12 +47,12 @@ static void TestResolve(onnxruntime::Graph& graph) {
 TEST(ONNXModelsTest, squeeze_net) {
   // NOTE: this requires the current directory to be where onnxruntime_ir_UT.exe is located
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load("../models/opset8/test_squeezenet/model.onnx", model).IsOK());
+  ASSERT_TRUE(Model::Load("../models/opset8/test_squeezenet/model.onnx", model, nullptr, nullptr).IsOK());
   TestResolve(model->MainGraph());
 #ifdef _WIN32
   // wstring version
   std::shared_ptr<Model> model2;
-  ASSERT_TRUE(Model::Load(L"../models/opset8/test_squeezenet/model.onnx", model2).IsOK());
+  ASSERT_TRUE(Model::Load(L"../models/opset8/test_squeezenet/model.onnx", model2, nullptr, nullptr).IsOK());
   TestResolve(model2->MainGraph());
 #endif
 }
@@ -61,13 +61,13 @@ TEST(ONNXModelsTest, squeeze_net) {
 TEST(ONNXModelsTest, non_existing_model) {
   // NOTE: this requires the current directory to be where onnxruntime_ir_UT.exe is located
   std::shared_ptr<Model> model;
-  common::Status st = Model::Load("./testdata/non_existing_model_XXXXXX/model.onnx", model);
+  common::Status st = Model::Load("./testdata/non_existing_model_XXXXXX/model.onnx", model, nullptr, nullptr);
   ASSERT_FALSE(st.IsOK());
   ASSERT_EQ(st.Code(), common::NO_SUCHFILE);
 #ifdef _WIN32
   // wstring version
   std::shared_ptr<Model> model2;
-  ASSERT_FALSE(Model::Load(L"./testdata/non_existing_model_XXXXXX/model.onnx", model2).IsOK());
+  ASSERT_FALSE(Model::Load(L"./testdata/non_existing_model_XXXXXX/model.onnx", model2, nullptr, nullptr).IsOK());
   ASSERT_EQ(st.Code(), common::NO_SUCHFILE);
 #endif
 }
@@ -92,7 +92,7 @@ TEST(ONNXModelsTest1, bvlc_alexnet_1) {
   ASSERT_TRUE(Env::Default().FileClose(fd).IsOK());
 
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load("../models/opset8/test_bvlc_alexnet/model.onnx", model).IsOK());
+  ASSERT_TRUE(Model::Load("../models/opset8/test_bvlc_alexnet/model.onnx", model, nullptr, nullptr).IsOK());
 
   // Check the graph input/output/value_info should have the same size as specified in the model file.
   EXPECT_EQ(model_proto.graph().value_info_size(), model->MainGraph().GetValueInfo().size());
@@ -115,7 +115,7 @@ class ONNXModelsTest : public ::testing::TestWithParam<const char*> {
 
 TEST_P(ONNXModelsTest, LoadFromFile) {
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(GetModelFileName(), model).IsOK());
+  ASSERT_TRUE(Model::Load(GetModelFileName(), model, nullptr, nullptr).IsOK());
   TestResolve(model->MainGraph());
 }
 
@@ -137,7 +137,7 @@ TEST_P(ONNXModelsTest, LoadFromProtobuf) {
   ASSERT_TRUE(result);
   ASSERT_TRUE(Env::Default().FileClose(fd).IsOK());
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(std::move(model_proto), model).IsOK());
+  ASSERT_TRUE(Model::Load(std::move(model_proto), model, nullptr, nullptr).IsOK());
   TestResolve(model->MainGraph());
 }
 
@@ -159,7 +159,7 @@ INSTANTIATE_TEST_CASE_P(ONNXModelsTests,
 // for Graph::Resolve to succeed when processing the subgraph.
 TEST(ONNXModelsTest, TestIRv4NonInputInitializers) {
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load("testdata/subgraph_implicit_input_from_initializer.onnx", model).IsOK());
+  ASSERT_TRUE(Model::Load("testdata/subgraph_implicit_input_from_initializer.onnx", model, nullptr, nullptr).IsOK());
   EXPECT_TRUE(model->MainGraph().Resolve().IsOK());
 }
 
@@ -170,7 +170,7 @@ TEST(ONNXModelsTest, TestIRv4NonInputInitializers) {
 TEST(ONNXModelsTest, TestModelsWithAnOpContainingAFunctionBody) {
   std::shared_ptr<Model> model;
 
-  auto status = Model::Load("testdata/model_containing_op_with_function_body.onnx", model);
+  auto status = Model::Load("testdata/model_containing_op_with_function_body.onnx", model, nullptr, nullptr);
   EXPECT_TRUE(status.IsOK()) << status;
 
   status = model->MainGraph().Resolve();

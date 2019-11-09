@@ -269,7 +269,8 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
       AddCustomOpDomains({domain.get()});
     }
 #endif
-    return onnxruntime::Model::Load(model_location_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    return onnxruntime::Model::Load(model_location_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+                                    session_logger_);
   };
 
   common::Status st = Load(loader, "model_loading_uri");
@@ -299,7 +300,8 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
       AddCustomOpDomains({domain.get()});
     }
 #endif
-    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+                                    session_logger_);
   };
 
   return Load(loader, "model_loading_proto");
@@ -314,7 +316,7 @@ common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto)
     }
 #endif
     return onnxruntime::Model::Load(std::move(p_model_proto), model,
-                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, session_logger_);
   };
 
   return Load(loader, "model_loading_proto");
@@ -336,7 +338,8 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
       AddCustomOpDomains({domain.get()});
     }
 #endif
-    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+                                    session_logger_);
   };
 
   return Load(loader, "model_loading_istream");
@@ -358,7 +361,8 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
     }
 #endif
 
-    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+                                    session_logger_);
   };
 
   return Load(loader, "model_loading_array");

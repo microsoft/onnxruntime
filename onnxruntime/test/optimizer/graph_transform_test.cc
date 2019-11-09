@@ -46,7 +46,7 @@ static const std::string MODEL_FOLDER = "testdata/transform/";
 TEST(GraphTransformationTests, IdentityElimination) {
   string model_uri = MODEL_FOLDER + "abs-id-max.onnx";
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr, nullptr).IsOK());
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 1);
@@ -64,7 +64,7 @@ TEST(GraphTransformationTests, IdentityElimination) {
 TEST(GraphTransformationTests, DropoutElimination) {
   string model_uri = MODEL_FOLDER + "dropout.onnx";
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr, nullptr).IsOK());
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 5);
@@ -90,7 +90,7 @@ TEST(GraphTransformationTests, SliceElimination) {
   for (const auto& model_name : model_names) {
     string model_uri = MODEL_FOLDER + model_name;
     std::shared_ptr<Model> model;
-    ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
+    ASSERT_TRUE(Model::Load(model_uri, model, nullptr, nullptr).IsOK());
     Graph& graph = model->MainGraph();
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
     int initial_slice_num = op_to_count["Slice"];
@@ -110,7 +110,7 @@ TEST(GraphTransformationTests, SliceElimination) {
 TEST(GraphTransformationTests, ConstantFolding) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr, nullptr).IsOK());
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
@@ -201,7 +201,7 @@ TEST(GraphTransformationTests, ConstantFoldingSubgraph) {
 TEST(GraphTransformationTests, ShapeToInitializer) {
   string model_uri = MODEL_FOLDER + "shape-add.onnx";
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr, nullptr).IsOK());
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Shape"] == 4);
@@ -231,7 +231,7 @@ TEST(GraphTransformationTests, SubgraphWithConstantInputs) {
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
 
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
@@ -248,7 +248,7 @@ TEST(GraphTransformationTests, FuseConvBNNoBias) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-no-bias.onnx";
 
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
   Graph& graph = p_model->MainGraph();
 
   std::string bn_output_name;
@@ -283,7 +283,7 @@ TEST(GraphTransformationTests, DontFuseConvWithBNWithOptionalOutputs) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-no-bias.onnx";
 
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
   Graph& graph = p_model->MainGraph();
 
   // add an optional output to the BN node. should not fuse if this is present
@@ -314,7 +314,7 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
     string model_uri = MODEL_FOLDER + model;
 
     std::shared_ptr<Model> p_model;
-    ASSERT_STATUS_OK(Model::Load(model_uri, p_model));
+    ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, nullptr));
     Graph& graph = p_model->MainGraph();
 
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
@@ -346,7 +346,7 @@ TEST(GraphTransformationTests, FuseConvActivation) {
   for (const auto& model : model_to_op_name) {
     std::string model_uri = MODEL_FOLDER + model.first;
     std::shared_ptr<Model> p_model;
-    ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+    ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
     Graph& graph = p_model->MainGraph();
 
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -365,7 +365,7 @@ TEST(GraphTransformationTests, FuseConvActivation) {
 TEST(GraphTransformationTests, FuseConvClip11Activation) {
   std::string model_uri = MODEL_FOLDER + "fusion/conv_clip11.onnx";
   std::shared_ptr<Model> p_model;
-  auto status = Model::Load(model_uri, p_model);
+  auto status = Model::Load(model_uri, p_model, nullptr, nullptr);
   ASSERT_TRUE(status.IsOK()) << status;
   Graph& graph = p_model->MainGraph();
 
@@ -405,7 +405,7 @@ TEST(GraphTransformationTests, FuseConvMulNoBias) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-mul-no-bias.onnx";
 
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
@@ -425,7 +425,7 @@ TEST(GraphTransformationTests, FuseConvAddNoBias) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-add-no-bias.onnx";
 
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
@@ -447,7 +447,7 @@ TEST(GraphTransformationTests, NegativeFuseConvAddNoBias) {
   string model_uri = MODEL_FOLDER + "fusion/negative-fuse-conv-add-no-bias.onnx";
 
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
@@ -469,7 +469,7 @@ TEST(GraphTransformationTests, FuseConvAddMul3D) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-add-mul-3d.onnx";
 
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
@@ -489,7 +489,7 @@ TEST(GraphTransformationTests, FuseConvAddMul3D_2) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-add-mul-3d-2.onnx";
 
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
@@ -509,7 +509,7 @@ TEST(GraphTransformationTests, MatMulAddFusion_two_input) {
   string model_uri = MODEL_FOLDER + "matmul_add_fusion/2Input/model.onnx";
 
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
@@ -526,7 +526,7 @@ TEST(GraphTransformationTests, MatMulAddFusion_three_input) {
   string model_uri = MODEL_FOLDER + "matmul_add_fusion/3Input/model.onnx";
 
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
@@ -544,7 +544,7 @@ TEST(GraphTransformationTests, Gemm_Relu_three_input) {
   string model_uri = MODEL_FOLDER + "matmul_add_fusion/3Input/gemm_relu.onnx";
 
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
   Graph& graph = p_model->MainGraph();
   std::map<std::string, int> op_to_count1 = CountOpsInGraph(graph);
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
@@ -565,7 +565,7 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
 
   auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvAddFusion>());
@@ -805,7 +805,7 @@ TEST(GraphTransformationTests, ReluClip11Fusion) {
 TEST(GraphTransformationTests, GeluFusionTest) {
   string model_uri = MODEL_FOLDER + "fusion/gelu.onnx";
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
@@ -823,7 +823,7 @@ TEST(GraphTransformationTests, GeluFusionTest) {
 TEST(GraphTransformationTests, LayerNormFusionTest) {
   string model_uri = MODEL_FOLDER + "fusion/layer_norm.onnx";
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
@@ -844,7 +844,7 @@ TEST(GraphTransformationTests, LayerNormFusionTest) {
 TEST(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
   string model_uri = MODEL_FOLDER + "fusion/layer_norm_sub_dup.onnx";
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};

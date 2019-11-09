@@ -453,7 +453,7 @@ TEST(InferenceSessionTests, ModelMetadata) {
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
   std::shared_ptr<onnxruntime::Model> p_model;
-  Status st = onnxruntime::Model::Load(model_uri, p_model);
+  Status st = onnxruntime::Model::Load(model_uri, p_model, nullptr, nullptr);
   ASSERT_TRUE(st.IsOK());
   const onnxruntime::Graph& graph = p_model->MainGraph();
 
