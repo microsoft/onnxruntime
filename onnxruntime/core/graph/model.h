@@ -8,6 +8,7 @@
 #include <climits>
 #include <string>
 #include "core/graph/graph_viewer.h"
+#include "core/session/onnxruntime_c_api.h"
 
 #include "gsl/gsl"
 
