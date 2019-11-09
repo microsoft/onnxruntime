@@ -35,11 +35,11 @@ ONNX_OPERATOR_KERNEL_EX(
     ScatterElements);
 
 #define TYPED_FUNCTION_CALL(T)                                                \
-  if (T_type == DataTypeImpl::GetType<T>()) {                                 \
+  if (utils::IsPrimitiveDataType<T>(T_type)) {                                \
     T* output_data = output_tensor->template MutableData<T>();                \
     const T* input_data = data_tensor->template Data<T>();                    \
     const T* update_data = updates_tensor->template Data<T>();                \
-    if (Tin_type == DataTypeImpl::GetType<int32_t>()) {                       \
+    if (utils::IsPrimitiveDataType<int32_t>(Tin_type)) {                      \
       const int32_t* indices_data = indices_tensor->template Data<int32_t>(); \
       ScatterElementsImpl(                                                    \
           rank,                                                               \
@@ -56,7 +56,7 @@ ONNX_OPERATOR_KERNEL_EX(
           reinterpret_cast<ToCudaType<T>::MappedType*>(output_data));         \
       return Status::OK();                                                    \
     }                                                                         \
-    if (Tin_type == DataTypeImpl::GetType<int64_t>()) {                       \
+    if (utils::IsPrimitiveDataType<int64_t>(Tin_type)) {                      \
       const int64_t* indices_data = indices_tensor->template Data<int64_t>(); \
       ScatterElementsImpl(                                                    \
           rank,                                                               \
@@ -139,17 +139,17 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
   MLDataType T_type = data_tensor->DataType();
 
   TYPED_FUNCTION_CALL(float)
-  else TYPED_FUNCTION_CALL(MLFloat16)
-  else TYPED_FUNCTION_CALL(int16_t)
-  else TYPED_FUNCTION_CALL(int8_t)
-  else TYPED_FUNCTION_CALL(int32_t)
-  else TYPED_FUNCTION_CALL(int64_t)
-  else TYPED_FUNCTION_CALL(uint8_t)
-  else TYPED_FUNCTION_CALL(uint16_t)
-  else TYPED_FUNCTION_CALL(uint32_t)
-  else TYPED_FUNCTION_CALL(uint64_t)
-  else TYPED_FUNCTION_CALL(double)
-  else TYPED_FUNCTION_CALL(bool)
+  TYPED_FUNCTION_CALL(MLFloat16)
+  TYPED_FUNCTION_CALL(int16_t)
+  TYPED_FUNCTION_CALL(int8_t)
+  TYPED_FUNCTION_CALL(int32_t)
+  TYPED_FUNCTION_CALL(int64_t)
+  TYPED_FUNCTION_CALL(uint8_t)
+  TYPED_FUNCTION_CALL(uint16_t)
+  TYPED_FUNCTION_CALL(uint32_t)
+  TYPED_FUNCTION_CALL(uint64_t)
+  TYPED_FUNCTION_CALL(double)
+  TYPED_FUNCTION_CALL(bool)
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for T is not supported yet in ScatterElements.");
 }

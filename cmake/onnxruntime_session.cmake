@@ -22,7 +22,3 @@ endif()
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS AND onnxruntime_ENABLE_PYTHON)
   target_compile_definitions(onnxruntime_session PUBLIC ENABLE_LANGUAGE_INTEROP_OPS)
 endif()
-
-if(onnxruntime_USE_EIGEN_THREADPOOL)
-  target_compile_definitions(onnxruntime_session PUBLIC USE_EIGEN_THREADPOOL)
-endif()

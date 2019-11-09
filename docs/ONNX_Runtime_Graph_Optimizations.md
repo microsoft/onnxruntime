@@ -55,7 +55,7 @@ All optimizations can be performed either online or offline. In online mode, whe
 **Notes**: 
 
 * When running in offline mode, make sure to use the exact same options (e.g., execution providers, optimization level) and hardware as the target machine that the model inference will run on (e.g., you cannot run a model pre-optimized for a GPU execution provider on a machine that is equipped only with CPU).
-* When layout optimizations are enabled, the offline mode cannot be used.
+* When layout optimizations are enabled, the offline mode can only be used on compatible hardware to the environment when the offline model is saved. For example, if model has layout optimized for AVX2, the offline model would require CPUs that support AVX2.
 
 ## Usage
 

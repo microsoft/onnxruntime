@@ -46,7 +46,7 @@ TEST(BroadcastingTest, DimWithZeroHandling) {
   run(test3);
 
   // test that BroadcastLoopSpan also works. Mod uses that
-  OpTester test4("Mod");
+  OpTester test4("Mod", 10);
   test4.AddInput<int64_t>("A", {2, 2, 0}, {});
   test4.AddInput<int64_t>("B", {2, 1}, {1, 2});
   test4.AddOutput<int64_t>("C", {2, 2, 0}, {});
@@ -338,7 +338,11 @@ TEST(MathOpTest, Sub) {
                         {2.0f, -2.4f, -433.3f,
                          0.0f, -2.0f, -164.0f,
                          0.0f, 0.0f, -20000.0f});
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_VAD_M)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  //OpenVINO: Disabled due to accuracy mismatch for FP16
+#else
   test.Run();
+#endif
 }
 
 TEST(MathOpTest, Sub_Broadcast_Scalar) {

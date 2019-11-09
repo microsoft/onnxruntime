@@ -66,7 +66,7 @@ TEST(GatherOpTest, Gather_invalid_axis) {
 }
 
 TEST(GatherOpTest, Gather_invalid_index_cpu) {
-  OpTester test("Gather");
+  OpTester test("Gather", 11);  // added check in opset 11
   // Invalid index 3. data[3] does not exist.
   test.AddAttribute<int64_t>("axis", 0LL);
   test.AddInput<float>("data", {3, 4},
@@ -81,7 +81,7 @@ TEST(GatherOpTest, Gather_invalid_index_cpu) {
 
 #ifdef USE_CUDA
 TEST(GatherOpTest, Gather_invalid_index_gpu) {
-  OpTester test("Gather", 7);  // no GPU Gather for opset 11 yet (change was to add negative axis support)
+  OpTester test("Gather");
   // Invalid index 3. data[3] does not exist.
   test.AddAttribute<int64_t>("axis", 0LL);
   test.AddInput<float>("data", {3, 4},
