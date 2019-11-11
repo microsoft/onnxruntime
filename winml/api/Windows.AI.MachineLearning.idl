@@ -397,7 +397,7 @@ namespace Windows.AI.MachineLearning
             );
             //! if this feature is an image but has unsupport image metadata (like a BitmapPixelFormat) 
             //! you can still use the runtime but without image conversion support.
-            //! this settig will be 'true'
+            //! this setting will be 'true'
             Boolean HasUnsupportedImageMetadata{ get; } ;
         }
     }

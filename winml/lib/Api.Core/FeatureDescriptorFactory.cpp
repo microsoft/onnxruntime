@@ -439,13 +439,18 @@ CreateImageFeatureDescriptor(
   auto pixel_format = format_info.first;
   auto alpha_mode = format_info.second;
 
+  // paulm:   commenting this out during layering.    gamma and nominal are never used
+  // since we only support one of them.  if a non support one is set, they all fall back 
+  // to TensorFeatureDescriptor (invalid image metadata)
+#ifdef DONE_LAYERING
   // color space gamma value
-//  auto color_space_gamma_value = FetchMetadataValueOrNull(metadata, c_color_space_key);
-//  auto color_space_gamma = CreateImageColorSpaceGamma(color_space_gamma_value);
+    auto color_space_gamma_value = FetchMetadataValueOrNull(metadata, c_color_space_key);
+    auto color_space_gamma = CreateImageColorSpaceGamma(color_space_gamma_value);
 
   // nominal range
-//  auto nominal_range_value = FetchMetadataValueOrNull(metadata, c_nominal_range_key);
-//  auto nominal_range = CreateImageNominalPixelRange(nominal_range_value);
+    auto nominal_range_value = FetchMetadataValueOrNull(metadata, c_nominal_range_key);
+    auto nominal_range = CreateImageNominalPixelRange(nominal_range_value);
+#endif
 
   // The current code assumes that the shape will be in NCHW.
   // Should the model metadata be read instead???
