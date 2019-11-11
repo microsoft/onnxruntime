@@ -90,7 +90,7 @@ TEST(ONNXModelsTest1, bvlc_alexnet_1) {
   TestResolve(model->MainGraph());
 }
 
-class ONNXModelsTest : public ::testing::TestWithParam<ORTCHAR_T> {
+class ONNXModelsTest : public ::testing::TestWithParam<const ORTCHAR_T*> {
   // You can implement all the usual fixture class members here.
   // To access the test parameter, call GetParam() from class
   // TestWithParam<T>.

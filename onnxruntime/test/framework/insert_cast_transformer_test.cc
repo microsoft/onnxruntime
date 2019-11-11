@@ -12,7 +12,7 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
 
-static const std::string MODEL_FOLDER = "testdata/transform/";
+#define MODEL_FOLDER ORT_TSTR("testdata/transform/")
 
 typedef std::vector<onnxruntime::NodeArg*> ArgMap;
 TEST(TransformerTest, InsertCastGPUTest) {
@@ -109,7 +109,7 @@ TEST(TransformerTest, InsertCastAllCPUTest) {
 
 // test that when there are 3 Cast ops in a row we remove the correct ones
 TEST(TransformerTest, ThreeInARowRemoval) {
-  std::string model_uri = MODEL_FOLDER + "triple-cast.onnx";
+  auto model_uri = MODEL_FOLDER ORT_TSTR("triple-cast.onnx");
   std::shared_ptr<Model> model;
   auto status = Model::Load(model_uri, model, nullptr, nullptr);
   ASSERT_TRUE(status.IsOK()) << status;

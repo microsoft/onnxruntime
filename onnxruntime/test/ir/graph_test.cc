@@ -336,7 +336,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
 
   EXPECT_TRUE(Model::Save(model, "graph_1.onnx").IsOK());
   std::shared_ptr<Model> model2;
-  EXPECT_TRUE(Model::Load("graph_1.onnx", model2, nullptr, nullptr).IsOK());
+  EXPECT_TRUE(Model::Load(ORT_TSTR("graph_1.onnx"), model2, nullptr, nullptr).IsOK());
 
   auto model_proto = model.ToProto();
   auto model_proto2 = model2->ToProto();
@@ -725,7 +725,7 @@ TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {
 
   EXPECT_TRUE(Model::Save(model, "model_x.onnx").IsOK());
   std::shared_ptr<Model> loaded_model;
-  EXPECT_TRUE(Model::Load("model_x.onnx", loaded_model, nullptr, nullptr).IsOK());
+  EXPECT_TRUE(Model::Load(ORT_TSTR("model_x.onnx"), loaded_model, nullptr, nullptr).IsOK());
   EXPECT_EQ(2, loaded_model->MainGraph().GetInputs().size());
 
   auto& graph_proto = graph.ToGraphProto();

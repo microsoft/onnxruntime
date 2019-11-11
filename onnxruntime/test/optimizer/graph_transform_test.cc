@@ -41,10 +41,10 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
 
-static const std::string MODEL_FOLDER = "testdata/transform/";
+#define MODEL_FOLDER ORT_TSTR("testdata/transform/")
 
 TEST(GraphTransformationTests, IdentityElimination) {
-  string model_uri = MODEL_FOLDER + "abs-id-max.onnx";
+  auto model_uri = MODEL_FOLDER "abs-id-max.onnx";
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model, nullptr, nullptr).IsOK());
   Graph& graph = model->MainGraph();
@@ -62,7 +62,7 @@ TEST(GraphTransformationTests, IdentityElimination) {
 }
 
 TEST(GraphTransformationTests, DropoutElimination) {
-  string model_uri = MODEL_FOLDER + "dropout.onnx";
+  auto model_uri = MODEL_FOLDER "dropout.onnx";
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model, nullptr, nullptr).IsOK());
   Graph& graph = model->MainGraph();
@@ -86,9 +86,9 @@ TEST(GraphTransformationTests, DropoutElimination) {
 }
 
 TEST(GraphTransformationTests, SliceElimination) {
-  std::vector<std::string> model_names = {"slice-v1-elim.onnx", "slice-v11-elim.onnx"};
+  std::vector<std::basic_string<ORTCHAR_T> > model_names = {ORT_TSTR("slice-v1-elim.onnx"), ORT_TSTR("slice-v11-elim.onnx")};
   for (const auto& model_name : model_names) {
-    string model_uri = MODEL_FOLDER + model_name;
+    auto model_uri = MODEL_FOLDER + model_name;
     std::shared_ptr<Model> model;
     ASSERT_TRUE(Model::Load(model_uri, model, nullptr, nullptr).IsOK());
     Graph& graph = model->MainGraph();
@@ -108,7 +108,7 @@ TEST(GraphTransformationTests, SliceElimination) {
 }
 
 TEST(GraphTransformationTests, ConstantFolding) {
-  string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+  auto model_uri = MODEL_FOLDER "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model, nullptr, nullptr).IsOK());
   Graph& graph = model->MainGraph();
@@ -199,7 +199,7 @@ TEST(GraphTransformationTests, ConstantFoldingSubgraph) {
 }
 
 TEST(GraphTransformationTests, ShapeToInitializer) {
-  string model_uri = MODEL_FOLDER + "shape-add.onnx";
+  auto model_uri = MODEL_FOLDER "shape-add.onnx";
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model, nullptr, nullptr).IsOK());
   Graph& graph = model->MainGraph();
@@ -222,7 +222,7 @@ TEST(GraphTransformationTests, ShapeToInitializer) {
 
 // Check transformations in the case of a subgraph with constant inputs.
 TEST(GraphTransformationTests, SubgraphWithConstantInputs) {
-  string model_uri = MODEL_FOLDER + "constant-subgraph.onnx";
+  auto model_uri = MODEL_FOLDER "constant-subgraph.onnx";
 
   SessionOptions so;
   so.graph_optimization_level = TransformerLevel::Level2;
@@ -245,7 +245,7 @@ TEST(GraphTransformationTests, SubgraphWithConstantInputs) {
 }
 
 TEST(GraphTransformationTests, FuseConvBNNoBias) {
-  string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-no-bias.onnx";
+  auto model_uri = MODEL_FOLDER "fusion/fuse-conv-bn-no-bias.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
@@ -280,7 +280,7 @@ TEST(GraphTransformationTests, FuseConvBNNoBias) {
 }
 
 TEST(GraphTransformationTests, DontFuseConvWithBNWithOptionalOutputs) {
-  string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-no-bias.onnx";
+  auto model_uri = MODEL_FOLDER "fusion/fuse-conv-bn-no-bias.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
@@ -307,11 +307,11 @@ TEST(GraphTransformationTests, DontFuseConvWithBNWithOptionalOutputs) {
 }
 
 TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
-  std::vector<std::string> test_models = {"fusion/fuse-conv-bn-mul-add-unsqueeze.onnx",
-                                          "fusion/fuse-conv-bn-mul-add-unsqueeze.negative_axes.onnx",
-                                          "fusion/fuse-conv-bn-mul-add-unsqueeze-no-bias.onnx"};
+  std::vector<std::basic_string<ORTCHAR_T> > test_models = {ORT_TSTR("fusion/fuse-conv-bn-mul-add-unsqueeze.onnx"),
+                                                            ORT_TSTR("fusion/fuse-conv-bn-mul-add-unsqueeze.negative_axes.onnx"),
+                                                            ORT_TSTR("fusion/fuse-conv-bn-mul-add-unsqueeze-no-bias.onnx")};
   for (const auto& model : test_models) {
-    string model_uri = MODEL_FOLDER + model;
+    auto model_uri = MODEL_FOLDER + model;
 
     std::shared_ptr<Model> p_model;
     ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, nullptr));
@@ -337,14 +337,14 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
 
 #ifndef DISABLE_CONTRIB_OPS
 TEST(GraphTransformationTests, FuseConvActivation) {
-  std::unordered_map<std::string, std::string> model_to_op_name{{"fusion/conv_relu.onnx", "Relu"},
-                                                                {"fusion/conv_clip.onnx", "Clip"},
-                                                                {"fusion/conv_sigmoid.onnx", "Sigmoid"},
-                                                                {"fusion/conv_tanh.onnx", "Tanh"},
-                                                                {"fusion/conv_leakyrelu.onnx", "LeakyRelu"}};
+  std::unordered_map<std::basic_string<ORTCHAR_T>, std::string> model_to_op_name{{ORT_TSTR("fusion/conv_relu.onnx"), "Relu"},
+                                                                                 {ORT_TSTR("fusion/conv_clip.onnx"), "Clip"},
+                                                                                 {ORT_TSTR("fusion/conv_sigmoid.onnx"), "Sigmoid"},
+                                                                                 {ORT_TSTR("fusion/conv_tanh.onnx"), "Tanh"},
+                                                                                 {ORT_TSTR("fusion/conv_leakyrelu.onnx"), "LeakyRelu"}};
 
   for (const auto& model : model_to_op_name) {
-    std::string model_uri = MODEL_FOLDER + model.first;
+    auto model_uri = MODEL_FOLDER + model.first;
     std::shared_ptr<Model> p_model;
     ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
     Graph& graph = p_model->MainGraph();
@@ -363,7 +363,7 @@ TEST(GraphTransformationTests, FuseConvActivation) {
 }
 
 TEST(GraphTransformationTests, FuseConvClip11Activation) {
-  std::string model_uri = MODEL_FOLDER + "fusion/conv_clip11.onnx";
+  auto model_uri = MODEL_FOLDER "fusion/conv_clip11.onnx";
   std::shared_ptr<Model> p_model;
   auto status = Model::Load(model_uri, p_model, nullptr, nullptr);
   ASSERT_TRUE(status.IsOK()) << status;
@@ -402,7 +402,7 @@ TEST(GraphTransformationTests, FuseConvClip11Activation) {
 #endif
 
 TEST(GraphTransformationTests, FuseConvMulNoBias) {
-  string model_uri = MODEL_FOLDER + "fusion/fuse-conv-mul-no-bias.onnx";
+  auto model_uri = MODEL_FOLDER "fusion/fuse-conv-mul-no-bias.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
@@ -422,7 +422,7 @@ TEST(GraphTransformationTests, FuseConvMulNoBias) {
 }
 
 TEST(GraphTransformationTests, FuseConvAddNoBias) {
-  string model_uri = MODEL_FOLDER + "fusion/fuse-conv-add-no-bias.onnx";
+  auto model_uri = MODEL_FOLDER "fusion/fuse-conv-add-no-bias.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
@@ -444,7 +444,7 @@ TEST(GraphTransformationTests, FuseConvAddNoBias) {
 // if IR version is 4 or higher the weights can be overridden if there's a matching graph input.
 // check that we don't fuse if that is the case
 TEST(GraphTransformationTests, NegativeFuseConvAddNoBias) {
-  string model_uri = MODEL_FOLDER + "fusion/negative-fuse-conv-add-no-bias.onnx";
+  auto model_uri = MODEL_FOLDER "fusion/negative-fuse-conv-add-no-bias.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
@@ -466,7 +466,7 @@ TEST(GraphTransformationTests, NegativeFuseConvAddNoBias) {
 }
 
 TEST(GraphTransformationTests, FuseConvAddMul3D) {
-  string model_uri = MODEL_FOLDER + "fusion/fuse-conv-add-mul-3d.onnx";
+  auto model_uri = MODEL_FOLDER "fusion/fuse-conv-add-mul-3d.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
@@ -486,7 +486,7 @@ TEST(GraphTransformationTests, FuseConvAddMul3D) {
 }
 
 TEST(GraphTransformationTests, FuseConvAddMul3D_2) {
-  string model_uri = MODEL_FOLDER + "fusion/fuse-conv-add-mul-3d-2.onnx";
+  auto model_uri = MODEL_FOLDER "fusion/fuse-conv-add-mul-3d-2.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
@@ -506,7 +506,7 @@ TEST(GraphTransformationTests, FuseConvAddMul3D_2) {
 }
 
 TEST(GraphTransformationTests, MatMulAddFusion_two_input) {
-  string model_uri = MODEL_FOLDER + "matmul_add_fusion/2Input/model.onnx";
+  auto model_uri = MODEL_FOLDER "matmul_add_fusion/2Input/model.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
@@ -523,7 +523,7 @@ TEST(GraphTransformationTests, MatMulAddFusion_two_input) {
 }
 
 TEST(GraphTransformationTests, MatMulAddFusion_three_input) {
-  string model_uri = MODEL_FOLDER + "matmul_add_fusion/3Input/model.onnx";
+  auto model_uri = MODEL_FOLDER "matmul_add_fusion/3Input/model.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
@@ -541,7 +541,7 @@ TEST(GraphTransformationTests, MatMulAddFusion_three_input) {
 
 #ifndef DISABLE_CONTRIB_OPS
 TEST(GraphTransformationTests, Gemm_Relu_three_input) {
-  string model_uri = MODEL_FOLDER + "matmul_add_fusion/3Input/gemm_relu.onnx";
+  auto model_uri = MODEL_FOLDER "matmul_add_fusion/3Input/gemm_relu.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
@@ -557,7 +557,7 @@ TEST(GraphTransformationTests, Gemm_Relu_three_input) {
 #endif
 
 TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
-  string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-add-mul-float16.onnx";
+  auto model_uri = MODEL_FOLDER "fusion/fuse-conv-bn-add-mul-float16.onnx";
 
   SessionOptions so;
   so.session_logid = "GraphTransformationTests.LoadModelToTransform";
@@ -803,7 +803,7 @@ TEST(GraphTransformationTests, ReluClip11Fusion) {
 
 #ifndef DISABLE_CONTRIB_OPS
 TEST(GraphTransformationTests, GeluFusionTest) {
-  string model_uri = MODEL_FOLDER + "fusion/gelu.onnx";
+  auto model_uri = MODEL_FOLDER "fusion/gelu.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
   Graph& graph = p_model->MainGraph();
@@ -821,7 +821,7 @@ TEST(GraphTransformationTests, GeluFusionTest) {
   ASSERT_TRUE(op_to_count["Gelu"] == 1);
 }
 TEST(GraphTransformationTests, LayerNormFusionTest) {
-  string model_uri = MODEL_FOLDER + "fusion/layer_norm.onnx";
+  auto model_uri = MODEL_FOLDER "fusion/layer_norm.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
   Graph& graph = p_model->MainGraph();
@@ -842,7 +842,7 @@ TEST(GraphTransformationTests, LayerNormFusionTest) {
 }
 
 TEST(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
-  string model_uri = MODEL_FOLDER + "fusion/layer_norm_sub_dup.onnx";
+  auto model_uri = MODEL_FOLDER "fusion/layer_norm_sub_dup.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, nullptr).IsOK());
   Graph& graph = p_model->MainGraph();

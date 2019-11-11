@@ -18,7 +18,7 @@ namespace onnxruntime {
 namespace test {
 
 TEST(FreeDimensionOverrideTransformerTest, Test) {
-  string model_uri = "testdata/abs_free_dimensions.onnx";
+  auto model_uri = ORT_TSTR("testdata/abs_free_dimensions.onnx");
 
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model, nullptr, nullptr).IsOK());

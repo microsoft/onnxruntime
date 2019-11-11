@@ -449,7 +449,7 @@ TEST(InferenceSessionTests, ModelMetadata) {
 
   so.session_logid = "InferenceSessionTests.ModelMetadata";
   InferenceSession session_object{so, &DefaultLoggingManager()};
-  string model_uri = "../models/opset8/test_squeezenet/model.onnx";
+  auto model_uri = ORT_TSTR("../models/opset8/test_squeezenet/model.onnx");
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
   std::shared_ptr<onnxruntime::Model> p_model;

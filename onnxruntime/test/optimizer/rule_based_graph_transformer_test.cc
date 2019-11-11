@@ -18,7 +18,7 @@ namespace onnxruntime {
 namespace test {
 
 TEST(RuleBasedGraphTransformerTest, TestCompatibleProviders) {
-  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+  auto model_uri = ORT_TSTR("testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx");
 
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model, nullptr, nullptr).IsOK());
