@@ -199,7 +199,7 @@ static bool IsDomainVersionBeyondSupportedRange(
     const int op_set_version) {
   // List of maximum supported versions ORT officially supports in the static registrations.
   // It's perfectly okay for custom registrations to support beyond these limits.
-  const std::pair<std::string_view, int> supported_versions[] = {
+  const std::pair<const char*, int> supported_versions[] = {
     {kOnnxDomain, kMaximumAiOnnxVersionSupported},
     {kOnnxDomainAlias, kMaximumAiOnnxVersionSupported},
     {kMLDomain, kMaximumAiMlOnnxVersionSupported},
