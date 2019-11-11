@@ -42,19 +42,26 @@ class LinearRegressor final : public OpKernel {
       Eigen::array<int, 2> bcast{static_cast<int>(N), 1};
       Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {Eigen::IndexPair<int>(1, 0)};
 #ifndef USE_OPENMP
-      output_tensor.device(Eigen::ThreadPoolDevice(&tp->GetHandler(), tp->NumThreads())) =
-          input_tensor.contract(coefficients_, product_dims) + intercepts_.broadcast(bcast);
-#else
-      output_tensor.device(Eigen::DefaultDevice()) =
-          input_tensor.contract(coefficients_, product_dims) + intercepts_.broadcast(bcast);
+      if (tp == nullptr)
+#endif
+        output_tensor.device(Eigen::DefaultDevice()) =
+            input_tensor.contract(coefficients_, product_dims) + intercepts_.broadcast(bcast);
+#ifndef USE_OPENMP
+      else
+        output_tensor.device(Eigen::ThreadPoolDevice(&tp->GetHandler(), tp->NumThreads())) =
+            input_tensor.contract(coefficients_, product_dims) + intercepts_.broadcast(bcast);
 #endif
     } else {
       Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {Eigen::IndexPair<int>(1, 0)};
 #ifndef USE_OPENMP
-      output_tensor.device(Eigen::ThreadPoolDevice(&tp->GetHandler(), tp->NumThreads())) =
-          input_tensor.contract(coefficients_, product_dims);
-#else
-      output_tensor.device(Eigen::DefaultDevice()) = input_tensor.contract(coefficients_, product_dims);
+      if (tp == nullptr)
+#endif
+        output_tensor.device(Eigen::DefaultDevice()) =
+            input_tensor.contract(coefficients_, product_dims);
+#ifndef USE_OPENMP
+      else
+        output_tensor.device(Eigen::ThreadPoolDevice(&tp->GetHandler(), tp->NumThreads())) =
+            input_tensor.contract(coefficients_, product_dims);
 #endif
     }
     // TODO: parallel this part

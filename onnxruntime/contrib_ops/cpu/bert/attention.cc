@@ -222,10 +222,10 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 #ifndef USE_OPENMP
     if (tp == nullptr)
 #endif
-      ComputeSoftMax(Eigen::DefaultDevice(), X_tensor, Y_tensor, false);
+      ComputeSoftMax<false>(Eigen::DefaultDevice(), X_tensor, Y_tensor, N, D);
 #ifndef USE_OPENMP
     else
-      ComputeSoftMax(Eigen::ThreadPoolDevice(&tp->GetHandler(), tp->NumThreads()), X_tensor, Y_tensor, false);
+      ComputeSoftMax<false>(Eigen::ThreadPoolDevice(&tp->GetHandler(), tp->NumThreads()), X_tensor, Y_tensor, N, D);
 #endif
   }
 
