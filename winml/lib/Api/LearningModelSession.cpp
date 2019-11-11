@@ -65,6 +65,7 @@ WINML_CATCH_ALL
 std::unique_ptr<_winmla::ModelProto>
 LearningModelSession::GetOptimizedModel() {
   // Get the model proto
+
   auto should_close_model =
       session_options_ != nullptr &&
       session_options_.CloseModelOnSessionCreation();
@@ -92,7 +93,7 @@ LearningModelSession::GetOptimizedModel(bool should_close_model) {
   }
 
   // Ensure that the model is runnable on the device
-  WINML_THROW_IF_FAILED(_winmla::EnsureModelDeviceCompatibility(model_, model_proto.get()->p_, device_));
+  WINML_THROW_IF_FAILED(_winmla::EnsureModelDeviceCompatibility(model_, model_proto.get()->p_, device_.as<winmlp::LearningModelDevice>()->GetD3DDeviceCache()->IsFloat16Supported()));
 
   return model_proto;
 }

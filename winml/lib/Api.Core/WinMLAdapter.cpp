@@ -27,7 +27,7 @@ RegisterCustomRegistry(
 
   // Register
   for (auto& custom_registry : custom_registries) {
-    WINML_THROW_IF_NOT_OK(p_session->RegisterCustomRegistry(custom_registry));
+      ORT_THROW_IF_ERROR(p_session->RegisterCustomRegistry(custom_registry));
   }
 
   return S_OK;
@@ -54,19 +54,19 @@ LoadModel(
   auto session_protected_load_accessor =
       static_cast<InferenceSessionProtectedLoadAccessor*>(session);
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ptr(model_proto);
-  WINML_THROW_IF_NOT_OK(session_protected_load_accessor->Load(std::move(model_proto_ptr)));
+  ORT_THROW_IF_ERROR(session_protected_load_accessor->Load(std::move(model_proto_ptr)));
   return S_OK;
 }
 
 static bool
 IsFeatureDescriptorFp16(
     winml::ILearningModelFeatureDescriptor descriptor) {
-  if (auto imageFeatureDescriptor = descriptor.try_as<winmlp::ImageFeatureDescriptor>()) {
-    return TensorKind::Float16 == imageFeatureDescriptor->TensorKind();
+  if (auto imageFeatureDescriptor = descriptor.try_as<winml::IImageFeatureDescriptor2>()) {
+    return TensorKind::Float16 == imageFeatureDescriptor.TensorKind();
   }
 
-  if (auto tensorFeatureDescriptor = descriptor.try_as<winmlp::TensorFeatureDescriptor>()) {
-    return TensorKind::Float16 == tensorFeatureDescriptor->TensorKind();
+  if (auto tensorFeatureDescriptor = descriptor.try_as<winml::ITensorFeatureDescriptor>()) {
+    return TensorKind::Float16 == tensorFeatureDescriptor.TensorKind();
   }
 
   return false;
@@ -76,9 +76,8 @@ HRESULT STDMETHODCALLTYPE
 EnsureModelDeviceCompatibility(
     winml::LearningModel const& model,
     onnx::ModelProto* p_model_proto,
-    winml::LearningModelDevice const& device) {
-  auto isFloat16Supported = device.as<winmlp::LearningModelDevice>()->GetD3DDeviceCache()->IsFloat16Supported();
-  if (!isFloat16Supported) {
+    bool is_float16_supported) {
+  if (!is_float16_supported) {
     auto& graph = p_model_proto->graph();
 
     // The model will not contain fp16 operations if:
@@ -89,7 +88,7 @@ EnsureModelDeviceCompatibility(
 
     // 1. Ensure that The model has no fp16 inputs
     for (auto descriptor : model.InputFeatures()) {
-      WINML_THROW_HR_IF_TRUE_MSG(
+        THROW_HR_IF_MSG(
           DXGI_ERROR_UNSUPPORTED,
           IsFeatureDescriptorFp16(descriptor),
           "The model contains a 16-bit input (%ls), but the current device does not support 16-bit float.",
@@ -103,7 +102,7 @@ EnsureModelDeviceCompatibility(
         for (int attribIndex = 0; attribIndex < node.attribute_size(); attribIndex++) {
           auto attribute = node.attribute(attribIndex);
           if (attribute.name() == "to") {
-            WINML_THROW_HR_IF_TRUE_MSG(
+              THROW_HR_IF_MSG(
                 DXGI_ERROR_UNSUPPORTED,
                 attribute.i() == onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16,
                 "The model contains a 16-bit float Cast Op (%s), but the current device does not support 16-bit float.",
@@ -118,7 +117,7 @@ EnsureModelDeviceCompatibility(
     for (int i = 0; i < graph.initializer_size(); i++) {
       auto initializer = graph.initializer(i);
 
-      WINML_THROW_HR_IF_TRUE_MSG(
+      THROW_HR_IF_MSG(
           DXGI_ERROR_UNSUPPORTED,
           initializer.data_type() == onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16,
           "The model contains a 16-bit float initializer (%s), but the current device does not support 16-bit float.",
@@ -127,7 +126,7 @@ EnsureModelDeviceCompatibility(
 
     // 4. Ensure that the model does not have any fp16 outputs
     for (auto descriptor : model.OutputFeatures()) {
-      WINML_THROW_HR_IF_TRUE_MSG(
+        THROW_HR_IF_MSG(
           DXGI_ERROR_UNSUPPORTED,
           IsFeatureDescriptorFp16(descriptor),
           "The model contains a 16-bit output (%ls), but the current device does not support 16-bit float.",

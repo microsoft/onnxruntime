@@ -201,9 +201,9 @@ target_link_libraries(winml_lib_core PRIVATE wil)
 target_link_libraries(winml_lib_core PRIVATE onnxruntime_providers_dml)
 
 # add it to the onnxruntime shared library
-#list(APPEND onnxruntime_EXTERNAL_LIBRARIES -WHOLEARCHIVE:$<TARGET_FILE:winml_lib_core>)
-#list(APPEND onnxruntime_EXTERNAL_LIBRARIES windowsapp.lib)
-#list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES winml_lib_core)
+list(APPEND onnxruntime_EXTERNAL_LIBRARIES -WHOLEARCHIVE:$<TARGET_FILE:winml_lib_core>)
+list(APPEND onnxruntime_EXTERNAL_LIBRARIES windowsapp.lib)
+list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES winml_lib_core)
 
 ###########################
 # Add winml_lib_image
