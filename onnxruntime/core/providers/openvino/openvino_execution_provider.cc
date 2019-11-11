@@ -177,6 +177,7 @@ bool IsOpSupported(std::string name) {
       "Transpose",
       "Identity",
       "MatMul",
+      "Pad",
       "Unsqueeze",
       "ImageScaler",
       "LeakyRelu",
@@ -244,6 +245,17 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
       if (it == initializers.end() && node_inputs[i]->Shape() != nullptr) {
         if (node_inputs[i]->Shape()->dim_size() == 0) {
           throw "Node_input is zero dimension";
+        } else {
+          auto num_dims = node_inputs[i]->Shape()->dim_size();
+          int v = 0;
+          //Batch size for NCHW can be 0
+          if (num_dims > 3) {
+            v = 1;
+          }
+          for (int j = v; j < num_dims; j++) {
+            if (node_inputs[i]->Shape()->dim(j).dim_value() == 0)
+              throw "Node_input has zero dimension";
+          }
         }
       }
     }
@@ -252,6 +264,29 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
     if (node->OpType() == "BatchNormalization") {
       if (GetInputCount(node, initializers) > 1) {
         throw "BatchNormalization: Cannot take more than 1 input";
+      }
+    }
+
+    //Pad doesn't support negative values.
+    //If all pads are 0, the node gets removed
+    if (node->OpType() == "Pad") {
+      auto attributes = node->GetAttributes();
+      auto it = attributes.find("pads");
+      if (it != attributes.end()) {
+        auto pads_ints = attributes["pads"].ints();
+        auto min_val = *std::min_element(pads_ints.begin(), pads_ints.end());
+        auto max_val = *std::max_element(pads_ints.begin(), pads_ints.end());
+        if (min_val < 0) {
+          throw "Pad: Negative values are not supported";
+        }
+        if (min_val == 0 && max_val == 0) {
+          auto iter = node->OutputNodesBegin();
+          if (iter == node->OutputNodesEnd()) {
+            throw "Pad: Must extend tensor in one or more dimensions";
+          }
+        }
+      } else {
+        throw "Pad-1 and Pad (opset 11) operators are not supported";
       }
     }
 
