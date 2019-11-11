@@ -106,6 +106,7 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 **Options**
 * [OpenMP](#OpenMP)
 * [OpenBLAS](#OpenBLAS)
+* [DebugNodeInputsOutputs](#DebugNodeInputsOutputs)
 
 **Architectures**
 * [x86](#x86)
@@ -421,6 +422,30 @@ The DirectML execution provider supports building for both x64 and x86 architect
 ```
 ./build.sh --use_openblas
 ```
+
+---
+
+### DebugNodeInputsOutputs
+OnnxRuntime supports build options for enabling debugging of intermediate tensor shapes and data.
+#### Build Instructions
+##### Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
+Dump tensor input/output shapes for all nodes to stdout.
+```
+# Linux
+./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
+# Windows
+.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
+```
+##### Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2
+Dump tensor input/output shapes and output data for all nodes to stdout.
+```
+# Linux
+./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2
+# Windows
+.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2
+```
+##### Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=0
+To disable this functionality after previously enabling, set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=0 or delete CMakeCache.txt.
 
 ---
 
