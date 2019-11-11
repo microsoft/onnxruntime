@@ -60,7 +60,7 @@ RegisterCustomRegistry(
 
     // Register
     for (auto& custom_registry : custom_registries) {
-      WINML_THROW_IF_NOT_OK(p_session->RegisterCustomRegistry(custom_registry));
+        ORT_THROW_IF_ERROR(p_session->RegisterCustomRegistry(custom_registry));
     }
   }
 
@@ -115,7 +115,7 @@ HRESULT DmlOrtSessionBuilder::CreateSession(
   // Cache the provider's raw pointer
   *pp_provider = gpu_provider.get();
 
-  WINML_THROW_IF_NOT_OK(session->RegisterExecutionProvider(std::move(gpu_provider)));
+  ORT_THROW_IF_ERROR(session->RegisterExecutionProvider(std::move(gpu_provider)));
 
   // return the session
   *p_session = std::move(session);
@@ -134,7 +134,7 @@ HRESULT DmlOrtSessionBuilder::Initialize(
   // lifetime and can be large, so shouldn't be rounded.
   Dml::SetDefaultRoundingMode(p_provider, AllocatorRoundingMode::Disabled);
 
-  WINML_THROW_IF_NOT_OK(p_session->Initialize());
+  ORT_THROW_IF_ERROR(p_session->Initialize());
 
   Dml::SetDefaultRoundingMode(p_provider, AllocatorRoundingMode::Enabled);
 

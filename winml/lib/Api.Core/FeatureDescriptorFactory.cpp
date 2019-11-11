@@ -324,9 +324,9 @@ GetTensorType(
     const std::unordered_map<std::string, std::string>& metadata) {
   const auto& type_proto = value_info_proto->type();
 
-  WINML_THROW_HR_IF_FALSE_MSG(
+  THROW_HR_IF_MSG(
       E_FAIL,
-      type_proto.has_tensor_type(),
+      type_proto.has_tensor_type() == false,
       "Malformed onnx file.");
 
   auto has_image_denotation = type_proto.denotation() == "IMAGE";
@@ -381,12 +381,14 @@ GetTensorType(
        has_unsupported_image_metadata);
 
   if (is_tensor_improperly_annotated_as_image) {
+#ifdef LAYERING_DONE
     TraceLoggingWrite(winml_trace_logging_provider,
                       "WinMLInputValidation",
                       TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
                       TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
                       TraceLoggingOpcode(EVENT_TRACE_TYPE_INFO),
                       TraceLoggingString(log_stream.str().c_str()));
+#endif
   }
 
   auto is_valid_image_tensor =
@@ -410,12 +412,12 @@ CreateTensorFeatureDescriptor(
   auto kind = WinML::TensorKindFromOnnxDataType(
       onnx::TensorProto_DataType(tensor_type.elem_type()));
 
-  auto descriptor = winrt::make<winmlp::TensorFeatureDescriptor>(
-      value_info_proto->name().c_str(),
-      value_info_proto->doc_string().c_str(),
+  TensorFeatureDescriptor descriptor(
+      WinML::Strings::HStringFromUTF8(value_info_proto->name()),
+      WinML::Strings::HStringFromUTF8(value_info_proto->doc_string()),  // description
+      value_info_proto->name().empty() == false,                        // is_required
       kind,
       shape,
-      value_info_proto->name().empty() == false,  // is_required
       has_unsupported_image_metadata);
 
   return descriptor.as<winml::ILearningModelFeatureDescriptor>();
@@ -429,7 +431,7 @@ CreateImageFeatureDescriptor(
   const auto& tensor_type = type_proto.tensor_type();
   auto shape = WinML::ConvertShapeProtoToVector(tensor_type.shape());
   auto kind = WinML::TensorKindFromOnnxDataType(
-      onnx::TensorProto_DataType(tensor_type.elem_type()));
+  onnx::TensorProto_DataType(tensor_type.elem_type()));
 
   // pixel format and alpha
   auto pixel_format_value = FetchMetadataValueOrNull(metadata, c_bitmap_pixel_format_key);
@@ -437,13 +439,18 @@ CreateImageFeatureDescriptor(
   auto pixel_format = format_info.first;
   auto alpha_mode = format_info.second;
 
+  // paulm:   commenting this out during layering.    gamma and nominal are never used
+  // since we only support one of them.  if a non support one is set, they all fall back 
+  // to TensorFeatureDescriptor (invalid image metadata)
+#ifdef DONE_LAYERING
   // color space gamma value
-  auto color_space_gamma_value = FetchMetadataValueOrNull(metadata, c_color_space_key);
-  auto color_space_gamma = CreateImageColorSpaceGamma(color_space_gamma_value);
+    auto color_space_gamma_value = FetchMetadataValueOrNull(metadata, c_color_space_key);
+    auto color_space_gamma = CreateImageColorSpaceGamma(color_space_gamma_value);
 
   // nominal range
-  auto nominal_range_value = FetchMetadataValueOrNull(metadata, c_nominal_range_key);
-  auto nominal_range = CreateImageNominalPixelRange(nominal_range_value);
+    auto nominal_range_value = FetchMetadataValueOrNull(metadata, c_nominal_range_key);
+    auto nominal_range = CreateImageNominalPixelRange(nominal_range_value);
+#endif
 
   // The current code assumes that the shape will be in NCHW.
   // Should the model metadata be read instead???
@@ -451,18 +458,16 @@ CreateImageFeatureDescriptor(
   const int c_width_dimension = 3;
   auto height = static_cast<uint32_t>(shape[c_height_dimension]);
   auto width = static_cast<uint32_t>(shape[c_width_dimension]);
-  auto descriptor = winrt::make<winmlp::ImageFeatureDescriptor>(
-      value_info_proto->name().c_str(),
-      value_info_proto->doc_string().c_str(),
+  ImageFeatureDescriptor descriptor(
+      WinML::Strings::HStringFromUTF8(value_info_proto->name()),
+      WinML::Strings::HStringFromUTF8(value_info_proto->doc_string()),
+      value_info_proto->name().empty() == false,  // is_required
       kind,
       shape,
-      value_info_proto->name().empty() == false,  // is_required
       pixel_format,
       alpha_mode,
       width,
-      height,
-      nominal_range,
-      color_space_gamma);
+      height);
 
   return descriptor.as<winml::ILearningModelFeatureDescriptor>();
 }
@@ -485,9 +490,9 @@ CreateMapFeatureDescriptor(
   auto value_descriptor =
       CreateFeatureDescriptor(&dummy_value_info_proto, metadata);
 
-  auto descriptor = winrt::make<winmlp::MapFeatureDescriptor>(
-      value_info_proto->name().c_str(),
-      value_info_proto->doc_string().c_str(),
+  MapFeatureDescriptor descriptor(
+      WinML::Strings::HStringFromUTF8(value_info_proto->name()),
+      WinML::Strings::HStringFromUTF8(value_info_proto->doc_string()),
       value_info_proto->name().empty() == false,  // is_rRequired
       key_kind,
       value_descriptor);
@@ -510,9 +515,9 @@ CreateSequenceFeatureDescriptor(
   auto element_descriptor =
       CreateFeatureDescriptor(&dummy_value_info_proto, metadata);
 
-  auto descriptor = winrt::make<winmlp::SequenceFeatureDescriptor>(
-      value_info_proto->name().c_str(),
-      value_info_proto->doc_string().c_str(),
+  SequenceFeatureDescriptor descriptor(
+      WinML::Strings::HStringFromUTF8(value_info_proto->name()),
+      WinML::Strings::HStringFromUTF8(value_info_proto->doc_string()),
       value_info_proto->name().empty() == false,  // is_required
       element_descriptor);
 

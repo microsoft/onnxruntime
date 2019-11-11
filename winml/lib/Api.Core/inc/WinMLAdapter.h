@@ -19,7 +19,7 @@ __declspec(dllexport) HRESULT STDMETHODCALLTYPE LoadModel(onnxruntime::Inference
 __declspec(dllexport) HRESULT STDMETHODCALLTYPE EnsureModelDeviceCompatibility(
     winml::LearningModel const& model,
     onnx::ModelProto* p_model_proto,
-    winml::LearningModelDevice const& device);
+    bool is_float16_supported);
 
 __declspec(dllexport) ID3D12Resource* STDMETHODCALLTYPE GetD3D12ResourceFromAllocation(onnxruntime::IExecutionProvider* provider, void* allocation);
 

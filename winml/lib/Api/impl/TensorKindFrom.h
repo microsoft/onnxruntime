@@ -66,9 +66,9 @@ struct TensorFeatureDescriptorFrom {
     return winrt::make<winmlp::TensorFeatureDescriptor>(
         nullptr /* set to null as values are name-less */,
         nullptr /* set to null as values are description-less */,
+        false /* set to false as values dont have required annotations */,
         TensorKindFrom<T>::Type,
         shape,
-        false /* set to false as values dont have required annotations */,
         false /* set to false as this is not a tensor of unsupported metadata */);
   }
 };

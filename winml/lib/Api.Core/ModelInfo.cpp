@@ -144,7 +144,7 @@ WinML::CreateModelProto(
       _SH_DENYWR,
       _S_IREAD | _S_IWRITE);
 
-  WINML_THROW_HR_IF_TRUE_MSG(
+  THROW_HR_IF_MSG(
       E_FAIL,
       0 > file_descriptor,
       "Failed");  //errno
@@ -153,9 +153,9 @@ WinML::CreateModelProto(
   stream.SetCloseOnDelete(true);
 
   auto model_proto = new onnx::ModelProto();
-  WINML_THROW_HR_IF_FALSE_MSG(
+  THROW_HR_IF_MSG(
       E_INVALIDARG,
-      model_proto->ParseFromZeroCopyStream(&stream),
+      !model_proto->ParseFromZeroCopyStream(&stream) == false,
       "The stream failed to parse.");
 
   return model_proto;
@@ -168,9 +168,9 @@ WinML::CreateModelProto(
   ZeroCopyInputStreamWrapper wrapper(stream_reference);
 
   auto model_proto = new onnx::ModelProto();
-  WINML_THROW_HR_IF_FALSE_MSG(
+  THROW_HR_IF_MSG(
       E_INVALIDARG,
-      model_proto->ParseFromZeroCopyStream(&wrapper),
+      model_proto->ParseFromZeroCopyStream(&wrapper) == false,
       "The stream failed to parse.");
 
   return model_proto;

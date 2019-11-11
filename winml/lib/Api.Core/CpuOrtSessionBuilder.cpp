@@ -63,7 +63,7 @@ CpuOrtSessionBuilder::CreateSession(
   *pp_provider = cpu_provider.get();
 
   // Register the cpu xp
-  WINML_THROW_IF_NOT_OK(session->RegisterExecutionProvider(std::move(cpu_provider)));
+  ORT_THROW_IF_ERROR(session->RegisterExecutionProvider(std::move(cpu_provider)));
 
   // assign the session to the out parameter
   *p_session = std::move(session);
@@ -76,6 +76,6 @@ CpuOrtSessionBuilder::Initialize(
     onnxruntime::InferenceSession* p_session,
     onnxruntime::IExecutionProvider* /*p_provider*/
 ) {
-  WINML_THROW_IF_NOT_OK(p_session->Initialize());
+    ORT_THROW_IF_ERROR(p_session->Initialize());
   return S_OK;
 }

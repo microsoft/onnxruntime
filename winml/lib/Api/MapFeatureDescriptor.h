@@ -17,6 +17,13 @@ struct MapFeatureDescriptor : MapFeatureDescriptorT<
       bool is_required,
       winml::TensorKind keyKind,
       winml::ILearningModelFeatureDescriptor valueKind);
+  
+  MapFeatureDescriptor(
+      hstring const& Name,
+      hstring const& Description,
+      bool IsRequired,
+      Windows::AI::MachineLearning::TensorKind const& KeyKind,
+      Windows::AI::MachineLearning::ILearningModelFeatureDescriptor const& ValueDescriptor);
 
   // IMapDescriptor
   winml::TensorKind
@@ -56,3 +63,9 @@ struct MapFeatureDescriptor : MapFeatureDescriptorT<
   winml::ILearningModelFeatureDescriptor value_kind_;
 };
 }  // namespace winrt::Windows::AI::MachineLearning::implementation
+
+namespace winrt::Windows::AI::MachineLearning::factory_implementation {
+    struct MapFeatureDescriptor : MapFeatureDescriptorT<MapFeatureDescriptor, implementation::MapFeatureDescriptor> {
+
+    };
+}  // namespace winrt::Windows::AI::MachineLearning::factory_implementation

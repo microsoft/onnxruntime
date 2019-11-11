@@ -697,14 +697,17 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
 endif()
 
 if (onnxruntime_USE_WINML)
-  if (NOT onnxruntime_USE_DML)
+  # WINML uses and depends on the shared lib.  Note:  You can build WINML without DML and you will get a 
+  # CPU only WINML
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
     message(
         FATAL_ERROR 
-        "Option onnxruntime_USE_WINML can only be used when onnxruntime_USE_DML is also enabled")
+        "Option onnxruntime_USE_WINML can only be used when onnxruntime_BUILD_SHARED_LIB is also enabled")
   endif()
   include(wil.cmake)
   include(winml.cmake)
 endif() # if(onnxruntime_USE_WINML)
+
 #The following files may use the 'onnxruntime_libs' and 'onnxruntime_EXTERNAL_LIBRARIES' vars
 
 if (onnxruntime_BUILD_SHARED_LIB)
