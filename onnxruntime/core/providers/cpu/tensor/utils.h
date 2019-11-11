@@ -3,6 +3,7 @@
 
 #pragma once
 #include "gsl/gsl"
+#include "core/framework/utils.h"
 namespace onnxruntime {
 
 struct TensorPitches : std::vector<int64_t> {
@@ -269,7 +270,7 @@ inline void CopyCpuTensor(const Tensor* src, Tensor* tgt) {
   const void* source = src->DataRaw();
 
   if (target != source) {
-    auto is_string_type = (src->DataType() == DataTypeImpl::GetType<std::string>());
+    auto is_string_type = utils::IsDataTypeString(src->DataType());
     if (is_string_type) {
       for (int64_t i = 0; i < src->Shape().Size(); ++i)
         static_cast<std::string*>(target)[i] = static_cast<const std::string*>(source)[i];
