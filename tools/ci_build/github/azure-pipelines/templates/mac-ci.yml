@@ -9,6 +9,7 @@ jobs:
 - job: ${{ parameters.JobName }}
   workspace:
     clean: all
+  timeoutInMinutes:  120
   pool: ${{ parameters.AgentPool }}
   variables:
     BuildCommand: ${{ parameters.BuildCommand }}

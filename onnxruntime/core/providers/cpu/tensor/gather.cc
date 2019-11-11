@@ -98,7 +98,7 @@ Status Gather::Compute(OpKernelContext* context) const {
 
   const TensorShape& input_data_shape = p.input_tensor->Shape();
 
-  bool is_string_type = p.input_tensor->DataType() == DataTypeImpl::GetType<std::string>();
+  bool is_string_type = p.input_tensor->IsDataTypeString();
 
   const size_t element_bytes = p.input_tensor->DataType()->Size();
   const int64_t block = input_data_shape.SizeFromDimension(p.axis + 1);
@@ -112,11 +112,11 @@ Status Gather::Compute(OpKernelContext* context) const {
   auto* dst_base = static_cast<uint8_t*>(p.output_tensor->MutableDataRaw());
 
   MLDataType Tind_type = p.indices_tensor->DataType();
-  if (Tind_type == DataTypeImpl::GetType<int32_t>()) {
+  if (utils::IsPrimitiveDataType<int32_t>(Tind_type)) {
     return GatherCopyData<int32_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
                                    block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis);
   }
-  if (Tind_type == DataTypeImpl::GetType<int64_t>()) {
+  if (utils::IsPrimitiveDataType<int64_t>(Tind_type)) {
     return GatherCopyData<int64_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
                                    block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis);
   }

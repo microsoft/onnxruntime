@@ -2051,6 +2051,21 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
   }
 }
 
+template <typename T, typename TIter>
+static void RemoveRepeatedFieldEntry(T& repeated_field, const TIter& entry_to_remove) {
+  auto num_entries = repeated_field.size();
+  if (num_entries > 1) {
+    // swap the entry being deleted with the last one, and delete it.
+    // we do this so we don't have to move all the entries past the one being deleted down one.
+    auto slot = entry_to_remove - repeated_field.begin();
+    auto last_entry = repeated_field.end() - 1;
+    repeated_field.SwapElements(slot, num_entries - 1);
+    repeated_field.erase(last_entry);
+  } else {
+    repeated_field.erase(entry_to_remove);
+  }
+}
+
 void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
   bool found = false;
   auto iter = name_to_initial_tensor_.find(tensor_name);
@@ -2065,17 +2080,7 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
                                   [&tensor_name](const TensorProto& entry) { return entry.name() == tensor_name; });
 
   if (proto_entry != mutable_initializers.end()) {
-    auto num_entries = mutable_initializers.size();
-    if (num_entries > 1) {
-      // swap the entry being deleted with the last one, and delete it.
-      // we do this so we don't have to move all the entries past the one being deleted down one.
-      auto slot = proto_entry - mutable_initializers.begin();
-      auto last_entry = mutable_initializers.end() - 1;
-      mutable_initializers.SwapElements(slot, num_entries - 1);
-      mutable_initializers.erase(last_entry);
-    } else {
-      mutable_initializers.erase(proto_entry);
-    }
+    RemoveRepeatedFieldEntry(mutable_initializers, proto_entry);
   } else {
     // these should always be in sync as the pointer in name_to_initial_tensor_ is to memory owned by graph_proto_
     ORT_ENFORCE(!found, "graph_proto_ is not in sync with name_to_initial_tensor_.");
@@ -2409,7 +2414,28 @@ void Graph::CleanUnusedInitializers() {
   }
 
   std::for_each(erase_list.cbegin(), erase_list.cend(),
-                [this](const std::string& name) { name_to_initial_tensor_.erase(name); });
+                [this](const std::string& name) {
+                  RemoveInitializedTensor(name);
+
+                  // handle edge case where the unused initializer has a matching graph input
+                  auto& proto_inputs = *graph_proto_->mutable_input();
+                  auto i = std::find_if(proto_inputs.begin(), proto_inputs.end(),
+                                        [&name](const ONNX_NAMESPACE::ValueInfoProto& input) {
+                                          return input.name() == name;
+                                        });
+
+                  if (i != proto_inputs.end()) {
+                    RemoveRepeatedFieldEntry(proto_inputs, i);
+                  }
+
+                  auto& inputs_including_initializers = graph_inputs_including_initializers_;
+                  auto j = std::find_if(inputs_including_initializers.begin(), inputs_including_initializers.end(),
+                                        [&name](const NodeArg* input) { return input->Name() == name; });
+
+                  if (j != inputs_including_initializers.end()) {
+                    inputs_including_initializers.erase(j);
+                  }
+                });
 }
 
 GSL_SUPPRESS(es .84)  // warning about ignoring return value from insert(...)

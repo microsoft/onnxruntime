@@ -26,6 +26,8 @@ tvm::Expr TensorizeIntGemm8bit::CreatePredicateMask(int tail_size) {
     mask_lanes = 16;
   } else if (tensorize_target_ == "avx2") {
     mask_lanes = 8;
+  } else if (tensorize_target_ == "avx") {
+    mask_lanes = 4;
   } else {
     ORT_NOT_IMPLEMENTED("Tensorization only support avx2/avx512-skylake currently!");
   }
@@ -221,6 +223,12 @@ tvm::TensorIntrin TensorizeIntGemm8bit::CreateTensorIntrin() {
                                   HalideIR::Int(8, 32), HalideIR::Int(16, 16), HalideIR::Int(32, 8),
                                   "llvm.x86.avx2.pmadd.ub.sw", "llvm.x86.avx2.pmadd.wd");
     tensorize_targets_meta_.emplace(tensorize_target_, avx2_info);
+  } else if (tensorize_target_ == "avx") {
+    TensorizeTargetInfo avx_info(HalideIR::UInt(1, 4), HalideIR::UInt(8, 16),
+                                 HalideIR::Int(8, 16), HalideIR::Int(16, 8), HalideIR::Int(32, 4),
+                                 "llvm.x86.ssse3.pmadd.ub.sw.128", "llvm.x86.sse2.pmadd.wd");
+
+    tensorize_targets_meta_.emplace(tensorize_target_, avx_info);
   } else {
     ORT_NOT_IMPLEMENTED("Tensorization only support avx2/avx512-skylake currently!");
   }

@@ -66,7 +66,7 @@ Status Compress::Compute(OpKernelContext* ctx) const {
   const auto* input_data = static_cast<const uint8_t*>(input_tensor->DataRaw());
   auto* output_data = static_cast<uint8_t*>(output_tensor->MutableDataRaw());
   auto element_bytes = input_tensor->DataType()->Size();
-  bool is_string_type = input_tensor->DataType() == DataTypeImpl::GetType<std::string>();
+  bool is_string_type = input_tensor->IsDataTypeString();
   int64_t output_index = 0;
 
   if (has_axis_) {
