@@ -20,6 +20,7 @@
 #include "core/optimizer/free_dim_override_transformer.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/layer_norm_fusion.h"
+#include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
 
@@ -119,6 +120,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(l2_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(l2_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(l2_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>(l2_execution_providers));
 #endif
     } break;
 
