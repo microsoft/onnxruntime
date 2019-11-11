@@ -117,66 +117,72 @@ std::unique_ptr<Tensor> CreateTensor(AllocatorPtr alloc, const std::string& name
 
     TensorShape shape(dims);
     auto element_type = NumpyToOnnxRuntimeTensorType(npy_type);
-    p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
-    if (npy_type == NPY_UNICODE) {
-      // Copy string data which needs to be done after Tensor is allocated.
-      // Strings are Python strings or numpy.unicode string.
-      std::string* dst = p_tensor->MutableData<std::string>();
-      auto item_size = PyArray_ITEMSIZE(darray);
-      auto num_chars = item_size / PyUnicode_4BYTE_KIND;
-      char* src = static_cast<char*>(PyArray_DATA(darray));
-      const char* str;
-      Py_ssize_t size;
-      PyObject* pStr;
-      for (int i = 0; i < shape.Size(); i++, src += item_size) {
-        // Python unicode strings are assumed to be USC-4. Strings are stored as UTF-8.
-        pStr = PyUnicode_FromKindAndData(PyUnicode_4BYTE_KIND, src, num_chars);
-        str = PyUnicode_AsUTF8AndSize(pStr, &size);
-        if (str == NULL) {
-          dst[i] = "";
-        } else {
-          // Size is equal to the longest string size, numpy stores
-          // strings in a single array. Those code assumes a string ends with a final 0.
-          dst[i] = str;
-        }
-        Py_XDECREF(pStr);
-      }
-    } else if (npy_type == NPY_STRING || npy_type == NPY_VOID) {
-      // Copy string data which needs to be done after Tensor is allocated.
-      // Strings are given as bytes (encoded strings).
-      // NPY_VOID does not trim final 0.
-      // NPY_STRING assumes bytes string ends with a final 0.
-      std::string* dst = p_tensor->MutableData<std::string>();
-      auto item_size = PyArray_ITEMSIZE(darray);
-      char* src = static_cast<char*>(PyArray_DATA(darray));
-      for (int i = 0; i < shape.Size(); i++, src += item_size) {
-        if (npy_type == NPY_STRING) {
-          dst[i] = src;
-        } else {
-          dst[i].resize(item_size);
-          memcpy((void*)dst[i].c_str(), src, item_size);
-        }
-      }
-    } else if (npy_type == NPY_OBJECT) {
-      // Converts object into string.
-      std::string* dst = p_tensor->MutableData<std::string>();
-      auto item_size = PyArray_ITEMSIZE(darray);
-      char* src = static_cast<char*>(PyArray_DATA(darray));
-      PyObject *item, *pStr;
-      for (int i = 0; i < shape.Size(); ++i, src += item_size) {
-        // Python unicode strings are assumed to be USC-4. Strings are stored as UTF-8.
-        item = PyArray_GETITEM(darray, src);
-        pStr = PyObject_Str(item);
-        dst[i] = py::reinterpret_borrow<py::str>(pStr);
-        Py_XDECREF(pStr);
-      }
+    if (pyObject == darray && npy_type != NPY_UNICODE && npy_type != NPY_STRING &&
+        npy_type != NPY_VOID && npy_type != NPY_OBJECT) {
+      p_tensor = onnxruntime::make_unique<Tensor>(
+          element_type, shape, static_cast<void*>(PyArray_DATA(darray)), alloc->Info());
     } else {
-      void* buffer = p_tensor->MutableDataRaw();
-      size_t len;
-      if (!IAllocator::CalcMemSizeForArray(element_type->Size(), shape.Size(), &len)) {
-        throw std::runtime_error("length overflow");
+      p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
+      if (npy_type == NPY_UNICODE) {
+        // Copy string data which needs to be done after Tensor is allocated.
+        // Strings are Python strings or numpy.unicode string.
+        std::string* dst = p_tensor->MutableData<std::string>();
+        auto item_size = PyArray_ITEMSIZE(darray);
+        auto num_chars = item_size / PyUnicode_4BYTE_KIND;
+        char* src = static_cast<char*>(PyArray_DATA(darray));
+        const char* str;
+        Py_ssize_t size;
+        PyObject* pStr;
+        for (int i = 0; i < shape.Size(); i++, src += item_size) {
+          // Python unicode strings are assumed to be USC-4. Strings are stored as UTF-8.
+          pStr = PyUnicode_FromKindAndData(PyUnicode_4BYTE_KIND, src, num_chars);
+          str = PyUnicode_AsUTF8AndSize(pStr, &size);
+          if (str == NULL) {
+            dst[i] = "";
+          } else {
+            // Size is equal to the longest string size, numpy stores
+            // strings in a single array. Those code assumes a string ends with a final 0.
+            dst[i] = str;
+          }
+          Py_XDECREF(pStr);
+        }
+      } else if (npy_type == NPY_STRING || npy_type == NPY_VOID) {
+        // Copy string data which needs to be done after Tensor is allocated.
+        // Strings are given as bytes (encoded strings).
+        // NPY_VOID does not trim final 0.
+        // NPY_STRING assumes bytes string ends with a final 0.
+        std::string* dst = p_tensor->MutableData<std::string>();
+        auto item_size = PyArray_ITEMSIZE(darray);
+        char* src = static_cast<char*>(PyArray_DATA(darray));
+        for (int i = 0; i < shape.Size(); i++, src += item_size) {
+          if (npy_type == NPY_STRING) {
+            dst[i] = src;
+          } else {
+            dst[i].resize(item_size);
+            memcpy((void*)dst[i].c_str(), src, item_size);
+          }
+        }
+      } else if (npy_type == NPY_OBJECT) {
+        // Converts object into string.
+        std::string* dst = p_tensor->MutableData<std::string>();
+        auto item_size = PyArray_ITEMSIZE(darray);
+        char* src = static_cast<char*>(PyArray_DATA(darray));
+        PyObject *item, *pStr;
+        for (int i = 0; i < shape.Size(); ++i, src += item_size) {
+          // Python unicode strings are assumed to be USC-4. Strings are stored as UTF-8.
+          item = PyArray_GETITEM(darray, src);
+          pStr = PyObject_Str(item);
+          dst[i] = py::reinterpret_borrow<py::str>(pStr);
+          Py_XDECREF(pStr);
+        }
+      } else {
+        void* buffer = p_tensor->MutableDataRaw();
+        size_t len;
+        if (!IAllocator::CalcMemSizeForArray(element_type->Size(), shape.Size(), &len)) {
+          throw std::runtime_error("length overflow");
+        }
+        memcpy(buffer, static_cast<void*>(PyArray_DATA(darray)), len);
       }
-      memcpy(buffer, static_cast<void*>(PyArray_DATA(darray)), len);
     }
   } catch (...) {
     if (!dref) {
