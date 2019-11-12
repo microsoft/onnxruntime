@@ -501,10 +501,16 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
 /// @remarks We pass in graph and session_state so we can handled nested subgraphs in the future
 common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, SessionState& session_state) {
   for (auto& node : graph.Nodes()) {
-    // We only need subgraph session state for control flow nodes being handled by the CPU execution provider.
+    // We only need subgraph session state for control flow nodes being handled by our CPU or CUDA execution provider.
     // Remove it if it's not needed.
-    if (node.ContainsSubgraph() && node.GetExecutionProviderType() != kCpuExecutionProvider) {
-      session_state.RemoveSubgraphSessionState(node.Index());
+    if (node.ContainsSubgraph()) {
+      const auto ep = node.GetExecutionProviderType();
+      if (ep != kCpuExecutionProvider && ep != kCudaExecutionProvider) {
+        session_state.RemoveSubgraphSessionState(node.Index());
+        continue;
+      }
+    } else {
+      // not a control flow node
       continue;
     }
 
@@ -526,7 +532,7 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
       // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
       //                                                   &*subgraph_info.session_state);
 
-      // setup all the info for handling the feeds and fetches used in subraph execution
+      // setup all the info for handling the feeds and fetches used in subgraph execution
       auto* p_op_kernel = session_state.GetMutableKernel(node.Index());
       ORT_ENFORCE(p_op_kernel);
       auto& control_flow_kernel = dynamic_cast<controlflow::IControlFlowKernel&>(*p_op_kernel);
