@@ -3,21 +3,21 @@
 
 #pragma once
 #include "core/framework/op_kernel.h"
-#include "core/providers/mkldnn/dnnl_fwd.h"
-#include "core/providers/mkldnn/dnnl_common.h"
-#include "core/providers/mkldnn/subgraph/dnnl_kernel.h"
+#include "core/providers/dnnl/dnnl_fwd.h"
+#include "core/providers/dnnl/dnnl_common.h"
+#include "core/providers/dnnl/subgraph/dnnl_kernel.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {
 
 template <typename T>
-class MklDnnSum : public MklDnnKernel {
+class DnnlSum : public DnnlKernel {
  public:
-  explicit MklDnnSum(const MklDnnNode& node,
+  explicit DnnlSum(const MklDnnNode& node,
                      MKLDNNExecutionProvider* provider,
                      const NodeAttributes& attributes,
-                     const std::string attributes_prefix = "") : MklDnnKernel(node, provider) {
+                     const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
   }
 

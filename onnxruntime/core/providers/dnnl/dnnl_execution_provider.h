@@ -12,7 +12,7 @@
 #include "core/graph/constants.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
-#include "core/providers/mkldnn/subgraph/subgraph.h"
+#include "core/providers/dnnl/subgraph/subgraph.h"
 
 namespace dnnl {
 struct memory;

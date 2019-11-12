@@ -6,7 +6,7 @@
 #include "core/util/math_cpuonly.h"
 #include "dnnl.h"
 #include "dnnl.hpp"
-#include "core/providers/mkldnn/dnnl_fwd.h"
+#include "core/providers/dnnl/dnnl_fwd.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {

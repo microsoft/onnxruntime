@@ -3,10 +3,10 @@
 
 #pragma once
 #include "core/framework/op_kernel.h"
-#include "core/providers/mkldnn/dnnl_fwd.h"
-#include "core/providers/mkldnn/dnnl_execution_provider.h"
-#include "core/providers/mkldnn/subgraph/dnnl_kernel.h"
-#include "core/providers/mkldnn/memcpy_s.h"
+#include "core/providers/dnnl/dnnl_fwd.h"
+#include "core/providers/dnnl/dnnl_execution_provider.h"
+#include "core/providers/dnnl/subgraph/dnnl_kernel.h"
+#include "core/providers/dnnl/memcpy_s.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {
@@ -80,12 +80,12 @@ class BatchNormHelper {
 };
 
 template <typename T>
-class MklDnnBatchNorm : public MklDnnKernel {
+class DnnlBatchNorm : public DnnlKernel {
  public:
-  explicit MklDnnBatchNorm(const MklDnnNode& node,
+  explicit DnnlBatchNorm(const MklDnnNode& node,
                            MKLDNNExecutionProvider* provider,
                            const NodeAttributes& attributes,
-                           const std::string attributes_prefix = "") : MklDnnKernel(node, provider) {
+                           const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
   }
   void ReadAttributes(const NodeAttributes& attributes,

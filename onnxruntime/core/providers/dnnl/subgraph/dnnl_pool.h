@@ -2,21 +2,21 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/providers/mkldnn/dnnl_fwd.h"
+#include "core/providers/dnnl/dnnl_fwd.h"
 #include "core/providers/cpu/nn/autopad_type.h"
-#include "core/providers/mkldnn/dnnl_execution_provider.h"
-#include "core/providers/mkldnn/subgraph/dnnl_kernel.h"
+#include "core/providers/dnnl/dnnl_execution_provider.h"
+#include "core/providers/dnnl/subgraph/dnnl_kernel.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {
 template <typename T>
-class MklDnnPool : public MklDnnKernel {
+class DnnlPool : public DnnlKernel {
  public:
-  MklDnnPool(const MklDnnNode& node,
+  DnnlPool(const MklDnnNode& node,
              MKLDNNExecutionProvider* provider,
              const NodeAttributes& attributes,
-             const std::string attributes_prefix = "") : MklDnnKernel(node, provider) {
+             const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     op_name_ = node.name;
     ReadAttributes(attributes, attributes_prefix);
   }

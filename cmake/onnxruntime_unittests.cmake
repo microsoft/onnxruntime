@@ -203,7 +203,7 @@ if(onnxruntime_USE_CUDA)
 endif()
 
 if(onnxruntime_USE_DNNL)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_mkldnn)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dnnl)
 endif()
 
 if(onnxruntime_USE_NGRAPH)

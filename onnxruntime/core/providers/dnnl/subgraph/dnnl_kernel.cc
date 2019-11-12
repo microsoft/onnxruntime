@@ -6,7 +6,7 @@
 namespace onnxruntime {
 namespace ort_dnnl {
 
-void MklDnnKernel::InitDstReorderOutput(dnnl::engine& cpu_engine,
+void DnnlKernel::InitDstReorderOutput(dnnl::engine& cpu_engine,
                                         dnnl::memory::data_type& data_type,
                                         std::vector<dnnl::primitive>& net,
                                         std::vector<std::unordered_map<int, dnnl::memory>>& net_args) {
@@ -25,7 +25,7 @@ void MklDnnKernel::InitDstReorderOutput(dnnl::engine& cpu_engine,
   }
 }
 
-dnnl::memory::format_tag MklDnnKernel::GetSourceFormat(int dim_size) {
+dnnl::memory::format_tag DnnlKernel::GetSourceFormat(int dim_size) {
   dnnl::memory::format_tag source_format = dnnl::memory::format_tag::any;
   switch (dim_size) {
     case 1: {
