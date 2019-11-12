@@ -55,8 +55,7 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/util/thread_utils.h"
-
-#include "single_include/nlohmann/json.hpp"
+#include "core/session/inference_session_utils.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -102,6 +101,7 @@ std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    logging::LoggingManager* logging_manager)
     : session_options_(session_options),
+      // is_non_default_session_options_(is_non_default_session_options),
       graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       logging_manager_(logging_manager),
       thread_pool_(concurrency::CreateThreadPool("intra_op_thread_pool",
@@ -1000,10 +1000,41 @@ std::string InferenceSession::EndProfiling() {
   return std::string();
 }
 
+common::Status InferenceSession::FinalizeSessionOptions(onnxruntime::Model& model) {
+  if (!is_model_loaded_) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Model must be loaded before session options is finalized.");
+  }
+
+  SessionOptions construct_final_sess_options;
+  bool use_session_options = false;
+
+  common::Status status = inference_session_utils::parse_session_options_from_model_proto(model.ToProto(),
+                                                                                          construct_final_sess_options,
+                                                                                          use_session_options);
+
+  if (!status.IsOK()) {
+    return status;
+  }
+
+  if (use_session_options) {
+    session_options_ = construct_final_sess_options;
+  }
+
+  return Status::OK();
+}
+
 // assumes model has already been loaded before
 common::Status InferenceSession::DoPostLoadProcessing(onnxruntime::Model& model) {
   // TODO add other post load processing here
-  common::Status status = SaveModelMetadata(model);
+
+  // Finalize session options in this step (some session options MAY be coming via the model)
+  common::Status status = FinalizeSessionOptions(model);
+  if (!status.IsOK()) {
+    return status;
+  }
+
+  // Save the model metadata in this step
+  status = SaveModelMetadata(model);
   return status;
 }
 

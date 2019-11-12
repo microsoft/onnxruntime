@@ -86,6 +86,8 @@ class InferenceSession {
   /**
     Create a new InferenceSession
     @param session_options Session options.
+    @param is_non_default_session_options 
+    Flag indicating if the provided Session options (session_options) is non-default (i.e.) user provided or not.
     @param logging_manager
     Optional logging manager instance that will enable per session logger output using
     session_options.session_logid as the logger id in messages.
@@ -253,6 +255,8 @@ class InferenceSession {
 
   /*
    * Get the options this session was initialized with.
+   * WARNING: MIGHT BE different from the options this session was initialized with after subsequent calls to Load(),  
+   * if the model file is annotated with the options needed to initialize the session which will be used to run it 
    */
   const SessionOptions& GetSessionOptions() const;
 
@@ -292,6 +296,14 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto);
+
+  /**
+    * Used to finalize session options that will be associated with this session
+    * The finalized session options MIGHT BE different from the options this session was initialized with.
+    * Must be called only after model has loaded
+    * @return OK if success.
+    */
+  common::Status FinalizeSessionOptions(onnxruntime::Model& model);
 
   common::Status DoPostLoadProcessing(onnxruntime::Model& model);
 
@@ -363,7 +375,9 @@ class InferenceSession {
   template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
 
-  const SessionOptions session_options_;
+  SessionOptions session_options_;
+
+  bool is_non_default_session_options_;
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr_;
 
@@ -435,12 +449,12 @@ class InferenceSession {
   InterOpDomains interop_domains_;
 #endif
 
-  // used to support platform telemetry 
-  static std::atomic<uint32_t> global_session_id_;  // a monotonically increasing session id
-  uint32_t session_id_;                             // the current session's id
-  uint32_t total_runs_since_last_;                  // the total number of Run() calls since the last report
-  long long total_run_duration_since_last_;         // the total duration (us) of Run() calls since the last report
-  TimePoint time_sent_last_;                        // the TimePoint of the last report
-  const long long kDurationBetweenSending = 1000* 1000 * 60 * 10;  // duration in (us).  send a report every 10 mins
+  // used to support platform telemetry
+  static std::atomic<uint32_t> global_session_id_;                  // a monotonically increasing session id
+  uint32_t session_id_;                                             // the current session's id
+  uint32_t total_runs_since_last_;                                  // the total number of Run() calls since the last report
+  long long total_run_duration_since_last_;                         // the total duration (us) of Run() calls since the last report
+  TimePoint time_sent_last_;                                        // the TimePoint of the last report
+  const long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;  // duration in (us).  send a report every 10 mins
 };
 }  // namespace onnxruntime
