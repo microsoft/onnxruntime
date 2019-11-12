@@ -55,15 +55,21 @@ class TestNuphar(unittest.TestCase):
         else:
             os.makedirs(cache_dir)
 
-        nuphar_settings = 'nuphar_cache_path:{}'.format(cache_dir)
-        onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings)
-
         # prepare feed
         feed = {}
         for i in range(4):
             tp = onnx.load_tensor(os.path.join(bidaf_dir, 'test_data_set_0', 'input_{}.pb'.format(i)))
             feed[tp.name] = numpy_helper.to_array(tp)
 
+        # force codegen_target to be avx
+        nuphar_settings = 'nuphar_codegen_target:avx'
+        onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings)
+        sess = onnxrt.InferenceSession(bidaf_int8_scan_only_model)
+        assert 'NupharExecutionProvider' in sess.get_providers()
+        output = sess.run([], feed)
+
+        nuphar_settings = 'nuphar_cache_path:{}'.format(cache_dir)
+        onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings)
         sess = onnxrt.InferenceSession(bidaf_int8_scan_only_model) # JIT cache happens when initializing session
         assert 'NupharExecutionProvider' in sess.get_providers()
         output = sess.run([], feed)
