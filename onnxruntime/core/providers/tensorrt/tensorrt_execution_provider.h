@@ -81,9 +81,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   }
 
  private:
-  int max_batch_size_ = 32;//slx 1
+  int max_batch_size_ = 1;
   size_t max_workspace_size_ = 1 << 30;  // 1GB
-  int max_parser_iterations_ = 1000;//slx 6
+  int max_parser_iterations_ = 1000; // 6
 
   struct InferDeleter {
     template <typename T>

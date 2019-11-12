@@ -103,35 +103,28 @@ AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type
     return IExecutionProvider::GetAllocator(id, mem_type);
   }
 }
-/*
-std::unique_ptr<onnxruntime::IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
-  return onnxruntime::make_unique<onnxruntime::GPUDataTransfer>();
-}
-*/
 
-void ToGraphProtoInternal(const onnxruntime::GraphViewer& graph, ONNX_NAMESPACE::GraphProto& graph_proto) {//const
+void ToGraphProtoInternal(const onnxruntime::GraphViewer& graph, ONNX_NAMESPACE::GraphProto& graph_proto) {  //const
   for (const auto* input_arg : graph.GetInputs()) {
     *(graph_proto.mutable_input()->Add()) = input_arg->ToProto();
   }
 
-  //Add all graph's initializers to the subgraph
+  // Add all graph's initializers to the subgraph
   const auto& init_tensors = graph.GetAllInitializedTensors();
   for (const auto& tensor : init_tensors) {
     *(graph_proto.mutable_initializer()->Add()) = *(tensor.second);
   }
 
-
   for (const auto* output_arg : graph.GetOutputs()) {
     *(graph_proto.mutable_output()->Add()) = output_arg->ToProto();
   }
 
-  for (const auto* value_info : graph.GetValueInfo()) {//value_info_
+  for (const auto* value_info : graph.GetValueInfo()) {
     *(graph_proto.mutable_value_info()->Add()) = value_info->ToProto();
   }
 
-  //GraphViewer graph_viewer(*this);
   // Nodes must be sorted in Topological Order in the GraphProto per ONNX spec.
-  for (auto& node_idx : graph.GetNodesInTopologicalOrder()) {//graph_viewer
+  for (auto& node_idx : graph.GetNodesInTopologicalOrder()) {
     const gsl::not_null<NodeProto*> node_proto{graph_proto.add_node()};
     const gsl::not_null<const Node*> p_node{graph.GetNode(node_idx)};
     p_node->ToProto(*node_proto);
@@ -168,7 +161,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
         fused_outputs.erase(it);
         erased.insert(input);
       } else if (erased.find(input) == erased.end()) {
-        //only when input is neither in output list nor erased list, add the input to input list
+        // Only when input is neither in output list nor erased list, add the input to input list
         fused_inputs[input] = input_order++;
       }
     }
@@ -205,7 +198,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
           fused_inputs.erase(it);
           erased.insert(output);
         }
-        // only when output is neither in input list nor erased list, add the output to output list
+        // Only when output is neither in input list nor erased list, add the output to output list
         else if (erased.find(output) == erased.end()) {
           if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
             graph_outputs_to_add[output] = output_order;
@@ -265,21 +258,18 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
   iterations++;
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
-  int counter = 0;
   for (const auto& group : nodes_vector_input) {
-    //construct subgraph
+    // Construct subgraph
     if (!group.first.empty()) {
-      std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, counter, graph);
-
       if (group.second) {
         nodes_list_output.push_back(group);
       } else {
         onnxruntime::Model model_build(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap());
         onnxruntime::Graph& graph_build = model_build.MainGraph();
 
-        //Add node and node args
-        //If node output is also parent graph output, the  output will be added to the
-        //subgraph's output list
+        // Add node and node args
+        // If node output is also parent graph output, the  output will be added to the
+        // subgraph's output list
         std::vector<std::string> subgraph_output_names;
         for (const auto& index : group.first) {
           const auto& node = graph.GetNode(node_index[index]);
@@ -315,28 +305,27 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         subgraph_outputs.insert(subgraph_outputs.begin(), graph_build_outputs.begin(), graph_build_outputs.end());
         graph_build.SetOutputs(graph_build_outputs);
 
-        for (const auto& input : sub_graph->GetMetaDef()->inputs) {//slx ??
-          const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-          if (graph.GetInitializedTensor(input, initializer)) {
-            graph_build.AddInitializedTensor(*initializer);
-          }
+        // Add initializers to the subgraph
+        const auto& init_tensors = graph.GetAllInitializedTensors();
+        for (const auto& tensor : init_tensors) {
+          graph_build.AddInitializedTensor(*(tensor.second));
         }
+
         ORT_ENFORCE(graph_build.Resolve().IsOK());
 
         // Serialize modelproto to string
-        //ONNX_NAMESPACE::ModelProto model_proto = model_build.ToProto();//slx ??
         const onnxruntime::GraphViewer graph_viewer(graph_build);
         onnxruntime::Model model(graph_viewer.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph_viewer.DomainToVersionMap());
         ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
         ToGraphProtoInternal(graph_viewer, *(model_proto.mutable_graph()));
         std::string string_buf;
         model_proto.SerializeToString(&string_buf);
-/*
-        //save ModelProto to file
-        int fd;
-        Env::Default().FileOpenWr("trt_model_proto_getsupportedlist.onnx", fd);
-        model_proto.SerializeToFileDescriptor(fd);
-*/
+
+        // Save ModelProto to file for debugging
+        //int fd;
+        //Env::Default().FileOpenWr("trt_model_proto_getsupportedlist.onnx", fd);
+        //model_proto.SerializeToFileDescriptor(fd);
+
         // Get supported node list recursively
         SubGraphCollection_t parser_nodes_list;
         TensorrtLogger& trt_logger = GetTensorrtLogger();
@@ -370,7 +359,6 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   onnxruntime::Graph& graph_build = model.MainGraph();
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
 
-  //for (const auto& node : graph.Nodes()) {//slx
   for (const auto& index : node_index) {
     const auto& node = graph.GetNode(index);
     std::vector<onnxruntime::NodeArg *> inputs, outputs;
@@ -386,9 +374,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   }
   graph_build.SetOutputs(graph.GetOutputs());
 
-  //auto status = graph_build.Resolve();//slx ??
-
-  //Add initializer to graph
+  // Add initializer to graph
   const auto& init_tensors = graph.GetAllInitializedTensors();
   for (const auto& tensor : init_tensors) {
     graph_build.AddInitializedTensor(*(tensor.second));
@@ -403,30 +389,21 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   std::string string_buf;
   model_proto.SerializeToString(&string_buf);
 
-  //save ModelProto to file
+  // Save ModelProto to file
   int fd;
   Env::Default().FileOpenWr("trt_model_proto_getcap.onnx", fd);
   model_proto.SerializeToFileDescriptor(fd);
 
-  //print out all nodes for debugging
+  // Print out all nodes for debugging
   int node_size = graph.NumberOfNodes();
   std::cout << "node size: " << node_size << std::endl;
-  for (int index = 0; index < node_size; ++index){
-      const auto& node = graph.GetNode(node_index[index]);
-      std::cout << "node number: " << index << ", node_index[index]: " << node_index[index]
-                << ", name: " << node->Name() << ", op type: " << node->OpType() << std::endl;
+  for (int index = 0; index < node_size; ++index) {
+    const auto& node = graph.GetNode(node_index[index]);
+    std::cout << "node number: " << index << ", node_index[index]: " << node_index[index]
+              << ", name: " << node->Name() << ", op type: " << node->OpType() << std::endl;
   }
 
   // Get supported node list
-/*
-  SubGraphCollection_t parser_nodes_vector;
-  TensorrtLogger& trt_logger = GetTensorrtLogger();
-  auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
-  const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-  auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
-  auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
-  trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_vector);
-*/
   std::vector<size_t> nodes_vector(node_index.size());
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
   SubGraphCollection_t parser_nodes_vector = {{nodes_vector, false}};
@@ -439,79 +416,51 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     supported_nodes_vector.clear();
   }
 
-  //remove nonzero related nodes because TRT6 doens't support shape dimension 0
-        SubGraphCollection_t post_processed_supported_nodes_vector;
-        for (auto& group : supported_nodes_vector)
-        {
-            std::cout << "=============group================" << std:: endl;
-            if (!group.first.empty())
-            {
-                post_processed_supported_nodes_vector.push_back({});
-                for (const auto& index : group.first)
-                {
-                    const auto& node = graph.GetNode(node_index[index]);
-                    //std::cout << "node index in topo order: " << *iter << ", graph node index (node_index[*iter]): " << node_index[*iter] << "," << node->Name() << "," << node->OpType() << std::endl;
-                    std::cout << "node: " << node->Name() << std::endl;
-                    bool exclude_node = false;
-                    for (auto input : node->InputDefs())
-                    {
-                        auto input_shape = input->Shape();
-                        if (input_shape){
-                        for (auto dim : input_shape->dim())
-                        {
-                            std::string dim_name = dim.dim_param();
-                            std::string exclude_dim_name1 = "NonZero";
-                            std::string exclude_dim_name2 = "NonMaxSuppression";
-                            if (!dim_name.empty()) {
-                              if ((dim_name.find(exclude_dim_name1) != std::string::npos) || (dim_name.find(exclude_dim_name2) != std::string::npos))
-                              {
-                                std::cout << "GetCap: find NonZero consumer node: index: " << index << ", name: " << node->Name()
-                                          << ", dim name: " << dim_name << std::endl;
-                                exclude_node = true;
-                                break;
-                              }
-                            }
-                            /*
-                            if (!dim_name.empty() && symbolic_shape_names.find(dim_name) != symbolic_shape_names.end())
-                            {
-                                std::cout << "GetCap: find NonZero consumer node: index: " << index << ", name: " << node->Name()
-                                          << ", dim name: " << dim_name << std::endl;
-                                exclude_node = true;
-                                break;
-                            }
-                            */
-                        }
-                        }
-
-                        if (exclude_node)
-                        {
-                            break;
-                        }
-
-                    }
-                    if (!exclude_node)
-                    {
-                    //    std::cout << "GetCap: find NonZero consumer node: " << node->Name() << std::endl;
-                    //}
-                    //else
-                    //{
-                        post_processed_supported_nodes_vector.back().first.push_back(index);
-                    }
+  // Remove nonzero related nodes because TRT6 doens't support shape dimension 0
+  SubGraphCollection_t post_processed_supported_nodes_vector;
+  for (auto& group : supported_nodes_vector) {
+    if (!group.first.empty()) {
+      post_processed_supported_nodes_vector.push_back({});
+      for (const auto& index : group.first) {
+        const auto& node = graph.GetNode(node_index[index]);
+        bool exclude_node = false;
+        for (auto input : node->InputDefs()) {
+          auto input_shape = input->Shape();
+          if (input_shape) {
+            for (auto dim : input_shape->dim()) {
+              std::string dim_name = dim.dim_param();
+              std::string exclude_dim_name1 = "NonZero";
+              std::string exclude_dim_name2 = "NonMaxSuppression";
+              if (!dim_name.empty()) {
+                if ((dim_name.find(exclude_dim_name1) != std::string::npos) || (dim_name.find(exclude_dim_name2) != std::string::npos)) {
+                  exclude_node = true;
+                  break;
                 }
-
-                if (post_processed_supported_nodes_vector.back().first.empty())
-                {
-                    post_processed_supported_nodes_vector.pop_back();
-                } else {
-                    post_processed_supported_nodes_vector.back().second = group.second;
-                }
+              }
             }
+          }
+
+          if (exclude_node) {
+            break;
+          }
         }
+        if (!exclude_node) {
+          post_processed_supported_nodes_vector.back().first.push_back(index);
+        }
+      }
+
+      if (post_processed_supported_nodes_vector.back().first.empty()) {
+        post_processed_supported_nodes_vector.pop_back();
+      } else {
+        post_processed_supported_nodes_vector.back().second = group.second;
+      }
+    }
+  }
 
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
   int counter = 0;
-  for (const auto& group : post_processed_supported_nodes_vector) {//slx supported_nodes_vector
+  for (const auto& group : post_processed_supported_nodes_vector) {  //slx supported_nodes_vector
     if (!group.first.empty()) {
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, counter, graph);
       result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
@@ -523,7 +472,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
 common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                                   std::vector<NodeComputeInfo>& node_compute_funcs) {
-  std::cout << "TensorRT Compile" << std::endl;
+  //std::cout << "TensorRT Compile" << std::endl;
   for (const auto* fused_node : fused_nodes) {
     std::vector<int> input_indexes;
     std::vector<int> input_dim_sizes;
@@ -562,7 +511,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     std::string string_buf;
     model_proto.SerializeToString(&string_buf);
 
-    //save ModelProto to file
+    // Save ModelProto to file for debugging
     int fd;
     Env::Default().FileOpenWr("trt_model_proto_Compile_" + fused_node->Name() + ".onnx", fd);
     model_proto.SerializeToFileDescriptor(fd);
@@ -591,14 +540,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     trt_builder->setMaxBatchSize(max_batch_size_);
     trt_config->setMaxWorkspaceSize(max_workspace_size_);
 
-    //Set optimization profile for dynamic shapes
+    // Set optimization profile for dynamic shapes
     auto trt_profile = trt_builder->createOptimizationProfile();
     for (unsigned int i = 0, end = trt_network->getNbInputs(); i < end; ++i) {
       auto input = trt_network->getInput(i);
       nvinfer1::Dims dims = input->getDimensions();
-      if (input->isShapeTensor()) {  // shape tensor
-        std::cout << "Compile: Create optimization profile for shape tensor: " << input->getName() << std::endl;
-        int shapes_size = dims.nbDims;  //e.g. int64[3], shapes_size=3
+      if (input->isShapeTensor()) {  // Shape tensor
+        //std::cout << "Compile: Create optimization profile for shape tensor: " << input->getName() << std::endl;
+        int shapes_size = dims.nbDims;
         std::vector<int32_t> shapes_min(shapes_size), shapes_opt(shapes_size), shapes_max(shapes_size);
         for (int j = 0, end = shapes_size; j < end; ++j) {
           shapes_min[j] = 1;
@@ -608,32 +557,32 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         trt_profile->setShapeValues(input->getName(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shapes_size);
         trt_profile->setShapeValues(input->getName(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shapes_size);
         trt_profile->setShapeValues(input->getName(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shapes_size);
-      } else {  // execution tensor
-        bool dynamic_shape = false;
+      } else {  // Execution tensor
+        //bool dynamic_shape = false;
         nvinfer1::Dims dims_min = dims;
         nvinfer1::Dims dims_opt = dims;
         nvinfer1::Dims dims_max = dims;
         for (int j = 0, end = dims.nbDims; j < end; ++j) {
           if (dims.d[j] == -1) {
-            dims_min.d[j] = 1;//large batch size may result in out of memory on GTX1080
+            dims_min.d[j] = 1;  // Large batch size may cause out of memory issue on some GPU
             dims_opt.d[j] = 1;
             dims_max.d[j] = 1;
-            dynamic_shape = true;
+            //dynamic_shape = true;
           }
         }
 
-        if (dynamic_shape) {
-          std::cout << input->getName() << " has dynamic shape."<< std::endl;
-        }
+        //if (dynamic_shape) {
+        //  std::cout << input->getName() << " has dynamic shape."<< std::endl;
+        //}
 
         // TRT6: Optimization profile need to be provided for all inputs if one of them has dynamic shape
-        std::cout << "Compile: Create optimization profile for input: " << input->getName() << std::endl;
+        //std::cout << "Compile: Create optimization profile for input: " << input->getName() << std::endl;
         trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMIN, dims_min);
         trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
         trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, dims_max);
       }
     }
-    std::cout << "Compile: Set optimization profile" << std::endl;
+    //std::cout << "Compile: Set optimization profile" << std::endl;
     trt_config->addOptimizationProfile(trt_profile);
 
     auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
@@ -663,7 +612,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         input_indexes[bindingIndex] = iter->second;
       }
       size_t dim_size = 1;
-      if (input->isShapeTensor()) {  // shape tensor
+      if (input->isShapeTensor()) {  // Shape tensor
         for (int j = 0, end = dimensions.nbDims; j < end; ++j) {
           input_shape_ranges[bindingIndex][j] = std::make_pair(INT_MAX, INT_MIN);
         }
@@ -674,7 +623,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           }
           dim_size *= dimensions.d[j];
         }
-        input_dim_sizes[bindingIndex] = dim_size;  //note: input_dim_sizes is invalid for dynamic shape
+        input_dim_sizes[bindingIndex] = dim_size;  // Note: input_dim_sizes is invalid for dynamic shape
       }
     }
 
@@ -758,17 +707,17 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       bool dynamic_shape = false;
       if (!trt_state->context->allInputDimensionsSpecified()) {
         dynamic_shape = true;
-        //std::cout << "This run has dynamic shape inputs" << std::endl;
       }
 
-      //TRT6: statistics of input dimensions
+      // Update dimensions if input data is out of range
       bool dimension_update = false;
       auto trt_profile = trt_state->builder->createOptimizationProfile();
       for (int i = 0, end = num_binding_inputs; i < end; ++i) {
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_indexes[i]);
         auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
         const auto& tensor_shape = ort.GetTensorShape(tensor_info);
-        auto input = trt_state->network->getInput(i);  //TODO: check if getInput indexing is same with binding index
+        // TODO: check if getInput indexing is same with binding index
+        auto input = trt_state->network->getInput(i);
         nvinfer1::Dims dims = input->getDimensions();
         nvinfer1::Dims dims_min = dims;
         nvinfer1::Dims dims_opt = dims;
@@ -778,12 +727,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           nvinfer1::Dims dimensions = trt_state->context->getEngine().getBindingDimensions(static_cast<int>(i));
           for (int j = 0, end = dimensions.nbDims; j < end; ++j) {
             if (trt_state->input_shape_ranges[i].find(j) != trt_state->input_shape_ranges[i].end()) {
-              if (tensor_shape[j] < trt_state->input_shape_ranges[i][j].first) {  //update minimum dimension
+              // Update minimum dimension
+              if (tensor_shape[j] < trt_state->input_shape_ranges[i][j].first) {
                 trt_state->input_shape_ranges[i][j].first = tensor_shape[j];
                 dims_min.d[j] = tensor_shape[j];
                 dimension_update = true;
               }
-              if (tensor_shape[j] > trt_state->input_shape_ranges[i][j].second) {  //update maximum dimension
+              // Update maximum dimension
+              if (tensor_shape[j] > trt_state->input_shape_ranges[i][j].second) {
                 trt_state->input_shape_ranges[i][j].second = tensor_shape[j];
                 dims_max.d[j] = tensor_shape[j];
                 dims_opt.d[j] = tensor_shape[j];  //note: set opt profile to max dimension for now
@@ -792,6 +743,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
             }
           }
 
+          if (dimension_update) {
             if (trt_state->context->getEngine().isShapeBinding(i)) {
               int shapes_size = dims_min.nbDims;
               std::vector<int32_t> shapes_min(shapes_size), shapes_opt(shapes_size), shapes_max(shapes_size);
@@ -808,11 +760,19 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
               trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
               trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, dims_max);
             }
+          }
+        }
+
+        // TensorRT6 requires optimization profile to be defined for all inputs if any input dimension is symbolic
+        if (dynamic_shape) {
+          trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMIN, dims_min);
+          trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
+          trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, dims_max);
         }
       }
 
       // Regenerate engine and context
-      // Only one profile is generated, so no need to explicitly set optimization profile.
+      // Only one profile is generated, so no need to explicitly set optimization profile
       if (dimension_update) {
         auto trt_config = unique_pointer<nvinfer1::IBuilderConfig>(trt_state->builder->createBuilderConfig());
         trt_config->addOptimizationProfile(trt_profile);
@@ -829,9 +789,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
         const auto& tensor_shape = ort.GetTensorShape(tensor_info);
 
-        //Set dynamic shapes
+        // Set dynamic shapes
         nvinfer1::Dims dimensions = trt_state->context->getBindingDimensions(static_cast<int>(i));
-        if (dynamic_shape) {
+        if (dimension_update) {
           for (int j = 0, end = tensor_shape.size(); j < end; ++j)
             dimensions.d[j] = tensor_shape[j];
           trt_state->context->setBindingDimensions(i, dimensions);
@@ -913,3 +873,4 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
   return Status::OK();
 }
 }  // namespace onnxruntime
+
