@@ -22,7 +22,7 @@ namespace Dml
     onnxruntime::common::Status GraphTransformer::ApplyImpl(
         onnxruntime::Graph& graph, 
         bool& modified,
-        int graph_level, const logging::Logger*) const
+        int graph_level, const onnxruntime::logging::Logger*) const
     {
         modified = false;
         

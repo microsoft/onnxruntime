@@ -394,7 +394,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
     Dml::GraphTransformer dml_transformer(onnxruntime::kDmlExecutionProvider, std::move(dml_registry));
 
     bool modified = false;
-    dml_transformer.Apply(graph, modified);
+    dml_transformer.Apply(graph, modified, session_logger_);
   }
 #endif
 
