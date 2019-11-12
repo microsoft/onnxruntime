@@ -72,19 +72,21 @@ void RunMatMulIntegerU8S8Test(const int M, const int N, const int K) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});  // currently nGraph provider does not support gemm_u8s8
 }
 
-TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8) {
-  // GEMV
+TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_Scalar) {
   RunMatMulIntegerU8S8Test(1, 1, 32);
   RunMatMulIntegerU8S8Test(1, 1, 260);
   RunMatMulIntegerU8S8Test(1, 1, 288);
+}
+
+TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMV) {
   RunMatMulIntegerU8S8Test(1, 2, 16);
   RunMatMulIntegerU8S8Test(1, 2, 64);
-  // GEMM
+}
+
+TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMM) {
   RunMatMulIntegerU8S8Test(2, 2, 40);
   RunMatMulIntegerU8S8Test(2, 48, 33);
   RunMatMulIntegerU8S8Test(2, 51, 40);
-  RunMatMulIntegerU8S8Test(6, 10, 34);
-  RunMatMulIntegerU8S8Test(8, 16, 64);
 }
 
 }  // namespace test

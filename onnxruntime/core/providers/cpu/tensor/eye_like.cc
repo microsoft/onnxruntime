@@ -34,7 +34,7 @@ Status EyeLike::Compute(OpKernelContext* context) const {
   const auto* T1 = context->Input<Tensor>(0);
   ORT_ENFORCE(T1 != nullptr);
 
-  auto output_tensor_dtype = has_dtype_ ? static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype_) : utils::GetTensorProtoType(*T1);
+  auto output_tensor_dtype = has_dtype_ ? static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype_) : T1->GetElementType();
   switch (output_tensor_dtype) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       return ComputeImpl<float>(context, T1);
