@@ -123,6 +123,7 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
         ptc = retired_context_pool_.back();
         retired_context_pool_.pop_back();
       }
+      inuse_contexts_.insert(std::make_pair(tid, ptc));
     } else {
       ptc = inuse_iter->second;
     }
