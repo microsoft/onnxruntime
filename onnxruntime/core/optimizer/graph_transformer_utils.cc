@@ -120,7 +120,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(l2_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(l2_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(l2_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>({onnxruntime::kCudaExecutionProvider}));
+
+      std::unordered_set<std::string> l2_cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
+      transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>(l2_cuda_execution_providers));
 #endif
     } break;
 
