@@ -646,6 +646,8 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
                   std::cout << " failed to transfer data to cpu.\n";
                 }
               }
+#else
+  ORT_UNUSED_PARAMETER(session_state);
 #endif
             }
           }
