@@ -1,24 +1,40 @@
 #!/bin/bash
-VCNAME="$1"
-
 if [ $PHILLY_CONTAINER_INDEX -ne 0 ]
 then
   echo "Not first container, skip by intention"
   exit 0
 fi
 
-declare -a phase1_fp16_batch_sizes=(2 4 8 10 12 14 16 18 20 22 24 32 40 48 52 60 64 72 80)
-declare -a phase2_fp16_batch_sizes=(2)
 
-declare -a phase1_fp16_batch_sizes2=(2)
-declare -a phase2_fp16_batch_sizes2=(2 4 8 10 12 14)
+if [ -z "${TEST_MODE}" ]
+then
+  eval_steps=200
 
-declare -a phase1_fp32_batch_sizes=(32)
-declare -a phase2_fp32_batch_sizes=(4)
+  #declare -a phase1_fp16_batch_sizes=(2 4 8 10 12 14 16 18 20 22 24 32 40 48 52 60 64 72 80)
+  declare -a phase1_fp16_batch_sizes=(2 4 8 16 32 64 80)
+  declare -a phase2_fp16_batch_sizes=(2)
+
+  declare -a phase1_fp16_batch_sizes2=(2)
+  declare -a phase2_fp16_batch_sizes2=(2 4 8 10 12 14)
+else
+  eval_steps=15
+
+  declare -a phase1_fp16_batch_sizes=(2)
+  declare -a phase2_fp16_batch_sizes=(2)
+
+  declare -a phase1_fp16_batch_sizes2=(2)
+  declare -a phase2_fp16_batch_sizes2=(2)
+fi
+
+
+
+#declare -a phase1_fp32_batch_sizes=(32)
+#declare -a phase2_fp32_batch_sizes=(4)
 
 declare -a gpu_nums=(1)
-export SCRIPT_PATH=$PHILLY_DATA_DIRECTORY/$VCNAME/pengwa/profile/scripts-pt/
+export SCRIPT_PATH=$PHILLY_DATA_DIRECTORY/$PHILLY_VC/pengwa/profile/scripts-pt/
 export RESULTDIR=/tmp/perf_results_pt
+rm $RESULTDIR -rf
 mkdir $RESULTDIR
 
 SINGLECONFIGRUN_SCRIPT_PATH=$SCRIPT_PATH"single_config_run-pt.sh"
@@ -35,8 +51,8 @@ do
   do
       for phase2_b in "${phase2_fp16_batch_sizes[@]}"
       do
-        $SINGLECONFIGRUN_SCRIPT_PATH $VCNAME "fp16" $gpu_num \
-            $phase1_b $phase2_b
+        $SINGLECONFIGRUN_SCRIPT_PATH "fp16" $gpu_num \
+            $phase1_b $phase2_b $eval_steps 2  1 1 # 2 means we don't really care phase 2 training.
       done
   done
 
@@ -44,8 +60,8 @@ do
   do
       for phase2_b in "${phase2_fp16_batch_sizes2[@]}"
       do
-        $SINGLECONFIGRUN_SCRIPT_PATH $VCNAME "fp16" $gpu_num \
-            $phase1_b $phase2_b
+        $SINGLECONFIGRUN_SCRIPT_PATH "fp16" $gpu_num \
+            $phase1_b $phase2_b 2 $eval_steps 1 1
       done
   done
 
@@ -53,7 +69,7 @@ do
   # do
   #     for phase2_b in "${phase2_fp32_batch_sizes[@]}"
   #     do
-  #       $SINGLECONFIGRUN_SCRIPT_PATH $VCNAME "fp32" $gpu_num \
+  #       $SINGLECONFIGRUN_SCRIPT_PATH "fp32" $gpu_num \
   #           $phase1_b $phase2_b
   #           #$phase1_max_sequence_length $phase2_max_sequence_length \
   #           #$phase1_max_predictions_per_seq $phase2_max_predictions_per_seq

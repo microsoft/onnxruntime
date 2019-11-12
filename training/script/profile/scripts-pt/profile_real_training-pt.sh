@@ -14,21 +14,16 @@ else
   eval_steps=15
 fi
 
+declare -a phase1_fp16_batch_sizes=(64)
+declare -a phase2_fp16_batch_sizes=(8)
+
+declare -a phase1_fp32_batch_sizes=(32)
+declare -a phase2_fp32_batch_sizes=(4)
 
 if [ -z "${TEST_MODE}" ]; then
-  declare -a gpu_nums=(1 4 8 16)
-  declare -a phase1_fp16_batch_sizes=(64 80)
-  declare -a phase2_fp16_batch_sizes=(8 14)
-
-  declare -a phase1_fp32_batch_sizes=(32 40)
-  declare -a phase2_fp32_batch_sizes=(4 7)
+  declare -a gpu_nums=(16)
 else
   declare -a gpu_nums=(4)
-  declare -a phase1_fp16_batch_sizes=(64)
-  declare -a phase2_fp16_batch_sizes=(8)
-
-  declare -a phase1_fp32_batch_sizes=(32)
-  declare -a phase2_fp32_batch_sizes=(4)
 fi
 
 export SCRIPT_PATH=$PHILLY_DATA_DIRECTORY/$PHILLY_VC/pengwa/profile/scripts-pt/

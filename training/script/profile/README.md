@@ -16,8 +16,8 @@ Submit bash job with following job template
                 "type": "skuResource",
                 "sku": "G4",
                 "count": 1,
-                "image": "phillyregistry.azurecr.io/philly/jobs/custom/onnxruntime:latest",
-                "commandLine": "$PHILLY_DATA_DIRECTORY/msrhyperscl/pengwa/profile/scripts-ort/profile_nv_compare.sh \"msrhyperscl\" \"fixed\" \"philly\"",
+                "image": "phillyregistry.azurecr.io/philly/jobs/custom/onnxruntime:v1",
+                "commandLine": "$PHILLY_DATA_DIRECTORY/msrhyperscl/pengwa/profile/scripts-ort/profile_nv_compare_github.sh \"fixed\" \"philly\"",
                 "constraints": [
                     {
                         "type": "uniqueConstraint",
@@ -45,8 +45,8 @@ Submit bash job with following job template
                 "type": "skuResource",
                 "sku": "G4",
                 "count": 1,
-                "image": "phillyregistry.azurecr.io/philly/jobs/custom/pytorch:pytorch-nvidia-bert-1907-py3",
-                "commandLine": "$PHILLY_DATA_DIRECTORY/msrhyperscl/pengwa/profile/scripts-pt/profile-pt.sh \"msrhyperscl\"",
+                "image": "phillyregistry.azurecr.io/philly/jobs/custom/onnxruntime:v1",
+                "commandLine": "$PHILLY_DATA_DIRECTORY/msrhyperscl/pengwa/profile/scripts-pt/profile-pt.sh \"fixed\"",
                 "constraints": [
                     {
                         "type": "uniqueConstraint",
@@ -59,7 +59,6 @@ Submit bash job with following job template
             }
         }
     }
-
 
 Note: 
 > G4 means choose the machine having 4 GPUs.
@@ -82,8 +81,8 @@ Submit bash job with following job template
                 "type": "skuResource",
                 "sku": "G4",
                 "count": 1,
-                "image": "phillyregistry.azurecr.io/philly/jobs/custom/onnxruntime:latest",
-                "commandLine": "$PHILLY_DATA_DIRECTORY/msrhyperscl/pengwa/profile/scripts-ort/profile_upper.sh \"msrhyperscl\" \"fixed\"",
+                "image": "phillyregistry.azurecr.io/philly/jobs/custom/onnxruntime:v1",
+                "commandLine": "$PHILLY_DATA_DIRECTORY/msrhyperscl/pengwa/profile/scripts-ort/profile_upper.sh \"fixed\"",
                 "constraints": [
                     {
                         "type": "uniqueConstraint",
@@ -96,8 +95,6 @@ Submit bash job with following job template
             }
         }
     }
-
-
 
 ### NV PT Job
 
@@ -121,8 +118,8 @@ Submit bash job with following job template
                 "type": "skuResource",
                 "sku": "G4",
                 "count": 1,
-                "image": "phillyregistry.azurecr.io/philly/jobs/custom/onnxruntime:latest",
-                "commandLine": "$PHILLY_DATA_DIRECTORY/msrhyperscl/pengwa/profile/scripts-ort/profile_trend.sh \"msrhyperscl\" \"fixed\"",
+                "image": "phillyregistry.azurecr.io/philly/jobs/custom/onnxruntime:v1",
+                "commandLine": "$PHILLY_DATA_DIRECTORY/msrhyperscl/pengwa/profile/scripts-ort/profile_trend.sh \"fixed\"",
                 "constraints": [
                     {
                         "type": "uniqueConstraint",
@@ -135,8 +132,6 @@ Submit bash job with following job template
             }
         }
     }
-
-
 
 ### NV PT Job
 
@@ -152,8 +147,8 @@ Submit bash job with following job template
                 "type": "skuResource",
                 "sku": "G4",
                 "count": 1,
-                "image": "phillyregistry.azurecr.io/philly/jobs/custom/pytorch:pytorch-nvidia-bert-1907-py3",
-                "commandLine": "$PHILLY_DATA_DIRECTORY/msrhyperscl/pengwa/profile/scripts-pt/profile_trend-pt.sh \"msrhyperscl\"",
+                "image": "phillyregistry.azurecr.io/philly/jobs/custom/onnxruntime:v1",
+                "commandLine": "$PHILLY_DATA_DIRECTORY/msrhyperscl/pengwa/profile/scripts-pt/profile_trend-pt.sh",
                 "constraints": [
                     {
                         "type": "uniqueConstraint",
@@ -170,3 +165,49 @@ Submit bash job with following job template
 
 Note: 
 > G4 means choose the machine having 4 GPUs.
+
+## Distributed Bert Pre-training Phase1 + Phase2
+
+{
+    "version": "2019-11-02",
+    "metadata": {
+        "name": "ort_4g_scale_train_phase1_and_phase2",
+        "cluster": "rr3",
+        "vc": "msrhyperscl"
+    },
+    "resources": {
+        "workers": {
+            "type": "skuResource",
+            "sku": "G4",
+            "count": 1,
+            "image": "phillyregistry.azurecr.io/philly/jobs/custom/onnxruntime:latest",
+            "commandLine": "$PHILLY_DATA_DIRECTORY/msrhyperscl/pengwa/profile/scripts-ort/train_scale_run.sh \"msrhyperscl\" 4",
+            "constraints": [
+                {
+                    "type": "uniqueConstraint",
+                    "tag": "connectivityDomain"
+                }
+            ],
+            "containerArgs": {
+                "shmSize": "4G"
+            }
+        }
+    },
+    "volumes": {
+        "myblob": {
+            "_comment": "myblobcomment",
+            "type": "blobfuseVolume",
+            "storageAccount": "orttraining",
+            "containerName": "bert",
+            "path": "/bert_data"
+        }
+    },
+    "credentials": {
+        "storageAccounts": {
+            "orttraining": {
+                "_comment": "orttrainingcomment",
+                "key": "[Blob Key]"
+            }
+        }
+    }
+}

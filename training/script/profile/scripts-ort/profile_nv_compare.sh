@@ -3,20 +3,21 @@
 VCNAME="$1"
 accumu_steps_type=$2
 mpikind=$3  # "philly" or "openmpi"
+gpu_nums=$4
 
 cp $PHILLY_DATA_DIRECTORY/$VCNAME/pengwa/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm.onnx /code/binary/bert.onnx 
 
 if [ $PHILLY_CONTAINER_INDEX -ne 0 ]
 then
   echo "Not first container, skip by intention"
+  sleep infinity
   exit 0
 fi
 
-declare -a phase1_fp16_batch_sizes=(64)
-
+declare -a phase1_fp16_batch_sizes=(128)
 declare -a phase1_fp32_batch_sizes=(32)
-
-declare -a phase1_gpu_nums=(1 4)
+declare -a phase1_gpu_nums=($gpu_nums)
+eval_steps=200
 
 export SCRIPT_PATH=$PHILLY_DATA_DIRECTORY/$VCNAME/pengwa/profile/scripts-ort/
 timestamp=$(date +%s)
@@ -34,7 +35,7 @@ do
      else
        updated_accu_step=1
      fi
-     $SCRIPT_PATH"mpirun_bert.sh" $b fp16 $gpu_num $updated_accu_step 128 $max_predictions_per_seq $mpikind
+     $SCRIPT_PATH"mpirun_bert.sh" $b fp16 $gpu_num $updated_accu_step 128 $max_predictions_per_seq $eval_steps $mpikind
   done
 
  for b in "${phase1_fp32_batch_sizes[@]}"
@@ -44,17 +45,17 @@ do
      else
        updated_accu_step=1
      fi
-     $SCRIPT_PATH"mpirun_bert.sh" $b fp32 $gpu_num $updated_accu_step 128 $max_predictions_per_seq $mpikind
+     $SCRIPT_PATH"mpirun_bert.sh" $b fp32 $gpu_num $updated_accu_step 128 $max_predictions_per_seq $eval_steps $mpikind
   done
 
 done
 
 
-declare -a phase2_fp16_batch_sizes=(8 10)
+declare -a phase2_fp16_batch_sizes=(16)
 
-declare -a phase2_fp32_batch_sizes=(4)
+declare -a phase2_fp32_batch_sizes=(8)
 
-declare -a phase2_gpu_nums=(1 4) # 8 16)
+declare -a phase2_gpu_nums=($gpu_nums) # 8 16)
 
 # Phase 2 - sequence length 512
 max_predictions_per_seq=80
@@ -67,7 +68,7 @@ do
      else
        updated_accu_step=1
      fi
-     $SCRIPT_PATH"mpirun_bert.sh" $b fp16 $gpu_num $updated_accu_step 512 $max_predictions_per_seq $mpikind
+     bash $SCRIPT_PATH"mpirun_bert.sh" $b fp16 $gpu_num $updated_accu_step 512 $max_predictions_per_seq $eval_steps $mpikind
   done
 
  for b in "${phase2_fp32_batch_sizes[@]}"
@@ -77,7 +78,7 @@ do
      else
        updated_accu_step=1
      fi
-     $SCRIPT_PATH"mpirun_bert.sh" $b fp32 $gpu_num $updated_accu_step 512 $max_predictions_per_seq $mpikind
+     bash $SCRIPT_PATH"mpirun_bert.sh" $b fp32 $gpu_num $updated_accu_step 512 $max_predictions_per_seq $eval_steps $mpikind
   done
 
 done
