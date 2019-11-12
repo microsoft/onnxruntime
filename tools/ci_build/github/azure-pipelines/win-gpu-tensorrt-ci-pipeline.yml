@@ -1,126 +1,16 @@
 jobs:
-- job: Windows_CI_GPU_Dev
-  timeoutInMinutes: 120
-  pool: Win-GPU-CUDA10
-  variables:
-    buildDirectory: '$(Build.BinariesDirectory)'
-    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
-    CUDA_VERSION: '10.0'
-
-  steps:
-    - template: templates/set-test-data-variables-step.yml
-    - template: templates/windows-build-tools-setup-steps.yml
-      parameters:
-        EnvSetupScript: 'setup_env_cuda.bat'
-        buildArch: 'amd64'
-        setVcvars: true
-
-    # Copy CUDA 10.0 props files
-    - task: PowerShell@1
-      displayName: 'Set CUDA path'
-      inputs:
-        scriptName: 'tools/ci_build/github/windows/set_cuda_path.ps1'
-        arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-10.0.130-win10 -CudaVersion 10.0'
-
-    - task: CmdLine@1
-      displayName: 'Download test data and generate cmake config'
-      inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug Release --build_dir $(Build.BinariesDirectory) --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --build_csharp --use_mkldnn --build_shared_lib  --enable_onnx_tests --cuda_home="C:\local\cuda_10.0.130_win10_trt6015dll" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --use_tensorrt --tensorrt_home="C:\local\TensorRT-6.0.1.5" --update --cuda_version=10.0'
-        workingDirectory: "$(Build.BinariesDirectory)"
-
-    - task: VSBuild@1
-      displayName: 'Build Debug'
-      inputs:
-        solution: '$(Build.BinariesDirectory)\Debug\onnxruntime.sln'
-        platform: 'x64'
-        configuration: 'Debug'
-        msbuildArgs: '/m /p:CudaToolkitDir=C:\local\cuda_10.0.130_win10_trt6015dll\'
-        msbuildArchitecture: 'x64'
-        logProjectEvents: true
-        workingFolder: '$(Build.BinariesDirectory)\Debug'
-    - task: BatchScript@1
-      displayName: 'Test Debug'
-      inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --use_mkldnn --build_shared_lib  --enable_onnx_tests --cuda_version=10.0 --cuda_home="C:\local\cuda_10.0.130_win10_trt6015dll" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --use_tensorrt --tensorrt_home="C:\local\TensorRT-6.0.1.5" --test'
-        workingFolder: '$(Build.BinariesDirectory)'
-
-    - task: MSBuild@1
-      displayName: 'Build C# Debug'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
-        platform: 'Any CPU'
-        configuration: 'Debug'
-        msbuildArchitecture: 'x64'
-        msbuildArguments: '/m' 
-        workingFolder: '$(Build.SourcesDirectory)\csharp'
-
-    - task: MSBuild@1
-      displayName: 'Test C# Debug'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
-        platform: 'Any CPU'
-        configuration: 'Debug'
-        msbuildArchitecture: 'x64'
-        msbuildArguments: '/t:RunTest'
-        workingFolder: '$(Build.SourcesDirectory)\csharp'
-    
-    - task: VSBuild@1
-      displayName: 'Build Release'
-      inputs:
-        solution: '$(Build.BinariesDirectory)\Release\onnxruntime.sln'
-        platform: 'x64'
-        configuration: 'Release'
-        msbuildArgs: '/m /p:CudaToolkitDir=C:\local\cuda_10.0.130_win10_trt6015dll\'
-        msbuildArchitecture: 'x64'
-        logProjectEvents: true
-        workingFolder: '$(Build.BinariesDirectory)\Release'
-
-    - task: BatchScript@1
-      displayName: 'Test Release'
-      inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Release --build_dir $(Build.BinariesDirectory) --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --use_mkldnn --build_shared_lib  --enable_onnx_tests --cuda_version=10.0 --cuda_home="C:\local\cuda_10.0.130_win10_trt6015dll" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --use_tensorrt --tensorrt_home="C:\local\TensorRT-6.0.1.5" --test'
-        workingFolder: "$(Build.BinariesDirectory)"
-
-    - task: MSBuild@1
-      displayName: 'Build C# Release'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
-        platform: 'Any CPU'
-        configuration: 'Release'
-        msbuildArchitecture: 'x64'
-        msbuildArgs: '/m'
-        workingFolder: '$(Build.SourcesDirectory)\csharp'
-
-    - task: MSBuild@1
-      displayName: 'Test C# Release'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
-        platform: 'Any CPU'
-        configuration: 'Release'
-        msbuildArchitecture: 'x64'
-        msbuildArguments: '/t:RunTest'
-        workingfolder: '$(Build.SourcesDirectory)\csharp'
-
-    - task: PublishTestResults@2
-      displayName: 'Publish unit test results'
-      inputs:
-        testResultsFiles: '**\*.results.xml'
-        searchFolder: '$(Build.BinariesDirectory)'
-        testRunTitle: 'Unit Test Run'
-      condition: succeededOrFailed()      
-
-    # Remove CUDA 10.0 props files after build
-    - task: PowerShell@1
-      displayName: 'Clean up CUDA props files'
-      inputs:
-        scriptName: 'tools/ci_build/github/windows/clean_up_cuda_prop_files.ps1'
-        arguments: '-CudaVersion 10.0'
-
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
-      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
-      
-    - template: templates/clean-agent-build-directory-step.yml
+- template: templates/win-ci.yml
+  parameters:
+    AgentPool : 'Win-GPU-CUDA10'
+    DoDebugBuild: 'true'
+    DoCompliance: 'false'
+    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --enable_pybind --use_mkldnn --use_tensorrt --tensorrt_home="C:\local\TensorRT-6.0.1.5" --build_shared_lib --build_csharp --enable_onnx_tests --use_cuda --cuda_version=10.0 --cuda_home="C:\local\cuda_10.0.130_win10_trt6015dll" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --gen_doc'
+    JobName: 'Windows_CI_GPU_Dev'
+    DoNugetPack:  'false'
+    NuPackScript : ''
+    DoTestCoverage: 'false'
+    BuildArch: 'amd64'
+    SetVcvars: 'true'
+    MsbuildArguments: '/m /p:CudaToolkitDir=C:\local\cuda_10.0.130_win10_trt6015dll\'
+    EnvSetupScript: 'setup_env_cuda.bat'
+    CudaVersion: '10.0'

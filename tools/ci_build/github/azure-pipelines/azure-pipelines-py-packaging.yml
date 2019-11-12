@@ -162,7 +162,7 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job:  Windows_py_GPU_Wheels
-  pool: Win-GPU
+  pool: Win-GPU-CUDA10
   variables:
     buildDirectory: '$(Build.SourcesDirectory)\build'
     CUDA_VERSION: '10.0'
@@ -193,7 +193,7 @@ jobs:
       displayName: 'Run build script'
       inputs:
         filename: 'build.bat'
-        arguments: ' --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10_trt6015dll"
+        arguments: ' --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10"
       --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --build_dir $(buildDirectory) --config Release --build_wheel'
         workingFolder: "$(Build.SourcesDirectory)"
 
