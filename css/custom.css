@@ -3,6 +3,12 @@ body {
     font-size:18px;
     color: #1a1a1a;
 }
+.ns-callout {
+    background-color: #e8e8e8;
+    border-color: #1e5f7b;    
+    padding: 15px 30px 15px 15px;
+    border-left: 5px solid #1a1a1a;
+}
 h1{     
     font-size: 46px;    
 }
@@ -396,6 +402,7 @@ a .abbr[data-original-title], a abbr[title]{
     text-align: left;
     padding: 0 20px;
     background-color: #666666;
+    border: 1px solid #666666;
     color: #ffffff;
     margin: 2px 0;
     -webkit-box-align: center;
@@ -408,6 +415,7 @@ a .abbr[data-original-title], a abbr[title]{
   }
   .r-wrap.command-block .col-md-3.r-heading {
         background-color: #1a1a1a;
+        border: 1px solid #1a1a1a;
     }
 
   .r-wrap.command-block .r-heading::before {
@@ -445,7 +453,7 @@ a .abbr[data-original-title], a abbr[title]{
     padding: 0 20px;
     font-weight: 400;
     font-size: 18px;
-    margin: 1px ;
+    margin: 2px 2px;
     border: 1px solid #ccc;
     background-color: #fff;
     display: -webkit-box;
@@ -460,10 +468,6 @@ a .abbr[data-original-title], a abbr[title]{
     height: 60px;
     word-break: break-word;
   }
-  .hardwareAcceleration .col-lg-2dot5 span,
-  .hardwareAcceleration .col-lg-2dot4 span{
-        margin-bottom:3px !important;
-    }
   .r-wrap .r-content .r-option.selected span,
   .r-wrap .r-content .r-option.selected span:hover,
   .r-wrap .r-content .r-option.selected span:focus,
@@ -478,11 +482,11 @@ a .abbr[data-original-title], a abbr[title]{
   }
   .r-wrap .r-content .r-option.command-container{
       display: table;
-      padding-top: 3px;
+      padding: 2px 2px 2px 2.3px;
   }
   .r-wrap .r-content .r-option.command-container span {
     display: table-cell;
-	padding: 4px 0 0 20px;
+	padding: 0 10px 0 20px;
     vertical-align: middle;
 	background-color: #eee;
   }
