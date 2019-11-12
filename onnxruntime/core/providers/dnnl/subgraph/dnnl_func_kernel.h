@@ -3,7 +3,7 @@
 #pragma once
 
 #include "core/graph/onnx_protobuf.h"
-#include "core/providers/mkldnn/dnnl_execution_provider.h"
+#include "core/providers/dnnl/dnnl_execution_provider.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/func_api.h"
 #include "dnnl_kernel.h"
@@ -24,9 +24,9 @@ struct SubgraphParams {
 }  // namespace
 
 template <typename T>
-class MkldnnFuncKernel {
+class DnnlFuncKernel {
  public:
-  explicit MkldnnFuncKernel(const ComputeContext* context,
+  explicit DnnlFuncKernel(const ComputeContext* context,
                             const NodeAttributes& attributes,
                             MKLDNNExecutionProvider* provider) {
     ORT_UNUSED_PARAMETER(context);

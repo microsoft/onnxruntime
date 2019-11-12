@@ -9,22 +9,22 @@
 #include "dnnl.hpp"
 #include "core/common/cpuid_info.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/providers/mkldnn/subgraph/subgraph.h"
-#include "core/providers/mkldnn/dnnl_execution_provider.h"
+#include "core/providers/dnnl/subgraph/subgraph.h"
+#include "core/providers/dnnl/dnnl_execution_provider.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {
 
-class MklDnnKernel {
+class DnnlKernel {
  public:
-  MklDnnKernel(const MklDnnNode& node,
+  DnnlKernel(const MklDnnNode& node,
                MKLDNNExecutionProvider* provider) {
     name_ = node.name;
     mklnode_ptr_ = std::make_shared<MklDnnNode>(node);
     provider_ = provider;
     alloc_ = provider_->GetAllocator(0, OrtMemTypeDefault);
   }
-  virtual ~MklDnnKernel(){};
+  virtual ~DnnlKernel(){};
 
   virtual void CreatePrimitives(const OrtCustomOpApi* api,
                                 OrtKernelContext* context,
@@ -88,7 +88,7 @@ class MklDnnKernel {
 
  public:
   std::string name_;
-  std::vector<std::shared_ptr<MklDnnKernel>> parents_;
+  std::vector<std::shared_ptr<DnnlKernel>> parents_;
   bool fuse_relu_ = false;
   bool fuse_sum_ = false;
   std::shared_ptr<dnnl::memory> primitive_dst_mem_;

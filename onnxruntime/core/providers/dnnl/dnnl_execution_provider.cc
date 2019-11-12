@@ -8,7 +8,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry.h"
-#include "core/providers/mkldnn/subgraph/dnnl_func_kernel.h"
+#include "core/providers/dnnl/subgraph/dnnl_func_kernel.h"
 #include "dnnl_execution_provider.h"
 #include "dnnl_fwd.h"
 
@@ -414,18 +414,18 @@ Status MKLDNNExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& f
     NodeComputeInfo compute_info;
 
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
-      auto* p = new onnxruntime::ort_dnnl::MkldnnFuncKernel<float>(context, attributes, this);
+      auto* p = new onnxruntime::ort_dnnl::DnnlFuncKernel<float>(context, attributes, this);
       *state = p;
       return 0;
     };
 
     compute_info.release_state_func = [](FunctionState state) {
       if (state)
-        delete static_cast<onnxruntime::ort_dnnl::MkldnnFuncKernel<float>*>(state);
+        delete static_cast<onnxruntime::ort_dnnl::DnnlFuncKernel<float>*>(state);
     };
 
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
-      onnxruntime::ort_dnnl::MkldnnFuncKernel<float>* custom_op = reinterpret_cast<ort_dnnl::MkldnnFuncKernel<float>*>(state);
+      onnxruntime::ort_dnnl::DnnlFuncKernel<float>* custom_op = reinterpret_cast<ort_dnnl::DnnlFuncKernel<float>*>(state);
       return custom_op->Compute(api, context);
     };
 
