@@ -111,7 +111,7 @@ TEST(TransformerTest, MemcpyTransformerTest) {
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
   bool modified = false;
-  status = transformer.Apply(graph, modified);
+  status = transformer.Apply(graph, modified, nullptr);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_TRUE(modified);
 
@@ -165,7 +165,7 @@ TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
   bool modified = false;
-  status = transformer.Apply(graph, modified);
+  status = transformer.Apply(graph, modified, nullptr);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_TRUE(modified);
 
@@ -278,7 +278,7 @@ TEST(TransformerTest, TestCopyNodeInsertionInitializerInSubgraph) {
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
   bool modified = false;
-  status = transformer.Apply(graph, modified);
+  status = transformer.Apply(graph, modified, nullptr);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_TRUE(modified);
 }
