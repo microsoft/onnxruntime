@@ -1928,7 +1928,7 @@ Example 4:
       R"DOC(Gaussian Error Linear Unit.
 A high-performing neural network activation function.The GELU nonlinearity is
 the expected transformation of a stochastic regularizer which randomly applies
-the identity or zero map to a neuron’s input. The GELU nonlinearity weights 
+the identity or zero map to a neuron's input. The GELU nonlinearity weights 
 inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Gelu)
@@ -1949,8 +1949,8 @@ inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)D
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("AddGeluFusion fuses Add+Gelu. The fused Add op is the parent node of the fused Gelu.")
-      .Input(0, "A", "The input data as Tensor.", "T")
-      .Input(1, "B", "The input data as Tensor.", "T")
+      .Input(0, "A", "The input data as Tensor that is the first input of fused Add.", "T")
+      .Input(1, "B", "The input data as Tensor that is the second input of fused Add.", "T")
       .Output(0, "C", "The output.", "T")
       .TypeConstraint(
           "T",
