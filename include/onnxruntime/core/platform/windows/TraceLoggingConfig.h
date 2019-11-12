@@ -31,8 +31,10 @@ Environment:
 
 // Configuration macro for use in TRACELOGGING_DEFINE_PROVIDER. The definition
 // in this file configures the provider as a normal (non-telemetry) provider.
+#ifndef TraceLoggingOptionMicrosoftTelemetry
 #define TraceLoggingOptionMicrosoftTelemetry() \
     // Empty definition for TraceLoggingOptionMicrosoftTelemetry
+#endif
 
 // Configuration macro for use in TRACELOGGING_DEFINE_PROVIDER. The definition
 // in this file configures the provider as a normal (non-telemetry) provider.
