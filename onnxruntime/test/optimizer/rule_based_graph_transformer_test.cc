@@ -44,7 +44,7 @@ TEST(RuleBasedGraphTransformerTest, TestCompatibleProviders) {
   graph_transformation_mgr.Register(std::move(graph_transformer), TransformerLevel::Level2);
   graph_transformation_mgr.Register(std::move(graph_transformer1), TransformerLevel::Level2);
 
-  graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2);
+  graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, nullptr);
 
   // Validate transformer registered with CUDA as compatible provider is not called.
   ASSERT_FALSE(dummy_rule_ptr->IsRewriteRuleInvoked());

@@ -382,7 +382,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   // 5. insert cast nodes.
 
   // first apply global(execution provider independent),  level 1(default/system/basic) graph to graph optimizations
-  ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1));
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1, session_logger_));
 
 #ifdef USE_DML
   // TODO: this is a temporary workaround to apply the DML EP's custom graph transformer prior to partitioning. This
@@ -408,12 +408,12 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   // apply transformers except default transformers
   // Default transformers are required for correctness and they are owned and run by inference session
   for (int i = static_cast<int>(TransformerLevel::Level1); i < static_cast<int>(TransformerLevel::MaxTransformerLevel); i++) {
-    ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i)));
+    ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), session_logger_));
   }
 
   bool modified = false;
   // Insert cast node/s.
-  ORT_RETURN_IF_ERROR_SESSIONID_(insert_cast_transformer.Apply(graph, modified));
+  ORT_RETURN_IF_ERROR_SESSIONID_(insert_cast_transformer.Apply(graph, modified, session_logger_));
 
   // Now every node should be already assigned to an execution provider
   std::unordered_map<std::string, std::vector<std::string>> node_placements;
@@ -462,7 +462,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 
   // Insert copy node/s.
   MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager};
-  ORT_RETURN_IF_ERROR_SESSIONID_(copy_transformer.Apply(graph, modified));
+  ORT_RETURN_IF_ERROR_SESSIONID_(copy_transformer.Apply(graph, modified, session_logger_));
 
   return common::Status::OK();
 }

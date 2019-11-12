@@ -55,7 +55,7 @@ TEST(GraphTransformationTests, IdentityElimination) {
   rule_transformer_L1->Register(onnxruntime::make_unique<EliminateIdentity>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, nullptr).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 0);
@@ -74,7 +74,7 @@ TEST(GraphTransformationTests, DropoutElimination) {
   rule_transformer_L1->Register(onnxruntime::make_unique<EliminateDropout>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, nullptr).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
   // Of the 6 Dropout nodes in the graph, all but the ones named `d1` and `d6` should have been removed.
@@ -99,7 +99,7 @@ TEST(GraphTransformationTests, SliceElimination) {
     rule_transformer_L1->Register(onnxruntime::make_unique<EliminateSlice>());
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
     graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
-    ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+    ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, nullptr).IsOK());
 
     op_to_count = CountOpsInGraph(graph);
     // Only one Slice operator is redundant and is removed.
@@ -118,7 +118,7 @@ TEST(GraphTransformationTests, ConstantFolding) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(), TransformerLevel::Level1);
 
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, nullptr).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
@@ -190,7 +190,7 @@ TEST(GraphTransformationTests, ConstantFoldingSubgraph) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(), TransformerLevel::Level1);
 
-  status = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1);
+  status = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, nullptr);
   ASSERT_TRUE(status.IsOK()) << status;
 
   op_to_count = CountOpsInGraph(graph);
@@ -211,7 +211,7 @@ TEST(GraphTransformationTests, ShapeToInitializer) {
   rule_transformer_L1->Register(onnxruntime::make_unique<ShapeToInitializer>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, nullptr).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
   // Two of the Shapes are not eliminated because:
@@ -266,7 +266,7 @@ TEST(GraphTransformationTests, FuseConvBNNoBias) {
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvBNFusion>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, nullptr).IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["BatchNormalization"] == 0);
@@ -300,7 +300,7 @@ TEST(GraphTransformationTests, DontFuseConvWithBNWithOptionalOutputs) {
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvBNFusion>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, nullptr).IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["BatchNormalization"] == 1);
@@ -325,7 +325,7 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
     rule_transformer_L1->Register(onnxruntime::make_unique<ConvMulFusion>());
     graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
-    ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+    ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, nullptr).IsOK());
 
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
     ASSERT_TRUE(op_to_count["BatchNormalization"] == 0);
@@ -355,7 +355,7 @@ TEST(GraphTransformationTests, FuseConvActivation) {
     // Apply transformer
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
     graph_transformation_mgr.Register(onnxruntime::make_unique<ConvActivationFusion>(), TransformerLevel::Level2);
-    ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+    ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, nullptr).IsOK());
 
     op_to_count = CountOpsInGraph(graph);
     ASSERT_TRUE(op_to_count[model.second] == 0);
@@ -375,7 +375,7 @@ TEST(GraphTransformationTests, FuseConvClip11Activation) {
   // Apply transformer
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<ConvActivationFusion>(), TransformerLevel::Level2);
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, nullptr).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_to_count["Clip"], 1);
@@ -414,7 +414,7 @@ TEST(GraphTransformationTests, FuseConvMulNoBias) {
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvMulFusion>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, nullptr).IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
@@ -434,7 +434,7 @@ TEST(GraphTransformationTests, FuseConvAddNoBias) {
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvAddFusion>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, nullptr).IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 0);
@@ -456,7 +456,7 @@ TEST(GraphTransformationTests, NegativeFuseConvAddNoBias) {
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvAddFusion>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, nullptr).IsOK());
 
   // Nodes are not fused because the weights to conv/add are not constants (they appear in the graph inputs).
   // Unsqueeze is also not eliminated as the initializer that is its input is also not constant
@@ -478,7 +478,7 @@ TEST(GraphTransformationTests, FuseConvAddMul3D) {
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvMulFusion>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, nullptr).IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 0);
@@ -498,7 +498,7 @@ TEST(GraphTransformationTests, FuseConvAddMul3D_2) {
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvMulFusion>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, nullptr).IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 0);
@@ -514,7 +514,7 @@ TEST(GraphTransformationTests, MatMulAddFusion_two_input) {
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<MatMulAddFusion>(), TransformerLevel::Level1);
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, nullptr).IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["MatMul"] == 0);
@@ -531,7 +531,7 @@ TEST(GraphTransformationTests, MatMulAddFusion_three_input) {
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<MatMulAddFusion>(), TransformerLevel::Level1);
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, nullptr).IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["MatMul"] == 0);
@@ -549,7 +549,7 @@ TEST(GraphTransformationTests, Gemm_Relu_three_input) {
   std::map<std::string, int> op_to_count1 = CountOpsInGraph(graph);
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<GemmActivationFusion>(), TransformerLevel::Level2);
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, nullptr).IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Relu"] == 0);
@@ -667,7 +667,7 @@ TEST(GraphTransformationTests, ReluClip6Fusion) {
   rule_transformer_L1->Register(onnxruntime::make_unique<FuseReluClip>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, nullptr).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Relu"] == 0);
@@ -755,7 +755,7 @@ TEST(GraphTransformationTests, ReluClip11Fusion) {
   rule_transformer_L1->Register(onnxruntime::make_unique<FuseReluClip>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
-  status = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1);
+  status = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, nullptr);
   ASSERT_TRUE(status.IsOK()) << status;
 
   op_to_count = CountOpsInGraph(graph);
@@ -810,7 +810,7 @@ TEST(GraphTransformationTests, GeluFusionTest) {
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<GeluFusion>(), TransformerLevel::Level2);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, nullptr);
   ASSERT_TRUE(ret.IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -828,7 +828,7 @@ TEST(GraphTransformationTests, LayerNormFusionTest) {
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<LayerNormFusion>(), TransformerLevel::Level2);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, nullptr);
   ASSERT_TRUE(ret.IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -849,7 +849,7 @@ TEST(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<LayerNormFusion>(), TransformerLevel::Level2);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, nullptr);
   ASSERT_TRUE(ret.IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);

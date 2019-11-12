@@ -185,7 +185,7 @@ static void RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edges) 
     This is important when removing a node with this NodeArg as input. */
 static bool CanUpdateImplicitInputNameInSubgraphs(const Graph& graph,
                                                   const std::vector<GraphEdge>& output_edges,
-                                                  const std::string& new_arg_name, logging::Logger* logger) {
+                                                  const std::string& new_arg_name, const logging::Logger* logger) {
   for (const auto& output_edge : output_edges) {
     if (OutputEdgeProvidesImplicitInput(graph, output_edge)) {
       const Node& output_edge_node = *graph.GetNode(output_edge.dst_node);
@@ -356,7 +356,7 @@ bool IsOutputUsed(const Node& node, int index) {
   return false;
 }
 
-bool CanRemoveNode(const Graph& graph, const Node& node, logging::Logger* logger) {
+bool CanRemoveNode(const Graph& graph, const Node& node, const logging::Logger* logger) {
   const std::string* output_name = nullptr;
   if (!IsOnlyOneOutputUsed(graph, node, output_name)) {
     return false;
@@ -395,7 +395,7 @@ bool CanRemoveNode(const Graph& graph, const Node& node, logging::Logger* logger
 }
 
 bool RemoveNode(Graph& graph, Node& node) {
-  assert(CanRemoveNode(graph, node));
+  assert(CanRemoveNode(graph, node, nullptr));
 
   // Note: Node does not produce any graph outputs, and only a single output is used.
 
@@ -414,7 +414,7 @@ bool RemoveNode(Graph& graph, Node& node) {
 }
 
 bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const std::string& initializer_name,
-                                   logging::Logger* logger) {
+                                   const logging::Logger* logger) {
   // we have no way to handle replacing multiple outputs so check only one is used
   const std::string* output_name = nullptr;
   if (!IsOnlyOneOutputUsed(graph, node, output_name)) {

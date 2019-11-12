@@ -238,7 +238,7 @@ static void DontRemoveNodeIfItWillBreakSubgraph(bool test_nested = false) {
   auto& graph = model.MainGraph();
   auto& node_to_remove = *graph.GetNode(1);
 
-  ASSERT_FALSE(graph_utils::CanRemoveNode(graph, node_to_remove));
+  ASSERT_FALSE(graph_utils::CanRemoveNode(graph, node_to_remove, nullptr));
 }
 
 TEST(GraphUtils, DontRemoveNodeIfItWillBreakSubgraph) {
@@ -341,14 +341,14 @@ TEST(GraphUtils, TestMultiOutputRemoveNode) {
 
   // Try to remove do_0, which should return false
   // because both outputs are consumed by downstream Operators.
-  ASSERT_FALSE(graph_utils::CanRemoveNode(graph, *nodes[0]));
+  ASSERT_FALSE(graph_utils::CanRemoveNode(graph, *nodes[0], nullptr));
 
   // Try removing do_0 after removing id_2, which should return true
   // because it now has exactly one output consumed by downstream Operators.
-  ASSERT_TRUE(graph_utils::CanRemoveNode(graph, *nodes[1]));
+  ASSERT_TRUE(graph_utils::CanRemoveNode(graph, *nodes[1], nullptr));
   ASSERT_TRUE(graph_utils::RemoveNode(graph, *nodes[1]));
   ASSERT_FALSE(graph_utils::IsOutputUsed(*nodes[0], 0));
-  ASSERT_TRUE(graph_utils::CanRemoveNode(graph, *nodes[0]));
+  ASSERT_TRUE(graph_utils::CanRemoveNode(graph, *nodes[0], nullptr));
   ASSERT_TRUE(graph_utils::RemoveNode(graph, *nodes[0]));
 }
 

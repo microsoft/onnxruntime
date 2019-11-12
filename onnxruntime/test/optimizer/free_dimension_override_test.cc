@@ -38,7 +38,7 @@ TEST(FreeDimensionOverrideTransformerTest, Test) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr(5);
   graph_transformation_mgr.Register(std::move(graph_transformer), TransformerLevel::Level1);
 
-  graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1);
+  graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, nullptr);
 
   // Verify that the shape of the input graph has the correct values
 

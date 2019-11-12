@@ -38,7 +38,7 @@ TEST(TransformerTest, InsertCastGPUTest) {
   InsertCastTransformer transformer("Test");
 
   bool modified = true;
-  status = transformer.Apply(graph, modified);
+  status = transformer.Apply(graph, modified, nullptr);
   EXPECT_TRUE(status.IsOK());
   status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -86,7 +86,7 @@ TEST(TransformerTest, InsertCastAllCPUTest) {
   InsertCastTransformer transformer("Test");
 
   bool modified = true;
-  EXPECT_TRUE(transformer.Apply(graph, modified).IsOK());
+  EXPECT_TRUE(transformer.Apply(graph, modified, nullptr).IsOK());
   status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_EQ(graph.NumberOfNodes(), 7);
@@ -123,7 +123,7 @@ TEST(TransformerTest, ThreeInARowRemoval) {
   InsertCastTransformer transformer("Test");
 
   bool modified = false;
-  status = transformer.Apply(graph, modified);
+  status = transformer.Apply(graph, modified, nullptr);
   EXPECT_TRUE(status.IsOK()) << status;
   EXPECT_TRUE(modified) << "Transformer should have removed some Cast nodes";
   status = graph.Resolve();
