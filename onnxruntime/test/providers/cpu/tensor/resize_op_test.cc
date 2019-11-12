@@ -61,7 +61,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapol
                           12.4f, 10.f, 10.0f,
                           10.0f, 10.0f, 10.0f};
 
-  test.AddOutput<float>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
   test.Run();
 }
 
@@ -83,7 +83,7 @@ TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_4DBilinear) {
 
   std::vector<float> Y = {2.66666651f, 4.3333331f};
 
-  test.AddOutput<float>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
   test.Run();
 }
 
@@ -106,7 +106,7 @@ TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_4DBilinear_align_corners) {
 
   std::vector<float> Y = {1.0f, 4.0f};
 
-  test.AddOutput<float>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
   test.Run();
 }
 
@@ -169,7 +169,7 @@ TEST(ResizeOpTest, ResizeOpLineartUpSampleTest_4DBilinear_asymmetric) {
       7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 11.0f, 11.0f, 11.0f,
       7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 11.0f, 11.0f, 11.0f};
 
-  test.AddOutput<float>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
   test.Run();
 }
 
@@ -194,7 +194,7 @@ TEST(ResizeOpTest, ResizeOpLineartUpSampleTest_2DBilinear_align_corners) {
       3.0f, 3.4761906f, 3.952381f, 4.428571f, 4.904762f, 5.3809524f, 5.857143f, 6.33333f,
       4.0f, 4.5714290f, 5.142857f, 5.714286f, 6.285714f, 6.8571430f, 7.428571f, 8.0f};
 
-  test.AddOutput<float>("Y", {(int64_t)(H * scales[0]), (int64_t)(W * scales[1])}, Y);
+  test.AddOutput<float>("Y", {static_cast<int64_t>(H * scales[0]), static_cast<int64_t>(W * scales[1])}, Y);
   test.Run();
 }
 
@@ -243,7 +243,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest) {
 
   std::vector<float> Y = {1.0f, 3.0f};
 
-  test.AddOutput<float>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
   test.Run();
 }
 
@@ -325,7 +325,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_tf_crop_and_resize_with_extrapo
                           11.0f, 10.f, 10.0f,
                           10.0f, 10.0f, 10.0f};
 
-  test.AddOutput<float>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
   test.Run();
 }
 
@@ -348,7 +348,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSampleTest) {
                           3.0f, 3.0f, 3.0f, 4.0f, 4.0f, 4.0f,
                           3.0f, 3.0f, 3.0f, 4.0f, 4.0f, 4.0f};
 
-  test.AddOutput<float>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
   test.Run();
 }
 
@@ -411,7 +411,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Floor_Align_Corners) {
                           9.0f, 9.0f, 9.0f, 10.0f, 10.0f, 11.0f, 11.0f, 12.0f,
                           13.0f, 13.0f, 13.0f, 14.0f, 14.0f, 15.0f, 15.0f, 16.0f};
 
-  test.AddOutput<float>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
   test.Run();
 }
 
@@ -437,7 +437,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest) {
                           6.71143f, 8.02148f, 9.32275f,
                           11.9165f, 13.2266f, 14.5278f};
 
-  test.AddOutput<float>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
   test.Run();
 }
 
@@ -467,7 +467,7 @@ TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_exclude_outside) {
                           6.57363f, 7.875f, 9.21884f,
                           11.949f, 13.2503f, 14.5942f};
 
-  test.AddOutput<float>("Y", {(int64_t)(H * scales[0]), (int64_t)(W * scales[1])}, Y);
+  test.AddOutput<float>("Y", {static_cast<int64_t>(H * scales[0]), static_cast<int64_t>(W * scales[1])}, Y);
   test.Run();
 }
 
@@ -494,7 +494,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_coeff) {
                           6.57715f, 7.875f, 9.19824f,
                           11.8701f, 13.168f, 14.4912f,};
 
-  test.AddOutput<float>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
   test.Run();
 }
 
@@ -521,7 +521,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_with_roi) {
                           8.752f, 9.14275f, 9.496f,
                           9.76f, 10.1507f, 10.504f};
 
-  test.AddOutput<float>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
   test.Run();
 }
 
@@ -548,7 +548,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_asymmetric) {
                           6.1875f, 7.48438f, 8.78125f,
                           11.375f, 12.6719f, 13.9688f};
 
-  test.AddOutput<float>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
   test.Run();
 }
 
@@ -580,7 +580,7 @@ TEST(ResizeOpTest, ResizeOpCubicUpSampleTest) {
                           13.0f, 13.4063f, 14.0f, 14.5f, 15.0f, 15.5938f, 16.0f, 16.0938f,
                           13.375f, 13.7813f, 14.375f, 14.875f, 15.375f, 15.9688f, 16.375f, 16.4688f,};
 
-  test.AddOutput<float>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
   test.Run();
 }
 
@@ -661,7 +661,183 @@ TEST(ResizeOpTest, ResizeOpCubicUpSampleTest_tf_half_pixel_for_nn) {
                           13.6133f, 14.0898f, 14.7188f, 15.125f, 15.7539f, 16.2305f, 16.5273f, 16.457f,
                           13.332f, 13.8086f, 14.4375f, 14.8438f, 15.4727f, 15.9492f, 16.2461f, 16.1758f,};
 
-  test.AddOutput<float>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+  test.Run();
+}
+
+TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_4DBilinear_Ver10) {
+  OpTester test("Resize", 10);
+  std::vector<float> scales{1.0f, 1.0f, 0.6f, 0.6f};
+
+  test.AddAttribute("mode", "linear");
+
+  const int64_t N = 1, C = 1, H = 2, W = 4;
+  std::vector<float> X = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f};
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<float> Y = {1.0f, 2.66666651f};
+
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+  test.Run();
+}
+
+TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_2DBilinear_Ver10) {
+  OpTester test("Resize", 10);
+  std::vector<float> scales{0.6f, 0.6f};
+
+  test.AddAttribute("mode", "linear");
+
+  const int64_t H = 2, W = 4;
+  std::vector<float> X = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f};
+
+  test.AddInput<float>("X", {H, W}, X);
+  test.AddInput<float>("scales", {2}, scales);
+
+  std::vector<float> Y = {1.0f, 2.66666651f};
+
+  test.AddOutput<float>("Y", {static_cast<int64_t>(H * scales[0]), static_cast<int64_t>(W * scales[1])}, Y);
+  test.Run();
+}
+
+TEST(ResizeOpTest, ResizeOpLineartUpSampleTest_4DBilinear_Ver10) {
+  OpTester test("Resize", 10);
+  std::vector<float> scales{1.0f, 1.0f, 2.0f, 4.0f};
+  test.AddAttribute("mode", "linear");
+
+  const int64_t N = 2, C = 1, H = 2, W = 2;
+  std::vector<float> X = {1.0f, 3.0f,
+                          4.0f, 8.0f,
+
+                          6.0f, 2.0f,
+                          7.0f, 11.0f};
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<float> Y = {
+      1.0f, 1.5f, 2.0f, 2.5f, 3.0f, 3.0f, 3.0f, 3.0f,
+      2.5f, 3.25f, 4.0f, 4.75f, 5.5f, 5.5f, 5.5f, 5.5f,
+      4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 8.0f, 8.0f, 8.0f,
+      4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 8.0f, 8.0f, 8.0f,
+
+      6.0f, 5.0f, 4.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f,
+      6.5f, 6.5f, 6.5f, 6.5f, 6.5f, 6.5f, 6.5f, 6.5f,
+      7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 11.0f, 11.0f, 11.0f,
+      7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 11.0f, 11.0f, 11.0f};
+
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+  test.Run();
+}
+
+TEST(ResizeOpTest, ResizeOpLineartUpSampleTest_2DBilinear_Ver10) {
+  OpTester test("Resize", 10);
+  std::vector<float> scales{2.0f, 4.0f};
+  test.AddAttribute("mode", "linear");
+
+  const int64_t H = 2, W = 2;
+  std::vector<float> X = {1.0f, 3.0f,
+                          4.0f, 8.0f};
+
+  test.AddInput<float>("X", {H, W}, X);
+  test.AddInput<float>("scales", {2}, scales);
+
+  std::vector<float> Y = {
+      1.0f, 1.5f, 2.0f, 2.5f, 3.0f, 3.0f, 3.0f, 3.0f,
+      2.5f, 3.25f, 4.0f, 4.75f, 5.5f, 5.5f, 5.5f, 5.5f,
+      4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 8.0f, 8.0f, 8.0f,
+      4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 8.0f, 8.0f, 8.0f};
+
+  test.AddOutput<float>("Y", {static_cast<int64_t>(H * scales[0]), static_cast<int64_t>(W * scales[1])}, Y);
+  test.Run();
+}
+
+TEST(ResizeOpTest, ResizeOpLineartScalesNoOpTest_Ver10) {
+  OpTester test("Resize", 10);
+  std::vector<float> scales{1.0f, 1.0f, 1.0f, 1.0f};
+  test.AddAttribute("mode", "linear");
+
+  const int64_t N = 2, C = 1, H = 2, W = 2;
+  std::vector<float> X = {1.0f, 3.0f,
+                          4.0f, 8.0f,
+
+                          6.0f, 2.0f,
+                          7.0f, 11.0f};
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<float> Y = {1.0f, 3.0f,
+                          4.0f, 8.0f,
+
+                          6.0f, 2.0f,
+                          7.0f, 11.0f};
+
+  test.AddOutput<float>("Y", {N, C, H, W}, Y);
+  test.Run();
+}
+
+TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_Ver10) {
+  OpTester test("Resize", 10);
+  std::vector<float> scales{1.0f, 1.0f, 0.6f, 0.6f};
+
+  test.AddAttribute("mode", "nearest");
+
+  const int64_t N = 1, C = 1, H = 2, W = 4;
+  std::vector<float> X = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f};
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<float> Y = {1.0f, 3.0f};
+
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+  test.Run();
+}
+
+TEST(ResizeOpTest, ResizeOpNearestUpSampleTest_Ver10) {
+  OpTester test("Resize", 10);
+  std::vector<float> scales{1.0f, 1.0f, 2.0f, 3.0f};
+
+  test.AddAttribute("mode", "nearest");
+
+  const int64_t N = 1, C = 1, H = 2, W = 2;
+  std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<float> Y = {1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f,
+                          1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f,
+                          3.0f, 3.0f, 3.0f, 4.0f, 4.0f, 4.0f,
+                          3.0f, 3.0f, 3.0f, 4.0f, 4.0f, 4.0f};
+
+  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+  test.Run();
+}
+
+TEST(UpsampleOpTest, ResizeOpNearestNoScaleTest_Ver10) {
+  OpTester test("Resize", 10);
+  std::vector<float> scales{1.0f, 1.0f, 1.0f, 1.0f};
+
+  test.AddAttribute("mode", "nearest");
+
+  const int64_t N = 1, C = 1, H = 2, W = 2;
+  std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<float> Y = {1.0f, 2.0f, 3.0f, 4.0f};
+
+  test.AddOutput<float>("Y", {N, C, H, W}, Y);
   test.Run();
 }
 
