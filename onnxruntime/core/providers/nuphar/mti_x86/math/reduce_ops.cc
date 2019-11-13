@@ -305,6 +305,23 @@ tvm::Tensor ReduceMin(const tvm::Tensor& X,
                      X->dtype.max(), vector_size, last_dim_aligned, fuse_dim, name);
 }
 
+tvm::Tensor ReduceMean(const tvm::Tensor& X,
+                       const std::vector<int64_t>& axes, bool keep_dims,
+                       const int32_t vector_size,
+                       bool last_dim_aligned,
+                       int32_t fuse_dim,
+                       const std::string& name) {
+  tvm::Tensor sum = ReduceValue(X, tvm::sum, axes, keep_dims,
+                                X->dtype.max(), vector_size, last_dim_aligned, fuse_dim, name);
+
+  tvm::Expr count = tvm::make_const(HalideIR::Int(32), 1);
+  for (auto ax : axes) {
+    ax = tvm_codegen::HandleNegativeAxis(ax, X->shape.size());
+    count = count * X->shape[ax];
+  }
+  return topi::divide(sum, tvm::cast(X->dtype, count));
+}
+
 // [WIP] a special vectorization friendly value reduction
 // Keep_dim always true
 tvm::Tensor ReduceValueLowest_noPad(const tvm::Tensor& X,

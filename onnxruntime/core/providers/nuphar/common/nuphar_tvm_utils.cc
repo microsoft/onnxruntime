@@ -170,5 +170,38 @@ std::string GetPackedFuncName(const nuphar::NupharSubgraphUnit& subgraph, const 
   return NormalizeCppName("_" + subgraph.UniqueId() + " " + codegen_target.GetTargetName());
 }
 
+bool TryCreateConstantScalar(
+    tvm::Expr& scalar,
+    const Tensor* tensor) {
+  if (!tensor || tensor->Shape().Size() > 1)
+    return false;  // return if not constant or not scalar
+
+#define ASSIGN_TVM_SCALAR(tvm_type, tensor_type)                      \
+  if (tensor->IsDataType<tensor_type>()) {                            \
+    scalar = tvm::make_const(tvm_type, *tensor->Data<tensor_type>()); \
+  }
+
+#define ASSIGN_TVM_SCALAR_ELSE(tvm_type, tensor_type) \
+  else ASSIGN_TVM_SCALAR(tvm_type, tensor_type)
+
+  ASSIGN_TVM_SCALAR(HalideIR::Float(32), float)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::Float(64), double)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::Int(64), int64_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::Int(32), int32_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::Int(16), int16_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::Int(8), int8_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::UInt(64), uint64_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::UInt(32), uint32_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::UInt(16), uint16_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::UInt(8), uint8_t)
+  else {
+    return false;
+  }
+
+#undef ASSIGN_TVM_SCALAR
+
+  return true;
+}
+
 }  // namespace nuphar
 }  // namespace onnxruntime

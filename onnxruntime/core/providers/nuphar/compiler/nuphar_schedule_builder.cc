@@ -47,6 +47,8 @@ static void Traverse(const tvm::Tensor& tensor,
     if (t->op->InputTensors().size() > 0) {
       auto current_node = ctx_codegen.FindNode(t);
       Traverse(t, current_node, ctx_codegen, ctx_schedule);
+    } else if (ctx_codegen.CheckLiteral(t->op->name)) {
+      TryInlineSchedule(t, ctx_schedule);
     }
   }
 }

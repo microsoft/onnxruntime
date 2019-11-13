@@ -30,8 +30,6 @@ namespace nuphar {
 #define POOL_OP(OP) ADD_OP_ITEM(OP)
 #define REDUCE_V_OP(name) ADD_OP_ITEM(name)
 #define UNARY_OP(name) ADD_OP_ITEM(name)
-#define BINARY_OP(name) ADD_OP_ITEM(name)
-#define BINARY_CMP_OP(name) ADD_OP_ITEM(name)
 
 static void RegisterAllNupharX86OpIRCreators(tvm_codegen::OpIRRegistry* op_ir_registry) {
   LIST_ALL_X86_OPS()
@@ -41,8 +39,6 @@ static void RegisterAllNupharX86OpIRCreators(tvm_codegen::OpIRRegistry* op_ir_re
 #undef POOL_OP
 #undef REDUCE_V_OP
 #undef UNARY_OP
-#undef BINARY_OP
-#undef BINARY_CMP_OP
 
 // END: NupharTVM X86 IR creator classes
 
@@ -142,8 +138,6 @@ static void RegisterAllNupharWeightLayouts(tvm_codegen::WeightLayoutRegistry* la
 #define POOL_OP(OP) ADD_OP_ITEM(OP)
 #define REDUCE_V_OP(name) ADD_OP_ITEM(name)
 #define UNARY_OP(name) ADD_OP_ITEM(name)
-#define BINARY_OP(name) ADD_OP_ITEM(name)
-#define BINARY_CMP_OP(name) ADD_OP_ITEM(name)
 
 static void RegisterNupharX86Dispatcher(const std::shared_ptr<tvm_codegen::TVMIRBuilder>& builder,
                                         const tvm_codegen::OpIRRegistry* registry) {
@@ -156,8 +150,6 @@ static void RegisterNupharX86Dispatcher(const std::shared_ptr<tvm_codegen::TVMIR
 #undef POOL_OP
 #undef REDUCE_V_OP
 #undef UNARY_OP
-#undef BINARY_OP
-#undef BINARY_CMP_OP
 // END: Nuphar TVM X86 IR creator classes
 
 // 2 Plugin Scheduler classes
