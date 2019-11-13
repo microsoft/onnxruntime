@@ -49,7 +49,7 @@ static void TestResolve(onnxruntime::Graph& graph) {
 TEST(ONNXModelsTest, squeeze_net) {
   // NOTE: this requires the current directory to be where onnxruntime_ir_UT.exe is located
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(ORT_TSTR("../models/opset8/test_squeezenet/model.onnx"), model, nullptr, nullptr).IsOK());
+  ASSERT_TRUE(Model::Load(ORT_TSTR("../models/opset8/test_squeezenet/model.onnx"), model, nullptr, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger()).IsOK());
   TestResolve(model->MainGraph());
 }
 #endif
