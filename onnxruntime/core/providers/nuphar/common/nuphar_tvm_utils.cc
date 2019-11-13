@@ -173,8 +173,41 @@ std::string GetPackedFuncName(const nuphar::NupharSubgraphUnit& subgraph, const 
 bool TryCreateConstantScalar(
     tvm::Expr& scalar,
     const Tensor* tensor) {
-  if (!tensor || tensor->Shape().Size() > 1)
-    return false;  // return if not constant or not scalar
+  if (!tensor)
+    return false;
+
+  auto num_elements = tensor->Shape().Size();
+  if (num_elements > 1) {
+    // for non-scalar, only fold to constant scalar when all values are identical
+    const auto& dtype = tensor->DataType();
+    auto elem_size = dtype->Size();
+    const void* data = tensor->DataRaw();
+
+#define CHECK_ALL_TENSOR_SAME(T)                                                    \
+  for (int64_t i = 1; i < num_elements; ++i) {                                      \
+    if (reinterpret_cast<const T*>(data)[i] != reinterpret_cast<const T*>(data)[0]) \
+      return false;                                                                 \
+  }
+
+    switch (elem_size) {
+      case 1:
+        CHECK_ALL_TENSOR_SAME(int8_t);
+        break;
+      case 2:
+        CHECK_ALL_TENSOR_SAME(int16_t);
+        break;
+      case 4:
+        CHECK_ALL_TENSOR_SAME(int32_t);
+        break;
+      case 8:
+        CHECK_ALL_TENSOR_SAME(int64_t);
+        break;
+      default:
+        return false;
+    }
+
+#undef CHECK_ALL_TENSOR_SAME
+  }
 
 #define ASSIGN_TVM_SCALAR(tvm_type, tensor_type)                      \
   if (tensor->IsDataType<tensor_type>()) {                            \

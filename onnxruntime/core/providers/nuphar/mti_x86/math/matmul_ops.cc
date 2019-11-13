@@ -157,9 +157,9 @@ TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.batched_matmul_cpu")
         int64_t N = B->shape[permute_B[B->ndim - 1]];
         bool trans_a = (permute_A[A->ndim - 2] == A->ndim - 1);
         bool trans_b = (permute_B[B->ndim - 2] == B->ndim - 1);
-        int64_t step_a = stride_A[permute_A[A->ndim - 3]];
+        int64_t step_a = num_matmuls > 1 ? stride_A[permute_A[A->ndim - 3]] : 0;
         int64_t lda = stride_A[permute_A[A->ndim - (trans_a ? 1 : 2)]];
-        int64_t step_b = stride_B[permute_B[B->ndim - 3]];
+        int64_t step_b = num_matmuls > 1 ? stride_B[permute_B[B->ndim - 3]] : 0;
         int64_t ldb = stride_B[permute_B[B->ndim - (trans_b ? 1 : 2)]];
 
         for (int i = 0; i < num_matmuls; i++) {
