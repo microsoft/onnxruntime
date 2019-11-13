@@ -536,12 +536,6 @@ static void OuterScopeAccess_ShapeInMainGraph_NoTypeAndShapeInSubgraph(bool is_v
 
   options.include_outer_scope_add = true;
 
-  // Scan9.OuterScopeAccess_ShapeInMainGraph_NoTypeAndShapeInSubgraph fails with nuphar. See Bug 525222.
-  // Remove this once that is fixed.
-  if (is_v8 == false) {
-    options.excluded_provider_types.insert(kNupharExecutionProvider);
-  }
-
   ShortSequenceOneInBatchOneLoopStateVar(options);
 }
 

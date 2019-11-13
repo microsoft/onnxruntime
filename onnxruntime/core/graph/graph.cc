@@ -2440,10 +2440,6 @@ void Graph::CleanUnusedInitializers() {
 
 GSL_SUPPRESS(es .84)  // warning about ignoring return value from insert(...)
 Status Graph::SetGraphInputsOutputs() {
-  // Reset graph inputs excluding initializers/value_info.
-  graph_inputs_excluding_initializers_.clear();
-  value_info_.clear();
-
   // Flag indicates that this graph is loaded from model file.
   // If it's true, then graph inputs and outputs will keep the same
   // as what are specified in the model, otherwise, graph inputs
@@ -2451,6 +2447,10 @@ Status Graph::SetGraphInputsOutputs() {
   const bool loaded_from_model_file = GraphLoadedFromModelFile(graph_proto_);
 
   if (loaded_from_model_file) {
+    // Reset graph inputs excluding initializers/value_info.
+    graph_inputs_excluding_initializers_.clear();
+    value_info_.clear();
+
     // Reset graph inputs/outputs.
     graph_inputs_including_initializers_.clear();
     graph_outputs_.clear();
@@ -2525,6 +2525,9 @@ Status Graph::SetGraphInputsOutputs() {
     }
 
   } else {
+    // Reset value_info.
+    value_info_.clear();
+
     std::unordered_map<std::string, size_t> output_name_to_node_arg_index;
     std::vector<const NodeArg*> output_node_args_in_order;
 
@@ -2532,6 +2535,20 @@ Status Graph::SetGraphInputsOutputs() {
     std::unordered_set<std::string> added_input_names{outer_scope_node_arg_names_};
     if (!graph_inputs_manually_set_) {
       graph_inputs_including_initializers_.clear();
+      graph_inputs_excluding_initializers_.clear();
+    } else {
+      // If we've set graph_inputs_including_initializers_ by calling SetInputs,
+      // we copy its elements to graph_inputs_excluding_initializers_.
+      // Later, we will erase initializers from graph_inputs_excluding_initializers_
+      // if graph_inputs_manually_set_ is true.
+      // We do this because graph_inputs_including_initializers_ populated by SetInputs
+      // may contain implicit inputs which are not of any node's initializers in the graph.
+      // In other words, we can't see these implicit inputs by going through all nodes' inputs,
+      // since they are not part of the initializers. Consequently, these implicit inputs
+      // will *not* be added into graph_inputs_excluding_initializers_.
+      // In contrast, erasing initializers will ensure all implicit inputs to be included
+      // in graph_inputs_excluding_initializers_.
+      graph_inputs_excluding_initializers_ = graph_inputs_including_initializers_;
     }
 
     if (!graph_outputs_manually_set_) {
@@ -2575,6 +2592,10 @@ Status Graph::SetGraphInputsOutputs() {
               if (!is_initializer || ir_version_ < 4) {
                 graph_inputs_including_initializers_.push_back(input_arg);
               }
+              if (!is_initializer) {
+                // If input_arg is not of an initializer, we add it into graph_inputs_excluding_initializers_.
+                graph_inputs_excluding_initializers_.push_back(input_arg);
+              }
             } else {
               // graph_inputs_including_initializers_ has been manually populated by SetInputs.
               // Validation: the <input_arg> must be in graph inputs or initializers when it's manually set.
@@ -2585,11 +2606,16 @@ Status Graph::SetGraphInputsOutputs() {
                   return Status(ONNXRUNTIME, FAIL,
                                 name + " must be either specified in graph inputs or graph initializers.");
                 }
+              } else {
+                // If arg_input is of an initializer, we remove it from graph_inputs_excluding_initializers_ 
+                // whose initial content has both initializers and non-initializers.
+                auto input_pos = std::find(graph_inputs_excluding_initializers_.begin(),
+                                           graph_inputs_excluding_initializers_.end(),
+                                           input_arg);
+                if (input_pos != graph_inputs_excluding_initializers_.end()) {
+                  graph_inputs_excluding_initializers_.erase(input_pos);
+                }
               }
-            }
-
-            if (!is_initializer) {
-              graph_inputs_excluding_initializers_.push_back(input_arg);
             }
 
             added_input_names.insert(name);
