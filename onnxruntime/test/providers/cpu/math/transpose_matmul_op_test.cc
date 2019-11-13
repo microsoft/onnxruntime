@@ -8,8 +8,6 @@ namespace onnxruntime {
 namespace test {
 namespace transpose_matmul {
 
-// TransposeMatMul only has CUDA implementation.
-#ifdef USE_CUDA
 template <typename T>
 struct MatMulTestData {
   std::string name;
@@ -91,7 +89,7 @@ std::vector<MatMulTestData<T>> GenerateSimpleTestCases() {
 
 /* Transpose the last two dimentions */
 template <typename T>
-static void Transpose(std::vector<T>& src, std::vector<T>& dst, const int64_t batch, const int64_t N, const int64_t M) {
+static void Transpose(const std::vector<T>& src, std::vector<T>& dst, const int64_t batch, const int64_t N, const int64_t M) {
   for (int64_t b = 0; b < batch; b++) {
     for (int64_t n = 0; n < N * M; n++) {
       int64_t i = n / N;
@@ -102,7 +100,7 @@ static void Transpose(std::vector<T>& src, std::vector<T>& dst, const int64_t ba
 }
 
 template <typename T>
-void ProcessInputs(std::vector<int64_t> input_dims, const std::vector<T>& common_input_vals, bool trans_flag,
+void ProcessInputs(const std::vector<int64_t>& input_dims, const std::vector<T>& common_input_vals, bool trans_flag,
                    std::vector<int64_t>& modified_input_dims, std::vector<T>& input_vals) {
   auto rank = input_dims.size();
   ORT_ENFORCE(rank >= 1);
@@ -157,9 +155,11 @@ TEST(TransposeMatMulOpTest, FloatTypeNoTranspose) {
   RunTransposeMatMulTest<float>(9);
 }
 
+#ifdef USE_CUDA  // double support only implemented in CUDA kernel
 TEST(TransposeMatMulOpTest, DoubleTypeNoTranspose) {
   RunTransposeMatMulTest<double>(9);
 }
+#endif
 
 TEST(TransposeMatMulOpTest, FloatTypeTransposeA) {
   RunTransposeMatMulTest<float>(9, true, false);
@@ -172,7 +172,6 @@ TEST(TransposeMatMulOpTest, FloatTypeTransposeB) {
 TEST(TransposeMatMulOpTest, FloatTypeTransposeAB) {
   RunTransposeMatMulTest<float>(9, true, true);
 }
-#endif
 
 }  // namespace transpose_matmul
 }  // namespace test
