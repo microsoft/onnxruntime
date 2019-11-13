@@ -83,6 +83,7 @@ option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir"
 option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in language other than cpp" OFF)
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output data to standard output when executing the model." OFF)
 option(onnxruntime_USE_DML "Build with DirectML support" OFF)
+option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
@@ -128,6 +129,7 @@ endif()
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
+set(WINML_ROOT ${PROJECT_SOURCE_DIR}/../winml)
 file (STRINGS "${REPO_ROOT}/VERSION_NUMBER" ORT_VERSION)
 
 # Guarantee that the Eigen code that you are #including is licensed
@@ -410,17 +412,17 @@ if (WIN32)
         #Change it to /W4 will result build failure
         string(APPEND CMAKE_CXX_FLAGS " /W3")
     else()
-        string(APPEND CMAKE_CXX_FLAGS " /W4")
+        string(APPEND CMAKE_CXX_FLAGS " /W3")
     endif()
 
     # treat warning as error only on x64 platform.
     # For x86 and cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
     if (CMAKE_SIZEOF_VOID_P EQUAL 8 AND onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
       # treat warnings as errors
-      string(APPEND CMAKE_CXX_FLAGS " /WX")
-      foreach(type EXE STATIC SHARED)
-        set(CMAKE_${type}_LINKER_FLAGS "${CMAKE_${type}_LINKER_FLAGS} /WX")
-      endforeach()
+      # string(APPEND CMAKE_CXX_FLAGS " /WX")
+      # foreach(type EXE STATIC SHARED)
+      #   set(CMAKE_${type}_LINKER_FLAGS "${CMAKE_${type}_LINKER_FLAGS} /WX")
+      # endforeach()
     endif()
 
     # set linker flags to minimize the binary size.
@@ -739,10 +741,11 @@ if (onnxruntime_USE_WINML)
 
   if (NOT onnxruntime_USE_DML)
     message(
-        FATAL_ERROR 
+        FATAL_ERROR
         "Option onnxruntime_USE_WINML can only be used when onnxruntime_USE_DML is also enabled")
   endif()
 
+  option(onnxruntime_BUILD_WINML_TESTS "Build WinML tests" OFF)
   include(wil.cmake)
   include(winml.cmake)
 
