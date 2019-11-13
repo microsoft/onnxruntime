@@ -132,7 +132,7 @@ TEST(TransposeOpTest, TwoDim_mlfloat16) {
                                                     MLFloat16(2), MLFloat16(5),
                                                     MLFloat16(3), MLFloat16(6)};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
 }
 
 TEST(TransposeOpTest, TwoDim_int8) {
@@ -146,7 +146,7 @@ TEST(TransposeOpTest, TwoDim_int8) {
                                                  2, 5,
                                                  3, 6};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
 }
 
 TEST(TransposeOpTest, TwoDimStr) {
