@@ -16,7 +16,7 @@ static const GPUDataTransfer* GetGPUDataTransfer(const SessionState* session_sta
   return dynamic_cast<const GPUDataTransfer*>(session_state->GetDataTransferMgr().GetDataTransfer(gpu_device, cpu_device));
 }
 
-void CUDAAllocator::CheckDevice(bool ignore_failure) const {
+void CUDAAllocator::CheckDevice(bool throw_when_fail) const {
 #ifndef NDEBUG
   // check device to match at debug build
   // if it's expected to change, call cudaSetDevice instead of the check
@@ -24,15 +24,14 @@ void CUDAAllocator::CheckDevice(bool ignore_failure) const {
   auto cuda_err = cudaGetDevice(&current_device);
   if (cuda_err == CUDA_SUCCESS) {
     ORT_ENFORCE(current_device == info_.id);
-  } else {
-    if (!ignore_failure)
-      CUDA_CALL_THROW(cuda_err);
+  } else if (throw_when_fail) {
+    CUDA_CALL_THROW(cuda_err);
   }
 #endif
 }
 
 void* CUDAAllocator::Alloc(size_t size) {
-  CheckDevice(false);
+  CheckDevice(true);
   void* p = nullptr;
   if (size > 0) {
     CUDA_CALL_THROW(cudaMalloc((void**)&p, size));
@@ -41,8 +40,8 @@ void* CUDAAllocator::Alloc(size_t size) {
 }
 
 void CUDAAllocator::Free(void* p) {
-  CheckDevice(true);  // ignore CUDA failure when free
-  cudaFree(p);        // do not throw error since it's OK for cudaFree to fail during shutdown
+  CheckDevice(false);  // ignore CUDA failure when free
+  cudaFree(p);         // do not throw error since it's OK for cudaFree to fail during shutdown
 }
 
 const OrtMemoryInfo& CUDAAllocator::Info() const {
