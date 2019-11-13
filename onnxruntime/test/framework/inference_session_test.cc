@@ -142,7 +142,7 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   // Generate the input & output def lists
   std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
   onnxruntime::make_unique<Model>("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
-                                  domain_to_version, model_specific_functions, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+                                  domain_to_version, model_specific_functions, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = p_model->MainGraph();
 
   TypeProto tensor_float;
@@ -453,7 +453,7 @@ TEST(InferenceSessionTests, ModelMetadata) {
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
   std::shared_ptr<onnxruntime::Model> p_model;
-  Status st = onnxruntime::Model::Load(model_uri, p_model, nullptr, nullptr);
+  Status st = onnxruntime::Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(st.IsOK());
   const onnxruntime::Graph& graph = p_model->MainGraph();
 
