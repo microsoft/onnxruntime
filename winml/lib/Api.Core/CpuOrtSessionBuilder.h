@@ -14,11 +14,11 @@ class CpuOrtSessionBuilder : public IOrtSessionBuilder {
 
   HRESULT __stdcall CreateSession(
       const onnxruntime::SessionOptions& options,
-      std::unique_ptr<onnxruntime::InferenceSession>* p_session,
+      _winmla::InferenceSession** p_session,
       onnxruntime::IExecutionProvider** pp_provider);
 
   HRESULT __stdcall Initialize(
-      onnxruntime::InferenceSession* p_session,
+      _winmla::InferenceSession* p_session,
       onnxruntime::IExecutionProvider* p_provider);
 };
 

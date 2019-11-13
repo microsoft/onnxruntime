@@ -13,8 +13,8 @@ using namespace WinML;
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 LearningModelBinding::LearningModelBinding(
-    Windows::AI::MachineLearning::LearningModelSession const& session) try : m_session(session),
-                                                                             m_lotusBinding(session.as<LearningModelSession>()->CreateSessionBinding()) {
+    Windows::AI::MachineLearning::LearningModelSession const& session) try : m_session(session) {
+    m_lotusBinding = std::unique_ptr<_winmla::IOBinding>(session.as<LearningModelSession>()->CreateSessionBinding());
 }
 WINML_CATCH_ALL
 
@@ -158,10 +158,10 @@ void LearningModelBinding::Bind(
 
   switch (bindingType) {
     case BindingType::kInput:
-      WINML_THROW_IF_NOT_OK(m_lotusBinding->BindInput(bindingName, bindingValue));
+      WINML_THROW_IF_NOT_OK(m_lotusBinding->get()->BindInput(bindingName, bindingValue));
       break;
     case BindingType::kOutput:
-      WINML_THROW_IF_NOT_OK(m_lotusBinding->BindOutput(bindingName, bindingValue));
+      WINML_THROW_IF_NOT_OK(m_lotusBinding->get()->BindOutput(bindingName, bindingValue));
       break;
     default:
       FAIL_FAST();
@@ -170,7 +170,7 @@ void LearningModelBinding::Bind(
 WINML_CATCH_ALL
 
 void LearningModelBinding::Clear() try {
-  m_lotusBinding = m_session.as<LearningModelSession>()->CreateSessionBinding();
+  m_lotusBinding = std::unique_ptr<_winmla::IOBinding>(m_session.as<LearningModelSession>()->CreateSessionBinding());
   m_providers.clear();
 }
 WINML_CATCH_ALL
@@ -215,7 +215,7 @@ void LearningModelBinding::Split(
   throw hresult_not_implemented();
 }
 
-onnxruntime::IOBinding& LearningModelBinding::BindingCollection() {
+_winmla::IOBinding& LearningModelBinding::BindingCollection() {
   return *m_lotusBinding;
 }
 
@@ -375,8 +375,8 @@ Windows::Foundation::IInspectable LearningModelBinding::CreateUnboundOutput(
 std::unordered_map<std::string, Windows::Foundation::IInspectable> LearningModelBinding::UpdateProviders() {
   std::unordered_map<std::string, Windows::Foundation::IInspectable> outputs;
 
-  auto& outputNames = m_lotusBinding->GetOutputNames();
-  auto& outputMLValues = m_lotusBinding->GetOutputs();
+  auto& outputNames = m_lotusBinding->get()->GetOutputNames();
+  auto& outputMLValues = m_lotusBinding->get()->GetOutputs();
   WINML_THROW_HR_IF_FALSE_MSG(
       E_UNEXPECTED,
       outputNames.size() == outputMLValues.size(),
@@ -434,10 +434,10 @@ STDMETHODIMP LearningModelBinding::Bind(
 
     switch (bindingType) {
       case BindingType::kInput:
-        WINML_THROW_IF_NOT_OK(m_lotusBinding->BindInput(bindingName, bindingValue));
+        WINML_THROW_IF_NOT_OK(m_lotusBinding->get()->BindInput(bindingName, bindingValue));
         break;
       case BindingType::kOutput:
-        WINML_THROW_IF_NOT_OK(m_lotusBinding->BindOutput(bindingName, bindingValue));
+        WINML_THROW_IF_NOT_OK(m_lotusBinding->get()->BindOutput(bindingName, bindingValue));
         break;
       default:
         FAIL_FAST();

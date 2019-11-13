@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "WinMLAdapter.h"
+
 // Forward declarations
 namespace onnxruntime {
 struct SessionOptions;
@@ -22,11 +24,11 @@ struct __declspec(novtable) IOrtSessionBuilder {
 
   virtual HRESULT __stdcall CreateSession(
       const onnxruntime::SessionOptions& options,
-      std::unique_ptr<onnxruntime::InferenceSession>* session,
+      _winmla::InferenceSession** session,
       onnxruntime::IExecutionProvider** provider) = 0;
 
   virtual HRESULT __stdcall Initialize(
-      onnxruntime::InferenceSession* session,
+      _winmla::InferenceSession* session,
       onnxruntime::IExecutionProvider* provider) = 0;
 };
 

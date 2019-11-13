@@ -6,32 +6,18 @@
 #include "inc/CustomRegistryHelper.h"
 #include "inc/LotusEnvironment.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
+#include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
 
 #include "LearningModelDevice.h"
 #include "TensorFeatureDescriptor.h"
 #include "ImageFeatureDescriptor.h"
 #include "api.image/inc/D3DDeviceCache.h"
 
+#include "PheonixSingleton.h"
+
 using namespace winrt::Windows::AI::MachineLearning;
 
 namespace Windows::AI::MachineLearning::Adapter {
-
-HRESULT STDMETHODCALLTYPE
-RegisterCustomRegistry(
-    onnxruntime::InferenceSession* p_session,
-    IMLOperatorRegistry* registry) {
-  RETURN_HR_IF(S_OK, registry == nullptr);
-  RETURN_HR_IF_NULL(E_POINTER, p_session);
-
-  auto custom_registries = WinML::GetLotusCustomRegistries(registry);
-
-  // Register
-  for (auto& custom_registry : custom_registries) {
-      ORT_THROW_IF_ERROR(p_session->RegisterCustomRegistry(custom_registry));
-  }
-
-  return S_OK;
-}
 
 void STDMETHODCALLTYPE EnableDebugOutput() {
   WinML::CWinMLLogSink::EnableDebugOutput();
@@ -47,16 +33,6 @@ class InferenceSessionProtectedLoadAccessor : public onnxruntime::InferenceSessi
   }
 };
 
-HRESULT STDMETHODCALLTYPE
-LoadModel(
-    onnxruntime::InferenceSession* session,
-    onnx::ModelProto* model_proto) {
-  auto session_protected_load_accessor =
-      static_cast<InferenceSessionProtectedLoadAccessor*>(session);
-  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ptr(model_proto);
-  ORT_THROW_IF_ERROR(session_protected_load_accessor->Load(std::move(model_proto_ptr)));
-  return S_OK;
-}
 
 static bool
 IsFeatureDescriptorFp16(
@@ -179,5 +155,95 @@ onnxruntime::Tensor* STDMETHODCALLTYPE CreateTensor(
       provider->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault));
   return pTensor;
 }
+
+
+// InferenceSession
+// ================
+void STDMETHODCALLTYPE InferenceSession::Release() {
+    delete session_;
+    session_ = nullptr;
+}
+
+void STDMETHODCALLTYPE InferenceSession::RegisterGraphTransformers(bool registerLotusTransforms) {
+    GraphTransformerHelpers::RegisterGraphTransformers(session_, registerLotusTransforms);
+}
+
+HRESULT STDMETHODCALLTYPE InferenceSession::NewIOBinding(_winmla::IOBinding** io_binding) {
+    std::unique_ptr<onnxruntime::IOBinding> binding;
+    ORT_THROW_IF_ERROR(this->session_->NewIOBinding(&binding));
+    *io_binding = new _winmla::IOBinding(binding.release());
+    return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE InferenceSession::Run(const onnxruntime::RunOptions* run_options, onnxruntime::IOBinding* io_binding) {
+    ORT_THROW_IF_ERROR(this->session_->Run(*run_options, *io_binding));
+    return S_OK;
+}
+HRESULT STDMETHODCALLTYPE InferenceSession::StartProfiling() {
+    this->session_->StartProfiling(PheonixSingleton<WinML::LotusEnvironment>()->GetDefaultLogger());
+    return S_OK;
+
+}
+HRESULT STDMETHODCALLTYPE InferenceSession::EndProfiling() {
+    this->session_->EndProfiling();
+    return S_OK;
+
+}
+
+HRESULT STDMETHODCALLTYPE
+InferenceSession::LoadModel(
+    onnx::ModelProto* model_proto) {
+    auto session_protected_load_accessor =
+        static_cast<InferenceSessionProtectedLoadAccessor*>(session_);
+    std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ptr(model_proto);
+    ORT_THROW_IF_ERROR(session_protected_load_accessor->Load(std::move(model_proto_ptr)));
+    return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE
+InferenceSession::RegisterCustomRegistry(
+    IMLOperatorRegistry* registry) {
+    RETURN_HR_IF(S_OK, registry == nullptr);
+
+    auto custom_registries = WinML::GetLotusCustomRegistries(registry);
+
+    // Register
+    for (auto& custom_registry : custom_registries) {
+        ORT_THROW_IF_ERROR(session_->RegisterCustomRegistry(custom_registry));
+    }
+
+    return S_OK;
+}
+
+void STDMETHODCALLTYPE InferenceSession::FlushContext(onnxruntime::IExecutionProvider* dml_provider) {
+    Dml::FlushContext(dml_provider);
+}
+
+
+void STDMETHODCALLTYPE InferenceSession::TrimUploadHeap(onnxruntime::IExecutionProvider* dml_provider) {
+    Dml::TrimUploadHeap(dml_provider);
+}
+
+void STDMETHODCALLTYPE InferenceSession::ReleaseCompletedReferences(onnxruntime::IExecutionProvider* dml_provider) {
+    Dml::ReleaseCompletedReferences(dml_provider);
+}
+
+// IOBinding
+// =========
+
+void STDMETHODCALLTYPE IOBinding::Release() {
+    delete binding_;
+    binding_ = nullptr;
+}
+
+HRESULT STDMETHODCALLTYPE IOBinding::BindOutput(const std::string& name, const OrtValue& ml_value) {
+    binding_->BindOutput(name, ml_value);
+    return S_OK;
+}
+
+const std::vector<std::string>& STDMETHODCALLTYPE IOBinding::GetOutputNames() {
+    return binding_->GetOutputNames();
+}
+
 
 }  // namespace Windows::AI::MachineLearning::Adapter

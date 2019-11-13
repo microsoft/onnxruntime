@@ -60,7 +60,7 @@ WINML_CATCH_ALL
 
 void LearningModel::Initialize() {
   model_info_ = std::make_unique<WinML::ModelInfo>(
-      model_proto_.get()->p_);
+      model_proto_.get()->get());
 }
 
 void LearningModel::LogCreationEvent(bool fromStream) {

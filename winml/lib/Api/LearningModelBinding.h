@@ -6,6 +6,7 @@
 #include "LearningModelBinding.g.h"
 
 #include "inc/ILotusValueProviderPrivate.h"
+#include "WinMLAdapter.h"
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 
@@ -40,7 +41,7 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
       const Windows::Foundation::IInspectable& value,
       Windows::Foundation::Collections::IPropertySet const& properties);
 
-  onnxruntime::IOBinding& BindingCollection();
+  _winmla::IOBinding& BindingCollection();
   std::unordered_map<std::string, Windows::Foundation::IInspectable> UpdateProviders();
 
   const Windows::AI::MachineLearning::LearningModelSession& GetSession() { return m_session; }
@@ -60,7 +61,7 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
 
   std::unordered_map<std::string, ProviderInfo> m_providers;
 
-  std::unique_ptr<onnxruntime::IOBinding> m_lotusBinding;
+  std::unique_ptr<_winmla::IOBinding> m_lotusBinding;
 };
 }  // namespace winrt::Windows::AI::MachineLearning::implementation
 

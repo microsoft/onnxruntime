@@ -16,18 +16,7 @@
 #include "TensorFeatureDescriptor.h"
 #include "TelemetryEvent.h"
 
-#include "core/framework/op_kernel.h"
-#include "core/framework/op_node_proto_helper.h"
-#include "core/framework/customRegistry.h"
-
 #include "D3DDeviceCache.h"
-
-#include "core/providers/dml/DmlExecutionProvider/src/MLOperatorAuthorImpl.h"
-
-#include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
-#include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
-#include "LotusEnvironment.h"
-#include "PheonixSingleton.h"
 
 static const auto c_enable_debug_output = L"EnableDebugOutput";
 
@@ -93,7 +82,7 @@ LearningModelSession::GetOptimizedModel(bool should_close_model) {
   }
 
   // Ensure that the model is runnable on the device
-  WINML_THROW_IF_FAILED(_winmla::EnsureModelDeviceCompatibility(model_, model_proto.get()->p_, device_.as<winmlp::LearningModelDevice>()->GetD3DDeviceCache()->IsFloat16Supported()));
+  WINML_THROW_IF_FAILED(_winmla::EnsureModelDeviceCompatibility(model_, model_proto.get()->get(), device_.as<winmlp::LearningModelDevice>()->GetD3DDeviceCache()->IsFloat16Supported()));
 
   return model_proto;
 }
@@ -124,25 +113,26 @@ void LearningModelSession::Initialize() {
     options.free_dimension_overrides.emplace_back(overrideOption);
   }
 
-  auto session = std::unique_ptr<onnxruntime::InferenceSession>();
+  _winmla::InferenceSession* sessionptr = nullptr;
   WINML_THROW_IF_FAILED(session_builder->CreateSession(
-      options, &session, &p_cached_execution_provider));
+      options, &sessionptr, &cached_execution_provider_));
+  auto session = std::unique_ptr<_winmla::InferenceSession>(sessionptr);
 
   // Register the custom operator registry
   auto model = model_.as<winmlp::LearningModel>();
-  WINML_THROW_IF_FAILED(_winmla::RegisterCustomRegistry(session.get(), model->GetOperatorRegistry()));
+  WINML_THROW_IF_FAILED(session->RegisterCustomRegistry(model->GetOperatorRegistry()));
 
   // Register only the transformers not already in ORT
   const bool registerLotusTransformers = false;
-  GraphTransformerHelpers::RegisterGraphTransformers(session.get(), registerLotusTransformers);
+  session->RegisterGraphTransformers(registerLotusTransformers);
 
   // Load the model into the session
-  WINML_THROW_IF_FAILED(_winmla::LoadModel(session.get(), model_proto.get()->p_));
+  WINML_THROW_IF_FAILED(session->LoadModel(model_proto.get()->get()));
   // the session owns the model_proto now
   model_proto.release();
 
   // Initialize the session
-  session_builder->Initialize(session.get(), p_cached_execution_provider);
+  session_builder->Initialize(session.get(), cached_execution_provider_);
 
   // Cache the constructed session
   inference_session_ = std::move(session);
@@ -202,7 +192,7 @@ LearningModelSession::EvaluateFeaturesAsync(
   return EvaluateAsync(binding, correlation_id);
 }
 
-static onnxruntime::IOBinding&
+static _winmla::IOBinding&
 GetIOBinding(
     winrt::com_ptr<winmlp::LearningModelBinding> binding_impl,
     winml::LearningModel& model) {
@@ -246,7 +236,7 @@ GetIOBinding(
   // Add all unbound outputs to the iobinding collection
   for (const auto& unbound_output : unbound_output_names) {
     OrtValue value = {};
-    WINML_THROW_IF_NOT_OK(io_binding.BindOutput(unbound_output, value));
+    WINML_THROW_IF_FAILED(io_binding.BindOutput(unbound_output, value));
   }
 
   return io_binding;
@@ -264,12 +254,12 @@ LearningModelSession::Run(
   auto& io_binding = GetIOBinding(binding_impl, model_);
 
   // Invoke run on the ORT session.
-  WINML_THROW_IF_NOT_OK(inference_session_->Run(run_options, io_binding));
+  WINML_THROW_IF_FAILED(inference_session_->Run(&run_options, io_binding.get()));
 
   if (!device->IsCpuDevice()) {
     // Flush the D3D12 work from the DML execution provider and queue a fence before we release the lock.
     // This allows us to wait without holding onto the lock in GetResults.
-    Dml::FlushContext(GetExecutionProvider());
+    inference_session_->FlushContext(GetExecutionProvider());
     return device->GetD3DDeviceCache()->QueueFenceToD3D12();
   }
 
@@ -296,7 +286,7 @@ LearningModelSession::GetResults(
   if (is_gpu_evaluation) {
     // For DML we aren't using the Sync function because we want to make fencing the
     // completed frame thread safe while not holding the lock while waiting for the gpu.
-    Dml::ReleaseCompletedReferences(GetExecutionProvider());
+    inference_session_->ReleaseCompletedReferences(GetExecutionProvider());
   } else {
     // For CPU call the standard Sync function
     GetExecutionProvider()->Sync();
@@ -311,7 +301,7 @@ LearningModelSession::GetResults(
   // to avoid requiring the extra allocation during each evaluation.
   if (is_first_evaluate_) {
     if (is_gpu_evaluation) {
-      Dml::TrimUploadHeap(GetExecutionProvider());
+      inference_session_->TrimUploadHeap(GetExecutionProvider());
     }
     is_first_evaluate_ = false;
   }
@@ -412,11 +402,11 @@ void LearningModelSession::Close() {
   inference_session_.reset();
 }
 
-std::unique_ptr<onnxruntime::IOBinding>
+_winmla::IOBinding*
 LearningModelSession::CreateSessionBinding() {
   CheckClosed();
-  std::unique_ptr<onnxruntime::IOBinding> binding;
-  WINML_THROW_IF_NOT_OK(inference_session_->NewIOBinding(&binding));
+  _winmla::IOBinding* binding;
+  WINML_THROW_IF_FAILED(inference_session_->NewIOBinding(&binding));
   return binding;
 }
 
@@ -439,7 +429,7 @@ void LearningModelSession::ToggleProfiler() {
           WINML_PROVIDER_KEYWORD_LOTUS_PROFILING);
 
   if (is_provider_enabled) {
-    inference_session_->StartProfiling(PheonixSingleton<WinML::LotusEnvironment>()->GetDefaultLogger());
+    inference_session_->StartProfiling();
   } else {
     inference_session_->EndProfiling();
   }
@@ -447,7 +437,7 @@ void LearningModelSession::ToggleProfiler() {
 
 onnxruntime::IExecutionProvider*
 LearningModelSession::GetExecutionProvider() {
-  return p_cached_execution_provider;
+  return cached_execution_provider_;
 }
 
 void LearningModelSession::CheckClosed() {
