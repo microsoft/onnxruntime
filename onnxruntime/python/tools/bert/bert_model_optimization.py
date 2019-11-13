@@ -360,13 +360,18 @@ class OnnxModel:
         
         # remove weights that are not used
         weights_to_remove = []
+        weights_to_keep = []
         for initializer in graph.initializer:
             if initializer.name not in remaining_input_names:
                 weights_to_remove.append(initializer)
+            else:
+                weights_to_keep.append(initializer.name)
         for initializer in weights_to_remove:
             graph.initializer.remove(initializer)
+
         if self.verbose:
             print("remove unused initializers:", len(weights_to_remove), [initializer.name for initializer in weights_to_remove])
+            print("remaining initializers:", weights_to_keep)
 
         self.remove_unused_constant()
 
@@ -749,10 +754,12 @@ class BertOnnxModel(OnnxModel):
             (add, matmul) = nodes
 
             # bias should be one dimension
+            bias_index = -1
             for i, input in enumerate(add.input):
                 initializer = self.get_initializer(input)
                 if initializer is None:
                     continue
+                bias_index = i
                 bias_weight = numpy_helper.to_array(initializer)
                 break
             if bias_weight is None:
@@ -767,7 +774,7 @@ class BertOnnxModel(OnnxModel):
             nodes_to_remove.extend(subgraph_nodes)
             gelu_node = onnx.helper.make_node(
                 'FastGelu',
-                inputs=[node.input[0], matmul.output[0]],
+                inputs=[matmul.output[0], add.input[bias_index]],
                 outputs=node.output,
                 name=self.create_node_name('FastGelu', "FastGelu_AddBias_"))
             gelu_node.domain = "com.microsoft"
@@ -1253,7 +1260,7 @@ def main():
     bert_model.remove_unused_constant()
 
     bert_model.update_dynamic_batch_io()
-    #bert_model.model.opset_import[0].version = 10
+
     print("opset verion", bert_model.model.opset_import[0].version)
 
     with open(args.output, "wb") as out:
