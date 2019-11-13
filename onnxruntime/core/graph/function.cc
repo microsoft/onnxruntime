@@ -221,7 +221,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
 }
 
 static  std::unordered_map<std::string, int> GetOpsetVersionMap(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto){
-  return std::unordered_map<std::string, int>{{onnxruntime::kOnnxDomain, onnx_func_proto.since_version()}};
+  return std::unordered_map<std::string, int>{{onnxruntime::kOnnxDomain, static_cast<int>(onnx_func_proto.since_version())}};
 }
 
 FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,

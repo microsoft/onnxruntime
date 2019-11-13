@@ -139,11 +139,9 @@ static constexpr const ORTCHAR_T* MODEL_URI_NO_OPSET = ORT_TSTR("testdata/mul_1.
 static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, ProviderType provider_type) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
-  Model t(ORT_TSTR("test"), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
-          domain_to_version, {}, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
   // Generate the input & output def lists
   std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
-  onnxruntime::make_unique<Model>(ORT_TSTR("test"), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
+  onnxruntime::make_unique<Model>("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
                                   domain_to_version, model_specific_functions, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = p_model->MainGraph();
 

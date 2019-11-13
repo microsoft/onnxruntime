@@ -19,7 +19,7 @@ namespace Dml
         GraphTransformer(const std::string& name, std::shared_ptr<onnxruntime::KernelRegistry> dmlRegistry);
 
     private:
-        onnxruntime::common::Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level, const onnxruntime::logging::Logger* logger) const final;
+     onnxruntime::common::Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level, const onnxruntime::logging::Logger& logger) const final;
 
     private:
         void PerformOperatorFusion(onnxruntime::Graph* graph, bool* modified) const;
