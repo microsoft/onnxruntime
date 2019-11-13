@@ -150,7 +150,7 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
             onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
       }
     }
-    return std::move(result);
+    return result;
   }
 
   common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
