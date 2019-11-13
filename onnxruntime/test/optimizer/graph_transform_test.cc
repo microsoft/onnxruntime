@@ -839,6 +839,21 @@ TEST(GraphTransformationTests, LayerNormFusionTest) {
   ASSERT_TRUE(op_to_count["Pow"] == 0);
   ASSERT_TRUE(op_to_count["Sqrt"] == 0);
   ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "LayerNormalization") {
+      // LayerNormalization should have three inputs.
+      EXPECT_EQ(node.InputDefs().size(), 3) << "LayerNormalization number of inputs does not equal to 3. Got:" << node.InputDefs().size();
+      // LayerNormalization input "scale" and "bias" should have the same dimension.
+      const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
+      const TensorShapeProto* bias_shape = node.InputDefs()[2]->Shape();
+      EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
+      EXPECT_EQ(bias_shape->dim_size(), 1) << "LayerNormalization bias should be 1D. Got: " << bias_shape->dim_size();
+      EXPECT_EQ(scale_shape->dim(0).dim_value(), bias_shape->dim(0).dim_value());
+    } else {
+      EXPECT_TRUE(false) << "Unexpected node " << node.Name();
+    }
+  }
 }
 
 TEST(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
@@ -860,6 +875,21 @@ TEST(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
   ASSERT_TRUE(op_to_count["Pow"] == 0);
   ASSERT_TRUE(op_to_count["Sqrt"] == 0);
   ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "LayerNormalization") {
+      // LayerNormalization should have three inputs.
+      EXPECT_EQ(node.InputDefs().size(), 3) << "LayerNormalization number of inputs does not equal to 3. Got:" << node.InputDefs().size();
+      // LayerNormalization input "scale" and "bias" should have the same dimension. 
+      const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
+      const TensorShapeProto* bias_shape = node.InputDefs()[2]->Shape();
+      EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
+      EXPECT_EQ(bias_shape->dim_size(), 1) << "LayerNormalization bias should be 1D. Got: " << bias_shape->dim_size();
+      EXPECT_EQ(scale_shape->dim(0).dim_value(), bias_shape->dim(0).dim_value());
+    } else {
+      EXPECT_TRUE(false) << "Unexpected node " << node.Name();
+    }
+  }
 }
 #endif
 
