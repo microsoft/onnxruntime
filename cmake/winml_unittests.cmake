@@ -18,7 +18,12 @@ function(AddTest)
   add_executable(${_UT_TARGET} ${_UT_SOURCES})
 
   source_group(TREE ${TEST_SRC_DIR} FILES ${_UT_SOURCES})
-  set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "WinMLTest")
+  set_target_properties(${_UT_TARGET} PROPERTIES
+    FOLDER "WinMLTest"
+    CXX_STANDARD 11
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS NO
+)
 
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
