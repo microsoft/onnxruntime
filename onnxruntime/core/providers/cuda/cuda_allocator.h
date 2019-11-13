@@ -16,7 +16,7 @@ class CUDAAllocator : public IDeviceAllocator {
   virtual FencePtr CreateFence(const SessionState* session_state) override;
 
  private:
-  void CheckDevice() const;
+  void CheckDevice(bool ignore_failure) const;
 
  private:
   const OrtMemoryInfo info_;
